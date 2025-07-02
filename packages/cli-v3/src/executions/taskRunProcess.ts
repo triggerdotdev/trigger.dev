@@ -78,7 +78,6 @@ export class TaskRunProcess {
   public onTaskRunHeartbeat: Evt<string> = new Evt();
   public onExit: Evt<{ code: number | null; signal: NodeJS.Signals | null; pid?: number }> =
     new Evt();
-  public onIsBeingKilled: Evt<TaskRunProcess> = new Evt();
   public onSendDebugLog: Evt<OnSendDebugLogMessage> = new Evt();
   public onSetSuspendable: Evt<OnSetSuspendableMessage> = new Evt();
 
@@ -100,7 +99,6 @@ export class TaskRunProcess {
 
   unsafeDetachEvtHandlers() {
     this.onExit.detach();
-    this.onIsBeingKilled.detach();
     this.onSendDebugLog.detach();
     this.onSetSuspendable.detach();
     this.onTaskRunHeartbeat.detach();
@@ -150,6 +148,7 @@ export class TaskRunProcess {
       PATH: process.env.PATH,
       TRIGGER_PROCESS_FORK_START_TIME: String(Date.now()),
       TRIGGER_WARM_START: this.options.isWarmStart ? "true" : "false",
+      TRIGGERDOTDEV: "1",
     };
 
     logger.debug(`initializing task run process`, {
@@ -168,6 +167,12 @@ export class TaskRunProcess {
     });
 
     this._childPid = this._child?.pid;
+
+    logger.debug("initialized task run process", {
+      path: workerManifest.workerEntryPoint,
+      cwd,
+      pid: this._childPid,
+    });
 
     this._ipc = new ZodIpcConnection({
       listenSchema: ExecutorToWorkerMessageCatalog,
@@ -286,6 +291,10 @@ export class TaskRunProcess {
     return result;
   }
 
+  isExecuting() {
+    return this._currentExecution !== undefined;
+  }
+
   waitpointCompleted(waitpoint: CompletedWaitpoint) {
     if (!this._child?.connected || this._isBeingKilled || this._child.killed) {
       console.error(
@@ -298,7 +307,7 @@ export class TaskRunProcess {
   }
 
   async #handleExit(code: number | null, signal: NodeJS.Signals | null) {
-    logger.debug("handling child exit", { code, signal });
+    logger.debug("handling child exit", { code, signal, pid: this.pid });
 
     // Go through all the attempts currently pending and reject them
     for (const [id, status] of this._attemptStatuses.entries()) {
@@ -397,8 +406,6 @@ export class TaskRunProcess {
     this._isBeingKilled = true;
 
     const killTimeout = this.onExit.waitFor(timeoutInMs);
-
-    this.onIsBeingKilled.post(this);
 
     try {
       this._child?.kill(signal);

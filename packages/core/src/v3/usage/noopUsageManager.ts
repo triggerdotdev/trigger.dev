@@ -26,4 +26,8 @@ export class NoopUsageManager implements UsageManager {
   sample(): UsageSample | undefined {
     return undefined;
   }
+
+  reset(): void {
+    // Noop
+  }
 }

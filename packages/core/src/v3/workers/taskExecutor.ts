@@ -62,6 +62,7 @@ export type TaskExecutorOptions = {
     default?: RetryOptions;
   };
   isWarmStart?: boolean;
+  executionCount?: number;
 };
 
 export class TaskExecutor {
@@ -75,6 +76,7 @@ export class TaskExecutor {
       }
     | undefined;
   private _isWarmStart: boolean | undefined;
+  private _executionCount: number | undefined;
 
   constructor(
     public task: TaskMetadataWithFunctions,
@@ -85,6 +87,7 @@ export class TaskExecutor {
     this._consoleInterceptor = options.consoleInterceptor;
     this._retries = options.retries;
     this._isWarmStart = options.isWarmStart;
+    this._executionCount = options.executionCount;
   }
 
   async execute(
@@ -112,11 +115,11 @@ export class TaskExecutor {
       runMetadata.enterWithMetadata(execution.run.metadata);
     }
 
-    this._tracingSDK.asyncResourceDetector.resolveWithAttributes({
-      ...taskContext.attributes,
-      [SemanticInternalAttributes.SDK_VERSION]: VERSION,
-      [SemanticInternalAttributes.SDK_LANGUAGE]: "typescript",
-    });
+    if (!this._tracingSDK.asyncResourceDetector.isResolved) {
+      this._tracingSDK.asyncResourceDetector.resolveWithAttributes({
+        ...taskContext.resourceAttributes,
+      });
+    }
 
     const result = await this._tracer.startActiveSpan(
       attemptMessage,
@@ -351,11 +354,12 @@ export class TaskExecutor {
           ...(execution.attempt.number === 1
             ? runTimelineMetrics.convertMetricsToSpanAttributes()
             : {}),
-          ...(execution.environment.type !== "DEVELOPMENT"
+          [SemanticInternalAttributes.STYLE_VARIANT]: this._isWarmStart
+            ? WARM_VARIANT
+            : COLD_VARIANT,
+          ...(typeof this._executionCount === "number"
             ? {
-                [SemanticInternalAttributes.STYLE_VARIANT]: this._isWarmStart
-                  ? WARM_VARIANT
-                  : COLD_VARIANT,
+                [SemanticInternalAttributes.ATTEMPT_EXECUTION_COUNT]: this._executionCount,
               }
             : {}),
         },

@@ -4,6 +4,10 @@ import { syncEnvVars } from "@trigger.dev/build/extensions/core";
 export default defineConfig({
   compatibilityFlags: ["run_engine_v2"],
   project: "proj_rrkpdguyagvsoktglnod",
+  experimental_processKeepAlive: {
+    enabled: true,
+    maxExecutionsPerProcess: 20,
+  },
   logLevel: "log",
   maxDuration: 3600,
   retries: {

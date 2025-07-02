@@ -13,6 +13,12 @@ interface PopulateEnvOptions {
    * @default false
    */
   debug?: boolean;
+
+  /**
+   * The previous environment variables
+   * @default undefined
+   */
+  previousEnv?: Record<string, string>;
 }
 
 /**
@@ -25,7 +31,7 @@ export function populateEnv(
   envObject: Record<string, string>,
   options: PopulateEnvOptions = {}
 ): void {
-  const { override = false, debug = false } = options;
+  const { override = false, debug = false, previousEnv } = options;
 
   if (!envObject || typeof envObject !== "object") {
     return;
@@ -45,6 +51,15 @@ export function populateEnv(
       }
     } else {
       process.env[key] = envObject[key];
+    }
+  }
+
+  if (previousEnv) {
+    // if there are any keys in previousEnv that are not in envObject, remove them from process.env
+    for (const key of Object.keys(previousEnv)) {
+      if (!Object.prototype.hasOwnProperty.call(envObject, key)) {
+        delete process.env[key];
+      }
     }
   }
 }

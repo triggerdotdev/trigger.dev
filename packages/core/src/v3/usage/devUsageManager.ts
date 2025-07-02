@@ -50,6 +50,12 @@ export class DevUsageManager implements UsageManager {
 
   async flush(): Promise<void> {}
 
+  reset(): void {
+    this._firstMeasurement = undefined;
+    this._currentMeasurements.clear();
+    this._pauses.clear();
+  }
+
   sample(): UsageSample | undefined {
     return this._firstMeasurement?.sample();
   }
