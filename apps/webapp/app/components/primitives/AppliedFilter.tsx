@@ -12,7 +12,7 @@ const variants = {
     clear: "size-6 text-text-dimmed hover:text-text-bright transition-colors",
   },
   "minimal/medium": {
-    box: "h-6 rounded gap-1.5 text-sm",
+    box: "rounded gap-1.5 text-sm",
     clear: "size-6 text-text-dimmed transition-colors",
   },
 };
@@ -35,7 +35,7 @@ export function AppliedFilter({
   value,
   removable = true,
   onRemove,
-  variant = "tertiary/small",
+  variant = "secondary/small",
   className,
 }: AppliedFilterProps) {
   const variantClassName = variants[variant];
@@ -48,8 +48,8 @@ export function AppliedFilter({
         className
       )}
     >
-      <div className="flex items-center gap-0.5">
-        <div className="flex items-center gap-1">
+      <div className="flex items-start gap-0.5 leading-4">
+        <div className="-mt-[0.5px] flex items-center gap-1">
           {icon}
           <div className="text-text-bright">
             <span>{label}</span>:
