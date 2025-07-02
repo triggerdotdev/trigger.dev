@@ -40,7 +40,7 @@ const variations = {
     ),
     root: cn(
       small.root,
-      "group-data-[state=unchecked]:bg-secondary group-data-[state=unchecked]:group-hover:bg-secondary/50"
+      "group-data-[state=unchecked]:bg-charcoal-800 group-data-[state=unchecked]:group-hover:bg-charcoal-800/50"
     ),
     thumb: small.thumb,
     text: cn(small.text, "transition text-text-bright group-disabled:group-hover:text-text-dimmed"),
