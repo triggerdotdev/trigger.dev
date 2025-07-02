@@ -212,7 +212,7 @@ export class RunQueue {
         scanConcurrencySets: {
           ...workerCatalog.scanConcurrencySets,
           cron: options.concurrencySweeper?.scanSchedule ?? workerCatalog.scanConcurrencySets.cron,
-          jitter:
+          jitterInMs:
             options.concurrencySweeper?.scanJitterInMs ??
             workerCatalog.scanConcurrencySets.jitterInMs,
         },
