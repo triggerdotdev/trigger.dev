@@ -1,10 +1,13 @@
-import simplur from "simplur";
 import { ArrowPathIcon, CheckIcon } from "@heroicons/react/20/solid";
 import { XCircleIcon } from "@heroicons/react/24/outline";
 import { Form } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/router";
+import { type TaskRunStatus } from "@trigger.dev/database";
+import assertNever from "assert-never";
+import { filter } from "compression";
 import { useEffect } from "react";
 import { typedjson, useTypedFetcher } from "remix-typedjson";
+import simplur from "simplur";
 import { z } from "zod";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
@@ -18,8 +21,18 @@ import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { RadioGroup, RadioGroupItem } from "~/components/primitives/RadioButton";
 import { SpinnerWhite } from "~/components/primitives/Spinner";
-import { filterTitle, type TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
-import { appliedSummary } from "~/components/runs/v3/SharedFilters";
+import {
+  filterIcon,
+  filterTitle,
+  type TaskRunListSearchFilterKey,
+  type TaskRunListSearchFilters,
+} from "~/components/runs/v3/RunFilters";
+import {
+  appliedSummary,
+  dateFromString,
+  timeFilterRenderValues,
+} from "~/components/runs/v3/SharedFilters";
+import { runStatusTitle } from "~/components/runs/v3/TaskRunStatus";
 import { $replica, type PrismaClient } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
@@ -138,7 +151,7 @@ export function CreateBulkActionInspector({
               project,
               environment
             )}?${closedSearchParams.toString()}`}
-            variant="minimal/small"
+            variant="minimal/medium"
             TrailingIcon={ExitIcon}
             shortcut={{ key: "esc" }}
             shortcutPosition="before-trailing-icon"
@@ -161,7 +174,8 @@ export function CreateBulkActionInspector({
                   id="mode-filter"
                   label={
                     <span>
-                      All <EstimatedCount count={data?.count} /> runs matching your filters
+                      {data?.count === 0 ? "" : "All"} <EstimatedCount count={data?.count} /> runs
+                      matching your filters
                     </span>
                   }
                   value={"filter"}
@@ -274,46 +288,174 @@ function BulkActionPreview({
           <Action action={action} />.
         </Paragraph>
       );
-    case "filter":
+    case "filter": {
+      const { label, valueLabel, rangeType } = timeFilterRenderValues({
+        from: filters.from ? dateFromString(`${filters.from}`) : undefined,
+        to: filters.to ? dateFromString(`${filters.to}`) : undefined,
+        period: filters.period,
+      });
+
       return (
         <div className="flex flex-col gap-1">
           <Paragraph variant="small">
-            You have selected <EstimatedCount count={selected} /> runs to be{" "}
-            <Action action={action} /> using these filters:
+            You have selected{" "}
+            <span className="text-text-bright">
+              <EstimatedCount count={selected} />
+            </span>{" "}
+            runs to be <Action action={action} /> using these filters:
           </Paragraph>
           <div className="flex flex-col gap-1">
+            <AppliedFilter
+              variant="minimal/medium"
+              label={label}
+              icon={filterIcon("period")}
+              value={valueLabel}
+              removable={false}
+            />
             {Object.entries(filters).map(([key, value]) => {
-              if (!value) {
+              if (!value && key !== "period") {
                 return null;
               }
 
-              const title = filterTitle(key);
-              const valueString =
-                typeof value === "boolean" ? (
-                  value ? (
-                    <CheckIcon className="size-4" />
-                  ) : (
-                    "No"
-                  )
-                ) : Array.isArray(value) ? (
-                  appliedSummary(value)
-                ) : (
-                  value
-                );
+              const typedKey = key as TaskRunListSearchFilterKey;
 
-              return (
-                <AppliedFilter
-                  variant="minimal/small"
-                  key={key}
-                  label={title}
-                  value={valueString}
-                  removable={false}
-                />
-              );
+              switch (typedKey) {
+                case "cursor":
+                case "direction":
+                case "environments":
+                //We need to handle time differently because we have a default
+                case "period":
+                case "from":
+                case "to": {
+                  return null;
+                }
+                case "tasks": {
+                  const values = Array.isArray(value) ? value : [`${value}`];
+                  return (
+                    <AppliedFilter
+                      variant="minimal/medium"
+                      key={key}
+                      label={filterTitle(key)}
+                      icon={filterIcon(key)}
+                      value={appliedSummary(values)}
+                      removable={false}
+                    />
+                  );
+                }
+                case "versions": {
+                  const values = Array.isArray(value) ? value : [`${value}`];
+                  return (
+                    <AppliedFilter
+                      variant="minimal/medium"
+                      key={key}
+                      label={filterTitle(key)}
+                      icon={filterIcon(key)}
+                      value={appliedSummary(values)}
+                      removable={false}
+                    />
+                  );
+                }
+                case "statuses": {
+                  const values = Array.isArray(value) ? value : [`${value}`];
+                  return (
+                    <AppliedFilter
+                      variant="minimal/medium"
+                      key={key}
+                      label={filterTitle(key)}
+                      icon={filterIcon(key)}
+                      value={appliedSummary(values.map((v) => runStatusTitle(v as TaskRunStatus)))}
+                      removable={false}
+                    />
+                  );
+                }
+                case "tags": {
+                  const values = Array.isArray(value) ? value : [`${value}`];
+                  return (
+                    <AppliedFilter
+                      variant="minimal/medium"
+                      key={key}
+                      label={filterTitle(key)}
+                      icon={filterIcon(key)}
+                      value={appliedSummary(values)}
+                      removable={false}
+                    />
+                  );
+                }
+                case "bulkId": {
+                  return (
+                    <AppliedFilter
+                      variant="minimal/medium"
+                      key={key}
+                      label={filterTitle(key)}
+                      icon={filterIcon(key)}
+                      value={value}
+                      removable={false}
+                    />
+                  );
+                }
+                case "rootOnly": {
+                  return (
+                    <AppliedFilter
+                      variant="minimal/medium"
+                      key={key}
+                      label={"Root only"}
+                      icon={filterIcon(key)}
+                      value={
+                        value ? (
+                          <CheckIcon className="size-4" />
+                        ) : (
+                          <XCircleIcon className="size-4" />
+                        )
+                      }
+                      removable={false}
+                    />
+                  );
+                }
+                case "runId": {
+                  return (
+                    <AppliedFilter
+                      variant="minimal/medium"
+                      key={key}
+                      label={"Run ID"}
+                      icon={filterIcon(key)}
+                      value={value}
+                      removable={false}
+                    />
+                  );
+                }
+                case "batchId": {
+                  return (
+                    <AppliedFilter
+                      variant="minimal/medium"
+                      key={key}
+                      label={"Batch ID"}
+                      icon={filterIcon(key)}
+                      value={value}
+                      removable={false}
+                    />
+                  );
+                }
+                case "scheduleId": {
+                  return (
+                    <AppliedFilter
+                      variant="minimal/medium"
+                      key={key}
+                      label={"Schedule ID"}
+                      icon={filterIcon(key)}
+                      value={value}
+                      removable={false}
+                    />
+                  );
+                }
+                default: {
+                  assertNever(typedKey);
+                }
+              }
             })}
           </div>
         </div>
       );
+    }
   }
 }
 

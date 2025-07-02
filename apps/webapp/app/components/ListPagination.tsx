@@ -29,9 +29,8 @@ function NextButton({ cursor }: { cursor?: string }) {
   return (
     <LinkButton
       to={path ?? "#"}
-      variant={"minimal/small"}
+      variant={"secondary/small"}
       TrailingIcon={ChevronRightIcon}
-      trailingIconClassName="text-text-dimmed"
       className={cn(
         "flex items-center",
         !path && "cursor-not-allowed opacity-50 group-hover/button:bg-transparent"
@@ -40,9 +39,7 @@ function NextButton({ cursor }: { cursor?: string }) {
       shortcut={{ key: "k" }}
       tooltip="Next"
       disabled={!path}
-    >
-      Next
-    </LinkButton>
+    />
   );
 }
 
@@ -52,9 +49,8 @@ function PreviousButton({ cursor }: { cursor?: string }) {
   return (
     <LinkButton
       to={path ?? "#"}
-      variant={"minimal/small"}
+      variant={"secondary/small"}
       LeadingIcon={ChevronLeftIcon}
-      leadingIconClassName="text-text-dimmed"
       className={cn(
         "flex items-center",
         !path && "cursor-not-allowed opacity-50 group-hover/button:bg-transparent"
@@ -63,9 +59,7 @@ function PreviousButton({ cursor }: { cursor?: string }) {
       shortcut={{ key: "j" }}
       tooltip="Previous"
       disabled={!path}
-    >
-      Prev
-    </LinkButton>
+    />
   );
 }
 

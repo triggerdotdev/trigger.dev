@@ -1,12 +1,14 @@
 import * as Ariakit from "@ariakit/react";
 import {
+  CalendarIcon,
   ClockIcon,
   FingerPrintIcon,
   Squares2X2Icon,
   TagIcon,
-  TrashIcon,
+  XMarkIcon,
 } from "@heroicons/react/20/solid";
 import { Form, useFetcher } from "@remix-run/react";
+import { IconToggleLeft } from "@tabler/icons-react";
 import type { BulkActionType, TaskRunStatus, TaskTriggerSource } from "@trigger.dev/database";
 import { ListChecks, ListFilterIcon } from "lucide-react";
 import { matchSorter } from "match-sorter";
@@ -105,8 +107,7 @@ export const TaskRunListSearchFilters = z.object({
 });
 
 export type TaskRunListSearchFilters = z.infer<typeof TaskRunListSearchFilters>;
-
-type FilterKey = keyof TaskRunListSearchFilters;
+export type TaskRunListSearchFilterKey = keyof TaskRunListSearchFilters;
 
 export function filterTitle(filterKey: string) {
   switch (filterKey) {
@@ -138,6 +139,38 @@ export function filterTitle(filterKey: string) {
       return "Schedule ID";
     default:
       return filterKey;
+  }
+}
+
+export function filterIcon(filterKey: string): ReactNode | undefined {
+  switch (filterKey) {
+    case "cursor":
+    case "direction":
+      return undefined;
+    case "statuses":
+      return <StatusIcon className="size-4" />;
+    case "tasks":
+      return <TaskIcon className="size-4" />;
+    case "tags":
+      return <TagIcon className="size-4" />;
+    case "bulkId":
+      return <ListChecks className="size-4" />;
+    case "period":
+      return <CalendarIcon className="size-4" />;
+    case "from":
+      return <CalendarIcon className="size-4" />;
+    case "to":
+      return <CalendarIcon className="size-4" />;
+    case "rootOnly":
+      return <IconToggleLeft className="size-4" />;
+    case "batchId":
+      return <Squares2X2Icon className="size-4" />;
+    case "runId":
+      return <FingerPrintIcon className="size-4" />;
+    case "scheduleId":
+      return <ClockIcon className="size-4" />;
+    default:
+      return undefined;
   }
 }
 
@@ -212,9 +245,7 @@ export function RunsFilters(props: RunFiltersProps) {
           {searchParams.has("rootOnly") && (
             <input type="hidden" name="rootOnly" value={searchParams.get("rootOnly") as string} />
           )}
-          <Button variant="minimal/small" LeadingIcon={TrashIcon}>
-            Clear all
-          </Button>
+          <Button variant="secondary/small" LeadingIcon={XMarkIcon} tooltip="Clear all filters" />
         </Form>
       )}
     </div>
@@ -249,7 +280,7 @@ function FilterMenu(props: RunFiltersProps) {
           <ListFilterIcon className="size-3.5" />
         </div>
       }
-      variant={"tertiary/small"}
+      variant={"secondary/small"}
       shortcut={shortcut}
       tooltipTitle={"Filter runs"}
     >
@@ -433,8 +464,10 @@ function AppliedStatusFilter() {
             <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
                 label="Status"
+                icon={filterIcon("statuses")}
                 value={appliedSummary(statuses.map((v) => runStatusTitle(v as TaskRunStatus)))}
                 onRemove={() => del(["statuses", "cursor", "direction"])}
+                variant="secondary/small"
               />
             </Ariakit.Select>
           }
@@ -520,6 +553,7 @@ function AppliedTaskFilter({ possibleTasks }: Pick<RunFiltersProps, "possibleTas
             <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
                 label="Task"
+                icon={filterIcon("tasks")}
                 value={appliedSummary(
                   values("tasks").map((v) => {
                     const task = possibleTasks.find((task) => task.slug === v);
@@ -527,6 +561,7 @@ function AppliedTaskFilter({ possibleTasks }: Pick<RunFiltersProps, "possibleTas
                   })
                 )}
                 onRemove={() => del(["tasks", "cursor", "direction"])}
+                variant="secondary/small"
               />
             </Ariakit.Select>
           }
@@ -618,8 +653,10 @@ function AppliedBulkActionsFilter({ bulkActions }: Pick<RunFiltersProps, "bulkAc
             <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
                 label="Bulk action"
+                icon={filterIcon("bulkId")}
                 value={bulkId}
                 onRemove={() => del(["bulkId", "cursor", "direction"])}
+                variant="secondary/small"
               />
             </Ariakit.Select>
           }
@@ -740,8 +777,10 @@ function AppliedTagsFilter() {
             <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
                 label="Tags"
+                icon={filterIcon("tags")}
                 value={appliedSummary(values("tags"))}
                 onRemove={() => del(["tags", "cursor", "direction"])}
+                variant="secondary/small"
               />
             </Ariakit.Select>
           }
@@ -768,10 +807,9 @@ function RootOnlyToggle({ defaultValue }: { defaultValue: boolean }) {
   return (
     <Switch
       disabled={disabled}
-      variant="tertiary/small"
+      variant="secondary/small"
       label="Root only"
       checked={disabled ? false : rootOnly}
-      className="bg-tertiary transition hover:bg-charcoal-600"
       onCheckedChange={(checked) => {
         replace({
           rootOnly: checked ? "true" : "false",
@@ -886,8 +924,10 @@ function AppliedRunIdFilter() {
             <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
                 label="Run ID"
+                icon={filterIcon("runId")}
                 value={runId}
                 onRemove={() => del(["runId", "cursor", "direction"])}
+                variant="secondary/small"
               />
             </Ariakit.Select>
           }
@@ -1004,8 +1044,10 @@ function AppliedBatchIdFilter() {
             <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
                 label="Batch ID"
+                icon={filterIcon("batchId")}
                 value={batchId}
                 onRemove={() => del(["batchId", "cursor", "direction"])}
+                variant="secondary/small"
               />
             </Ariakit.Select>
           }
@@ -1122,8 +1164,10 @@ function AppliedScheduleIdFilter() {
             <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
                 label="Schedule ID"
+                icon={filterIcon("scheduleId")}
                 value={scheduleId}
                 onRemove={() => del(["scheduleId", "cursor", "direction"])}
+                variant="secondary/small"
               />
             </Ariakit.Select>
           }
