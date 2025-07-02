@@ -170,3 +170,46 @@ describe("parseEcrRegistry", () => {
     }
   });
 });
+
+describe("parseRegistryTags", () => {
+  it("should handle empty or null input", () => {
+    expect(parseRegistryTags("")).toEqual([]);
+    expect(parseRegistryTags(",,,")).toEqual([]);
+  });
+
+  it("should parse key-only tags", () => {
+    expect(parseRegistryTags("key1,key2")).toEqual([
+      { Key: "key1", Value: "" },
+      { Key: "key2", Value: "" },
+    ]);
+  });
+
+  it("should parse key-value tags", () => {
+    expect(parseRegistryTags("key1=value1,key2=value2")).toEqual([
+      { Key: "key1", Value: "value1" },
+      { Key: "key2", Value: "value2" },
+    ]);
+  });
+
+  it("should handle mixed key-only and key-value tags", () => {
+    expect(parseRegistryTags("key1,key2=value2,key3")).toEqual([
+      { Key: "key1", Value: "" },
+      { Key: "key2", Value: "value2" },
+      { Key: "key3", Value: "" },
+    ]);
+  });
+
+  it("should handle whitespace", () => {
+    expect(parseRegistryTags(" key1 , key2 = value2 ")).toEqual([
+      { Key: "key1", Value: "" },
+      { Key: "key2", Value: "value2" },
+    ]);
+  });
+
+  it("should skip invalid tags", () => {
+    expect(parseRegistryTags("=value,key1,=,key2=value2")).toEqual([
+      { Key: "key1", Value: "" },
+      { Key: "key2", Value: "value2" },
+    ]);
+  });
+});
