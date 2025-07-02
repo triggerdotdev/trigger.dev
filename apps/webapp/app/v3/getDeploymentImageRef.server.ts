@@ -158,10 +158,34 @@ export function isEcrRegistry(registryHost: string) {
 }
 
 function parseRegistryTags(tags: string): Tag[] {
-  return tags.split(",").map((tag) => {
-    const [key, value] = tag.split("=");
-    return { Key: key, Value: value };
-  });
+  if (!tags) {
+    return [];
+  }
+
+  return tags
+    .split(",")
+    .map((t) => {
+      const tag = t.trim();
+      if (tag.length === 0) {
+        return null;
+      }
+
+      // If there's no '=' in the tag, treat the whole tag as the key with an empty value
+      const equalIndex = tag.indexOf("=");
+      const key = equalIndex === -1 ? tag : tag.slice(0, equalIndex);
+      const value = equalIndex === -1 ? "" : tag.slice(equalIndex + 1);
+
+      if (key.trim().length === 0) {
+        logger.warn("Invalid ECR tag format (empty key), skipping tag", { tag: t });
+        return null;
+      }
+
+      return {
+        Key: key.trim(),
+        Value: value.trim(),
+      } as Tag;
+    })
+    .filter((tag): tag is Tag => tag !== null);
 }
 
 async function createEcrRepository({
