@@ -4,6 +4,7 @@ import {
   getDeploymentImageRef,
   getEcrAuthToken,
   parseEcrRegistryDomain,
+  parseRegistryTags,
 } from "../app/v3/getDeploymentImageRef.server";
 import { DeleteRepositoryCommand } from "@aws-sdk/client-ecr";
 
@@ -12,6 +13,7 @@ describe.skipIf(process.env.RUN_REGISTRY_TESTS !== "1")("getDeploymentImageRef",
     process.env.DEPLOY_REGISTRY_HOST || "123456789012.dkr.ecr.us-east-1.amazonaws.com";
   const testNamespace = process.env.DEPLOY_REGISTRY_NAMESPACE || "test-namespace";
   const testProjectRef = "proj_test_" + Math.random().toString(36).substring(7);
+  const testProjectRef2 = testProjectRef + "_2";
 
   const registryTags = process.env.DEPLOY_REGISTRY_ECR_TAGS || "test=test,test2=test2";
   const roleArn = process.env.DEPLOY_REGISTRY_ECR_ASSUME_ROLE_ARN;
@@ -30,13 +32,23 @@ describe.skipIf(process.env.RUN_REGISTRY_TESTS !== "1")("getDeploymentImageRef",
     try {
       const { region, accountId } = parseEcrRegistryDomain(testHost);
       const ecr = await createEcrClient({ region, assumeRole });
-      await ecr.send(
-        new DeleteRepositoryCommand({
-          repositoryName: `${testNamespace}/${testProjectRef}`,
-          registryId: accountId,
-          force: true,
-        })
-      );
+
+      await Promise.all([
+        ecr.send(
+          new DeleteRepositoryCommand({
+            repositoryName: `${testNamespace}/${testProjectRef}`,
+            registryId: accountId,
+            force: true,
+          })
+        ),
+        ecr.send(
+          new DeleteRepositoryCommand({
+            repositoryName: `${testNamespace}/${testProjectRef2}`,
+            registryId: accountId,
+            force: true,
+          })
+        ),
+      ]);
     } catch (error) {
       console.warn("Failed to delete test repository:", error);
     }
@@ -60,20 +72,37 @@ describe.skipIf(process.env.RUN_REGISTRY_TESTS !== "1")("getDeploymentImageRef",
   });
 
   it("should create ECR repository and return correct image ref", async () => {
-    const imageRef = await getDeploymentImageRef({
+    const imageRef1 = await getDeploymentImageRef({
       host: testHost,
       namespace: testNamespace,
-      projectRef: testProjectRef,
+      projectRef: testProjectRef2,
       nextVersion: "20250630.1",
       environmentSlug: "test",
       registryTags,
       assumeRole,
     });
 
-    expect(imageRef.imageRef).toBe(
-      `${testHost}/${testNamespace}/${testProjectRef}:20250630.1.test`
+    expect(imageRef1.imageRef).toBe(
+      `${testHost}/${testNamespace}/${testProjectRef2}:20250630.1.test`
     );
-    expect(imageRef.isEcr).toBe(true);
+    expect(imageRef1.isEcr).toBe(true);
+    expect(imageRef1.repoCreated).toBe(true);
+
+    const imageRef2 = await getDeploymentImageRef({
+      host: testHost,
+      namespace: testNamespace,
+      projectRef: testProjectRef2,
+      nextVersion: "20250630.2",
+      environmentSlug: "test",
+      registryTags,
+      assumeRole,
+    });
+
+    expect(imageRef2.imageRef).toBe(
+      `${testHost}/${testNamespace}/${testProjectRef2}:20250630.2.test`
+    );
+    expect(imageRef2.isEcr).toBe(true);
+    expect(imageRef2.repoCreated).toBe(false);
   });
 
   it("should reuse existing ECR repository", async () => {

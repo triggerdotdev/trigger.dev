@@ -113,6 +113,7 @@ export async function getDeploymentImageRef({
 }): Promise<{
   imageRef: string;
   isEcr: boolean;
+  repoCreated: boolean;
 }> {
   const repositoryName = `${namespace}/${projectRef}`;
   const imageRef = `${host}/${repositoryName}:${nextVersion}.${environmentSlug}`;
@@ -121,10 +122,11 @@ export async function getDeploymentImageRef({
     return {
       imageRef,
       isEcr: false,
+      repoCreated: false,
     };
   }
 
-  const [ecrRepoError] = await tryCatch(
+  const [ecrRepoError, ecrData] = await tryCatch(
     ensureEcrRepositoryExists({
       repositoryName,
       registryHost: host,
@@ -145,6 +147,7 @@ export async function getDeploymentImageRef({
   return {
     imageRef,
     isEcr: true,
+    repoCreated: ecrData.repoCreated,
   };
 }
 
@@ -157,7 +160,7 @@ export function isEcrRegistry(registryHost: string) {
   }
 }
 
-function parseRegistryTags(tags: string): Tag[] {
+export function parseRegistryTags(tags: string): Tag[] {
   if (!tags) {
     return [];
   }
@@ -297,7 +300,7 @@ async function ensureEcrRepositoryExists({
   registryHost: string;
   registryTags?: string;
   assumeRole?: AssumeRoleConfig;
-}): Promise<Repository> {
+}): Promise<{ repo: Repository; repoCreated: boolean }> {
   const { region, accountId } = parseEcrRegistryDomain(registryHost);
 
   const [getRepoError, existingRepo] = await tryCatch(
@@ -311,7 +314,10 @@ async function ensureEcrRepositoryExists({
 
   if (existingRepo) {
     logger.debug("ECR repository already exists", { repositoryName, region, existingRepo });
-    return existingRepo;
+    return {
+      repo: existingRepo,
+      repoCreated: false,
+    };
   }
 
   const [createRepoError, newRepo] = await tryCatch(
@@ -330,7 +336,10 @@ async function ensureEcrRepositoryExists({
     );
   }
 
-  return newRepo;
+  return {
+    repo: newRepo,
+    repoCreated: true,
+  };
 }
 
 export async function getEcrAuthToken({

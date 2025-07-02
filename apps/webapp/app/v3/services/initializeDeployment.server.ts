@@ -96,7 +96,7 @@ export class InitializeDeploymentService extends BaseService {
         throw new ServiceValidationError("Failed to get deployment image ref");
       }
 
-      const { imageRef, isEcr } = imageRefResult;
+      const { imageRef, isEcr, repoCreated } = imageRefResult;
 
       logger.debug("Creating deployment", {
         environmentId: environment.id,
@@ -106,6 +106,7 @@ export class InitializeDeploymentService extends BaseService {
         type: payload.type,
         imageRef,
         isEcr,
+        repoCreated,
       });
 
       const deployment = await this._prisma.workerDeployment.create({
