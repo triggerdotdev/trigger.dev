@@ -1,5 +1,11 @@
 import * as Ariakit from "@ariakit/react";
-import { CalendarIcon, CpuChipIcon, Squares2X2Icon, TrashIcon } from "@heroicons/react/20/solid";
+import {
+  CalendarIcon,
+  CpuChipIcon,
+  Squares2X2Icon,
+  TrashIcon,
+  XMarkIcon,
+} from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
 import type { BatchTaskRunStatus, RuntimeEnvironment } from "@trigger.dev/database";
 import { ListFilterIcon } from "lucide-react";
@@ -37,6 +43,7 @@ import {
   descriptionForBatchStatus,
 } from "./BatchStatus";
 import { TimeFilter, appliedSummary, FilterMenuProvider } from "./SharedFilters";
+import { StatusIcon } from "~/assets/icons/StatusIcon";
 
 export const BatchStatus = z.enum(allBatchStatuses);
 
@@ -71,9 +78,7 @@ export function BatchFilters(props: BatchFiltersProps) {
       <AppliedFilters />
       {hasFilters && (
         <Form className="h-6">
-          <Button variant="minimal/small" LeadingIcon={TrashIcon}>
-            Clear all
-          </Button>
+          <Button variant="secondary/small" LeadingIcon={XMarkIcon} tooltip="Clear all filters" />
         </Form>
       )}
     </div>
@@ -107,9 +112,9 @@ function FilterMenu(props: BatchFiltersProps) {
           <ListFilterIcon className="size-3.5" />
         </div>
       }
-      variant={"minimal/small"}
+      variant={"secondary/small"}
       shortcut={shortcut}
-      tooltipTitle={"Filter runs"}
+      tooltipTitle={"Filter batches"}
     >
       Filter
     </SelectTrigger>
@@ -276,10 +281,12 @@ function AppliedStatusFilter() {
             <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
                 label="Status"
+                icon={<StatusIcon className="size-3.5" />}
                 value={appliedSummary(
                   statuses.map((v) => batchStatusTitle(v as BatchTaskRunStatus))
                 )}
                 onRemove={() => del(["statuses", "cursor", "direction"])}
+                variant="secondary/small"
               />
             </Ariakit.Select>
           }
@@ -396,8 +403,10 @@ function AppliedBatchIdFilter() {
             <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
                 label="Batch ID"
+                icon={<Squares2X2Icon className="size-3.5" />}
                 value={batchId}
                 onRemove={() => del(["id", "cursor", "direction"])}
+                variant="secondary/small"
               />
             </Ariakit.Select>
           }

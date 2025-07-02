@@ -7,42 +7,19 @@ type Values = Record<string, string | string[] | undefined>;
 export function useSearchParams() {
   const navigate = useNavigate();
   const location = useOptimisticLocation();
-  const search = new URLSearchParams(location.search);
-
-  const set = useCallback(
-    (values: Values) => {
-      for (const [param, value] of Object.entries(values)) {
-        if (value === undefined) {
-          search.delete(param);
-          continue;
-        }
-
-        if (typeof value === "string") {
-          search.set(param, value);
-          continue;
-        }
-
-        search.delete(param);
-        for (const v of value) {
-          search.append(param, v);
-        }
-      }
-
-      return search;
-    },
-    [location, search]
-  );
 
   const replace = useCallback(
     (values: Values) => {
-      const s = set(values);
+      const s = set(new URLSearchParams(location.search), values);
+
       navigate(`${location.pathname}?${s.toString()}`, { replace: true });
     },
-    [location, search, set]
+    [location, navigate]
   );
 
   const del = useCallback(
     (keys: string | string[]) => {
+      const search = new URLSearchParams(location.search);
       if (!Array.isArray(keys)) {
         keys = [keys];
       }
@@ -51,11 +28,12 @@ export function useSearchParams() {
       }
       navigate(`${location.pathname}?${search.toString()}`, { replace: true });
     },
-    [location, search]
+    [location, navigate]
   );
 
   const value = useCallback(
     (param: string) => {
+      const search = new URLSearchParams(location.search);
       const val = search.get(param) ?? undefined;
       if (val === undefined) {
         return val;
@@ -63,22 +41,24 @@ export function useSearchParams() {
 
       return decodeURIComponent(val);
     },
-    [location, search]
+    [location]
   );
 
   const values = useCallback(
     (param: string) => {
+      const search = new URLSearchParams(location.search);
       const all = search.getAll(param);
       return all.map((v) => decodeURIComponent(v));
     },
-    [location, search]
+    [location]
   );
 
   const has = useCallback(
     (param: string) => {
+      const search = new URLSearchParams(location.search);
       return search.has(param);
     },
-    [location, search]
+    [location]
   );
 
   return {
@@ -88,4 +68,26 @@ export function useSearchParams() {
     del,
     has,
   };
+}
+
+function set(searchParams: URLSearchParams, values: Values) {
+  const search = new URLSearchParams(searchParams);
+  for (const [param, value] of Object.entries(values)) {
+    if (value === undefined) {
+      search.delete(param);
+      continue;
+    }
+
+    if (typeof value === "string") {
+      search.set(param, value);
+      continue;
+    }
+
+    search.delete(param);
+    for (const v of value) {
+      search.append(param, v);
+    }
+  }
+
+  return search;
 }
