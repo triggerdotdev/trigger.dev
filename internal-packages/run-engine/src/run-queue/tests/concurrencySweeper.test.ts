@@ -13,7 +13,7 @@ const testOptions = {
   tracer: trace.getTracer("rq"),
   workers: 1,
   defaultEnvConcurrency: 25,
-  logger: new Logger("RunQueue", "warn"),
+  logger: new Logger("RunQueue", "debug"),
   retryOptions: {
     maxAttempts: 5,
     factor: 1.1,
@@ -59,6 +59,7 @@ describe("RunQueue Concurrency Sweeper", () => {
 
       const queue = new RunQueue({
         ...testOptions,
+        logLevel: "debug",
         queueSelectionStrategy: new FairQueueSelectionStrategy({
           redis: {
             keyPrefix: "runqueue:test:",
@@ -67,6 +68,10 @@ describe("RunQueue Concurrency Sweeper", () => {
           },
           keys: testOptions.keys,
         }),
+        workerOptions: {
+          pollIntervalMs: 100,
+          immediatePollIntervalMs: 100,
+        },
         redis: {
           keyPrefix: "runqueue:test:",
           host: redisContainer.getHost(),

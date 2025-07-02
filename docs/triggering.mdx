@@ -238,7 +238,8 @@ Triggers a single run of a task with the payload you pass in, and any options yo
 </Note>
 
 ```ts ./trigger/my-task.ts
-import { myOtherTask, runs } from "~/trigger/my-other-task";
+import { runs } from "@trigger.dev/sdk/v3";
+import { myOtherTask } from "~/trigger/my-other-task";
 
 export const myTask = task({
   id: "my-task",
@@ -254,7 +255,8 @@ export const myTask = task({
 To pass options to the triggered task, you can use the second argument:
 
 ```ts ./trigger/my-task.ts
-import { myOtherTask, runs } from "~/trigger/my-other-task";
+import { runs } from "@trigger.dev/sdk/v3";
+import { myOtherTask } from "~/trigger/my-other-task";
 
 export const myTask = task({
   id: "my-task",
@@ -272,7 +274,8 @@ export const myTask = task({
 Triggers multiple runs of a single task with the payloads you pass in, and any options you specify.
 
 ```ts /trigger/my-task.ts
-import { myOtherTask, batch } from "~/trigger/my-other-task";
+import { batch } from "@trigger.dev/sdk/v3";
+import { myOtherTask } from "~/trigger/my-other-task";
 
 export const myTask = task({
   id: "my-task",
@@ -288,7 +291,8 @@ export const myTask = task({
 If you need to pass options to `batchTrigger`, you can use the second argument:
 
 ```ts /trigger/my-task.ts
-import { myOtherTask, batch } from "~/trigger/my-other-task";
+import { batch } from "@trigger.dev/sdk/v3";
+import { myOtherTask } from "~/trigger/my-other-task";
 
 export const myTask = task({
   id: "my-task",
@@ -306,7 +310,8 @@ export const myTask = task({
 You can also pass in options for each run in the batch:
 
 ```ts /trigger/my-task.ts
-import { myOtherTask, batch } from "~/trigger/my-other-task";
+import { batch } from "@trigger.dev/sdk/v3";
+import { myOtherTask } from "~/trigger/my-other-task";
 
 export const myTask = task({
   id: "my-task",
