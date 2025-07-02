@@ -22,15 +22,13 @@ export function PaginationControls({
     <nav className="flex items-center gap-0.5" aria-label="Pagination">
       <LinkButton
         to={pageUrl(location, currentPage - 1)}
-        variant="minimal/small"
+        variant="secondary/small"
         LeadingIcon={ChevronLeftIcon}
         shortcut={{ key: "j" }}
         tooltip="Previous"
         disabled={currentPage === 1}
         className={currentPage > 1 ? "group" : ""}
-      >
-        Prev
-      </LinkButton>
+      />
 
       {showPageNumbers
         ? calculatePageLinks(currentPage, totalPages).map((page, i) => (
@@ -40,15 +38,13 @@ export function PaginationControls({
 
       <LinkButton
         to={pageUrl(location, currentPage + 1)}
-        variant="minimal/small"
+        variant="secondary/small"
         TrailingIcon={ChevronRightIcon}
         shortcut={{ key: "k" }}
         tooltip="Next"
         disabled={currentPage === totalPages}
         className={currentPage !== totalPages ? "group" : ""}
-      >
-        Next
-      </LinkButton>
+      />
     </nav>
   );
 }

@@ -198,7 +198,7 @@ export default function Page() {
                                 <div className="flex items-center justify-end gap-x-2">
                                   {!isShowingBulkActionInspector && (
                                     <LinkButton
-                                      variant="tertiary/small"
+                                      variant="secondary/small"
                                       to={v3CreateBulkActionPath(
                                         organization,
                                         project,
@@ -208,7 +208,7 @@ export default function Page() {
                                       LeadingIcon={ListCheckedIcon}
                                       className={selectedItems.size > 0 ? "pr-1" : undefined}
                                     >
-                                      <span className="flex items-center gap-x-1">
+                                      <span className="flex items-center gap-x-1 whitespace-nowrap text-text-bright">
                                         <span>Bulk action</span>
                                         {selectedItems.size > 0 && (
                                           <Badge variant="rounded">{selectedItems.size}</Badge>

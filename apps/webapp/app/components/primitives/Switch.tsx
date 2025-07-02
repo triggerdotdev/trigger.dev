@@ -33,6 +33,18 @@ const variations = {
       "transition group-hover:text-text-bright group-disabled:group-hover:text-text-dimmed"
     ),
   },
+  "secondary/small": {
+    container: cn(
+      small.container,
+      "border border-charcoal-600 hover:border-charcoal-550 bg-secondary hover:bg-charcoal-600"
+    ),
+    root: cn(
+      small.root,
+      "group-data-[state=unchecked]:bg-secondary group-data-[state=unchecked]:group-hover:bg-secondary/50"
+    ),
+    thumb: small.thumb,
+    text: cn(small.text, "transition text-text-bright group-disabled:group-hover:text-text-dimmed"),
+  },
   medium: {
     container:
       "flex items-center gap-x-2 rounded-md hover:bg-tertiary py-1.5 px-2 transition focus-custom",
