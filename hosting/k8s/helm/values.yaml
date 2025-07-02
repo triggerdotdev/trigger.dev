@@ -335,6 +335,7 @@ postgres:
     persistence:
       enabled: true
       size: 10Gi
+    resourcesPreset: "small"
     resources: {}
     configuration: |
       listen_addresses = '*'
@@ -656,7 +657,6 @@ persistence:
     # accessMode: ReadWriteMany  # Use for cross-node deployment (requires compatible storage class)
     storageClass: ""
     retain: true # Prevents deletion on uninstall
-
 
 # Telemetry configuration
 telemetry:
