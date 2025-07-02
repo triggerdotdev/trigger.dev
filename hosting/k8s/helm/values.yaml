@@ -115,6 +115,26 @@ webapp:
     #       name: my-secret
     #       key: secret-key
 
+  # Extra volumes for the webapp pod
+  extraVolumes:
+    []
+    # - name: config-volume
+    #   configMap:
+    #     name: my-config
+    # - name: secret-volume
+    #   secret:
+    #     secretName: my-secret
+
+  # Extra volume mounts for the webapp container
+  extraVolumeMounts:
+    []
+    # - name: config-volume
+    #   mountPath: /etc/config
+    #   readOnly: true
+    # - name: secret-volume
+    #   mountPath: /etc/secrets
+    #   readOnly: true
+
   # ServiceMonitor for Prometheus monitoring
   serviceMonitor:
     enabled: false
