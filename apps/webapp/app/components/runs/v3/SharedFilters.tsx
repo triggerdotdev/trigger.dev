@@ -265,20 +265,23 @@ export function TimeDropdown({
     setOpen(false);
   }, [fromValue, toValue, replace]);
 
-  const handlePeriodClick = useCallback((period: string) => {
-    replace({
-      period,
-      cursor: undefined,
-      direction: undefined,
-      from: undefined,
-      to: undefined,
-    });
+  const handlePeriodClick = useCallback(
+    (period: string) => {
+      replace({
+        period,
+        cursor: undefined,
+        direction: undefined,
+        from: undefined,
+        to: undefined,
+      });
 
-    setFromValue(undefined);
-    setToValue(undefined);
+      setFromValue(undefined);
+      setToValue(undefined);
 
-    setOpen(false);
-  }, []);
+      setOpen(false);
+    },
+    [replace]
+  );
 
   return (
     <SelectProvider virtualFocus={true} open={open} setOpen={setOpen}>
