@@ -75,7 +75,7 @@ export function WaitpointTokenFilters(props: WaitpointTokenFiltersProps) {
       <AppliedFilters />
       {hasFilters && (
         <Form className="h-6">
-          <Button variant="secondary/small" LeadingIcon={TrashIcon} tooltip="Clear all filters" />
+          <Button variant="minimal/small" LeadingIcon={TrashIcon} tooltip="Clear all filters" />
         </Form>
       )}
     </div>
