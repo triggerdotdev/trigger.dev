@@ -27,16 +27,18 @@ export function useSearchParams() {
           search.append(param, v);
         }
       }
+
+      return search;
     },
     [location, search]
   );
 
   const replace = useCallback(
     (values: Values) => {
-      set(values);
-      navigate(`${location.pathname}?${search.toString()}`, { replace: true });
+      const s = set(values);
+      navigate(`${location.pathname}?${s.toString()}`, { replace: true });
     },
-    [location, search]
+    [location, search, set]
   );
 
   const del = useCallback(
@@ -82,7 +84,6 @@ export function useSearchParams() {
   return {
     value,
     values,
-    set,
     replace,
     del,
     has,
