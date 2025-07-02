@@ -350,7 +350,7 @@ const zodIpc = new ZodIpcConnection({
             usage: {
               durationMs: 0,
             },
-            metadata: runMetadataManager.stopAndReturnLastFlush(),
+            flushedMetadata: await runMetadataManager.stopAndReturnLastFlush(),
           },
         });
 
@@ -381,7 +381,7 @@ const zodIpc = new ZodIpcConnection({
               usage: {
                 durationMs: 0,
               },
-              metadata: runMetadataManager.stopAndReturnLastFlush(),
+              flushedMetadata: await runMetadataManager.stopAndReturnLastFlush(),
             },
           });
 
@@ -444,7 +444,7 @@ const zodIpc = new ZodIpcConnection({
                 usage: {
                   durationMs: 0,
                 },
-                metadata: runMetadataManager.stopAndReturnLastFlush(),
+                flushedMetadata: await runMetadataManager.stopAndReturnLastFlush(),
               },
             });
 
@@ -472,7 +472,7 @@ const zodIpc = new ZodIpcConnection({
               usage: {
                 durationMs: 0,
               },
-              metadata: runMetadataManager.stopAndReturnLastFlush(),
+              flushedMetadata: await runMetadataManager.stopAndReturnLastFlush(),
             },
           });
 
@@ -517,7 +517,7 @@ const zodIpc = new ZodIpcConnection({
                 usage: {
                   durationMs: usageSample.cpuTime,
                 },
-                metadata: runMetadataManager.stopAndReturnLastFlush(),
+                flushedMetadata: await runMetadataManager.stopAndReturnLastFlush(),
               },
             });
           }
@@ -544,7 +544,7 @@ const zodIpc = new ZodIpcConnection({
             usage: {
               durationMs: 0,
             },
-            metadata: runMetadataManager.stopAndReturnLastFlush(),
+            flushedMetadata: await runMetadataManager.stopAndReturnLastFlush(),
           },
         });
       }

@@ -376,7 +376,15 @@ export const TaskRunFailedExecutionResult = z.object({
   usage: TaskRunExecutionUsage.optional(),
   // Optional for now for backwards compatibility
   taskIdentifier: z.string().optional(),
+  // This is deprecated, use flushedMetadata instead
   metadata: FlushedRunMetadata.optional(),
+  // This is the new way to flush metadata
+  flushedMetadata: z
+    .object({
+      data: z.string().optional(),
+      dataType: z.string(),
+    })
+    .optional(),
 });
 
 export type TaskRunFailedExecutionResult = z.infer<typeof TaskRunFailedExecutionResult>;
@@ -389,7 +397,15 @@ export const TaskRunSuccessfulExecutionResult = z.object({
   usage: TaskRunExecutionUsage.optional(),
   // Optional for now for backwards compatibility
   taskIdentifier: z.string().optional(),
+  // This is deprecated, use flushedMetadata instead
   metadata: FlushedRunMetadata.optional(),
+  // This is the new way to flush metadata
+  flushedMetadata: z
+    .object({
+      data: z.string().optional(),
+      dataType: z.string(),
+    })
+    .optional(),
 });
 
 export type TaskRunSuccessfulExecutionResult = z.infer<typeof TaskRunSuccessfulExecutionResult>;
