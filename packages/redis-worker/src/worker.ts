@@ -693,9 +693,8 @@ class Worker<TCatalog extends WorkerCatalog> {
     const scheduledAt = this.calculateNextScheduledAt(cron, lastTimestamp);
     const identifier = [job, this.timestampIdentifier(scheduledAt)].join(":");
     // Calculate the availableAt date by calculating a random number between -jitter/2 and jitter/2 and adding it to the scheduledAt
-    const availableAt = jitter
-      ? new Date(scheduledAt.getTime() + Math.random() * jitter - jitter / 2)
-      : scheduledAt;
+    const appliedJitter = typeof jitter === "number" ? Math.random() * jitter - jitter / 2 : 0;
+    const availableAt = new Date(scheduledAt.getTime() + appliedJitter);
 
     const enqueued = await this.enqueueOnce({
       id: identifier,
@@ -715,6 +714,8 @@ class Worker<TCatalog extends WorkerCatalog> {
       scheduledAt,
       enqueued,
       availableAt,
+      appliedJitter,
+      jitter,
     });
 
     return {
