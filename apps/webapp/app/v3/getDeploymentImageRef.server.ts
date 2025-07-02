@@ -12,27 +12,23 @@ import { tryCatch } from "@trigger.dev/core";
 import { logger } from "~/services/logger.server";
 
 // Optional configuration for cross-account access
-export type CrossAccountConfig = {
-  assumeRole: boolean;
-  roleName: string;
+export type AssumeRoleConfig = {
+  roleArn?: string;
+  externalId?: string;
 };
 
-const DEFAULT_CROSS_ACCOUNT_CONFIG: CrossAccountConfig = {
-  assumeRole: false,
-  roleName: "OrganizationAccountAccessRole",
-};
-
-async function getAssumedRoleCredentials(
-  region: string,
-  accountId: string,
-  config: CrossAccountConfig
-): Promise<{
+async function getAssumedRoleCredentials({
+  region,
+  assumeRole,
+}: {
+  region: string;
+  assumeRole?: AssumeRoleConfig;
+}): Promise<{
   accessKeyId: string;
   secretAccessKey: string;
   sessionToken: string;
 }> {
   const sts = new STSClient({ region });
-  const roleArn = `arn:aws:iam::${accountId}:role/${config.roleName}`;
 
   // Generate a unique session name using timestamp and random string
   // This helps with debugging but doesn't affect concurrent sessions
@@ -43,11 +39,12 @@ async function getAssumedRoleCredentials(
   try {
     const response = await sts.send(
       new AssumeRoleCommand({
-        RoleArn: roleArn,
+        RoleArn: assumeRole?.roleArn,
         RoleSessionName: sessionName,
         // Sessions automatically expire after 1 hour
         // AWS allows 5000 concurrent sessions by default
         DurationSeconds: 3600,
+        ExternalId: assumeRole?.externalId,
       })
     );
 
@@ -69,23 +66,28 @@ async function getAssumedRoleCredentials(
       sessionToken: response.Credentials.SessionToken,
     };
   } catch (error) {
-    logger.error("Failed to assume role", { roleArn, sessionName, error });
+    logger.error("Failed to assume role", {
+      assumeRole,
+      sessionName,
+      error,
+    });
     throw error;
   }
 }
 
-async function createEcrClient(
-  region: string,
-  registryId?: string,
-  crossAccountConfig: CrossAccountConfig = DEFAULT_CROSS_ACCOUNT_CONFIG
-) {
-  // If no registryId or role assumption is disabled, use default credentials
-  if (!registryId || !crossAccountConfig.assumeRole) {
+export async function createEcrClient({
+  region,
+  assumeRole,
+}: {
+  region: string;
+  assumeRole?: AssumeRoleConfig;
+}) {
+  if (!assumeRole) {
     return new ECRClient({ region });
   }
 
   // Get credentials for cross-account access
-  const credentials = await getAssumedRoleCredentials(region, registryId, crossAccountConfig);
+  const credentials = await getAssumedRoleCredentials({ region, assumeRole });
   return new ECRClient({
     region,
     credentials,
@@ -98,18 +100,16 @@ export async function getDeploymentImageRef({
   projectRef,
   nextVersion,
   environmentSlug,
-  registryId,
   registryTags,
-  crossAccountConfig,
+  assumeRole,
 }: {
   host: string;
   namespace: string;
   projectRef: string;
   nextVersion: string;
   environmentSlug: string;
-  registryId?: string;
   registryTags?: string;
-  crossAccountConfig?: CrossAccountConfig;
+  assumeRole?: AssumeRoleConfig;
 }): Promise<{
   imageRef: string;
   isEcr: boolean;
@@ -128,9 +128,8 @@ export async function getDeploymentImageRef({
     ensureEcrRepositoryExists({
       repositoryName,
       registryHost: host,
-      registryId,
       registryTags,
-      crossAccountConfig,
+      assumeRole,
     })
   );
 
@@ -163,17 +162,17 @@ function parseRegistryTags(tags: string): Tag[] {
 async function createEcrRepository({
   repositoryName,
   region,
-  registryId,
+  accountId,
   registryTags,
-  crossAccountConfig,
+  assumeRole,
 }: {
   repositoryName: string;
   region: string;
-  registryId?: string;
+  accountId?: string;
   registryTags?: string;
-  crossAccountConfig?: CrossAccountConfig;
+  assumeRole?: AssumeRoleConfig;
 }): Promise<Repository> {
-  const ecr = await createEcrClient(region, registryId, crossAccountConfig);
+  const ecr = await createEcrClient({ region, assumeRole });
 
   const result = await ecr.send(
     new CreateRepositoryCommand({
@@ -182,7 +181,7 @@ async function createEcrRepository({
       encryptionConfiguration: {
         encryptionType: "AES256",
       },
-      registryId,
+      registryId: accountId,
       tags: registryTags ? parseRegistryTags(registryTags) : undefined,
     })
   );
@@ -198,21 +197,21 @@ async function createEcrRepository({
 async function getEcrRepository({
   repositoryName,
   region,
-  registryId,
-  crossAccountConfig,
+  accountId,
+  assumeRole,
 }: {
   repositoryName: string;
   region: string;
-  registryId?: string;
-  crossAccountConfig?: CrossAccountConfig;
+  accountId?: string;
+  assumeRole?: AssumeRoleConfig;
 }): Promise<Repository | undefined> {
-  const ecr = await createEcrClient(region, registryId, crossAccountConfig);
+  const ecr = await createEcrClient({ region, assumeRole });
 
   try {
     const result = await ecr.send(
       new DescribeRepositoriesCommand({
         repositoryNames: [repositoryName],
-        registryId,
+        registryId: accountId,
       })
     );
 
@@ -234,35 +233,46 @@ async function getEcrRepository({
   }
 }
 
-export function getEcrRegion(registryHost: string): string | undefined {
+export type EcrRegistryComponents = {
+  accountId: string;
+  region: string;
+};
+
+export function parseEcrRegistryDomain(registryHost: string): EcrRegistryComponents {
   const parts = registryHost.split(".");
-  if (parts.length !== 6 || parts[1] !== "dkr" || parts[2] !== "ecr") {
-    return undefined;
+
+  const isValid =
+    parts.length === 6 &&
+    parts[1] === "dkr" &&
+    parts[2] === "ecr" &&
+    parts[4] === "amazonaws" &&
+    parts[5] === "com";
+
+  if (!isValid) {
+    throw new Error(`Invalid ECR registry host: ${registryHost}`);
   }
-  return parts[3];
+
+  return {
+    accountId: parts[0],
+    region: parts[3],
+  };
 }
 
 async function ensureEcrRepositoryExists({
   repositoryName,
   registryHost,
-  registryId,
   registryTags,
-  crossAccountConfig,
+  assumeRole,
 }: {
   repositoryName: string;
   registryHost: string;
-  registryId?: string;
   registryTags?: string;
-  crossAccountConfig?: CrossAccountConfig;
+  assumeRole?: AssumeRoleConfig;
 }): Promise<Repository> {
-  const region = getEcrRegion(registryHost);
-
-  if (!region) {
-    throw new Error(`Invalid ECR registry host: ${registryHost}`);
-  }
+  const { region, accountId } = parseEcrRegistryDomain(registryHost);
 
   const [getRepoError, existingRepo] = await tryCatch(
-    getEcrRepository({ repositoryName, region, registryId, crossAccountConfig })
+    getEcrRepository({ repositoryName, region, accountId, assumeRole })
   );
 
   if (getRepoError) {
@@ -276,7 +286,7 @@ async function ensureEcrRepositoryExists({
   }
 
   const [createRepoError, newRepo] = await tryCatch(
-    createEcrRepository({ repositoryName, region, registryId, registryTags, crossAccountConfig })
+    createEcrRepository({ repositoryName, region, accountId, registryTags, assumeRole })
   );
 
   if (createRepoError) {
@@ -296,23 +306,21 @@ async function ensureEcrRepositoryExists({
 
 export async function getEcrAuthToken({
   registryHost,
-  registryId,
-  crossAccountConfig,
+  assumeRole,
 }: {
   registryHost: string;
-  registryId?: string;
-  crossAccountConfig?: CrossAccountConfig;
+  assumeRole?: AssumeRoleConfig;
 }): Promise<{ username: string; password: string }> {
-  const region = getEcrRegion(registryHost);
+  const { region, accountId } = parseEcrRegistryDomain(registryHost);
   if (!region) {
     logger.error("Invalid ECR registry host", { registryHost });
     throw new Error("Invalid ECR registry host");
   }
 
-  const ecr = await createEcrClient(region, registryId, crossAccountConfig);
+  const ecr = await createEcrClient({ region, assumeRole });
   const response = await ecr.send(
     new GetAuthorizationTokenCommand({
-      registryIds: registryId ? [registryId] : undefined,
+      registryIds: accountId ? [accountId] : undefined,
     })
   );
 

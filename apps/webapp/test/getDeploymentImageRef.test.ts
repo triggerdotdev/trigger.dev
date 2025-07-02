@@ -1,43 +1,39 @@
 import { describe, expect, it } from "vitest";
 import {
+  createEcrClient,
   getDeploymentImageRef,
   getEcrAuthToken,
-  getEcrRegion,
+  parseEcrRegistryDomain,
 } from "../app/v3/getDeploymentImageRef.server";
-import { ECRClient, DeleteRepositoryCommand } from "@aws-sdk/client-ecr";
+import { DeleteRepositoryCommand } from "@aws-sdk/client-ecr";
 
 describe.skipIf(process.env.RUN_REGISTRY_TESTS !== "1")("getDeploymentImageRef", () => {
-  const testHost = "123456789012.dkr.ecr.us-east-1.amazonaws.com";
+  const testHost =
+    process.env.DEPLOY_REGISTRY_HOST || "123456789012.dkr.ecr.us-east-1.amazonaws.com";
   const testNamespace = process.env.DEPLOY_REGISTRY_NAMESPACE || "test-namespace";
   const testProjectRef = "proj_test_" + Math.random().toString(36).substring(7);
 
-  const registryId = process.env.DEPLOY_REGISTRY_ID;
-  const registryTags = "test=test,test2=test2";
-
-  const assumeRole = process.env.ASSUME_ROLE === "1";
-
-  const crossAccountConfig = {
-    assumeRole,
-    roleName: "OrganizationAccountAccessRole",
+  const registryTags = process.env.DEPLOY_REGISTRY_ECR_TAGS || "test=test,test2=test2";
+  const roleArn = process.env.DEPLOY_REGISTRY_ECR_ASSUME_ROLE_ARN;
+  const externalId = process.env.DEPLOY_REGISTRY_ECR_ASSUME_ROLE_EXTERNAL_ID;
+  const assumeRole = {
+    roleArn,
+    externalId,
   };
 
   // Clean up test repository after tests
   afterAll(async () => {
-    if (!registryId) {
-      return;
-    }
-
     if (process.env.KEEP_TEST_REPO === "1") {
       return;
     }
 
     try {
-      const region = getEcrRegion(testHost);
-      const ecr = new ECRClient({ region });
+      const { region, accountId } = parseEcrRegistryDomain(testHost);
+      const ecr = await createEcrClient({ region, assumeRole });
       await ecr.send(
         new DeleteRepositoryCommand({
           repositoryName: `${testNamespace}/${testProjectRef}`,
-          registryId,
+          registryId: accountId,
           force: true,
         })
       );
@@ -53,8 +49,8 @@ describe.skipIf(process.env.RUN_REGISTRY_TESTS !== "1")("getDeploymentImageRef",
       projectRef: testProjectRef,
       nextVersion: "20250630.1",
       environmentSlug: "test",
-      registryId,
       registryTags,
+      assumeRole,
     });
 
     expect(imageRef.imageRef).toBe(
@@ -70,9 +66,8 @@ describe.skipIf(process.env.RUN_REGISTRY_TESTS !== "1")("getDeploymentImageRef",
       projectRef: testProjectRef,
       nextVersion: "20250630.1",
       environmentSlug: "test",
-      registryId,
       registryTags,
-      crossAccountConfig,
+      assumeRole,
     });
 
     expect(imageRef.imageRef).toBe(
@@ -89,9 +84,8 @@ describe.skipIf(process.env.RUN_REGISTRY_TESTS !== "1")("getDeploymentImageRef",
       projectRef: testProjectRef,
       nextVersion: "20250630.2",
       environmentSlug: "prod",
-      registryId,
       registryTags,
-      crossAccountConfig,
+      assumeRole,
     });
 
     expect(imageRef.imageRef).toBe(
@@ -108,21 +102,28 @@ describe.skipIf(process.env.RUN_REGISTRY_TESTS !== "1")("getDeploymentImageRef",
         projectRef: testProjectRef,
         nextVersion: "20250630.1",
         environmentSlug: "test",
-        registryId,
         registryTags,
+        assumeRole,
       })
     ).rejects.toThrow("Invalid ECR registry host: invalid.ecr.amazonaws.com");
   });
 });
 
 describe.skipIf(process.env.RUN_REGISTRY_AUTH_TESTS !== "1")("getEcrAuthToken", () => {
-  const registryId = process.env.DEPLOY_REGISTRY_ID;
-  const testHost = "123456789012.dkr.ecr.us-east-1.amazonaws.com";
+  const testHost =
+    process.env.DEPLOY_REGISTRY_HOST || "123456789012.dkr.ecr.us-east-1.amazonaws.com";
+
+  const roleArn = process.env.DEPLOY_REGISTRY_ECR_ASSUME_ROLE_ARN;
+  const externalId = process.env.DEPLOY_REGISTRY_ECR_ASSUME_ROLE_EXTERNAL_ID;
+  const assumeRole = {
+    roleArn,
+    externalId,
+  };
 
   it("should return valid ECR credentials", async () => {
     const auth = await getEcrAuthToken({
       registryHost: testHost,
-      registryId,
+      assumeRole,
     });
 
     // Check the structure and basic validation of the returned credentials
@@ -141,8 +142,31 @@ describe.skipIf(process.env.RUN_REGISTRY_AUTH_TESTS !== "1")("getEcrAuthToken", 
     await expect(
       getEcrAuthToken({
         registryHost: "invalid.ecr.amazonaws.com",
-        registryId,
+        assumeRole,
       })
     ).rejects.toThrow();
+  });
+});
+
+describe("parseEcrRegistry", () => {
+  it("should correctly parse a valid ECR registry host", () => {
+    const result = parseEcrRegistryDomain("123456789012.dkr.ecr.us-east-1.amazonaws.com");
+    expect(result).toEqual({
+      accountId: "123456789012",
+      region: "us-east-1",
+    });
+  });
+
+  it("should handle invalid ECR registry hosts", () => {
+    const invalidHosts = [
+      "invalid.ecr.amazonaws.com",
+      "registry.hub.docker.com",
+      "123456789012.dkr.ecr.us-east-1.not-amazon.com",
+      "123456789012.wrong.ecr.us-east-1.amazonaws.com",
+    ];
+
+    for (const host of invalidHosts) {
+      expect(() => parseEcrRegistryDomain(host)).toThrow("Invalid ECR registry host");
+    }
   });
 });

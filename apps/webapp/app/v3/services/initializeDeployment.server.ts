@@ -76,8 +76,11 @@ export class InitializeDeploymentService extends BaseService {
           projectRef: environment.project.externalRef,
           nextVersion,
           environmentSlug: environment.slug,
-          registryId: env.DEPLOY_REGISTRY_ID,
-          registryTags: env.DEPLOY_REGISTRY_TAGS,
+          registryTags: env.DEPLOY_REGISTRY_ECR_TAGS,
+          assumeRole: {
+            roleArn: env.DEPLOY_REGISTRY_ECR_ASSUME_ROLE_ARN,
+            externalId: env.DEPLOY_REGISTRY_ECR_ASSUME_ROLE_EXTERNAL_ID,
+          },
         })
       );
 
