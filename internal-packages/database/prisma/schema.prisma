@@ -241,6 +241,9 @@ model RuntimeEnvironment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  /// Allows us to customize the built-in environment variables for a specific environment, like TRIGGER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT
+  builtInEnvironmentVariableOverrides Json?
+
   tunnelId String?
 
   backgroundWorkers          BackgroundWorker[]
