@@ -48,7 +48,7 @@ services:
 
   electric:
     container_name: electric
-    image: electricsql/electric:1.0.13@sha256:4e69c4a6ec3e976efbdd8b7e6de427e771aeacdbc0c8c7ca22eb0ca6ab1611ff
+    image: electricsql/electric:1.0.22@sha256:1b151dc8a6fd5292fba70cbc744e25bd3a1e42db5fc89b7e479b7b939980a0e2
     restart: always
     environment:
       DATABASE_URL: postgresql://postgres:postgres@database:5432/postgres?sslmode=disable
@@ -57,6 +57,21 @@ services:
       - app_network
     ports:
       - "3060:3000"
+    depends_on:
+      - database
+
+  electric-shard-1:
+    container_name: electric-shard-1
+    image: electricsql/electric:1.0.22@sha256:1b151dc8a6fd5292fba70cbc744e25bd3a1e42db5fc89b7e479b7b939980a0e2
+    restart: always
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@database:5432/postgres?sslmode=disable
+      ELECTRIC_INSECURE: true
+      ELECTRIC_REPLICATION_STREAM_ID: "triggershard1"
+    networks:
+      - app_network
+    ports:
+      - "3061:3000"
     depends_on:
       - database
 

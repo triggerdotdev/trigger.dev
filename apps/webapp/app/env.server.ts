@@ -229,15 +229,21 @@ const EnvironmentSchema = z.object({
   DEPOT_TOKEN: z.string().optional(),
   DEPOT_ORG_ID: z.string().optional(),
   DEPOT_REGION: z.string().default("us-east-1"),
+
+  // Deployment registry
   DEPLOY_REGISTRY_HOST: z.string().min(1),
   DEPLOY_REGISTRY_USERNAME: z.string().optional(),
   DEPLOY_REGISTRY_PASSWORD: z.string().optional(),
   DEPLOY_REGISTRY_NAMESPACE: z.string().min(1).default("trigger"),
+  DEPLOY_REGISTRY_ECR_TAGS: z.string().optional(), // csv, for example: "key1=value1,key2=value2"
+  DEPLOY_REGISTRY_ECR_ASSUME_ROLE_ARN: z.string().optional(),
+  DEPLOY_REGISTRY_ECR_ASSUME_ROLE_EXTERNAL_ID: z.string().optional(),
   DEPLOY_IMAGE_PLATFORM: z.string().default("linux/amd64"),
   DEPLOY_TIMEOUT_MS: z.coerce
     .number()
     .int()
     .default(60 * 1000 * 8), // 8 minutes
+
   OBJECT_STORE_BASE_URL: z.string().optional(),
   OBJECT_STORE_ACCESS_KEY_ID: z.string().optional(),
   OBJECT_STORE_SECRET_ACCESS_KEY: z.string().optional(),
