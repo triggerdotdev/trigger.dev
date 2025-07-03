@@ -9,6 +9,8 @@ import { env } from "~/env.server";
 import { depot as execDepot } from "@depot/cli";
 import { FinalizeDeploymentService } from "./finalizeDeployment.server";
 import { remoteBuildsEnabled } from "../remoteImageBuilder.server";
+import { getEcrAuthToken, isEcrRegistry } from "../getDeploymentImageRef.server";
+import { tryCatch } from "@trigger.dev/core";
 
 export class FinalizeDeploymentV2Service extends BaseService {
   public async call(
@@ -172,11 +174,27 @@ async function executePushToRegistry(
   { depot, registry, deployment }: ExecutePushToRegistryOptions,
   writer?: WritableStreamDefaultWriter
 ): Promise<ExecutePushResult> {
-  // Step 1: We need to "login" to the digital ocean registry
-  const configDir = await ensureLoggedIntoDockerRegistry(registry.host, {
-    username: registry.username,
-    password: registry.password,
-  });
+  // Step 1: We need to "login" to the registry
+  const [loginError, configDir] = await tryCatch(
+    ensureLoggedIntoDockerRegistry(registry.host, {
+      username: registry.username,
+      password: registry.password,
+    })
+  );
+
+  if (loginError) {
+    logger.error("Failed to login to registry", {
+      deployment,
+      registryHost: registry.host,
+      error: loginError.message,
+    });
+
+    return {
+      ok: false as const,
+      error: "Failed to login to registry",
+      logs: "",
+    };
+  }
 
   const imageTag = deployment.imageReference;
 
@@ -244,11 +262,23 @@ async function executePushToRegistry(
 
 async function ensureLoggedIntoDockerRegistry(
   registryHost: string,
-  auth: { username: string; password: string }
+  auth: { username: string; password: string } | undefined = undefined
 ) {
   const tmpDir = await createTempDir();
-  // Read the current docker config
   const dockerConfigPath = join(tmpDir, "config.json");
+
+  // If this is an ECR registry, get fresh credentials
+  if (isEcrRegistry(registryHost)) {
+    auth = await getEcrAuthToken({
+      registryHost,
+      assumeRole: {
+        roleArn: env.DEPLOY_REGISTRY_ECR_ASSUME_ROLE_ARN,
+        externalId: env.DEPLOY_REGISTRY_ECR_ASSUME_ROLE_EXTERNAL_ID,
+      },
+    });
+  } else if (!auth) {
+    throw new Error("Authentication required for non-ECR registry");
+  }
 
   await writeJSONFile(dockerConfigPath, {
     auths: {

@@ -102,6 +102,8 @@ function initializeMachinePresets(): {
     };
   }
 
+  logger.info("🎛️ Overriding machine presets", { overrides });
+
   return {
     defaultMachine: overrideDefaultMachine(defaultMachineFromPlatform, overrides.defaultMachine),
     machines: overrideMachines(machinesFromPlatform, overrides.machines),
