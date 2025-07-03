@@ -145,6 +145,9 @@ export class RunExecution {
       throw new Error("prepareForExecution called after process was already created");
     }
 
+    // Set the task run environment so canExecute returns true
+    this.currentTaskRunEnv = opts.taskRunEnv;
+
     this.taskRunProcess = await this.taskRunProcessProvider.getProcess({
       taskRunEnv: opts.taskRunEnv,
       isWarmStart: true,
@@ -584,10 +587,15 @@ export class RunExecution {
 
     const taskRunEnv = this.currentTaskRunEnv ?? envVars;
 
-    this.taskRunProcess = await this.taskRunProcessProvider.getProcess({
-      taskRunEnv: { ...taskRunEnv, TRIGGER_PROJECT_REF: execution.project.ref },
-      isWarmStart,
-    });
+    if (!this.taskRunProcess) {
+      this.sendDebugLog("getting new task run process", { runId: execution.run.id });
+      this.taskRunProcess = await this.taskRunProcessProvider.getProcess({
+        taskRunEnv: { ...taskRunEnv, TRIGGER_PROJECT_REF: execution.project.ref },
+        isWarmStart,
+      });
+    } else {
+      this.sendDebugLog("using prepared task run process", { runId: execution.run.id });
+    }
 
     this.attachTaskRunProcessHandlers(this.taskRunProcess);
 
