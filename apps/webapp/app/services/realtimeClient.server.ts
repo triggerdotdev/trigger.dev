@@ -292,7 +292,7 @@ export class RealtimeClient {
   ): URL {
     const $url = new URL(url.toString());
 
-    const electricOrigin = this.#resolveElectricOrigin(environment.id);
+    const electricOrigin = this.#resolveElectricOrigin($url, whereClause, environment.id);
     const electricUrl = new URL(`${electricOrigin}/v1/shape`);
 
     // Copy over all the url search params to the electric url
@@ -483,14 +483,30 @@ export class RealtimeClient {
     return `${this.options.keyPrefix}:${environmentId}`;
   }
 
-  #resolveElectricOrigin(environmentId: string) {
+  #resolveElectricOrigin(url: URL, whereClause: string, environmentId: string) {
     if (typeof this.options.electricOrigin === "string") {
       return this.options.electricOrigin;
     }
 
-    const index = jumpHash(environmentId, this.options.electricOrigin.length);
+    const shardKey = this.#getShardKey(whereClause, environmentId);
 
-    return this.options.electricOrigin[index] ?? this.options.electricOrigin[0];
+    const index = jumpHash(shardKey, this.options.electricOrigin.length);
+
+    const origin = this.options.electricOrigin[index] ?? this.options.electricOrigin[0];
+
+    logger.debug("[realtimeClient] resolveElectricOrigin", {
+      whereClause,
+      environmentId,
+      shardKey,
+      index,
+      electricOrigin: origin,
+    });
+
+    return origin;
+  }
+
+  #getShardKey(whereClause: string, environmentId: string) {
+    return [environmentId, whereClause].join(":");
   }
 
   #registerCommands() {
