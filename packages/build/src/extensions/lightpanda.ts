@@ -1,7 +1,5 @@
 import type { BuildExtension } from "@trigger.dev/core/v3/build";
 
-const NAME = "LightpandaExtension";
-
 type LightpandaOpts = {
   arch?: "aarch64" | "x86_64";
   version?: "nightly";
@@ -13,31 +11,28 @@ export const lightpanda = ({
   version = "nightly",
   disableTelemetry = false,
 }: LightpandaOpts = {}): BuildExtension => ({
-  name: NAME,
+  name: "lightpanda",
   onBuildComplete: async (context) => {
-    context.logger.progress(`Running ${NAME} on ${context.target} env for arch ${arch}`);
-    context.logger.progress(`version: ${version}`);
-
     if (context.target === "dev") {
       return;
     }
 
+    const arch = context.targetPlatform === "linux/arm64" ? "aarch64" : "x86_64";
+
+    context.logger.debug(`Adding lightpanda`, { arch, version, disableTelemetry });
+
     const instructions: string[] = [];
 
-    if (disableTelemetry) {
-      instructions.push("RUN export LIGHTPANDA_DISABLE_TELEMETRY=true");
-    }
-
-    /* Update / install required packages */
+    // Install required packages
     instructions.push(
       `RUN apt-get update && apt-get install --no-install-recommends -y \
-        curl \
-        ca-certificates \
+          curl \
+          ca-certificates \
         && update-ca-certificates \
         && apt-get clean && rm -rf /var/lib/apt/lists/*`
     );
 
-    /* Install Lightpanda */
+    // Install Lightpanda
     instructions.push(
       `RUN curl -L -f --retry 3 -o lightpanda https://github.com/lightpanda-io/browser/releases/download/${version}/lightpanda-${arch}-linux || (echo "Failed to download Lightpanda binary" && exit 1) \
         && chmod a+x ./lightpanda \
@@ -53,6 +48,7 @@ export const lightpanda = ({
       deploy: {
         env: {
           LIGHTPANDA_BROWSER_PATH: "/usr/bin/lightpanda",
+          ...(disableTelemetry ? { LIGHTPANDA_DISABLE_TELEMETRY: "true" } : {}),
         },
         override: true,
       },
