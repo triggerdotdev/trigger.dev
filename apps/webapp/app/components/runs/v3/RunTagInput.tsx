@@ -1,4 +1,5 @@
 import { useCallback, useState, type KeyboardEvent } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { Input } from "~/components/primitives/Input";
 import { RunTag } from "./RunTag";
 
@@ -71,9 +72,38 @@ export function RunTagInput({
 
       {tags.length > 0 && (
         <div className="mt-1 flex flex-wrap items-center gap-1 text-xs">
-          {tags.map((tag, i) => (
-            <RunTag key={tag} tag={tag} action={{ type: "delete", onDelete: removeTag }} />
-          ))}
+          <AnimatePresence mode="popLayout">
+            {tags.map((tag, i) => (
+              <motion.div
+                key={tag}
+                initial={{
+                  opacity: 0,
+                  scale: 0.8,
+                }}
+                animate={{
+                  opacity: 1,
+                  scale: 1,
+                }}
+                exit={{
+                  opacity: 0,
+                  scale: 0.7,
+                  y: -10,
+                  transition: {
+                    duration: 0.15,
+                    ease: "easeOut",
+                  },
+                }}
+                transition={{
+                  type: "spring",
+                  stiffness: 400,
+                  damping: 25,
+                  duration: 0.15,
+                }}
+              >
+                <RunTag tag={tag} action={{ type: "delete", onDelete: removeTag }} />
+              </motion.div>
+            ))}
+          </AnimatePresence>
         </div>
       )}
     </div>
