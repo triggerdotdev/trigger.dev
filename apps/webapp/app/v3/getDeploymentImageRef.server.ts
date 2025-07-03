@@ -36,8 +36,8 @@ async function getAssumedRoleCredentials({
   const randomSuffix = Math.random().toString(36).substring(2, 8);
   const sessionName = `TriggerWebappECRAccess_${timestamp}_${randomSuffix}`;
 
-  try {
-    const response = await sts.send(
+  const [error, response] = await tryCatch(
+    sts.send(
       new AssumeRoleCommand({
         RoleArn: assumeRole?.roleArn,
         RoleSessionName: sessionName,
@@ -46,33 +46,35 @@ async function getAssumedRoleCredentials({
         DurationSeconds: 3600,
         ExternalId: assumeRole?.externalId,
       })
-    );
+    )
+  );
 
-    if (!response.Credentials) {
-      throw new Error("STS: No credentials returned from assumed role");
-    }
-
-    if (
-      !response.Credentials.AccessKeyId ||
-      !response.Credentials.SecretAccessKey ||
-      !response.Credentials.SessionToken
-    ) {
-      throw new Error("STS: Invalid credentials returned from assumed role");
-    }
-
-    return {
-      accessKeyId: response.Credentials.AccessKeyId,
-      secretAccessKey: response.Credentials.SecretAccessKey,
-      sessionToken: response.Credentials.SessionToken,
-    };
-  } catch (error) {
+  if (error) {
     logger.error("Failed to assume role", {
       assumeRole,
       sessionName,
-      error,
+      error: error.message,
     });
     throw error;
   }
+
+  if (!response.Credentials) {
+    throw new Error("STS: No credentials returned from assumed role");
+  }
+
+  if (
+    !response.Credentials.AccessKeyId ||
+    !response.Credentials.SecretAccessKey ||
+    !response.Credentials.SessionToken
+  ) {
+    throw new Error("STS: Invalid credentials returned from assumed role");
+  }
+
+  return {
+    accessKeyId: response.Credentials.AccessKeyId,
+    secretAccessKey: response.Credentials.SecretAccessKey,
+    sessionToken: response.Credentials.SessionToken,
+  };
 }
 
 export async function createEcrClient({
