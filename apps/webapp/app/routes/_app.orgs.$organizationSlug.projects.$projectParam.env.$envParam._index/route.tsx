@@ -715,7 +715,6 @@ function HelpfulInfoHasTasks({ onClose }: { onClose: () => void }) {
           isExternal
         />
         <LinkWithIcon to={docsPath("/examples/puppeteer")} description="Puppeteer" isExternal />
-        <LinkWithIcon to={docsPath("/examples/lightpanda")} description="Lightpanda" isExternal />
         <LinkWithIcon to={docsPath("/examples/react-pdf")} description="React to PDF" isExternal />
         <LinkWithIcon
           to={docsPath("/examples/resend-email-sequence")}

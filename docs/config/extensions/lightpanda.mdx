@@ -1,15 +1,18 @@
 ---
 title: "Lightpanda"
 sidebarTitle: "lightpanda"
-description: "Use the lightpanda build extension to be able to use Lightpanda Browser in your project"
+description: "Use the lightpanda build extension to add Lightpanda browser to your project"
+tag: "v4"
 ---
 
-<ScrapingWarning />
+import UpgradeToV4Note from "/snippets/upgrade-to-v4-note.mdx";
 
-To use Lightpanda in your project, add these build settings to your `trigger.config.ts` file:
+<UpgradeToV4Note />
+
+To use the Lightpanda browser in your project, add the extension to your `trigger.config.ts` file:
 
 ```ts trigger.config.ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 import { lightpanda } from "@trigger.dev/build/extensions/lightpanda";
 
 export default defineConfig({
@@ -21,10 +24,42 @@ export default defineConfig({
 });
 ```
 
-And add the following environment variable in your Trigger.dev dashboard on the Environment Variables page:
+### Options
 
-```bash
-LIGHTPANDA_BROWSER_PATH: "/usr/bin/lightpanda",
+- `version`: The version of the browser to install. Default: `"nightly"`.
+- `disableTelemetry`: Whether to disable telemetry. Default: `false`.
+
+For example:
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk";
+import { lightpanda } from "@trigger.dev/build/extensions/lightpanda";
+
+export default defineConfig({
+  project: "<project ref>",
+  build: {
+    extensions: [
+      lightpanda({
+        version: "nightly",
+        disableTelemetry: true,
+      }),
+    ],
+  },
+});
 ```
 
-Follow [this example](/guides/examples/lightpanda) to get setup with Trigger.dev and Lightpanda in your project.
+### Environment variables
+
+The extension sets the following environment variables during the build:
+
+- `LIGHTPANDA_BROWSER_PATH`: Set to `/usr/bin/lightpanda` so the browser can be found at runtime
+
+#### Development
+
+When running in dev, you will first have to download the Lightpanda browser binary. See [Lightpanda's installation guide](https://lightpanda.io/docs/getting-started/installation).
+
+Then, set the `LIGHTPANDA_BROWSER_PATH` environment variable to the path of the Lightpanda browser binary.
+
+```bash
+export LIGHTPANDA_BROWSER_PATH="/usr/local/bin/lightpanda"
+```

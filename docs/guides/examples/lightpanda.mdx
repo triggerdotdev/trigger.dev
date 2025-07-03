@@ -6,6 +6,9 @@ tag: "v4"
 ---
 
 import ScrapingWarning from "/snippets/web-scraping-warning.mdx";
+import UpgradeToV4Note from "/snippets/upgrade-to-v4-note.mdx";
+
+<UpgradeToV4Note />
 
 ## Overview
 
@@ -31,7 +34,7 @@ LIGHTPANDA_TOKEN: "<your-token>",
 ```
 
 ```ts trigger/lightpanda-cloud-puppeteer.ts
-import { logger, task } from '@trigger.dev/sdk/v3'
+import { logger, task } from '@trigger.dev/sdk'
 import puppeteer from 'puppeteer'
 
 export const lightpandaCloudPuppeteer = task({
@@ -109,7 +112,7 @@ You will have to pass the URL as a payload when triggering the task.
 
 ### Task
 ```ts trigger/lightpanda-lightpanda-fetch.ts
-import { logger, task } from '@trigger.dev/sdk/v3'
+import { logger, task } from '@trigger.dev/sdk'
 import { execSync } from 'node:child_process'
 
 export const lightpandaFetch = task({
@@ -154,7 +157,7 @@ This task initialises a Lightpanda CDP server to allow you to scrape directly vi
 Your task will have to launch a child process in order to have the websocket available to scrape using Puppeteer.
 
 ```ts trigger/lightpandaCDP.ts
-import { logger, task } from '@trigger.dev/sdk/v3'
+import { logger, task } from '@trigger.dev/sdk'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import puppeteer from 'puppeteer'
 
@@ -171,7 +174,7 @@ const spawnLightpanda = async (log: typeof logger) =>
     ])
 
     child.on('spawn', async () => {
-      log.info("Running Lightpanda's CDP server…", {
+      logger.info("Running Lightpanda's CDP server…", {
         pid: child.pid,
       })
 
