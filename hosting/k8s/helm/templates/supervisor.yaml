@@ -37,7 +37,7 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: {{ include "trigger-v4.supervisorServiceAccountName" . }}
-    namespace: {{ default .Release.Namespace .Values.supervisor.config.kubernetes.namespace }}
+    namespace: {{ default .Release.Namespace }}
 roleRef:
   kind: Role
   name: {{ include "trigger-v4.supervisorRoleName" . }}

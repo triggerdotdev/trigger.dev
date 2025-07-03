@@ -281,7 +281,7 @@ supervisor:
     annotations: {}
   rbac:
     create: true
-    # Namespace-scoped permissions for pod management  
+    # Namespace-scoped permissions for pod management
     role:
       name: ""
   # Extra environment variables for Supervisor
