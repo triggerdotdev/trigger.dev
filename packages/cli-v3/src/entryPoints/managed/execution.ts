@@ -587,7 +587,7 @@ export class RunExecution {
 
     const taskRunEnv = this.currentTaskRunEnv ?? envVars;
 
-    if (!this.taskRunProcess) {
+    if (!this.taskRunProcess || this.taskRunProcess.isBeingKilled) {
       this.sendDebugLog("getting new task run process", { runId: execution.run.id });
       this.taskRunProcess = await this.taskRunProcessProvider.getProcess({
         taskRunEnv: { ...taskRunEnv, TRIGGER_PROJECT_REF: execution.project.ref },
