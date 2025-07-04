@@ -35,6 +35,7 @@ import { requireUserId } from "~/services/session.server";
 import { accountPath } from "~/utils/pathBuilder";
 import { CopyButton } from "~/components/primitives/CopyButton";
 import { DownloadIcon } from "lucide-react";
+import { InputOTP, InputOTPGroup, InputOTPSlot } from "~/components/primitives/InputOTP";
 
 export const meta: MetaFunction = () => {
   return [
@@ -172,7 +173,8 @@ export default function Page() {
     }
   };
 
-  const handleQrConfirm = () => {
+  const handleQrConfirm = (e: React.FormEvent) => {
+    e.preventDefault();
     // TODO: Submit TOTP code to backend for validation
     console.log("Validating TOTP code:", totpCode);
 
@@ -188,7 +190,8 @@ export default function Page() {
     // Don't change the switch state when canceling
   };
 
-  const handleRecoveryComplete = () => {
+  const handleRecoveryComplete = (e: React.FormEvent) => {
+    e.preventDefault();
     setShowRecoveryDialog(false);
     setIsMfaEnabled(true);
   };
@@ -218,7 +221,7 @@ export default function Page() {
       </NavBar>
 
       <PageBody>
-        <MainHorizontallyCenteredContainer className="grid place-items-center">
+        <MainHorizontallyCenteredContainer className="grid place-items-center overflow-visible">
           <div className="mb-3 w-full border-b border-grid-dimmed pb-3">
             <Header2>Security</Header2>
           </div>
@@ -234,9 +237,9 @@ export default function Page() {
               <Switch
                 id="mfa"
                 variant="medium"
-                label="Enable"
+                label={isMfaEnabled ? "Enabled" : "Enable"}
                 labelPosition="right"
-                className="w-fit pr-3"
+                className="-ml-2 w-fit pr-3"
                 checked={isMfaEnabled}
                 onCheckedChange={handleSwitchChange}
               />
@@ -254,46 +257,62 @@ export default function Page() {
               <DialogHeader>
                 <DialogTitle>Enable authenticator app</DialogTitle>
               </DialogHeader>
-              <div className="flex flex-col gap-4 pt-3">
-                <Paragraph>
-                  Scan the QR code below with your preferred authenticator app then enter the 6
-                  digit code that the app generates. Alternatively, you can copy the secret below
-                  and paste it into your app.
-                </Paragraph>
+              <Form method="post" onSubmit={handleQrConfirm}>
+                <input type="hidden" name="action" value="enable-mfa" />
+                <div className="flex flex-col gap-4 pt-3">
+                  <Paragraph>
+                    Scan the QR code below with your preferred authenticator app then enter the 6
+                    digit code that the app generates. Alternatively, you can copy the secret below
+                    and paste it into your app.
+                  </Paragraph>
 
-                <div className="flex flex-col items-center justify-center gap-y-4 rounded border border-grid-dimmed bg-background-bright py-4">
-                  <div className="overflow-hidden rounded-lg border border-grid-dimmed">
-                    <QRCodeSVG value={qrCodeValue} size={300} marginSize={3} />
+                  <div className="flex flex-col items-center justify-center gap-y-4 rounded border border-grid-dimmed bg-background-bright py-4">
+                    <div className="overflow-hidden rounded-lg border border-grid-dimmed">
+                      <QRCodeSVG value={qrCodeValue} size={300} marginSize={3} />
+                    </div>
+                    <CopyableText value={secretKey} className="font-mono text-base tracking-wide" />
                   </div>
-                  <CopyableText value={secretKey} className="font-mono text-sm" />
+
+                  <div className="mb-4 flex items-center justify-center">
+                    <InputOTP
+                      maxLength={6}
+                      value={totpCode}
+                      onChange={(value) => setTotpCode(value)}
+                      variant="large"
+                      name="totpCode"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && totpCode.length === 6) {
+                          handleQrConfirm(e);
+                        }
+                      }}
+                    >
+                      <InputOTPGroup variant="large">
+                        <InputOTPSlot index={0} variant="large" autoFocus />
+                        <InputOTPSlot index={1} variant="large" />
+                        <InputOTPSlot index={2} variant="large" />
+                        <InputOTPSlot index={3} variant="large" />
+                        <InputOTPSlot index={4} variant="large" />
+                        <InputOTPSlot index={5} variant="large" />
+                      </InputOTPGroup>
+                    </InputOTP>
+                  </div>
                 </div>
 
-                <Input
-                  type="text"
-                  variant="large"
-                  value={totpCode}
-                  onChange={(e) => {
-                    const value = e.target.value.replace(/\D/g, "").slice(0, 6);
-                    setTotpCode(value);
-                  }}
-                  placeholder="000000"
-                  maxLength={6}
-                  className="text-center font-mono tracking-wider"
-                />
-              </div>
-
-              <DialogFooter>
-                <Button variant="secondary/medium" onClick={handleQrCancel}>
-                  Cancel
-                </Button>
-                <Button
-                  variant="primary/medium"
-                  onClick={handleQrConfirm}
-                  disabled={totpCode.length !== 6}
-                >
-                  Confirm
-                </Button>
-              </DialogFooter>
+                <DialogFooter>
+                  <Button type="button" variant="secondary/medium" onClick={handleQrCancel}>
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    variant="primary/medium"
+                    disabled={totpCode.length !== 6}
+                    shortcut={{ key: "Enter" }}
+                    hideShortcutKey
+                  >
+                    Confirm
+                  </Button>
+                </DialogFooter>
+              </Form>
             </DialogContent>
           </Dialog>
 
@@ -303,43 +322,53 @@ export default function Page() {
               <DialogHeader>
                 <DialogTitle>Recovery codes</DialogTitle>
               </DialogHeader>
-              <div className="flex flex-col gap-2 pb-0 pt-3">
-                <Paragraph spacing>
-                  Copy and store these recovery codes carefully in case you lose your device.
-                </Paragraph>
+              <Form method="post" onSubmit={handleRecoveryComplete}>
+                <input type="hidden" name="action" value="save-recovery-codes" />
+                <div className="flex flex-col gap-2 pb-0 pt-3">
+                  <Paragraph spacing>
+                    Copy and store these recovery codes carefully in case you lose your device.
+                  </Paragraph>
 
-                <div className="flex flex-col gap-6 rounded border border-grid-dimmed bg-background-bright pt-6">
-                  <div className="grid grid-cols-3 gap-2">
-                    {recoveryCodes.map((code, index) => (
-                      <div key={index} className="text-center font-mono text-sm text-text-bright">
-                        {code}
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex items-center justify-end border-t border-grid-bright py-1.5 pr-1.5">
-                    <Button
-                      variant="minimal/medium"
-                      onClick={downloadRecoveryCodes}
-                      LeadingIcon={DownloadIcon}
-                    >
-                      Download
-                    </Button>
-                    <CopyButton
-                      value={recoveryCodes.join("\n")}
-                      buttonVariant="minimal"
-                      showTooltip={false}
-                    >
-                      Copy
-                    </CopyButton>
+                  <div className="flex flex-col gap-6 rounded border border-grid-dimmed bg-background-bright pt-6">
+                    <div className="grid grid-cols-3 gap-2">
+                      {recoveryCodes.map((code, index) => (
+                        <div key={index} className="text-center font-mono text-sm text-text-bright">
+                          {code}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex items-center justify-end border-t border-grid-bright px-1.5 py-1.5">
+                      <Button
+                        type="button"
+                        variant="minimal/medium"
+                        onClick={downloadRecoveryCodes}
+                        LeadingIcon={DownloadIcon}
+                      >
+                        Download
+                      </Button>
+                      <CopyButton
+                        value={recoveryCodes.join("\n")}
+                        buttonVariant="minimal"
+                        showTooltip={false}
+                      >
+                        Copy
+                      </CopyButton>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <DialogFooter className="justify-end">
-                <Button variant="primary/medium" onClick={handleRecoveryComplete}>
-                  Continue
-                </Button>
-              </DialogFooter>
+                <DialogFooter className="justify-end border-t-0">
+                  <Button
+                    type="submit"
+                    variant="primary/medium"
+                    shortcut={{ key: "Enter" }}
+                    hideShortcutKey
+                    autoFocus
+                  >
+                    Continue
+                  </Button>
+                </DialogFooter>
+              </Form>
             </DialogContent>
           </Dialog>
         </MainHorizontallyCenteredContainer>
