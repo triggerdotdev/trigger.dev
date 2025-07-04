@@ -1,12 +1,12 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { HashtagIcon, LockClosedIcon } from "@heroicons/react/20/solid";
-import { Form, useActionData, useNavigate, useNavigation } from "@remix-run/react";
+import { Form, useNavigate, useNavigation } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/router";
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { SlackIcon } from "@trigger.dev/companyicons";
 import { useEffect, useState } from "react";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { typedjson, useTypedActionData, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { InlineCode } from "~/components/code/InlineCode";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
@@ -42,6 +42,7 @@ import {
   type CreateAlertChannelOptions,
   CreateAlertChannelService,
 } from "~/v3/services/alerts/createAlertChannel.server";
+import { isSubmissionResult } from "~/utils/conformTo";
 
 const FormSchema = z
   .object({
@@ -180,14 +181,14 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const submission = parse(formData, { schema: FormSchema });
 
   if (!submission.value) {
-    return json(submission);
+    return typedjson(submission);
   }
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
 
   if (!project) {
     submission.error.key = ["Project not found"];
-    return json(submission);
+    return typedjson(submission);
   }
 
   const service = new CreateAlertChannelService();
@@ -199,7 +200,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
   if (!alertChannel) {
     submission.error.key = ["Failed to create alert channel"];
-    return json(submission);
+    return typedjson(submission);
   }
 
   return redirectWithSuccessMessage(
@@ -212,7 +213,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 export default function Page() {
   const [isOpen, setIsOpen] = useState(false);
   const { slack, option, emailAlertsEnabled } = useTypedLoaderData<typeof loader>();
-  const lastSubmission = useActionData();
+  const _lastSubmission = useTypedActionData<typeof action>();
+  const lastSubmission = isSubmissionResult(_lastSubmission) ? _lastSubmission : undefined;
   const navigation = useNavigation();
   const navigate = useNavigate();
   const organization = useOrganization();
@@ -234,8 +236,7 @@ export default function Page() {
   const [form, { channelValue: channelValue, alertTypes, environmentTypes, type, integrationId }] =
     useForm({
       id: "create-alert",
-      // TODO: type this
-      lastSubmission: lastSubmission as any,
+      lastSubmission,
       onValidate({ formData }) {
         return parse(formData, { schema: FormSchema });
       },
