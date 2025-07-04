@@ -1,17 +1,17 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { BeakerIcon } from "@heroicons/react/20/solid";
-import { Form, useActionData, useSubmit } from "@remix-run/react";
+import { RectangleStackIcon } from "@heroicons/react/20/solid";
+import { Form, useActionData, useSubmit, useFetcher } from "@remix-run/react";
 import { type ActionFunction, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
-import { type TaskRunStatus } from "@trigger.dev/database";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { JSONEditor } from "~/components/code/JSONEditor";
-import { EnvironmentCombo, EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
+import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
+import { Badge } from "~/components/primitives/Badge";
 import { Button } from "~/components/primitives/Buttons";
-import { Callout } from "~/components/primitives/Callout";
 import { DateField } from "~/components/primitives/DateField";
-import { DateTime } from "~/components/primitives/DateTime";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormError } from "~/components/primitives/FormError";
 import { Header2 } from "~/components/primitives/Headers";
@@ -19,17 +19,16 @@ import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
+import { DurationPicker } from "~/components/primitives/DurationPicker";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { RadioButtonCircle } from "~/components/primitives/RadioButton";
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
-import { Select } from "~/components/primitives/Select";
+import { Select, SelectItem } from "~/components/primitives/Select";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { TextLink } from "~/components/primitives/TextLink";
-import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
 import { TimezoneList } from "~/components/scheduled/timezones";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useSearchParams } from "~/hooks/useSearchParam";
@@ -53,7 +52,7 @@ import { docsPath, v3RunSpanPath, v3TaskParamsSchema, v3TestPath } from "~/utils
 import { TestTaskService } from "~/v3/services/testTask.server";
 import { OutOfEntitlementError } from "~/v3/services/triggerTask.server";
 import { TestTaskData } from "~/v3/testTask";
-
+import { RunTagInput } from "~/components/runs/v3/RunTagInput";
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { projectParam, organizationSlug, envParam, taskParam } = v3TaskParamsSchema.parse(params);
@@ -189,7 +188,6 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: Standa
   const tab = value("tab");
 
   //form submission
-  const submit = useSubmit();
   const lastSubmission = useActionData();
 
   //recent runs
@@ -216,43 +214,62 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: Standa
 
   const currentMetadataJson = useRef<string>(defaultMetadataJson);
 
-  const submitForm = useCallback(
-    (e: React.FormEvent<HTMLFormElement>) => {
-      submit(
-        {
-          triggerSource: "STANDARD",
-          payload: currentPayloadJson.current,
-          metadata: currentMetadataJson.current,
-          taskIdentifier: task.taskIdentifier,
-          environmentId: environment.id,
-        },
-        {
-          action: "",
-          method: "post",
-        }
-      );
-      e.preventDefault();
+  const fetcher = useFetcher();
+  const [
+    form,
+    {
+      environmentId,
+      payload,
+      metadata,
+      taskIdentifier,
+      delaySeconds,
+      ttlSeconds,
+      idempotencyKey,
+      idempotencyKeyTTLSeconds,
+      queue,
+      concurrencyKey,
+      maxAttempts,
+      maxDurationSeconds,
+      triggerSource,
+      tags,
+      version,
     },
-    [currentPayloadJson, currentMetadataJson, task]
-  );
-
-  const [form, { environmentId, payload }] = useForm({
+  ] = useForm({
     id: "test-task",
     // TODO: type this
     lastSubmission: lastSubmission as any,
+    onSubmit(event, { formData }) {
+      event.preventDefault();
+
+      formData.set(payload.name, currentPayloadJson.current);
+      formData.set(metadata.name, currentMetadataJson.current);
+
+      fetcher.submit(formData, { method: "POST" });
+    },
     onValidate({ formData }) {
       return parse(formData, { schema: TestTaskData });
     },
   });
 
+  // fetch them in the loader
+  const dummyQueues = [
+    { value: "default", label: "default", type: "task" as const, disabled: false },
+    { value: "high-priority", label: "high-priority", type: "custom" as const, disabled: false },
+    { value: "background", label: "background", type: "custom" as const, disabled: false },
+    { value: "paused-queue", label: "paused-queue", type: "task" as const, disabled: true },
+    {
+      value: "email-processing",
+      label: "email-processing",
+      type: "custom" as const,
+      disabled: false,
+    },
+  ];
+
   return (
-    <Form
-      className="grid h-full max-h-full grid-rows-[1fr_auto]"
-      method="post"
-      {...form.props}
-      onSubmit={(e) => submitForm(e)}
-    >
-      <input type="hidden" name="triggerSource" value={"STANDARD"} />
+    <Form className="grid h-full max-h-full grid-rows-[1fr_auto]" method="post" {...form.props}>
+      <input {...conform.input(taskIdentifier, { type: "hidden" })} value={task.taskIdentifier} />
+      <input {...conform.input(environmentId, { type: "hidden" })} value={environment.id} />
+      <input {...conform.input(triggerSource, { type: "hidden" })} value={"STANDARD"} />
       <ResizablePanelGroup orientation="horizontal">
         <ResizablePanel id="test-task-main" min="100px" default="60%">
           <div className="flex h-full flex-col overflow-hidden bg-charcoal-900">
@@ -321,18 +338,118 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: Standa
           </div>
         </ResizablePanel>
         <ResizableHandle id="test-task-handle" />
-        <ResizablePanel id="test-task-inspector" min="100px">
-          <RecentPayloads
-            runs={runs}
-            selectedId={selectedCodeSampleId}
-            onSelected={(id) => {
-              const run = runs.find((r) => r.id === id);
-              if (!run) return;
-              setPayload(run.payload);
-              run.seedMetadata && setMetadata(run.seedMetadata);
-              setSelectedCodeSampleId(id);
-            }}
-          />
+        <ResizablePanel id="test-task-options" min="200px">
+          <div className="flex h-full flex-col gap-2">
+            <div className="flex min-h-[39px] items-center border-b border-grid-dimmed px-3">
+              <Header2>Options</Header2>
+            </div>
+            <Fieldset className="grow overflow-y-scroll px-3 pb-4 pt-1">
+              <InputGroup>
+                <Label>Delay</Label>
+                <DurationPicker name={delaySeconds.name} id={delaySeconds.id} />
+                <FormError id={delaySeconds.errorId}>{delaySeconds.error}</FormError>
+              </InputGroup>
+              <InputGroup>
+                <Label>TTL</Label>
+                <DurationPicker name={ttlSeconds.name} id={ttlSeconds.id} />
+                <FormError id={ttlSeconds.errorId}>{ttlSeconds.error}</FormError>
+              </InputGroup>
+              <InputGroup>
+                <Label htmlFor={idempotencyKey.id}>Idempotency key</Label>
+                <Input {...conform.input(idempotencyKey, { type: "text" })} variant="small" />
+                <FormError id={idempotencyKey.errorId}>{idempotencyKey.error}</FormError>
+              </InputGroup>
+              <InputGroup>
+                <Label>Idempotency key TTL</Label>
+                <DurationPicker
+                  name={idempotencyKeyTTLSeconds.name}
+                  id={idempotencyKeyTTLSeconds.id}
+                />
+                <FormError id={idempotencyKeyTTLSeconds.errorId}>
+                  {idempotencyKeyTTLSeconds.error}
+                </FormError>
+              </InputGroup>
+              <InputGroup>
+                <Label htmlFor={queue.id}>Queue</Label>
+                <Select
+                  //   {...conform.select(queue)}
+                  placeholder="Select queue"
+                  variant="tertiary/small"
+                  dropdownIcon
+                  items={dummyQueues}
+                  filter={{ keys: ["label"] }}
+                >
+                  {(matches) =>
+                    matches.map((queue) => (
+                      <SelectItem
+                        key={queue.value}
+                        value={queue.value}
+                        disabled={queue.disabled}
+                        icon={
+                          queue.type === "task" ? (
+                            <TaskIcon className="size-4 text-blue-500" />
+                          ) : (
+                            <RectangleStackIcon className="size-4 text-purple-500" />
+                          )
+                        }
+                      >
+                        <div className="flex w-full items-center justify-between">
+                          <span className={queue.disabled ? "opacity-50" : undefined}>
+                            {queue.label}
+                          </span>
+                          {queue.disabled && (
+                            <Badge variant="extra-small" className="ml-1 text-warning">
+                              Paused
+                            </Badge>
+                          )}
+                        </div>
+                      </SelectItem>
+                    ))
+                  }
+                </Select>
+              </InputGroup>
+              <InputGroup>
+                <Label htmlFor={concurrencyKey.id}>Concurrency key</Label>
+                <Input {...conform.input(concurrencyKey, { type: "text" })} variant="small" />
+                <FormError id={concurrencyKey.errorId}>{concurrencyKey.error}</FormError>
+              </InputGroup>
+              <InputGroup>
+                <Label htmlFor={maxAttempts.id}>Max attempts</Label>
+                <Input
+                  {...conform.input(maxAttempts, { type: "number" })}
+                  className="[&::-webkit-inner-spin-button]:appearance-none"
+                  variant="small"
+                  min={0}
+                />
+              </InputGroup>
+              <InputGroup>
+                <Label>Max duration</Label>
+                <DurationPicker name={maxDurationSeconds.name} id={maxDurationSeconds.id} />
+                <FormError id={maxDurationSeconds.errorId}>{maxDurationSeconds.error}</FormError>
+              </InputGroup>
+              <InputGroup>
+                <Label htmlFor={tags.id}>Tags</Label>
+                <RunTagInput name={tags.name} id={tags.id} variant="small" />
+                <FormError id={tags.errorId}>{tags.error}</FormError>
+              </InputGroup>
+              <InputGroup>
+                <Label htmlFor={version.id}>Version</Label>
+                <Select
+                  {...conform.select(version)}
+                  defaultValue="latest"
+                  variant="tertiary/small"
+                  placeholder="Select version"
+                  dropdownIcon
+                >
+                  <SelectItem key="latest" value="latest">
+                    latest
+                  </SelectItem>
+                </Select>
+                <FormError id={version.errorId}>{version.error}</FormError>
+              </InputGroup>
+              <FormError>{form.error}</FormError>
+            </Fieldset>
+          </div>
         </ResizablePanel>
       </ResizablePanelGroup>
       <div className="flex items-center justify-end gap-3 border-t border-grid-bright bg-background-dimmed p-2">
@@ -423,118 +540,98 @@ function ScheduledTaskForm({
         {...conform.input(environmentId, { type: "hidden" })}
         value={environment.id}
       />
-      <ResizablePanelGroup orientation="horizontal">
-        <ResizablePanel id="test-task-main" min="100px" default="70%">
-          <div className="p-3">
-            <Fieldset>
-              <InputGroup>
-                <Label htmlFor={timestamp.id}>Timestamp UTC</Label>
-                <input
-                  type="hidden"
-                  {...conform.input(timestamp, { type: "hidden" })}
-                  value={timestampValue?.toISOString() ?? ""}
-                />
-                <DateField
-                  label="Timestamp UTC"
-                  defaultValue={timestampValue}
-                  onValueChange={(val) => setTimestampValue(val)}
-                  granularity="second"
-                  showNowButton
-                  variant="medium"
-                  utc
-                />
-                <Hint>
-                  This is the timestamp of the CRON, it will come through to your run in the
-                  payload.
-                </Hint>
-                <FormError id={timestamp.errorId}>{timestamp.error}</FormError>
-              </InputGroup>
-              <InputGroup>
-                <Label htmlFor={lastTimestamp.id} required={false}>
-                  Last timestamp UTC
-                </Label>
-                <input
-                  type="hidden"
-                  {...conform.input(lastTimestamp, { type: "hidden" })}
-                  value={lastTimestampValue?.toISOString() ?? ""}
-                />
-                <DateField
-                  label="Last timestamp UTC"
-                  defaultValue={lastTimestampValue}
-                  onValueChange={(val) => setLastTimestampValue(val)}
-                  granularity="second"
-                  showNowButton
-                  showClearButton
-                  variant="medium"
-                  utc
-                />
-                <Hint>
-                  This is the timestamp of the previous run. You can use this in your code to find
-                  new data since the previous run. This can be undefined if there hasn't been a
-                  previous run.
-                </Hint>
-                <FormError id={lastTimestamp.errorId}>{lastTimestamp.error}</FormError>
-              </InputGroup>
-              <InputGroup>
-                <Label htmlFor={timezone.id}>Timezone</Label>
-                <Select
-                  {...conform.select(timezone)}
-                  placeholder="Select a timezone"
-                  defaultValue={timezoneValue}
-                  value={timezoneValue}
-                  setValue={(e) => {
-                    if (Array.isArray(e)) return;
-                    setTimezoneValue(e);
-                  }}
-                  items={possibleTimezones}
-                  filter={{ keys: [(item) => item.replace(/\//g, " ").replace(/_/g, " ")] }}
-                  dropdownIcon
-                  variant="tertiary/medium"
-                >
-                  {(matches) => <TimezoneList timezones={matches} />}
-                </Select>
-                <Hint>
-                  The Timestamp and Last timestamp are in UTC so this just changes the timezone
-                  string that comes through in the payload.
-                </Hint>
-                <FormError id={timezone.errorId}>{timezone.error}</FormError>
-              </InputGroup>
-              <InputGroup>
-                <Label required={false} htmlFor={externalId.id}>
-                  External ID
-                </Label>
-                <Input
-                  {...conform.input(externalId, { type: "text" })}
-                  placeholder="Optionally specify your own ID, e.g. user id"
-                  value={externalIdValue ?? ""}
-                  onChange={(e) => setExternalIdValue(e.target.value)}
-                />
-                <Hint>
-                  Optionally, you can specify your own IDs (like a user ID) and then use it inside
-                  the run function of your task. This allows you to have per-user CRON tasks.{" "}
-                  <TextLink to={docsPath("v3/tasks-scheduled")}>Read the docs.</TextLink>
-                </Hint>
-                <FormError id={externalId.errorId}>{externalId.error}</FormError>
-              </InputGroup>
-            </Fieldset>
-          </div>
-        </ResizablePanel>
-        <ResizableHandle id="test-task-handle" />
-        <ResizablePanel id="test-task-inspector" min="100px">
-          <RecentPayloads
-            runs={runs}
-            selectedId={selectedCodeSampleId}
-            onSelected={(id) => {
-              const run = runs.find((r) => r.id === id);
-              if (!run) return;
-              setSelectedCodeSampleId(id);
-              setTimestampValue(run.payload.timestamp);
-              setLastTimestampValue(run.payload.lastTimestamp);
-              setExternalIdValue(run.payload.externalId);
-            }}
-          />
-        </ResizablePanel>
-      </ResizablePanelGroup>
+      <div className="p-3">
+        <Fieldset>
+          <InputGroup>
+            <Label htmlFor={timestamp.id}>Timestamp UTC</Label>
+            <input
+              type="hidden"
+              {...conform.input(timestamp, { type: "hidden" })}
+              value={timestampValue?.toISOString() ?? ""}
+            />
+            <DateField
+              label="Timestamp UTC"
+              defaultValue={timestampValue}
+              onValueChange={(val) => setTimestampValue(val)}
+              granularity="second"
+              showNowButton
+              variant="medium"
+              utc
+            />
+            <Hint>
+              This is the timestamp of the CRON, it will come through to your run in the payload.
+            </Hint>
+            <FormError id={timestamp.errorId}>{timestamp.error}</FormError>
+          </InputGroup>
+          <InputGroup>
+            <Label htmlFor={lastTimestamp.id} required={false}>
+              Last timestamp UTC
+            </Label>
+            <input
+              type="hidden"
+              {...conform.input(lastTimestamp, { type: "hidden" })}
+              value={lastTimestampValue?.toISOString() ?? ""}
+            />
+            <DateField
+              label="Last timestamp UTC"
+              defaultValue={lastTimestampValue}
+              onValueChange={(val) => setLastTimestampValue(val)}
+              granularity="second"
+              showNowButton
+              showClearButton
+              variant="medium"
+              utc
+            />
+            <Hint>
+              This is the timestamp of the previous run. You can use this in your code to find new
+              data since the previous run. This can be undefined if there hasn't been a previous
+              run.
+            </Hint>
+            <FormError id={lastTimestamp.errorId}>{lastTimestamp.error}</FormError>
+          </InputGroup>
+          <InputGroup>
+            <Label htmlFor={timezone.id}>Timezone</Label>
+            <Select
+              {...conform.select(timezone)}
+              placeholder="Select a timezone"
+              defaultValue={timezoneValue}
+              value={timezoneValue}
+              setValue={(e) => {
+                if (Array.isArray(e)) return;
+                setTimezoneValue(e);
+              }}
+              items={possibleTimezones}
+              filter={{ keys: [(item) => item.replace(/\//g, " ").replace(/_/g, " ")] }}
+              dropdownIcon
+              variant="tertiary/medium"
+            >
+              {(matches) => <TimezoneList timezones={matches} />}
+            </Select>
+            <Hint>
+              The Timestamp and Last timestamp are in UTC so this just changes the timezone string
+              that comes through in the payload.
+            </Hint>
+            <FormError id={timezone.errorId}>{timezone.error}</FormError>
+          </InputGroup>
+          <InputGroup>
+            <Label required={false} htmlFor={externalId.id}>
+              External ID
+            </Label>
+            <Input
+              {...conform.input(externalId, { type: "text" })}
+              placeholder="Optionally specify your own ID, e.g. user id"
+              value={externalIdValue ?? ""}
+              onChange={(e) => setExternalIdValue(e.target.value)}
+            />
+            <Hint>
+              Optionally, you can specify your own IDs (like a user ID) and then use it inside the
+              run function of your task. This allows you to have per-user CRON tasks.{" "}
+              <TextLink to={docsPath("v3/tasks-scheduled")}>Read the docs.</TextLink>
+            </Hint>
+            <FormError id={externalId.errorId}>{externalId.error}</FormError>
+          </InputGroup>
+        </Fieldset>
+      </div>
       <div className="flex items-center justify-end gap-2 border-t border-grid-bright bg-background-dimmed p-2">
         <div className="flex items-center gap-1">
           <Paragraph variant="small" className="whitespace-nowrap">
@@ -552,57 +649,5 @@ function ScheduledTaskForm({
         </Button>
       </div>
     </Form>
-  );
-}
-
-function RecentPayloads({
-  runs,
-  selectedId,
-  onSelected,
-}: {
-  runs: {
-    id: string;
-    createdAt: Date;
-    number: number;
-    status: TaskRunStatus;
-  }[];
-  selectedId?: string;
-  onSelected: (id: string) => void;
-}) {
-  return (
-    <div className="flex flex-col gap-2 px-3">
-      <div className="flex h-10 items-center border-b border-grid-dimmed">
-        <Header2>Recent payloads</Header2>
-      </div>
-      {runs.length === 0 ? (
-        <Callout variant="info">
-          Recent payloads will show here once you've completed a Run.
-        </Callout>
-      ) : (
-        <div className="flex flex-col divide-y divide-charcoal-850">
-          {runs.map((run) => (
-            <button
-              key={run.id}
-              type="button"
-              onClick={(e) => {
-                onSelected(run.id);
-              }}
-              className="flex items-center gap-2 px-2 py-2"
-            >
-              <RadioButtonCircle checked={run.id === selectedId} />
-              <div className="flex flex-col items-start">
-                <Paragraph variant="small">
-                  <DateTime date={run.createdAt} />
-                </Paragraph>
-                <div className="flex items-center gap-1 text-xs text-text-dimmed">
-                  <div>Run #{run.number}</div>
-                  <TaskRunStatusCombo status={run.status} />
-                </div>
-              </div>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
   );
 }

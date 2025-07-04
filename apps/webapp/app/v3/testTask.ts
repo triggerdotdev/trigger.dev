@@ -56,6 +56,43 @@ export const TestTaskData = z
     z.object({
       taskIdentifier: z.string(),
       environmentId: z.string(),
+      delaySeconds: z
+        .number()
+        .min(0)
+        .optional()
+        .transform((val) => (val === 0 ? undefined : val)),
+      ttlSeconds: z
+        .number()
+        .min(0)
+        .optional()
+        .transform((val) => (val === 0 ? undefined : val)),
+      idempotencyKey: z.string().optional(),
+      idempotencyKeyTTLSeconds: z
+        .number()
+        .min(0)
+        .optional()
+        .transform((val) => (val === 0 ? undefined : val)),
+      queue: z.string().optional(),
+      concurrencyKey: z.string().optional(),
+      maxAttempts: z.number().min(1).optional(),
+      maxDurationSeconds: z
+        .number()
+        .min(0)
+        .optional()
+        .transform((val) => (val === 0 ? undefined : val)),
+      tags: z
+        .string()
+        .optional()
+        .transform((val) => {
+          if (!val || val.trim() === "") {
+            return undefined;
+          }
+          return val
+            .split(",")
+            .map((tag) => tag.trim())
+            .filter((tag) => tag.length > 0);
+        }),
+      version: z.string().optional(),
     })
   );
 
