@@ -637,7 +637,7 @@ const EnvironmentSchema = z.object({
   LEGACY_RUN_ENGINE_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(1),
   LEGACY_RUN_ENGINE_WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
   LEGACY_RUN_ENGINE_WORKER_IMMEDIATE_POLL_INTERVAL: z.coerce.number().int().default(50),
-  LEGACY_RUN_ENGINE_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(100),
+  LEGACY_RUN_ENGINE_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(50),
   LEGACY_RUN_ENGINE_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(60_000),
   LEGACY_RUN_ENGINE_WORKER_LOG_LEVEL: z
     .enum(["log", "error", "warn", "info", "debug"])
@@ -683,7 +683,7 @@ const EnvironmentSchema = z.object({
   COMMON_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(10),
   COMMON_WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
   COMMON_WORKER_IMMEDIATE_POLL_INTERVAL: z.coerce.number().int().default(50),
-  COMMON_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(100),
+  COMMON_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(50),
   COMMON_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(60_000),
   COMMON_WORKER_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
 
@@ -727,7 +727,7 @@ const EnvironmentSchema = z.object({
   BATCH_TRIGGER_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(10),
   BATCH_TRIGGER_WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
   BATCH_TRIGGER_WORKER_IMMEDIATE_POLL_INTERVAL: z.coerce.number().int().default(50),
-  BATCH_TRIGGER_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(100),
+  BATCH_TRIGGER_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(20),
   BATCH_TRIGGER_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(60_000),
   BATCH_TRIGGER_WORKER_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
 
@@ -768,7 +768,7 @@ const EnvironmentSchema = z.object({
   ALERTS_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(10),
   ALERTS_WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
   ALERTS_WORKER_IMMEDIATE_POLL_INTERVAL: z.coerce.number().int().default(100),
-  ALERTS_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(100),
+  ALERTS_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(50),
   ALERTS_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(60_000),
   ALERTS_WORKER_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
 
