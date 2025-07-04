@@ -465,8 +465,21 @@ function StandardTaskForm({
                   {...conform.input(maxAttempts, { type: "number" })}
                   className="[&::-webkit-inner-spin-button]:appearance-none"
                   variant="small"
-                  min={0}
+                  min={1}
+                  onKeyDown={(e) => {
+                    // only allow entering integers > 1
+                    if (["-", "+", ".", "e", "E"].includes(e.key)) {
+                      e.preventDefault();
+                    }
+                  }}
+                  onBlur={(e) => {
+                    const value = parseInt(e.target.value);
+                    if (value < 1 && e.target.value !== "") {
+                      e.target.value = "1";
+                    }
+                  }}
                 />
+                <FormError id={maxAttempts.errorId}>{maxAttempts.error}</FormError>
               </InputGroup>
               <InputGroup>
                 <Label>Max duration</Label>
