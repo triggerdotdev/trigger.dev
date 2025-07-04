@@ -47,7 +47,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
         },
       });
 
-      const project = await prisma.project.findUnique({
+      const project = await prisma.project.findFirst({
         select: {
           externalRef: true,
           name: true,
