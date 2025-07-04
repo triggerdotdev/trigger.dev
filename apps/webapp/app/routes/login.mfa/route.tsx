@@ -11,6 +11,7 @@ import { FormError } from "~/components/primitives/FormError";
 import { Header1 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
+import { InputOTP, InputOTPGroup, InputOTPSlot } from "~/components/primitives/InputOTP";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Spinner } from "~/components/primitives/Spinner";
 import { authenticator } from "~/services/auth.server";
@@ -101,6 +102,7 @@ export default function LoginMfaPage() {
   const { mfaError } = useTypedLoaderData<typeof loader>();
   const navigate = useNavigation();
   const [showRecoveryCode, setShowRecoveryCode] = useState(false);
+  const [mfaCode, setMfaCode] = useState("");
 
   const isLoading =
     (navigate.state === "loading" || navigate.state === "submitting") &&
@@ -111,7 +113,7 @@ export default function LoginMfaPage() {
   return (
     <LoginPageLayout>
       <Form method="post">
-        <div className="flex flex-col items-center justify-center">
+        <div className="flex max-w-xs flex-col items-center justify-center">
           <Header1 className="pb-4 text-center font-semibold leading-7 sm:text-2xl md:text-3xl md:leading-8 lg:text-4xl lg:leading-9">
             Multi-factor authentication
           </Header1>
@@ -164,29 +166,33 @@ export default function LoginMfaPage() {
           ) : (
             <>
               <Paragraph variant="base" className="mb-6 text-center">
-                Open your authenticator app to get your code.
+                Open your authenticator app to get your code. Then enter it below.
               </Paragraph>
               <Fieldset className="flex w-full flex-col items-center gap-y-2">
-                <InputGroup>
-                  <Input
-                    type="text"
-                    name="mfaCode"
-                    spellCheck={false}
-                    placeholder="6-digit code"
-                    variant="large"
-                    required
-                    autoFocus
-                    maxLength={6}
-                    pattern="[0-9]{6}"
-                  />
-                </InputGroup>
+                <InputOTP
+                  maxLength={6}
+                  value={mfaCode}
+                  onChange={(value) => setMfaCode(value)}
+                  variant="large"
+                  fullWidth
+                >
+                  <InputOTPGroup variant="large" fullWidth>
+                    <InputOTPSlot index={0} autoFocus variant="large" fullWidth />
+                    <InputOTPSlot index={1} variant="large" fullWidth />
+                    <InputOTPSlot index={2} variant="large" fullWidth />
+                    <InputOTPSlot index={3} variant="large" fullWidth />
+                    <InputOTPSlot index={4} variant="large" fullWidth />
+                    <InputOTPSlot index={5} variant="large" fullWidth />
+                  </InputOTPGroup>
+                </InputOTP>
+                <input type="hidden" name="mfaCode" value={mfaCode} />
 
                 <Button
                   name="action"
                   value="verify-mfa"
                   type="submit"
                   variant="primary/large"
-                  disabled={isLoading}
+                  disabled={isLoading || mfaCode.length !== 6}
                   fullWidth
                   data-action="verify mfa code"
                 >
