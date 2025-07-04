@@ -26,6 +26,7 @@ export class TestTaskService extends BaseService {
             maxAttempts: data.maxAttempts,
             maxDuration: data.maxDurationSeconds,
             tags: data.tags,
+            lockToVersion: data.version === "latest" ? undefined : data.version,
           },
         });
 

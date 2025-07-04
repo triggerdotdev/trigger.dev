@@ -173,6 +173,7 @@ export default function Page() {
           task={result.task.task}
           defaultQueue={result.task.queue}
           runs={result.task.runs}
+          versions={result.task.latestVersions}
         />
       );
     }
@@ -194,10 +195,12 @@ function StandardTaskForm({
   task,
   defaultQueue,
   runs,
+  versions,
 }: {
   task: TestTask["task"];
   defaultQueue: TestTask["queue"];
   runs: StandardRun[];
+  versions: string[];
 }) {
   const environment = useEnvironment();
   const { value, replace } = useSearchParams();
@@ -484,9 +487,11 @@ function StandardTaskForm({
                   placeholder="Select version"
                   dropdownIcon
                 >
-                  <SelectItem key="latest" value="latest">
-                    latest
-                  </SelectItem>
+                  {versions.map((version, i) => (
+                    <SelectItem key={version} value={i === 0 ? "latest" : version}>
+                      {version} {i === 0 && "(latest)"}
+                    </SelectItem>
+                  ))}
                 </Select>
                 <FormError id={version.errorId}>{version.error}</FormError>
               </InputGroup>

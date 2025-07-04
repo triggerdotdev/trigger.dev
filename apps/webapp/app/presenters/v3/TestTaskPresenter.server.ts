@@ -1,14 +1,9 @@
-import {
-  QueueItem,
-  ScheduledTaskPayload,
-  parsePacket,
-  prettyPrintPacket,
-} from "@trigger.dev/core/v3";
+import { ScheduledTaskPayload, parsePacket, prettyPrintPacket } from "@trigger.dev/core/v3";
 import { type RuntimeEnvironmentType, type TaskRunStatus } from "@trigger.dev/database";
 import { type PrismaClient, prisma, sqlDatabaseSchema } from "~/db.server";
 import { getTimezones } from "~/utils/timezones.server";
 import { findCurrentWorkerDeployment } from "~/v3/models/workerDeployment.server";
-import { queueTypeFromType, toQueueItem } from "./QueueRetrievePresenter.server";
+import { queueTypeFromType } from "./QueueRetrievePresenter.server";
 
 type TestTaskOptions = {
   userId: string;
@@ -38,6 +33,7 @@ export type TestTask =
       };
       task: Task;
       runs: StandardRun[];
+      latestVersions: string[];
     }
   | {
       triggerSource: "SCHEDULED";
@@ -50,6 +46,7 @@ export type TestTask =
       task: Task;
       possibleTimezones: string[];
       runs: ScheduledRun[];
+      latestVersions: string[];
     };
 
 export type TestTaskResult =
@@ -138,6 +135,22 @@ export class TestTaskPresenter {
         })
       : undefined;
 
+    // last 20 versions should suffice
+    const latestVersions = (
+      await this.#prismaClient.backgroundWorker.findMany({
+        where: {
+          runtimeEnvironmentId: environment.id,
+        },
+        select: {
+          version: true,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        take: 20,
+      })
+    ).map((v) => v.version);
+
     const latestRuns = await this.#prismaClient.$queryRaw<RawRun[]>`
     WITH taskruns AS (
       SELECT
@@ -211,6 +224,7 @@ export class TestTaskPresenter {
                 };
               })
             ),
+            latestVersions,
           },
         };
       case "SCHEDULED":
@@ -238,6 +252,7 @@ export class TestTaskPresenter {
                 })
               )
             ).filter(Boolean),
+            latestVersions,
           },
         };
     }
