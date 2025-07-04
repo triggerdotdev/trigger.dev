@@ -278,10 +278,10 @@ Create the name of the supervisor service account to use
 {{- end }}
 
 {{/*
-Create the name of the supervisor cluster role to use
+Create the name of the supervisor role to use
 */}}
-{{- define "trigger-v4.supervisorClusterRoleName" -}}
-{{- default (printf "%s-supervisor-%s" (include "trigger-v4.fullname" .) .Release.Namespace) .Values.supervisor.rbac.clusterRole.name }}
+{{- define "trigger-v4.supervisorRoleName" -}}
+{{- default (printf "%s-supervisor-%s" (include "trigger-v4.fullname" .) .Release.Namespace) .Values.supervisor.rbac.role.name }}
 {{- end }}
 
 {{/*
