@@ -575,6 +575,9 @@ importers:
       prom-client:
         specifier: ^15.1.0
         version: 15.1.0
+      qrcode.react:
+        specifier: ^4.2.0
+        version: 4.2.0(react@18.2.0)
       random-words:
         specifier: ^2.0.0
         version: 2.0.0
@@ -31112,6 +31115,14 @@ packages:
       glob: 7.2.3
       postcss: 7.0.32
       postcss-selector-parser: 6.1.2
+    dev: false
+
+  /qrcode.react@4.2.0(react@18.2.0):
+    resolution: {integrity: sha512-QpgqWi8rD9DsS9EP3z7BT+5lY5SFhsqGjpgW5DY/i3mK4M9DTBNz3ErMi8BWYEfI3L0d8GIbGmcdFAS1uIRGjA==}
+    peerDependencies:
+      react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
+    dependencies:
+      react: 18.2.0
     dev: false
 
   /qs@6.11.0:
