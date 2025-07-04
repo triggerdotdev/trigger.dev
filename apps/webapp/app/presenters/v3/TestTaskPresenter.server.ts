@@ -147,7 +147,9 @@ export class TestTaskPresenter {
         orderBy: {
           createdAt: "desc",
         },
-        take: 20,
+        // only the latest version has active workers in development,
+        // so we hide the older versions to avoid runs getting stuck
+        take: environment.type === "DEVELOPMENT" ? 1 : 20,
       })
     ).map((v) => v.version);
 
