@@ -3,9 +3,16 @@ import { determineEngineVersion } from "~/v3/engineVersion.server";
 import { engine } from "~/v3/runEngine.server";
 import { BasePresenter } from "./basePresenter.server";
 import { toQueueItem } from "./QueueRetrievePresenter.server";
+import { TaskQueueType } from "@trigger.dev/database";
 
 const DEFAULT_ITEMS_PER_PAGE = 25;
 const MAX_ITEMS_PER_PAGE = 100;
+
+const typeToDBQueueType: Record<"task" | "custom", TaskQueueType> = {
+  task: TaskQueueType.VIRTUAL,
+  custom: TaskQueueType.NAMED,
+};
+
 export class QueueListPresenter extends BasePresenter {
   private readonly perPage: number;
 
@@ -18,13 +25,15 @@ export class QueueListPresenter extends BasePresenter {
     environment,
     query,
     page,
+    type,
   }: {
     environment: AuthenticatedEnvironment;
     query?: string;
     page: number;
     perPage?: number;
+    type?: "task" | "custom";
   }) {
-    const hasFilters = query !== undefined && query.length > 0;
+    const hasFilters = (query !== undefined && query.length > 0) || type !== undefined;
 
     // Get total count for pagination
     const totalQueues = await this._replica.taskQueue.count({
@@ -37,6 +46,7 @@ export class QueueListPresenter extends BasePresenter {
               mode: "insensitive",
             }
           : undefined,
+        type: type ? typeToDBQueueType[type] : undefined,
       },
     });
 
@@ -70,7 +80,7 @@ export class QueueListPresenter extends BasePresenter {
 
     return {
       success: true as const,
-      queues: await this.getQueuesWithPagination(environment, query, page),
+      queues: await this.getQueuesWithPagination(environment, query, page, type),
       pagination: {
         currentPage: page,
         totalPages: Math.ceil(totalQueues / this.perPage),
@@ -84,7 +94,8 @@ export class QueueListPresenter extends BasePresenter {
   private async getQueuesWithPagination(
     environment: AuthenticatedEnvironment,
     query: string | undefined,
-    page: number
+    page: number,
+    type: "task" | "custom" | undefined
   ) {
     const queues = await this._replica.taskQueue.findMany({
       where: {
@@ -96,6 +107,7 @@ export class QueueListPresenter extends BasePresenter {
               mode: "insensitive",
             }
           : undefined,
+        type: type ? typeToDBQueueType[type] : undefined,
       },
       select: {
         friendlyId: true,

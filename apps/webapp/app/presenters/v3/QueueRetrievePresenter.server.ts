@@ -82,7 +82,7 @@ export class QueueRetrievePresenter extends BasePresenter {
   }
 }
 
-function queueTypeFromType(type: TaskQueueType) {
+export function queueTypeFromType(type: TaskQueueType) {
   switch (type) {
     case "NAMED":
       return "custom" as const;
