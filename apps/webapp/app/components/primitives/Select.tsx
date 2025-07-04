@@ -615,7 +615,7 @@ export function SelectPopover({
       unmountOnHide={unmountOnHide}
       className={cn(
         "z-50 flex flex-col overflow-clip rounded border border-charcoal-700 bg-background-bright shadow-md outline-none animate-in fade-in-40",
-        "min-w-[max(180px,calc(var(--popover-anchor-width)+0.5rem))]",
+        "min-w-[max(180px,var(--popover-anchor-width))]",
         "max-w-[min(480px,var(--popover-available-width))]",
         "max-h-[min(600px,var(--popover-available-height))]",
         "origin-[var(--popover-transform-origin)]",
