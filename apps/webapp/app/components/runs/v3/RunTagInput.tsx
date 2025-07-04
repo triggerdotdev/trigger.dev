@@ -9,6 +9,8 @@ interface TagInputProps {
   defaultTags?: string[];
   placeholder?: string;
   variant?: "small" | "medium";
+  maxTags?: number;
+  maxTagLength?: number;
   onTagsChange?: (tags: string[]) => void;
 }
 
@@ -18,6 +20,8 @@ export function RunTagInput({
   defaultTags = [],
   placeholder = "Type and press Enter to add tags",
   variant = "small",
+  maxTags = 10,
+  maxTagLength = 128,
   onTagsChange,
 }: TagInputProps) {
   const [tags, setTags] = useState<string[]>(defaultTags);
@@ -26,14 +30,14 @@ export function RunTagInput({
   const addTag = useCallback(
     (tagText: string) => {
       const trimmedTag = tagText.trim();
-      if (trimmedTag && !tags.includes(trimmedTag)) {
+      if (trimmedTag && !tags.includes(trimmedTag) && tags.length < maxTags) {
         const newTags = [...tags, trimmedTag];
         setTags(newTags);
         onTagsChange?.(newTags);
       }
       setInputValue("");
     },
-    [tags, onTagsChange]
+    [tags, onTagsChange, maxTags]
   );
 
   const removeTag = useCallback(
@@ -57,6 +61,8 @@ export function RunTagInput({
     [inputValue, addTag, removeTag, tags]
   );
 
+  const maxTagsReached = tags.length >= maxTags;
+
   return (
     <div className="flex flex-col gap-2">
       <input type="hidden" name={name} id={id} value={tags.join(",")} />
@@ -66,8 +72,10 @@ export function RunTagInput({
         value={inputValue}
         onChange={(e) => setInputValue(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder={placeholder}
+        placeholder={maxTagsReached ? `A maximum of ${maxTags} tags is allowed` : placeholder}
         variant={variant}
+        disabled={maxTagsReached}
+        maxLength={maxTagLength}
       />
 
       {tags.length > 0 && (

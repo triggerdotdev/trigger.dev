@@ -91,6 +91,12 @@ export const TestTaskData = z
             .split(",")
             .map((tag) => tag.trim())
             .filter((tag) => tag.length > 0);
+        })
+        .refine((tags) => !tags || tags.length <= 10, {
+          message: "Maximum 10 tags allowed",
+        })
+        .refine((tags) => !tags || tags.every((tag) => tag.length <= 128), {
+          message: "Each tag must be at most 128 characters long",
         }),
       version: z.string().optional(),
     })
