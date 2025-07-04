@@ -36,8 +36,10 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
+    showCloseButton?: boolean;
+  }
+>(({ className, children, showCloseButton = true, ...props }, ref) => (
   <DialogPortal>
     <DialogOverlay />
     <DialogPrimitive.Content
@@ -50,16 +52,18 @@ const DialogContent = React.forwardRef<
     >
       <hr className="absolute left-0 top-11 w-full" />
       {children}
-      <DialogPrimitive.Close className="data-[state=open]:bg-accent data-[state=open]:text-muted-foreground group absolute right-2 top-[0.5625rem] flex items-center gap-1 rounded-sm p-1 py-1 pl-0 pr-1 opacity-70 transition focus-custom hover:bg-charcoal-750 hover:opacity-100 focus-visible:focus-custom disabled:pointer-events-none">
-        <ShortcutKey
-          shortcut={{
-            key: "esc",
-          }}
-          variant="medium"
-        />
-        <XMarkIcon className="size-4 text-text-dimmed transition group-hover:text-text-bright" />
-        <span className="sr-only">Close</span>
-      </DialogPrimitive.Close>
+      {showCloseButton && (
+        <DialogPrimitive.Close className="data-[state=open]:bg-accent data-[state=open]:text-muted-foreground group absolute right-2 top-[0.5625rem] flex items-center gap-1 rounded-sm p-1 py-1 pl-0 pr-1 opacity-70 transition focus-custom hover:bg-charcoal-750 hover:opacity-100 focus-visible:focus-custom disabled:pointer-events-none">
+          <ShortcutKey
+            shortcut={{
+              key: "esc",
+            }}
+            variant="medium"
+          />
+          <XMarkIcon className="size-4 text-text-dimmed transition group-hover:text-text-bright" />
+          <span className="sr-only">Close</span>
+        </DialogPrimitive.Close>
+      )}
     </DialogPrimitive.Content>
   </DialogPortal>
 ));
