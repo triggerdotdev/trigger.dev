@@ -1,8 +1,8 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { BeakerIcon } from "@heroicons/react/20/solid";
-import { RectangleStackIcon } from "@heroicons/react/20/solid";
-import { Form, useActionData, useSubmit, useFetcher } from "@remix-run/react";
+import { BeakerIcon, RectangleStackIcon } from "@heroicons/react/20/solid";
+import { ClockIcon } from "@heroicons/react/24/outline";
+import { Form, useActionData, useFetcher } from "@remix-run/react";
 import { type ActionFunction, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -21,6 +21,8 @@ import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { DurationPicker } from "~/components/primitives/DurationPicker";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives/Popover";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -55,6 +57,8 @@ import { OutOfEntitlementError } from "~/v3/services/triggerTask.server";
 import { TestTaskData } from "~/v3/testTask";
 import { RunTagInput } from "~/components/runs/v3/RunTagInput";
 import { type loader as queuesLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.queues";
+import { DateTime } from "~/components/primitives/DateTime";
+import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { projectParam, organizationSlug, envParam, taskParam } = v3TaskParamsSchema.parse(params);
@@ -275,6 +279,7 @@ function StandardTaskForm({
   }, [queueFetcher.data?.queues, defaultQueue]);
 
   const fetcher = useFetcher();
+  const [isRecentRunsPopoverOpen, setIsRecentRunsPopoverOpen] = useState(false);
   const [
     form,
     {
@@ -513,21 +518,77 @@ function StandardTaskForm({
           </div>
         </ResizablePanel>
       </ResizablePanelGroup>
-      <div className="flex items-center justify-end gap-3 border-t border-grid-bright bg-background-dimmed p-2">
-        <div className="flex items-center gap-1">
-          <Paragraph variant="small" className="whitespace-nowrap">
-            This test will run in
-          </Paragraph>
-          <EnvironmentCombo environment={environment} className="gap-0.5" />
+      <div className="flex items-center justify-between gap-3 border-t border-grid-bright bg-background-dimmed p-2">
+        <div>
+          <Popover open={isRecentRunsPopoverOpen} onOpenChange={setIsRecentRunsPopoverOpen}>
+            <PopoverTrigger asChild>
+              {runs.length === 0 ? (
+                <SimpleTooltip
+                  button={
+                    <Button
+                      type="button"
+                      variant="tertiary/medium"
+                      LeadingIcon={ClockIcon}
+                      disabled={true}
+                    >
+                      Recent runs
+                    </Button>
+                  }
+                  content="No runs yet"
+                />
+              ) : (
+                <Button type="button" variant="tertiary/medium" LeadingIcon={ClockIcon}>
+                  Recent runs
+                </Button>
+              )}
+            </PopoverTrigger>
+            <PopoverContent className="min-w-72 p-0" align="start">
+              <div className="max-h-80 overflow-y-auto">
+                <div className="p-1">
+                  {runs.map((run) => (
+                    <button
+                      key={run.id}
+                      type="button"
+                      onClick={() => {
+                        setPayload(run.payload);
+                        run.seedMetadata && setMetadata(run.seedMetadata);
+                        setSelectedCodeSampleId(run.id);
+                        setIsRecentRunsPopoverOpen(false);
+                      }}
+                      className="flex w-full items-center gap-2 rounded-sm px-2 py-2 outline-none transition-colors focus-custom hover:bg-charcoal-900	"
+                    >
+                      <div className="flex flex-col items-start">
+                        <Paragraph variant="small">
+                          <DateTime date={run.createdAt} showTooltip={false} />
+                        </Paragraph>
+                        <div className="flex items-center gap-1 text-xs text-text-dimmed">
+                          <div>Run #{run.number}</div>
+                          <TaskRunStatusCombo status={run.status} />
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
-        <Button
-          type="submit"
-          variant="primary/medium"
-          LeadingIcon={BeakerIcon}
-          shortcut={{ key: "enter", modifiers: ["mod"], enabledOnInputElements: true }}
-        >
-          Run test
-        </Button>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1">
+            <Paragraph variant="small" className="whitespace-nowrap">
+              This test will run in
+            </Paragraph>
+            <EnvironmentCombo environment={environment} className="gap-0.5" />
+          </div>
+          <Button
+            type="submit"
+            variant="primary/medium"
+            LeadingIcon={BeakerIcon}
+            shortcut={{ key: "enter", modifiers: ["mod"], enabledOnInputElements: true }}
+          >
+            Run test
+          </Button>
+        </div>
       </div>
     </Form>
   );
