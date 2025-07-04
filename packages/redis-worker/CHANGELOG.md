@@ -1,5 +1,13 @@
 # @trigger.dev/redis-worker
 
+## 4.0.0-v4-beta.22
+
+### Patch Changes
+
+- Now each worker gets it's own pLimit concurrency limiter, and we will only ever dequeue items where there is concurrency capacity, preventing incorrectly retried jobs due to visibility timeout expiry ([#2235](https://github.com/triggerdotdev/trigger.dev/pull/2235))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.22`
+
 ## 4.0.0-v4-beta.21
 
 ### Patch Changes

@@ -1,5 +1,17 @@
 # trigger.dev
 
+## 4.0.0-v4-beta.22
+
+### Patch Changes
+
+- Fix update command version mismatch detection ([#2199](https://github.com/triggerdotdev/trigger.dev/pull/2199))
+- Add project details to the whoami command ([#2231](https://github.com/triggerdotdev/trigger.dev/pull/2231))
+- experimental processKeepAlive ([#2183](https://github.com/triggerdotdev/trigger.dev/pull/2183))
+- Serialize metadata to prevent invalid metadata from breaking run completions ([#2219](https://github.com/triggerdotdev/trigger.dev/pull/2219))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.22`
+  - `@trigger.dev/build@4.0.0-v4-beta.22`
+
 ## 4.0.0-v4-beta.21
 
 ### Patch Changes

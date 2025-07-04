@@ -1,5 +1,12 @@
 # internal-platform
 
+## 4.0.0-v4-beta.22
+
+### Patch Changes
+
+- Add project details to the whoami command ([#2231](https://github.com/triggerdotdev/trigger.dev/pull/2231))
+- Fixes an issue with realtime when re-subscribing to a run, that would temporarily display stale data and the changes. Now when re-subscribing to a run only the latest changes will be vended ([#2162](https://github.com/triggerdotdev/trigger.dev/pull/2162))
+
 ## 4.0.0-v4-beta.21
 
 ### Patch Changes
