@@ -47,36 +47,38 @@ export async function loader({ request }: LoaderFunctionArgs) {
         },
       });
 
-      const project = await prisma.project.findFirst({
-        select: {
-          externalRef: true,
-          name: true,
-          slug: true,
-          organization: {
-            select: {
-              slug: true,
-              title: true,
+      if (orgs.length > 0) {
+        const project = await prisma.project.findFirst({
+          select: {
+            externalRef: true,
+            name: true,
+            slug: true,
+            organization: {
+              select: {
+                slug: true,
+                title: true,
+              },
             },
           },
-        },
-        where: {
-          externalRef: projectRef,
-          organizationId: {
-            in: orgs.map((org) => org.id),
+          where: {
+            externalRef: projectRef,
+            organizationId: {
+              in: orgs.map((org) => org.id),
+            },
           },
-        },
-      });
+        });
 
-      if (project) {
-        const projectPath = v3ProjectPath(
-          { slug: project.organization.slug },
-          { slug: project.slug }
-        );
-        projectDetails = {
-          url: new URL(projectPath, env.APP_ORIGIN).href,
-          name: project.name,
-          orgTitle: project.organization.title,
-        };
+        if (project) {
+          const projectPath = v3ProjectPath(
+            { slug: project.organization.slug },
+            { slug: project.slug }
+          );
+          projectDetails = {
+            url: new URL(projectPath, env.APP_ORIGIN).href,
+            name: project.name,
+            orgTitle: project.organization.title,
+          };
+        }
       }
     }
 
