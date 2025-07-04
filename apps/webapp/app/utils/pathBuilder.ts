@@ -60,6 +60,10 @@ export function personalAccessTokensPath() {
   return `/account/tokens`;
 }
 
+export function accountSecurityPath() {
+  return `/account/security`;
+}
+
 export function invitesPath() {
   return `/invites`;
 }
