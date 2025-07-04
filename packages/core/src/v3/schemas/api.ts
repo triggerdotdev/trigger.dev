@@ -16,6 +16,13 @@ export const WhoAmIResponseSchema = z.object({
   userId: z.string(),
   email: z.string().email(),
   dashboardUrl: z.string(),
+  project: z
+    .object({
+      name: z.string(),
+      url: z.string(),
+      orgTitle: z.string(),
+    })
+    .optional(),
 });
 
 export type WhoAmIResponse = z.infer<typeof WhoAmIResponseSchema>;

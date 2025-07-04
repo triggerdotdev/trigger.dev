@@ -79,12 +79,18 @@ export class CliApiClient {
     });
   }
 
-  async whoAmI() {
+  async whoAmI(projectRef?: string) {
     if (!this.accessToken) {
       throw new Error("whoAmI: No access token");
     }
 
-    return wrapZodFetch(WhoAmIResponseSchema, `${this.apiURL}/api/v2/whoami`, {
+    const url = new URL("/api/v2/whoami", this.apiURL);
+
+    if (projectRef) {
+      url.searchParams.append("projectRef", projectRef);
+    }
+
+    return wrapZodFetch(WhoAmIResponseSchema, url.href, {
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
         "Content-Type": "application/json",
