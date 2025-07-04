@@ -137,6 +137,7 @@ export default function Page() {
   const [isMfaEnabled, setIsMfaEnabled] = useState(false);
   const [showQrDialog, setShowQrDialog] = useState(false);
   const [showRecoveryDialog, setShowRecoveryDialog] = useState(false);
+  const [showDisableDialog, setShowDisableDialog] = useState(false);
   const [totpCode, setTotpCode] = useState("");
 
   // TODO: Replace with actual data from backend
@@ -168,8 +169,8 @@ export default function Page() {
       // Show QR code dialog to enable MFA
       setShowQrDialog(true);
     } else if (!checked && isMfaEnabled) {
-      // TODO: Handle disabling MFA - might need backend call
-      setIsMfaEnabled(false);
+      // Show confirmation dialog before disabling MFA
+      setShowDisableDialog(true);
     }
   };
 
@@ -212,6 +213,18 @@ export default function Page() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  };
+
+  const handleDisableMfa = (e: React.FormEvent) => {
+    e.preventDefault();
+    // TODO: Handle disabling MFA - backend call
+    setShowDisableDialog(false);
+    setIsMfaEnabled(false);
+  };
+
+  const handleDisableCancel = () => {
+    setShowDisableDialog(false);
+    // Don't change the switch state when canceling
   };
 
   return (
@@ -366,6 +379,32 @@ export default function Page() {
                     autoFocus
                   >
                     Continue
+                  </Button>
+                </DialogFooter>
+              </Form>
+            </DialogContent>
+          </Dialog>
+
+          {/* Disable MFA Confirmation Dialog */}
+          <Dialog open={showDisableDialog} onOpenChange={setShowDisableDialog}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Disable multi-factor authentication</DialogTitle>
+              </DialogHeader>
+              <Form method="post" onSubmit={handleDisableMfa}>
+                <input type="hidden" name="action" value="disable-mfa" />
+                <div className="pb-4 pt-3">
+                  <Paragraph>
+                    Are you sure you want to disable multi-factor authentication?
+                  </Paragraph>
+                </div>
+
+                <DialogFooter>
+                  <Button type="button" variant="secondary/medium" onClick={handleDisableCancel}>
+                    Close
+                  </Button>
+                  <Button type="submit" variant="primary/medium" autoFocus>
+                    Disable MFA
                   </Button>
                 </DialogFooter>
               </Form>
