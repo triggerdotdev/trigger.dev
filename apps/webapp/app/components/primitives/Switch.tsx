@@ -46,10 +46,11 @@ type SwitchProps = React.ComponentPropsWithoutRef<typeof SwitchPrimitives.Root> 
   label?: React.ReactNode;
   variant: keyof typeof variations;
   shortcut?: ShortcutDefinition;
+  labelPosition?: "left" | "right";
 };
 
 export const Switch = React.forwardRef<React.ElementRef<typeof SwitchPrimitives.Root>, SwitchProps>(
-  ({ className, variant, label, ...props }, ref) => {
+  ({ className, variant, label, labelPosition = "left", ...props }, ref) => {
     const innerRef = React.useRef<HTMLButtonElement>(null);
     React.useImperativeHandle(ref, () => innerRef.current as HTMLButtonElement);
 
@@ -67,35 +68,39 @@ export const Switch = React.forwardRef<React.ElementRef<typeof SwitchPrimitives.
       });
     }
 
+    const labelElement = label ? (
+      <label
+        className={cn("cursor-pointer whitespace-nowrap group-disabled:cursor-not-allowed", text)}
+      >
+        {typeof label === "string" ? <span>{label}</span> : label}
+      </label>
+    ) : null;
+
+    const switchElement = (
+      <div
+        className={cn(
+          "inline-flex shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors group-disabled:cursor-not-allowed group-disabled:opacity-50 group-data-[state=checked]:bg-blue-500 group-data-[state=unchecked]:bg-charcoal-700 group-data-[state=unchecked]:group-hover:bg-charcoal-500/50",
+          root
+        )}
+      >
+        <SwitchPrimitives.Thumb
+          className={cn(
+            thumb,
+            "pointer-events-none block rounded-full bg-charcoal-200 transition group-data-[state=checked]:bg-text-bright"
+          )}
+        />
+      </div>
+    );
+
     return (
       <SwitchPrimitives.Root
         className={cn("group", container, className)}
         {...props}
         ref={innerRef}
       >
-        {label ? (
-          <label
-            className={cn(
-              "cursor-pointer whitespace-nowrap group-disabled:cursor-not-allowed",
-              text
-            )}
-          >
-            {typeof label === "string" ? <span>{label}</span> : label}
-          </label>
-        ) : null}
-        <div
-          className={cn(
-            "inline-flex shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors group-disabled:cursor-not-allowed group-disabled:opacity-50 group-data-[state=checked]:bg-blue-500 group-data-[state=unchecked]:bg-charcoal-700 group-data-[state=unchecked]:group-hover:bg-charcoal-500/50",
-            root
-          )}
-        >
-          <SwitchPrimitives.Thumb
-            className={cn(
-              thumb,
-              "pointer-events-none block rounded-full bg-charcoal-200 transition group-data-[state=checked]:bg-text-bright"
-            )}
-          />
-        </div>
+        {labelPosition === "left" ? labelElement : null}
+        {switchElement}
+        {labelPosition === "right" ? labelElement : null}
       </SwitchPrimitives.Root>
     );
   }

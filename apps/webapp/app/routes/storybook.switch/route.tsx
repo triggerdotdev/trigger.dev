@@ -6,6 +6,7 @@ export default function Story() {
       <Switch variant="large" />
       <Switch variant="large" disabled />
       <Switch variant="large" label="Toggle me" />
+      <Switch variant="large" label="Label position right" labelPosition="right" />
       <Switch variant="large" label="Toggle me" disabled />
       <Switch variant="small" />
       <Switch variant="small" disabled />
