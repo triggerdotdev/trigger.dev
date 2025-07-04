@@ -6,8 +6,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const redirectTo = await getRedirectTo(request);
 
   await authenticator.authenticate("email-link", request, {
-    //Todo: only redirect to /mfa if mfa enabled
-    successRedirect: redirectTo ?? "/login/mfa",
+    successRedirect: redirectTo ?? "/",
     failureRedirect: "/login/magic",
   });
 }
