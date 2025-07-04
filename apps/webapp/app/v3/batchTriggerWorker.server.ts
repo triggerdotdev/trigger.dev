@@ -34,7 +34,7 @@ function initializeWorker() {
           attemptCount: z.number().int(),
           strategy: z.enum(["sequential", "parallel"]),
         }),
-        visibilityTimeoutMs: 60_000,
+        visibilityTimeoutMs: env.BATCH_TRIGGER_PROCESS_JOB_VISIBILITY_TIMEOUT_MS,
         retry: {
           maxAttempts: 5,
         },
@@ -49,7 +49,7 @@ function initializeWorker() {
           parentRunId: z.string().optional(),
           resumeParentOnCompletion: z.boolean().optional(),
         }),
-        visibilityTimeoutMs: 60_000,
+        visibilityTimeoutMs: env.BATCH_TRIGGER_PROCESS_JOB_VISIBILITY_TIMEOUT_MS,
         retry: {
           maxAttempts: 5,
         },
