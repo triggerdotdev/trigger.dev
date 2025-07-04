@@ -114,6 +114,7 @@ function initializeWorker() {
           maxAttempts: 5,
         },
       },
+      // @deprecated, moved to batchTriggerWorker.server.ts
       "v3.processBatchTaskRun": {
         schema: z.object({
           batchId: z.string(),
@@ -127,6 +128,7 @@ function initializeWorker() {
           maxAttempts: 5,
         },
       },
+      // @deprecated, moved to batchTriggerWorker.server.ts
       "runengine.processBatchTaskRun": {
         schema: z.object({
           batchId: z.string(),
@@ -229,10 +231,12 @@ function initializeWorker() {
         const service = new CancelDevSessionRunsService();
         await service.call(payload);
       },
+      // @deprecated, moved to batchTriggerWorker.server.ts
       "v3.processBatchTaskRun": async ({ payload }) => {
         const service = new BatchTriggerV3Service(payload.strategy);
         await service.processBatchTaskRun(payload);
       },
+      // @deprecated, moved to batchTriggerWorker.server.ts
       "runengine.processBatchTaskRun": async ({ payload }) => {
         const service = new RunEngineBatchTriggerService(payload.strategy);
         await service.processBatchTaskRun(payload);

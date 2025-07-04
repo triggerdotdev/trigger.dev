@@ -20,7 +20,7 @@ import { batchTaskRunItemStatusForRunStatus } from "~/models/taskRun.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { getEntitlement } from "~/services/platform.v3.server";
-import { commonWorker } from "../commonWorker.server";
+import { batchTriggerWorker } from "../batchTriggerWorker.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { legacyRunEngineWorker } from "../legacyRunEngineWorker.server";
 import { marqs } from "../marqs/index.server";
@@ -892,7 +892,7 @@ export class BatchTriggerV3Service extends BaseService {
   }
 
   async #enqueueBatchTaskRun(options: BatchProcessingOptions) {
-    await commonWorker.enqueue({
+    await batchTriggerWorker.enqueue({
       id: `BatchTriggerV2Service.process:${options.batchId}:${options.processingId}`,
       job: "v3.processBatchTaskRun",
       payload: options,

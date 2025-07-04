@@ -14,7 +14,7 @@ import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { getEntitlement } from "~/services/platform.v3.server";
-import { commonWorker } from "~/v3/commonWorker.server";
+import { batchTriggerWorker } from "~/v3/batchTriggerWorker.server";
 import { downloadPacketFromObjectStore, uploadPacketToObjectStore } from "../../v3/r2.server";
 import { ServiceValidationError, WithRunEngine } from "../../v3/services/baseService.server";
 import { OutOfEntitlementError, TriggerTaskService } from "../../v3/services/triggerTask.server";
@@ -314,7 +314,7 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
   }
 
   async #enqueueBatchTaskRun(options: BatchProcessingOptions) {
-    await commonWorker.enqueue({
+    await batchTriggerWorker.enqueue({
       id: `RunEngineBatchTriggerService.process:${options.batchId}:${options.processingId}`,
       job: "runengine.processBatchTaskRun",
       payload: options,
