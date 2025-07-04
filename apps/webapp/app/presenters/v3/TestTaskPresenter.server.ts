@@ -1,11 +1,14 @@
-import { ScheduledTaskPayload, parsePacket, prettyPrintPacket } from "@trigger.dev/core/v3";
+import {
+  QueueItem,
+  ScheduledTaskPayload,
+  parsePacket,
+  prettyPrintPacket,
+} from "@trigger.dev/core/v3";
 import { type RuntimeEnvironmentType, type TaskRunStatus } from "@trigger.dev/database";
 import { type PrismaClient, prisma, sqlDatabaseSchema } from "~/db.server";
 import { getTimezones } from "~/utils/timezones.server";
-import {
-  type BackgroundWorkerTaskSlim,
-  findCurrentWorkerDeployment,
-} from "~/v3/models/workerDeployment.server";
+import { findCurrentWorkerDeployment } from "~/v3/models/workerDeployment.server";
+import { queueTypeFromType, toQueueItem } from "./QueueRetrievePresenter.server";
 
 type TestTaskOptions = {
   userId: string;
@@ -27,11 +30,23 @@ type Task = {
 export type TestTask =
   | {
       triggerSource: "STANDARD";
+      queue?: {
+        id: string;
+        name: string;
+        type: "custom" | "task";
+        paused: boolean;
+      };
       task: Task;
       runs: StandardRun[];
     }
   | {
       triggerSource: "SCHEDULED";
+      queue?: {
+        id: string;
+        name: string;
+        type: "custom" | "task";
+        paused: boolean;
+      };
       task: Task;
       possibleTimezones: string[];
       runs: ScheduledRun[];
@@ -49,6 +64,7 @@ export type TestTaskResult =
 type RawRun = {
   id: string;
   number: BigInt;
+  queue: string;
   friendlyId: string;
   createdAt: Date;
   status: TaskRunStatus;
@@ -86,29 +102,41 @@ export class TestTaskPresenter {
     environment,
     taskIdentifier,
   }: TestTaskOptions): Promise<TestTaskResult> {
-    let task: BackgroundWorkerTaskSlim | null = null;
-    if (environment.type !== "DEVELOPMENT") {
-      const deployment = await findCurrentWorkerDeployment({ environmentId: environment.id });
-      if (deployment) {
-        task = deployment.worker?.tasks.find((t) => t.slug === taskIdentifier) ?? null;
-      }
-    } else {
-      task = await this.#prismaClient.backgroundWorkerTask.findFirst({
-        where: {
-          slug: taskIdentifier,
-          runtimeEnvironmentId: environment.id,
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-      });
-    }
+    const task =
+      environment.type !== "DEVELOPMENT"
+        ? (
+            await findCurrentWorkerDeployment({ environmentId: environment.id })
+          )?.worker?.tasks.find((t) => t.slug === taskIdentifier)
+        : await this.#prismaClient.backgroundWorkerTask.findFirst({
+            where: {
+              slug: taskIdentifier,
+              runtimeEnvironmentId: environment.id,
+            },
+            orderBy: {
+              createdAt: "desc",
+            },
+          });
 
     if (!task) {
       return {
         foundTask: false,
       };
     }
+
+    const taskQueue = task.queueId
+      ? await this.#prismaClient.taskQueue.findFirst({
+          where: {
+            runtimeEnvironmentId: environment.id,
+            id: task.queueId,
+          },
+          select: {
+            id: true,
+            name: true,
+            type: true,
+            paused: true,
+          },
+        })
+      : undefined;
 
     const latestRuns = await this.#prismaClient.$queryRaw<RawRun[]>`
     WITH taskruns AS (
@@ -130,6 +158,7 @@ export class TestTaskPresenter {
     SELECT
         taskr.id,
         taskr.number,
+        taskr."queue",
         taskr."friendlyId",
         taskr."taskIdentifier",
         taskr."createdAt",
@@ -159,6 +188,14 @@ export class TestTaskPresenter {
           foundTask: true,
           task: {
             triggerSource: "STANDARD",
+            queue: taskQueue
+              ? {
+                  id: taskQueue.id,
+                  name: taskQueue.name.replace(/^task\//, ""),
+                  type: queueTypeFromType(taskQueue.type),
+                  paused: taskQueue.paused,
+                }
+              : undefined,
             task: taskWithEnvironment,
             runs: await Promise.all(
               latestRuns.map(async (r) => {

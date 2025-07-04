@@ -4,7 +4,7 @@ import { BeakerIcon } from "@heroicons/react/20/solid";
 import { RectangleStackIcon } from "@heroicons/react/20/solid";
 import { Form, useActionData, useSubmit, useFetcher } from "@remix-run/react";
 import { type ActionFunction, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { JSONEditor } from "~/components/code/JSONEditor";
@@ -32,6 +32,7 @@ import { TextLink } from "~/components/primitives/TextLink";
 import { TimezoneList } from "~/components/scheduled/timezones";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useSearchParams } from "~/hooks/useSearchParam";
+import { useParams } from "@remix-run/react";
 import {
   redirectBackWithErrorMessage,
   redirectWithErrorMessage,
@@ -53,6 +54,7 @@ import { TestTaskService } from "~/v3/services/testTask.server";
 import { OutOfEntitlementError } from "~/v3/services/triggerTask.server";
 import { TestTaskData } from "~/v3/testTask";
 import { RunTagInput } from "~/components/runs/v3/RunTagInput";
+import { type loader as queuesLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.queues";
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { projectParam, organizationSlug, envParam, taskParam } = v3TaskParamsSchema.parse(params);
@@ -166,7 +168,13 @@ export default function Page() {
 
   switch (result.task.triggerSource) {
     case "STANDARD": {
-      return <StandardTaskForm task={result.task.task} runs={result.task.runs} />;
+      return (
+        <StandardTaskForm
+          task={result.task.task}
+          defaultQueue={result.task.queue}
+          runs={result.task.runs}
+        />
+      );
     }
     case "SCHEDULED": {
       return (
@@ -182,10 +190,19 @@ export default function Page() {
 
 const startingJson = "{\n\n}";
 
-function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: StandardRun[] }) {
+function StandardTaskForm({
+  task,
+  defaultQueue,
+  runs,
+}: {
+  task: TestTask["task"];
+  defaultQueue: TestTask["queue"];
+  runs: StandardRun[];
+}) {
   const environment = useEnvironment();
   const { value, replace } = useSearchParams();
   const tab = value("tab");
+  const params = useParams();
 
   //form submission
   const lastSubmission = useActionData();
@@ -213,6 +230,46 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: Standa
   }, []);
 
   const currentMetadataJson = useRef<string>(defaultMetadataJson);
+
+  const queueFetcher = useFetcher<typeof queuesLoader>();
+
+  useEffect(() => {
+    if (params.organizationSlug && params.projectParam && params.envParam) {
+      const searchParams = new URLSearchParams();
+      searchParams.set("type", "custom");
+      searchParams.set("per_page", "100");
+
+      queueFetcher.load(
+        `/resources/orgs/${params.organizationSlug}/projects/${params.projectParam}/env/${
+          params.envParam
+        }/queues?${searchParams.toString()}`
+      );
+    }
+  }, [params.organizationSlug, params.projectParam, params.envParam]);
+
+  const queues = useMemo(() => {
+    const defaultQueueItem = defaultQueue
+      ? {
+          value: defaultQueue.type === "task" ? `task/${defaultQueue.name}` : defaultQueue.name,
+          label: defaultQueue.name,
+          type: defaultQueue.type,
+          paused: defaultQueue.paused,
+        }
+      : undefined;
+
+    if (!queueFetcher.data?.queues) {
+      return defaultQueueItem ? [defaultQueueItem] : [];
+    }
+
+    const customQueues = queueFetcher.data?.queues.map((queue) => ({
+      value: queue.name,
+      label: queue.name,
+      type: queue.type,
+      paused: queue.paused,
+    }));
+
+    return defaultQueueItem ? [defaultQueueItem, ...customQueues] : customQueues;
+  }, [queueFetcher.data?.queues, defaultQueue]);
 
   const fetcher = useFetcher();
   const [
@@ -250,20 +307,6 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: Standa
       return parse(formData, { schema: TestTaskData });
     },
   });
-
-  // fetch them in the loader
-  const dummyQueues = [
-    { value: "default", label: "default", type: "task" as const, disabled: false },
-    { value: "high-priority", label: "high-priority", type: "custom" as const, disabled: false },
-    { value: "background", label: "background", type: "custom" as const, disabled: false },
-    { value: "paused-queue", label: "paused-queue", type: "task" as const, disabled: true },
-    {
-      value: "email-processing",
-      label: "email-processing",
-      type: "custom" as const,
-      disabled: false,
-    },
-  ];
 
   return (
     <Form className="grid h-full max-h-full grid-rows-[1fr_auto]" method="post" {...form.props}>
@@ -372,32 +415,31 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: Standa
               <InputGroup>
                 <Label htmlFor={queue.id}>Queue</Label>
                 <Select
-                  //   {...conform.select(queue)}
+                  name={queue.name}
+                  id={queue.id}
                   placeholder="Select queue"
                   variant="tertiary/small"
                   dropdownIcon
-                  items={dummyQueues}
+                  items={queues}
                   filter={{ keys: ["label"] }}
+                  defaultValue={undefined}
                 >
                   {(matches) =>
-                    matches.map((queue) => (
+                    matches.map((queueItem) => (
                       <SelectItem
-                        key={queue.value}
-                        value={queue.value}
-                        disabled={queue.disabled}
+                        key={queueItem.value}
+                        value={queueItem.value}
                         icon={
-                          queue.type === "task" ? (
+                          queueItem.type === "task" ? (
                             <TaskIcon className="size-4 text-blue-500" />
                           ) : (
                             <RectangleStackIcon className="size-4 text-purple-500" />
                           )
                         }
                       >
-                        <div className="flex w-full items-center justify-between">
-                          <span className={queue.disabled ? "opacity-50" : undefined}>
-                            {queue.label}
-                          </span>
-                          {queue.disabled && (
+                        <div className="flex w-full min-w-0 items-center justify-between">
+                          {queueItem.label}
+                          {queueItem.paused && (
                             <Badge variant="extra-small" className="ml-1 text-warning">
                               Paused
                             </Badge>
@@ -407,6 +449,7 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: Standa
                     ))
                   }
                 </Select>
+                <FormError id={queue.errorId}>{queue.error}</FormError>
               </InputGroup>
               <InputGroup>
                 <Label htmlFor={concurrencyKey.id}>Concurrency key</Label>
