@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/python",
-  "version": "4.0.0-v4-beta.21",
+  "version": "4.0.0-v4-beta.22",
   "description": "Python runtime and build extension for Trigger.dev",
   "license": "MIT",
   "publishConfig": {
@@ -45,7 +45,7 @@
     "check-exports": "attw --pack ."
   },
   "dependencies": {
-    "@trigger.dev/core": "workspace:4.0.0-v4-beta.21",
+    "@trigger.dev/core": "workspace:4.0.0-v4-beta.22",
     "tinyexec": "^0.3.2"
   },
   "devDependencies": {
@@ -56,12 +56,12 @@
     "tsx": "4.17.0",
     "esbuild": "^0.23.0",
     "@arethetypeswrong/cli": "^0.15.4",
-    "@trigger.dev/build": "workspace:4.0.0-v4-beta.21",
-    "@trigger.dev/sdk": "workspace:4.0.0-v4-beta.21"
+    "@trigger.dev/build": "workspace:4.0.0-v4-beta.22",
+    "@trigger.dev/sdk": "workspace:4.0.0-v4-beta.22"
   },
   "peerDependencies": {
-    "@trigger.dev/sdk": "workspace:^4.0.0-v4-beta.21",
-    "@trigger.dev/build": "workspace:^4.0.0-v4-beta.21"
+    "@trigger.dev/sdk": "workspace:^4.0.0-v4-beta.22",
+    "@trigger.dev/build": "workspace:^4.0.0-v4-beta.22"
   },
   "engines": {
     "node": ">=18.20.0"
