@@ -38,7 +38,7 @@ export function chalkLink(text: string) {
 }
 
 export function chalkWorker(text: string) {
-  return chalk.hex("#FFFF89")(text);
+  return chalk.yellowBright(text);
 }
 
 export function chalkTask(text: string) {
