@@ -866,3 +866,237 @@ const batchHandle = await tasks.batchTrigger([
 const runs = await batchHandle.runs.list();
 console.log(runs);
 ```
+
+## v4 beta Changelog
+
+<Update label="April 9, 2025" description="v4.0.0-beta.0">
+  [Trigger.dev v4
+  release](https://github.com/triggerdotdev/trigger.dev/releases/tag/trigger.dev%404.0.0-v4-beta.0).
+  Please see our upgrade to v4 docs to view the full changelog. Run Engine 2.0 (alpha)
+  ([#1575](https://github.com/triggerdotdev/trigger.dev/pull/1575)), improved warm start times by
+  eagerly creating the child TaskRunProcess when a previous run as completed
+  ([#1879](https://github.com/triggerdotdev/trigger.dev/pull/1879)), and new lifecycle hooks
+  ([#1817](https://github.com/triggerdotdev/trigger.dev/pull/1817)).
+</Update>
+
+<Update label="April 11, 2025" description="v4.0.0-beta.1">
+  [Release
+  v4.0.0-beta.1](https://github.com/triggerdotdev/trigger.dev/releases/tag/trigger.dev%404.0.0-v4-beta.1).
+  Fixed init.ts in custom trigger dirs and init command now correctly installs v4-beta packages
+  ([#1914](https://github.com/triggerdotdev/trigger.dev/pull/1914)). Updated nypm package to support
+  test-based bun.lock files and handle flush errors gracefully in dev
+  ([#1914](https://github.com/triggerdotdev/trigger.dev/pull/1914)).
+</Update>
+
+<Update label="April 15, 2025" description="v4.0.0-beta.2">
+  [Release
+  v4.0.0-beta.2](https://github.com/triggerdotdev/trigger.dev/releases/tag/trigger.dev%404.0.0-v4-beta.2).
+  Managed run controller performance and reliability improvements
+  ([#1927](https://github.com/triggerdotdev/trigger.dev/pull/1927)).
+</Update>
+
+<Update label="April 16, 2025" description="v4.0.0-beta.3">
+  [Release
+  v4.0.0-beta.3](https://github.com/triggerdotdev/trigger.dev/releases/tag/trigger.dev%404.0.0-v4-beta.3).
+  Improved usage flushing ([#1931](https://github.com/triggerdotdev/trigger.dev/pull/1931)) and
+  fixed stalled run detection ([#1934](https://github.com/triggerdotdev/trigger.dev/pull/1934)).
+</Update>
+
+<Update label="April 17, 2025" description="v4.0.0-beta.5">
+  [Release
+  v4.0.0-beta.5](https://github.com/triggerdotdev/trigger.dev/releases/tag/trigger.dev%404.0.0-v4-beta.5).
+  Updated dependencies with various bug fixes and improvements.
+</Update>
+
+<Update label="April 18, 2025" description="v4.0.0-beta.6">
+  [Release
+  v4.0.0-beta.6](https://github.com/triggerdotdev/trigger.dev/releases/tag/trigger.dev%404.0.0-v4-beta.6).
+  The dev command now uses the platform-provided engine URL
+  ([#1949](https://github.com/triggerdotdev/trigger.dev/pull/1949)).
+</Update>
+
+<Update label="April 23, 2025" description="v4.0.0-beta.7">
+  [Release
+  v4.0.0-beta.7](https://github.com/triggerdotdev/trigger.dev/releases/tag/trigger.dev%404.0.0-v4-beta.7).
+  Fixed runLimiter check on dequeueRuns
+  ([#1953](https://github.com/triggerdotdev/trigger.dev/pull/1953)) and QUEUED status snapshot
+  handler ([#1963](https://github.com/triggerdotdev/trigger.dev/pull/1963)).
+</Update>
+
+<Update label="April 23, 2025" description="v4.0.0-beta.8">
+  [Release
+  v4.0.0-beta.8](https://github.com/triggerdotdev/trigger.dev/releases/tag/trigger.dev%404.0.0-v4-beta.8).
+  Prevented large outputs from overwriting each other
+  ([#1971](https://github.com/triggerdotdev/trigger.dev/pull/1971)).
+</Update>
+
+<Update label="April 25, 2025" description="v4.0.0-beta.9">
+  [Release
+  v4.0.0-beta.9](https://github.com/triggerdotdev/trigger.dev/releases/tag/trigger.dev%404.0.0-v4-beta.9).
+  Fixed default machine config indexing
+  ([#1979](https://github.com/triggerdotdev/trigger.dev/pull/1979)).
+</Update>
+
+<Update label="April 28, 2025" description="v4.0.0-beta.10">
+  [Release
+  v4.0.0-beta.10](https://github.com/triggerdotdev/trigger.dev/releases/tag/trigger.dev%404.0.0-v4-beta.10).
+  TriggerApiError 4xx errors no longer cause tasks to be retried
+  ([#1970](https://github.com/triggerdotdev/trigger.dev/pull/1970)). Fixed polling interval reset
+  bug that could create duplicate intervals, protected against unexpected attempt number changes,
+  and prevented run execution zombies after warm starts
+  ([#1987](https://github.com/triggerdotdev/trigger.dev/pull/1987)).
+</Update>
+
+<Update label="April 29, 2025" description="v4.0.0-beta.11">
+  [Release
+  v4.0.0-beta.11](https://github.com/triggerdotdev/trigger.dev/releases/tag/trigger.dev%404.0.0-v4-beta.11).
+  Updated dependencies with various bug fixes and improvements.
+</Update>
+
+<Update label="May 3, 2025" description="v4.0.0-beta.12">
+  [Release
+  v4.0.0-beta.12](https://github.com/triggerdotdev/trigger.dev/releases/tag/trigger.dev%404.0.0-v4-beta.12).
+  Display clickable links in Cursor terminal
+  ([#1998](https://github.com/triggerdotdev/trigger.dev/pull/1998)) and added AI assistance link
+  when you have build errors ([#1925](https://github.com/triggerdotdev/trigger.dev/pull/1925)).
+  Added validation when passing a directory to deploy command with helpful hints
+  ([#2013](https://github.com/triggerdotdev/trigger.dev/pull/2013)).
+</Update>
+
+<Update label="May 7, 2025" description="v4.0.0-beta.13">
+  [Release
+  v4.0.0-beta.13](https://github.com/triggerdotdev/trigger.dev/releases/tag/trigger.dev%404.0.0-v4-beta.13).
+  Correctly resolved waitpoints that come in early, ensured correct state before requesting
+  suspension, and fixed race conditions in snapshot processing
+  ([#2006](https://github.com/triggerdotdev/trigger.dev/pull/2006)). Always print full deploy logs
+  in CI ([#2006](https://github.com/triggerdotdev/trigger.dev/pull/2006)).
+</Update>
+
+<Update label="May 8, 2025" description="v4.0.0-beta.14">
+  [Release
+  v4.0.0-beta.14](https://github.com/triggerdotdev/trigger.dev/releases/tag/trigger.dev%404.0.0-v4-beta.14).
+  Updated dependencies with various bug fixes and improvements.
+</Update>
+
+<Update label="May 14, 2025" description="v4.0.0-beta.15">
+  [Release
+  v4.0.0-beta.15](https://github.com/triggerdotdev/trigger.dev/releases/tag/trigger.dev%404.0.0-v4-beta.15).
+  Added external log exporters and fixed missing external trace exporters in deployed tasks
+  ([#2038](https://github.com/triggerdotdev/trigger.dev/pull/2038)). Log images sizes for
+  self-hosted deploys ([#1764](https://github.com/triggerdotdev/trigger.dev/pull/1764)) and fixed
+  init.ts auto-import for deployed workers
+  ([#2041](https://github.com/triggerdotdev/trigger.dev/pull/2041)).
+</Update>
+
+<Update label="May 14, 2025" description="v4.0.0-beta.16">
+  [Release
+  v4.0.0-beta.16](https://github.com/triggerdotdev/trigger.dev/releases/tag/trigger.dev%404.0.0-v4-beta.16).
+  Fixed init.ts detection when using the sentry esbuild plugin
+  ([#2051](https://github.com/triggerdotdev/trigger.dev/pull/2051)).
+</Update>
+
+<Update label="May 22, 2025" description="v4.0.0-beta.17">
+  [Release
+  v4.0.0-beta.17](https://github.com/triggerdotdev/trigger.dev/releases/tag/trigger.dev%404.0.0-v4-beta.17).
+  Exposed esbuild `keepNames` ([#2091](https://github.com/triggerdotdev/trigger.dev/pull/2091)) and
+  `minify` options (experimental) ([#2091](https://github.com/triggerdotdev/trigger.dev/pull/2091)).
+  Added `experimental_autoDetectExternal` trigger config option
+  ([#2083](https://github.com/triggerdotdev/trigger.dev/pull/2083)) and output esbuild metafile,
+  which can be inspected after `deploy --dry run`
+  ([#2087](https://github.com/triggerdotdev/trigger.dev/pull/2087)).
+</Update>
+
+<Update label="May 22, 2025" description="v4.0.0-beta.18">
+  [Release
+  v4.0.0-beta.18](https://github.com/triggerdotdev/trigger.dev/releases/tag/trigger.dev%404.0.0-v4-beta.18).
+  Fixed dev runs ([#2094](https://github.com/triggerdotdev/trigger.dev/pull/2094)).
+</Update>
+
+<Update label="June 2, 2025" description="v4.0.0-beta.19">
+  [Release
+  v4.0.0-beta.19](https://github.com/triggerdotdev/trigger.dev/releases/tag/trigger.dev%404.0.0-v4-beta.19).
+  Added import timings and bundle size analysis - the dev command now warns about slow imports
+  ([#2114](https://github.com/triggerdotdev/trigger.dev/pull/2114)). Fixed metadata collapsing
+  correctness ([#2115](https://github.com/triggerdotdev/trigger.dev/pull/2115)), added support for
+  Preview branches in v4 projects ([#2086](https://github.com/triggerdotdev/trigger.dev/pull/2086)),
+  can now set project ref using the TRIGGER_PROJECT_REF env var
+  ([#2109](https://github.com/triggerdotdev/trigger.dev/pull/2109)), and fixed `syncEnvVars` for
+  non-preview deployments ([#2131](https://github.com/triggerdotdev/trigger.dev/pull/2131)).
+</Update>
+
+<Update label="June 3, 2025" description="v4.0.0-beta.20">
+  [Release
+  v4.0.0-beta.20](https://github.com/triggerdotdev/trigger.dev/releases/tag/trigger.dev%404.0.0-v4-beta.20).
+  Updated dependencies with various bug fixes and improvements.
+</Update>
+
+<Update label="June 6, 2025" description="v4.0.0-beta.21">
+  [Release
+  v4.0.0-beta.21](https://github.com/triggerdotdev/trigger.dev/releases/tag/trigger.dev%404.0.0-v4-beta.21).
+  Runtime agnostic SDK config via env vars
+  ([#2132](https://github.com/triggerdotdev/trigger.dev/pull/2132)) and fixed update command version
+  range handling ([#2153](https://github.com/triggerdotdev/trigger.dev/pull/2153)). Resolved issue
+  where CLI could get stuck during deploy finalization, unified local and remote build logic with
+  multi-platform build support, improved switch command which now accepts profile name as an
+  argument, registry configuration is now fully managed by the webapp, the deploy `--self-hosted`
+  flag is no longer required, and enhanced deployment error reporting and image digest retrieval
+  ([#2138](https://github.com/triggerdotdev/trigger.dev/pull/2138)). Updated profile switcher
+  ([#2150](https://github.com/triggerdotdev/trigger.dev/pull/2150)).
+</Update>
+
+<Update label="July 4, 2025" description="v4.0.0-beta.22">
+  [Release
+  v4.0.0-beta.22](https://github.com/triggerdotdev/trigger.dev/releases/tag/trigger.dev%404.0.0-v4-beta.22).
+  Fix update command version mismatch detection
+  ([#2199](https://github.com/triggerdotdev/trigger.dev/pull/2199)). Add project details to the
+  whoami command ([#2231](https://github.com/triggerdotdev/trigger.dev/pull/2231)). Serialize
+  metadata to prevent invalid metadata from breaking run completions
+  ([#2219](https://github.com/triggerdotdev/trigger.dev/pull/2219))
+
+This release also includes a new experimental `processKeepAlive` option, which allows you to
+keep the process alive after the run has completed for the next warm start, which makes warm starts even faster.
+
+Currently during a warm start, we still recreate the actual task run process between runs, leading to a completely fresh global environment for each run. This experimental option will keep the task run process alive between run executions, leading to even faster warm starts. This option is respected in both the `dev` CLI and in deployed tasks.
+
+To enable this option, add this to your `trigger.config.ts`:
+
+```ts
+import { defineConfig } from "@trigger.dev/sdk";
+
+export default defineConfig({
+  project: "<project ref>",
+  // This is false by default
+  experimental_processKeepAlive: true,
+  maxDuration: 60,
+});
+```
+
+You can also pass an object to `experimental_processKeepAlive` to provide more options:
+
+```ts
+import { defineConfig } from "@trigger.dev/sdk";
+
+export default defineConfig({
+  project: "<project ref>",
+  experimental_processKeepAlive: {
+    enabled: true,
+    // After 20 runs execute with a single process, we'll restart the process and start fresh
+    maxExecutionsPerProcess: 20,
+    // In dev, you can combine this option with setting a max pool size, giving you the ability to limit the number of processes created on your local dev machine. Has no effect on deployed tasks
+    devMaxPoolSize: 10,
+  },
+  maxDuration: 60,
+});
+```
+
+## Gotchas
+
+- Be careful with memory usage and memory leaks, as this will cause memory to persist across run executions.
+- It's possible different tasks get executed in the same persisted process.
+- If you configure any 3rd party SDKs globally using env vars for API keys, those SDKs will not change between runs. So if you change an env var between runs, the SDK will be "stale" and continue using the old env var value. Instead, you should initialize SDKs using env vars at runtime (in any of the lifecycle hooks or inside the `run` function of a task.
+- Cancelling a task will cause the task run process to be restarted. Exiting the process is the only reliable way to actually stop a running function from stopping.
+- This DOES NOT effect cold starts, warm starts only will be improved.
+
+We recommend enabling this option and testing in a staging or preview environment before trying it out in prod, as there could be unknown issues depending on what you are doing in your tasks. [#2183](https://github.com/triggerdotdev/trigger.dev/pull/2183)
+
+</Update>
