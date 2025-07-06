@@ -1,7 +1,7 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs, MetaFunction } from "@remix-run/node";
 import { redirect } from "@remix-run/node";
 import { Form, useNavigation } from "@remix-run/react";
-import { useState } from "react";
+import React, { useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { LoginPageLayout } from "~/components/LoginPageLayout";
@@ -16,8 +16,9 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { Spinner } from "~/components/primitives/Spinner";
 import { authenticator } from "~/services/auth.server";
 import { commitSession, getUserSession, sessionStorage } from "~/services/sessionStorage.server";
+import { getSession as getMessageSession } from "~/models/message.server";
 import { MultiFactorAuthenticationService } from "~/services/mfa/multiFactorAuthentication.server";
-import { redirectWithErrorMessage } from "~/models/message.server";
+import { redirectWithErrorMessage, redirectBackWithErrorMessage } from "~/models/message.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { checkMfaRateLimit, MfaRateLimitError } from "~/services/mfa/mfaRateLimiter.server";
 
@@ -55,15 +56,13 @@ export async function loader({ request }: LoaderFunctionArgs) {
     return redirect("/login");
   }
 
-  const error = session.get("auth:error");
-
+  // Get flash message for MFA errors
+  const messageSession = await getMessageSession(request.headers.get("cookie"));
+  const toastMessage = messageSession.get("toastMessage");
+  
   let mfaError: string | undefined;
-  if (error) {
-    if ("message" in error) {
-      mfaError = error.message;
-    } else {
-      mfaError = JSON.stringify(error, null, 2);
-    }
+  if (toastMessage?.type === "error") {
+    mfaError = toastMessage.message;
   }
 
   return typedjson(
@@ -99,10 +98,7 @@ export async function action({ request }: ActionFunctionArgs) {
       const recoveryCode = payload.recoveryCode as string;
       
       if (!recoveryCode) {
-        session.set("auth:error", { message: "Recovery code is required" });
-        return redirect("/login/mfa", {
-          headers: { "Set-Cookie": await commitSession(session) },
-        });
+        return redirectBackWithErrorMessage(request, "Recovery code is required");
       }
 
       // Rate limit MFA verification attempts
@@ -111,10 +107,7 @@ export async function action({ request }: ActionFunctionArgs) {
       const result = await mfaService.verifyRecoveryCodeForLogin(pendingUserId, recoveryCode);
       
       if (!result.success) {
-        session.set("auth:error", { message: result.error });
-        return redirect("/login/mfa", {
-          headers: { "Set-Cookie": await commitSession(session) },
-        });
+        return redirectBackWithErrorMessage(request, result.error || "Invalid authentication code");
       }
       // Recovery code verified - complete the login
       return await completeLogin(request, session, pendingUserId);
@@ -123,10 +116,7 @@ export async function action({ request }: ActionFunctionArgs) {
       const mfaCode = payload.mfaCode as string;
       
       if (!mfaCode || mfaCode.length !== 6) {
-        session.set("auth:error", { message: "Valid 6-digit code is required" });
-        return redirect("/login/mfa", {
-          headers: { "Set-Cookie": await commitSession(session) },
-        });
+        return redirectBackWithErrorMessage(request, "Valid 6-digit code is required");
       }
 
       // Rate limit MFA verification attempts
@@ -135,10 +125,7 @@ export async function action({ request }: ActionFunctionArgs) {
       const result = await mfaService.verifyTotpForLogin(pendingUserId, mfaCode);
       
       if (!result.success) {
-        session.set("auth:error", { message: result.error });
-        return redirect("/login/mfa", {
-          headers: { "Set-Cookie": await commitSession(session) },
-        });
+        return redirectBackWithErrorMessage(request, result.error || "Invalid authentication code");
       }
 
       // TOTP code verified - complete the login
@@ -153,11 +140,7 @@ export async function action({ request }: ActionFunctionArgs) {
     }
     
     if (error instanceof MfaRateLimitError) {
-      const session = await getUserSession(request);
-      session.set("auth:error", { message: error.message });
-      return redirect("/login/mfa", {
-        headers: { "Set-Cookie": await commitSession(session) },
-      });
+      return redirectBackWithErrorMessage(request, error.message);
     }
     
     throw error;
@@ -173,7 +156,6 @@ async function completeLogin(request: Request, session: any, userId: string) {
   const redirectTo = session.get("pending-mfa-redirect-to") ?? "/";
   session.unset("pending-mfa-user-id");
   session.unset("pending-mfa-redirect-to");
-  session.unset("auth:error");
   
   return redirect(redirectTo, {
     headers: {
@@ -184,16 +166,43 @@ async function completeLogin(request: Request, session: any, userId: string) {
 
 export default function LoginMfaPage() {
   const data = useTypedLoaderData<typeof loader>();
-  const mfaError = 'mfaError' in data ? data.mfaError : undefined;
+  const rawMfaError = 'mfaError' in data ? data.mfaError : undefined;
   const navigate = useNavigation();
   const [showRecoveryCode, setShowRecoveryCode] = useState(false);
   const [mfaCode, setMfaCode] = useState("");
+  const [hideError, setHideError] = useState(false);
+
+  // Clear the MFA code when form submission completes (success or failure)
+  const prevNavigationState = React.useRef(navigate.state);
+  React.useEffect(() => {
+    if (prevNavigationState.current === "submitting" && navigate.state === "idle") {
+      setMfaCode("");
+    }
+    prevNavigationState.current = navigate.state;
+  }, [navigate.state]);
+
+  // Reset hideError when a new error appears
+  React.useEffect(() => {
+    if (rawMfaError) {
+      setHideError(false);
+    }
+  }, [rawMfaError]);
+
+  // Clear error and MFA code when switching between modes
+  const handleShowRecoveryCode = (show: boolean) => {
+    setShowRecoveryCode(show);
+    setHideError(true);
+    if (!show) {
+      setMfaCode("");
+    }
+  };
+
+  // Only show error if not explicitly hidden and we have an error
+  const mfaError = hideError ? undefined : rawMfaError;
 
   const isLoading =
     (navigate.state === "loading" || navigate.state === "submitting") &&
-    navigate.formAction !== undefined &&
-    (navigate.formData?.get("action") === "verify-mfa" ||
-      navigate.formData?.get("action") === "verify-recovery");
+    navigate.formAction !== undefined;
 
   return (
     <LoginPageLayout>
@@ -240,7 +249,7 @@ export default function LoginMfaPage() {
               </Fieldset>
               <Button
                 type="button"
-                onClick={() => setShowRecoveryCode(false)}
+                onClick={() => handleShowRecoveryCode(false)}
                 variant="minimal/small"
                 data-action="use authenticator app"
                 className="mt-4"
@@ -292,7 +301,7 @@ export default function LoginMfaPage() {
               </Fieldset>
               <Button
                 type="button"
-                onClick={() => setShowRecoveryCode(true)}
+                onClick={() => handleShowRecoveryCode(true)}
                 variant="minimal/small"
                 data-action="use recovery code"
                 className="mt-4"
