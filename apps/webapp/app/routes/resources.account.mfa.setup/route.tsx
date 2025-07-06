@@ -1,9 +1,10 @@
 import { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson } from "remix-typedjson";
 import { z } from "zod";
-import { redirectWithSuccessMessage, typedJsonWithSuccessMessage } from "~/models/message.server";
+import { redirectWithSuccessMessage, redirectWithErrorMessage, typedJsonWithSuccessMessage } from "~/models/message.server";
 import { MultiFactorAuthenticationService } from "~/services/mfa/multiFactorAuthentication.server";
 import { requireUserId } from "~/services/session.server";
+import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { useMfaSetup } from "./useMfaSetup";
 import { MfaToggle } from "./MfaToggle";
 import { MfaSetupDialog } from "./MfaSetupDialog";
@@ -49,82 +50,91 @@ function validateForm(formData: FormData) {
 }
 
 export async function action({ request }: ActionFunctionArgs) {
-  const userId = await requireUserId(request);
+  try {
+    const userId = await requireUserId(request);
 
-  const formData = await request.formData();
+    const formData = await request.formData();
 
-  const submission = validateForm(formData);
+    const submission = validateForm(formData);
 
-  if (!submission.valid) {
-    return typedjson({
-      action: "invalid-form" as const,
-      errors: submission.errors,
-    });
-  }
-
-  const mfaSetupService = new MultiFactorAuthenticationService();
-
-  switch (submission.data.action) {
-    case "enable-mfa": {
-      const result = await mfaSetupService.enableTotp(userId);
-
+    if (!submission.valid) {
       return typedjson({
-        action: "enable-mfa" as const,
-        secret: result.secret,
-        otpAuthUrl: result.otpAuthUrl,
+        action: "invalid-form" as const,
+        errors: submission.errors,
       });
     }
-    case "disable-mfa": {
-      const result = await mfaSetupService.disableTotp(userId, {
-        totpCode: submission.data.totpCode,
-        recoveryCode: submission.data.recoveryCode,
-      });
 
-      if (result.success) {
-        return typedJsonWithSuccessMessage(
-          {
-            action: "disable-mfa" as const,
-            success: true as const,
-          },
-          request,
-          "Successfully disabled MFA"
-        );
-      } else {
-        return typedjson({
-          action: "disable-mfa" as const,
-          success: false as const,
-          error: "Invalid code provided. Please try again.",
-        });
-      }
-    }
-    case "validate-totp": {
-      const result = await mfaSetupService.validateTotpSetup(userId, submission.data.totpCode);
+    const mfaSetupService = new MultiFactorAuthenticationService();
 
-      if (result.success) {
+    switch (submission.data.action) {
+      case "enable-mfa": {
+        const result = await mfaSetupService.enableTotp(userId);
+
         return typedjson({
-          action: "validate-totp" as const,
-          success: true as const,
-          recoveryCodes: result.recoveryCodes,
-        });
-      } else {
-        return typedjson({
-          action: "validate-totp" as const,
-          success: false as const,
-          error: "Invalid code provided. Please try again.",
-          otpAuthUrl: result.otpAuthUrl,
+          action: "enable-mfa" as const,
           secret: result.secret,
+          otpAuthUrl: result.otpAuthUrl,
         });
       }
+      case "disable-mfa": {
+        const result = await mfaSetupService.disableTotp(userId, {
+          totpCode: submission.data.totpCode,
+          recoveryCode: submission.data.recoveryCode,
+        });
+
+        if (result.success) {
+          return typedJsonWithSuccessMessage(
+            {
+              action: "disable-mfa" as const,
+              success: true as const,
+            },
+            request,
+            "Successfully disabled MFA"
+          );
+        } else {
+          return typedjson({
+            action: "disable-mfa" as const,
+            success: false as const,
+            error: "Invalid code provided. Please try again.",
+          });
+        }
+      }
+      case "validate-totp": {
+        const result = await mfaSetupService.validateTotpSetup(userId, submission.data.totpCode);
+
+        if (result.success) {
+          return typedjson({
+            action: "validate-totp" as const,
+            success: true as const,
+            recoveryCodes: result.recoveryCodes,
+          });
+        } else {
+          return typedjson({
+            action: "validate-totp" as const,
+            success: false as const,
+            error: "Invalid code provided. Please try again.",
+            otpAuthUrl: result.otpAuthUrl,
+            secret: result.secret,
+          });
+        }
+      }
+      case "cancel-totp": {
+        return typedjson({
+          action: "cancel-totp" as const,
+          success: true as const,
+        });
+      }
+      case "saved-recovery-codes": {
+        return redirectWithSuccessMessage("/account/security", request, "Successfully enabled MFA");
+      }
     }
-    case "cancel-totp": {
-      return typedjson({
-        action: "cancel-totp" as const,
-        success: true as const,
-      });
+  } catch (error) {
+    if (error instanceof ServiceValidationError) {
+      return redirectWithErrorMessage("/account/security", request, error.message);
     }
-    case "saved-recovery-codes": {
-      return redirectWithSuccessMessage("/account/security", request, "Successfully enabled MFA");
-    }
+    
+    // Re-throw unexpected errors
+    throw error;
   }
 }
 
