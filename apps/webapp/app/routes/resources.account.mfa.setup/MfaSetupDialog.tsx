@@ -1,8 +1,10 @@
 import { Form } from "@remix-run/react";
+import { DownloadIcon } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { useState } from "react";
 import { Button } from "~/components/primitives/Buttons";
 import { CopyableText } from "~/components/primitives/CopyableText";
+import { CopyButton } from "~/components/primitives/CopyButton";
 import {
   Dialog,
   DialogContent,
@@ -20,19 +22,23 @@ interface MfaSetupDialogProps {
     secret: string;
     otpAuthUrl: string;
   };
+  recoveryCodes?: string[];
   error?: string;
   isSubmitting: boolean;
   onValidate: (code: string) => void;
   onCancel: () => void;
+  onSaveRecoveryCodes: () => void;
 }
 
 export function MfaSetupDialog({
   isOpen,
   setupData,
+  recoveryCodes,
   error,
   isSubmitting,
   onValidate,
   onCancel,
+  onSaveRecoveryCodes,
 }: MfaSetupDialogProps) {
   const [totpCode, setTotpCode] = useState("");
 
@@ -47,6 +53,86 @@ export function MfaSetupDialog({
     onCancel();
   };
 
+  const handleRecoverySubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSaveRecoveryCodes();
+  };
+
+  const downloadRecoveryCodes = () => {
+    if (!recoveryCodes) return;
+    
+    const content = recoveryCodes.join("\n");
+    const blob = new Blob([content], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "trigger-dev-recovery-codes.txt";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  // Show recovery codes if they exist
+  if (recoveryCodes && recoveryCodes.length > 0) {
+    return (
+      <Dialog open={isOpen}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Recovery codes</DialogTitle>
+          </DialogHeader>
+          <Form method="post" onSubmit={handleRecoverySubmit}>
+            <div className="flex flex-col gap-2 pb-0 pt-3">
+              <Paragraph spacing>
+                Copy and store these recovery codes carefully in case you lose your device.
+              </Paragraph>
+
+              <div className="flex flex-col gap-6 rounded border border-grid-dimmed bg-background-bright pt-6">
+                <div className="grid grid-cols-3 gap-2">
+                  {recoveryCodes.map((code, index) => (
+                    <div key={index} className="text-center font-mono text-sm text-text-bright">
+                      {code}
+                    </div>
+                  ))}
+                </div>
+                <div className="flex items-center justify-end border-t border-grid-bright px-1.5 py-1.5">
+                  <Button
+                    type="button"
+                    variant="minimal/medium"
+                    onClick={downloadRecoveryCodes}
+                    LeadingIcon={DownloadIcon}
+                  >
+                    Download
+                  </Button>
+                  <CopyButton
+                    value={recoveryCodes.join("\n")}
+                    buttonVariant="minimal"
+                    showTooltip={false}
+                  >
+                    Copy
+                  </CopyButton>
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter className="justify-end border-t-0">
+              <Button
+                type="submit"
+                variant="primary/medium"
+                shortcut={{ key: "Enter" }}
+                hideShortcutKey
+                autoFocus
+              >
+                Continue
+              </Button>
+            </DialogFooter>
+          </Form>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  // Show QR setup if no recovery codes yet
   if (!setupData) return null;
 
   return (

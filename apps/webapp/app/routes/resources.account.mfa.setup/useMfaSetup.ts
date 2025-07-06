@@ -295,8 +295,8 @@ export function useMfaSetup(initialIsEnabled: boolean) {
     state,
     actions,
     // Computed properties for easier access
-    isQrDialogOpen: state.phase === 'enabling' && !!state.setupData,
-    isRecoveryDialogOpen: state.phase === 'showing-recovery' && !!state.recoveryCodes,
+    isQrDialogOpen: (state.phase === 'enabling' && !!state.setupData) || (state.phase === 'showing-recovery' && !!state.recoveryCodes),
+    isRecoveryDialogOpen: false, // Recovery is now handled within the setup dialog
     isDisableDialogOpen: state.phase === 'disabling',
   };
 }

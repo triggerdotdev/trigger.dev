@@ -7,7 +7,6 @@ import { requireUserId } from "~/services/session.server";
 import { useMfaSetup } from "./useMfaSetup";
 import { MfaToggle } from "./MfaToggle";
 import { MfaSetupDialog } from "./MfaSetupDialog";
-import { MfaRecoveryDialog } from "./MfaRecoveryDialog";
 import { MfaDisableDialog } from "./MfaDisableDialog";
 
 const formSchema = z.discriminatedUnion("action", [
@@ -150,16 +149,12 @@ export function MfaSetup({ isEnabled }: { isEnabled: boolean }) {
       <MfaSetupDialog
         isOpen={isQrDialogOpen}
         setupData={state.setupData}
+        recoveryCodes={state.recoveryCodes}
         error={state.error}
         isSubmitting={state.isSubmitting}
         onValidate={actions.validateTotp}
         onCancel={actions.cancelSetup}
-      />
-
-      <MfaRecoveryDialog
-        isOpen={isRecoveryDialogOpen}
-        recoveryCodes={state.recoveryCodes}
-        onSave={actions.saveRecoveryCodes}
+        onSaveRecoveryCodes={actions.saveRecoveryCodes}
       />
 
       <MfaDisableDialog
