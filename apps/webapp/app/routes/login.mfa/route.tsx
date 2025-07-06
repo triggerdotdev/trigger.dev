@@ -15,7 +15,10 @@ import { InputOTP, InputOTPGroup, InputOTPSlot } from "~/components/primitives/I
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Spinner } from "~/components/primitives/Spinner";
 import { authenticator } from "~/services/auth.server";
-import { commitSession, getUserSession } from "~/services/sessionStorage.server";
+import { commitSession, getUserSession, sessionStorage } from "~/services/sessionStorage.server";
+import { MultiFactorAuthenticationService } from "~/services/mfa/multiFactorAuthentication.server";
+import { redirectWithErrorMessage } from "~/models/message.server";
+import { ServiceValidationError } from "~/v3/services/baseService.server";
 
 export const meta: MetaFunction = ({ matches }) => {
   const parentMeta = matches
@@ -37,11 +40,20 @@ export const meta: MetaFunction = ({ matches }) => {
 };
 
 export async function loader({ request }: LoaderFunctionArgs) {
+  // Check if user is already fully authenticated
   await authenticator.isAuthenticated(request, {
     successRedirect: "/",
   });
 
   const session = await getUserSession(request);
+  
+  // Check if there's a pending MFA user ID
+  const pendingUserId = session.get("pending-mfa-user-id");
+  if (!pendingUserId) {
+    // No pending MFA, redirect to login
+    return redirect("/login");
+  }
+
   const error = session.get("auth:error");
 
   let mfaError: string | undefined;
@@ -64,42 +76,100 @@ export async function loader({ request }: LoaderFunctionArgs) {
 }
 
 export async function action({ request }: ActionFunctionArgs) {
-  const clonedRequest = request.clone();
-
-  const payload = Object.fromEntries(await clonedRequest.formData());
-
-  const { action } = z
-    .object({
-      action: z.enum(["verify-recovery", "verify-mfa"]),
-    })
-    .parse(payload);
-
-  if (action === "verify-recovery") {
-    // TODO: Implement recovery code verification logic
-    const recoveryCode = payload.recoveryCode;
-
-    // For now, just redirect to dashboard
-    return redirect("/");
-  } else if (action === "verify-mfa") {
-    // TODO: Implement MFA code verification logic
-    const mfaCode = payload.mfaCode;
-
-    // For now, just redirect to dashboard
-    return redirect("/");
-  } else {
+  try {
     const session = await getUserSession(request);
-    session.unset("triggerdotdev:magiclink");
+    const pendingUserId = session.get("pending-mfa-user-id");
+    
+    if (!pendingUserId) {
+      return redirect("/login");
+    }
 
-    return redirect("/login/magic", {
-      headers: {
-        "Set-Cookie": await commitSession(session),
-      },
-    });
+    const payload = Object.fromEntries(await request.formData());
+
+    const { action } = z
+      .object({
+        action: z.enum(["verify-recovery", "verify-mfa"]),
+      })
+      .parse(payload);
+
+    const mfaService = new MultiFactorAuthenticationService();
+
+    if (action === "verify-recovery") {
+      const recoveryCode = payload.recoveryCode as string;
+      
+      if (!recoveryCode) {
+        session.set("auth:error", { message: "Recovery code is required" });
+        return redirect("/login/mfa", {
+          headers: { "Set-Cookie": await commitSession(session) },
+        });
+      }
+
+      const result = await mfaService.verifyRecoveryCodeForLogin(pendingUserId, recoveryCode);
+      
+      if (!result.success) {
+        session.set("auth:error", { message: result.error });
+        return redirect("/login/mfa", {
+          headers: { "Set-Cookie": await commitSession(session) },
+        });
+      }
+
+      // Recovery code verified - complete the login
+      return await completeLogin(request, session, pendingUserId);
+
+    } else if (action === "verify-mfa") {
+      const mfaCode = payload.mfaCode as string;
+      
+      if (!mfaCode || mfaCode.length !== 6) {
+        session.set("auth:error", { message: "Valid 6-digit code is required" });
+        return redirect("/login/mfa", {
+          headers: { "Set-Cookie": await commitSession(session) },
+        });
+      }
+
+      const result = await mfaService.verifyTotpForLogin(pendingUserId, mfaCode);
+      
+      if (!result.success) {
+        session.set("auth:error", { message: result.error });
+        return redirect("/login/mfa", {
+          headers: { "Set-Cookie": await commitSession(session) },
+        });
+      }
+
+      // TOTP code verified - complete the login
+      return await completeLogin(request, session, pendingUserId);
+    }
+
+    return redirect("/login");
+    
+  } catch (error) {
+    if (error instanceof ServiceValidationError) {
+      return redirectWithErrorMessage("/login", request, error.message);
+    }
+    throw error;
   }
 }
 
+async function completeLogin(request: Request, session: any, userId: string) {
+  // Create a new authenticated session
+  const authSession = await sessionStorage.getSession(request.headers.get("Cookie"));
+  authSession.set(authenticator.sessionKey, { userId });
+  
+  // Get the redirect URL and clean up pending MFA data
+  const redirectTo = session.get("pending-mfa-redirect-to") ?? "/";
+  session.unset("pending-mfa-user-id");
+  session.unset("pending-mfa-redirect-to");
+  session.unset("auth:error");
+  
+  return redirect(redirectTo, {
+    headers: {
+      "Set-Cookie": await sessionStorage.commitSession(authSession),
+    },
+  });
+}
+
 export default function LoginMfaPage() {
-  const { mfaError } = useTypedLoaderData<typeof loader>();
+  const data = useTypedLoaderData<typeof loader>();
+  const mfaError = 'mfaError' in data ? data.mfaError : undefined;
   const navigate = useNavigation();
   const [showRecoveryCode, setShowRecoveryCode] = useState(false);
   const [mfaCode, setMfaCode] = useState("");
@@ -151,7 +221,7 @@ export default function LoginMfaPage() {
                     <span className="text-text-bright">Verify</span>
                   )}
                 </Button>
-                {mfaError && <FormError>{mfaError}</FormError>}
+                {typeof mfaError === 'string' && <FormError>{mfaError}</FormError>}
               </Fieldset>
               <Button
                 type="button"
@@ -203,7 +273,7 @@ export default function LoginMfaPage() {
                     <span className="text-text-bright">Verify</span>
                   )}
                 </Button>
-                {mfaError && <FormError>{mfaError}</FormError>}
+                {typeof mfaError === 'string' && <FormError>{mfaError}</FormError>}
               </Fieldset>
               <Button
                 type="button"

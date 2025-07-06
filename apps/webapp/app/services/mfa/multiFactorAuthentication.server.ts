@@ -14,6 +14,15 @@ const SecretSchema = z.object({
   secret: z.string(),
 });
 
+export class MfaRequiredError extends Error {
+  public readonly userId: string;
+
+  constructor(userId: string) {
+    super(`MFA is required for user ${userId}`);
+    this.userId = userId;
+  }
+}
+
 export class MultiFactorAuthenticationService {
   #prismaClient: PrismaClient;
 
@@ -276,34 +285,95 @@ export class MultiFactorAuthenticationService {
 
     return !!backupCode;
   }
-}
 
-function generateQRCodeUrl({
-  issuer,
-  account,
-  secret,
-  digits = 6,
-  period = 30,
-}: {
-  issuer: string;
-  account: string;
-  secret: string;
-  digits?: number;
-  period?: number;
-}) {
-  const encodedIssuer = encodeURIComponent(issuer);
-  const encodedAccountName = encodeURIComponent(account);
-  const baseURI = `otpauth://totp/${encodedIssuer}:${encodedAccountName}`;
-  const params = new URLSearchParams({
-    secret,
-    issuer,
-  });
+  // Public methods for login flow with security measures
+  public async verifyTotpForLogin(userId: string, totpCode: string) {
+    const user = await this.#prismaClient.user.findFirst({
+      where: { id: userId },
+      include: {
+        mfaSecretReference: true,
+      },
+    });
 
-  if (digits !== undefined) {
-    params.set("digits", digits.toString());
+    if (!user || !user.mfaEnabledAt || !user.mfaSecretReference) {
+      return {
+        success: false,
+        error: "Invalid authentication code",
+      };
+    }
+
+    // Check for replay attack - if this code was already used
+    const hashedCode = await createHash("SHA-512", "hex").digest(totpCode);
+    if (user.mfaLastUsedCode === hashedCode) {
+      return {
+        success: false,
+        error: "Invalid authentication code",
+      };
+    }
+
+    // Verify the TOTP code
+    const isValid = await this.#verifyTotpCode(user, user.mfaSecretReference, totpCode);
+
+    if (!isValid) {
+      return {
+        success: false,
+        error: "Invalid authentication code",
+      };
+    }
+
+    // Mark this code as used to prevent replay
+    await this.#prismaClient.user.update({
+      where: { id: userId },
+      data: {
+        mfaLastUsedCode: hashedCode,
+      },
+    });
+
+    return {
+      success: true,
+    };
   }
-  if (period !== undefined) {
-    params.set("period", period.toString());
+
+  public async verifyRecoveryCodeForLogin(userId: string, recoveryCode: string) {
+    const user = await this.#prismaClient.user.findFirst({
+      where: { id: userId },
+    });
+
+    if (!user || !user.mfaEnabledAt) {
+      return {
+        success: false,
+        error: "Invalid authentication code",
+      };
+    }
+
+    const hashedCode = await createHash("SHA-512", "hex").digest(recoveryCode);
+
+    // Find an unused recovery code
+    const backupCode = await this.#prismaClient.mfaBackupCode.findFirst({
+      where: {
+        userId: user.id,
+        code: hashedCode,
+        usedAt: null,
+      },
+    });
+
+    if (!backupCode) {
+      return {
+        success: false,
+        error: "Invalid authentication code",
+      };
+    }
+
+    // Mark this recovery code as used
+    await this.#prismaClient.mfaBackupCode.update({
+      where: { id: backupCode.id },
+      data: {
+        usedAt: new Date(),
+      },
+    });
+
+    return {
+      success: true,
+    };
   }
-  return `${baseURI}?${params.toString()}`;
 }
