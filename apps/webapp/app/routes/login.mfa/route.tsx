@@ -112,7 +112,6 @@ export async function action({ request }: ActionFunctionArgs) {
           headers: { "Set-Cookie": await commitSession(session) },
         });
       }
-
       // Recovery code verified - complete the login
       return await completeLogin(request, session, pendingUserId);
 
@@ -195,7 +194,7 @@ export default function LoginMfaPage() {
               <Fieldset className="flex w-full flex-col items-center gap-y-2">
                 <InputGroup>
                   <Input
-                    type="text"
+                    type="password"
                     name="recoveryCode"
                     spellCheck={false}
                     placeholder="Enter recovery code"
