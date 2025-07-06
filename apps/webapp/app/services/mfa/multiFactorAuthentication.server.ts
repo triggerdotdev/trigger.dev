@@ -263,15 +263,10 @@ export class MultiFactorAuthenticationService {
 
     const secret = secretResult.secret;
 
-    console.log("secret", secret);
-    console.log("totpCode", totpCode);
-
     const isValid = await createOTP(secret, {
       digits: 6,
       period: 30,
     }).verify(totpCode);
-
-    console.log("isValid", isValid);
 
     return isValid;
   }

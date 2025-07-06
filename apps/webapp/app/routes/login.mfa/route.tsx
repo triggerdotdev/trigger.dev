@@ -19,6 +19,7 @@ import { commitSession, getUserSession, sessionStorage } from "~/services/sessio
 import { MultiFactorAuthenticationService } from "~/services/mfa/multiFactorAuthentication.server";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
+import { checkMfaRateLimit, MfaRateLimitError } from "~/services/mfa/mfaRateLimiter.server";
 
 export const meta: MetaFunction = ({ matches }) => {
   const parentMeta = matches
@@ -104,6 +105,9 @@ export async function action({ request }: ActionFunctionArgs) {
         });
       }
 
+      // Rate limit MFA verification attempts
+      await checkMfaRateLimit(pendingUserId);
+
       const result = await mfaService.verifyRecoveryCodeForLogin(pendingUserId, recoveryCode);
       
       if (!result.success) {
@@ -125,6 +129,9 @@ export async function action({ request }: ActionFunctionArgs) {
         });
       }
 
+      // Rate limit MFA verification attempts
+      await checkMfaRateLimit(pendingUserId);
+
       const result = await mfaService.verifyTotpForLogin(pendingUserId, mfaCode);
       
       if (!result.success) {
@@ -144,6 +151,15 @@ export async function action({ request }: ActionFunctionArgs) {
     if (error instanceof ServiceValidationError) {
       return redirectWithErrorMessage("/login", request, error.message);
     }
+    
+    if (error instanceof MfaRateLimitError) {
+      const session = await getUserSession(request);
+      session.set("auth:error", { message: error.message });
+      return redirect("/login/mfa", {
+        headers: { "Set-Cookie": await commitSession(session) },
+      });
+    }
+    
     throw error;
   }
 }
