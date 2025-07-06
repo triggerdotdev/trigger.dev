@@ -1043,3 +1043,60 @@ console.log(runs);
   ([#2138](https://github.com/triggerdotdev/trigger.dev/pull/2138)). Updated profile switcher
   ([#2150](https://github.com/triggerdotdev/trigger.dev/pull/2150)).
 </Update>
+
+<Update label="July 4, 2025" description="v4.0.0-beta.22">
+  [Release
+  v4.0.0-beta.22](https://github.com/triggerdotdev/trigger.dev/releases/tag/trigger.dev%404.0.0-v4-beta.22).
+  Fix update command version mismatch detection
+  ([#2199](https://github.com/triggerdotdev/trigger.dev/pull/2199)). Add project details to the
+  whoami command ([#2231](https://github.com/triggerdotdev/trigger.dev/pull/2231)). Serialize
+  metadata to prevent invalid metadata from breaking run completions
+  ([#2219](https://github.com/triggerdotdev/trigger.dev/pull/2219))
+
+This release also includes a new experimental `processKeepAlive` option, which allows you to
+keep the process alive after the run has completed for the next warm start, which makes warm starts even faster.
+
+Currently during a warm start, we still recreate the actual task run process between runs, leading to a completely fresh global environment for each run. This experimental option will keep the task run process alive between run executions, leading to even faster warm starts. This option is respected in both the `dev` CLI and in deployed tasks.
+
+To enable this option, add this to your `trigger.config.ts`:
+
+```ts
+import { defineConfig } from "@trigger.dev/sdk";
+
+export default defineConfig({
+  project: "<project ref>",
+  // This is false by default
+  experimental_processKeepAlive: true,
+  maxDuration: 60,
+});
+```
+
+You can also pass an object to `experimental_processKeepAlive` to provide more options:
+
+```ts
+import { defineConfig } from "@trigger.dev/sdk";
+
+export default defineConfig({
+  project: "<project ref>",
+  experimental_processKeepAlive: {
+    enabled: true,
+    // After 20 runs execute with a single process, we'll restart the process and start fresh
+    maxExecutionsPerProcess: 20,
+    // In dev, you can combine this option with setting a max pool size, giving you the ability to limit the number of processes created on your local dev machine. Has no effect on deployed tasks
+    devMaxPoolSize: 10,
+  },
+  maxDuration: 60,
+});
+```
+
+## Gotchas
+
+- Be careful with memory usage and memory leaks, as this will cause memory to persist across run executions.
+- It's possible different tasks get executed in the same persisted process.
+- If you configure any 3rd party SDKs globally using env vars for API keys, those SDKs will not change between runs. So if you change an env var between runs, the SDK will be "stale" and continue using the old env var value. Instead, you should initialize SDKs using env vars at runtime (in any of the lifecycle hooks or inside the `run` function of a task.
+- Cancelling a task will cause the task run process to be restarted. Exiting the process is the only reliable way to actually stop a running function from stopping.
+- This DOES NOT effect cold starts, warm starts only will be improved.
+
+We recommend enabling this option and testing in a staging or preview environment before trying it out in prod, as there could be unknown issues depending on what you are doing in your tasks. [#2183](https://github.com/triggerdotdev/trigger.dev/pull/2183)
+
+</Update>
