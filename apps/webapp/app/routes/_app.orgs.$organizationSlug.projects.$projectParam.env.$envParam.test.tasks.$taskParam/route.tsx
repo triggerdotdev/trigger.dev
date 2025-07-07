@@ -196,6 +196,15 @@ export default function Page() {
 }
 
 const startingJson = "{\n\n}";
+const machinePresets = [
+  "micro",
+  "small-1x",
+  "small-2x",
+  "medium-1x",
+  "medium-2x",
+  "large-1x",
+  "large-2x",
+];
 
 function StandardTaskForm({
   task,
@@ -247,6 +256,9 @@ function StandardTaskForm({
     selectedCodeSample?.concurrencyKey
   );
   const [queueValue, setQueueValue] = useState<string | undefined>(selectedCodeSample?.queue);
+  const [machineValue, setMachineValue] = useState<string | undefined>(
+    selectedCodeSample?.machinePreset
+  );
   const [maxAttemptsValue, setMaxAttemptsValue] = useState<number | undefined>(
     selectedCodeSample?.maxAttempts
   );
@@ -315,6 +327,7 @@ function StandardTaskForm({
       triggerSource,
       tags,
       version,
+      machine,
     },
   ] = useForm({
     id: "test-task",
@@ -401,6 +414,7 @@ function StandardTaskForm({
                         setMaxDurationValue(run.maxDurationInSeconds);
                         setTagsValue(run.runTags ?? []);
                         setQueueValue(run.queue);
+                        setMachineValue(run.machinePreset);
                       }}
                       className="flex w-full items-center gap-2 rounded-sm px-2 py-2 outline-none transition-colors focus-custom hover:bg-charcoal-900	"
                     >
@@ -577,27 +591,6 @@ function StandardTaskForm({
                 <FormError id={maxDurationSeconds.errorId}>{maxDurationSeconds.error}</FormError>
               </InputGroup>
               <InputGroup>
-                <Label htmlFor={version.id}>Version</Label>
-                <Select
-                  {...conform.select(version)}
-                  defaultValue="latest"
-                  variant="tertiary/small"
-                  placeholder="Select version"
-                  dropdownIcon
-                  disabled={disableVersionSelection}
-                >
-                  {versions.map((version, i) => (
-                    <SelectItem key={version} value={i === 0 ? "latest" : version}>
-                      {version} {i === 0 && "(latest)"}
-                    </SelectItem>
-                  ))}
-                </Select>
-                {disableVersionSelection && (
-                  <Hint>Only the latest version is available in the development environment.</Hint>
-                )}
-                <FormError id={version.errorId}>{version.error}</FormError>
-              </InputGroup>
-              <InputGroup>
                 <Label htmlFor={idempotencyKey.id}>Idempotency key</Label>
                 <Input {...conform.input(idempotencyKey, { type: "text" })} variant="small" />
                 <FormError id={idempotencyKey.errorId}>{idempotencyKey.error}</FormError>
@@ -630,6 +623,51 @@ function StandardTaskForm({
                   each value of the key.
                 </Hint>
                 <FormError id={concurrencyKey.errorId}>{concurrencyKey.error}</FormError>
+              </InputGroup>
+              <InputGroup>
+                <Label htmlFor={machine.id}>Machine</Label>
+                <Select
+                  {...conform.select(machine)}
+                  variant="tertiary/small"
+                  placeholder="Select machine type"
+                  dropdownIcon
+                  items={machinePresets}
+                  defaultValue={undefined}
+                  value={machineValue}
+                  setValue={(e) => {
+                    if (Array.isArray(e)) return;
+                    setMachineValue(e);
+                  }}
+                >
+                  {machinePresets.map((machine) => (
+                    <SelectItem key={machine} value={machine}>
+                      {machine}
+                    </SelectItem>
+                  ))}
+                </Select>
+                <Hint>This lets you override the machine preset specified in the task.</Hint>
+                <FormError id={machine.errorId}>{machine.error}</FormError>
+              </InputGroup>
+              <InputGroup>
+                <Label htmlFor={version.id}>Version</Label>
+                <Select
+                  {...conform.select(version)}
+                  defaultValue="latest"
+                  variant="tertiary/small"
+                  placeholder="Select version"
+                  dropdownIcon
+                  disabled={disableVersionSelection}
+                >
+                  {versions.map((version, i) => (
+                    <SelectItem key={version} value={i === 0 ? "latest" : version}>
+                      {version} {i === 0 && "(latest)"}
+                    </SelectItem>
+                  ))}
+                </Select>
+                {disableVersionSelection && (
+                  <Hint>Only the latest version is available in the development environment.</Hint>
+                )}
+                <FormError id={version.errorId}>{version.error}</FormError>
               </InputGroup>
               <FormError>{form.error}</FormError>
             </Fieldset>

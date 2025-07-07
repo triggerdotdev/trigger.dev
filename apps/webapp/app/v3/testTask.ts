@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MachinePresetName } from "@trigger.dev/core/v3/schemas";
 
 export const TestTaskData = z
   .discriminatedUnion("triggerSource", [
@@ -75,6 +76,7 @@ export const TestTaskData = z
       queue: z.string().optional(),
       concurrencyKey: z.string().optional(),
       maxAttempts: z.number().min(1).optional(),
+      machine: MachinePresetName.optional(),
       maxDurationSeconds: z
         .number()
         .min(0)
