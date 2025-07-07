@@ -395,6 +395,8 @@ redis:
     host: ""
     port: 6379
     password: ""
+    tls:
+      enabled: false  # Set to true for Redis instances requiring TLS (e.g., AWS ElastiCache)
 
 # Electric configuration
 electric:

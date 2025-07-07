@@ -99,8 +99,8 @@ Get the full image name for supervisor
 PostgreSQL hostname
 */}}
 {{- define "trigger-v4.postgres.hostname" -}}
-{{- if .Values.postgres.host }}
-{{- .Values.postgres.host }}
+{{- if .Values.postgres.external.host }}
+{{- .Values.postgres.external.host }}
 {{- else if .Values.postgres.deploy }}
 {{- printf "%s-postgres" .Release.Name }}
 {{- end }}
@@ -110,8 +110,8 @@ PostgreSQL hostname
 PostgreSQL connection string
 */}}
 {{- define "trigger-v4.postgres.connectionString" -}}
-{{- if .Values.postgres.host -}}
-postgresql://{{ .Values.postgres.username }}:{{ .Values.postgres.password }}@{{ .Values.postgres.host }}:{{ .Values.postgres.port | default 5432 }}/{{ .Values.postgres.database }}?schema={{ .Values.postgres.schema | default "public" }}&sslmode={{ .Values.postgres.sslMode | default "prefer" }}
+{{- if .Values.postgres.external.host -}}
+postgresql://{{ .Values.postgres.external.username }}:{{ .Values.postgres.external.password }}@{{ .Values.postgres.external.host }}:{{ .Values.postgres.external.port | default 5432 }}/{{ .Values.postgres.external.database }}?schema={{ .Values.postgres.connection.schema | default "public" }}&sslmode={{ .Values.postgres.connection.sslMode | default "prefer" }}
 {{- else if .Values.postgres.deploy -}}
 postgresql://{{ .Values.postgres.auth.username }}:{{ .Values.postgres.auth.password }}@{{ include "trigger-v4.postgres.hostname" . }}:5432/{{ .Values.postgres.auth.database }}?schema={{ .Values.postgres.connection.schema | default "public" }}&sslmode={{ .Values.postgres.connection.sslMode | default "prefer" }}
 {{- end -}}
@@ -121,8 +121,8 @@ postgresql://{{ .Values.postgres.auth.username }}:{{ .Values.postgres.auth.passw
 Redis hostname
 */}}
 {{- define "trigger-v4.redis.hostname" -}}
-{{- if .Values.redis.host }}
-{{- .Values.redis.host }}
+{{- if .Values.redis.external.host }}
+{{- .Values.redis.external.host }}
 {{- else if .Values.redis.deploy }}
 {{- printf "%s-redis-master" .Release.Name }}
 {{- end }}
@@ -136,10 +136,32 @@ Redis connection details
 {{- end }}
 
 {{- define "trigger-v4.redis.port" -}}
-{{- if .Values.redis.host -}}
-{{ .Values.redis.port | default 6379 }}
+{{- if .Values.redis.external.host -}}
+{{ .Values.redis.external.port | default 6379 }}
 {{- else if .Values.redis.deploy -}}
 6379
+{{- end -}}
+{{- end }}
+
+{{/*
+Redis password
+*/}}
+{{- define "trigger-v4.redis.password" -}}
+{{- if .Values.redis.external.host -}}
+{{ .Values.redis.external.password }}
+{{- else if .Values.redis.deploy -}}
+{{ .Values.redis.auth.password }}
+{{- end -}}
+{{- end }}
+
+{{/*
+Redis TLS disabled setting
+*/}}
+{{- define "trigger-v4.redis.tlsDisabled" -}}
+{{- if .Values.redis.external.host -}}
+{{ not (.Values.redis.external.tls.enabled | default false) }}
+{{- else -}}
+{{- true -}}
 {{- end -}}
 {{- end }}
 
@@ -248,8 +270,8 @@ Registry connection details
 PostgreSQL host (for wait-for-it script)
 */}}
 {{- define "trigger-v4.postgres.host" -}}
-{{- if .Values.postgres.host -}}
-{{ .Values.postgres.host }}:{{ .Values.postgres.port | default 5432 }}
+{{- if .Values.postgres.external.host -}}
+{{ .Values.postgres.external.host }}:{{ .Values.postgres.external.port | default 5432 }}
 {{- else if .Values.postgres.deploy -}}
 {{ include "trigger-v4.postgres.hostname" . }}:5432
 {{- end -}}

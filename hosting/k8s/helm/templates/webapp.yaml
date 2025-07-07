@@ -190,8 +190,12 @@ spec:
               value: {{ include "trigger-v4.redis.host" . | quote }}
             - name: REDIS_PORT
               value: {{ include "trigger-v4.redis.port" . | quote }}
+            {{- if include "trigger-v4.redis.password" . }}
+            - name: REDIS_PASSWORD
+              value: {{ include "trigger-v4.redis.password" . | quote }}
+            {{- end }}
             - name: REDIS_TLS_DISABLED
-              value: "true"
+              value: {{ include "trigger-v4.redis.tlsDisabled" . | quote }}
             - name: APP_LOG_LEVEL
               value: {{ .Values.webapp.logLevel | quote }}
             - name: DEV_OTEL_EXPORTER_OTLP_ENDPOINT
