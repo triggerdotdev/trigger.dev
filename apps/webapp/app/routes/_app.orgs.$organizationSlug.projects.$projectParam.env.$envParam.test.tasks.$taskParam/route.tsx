@@ -179,6 +179,7 @@ export default function Page() {
           runs={result.task.runs}
           versions={result.task.latestVersions}
           disableVersionSelection={result.disableVersionSelection}
+          allowArbitraryQueues={result.allowArbitraryQueues}
         />
       );
     }
@@ -212,12 +213,14 @@ function StandardTaskForm({
   runs,
   versions,
   disableVersionSelection,
+  allowArbitraryQueues,
 }: {
   task: TestTask["task"];
   defaultQueue: TestTask["queue"];
   runs: StandardRun[];
   versions: string[];
   disableVersionSelection: boolean;
+  allowArbitraryQueues: boolean;
 }) {
   const environment = useEnvironment();
   const { value, replace } = useSearchParams();
@@ -503,43 +506,52 @@ function StandardTaskForm({
               </InputGroup>
               <InputGroup>
                 <Label htmlFor={queue.id}>Queue</Label>
-                <Select
-                  name={queue.name}
-                  id={queue.id}
-                  placeholder="Select queue"
-                  variant="tertiary/small"
-                  dropdownIcon
-                  items={queues}
-                  filter={{ keys: ["label"] }}
-                  value={queueValue}
-                  setValue={setQueueValue}
-                >
-                  {(matches) =>
-                    matches.map((queueItem) => (
-                      <SelectItem
-                        key={queueItem.value}
-                        value={queueItem.value}
-                        className="max-w-[var(--popover-anchor-width)]"
-                        icon={
-                          queueItem.type === "task" ? (
-                            <TaskIcon className="size-4 shrink-0 text-blue-500" />
-                          ) : (
-                            <RectangleStackIcon className="size-4 shrink-0 text-purple-500" />
-                          )
-                        }
-                      >
-                        <div className="flex w-full min-w-0 items-center justify-between">
-                          <span className="truncate">{queueItem.label}</span>
-                          {queueItem.paused && (
-                            <Badge variant="extra-small" className="ml-1 text-warning">
-                              Paused
-                            </Badge>
-                          )}
-                        </div>
-                      </SelectItem>
-                    ))
-                  }
-                </Select>
+                {allowArbitraryQueues ? (
+                  <Input
+                    {...conform.input(queue, { type: "text" })}
+                    variant="small"
+                    value={queueValue ?? ""}
+                    onChange={(e) => setQueueValue(e.target.value)}
+                  />
+                ) : (
+                  <Select
+                    name={queue.name}
+                    id={queue.id}
+                    placeholder="Select queue"
+                    variant="tertiary/small"
+                    dropdownIcon
+                    items={queues}
+                    filter={{ keys: ["label"] }}
+                    value={queueValue}
+                    setValue={setQueueValue}
+                  >
+                    {(matches) =>
+                      matches.map((queueItem) => (
+                        <SelectItem
+                          key={queueItem.value}
+                          value={queueItem.value}
+                          className="max-w-[var(--popover-anchor-width)]"
+                          icon={
+                            queueItem.type === "task" ? (
+                              <TaskIcon className="size-4 shrink-0 text-blue-500" />
+                            ) : (
+                              <RectangleStackIcon className="size-4 shrink-0 text-purple-500" />
+                            )
+                          }
+                        >
+                          <div className="flex w-full min-w-0 items-center justify-between">
+                            <span className="truncate">{queueItem.label}</span>
+                            {queueItem.paused && (
+                              <Badge variant="extra-small" className="ml-1 text-warning">
+                                Paused
+                              </Badge>
+                            )}
+                          </div>
+                        </SelectItem>
+                      ))
+                    }
+                  </Select>
+                )}
                 <FormError id={queue.errorId}>{queue.error}</FormError>
               </InputGroup>
               <InputGroup>

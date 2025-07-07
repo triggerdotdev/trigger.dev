@@ -55,6 +55,7 @@ export type TestTaskResult =
       foundTask: true;
       task: TestTask;
       disableVersionSelection: boolean;
+      allowArbitraryQueues: boolean;
     }
   | {
       foundTask: false;
@@ -147,23 +148,24 @@ export class TestTaskPresenter {
         })
       : undefined;
 
-    // last 20 versions should suffice
-    const latestVersions = (
-      await this.#prismaClient.backgroundWorker.findMany({
-        where: {
-          runtimeEnvironmentId: environment.id,
-        },
-        select: {
-          version: true,
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-        take: 20,
-      })
-    ).map((v) => v.version);
+    const backgroundWorkers = await this.#prismaClient.backgroundWorker.findMany({
+      where: {
+        runtimeEnvironmentId: environment.id,
+      },
+      select: {
+        version: true,
+        engine: true,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+      take: 20, // last 20 versions should suffice
+    });
+
+    const latestVersions = backgroundWorkers.map((v) => v.version);
 
     const disableVersionSelection = environment.type === "DEVELOPMENT";
+    const allowArbitraryQueues = backgroundWorkers[0]?.engine === "V1";
 
     const latestRuns = await this.#prismaClient.$queryRaw<RawRun[]>`
     WITH taskruns AS (
@@ -248,6 +250,7 @@ export class TestTaskPresenter {
             latestVersions,
           },
           disableVersionSelection,
+          allowArbitraryQueues,
         };
       case "SCHEDULED":
         const possibleTimezones = getTimezones();
@@ -278,6 +281,7 @@ export class TestTaskPresenter {
             latestVersions,
           },
           disableVersionSelection,
+          allowArbitraryQueues,
         };
     }
   }
