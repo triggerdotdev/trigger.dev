@@ -2,7 +2,6 @@ import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { BeakerIcon, RectangleStackIcon } from "@heroicons/react/20/solid";
 import { ClockIcon } from "@heroicons/react/24/outline";
-import { Form, useActionData, useFetcher } from "@remix-run/react";
 import { type ActionFunction, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -14,7 +13,6 @@ import { Button } from "~/components/primitives/Buttons";
 import { DateField } from "~/components/primitives/DateField";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormError } from "~/components/primitives/FormError";
-import { Header2 } from "~/components/primitives/Headers";
 import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
@@ -34,7 +32,7 @@ import { TextLink } from "~/components/primitives/TextLink";
 import { TimezoneList } from "~/components/scheduled/timezones";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useSearchParams } from "~/hooks/useSearchParam";
-import { useParams } from "@remix-run/react";
+import { useParams, Form, useActionData, useFetcher } from "@remix-run/react";
 import {
   redirectBackWithErrorMessage,
   redirectWithErrorMessage,
@@ -59,6 +57,7 @@ import { RunTagInput } from "~/components/runs/v3/RunTagInput";
 import { type loader as queuesLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.queues";
 import { DateTime } from "~/components/primitives/DateTime";
 import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
+
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { projectParam, organizationSlug, envParam, taskParam } = v3TaskParamsSchema.parse(params);
@@ -255,17 +254,11 @@ function StandardTaskForm({
   const { value, replace } = useSearchParams();
   const tab = value("tab");
 
-  //form submission
   const lastSubmission = useActionData();
-
-  //recent runs
-  const [selectedCodeSampleId, setSelectedCodeSampleId] = useState(runs.at(0)?.id);
-  const selectedCodeSample = runs.find((r) => r.id === selectedCodeSampleId);
-  const selectedCodeSamplePayload = selectedCodeSample?.payload;
-  const selectedCodeSampleMetadata = selectedCodeSample?.seedMetadata;
+  const lastRun = runs[0];
 
   const [defaultPayloadJson, setDefaultPayloadJson] = useState<string>(
-    selectedCodeSamplePayload ?? startingJson
+    lastRun?.payload ?? startingJson
   );
   const setPayload = useCallback((code: string) => {
     setDefaultPayloadJson(code);
@@ -274,7 +267,7 @@ function StandardTaskForm({
   const currentPayloadJson = useRef<string>(defaultPayloadJson);
 
   const [defaultMetadataJson, setDefaultMetadataJson] = useState<string>(
-    selectedCodeSampleMetadata ?? "{}"
+    lastRun?.seedMetadata ?? "{}"
   );
   const setMetadata = useCallback((code: string) => {
     setDefaultMetadataJson(code);
@@ -282,21 +275,19 @@ function StandardTaskForm({
 
   const currentMetadataJson = useRef<string>(defaultMetadataJson);
 
-  const [ttlValue, setTtlValue] = useState<number | undefined>(selectedCodeSample?.ttlSeconds);
+  const [ttlValue, setTtlValue] = useState<number | undefined>(lastRun?.ttlSeconds);
   const [concurrencyKeyValue, setConcurrencyKeyValue] = useState<string | undefined>(
-    selectedCodeSample?.concurrencyKey
+    lastRun?.concurrencyKey
   );
-  const [queueValue, setQueueValue] = useState<string | undefined>(selectedCodeSample?.queue);
-  const [machineValue, setMachineValue] = useState<string | undefined>(
-    selectedCodeSample?.machinePreset
-  );
+  const [queueValue, setQueueValue] = useState<string | undefined>(lastRun?.queue);
+  const [machineValue, setMachineValue] = useState<string | undefined>(lastRun?.machinePreset);
   const [maxAttemptsValue, setMaxAttemptsValue] = useState<number | undefined>(
-    selectedCodeSample?.maxAttempts
+    lastRun?.maxAttempts
   );
   const [maxDurationValue, setMaxDurationValue] = useState<number | undefined>(
-    selectedCodeSample?.maxDurationInSeconds
+    lastRun?.maxDurationInSeconds
   );
-  const [tagsValue, setTagsValue] = useState<string[]>(selectedCodeSample?.runTags ?? []);
+  const [tagsValue, setTagsValue] = useState<string[]>(lastRun?.runTags ?? []);
 
   const queueItems = queues.map((q) => ({
     value: q.type === "task" ? `task/${q.name}` : q.name,
@@ -376,7 +367,6 @@ function StandardTaskForm({
             onRunSelected={(run) => {
               setPayload(run.payload);
               run.seedMetadata && setMetadata(run.seedMetadata);
-              setSelectedCodeSampleId(run.id);
               setTtlValue(run.ttlSeconds);
               setConcurrencyKeyValue(run.concurrencyKey);
               setMaxAttemptsValue(run.maxAttempts);
@@ -388,7 +378,7 @@ function StandardTaskForm({
           />
         </div>
       </TabContainer>
-      <ResizablePanelGroup orientation="horizontal">
+      <ResizablePanelGroup orientation="horizontal" className="grow">
         <ResizablePanel id="test-task-main" min="300px">
           <div className="flex h-full flex-col overflow-hidden bg-charcoal-900">
             <div className="flex-1 overflow-hidden">
@@ -398,14 +388,7 @@ function StandardTaskForm({
                 basicSetup
                 onChange={(v) => {
                   currentPayloadJson.current = v;
-
-                  //deselect the example if it's been edited
-                  if (selectedCodeSampleId) {
-                    if (v !== selectedCodeSamplePayload) {
-                      setDefaultPayloadJson(v);
-                      setSelectedCodeSampleId(undefined);
-                    }
-                  }
+                  setDefaultPayloadJson(v);
                 }}
                 height="100%"
                 autoFocus={!tab || tab === "payload"}
@@ -417,14 +400,7 @@ function StandardTaskForm({
                 basicSetup
                 onChange={(v) => {
                   currentMetadataJson.current = v;
-
-                  //deselect the example if it's been edited
-                  if (selectedCodeSampleId) {
-                    if (v !== selectedCodeSampleMetadata) {
-                      setDefaultMetadataJson(v);
-                      setSelectedCodeSampleId(undefined);
-                    }
-                  }
+                  setDefaultMetadataJson(v);
                 }}
                 height="100%"
                 autoFocus={tab === "metadata"}
@@ -670,25 +646,19 @@ function ScheduledTaskForm({
 }) {
   const environment = useEnvironment();
   const lastSubmission = useActionData();
-  const [selectedCodeSampleId, setSelectedCodeSampleId] = useState(runs.at(0)?.id);
-  const [timestampValue, setTimestampValue] = useState<Date | undefined>();
-  const [lastTimestampValue, setLastTimestampValue] = useState<Date | undefined>();
-  const [externalIdValue, setExternalIdValue] = useState<string | undefined>();
-  const [timezoneValue, setTimezoneValue] = useState<string>("UTC");
 
-  //set initial values
-  useEffect(() => {
-    const initialRun = runs.find((r) => r.id === selectedCodeSampleId);
-    if (!initialRun) {
-      setTimestampValue(new Date());
-      return;
-    }
+  const lastRun = runs[0];
 
-    setTimestampValue(initialRun.payload.timestamp);
-    setLastTimestampValue(initialRun.payload.lastTimestamp);
-    setExternalIdValue(initialRun.payload.externalId);
-    setTimezoneValue(initialRun.payload.timezone);
-  }, [selectedCodeSampleId]);
+  const [timestampValue, setTimestampValue] = useState<Date | undefined>(
+    lastRun.payload.timestamp ?? new Date()
+  );
+  const [lastTimestampValue, setLastTimestampValue] = useState<Date | undefined>(
+    lastRun.payload.lastTimestamp
+  );
+  const [externalIdValue, setExternalIdValue] = useState<string | undefined>(
+    lastRun.payload.externalId
+  );
+  const [timezoneValue, setTimezoneValue] = useState<string>(lastRun.payload.timezone ?? "UTC");
 
   const [
     form,
@@ -711,7 +681,7 @@ function ScheduledTaskForm({
   });
 
   return (
-    <Form className="grid h-full max-h-full grid-rows-[1fr_auto]" method="post" {...form.props}>
+    <Form className="flex h-full max-h-full flex-col" method="post" {...form.props}>
       <input
         type="hidden"
         {...conform.input(triggerSource, { type: "hidden" })}
@@ -727,7 +697,25 @@ function ScheduledTaskForm({
         {...conform.input(environmentId, { type: "hidden" })}
         value={environment.id}
       />
-      <div className="p-3">
+      <TabContainer className="flex items-baseline justify-between pl-3 pr-2 pt-1.5">
+        <div className="flex gap-5">
+          <TabButton isActive={true} layoutId="scheduled-task-options">
+            Options
+          </TabButton>
+        </div>
+        <div className="flex items-center gap-3">
+          <RecentRunsPopover
+            runs={runs}
+            onRunSelected={(run) => {
+              setTimestampValue(run.payload.timestamp);
+              setLastTimestampValue(run.payload.lastTimestamp);
+              setExternalIdValue(run.payload.externalId);
+              setTimezoneValue(run.payload.timezone);
+            }}
+          />
+        </div>
+      </TabContainer>
+      <div className="grow p-3">
         <Fieldset>
           <InputGroup>
             <Label htmlFor={timestamp.id}>Timestamp UTC</Label>
