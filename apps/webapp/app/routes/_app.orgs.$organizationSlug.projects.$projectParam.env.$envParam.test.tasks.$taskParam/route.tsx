@@ -515,16 +515,17 @@ function StandardTaskForm({
                       <SelectItem
                         key={queueItem.value}
                         value={queueItem.value}
+                        className="max-w-[var(--popover-anchor-width)]"
                         icon={
                           queueItem.type === "task" ? (
-                            <TaskIcon className="size-4 text-blue-500" />
+                            <TaskIcon className="size-4 shrink-0 text-blue-500" />
                           ) : (
-                            <RectangleStackIcon className="size-4 text-purple-500" />
+                            <RectangleStackIcon className="size-4 shrink-0 text-purple-500" />
                           )
                         }
                       >
                         <div className="flex w-full min-w-0 items-center justify-between">
-                          {queueItem.label}
+                          <span className="truncate">{queueItem.label}</span>
                           {queueItem.paused && (
                             <Badge variant="extra-small" className="ml-1 text-warning">
                               Paused
