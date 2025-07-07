@@ -307,7 +307,9 @@ function StandardTaskForm({
       paused: queue.paused,
     }));
 
-    return defaultQueueItem ? [defaultQueueItem, ...customQueues] : customQueues;
+    return defaultQueueItem && !customQueues.some((q) => q.value === defaultQueueItem.value)
+      ? [defaultQueueItem, ...customQueues]
+      : customQueues;
   }, [queueFetcher.data?.queues, defaultQueue]);
 
   const fetcher = useFetcher();
