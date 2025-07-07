@@ -469,8 +469,8 @@ function StandardTaskForm({
         </ResizablePanel>
         <ResizableHandle id="test-task-handle" />
         <ResizablePanel id="test-task-options" min="285px" default="285px" max="360px">
-          <div className="h-full">
-            <Fieldset className="grow overflow-y-scroll px-3 py-3">
+          <div className="h-full overflow-y-scroll">
+            <Fieldset className="px-3 py-3">
               <InputGroup>
                 <Label>Delay</Label>
                 <DurationPicker name={delaySeconds.name} id={delaySeconds.id} />
@@ -484,22 +484,8 @@ function StandardTaskForm({
                   value={ttlValue}
                   onChange={setTtlValue}
                 />
+                <Hint>The run will expire if it hasn't started within the TTL (time to live).</Hint>
                 <FormError id={ttlSeconds.errorId}>{ttlSeconds.error}</FormError>
-              </InputGroup>
-              <InputGroup>
-                <Label htmlFor={idempotencyKey.id}>Idempotency key</Label>
-                <Input {...conform.input(idempotencyKey, { type: "text" })} variant="small" />
-                <FormError id={idempotencyKey.errorId}>{idempotencyKey.error}</FormError>
-              </InputGroup>
-              <InputGroup>
-                <Label>Idempotency key TTL</Label>
-                <DurationPicker
-                  name={idempotencyKeyTTLSeconds.name}
-                  id={idempotencyKeyTTLSeconds.id}
-                />
-                <FormError id={idempotencyKeyTTLSeconds.errorId}>
-                  {idempotencyKeyTTLSeconds.error}
-                </FormError>
               </InputGroup>
               <InputGroup>
                 <Label htmlFor={queue.id}>Queue</Label>
@@ -543,14 +529,16 @@ function StandardTaskForm({
                 <FormError id={queue.errorId}>{queue.error}</FormError>
               </InputGroup>
               <InputGroup>
-                <Label htmlFor={concurrencyKey.id}>Concurrency key</Label>
-                <Input
-                  {...conform.input(concurrencyKey, { type: "text" })}
+                <Label htmlFor={tags.id}>Tags</Label>
+                <RunTagInput
+                  name={tags.name}
+                  id={tags.id}
                   variant="small"
-                  value={concurrencyKeyValue ?? ""}
-                  onChange={(e) => setConcurrencyKeyValue(e.target.value)}
+                  tags={tagsValue}
+                  onTagsChange={setTagsValue}
                 />
-                <FormError id={concurrencyKey.errorId}>{concurrencyKey.error}</FormError>
+                <Hint>Tags enable you to easily filter runs.</Hint>
+                <FormError id={tags.errorId}>{tags.error}</FormError>
               </InputGroup>
               <InputGroup>
                 <Label htmlFor={maxAttempts.id}>Max attempts</Label>
@@ -589,17 +577,6 @@ function StandardTaskForm({
                 <FormError id={maxDurationSeconds.errorId}>{maxDurationSeconds.error}</FormError>
               </InputGroup>
               <InputGroup>
-                <Label htmlFor={tags.id}>Tags</Label>
-                <RunTagInput
-                  name={tags.name}
-                  id={tags.id}
-                  variant="small"
-                  tags={tagsValue}
-                  onTagsChange={setTagsValue}
-                />
-                <FormError id={tags.errorId}>{tags.error}</FormError>
-              </InputGroup>
-              <InputGroup>
                 <Label htmlFor={version.id}>Version</Label>
                 <Select
                   {...conform.select(version)}
@@ -619,6 +596,40 @@ function StandardTaskForm({
                   <Hint>Only the latest version is available in the development environment.</Hint>
                 )}
                 <FormError id={version.errorId}>{version.error}</FormError>
+              </InputGroup>
+              <InputGroup>
+                <Label htmlFor={idempotencyKey.id}>Idempotency key</Label>
+                <Input {...conform.input(idempotencyKey, { type: "text" })} variant="small" />
+                <FormError id={idempotencyKey.errorId}>{idempotencyKey.error}</FormError>
+                <Hint>
+                  Specify an idempotency key to ensure that a task is only triggered once with the
+                  same key.
+                </Hint>
+              </InputGroup>
+              <InputGroup>
+                <Label>Idempotency key TTL</Label>
+                <DurationPicker
+                  name={idempotencyKeyTTLSeconds.name}
+                  id={idempotencyKeyTTLSeconds.id}
+                />
+                <Hint>By default, idempotency keys expire after 30 days.</Hint>
+                <FormError id={idempotencyKeyTTLSeconds.errorId}>
+                  {idempotencyKeyTTLSeconds.error}
+                </FormError>
+              </InputGroup>
+              <InputGroup>
+                <Label htmlFor={concurrencyKey.id}>Concurrency key</Label>
+                <Input
+                  {...conform.input(concurrencyKey, { type: "text" })}
+                  variant="small"
+                  value={concurrencyKeyValue ?? ""}
+                  onChange={(e) => setConcurrencyKeyValue(e.target.value)}
+                />
+                <Hint>
+                  Concurrency keys enable you limit concurrency by creating a separate queue for
+                  each value of the key.
+                </Hint>
+                <FormError id={concurrencyKey.errorId}>{concurrencyKey.error}</FormError>
               </InputGroup>
               <FormError>{form.error}</FormError>
             </Fieldset>
