@@ -327,6 +327,7 @@ export function SelectTrigger({
               className
             )}
             ref={ref}
+            disabled={disabled}
             {...props}
           />
         }
