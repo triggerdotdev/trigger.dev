@@ -212,9 +212,12 @@ export default function Page() {
       return (
         <ScheduledTaskForm
           task={result.task.task}
+          queues={queues}
           runs={result.task.runs}
+          versions={result.task.latestVersions}
           possibleTimezones={result.task.possibleTimezones}
           disableVersionSelection={result.disableVersionSelection}
+          allowArbitraryQueues={result.allowArbitraryQueues}
         />
       );
     }
@@ -638,11 +641,18 @@ function ScheduledTaskForm({
   task,
   runs,
   possibleTimezones,
+  queues,
+  versions,
+  disableVersionSelection,
+  allowArbitraryQueues,
 }: {
   task: TestTask["task"];
   runs: ScheduledRun[];
   possibleTimezones: string[];
+  queues: Required<TestTask>["queue"][];
+  versions: string[];
   disableVersionSelection: boolean;
+  allowArbitraryQueues: boolean;
 }) {
   const environment = useEnvironment();
   const lastSubmission = useActionData();
@@ -659,6 +669,26 @@ function ScheduledTaskForm({
     lastRun.payload.externalId
   );
   const [timezoneValue, setTimezoneValue] = useState<string>(lastRun.payload.timezone ?? "UTC");
+  const [ttlValue, setTtlValue] = useState<number | undefined>(lastRun?.ttlSeconds);
+  const [concurrencyKeyValue, setConcurrencyKeyValue] = useState<string | undefined>(
+    lastRun?.concurrencyKey
+  );
+  const [queueValue, setQueueValue] = useState<string | undefined>(lastRun?.queue);
+  const [machineValue, setMachineValue] = useState<string | undefined>(lastRun?.machinePreset);
+  const [maxAttemptsValue, setMaxAttemptsValue] = useState<number | undefined>(
+    lastRun?.maxAttempts
+  );
+  const [maxDurationValue, setMaxDurationValue] = useState<number | undefined>(
+    lastRun?.maxDurationInSeconds
+  );
+  const [tagsValue, setTagsValue] = useState<string[]>(lastRun?.runTags ?? []);
+
+  const queueItems = queues.map((q) => ({
+    value: q.type === "task" ? `task/${q.name}` : q.name,
+    label: q.name,
+    type: q.type,
+    paused: q.paused,
+  }));
 
   const [
     form,
@@ -670,6 +700,16 @@ function ScheduledTaskForm({
       taskIdentifier,
       environmentId,
       timezone,
+      ttlSeconds,
+      idempotencyKey,
+      idempotencyKeyTTLSeconds,
+      queue,
+      concurrencyKey,
+      maxAttempts,
+      maxDurationSeconds,
+      tags,
+      version,
+      machine,
     },
   ] = useForm({
     id: "test-task-scheduled",
@@ -711,11 +751,18 @@ function ScheduledTaskForm({
               setLastTimestampValue(run.payload.lastTimestamp);
               setExternalIdValue(run.payload.externalId);
               setTimezoneValue(run.payload.timezone);
+              setTtlValue(run.ttlSeconds);
+              setConcurrencyKeyValue(run.concurrencyKey);
+              setMaxAttemptsValue(run.maxAttempts);
+              setMaxDurationValue(run.maxDurationInSeconds);
+              setTagsValue(run.runTags ?? []);
+              setQueueValue(run.queue);
+              setMachineValue(run.machinePreset);
             }}
           />
         </div>
       </TabContainer>
-      <div className="grow p-3">
+      <div className="grow overflow-y-scroll p-3">
         <Fieldset>
           <InputGroup>
             <Label htmlFor={timestamp.id}>Timestamp UTC</Label>
@@ -730,7 +777,7 @@ function ScheduledTaskForm({
               onValueChange={(val) => setTimestampValue(val)}
               granularity="second"
               showNowButton
-              variant="medium"
+              variant="small"
               utc
             />
             <Hint>
@@ -739,9 +786,7 @@ function ScheduledTaskForm({
             <FormError id={timestamp.errorId}>{timestamp.error}</FormError>
           </InputGroup>
           <InputGroup>
-            <Label htmlFor={lastTimestamp.id} required={false}>
-              Last timestamp UTC
-            </Label>
+            <Label htmlFor={lastTimestamp.id}>Last timestamp UTC</Label>
             <input
               type="hidden"
               {...conform.input(lastTimestamp, { type: "hidden" })}
@@ -754,13 +799,12 @@ function ScheduledTaskForm({
               granularity="second"
               showNowButton
               showClearButton
-              variant="medium"
+              variant="small"
               utc
             />
             <Hint>
               This is the timestamp of the previous run. You can use this in your code to find new
-              data since the previous run. This can be undefined if there hasn't been a previous
-              run.
+              data since the previous run.
             </Hint>
             <FormError id={lastTimestamp.errorId}>{lastTimestamp.error}</FormError>
           </InputGroup>
@@ -778,7 +822,7 @@ function ScheduledTaskForm({
               items={possibleTimezones}
               filter={{ keys: [(item) => item.replace(/\//g, " ").replace(/_/g, " ")] }}
               dropdownIcon
-              variant="tertiary/medium"
+              variant="tertiary/small"
             >
               {(matches) => <TimezoneList timezones={matches} />}
             </Select>
@@ -789,39 +833,226 @@ function ScheduledTaskForm({
             <FormError id={timezone.errorId}>{timezone.error}</FormError>
           </InputGroup>
           <InputGroup>
-            <Label required={false} htmlFor={externalId.id}>
-              External ID
-            </Label>
+            <Label htmlFor={externalId.id}>External ID</Label>
             <Input
               {...conform.input(externalId, { type: "text" })}
               placeholder="Optionally specify your own ID, e.g. user id"
               value={externalIdValue ?? ""}
               onChange={(e) => setExternalIdValue(e.target.value)}
+              variant="small"
             />
             <Hint>
               Optionally, you can specify your own IDs (like a user ID) and then use it inside the
-              run function of your task. This allows you to have per-user CRON tasks.{" "}
+              run function of your task.{" "}
               <TextLink to={docsPath("v3/tasks-scheduled")}>Read the docs.</TextLink>
             </Hint>
             <FormError id={externalId.errorId}>{externalId.error}</FormError>
           </InputGroup>
+          <div className="w-full border-b border-grid-bright"></div>
+          <InputGroup>
+            <Label>TTL</Label>
+            <DurationPicker
+              name={ttlSeconds.name}
+              id={ttlSeconds.id}
+              value={ttlValue}
+              onChange={setTtlValue}
+            />
+            <Hint>The run will expire if it hasn't started within the TTL (time to live).</Hint>
+            <FormError id={ttlSeconds.errorId}>{ttlSeconds.error}</FormError>
+          </InputGroup>
+          <InputGroup>
+            <Label htmlFor={queue.id}>Queue</Label>
+            {allowArbitraryQueues ? (
+              <Input
+                {...conform.input(queue, { type: "text" })}
+                variant="small"
+                value={queueValue ?? ""}
+                onChange={(e) => setQueueValue(e.target.value)}
+              />
+            ) : (
+              <Select
+                name={queue.name}
+                id={queue.id}
+                placeholder="Select queue"
+                variant="tertiary/small"
+                dropdownIcon
+                items={queueItems}
+                filter={{ keys: ["label"] }}
+                value={queueValue}
+                setValue={setQueueValue}
+              >
+                {(matches) =>
+                  matches.map((queueItem) => (
+                    <SelectItem
+                      key={queueItem.value}
+                      value={queueItem.value}
+                      className="max-w-[var(--popover-anchor-width)]"
+                      icon={
+                        queueItem.type === "task" ? (
+                          <TaskIcon className="size-4 shrink-0 text-blue-500" />
+                        ) : (
+                          <RectangleStackIcon className="size-4 shrink-0 text-purple-500" />
+                        )
+                      }
+                    >
+                      <div className="flex w-full min-w-0 items-center justify-between">
+                        <span className="truncate">{queueItem.label}</span>
+                        {queueItem.paused && (
+                          <Badge variant="extra-small" className="ml-1 text-warning">
+                            Paused
+                          </Badge>
+                        )}
+                      </div>
+                    </SelectItem>
+                  ))
+                }
+              </Select>
+            )}
+            <FormError id={queue.errorId}>{queue.error}</FormError>
+          </InputGroup>
+          <InputGroup>
+            <Label htmlFor={tags.id}>Tags</Label>
+            <RunTagInput
+              name={tags.name}
+              id={tags.id}
+              variant="small"
+              tags={tagsValue}
+              onTagsChange={setTagsValue}
+            />
+            <Hint>Tags enable you to easily filter runs.</Hint>
+            <FormError id={tags.errorId}>{tags.error}</FormError>
+          </InputGroup>
+          <InputGroup>
+            <Label htmlFor={maxAttempts.id}>Max attempts</Label>
+            <Input
+              {...conform.input(maxAttempts, { type: "number" })}
+              className="[&::-webkit-inner-spin-button]:appearance-none"
+              variant="small"
+              min={1}
+              value={maxAttemptsValue}
+              onChange={(e) =>
+                setMaxAttemptsValue(e.target.value ? parseInt(e.target.value) : undefined)
+              }
+              onKeyDown={(e) => {
+                // only allow entering integers > 1
+                if (["-", "+", ".", "e", "E"].includes(e.key)) {
+                  e.preventDefault();
+                }
+              }}
+              onBlur={(e) => {
+                const value = parseInt(e.target.value);
+                if (value < 1 && e.target.value !== "") {
+                  e.target.value = "1";
+                }
+              }}
+            />
+            <FormError id={maxAttempts.errorId}>{maxAttempts.error}</FormError>
+          </InputGroup>
+          <InputGroup>
+            <Label>Max duration</Label>
+            <DurationPicker
+              name={maxDurationSeconds.name}
+              id={maxDurationSeconds.id}
+              value={maxDurationValue}
+              onChange={setMaxDurationValue}
+            />
+            <FormError id={maxDurationSeconds.errorId}>{maxDurationSeconds.error}</FormError>
+          </InputGroup>
+          <InputGroup>
+            <Label htmlFor={idempotencyKey.id}>Idempotency key</Label>
+            <Input {...conform.input(idempotencyKey, { type: "text" })} variant="small" />
+            <FormError id={idempotencyKey.errorId}>{idempotencyKey.error}</FormError>
+            <Hint>
+              Specify an idempotency key to ensure that a task is only triggered once with the same
+              key.
+            </Hint>
+          </InputGroup>
+          <InputGroup>
+            <Label>Idempotency key TTL</Label>
+            <DurationPicker name={idempotencyKeyTTLSeconds.name} id={idempotencyKeyTTLSeconds.id} />
+            <Hint>By default, idempotency keys expire after 30 days.</Hint>
+            <FormError id={idempotencyKeyTTLSeconds.errorId}>
+              {idempotencyKeyTTLSeconds.error}
+            </FormError>
+          </InputGroup>
+          <InputGroup>
+            <Label htmlFor={concurrencyKey.id}>Concurrency key</Label>
+            <Input
+              {...conform.input(concurrencyKey, { type: "text" })}
+              variant="small"
+              value={concurrencyKeyValue ?? ""}
+              onChange={(e) => setConcurrencyKeyValue(e.target.value)}
+            />
+            <Hint>
+              Concurrency keys enable you limit concurrency by creating a separate queue for each
+              value of the key.
+            </Hint>
+            <FormError id={concurrencyKey.errorId}>{concurrencyKey.error}</FormError>
+          </InputGroup>
+          <InputGroup>
+            <Label htmlFor={machine.id}>Machine</Label>
+            <Select
+              {...conform.select(machine)}
+              variant="tertiary/small"
+              placeholder="Select machine type"
+              dropdownIcon
+              items={machinePresets}
+              defaultValue={undefined}
+              value={machineValue}
+              setValue={(e) => {
+                if (Array.isArray(e)) return;
+                setMachineValue(e);
+              }}
+            >
+              {machinePresets.map((machine) => (
+                <SelectItem key={machine} value={machine}>
+                  {machine}
+                </SelectItem>
+              ))}
+            </Select>
+            <Hint>This lets you override the machine preset specified in the task.</Hint>
+            <FormError id={machine.errorId}>{machine.error}</FormError>
+          </InputGroup>
+          <InputGroup>
+            <Label htmlFor={version.id}>Version</Label>
+            <Select
+              {...conform.select(version)}
+              defaultValue="latest"
+              variant="tertiary/small"
+              placeholder="Select version"
+              dropdownIcon
+              disabled={disableVersionSelection}
+            >
+              {versions.map((version, i) => (
+                <SelectItem key={version} value={i === 0 ? "latest" : version}>
+                  {version} {i === 0 && "(latest)"}
+                </SelectItem>
+              ))}
+            </Select>
+            {disableVersionSelection && (
+              <Hint>Only the latest version is available in the development environment.</Hint>
+            )}
+            <FormError id={version.errorId}>{version.error}</FormError>
+          </InputGroup>
         </Fieldset>
       </div>
-      <div className="flex items-center justify-end gap-2 border-t border-grid-bright bg-background-dimmed p-2">
-        <div className="flex items-center gap-1">
-          <Paragraph variant="small" className="whitespace-nowrap">
-            This test will run in
-          </Paragraph>
-          <EnvironmentCombo environment={environment} className="gap-0.5" />
+      <div className="flex items-center justify-end gap-3 border-t border-grid-bright bg-background-dimmed p-2">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1">
+            <Paragraph variant="small" className="whitespace-nowrap">
+              This test will run in
+            </Paragraph>
+            <EnvironmentCombo environment={environment} className="gap-0.5" />
+          </div>
+          <Button
+            type="submit"
+            variant="primary/medium"
+            LeadingIcon={BeakerIcon}
+            shortcut={{ key: "enter", modifiers: ["mod"], enabledOnInputElements: true }}
+          >
+            Run test
+          </Button>
         </div>
-        <Button
-          type="submit"
-          variant="primary/small"
-          LeadingIcon={BeakerIcon}
-          shortcut={{ key: "enter", modifiers: ["mod"], enabledOnInputElements: true }}
-        >
-          Run test
-        </Button>
       </div>
     </Form>
   );

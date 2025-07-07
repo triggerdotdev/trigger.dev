@@ -252,6 +252,14 @@ export class TestTaskPresenter {
           foundTask: true,
           task: {
             triggerSource: "SCHEDULED",
+            queue: taskQueue
+              ? {
+                  id: taskQueue.friendlyId,
+                  name: taskQueue.name.replace(/^task\//, ""),
+                  type: queueTypeFromType(taskQueue.type),
+                  paused: taskQueue.paused,
+                }
+              : undefined,
             task: taskWithEnvironment,
             possibleTimezones,
             runs: (

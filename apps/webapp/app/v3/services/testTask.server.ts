@@ -50,7 +50,22 @@ export class TestTaskService extends BaseService {
           environment,
           {
             payload: payloadPacket.data,
-            options: { payloadType: payloadPacket.dataType, test: true },
+            options: {
+              payloadType: payloadPacket.dataType,
+              test: true,
+              ttl: data.ttlSeconds,
+              idempotencyKey: data.idempotencyKey,
+              idempotencyKeyTTL: data.idempotencyKeyTTLSeconds
+                ? `${data.idempotencyKeyTTLSeconds}s`
+                : undefined,
+              queue: data.queue ? { name: data.queue } : undefined,
+              concurrencyKey: data.concurrencyKey,
+              maxAttempts: data.maxAttempts,
+              maxDuration: data.maxDurationSeconds,
+              tags: data.tags,
+              machine: data.machine,
+              lockToVersion: data.version === "latest" ? undefined : data.version,
+            },
           },
           { customIcon: "scheduled" }
         );
