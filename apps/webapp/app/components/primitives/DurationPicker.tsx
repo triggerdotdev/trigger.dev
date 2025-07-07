@@ -127,7 +127,7 @@ export function DurationPicker({
       <input type="hidden" name={name} value={totalSeconds} />
 
       <div className="flex items-center gap-1">
-        <div className="flex items-center gap-1">
+        <div className="group flex items-center gap-1">
           <Input
             variant={variant}
             ref={hourRef}
@@ -143,9 +143,11 @@ export function DurationPicker({
             min={0}
             inputMode="numeric"
           />
-          <span className="text-sm text-text-dimmed">h</span>
+          <span className="text-sm text-text-dimmed transition-colors duration-200 group-focus-within:text-text-bright/80">
+            h
+          </span>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="group flex items-center gap-1">
           <Input
             variant={variant}
             ref={minuteRef}
@@ -162,9 +164,11 @@ export function DurationPicker({
             max={59}
             inputMode="numeric"
           />
-          <span className="text-sm text-text-dimmed">m</span>
+          <span className="text-sm text-text-dimmed transition-colors duration-200 group-focus-within:text-text-bright/80">
+            m
+          </span>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="group flex items-center gap-1">
           <Input
             variant={variant}
             ref={secondRef}
@@ -181,7 +185,9 @@ export function DurationPicker({
             max={59}
             inputMode="numeric"
           />
-          <span className="text-sm text-text-dimmed">s</span>
+          <span className="text-sm text-text-dimmed transition-colors duration-200 group-focus-within:text-text-bright/80">
+            s
+          </span>
         </div>
       </div>
 
