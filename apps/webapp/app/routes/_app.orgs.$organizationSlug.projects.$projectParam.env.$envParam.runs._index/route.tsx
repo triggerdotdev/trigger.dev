@@ -66,7 +66,7 @@ import {
   v3TestPath,
 } from "~/utils/pathBuilder";
 import { ListPagination } from "../../components/ListPagination";
-import { CreateBulkActionInspector } from "../resources.orgs.$organizationId.projects.$projectId.environments.$environmentId.runs.bulkaction";
+import { CreateBulkActionInspector } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.bulkaction";
 
 export const meta: MetaFunction = () => {
   return [

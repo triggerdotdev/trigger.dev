@@ -4,7 +4,7 @@ import { Form } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/router";
 import { type TaskRunStatus } from "@trigger.dev/database";
 import assertNever from "assert-never";
-import { filter } from "compression";
+import { parse } from "@conform-to/zod";
 import { useEffect } from "react";
 import { typedjson, useTypedFetcher } from "remix-typedjson";
 import simplur from "simplur";
@@ -39,69 +39,110 @@ import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
-import { redirectWithSuccessMessage } from "~/models/message.server";
+import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { getRunFiltersFromRequest } from "~/presenters/RunFilters.server";
 import { clickhouseClient } from "~/services/clickhouseInstance.server";
 import { RunsRepository } from "~/services/runsRepository.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { formatNumber } from "~/utils/numberFormatter";
-import { v3RunsPath } from "~/utils/pathBuilder";
+import { EnvironmentParamSchema, v3CreateBulkActionPath, v3RunsPath } from "~/utils/pathBuilder";
+import { logger } from "~/services/logger.server";
+import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
+import { findProjectBySlug } from "~/models/project.server";
+import { CreateBulkActionPresenter } from "~/presenters/v3/CreateBulkActionPresenter.server";
 
-const Params = z.object({
-  organizationId: z.string(),
-  projectId: z.string(),
-  environmentId: z.string(),
-});
+export async function loader({ request, params }: LoaderFunctionArgs) {
+  const userId = await requireUserId(request);
+
+  const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
+
+  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+  if (!project) {
+    throw new Response("Not Found", { status: 404 });
+  }
+
+  const environment = await findEnvironmentBySlug(project.id, envParam, userId);
+  if (!environment) {
+    throw new Response("Not Found", { status: 404 });
+  }
+
+  const presenter = new CreateBulkActionPresenter();
+  const data = await presenter.call({
+    organizationId: project.organizationId,
+    projectId: project.id,
+    environmentId: environment.id,
+    request,
+  });
+
+  return typedjson(data);
+}
 
 const BulkActionMode = z.union([z.literal("selected"), z.literal("filter")]);
 type BulkActionMode = z.infer<typeof BulkActionMode>;
 const BulkActionAction = z.union([z.literal("cancel"), z.literal("replay")]);
 type BulkActionAction = z.infer<typeof BulkActionAction>;
 
-const searchParams = z.object({
+export const CreateBulkActionSearchParams = z.object({
   mode: BulkActionMode.default("filter"),
   action: BulkActionAction.default("cancel"),
 });
 
-export async function loader({ request, params }: LoaderFunctionArgs) {
-  const userId = await requireUserId(request);
-
-  const { organizationId, projectId, environmentId } = Params.parse(params);
-  const filters = await getRunFiltersFromRequest(request);
-  const { mode, action } = searchParams.parse(
-    Object.fromEntries(new URL(request.url).searchParams)
-  );
-
-  //todo do a ClickHouse Query with the filters
-  if (!clickhouseClient) {
-    throw new Error("Clickhouse client not found");
-  }
-
-  const runsRepository = new RunsRepository({
-    clickhouse: clickhouseClient,
-    prisma: $replica as PrismaClient,
-  });
-
-  const count = await runsRepository.countRuns({
-    organizationId,
-    projectId,
-    environmentId,
-    ...filters,
-  });
-
-  return typedjson({
-    filters,
-    mode,
-    action,
-    count,
-  });
-}
+const FormSchema = z.discriminatedUnion("mode", [
+  z.object({
+    mode: z.literal("selected"),
+    action: BulkActionAction,
+    selectedRunIds: z.array(z.string()),
+    title: z.string().optional(),
+  }),
+  z.object({
+    mode: z.literal("filter"),
+    action: BulkActionAction,
+    title: z.string().optional(),
+  }),
+]);
 
 export async function action({ params, request }: ActionFunctionArgs) {
-  const { organizationId, projectId, environmentId } = Params.parse(params);
-  const filters = await getRunFiltersFromRequest(request);
+  const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
 
+  const userId = await requireUserId(request);
+
+  //todo permission check
+
+  const formData = await request.formData();
+  const submission = parse(formData, { schema: FormSchema });
+
+  if (!submission.value) {
+    logger.error("Invalid bulk action", {
+      submission,
+      formData: Object.fromEntries(formData),
+    });
+    return redirectWithErrorMessage("/", request, "Invalid bulk action");
+  }
+
+  switch (submission.value.mode) {
+    case "selected": {
+      const { action, selectedRunIds, title } = submission.value;
+
+      logger.log("Selected runs", {
+        action,
+        selectedRunIds,
+        title,
+      });
+      break;
+    }
+    case "filter": {
+      const filters = await getRunFiltersFromRequest(request);
+
+      logger.log("Filter runs", {
+        action,
+        filters,
+      });
+      break;
+    }
+  }
+
+  //todo go to the bulk action page
   return redirectWithSuccessMessage("/", request, "SORTED");
 }
 
@@ -121,7 +162,7 @@ export function CreateBulkActionInspector({
 
   useEffect(() => {
     fetcher.load(
-      `/resources/orgs/${organization.id}/projects/${project.id}/environments/${environment.id}/runs/bulkaction${location.search}`
+      `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/runs/bulkaction${location.search}`
     );
   }, [organization.id, project.id, environment.id, location.search]);
 
@@ -139,7 +180,7 @@ export function CreateBulkActionInspector({
   return (
     <Form
       method="post"
-      action={`/resources/orgs/${organization.id}/projects/${project.id}/environments/${environment.id}/runs/bulkaction${location.search}`}
+      action={`/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/runs/bulkaction${location.search}`}
       className="h-full"
     >
       <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden bg-background-bright">
@@ -191,10 +232,9 @@ export function CreateBulkActionInspector({
               </RadioGroup>
             </InputGroup>
             <InputGroup>
-              <Label htmlFor="name">Name</Label>
-              <Input name="name" placeholder="A name for this bulk action" autoComplete="off" />
+              <Label htmlFor="title">Name</Label>
+              <Input name="title" placeholder="A name for this bulk action" autoComplete="off" />
               <Hint>Add a name to identify this bulk action (optional).</Hint>
-              {/* todo <FormError id={name.errorId}>{name.error}</FormError> */}
             </InputGroup>
             <InputGroup>
               <Label htmlFor="action">Bulk action to perform</Label>
