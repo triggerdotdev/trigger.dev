@@ -330,34 +330,96 @@ function StandardTaskForm({
   });
 
   return (
-    <Form className="grid h-full max-h-full grid-rows-[1fr_auto]" method="post" {...form.props}>
+    <Form className="flex h-full max-h-full flex-col" method="post" {...form.props}>
       <input {...conform.input(taskIdentifier, { type: "hidden" })} value={task.taskIdentifier} />
       <input {...conform.input(environmentId, { type: "hidden" })} value={environment.id} />
       <input {...conform.input(triggerSource, { type: "hidden" })} value={"STANDARD"} />
-      <ResizablePanelGroup orientation="horizontal">
-        <ResizablePanel id="test-task-main" min="100px" default="60%">
-          <div className="flex h-full flex-col overflow-hidden bg-charcoal-900">
-            <TabContainer className="px-3 pt-2">
-              <TabButton
-                isActive={!tab || tab === "payload"}
-                layoutId="test-editor"
-                onClick={() => {
-                  replace({ tab: "payload" });
-                }}
-              >
-                Payload
-              </TabButton>
+      <TabContainer className="flex items-baseline justify-between pl-3 pr-2 pt-1.5">
+        <div className="flex gap-5">
+          <TabButton
+            isActive={!tab || tab === "payload"}
+            layoutId="test-editor"
+            onClick={() => {
+              replace({ tab: "payload" });
+            }}
+          >
+            Payload
+          </TabButton>
 
-              <TabButton
-                isActive={tab === "metadata"}
-                layoutId="test-editor"
-                onClick={() => {
-                  replace({ tab: "metadata" });
-                }}
-              >
-                Metadata
-              </TabButton>
-            </TabContainer>
+          <TabButton
+            isActive={tab === "metadata"}
+            layoutId="test-editor"
+            onClick={() => {
+              replace({ tab: "metadata" });
+            }}
+          >
+            Metadata
+          </TabButton>
+        </div>
+        <div className="flex items-center gap-3">
+          <Popover open={isRecentRunsPopoverOpen} onOpenChange={setIsRecentRunsPopoverOpen}>
+            <PopoverTrigger asChild>
+              {runs.length === 0 ? (
+                <SimpleTooltip
+                  button={
+                    <Button
+                      type="button"
+                      variant="tertiary/small"
+                      LeadingIcon={ClockIcon}
+                      disabled={true}
+                    >
+                      Recent runs
+                    </Button>
+                  }
+                  content="No runs yet"
+                />
+              ) : (
+                <Button type="button" variant="tertiary/small" LeadingIcon={ClockIcon}>
+                  Recent runs
+                </Button>
+              )}
+            </PopoverTrigger>
+            <PopoverContent className="min-w-[279px] p-0" align="end" sideOffset={6}>
+              <div className="max-h-80 overflow-y-auto">
+                <div className="p-1">
+                  {runs.map((run) => (
+                    <button
+                      key={run.id}
+                      type="button"
+                      onClick={() => {
+                        setPayload(run.payload);
+                        run.seedMetadata && setMetadata(run.seedMetadata);
+                        setSelectedCodeSampleId(run.id);
+                        setIsRecentRunsPopoverOpen(false);
+                        setTtlValue(run.ttlSeconds);
+                        setConcurrencyKeyValue(run.concurrencyKey);
+                        setMaxAttemptsValue(run.maxAttempts);
+                        setMaxDurationValue(run.maxDurationInSeconds);
+                        setTagsValue(run.runTags ?? []);
+                        setQueueValue(run.queue);
+                      }}
+                      className="flex w-full items-center gap-2 rounded-sm px-2 py-2 outline-none transition-colors focus-custom hover:bg-charcoal-900	"
+                    >
+                      <div className="flex flex-col items-start">
+                        <Paragraph variant="small">
+                          <DateTime date={run.createdAt} showTooltip={false} />
+                        </Paragraph>
+                        <div className="flex items-center gap-1 text-xs text-text-dimmed">
+                          <div>Run #{run.number}</div>
+                          <TaskRunStatusCombo status={run.status} />
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
+        </div>
+      </TabContainer>
+      <ResizablePanelGroup orientation="horizontal">
+        <ResizablePanel id="test-task-main" min="300px">
+          <div className="flex h-full flex-col overflow-hidden bg-charcoal-900">
             <div className="flex-1 overflow-hidden">
               <JSONEditor
                 defaultValue={defaultPayloadJson}
@@ -402,12 +464,9 @@ function StandardTaskForm({
           </div>
         </ResizablePanel>
         <ResizableHandle id="test-task-handle" />
-        <ResizablePanel id="test-task-options" min="200px">
-          <div className="flex h-full flex-col gap-2">
-            <div className="flex min-h-[39px] items-center border-b border-grid-dimmed px-3">
-              <Header2>Options</Header2>
-            </div>
-            <Fieldset className="grow overflow-y-scroll px-3 pb-4 pt-1">
+        <ResizablePanel id="test-task-options" min="285px" default="285px" max="360px">
+          <div className="h-full">
+            <Fieldset className="grow overflow-y-scroll px-3 py-3">
               <InputGroup>
                 <Label>Delay</Label>
                 <DurationPicker name={delaySeconds.name} id={delaySeconds.id} />
@@ -557,67 +616,7 @@ function StandardTaskForm({
           </div>
         </ResizablePanel>
       </ResizablePanelGroup>
-      <div className="flex items-center justify-between gap-3 border-t border-grid-bright bg-background-dimmed p-2">
-        <div>
-          <Popover open={isRecentRunsPopoverOpen} onOpenChange={setIsRecentRunsPopoverOpen}>
-            <PopoverTrigger asChild>
-              {runs.length === 0 ? (
-                <SimpleTooltip
-                  button={
-                    <Button
-                      type="button"
-                      variant="tertiary/medium"
-                      LeadingIcon={ClockIcon}
-                      disabled={true}
-                    >
-                      Recent runs
-                    </Button>
-                  }
-                  content="No runs yet"
-                />
-              ) : (
-                <Button type="button" variant="tertiary/medium" LeadingIcon={ClockIcon}>
-                  Recent runs
-                </Button>
-              )}
-            </PopoverTrigger>
-            <PopoverContent className="min-w-72 p-0" align="start">
-              <div className="max-h-80 overflow-y-auto">
-                <div className="p-1">
-                  {runs.map((run) => (
-                    <button
-                      key={run.id}
-                      type="button"
-                      onClick={() => {
-                        setPayload(run.payload);
-                        run.seedMetadata && setMetadata(run.seedMetadata);
-                        setSelectedCodeSampleId(run.id);
-                        setIsRecentRunsPopoverOpen(false);
-                        setTtlValue(run.ttlSeconds);
-                        setConcurrencyKeyValue(run.concurrencyKey);
-                        setMaxAttemptsValue(run.maxAttempts);
-                        setMaxDurationValue(run.maxDurationInSeconds);
-                        setTagsValue(run.runTags ?? []);
-                        setQueueValue(run.queue);
-                      }}
-                      className="flex w-full items-center gap-2 rounded-sm px-2 py-2 outline-none transition-colors focus-custom hover:bg-charcoal-900	"
-                    >
-                      <div className="flex flex-col items-start">
-                        <Paragraph variant="small">
-                          <DateTime date={run.createdAt} showTooltip={false} />
-                        </Paragraph>
-                        <div className="flex items-center gap-1 text-xs text-text-dimmed">
-                          <div>Run #{run.number}</div>
-                          <TaskRunStatusCombo status={run.status} />
-                        </div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </PopoverContent>
-          </Popover>
-        </div>
+      <div className="flex items-center justify-end gap-3 border-t border-grid-bright bg-background-dimmed p-2">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1">
             <Paragraph variant="small" className="whitespace-nowrap">
