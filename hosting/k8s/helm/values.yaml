@@ -15,7 +15,7 @@ fullnameOverride: ""
 secrets:
   # Enable/disable creation of secrets
   # Set to false to use external secret management (Vault, Infisical, External Secrets, etc.)
-  # When disabled, use extraEnvVars and podAnnotations for secret injection
+  # When disabled, you can also use extraEnvVars and podAnnotations for secret injection
   enabled: true
 
   # Name of existing secret to use instead of creating one
