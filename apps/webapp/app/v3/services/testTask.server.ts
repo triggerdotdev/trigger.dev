@@ -7,8 +7,9 @@ import { TriggerTaskService } from "./triggerTask.server";
 export class TestTaskService extends BaseService {
   public async call(environment: AuthenticatedEnvironment, data: TestTaskData) {
     const triggerTaskService = new TriggerTaskService();
+    const { triggerSource } = data;
 
-    switch (data.triggerSource) {
+    switch (triggerSource) {
       case "STANDARD": {
         const result = await triggerTaskService.call(data.taskIdentifier, environment, {
           payload: data.payload,
@@ -72,8 +73,10 @@ export class TestTaskService extends BaseService {
 
         return result?.run;
       }
-      default:
+      default: {
+        triggerSource satisfies never;
         throw new Error("Invalid trigger source");
+      }
     }
   }
 }
