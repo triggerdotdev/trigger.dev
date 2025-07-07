@@ -42,7 +42,8 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
   type ScheduledRun,
   type StandardRun,
-  type TestTask,
+  type StandardTaskResult,
+  type ScheduledTaskResult,
   TestTaskPresenter,
 } from "~/presenters/v3/TestTaskPresenter.server";
 import { logger } from "~/services/logger.server";
@@ -186,7 +187,7 @@ export default function Page() {
     }
   }, [params.organizationSlug, params.projectParam, params.envParam]);
 
-  const defaultTaskQueue = result.task.queue;
+  const defaultTaskQueue = result.queue;
   const queues = useMemo(() => {
     const customQueues = queueFetcher.data?.queues ?? [];
 
@@ -195,14 +196,15 @@ export default function Page() {
       : customQueues;
   }, [queueFetcher.data?.queues, defaultTaskQueue]);
 
-  switch (result.task.triggerSource) {
+  const { triggerSource } = result;
+  switch (triggerSource) {
     case "STANDARD": {
       return (
         <StandardTaskForm
-          task={result.task.task}
+          task={result.task}
           queues={queues}
-          runs={result.task.runs}
-          versions={result.task.latestVersions}
+          runs={result.runs}
+          versions={result.latestVersions}
           disableVersionSelection={result.disableVersionSelection}
           allowArbitraryQueues={result.allowArbitraryQueues}
         />
@@ -211,18 +213,18 @@ export default function Page() {
     case "SCHEDULED": {
       return (
         <ScheduledTaskForm
-          task={result.task.task}
+          task={result.task}
           queues={queues}
-          runs={result.task.runs}
-          versions={result.task.latestVersions}
-          possibleTimezones={result.task.possibleTimezones}
+          runs={result.runs}
+          versions={result.latestVersions}
+          possibleTimezones={result.possibleTimezones}
           disableVersionSelection={result.disableVersionSelection}
           allowArbitraryQueues={result.allowArbitraryQueues}
         />
       );
     }
     default: {
-      return result.task satisfies never;
+      return triggerSource satisfies never;
     }
   }
 }
@@ -246,8 +248,8 @@ function StandardTaskForm({
   disableVersionSelection,
   allowArbitraryQueues,
 }: {
-  task: TestTask["task"];
-  queues: Required<TestTask>["queue"][];
+  task: StandardTaskResult["task"];
+  queues: Required<StandardTaskResult>["queue"][];
   runs: StandardRun[];
   versions: string[];
   disableVersionSelection: boolean;
@@ -660,10 +662,10 @@ function ScheduledTaskForm({
   disableVersionSelection,
   allowArbitraryQueues,
 }: {
-  task: TestTask["task"];
+  task: ScheduledTaskResult["task"];
   runs: ScheduledRun[];
   possibleTimezones: string[];
-  queues: Required<TestTask>["queue"][];
+  queues: Required<ScheduledTaskResult>["queue"][];
   versions: string[];
   disableVersionSelection: boolean;
   allowArbitraryQueues: boolean;

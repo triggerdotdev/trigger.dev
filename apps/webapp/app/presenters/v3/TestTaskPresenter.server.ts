@@ -23,43 +23,47 @@ type Task = {
   friendlyId: string;
 };
 
-export type TestTask =
-  | {
-      triggerSource: "STANDARD";
-      queue?: {
-        id: string;
-        name: string;
-        type: "custom" | "task";
-        paused: boolean;
-      };
-      task: Task;
-      runs: StandardRun[];
-      latestVersions: string[];
-    }
-  | {
-      triggerSource: "SCHEDULED";
-      queue?: {
-        id: string;
-        name: string;
-        type: "custom" | "task";
-        paused: boolean;
-      };
-      task: Task;
-      possibleTimezones: string[];
-      runs: ScheduledRun[];
-      latestVersions: string[];
-    };
+type Queue = {
+  id: string;
+  name: string;
+  type: "custom" | "task";
+  paused: boolean;
+};
 
 export type TestTaskResult =
   | {
       foundTask: true;
-      task: TestTask;
+      triggerSource: "STANDARD";
+      queue?: Queue;
+      task: Task;
+      runs: StandardRun[];
+      latestVersions: string[];
+      disableVersionSelection: boolean;
+      allowArbitraryQueues: boolean;
+    }
+  | {
+      foundTask: true;
+      triggerSource: "SCHEDULED";
+      queue?: Queue;
+      task: Task;
+      possibleTimezones: string[];
+      runs: ScheduledRun[];
+      latestVersions: string[];
       disableVersionSelection: boolean;
       allowArbitraryQueues: boolean;
     }
   | {
       foundTask: false;
     };
+
+export type StandardTaskResult = Extract<
+  TestTaskResult,
+  { foundTask: true; triggerSource: "STANDARD" }
+>;
+export type ScheduledTaskResult = Extract<
+  TestTaskResult,
+  { foundTask: true; triggerSource: "SCHEDULED" }
+>;
 
 type RawRun = {
   id: string;
@@ -217,71 +221,71 @@ export class TestTaskPresenter {
       case "STANDARD":
         return {
           foundTask: true,
-          task: {
-            triggerSource: "STANDARD",
-            queue: taskQueue
-              ? {
-                  id: taskQueue.friendlyId,
-                  name: taskQueue.name.replace(/^task\//, ""),
-                  type: queueTypeFromType(taskQueue.type),
-                  paused: taskQueue.paused,
-                }
-              : undefined,
-            task: taskWithEnvironment,
-            runs: await Promise.all(
-              latestRuns.map(
-                async (r) =>
-                  ({
-                    ...r,
-                    payload: await prettyPrintPacket(r.payload, r.payloadType),
-                    metadata: r.seedMetadata
-                      ? await prettyPrintPacket(r.seedMetadata, r.seedMetadataType)
-                      : undefined,
-                    ttlSeconds: r.ttl ? parse(r.ttl, "s") ?? undefined : undefined,
-                  } satisfies StandardRun)
-              )
-            ),
-            latestVersions,
-          },
+          triggerSource: "STANDARD",
+          queue: taskQueue
+            ? {
+                id: taskQueue.friendlyId,
+                name: taskQueue.name.replace(/^task\//, ""),
+                type: queueTypeFromType(taskQueue.type),
+                paused: taskQueue.paused,
+              }
+            : undefined,
+          task: taskWithEnvironment,
+          runs: await Promise.all(
+            latestRuns.map(
+              async (r) =>
+                ({
+                  ...r,
+                  payload: await prettyPrintPacket(r.payload, r.payloadType),
+                  metadata: r.seedMetadata
+                    ? await prettyPrintPacket(r.seedMetadata, r.seedMetadataType)
+                    : undefined,
+                  ttlSeconds: r.ttl ? parse(r.ttl, "s") ?? undefined : undefined,
+                } satisfies StandardRun)
+            )
+          ),
+          latestVersions,
           disableVersionSelection,
           allowArbitraryQueues,
         };
-      case "SCHEDULED":
+      case "SCHEDULED": {
         const possibleTimezones = getTimezones();
         return {
           foundTask: true,
-          task: {
-            triggerSource: "SCHEDULED",
-            queue: taskQueue
-              ? {
-                  id: taskQueue.friendlyId,
-                  name: taskQueue.name.replace(/^task\//, ""),
-                  type: queueTypeFromType(taskQueue.type),
-                  paused: taskQueue.paused,
-                }
-              : undefined,
-            task: taskWithEnvironment,
-            possibleTimezones,
-            runs: (
-              await Promise.all(
-                latestRuns.map(async (r) => {
-                  const payload = await getScheduleTaskRunPayload(r);
+          triggerSource: "SCHEDULED",
+          queue: taskQueue
+            ? {
+                id: taskQueue.friendlyId,
+                name: taskQueue.name.replace(/^task\//, ""),
+                type: queueTypeFromType(taskQueue.type),
+                paused: taskQueue.paused,
+              }
+            : undefined,
+          task: taskWithEnvironment,
+          possibleTimezones,
+          runs: (
+            await Promise.all(
+              latestRuns.map(async (r) => {
+                const payload = await getScheduleTaskRunPayload(r);
 
-                  if (payload.success) {
-                    return {
-                      ...r,
-                      payload: payload.data,
-                      ttlSeconds: r.ttl ? parse(r.ttl, "s") ?? undefined : undefined,
-                    } satisfies ScheduledRun;
-                  }
-                })
-              )
-            ).filter(Boolean),
-            latestVersions,
-          },
+                if (payload.success) {
+                  return {
+                    ...r,
+                    payload: payload.data,
+                    ttlSeconds: r.ttl ? parse(r.ttl, "s") ?? undefined : undefined,
+                  } satisfies ScheduledRun;
+                }
+              })
+            )
+          ).filter(Boolean),
+          latestVersions,
           disableVersionSelection,
           allowArbitraryQueues,
         };
+      }
+      default: {
+        return task.triggerSource satisfies never;
+      }
     }
   }
 }
