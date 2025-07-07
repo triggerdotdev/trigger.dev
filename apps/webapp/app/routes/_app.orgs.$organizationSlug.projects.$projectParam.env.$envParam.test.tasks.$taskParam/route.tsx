@@ -418,12 +418,12 @@ function StandardTaskForm({
           <div className="h-full overflow-y-scroll">
             <Fieldset className="px-3 py-3">
               <InputGroup>
-                <Label>Delay</Label>
+                <Label variant="small">Delay</Label>
                 <DurationPicker name={delaySeconds.name} id={delaySeconds.id} />
                 <FormError id={delaySeconds.errorId}>{delaySeconds.error}</FormError>
               </InputGroup>
               <InputGroup>
-                <Label>TTL</Label>
+                <Label variant="small">TTL</Label>
                 <DurationPicker
                   name={ttlSeconds.name}
                   id={ttlSeconds.id}
@@ -434,7 +434,9 @@ function StandardTaskForm({
                 <FormError id={ttlSeconds.errorId}>{ttlSeconds.error}</FormError>
               </InputGroup>
               <InputGroup>
-                <Label htmlFor={queue.id}>Queue</Label>
+                <Label htmlFor={queue.id} variant="small">
+                  Queue
+                </Label>
                 {allowArbitraryQueues ? (
                   <Input
                     {...conform.input(queue, { type: "text" })}
@@ -484,7 +486,9 @@ function StandardTaskForm({
                 <FormError id={queue.errorId}>{queue.error}</FormError>
               </InputGroup>
               <InputGroup>
-                <Label htmlFor={tags.id}>Tags</Label>
+                <Label htmlFor={tags.id} variant="small">
+                  Tags
+                </Label>
                 <RunTagInput
                   name={tags.name}
                   id={tags.id}
@@ -496,7 +500,9 @@ function StandardTaskForm({
                 <FormError id={tags.errorId}>{tags.error}</FormError>
               </InputGroup>
               <InputGroup>
-                <Label htmlFor={maxAttempts.id}>Max attempts</Label>
+                <Label htmlFor={maxAttempts.id} variant="small">
+                  Max attempts
+                </Label>
                 <Input
                   {...conform.input(maxAttempts, { type: "number" })}
                   className="[&::-webkit-inner-spin-button]:appearance-none"
@@ -522,7 +528,7 @@ function StandardTaskForm({
                 <FormError id={maxAttempts.errorId}>{maxAttempts.error}</FormError>
               </InputGroup>
               <InputGroup>
-                <Label>Max duration</Label>
+                <Label variant="small">Max duration</Label>
                 <DurationPicker
                   name={maxDurationSeconds.name}
                   id={maxDurationSeconds.id}
@@ -532,7 +538,9 @@ function StandardTaskForm({
                 <FormError id={maxDurationSeconds.errorId}>{maxDurationSeconds.error}</FormError>
               </InputGroup>
               <InputGroup>
-                <Label htmlFor={idempotencyKey.id}>Idempotency key</Label>
+                <Label htmlFor={idempotencyKey.id} variant="small">
+                  Idempotency key
+                </Label>
                 <Input {...conform.input(idempotencyKey, { type: "text" })} variant="small" />
                 <FormError id={idempotencyKey.errorId}>{idempotencyKey.error}</FormError>
                 <Hint>
@@ -541,7 +549,7 @@ function StandardTaskForm({
                 </Hint>
               </InputGroup>
               <InputGroup>
-                <Label>Idempotency key TTL</Label>
+                <Label variant="small">Idempotency key TTL</Label>
                 <DurationPicker
                   name={idempotencyKeyTTLSeconds.name}
                   id={idempotencyKeyTTLSeconds.id}
@@ -552,7 +560,9 @@ function StandardTaskForm({
                 </FormError>
               </InputGroup>
               <InputGroup>
-                <Label htmlFor={concurrencyKey.id}>Concurrency key</Label>
+                <Label htmlFor={concurrencyKey.id} variant="small">
+                  Concurrency key
+                </Label>
                 <Input
                   {...conform.input(concurrencyKey, { type: "text" })}
                   variant="small"
@@ -566,7 +576,9 @@ function StandardTaskForm({
                 <FormError id={concurrencyKey.errorId}>{concurrencyKey.error}</FormError>
               </InputGroup>
               <InputGroup>
-                <Label htmlFor={machine.id}>Machine</Label>
+                <Label htmlFor={machine.id} variant="small">
+                  Machine
+                </Label>
                 <Select
                   {...conform.select(machine)}
                   variant="tertiary/small"
@@ -590,7 +602,9 @@ function StandardTaskForm({
                 <FormError id={machine.errorId}>{machine.error}</FormError>
               </InputGroup>
               <InputGroup>
-                <Label htmlFor={version.id}>Version</Label>
+                <Label htmlFor={version.id} variant="small">
+                  Version
+                </Label>
                 <Select
                   {...conform.select(version)}
                   defaultValue="latest"
@@ -765,7 +779,9 @@ function ScheduledTaskForm({
       <div className="grow overflow-y-scroll p-3">
         <Fieldset>
           <InputGroup>
-            <Label htmlFor={timestamp.id}>Timestamp UTC</Label>
+            <Label htmlFor={timestamp.id} variant="small">
+              Timestamp UTC
+            </Label>
             <input
               type="hidden"
               {...conform.input(timestamp, { type: "hidden" })}
@@ -786,7 +802,9 @@ function ScheduledTaskForm({
             <FormError id={timestamp.errorId}>{timestamp.error}</FormError>
           </InputGroup>
           <InputGroup>
-            <Label htmlFor={lastTimestamp.id}>Last timestamp UTC</Label>
+            <Label htmlFor={lastTimestamp.id} variant="small">
+              Last timestamp UTC
+            </Label>
             <input
               type="hidden"
               {...conform.input(lastTimestamp, { type: "hidden" })}
@@ -809,7 +827,9 @@ function ScheduledTaskForm({
             <FormError id={lastTimestamp.errorId}>{lastTimestamp.error}</FormError>
           </InputGroup>
           <InputGroup>
-            <Label htmlFor={timezone.id}>Timezone</Label>
+            <Label htmlFor={timezone.id} variant="small">
+              Timezone
+            </Label>
             <Select
               {...conform.select(timezone)}
               placeholder="Select a timezone"
@@ -833,7 +853,9 @@ function ScheduledTaskForm({
             <FormError id={timezone.errorId}>{timezone.error}</FormError>
           </InputGroup>
           <InputGroup>
-            <Label htmlFor={externalId.id}>External ID</Label>
+            <Label htmlFor={externalId.id} variant="small">
+              External ID
+            </Label>
             <Input
               {...conform.input(externalId, { type: "text" })}
               placeholder="Optionally specify your own ID, e.g. user id"
@@ -850,7 +872,9 @@ function ScheduledTaskForm({
           </InputGroup>
           <div className="w-full border-b border-grid-bright"></div>
           <InputGroup>
-            <Label>TTL</Label>
+            <Label htmlFor={ttlSeconds.id} variant="small">
+              TTL
+            </Label>
             <DurationPicker
               name={ttlSeconds.name}
               id={ttlSeconds.id}
@@ -861,7 +885,9 @@ function ScheduledTaskForm({
             <FormError id={ttlSeconds.errorId}>{ttlSeconds.error}</FormError>
           </InputGroup>
           <InputGroup>
-            <Label htmlFor={queue.id}>Queue</Label>
+            <Label htmlFor={queue.id} variant="small">
+              Queue
+            </Label>
             {allowArbitraryQueues ? (
               <Input
                 {...conform.input(queue, { type: "text" })}
@@ -911,7 +937,9 @@ function ScheduledTaskForm({
             <FormError id={queue.errorId}>{queue.error}</FormError>
           </InputGroup>
           <InputGroup>
-            <Label htmlFor={tags.id}>Tags</Label>
+            <Label htmlFor={tags.id} variant="small">
+              Tags
+            </Label>
             <RunTagInput
               name={tags.name}
               id={tags.id}
@@ -923,7 +951,9 @@ function ScheduledTaskForm({
             <FormError id={tags.errorId}>{tags.error}</FormError>
           </InputGroup>
           <InputGroup>
-            <Label htmlFor={maxAttempts.id}>Max attempts</Label>
+            <Label htmlFor={maxAttempts.id} variant="small">
+              Max attempts
+            </Label>
             <Input
               {...conform.input(maxAttempts, { type: "number" })}
               className="[&::-webkit-inner-spin-button]:appearance-none"
@@ -949,7 +979,9 @@ function ScheduledTaskForm({
             <FormError id={maxAttempts.errorId}>{maxAttempts.error}</FormError>
           </InputGroup>
           <InputGroup>
-            <Label>Max duration</Label>
+            <Label htmlFor={maxDurationSeconds.id} variant="small">
+              Max duration
+            </Label>
             <DurationPicker
               name={maxDurationSeconds.name}
               id={maxDurationSeconds.id}
@@ -959,7 +991,9 @@ function ScheduledTaskForm({
             <FormError id={maxDurationSeconds.errorId}>{maxDurationSeconds.error}</FormError>
           </InputGroup>
           <InputGroup>
-            <Label htmlFor={idempotencyKey.id}>Idempotency key</Label>
+            <Label htmlFor={idempotencyKey.id} variant="small">
+              Idempotency key
+            </Label>
             <Input {...conform.input(idempotencyKey, { type: "text" })} variant="small" />
             <FormError id={idempotencyKey.errorId}>{idempotencyKey.error}</FormError>
             <Hint>
@@ -968,7 +1002,9 @@ function ScheduledTaskForm({
             </Hint>
           </InputGroup>
           <InputGroup>
-            <Label>Idempotency key TTL</Label>
+            <Label htmlFor={idempotencyKeyTTLSeconds.id} variant="small">
+              Idempotency key TTL
+            </Label>
             <DurationPicker name={idempotencyKeyTTLSeconds.name} id={idempotencyKeyTTLSeconds.id} />
             <Hint>By default, idempotency keys expire after 30 days.</Hint>
             <FormError id={idempotencyKeyTTLSeconds.errorId}>
@@ -976,7 +1012,9 @@ function ScheduledTaskForm({
             </FormError>
           </InputGroup>
           <InputGroup>
-            <Label htmlFor={concurrencyKey.id}>Concurrency key</Label>
+            <Label htmlFor={concurrencyKey.id} variant="small">
+              Concurrency key
+            </Label>
             <Input
               {...conform.input(concurrencyKey, { type: "text" })}
               variant="small"
@@ -990,7 +1028,9 @@ function ScheduledTaskForm({
             <FormError id={concurrencyKey.errorId}>{concurrencyKey.error}</FormError>
           </InputGroup>
           <InputGroup>
-            <Label htmlFor={machine.id}>Machine</Label>
+            <Label htmlFor={machine.id} variant="small">
+              Machine
+            </Label>
             <Select
               {...conform.select(machine)}
               variant="tertiary/small"
@@ -1014,7 +1054,9 @@ function ScheduledTaskForm({
             <FormError id={machine.errorId}>{machine.error}</FormError>
           </InputGroup>
           <InputGroup>
-            <Label htmlFor={version.id}>Version</Label>
+            <Label htmlFor={version.id} variant="small">
+              Version
+            </Label>
             <Select
               {...conform.select(version)}
               defaultValue="latest"
