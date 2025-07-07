@@ -930,6 +930,8 @@ const EnvironmentSchema = z.object({
 
   // CLI package tag (e.g. "latest", "v4-beta", "4.0.0") - used for setup commands
   TRIGGER_CLI_TAG: z.string().default("latest"),
+
+  HEALTHCHECK_DATABASE_DISABLED: z.string().default("0"),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;
