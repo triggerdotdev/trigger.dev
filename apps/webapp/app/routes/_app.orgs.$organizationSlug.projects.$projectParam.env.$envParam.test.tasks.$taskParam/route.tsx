@@ -1,7 +1,6 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { BeakerIcon, RectangleStackIcon } from "@heroicons/react/20/solid";
-import { ClockIcon } from "@heroicons/react/24/outline";
 import { type ActionFunction, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -57,6 +56,7 @@ import { RunTagInput } from "~/components/runs/v3/RunTagInput";
 import { type loader as queuesLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.queues";
 import { DateTime } from "~/components/primitives/DateTime";
 import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
+import { ClockRotateLeftIcon } from "~/assets/icons/ClockRotateLeftIcon";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -1118,7 +1118,7 @@ function RecentRunsPopover<T extends StandardRun | ScheduledRun>({
               <Button
                 type="button"
                 variant="tertiary/small"
-                LeadingIcon={ClockIcon}
+                LeadingIcon={ClockRotateLeftIcon}
                 disabled={true}
               >
                 Recent runs
@@ -1127,7 +1127,7 @@ function RecentRunsPopover<T extends StandardRun | ScheduledRun>({
             content="No runs yet"
           />
         ) : (
-          <Button type="button" variant="tertiary/small" LeadingIcon={ClockIcon}>
+          <Button type="button" variant="tertiary/small" LeadingIcon={ClockRotateLeftIcon}>
             Recent runs
           </Button>
         )}
