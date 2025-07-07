@@ -716,6 +716,33 @@ model TaskRun {
   @@index([status, runtimeEnvironmentId, createdAt, id(sort: Desc)])
 }
 
+model TaskRunTemplate {
+  id String @id @default(cuid())
+
+  taskSlug String
+
+  label String
+
+  payload      String?
+  payloadType  String @default("application/json")
+  metadata        String?
+  metadataType    String  @default("application/json")
+  queue String
+  delaySeconds Int?
+  maxAttempts Int?
+  maxDurationSeconds Int?
+  tags String[]
+  machinePreset String?
+
+  projectId String
+  organizationId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId, taskSlug, createdAt(sort: Desc)])
+}
+
 enum TaskRunStatus {
   ///
   /// NON-FINAL STATUSES
