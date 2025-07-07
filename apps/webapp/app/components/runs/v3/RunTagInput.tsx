@@ -1,4 +1,4 @@
-import { useCallback, useState, type KeyboardEvent } from "react";
+import { useCallback, useState, useEffect, type KeyboardEvent } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Input } from "~/components/primitives/Input";
 import { RunTag } from "./RunTag";
@@ -7,6 +7,7 @@ interface TagInputProps {
   id?: string; // used for the hidden input for form submission
   name?: string; // used for the hidden input for form submission
   defaultTags?: string[];
+  tags?: string[];
   placeholder?: string;
   variant?: "small" | "medium";
   maxTags?: number;
@@ -18,14 +19,25 @@ export function RunTagInput({
   id,
   name,
   defaultTags = [],
+  tags: controlledTags,
   placeholder = "Type and press Enter to add tags",
   variant = "small",
   maxTags = 10,
   maxTagLength = 128,
   onTagsChange,
 }: TagInputProps) {
-  const [tags, setTags] = useState<string[]>(defaultTags);
+  // Use controlled tags if provided, otherwise use default
+  const initialTags = controlledTags ?? defaultTags;
+
+  const [tags, setTags] = useState<string[]>(initialTags);
   const [inputValue, setInputValue] = useState("");
+
+  // Sync internal state with external tag changes
+  useEffect(() => {
+    if (controlledTags !== undefined) {
+      setTags(controlledTags);
+    }
+  }, [controlledTags]);
 
   const addTag = useCallback(
     (tagText: string) => {

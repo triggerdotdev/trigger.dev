@@ -4,6 +4,7 @@ import { type PrismaClient, prisma, sqlDatabaseSchema } from "~/db.server";
 import { getTimezones } from "~/utils/timezones.server";
 import { findCurrentWorkerDeployment } from "~/v3/models/workerDeployment.server";
 import { queueTypeFromType } from "./QueueRetrievePresenter.server";
+import parse from "parse-duration";
 
 type TestTaskOptions = {
   userId: string;
@@ -70,13 +71,22 @@ type RawRun = {
   runtimeEnvironmentId: string;
   seedMetadata?: string;
   seedMetadataType?: string;
+  concurrencyKey?: string;
+  maxAttempts?: number;
+  maxDurationInSeconds?: number;
+  machinePreset?: string;
+  ttl?: string;
+  idempotencyKey?: string;
+  runTags: string[];
 };
 
-export type StandardRun = Omit<RawRun, "number"> & {
+export type StandardRun = Omit<RawRun, "number" | "ttl"> & {
   number: number;
+  metadata?: string;
+  ttlSeconds?: number;
 };
 
-export type ScheduledRun = Omit<RawRun, "number" | "payload"> & {
+export type ScheduledRun = Omit<RawRun, "number" | "payload" | "ttl"> & {
   number: number;
   payload: {
     timestamp: Date;
@@ -84,6 +94,7 @@ export type ScheduledRun = Omit<RawRun, "number" | "payload"> & {
     externalId?: string;
     timezone: string;
   };
+  ttlSeconds?: number;
 };
 
 export class TestTaskPresenter {
@@ -148,7 +159,7 @@ export class TestTaskPresenter {
           createdAt: "desc",
         },
         // only the latest version has active workers in development,
-        // so we hide the older versions to avoid runs getting stuck
+        // so we hide the older versions to avoid confusion from stuck runs
         take: environment.type === "DEVELOPMENT" ? 1 : 20,
       })
     ).map((v) => v.version);
@@ -182,7 +193,13 @@ export class TestTaskPresenter {
         taskr."payloadType",
         taskr."seedMetadata",
         taskr."seedMetadataType",
-        taskr."runtimeEnvironmentId"
+        taskr."runtimeEnvironmentId",
+        taskr."concurrencyKey",
+        taskr."maxAttempts",
+        taskr."maxDurationInSeconds",
+        taskr."machinePreset",
+        taskr."ttl",
+        taskr."runTags"
     FROM
         taskruns AS taskr
     WHERE
@@ -223,7 +240,8 @@ export class TestTaskPresenter {
                   metadata: r.seedMetadata
                     ? await prettyPrintPacket(r.seedMetadata, r.seedMetadataType)
                     : undefined,
-                };
+                  ttlSeconds: r.ttl ? parse(r.ttl, "s") ?? undefined : undefined,
+                } satisfies StandardRun;
               })
             ),
             latestVersions,
@@ -249,7 +267,8 @@ export class TestTaskPresenter {
                       ...r,
                       number,
                       payload: payload.data,
-                    };
+                      ttlSeconds: r.ttl ? parse(r.ttl, "s") ?? undefined : undefined,
+                    } satisfies ScheduledRun;
                   }
                 })
               )

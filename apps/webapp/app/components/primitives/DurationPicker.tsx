@@ -7,6 +7,7 @@ export interface DurationPickerProps {
   id?: string; // used for the hidden input for form submission
   name?: string; // used for the hidden input for form submission
   defaultValueSeconds?: number;
+  value?: number;
   onChange?: (totalSeconds: number) => void;
   variant?: "small" | "medium";
   showClearButton?: boolean;
@@ -15,13 +16,17 @@ export interface DurationPickerProps {
 export function DurationPicker({
   name,
   defaultValueSeconds: defaultValue = 0,
+  value: controlledValue,
   onChange,
   variant = "small",
   showClearButton = true,
 }: DurationPickerProps) {
-  const defaultHours = Math.floor(defaultValue / 3600);
-  const defaultMinutes = Math.floor((defaultValue % 3600) / 60);
-  const defaultSeconds = defaultValue % 60;
+  // Use controlled value if provided, otherwise use default
+  const initialValue = controlledValue ?? defaultValue;
+
+  const defaultHours = Math.floor(initialValue / 3600);
+  const defaultMinutes = Math.floor((initialValue % 3600) / 60);
+  const defaultSeconds = initialValue % 60;
 
   const [hours, setHours] = useState<number>(defaultHours);
   const [minutes, setMinutes] = useState<number>(defaultMinutes);
@@ -34,6 +39,19 @@ export function DurationPicker({
   const totalSeconds = hours * 3600 + minutes * 60 + seconds;
 
   const isEmpty = hours === 0 && minutes === 0 && seconds === 0;
+
+  // Sync internal state with external value changes
+  useEffect(() => {
+    if (controlledValue !== undefined && controlledValue !== totalSeconds) {
+      const newHours = Math.floor(controlledValue / 3600);
+      const newMinutes = Math.floor((controlledValue % 3600) / 60);
+      const newSeconds = controlledValue % 60;
+
+      setHours(newHours);
+      setMinutes(newMinutes);
+      setSeconds(newSeconds);
+    }
+  }, [controlledValue]);
 
   useEffect(() => {
     onChange?.(totalSeconds);

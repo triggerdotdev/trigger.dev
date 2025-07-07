@@ -238,6 +238,19 @@ function StandardTaskForm({
 
   const currentMetadataJson = useRef<string>(defaultMetadataJson);
 
+  const [ttlValue, setTtlValue] = useState<number | undefined>(selectedCodeSample?.ttlSeconds);
+  const [concurrencyKeyValue, setConcurrencyKeyValue] = useState<string | undefined>(
+    selectedCodeSample?.concurrencyKey
+  );
+  const [queueValue, setQueueValue] = useState<string | undefined>(selectedCodeSample?.queue);
+  const [maxAttemptsValue, setMaxAttemptsValue] = useState<number | undefined>(
+    selectedCodeSample?.maxAttempts
+  );
+  const [maxDurationValue, setMaxDurationValue] = useState<number | undefined>(
+    selectedCodeSample?.maxDurationInSeconds
+  );
+  const [tagsValue, setTagsValue] = useState<string[]>(selectedCodeSample?.runTags ?? []);
+
   const queueFetcher = useFetcher<typeof queuesLoader>();
 
   useEffect(() => {
@@ -402,7 +415,12 @@ function StandardTaskForm({
               </InputGroup>
               <InputGroup>
                 <Label>TTL</Label>
-                <DurationPicker name={ttlSeconds.name} id={ttlSeconds.id} />
+                <DurationPicker
+                  name={ttlSeconds.name}
+                  id={ttlSeconds.id}
+                  value={ttlValue}
+                  onChange={setTtlValue}
+                />
                 <FormError id={ttlSeconds.errorId}>{ttlSeconds.error}</FormError>
               </InputGroup>
               <InputGroup>
@@ -430,7 +448,8 @@ function StandardTaskForm({
                   dropdownIcon
                   items={queues}
                   filter={{ keys: ["label"] }}
-                  defaultValue={undefined}
+                  value={queueValue}
+                  setValue={setQueueValue}
                 >
                   {(matches) =>
                     matches.map((queueItem) => (
@@ -461,7 +480,12 @@ function StandardTaskForm({
               </InputGroup>
               <InputGroup>
                 <Label htmlFor={concurrencyKey.id}>Concurrency key</Label>
-                <Input {...conform.input(concurrencyKey, { type: "text" })} variant="small" />
+                <Input
+                  {...conform.input(concurrencyKey, { type: "text" })}
+                  variant="small"
+                  value={concurrencyKeyValue ?? ""}
+                  onChange={(e) => setConcurrencyKeyValue(e.target.value)}
+                />
                 <FormError id={concurrencyKey.errorId}>{concurrencyKey.error}</FormError>
               </InputGroup>
               <InputGroup>
@@ -471,6 +495,10 @@ function StandardTaskForm({
                   className="[&::-webkit-inner-spin-button]:appearance-none"
                   variant="small"
                   min={1}
+                  value={maxAttemptsValue}
+                  onChange={(e) =>
+                    setMaxAttemptsValue(e.target.value ? parseInt(e.target.value) : undefined)
+                  }
                   onKeyDown={(e) => {
                     // only allow entering integers > 1
                     if (["-", "+", ".", "e", "E"].includes(e.key)) {
@@ -488,12 +516,23 @@ function StandardTaskForm({
               </InputGroup>
               <InputGroup>
                 <Label>Max duration</Label>
-                <DurationPicker name={maxDurationSeconds.name} id={maxDurationSeconds.id} />
+                <DurationPicker
+                  name={maxDurationSeconds.name}
+                  id={maxDurationSeconds.id}
+                  value={maxDurationValue}
+                  onChange={setMaxDurationValue}
+                />
                 <FormError id={maxDurationSeconds.errorId}>{maxDurationSeconds.error}</FormError>
               </InputGroup>
               <InputGroup>
                 <Label htmlFor={tags.id}>Tags</Label>
-                <RunTagInput name={tags.name} id={tags.id} variant="small" />
+                <RunTagInput
+                  name={tags.name}
+                  id={tags.id}
+                  variant="small"
+                  tags={tagsValue}
+                  onTagsChange={setTagsValue}
+                />
                 <FormError id={tags.errorId}>{tags.error}</FormError>
               </InputGroup>
               <InputGroup>
@@ -554,6 +593,12 @@ function StandardTaskForm({
                         run.seedMetadata && setMetadata(run.seedMetadata);
                         setSelectedCodeSampleId(run.id);
                         setIsRecentRunsPopoverOpen(false);
+                        setTtlValue(run.ttlSeconds);
+                        setConcurrencyKeyValue(run.concurrencyKey);
+                        setMaxAttemptsValue(run.maxAttempts);
+                        setMaxDurationValue(run.maxDurationInSeconds);
+                        setTagsValue(run.runTags ?? []);
+                        setQueueValue(run.queue);
                       }}
                       className="flex w-full items-center gap-2 rounded-sm px-2 py-2 outline-none transition-colors focus-custom hover:bg-charcoal-900	"
                     >
