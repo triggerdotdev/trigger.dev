@@ -54,6 +54,7 @@ export type TestTaskResult =
   | {
       foundTask: true;
       task: TestTask;
+      disableVersionSelection: boolean;
     }
   | {
       foundTask: false;
@@ -158,11 +159,11 @@ export class TestTaskPresenter {
         orderBy: {
           createdAt: "desc",
         },
-        // only the latest version has active workers in development,
-        // so we hide the older versions to avoid confusion from stuck runs
-        take: environment.type === "DEVELOPMENT" ? 1 : 20,
+        take: 20,
       })
     ).map((v) => v.version);
+
+    const disableVersionSelection = environment.type === "DEVELOPMENT";
 
     const latestRuns = await this.#prismaClient.$queryRaw<RawRun[]>`
     WITH taskruns AS (
@@ -246,6 +247,7 @@ export class TestTaskPresenter {
             ),
             latestVersions,
           },
+          disableVersionSelection,
         };
       case "SCHEDULED":
         const possibleTimezones = getTimezones();
@@ -275,6 +277,7 @@ export class TestTaskPresenter {
             ).filter(Boolean),
             latestVersions,
           },
+          disableVersionSelection,
         };
     }
   }

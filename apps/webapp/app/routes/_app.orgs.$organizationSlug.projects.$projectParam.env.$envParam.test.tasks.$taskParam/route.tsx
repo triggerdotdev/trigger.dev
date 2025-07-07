@@ -178,6 +178,7 @@ export default function Page() {
           defaultQueue={result.task.queue}
           runs={result.task.runs}
           versions={result.task.latestVersions}
+          disableVersionSelection={result.disableVersionSelection}
         />
       );
     }
@@ -187,6 +188,7 @@ export default function Page() {
           task={result.task.task}
           runs={result.task.runs}
           possibleTimezones={result.task.possibleTimezones}
+          disableVersionSelection={result.disableVersionSelection}
         />
       );
     }
@@ -200,11 +202,13 @@ function StandardTaskForm({
   defaultQueue,
   runs,
   versions,
+  disableVersionSelection,
 }: {
   task: TestTask["task"];
   defaultQueue: TestTask["queue"];
   runs: StandardRun[];
   versions: string[];
+  disableVersionSelection: boolean;
 }) {
   const environment = useEnvironment();
   const { value, replace } = useSearchParams();
@@ -603,6 +607,7 @@ function StandardTaskForm({
                   variant="tertiary/small"
                   placeholder="Select version"
                   dropdownIcon
+                  disabled={disableVersionSelection}
                 >
                   {versions.map((version, i) => (
                     <SelectItem key={version} value={i === 0 ? "latest" : version}>
@@ -610,6 +615,9 @@ function StandardTaskForm({
                     </SelectItem>
                   ))}
                 </Select>
+                {disableVersionSelection && (
+                  <Hint>Only the latest version is available in the development environment.</Hint>
+                )}
                 <FormError id={version.errorId}>{version.error}</FormError>
               </InputGroup>
               <FormError>{form.error}</FormError>
@@ -647,6 +655,7 @@ function ScheduledTaskForm({
   task: TestTask["task"];
   runs: ScheduledRun[];
   possibleTimezones: string[];
+  disableVersionSelection: boolean;
 }) {
   const environment = useEnvironment();
   const lastSubmission = useActionData();
