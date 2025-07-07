@@ -58,6 +58,7 @@ import { type loader as queuesLoader } from "~/routes/resources.orgs.$organizati
 import { DateTime } from "~/components/primitives/DateTime";
 import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
 import { ClockRotateLeftIcon } from "~/assets/icons/ClockRotateLeftIcon";
+import { MachinePresetName } from "@trigger.dev/core/v3";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -230,15 +231,7 @@ export default function Page() {
 }
 
 const startingJson = "{\n\n}";
-const machinePresets = [
-  "micro",
-  "small-1x",
-  "small-2x",
-  "medium-1x",
-  "medium-2x",
-  "large-1x",
-  "large-2x",
-];
+const machinePresets = Object.values(MachinePresetName.enum);
 
 function StandardTaskForm({
   task,
