@@ -68,6 +68,8 @@ export function RunTagInput({
         addTag(inputValue);
       } else if (e.key === "Backspace" && inputValue === "" && tags.length > 0) {
         removeTag(tags[tags.length - 1]);
+      } else if (e.key === ",") {
+        e.preventDefault();
       }
     },
     [inputValue, addTag, removeTag, tags]
