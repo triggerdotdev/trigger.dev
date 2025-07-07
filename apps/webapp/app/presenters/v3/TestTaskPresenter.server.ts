@@ -137,7 +137,7 @@ export class TestTaskPresenter {
             id: task.queueId,
           },
           select: {
-            id: true,
+            friendlyId: true,
             name: true,
             type: true,
             paused: true,
@@ -221,7 +221,7 @@ export class TestTaskPresenter {
             triggerSource: "STANDARD",
             queue: taskQueue
               ? {
-                  id: taskQueue.id,
+                  id: taskQueue.friendlyId,
                   name: taskQueue.name.replace(/^task\//, ""),
                   type: queueTypeFromType(taskQueue.type),
                   paused: taskQueue.paused,

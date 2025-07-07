@@ -170,12 +170,38 @@ export default function Page() {
     return <div></div>;
   }
 
+  const params = useParams();
+  const queueFetcher = useFetcher<typeof queuesLoader>();
+
+  useEffect(() => {
+    if (params.organizationSlug && params.projectParam && params.envParam) {
+      const searchParams = new URLSearchParams();
+      searchParams.set("type", "custom");
+      searchParams.set("per_page", "100");
+
+      queueFetcher.load(
+        `/resources/orgs/${params.organizationSlug}/projects/${params.projectParam}/env/${
+          params.envParam
+        }/queues?${searchParams.toString()}`
+      );
+    }
+  }, [params.organizationSlug, params.projectParam, params.envParam]);
+
+  const defaultTaskQueue = result.task.queue;
+  const queues = useMemo(() => {
+    const customQueues = queueFetcher.data?.queues ?? [];
+
+    return defaultTaskQueue && !customQueues.some((q) => q.id === defaultTaskQueue.id)
+      ? [defaultTaskQueue, ...customQueues]
+      : customQueues;
+  }, [queueFetcher.data?.queues, defaultTaskQueue]);
+
   switch (result.task.triggerSource) {
     case "STANDARD": {
       return (
         <StandardTaskForm
           task={result.task.task}
-          defaultQueue={result.task.queue}
+          queues={queues}
           runs={result.task.runs}
           versions={result.task.latestVersions}
           disableVersionSelection={result.disableVersionSelection}
@@ -193,6 +219,9 @@ export default function Page() {
         />
       );
     }
+    default: {
+      return result.task satisfies never;
+    }
   }
 }
 
@@ -209,14 +238,14 @@ const machinePresets = [
 
 function StandardTaskForm({
   task,
-  defaultQueue,
+  queues,
   runs,
   versions,
   disableVersionSelection,
   allowArbitraryQueues,
 }: {
   task: TestTask["task"];
-  defaultQueue: TestTask["queue"];
+  queues: Required<TestTask>["queue"][];
   runs: StandardRun[];
   versions: string[];
   disableVersionSelection: boolean;
@@ -225,7 +254,6 @@ function StandardTaskForm({
   const environment = useEnvironment();
   const { value, replace } = useSearchParams();
   const tab = value("tab");
-  const params = useParams();
 
   //form submission
   const lastSubmission = useActionData();
@@ -270,50 +298,14 @@ function StandardTaskForm({
   );
   const [tagsValue, setTagsValue] = useState<string[]>(selectedCodeSample?.runTags ?? []);
 
-  const queueFetcher = useFetcher<typeof queuesLoader>();
-
-  useEffect(() => {
-    if (params.organizationSlug && params.projectParam && params.envParam) {
-      const searchParams = new URLSearchParams();
-      searchParams.set("type", "custom");
-      searchParams.set("per_page", "100");
-
-      queueFetcher.load(
-        `/resources/orgs/${params.organizationSlug}/projects/${params.projectParam}/env/${
-          params.envParam
-        }/queues?${searchParams.toString()}`
-      );
-    }
-  }, [params.organizationSlug, params.projectParam, params.envParam]);
-
-  const queues = useMemo(() => {
-    const defaultQueueItem = defaultQueue
-      ? {
-          value: defaultQueue.type === "task" ? `task/${defaultQueue.name}` : defaultQueue.name,
-          label: defaultQueue.name,
-          type: defaultQueue.type,
-          paused: defaultQueue.paused,
-        }
-      : undefined;
-
-    if (!queueFetcher.data?.queues) {
-      return defaultQueueItem ? [defaultQueueItem] : [];
-    }
-
-    const customQueues = queueFetcher.data?.queues.map((queue) => ({
-      value: queue.name,
-      label: queue.name,
-      type: queue.type,
-      paused: queue.paused,
-    }));
-
-    return defaultQueueItem && !customQueues.some((q) => q.value === defaultQueueItem.value)
-      ? [defaultQueueItem, ...customQueues]
-      : customQueues;
-  }, [queueFetcher.data?.queues, defaultQueue]);
+  const queueItems = queues.map((q) => ({
+    value: q.type === "task" ? `task/${q.name}` : q.name,
+    label: q.name,
+    type: q.type,
+    paused: q.paused,
+  }));
 
   const fetcher = useFetcher();
-  const [isRecentRunsPopoverOpen, setIsRecentRunsPopoverOpen] = useState(false);
   const [
     form,
     {
@@ -379,67 +371,21 @@ function StandardTaskForm({
           </TabButton>
         </div>
         <div className="flex items-center gap-3">
-          <Popover open={isRecentRunsPopoverOpen} onOpenChange={setIsRecentRunsPopoverOpen}>
-            <PopoverTrigger asChild>
-              {runs.length === 0 ? (
-                <SimpleTooltip
-                  button={
-                    <Button
-                      type="button"
-                      variant="tertiary/small"
-                      LeadingIcon={ClockIcon}
-                      disabled={true}
-                    >
-                      Recent runs
-                    </Button>
-                  }
-                  content="No runs yet"
-                />
-              ) : (
-                <Button type="button" variant="tertiary/small" LeadingIcon={ClockIcon}>
-                  Recent runs
-                </Button>
-              )}
-            </PopoverTrigger>
-            <PopoverContent className="min-w-[279px] p-0" align="end" sideOffset={6}>
-              <div className="max-h-80 overflow-y-auto">
-                <div className="p-1">
-                  {runs.map((run) => (
-                    <button
-                      key={run.id}
-                      type="button"
-                      onClick={() => {
-                        setPayload(run.payload);
-                        run.seedMetadata && setMetadata(run.seedMetadata);
-                        setSelectedCodeSampleId(run.id);
-                        setIsRecentRunsPopoverOpen(false);
-                        setTtlValue(run.ttlSeconds);
-                        setConcurrencyKeyValue(run.concurrencyKey);
-                        setMaxAttemptsValue(run.maxAttempts);
-                        setMaxDurationValue(run.maxDurationInSeconds);
-                        setTagsValue(run.runTags ?? []);
-                        setQueueValue(run.queue);
-                        setMachineValue(run.machinePreset);
-                      }}
-                      className="flex w-full items-center gap-2 rounded-sm px-2 py-2 outline-none transition-colors focus-custom hover:bg-charcoal-900	"
-                    >
-                      <div className="flex flex-col items-start">
-                        <Paragraph variant="small">
-                          <DateTime date={run.createdAt} showTooltip={false} />
-                        </Paragraph>
-                        <div className="flex items-center gap-2 text-xs text-text-dimmed">
-                          <div>
-                            Run <span className="font-mono">{run.friendlyId.slice(-8)}</span>
-                          </div>
-                          <TaskRunStatusCombo status={run.status} />
-                        </div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </PopoverContent>
-          </Popover>
+          <RecentRunsPopover
+            runs={runs}
+            onRunSelected={(run) => {
+              setPayload(run.payload);
+              run.seedMetadata && setMetadata(run.seedMetadata);
+              setSelectedCodeSampleId(run.id);
+              setTtlValue(run.ttlSeconds);
+              setConcurrencyKeyValue(run.concurrencyKey);
+              setMaxAttemptsValue(run.maxAttempts);
+              setMaxDurationValue(run.maxDurationInSeconds);
+              setTagsValue(run.runTags ?? []);
+              setQueueValue(run.queue);
+              setMachineValue(run.machinePreset);
+            }}
+          />
         </div>
       </TabContainer>
       <ResizablePanelGroup orientation="horizontal">
@@ -524,7 +470,7 @@ function StandardTaskForm({
                     placeholder="Select queue"
                     variant="tertiary/small"
                     dropdownIcon
-                    items={queues}
+                    items={queueItems}
                     filter={{ keys: ["label"] }}
                     value={queueValue}
                     setValue={setQueueValue}
@@ -890,5 +836,70 @@ function ScheduledTaskForm({
         </Button>
       </div>
     </Form>
+  );
+}
+
+function RecentRunsPopover<T extends StandardRun | ScheduledRun>({
+  runs,
+  onRunSelected,
+}: {
+  runs: T[];
+  onRunSelected: (run: T) => void;
+}) {
+  const [isRecentRunsPopoverOpen, setIsRecentRunsPopoverOpen] = useState(false);
+
+  return (
+    <Popover open={isRecentRunsPopoverOpen} onOpenChange={setIsRecentRunsPopoverOpen}>
+      <PopoverTrigger asChild>
+        {runs.length === 0 ? (
+          <SimpleTooltip
+            button={
+              <Button
+                type="button"
+                variant="tertiary/small"
+                LeadingIcon={ClockIcon}
+                disabled={true}
+              >
+                Recent runs
+              </Button>
+            }
+            content="No runs yet"
+          />
+        ) : (
+          <Button type="button" variant="tertiary/small" LeadingIcon={ClockIcon}>
+            Recent runs
+          </Button>
+        )}
+      </PopoverTrigger>
+      <PopoverContent className="min-w-[279px] p-0" align="end" sideOffset={6}>
+        <div className="max-h-80 overflow-y-auto">
+          <div className="p-1">
+            {runs.map((run) => (
+              <button
+                key={run.id}
+                type="button"
+                onClick={() => {
+                  onRunSelected(run);
+                  setIsRecentRunsPopoverOpen(false);
+                }}
+                className="flex w-full items-center gap-2 rounded-sm px-2 py-2 outline-none transition-colors focus-custom hover:bg-charcoal-900	"
+              >
+                <div className="flex flex-col items-start">
+                  <Paragraph variant="small">
+                    <DateTime date={run.createdAt} showTooltip={false} />
+                  </Paragraph>
+                  <div className="flex items-center gap-2 text-xs text-text-dimmed">
+                    <div>
+                      Run <span className="font-mono">{run.friendlyId.slice(-8)}</span>
+                    </div>
+                    <TaskRunStatusCombo status={run.status} />
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
