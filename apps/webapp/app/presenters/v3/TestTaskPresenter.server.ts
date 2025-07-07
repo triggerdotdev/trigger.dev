@@ -63,7 +63,6 @@ export type TestTaskResult =
 
 type RawRun = {
   id: string;
-  number: BigInt;
   queue: string;
   friendlyId: string;
   createdAt: Date;
@@ -82,14 +81,12 @@ type RawRun = {
   runTags: string[];
 };
 
-export type StandardRun = Omit<RawRun, "number" | "ttl"> & {
-  number: number;
+export type StandardRun = Omit<RawRun, "ttl"> & {
   metadata?: string;
   ttlSeconds?: number;
 };
 
-export type ScheduledRun = Omit<RawRun, "number" | "payload" | "ttl"> & {
-  number: number;
+export type ScheduledRun = Omit<RawRun, "payload" | "ttl"> & {
   payload: {
     timestamp: Date;
     lastTimestamp?: Date;
@@ -186,7 +183,6 @@ export class TestTaskPresenter {
     )
     SELECT
         taskr.id,
-        taskr.number,
         taskr."queue",
         taskr."friendlyId",
         taskr."taskIdentifier",
@@ -233,19 +229,17 @@ export class TestTaskPresenter {
               : undefined,
             task: taskWithEnvironment,
             runs: await Promise.all(
-              latestRuns.map(async (r) => {
-                const number = Number(r.number);
-
-                return {
-                  ...r,
-                  number,
-                  payload: await prettyPrintPacket(r.payload, r.payloadType),
-                  metadata: r.seedMetadata
-                    ? await prettyPrintPacket(r.seedMetadata, r.seedMetadataType)
-                    : undefined,
-                  ttlSeconds: r.ttl ? parse(r.ttl, "s") ?? undefined : undefined,
-                } satisfies StandardRun;
-              })
+              latestRuns.map(
+                async (r) =>
+                  ({
+                    ...r,
+                    payload: await prettyPrintPacket(r.payload, r.payloadType),
+                    metadata: r.seedMetadata
+                      ? await prettyPrintPacket(r.seedMetadata, r.seedMetadataType)
+                      : undefined,
+                    ttlSeconds: r.ttl ? parse(r.ttl, "s") ?? undefined : undefined,
+                  } satisfies StandardRun)
+              )
             ),
             latestVersions,
           },
@@ -263,14 +257,11 @@ export class TestTaskPresenter {
             runs: (
               await Promise.all(
                 latestRuns.map(async (r) => {
-                  const number = Number(r.number);
-
                   const payload = await getScheduleTaskRunPayload(r);
 
                   if (payload.success) {
                     return {
                       ...r,
-                      number,
                       payload: payload.data,
                       ttlSeconds: r.ttl ? parse(r.ttl, "s") ?? undefined : undefined,
                     } satisfies ScheduledRun;

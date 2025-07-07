@@ -425,8 +425,10 @@ function StandardTaskForm({
                         <Paragraph variant="small">
                           <DateTime date={run.createdAt} showTooltip={false} />
                         </Paragraph>
-                        <div className="flex items-center gap-1 text-xs text-text-dimmed">
-                          <div>Run #{run.number}</div>
+                        <div className="flex items-center gap-2 text-xs text-text-dimmed">
+                          <div>
+                            Run <span className="font-mono">{run.friendlyId.slice(-8)}</span>
+                          </div>
                           <TaskRunStatusCombo status={run.status} />
                         </div>
                       </div>
