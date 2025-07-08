@@ -355,6 +355,7 @@ supervisor:
   affinity: {}
 
 # PostgreSQL configuration
+# Subchart: https://github.com/bitnami/charts/tree/main/bitnami/postgresql
 postgres:
   deploy: true
 
@@ -404,6 +405,7 @@ postgres:
     # 3. Configure extraVolumes, extraVolumeMounts, and extraEnvVars (see webapp section above)
 
 # Redis configuration
+# Subchart: https://github.com/bitnami/charts/tree/main/bitnami/redis
 redis:
   deploy: true
 
@@ -493,6 +495,7 @@ electric:
     #   value: "custom-value"
 
 # ClickHouse configuration
+# Subchart: https://github.com/bitnami/charts/tree/main/bitnami/clickhouse
 clickhouse:
   deploy: true
 
@@ -552,6 +555,7 @@ clickhouse:
       </clickhouse>
 
 # S3-compatible object storage configuration
+# Subchart: https://github.com/bitnami/charts/tree/main/bitnami/minio
 s3:
   # Set to false to use external S3-compatible storage
   # Set to true to deploy internal MinIO (default)
