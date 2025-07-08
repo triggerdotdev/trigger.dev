@@ -1107,25 +1107,14 @@ function RecentRunsPopover<T extends StandardRun | ScheduledRun>({
   return (
     <Popover open={isRecentRunsPopoverOpen} onOpenChange={setIsRecentRunsPopoverOpen}>
       <PopoverTrigger asChild>
-        {runs.length === 0 ? (
-          <SimpleTooltip
-            button={
-              <Button
-                type="button"
-                variant="tertiary/small"
-                LeadingIcon={ClockRotateLeftIcon}
-                disabled={true}
-              >
-                Recent runs
-              </Button>
-            }
-            content="No runs yet"
-          />
-        ) : (
-          <Button type="button" variant="tertiary/small" LeadingIcon={ClockRotateLeftIcon}>
-            Recent runs
-          </Button>
-        )}
+        <Button
+          type="button"
+          variant="tertiary/small"
+          LeadingIcon={ClockRotateLeftIcon}
+          disabled={runs.length === 0}
+        >
+          Recent runs
+        </Button>
       </PopoverTrigger>
       <PopoverContent className="min-w-[279px] p-0" align="end" sideOffset={6}>
         <div className="max-h-80 overflow-y-auto">
