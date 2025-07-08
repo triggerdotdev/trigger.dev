@@ -75,6 +75,7 @@ services:
       # DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT: 100
       # Internal OTEL configuration
       INTERNAL_OTEL_TRACE_LOGGING_ENABLED: ${INTERNAL_OTEL_TRACE_LOGGING_ENABLED:-0}
+      TRIGGER_CLI_TAG: ${TRIGGER_CLI_TAG:-v4-beta}
 
   postgres:
     image: postgres:${POSTGRES_IMAGE_TAG:-14}
