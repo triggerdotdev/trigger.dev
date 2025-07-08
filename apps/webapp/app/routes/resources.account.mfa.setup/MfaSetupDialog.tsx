@@ -60,7 +60,7 @@ export function MfaSetupDialog({
 
   const downloadRecoveryCodes = () => {
     if (!recoveryCodes) return;
-    
+
     const content = recoveryCodes.join("\n");
     const blob = new Blob([content], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
@@ -87,12 +87,12 @@ export function MfaSetupDialog({
                 Copy and store these recovery codes carefully in case you lose your device.
               </Paragraph>
 
-              <div className="flex flex-col gap-6 rounded border border-grid-dimmed bg-background-bright pt-6">
-                <div className="grid grid-cols-3 gap-2">
+              <div className="flex flex-col rounded border border-grid-dimmed bg-background-bright">
+                <div className="grid grid-cols-3 gap-x-2 gap-y-4 px-3 py-6">
                   {recoveryCodes.map((code, index) => (
-                    <div key={index} className="text-center font-mono text-sm text-text-bright">
+                    <span key={index} className="text-center font-mono text-xs text-text-bright">
                       {code}
-                    </div>
+                    </span>
                   ))}
                 </div>
                 <div className="flex items-center justify-end border-t border-grid-bright px-1.5 py-1.5">
@@ -145,15 +145,15 @@ export function MfaSetupDialog({
           <div className="flex flex-col gap-4 pt-3">
             <Paragraph>
               Scan the QR code below with your preferred authenticator app then enter the 6 digit
-              code that the app generates. Alternatively, you can copy the secret below and paste
-              it into your app.
+              code that the app generates. Alternatively, you can copy the secret below and paste it
+              into your app.
             </Paragraph>
 
             <div className="flex flex-col items-center justify-center gap-y-4 rounded border border-grid-dimmed bg-background-bright py-4">
               <div className="overflow-hidden rounded-lg border border-grid-dimmed">
                 <QRCodeSVG value={setupData.otpAuthUrl} size={300} marginSize={3} />
               </div>
-              <CopyableText value={setupData.secret} className="font-mono text-base tracking-wide" />
+              <CopyableText value={setupData.secret} className="font-mono text-sm tracking-wide" />
             </div>
 
             <div className="mb-4 flex items-center justify-center">
@@ -181,7 +181,7 @@ export function MfaSetupDialog({
             </div>
           </div>
 
-          {error && <FormError>{error}</FormError>}
+          <div className="mb-4 flex justify-center">{error && <FormError>{error}</FormError>}</div>
 
           <DialogFooter>
             <Button type="button" variant="secondary/medium" onClick={handleCancel}>

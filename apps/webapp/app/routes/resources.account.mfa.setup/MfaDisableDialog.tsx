@@ -65,9 +65,9 @@ export function MfaDisableDialog({
         </DialogHeader>
         <Form method="post" onSubmit={handleSubmit}>
           {useRecoveryCode ? (
-            <>
+            <div className="pt-3">
               <Paragraph className="mb-6 text-center">
-                Enter one of your recovery codes.
+                Enter one of your recovery codes to disable MFA.
               </Paragraph>
               <Fieldset className="flex w-full flex-col items-center gap-y-2">
                 <InputGroup>
@@ -84,20 +84,21 @@ export function MfaDisableDialog({
                   />
                 </InputGroup>
               </Fieldset>
-
-              <Button
-                type="button"
-                onClick={handleSwitchToTotpCode}
-                variant="minimal/small"
-                className="mt-4"
-              >
-                Use an authenticator app
-              </Button>
-            </>
+              <div className="flex justify-center">
+                <Button
+                  type="button"
+                  onClick={handleSwitchToTotpCode}
+                  variant="minimal/small"
+                  className="my-4"
+                >
+                  Use an authenticator app
+                </Button>
+              </div>
+            </div>
           ) : (
-            <>
+            <div className="pt-3">
               <Paragraph variant="base" className="mb-6 text-center">
-                Enter the code from your authenticator app.
+                Enter the code from your authenticator app to disable MFA.
               </Paragraph>
               <Fieldset className="flex w-full flex-col items-center gap-y-2">
                 <InputOTP
@@ -105,7 +106,6 @@ export function MfaDisableDialog({
                   value={totpCode}
                   onChange={(value) => setTotpCode(value)}
                   variant="large"
-                  fullWidth
                 >
                   <InputOTPGroup variant="large" fullWidth>
                     <InputOTPSlot index={0} autoFocus variant="large" fullWidth />
@@ -117,15 +117,17 @@ export function MfaDisableDialog({
                   </InputOTPGroup>
                 </InputOTP>
               </Fieldset>
-              <Button
-                type="button"
-                onClick={handleSwitchToRecoveryCode}
-                variant="minimal/small"
-                className="mt-4"
-              >
-                Use a recovery code
-              </Button>
-            </>
+              <div className="flex justify-center">
+                <Button
+                  type="button"
+                  onClick={handleSwitchToRecoveryCode}
+                  variant="minimal/small"
+                  className="my-4"
+                >
+                  Use a recovery code
+                </Button>
+              </div>
+            </div>
           )}
 
           {error && <FormError>{error}</FormError>}
