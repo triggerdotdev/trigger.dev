@@ -6,6 +6,7 @@ import parseDuration from "parse-duration";
 import { timeFilters } from "~/components/runs/v3/SharedFilters";
 import { type PrismaClient } from "~/db.server";
 import { z } from "zod";
+import { BulkActionId } from "@trigger.dev/core/v3/isomorphic";
 
 export type RunsRepositoryOptions = {
   clickhouse: ClickHouse;
@@ -246,6 +247,10 @@ export class RunsRepository {
       }
     }
 
+    if (options.bulkId && options.bulkId.startsWith("bulk_")) {
+      convertedOptions.bulkId = BulkActionId.toId(options.bulkId);
+    }
+
     // Show all runs if we are filtering by batchId or runId
     if (options.batchId || options.runIds?.length || options.scheduleId || options.tasks?.length) {
       convertedOptions.rootOnly = false;
@@ -321,7 +326,11 @@ function applyRunFiltersToQueryBuilder<T>(
     queryBuilder.where("batch_id = {batchId: String}", { batchId: options.batchId });
   }
 
-  // TODO new bulk action filtering
+  if (options.bulkId) {
+    queryBuilder.where("hasAny(bulk_action_group_ids, {bulkActionGroupIds: Array(String)})", {
+      bulkActionGroupIds: [options.bulkId],
+    });
+  }
 
   if (options.runIds && options.runIds.length > 0) {
     queryBuilder.where("friendly_id IN {runIds: Array(String)}", {

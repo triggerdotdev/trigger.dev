@@ -102,9 +102,11 @@ export class NextRunListPresenter {
         friendlyId: true,
         type: true,
         createdAt: true,
+        name: true,
       },
       where: {
         projectId: projectId,
+        environmentId,
       },
       orderBy: {
         createdAt: "desc",
@@ -148,6 +150,7 @@ export class NextRunListPresenter {
       rootOnly,
       batchId,
       runIds,
+      bulkId,
       page: {
         size: pageSize,
         cursor,

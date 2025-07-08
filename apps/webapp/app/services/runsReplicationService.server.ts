@@ -721,6 +721,7 @@ export class RunsReplicationService {
       expiration_ttl: run.ttl ?? "",
       output,
       concurrency_key: run.concurrencyKey ?? "",
+      bulk_action_group_ids: run.bulkActionGroupIds ?? [],
       _version: _version.toString(),
       _is_deleted: event === "delete" ? 1 : 0,
     };
