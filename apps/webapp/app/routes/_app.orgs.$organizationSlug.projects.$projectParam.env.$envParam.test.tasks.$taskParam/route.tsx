@@ -1314,7 +1314,7 @@ function RunTemplatesPopover({
                 <div className="flex flex-col items-start">
                   <Paragraph variant="small">{template.label}</Paragraph>
                   <div className="flex items-center gap-2 text-xs text-text-dimmed">
-                    <DateTime date={template.createdAt} showTooltip={false} />
+                    <DateTime date={template.createdAt} showTooltip={false} includeTime={false} />
                   </div>
                 </div>
               </button>
