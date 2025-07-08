@@ -25,8 +25,6 @@ secrets:
   #   - MAGIC_LINK_SECRET
   #   - ENCRYPTION_KEY
   #   - MANAGED_WORKER_SECRET
-  #   - OBJECT_STORE_ACCESS_KEY_ID
-  #   - OBJECT_STORE_SECRET_ACCESS_KEY
   existingSecret: ""
 
   # Session secret for user authentication (32 hex chars)
@@ -37,10 +35,7 @@ secrets:
   encryptionKey: "f686147ab967943ebbe9ed3b496e465a"
   # Worker secret for managed worker authentication (32 hex chars)
   managedWorkerSecret: "447c29678f9eaf289e9c4b70d3dd8a7f"
-  # Object store credentials (change for production)
-  objectStore:
-    accessKeyId: "admin"
-    secretAccessKey: "very-safe-password"
+  # Object store credentials moved to s3.auth and s3.external section
 
 # Webapp configuration
 webapp:
@@ -567,6 +562,13 @@ s3:
   auth:
     rootUser: "admin"
     rootPassword: "very-safe-password"
+    # Webapp credentials for S3 access (defaults to root credentials if not specified)
+    accessKeyId: "" # Defaults to rootUser if empty
+    secretAccessKey: "" # Defaults to rootPassword if empty
+    # Existing secret support for webapp credentials
+    existingSecret: "" # If set, accessKeyId/secretAccessKey will be ignored
+    accessKeyIdSecretKey: "access-key-id" # Key in existingSecret containing access key ID
+    secretAccessKeySecretKey: "secret-access-key" # Key in existingSecret containing secret access key
 
   # The required "packets" bucket is created by default.
   defaultBuckets: "packets"
@@ -579,8 +581,13 @@ s3:
   # External S3 connection (when deploy: false)
   external:
     endpoint: "" # e.g., "https://s3.amazonaws.com" or "https://your-minio.com:9000"
-    accessKeyId: ""
-    secretAccessKey: ""
+    accessKeyId: "admin" # Default for internal MinIO - change for production
+    secretAccessKey: "very-safe-password" # Default for internal MinIO - change for production
+    #
+    # Secure credential management
+    existingSecret: "" # Name of existing secret containing S3 credentials
+    existingSecretAccessKeyIdKey: "access-key-id" # Key in existing secret containing access key ID
+    existingSecretSecretAccessKeyKey: "secret-access-key" # Key in existing secret containing secret access key
 
 # Docker Registry configuration
 registry:

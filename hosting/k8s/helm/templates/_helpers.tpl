@@ -261,6 +261,94 @@ clickhouse-password
 {{- end }}
 
 {{/*
+S3 external secret name
+*/}}
+{{- define "trigger-v4.s3.external.secretName" -}}
+{{- if .Values.s3.external.existingSecret -}}
+{{ .Values.s3.external.existingSecret }}
+{{- else -}}
+{{ include "trigger-v4.secretsName" . }}
+{{- end -}}
+{{- end }}
+
+{{/*
+S3 external secret access key ID key
+*/}}
+{{- define "trigger-v4.s3.external.accessKeyIdKey" -}}
+{{- if .Values.s3.external.existingSecret -}}
+{{ .Values.s3.external.existingSecretAccessKeyIdKey }}
+{{- else -}}
+s3-access-key-id
+{{- end -}}
+{{- end }}
+
+{{/*
+S3 external secret secret access key key
+*/}}
+{{- define "trigger-v4.s3.external.secretAccessKeyKey" -}}
+{{- if .Values.s3.external.existingSecret -}}
+{{ .Values.s3.external.existingSecretSecretAccessKeyKey }}
+{{- else -}}
+s3-secret-access-key
+{{- end -}}
+{{- end }}
+
+{{/*
+S3 auth secret name
+*/}}
+{{- define "trigger-v4.s3.auth.secretName" -}}
+{{- if .Values.s3.auth.existingSecret -}}
+{{ .Values.s3.auth.existingSecret }}
+{{- else -}}
+{{ include "trigger-v4.secretsName" . }}
+{{- end -}}
+{{- end }}
+
+{{/*
+S3 auth secret access key ID key
+*/}}
+{{- define "trigger-v4.s3.auth.accessKeyIdKey" -}}
+{{- if .Values.s3.auth.existingSecret -}}
+{{ .Values.s3.auth.accessKeyIdSecretKey }}
+{{- else -}}
+s3-auth-access-key-id
+{{- end -}}
+{{- end }}
+
+{{/*
+S3 auth secret secret access key key
+*/}}
+{{- define "trigger-v4.s3.auth.secretAccessKeyKey" -}}
+{{- if .Values.s3.auth.existingSecret -}}
+{{ .Values.s3.auth.secretAccessKeySecretKey }}
+{{- else -}}
+s3-auth-secret-access-key
+{{- end -}}
+{{- end }}
+
+{{/*
+S3 auth effective access key ID (with fallback to rootUser)
+*/}}
+{{- define "trigger-v4.s3.auth.effectiveAccessKeyId" -}}
+{{- if .Values.s3.auth.accessKeyId -}}
+{{ .Values.s3.auth.accessKeyId }}
+{{- else -}}
+{{ .Values.s3.auth.rootUser }}
+{{- end -}}
+{{- end }}
+
+{{/*
+S3 auth effective secret access key (with fallback to rootPassword)
+*/}}
+{{- define "trigger-v4.s3.auth.effectiveSecretAccessKey" -}}
+{{- if .Values.s3.auth.secretAccessKey -}}
+{{ .Values.s3.auth.secretAccessKey }}
+{{- else -}}
+{{ .Values.s3.auth.rootPassword }}
+{{- end -}}
+{{- end }}
+
+{{/*
 Electric service URL
 */}}
 {{- define "trigger-v4.electric.url" -}}

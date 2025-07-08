@@ -284,16 +284,55 @@ spec:
                 secretKeyRef:
                   name: {{ include "trigger-v4.secretsName" . }}
                   key: MANAGED_WORKER_SECRET
+            {{- if .Values.s3.deploy }}
+            {{- if .Values.s3.auth.existingSecret }}
+            - name: OBJECT_STORE_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trigger-v4.s3.auth.secretName" . }}
+                  key: {{ include "trigger-v4.s3.auth.accessKeyIdKey" . }}
+            - name: OBJECT_STORE_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trigger-v4.s3.auth.secretName" . }}
+                  key: {{ include "trigger-v4.s3.auth.secretAccessKeyKey" . }}
+            {{- else }}
             - name: OBJECT_STORE_ACCESS_KEY_ID
               valueFrom:
                 secretKeyRef:
                   name: {{ include "trigger-v4.secretsName" . }}
-                  key: OBJECT_STORE_ACCESS_KEY_ID
+                  key: s3-auth-access-key-id
             - name: OBJECT_STORE_SECRET_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ include "trigger-v4.secretsName" . }}
-                  key: OBJECT_STORE_SECRET_ACCESS_KEY
+                  key: s3-auth-secret-access-key
+            {{- end }}
+            {{- else }}
+            {{- if .Values.s3.external.existingSecret }}
+            - name: OBJECT_STORE_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trigger-v4.s3.external.secretName" . }}
+                  key: {{ include "trigger-v4.s3.external.accessKeyIdKey" . }}
+            - name: OBJECT_STORE_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trigger-v4.s3.external.secretName" . }}
+                  key: {{ include "trigger-v4.s3.external.secretAccessKeyKey" . }}
+            {{- else if .Values.s3.external.accessKeyId }}
+            - name: OBJECT_STORE_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trigger-v4.secretsName" . }}
+                  key: s3-access-key-id
+            - name: OBJECT_STORE_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trigger-v4.secretsName" . }}
+                  key: s3-secret-access-key
+            {{- end }}
+            {{- end }}
             {{- end }}
             {{- if .Values.webapp.observability }}
             {{- if .Values.webapp.observability.tracing.exporterUrl }}
