@@ -10,6 +10,7 @@ import { CancelAttemptService } from "./cancelAttempt.server";
 import { CancelTaskAttemptDependenciesService } from "./cancelTaskAttemptDependencies.server";
 import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
 import { getTaskEventStoreTableForRun } from "../taskEventStore.server";
+import { CancelableTaskRun } from "./cancelTaskRun.server";
 
 type ExtendedTaskRun = Prisma.TaskRunGetPayload<{
   include: {
@@ -31,7 +32,7 @@ export type CancelTaskRunServiceOptions = {
 };
 
 export class CancelTaskRunServiceV1 extends BaseService {
-  public async call(taskRun: TaskRun, options?: CancelTaskRunServiceOptions) {
+  public async call(taskRun: CancelableTaskRun, options?: CancelTaskRunServiceOptions) {
     const opts = {
       reason: "Task run was cancelled by user",
       cancelAttempts: true,

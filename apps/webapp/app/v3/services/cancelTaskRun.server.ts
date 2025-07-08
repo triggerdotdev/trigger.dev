@@ -10,15 +10,21 @@ export type CancelTaskRunServiceOptions = {
   reason?: string;
   cancelAttempts?: boolean;
   cancelledAt?: Date;
+  bulkActionId?: string;
 };
 
 type CancelTaskRunServiceResult = {
   id: string;
 };
 
+export type CancelableTaskRun = Pick<
+  TaskRun,
+  "id" | "engine" | "status" | "friendlyId" | "taskEventStore" | "createdAt" | "completedAt"
+>;
+
 export class CancelTaskRunService extends BaseService {
   public async call(
-    taskRun: TaskRun,
+    taskRun: CancelableTaskRun,
     options?: CancelTaskRunServiceOptions
   ): Promise<CancelTaskRunServiceResult | undefined> {
     if (taskRun.engine === RunEngineVersion.V1) {
@@ -29,7 +35,7 @@ export class CancelTaskRunService extends BaseService {
   }
 
   private async callV1(
-    taskRun: TaskRun,
+    taskRun: CancelableTaskRun,
     options?: CancelTaskRunServiceOptions
   ): Promise<CancelTaskRunServiceResult | undefined> {
     const service = new CancelTaskRunServiceV1(this._prisma);
@@ -37,7 +43,7 @@ export class CancelTaskRunService extends BaseService {
   }
 
   private async callV2(
-    taskRun: TaskRun,
+    taskRun: CancelableTaskRun,
     options?: CancelTaskRunServiceOptions
   ): Promise<CancelTaskRunServiceResult | undefined> {
     const result = await engine.cancelRun({

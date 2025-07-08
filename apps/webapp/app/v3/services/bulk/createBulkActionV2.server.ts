@@ -1,5 +1,5 @@
 import { BulkActionId } from "@trigger.dev/core/v3/isomorphic";
-import { BulkActionType, type PrismaClient } from "@trigger.dev/database";
+import { BulkActionStatus, BulkActionType, type PrismaClient } from "@trigger.dev/database";
 import { getRunFiltersFromRequest } from "~/presenters/RunFilters.server";
 import { type CreateBulkActionPayload } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.bulkaction";
 import { clickhouseClient } from "~/services/clickhouseInstance.server";
@@ -7,6 +7,10 @@ import { parseRunListInputOptions, RunsRepository } from "~/services/runsReposit
 import { BaseService } from "../baseService.server";
 import { commonWorker } from "~/v3/commonWorker.server";
 import { env } from "~/env.server";
+import { logger } from "@trigger.dev/sdk";
+import { CancelTaskRunService } from "../cancelTaskRun.server";
+import { tryCatch } from "@trigger.dev/core";
+import { ReplayTaskRunService } from "../replayTaskRun.server";
 
 export class BulkActionService extends BaseService {
   public async create(
@@ -71,6 +75,7 @@ export class BulkActionService extends BaseService {
     const group = await this._prisma.bulkActionGroup.findUnique({
       where: { id: bulkActionId },
       select: {
+        friendlyId: true,
         projectId: true,
         environmentId: true,
         project: {
@@ -117,7 +122,7 @@ export class BulkActionService extends BaseService {
     }
 
     // 2. Get the runs to process in this batch
-    const runs = await runsRepository.listRunIds({
+    const runIds = await runsRepository.listRunIds({
       ...filters,
       page: {
         size: env.BULK_ACTION_BATCH_SIZE,
@@ -127,10 +132,132 @@ export class BulkActionService extends BaseService {
     });
 
     // 3. Process the runs
+    let successCount = 0;
+    let failureCount = 0;
+    // Slice because we fetch an extra for the cursor
+    const runIdsToProcess = runIds.slice(0, env.BULK_ACTION_BATCH_SIZE);
+
+    switch (group.type) {
+      case BulkActionType.CANCEL: {
+        const cancelService = new CancelTaskRunService(this._prisma);
+
+        const runs = await this._replica.taskRun.findMany({
+          where: {
+            id: {
+              in: runIdsToProcess,
+            },
+          },
+          select: {
+            id: true,
+            engine: true,
+            friendlyId: true,
+            status: true,
+            createdAt: true,
+            completedAt: true,
+            taskEventStore: true,
+          },
+        });
+
+        for (const run of runs) {
+          const [error, result] = await tryCatch(
+            cancelService.call(run, {
+              reason: `Bulk action ${group.friendlyId} cancelled run`,
+              bulkActionId: bulkActionId,
+            })
+          );
+          if (error) {
+            logger.error("Failed to cancel run", {
+              error,
+              runId: run.id,
+              status: run.status,
+            });
+
+            failureCount++;
+          } else {
+            successCount++;
+          }
+        }
+      }
+      case BulkActionType.REPLAY: {
+        const replayService = new ReplayTaskRunService(this._prisma);
+
+        const runs = await this._replica.taskRun.findMany({
+          where: {
+            id: {
+              in: runIdsToProcess,
+            },
+          },
+        });
+
+        for (const run of runs) {
+          const [error, result] = await tryCatch(
+            replayService.call(run, {
+              bulkActionId: bulkActionId,
+            })
+          );
+          if (error) {
+            logger.error("Failed to replay run, error", {
+              error,
+              runId: run.id,
+              status: run.status,
+            });
+
+            failureCount++;
+          } else {
+            if (!result) {
+              logger.error("Failed to replay run, no result", {
+                runId: run.id,
+                status: run.status,
+              });
+
+              failureCount++;
+            } else {
+              successCount++;
+            }
+          }
+        }
+      }
+    }
+
+    const isFinished = runIdsToProcess.length < env.BULK_ACTION_BATCH_SIZE;
+
+    logger.log("Bulk action group processed batch", {
+      bulkActionId,
+      organizationId: group.project.organizationId,
+      projectId: group.projectId,
+      environmentId: group.environmentId,
+      batchSize: runIdsToProcess.length,
+      cursor: group.cursor,
+      successCount,
+      failureCount,
+      isFinished,
+    });
 
     // 4. Update the bulk action group
+    await this._prisma.bulkActionGroup.update({
+      where: { id: bulkActionId },
+      data: {
+        cursor: runIdsToProcess[runIdsToProcess.length - 1],
+        successCount: {
+          increment: successCount,
+        },
+        failureCount: {
+          increment: failureCount,
+        },
+        status: isFinished ? BulkActionStatus.COMPLETED : undefined,
+        completedAt: isFinished ? new Date() : undefined,
+      },
+    });
 
     // 5. If there are more runs to process, queue the next batch
+    if (!isFinished) {
+      await commonWorker.enqueue({
+        id: `processBulkAction-${bulkActionId}`,
+        job: "processBulkAction",
+        payload: { bulkActionId },
+        availableAt: new Date(Date.now() + env.BULK_ACTION_BATCH_DELAY_MS),
+      });
+    }
   }
 }
 
