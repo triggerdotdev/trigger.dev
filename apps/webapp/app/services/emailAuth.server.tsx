@@ -37,12 +37,6 @@ const emailStrategy = new EmailLinkStrategy(
 
       await postAuthentication({ user, isNewUser, loginMethod: "MAGIC_LINK" });
 
-      // Check if user has MFA enabled
-      if (user.mfaEnabledAt) {
-        // Throw a special error that will be caught by the magic route
-        throw new MfaRequiredError(user.id);
-      }
-
       return { userId: user.id };
     } catch (error) {
       // Skip logging the error if it's a MfaRequiredError

@@ -15,15 +15,6 @@ const SecretSchema = z.object({
   secret: z.string(),
 });
 
-export class MfaRequiredError extends Error {
-  public readonly userId: string;
-
-  constructor(userId: string) {
-    super(`MFA is required for user ${userId}`);
-    this.userId = userId;
-  }
-}
-
 export class MultiFactorAuthenticationService {
   #prismaClient: PrismaClient;
 

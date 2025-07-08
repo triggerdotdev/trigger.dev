@@ -1,39 +1,56 @@
 import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { redirect } from "@remix-run/server-runtime";
+import { prisma } from "~/db.server";
+import { redirectWithErrorMessage } from "~/models/message.server";
 import { authenticator } from "~/services/auth.server";
-import { MfaRequiredError } from "~/services/mfa/multiFactorAuthentication.server";
 import { getRedirectTo } from "~/services/redirectTo.server";
-import { getUserSession, commitSession } from "~/services/sessionStorage.server";
+import { commitSession, getSession } from "~/services/sessionStorage.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  try {
-    // Attempt to authenticate the user with email-link
-    const authUser = await authenticator.authenticate("email-link", request, {
-      successRedirect: undefined, // Don't auto-redirect, we'll handle it
-      failureRedirect: undefined, // Don't auto-redirect on failure either
-    });
+  const redirectTo = await getRedirectTo(request);
 
-    // If we get here, user doesn't have MFA - complete login normally
-    const redirectTo = await getRedirectTo(request);
-    return redirect(redirectTo ?? "/");
-  } catch (error) {
-    // Check if this is an MFA_REQUIRED error
-    if (error instanceof MfaRequiredError) {
-      // User has MFA enabled - store pending user ID and redirect to MFA page
-      const session = await getUserSession(request);
-      session.set("pending-mfa-user-id", error.userId);
+  const auth = await authenticator.authenticate("email-link", request, {
+    failureRedirect: "/login/magic", // If auth fails, the failureRedirect will be thrown as a Response
+  });
 
-      const redirectTo = await getRedirectTo(request);
-      session.set("pending-mfa-redirect-to", redirectTo ?? "/");
+  // manually get the session
+  const session = await getSession(request.headers.get("cookie"));
 
-      return redirect("/login/mfa", {
-        headers: {
-          "Set-Cookie": await commitSession(session),
-        },
-      });
-    }
+  const userRecord = await prisma.user.findFirst({
+    where: {
+      id: auth.userId,
+    },
+    select: {
+      id: true,
+      mfaEnabledAt: true,
+    },
+  });
 
-    // Regular authentication failure, redirect to magic link page
-    return redirect("/login/magic");
+  if (!userRecord) {
+    return redirectWithErrorMessage(
+      "/login/magic",
+      request,
+      "Could not find your account. Please contact support."
+    );
   }
+
+  if (userRecord.mfaEnabledAt) {
+    session.set("pending-mfa-user-id", userRecord.id);
+    session.set("pending-mfa-redirect-to", redirectTo ?? "/");
+
+    return redirect("/login/mfa", {
+      headers: {
+        "Set-Cookie": await commitSession(session),
+      },
+    });
+  }
+
+  // and store the user data
+  session.set(authenticator.sessionKey, auth);
+
+  return redirect(redirectTo ?? "/", {
+    headers: {
+      "Set-Cookie": await commitSession(session),
+    },
+  });
 }

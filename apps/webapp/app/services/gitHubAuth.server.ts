@@ -41,12 +41,6 @@ export function addGitHubStrategy(
 
         await postAuthentication({ user, isNewUser, loginMethod: "GITHUB" });
 
-        // Check if user has MFA enabled
-        if (user.mfaEnabledAt) {
-          // Throw a special error that will be caught by the callback route
-          throw new MfaRequiredError(user.id);
-        }
-
         return {
           userId: user.id,
         };
