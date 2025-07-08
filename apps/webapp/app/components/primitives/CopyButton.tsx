@@ -27,6 +27,7 @@ type CopyButtonProps = {
   buttonClassName?: string;
   showTooltip?: boolean;
   buttonVariant?: "primary" | "secondary" | "tertiary" | "minimal";
+  children?: React.ReactNode;
 };
 
 export function CopyButton({
@@ -37,6 +38,7 @@ export function CopyButton({
   buttonClassName,
   showTooltip = true,
   buttonVariant = "tertiary",
+  children,
 }: CopyButtonProps) {
   const { copy, copied } = useCopy(value);
 
@@ -66,22 +68,25 @@ export function CopyButton({
         variant={`${buttonVariant}/${size === "extra-small" ? "small" : size}`}
         onClick={copy}
         className={cn("shrink-0", buttonClassName)}
+        LeadingIcon={
+          copied ? (
+            <ClipboardCheckIcon
+              className={cn(
+                iconSize,
+                buttonVariant === "primary" ? "text-background-dimmed" : "text-green-500"
+              )}
+            />
+          ) : (
+            <ClipboardIcon
+              className={cn(
+                iconSize,
+                buttonVariant === "primary" ? "text-background-dimmed" : "text-text-dimmed"
+              )}
+            />
+          )
+        }
       >
-        {copied ? (
-          <ClipboardCheckIcon
-            className={cn(
-              iconSize,
-              buttonVariant === "primary" ? "text-background-dimmed" : "text-green-500"
-            )}
-          />
-        ) : (
-          <ClipboardIcon
-            className={cn(
-              iconSize,
-              buttonVariant === "primary" ? "text-background-dimmed" : "text-text-dimmed"
-            )}
-          />
-        )}
+        {children}
       </Button>
     );
 

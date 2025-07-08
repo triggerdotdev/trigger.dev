@@ -1,6 +1,6 @@
 import { json, Session } from "@remix-run/node";
 import { createCookieSessionStorage } from "@remix-run/node";
-import { redirect } from "remix-typedjson";
+import { redirect, typedjson } from "remix-typedjson";
 import { env } from "~/env.server";
 
 export type ToastMessage = {
@@ -113,6 +113,44 @@ export async function jsonWithErrorMessage(
   setErrorMessage(session, message, options);
 
   return json(data, {
+    headers: {
+      "Set-Cookie": await commitSession(session, {
+        expires: new Date(Date.now() + ONE_YEAR),
+      }),
+    },
+  });
+}
+
+export async function typedJsonWithSuccessMessage<T>(
+  data: T,
+  request: Request,
+  message: string,
+  options?: ToastMessageOptions
+) {
+  const session = await getSession(request.headers.get("cookie"));
+
+  setSuccessMessage(session, message, options);
+
+  return typedjson(data, {
+    headers: {
+      "Set-Cookie": await commitSession(session, {
+        expires: new Date(Date.now() + ONE_YEAR),
+      }),
+    },
+  });
+}
+
+export async function typedJsonWithErrorMessage<T>(
+  data: T,
+  request: Request,
+  message: string,
+  options?: ToastMessageOptions
+) {
+  const session = await getSession(request.headers.get("cookie"));
+
+  setErrorMessage(session, message, options);
+
+  return typedjson(data, {
     headers: {
       "Set-Cookie": await commitSession(session, {
         expires: new Date(Date.now() + ONE_YEAR),

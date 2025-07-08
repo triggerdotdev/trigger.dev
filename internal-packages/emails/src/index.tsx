@@ -12,8 +12,10 @@ import AlertDeploymentSuccessEmail, {
 } from "../emails/deployment-success";
 import InviteEmail, { InviteEmailSchema } from "../emails/invite";
 import MagicLinkEmail from "../emails/magic-link";
-import WelcomeEmail from "../emails/welcome";
+
 import { constructMailTransport, MailTransport, MailTransportOptions } from "./transports";
+import MfaEnabledEmail, { MfaEnabledEmailSchema } from "../emails/mfa-enabled";
+import MfaDisabledEmail, { MfaDisabledEmailSchema } from "../emails/mfa-disabled";
 
 export { type MailTransportOptions };
 
@@ -28,6 +30,8 @@ export const DeliverEmailSchema = z
     AlertAttemptEmailSchema,
     AlertDeploymentFailureEmailSchema,
     AlertDeploymentSuccessEmailSchema,
+    MfaEnabledEmailSchema,
+    MfaDisabledEmailSchema,
   ])
   .and(z.object({ to: z.string() }));
 
@@ -116,6 +120,18 @@ export class EmailClient {
         return {
           subject: `[${data.organization}] Deployment ${data.version} [${data.environment}] succeeded`,
           component: <AlertDeploymentSuccessEmail {...data} />,
+        };
+      }
+      case "mfa-enabled": {
+        return {
+          subject: `Multi-factor authentication enabled on your Trigger.dev account`,
+          component: <MfaEnabledEmail {...data} />,
+        };
+      }
+      case "mfa-disabled": {
+        return {
+          subject: `Multi-factor authentication disabled on your Trigger.dev account`,
+          component: <MfaDisabledEmail {...data} />,
         };
       }
     }
