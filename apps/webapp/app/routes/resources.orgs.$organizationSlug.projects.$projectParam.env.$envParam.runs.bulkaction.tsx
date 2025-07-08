@@ -51,6 +51,8 @@ import { logger } from "~/services/logger.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { CreateBulkActionPresenter } from "~/presenters/v3/CreateBulkActionPresenter.server";
+import { BulkActionService } from "~/v3/services/bulk/createBulkActionV2.server";
+import { tryCatch } from "@trigger.dev/core";
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
@@ -88,7 +90,7 @@ export const CreateBulkActionSearchParams = z.object({
   action: BulkActionAction.default("cancel"),
 });
 
-const FormSchema = z.discriminatedUnion("mode", [
+export const CreateBulkActionPayload = z.discriminatedUnion("mode", [
   z.object({
     mode: z.literal("selected"),
     action: BulkActionAction,
@@ -101,16 +103,27 @@ const FormSchema = z.discriminatedUnion("mode", [
     title: z.string().optional(),
   }),
 ]);
+export type CreateBulkActionPayload = z.infer<typeof CreateBulkActionPayload>;
 
 export async function action({ params, request }: ActionFunctionArgs) {
-  const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
-
   const userId = await requireUserId(request);
 
-  //todo permission check
+  const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
+
+  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+  if (!project) {
+    throw new Response("Not Found", { status: 404 });
+  }
+
+  const environment = await findEnvironmentBySlug(project.id, envParam, userId);
+  if (!environment) {
+    throw new Response("Not Found", { status: 404 });
+  }
 
   const formData = await request.formData();
-  const submission = parse(formData, { schema: FormSchema });
+  const submission = parse(formData, { schema: CreateBulkActionPayload });
+
+  //todo add success and failure paths in the form
 
   if (!submission.value) {
     logger.error("Invalid bulk action", {
@@ -120,30 +133,28 @@ export async function action({ params, request }: ActionFunctionArgs) {
     return redirectWithErrorMessage("/", request, "Invalid bulk action");
   }
 
-  switch (submission.value.mode) {
-    case "selected": {
-      const { action, selectedRunIds, title } = submission.value;
+  const service = new BulkActionService();
+  const [error, result] = await tryCatch(
+    service.create(
+      project.organizationId,
+      project.id,
+      environment.id,
+      userId,
+      submission.value,
+      request
+    )
+  );
 
-      logger.log("Selected runs", {
-        action,
-        selectedRunIds,
-        title,
-      });
-      break;
-    }
-    case "filter": {
-      const filters = await getRunFiltersFromRequest(request);
-
-      logger.log("Filter runs", {
-        action,
-        filters,
-      });
-      break;
-    }
+  if (error) {
+    logger.error("Failed to create bulk action", {
+      error,
+    });
+    // todo decent error message
+    return redirectWithErrorMessage("/", request, "Failed to create bulk action");
   }
 
-  //todo go to the bulk action page
-  return redirectWithSuccessMessage("/", request, "SORTED");
+  //todo redirect to the bulk action page
+  return redirectWithSuccessMessage("/", request, "Bulk action created");
 }
 
 export function CreateBulkActionInspector({

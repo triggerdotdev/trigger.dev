@@ -20,6 +20,7 @@ import { ResumeBatchRunService } from "./services/resumeBatchRun.server";
 import { ResumeTaskDependencyService } from "./services/resumeTaskDependency.server";
 import { RetryAttemptService } from "./services/retryAttempt.server";
 import { TimeoutDeploymentService } from "./services/timeoutDeployment.server";
+import { BulkActionService } from "./services/bulk/createBulkActionV2.server";
 
 function initializeWorker() {
   const redisOptions = {
@@ -189,6 +190,15 @@ function initializeWorker() {
           maxAttempts: 6,
         },
       },
+      processBulkAction: {
+        schema: z.object({
+          bulkActionId: z.string(),
+        }),
+        visibilityTimeoutMs: 180_000,
+        retry: {
+          maxAttempts: 5,
+        },
+      },
     },
     concurrency: {
       workers: env.COMMON_WORKER_CONCURRENCY_WORKERS,
@@ -267,6 +277,10 @@ function initializeWorker() {
         const service = new EnqueueDelayedRunService();
 
         await service.call(payload.runId);
+      },
+      processBulkAction: async ({ payload }) => {
+        const service = new BulkActionService();
+        await service.process(payload.bulkActionId);
       },
     },
   });

@@ -17,6 +17,7 @@ import type { Agent as HttpAgent } from "http";
 import type { Agent as HttpsAgent } from "https";
 
 export type * from "./taskRuns.js";
+export type * from "./client/queryBuilder.js";
 
 export type ClickhouseCommonConfig = {
   keepAlive?: {

@@ -1,11 +1,11 @@
-import { type ClickHouse } from "@internal/clickhouse";
-import { type ClickhouseQueryBuilder } from "@internal/clickhouse/dist/src/client/queryBuilder";
+import { type ClickHouse, type ClickhouseQueryBuilder } from "@internal/clickhouse";
 import { type Tracer } from "@internal/tracing";
 import { type Logger, type LogLevel } from "@trigger.dev/core/logger";
-import { type TaskRunStatus } from "@trigger.dev/database";
+import { Prisma, TaskRunStatus } from "@trigger.dev/database";
 import parseDuration from "parse-duration";
 import { timeFilters } from "~/components/runs/v3/SharedFilters";
 import { type PrismaClient } from "~/db.server";
+import { z } from "zod";
 
 export type RunsRepositoryOptions = {
   clickhouse: ClickHouse;
@@ -15,43 +15,32 @@ export type RunsRepositoryOptions = {
   tracer?: Tracer;
 };
 
-type RunListInputOptions = {
-  organizationId: string;
-  projectId: string;
-  environmentId: string;
-  //filters
-  tasks?: string[];
-  versions?: string[];
-  statuses?: TaskRunStatus[];
-  tags?: string[];
-  scheduleId?: string;
-  period?: string;
-  bulkId?: string;
-  from?: number;
-  to?: number;
-  isTest?: boolean;
-  rootOnly?: boolean;
-  batchId?: string;
-  runIds?: string[];
-};
+const RunStatus = z.enum(Object.values(TaskRunStatus) as [TaskRunStatus, ...TaskRunStatus[]]);
 
-type FilterRunsOptions = {
-  organizationId: string;
-  projectId: string;
-  environmentId: string;
+const RunListInputOptionsSchema = z.object({
+  organizationId: z.string(),
+  projectId: z.string(),
+  environmentId: z.string(),
   //filters
-  tasks?: string[];
-  versions?: string[];
-  statuses?: TaskRunStatus[];
-  tags?: string[];
-  scheduleId?: string;
-  period?: number;
-  from?: number;
-  to?: number;
-  isTest?: boolean;
-  rootOnly?: boolean;
-  batchId?: string;
-  runFriendlyIds?: string[];
+  tasks: z.array(z.string()).optional(),
+  versions: z.array(z.string()).optional(),
+  statuses: z.array(RunStatus).optional(),
+  tags: z.array(z.string()).optional(),
+  scheduleId: z.string().optional(),
+  period: z.string().optional(),
+  from: z.number().optional(),
+  to: z.number().optional(),
+  isTest: z.boolean().optional(),
+  rootOnly: z.boolean().optional(),
+  batchId: z.string().optional(),
+  runIds: z.array(z.string()).optional(),
+  bulkId: z.string().optional(),
+});
+
+export type RunListInputOptions = z.infer<typeof RunListInputOptionsSchema>;
+
+type FilterRunsOptions = Omit<RunListInputOptions, "period"> & {
+  period: number | undefined;
 };
 
 type Pagination = {
@@ -334,9 +323,13 @@ function applyRunFiltersToQueryBuilder<T>(
 
   // TODO new bulk action filtering
 
-  if (options.runFriendlyIds && options.runFriendlyIds.length > 0) {
-    queryBuilder.where("friendly_id IN {runFriendlyIds: Array(String)}", {
-      runFriendlyIds: options.runFriendlyIds,
+  if (options.runIds && options.runIds.length > 0) {
+    queryBuilder.where("friendly_id IN {runIds: Array(String)}", {
+      runIds: options.runIds,
     });
   }
+}
+
+export function parseRunListInputOptions(data: any): RunListInputOptions {
+  return RunListInputOptionsSchema.parse(data);
 }
