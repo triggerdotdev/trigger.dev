@@ -8,11 +8,11 @@ import {
 } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { LockClosedIcon, LockOpenIcon, PlusIcon, XMarkIcon } from "@heroicons/react/20/solid";
-import { Form, useActionData, useNavigate, useNavigation } from "@remix-run/react";
-import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
+import { Form, useNavigate, useNavigation } from "@remix-run/react";
+import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import dotenv from "dotenv";
 import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
-import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
+import { redirect, typedjson, useTypedActionData, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
@@ -52,6 +52,7 @@ import {
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { EnvironmentVariableKey } from "~/v3/environmentVariables/repository";
 import { Select, SelectItem } from "~/components/primitives/Select";
+import { isSubmissionResult } from "~/utils/conformTo";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -127,7 +128,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const submission = parse(formData, { schema });
 
   if (!submission.value) {
-    return json(submission);
+    return typedjson(submission);
   }
 
   const project = await prisma.project.findUnique({
@@ -147,7 +148,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   });
   if (!project) {
     submission.error.key = ["Project not found"];
-    return json(submission);
+    return typedjson(submission);
   }
 
   const repository = new EnvironmentVariablesRepository(prisma);
@@ -166,7 +167,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       submission.error.variables = [result.error];
     }
 
-    return json(submission);
+    return typedjson(submission);
   }
 
   return redirect(
@@ -181,7 +182,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 export default function Page() {
   const [isOpen, setIsOpen] = useState(false);
   const { environments, hasStaging } = useTypedLoaderData<typeof loader>();
-  const lastSubmission = useActionData();
+  const _lastSubmission = useTypedActionData<typeof action>();
+  const lastSubmission = isSubmissionResult(_lastSubmission) ? _lastSubmission : undefined;
   const navigation = useNavigation();
   const navigate = useNavigate();
   const organization = useOrganization();
@@ -201,8 +203,7 @@ export default function Page() {
 
   const [form, { environmentIds, variables }] = useForm({
     id: "create-environment-variables",
-    // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastSubmission,
     onValidate({ formData }) {
       return parse(formData, { schema });
     },

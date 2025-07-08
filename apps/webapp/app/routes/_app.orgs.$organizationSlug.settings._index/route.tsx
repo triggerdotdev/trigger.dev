@@ -7,9 +7,9 @@ import {
   FolderIcon,
   TrashIcon,
 } from "@heroicons/react/20/solid";
-import { Form, type MetaFunction, useActionData, useNavigation } from "@remix-run/react";
-import { type ActionFunction, json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
+import { Form, type MetaFunction, useNavigation } from "@remix-run/react";
+import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { redirect, typedjson, useTypedActionData, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { InlineCode } from "~/components/code/InlineCode";
 import {
@@ -58,6 +58,7 @@ import {
   organizationSettingsPath,
   rootPath,
 } from "~/utils/pathBuilder";
+import { isSubmissionResult } from "~/utils/conformTo";
 
 export const meta: MetaFunction = () => {
   return [
@@ -134,11 +135,11 @@ export function createSchema(
   ]);
 }
 
-export const action: ActionFunction = async ({ request, params }) => {
+export const action = async ({ request, params }: ActionFunctionArgs) => {
   const user = await requireUser(request);
   const { organizationSlug } = params;
   if (!organizationSlug) {
-    return json({ errors: { body: "organizationSlug is required" } }, { status: 400 });
+    return typedjson({ errors: { body: "organizationSlug is required" } }, { status: 400 });
   }
 
   const formData = await request.formData();
@@ -150,7 +151,7 @@ export const action: ActionFunction = async ({ request, params }) => {
   const submission = parse(formData, { schema });
 
   if (!submission.value || submission.intent !== "submit") {
-    return json(submission);
+    return typedjson(submission);
   }
 
   try {
@@ -231,19 +232,19 @@ export const action: ActionFunction = async ({ request, params }) => {
       }
     }
   } catch (error: any) {
-    return json({ errors: { body: error.message } }, { status: 400 });
+    return typedjson({ errors: { body: error.message } }, { status: 400 });
   }
 };
 
 export default function Page() {
   const { organization } = useTypedLoaderData<typeof loader>();
-  const lastSubmission = useActionData();
+  const _lastSubmission = useTypedActionData<typeof action>();
+  const lastSubmission = isSubmissionResult(_lastSubmission) ? _lastSubmission : undefined;
   const navigation = useNavigation();
 
   const [renameForm, { organizationName }] = useForm({
     id: "rename-organization",
-    // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastSubmission,
     shouldRevalidate: "onSubmit",
     onValidate({ formData }) {
       return parse(formData, {
@@ -254,8 +255,7 @@ export default function Page() {
 
   const [deleteForm, { organizationSlug }] = useForm({
     id: "delete-organization",
-    // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastSubmission,
     shouldValidate: "onInput",
     shouldRevalidate: "onSubmit",
     onValidate({ formData }) {

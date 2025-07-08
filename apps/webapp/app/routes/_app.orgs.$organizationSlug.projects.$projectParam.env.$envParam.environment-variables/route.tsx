@@ -9,15 +9,14 @@ import {
   PlusIcon,
   TrashIcon,
 } from "@heroicons/react/20/solid";
-import { Form, type MetaFunction, Outlet, useActionData, useNavigation } from "@remix-run/react";
+import { Form, type MetaFunction, Outlet, useNavigation } from "@remix-run/react";
 import {
   type ActionFunctionArgs,
   type LoaderFunctionArgs,
-  json,
   redirectDocument,
 } from "@remix-run/server-runtime";
 import { useMemo, useState } from "react";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { typedjson, useTypedActionData, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
@@ -71,6 +70,7 @@ import {
   EditEnvironmentVariableValue,
   EnvironmentVariable,
 } from "~/v3/environmentVariables/repository";
+import { isSubmissionResult } from "~/utils/conformTo";
 
 export const meta: MetaFunction = () => {
   return [
@@ -126,7 +126,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const submission = parse(formData, { schema });
 
   if (!submission.value) {
-    return json(submission);
+    return typedjson(submission);
   }
 
   const project = await prisma.project.findUnique({
@@ -146,7 +146,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   });
   if (!project) {
     submission.error.key = ["Project not found"];
-    return json(submission);
+    return typedjson(submission);
   }
 
   switch (submission.value.action) {
@@ -156,7 +156,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
       if (!result.success) {
         submission.error.key = [result.error];
-        return json(submission);
+        return typedjson(submission);
       }
 
       //use redirectDocument because it reloads the page
@@ -179,7 +179,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
       if (!result.success) {
         submission.error.key = [result.error];
-        return json(submission);
+        return typedjson(submission);
       }
 
       return redirectWithSuccessMessage(
@@ -417,7 +417,8 @@ function EditEnvironmentVariablePanel({
   revealAll: boolean;
 }) {
   const [isOpen, setIsOpen] = useState(false);
-  const lastSubmission = useActionData();
+  const _lastSubmission = useTypedActionData<typeof action>();
+  const lastSubmission = isSubmissionResult(_lastSubmission) ? _lastSubmission : undefined;
   const navigation = useNavigation();
 
   const isLoading =
@@ -427,8 +428,7 @@ function EditEnvironmentVariablePanel({
 
   const [form, { id, environmentId, value }] = useForm({
     id: "edit-environment-variable",
-    // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastSubmission,
     onValidate({ formData }) {
       return parse(formData, { schema });
     },
@@ -501,7 +501,9 @@ function DeleteEnvironmentVariableButton({
 }: {
   variable: EnvironmentVariableWithSetValues;
 }) {
-  const lastSubmission = useActionData();
+  const _lastSubmission = useTypedActionData<typeof action>();
+  const lastSubmission = isSubmissionResult(_lastSubmission) ? _lastSubmission : undefined;
+
   const navigation = useNavigation();
 
   const isLoading =
@@ -511,8 +513,7 @@ function DeleteEnvironmentVariableButton({
 
   const [form, { id }] = useForm({
     id: "delete-environment-variable",
-    // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastSubmission,
     onValidate({ formData }) {
       return parse(formData, { schema });
     },

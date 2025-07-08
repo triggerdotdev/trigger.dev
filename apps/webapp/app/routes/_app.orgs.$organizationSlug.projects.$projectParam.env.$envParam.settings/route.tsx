@@ -1,8 +1,9 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { ExclamationTriangleIcon, FolderIcon, TrashIcon } from "@heroicons/react/20/solid";
-import { Form, type MetaFunction, useActionData, useNavigation } from "@remix-run/react";
-import { type ActionFunction, json } from "@remix-run/server-runtime";
+import { Form, type MetaFunction, useNavigation } from "@remix-run/react";
+import { type ActionFunctionArgs } from "@remix-run/server-runtime";
+import { typedjson, useTypedActionData } from "remix-typedjson";
 import { z } from "zod";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { InlineCode } from "~/components/code/InlineCode";
@@ -32,6 +33,7 @@ import { DeleteProjectService } from "~/services/deleteProject.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { organizationPath, v3ProjectPath } from "~/utils/pathBuilder";
+import { isSubmissionResult } from "~/utils/conformTo";
 
 export const meta: MetaFunction = () => {
   return [
@@ -75,11 +77,11 @@ export function createSchema(
   ]);
 }
 
-export const action: ActionFunction = async ({ request, params }) => {
+export const action = async ({ request, params }: ActionFunctionArgs) => {
   const userId = await requireUserId(request);
   const { organizationSlug, projectParam } = params;
   if (!organizationSlug || !projectParam) {
-    return json({ errors: { body: "organizationSlug is required" } }, { status: 400 });
+    return typedjson({ errors: { body: "organizationSlug is required" } }, { status: 400 });
   }
 
   const formData = await request.formData();
@@ -92,7 +94,7 @@ export const action: ActionFunction = async ({ request, params }) => {
   const submission = parse(formData, { schema });
 
   if (!submission.value || submission.intent !== "submit") {
-    return json(submission);
+    return typedjson(submission);
   }
 
   try {
@@ -143,19 +145,21 @@ export const action: ActionFunction = async ({ request, params }) => {
       }
     }
   } catch (error: any) {
-    return json({ errors: { body: error.message } }, { status: 400 });
+    return typedjson({ errors: { body: error.message } }, { status: 400 });
   }
 };
 
 export default function Page() {
   const project = useProject();
-  const lastSubmission = useActionData();
+
+  const _lastSubmission = useTypedActionData<typeof action>();
+  const lastSubmission = isSubmissionResult(_lastSubmission) ? _lastSubmission : undefined;
+
   const navigation = useNavigation();
 
   const [renameForm, { projectName }] = useForm({
     id: "rename-project",
-    // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastSubmission,
     shouldRevalidate: "onSubmit",
     onValidate({ formData }) {
       return parse(formData, {
@@ -170,8 +174,7 @@ export default function Page() {
 
   const [deleteForm, { projectSlug }] = useForm({
     id: "delete-project",
-    // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastSubmission,
     shouldValidate: "onInput",
     shouldRevalidate: "onSubmit",
     onValidate({ formData }) {
