@@ -110,7 +110,6 @@ export class BulkActionService extends BaseService {
       throw new Error("Clickhouse client not found");
     }
 
-    // Count the runs that will be affected by the bulk action
     const runsRepository = new RunsRepository({
       clickhouse: clickhouseClient,
       prisma: this._replica as PrismaClient,
@@ -177,6 +176,8 @@ export class BulkActionService extends BaseService {
             successCount++;
           }
         }
+
+        break;
       }
       case BulkActionType.REPLAY: {
         const replayService = new ReplayTaskRunService(this._prisma);
@@ -216,10 +217,11 @@ export class BulkActionService extends BaseService {
             }
           }
         }
+        break;
       }
     }
 
-    const isFinished = runIdsToProcess.length < env.BULK_ACTION_BATCH_SIZE;
+    const isFinished = runIdsToProcess.length === 0;
 
     logger.log("Bulk action group processed batch", {
       bulkActionId,
@@ -265,11 +267,14 @@ async function getFilters(payload: CreateBulkActionPayload, request: Request) {
   if (payload.mode === "selected") {
     return {
       runIds: payload.selectedRunIds,
+      cursor: undefined,
+      direction: undefined,
     };
   }
 
   const filters = await getRunFiltersFromRequest(request);
   filters.cursor = undefined;
+  filters.direction = undefined;
 
   // If there isn't a time period or to date, we set the to date to now
   // Otherwise this could run forever if lots of new runs are being created

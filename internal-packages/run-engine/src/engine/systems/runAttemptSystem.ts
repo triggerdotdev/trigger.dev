@@ -962,6 +962,7 @@ export class RunAttemptSystem {
     completedAt,
     reason,
     finalizeRun,
+    bulkActionId,
     tx,
   }: {
     runId: string;
@@ -970,6 +971,7 @@ export class RunAttemptSystem {
     completedAt?: Date;
     reason?: string;
     finalizeRun?: boolean;
+    bulkActionId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<ExecutionResult> {
     const prisma = tx ?? this.$.prisma;
@@ -981,6 +983,16 @@ export class RunAttemptSystem {
 
         //already finished, do nothing
         if (latestSnapshot.executionStatus === "FINISHED") {
+          if (bulkActionId) {
+            await prisma.taskRun.update({
+              where: { id: runId },
+              data: {
+                bulkActionGroupIds: {
+                  push: bulkActionId,
+                },
+              },
+            });
+          }
           return executionResultFromSnapshot(latestSnapshot);
         }
 
@@ -1006,6 +1018,11 @@ export class RunAttemptSystem {
             status: "CANCELED",
             completedAt: finalizeRun ? completedAt ?? new Date() : completedAt,
             error,
+            bulkActionGroupIds: bulkActionId
+              ? {
+                  push: bulkActionId,
+                }
+              : undefined,
           },
           select: {
             id: true,

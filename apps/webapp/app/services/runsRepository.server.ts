@@ -64,7 +64,7 @@ export class RunsRepository {
     );
 
     if (options.page.cursor) {
-      if (options.page.direction === "forward") {
+      if (options.page.direction === "forward" || !options.page.direction) {
         queryBuilder
           .where("run_id < {runId: String}", { runId: options.page.cursor })
           .orderBy("created_at DESC, run_id DESC")

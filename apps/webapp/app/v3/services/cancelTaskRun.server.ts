@@ -46,10 +46,12 @@ export class CancelTaskRunService extends BaseService {
     taskRun: CancelableTaskRun,
     options?: CancelTaskRunServiceOptions
   ): Promise<CancelTaskRunServiceResult | undefined> {
+    //todo bulkActionId
     const result = await engine.cancelRun({
       runId: taskRun.id,
       completedAt: options?.cancelledAt,
       reason: options?.reason,
+      bulkActionId: options?.bulkActionId,
       tx: this._prisma,
     });
 

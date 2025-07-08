@@ -701,6 +701,7 @@ export class RunEngine {
     completedAt,
     reason,
     finalizeRun,
+    bulkActionId,
     tx,
   }: {
     runId: string;
@@ -709,6 +710,7 @@ export class RunEngine {
     completedAt?: Date;
     reason?: string;
     finalizeRun?: boolean;
+    bulkActionId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<ExecutionResult> {
     return this.runAttemptSystem.cancelRun({
@@ -718,6 +720,7 @@ export class RunEngine {
       completedAt,
       reason,
       finalizeRun,
+      bulkActionId,
       tx,
     });
   }
