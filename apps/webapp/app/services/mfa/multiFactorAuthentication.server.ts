@@ -288,7 +288,7 @@ export class MultiFactorAuthenticationService {
     const hashedCode = await createHash("SHA-512", "hex").digest(recoveryCode);
 
     const backupCode = await this.#prismaClient.mfaBackupCode.findFirst({
-      where: { userId: user.id, code: hashedCode },
+      where: { userId: user.id, code: hashedCode, usedAt: null },
     });
 
     return !!backupCode;

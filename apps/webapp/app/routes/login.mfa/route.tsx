@@ -1,4 +1,9 @@
-import type { ActionFunctionArgs, LoaderFunctionArgs, MetaFunction } from "@remix-run/node";
+import type {
+  ActionFunctionArgs,
+  LoaderFunctionArgs,
+  MetaFunction,
+  Session,
+} from "@remix-run/node";
 import { redirect } from "@remix-run/node";
 import { Form, useNavigation } from "@remix-run/react";
 import React, { useState } from "react";
@@ -48,7 +53,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   });
 
   const session = await getUserSession(request);
-  
+
   // Check if there's a pending MFA user ID
   const pendingUserId = session.get("pending-mfa-user-id");
   if (!pendingUserId) {
@@ -59,7 +64,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   // Get flash message for MFA errors
   const messageSession = await getMessageSession(request.headers.get("cookie"));
   const toastMessage = messageSession.get("toastMessage");
-  
+
   let mfaError: string | undefined;
   if (toastMessage?.type === "error") {
     mfaError = toastMessage.message;
@@ -79,7 +84,7 @@ export async function action({ request }: ActionFunctionArgs) {
   try {
     const session = await getUserSession(request);
     const pendingUserId = session.get("pending-mfa-user-id");
-    
+
     if (!pendingUserId) {
       return redirect("/login");
     }
@@ -96,7 +101,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
     if (action === "verify-recovery") {
       const recoveryCode = payload.recoveryCode as string;
-      
+
       if (!recoveryCode) {
         return redirectBackWithErrorMessage(request, "Recovery code is required");
       }
@@ -105,16 +110,15 @@ export async function action({ request }: ActionFunctionArgs) {
       await checkMfaRateLimit(pendingUserId);
 
       const result = await mfaService.verifyRecoveryCodeForLogin(pendingUserId, recoveryCode);
-      
+
       if (!result.success) {
         return redirectBackWithErrorMessage(request, result.error || "Invalid authentication code");
       }
       // Recovery code verified - complete the login
       return await completeLogin(request, session, pendingUserId);
-
     } else if (action === "verify-mfa") {
       const mfaCode = payload.mfaCode as string;
-      
+
       if (!mfaCode || mfaCode.length !== 6) {
         return redirectBackWithErrorMessage(request, "Valid 6-digit code is required");
       }
@@ -123,7 +127,7 @@ export async function action({ request }: ActionFunctionArgs) {
       await checkMfaRateLimit(pendingUserId);
 
       const result = await mfaService.verifyTotpForLogin(pendingUserId, mfaCode);
-      
+
       if (!result.success) {
         return redirectBackWithErrorMessage(request, result.error || "Invalid authentication code");
       }
@@ -133,30 +137,29 @@ export async function action({ request }: ActionFunctionArgs) {
     }
 
     return redirect("/login");
-    
   } catch (error) {
     if (error instanceof ServiceValidationError) {
       return redirectWithErrorMessage("/login", request, error.message);
     }
-    
+
     if (error instanceof MfaRateLimitError) {
       return redirectBackWithErrorMessage(request, error.message);
     }
-    
+
     throw error;
   }
 }
 
-async function completeLogin(request: Request, session: any, userId: string) {
+async function completeLogin(request: Request, session: Session, userId: string) {
   // Create a new authenticated session
   const authSession = await sessionStorage.getSession(request.headers.get("Cookie"));
   authSession.set(authenticator.sessionKey, { userId });
-  
+
   // Get the redirect URL and clean up pending MFA data
   const redirectTo = session.get("pending-mfa-redirect-to") ?? "/";
   session.unset("pending-mfa-user-id");
   session.unset("pending-mfa-redirect-to");
-  
+
   return redirect(redirectTo, {
     headers: {
       "Set-Cookie": await sessionStorage.commitSession(authSession),
@@ -166,7 +169,7 @@ async function completeLogin(request: Request, session: any, userId: string) {
 
 export default function LoginMfaPage() {
   const data = useTypedLoaderData<typeof loader>();
-  const rawMfaError = 'mfaError' in data ? data.mfaError : undefined;
+  const rawMfaError = "mfaError" in data ? data.mfaError : undefined;
   const navigate = useNavigation();
   const [showRecoveryCode, setShowRecoveryCode] = useState(false);
   const [mfaCode, setMfaCode] = useState("");
@@ -245,7 +248,7 @@ export default function LoginMfaPage() {
                     <span className="text-text-bright">Verify</span>
                   )}
                 </Button>
-                {typeof mfaError === 'string' && <FormError>{mfaError}</FormError>}
+                {typeof mfaError === "string" && <FormError>{mfaError}</FormError>}
               </Fieldset>
               <Button
                 type="button"
@@ -297,7 +300,7 @@ export default function LoginMfaPage() {
                     <span className="text-text-bright">Verify</span>
                   )}
                 </Button>
-                {typeof mfaError === 'string' && <FormError>{mfaError}</FormError>}
+                {typeof mfaError === "string" && <FormError>{mfaError}</FormError>}
               </Fieldset>
               <Button
                 type="button"
