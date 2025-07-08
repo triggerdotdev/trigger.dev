@@ -366,54 +366,47 @@ function StandardTaskForm({
       <ResizablePanelGroup orientation="horizontal" className="grow">
         <ResizablePanel id="test-task-main" min="300px">
           <div className="flex h-full flex-col overflow-hidden bg-charcoal-900">
-            <TabContainer className="flex items-baseline justify-between pl-3 pr-2 pt-1.5">
-              <div className="flex gap-5">
-                <TabButton
-                  isActive={!tab || tab === "payload"}
-                  layoutId="test-editor"
-                  onClick={() => {
-                    replace({ tab: "payload" });
-                  }}
-                >
-                  Payload
-                </TabButton>
-
-                <TabButton
-                  isActive={tab === "metadata"}
-                  layoutId="test-editor"
-                  onClick={() => {
-                    replace({ tab: "metadata" });
-                  }}
-                >
-                  Metadata
-                </TabButton>
-              </div>
-            </TabContainer>
             <div className="flex-1 overflow-hidden">
               <JSONEditor
-                defaultValue={defaultPayloadJson}
+                defaultValue={!tab || tab === "payload" ? defaultPayloadJson : defaultMetadataJson}
                 readOnly={false}
                 basicSetup
                 onChange={(v) => {
-                  currentPayloadJson.current = v;
-                  setDefaultPayloadJson(v);
+                  if (!tab || tab === "payload") {
+                    currentPayloadJson.current = v;
+                    setDefaultPayloadJson(v);
+                  } else {
+                    currentMetadataJson.current = v;
+                    setDefaultMetadataJson(v);
+                  }
                 }}
                 height="100%"
-                autoFocus={!tab || tab === "payload"}
-                className={cn("h-full overflow-auto", tab === "metadata" && "hidden")}
-              />
-              <JSONEditor
-                defaultValue={defaultMetadataJson}
-                readOnly={false}
-                basicSetup
-                onChange={(v) => {
-                  currentMetadataJson.current = v;
-                  setDefaultMetadataJson(v);
-                }}
-                height="100%"
-                autoFocus={tab === "metadata"}
-                placeholder=""
-                className={cn("h-full overflow-auto", tab !== "metadata" && "hidden")}
+                autoFocus={true}
+                className={cn("h-full overflow-auto")}
+                additionalActions={
+                  <TabContainer className="flex grow items-baseline justify-between self-end border-none">
+                    <div className="flex gap-5">
+                      <TabButton
+                        isActive={!tab || tab === "payload"}
+                        layoutId="test-editor"
+                        onClick={() => {
+                          replace({ tab: "payload" });
+                        }}
+                      >
+                        Payload
+                      </TabButton>
+                      <TabButton
+                        isActive={tab === "metadata"}
+                        layoutId="test-editor"
+                        onClick={() => {
+                          replace({ tab: "metadata" });
+                        }}
+                      >
+                        Metadata
+                      </TabButton>
+                    </div>
+                  </TabContainer>
+                }
               />
             </div>
           </div>
