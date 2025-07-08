@@ -1,6 +1,6 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { BeakerIcon, RectangleStackIcon } from "@heroicons/react/20/solid";
+import { BeakerIcon, StarIcon, RectangleStackIcon } from "@heroicons/react/20/solid";
 import { type ActionFunction, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -60,6 +60,11 @@ import { ClockRotateLeftIcon } from "~/assets/icons/ClockRotateLeftIcon";
 import { MachinePresetName } from "@trigger.dev/core/v3";
 import { TaskTriggerSourceIcon } from "~/components/runs/v3/TaskTriggerSource";
 import { Callout } from "~/components/primitives/Callout";
+import { TaskRunTemplateService } from "~/v3/services/taskRunTemplate.server";
+import { RunTemplateData } from "~/v3/taskRunTemplate";
+import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
+import { DialogClose } from "@radix-ui/react-dialog";
+import { FormButtons } from "~/components/primitives/FormButtons";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -104,13 +109,6 @@ export const action: ActionFunction = async ({ request, params }) => {
   const userId = await requireUserId(request);
   const { organizationSlug, projectParam, envParam, taskParam } = v3TaskParamsSchema.parse(params);
 
-  const formData = await request.formData();
-  const submission = parse(formData, { schema: TestTaskData });
-
-  if (!submission.value) {
-    return json(submission);
-  }
-
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
   if (!project) {
     return redirectBackWithErrorMessage(request, "Project not found");
@@ -120,6 +118,36 @@ export const action: ActionFunction = async ({ request, params }) => {
 
   if (!environment) {
     return redirectBackWithErrorMessage(request, "Environment not found");
+  }
+
+  const formData = await request.formData();
+  const formAction = formData.get("formAction");
+
+  // Handle run template creation
+  if (formAction === "create-template") {
+    const runTemplateData = parse(formData, { schema: RunTemplateData });
+    if (!runTemplateData.value) {
+      return json(runTemplateData);
+    }
+
+    const templateService = new TaskRunTemplateService();
+    try {
+      await templateService.call(environment, runTemplateData.value);
+
+      return json({
+        success: true,
+        message: `Template "${runTemplateData.value.label}" created successfully`,
+      });
+    } catch (e) {
+      logger.error("Failed to create template", { error: e instanceof Error ? e.message : e });
+      return redirectBackWithErrorMessage(request, "Failed to create template");
+    }
+  }
+
+  const submission = parse(formData, { schema: TestTaskData });
+
+  if (!submission.value) {
+    return json(submission);
   }
 
   if (environment.archivedAt) {
@@ -645,6 +673,22 @@ function StandardTaskForm({
             </Paragraph>
             <EnvironmentCombo environment={environment} className="gap-0.5" />
           </div>
+          <CreateTemplateModal
+            rawTestTaskFormData={{
+              environmentId: environment.id,
+              taskIdentifier: task.taskIdentifier,
+              triggerSource: "STANDARD",
+              ttlSeconds: ttlValue?.toString(),
+              queue: queueValue,
+              concurrencyKey: concurrencyKeyValue,
+              maxAttempts: maxAttemptsValue?.toString(),
+              maxDurationSeconds: maxDurationValue?.toString(),
+              tags: tagsValue.join(","),
+              machine: machineValue,
+            }}
+            getCurrentPayload={() => currentPayloadJson.current}
+            getCurrentMetadata={() => currentMetadataJson.current}
+          />
           <Button
             type="submit"
             variant="primary/medium"
@@ -1102,6 +1146,26 @@ function ScheduledTaskForm({
             </Paragraph>
             <EnvironmentCombo environment={environment} className="gap-0.5" />
           </div>
+          <CreateTemplateModal
+            rawTestTaskFormData={{
+              environmentId: environment.id,
+              taskIdentifier: task.taskIdentifier,
+              triggerSource: "SCHEDULED",
+              ttlSeconds: ttlValue?.toString(),
+              queue: queueValue,
+              concurrencyKey: concurrencyKeyValue,
+              maxAttempts: maxAttemptsValue?.toString(),
+              maxDurationSeconds: maxDurationValue?.toString(),
+              tags: tagsValue.join(","),
+              machine: machineValue,
+              timestamp: timestampValue?.toISOString(),
+              lastTimestamp: lastTimestampValue?.toISOString(),
+              timezone: timezoneValue,
+              externalId: externalIdValue,
+            }}
+            getCurrentPayload={() => ""}
+            getCurrentMetadata={() => ""}
+          />
           <Button
             type="submit"
             variant="primary/medium"
@@ -1167,5 +1231,193 @@ function RecentRunsPopover<T extends StandardRun | ScheduledRun>({
         </div>
       </PopoverContent>
     </Popover>
+  );
+}
+
+function CreateTemplateModal({
+  rawTestTaskFormData,
+  getCurrentPayload,
+  getCurrentMetadata,
+}: {
+  rawTestTaskFormData: {
+    environmentId: string;
+    taskIdentifier: string;
+    triggerSource: string;
+    delaySeconds?: string;
+    ttlSeconds?: string;
+    queue?: string;
+    concurrencyKey?: string;
+    maxAttempts?: string;
+    maxDurationSeconds?: string;
+    tags?: string;
+    machine?: string;
+    externalId?: string;
+    timestamp?: string;
+    timezone?: string;
+    lastTimestamp?: string;
+  };
+  getCurrentPayload: () => string;
+  getCurrentMetadata: () => string;
+}) {
+  const lastSubmission = useActionData<typeof action>();
+
+  const fetcher = useFetcher();
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (
+      fetcher.state === "idle" &&
+      fetcher.data &&
+      typeof fetcher.data === "object" &&
+      "success" in fetcher.data &&
+      fetcher.data.success
+    ) {
+      setIsModalOpen(false);
+    }
+  }, [fetcher.state, fetcher.data]);
+
+  const [
+    form,
+    {
+      label,
+      environmentId,
+      payload,
+      metadata,
+      taskIdentifier,
+      delaySeconds,
+      ttlSeconds,
+      queue,
+      concurrencyKey,
+      maxAttempts,
+      maxDurationSeconds,
+      triggerSource,
+      tags,
+      machine,
+      externalId,
+      timestamp,
+      lastTimestamp,
+      timezone,
+    },
+  ] = useForm({
+    id: "save-template",
+    lastSubmission: lastSubmission as any,
+    onSubmit(event, { formData }) {
+      event.preventDefault();
+
+      formData.set(payload.name, getCurrentPayload());
+      formData.set(metadata.name, getCurrentMetadata());
+
+      fetcher.submit(formData, { method: "POST" });
+    },
+    onValidate({ formData }) {
+      return parse(formData, { schema: RunTemplateData });
+    },
+    shouldRevalidate: "onInput",
+  });
+
+  return (
+    <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+      <DialogTrigger asChild>
+        <Button
+          type="button"
+          variant="tertiary/medium"
+          LeadingIcon={StarIcon}
+          tooltip="Create run template"
+        />
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>Create run template</DialogHeader>
+        <div className="mt-2 flex flex-col gap-4">
+          <Form method="post" {...form.props} className="w-full">
+            <input
+              {...conform.input(taskIdentifier, { type: "hidden" })}
+              value={rawTestTaskFormData.taskIdentifier}
+            />
+            <input
+              {...conform.input(environmentId, { type: "hidden" })}
+              value={rawTestTaskFormData.environmentId}
+            />
+            <input
+              {...conform.input(triggerSource, { type: "hidden" })}
+              value={rawTestTaskFormData.triggerSource}
+            />
+            <input
+              {...conform.input(delaySeconds, { type: "hidden" })}
+              value={rawTestTaskFormData.delaySeconds}
+            />
+            <input
+              {...conform.input(ttlSeconds, { type: "hidden" })}
+              value={rawTestTaskFormData.ttlSeconds}
+            />
+            <input
+              {...conform.input(queue, { type: "hidden" })}
+              value={rawTestTaskFormData.queue}
+            />
+            <input
+              {...conform.input(concurrencyKey, { type: "hidden" })}
+              value={rawTestTaskFormData.concurrencyKey}
+            />
+            <input
+              {...conform.input(maxAttempts, { type: "hidden" })}
+              value={rawTestTaskFormData.maxAttempts}
+            />
+            <input
+              {...conform.input(maxDurationSeconds, { type: "hidden" })}
+              value={rawTestTaskFormData.maxDurationSeconds}
+            />
+            <input {...conform.input(tags, { type: "hidden" })} value={rawTestTaskFormData.tags} />
+            <input
+              {...conform.input(machine, { type: "hidden" })}
+              value={rawTestTaskFormData.machine}
+            />
+            <input
+              {...conform.input(externalId, { type: "hidden" })}
+              value={rawTestTaskFormData.externalId}
+            />
+            <input
+              {...conform.input(timestamp, { type: "hidden" })}
+              value={rawTestTaskFormData.timestamp}
+            />
+            <input
+              {...conform.input(lastTimestamp, { type: "hidden" })}
+              value={rawTestTaskFormData.lastTimestamp}
+            />
+            <input
+              {...conform.input(timezone, { type: "hidden" })}
+              value={rawTestTaskFormData.timezone}
+            />
+            <Paragraph className="mb-3">
+              Save your current run configuration as a template to reuse it later. Templates can be
+              used across environments.
+            </Paragraph>
+            <Fieldset className="max-w-full gap-y-3">
+              <InputGroup className="max-w-full">
+                <Label>Template label</Label>
+                <Input {...conform.input(label)} placeholder="Enter a name for this template" />
+                <FormError id={label.errorId}>{label.error}</FormError>
+              </InputGroup>
+              <FormError>{form.error}</FormError>
+              <FormButtons
+                confirmButton={
+                  <Button
+                    type="submit"
+                    variant="primary/medium"
+                    name="formAction"
+                    value="create-template"
+                  >
+                    Create template
+                  </Button>
+                }
+                cancelButton={
+                  <DialogClose asChild>
+                    <Button variant="tertiary/medium">Cancel</Button>
+                  </DialogClose>
+                }
+              />
+            </Fieldset>
+          </Form>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
