@@ -46,10 +46,33 @@ model User {
   orgMemberships OrgMember[]
   sentInvites    OrgMemberInvite[]
 
+  mfaEnabledAt         DateTime?
+  mfaSecretReference   SecretReference? @relation(fields: [mfaSecretReferenceId], references: [id])
+  mfaSecretReferenceId String?
+  /// Hash of the last used code to prevent replay attacks
+  mfaLastUsedCode      String?
+
   invitationCode       InvitationCode?       @relation(fields: [invitationCodeId], references: [id])
   invitationCodeId     String?
   personalAccessTokens PersonalAccessToken[]
   deployments          WorkerDeployment[]
+  backupCodes          MfaBackupCode[]
+}
+
+model MfaBackupCode {
+  id   String @id @default(cuid())
+  /// Hash of the actual code
+  code String
+
+  user   User   @relation(fields: [userId], references: [id])
+  userId String
+
+  usedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, code])
 }
 
 // @deprecated This model is no longer used as the Cloud is out of private beta
@@ -346,6 +369,7 @@ model SecretReference {
   createdAt               DateTime                  @default(now())
   updatedAt               DateTime                  @updatedAt
   OrganizationIntegration OrganizationIntegration[]
+  User                    User[]
 }
 
 enum SecretStoreProvider {
