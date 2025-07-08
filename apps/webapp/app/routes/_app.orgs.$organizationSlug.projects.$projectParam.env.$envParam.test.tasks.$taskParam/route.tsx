@@ -59,6 +59,7 @@ import { DateTime } from "~/components/primitives/DateTime";
 import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
 import { ClockRotateLeftIcon } from "~/assets/icons/ClockRotateLeftIcon";
 import { MachinePresetName } from "@trigger.dev/core/v3";
+import { TaskTriggerSourceIcon } from "~/components/runs/v3/TaskTriggerSource";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -337,29 +338,14 @@ function StandardTaskForm({
       <input {...conform.input(taskIdentifier, { type: "hidden" })} value={task.taskIdentifier} />
       <input {...conform.input(environmentId, { type: "hidden" })} value={environment.id} />
       <input {...conform.input(triggerSource, { type: "hidden" })} value={"STANDARD"} />
-      <TabContainer className="flex items-baseline justify-between pl-3 pr-2 pt-1.5">
-        <div className="flex gap-5">
-          <TabButton
-            isActive={!tab || tab === "payload"}
-            layoutId="test-editor"
-            onClick={() => {
-              replace({ tab: "payload" });
-            }}
-          >
-            Payload
-          </TabButton>
-
-          <TabButton
-            isActive={tab === "metadata"}
-            layoutId="test-editor"
-            onClick={() => {
-              replace({ tab: "metadata" });
-            }}
-          >
-            Metadata
-          </TabButton>
+      <div className="flex items-center justify-between gap-1.5 border-b border-grid-bright p-2">
+        <div className="flex items-center gap-1.5">
+          <TaskTriggerSourceIcon source={"STANDARD"} />
+          <Paragraph variant="extra-small" className="text-text-dimmed">
+            {task.taskIdentifier}
+          </Paragraph>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5">
           <RecentRunsPopover
             runs={runs}
             onRunSelected={(run) => {
@@ -375,10 +361,34 @@ function StandardTaskForm({
             }}
           />
         </div>
-      </TabContainer>
+      </div>
+
       <ResizablePanelGroup orientation="horizontal" className="grow">
         <ResizablePanel id="test-task-main" min="300px">
           <div className="flex h-full flex-col overflow-hidden bg-charcoal-900">
+            <TabContainer className="flex items-baseline justify-between pl-3 pr-2 pt-1.5">
+              <div className="flex gap-5">
+                <TabButton
+                  isActive={!tab || tab === "payload"}
+                  layoutId="test-editor"
+                  onClick={() => {
+                    replace({ tab: "payload" });
+                  }}
+                >
+                  Payload
+                </TabButton>
+
+                <TabButton
+                  isActive={tab === "metadata"}
+                  layoutId="test-editor"
+                  onClick={() => {
+                    replace({ tab: "metadata" });
+                  }}
+                >
+                  Metadata
+                </TabButton>
+              </div>
+            </TabContainer>
             <div className="flex-1 overflow-hidden">
               <JSONEditor
                 defaultValue={defaultPayloadJson}
@@ -746,13 +756,14 @@ function ScheduledTaskForm({
         {...conform.input(environmentId, { type: "hidden" })}
         value={environment.id}
       />
-      <TabContainer className="flex items-baseline justify-between pl-3 pr-2 pt-1.5">
-        <div className="flex gap-5">
-          <TabButton isActive={true} layoutId="scheduled-task-options">
-            Options
-          </TabButton>
+      <div className="flex items-center justify-between gap-1.5 border-b border-grid-bright p-2">
+        <div className="flex items-center gap-1.5">
+          <TaskTriggerSourceIcon source={"SCHEDULED"} />
+          <Paragraph variant="extra-small" className="text-text-dimmed">
+            {task.taskIdentifier}
+          </Paragraph>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5">
           <RecentRunsPopover
             runs={runs}
             onRunSelected={(run) => {
@@ -770,7 +781,7 @@ function ScheduledTaskForm({
             }}
           />
         </div>
-      </TabContainer>
+      </div>
       <div className="grow overflow-y-scroll p-3">
         <Fieldset>
           <InputGroup>

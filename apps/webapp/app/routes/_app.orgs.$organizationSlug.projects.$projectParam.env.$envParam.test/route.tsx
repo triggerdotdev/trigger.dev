@@ -138,7 +138,7 @@ function TaskSelector({
       <div className="p-2">
         <Input
           placeholder="Search tasks"
-          variant="medium"
+          variant="small"
           icon={MagnifyingGlassIcon}
           fullWidth={true}
           value={filterText}
