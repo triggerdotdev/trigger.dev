@@ -81,7 +81,7 @@ export class ReplayTaskRunService extends BaseService {
               undefined,
             lockToVersion:
               overrideOptions.version === "latest" ? undefined : overrideOptions.version,
-            //todo: add bulkActionId to the replay
+            bulkActionId: overrideOptions?.bulkActionId,
           },
         },
         {

@@ -389,6 +389,7 @@ export class RunEngine {
       scheduleId,
       scheduleInstanceId,
       createdAt,
+      bulkActionId,
     }: TriggerParams,
     tx?: PrismaClientOrTransaction
   ): Promise<TaskRun> {
@@ -463,6 +464,7 @@ export class RunEngine {
               scheduleId,
               scheduleInstanceId,
               createdAt,
+              bulkActionGroupIds: bulkActionId ? [bulkActionId] : undefined,
               executionSnapshots: {
                 create: {
                   engine: "V2",
