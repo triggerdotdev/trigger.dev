@@ -43,6 +43,7 @@ import {
   type StandardRun,
   type StandardTaskResult,
   type ScheduledTaskResult,
+  type RunTemplate,
   TestTaskPresenter,
 } from "~/presenters/v3/TestTaskPresenter.server";
 import { logger } from "~/services/logger.server";
@@ -235,6 +236,7 @@ export default function Page() {
           queues={queues}
           runs={result.runs}
           versions={result.latestVersions}
+          templates={result.taskRunTemplates}
           disableVersionSelection={result.disableVersionSelection}
           allowArbitraryQueues={result.allowArbitraryQueues}
         />
@@ -247,6 +249,7 @@ export default function Page() {
           queues={queues}
           runs={result.runs}
           versions={result.latestVersions}
+          templates={result.taskRunTemplates}
           possibleTimezones={result.possibleTimezones}
           disableVersionSelection={result.disableVersionSelection}
           allowArbitraryQueues={result.allowArbitraryQueues}
@@ -267,6 +270,7 @@ function StandardTaskForm({
   queues,
   runs,
   versions,
+  templates,
   disableVersionSelection,
   allowArbitraryQueues,
 }: {
@@ -274,6 +278,7 @@ function StandardTaskForm({
   queues: Required<StandardTaskResult>["queue"][];
   runs: StandardRun[];
   versions: string[];
+  templates: RunTemplate[];
   disableVersionSelection: boolean;
   allowArbitraryQueues: boolean;
 }) {
@@ -374,6 +379,20 @@ function StandardTaskForm({
           </Paragraph>
         </div>
         <div className="flex items-center gap-1.5">
+          <RunTemplatesPopover
+            templates={templates}
+            onTemplateSelected={(template) => {
+              setPayload(template.payload ?? "");
+              setMetadata(template.metadata ?? "");
+              // setTtlValue(template.ttlSeconds ?? "");
+              // setConcurrencyKeyValue(template.concurrencyKey ?? "");
+              setMaxAttemptsValue(template.maxAttempts ?? undefined);
+              setMaxDurationValue(template.maxDurationSeconds ?? undefined);
+              setMachineValue(template.machinePreset ?? undefined);
+              setTagsValue(template.tags ?? []);
+              setQueueValue(template.queue);
+            }}
+          />
           <RecentRunsPopover
             runs={runs}
             onRunSelected={(run) => {
@@ -709,6 +728,7 @@ function ScheduledTaskForm({
   possibleTimezones,
   queues,
   versions,
+  templates,
   disableVersionSelection,
   allowArbitraryQueues,
 }: {
@@ -717,6 +737,7 @@ function ScheduledTaskForm({
   possibleTimezones: string[];
   queues: Required<ScheduledTaskResult>["queue"][];
   versions: string[];
+  templates: RunTemplate[];
   disableVersionSelection: boolean;
   allowArbitraryQueues: boolean;
 }) {
@@ -811,6 +832,22 @@ function ScheduledTaskForm({
           </Paragraph>
         </div>
         <div className="flex items-center gap-1.5">
+          <RunTemplatesPopover
+            templates={templates}
+            onTemplateSelected={(template) => {
+              // setTtlValue(template.ttlSeconds ?? "");
+              // setConcurrencyKeyValue(template.concurrencyKey ?? "");
+              setMaxAttemptsValue(template.maxAttempts ?? undefined);
+              setMaxDurationValue(template.maxDurationSeconds ?? undefined);
+              setMachineValue(template.machinePreset ?? undefined);
+              setTagsValue(template.tags ?? []);
+              setQueueValue(template.queue);
+              setTimestampValue(template.scheduledTaskPayload?.timestamp);
+              setLastTimestampValue(template.scheduledTaskPayload?.lastTimestamp);
+              setExternalIdValue(template.scheduledTaskPayload?.externalId);
+              setTimezoneValue(template.scheduledTaskPayload?.timezone ?? "UTC");
+            }}
+          />
           <RecentRunsPopover
             runs={runs}
             onRunSelected={(run) => {
@@ -1223,6 +1260,61 @@ function RecentRunsPopover<T extends StandardRun | ScheduledRun>({
                       Run <span className="font-mono">{run.friendlyId.slice(-8)}</span>
                     </div>
                     <TaskRunStatusCombo status={run.status} />
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function RunTemplatesPopover({
+  templates,
+  onTemplateSelected,
+}: {
+  templates: RunTemplate[];
+  onTemplateSelected: (run: RunTemplate) => void;
+}) {
+  const [isPopoverOpen, setIsPopoverOpen] = useState(false);
+
+  return (
+    <Popover open={isPopoverOpen} onOpenChange={setIsPopoverOpen}>
+      <PopoverTrigger asChild>
+        {templates.length === 0 ? (
+          <SimpleTooltip
+            button={
+              <Button type="button" variant="tertiary/small" LeadingIcon={StarIcon} disabled={true}>
+                Templates
+              </Button>
+            }
+            content="No templates yet"
+          />
+        ) : (
+          <Button type="button" variant="tertiary/small" LeadingIcon={StarIcon}>
+            Templates
+          </Button>
+        )}
+      </PopoverTrigger>
+      <PopoverContent className="min-w-[279px] p-0" align="end" sideOffset={6}>
+        <div className="max-h-80 overflow-y-auto">
+          <div className="p-1">
+            {templates.map((template) => (
+              <button
+                key={template.id}
+                type="button"
+                onClick={() => {
+                  onTemplateSelected(template);
+                  setIsPopoverOpen(false);
+                }}
+                className="flex w-full items-center gap-2 rounded-sm px-2 py-2 outline-none transition-colors focus-custom hover:bg-charcoal-900	"
+              >
+                <div className="flex flex-col items-start">
+                  <Paragraph variant="small">{template.label}</Paragraph>
+                  <div className="flex items-center gap-2 text-xs text-text-dimmed">
+                    <DateTime date={template.createdAt} showTooltip={false} />
                   </div>
                 </div>
               </button>
