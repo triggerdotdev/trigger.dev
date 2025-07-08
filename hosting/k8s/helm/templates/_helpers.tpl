@@ -121,7 +121,7 @@ postgresql://{{ .Values.postgres.auth.username }}:{{ .Values.postgres.auth.passw
 Check if we should use DATABASE_URL from secret
 */}}
 {{- define "trigger-v4.postgres.useSecretUrl" -}}
-{{- or (and .Values.postgres.external.databaseUrl .Values.postgres.external.existingSecret) (and .Values.postgres.external.existingSecret) -}}
+{{- and .Values.postgres.external.existingSecret -}}
 {{- end }}
 
 {{/*

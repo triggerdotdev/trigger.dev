@@ -28,8 +28,8 @@ This template will fail the Helm deployment if external config is missing for re
 {{- if not .Values.s3.external.endpoint }}
 {{- fail "S3 external configuration is required when s3.deploy=false. Please provide s3.external.endpoint" }}
 {{- end }}
-{{- if and (not .Values.s3.external.existingSecret) (not .Values.s3.external.accessKeyId) }}
-{{- fail "S3 credentials are required when s3.deploy=false. Please provide either s3.external.accessKeyId or s3.external.existingSecret" }}
+{{- if and (not .Values.s3.external.existingSecret) (or (not .Values.s3.external.accessKeyId) (not .Values.s3.external.secretAccessKey)) }}
+{{- fail "S3 credentials are required when s3.deploy=false. Please provide either s3.external.existingSecret or both s3.external.accessKeyId and s3.external.secretAccessKey" }}
 {{- end }}
 {{- end }}
 
