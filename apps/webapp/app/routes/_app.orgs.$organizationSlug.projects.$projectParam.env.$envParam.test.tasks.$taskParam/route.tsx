@@ -1614,8 +1614,12 @@ function CreateTemplateModal({
             </Paragraph>
             <Fieldset className="max-w-full gap-y-3">
               <InputGroup className="max-w-full">
-                <Label>Template label</Label>
-                <Input {...conform.input(label)} placeholder="Enter a name for this template" />
+                <Label htmlFor={label.id}>Template label</Label>
+                <Input
+                  {...conform.input(label)}
+                  placeholder="Enter a name for this template"
+                  maxLength={42}
+                />
                 <FormError id={label.errorId}>{label.error}</FormError>
               </InputGroup>
               <FormError>{form.error}</FormError>
