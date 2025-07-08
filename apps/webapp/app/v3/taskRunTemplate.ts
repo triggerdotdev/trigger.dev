@@ -8,3 +8,7 @@ export const RunTemplateData = TestTaskData.and(
 );
 
 export type RunTemplateData = z.infer<typeof RunTemplateData>;
+
+export const DeleteTaskRunTemplateData = z.object({
+  templateId: z.string(),
+});

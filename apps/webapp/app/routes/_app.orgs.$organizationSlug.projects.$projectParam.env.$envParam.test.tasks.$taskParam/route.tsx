@@ -1,6 +1,6 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { BeakerIcon, StarIcon, RectangleStackIcon } from "@heroicons/react/20/solid";
+import { BeakerIcon, StarIcon, RectangleStackIcon, TrashIcon } from "@heroicons/react/20/solid";
 import { type ActionFunction, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -62,9 +62,10 @@ import { MachinePresetName } from "@trigger.dev/core/v3";
 import { TaskTriggerSourceIcon } from "~/components/runs/v3/TaskTriggerSource";
 import { Callout } from "~/components/primitives/Callout";
 import { TaskRunTemplateService } from "~/v3/services/taskRunTemplate.server";
-import { RunTemplateData } from "~/v3/taskRunTemplate";
+import { DeleteTaskRunTemplateService } from "~/v3/services/deleteTaskRunTemplate.server";
+import { DeleteTaskRunTemplateData, RunTemplateData } from "~/v3/taskRunTemplate";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
-import { DialogClose } from "@radix-ui/react-dialog";
+import { DialogClose, DialogDescription } from "@radix-ui/react-dialog";
 import { FormButtons } from "~/components/primitives/FormButtons";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -137,11 +138,35 @@ export const action: ActionFunction = async ({ request, params }) => {
 
       return json({
         success: true,
+        formAction,
         message: `Template "${runTemplateData.value.label}" created successfully`,
       });
     } catch (e) {
       logger.error("Failed to create template", { error: e instanceof Error ? e.message : e });
       return redirectBackWithErrorMessage(request, "Failed to create template");
+    }
+  }
+
+  // Handle run template deletion
+  if (formAction === "delete-template") {
+    const submission = parse(formData, { schema: DeleteTaskRunTemplateData });
+
+    if (!submission.value) {
+      return json(submission);
+    }
+
+    const deleteService = new DeleteTaskRunTemplateService();
+    try {
+      await deleteService.call(environment, submission.value.templateId);
+
+      return json({
+        success: true,
+        formAction,
+        message: `Template deleted successfully`,
+      });
+    } catch (e) {
+      logger.error("Failed to delete template", { error: e instanceof Error ? e.message : e });
+      return redirectBackWithErrorMessage(request, "Failed to delete template");
     }
   }
 
@@ -352,7 +377,14 @@ function StandardTaskForm({
   ] = useForm({
     id: "test-task",
     // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastSubmission:
+      lastSubmission &&
+      typeof lastSubmission === "object" &&
+      "formAction" in lastSubmission &&
+      lastSubmission.formAction !== "create-template" &&
+      lastSubmission.formAction !== "delete-template"
+        ? (lastSubmission as any)
+        : undefined,
     onSubmit(event, { formData }) {
       event.preventDefault();
 
@@ -801,7 +833,14 @@ function ScheduledTaskForm({
   ] = useForm({
     id: "test-task-scheduled",
     // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastSubmission:
+      lastSubmission &&
+      typeof lastSubmission === "object" &&
+      "formAction" in lastSubmission &&
+      lastSubmission.formAction !== "create-template" &&
+      lastSubmission.formAction !== "delete-template"
+        ? (lastSubmission as any)
+        : undefined,
     onValidate({ formData }) {
       return parse(formData, { schema: TestTaskData });
     },
@@ -1279,50 +1318,131 @@ function RunTemplatesPopover({
   onTemplateSelected: (run: RunTemplate) => void;
 }) {
   const [isPopoverOpen, setIsPopoverOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [templateIdToDelete, setTemplateIdToDelete] = useState<string | undefined>();
+
+  const lastSubmission = useActionData<typeof action>();
+
+  useEffect(() => {
+    if (
+      lastSubmission &&
+      typeof lastSubmission === "object" &&
+      "formAction" in lastSubmission &&
+      "success" in lastSubmission &&
+      lastSubmission.formAction === "delete-template" &&
+      lastSubmission.success === true
+    ) {
+      setIsDeleteDialogOpen(false);
+    }
+  }, [lastSubmission]);
+
+  const [deleteForm, { templateId }] = useForm({
+    id: "delete-template",
+    onValidate({ formData }) {
+      return parse(formData, { schema: DeleteTaskRunTemplateData });
+    },
+  });
 
   return (
-    <Popover open={isPopoverOpen} onOpenChange={setIsPopoverOpen}>
-      <PopoverTrigger asChild>
-        {templates.length === 0 ? (
-          <SimpleTooltip
-            button={
-              <Button type="button" variant="tertiary/small" LeadingIcon={StarIcon} disabled={true}>
-                Templates
-              </Button>
-            }
-            content="No templates yet"
-          />
-        ) : (
-          <Button type="button" variant="tertiary/small" LeadingIcon={StarIcon}>
-            Templates
-          </Button>
-        )}
-      </PopoverTrigger>
-      <PopoverContent className="min-w-[279px] p-0" align="end" sideOffset={6}>
-        <div className="max-h-80 overflow-y-auto">
-          <div className="p-1">
-            {templates.map((template) => (
-              <button
-                key={template.id}
-                type="button"
-                onClick={() => {
-                  onTemplateSelected(template);
-                  setIsPopoverOpen(false);
-                }}
-                className="flex w-full items-center gap-2 rounded-sm px-2 py-2 outline-none transition-colors focus-custom hover:bg-charcoal-900	"
-              >
-                <div className="flex flex-col items-start">
-                  <Paragraph variant="small">{template.label}</Paragraph>
-                  <div className="flex items-center gap-2 text-xs text-text-dimmed">
-                    <DateTime date={template.createdAt} showTooltip={false} includeTime={false} />
-                  </div>
+    <>
+      <Popover open={isPopoverOpen} onOpenChange={setIsPopoverOpen}>
+        <PopoverTrigger asChild>
+          {templates.length === 0 ? (
+            <SimpleTooltip
+              button={
+                <Button
+                  type="button"
+                  variant="tertiary/small"
+                  LeadingIcon={StarIcon}
+                  disabled={true}
+                >
+                  Templates
+                </Button>
+              }
+              content="No templates yet"
+            />
+          ) : (
+            <Button type="button" variant="tertiary/small" LeadingIcon={StarIcon}>
+              Templates
+            </Button>
+          )}
+        </PopoverTrigger>
+        <PopoverContent className="min-w-[279px] p-0" align="end" sideOffset={6}>
+          <div className="max-h-80 overflow-y-auto">
+            <div className="p-1">
+              {templates.map((template) => (
+                <div
+                  key={template.id}
+                  className="group flex w-full items-center gap-2 rounded-sm px-2 py-2 outline-none transition-colors hover:bg-charcoal-900"
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onTemplateSelected(template);
+                      setIsPopoverOpen(false);
+                    }}
+                    className="flex-1 text-left outline-none focus-custom"
+                  >
+                    <div className="flex flex-col items-start">
+                      <Paragraph variant="small" className="truncate">
+                        {template.label}
+                      </Paragraph>
+                      <div className="flex items-center gap-2 text-xs text-text-dimmed">
+                        <DateTime
+                          date={template.createdAt}
+                          showTooltip={false}
+                          includeTime={false}
+                        />
+                      </div>
+                    </div>
+                  </button>
+                  <Button
+                    type="button"
+                    className="group/delete-template shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+                    variant="minimal/medium"
+                    LeadingIcon={TrashIcon}
+                    leadingIconClassName="group-hover/delete-template:text-error"
+                    onClick={() => {
+                      setTemplateIdToDelete(template.id);
+                      setIsDeleteDialogOpen(true);
+                      setIsPopoverOpen(false);
+                    }}
+                  />
                 </div>
-              </button>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
-      </PopoverContent>
-    </Popover>
+        </PopoverContent>
+      </Popover>
+
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>Delete template</DialogHeader>
+          <DialogDescription className="mt-3">
+            Are you sure you want to delete the template? This can't be reversed.
+          </DialogDescription>
+          <div className="mt-4 flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="tertiary/medium"
+              onClick={() => setIsDeleteDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Form method="post" {...deleteForm.props}>
+              <input type="hidden" name="formAction" value="delete-template" />
+              <input
+                {...conform.input(templateId, { type: "hidden" })}
+                value={templateIdToDelete || ""}
+              />
+              <Button type="submit" variant="danger/medium" LeadingIcon={TrashIcon}>
+                Delete
+              </Button>
+            </Form>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -1392,7 +1512,13 @@ function CreateTemplateModal({
     },
   ] = useForm({
     id: "save-template",
-    lastSubmission: lastSubmission as any,
+    lastSubmission:
+      lastSubmission &&
+      typeof lastSubmission === "object" &&
+      "formAction" in lastSubmission &&
+      lastSubmission.formAction === "create-template"
+        ? (lastSubmission as any)
+        : undefined,
     onSubmit(event, { formData }) {
       event.preventDefault();
 
