@@ -3,8 +3,8 @@ Validation template to ensure external service configurations are provided when 
 This template will fail the Helm deployment if external config is missing for required services
 */}}
 {{- if not .Values.postgres.deploy }}
-{{- if or (not .Values.postgres.external.host) (not .Values.postgres.external.database) (not .Values.postgres.external.username) }}
-{{- fail "PostgreSQL external configuration is required when postgres.deploy=false. Please provide postgres.external.host, postgres.external.database, and postgres.external.username" }}
+{{- if and (not .Values.postgres.external.databaseUrl) (not .Values.postgres.external.existingSecret) }}
+{{- fail "PostgreSQL external configuration is required when postgres.deploy=false. Please provide either postgres.external.databaseUrl or postgres.external.existingSecret" }}
 {{- end }}
 {{- end }}
 

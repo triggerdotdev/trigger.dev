@@ -180,17 +180,38 @@ spec:
               value: {{ .Values.webapp.apiOrigin | quote }}
             - name: ELECTRIC_ORIGIN
               value: {{ include "trigger-v4.electric.url" . | quote }}
+            {{- if include "trigger-v4.postgres.useSecretUrl" . }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trigger-v4.postgres.external.secretName" . }}
+                  key: {{ include "trigger-v4.postgres.external.databaseUrlKey" . }}
+            - name: DIRECT_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trigger-v4.postgres.external.secretName" . }}
+                  key: {{ include "trigger-v4.postgres.external.directUrlKey" . }}
+            {{- else }}
             - name: DATABASE_URL
               value: {{ include "trigger-v4.postgres.connectionString" . | quote }}
             - name: DIRECT_URL
-              value: {{ include "trigger-v4.postgres.connectionString" . | quote }}
+              value: {{ include "trigger-v4.postgres.directUrl" . | quote }}
+            {{- end }}
+            {{- if and (include "trigger-v4.webapp.connectivityCheckEnabled" .) (include "trigger-v4.postgres.host" .) }}
             - name: DATABASE_HOST
               value: {{ include "trigger-v4.postgres.host" . | quote }}
+            {{- end }}
             - name: REDIS_HOST
               value: {{ include "trigger-v4.redis.host" . | quote }}
             - name: REDIS_PORT
               value: {{ include "trigger-v4.redis.port" . | quote }}
-            {{- if include "trigger-v4.redis.password" . }}
+            {{- if and .Values.redis.external.host .Values.redis.external.existingSecret }}
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trigger-v4.redis.external.secretName" . }}
+                  key: {{ include "trigger-v4.redis.external.passwordKey" . }}
+            {{- else if include "trigger-v4.redis.password" . }}
             - name: REDIS_PASSWORD
               value: {{ include "trigger-v4.redis.password" . | quote }}
             {{- end }}
@@ -307,6 +328,13 @@ spec:
               value: {{ .Values.webapp.observability.metrics.exporterEnabled | quote }}
             - name: INTERNAL_OTEL_METRIC_EXPORTER_INTERVAL_MS
               value: {{ .Values.webapp.observability.metrics.exporterIntervalMs | quote }}
+            {{- end }}
+            {{- if and .Values.clickhouse.external.host .Values.clickhouse.external.existingSecret }}
+            - name: CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trigger-v4.clickhouse.external.secretName" . }}
+                  key: {{ include "trigger-v4.clickhouse.external.passwordKey" . }}
             {{- end }}
             - name: CLICKHOUSE_URL
               value: {{ include "trigger-v4.clickhouse.url" . | quote }}

@@ -96,25 +96,32 @@ Get the full image name for supervisor
 {{- end }}
 
 {{/*
-PostgreSQL hostname
+PostgreSQL hostname (deprecated - used only for legacy DATABASE_HOST env var)
 */}}
 {{- define "trigger-v4.postgres.hostname" -}}
-{{- if .Values.postgres.external.host }}
-{{- .Values.postgres.external.host }}
-{{- else if .Values.postgres.deploy }}
+{{- if .Values.postgres.deploy }}
 {{- printf "%s-postgres" .Release.Name }}
+{{- else }}
+{{- "external-postgres" }}
 {{- end }}
 {{- end }}
 
 {{/*
-PostgreSQL connection string
+PostgreSQL connection string (fallback when not using secrets)
 */}}
 {{- define "trigger-v4.postgres.connectionString" -}}
-{{- if .Values.postgres.external.host -}}
-postgresql://{{ .Values.postgres.external.username }}:{{ .Values.postgres.external.password }}@{{ .Values.postgres.external.host }}:{{ .Values.postgres.external.port | default 5432 }}/{{ .Values.postgres.external.database }}?schema={{ .Values.postgres.connection.schema | default "public" }}&sslmode={{ .Values.postgres.connection.sslMode | default "prefer" }}
+{{- if .Values.postgres.external.databaseUrl -}}
+{{ .Values.postgres.external.databaseUrl }}
 {{- else if .Values.postgres.deploy -}}
 postgresql://{{ .Values.postgres.auth.username }}:{{ .Values.postgres.auth.password }}@{{ include "trigger-v4.postgres.hostname" . }}:5432/{{ .Values.postgres.auth.database }}?schema={{ .Values.postgres.connection.schema | default "public" }}&sslmode={{ .Values.postgres.connection.sslMode | default "prefer" }}
 {{- end -}}
+{{- end }}
+
+{{/*
+Check if we should use DATABASE_URL from secret
+*/}}
+{{- define "trigger-v4.postgres.useSecretUrl" -}}
+{{- or (and .Values.postgres.external.databaseUrl .Values.postgres.external.existingSecret) (and .Values.postgres.external.existingSecret) -}}
 {{- end }}
 
 {{/*
@@ -166,6 +173,94 @@ Redis TLS disabled setting
 {{- end }}
 
 {{/*
+PostgreSQL external secret name
+*/}}
+{{- define "trigger-v4.postgres.external.secretName" -}}
+{{- if .Values.postgres.external.existingSecret -}}
+{{ .Values.postgres.external.existingSecret }}
+{{- else -}}
+{{ include "trigger-v4.secretsName" . }}
+{{- end -}}
+{{- end }}
+
+{{/*
+PostgreSQL external secret database URL key
+*/}}
+{{- define "trigger-v4.postgres.external.databaseUrlKey" -}}
+{{- if .Values.postgres.external.existingSecret -}}
+{{ .Values.postgres.external.secretKeys.databaseUrlKey }}
+{{- else -}}
+postgres-database-url
+{{- end -}}
+{{- end }}
+
+{{/*
+PostgreSQL external secret direct URL key
+*/}}
+{{- define "trigger-v4.postgres.external.directUrlKey" -}}
+{{- if .Values.postgres.external.existingSecret -}}
+{{ .Values.postgres.external.secretKeys.directUrlKey | default .Values.postgres.external.secretKeys.databaseUrlKey }}
+{{- else -}}
+postgres-direct-url
+{{- end -}}
+{{- end }}
+
+{{/*
+PostgreSQL direct URL (fallback to database URL if not set)
+*/}}
+{{- define "trigger-v4.postgres.directUrl" -}}
+{{- if .Values.postgres.external.directUrl -}}
+{{ .Values.postgres.external.directUrl }}
+{{- else -}}
+{{ include "trigger-v4.postgres.connectionString" . }}
+{{- end -}}
+{{- end }}
+
+{{/*
+Redis external secret name
+*/}}
+{{- define "trigger-v4.redis.external.secretName" -}}
+{{- if .Values.redis.external.existingSecret -}}
+{{ .Values.redis.external.existingSecret }}
+{{- else -}}
+{{ include "trigger-v4.secretsName" . }}
+{{- end -}}
+{{- end }}
+
+{{/*
+Redis external secret password key
+*/}}
+{{- define "trigger-v4.redis.external.passwordKey" -}}
+{{- if .Values.redis.external.existingSecret -}}
+{{ .Values.redis.external.existingSecretPasswordKey }}
+{{- else -}}
+redis-password
+{{- end -}}
+{{- end }}
+
+{{/*
+ClickHouse external secret name
+*/}}
+{{- define "trigger-v4.clickhouse.external.secretName" -}}
+{{- if .Values.clickhouse.external.existingSecret -}}
+{{ .Values.clickhouse.external.existingSecret }}
+{{- else -}}
+{{ include "trigger-v4.secretsName" . }}
+{{- end -}}
+{{- end }}
+
+{{/*
+ClickHouse external secret password key
+*/}}
+{{- define "trigger-v4.clickhouse.external.passwordKey" -}}
+{{- if .Values.clickhouse.external.existingSecret -}}
+{{ .Values.clickhouse.external.existingSecretKey }}
+{{- else -}}
+clickhouse-password
+{{- end -}}
+{{- end }}
+
+{{/*
 Electric service URL
 */}}
 {{- define "trigger-v4.electric.url" -}}
@@ -198,7 +293,11 @@ ClickHouse URL for application (with secure parameter)
 {{- else if .Values.clickhouse.external.host -}}
 {{- $protocol := ternary "https" "http" .Values.clickhouse.external.secure -}}
 {{- $secure := ternary "true" "false" .Values.clickhouse.external.secure -}}
+{{- if .Values.clickhouse.external.existingSecret -}}
+{{ $protocol }}://{{ .Values.clickhouse.external.username }}:${CLICKHOUSE_PASSWORD}@{{ .Values.clickhouse.external.host }}:{{ .Values.clickhouse.external.httpPort | default 8123 }}?secure={{ $secure }}
+{{- else -}}
 {{ $protocol }}://{{ .Values.clickhouse.external.username }}:{{ .Values.clickhouse.external.password }}@{{ .Values.clickhouse.external.host }}:{{ .Values.clickhouse.external.httpPort | default 8123 }}?secure={{ $secure }}
+{{- end -}}
 {{- end -}}
 {{- end }}
 
@@ -211,7 +310,11 @@ ClickHouse URL for replication (without secure parameter)
 {{ $protocol }}://{{ .Values.clickhouse.auth.username }}:{{ .Values.clickhouse.auth.password }}@{{ include "trigger-v4.clickhouse.hostname" . }}:8123
 {{- else if .Values.clickhouse.external.host -}}
 {{- $protocol := ternary "https" "http" .Values.clickhouse.external.secure -}}
+{{- if .Values.clickhouse.external.existingSecret -}}
+{{ $protocol }}://{{ .Values.clickhouse.external.username }}:${CLICKHOUSE_PASSWORD}@{{ .Values.clickhouse.external.host }}:{{ .Values.clickhouse.external.httpPort | default 8123 }}
+{{- else -}}
 {{ $protocol }}://{{ .Values.clickhouse.external.username }}:{{ .Values.clickhouse.external.password }}@{{ .Values.clickhouse.external.host }}:{{ .Values.clickhouse.external.httpPort | default 8123 }}
+{{- end -}}
 {{- end -}}
 {{- end }}
 
@@ -267,13 +370,26 @@ Registry connection details
 {{- end }}
 
 {{/*
+Webapp connectivity check enabled
+*/}}
+{{- define "trigger-v4.webapp.connectivityCheckEnabled" -}}
+{{- $connectivityCheckEnabled := true -}}
+{{- if hasKey .Values.webapp "connectivityCheck" -}}
+{{- if hasKey .Values.webapp.connectivityCheck "postgres" -}}
+{{- $connectivityCheckEnabled = .Values.webapp.connectivityCheck.postgres -}}
+{{- end -}}
+{{- end -}}
+{{- $connectivityCheckEnabled -}}
+{{- end }}
+
+{{/*
 PostgreSQL host (for wait-for-it script)
 */}}
 {{- define "trigger-v4.postgres.host" -}}
-{{- if .Values.postgres.external.host -}}
-{{ .Values.postgres.external.host }}:{{ .Values.postgres.external.port | default 5432 }}
-{{- else if .Values.postgres.deploy -}}
+{{- if .Values.postgres.deploy -}}
 {{ include "trigger-v4.postgres.hostname" . }}:5432
+{{- else if .Values.postgres.external.connectivityCheck.host -}}
+{{ .Values.postgres.external.connectivityCheck.host }}
 {{- end -}}
 {{- end }}
 
