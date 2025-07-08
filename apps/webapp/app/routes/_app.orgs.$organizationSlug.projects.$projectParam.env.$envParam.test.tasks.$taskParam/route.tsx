@@ -30,7 +30,7 @@ import { TextLink } from "~/components/primitives/TextLink";
 import { TimezoneList } from "~/components/scheduled/timezones";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useSearchParams } from "~/hooks/useSearchParam";
-import { useParams, Form, useActionData, useFetcher } from "@remix-run/react";
+import { useParams, Form, useActionData, useFetcher, useSubmit } from "@remix-run/react";
 import {
   redirectBackWithErrorMessage,
   redirectWithErrorMessage,
@@ -67,6 +67,8 @@ import { DeleteTaskRunTemplateData, RunTemplateData } from "~/v3/taskRunTemplate
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { DialogClose, DialogDescription } from "@radix-ui/react-dialog";
 import { FormButtons } from "~/components/primitives/FormButtons";
+import { toast } from "sonner";
+import { ToastUI } from "~/components/primitives/Toast";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -129,7 +131,7 @@ export const action: ActionFunction = async ({ request, params }) => {
   if (formAction === "create-template") {
     const runTemplateData = parse(formData, { schema: RunTemplateData });
     if (!runTemplateData.value) {
-      return json(runTemplateData);
+      return json(runTemplateData.error);
     }
 
     const templateService = new TaskRunTemplateService();
@@ -1471,22 +1473,31 @@ function CreateTemplateModal({
   getCurrentPayload: () => string;
   getCurrentMetadata: () => string;
 }) {
-  const lastSubmission = useActionData<typeof action>();
-
-  const fetcher = useFetcher();
+  const submit = useSubmit();
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const lastSubmission = useActionData<typeof action>();
 
   useEffect(() => {
     if (
-      fetcher.state === "idle" &&
-      fetcher.data &&
-      typeof fetcher.data === "object" &&
-      "success" in fetcher.data &&
-      fetcher.data.success
+      lastSubmission &&
+      typeof lastSubmission === "object" &&
+      "formAction" in lastSubmission &&
+      "success" in lastSubmission &&
+      lastSubmission.formAction === "create-template" &&
+      lastSubmission.success === true
     ) {
       setIsModalOpen(false);
+      toast.custom(
+        (t) => (
+          <ToastUI variant="success" message="Template created successfully" t={t as string} />
+        ),
+        {
+          duration: 2000,
+        }
+      );
     }
-  }, [fetcher.state, fetcher.data]);
+  }, [lastSubmission]);
 
   const [
     form,
@@ -1512,20 +1523,13 @@ function CreateTemplateModal({
     },
   ] = useForm({
     id: "save-template",
-    lastSubmission:
-      lastSubmission &&
-      typeof lastSubmission === "object" &&
-      "formAction" in lastSubmission &&
-      lastSubmission.formAction === "create-template"
-        ? (lastSubmission as any)
-        : undefined,
     onSubmit(event, { formData }) {
       event.preventDefault();
 
       formData.set(payload.name, getCurrentPayload());
       formData.set(metadata.name, getCurrentMetadata());
 
-      fetcher.submit(formData, { method: "POST" });
+      submit(formData, { method: "POST" });
     },
     onValidate({ formData }) {
       return parse(formData, { schema: RunTemplateData });
