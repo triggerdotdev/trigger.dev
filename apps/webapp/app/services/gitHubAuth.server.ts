@@ -3,9 +3,8 @@ import { GitHubStrategy } from "remix-auth-github";
 import { env } from "~/env.server";
 import { findOrCreateUser } from "~/models/user.server";
 import type { AuthUser } from "./authUser";
-import { postAuthentication } from "./postAuth.server";
 import { logger } from "./logger.server";
-import { MfaRequiredError } from "./mfa/multiFactorAuthentication.server";
+import { postAuthentication } from "./postAuth.server";
 
 export function addGitHubStrategy(
   authenticator: Authenticator<AuthUser>,
@@ -41,22 +40,11 @@ export function addGitHubStrategy(
 
         await postAuthentication({ user, isNewUser, loginMethod: "GITHUB" });
 
-        // Check if user has MFA enabled
-        if (user.mfaEnabledAt) {
-          // Throw a special error that will be caught by the callback route
-          throw new MfaRequiredError(user.id);
-        }
-
         return {
           userId: user.id,
         };
       } catch (error) {
-        // Skip logging the error if it's a MfaRequiredError
-        if (error instanceof MfaRequiredError) {
-          throw error;
-        }
-
-        console.error(error);
+        logger.error("GitHub login failed", { error: JSON.stringify(error) });
         throw error;
       }
     }
