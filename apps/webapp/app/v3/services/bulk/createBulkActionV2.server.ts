@@ -11,6 +11,8 @@ import { logger } from "@trigger.dev/sdk";
 import { CancelTaskRunService } from "../cancelTaskRun.server";
 import { tryCatch } from "@trigger.dev/core";
 import { ReplayTaskRunService } from "../replayTaskRun.server";
+import { timeFilters } from "~/components/runs/v3/SharedFilters";
+import parseDuration from "parse-duration";
 
 export class BulkActionService extends BaseService {
   public async create(
@@ -276,11 +278,33 @@ async function getFilters(payload: CreateBulkActionPayload, request: Request) {
   filters.cursor = undefined;
   filters.direction = undefined;
 
-  // If there isn't a time period or to date, we set the to date to now
-  // Otherwise this could run forever if lots of new runs are being created
-  if (!filters.period && !filters.to) {
+  const { period, from, to } = timeFilters({
+    period: filters.period,
+    from: filters.from,
+    to: filters.to,
+  });
+
+  // We fix the time period to a from/to date
+  if (period) {
+    const periodMs = parseDuration(period);
+    if (!periodMs) {
+      throw new Error(`Invalid period: ${period}`);
+    }
+
+    const to = new Date();
+    const from = new Date(to.getTime() - periodMs);
+    filters.from = from.getTime();
+    filters.to = to.getTime();
+    filters.period = undefined;
+    return filters;
+  }
+
+  // If no to date is set, we lock it to now
+  if (!filters.to) {
     filters.to = Date.now();
   }
+
+  filters.period = undefined;
 
   return filters;
 }
