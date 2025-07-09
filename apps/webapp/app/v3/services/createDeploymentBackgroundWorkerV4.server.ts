@@ -71,6 +71,8 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
           sdkVersion: body.metadata.packageVersion,
           supportsLazyAttempts: body.supportsLazyAttempts,
           engine: body.engine,
+          runtime: body.metadata.runtime,
+          runtimeVersion: body.metadata.runtimeVersion,
         },
       });
 
