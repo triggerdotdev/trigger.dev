@@ -390,13 +390,16 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
   const $spinner = spinner();
 
+  const buildSuffix = isLocalBuild ? " (local)" : "";
+  const deploySuffix = isLocalBuild ? " (local build)" : "";
+
   if (isCI) {
     log.step(`Building version ${version}\n`);
   } else {
     if (isLinksSupported) {
-      $spinner.start(`Building version ${version} ${deploymentLink}`);
+      $spinner.start(`Building version ${version}${buildSuffix} ${deploymentLink}`);
     } else {
-      $spinner.start(`Building version ${version}`);
+      $spinner.start(`Building version ${version}${buildSuffix}`);
     }
   }
 
@@ -427,9 +430,11 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
       }
 
       if (isLinksSupported) {
-        $spinner.message(`Building version ${version} ${deploymentLink}: ${logMessage}`);
+        $spinner.message(
+          `Building version ${version}${buildSuffix} ${deploymentLink}: ${logMessage}`
+        );
       } else {
-        $spinner.message(`Building version ${version}: ${logMessage}`);
+        $spinner.message(`Building version ${version}${buildSuffix}: ${logMessage}`);
       }
     },
     // Local build options
@@ -505,12 +510,12 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   }
 
   if (isCI) {
-    log.step(`Deploying version ${version}\n`);
+    log.step(`Deploying version ${version}${deploySuffix}\n`);
   } else {
     if (isLinksSupported) {
-      $spinner.message(`Deploying version ${version} ${deploymentLink}`);
+      $spinner.message(`Deploying version ${version}${deploySuffix} ${deploymentLink}`);
     } else {
-      $spinner.message(`Deploying version ${version}`);
+      $spinner.message(`Deploying version ${version}${deploySuffix}`);
     }
   }
 
@@ -527,9 +532,11 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
       }
 
       if (isLinksSupported) {
-        $spinner.message(`Deploying version ${version} ${deploymentLink}: ${logMessage}`);
+        $spinner.message(
+          `Deploying version ${version}${deploySuffix} ${deploymentLink}: ${logMessage}`
+        );
       } else {
-        $spinner.message(`Deploying version ${version}: ${logMessage}`);
+        $spinner.message(`Deploying version ${version}${deploySuffix}: ${logMessage}`);
       }
     }
   );
@@ -547,9 +554,9 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   }
 
   if (isCI) {
-    log.step(`Successfully deployed version ${version}`);
+    log.step(`Successfully deployed version ${version}${deploySuffix}`);
   } else {
-    $spinner.stop(`Successfully deployed version ${version}`);
+    $spinner.stop(`Successfully deployed version ${version}${deploySuffix}`);
   }
 
   const taskCount = deploymentWithWorker.worker?.tasks.length ?? 0;
