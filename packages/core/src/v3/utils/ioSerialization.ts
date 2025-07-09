@@ -400,7 +400,15 @@ interface ReplacerOptions {
 }
 
 function makeSafeReplacer(options?: ReplacerOptions) {
+  const seen = new WeakSet<any>();
+
   return function replacer(key: string, value: any) {
+    if (typeof value === "object" && value !== null) {
+      if (seen.has(value)) {
+        return "[Circular]";
+      }
+      seen.add(value);
+    }
     // Check if the key should be filtered out
     if (options?.filteredKeys?.includes(key)) {
       return undefined;

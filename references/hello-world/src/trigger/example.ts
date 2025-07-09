@@ -301,3 +301,30 @@ export const resourceMonitorTest = task({
     };
   },
 });
+
+export const circularReferenceTask = task({
+  id: "circular-reference",
+  run: async (payload: { message: string }, { ctx }) => {
+    logger.info("Hello, world from the circular reference task", { message: payload.message });
+
+    // Create an object
+    const user = {
+      name: "Alice",
+      details: {
+        age: 30,
+        email: "alice@example.com",
+      },
+    };
+
+    // Create the circular reference
+    // @ts-expect-error - This is a circular reference
+    user.details.user = user;
+
+    // Now user.details.user points back to the user object itself
+    // This creates a circular reference that standard JSON can't handle
+
+    return {
+      user,
+    };
+  },
+});
