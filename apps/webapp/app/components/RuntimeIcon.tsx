@@ -1,7 +1,7 @@
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { BunLogoIcon } from "~/assets/icons/BunLogoIcon";
 import { NodejsLogoIcon } from "~/assets/icons/NodejsLogoIcon";
-import { parseRuntime, formatRuntimeWithVersion } from "~/utils/runtime";
+import { parseRuntime, formatRuntimeWithVersion, type NormalizedRuntime } from "~/utils/runtime";
 
 interface RuntimeIconProps {
   runtime?: string | null;
@@ -9,6 +9,17 @@ interface RuntimeIconProps {
   className?: string;
   withLabel?: boolean;
 }
+
+const getIcon = (runtime: NormalizedRuntime, className: string) => {
+  switch (runtime) {
+    case "bun":
+      return <BunLogoIcon className={className} />;
+    case "node":
+      return <NodejsLogoIcon className={className} />;
+    default:
+      return <span className="text-text-dimmed">–</span>;
+  }
+};
 
 export function RuntimeIcon({
   runtime,
@@ -25,18 +36,7 @@ export function RuntimeIcon({
     displayName: "Node.js",
   };
 
-  const getIcon = () => {
-    switch (effectiveRuntime.runtime) {
-      case "bun":
-        return <BunLogoIcon className={className} />;
-      case "node":
-        return <NodejsLogoIcon className={className} />;
-      default:
-        return <span className="text-text-dimmed">–</span>;
-    }
-  };
-
-  const icon = getIcon();
+  const icon = getIcon(effectiveRuntime.runtime, className);
   const formattedText = formatRuntimeWithVersion(effectiveRuntime.originalRuntime, runtimeVersion);
 
   if (withLabel) {

@@ -142,6 +142,8 @@ export class SpanPresenter extends BasePresenter {
           select: {
             version: true,
             sdkVersion: true,
+            runtime: true,
+            runtimeVersion: true,
           },
         },
         engine: true,
@@ -326,6 +328,8 @@ export class SpanPresenter extends BasePresenter {
       taskIdentifier: run.taskIdentifier,
       version: run.lockedToVersion?.version,
       sdkVersion: run.lockedToVersion?.sdkVersion,
+      runtime: run.lockedToVersion?.runtime,
+      runtimeVersion: run.lockedToVersion?.runtimeVersion,
       isTest: run.isTest,
       environmentId: run.runtimeEnvironment.id,
       idempotencyKey: run.idempotencyKey,

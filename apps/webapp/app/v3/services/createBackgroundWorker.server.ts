@@ -81,6 +81,8 @@ export class CreateBackgroundWorkerService extends BaseService {
           contentHash: body.metadata.contentHash,
           cliVersion: body.metadata.cliPackageVersion,
           sdkVersion: body.metadata.packageVersion,
+          runtime: body.metadata.runtime,
+          runtimeVersion: body.metadata.runtimeVersion,
           supportsLazyAttempts: body.supportsLazyAttempts,
           engine: body.engine,
         },

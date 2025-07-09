@@ -36,6 +36,7 @@ import {
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { TextLink } from "~/components/primitives/TextLink";
 import { InfoIconTooltip, SimpleTooltip } from "~/components/primitives/Tooltip";
+import { RuntimeIcon } from "~/components/RuntimeIcon";
 import { RunTimeline, RunTimelineEvent, SpanTimeline } from "~/components/run/RunTimeline";
 import { PacketDisplay } from "~/components/runs/v3/PacketDisplay";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
@@ -573,6 +574,16 @@ function RunBody({
                         />
                       </span>
                     )}
+                  </Property.Value>
+                </Property.Item>
+                <Property.Item>
+                  <Property.Label>Runtime</Property.Label>
+                  <Property.Value>
+                    <RuntimeIcon
+                      runtime={run.runtime}
+                      runtimeVersion={run.runtimeVersion}
+                      withLabel
+                    />
                   </Property.Value>
                 </Property.Item>
                 <Property.Item>

@@ -420,6 +420,9 @@ model BackgroundWorker {
   version  String
   metadata Json
 
+  runtime        String?
+  runtimeVersion String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -719,24 +722,24 @@ model TaskRun {
 model TaskRunTemplate {
   id String @id @default(cuid())
 
-  taskSlug String
+  taskSlug      String
   triggerSource TaskTriggerSource
 
   label String
 
-  payload      String?
-  payloadType  String @default("application/json")
-  metadata        String?
-  metadataType    String  @default("application/json")
-  queue String?
-  concurrencyKey String?
-  ttlSeconds Int?
-  maxAttempts Int?
+  payload            String?
+  payloadType        String   @default("application/json")
+  metadata           String?
+  metadataType       String   @default("application/json")
+  queue              String?
+  concurrencyKey     String?
+  ttlSeconds         Int?
+  maxAttempts        Int?
   maxDurationSeconds Int?
-  tags String[]
-  machinePreset String?
+  tags               String[]
+  machinePreset      String?
 
-  projectId String
+  projectId      String
   organizationId String
 
   createdAt DateTime @default(now())
