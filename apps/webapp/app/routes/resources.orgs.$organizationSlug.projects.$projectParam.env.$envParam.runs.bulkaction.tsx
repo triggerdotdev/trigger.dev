@@ -51,7 +51,7 @@ import { logger } from "~/services/logger.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { CreateBulkActionPresenter } from "~/presenters/v3/CreateBulkActionPresenter.server";
-import { BulkActionService } from "~/v3/services/bulk/createBulkActionV2.server";
+import { BulkActionService } from "~/v3/services/bulk/BulkActionV2.server";
 import { tryCatch } from "@trigger.dev/core";
 import {
   Dialog,

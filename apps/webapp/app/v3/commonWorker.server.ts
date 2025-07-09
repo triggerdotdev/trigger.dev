@@ -20,7 +20,7 @@ import { ResumeBatchRunService } from "./services/resumeBatchRun.server";
 import { ResumeTaskDependencyService } from "./services/resumeTaskDependency.server";
 import { RetryAttemptService } from "./services/retryAttempt.server";
 import { TimeoutDeploymentService } from "./services/timeoutDeployment.server";
-import { BulkActionService } from "./services/bulk/createBulkActionV2.server";
+import { BulkActionService } from "./services/bulk/BulkActionV2.server";
 
 function initializeWorker() {
   const redisOptions = {
