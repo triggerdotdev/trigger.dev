@@ -330,7 +330,7 @@ export function CreateBulkActionInspector({
               </Button>
             </DialogTrigger>
             <DialogContent>
-              <DialogHeader>You've exceeded your limit</DialogHeader>
+              <DialogHeader>{action === "replay" ? "Replay runs" : "Cancel runs"}</DialogHeader>
               <div className="flex flex-col gap-3 divide-y divide-grid-dimmed pt-2">
                 <BulkActionPreview
                   selected={mode === "selected" ? selectedItems.size : data?.count}
@@ -356,8 +356,6 @@ export function CreateBulkActionInspector({
                   type="submit"
                   form="bulk-action-form"
                   variant={action === "replay" ? "primary/medium" : "danger/medium"}
-                  LeadingIcon={action === "replay" ? ArrowPathIcon : XCircleIcon}
-                  leadingIconClassName="w-[1.3rem] h-[1.3rem] text-text-bright"
                   disabled={impactedCount === 0}
                 >
                   {action === "replay" ? (

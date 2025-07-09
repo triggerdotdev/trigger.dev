@@ -75,8 +75,6 @@ export class NextRunListPresenter {
       to,
     });
 
-    const periodMs = time.period ? parseDuration(time.period) : undefined;
-
     const hasStatusFilters = statuses && statuses.length > 0;
 
     const hasFilters =
@@ -245,6 +243,7 @@ export class NextRunListPresenter {
         id: bulkAction.friendlyId,
         type: bulkAction.type,
         createdAt: bulkAction.createdAt,
+        name: bulkAction.name || bulkAction.friendlyId,
       })),
       filters: {
         tasks: tasks || [],

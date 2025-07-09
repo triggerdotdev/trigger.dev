@@ -56,6 +56,7 @@ import {
 } from "./TaskRunStatus";
 import { TaskTriggerSourceIcon } from "./TaskTriggerSource";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
+import { cn } from "~/utils/cn";
 
 export const RunStatus = z.enum(allTaskRunStatuses);
 
@@ -218,6 +219,7 @@ type RunFiltersProps = {
     id: string;
     type: BulkActionType;
     createdAt: Date;
+    name: string;
   }[];
   rootOnlyDefault: boolean;
   hasFilters: boolean;
@@ -608,7 +610,7 @@ function BulkActionsDropdown({
     <SelectProvider value={value("bulkId")} setValue={handleChange} virtualFocus={true}>
       {trigger}
       <SelectPopover
-        className="min-w-0 max-w-[min(240px,var(--popover-available-width))]"
+        className="min-w-0 max-w-[min(320px,var(--popover-available-width))]"
         hideOnEscape={() => {
           if (onClose) {
             onClose();
@@ -621,11 +623,20 @@ function BulkActionsDropdown({
         <ComboBox placeholder={"Filter by bulk action..."} value={searchValue} />
         <SelectList>
           <SelectItem value={""}>None</SelectItem>
-          {filtered.map((item, index) => (
-            <SelectItem key={item.id} value={item.id}>
-              <div className="flex gap-3">
-                <BulkActionStatusCombo type={item.type} iconClassName="size-4" />
-                <DateTime date={item.createdAt} />
+          {filtered.map((item) => (
+            <SelectItem key={item.id} value={item.id} className="[&>div]:h-fit">
+              <div className="flex flex-col gap-1 py-1">
+                <Paragraph variant="small/bright" className="truncate">
+                  {item.name}
+                </Paragraph>
+                <div className="flex gap-3">
+                  <BulkActionStatusCombo
+                    type={item.type}
+                    iconClassName="size-4"
+                    labelClassName="text-text-dimmed"
+                  />
+                  <DateTime date={item.createdAt} />
+                </div>
               </div>
             </SelectItem>
           ))}

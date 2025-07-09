@@ -1,5 +1,5 @@
 import { ArrowPathIcon, NoSymbolIcon } from "@heroicons/react/20/solid";
-import { BulkActionType } from "@trigger.dev/database";
+import { type BulkActionType } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { cn } from "~/utils/cn";
 
@@ -7,21 +7,23 @@ export function BulkActionStatusCombo({
   type,
   className,
   iconClassName,
+  labelClassName,
 }: {
   type: BulkActionType;
   className?: string;
   iconClassName?: string;
+  labelClassName?: string;
 }) {
   return (
     <span className={cn("flex items-center gap-1", className)}>
       <BulkActionIcon type={type} className={cn("h-4 w-4", iconClassName)} />
-      <BulkActionLabel type={type} />
+      <BulkActionLabel type={type} className={labelClassName} />
     </span>
   );
 }
 
-export function BulkActionLabel({ type }: { type: BulkActionType }) {
-  return <span className={bulkActionClassName(type)}>{bulkActionTitle(type)}</span>;
+export function BulkActionLabel({ type, className }: { type: BulkActionType; className?: string }) {
+  return <span className={cn(bulkActionClassName(type), className)}>{bulkActionTitle(type)}</span>;
 }
 
 export function BulkActionIcon({ type, className }: { type: BulkActionType; className: string }) {
