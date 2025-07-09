@@ -19,7 +19,6 @@ import { Label } from "~/components/primitives/Label";
 import { DurationPicker } from "~/components/primitives/DurationPicker";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives/Popover";
-import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -60,6 +59,7 @@ import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
 import { ClockRotateLeftIcon } from "~/assets/icons/ClockRotateLeftIcon";
 import { MachinePresetName } from "@trigger.dev/core/v3";
 import { TaskTriggerSourceIcon } from "~/components/runs/v3/TaskTriggerSource";
+import { Callout } from "~/components/primitives/Callout";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -412,12 +412,17 @@ function StandardTaskForm({
           </div>
         </ResizablePanel>
         <ResizableHandle id="test-task-handle" />
-        <ResizablePanel id="test-task-options" min="285px" default="285px" max="360px">
-          <div className="h-full overflow-y-scroll">
+        <ResizablePanel id="test-task-options" min="300px" default="300px" max="360px">
+          <div className="h-full overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
             <Fieldset className="px-3 py-3">
+              <Hint>
+                Options enable you to control the execution behavior of your task.{" "}
+                <TextLink to={docsPath("triggering#options")}>Read the docs.</TextLink>
+              </Hint>
               <InputGroup>
                 <Label variant="small">Delay</Label>
                 <DurationPicker name={delaySeconds.name} id={delaySeconds.id} />
+                <Hint>Delays run by a specific duration.</Hint>
                 <FormError id={delaySeconds.errorId}>{delaySeconds.error}</FormError>
               </InputGroup>
               <InputGroup>
@@ -428,7 +433,7 @@ function StandardTaskForm({
                   value={ttlValue}
                   onChange={setTtlValue}
                 />
-                <Hint>The run will expire if it hasn't started within the TTL (time to live).</Hint>
+                <Hint>Expires the run if it hasn't started within the TTL.</Hint>
                 <FormError id={ttlSeconds.errorId}>{ttlSeconds.error}</FormError>
               </InputGroup>
               <InputGroup>
@@ -447,6 +452,7 @@ function StandardTaskForm({
                     name={queue.name}
                     id={queue.id}
                     placeholder="Select queue"
+                    heading="Filter queues"
                     variant="tertiary/small"
                     dropdownIcon
                     items={queueItems}
@@ -481,6 +487,7 @@ function StandardTaskForm({
                     }
                   </Select>
                 )}
+                <Hint>Assign run to a specific queue.</Hint>
                 <FormError id={queue.errorId}>{queue.error}</FormError>
               </InputGroup>
               <InputGroup>
@@ -494,7 +501,7 @@ function StandardTaskForm({
                   tags={tagsValue}
                   onTagsChange={setTagsValue}
                 />
-                <Hint>Tags enable you to easily filter runs.</Hint>
+                <Hint>Add tags to easily filter runs.</Hint>
                 <FormError id={tags.errorId}>{tags.error}</FormError>
               </InputGroup>
               <InputGroup>
@@ -523,6 +530,7 @@ function StandardTaskForm({
                     }
                   }}
                 />
+                <Hint>Retries failed runs up to the specified number of attempts.</Hint>
                 <FormError id={maxAttempts.errorId}>{maxAttempts.error}</FormError>
               </InputGroup>
               <InputGroup>
@@ -533,6 +541,7 @@ function StandardTaskForm({
                   value={maxDurationValue}
                   onChange={setMaxDurationValue}
                 />
+                <Hint>Overrides the maximum compute time limit for the run.</Hint>
                 <FormError id={maxDurationSeconds.errorId}>{maxDurationSeconds.error}</FormError>
               </InputGroup>
               <InputGroup>
@@ -552,7 +561,7 @@ function StandardTaskForm({
                   name={idempotencyKeyTTLSeconds.name}
                   id={idempotencyKeyTTLSeconds.id}
                 />
-                <Hint>By default, idempotency keys expire after 30 days.</Hint>
+                <Hint>Keys expire after 30 days by default.</Hint>
                 <FormError id={idempotencyKeyTTLSeconds.errorId}>
                   {idempotencyKeyTTLSeconds.error}
                 </FormError>
@@ -568,8 +577,7 @@ function StandardTaskForm({
                   onChange={(e) => setConcurrencyKeyValue(e.target.value)}
                 />
                 <Hint>
-                  Concurrency keys enable you limit concurrency by creating a separate queue for
-                  each value of the key.
+                  Limits concurrency by creating a separate queue for each value of the key.
                 </Hint>
                 <FormError id={concurrencyKey.errorId}>{concurrencyKey.error}</FormError>
               </InputGroup>
@@ -596,7 +604,7 @@ function StandardTaskForm({
                     </SelectItem>
                   ))}
                 </Select>
-                <Hint>This lets you override the machine preset specified in the task.</Hint>
+                <Hint>Overrides the machine preset.</Hint>
                 <FormError id={machine.errorId}>{machine.error}</FormError>
               </InputGroup>
               <InputGroup>
@@ -617,8 +625,10 @@ function StandardTaskForm({
                     </SelectItem>
                   ))}
                 </Select>
-                {disableVersionSelection && (
+                {disableVersionSelection ? (
                   <Hint>Only the latest version is available in the development environment.</Hint>
+                ) : (
+                  <Hint>Runs task on a specific version.</Hint>
                 )}
                 <FormError id={version.errorId}>{version.error}</FormError>
               </InputGroup>
@@ -869,7 +879,11 @@ function ScheduledTaskForm({
             </Hint>
             <FormError id={externalId.errorId}>{externalId.error}</FormError>
           </InputGroup>
-          <div className="w-full border-b border-grid-bright"></div>
+          <div className="w-full border-b border-grid-bright" />
+          <Hint>
+            Options enable you to control the execution behavior of your task.{" "}
+            <TextLink to={docsPath("triggering#options")}>Read the docs.</TextLink>
+          </Hint>
           <InputGroup>
             <Label htmlFor={ttlSeconds.id} variant="small">
               TTL
@@ -880,7 +894,7 @@ function ScheduledTaskForm({
               value={ttlValue}
               onChange={setTtlValue}
             />
-            <Hint>The run will expire if it hasn't started within the TTL (time to live).</Hint>
+            <Hint>Expires the run if it hasn't started within the TTL.</Hint>
             <FormError id={ttlSeconds.errorId}>{ttlSeconds.error}</FormError>
           </InputGroup>
           <InputGroup>
@@ -899,6 +913,7 @@ function ScheduledTaskForm({
                 name={queue.name}
                 id={queue.id}
                 placeholder="Select queue"
+                heading="Filter queues"
                 variant="tertiary/small"
                 dropdownIcon
                 items={queueItems}
@@ -933,6 +948,7 @@ function ScheduledTaskForm({
                 }
               </Select>
             )}
+            <Hint>Assign run to a specific queue.</Hint>
             <FormError id={queue.errorId}>{queue.error}</FormError>
           </InputGroup>
           <InputGroup>
@@ -946,7 +962,7 @@ function ScheduledTaskForm({
               tags={tagsValue}
               onTagsChange={setTagsValue}
             />
-            <Hint>Tags enable you to easily filter runs.</Hint>
+            <Hint>Add tags to easily filter runs.</Hint>
             <FormError id={tags.errorId}>{tags.error}</FormError>
           </InputGroup>
           <InputGroup>
@@ -975,6 +991,7 @@ function ScheduledTaskForm({
                 }
               }}
             />
+            <Hint>Retries failed runs up to the specified number of attempts.</Hint>
             <FormError id={maxAttempts.errorId}>{maxAttempts.error}</FormError>
           </InputGroup>
           <InputGroup>
@@ -987,6 +1004,7 @@ function ScheduledTaskForm({
               value={maxDurationValue}
               onChange={setMaxDurationValue}
             />
+            <Hint>Overrides the maximum compute time limit for the run.</Hint>
             <FormError id={maxDurationSeconds.errorId}>{maxDurationSeconds.error}</FormError>
           </InputGroup>
           <InputGroup>
@@ -1005,7 +1023,7 @@ function ScheduledTaskForm({
               Idempotency key TTL
             </Label>
             <DurationPicker name={idempotencyKeyTTLSeconds.name} id={idempotencyKeyTTLSeconds.id} />
-            <Hint>By default, idempotency keys expire after 30 days.</Hint>
+            <Hint>Keys expire after 30 days by default.</Hint>
             <FormError id={idempotencyKeyTTLSeconds.errorId}>
               {idempotencyKeyTTLSeconds.error}
             </FormError>
@@ -1020,10 +1038,7 @@ function ScheduledTaskForm({
               value={concurrencyKeyValue ?? ""}
               onChange={(e) => setConcurrencyKeyValue(e.target.value)}
             />
-            <Hint>
-              Concurrency keys enable you limit concurrency by creating a separate queue for each
-              value of the key.
-            </Hint>
+            <Hint>Limits concurrency by creating a separate queue for each value of the key.</Hint>
             <FormError id={concurrencyKey.errorId}>{concurrencyKey.error}</FormError>
           </InputGroup>
           <InputGroup>
@@ -1049,7 +1064,7 @@ function ScheduledTaskForm({
                 </SelectItem>
               ))}
             </Select>
-            <Hint>This lets you override the machine preset specified in the task.</Hint>
+            <Hint>Overrides the machine preset.</Hint>
             <FormError id={machine.errorId}>{machine.error}</FormError>
           </InputGroup>
           <InputGroup>
@@ -1070,8 +1085,10 @@ function ScheduledTaskForm({
                 </SelectItem>
               ))}
             </Select>
-            {disableVersionSelection && (
+            {disableVersionSelection ? (
               <Hint>Only the latest version is available in the development environment.</Hint>
+            ) : (
+              <Hint>Runs task on a specific version.</Hint>
             )}
             <FormError id={version.errorId}>{version.error}</FormError>
           </InputGroup>
@@ -1120,7 +1137,7 @@ function RecentRunsPopover<T extends StandardRun | ScheduledRun>({
           Recent runs
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="min-w-[279px] p-0" align="end" sideOffset={6}>
+      <PopoverContent className="min-w-[294px] p-0" align="end" sideOffset={6}>
         <div className="max-h-80 overflow-y-auto">
           <div className="p-1">
             {runs.map((run) => (
@@ -1134,7 +1151,7 @@ function RecentRunsPopover<T extends StandardRun | ScheduledRun>({
                 className="flex w-full items-center gap-2 rounded-sm px-2 py-2 outline-none transition-colors focus-custom hover:bg-charcoal-900	"
               >
                 <div className="flex flex-col items-start">
-                  <Paragraph variant="small">
+                  <Paragraph variant="small/bright">
                     <DateTime date={run.createdAt} showTooltip={false} />
                   </Paragraph>
                   <div className="flex items-center gap-2 text-xs text-text-dimmed">
