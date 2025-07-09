@@ -546,7 +546,7 @@ const BASE_IMAGE: Record<BuildRuntime, string> = {
   bun: "imbios/bun-node:1.2.1-22-slim@sha256:6c31db8f11f0d37357ef8156c2dab684448b54a1fb50ca1c22bca82bce76c788",
   node: "node:21.7.3-bookworm-slim@sha256:dfc05dee209a1d7adf2ef189bd97396daad4e97c6eaa85778d6f75205ba1b0fb",
   "node-22":
-    "node:22.12.0-bookworm-slim@sha256:a4b757cd491c7f0b57f57951f35f4e85b7e1ad54dbffca4cf9af0725e1650cd8",
+    "node:22.16.0-bookworm-slim@sha256:048ed02c5fd52e86fda6fbd2f6a76cf0d4492fd6c6fee9e2c463ed5108da0e34",
 };
 
 const DEFAULT_PACKAGES = ["busybox", "ca-certificates", "dumb-init", "git", "openssl"];
