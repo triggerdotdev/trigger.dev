@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "url";
 import { BuildRuntime } from "../schemas/build.js";
 import { dedupFlags } from "./flags.js";
+import { homedir } from "node:os";
 
 export const DEFAULT_RUNTIME = "node" satisfies BuildRuntime;
 
@@ -31,7 +32,7 @@ export function execPathForRuntime(runtime: BuildRuntime): string {
         return join(process.env.BUN_INSTALL_BIN, "bun");
       }
 
-      return join("~", ".bin", "bin", "bun");
+      return join(homedir(), ".bun", "bin", "bun");
     default:
       throw new Error(`Unsupported runtime ${runtime}`);
   }
