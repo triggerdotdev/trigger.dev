@@ -74,8 +74,6 @@ import { DeleteTaskRunTemplateData, RunTemplateData } from "~/v3/taskRunTemplate
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { DialogClose, DialogDescription } from "@radix-ui/react-dialog";
 import { FormButtons } from "~/components/primitives/FormButtons";
-import { toast } from "sonner";
-import { ToastUI } from "~/components/primitives/Toast";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -118,7 +116,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
 export const action: ActionFunction = async ({ request, params }) => {
   const userId = await requireUserId(request);
-  const { organizationSlug, projectParam, envParam, taskParam } = v3TaskParamsSchema.parse(params);
+  const { organizationSlug, projectParam, envParam } = v3TaskParamsSchema.parse(params);
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
   if (!project) {
@@ -136,19 +134,23 @@ export const action: ActionFunction = async ({ request, params }) => {
 
   // Handle run template creation
   if (formAction === "create-template") {
-    const runTemplateData = parse(formData, { schema: RunTemplateData });
-    if (!runTemplateData.value) {
-      return json(runTemplateData.error);
+    const submission = parse(formData, { schema: RunTemplateData });
+    if (!submission.value) {
+      return json({
+        ...submission,
+        formAction,
+      });
     }
 
     const templateService = new TaskRunTemplateService();
     try {
-      await templateService.call(environment, runTemplateData.value);
+      const template = await templateService.call(environment, submission.value);
 
       return json({
+        ...submission,
         success: true,
+        templateLabel: template.label,
         formAction,
-        message: `Template "${runTemplateData.value.label}" created successfully`,
       });
     } catch (e) {
       logger.error("Failed to create template", { error: e instanceof Error ? e.message : e });
@@ -161,7 +163,10 @@ export const action: ActionFunction = async ({ request, params }) => {
     const submission = parse(formData, { schema: DeleteTaskRunTemplateData });
 
     if (!submission.value) {
-      return json(submission);
+      return json({
+        ...submission,
+        formAction,
+      });
     }
 
     const deleteService = new DeleteTaskRunTemplateService();
@@ -169,9 +174,9 @@ export const action: ActionFunction = async ({ request, params }) => {
       await deleteService.call(environment, submission.value.templateId);
 
       return json({
+        ...submission,
         success: true,
         formAction,
-        message: `Template deleted successfully`,
       });
     } catch (e) {
       logger.error("Failed to delete template", { error: e instanceof Error ? e.message : e });
@@ -182,7 +187,10 @@ export const action: ActionFunction = async ({ request, params }) => {
   const submission = parse(formData, { schema: TestTaskData });
 
   if (!submission.value) {
-    return json(submission);
+    return json({
+      ...submission,
+      formAction,
+    });
   }
 
   if (environment.archivedAt) {
@@ -320,7 +328,16 @@ function StandardTaskForm({
   const { value, replace } = useSearchParams();
   const tab = value("tab");
 
-  const lastSubmission = useActionData();
+  const submit = useSubmit();
+  const actionData = useActionData<typeof action>();
+  const lastSubmission =
+    actionData &&
+    typeof actionData === "object" &&
+    "formAction" in actionData &&
+    actionData.formAction === "run-standard"
+      ? actionData
+      : undefined;
+
   const lastRun = runs[0];
 
   const [defaultPayloadJson, setDefaultPayloadJson] = useState<string>(
@@ -364,7 +381,6 @@ function StandardTaskForm({
 
   const [showTemplateCreatedSuccessMessage, setShowTemplateCreatedSuccessMessage] = useState(false);
 
-  const fetcher = useFetcher();
   const [
     form,
     {
@@ -388,21 +404,14 @@ function StandardTaskForm({
   ] = useForm({
     id: "test-task",
     // TODO: type this
-    lastSubmission:
-      lastSubmission &&
-      typeof lastSubmission === "object" &&
-      "formAction" in lastSubmission &&
-      lastSubmission.formAction !== "create-template" &&
-      lastSubmission.formAction !== "delete-template"
-        ? (lastSubmission as any)
-        : undefined,
+    lastSubmission: lastSubmission as any,
     onSubmit(event, { formData }) {
       event.preventDefault();
 
       formData.set(payload.name, currentPayloadJson.current);
       formData.set(metadata.name, currentMetadataJson.current);
 
-      fetcher.submit(formData, { method: "POST" });
+      submit(formData, { method: "POST" });
     },
     onValidate({ formData }) {
       return parse(formData, { schema: TestTaskData });
@@ -758,6 +767,8 @@ function StandardTaskForm({
             variant="primary/medium"
             LeadingIcon={BeakerIcon}
             shortcut={{ key: "enter", modifiers: ["mod"], enabledOnInputElements: true }}
+            name="formAction"
+            value="run-standard"
           >
             Run test
           </Button>
@@ -787,7 +798,6 @@ function ScheduledTaskForm({
   allowArbitraryQueues: boolean;
 }) {
   const environment = useEnvironment();
-  const lastSubmission = useActionData();
 
   const lastRun = runs[0];
 
@@ -824,6 +834,15 @@ function ScheduledTaskForm({
     paused: q.paused,
   }));
 
+  const actionData = useActionData<typeof action>();
+  const lastSubmission =
+    actionData &&
+    typeof actionData === "object" &&
+    "formAction" in actionData &&
+    actionData.formAction === "run-scheduled"
+      ? actionData
+      : undefined;
+
   const [
     form,
     {
@@ -848,14 +867,7 @@ function ScheduledTaskForm({
   ] = useForm({
     id: "test-task-scheduled",
     // TODO: type this
-    lastSubmission:
-      lastSubmission &&
-      typeof lastSubmission === "object" &&
-      "formAction" in lastSubmission &&
-      lastSubmission.formAction !== "create-template" &&
-      lastSubmission.formAction !== "delete-template"
-        ? (lastSubmission as any)
-        : undefined,
+    lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
       return parse(formData, { schema: TestTaskData });
     },
@@ -1264,6 +1276,8 @@ function ScheduledTaskForm({
             variant="primary/medium"
             LeadingIcon={BeakerIcon}
             shortcut={{ key: "enter", modifiers: ["mod"], enabledOnInputElements: true }}
+            name="formAction"
+            value="run-scheduled"
           >
             Run test
           </Button>
@@ -1340,17 +1354,17 @@ function RunTemplatesPopover({
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [templateIdToDelete, setTemplateIdToDelete] = useState<string | undefined>();
 
-  const lastSubmission = useActionData<typeof action>();
+  const actionData = useActionData<typeof action>();
+  const lastSubmission =
+    actionData &&
+    typeof actionData === "object" &&
+    "formAction" in actionData &&
+    actionData.formAction === "delete-template"
+      ? actionData
+      : undefined;
 
   useEffect(() => {
-    if (
-      lastSubmission &&
-      typeof lastSubmission === "object" &&
-      "formAction" in lastSubmission &&
-      "success" in lastSubmission &&
-      lastSubmission.formAction === "delete-template" &&
-      lastSubmission.success === true
-    ) {
+    if (lastSubmission && "success" in lastSubmission && lastSubmission.success === true) {
       setIsDeleteDialogOpen(false);
     }
   }, [lastSubmission]);
@@ -1454,7 +1468,7 @@ function RunTemplatesPopover({
             }}
             className="absolute -left-1/2 top-full z-10 mt-1 flex min-w-max max-w-64 items-center gap-1 rounded border border-charcoal-700 bg-background-bright px-2 py-1 text-xs shadow-md outline-none before:absolute before:-top-2 before:left-1/2 before:-translate-x-1/2 before:border-4 before:border-transparent before:border-b-charcoal-700 before:content-[''] after:absolute after:-top-[7px] after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-b-background-bright after:content-['']"
           >
-            <CheckCircleIcon className="h-4 w-4 shrink-0 text-success" /> Template created
+            <CheckCircleIcon className="h-4 w-4 shrink-0 text-success" /> Template saved
             successfully
           </motion.div>
         )}
@@ -1475,12 +1489,17 @@ function RunTemplatesPopover({
               Cancel
             </Button>
             <Form method="post" {...deleteForm.props}>
-              <input type="hidden" name="formAction" value="delete-template" />
               <input
                 {...conform.input(templateId, { type: "hidden" })}
                 value={templateIdToDelete || ""}
               />
-              <Button type="submit" variant="danger/medium" LeadingIcon={TrashIcon}>
+              <Button
+                type="submit"
+                variant="danger/medium"
+                LeadingIcon={TrashIcon}
+                name="formAction"
+                value="delete-template"
+              >
                 Delete
               </Button>
             </Form>
@@ -1521,17 +1540,17 @@ function CreateTemplateModal({
   const submit = useSubmit();
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const lastSubmission = useActionData<typeof action>();
+  const actionData = useActionData<typeof action>();
+  const lastSubmission =
+    actionData &&
+    typeof actionData === "object" &&
+    "formAction" in actionData &&
+    actionData.formAction === "create-template"
+      ? actionData
+      : undefined;
 
   useEffect(() => {
-    if (
-      lastSubmission &&
-      typeof lastSubmission === "object" &&
-      "formAction" in lastSubmission &&
-      "success" in lastSubmission &&
-      lastSubmission.formAction === "create-template" &&
-      lastSubmission.success === true
-    ) {
+    if (lastSubmission && "success" in lastSubmission && lastSubmission.success === true) {
       setIsModalOpen(false);
       setShowCreatedSuccessMessage(true);
       setTimeout(() => {
@@ -1564,6 +1583,7 @@ function CreateTemplateModal({
     },
   ] = useForm({
     id: "save-template",
+    lastSubmission: lastSubmission as any,
     onSubmit(event, { formData }) {
       event.preventDefault();
 
