@@ -96,7 +96,6 @@ export class NextRunListPresenter {
     const possibleTasksAsync = getAllTaskIdentifiers(this.replica, environmentId);
 
     //get possible bulk actions
-    // TODO: we should replace this with the new bulk stuff and make it environment scoped
     const bulkActionsAsync = this.replica.bulkActionGroup.findMany({
       select: {
         friendlyId: true,
@@ -119,6 +118,27 @@ export class NextRunListPresenter {
       bulkActionsAsync,
       findDisplayableEnvironment(environmentId, userId),
     ]);
+
+    // If the bulk action isn't in the most recent ones, add it separately
+    if (bulkId && !bulkActions.some((bulkAction) => bulkAction.friendlyId === bulkId)) {
+      const selectedBulkAction = await this.replica.bulkActionGroup.findFirst({
+        select: {
+          friendlyId: true,
+          type: true,
+          createdAt: true,
+          name: true,
+        },
+        where: {
+          friendlyId: bulkId,
+          projectId,
+          environmentId,
+        },
+      });
+
+      if (selectedBulkAction) {
+        bulkActions.push(selectedBulkAction);
+      }
+    }
 
     if (!displayableEnvironment) {
       throw new ServiceValidationError("No environment found");
