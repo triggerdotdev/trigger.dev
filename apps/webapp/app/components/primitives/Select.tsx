@@ -199,7 +199,6 @@ export function Select<TValue extends string | string[], TItem>({
         text={text}
         placeholder={placeholder}
         shortcut={shortcut}
-        tooltipTitle={heading}
         disabled={disabled}
         dropdownIcon={dropdownIcon}
         {...props}
