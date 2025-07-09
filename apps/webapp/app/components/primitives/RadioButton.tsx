@@ -22,7 +22,7 @@ const variants = {
   },
   "button/small": {
     button:
-      "flex items-center w-fit h-8 pl-2 pr-3 rounded border border-charcoal-600 hover:bg-charcoal-850 hover:border-charcoal-500 transition data-[disabled]:opacity-70 data-[disabled]:hover:bg-transparent data-[state=checked]:bg-charcoal-850",
+      "flex items-center w-fit h-8 pl-2 pr-3 rounded-md border hover:data-[state=checked]:border-charcoal-600 border-charcoal-600 hover:border-charcoal-550 transition data-[disabled]:opacity-70 data-[disabled]:hover:bg-transparent hover:data-[state=checked]:bg-white/[4%] data-[state=checked]:bg-white/[4%]",
     label: "text-sm text-text-bright select-none",
     description: "text-text-dimmed",
     inputPosition: "mt-0",
@@ -38,7 +38,7 @@ const variants = {
   },
   description: {
     button:
-      "w-full p-2.5 hover:bg-charcoal-850 transition data-[disabled]:opacity-70 data-[state=checked]:bg-charcoal-850 border-charcoal-600 border rounded-sm",
+      "w-full p-2.5 hover:data-[state=checked]:bg-white/[4%] data-[state=checked]:bg-white/[4%] transition data-[disabled]:opacity-70 hover:border-charcoal-550 border-charcoal-600 hover:data-[state=checked]:border-charcoal-600 border rounded-md",
     label: "text-text-bright font-semibold -mt-1 text-left text-sm",
     description: "text-text-dimmed -mt-0 text-left",
     inputPosition: "mt-0",
