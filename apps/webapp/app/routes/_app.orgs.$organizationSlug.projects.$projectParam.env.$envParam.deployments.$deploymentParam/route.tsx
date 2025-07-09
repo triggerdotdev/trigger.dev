@@ -3,6 +3,7 @@ import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { GitMetadata } from "~/components/GitMetadata";
+import { RuntimeIcon } from "~/components/RuntimeIcon";
 import { UserAvatar } from "~/components/UserProfilePhoto";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
@@ -172,16 +173,11 @@ export default function Page() {
               <Property.Item>
                 <Property.Label>Runtime</Property.Label>
                 <Property.Value>
-                  {deployment.runtime ? (
-                    <>
-                      {deployment.runtime}
-                      {deployment.runtimeVersion && (
-                        <span className="ml-1 text-text-dimmed">v{deployment.runtimeVersion}</span>
-                      )}
-                    </>
-                  ) : (
-                    "–"
-                  )}
+                  <RuntimeIcon
+                    runtime={deployment.runtime}
+                    runtimeVersion={deployment.runtimeVersion}
+                    withLabel
+                  />
                 </Property.Value>
               </Property.Item>
               <Property.Item>

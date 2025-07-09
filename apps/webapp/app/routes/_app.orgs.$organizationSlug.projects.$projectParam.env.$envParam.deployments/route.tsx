@@ -7,6 +7,7 @@ import { z } from "zod";
 import { PromoteIcon } from "~/assets/icons/PromoteIcon";
 import { DeploymentsNone, DeploymentsNoneDev } from "~/components/BlankStatePanels";
 import { GitMetadata } from "~/components/GitMetadata";
+import { RuntimeIcon } from "~/components/RuntimeIcon";
 import { UserAvatar } from "~/components/UserProfilePhoto";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
@@ -166,7 +167,6 @@ export default function Page() {
                     <TableRow>
                       <TableHeaderCell>Deploy</TableHeaderCell>
                       <TableHeaderCell>Version</TableHeaderCell>
-                      <TableHeaderCell>Runtime</TableHeaderCell>
                       <TableHeaderCell
                         tooltip={
                           <div className="flex flex-col divide-y divide-grid-dimmed">
@@ -191,6 +191,7 @@ export default function Page() {
                       >
                         Status
                       </TableHeaderCell>
+                      <TableHeaderCell>Runtime</TableHeaderCell>
                       <TableHeaderCell>Tasks</TableHeaderCell>
                       <TableHeaderCell>Deployed at</TableHeaderCell>
                       <TableHeaderCell>Deployed by</TableHeaderCell>
@@ -223,23 +224,15 @@ export default function Page() {
                               {deployment.version}
                             </TableCell>
                             <TableCell to={path} isSelected={isSelected}>
-                              {deployment.runtime ? (
-                                <>
-                                  {deployment.runtime}
-                                  {deployment.runtimeVersion && (
-                                    <span className="ml-1 text-text-dimmed">
-                                      v{deployment.runtimeVersion}
-                                    </span>
-                                  )}
-                                </>
-                              ) : (
-                                "–"
-                              )}
-                            </TableCell>
-                            <TableCell to={path} isSelected={isSelected}>
                               <DeploymentStatus
                                 status={deployment.status}
                                 isBuilt={deployment.isBuilt}
+                              />
+                            </TableCell>
+                            <TableCell to={path} isSelected={isSelected}>
+                              <RuntimeIcon
+                                runtime={deployment.runtime}
+                                runtimeVersion={deployment.runtimeVersion}
                               />
                             </TableCell>
                             <TableCell to={path} isSelected={isSelected}>
