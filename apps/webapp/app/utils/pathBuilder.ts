@@ -175,6 +175,15 @@ export function v3BulkActionsPath(
   return `${v3EnvironmentPath(organization, project, environment)}/bulk-actions`;
 }
 
+export function v3BulkActionPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath,
+  bulkAction: { friendlyId: string }
+) {
+  return `${v3BulkActionsPath(organization, project, environment)}/${bulkAction.friendlyId}`;
+}
+
 export function v3EnvironmentVariablesPath(
   organization: OrgForPath,
   project: ProjectForPath,
@@ -250,12 +259,16 @@ export function v3CreateBulkActionPath(
   project: ProjectForPath,
   environment: EnvironmentForPath,
   filters?: TaskRunListSearchFilters,
-  mode?: "selected" | "filters"
+  mode?: "selected" | "filters",
+  action?: "replay" | "cancel"
 ) {
   const searchParams = objectToSearchParams(filters) ?? new URLSearchParams();
   searchParams.set("bulkInspector", "show");
   if (mode) {
     searchParams.set("mode", mode);
+  }
+  if (action) {
+    searchParams.set("action", action);
   }
   const query = `?${searchParams.toString()}`;
   return `${v3RunsPath(organization, project, environment)}${query}`;

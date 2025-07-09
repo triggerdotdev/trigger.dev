@@ -2016,6 +2016,8 @@ model BulkActionGroup {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([environmentId, createdAt(sort: Desc)])
 }
 
 enum BulkActionType {

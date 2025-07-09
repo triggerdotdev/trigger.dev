@@ -45,7 +45,7 @@ import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { type loader as tagsLoader } from "~/routes/resources.projects.$projectParam.runs.tags";
 import { Button } from "../../primitives/Buttons";
-import { BulkActionStatusCombo } from "./BulkAction";
+import { BulkActionTypeCombo } from "./BulkAction";
 import { appliedSummary, FilterMenuProvider, TimeFilter } from "./SharedFilters";
 import {
   allTaskRunStatuses,
@@ -630,7 +630,7 @@ function BulkActionsDropdown({
                   {item.name}
                 </Paragraph>
                 <div className="flex gap-3">
-                  <BulkActionStatusCombo
+                  <BulkActionTypeCombo
                     type={item.type}
                     iconClassName="size-4"
                     labelClassName="text-text-dimmed"
