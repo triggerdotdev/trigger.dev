@@ -85,3 +85,19 @@ function nodeRuntimeNeedsGlobalWebCryptoFlag(): boolean {
     return false;
   }
 }
+
+export function detectRuntimeVersion(): string | undefined {
+  try {
+    // Check if we're running under Bun
+    const isBun = typeof process.versions.bun === "string";
+
+    if (isBun) {
+      return process.versions.bun;
+    }
+
+    // Otherwise, return Node.js version
+    return process.versions.node;
+  } catch {
+    return undefined;
+  }
+}

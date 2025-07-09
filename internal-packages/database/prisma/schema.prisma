@@ -1645,6 +1645,9 @@ model WorkerDeployment {
   shortCode   String
   version     String
 
+  runtime        String?
+  runtimeVersion String?
+
   imageReference String?
   imagePlatform  String  @default("linux/amd64")
 

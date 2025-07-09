@@ -170,6 +170,21 @@ export default function Page() {
                 </Property.Value>
               </Property.Item>
               <Property.Item>
+                <Property.Label>Runtime</Property.Label>
+                <Property.Value>
+                  {deployment.runtime ? (
+                    <>
+                      {deployment.runtime}
+                      {deployment.runtimeVersion && (
+                        <span className="ml-1 text-text-dimmed">v{deployment.runtimeVersion}</span>
+                      )}
+                    </>
+                  ) : (
+                    "–"
+                  )}
+                </Property.Value>
+              </Property.Item>
+              <Property.Item>
                 <Property.Label>Worker type</Property.Label>
                 <Property.Value>{capitalizeWord(deployment.type)}</Property.Value>
               </Property.Item>

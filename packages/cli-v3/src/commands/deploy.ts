@@ -311,6 +311,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     userId: authorization.userId,
     gitMeta,
     type: features.run_engine_v2 ? "MANAGED" : "V1",
+    runtime: buildManifest.runtime,
   });
 
   if (!deploymentResponse.success) {

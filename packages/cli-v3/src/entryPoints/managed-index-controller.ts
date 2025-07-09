@@ -104,6 +104,8 @@ async function indexDeployment({
         tasks: workerManifest.tasks,
         queues: workerManifest.queues,
         sourceFiles,
+        runtime: workerManifest.runtime,
+        runtimeVersion: workerManifest.runtimeVersion,
       },
       engine: "V2",
       supportsLazyAttempts: true,

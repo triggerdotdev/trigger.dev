@@ -160,6 +160,8 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
           workerId: backgroundWorker.id,
           builtAt: new Date(),
           type: backgroundWorker.engine === "V2" ? "MANAGED" : "V1",
+          // runtime is already set when the deployment is created, we only need to set the version
+          runtimeVersion: body.metadata.runtimeVersion,
         },
       });
 

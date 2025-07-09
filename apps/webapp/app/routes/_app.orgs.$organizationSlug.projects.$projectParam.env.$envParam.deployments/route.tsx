@@ -166,6 +166,7 @@ export default function Page() {
                     <TableRow>
                       <TableHeaderCell>Deploy</TableHeaderCell>
                       <TableHeaderCell>Version</TableHeaderCell>
+                      <TableHeaderCell>Runtime</TableHeaderCell>
                       <TableHeaderCell
                         tooltip={
                           <div className="flex flex-col divide-y divide-grid-dimmed">
@@ -222,6 +223,20 @@ export default function Page() {
                               {deployment.version}
                             </TableCell>
                             <TableCell to={path} isSelected={isSelected}>
+                              {deployment.runtime ? (
+                                <>
+                                  {deployment.runtime}
+                                  {deployment.runtimeVersion && (
+                                    <span className="ml-1 text-text-dimmed">
+                                      v{deployment.runtimeVersion}
+                                    </span>
+                                  )}
+                                </>
+                              ) : (
+                                "–"
+                              )}
+                            </TableCell>
+                            <TableCell to={path} isSelected={isSelected}>
                               <DeploymentStatus
                                 status={deployment.status}
                                 isBuilt={deployment.isBuilt}
@@ -272,7 +287,7 @@ export default function Page() {
                         );
                       })
                     ) : (
-                      <TableBlankRow colSpan={7}>
+                      <TableBlankRow colSpan={8}>
                         <Paragraph className="flex items-center justify-center">
                           No deploys match your filters
                         </Paragraph>
