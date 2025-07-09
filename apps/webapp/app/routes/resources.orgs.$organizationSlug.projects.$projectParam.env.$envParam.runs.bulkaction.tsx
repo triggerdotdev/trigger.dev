@@ -1,11 +1,11 @@
-import { ArrowPathIcon, CheckIcon } from "@heroicons/react/20/solid";
+import { ArrowPathIcon, CheckIcon, PlusIcon } from "@heroicons/react/20/solid";
 import { XCircleIcon } from "@heroicons/react/24/outline";
 import { Form } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/router";
 import { type TaskRunStatus } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { parse } from "@conform-to/zod";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { typedjson, useTypedFetcher } from "remix-typedjson";
 import simplur from "simplur";
 import { z } from "zod";
@@ -53,6 +53,13 @@ import { findProjectBySlug } from "~/models/project.server";
 import { CreateBulkActionPresenter } from "~/presenters/v3/CreateBulkActionPresenter.server";
 import { BulkActionService } from "~/v3/services/bulk/createBulkActionV2.server";
 import { tryCatch } from "@trigger.dev/core";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTrigger,
+} from "~/components/primitives/Dialog";
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
@@ -164,6 +171,7 @@ export function CreateBulkActionInspector({
   filters: TaskRunListSearchFilters;
   selectedItems: Set<string>;
 }) {
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -193,6 +201,7 @@ export function CreateBulkActionInspector({
       method="post"
       action={`/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/runs/bulkaction${location.search}`}
       className="h-full"
+      id="bulk-action-form"
     >
       <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden bg-background-bright">
         <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
@@ -213,7 +222,7 @@ export function CreateBulkActionInspector({
         <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
           <Fieldset className="p-3">
             {Array.from(selectedItems).map((runId) => {
-              return <input type="hidden" name="selectedRunIds" value={runId} />;
+              return <input key={runId} type="hidden" name="selectedRunIds" value={runId} />;
             })}
             <InputGroup>
               <Label htmlFor="mode">Select</Label>
@@ -296,27 +305,70 @@ export function CreateBulkActionInspector({
           </Fieldset>
         </div>
         <div className="flex items-center justify-end gap-2 border-t border-grid-dimmed px-2">
-          <Button
-            type="submit"
-            variant="tertiary/medium"
-            LeadingIcon={action === "replay" ? ArrowPathIcon : XCircleIcon}
-            leadingIconClassName={cn(
-              "w-[1.3rem] h-[1.3rem]",
-              action === "replay" ? "text-blue-400" : "text-error"
-            )}
-            shortcut={{
-              modifiers: ["meta"],
-              key: "enter",
-              enabledOnInputElements: true,
-            }}
-            disabled={impactedCount === 0}
-          >
-            {action === "replay" ? (
-              <span className="text-text-bright">Replay {impactedCount} runs…</span>
-            ) : (
-              <span className="text-text-bright">Cancel {impactedCount} runs…</span>
-            )}
-          </Button>
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button
+                type="button"
+                variant="tertiary/medium"
+                LeadingIcon={action === "replay" ? ArrowPathIcon : XCircleIcon}
+                leadingIconClassName={cn(
+                  "w-[1.3rem] h-[1.3rem]",
+                  action === "replay" ? "text-blue-400" : "text-error"
+                )}
+                shortcut={{
+                  modifiers: ["meta"],
+                  key: "enter",
+                  enabledOnInputElements: true,
+                }}
+                disabled={impactedCount === 0}
+              >
+                {action === "replay" ? (
+                  <span className="text-text-bright">Replay {impactedCount} runs…</span>
+                ) : (
+                  <span className="text-text-bright">Cancel {impactedCount} runs…</span>
+                )}
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>You've exceeded your limit</DialogHeader>
+              <div className="flex flex-col gap-3 divide-y divide-grid-dimmed pt-2">
+                <BulkActionPreview
+                  selected={mode === "selected" ? selectedItems.size : data?.count}
+                  mode={mode as BulkActionMode}
+                  action={action as BulkActionAction}
+                  filters={filters}
+                />
+                <Paragraph variant="small" className="pt-3">
+                  {action === "replay"
+                    ? "All matching runs will be replayed."
+                    : "Runs that are still in progress will be canceled. If a run finishes before this bulk action processes it, it can’t be canceled."}
+                </Paragraph>
+              </div>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="tertiary/medium"
+                  onClick={() => setIsDialogOpen(false)}
+                >
+                  Close
+                </Button>
+                <Button
+                  type="submit"
+                  form="bulk-action-form"
+                  variant={action === "replay" ? "primary/medium" : "danger/medium"}
+                  LeadingIcon={action === "replay" ? ArrowPathIcon : XCircleIcon}
+                  leadingIconClassName="w-[1.3rem] h-[1.3rem] text-text-bright"
+                  disabled={impactedCount === 0}
+                >
+                  {action === "replay" ? (
+                    <span className="text-text-bright">Replay {impactedCount} runs</span>
+                  ) : (
+                    <span className="text-text-bright">Cancel {impactedCount} runs</span>
+                  )}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
     </Form>

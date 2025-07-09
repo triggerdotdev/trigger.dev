@@ -50,7 +50,6 @@ export default function Page() {
         <PageTitle title="Bulk actions" />
         <PageAccessories>
           <AdminDebugTooltip />
-
           <LinkButton
             variant={"docs/small"}
             LeadingIcon={BookOpenIcon}
