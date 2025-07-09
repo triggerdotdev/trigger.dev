@@ -55,6 +55,7 @@ import {
   TaskRunStatusCombo,
 } from "./TaskRunStatus";
 import { TaskTriggerSourceIcon } from "./TaskTriggerSource";
+import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 
 export const RunStatus = z.enum(allTaskRunStatuses);
 
@@ -154,7 +155,7 @@ export function filterIcon(filterKey: string): ReactNode | undefined {
     case "tags":
       return <TagIcon className="size-4" />;
     case "bulkId":
-      return <ListChecks className="size-4" />;
+      return <ListCheckedIcon className="size-4" />;
     case "period":
       return <CalendarIcon className="size-4" />;
     case "from":
@@ -263,7 +264,7 @@ const filterTypes = [
   { name: "run", title: "Run ID", icon: <FingerPrintIcon className="size-4" /> },
   { name: "batch", title: "Batch ID", icon: <Squares2X2Icon className="size-4" /> },
   { name: "schedule", title: "Schedule ID", icon: <ClockIcon className="size-4" /> },
-  { name: "bulk", title: "Bulk action", icon: <ListChecks className="size-4" /> },
+  { name: "bulk", title: "Bulk action", icon: <ListCheckedIcon className="size-4" /> },
 ] as const;
 
 type FilterType = (typeof filterTypes)[number]["name"];

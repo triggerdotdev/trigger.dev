@@ -49,6 +49,7 @@ import {
   v3ApiKeysPath,
   v3BatchesPath,
   v3BillingPath,
+  v3BulkActionsPath,
   v3DeploymentsPath,
   v3EnvironmentPath,
   v3EnvironmentVariablesPath,
@@ -86,6 +87,8 @@ import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
+import { ListChecks } from "lucide-react";
+import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 export type SideMenuProject = Pick<
@@ -270,6 +273,13 @@ export function SideMenu({
           </SideMenuSection>
 
           <SideMenuSection title="Manage">
+            <SideMenuItem
+              name="Bulk actions"
+              icon={ListCheckedIcon}
+              activeIconColor="text-bulkActions"
+              to={v3BulkActionsPath(organization, project, environment)}
+              data-action="bulk actions"
+            />
             <SideMenuItem
               name="API keys"
               icon={KeyIcon}

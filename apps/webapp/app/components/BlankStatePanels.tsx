@@ -19,6 +19,7 @@ import { type MinimumEnvironment } from "~/presenters/SelectBestEnvironmentPrese
 import {
   docsPath,
   v3BillingPath,
+  v3CreateBulkActionPath,
   v3EnvironmentPath,
   v3EnvironmentVariablesPath,
   v3NewProjectAlertPath,
@@ -29,7 +30,7 @@ import { environmentFullTitle } from "./environments/EnvironmentLabel";
 import { Feedback } from "./Feedback";
 import { EnvironmentSelector } from "./navigation/EnvironmentSelector";
 import { Button, LinkButton } from "./primitives/Buttons";
-import { Header1 } from "./primitives/Headers";
+import { Header1, Header2 } from "./primitives/Headers";
 import { InfoPanel } from "./primitives/InfoPanel";
 import { Paragraph } from "./primitives/Paragraph";
 import { StepNumber } from "./primitives/StepNumber";
@@ -566,6 +567,35 @@ export function SwitcherPanel({ title = "Switch to a deployed environment" }: { 
         environment={environment}
         className="w-auto grow-0 rounded-sm bg-grid-bright"
       />
+    </div>
+  );
+}
+
+export function BulkActionsNone() {
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+
+  return (
+    <div>
+      <div className="mb-6 flex items-center justify-between border-b">
+        <Header2 spacing>Create a bulk action</Header2>
+        <div className="flex items-center gap-2">
+          <LinkButton
+            variant="primary/small"
+            LeadingIcon={PlusIcon}
+            to={v3CreateBulkActionPath(organization, project, environment)}
+          >
+            New bulk action
+          </LinkButton>
+        </div>
+      </div>
+      <StepNumber stepNumber="1" title="Select runs individually" />
+      <StepContentContainer>Hello</StepContentContainer>
+      <StepNumber stepNumber="2" title="Select runs using filters" />
+      <StepContentContainer>James</StepContentContainer>
+      <StepNumber stepNumber="3" title="Open the bulk action panel" />
+      <StepContentContainer>Ritchie</StepContentContainer>
     </div>
   );
 }
