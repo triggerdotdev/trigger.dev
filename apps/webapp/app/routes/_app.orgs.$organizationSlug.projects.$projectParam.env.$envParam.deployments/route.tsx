@@ -52,7 +52,6 @@ import { requireUserId } from "~/services/session.server";
 import { titleCase } from "~/utils";
 import { EnvironmentParamSchema, docsPath, v3DeploymentPath } from "~/utils/pathBuilder";
 import { createSearchParams } from "~/utils/searchParams";
-import { deploymentIndexingIsRetryable } from "~/v3/deploymentStatus";
 import { compareDeploymentVersions } from "~/v3/utils/deploymentVersions";
 
 export const meta: MetaFunction = () => {
@@ -334,14 +333,13 @@ function DeploymentActionsCell({
   const project = useProject();
 
   const canBeMadeCurrent = !deployment.isCurrent && deployment.isDeployed;
-  const canRetryIndexing = deployment.isLatest && deploymentIndexingIsRetryable(deployment);
   const canBeRolledBack =
     canBeMadeCurrent &&
     currentDeployment?.version &&
     compareDeploymentVersions(deployment.version, currentDeployment.version) === -1;
   const canBePromoted = canBeMadeCurrent && !canBeRolledBack;
 
-  if (!canBeMadeCurrent && !canRetryIndexing) {
+  if (!canBeRolledBack && !canBePromoted) {
     return (
       <TableCell to={path} isSelected={isSelected}>
         {""}
