@@ -268,7 +268,13 @@ export class TestTaskPresenter {
           latestVersions,
           disableVersionSelection,
           allowArbitraryQueues,
-          taskRunTemplates,
+          taskRunTemplates: await Promise.all(
+            taskRunTemplates.map(async (t) => ({
+              ...t,
+              payload: await prettyPrintPacket(t.payload, t.payloadType),
+              metadata: t.metadata ? await prettyPrintPacket(t.metadata, t.metadataType) : null,
+            }))
+          ),
         };
       case "SCHEDULED": {
         const possibleTimezones = getTimezones();
