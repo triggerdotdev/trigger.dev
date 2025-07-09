@@ -417,6 +417,7 @@ function StandardTaskForm({
               <InputGroup>
                 <Label variant="small">Delay</Label>
                 <DurationPicker name={delaySeconds.name} id={delaySeconds.id} />
+                <Hint>The run will be delayed by the specified duration.</Hint>
                 <FormError id={delaySeconds.errorId}>{delaySeconds.error}</FormError>
               </InputGroup>
               <InputGroup>
@@ -446,6 +447,7 @@ function StandardTaskForm({
                     name={queue.name}
                     id={queue.id}
                     placeholder="Select queue"
+                    heading="Filter queues"
                     variant="tertiary/small"
                     dropdownIcon
                     items={queueItems}
@@ -480,6 +482,7 @@ function StandardTaskForm({
                     }
                   </Select>
                 )}
+                <Hint>The run will be assigned to the selected queue.</Hint>
                 <FormError id={queue.errorId}>{queue.error}</FormError>
               </InputGroup>
               <InputGroup>
@@ -522,6 +525,7 @@ function StandardTaskForm({
                     }
                   }}
                 />
+                <Hint>Failed runs will be retried up to the specified number of attempts.</Hint>
                 <FormError id={maxAttempts.errorId}>{maxAttempts.error}</FormError>
               </InputGroup>
               <InputGroup>
@@ -532,6 +536,7 @@ function StandardTaskForm({
                   value={maxDurationValue}
                   onChange={setMaxDurationValue}
                 />
+                <Hint>Override the maximum compute time limit for the run.</Hint>
                 <FormError id={maxDurationSeconds.errorId}>{maxDurationSeconds.error}</FormError>
               </InputGroup>
               <InputGroup>
@@ -551,7 +556,7 @@ function StandardTaskForm({
                   name={idempotencyKeyTTLSeconds.name}
                   id={idempotencyKeyTTLSeconds.id}
                 />
-                <Hint>By default, idempotency keys expire after 30 days.</Hint>
+                <Hint>Keys expire after 30 days by default.</Hint>
                 <FormError id={idempotencyKeyTTLSeconds.errorId}>
                   {idempotencyKeyTTLSeconds.error}
                 </FormError>
@@ -567,7 +572,7 @@ function StandardTaskForm({
                   onChange={(e) => setConcurrencyKeyValue(e.target.value)}
                 />
                 <Hint>
-                  Concurrency keys enable you limit concurrency by creating a separate queue for
+                  Concurrency keys enable you to limit concurrency by creating a separate queue for
                   each value of the key.
                 </Hint>
                 <FormError id={concurrencyKey.errorId}>{concurrencyKey.error}</FormError>
@@ -595,7 +600,7 @@ function StandardTaskForm({
                     </SelectItem>
                   ))}
                 </Select>
-                <Hint>This lets you override the machine preset specified in the task.</Hint>
+                <Hint>Override the machine preset specified in the task.</Hint>
                 <FormError id={machine.errorId}>{machine.error}</FormError>
               </InputGroup>
               <InputGroup>
@@ -616,8 +621,10 @@ function StandardTaskForm({
                     </SelectItem>
                   ))}
                 </Select>
-                {disableVersionSelection && (
+                {disableVersionSelection ? (
                   <Hint>Only the latest version is available in the development environment.</Hint>
+                ) : (
+                  <Hint>Select a specific version of the task.</Hint>
                 )}
                 <FormError id={version.errorId}>{version.error}</FormError>
               </InputGroup>
@@ -868,7 +875,7 @@ function ScheduledTaskForm({
             </Hint>
             <FormError id={externalId.errorId}>{externalId.error}</FormError>
           </InputGroup>
-          <div className="w-full border-b border-grid-bright"></div>
+          <div className="w-full border-b border-grid-bright" />
           <InputGroup>
             <Label htmlFor={ttlSeconds.id} variant="small">
               TTL
@@ -898,6 +905,7 @@ function ScheduledTaskForm({
                 name={queue.name}
                 id={queue.id}
                 placeholder="Select queue"
+                heading="Filter queues"
                 variant="tertiary/small"
                 dropdownIcon
                 items={queueItems}
@@ -932,6 +940,7 @@ function ScheduledTaskForm({
                 }
               </Select>
             )}
+            <Hint>The run will be assigned to the selected queue.</Hint>
             <FormError id={queue.errorId}>{queue.error}</FormError>
           </InputGroup>
           <InputGroup>
@@ -974,6 +983,7 @@ function ScheduledTaskForm({
                 }
               }}
             />
+            <Hint>Failed runs will be retried up to the specified number of attempts.</Hint>
             <FormError id={maxAttempts.errorId}>{maxAttempts.error}</FormError>
           </InputGroup>
           <InputGroup>
@@ -986,6 +996,7 @@ function ScheduledTaskForm({
               value={maxDurationValue}
               onChange={setMaxDurationValue}
             />
+            <Hint>Override the maximum compute time limit for the run.</Hint>
             <FormError id={maxDurationSeconds.errorId}>{maxDurationSeconds.error}</FormError>
           </InputGroup>
           <InputGroup>
@@ -1004,7 +1015,7 @@ function ScheduledTaskForm({
               Idempotency key TTL
             </Label>
             <DurationPicker name={idempotencyKeyTTLSeconds.name} id={idempotencyKeyTTLSeconds.id} />
-            <Hint>By default, idempotency keys expire after 30 days.</Hint>
+            <Hint>Keys expire after 30 days by default.</Hint>
             <FormError id={idempotencyKeyTTLSeconds.errorId}>
               {idempotencyKeyTTLSeconds.error}
             </FormError>
@@ -1020,7 +1031,7 @@ function ScheduledTaskForm({
               onChange={(e) => setConcurrencyKeyValue(e.target.value)}
             />
             <Hint>
-              Concurrency keys enable you limit concurrency by creating a separate queue for each
+              Concurrency keys enable you to limit concurrency by creating a separate queue for each
               value of the key.
             </Hint>
             <FormError id={concurrencyKey.errorId}>{concurrencyKey.error}</FormError>
@@ -1048,7 +1059,7 @@ function ScheduledTaskForm({
                 </SelectItem>
               ))}
             </Select>
-            <Hint>This lets you override the machine preset specified in the task.</Hint>
+            <Hint>Override the machine preset specified in the task.</Hint>
             <FormError id={machine.errorId}>{machine.error}</FormError>
           </InputGroup>
           <InputGroup>
@@ -1069,8 +1080,10 @@ function ScheduledTaskForm({
                 </SelectItem>
               ))}
             </Select>
-            {disableVersionSelection && (
+            {disableVersionSelection ? (
               <Hint>Only the latest version is available in the development environment.</Hint>
+            ) : (
+              <Hint>Select a specific version of the task.</Hint>
             )}
             <FormError id={version.errorId}>{version.error}</FormError>
           </InputGroup>
