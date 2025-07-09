@@ -1,6 +1,13 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { BeakerIcon, StarIcon, RectangleStackIcon, TrashIcon } from "@heroicons/react/20/solid";
+import {
+  BeakerIcon,
+  StarIcon,
+  RectangleStackIcon,
+  TrashIcon,
+  CheckCircleIcon,
+} from "@heroicons/react/20/solid";
+import { AnimatePresence, motion } from "framer-motion";
 import { type ActionFunction, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -355,6 +362,8 @@ function StandardTaskForm({
     paused: q.paused,
   }));
 
+  const [showTemplateCreatedSuccessMessage, setShowTemplateCreatedSuccessMessage] = useState(false);
+
   const fetcher = useFetcher();
   const [
     form,
@@ -426,6 +435,7 @@ function StandardTaskForm({
               setTagsValue(template.tags ?? []);
               setQueueValue(template.queue);
             }}
+            showTemplateCreatedSuccessMessage={showTemplateCreatedSuccessMessage}
           />
           <RecentRunsPopover
             runs={runs}
@@ -741,6 +751,7 @@ function StandardTaskForm({
             }}
             getCurrentPayload={() => currentPayloadJson.current}
             getCurrentMetadata={() => currentMetadataJson.current}
+            setShowCreatedSuccessMessage={setShowTemplateCreatedSuccessMessage}
           />
           <Button
             type="submit"
@@ -803,6 +814,8 @@ function ScheduledTaskForm({
     lastRun?.maxDurationInSeconds
   );
   const [tagsValue, setTagsValue] = useState<string[]>(lastRun?.runTags ?? []);
+
+  const [showTemplateCreatedSuccessMessage, setShowTemplateCreatedSuccessMessage] = useState(false);
 
   const queueItems = queues.map((q) => ({
     value: q.type === "task" ? `task/${q.name}` : q.name,
@@ -888,6 +901,7 @@ function ScheduledTaskForm({
               setExternalIdValue(template.scheduledTaskPayload?.externalId);
               setTimezoneValue(template.scheduledTaskPayload?.timezone ?? "UTC");
             }}
+            showTemplateCreatedSuccessMessage={showTemplateCreatedSuccessMessage}
           />
           <RecentRunsPopover
             runs={runs}
@@ -1243,6 +1257,7 @@ function ScheduledTaskForm({
             }}
             getCurrentPayload={() => ""}
             getCurrentMetadata={() => ""}
+            setShowCreatedSuccessMessage={setShowTemplateCreatedSuccessMessage}
           />
           <Button
             type="submit"
@@ -1315,9 +1330,11 @@ function RecentRunsPopover<T extends StandardRun | ScheduledRun>({
 function RunTemplatesPopover({
   templates,
   onTemplateSelected,
+  showTemplateCreatedSuccessMessage,
 }: {
   templates: RunTemplate[];
   onTemplateSelected: (run: RunTemplate) => void;
+  showTemplateCreatedSuccessMessage: boolean;
 }) {
   const [isPopoverOpen, setIsPopoverOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -1346,28 +1363,17 @@ function RunTemplatesPopover({
   });
 
   return (
-    <>
+    <div className="relative">
       <Popover open={isPopoverOpen} onOpenChange={setIsPopoverOpen}>
         <PopoverTrigger asChild>
-          {templates.length === 0 ? (
-            <SimpleTooltip
-              button={
-                <Button
-                  type="button"
-                  variant="tertiary/small"
-                  LeadingIcon={StarIcon}
-                  disabled={true}
-                >
-                  Templates
-                </Button>
-              }
-              content="No templates yet"
-            />
-          ) : (
-            <Button type="button" variant="tertiary/small" LeadingIcon={StarIcon}>
-              Templates
-            </Button>
-          )}
+          <Button
+            type="button"
+            variant="tertiary/small"
+            LeadingIcon={StarIcon}
+            disabled={templates.length === 0}
+          >
+            Templates
+          </Button>
         </PopoverTrigger>
         <PopoverContent className="min-w-[279px] p-0" align="end" sideOffset={6}>
           <div className="max-h-80 overflow-y-auto">
@@ -1417,6 +1423,43 @@ function RunTemplatesPopover({
         </PopoverContent>
       </Popover>
 
+      <AnimatePresence mode="wait">
+        {showTemplateCreatedSuccessMessage && (
+          <motion.div
+            key="template-success-message"
+            initial={{
+              opacity: 0,
+              scale: 0.8,
+              y: -10,
+            }}
+            animate={{
+              opacity: 1,
+              scale: 1,
+              y: 0,
+            }}
+            exit={{
+              opacity: 0,
+              scale: 0.7,
+              y: -10,
+              transition: {
+                duration: 0.15,
+                ease: "easeOut",
+              },
+            }}
+            transition={{
+              type: "spring",
+              stiffness: 400,
+              damping: 25,
+              duration: 0.15,
+            }}
+            className="absolute -left-1/2 top-full z-10 mt-1 flex min-w-max max-w-64 items-center gap-1 rounded border border-charcoal-700 bg-background-bright px-2 py-1 text-xs shadow-md outline-none before:absolute before:-top-2 before:left-1/2 before:-translate-x-1/2 before:border-4 before:border-transparent before:border-b-charcoal-700 before:content-[''] after:absolute after:-top-[7px] after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-b-background-bright after:content-['']"
+          >
+            <CheckCircleIcon className="h-4 w-4 shrink-0 text-success" /> Template created
+            successfully
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>Delete template</DialogHeader>
@@ -1444,7 +1487,7 @@ function RunTemplatesPopover({
           </div>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   );
 }
 
@@ -1452,6 +1495,7 @@ function CreateTemplateModal({
   rawTestTaskFormData,
   getCurrentPayload,
   getCurrentMetadata,
+  setShowCreatedSuccessMessage,
 }: {
   rawTestTaskFormData: {
     environmentId: string;
@@ -1472,6 +1516,7 @@ function CreateTemplateModal({
   };
   getCurrentPayload: () => string;
   getCurrentMetadata: () => string;
+  setShowCreatedSuccessMessage: (value: boolean) => void;
 }) {
   const submit = useSubmit();
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -1488,14 +1533,10 @@ function CreateTemplateModal({
       lastSubmission.success === true
     ) {
       setIsModalOpen(false);
-      toast.custom(
-        (t) => (
-          <ToastUI variant="success" message="Template created successfully" t={t as string} />
-        ),
-        {
-          duration: 2000,
-        }
-      );
+      setShowCreatedSuccessMessage(true);
+      setTimeout(() => {
+        setShowCreatedSuccessMessage(false);
+      }, 2000);
     }
   }, [lastSubmission]);
 
