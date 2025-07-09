@@ -75,6 +75,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components
 import { DialogClose, DialogDescription } from "@radix-ui/react-dialog";
 import { FormButtons } from "~/components/primitives/FormButtons";
 
+type FormAction = "create-template" | "delete-template" | "run-scheduled" | "run-standard";
+
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { projectParam, organizationSlug, envParam, taskParam } = v3TaskParamsSchema.parse(params);
@@ -130,109 +132,114 @@ export const action: ActionFunction = async ({ request, params }) => {
   }
 
   const formData = await request.formData();
-  const formAction = formData.get("formAction");
+  const formAction = formData.get("formAction") as FormAction;
 
-  // Handle run template creation
-  if (formAction === "create-template") {
-    const submission = parse(formData, { schema: RunTemplateData });
-    if (!submission.value) {
-      return json({
-        ...submission,
-        formAction,
-      });
+  switch (formAction) {
+    case "create-template": {
+      const submission = parse(formData, { schema: RunTemplateData });
+      if (!submission.value) {
+        return json({
+          ...submission,
+          formAction,
+        });
+      }
+
+      const templateService = new TaskRunTemplateService();
+      try {
+        const template = await templateService.call(environment, submission.value);
+
+        return json({
+          ...submission,
+          success: true,
+          templateLabel: template.label,
+          formAction,
+        });
+      } catch (e) {
+        logger.error("Failed to create template", { error: e instanceof Error ? e.message : e });
+        return redirectBackWithErrorMessage(request, "Failed to create template");
+      }
     }
+    case "delete-template": {
+      const submission = parse(formData, { schema: DeleteTaskRunTemplateData });
 
-    const templateService = new TaskRunTemplateService();
-    try {
-      const template = await templateService.call(environment, submission.value);
+      if (!submission.value) {
+        return json({
+          ...submission,
+          formAction,
+        });
+      }
 
-      return json({
-        ...submission,
-        success: true,
-        templateLabel: template.label,
-        formAction,
-      });
-    } catch (e) {
-      logger.error("Failed to create template", { error: e instanceof Error ? e.message : e });
-      return redirectBackWithErrorMessage(request, "Failed to create template");
+      const deleteService = new DeleteTaskRunTemplateService();
+      try {
+        await deleteService.call(environment, submission.value.templateId);
+
+        return json({
+          ...submission,
+          success: true,
+          formAction,
+        });
+      } catch (e) {
+        logger.error("Failed to delete template", { error: e instanceof Error ? e.message : e });
+        return redirectBackWithErrorMessage(request, "Failed to delete template");
+      }
     }
-  }
+    case "run-scheduled":
+    case "run-standard": {
+      const submission = parse(formData, { schema: TestTaskData });
 
-  // Handle run template deletion
-  if (formAction === "delete-template") {
-    const submission = parse(formData, { schema: DeleteTaskRunTemplateData });
+      if (!submission.value) {
+        return json({
+          ...submission,
+          formAction,
+        });
+      }
 
-    if (!submission.value) {
-      return json({
-        ...submission,
-        formAction,
-      });
+      if (environment.archivedAt) {
+        return redirectBackWithErrorMessage(request, "Can't run a test on an archived environment");
+      }
+
+      const testService = new TestTaskService();
+      try {
+        const run = await testService.call(environment, submission.value);
+
+        if (!run) {
+          return redirectBackWithErrorMessage(
+            request,
+            "Unable to start a test run: Something went wrong"
+          );
+        }
+
+        return redirectWithSuccessMessage(
+          v3RunSpanPath(
+            { slug: organizationSlug },
+            { slug: projectParam },
+            { slug: envParam },
+            { friendlyId: run.friendlyId },
+            { spanId: run.spanId }
+          ),
+          request,
+          "Test run created"
+        );
+      } catch (e) {
+        if (e instanceof OutOfEntitlementError) {
+          return redirectBackWithErrorMessage(
+            request,
+            "Unable to start a test run: You have exceeded your free credits"
+          );
+        }
+
+        logger.error("Failed to start a test run", { error: e instanceof Error ? e.message : e });
+
+        return redirectBackWithErrorMessage(
+          request,
+          "Unable to start a test run: Something went wrong"
+        );
+      }
     }
-
-    const deleteService = new DeleteTaskRunTemplateService();
-    try {
-      await deleteService.call(environment, submission.value.templateId);
-
-      return json({
-        ...submission,
-        success: true,
-        formAction,
-      });
-    } catch (e) {
-      logger.error("Failed to delete template", { error: e instanceof Error ? e.message : e });
-      return redirectBackWithErrorMessage(request, "Failed to delete template");
+    default: {
+      formAction satisfies never;
+      return redirectBackWithErrorMessage(request, "Failed to process request");
     }
-  }
-
-  const submission = parse(formData, { schema: TestTaskData });
-
-  if (!submission.value) {
-    return json({
-      ...submission,
-      formAction,
-    });
-  }
-
-  if (environment.archivedAt) {
-    return redirectBackWithErrorMessage(request, "Can't run a test on an archived environment");
-  }
-
-  const testService = new TestTaskService();
-  try {
-    const run = await testService.call(environment, submission.value);
-
-    if (!run) {
-      return redirectBackWithErrorMessage(
-        request,
-        "Unable to start a test run: Something went wrong"
-      );
-    }
-
-    return redirectWithSuccessMessage(
-      v3RunSpanPath(
-        { slug: organizationSlug },
-        { slug: projectParam },
-        { slug: envParam },
-        { friendlyId: run.friendlyId },
-        { spanId: run.spanId }
-      ),
-      request,
-      "Test run created"
-    );
-  } catch (e) {
-    if (e instanceof OutOfEntitlementError) {
-      return redirectBackWithErrorMessage(
-        request,
-        "Unable to start a test run: You have exceeded your free credits"
-      );
-    }
-
-    logger.error("Failed to start a test run", { error: e instanceof Error ? e.message : e });
-
-    return redirectBackWithErrorMessage(
-      request,
-      "Unable to start a test run: Something went wrong"
-    );
   }
 };
 
@@ -334,7 +341,7 @@ function StandardTaskForm({
     actionData &&
     typeof actionData === "object" &&
     "formAction" in actionData &&
-    actionData.formAction === "run-standard"
+    actionData.formAction === ("run-standard" satisfies FormAction)
       ? actionData
       : undefined;
 
@@ -768,7 +775,7 @@ function StandardTaskForm({
             LeadingIcon={BeakerIcon}
             shortcut={{ key: "enter", modifiers: ["mod"], enabledOnInputElements: true }}
             name="formAction"
-            value="run-standard"
+            value={"run-standard" satisfies FormAction}
           >
             Run test
           </Button>
@@ -839,7 +846,7 @@ function ScheduledTaskForm({
     actionData &&
     typeof actionData === "object" &&
     "formAction" in actionData &&
-    actionData.formAction === "run-scheduled"
+    actionData.formAction === ("run-scheduled" satisfies FormAction)
       ? actionData
       : undefined;
 
@@ -1277,7 +1284,7 @@ function ScheduledTaskForm({
             LeadingIcon={BeakerIcon}
             shortcut={{ key: "enter", modifiers: ["mod"], enabledOnInputElements: true }}
             name="formAction"
-            value="run-scheduled"
+            value={"run-scheduled" satisfies FormAction}
           >
             Run test
           </Button>
@@ -1359,7 +1366,7 @@ function RunTemplatesPopover({
     actionData &&
     typeof actionData === "object" &&
     "formAction" in actionData &&
-    actionData.formAction === "delete-template"
+    actionData.formAction === ("delete-template" satisfies FormAction)
       ? actionData
       : undefined;
 
@@ -1498,7 +1505,7 @@ function RunTemplatesPopover({
                 variant="danger/medium"
                 LeadingIcon={TrashIcon}
                 name="formAction"
-                value="delete-template"
+                value={"delete-template" satisfies FormAction}
               >
                 Delete
               </Button>
@@ -1545,7 +1552,7 @@ function CreateTemplateModal({
     actionData &&
     typeof actionData === "object" &&
     "formAction" in actionData &&
-    actionData.formAction === "create-template"
+    actionData.formAction === ("create-template" satisfies FormAction)
       ? actionData
       : undefined;
 
@@ -1690,7 +1697,7 @@ function CreateTemplateModal({
                     type="submit"
                     variant="primary/medium"
                     name="formAction"
-                    value="create-template"
+                    value={"create-template" satisfies FormAction}
                   >
                     Create template
                   </Button>
