@@ -87,6 +87,7 @@ export async function whoAmI(
     loadConfig({
       overrides: { project: options?.projectRef ?? envVars.TRIGGER_PROJECT_REF },
       configFile: options?.config,
+      warn: false,
     })
   );
 
