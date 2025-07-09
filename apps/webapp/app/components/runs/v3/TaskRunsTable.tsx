@@ -93,7 +93,7 @@ export function TaskRunsTable({
         if (event.shiftKey) {
           const oldItem = runs.at(index - 1);
           const newItem = runs.at(index - 2);
-          const itemsIds = [oldItem?.id, newItem?.id].filter(Boolean);
+          const itemsIds = [oldItem?.friendlyId, newItem?.friendlyId].filter(Boolean);
           select(itemsIds);
         }
       } else if (event.key === "ArrowDown" && index < checkboxes.current.length - 1) {
@@ -102,7 +102,7 @@ export function TaskRunsTable({
         if (event.shiftKey) {
           const oldItem = runs.at(index - 1);
           const newItem = runs.at(index);
-          const itemsIds = [oldItem?.id, newItem?.id].filter(Boolean);
+          const itemsIds = [oldItem?.friendlyId, newItem?.friendlyId].filter(Boolean);
           select(itemsIds);
         }
       }
@@ -118,9 +118,9 @@ export function TaskRunsTable({
             <TableHeaderCell className="pl-3 pr-0">
               {runs.length > 0 && (
                 <Checkbox
-                  checked={hasAll(runs.map((r) => r.id))}
+                  checked={hasAll(runs.map((r) => r.friendlyId))}
                   onChange={(element) => {
-                    const ids = runs.map((r) => r.id);
+                    const ids = runs.map((r) => r.friendlyId);
                     const checked = element.currentTarget.checked;
                     if (checked) {
                       select(ids);
@@ -297,9 +297,9 @@ export function TaskRunsTable({
                 {allowSelection && (
                   <TableCell className="pl-3 pr-0">
                     <Checkbox
-                      checked={has(run.id)}
+                      checked={has(run.friendlyId)}
                       onChange={(element) => {
-                        toggle(run.id);
+                        toggle(run.friendlyId);
                       }}
                       ref={(r) => {
                         checkboxes.current[index + 1] = r;

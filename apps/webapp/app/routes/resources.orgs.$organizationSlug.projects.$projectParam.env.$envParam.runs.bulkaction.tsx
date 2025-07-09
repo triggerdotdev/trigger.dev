@@ -212,6 +212,9 @@ export function CreateBulkActionInspector({
         </div>
         <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
           <Fieldset className="p-3">
+            {Array.from(selectedItems).map((runId) => {
+              return <input type="hidden" name="selectedRunIds" value={runId} />;
+            })}
             <InputGroup>
               <Label htmlFor="mode">Select</Label>
               <RadioGroup

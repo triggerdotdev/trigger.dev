@@ -6,7 +6,7 @@ import parseDuration from "parse-duration";
 import { timeFilters } from "~/components/runs/v3/SharedFilters";
 import { type PrismaClient } from "~/db.server";
 import { z } from "zod";
-import { BulkActionId } from "@trigger.dev/core/v3/isomorphic";
+import { BulkActionId, RunId } from "@trigger.dev/core/v3/isomorphic";
 
 export type RunsRepositoryOptions = {
   clickhouse: ClickHouse;
@@ -334,7 +334,7 @@ function applyRunFiltersToQueryBuilder<T>(
 
   if (options.runIds && options.runIds.length > 0) {
     queryBuilder.where("friendly_id IN {runIds: Array(String)}", {
-      runIds: options.runIds,
+      runIds: options.runIds.map((runId) => RunId.toFriendlyId(runId)),
     });
   }
 }
