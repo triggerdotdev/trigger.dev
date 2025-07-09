@@ -19,7 +19,6 @@ import { Label } from "~/components/primitives/Label";
 import { DurationPicker } from "~/components/primitives/DurationPicker";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives/Popover";
-import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -412,8 +411,8 @@ function StandardTaskForm({
           </div>
         </ResizablePanel>
         <ResizableHandle id="test-task-handle" />
-        <ResizablePanel id="test-task-options" min="285px" default="285px" max="360px">
-          <div className="h-full overflow-y-scroll">
+        <ResizablePanel id="test-task-options" min="300px" default="300px" max="360px">
+          <div className="h-full overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
             <Fieldset className="px-3 py-3">
               <InputGroup>
                 <Label variant="small">Delay</Label>
@@ -1120,7 +1119,7 @@ function RecentRunsPopover<T extends StandardRun | ScheduledRun>({
           Recent runs
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="min-w-[279px] p-0" align="end" sideOffset={6}>
+      <PopoverContent className="min-w-[294px] p-0" align="end" sideOffset={6}>
         <div className="max-h-80 overflow-y-auto">
           <div className="p-1">
             {runs.map((run) => (
