@@ -18,12 +18,15 @@ export function RuntimeIcon({
 }: RuntimeIconProps) {
   const parsedRuntime = parseRuntime(runtime);
 
-  if (!parsedRuntime) {
-    return <span className="text-text-dimmed">–</span>;
-  }
+  // Default to Node.js if no runtime is specified
+  const effectiveRuntime = parsedRuntime || {
+    runtime: "node" as const,
+    originalRuntime: "node",
+    displayName: "Node.js",
+  };
 
   const getIcon = () => {
-    switch (parsedRuntime.runtime) {
+    switch (effectiveRuntime.runtime) {
       case "bun":
         return <BunLogoIcon className={className} />;
       case "node":
@@ -34,7 +37,7 @@ export function RuntimeIcon({
   };
 
   const icon = getIcon();
-  const formattedText = formatRuntimeWithVersion(runtime, runtimeVersion);
+  const formattedText = formatRuntimeWithVersion(effectiveRuntime.originalRuntime, runtimeVersion);
 
   if (withLabel) {
     return (
