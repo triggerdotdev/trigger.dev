@@ -30,13 +30,15 @@ export class TaskRunTemplateService extends BaseService {
         const taskRunTemplate = await this._prisma.taskRunTemplate.create({
           data: {
             taskSlug: data.taskIdentifier,
+            triggerSource: "STANDARD",
             label: data.label,
             payload: packet.data,
             payloadType: packet.dataType,
             metadata: metadataPacket?.data,
             metadataType: metadataPacket?.dataType,
-            queue: data.queue ?? "default",
-            delaySeconds: data.delaySeconds,
+            queue: data.queue,
+            ttlSeconds: data.ttlSeconds,
+            concurrencyKey: data.concurrencyKey,
             maxAttempts: data.maxAttempts,
             maxDurationSeconds: data.maxDurationSeconds,
             tags: data.tags ?? [],
@@ -63,11 +65,13 @@ export class TaskRunTemplateService extends BaseService {
         const taskRunTemplate = await this._prisma.taskRunTemplate.create({
           data: {
             taskSlug: data.taskIdentifier,
+            triggerSource: "SCHEDULED",
             label: data.label,
             payload: payloadPacket.data,
             payloadType: payloadPacket.dataType,
-            queue: data.queue ?? "default",
-            delaySeconds: data.delaySeconds,
+            queue: data.queue,
+            ttlSeconds: data.ttlSeconds,
+            concurrencyKey: data.concurrencyKey,
             maxAttempts: data.maxAttempts,
             maxDurationSeconds: data.maxDurationSeconds,
             tags: data.tags ?? [],

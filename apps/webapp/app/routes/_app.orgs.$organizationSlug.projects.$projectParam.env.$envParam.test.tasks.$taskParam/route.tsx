@@ -67,7 +67,6 @@ import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
 import { ClockRotateLeftIcon } from "~/assets/icons/ClockRotateLeftIcon";
 import { MachinePresetName } from "@trigger.dev/core/v3";
 import { TaskTriggerSourceIcon } from "~/components/runs/v3/TaskTriggerSource";
-import { Callout } from "~/components/primitives/Callout";
 import { TaskRunTemplateService } from "~/v3/services/taskRunTemplate.server";
 import { DeleteTaskRunTemplateService } from "~/v3/services/deleteTaskRunTemplate.server";
 import { DeleteTaskRunTemplateData, RunTemplateData } from "~/v3/taskRunTemplate";
@@ -277,6 +276,7 @@ export default function Page() {
   }, [queueFetcher.data?.queues, defaultTaskQueue]);
 
   const { triggerSource } = result;
+
   switch (triggerSource) {
     case "STANDARD": {
       return (
@@ -345,7 +345,7 @@ function StandardTaskForm({
       ? actionData
       : undefined;
 
-  const lastRun = runs[0];
+  const lastRun = runs.at(0);
 
   const [defaultPayloadJson, setDefaultPayloadJson] = useState<string>(
     lastRun?.payload ?? startingJson
@@ -443,13 +443,13 @@ function StandardTaskForm({
             onTemplateSelected={(template) => {
               setPayload(template.payload ?? "");
               setMetadata(template.metadata ?? "");
-              // setTtlValue(template.ttlSeconds ?? "");
-              // setConcurrencyKeyValue(template.concurrencyKey ?? "");
+              setTtlValue(template.ttlSeconds ?? 0);
+              setConcurrencyKeyValue(template.concurrencyKey ?? "");
               setMaxAttemptsValue(template.maxAttempts ?? undefined);
-              setMaxDurationValue(template.maxDurationSeconds ?? undefined);
-              setMachineValue(template.machinePreset ?? undefined);
+              setMaxDurationValue(template.maxDurationSeconds ?? 0);
+              setMachineValue(template.machinePreset ?? "");
               setTagsValue(template.tags ?? []);
-              setQueueValue(template.queue);
+              setQueueValue(template.queue ?? undefined);
             }}
             showTemplateCreatedSuccessMessage={showTemplateCreatedSuccessMessage}
           />
@@ -806,18 +806,18 @@ function ScheduledTaskForm({
 }) {
   const environment = useEnvironment();
 
-  const lastRun = runs[0];
+  const lastRun = runs.at(0);
 
   const [timestampValue, setTimestampValue] = useState<Date | undefined>(
-    lastRun.payload.timestamp ?? new Date()
+    lastRun?.payload?.timestamp ?? new Date()
   );
   const [lastTimestampValue, setLastTimestampValue] = useState<Date | undefined>(
-    lastRun.payload.lastTimestamp
+    lastRun?.payload?.lastTimestamp
   );
   const [externalIdValue, setExternalIdValue] = useState<string | undefined>(
-    lastRun.payload.externalId
+    lastRun?.payload?.externalId
   );
-  const [timezoneValue, setTimezoneValue] = useState<string>(lastRun.payload.timezone ?? "UTC");
+  const [timezoneValue, setTimezoneValue] = useState<string>(lastRun?.payload?.timezone ?? "UTC");
   const [ttlValue, setTtlValue] = useState<number | undefined>(lastRun?.ttlSeconds);
   const [concurrencyKeyValue, setConcurrencyKeyValue] = useState<string | undefined>(
     lastRun?.concurrencyKey
@@ -908,13 +908,14 @@ function ScheduledTaskForm({
           <RunTemplatesPopover
             templates={templates}
             onTemplateSelected={(template) => {
-              // setTtlValue(template.ttlSeconds ?? "");
-              // setConcurrencyKeyValue(template.concurrencyKey ?? "");
+              setTtlValue(template.ttlSeconds ?? 0);
+              setConcurrencyKeyValue(template.concurrencyKey ?? "");
               setMaxAttemptsValue(template.maxAttempts ?? undefined);
-              setMaxDurationValue(template.maxDurationSeconds ?? undefined);
-              setMachineValue(template.machinePreset ?? undefined);
+              setMaxDurationValue(template.maxDurationSeconds ?? 0);
+              setMachineValue(template.machinePreset ?? "");
               setTagsValue(template.tags ?? []);
-              setQueueValue(template.queue);
+              setQueueValue(template.queue ?? undefined);
+
               setTimestampValue(template.scheduledTaskPayload?.timestamp);
               setLastTimestampValue(template.scheduledTaskPayload?.lastTimestamp);
               setExternalIdValue(template.scheduledTaskPayload?.externalId);
@@ -1413,7 +1414,7 @@ function RunTemplatesPopover({
                     className="flex-1 text-left outline-none focus-custom"
                   >
                     <div className="flex flex-col items-start">
-                      <Paragraph variant="small" className="truncate">
+                      <Paragraph variant="small/bright" className="truncate">
                         {template.label}
                       </Paragraph>
                       <div className="flex items-center gap-2 text-xs text-text-dimmed">

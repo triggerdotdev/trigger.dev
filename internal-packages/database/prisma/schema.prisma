@@ -720,6 +720,7 @@ model TaskRunTemplate {
   id String @id @default(cuid())
 
   taskSlug String
+  triggerSource TaskTriggerSource
 
   label String
 
@@ -727,8 +728,9 @@ model TaskRunTemplate {
   payloadType  String @default("application/json")
   metadata        String?
   metadataType    String  @default("application/json")
-  queue String
-  delaySeconds Int?
+  queue String?
+  concurrencyKey String?
+  ttlSeconds Int?
   maxAttempts Int?
   maxDurationSeconds Int?
   tags String[]
@@ -740,7 +742,7 @@ model TaskRunTemplate {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([projectId, taskSlug, createdAt(sort: Desc)])
+  @@index([projectId, taskSlug, triggerSource, createdAt(sort: Desc)])
 }
 
 enum TaskRunStatus {

@@ -1,13 +1,15 @@
 CREATE TABLE "TaskRunTemplate" (
     "id" TEXT NOT NULL,
     "taskSlug" TEXT NOT NULL,
+    "triggerSource" "TaskTriggerSource" NOT NULL,
     "label" TEXT NOT NULL,
     "payload" TEXT,
     "payloadType" TEXT NOT NULL DEFAULT 'application/json',
     "metadata" TEXT,
     "metadataType" TEXT NOT NULL DEFAULT 'application/json',
-    "queue" TEXT NOT NULL,
-    "delaySeconds" INTEGER,
+    "queue" TEXT,
+    "concurrencyKey" TEXT,
+    "ttlSeconds" INTEGER,
     "maxAttempts" INTEGER,
     "maxDurationSeconds" INTEGER,
     "tags" TEXT[],
@@ -20,4 +22,4 @@ CREATE TABLE "TaskRunTemplate" (
     CONSTRAINT "TaskRunTemplate_pkey" PRIMARY KEY ("id")
 );
 
-CREATE INDEX "TaskRunTemplate_projectId_taskSlug_createdAt_idx" ON "TaskRunTemplate"("projectId", "taskSlug", "createdAt" DESC);
+CREATE INDEX "TaskRunTemplate_projectId_taskSlug_triggerSource_createdAt_idx" ON "TaskRunTemplate"("projectId", "taskSlug", "triggerSource", "createdAt" DESC);

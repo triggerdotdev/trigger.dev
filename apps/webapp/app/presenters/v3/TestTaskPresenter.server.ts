@@ -177,6 +177,7 @@ export class TestTaskPresenter {
       where: {
         projectId,
         taskSlug: task.slug,
+        triggerSource: task.triggerSource,
       },
       orderBy: {
         createdAt: "desc",
