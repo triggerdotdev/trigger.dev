@@ -414,6 +414,10 @@ function StandardTaskForm({
         <ResizablePanel id="test-task-options" min="300px" default="300px" max="360px">
           <div className="h-full overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
             <Fieldset className="px-3 py-3">
+              <Hint>
+                <TextLink to={docsPath("triggering#options")}>Run options</TextLink> enable you to
+                control the execution behavior of your task.
+              </Hint>
               <InputGroup>
                 <Label variant="small">Delay</Label>
                 <DurationPicker name={delaySeconds.name} id={delaySeconds.id} />
@@ -876,6 +880,10 @@ function ScheduledTaskForm({
             <FormError id={externalId.errorId}>{externalId.error}</FormError>
           </InputGroup>
           <div className="w-full border-b border-grid-bright" />
+          <Hint>
+            <TextLink to={docsPath("triggering#options")}>Run options</TextLink> enable you to
+            control the execution behavior of your task.
+          </Hint>
           <InputGroup>
             <Label htmlFor={ttlSeconds.id} variant="small">
               TTL
