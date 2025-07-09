@@ -3,11 +3,21 @@ import tagLeftPath from "./tag-left.svg";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { Link } from "@remix-run/react";
 import { cn } from "~/utils/cn";
-import { ClipboardCheckIcon, ClipboardIcon } from "lucide-react";
+import { ClipboardCheckIcon, ClipboardIcon, XIcon } from "lucide-react";
 
 type Tag = string | { key: string; value: string };
 
-export function RunTag({ tag, to, tooltip }: { tag: string; to?: string; tooltip?: string }) {
+export function RunTag({
+  tag,
+  to,
+  tooltip,
+  action = { type: "copy" },
+}: {
+  tag: string;
+  action?: { type: "copy" } | { type: "delete"; onDelete: (tag: string) => void };
+  to?: string;
+  tooltip?: string;
+}) {
   const tagResult = useMemo(() => splitTag(tag), [tag]);
   const [isHovered, setIsHovered] = useState(false);
 
@@ -57,7 +67,11 @@ export function RunTag({ tag, to, tooltip }: { tag: string; to?: string; tooltip
   return (
     <div className="group relative inline-flex shrink-0" onMouseLeave={() => setIsHovered(false)}>
       {tagContent}
-      <CopyButton textToCopy={tag} isHovered={isHovered} />
+      {action.type === "delete" ? (
+        <DeleteButton tag={tag} onDelete={action.onDelete} isHovered={isHovered} />
+      ) : (
+        <CopyButton textToCopy={tag} isHovered={isHovered} />
+      )}
     </div>
   );
 }
@@ -100,6 +114,45 @@ function CopyButton({ textToCopy, isHovered }: { textToCopy: string; isHovered: 
         </span>
       }
       content={copied ? "Copied!" : "Copy tag"}
+      disableHoverableContent
+    />
+  );
+}
+
+function DeleteButton({
+  tag,
+  onDelete,
+  isHovered,
+}: {
+  tag: string;
+  onDelete: (tag: string) => void;
+  isHovered: boolean;
+}) {
+  const handleDelete = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      onDelete(tag);
+    },
+    [tag, onDelete]
+  );
+
+  return (
+    <SimpleTooltip
+      button={
+        <span
+          onClick={handleDelete}
+          onMouseDown={(e) => e.stopPropagation()}
+          className={cn(
+            "absolute -right-6 top-0 z-10 size-6 items-center justify-center rounded-r-sm border-y border-r border-charcoal-650 bg-charcoal-750",
+            isHovered ? "flex" : "hidden",
+            "text-text-dimmed hover:border-charcoal-600 hover:bg-charcoal-700 hover:text-rose-400"
+          )}
+        >
+          <XIcon className="size-3.5" />
+        </span>
+      }
+      content="Remove tag"
       disableHoverableContent
     />
   );

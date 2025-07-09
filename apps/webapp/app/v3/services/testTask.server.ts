@@ -1,6 +1,6 @@
 import { stringifyIO } from "@trigger.dev/core/v3";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { TestTaskData } from "../testTask";
+import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { type TestTaskData } from "../testTask";
 import { BaseService } from "./baseService.server";
 import { TriggerTaskService } from "./triggerTask.server";
 
@@ -15,6 +15,19 @@ export class TestTaskService extends BaseService {
           options: {
             test: true,
             metadata: data.metadata,
+            delay: data.delaySeconds ? new Date(Date.now() + data.delaySeconds * 1000) : undefined,
+            ttl: data.ttlSeconds,
+            idempotencyKey: data.idempotencyKey,
+            idempotencyKeyTTL: data.idempotencyKeyTTLSeconds
+              ? `${data.idempotencyKeyTTLSeconds}s`
+              : undefined,
+            queue: data.queue ? { name: data.queue } : undefined,
+            concurrencyKey: data.concurrencyKey,
+            maxAttempts: data.maxAttempts,
+            maxDuration: data.maxDurationSeconds,
+            tags: data.tags,
+            machine: data.machine,
+            lockToVersion: data.version === "latest" ? undefined : data.version,
           },
         });
 
@@ -37,7 +50,22 @@ export class TestTaskService extends BaseService {
           environment,
           {
             payload: payloadPacket.data,
-            options: { payloadType: payloadPacket.dataType, test: true },
+            options: {
+              payloadType: payloadPacket.dataType,
+              test: true,
+              ttl: data.ttlSeconds,
+              idempotencyKey: data.idempotencyKey,
+              idempotencyKeyTTL: data.idempotencyKeyTTLSeconds
+                ? `${data.idempotencyKeyTTLSeconds}s`
+                : undefined,
+              queue: data.queue ? { name: data.queue } : undefined,
+              concurrencyKey: data.concurrencyKey,
+              maxAttempts: data.maxAttempts,
+              maxDuration: data.maxDurationSeconds,
+              tags: data.tags,
+              machine: data.machine,
+              lockToVersion: data.version === "latest" ? undefined : data.version,
+            },
           },
           { customIcon: "scheduled" }
         );
