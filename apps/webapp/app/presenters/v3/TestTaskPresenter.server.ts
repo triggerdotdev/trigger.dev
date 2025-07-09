@@ -1,10 +1,18 @@
 import { ScheduledTaskPayload, parsePacket, prettyPrintPacket } from "@trigger.dev/core/v3";
-import { type RuntimeEnvironmentType, type TaskRunStatus } from "@trigger.dev/database";
+import {
+  type TaskRunTemplate,
+  type RuntimeEnvironmentType,
+  type TaskRunStatus,
+} from "@trigger.dev/database";
 import { type PrismaClient, prisma, sqlDatabaseSchema } from "~/db.server";
 import { getTimezones } from "~/utils/timezones.server";
 import { findCurrentWorkerDeployment } from "~/v3/models/workerDeployment.server";
 import { queueTypeFromType } from "./QueueRetrievePresenter.server";
 import parse from "parse-duration";
+
+export type RunTemplate = TaskRunTemplate & {
+  scheduledTaskPayload?: ScheduledRun["payload"];
+};
 
 type TestTaskOptions = {
   userId: string;
@@ -40,6 +48,7 @@ export type TestTaskResult =
       latestVersions: string[];
       disableVersionSelection: boolean;
       allowArbitraryQueues: boolean;
+      taskRunTemplates: TaskRunTemplate[];
     }
   | {
       foundTask: true;
@@ -51,6 +60,7 @@ export type TestTaskResult =
       latestVersions: string[];
       disableVersionSelection: boolean;
       allowArbitraryQueues: boolean;
+      taskRunTemplates: TaskRunTemplate[];
     }
   | {
       foundTask: false;
@@ -163,6 +173,18 @@ export class TestTaskPresenter {
       take: 20, // last 20 versions should suffice
     });
 
+    const taskRunTemplates = await this.#prismaClient.taskRunTemplate.findMany({
+      where: {
+        projectId,
+        taskSlug: task.slug,
+        triggerSource: task.triggerSource,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+      take: 50,
+    });
+
     const latestVersions = backgroundWorkers.map((v) => v.version);
 
     const disableVersionSelection = environment.type === "DEVELOPMENT";
@@ -247,6 +269,13 @@ export class TestTaskPresenter {
           latestVersions,
           disableVersionSelection,
           allowArbitraryQueues,
+          taskRunTemplates: await Promise.all(
+            taskRunTemplates.map(async (t) => ({
+              ...t,
+              payload: await prettyPrintPacket(t.payload, t.payloadType),
+              metadata: t.metadata ? await prettyPrintPacket(t.metadata, t.metadataType) : null,
+            }))
+          ),
         };
       case "SCHEDULED": {
         const possibleTimezones = getTimezones();
@@ -266,7 +295,7 @@ export class TestTaskPresenter {
           runs: (
             await Promise.all(
               latestRuns.map(async (r) => {
-                const payload = await getScheduleTaskRunPayload(r);
+                const payload = await getScheduleTaskRunPayload(r.payload, r.payloadType);
 
                 if (payload.success) {
                   return {
@@ -281,6 +310,21 @@ export class TestTaskPresenter {
           latestVersions,
           disableVersionSelection,
           allowArbitraryQueues,
+          taskRunTemplates: await Promise.all(
+            taskRunTemplates.map(async (t) => {
+              const scheduledTaskPayload = t.payload
+                ? await getScheduleTaskRunPayload(t.payload, t.payloadType)
+                : undefined;
+
+              return {
+                ...t,
+                scheduledTaskPayload:
+                  scheduledTaskPayload && scheduledTaskPayload.success
+                    ? scheduledTaskPayload.data
+                    : undefined,
+              };
+            })
+          ),
         };
       }
       default: {
@@ -290,11 +334,11 @@ export class TestTaskPresenter {
   }
 }
 
-async function getScheduleTaskRunPayload(run: RawRun) {
-  const payload = await parsePacket({ data: run.payload, dataType: run.payloadType });
-  if (!payload.timezone) {
-    payload.timezone = "UTC";
+async function getScheduleTaskRunPayload(payload: string, payloadType: string) {
+  const packet = await parsePacket({ data: payload, dataType: payloadType });
+  if (!packet.timezone) {
+    packet.timezone = "UTC";
   }
-  const parsed = ScheduledTaskPayload.safeParse(payload);
+  const parsed = ScheduledTaskPayload.safeParse(packet);
   return parsed;
 }

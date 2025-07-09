@@ -1,6 +1,13 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { BeakerIcon, RectangleStackIcon } from "@heroicons/react/20/solid";
+import {
+  BeakerIcon,
+  StarIcon,
+  RectangleStackIcon,
+  TrashIcon,
+  CheckCircleIcon,
+} from "@heroicons/react/20/solid";
+import { AnimatePresence, motion } from "framer-motion";
 import { type ActionFunction, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -19,7 +26,6 @@ import { Label } from "~/components/primitives/Label";
 import { DurationPicker } from "~/components/primitives/DurationPicker";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives/Popover";
-import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -31,7 +37,7 @@ import { TextLink } from "~/components/primitives/TextLink";
 import { TimezoneList } from "~/components/scheduled/timezones";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useSearchParams } from "~/hooks/useSearchParam";
-import { useParams, Form, useActionData, useFetcher } from "@remix-run/react";
+import { useParams, Form, useActionData, useFetcher, useSubmit } from "@remix-run/react";
 import {
   redirectBackWithErrorMessage,
   redirectWithErrorMessage,
@@ -44,6 +50,7 @@ import {
   type StandardRun,
   type StandardTaskResult,
   type ScheduledTaskResult,
+  type RunTemplate,
   TestTaskPresenter,
 } from "~/presenters/v3/TestTaskPresenter.server";
 import { logger } from "~/services/logger.server";
@@ -60,6 +67,14 @@ import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
 import { ClockRotateLeftIcon } from "~/assets/icons/ClockRotateLeftIcon";
 import { MachinePresetName } from "@trigger.dev/core/v3";
 import { TaskTriggerSourceIcon } from "~/components/runs/v3/TaskTriggerSource";
+import { TaskRunTemplateService } from "~/v3/services/taskRunTemplate.server";
+import { DeleteTaskRunTemplateService } from "~/v3/services/deleteTaskRunTemplate.server";
+import { DeleteTaskRunTemplateData, RunTemplateData } from "~/v3/taskRunTemplate";
+import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
+import { DialogClose, DialogDescription } from "@radix-ui/react-dialog";
+import { FormButtons } from "~/components/primitives/FormButtons";
+
+type FormAction = "create-template" | "delete-template" | "run-scheduled" | "run-standard";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -102,14 +117,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
 export const action: ActionFunction = async ({ request, params }) => {
   const userId = await requireUserId(request);
-  const { organizationSlug, projectParam, envParam, taskParam } = v3TaskParamsSchema.parse(params);
-
-  const formData = await request.formData();
-  const submission = parse(formData, { schema: TestTaskData });
-
-  if (!submission.value) {
-    return json(submission);
-  }
+  const { organizationSlug, projectParam, envParam } = v3TaskParamsSchema.parse(params);
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
   if (!project) {
@@ -122,46 +130,115 @@ export const action: ActionFunction = async ({ request, params }) => {
     return redirectBackWithErrorMessage(request, "Environment not found");
   }
 
-  if (environment.archivedAt) {
-    return redirectBackWithErrorMessage(request, "Can't run a test on an archived environment");
-  }
+  const formData = await request.formData();
+  const formAction = formData.get("formAction") as FormAction;
 
-  const testService = new TestTaskService();
-  try {
-    const run = await testService.call(environment, submission.value);
+  switch (formAction) {
+    case "create-template": {
+      const submission = parse(formData, { schema: RunTemplateData });
+      if (!submission.value) {
+        return json({
+          ...submission,
+          formAction,
+        });
+      }
 
-    if (!run) {
-      return redirectBackWithErrorMessage(
-        request,
-        "Unable to start a test run: Something went wrong"
-      );
+      const templateService = new TaskRunTemplateService();
+      try {
+        const template = await templateService.call(environment, submission.value);
+
+        return json({
+          ...submission,
+          success: true,
+          templateLabel: template.label,
+          formAction,
+        });
+      } catch (e) {
+        logger.error("Failed to create template", { error: e instanceof Error ? e.message : e });
+        return redirectBackWithErrorMessage(request, "Failed to create template");
+      }
     }
+    case "delete-template": {
+      const submission = parse(formData, { schema: DeleteTaskRunTemplateData });
 
-    return redirectWithSuccessMessage(
-      v3RunSpanPath(
-        { slug: organizationSlug },
-        { slug: projectParam },
-        { slug: envParam },
-        { friendlyId: run.friendlyId },
-        { spanId: run.spanId }
-      ),
-      request,
-      "Test run created"
-    );
-  } catch (e) {
-    if (e instanceof OutOfEntitlementError) {
-      return redirectBackWithErrorMessage(
-        request,
-        "Unable to start a test run: You have exceeded your free credits"
-      );
+      if (!submission.value) {
+        return json({
+          ...submission,
+          formAction,
+        });
+      }
+
+      const deleteService = new DeleteTaskRunTemplateService();
+      try {
+        await deleteService.call(environment, submission.value.templateId);
+
+        return json({
+          ...submission,
+          success: true,
+          formAction,
+        });
+      } catch (e) {
+        logger.error("Failed to delete template", { error: e instanceof Error ? e.message : e });
+        return redirectBackWithErrorMessage(request, "Failed to delete template");
+      }
     }
+    case "run-scheduled":
+    case "run-standard": {
+      const submission = parse(formData, { schema: TestTaskData });
 
-    logger.error("Failed to start a test run", { error: e instanceof Error ? e.message : e });
+      if (!submission.value) {
+        return json({
+          ...submission,
+          formAction,
+        });
+      }
 
-    return redirectBackWithErrorMessage(
-      request,
-      "Unable to start a test run: Something went wrong"
-    );
+      if (environment.archivedAt) {
+        return redirectBackWithErrorMessage(request, "Can't run a test on an archived environment");
+      }
+
+      const testService = new TestTaskService();
+      try {
+        const run = await testService.call(environment, submission.value);
+
+        if (!run) {
+          return redirectBackWithErrorMessage(
+            request,
+            "Unable to start a test run: Something went wrong"
+          );
+        }
+
+        return redirectWithSuccessMessage(
+          v3RunSpanPath(
+            { slug: organizationSlug },
+            { slug: projectParam },
+            { slug: envParam },
+            { friendlyId: run.friendlyId },
+            { spanId: run.spanId }
+          ),
+          request,
+          "Test run created"
+        );
+      } catch (e) {
+        if (e instanceof OutOfEntitlementError) {
+          return redirectBackWithErrorMessage(
+            request,
+            "Unable to start a test run: You have exceeded your free credits"
+          );
+        }
+
+        logger.error("Failed to start a test run", { error: e instanceof Error ? e.message : e });
+
+        return redirectBackWithErrorMessage(
+          request,
+          "Unable to start a test run: Something went wrong"
+        );
+      }
+    }
+    default: {
+      formAction satisfies never;
+      return redirectBackWithErrorMessage(request, "Failed to process request");
+    }
   }
 };
 
@@ -199,6 +276,7 @@ export default function Page() {
   }, [queueFetcher.data?.queues, defaultTaskQueue]);
 
   const { triggerSource } = result;
+
   switch (triggerSource) {
     case "STANDARD": {
       return (
@@ -207,6 +285,7 @@ export default function Page() {
           queues={queues}
           runs={result.runs}
           versions={result.latestVersions}
+          templates={result.taskRunTemplates}
           disableVersionSelection={result.disableVersionSelection}
           allowArbitraryQueues={result.allowArbitraryQueues}
         />
@@ -219,6 +298,7 @@ export default function Page() {
           queues={queues}
           runs={result.runs}
           versions={result.latestVersions}
+          templates={result.taskRunTemplates}
           possibleTimezones={result.possibleTimezones}
           disableVersionSelection={result.disableVersionSelection}
           allowArbitraryQueues={result.allowArbitraryQueues}
@@ -239,6 +319,7 @@ function StandardTaskForm({
   queues,
   runs,
   versions,
+  templates,
   disableVersionSelection,
   allowArbitraryQueues,
 }: {
@@ -246,6 +327,7 @@ function StandardTaskForm({
   queues: Required<StandardTaskResult>["queue"][];
   runs: StandardRun[];
   versions: string[];
+  templates: RunTemplate[];
   disableVersionSelection: boolean;
   allowArbitraryQueues: boolean;
 }) {
@@ -253,8 +335,17 @@ function StandardTaskForm({
   const { value, replace } = useSearchParams();
   const tab = value("tab");
 
-  const lastSubmission = useActionData();
-  const lastRun = runs[0];
+  const submit = useSubmit();
+  const actionData = useActionData<typeof action>();
+  const lastSubmission =
+    actionData &&
+    typeof actionData === "object" &&
+    "formAction" in actionData &&
+    actionData.formAction === ("run-standard" satisfies FormAction)
+      ? actionData
+      : undefined;
+
+  const lastRun = runs.at(0);
 
   const [defaultPayloadJson, setDefaultPayloadJson] = useState<string>(
     lastRun?.payload ?? startingJson
@@ -295,7 +386,8 @@ function StandardTaskForm({
     paused: q.paused,
   }));
 
-  const fetcher = useFetcher();
+  const [showTemplateCreatedSuccessMessage, setShowTemplateCreatedSuccessMessage] = useState(false);
+
   const [
     form,
     {
@@ -326,7 +418,7 @@ function StandardTaskForm({
       formData.set(payload.name, currentPayloadJson.current);
       formData.set(metadata.name, currentMetadataJson.current);
 
-      fetcher.submit(formData, { method: "POST" });
+      submit(formData, { method: "POST" });
     },
     onValidate({ formData }) {
       return parse(formData, { schema: TestTaskData });
@@ -346,6 +438,21 @@ function StandardTaskForm({
           </Paragraph>
         </div>
         <div className="flex items-center gap-1.5">
+          <RunTemplatesPopover
+            templates={templates}
+            onTemplateSelected={(template) => {
+              setPayload(template.payload ?? "");
+              setMetadata(template.metadata ?? "");
+              setTtlValue(template.ttlSeconds ?? 0);
+              setConcurrencyKeyValue(template.concurrencyKey ?? "");
+              setMaxAttemptsValue(template.maxAttempts ?? undefined);
+              setMaxDurationValue(template.maxDurationSeconds ?? 0);
+              setMachineValue(template.machinePreset ?? "");
+              setTagsValue(template.tags ?? []);
+              setQueueValue(template.queue ?? undefined);
+            }}
+            showTemplateCreatedSuccessMessage={showTemplateCreatedSuccessMessage}
+          />
           <RecentRunsPopover
             runs={runs}
             onRunSelected={(run) => {
@@ -412,12 +519,17 @@ function StandardTaskForm({
           </div>
         </ResizablePanel>
         <ResizableHandle id="test-task-handle" />
-        <ResizablePanel id="test-task-options" min="285px" default="285px" max="360px">
-          <div className="h-full overflow-y-scroll">
+        <ResizablePanel id="test-task-options" min="300px" default="300px" max="360px">
+          <div className="h-full overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
             <Fieldset className="px-3 py-3">
+              <Hint>
+                Options enable you to control the execution behavior of your task.{" "}
+                <TextLink to={docsPath("triggering#options")}>Read the docs.</TextLink>
+              </Hint>
               <InputGroup>
                 <Label variant="small">Delay</Label>
                 <DurationPicker name={delaySeconds.name} id={delaySeconds.id} />
+                <Hint>Delays run by a specific duration.</Hint>
                 <FormError id={delaySeconds.errorId}>{delaySeconds.error}</FormError>
               </InputGroup>
               <InputGroup>
@@ -428,7 +540,7 @@ function StandardTaskForm({
                   value={ttlValue}
                   onChange={setTtlValue}
                 />
-                <Hint>The run will expire if it hasn't started within the TTL (time to live).</Hint>
+                <Hint>Expires the run if it hasn't started within the TTL.</Hint>
                 <FormError id={ttlSeconds.errorId}>{ttlSeconds.error}</FormError>
               </InputGroup>
               <InputGroup>
@@ -447,6 +559,7 @@ function StandardTaskForm({
                     name={queue.name}
                     id={queue.id}
                     placeholder="Select queue"
+                    heading="Filter queues"
                     variant="tertiary/small"
                     dropdownIcon
                     items={queueItems}
@@ -481,6 +594,7 @@ function StandardTaskForm({
                     }
                   </Select>
                 )}
+                <Hint>Assign run to a specific queue.</Hint>
                 <FormError id={queue.errorId}>{queue.error}</FormError>
               </InputGroup>
               <InputGroup>
@@ -494,7 +608,7 @@ function StandardTaskForm({
                   tags={tagsValue}
                   onTagsChange={setTagsValue}
                 />
-                <Hint>Tags enable you to easily filter runs.</Hint>
+                <Hint>Add tags to easily filter runs.</Hint>
                 <FormError id={tags.errorId}>{tags.error}</FormError>
               </InputGroup>
               <InputGroup>
@@ -523,6 +637,7 @@ function StandardTaskForm({
                     }
                   }}
                 />
+                <Hint>Retries failed runs up to the specified number of attempts.</Hint>
                 <FormError id={maxAttempts.errorId}>{maxAttempts.error}</FormError>
               </InputGroup>
               <InputGroup>
@@ -533,6 +648,7 @@ function StandardTaskForm({
                   value={maxDurationValue}
                   onChange={setMaxDurationValue}
                 />
+                <Hint>Overrides the maximum compute time limit for the run.</Hint>
                 <FormError id={maxDurationSeconds.errorId}>{maxDurationSeconds.error}</FormError>
               </InputGroup>
               <InputGroup>
@@ -552,7 +668,7 @@ function StandardTaskForm({
                   name={idempotencyKeyTTLSeconds.name}
                   id={idempotencyKeyTTLSeconds.id}
                 />
-                <Hint>By default, idempotency keys expire after 30 days.</Hint>
+                <Hint>Keys expire after 30 days by default.</Hint>
                 <FormError id={idempotencyKeyTTLSeconds.errorId}>
                   {idempotencyKeyTTLSeconds.error}
                 </FormError>
@@ -568,8 +684,7 @@ function StandardTaskForm({
                   onChange={(e) => setConcurrencyKeyValue(e.target.value)}
                 />
                 <Hint>
-                  Concurrency keys enable you limit concurrency by creating a separate queue for
-                  each value of the key.
+                  Limits concurrency by creating a separate queue for each value of the key.
                 </Hint>
                 <FormError id={concurrencyKey.errorId}>{concurrencyKey.error}</FormError>
               </InputGroup>
@@ -596,7 +711,7 @@ function StandardTaskForm({
                     </SelectItem>
                   ))}
                 </Select>
-                <Hint>This lets you override the machine preset specified in the task.</Hint>
+                <Hint>Overrides the machine preset.</Hint>
                 <FormError id={machine.errorId}>{machine.error}</FormError>
               </InputGroup>
               <InputGroup>
@@ -617,8 +732,10 @@ function StandardTaskForm({
                     </SelectItem>
                   ))}
                 </Select>
-                {disableVersionSelection && (
+                {disableVersionSelection ? (
                   <Hint>Only the latest version is available in the development environment.</Hint>
+                ) : (
+                  <Hint>Runs task on a specific version.</Hint>
                 )}
                 <FormError id={version.errorId}>{version.error}</FormError>
               </InputGroup>
@@ -635,11 +752,30 @@ function StandardTaskForm({
             </Paragraph>
             <EnvironmentCombo environment={environment} className="gap-0.5" />
           </div>
+          <CreateTemplateModal
+            rawTestTaskFormData={{
+              environmentId: environment.id,
+              taskIdentifier: task.taskIdentifier,
+              triggerSource: "STANDARD",
+              ttlSeconds: ttlValue?.toString(),
+              queue: queueValue,
+              concurrencyKey: concurrencyKeyValue,
+              maxAttempts: maxAttemptsValue?.toString(),
+              maxDurationSeconds: maxDurationValue?.toString(),
+              tags: tagsValue.join(","),
+              machine: machineValue,
+            }}
+            getCurrentPayload={() => currentPayloadJson.current}
+            getCurrentMetadata={() => currentMetadataJson.current}
+            setShowCreatedSuccessMessage={setShowTemplateCreatedSuccessMessage}
+          />
           <Button
             type="submit"
             variant="primary/medium"
             LeadingIcon={BeakerIcon}
             shortcut={{ key: "enter", modifiers: ["mod"], enabledOnInputElements: true }}
+            name="formAction"
+            value={"run-standard" satisfies FormAction}
           >
             Run test
           </Button>
@@ -655,6 +791,7 @@ function ScheduledTaskForm({
   possibleTimezones,
   queues,
   versions,
+  templates,
   disableVersionSelection,
   allowArbitraryQueues,
 }: {
@@ -663,24 +800,24 @@ function ScheduledTaskForm({
   possibleTimezones: string[];
   queues: Required<ScheduledTaskResult>["queue"][];
   versions: string[];
+  templates: RunTemplate[];
   disableVersionSelection: boolean;
   allowArbitraryQueues: boolean;
 }) {
   const environment = useEnvironment();
-  const lastSubmission = useActionData();
 
-  const lastRun = runs[0];
+  const lastRun = runs.at(0);
 
   const [timestampValue, setTimestampValue] = useState<Date | undefined>(
-    lastRun.payload.timestamp ?? new Date()
+    lastRun?.payload?.timestamp ?? new Date()
   );
   const [lastTimestampValue, setLastTimestampValue] = useState<Date | undefined>(
-    lastRun.payload.lastTimestamp
+    lastRun?.payload?.lastTimestamp
   );
   const [externalIdValue, setExternalIdValue] = useState<string | undefined>(
-    lastRun.payload.externalId
+    lastRun?.payload?.externalId
   );
-  const [timezoneValue, setTimezoneValue] = useState<string>(lastRun.payload.timezone ?? "UTC");
+  const [timezoneValue, setTimezoneValue] = useState<string>(lastRun?.payload?.timezone ?? "UTC");
   const [ttlValue, setTtlValue] = useState<number | undefined>(lastRun?.ttlSeconds);
   const [concurrencyKeyValue, setConcurrencyKeyValue] = useState<string | undefined>(
     lastRun?.concurrencyKey
@@ -695,12 +832,23 @@ function ScheduledTaskForm({
   );
   const [tagsValue, setTagsValue] = useState<string[]>(lastRun?.runTags ?? []);
 
+  const [showTemplateCreatedSuccessMessage, setShowTemplateCreatedSuccessMessage] = useState(false);
+
   const queueItems = queues.map((q) => ({
     value: q.type === "task" ? `task/${q.name}` : q.name,
     label: q.name,
     type: q.type,
     paused: q.paused,
   }));
+
+  const actionData = useActionData<typeof action>();
+  const lastSubmission =
+    actionData &&
+    typeof actionData === "object" &&
+    "formAction" in actionData &&
+    actionData.formAction === ("run-scheduled" satisfies FormAction)
+      ? actionData
+      : undefined;
 
   const [
     form,
@@ -757,6 +905,24 @@ function ScheduledTaskForm({
           </Paragraph>
         </div>
         <div className="flex items-center gap-1.5">
+          <RunTemplatesPopover
+            templates={templates}
+            onTemplateSelected={(template) => {
+              setTtlValue(template.ttlSeconds ?? 0);
+              setConcurrencyKeyValue(template.concurrencyKey ?? "");
+              setMaxAttemptsValue(template.maxAttempts ?? undefined);
+              setMaxDurationValue(template.maxDurationSeconds ?? 0);
+              setMachineValue(template.machinePreset ?? "");
+              setTagsValue(template.tags ?? []);
+              setQueueValue(template.queue ?? undefined);
+
+              setTimestampValue(template.scheduledTaskPayload?.timestamp);
+              setLastTimestampValue(template.scheduledTaskPayload?.lastTimestamp);
+              setExternalIdValue(template.scheduledTaskPayload?.externalId);
+              setTimezoneValue(template.scheduledTaskPayload?.timezone ?? "UTC");
+            }}
+            showTemplateCreatedSuccessMessage={showTemplateCreatedSuccessMessage}
+          />
           <RecentRunsPopover
             runs={runs}
             onRunSelected={(run) => {
@@ -869,7 +1035,11 @@ function ScheduledTaskForm({
             </Hint>
             <FormError id={externalId.errorId}>{externalId.error}</FormError>
           </InputGroup>
-          <div className="w-full border-b border-grid-bright"></div>
+          <div className="w-full border-b border-grid-bright" />
+          <Hint>
+            Options enable you to control the execution behavior of your task.{" "}
+            <TextLink to={docsPath("triggering#options")}>Read the docs.</TextLink>
+          </Hint>
           <InputGroup>
             <Label htmlFor={ttlSeconds.id} variant="small">
               TTL
@@ -880,7 +1050,7 @@ function ScheduledTaskForm({
               value={ttlValue}
               onChange={setTtlValue}
             />
-            <Hint>The run will expire if it hasn't started within the TTL (time to live).</Hint>
+            <Hint>Expires the run if it hasn't started within the TTL.</Hint>
             <FormError id={ttlSeconds.errorId}>{ttlSeconds.error}</FormError>
           </InputGroup>
           <InputGroup>
@@ -899,6 +1069,7 @@ function ScheduledTaskForm({
                 name={queue.name}
                 id={queue.id}
                 placeholder="Select queue"
+                heading="Filter queues"
                 variant="tertiary/small"
                 dropdownIcon
                 items={queueItems}
@@ -933,6 +1104,7 @@ function ScheduledTaskForm({
                 }
               </Select>
             )}
+            <Hint>Assign run to a specific queue.</Hint>
             <FormError id={queue.errorId}>{queue.error}</FormError>
           </InputGroup>
           <InputGroup>
@@ -946,7 +1118,7 @@ function ScheduledTaskForm({
               tags={tagsValue}
               onTagsChange={setTagsValue}
             />
-            <Hint>Tags enable you to easily filter runs.</Hint>
+            <Hint>Add tags to easily filter runs.</Hint>
             <FormError id={tags.errorId}>{tags.error}</FormError>
           </InputGroup>
           <InputGroup>
@@ -975,6 +1147,7 @@ function ScheduledTaskForm({
                 }
               }}
             />
+            <Hint>Retries failed runs up to the specified number of attempts.</Hint>
             <FormError id={maxAttempts.errorId}>{maxAttempts.error}</FormError>
           </InputGroup>
           <InputGroup>
@@ -987,6 +1160,7 @@ function ScheduledTaskForm({
               value={maxDurationValue}
               onChange={setMaxDurationValue}
             />
+            <Hint>Overrides the maximum compute time limit for the run.</Hint>
             <FormError id={maxDurationSeconds.errorId}>{maxDurationSeconds.error}</FormError>
           </InputGroup>
           <InputGroup>
@@ -1005,7 +1179,7 @@ function ScheduledTaskForm({
               Idempotency key TTL
             </Label>
             <DurationPicker name={idempotencyKeyTTLSeconds.name} id={idempotencyKeyTTLSeconds.id} />
-            <Hint>By default, idempotency keys expire after 30 days.</Hint>
+            <Hint>Keys expire after 30 days by default.</Hint>
             <FormError id={idempotencyKeyTTLSeconds.errorId}>
               {idempotencyKeyTTLSeconds.error}
             </FormError>
@@ -1020,10 +1194,7 @@ function ScheduledTaskForm({
               value={concurrencyKeyValue ?? ""}
               onChange={(e) => setConcurrencyKeyValue(e.target.value)}
             />
-            <Hint>
-              Concurrency keys enable you limit concurrency by creating a separate queue for each
-              value of the key.
-            </Hint>
+            <Hint>Limits concurrency by creating a separate queue for each value of the key.</Hint>
             <FormError id={concurrencyKey.errorId}>{concurrencyKey.error}</FormError>
           </InputGroup>
           <InputGroup>
@@ -1049,7 +1220,7 @@ function ScheduledTaskForm({
                 </SelectItem>
               ))}
             </Select>
-            <Hint>This lets you override the machine preset specified in the task.</Hint>
+            <Hint>Overrides the machine preset.</Hint>
             <FormError id={machine.errorId}>{machine.error}</FormError>
           </InputGroup>
           <InputGroup>
@@ -1070,8 +1241,10 @@ function ScheduledTaskForm({
                 </SelectItem>
               ))}
             </Select>
-            {disableVersionSelection && (
+            {disableVersionSelection ? (
               <Hint>Only the latest version is available in the development environment.</Hint>
+            ) : (
+              <Hint>Runs task on a specific version.</Hint>
             )}
             <FormError id={version.errorId}>{version.error}</FormError>
           </InputGroup>
@@ -1085,11 +1258,34 @@ function ScheduledTaskForm({
             </Paragraph>
             <EnvironmentCombo environment={environment} className="gap-0.5" />
           </div>
+          <CreateTemplateModal
+            rawTestTaskFormData={{
+              environmentId: environment.id,
+              taskIdentifier: task.taskIdentifier,
+              triggerSource: "SCHEDULED",
+              ttlSeconds: ttlValue?.toString(),
+              queue: queueValue,
+              concurrencyKey: concurrencyKeyValue,
+              maxAttempts: maxAttemptsValue?.toString(),
+              maxDurationSeconds: maxDurationValue?.toString(),
+              tags: tagsValue.join(","),
+              machine: machineValue,
+              timestamp: timestampValue?.toISOString(),
+              lastTimestamp: lastTimestampValue?.toISOString(),
+              timezone: timezoneValue,
+              externalId: externalIdValue,
+            }}
+            getCurrentPayload={() => ""}
+            getCurrentMetadata={() => ""}
+            setShowCreatedSuccessMessage={setShowTemplateCreatedSuccessMessage}
+          />
           <Button
             type="submit"
             variant="primary/medium"
             LeadingIcon={BeakerIcon}
             shortcut={{ key: "enter", modifiers: ["mod"], enabledOnInputElements: true }}
+            name="formAction"
+            value={"run-scheduled" satisfies FormAction}
           >
             Run test
           </Button>
@@ -1120,7 +1316,7 @@ function RecentRunsPopover<T extends StandardRun | ScheduledRun>({
           Recent runs
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="min-w-[279px] p-0" align="end" sideOffset={6}>
+      <PopoverContent className="min-w-[294px] p-0" align="end" sideOffset={6}>
         <div className="max-h-80 overflow-y-auto">
           <div className="p-1">
             {runs.map((run) => (
@@ -1134,7 +1330,7 @@ function RecentRunsPopover<T extends StandardRun | ScheduledRun>({
                 className="flex w-full items-center gap-2 rounded-sm px-2 py-2 outline-none transition-colors focus-custom hover:bg-charcoal-900	"
               >
                 <div className="flex flex-col items-start">
-                  <Paragraph variant="small">
+                  <Paragraph variant="small/bright">
                     <DateTime date={run.createdAt} showTooltip={false} />
                   </Paragraph>
                   <div className="flex items-center gap-2 text-xs text-text-dimmed">
@@ -1150,5 +1346,373 @@ function RecentRunsPopover<T extends StandardRun | ScheduledRun>({
         </div>
       </PopoverContent>
     </Popover>
+  );
+}
+
+function RunTemplatesPopover({
+  templates,
+  onTemplateSelected,
+  showTemplateCreatedSuccessMessage,
+}: {
+  templates: RunTemplate[];
+  onTemplateSelected: (run: RunTemplate) => void;
+  showTemplateCreatedSuccessMessage: boolean;
+}) {
+  const [isPopoverOpen, setIsPopoverOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [templateIdToDelete, setTemplateIdToDelete] = useState<string | undefined>();
+
+  const actionData = useActionData<typeof action>();
+  const lastSubmission =
+    actionData &&
+    typeof actionData === "object" &&
+    "formAction" in actionData &&
+    actionData.formAction === ("delete-template" satisfies FormAction)
+      ? actionData
+      : undefined;
+
+  useEffect(() => {
+    if (lastSubmission && "success" in lastSubmission && lastSubmission.success === true) {
+      setIsDeleteDialogOpen(false);
+    }
+  }, [lastSubmission]);
+
+  const [deleteForm, { templateId }] = useForm({
+    id: "delete-template",
+    onValidate({ formData }) {
+      return parse(formData, { schema: DeleteTaskRunTemplateData });
+    },
+  });
+
+  return (
+    <div className="relative">
+      <Popover open={isPopoverOpen} onOpenChange={setIsPopoverOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant="tertiary/small"
+            LeadingIcon={StarIcon}
+            disabled={templates.length === 0}
+          >
+            Templates
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="min-w-[279px] p-0" align="end" sideOffset={6}>
+          <div className="max-h-80 overflow-y-auto">
+            <div className="p-1">
+              {templates.map((template) => (
+                <div
+                  key={template.id}
+                  className="group flex w-full items-center gap-2 rounded-sm px-2 py-2 outline-none transition-colors hover:bg-charcoal-900"
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onTemplateSelected(template);
+                      setIsPopoverOpen(false);
+                    }}
+                    className="flex-1 text-left outline-none focus-custom"
+                  >
+                    <div className="flex flex-col items-start">
+                      <Paragraph variant="small/bright" className="truncate">
+                        {template.label}
+                      </Paragraph>
+                      <div className="flex items-center gap-2 text-xs text-text-dimmed">
+                        <DateTime
+                          date={template.createdAt}
+                          showTooltip={false}
+                          includeTime={false}
+                        />
+                      </div>
+                    </div>
+                  </button>
+                  <Button
+                    type="button"
+                    className="group/delete-template shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+                    variant="minimal/medium"
+                    LeadingIcon={TrashIcon}
+                    leadingIconClassName="group-hover/delete-template:text-error"
+                    onClick={() => {
+                      setTemplateIdToDelete(template.id);
+                      setIsDeleteDialogOpen(true);
+                      setIsPopoverOpen(false);
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        </PopoverContent>
+      </Popover>
+
+      <AnimatePresence mode="wait">
+        {showTemplateCreatedSuccessMessage && (
+          <motion.div
+            key="template-success-message"
+            initial={{
+              opacity: 0,
+              scale: 0.8,
+              y: -10,
+            }}
+            animate={{
+              opacity: 1,
+              scale: 1,
+              y: 0,
+            }}
+            exit={{
+              opacity: 0,
+              scale: 0.7,
+              y: -10,
+              transition: {
+                duration: 0.15,
+                ease: "easeOut",
+              },
+            }}
+            transition={{
+              type: "spring",
+              stiffness: 400,
+              damping: 25,
+              duration: 0.15,
+            }}
+            className="absolute -left-1/2 top-full z-10 mt-1 flex min-w-max max-w-64 items-center gap-1 rounded border border-charcoal-700 bg-background-bright px-2 py-1 text-xs shadow-md outline-none before:absolute before:-top-2 before:left-1/2 before:-translate-x-1/2 before:border-4 before:border-transparent before:border-b-charcoal-700 before:content-[''] after:absolute after:-top-[7px] after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-b-background-bright after:content-['']"
+          >
+            <CheckCircleIcon className="h-4 w-4 shrink-0 text-success" /> Template saved
+            successfully
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>Delete template</DialogHeader>
+          <DialogDescription className="mt-3">
+            Are you sure you want to delete the template? This can't be reversed.
+          </DialogDescription>
+          <div className="mt-4 flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="tertiary/medium"
+              onClick={() => setIsDeleteDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Form method="post" {...deleteForm.props}>
+              <input
+                {...conform.input(templateId, { type: "hidden" })}
+                value={templateIdToDelete || ""}
+              />
+              <Button
+                type="submit"
+                variant="danger/medium"
+                LeadingIcon={TrashIcon}
+                name="formAction"
+                value={"delete-template" satisfies FormAction}
+              >
+                Delete
+              </Button>
+            </Form>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function CreateTemplateModal({
+  rawTestTaskFormData,
+  getCurrentPayload,
+  getCurrentMetadata,
+  setShowCreatedSuccessMessage,
+}: {
+  rawTestTaskFormData: {
+    environmentId: string;
+    taskIdentifier: string;
+    triggerSource: string;
+    delaySeconds?: string;
+    ttlSeconds?: string;
+    queue?: string;
+    concurrencyKey?: string;
+    maxAttempts?: string;
+    maxDurationSeconds?: string;
+    tags?: string;
+    machine?: string;
+    externalId?: string;
+    timestamp?: string;
+    timezone?: string;
+    lastTimestamp?: string;
+  };
+  getCurrentPayload: () => string;
+  getCurrentMetadata: () => string;
+  setShowCreatedSuccessMessage: (value: boolean) => void;
+}) {
+  const submit = useSubmit();
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const actionData = useActionData<typeof action>();
+  const lastSubmission =
+    actionData &&
+    typeof actionData === "object" &&
+    "formAction" in actionData &&
+    actionData.formAction === ("create-template" satisfies FormAction)
+      ? actionData
+      : undefined;
+
+  useEffect(() => {
+    if (lastSubmission && "success" in lastSubmission && lastSubmission.success === true) {
+      setIsModalOpen(false);
+      setShowCreatedSuccessMessage(true);
+      setTimeout(() => {
+        setShowCreatedSuccessMessage(false);
+      }, 2000);
+    }
+  }, [lastSubmission]);
+
+  const [
+    form,
+    {
+      label,
+      environmentId,
+      payload,
+      metadata,
+      taskIdentifier,
+      delaySeconds,
+      ttlSeconds,
+      queue,
+      concurrencyKey,
+      maxAttempts,
+      maxDurationSeconds,
+      triggerSource,
+      tags,
+      machine,
+      externalId,
+      timestamp,
+      lastTimestamp,
+      timezone,
+    },
+  ] = useForm({
+    id: "save-template",
+    lastSubmission: lastSubmission as any,
+    onSubmit(event, { formData }) {
+      event.preventDefault();
+
+      formData.set(payload.name, getCurrentPayload());
+      formData.set(metadata.name, getCurrentMetadata());
+
+      submit(formData, { method: "POST" });
+    },
+    onValidate({ formData }) {
+      return parse(formData, { schema: RunTemplateData });
+    },
+    shouldRevalidate: "onInput",
+  });
+
+  return (
+    <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+      <DialogTrigger asChild>
+        <Button
+          type="button"
+          variant="tertiary/medium"
+          LeadingIcon={StarIcon}
+          tooltip="Create run template"
+        />
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>Create run template</DialogHeader>
+        <div className="mt-2 flex flex-col gap-4">
+          <Form method="post" {...form.props} className="w-full">
+            <input
+              {...conform.input(taskIdentifier, { type: "hidden" })}
+              value={rawTestTaskFormData.taskIdentifier}
+            />
+            <input
+              {...conform.input(environmentId, { type: "hidden" })}
+              value={rawTestTaskFormData.environmentId}
+            />
+            <input
+              {...conform.input(triggerSource, { type: "hidden" })}
+              value={rawTestTaskFormData.triggerSource}
+            />
+            <input
+              {...conform.input(delaySeconds, { type: "hidden" })}
+              value={rawTestTaskFormData.delaySeconds}
+            />
+            <input
+              {...conform.input(ttlSeconds, { type: "hidden" })}
+              value={rawTestTaskFormData.ttlSeconds}
+            />
+            <input
+              {...conform.input(queue, { type: "hidden" })}
+              value={rawTestTaskFormData.queue}
+            />
+            <input
+              {...conform.input(concurrencyKey, { type: "hidden" })}
+              value={rawTestTaskFormData.concurrencyKey}
+            />
+            <input
+              {...conform.input(maxAttempts, { type: "hidden" })}
+              value={rawTestTaskFormData.maxAttempts}
+            />
+            <input
+              {...conform.input(maxDurationSeconds, { type: "hidden" })}
+              value={rawTestTaskFormData.maxDurationSeconds}
+            />
+            <input {...conform.input(tags, { type: "hidden" })} value={rawTestTaskFormData.tags} />
+            <input
+              {...conform.input(machine, { type: "hidden" })}
+              value={rawTestTaskFormData.machine}
+            />
+            <input
+              {...conform.input(externalId, { type: "hidden" })}
+              value={rawTestTaskFormData.externalId}
+            />
+            <input
+              {...conform.input(timestamp, { type: "hidden" })}
+              value={rawTestTaskFormData.timestamp}
+            />
+            <input
+              {...conform.input(lastTimestamp, { type: "hidden" })}
+              value={rawTestTaskFormData.lastTimestamp}
+            />
+            <input
+              {...conform.input(timezone, { type: "hidden" })}
+              value={rawTestTaskFormData.timezone}
+            />
+            <Paragraph className="mb-3">
+              Save your current run configuration as a template to reuse it later. Templates can be
+              used across environments.
+            </Paragraph>
+            <Fieldset className="max-w-full gap-y-3">
+              <InputGroup className="max-w-full">
+                <Label htmlFor={label.id}>Template label</Label>
+                <Input
+                  {...conform.input(label)}
+                  placeholder="Enter a name for this template"
+                  maxLength={42}
+                />
+                <FormError id={label.errorId}>{label.error}</FormError>
+              </InputGroup>
+              <FormError>{form.error}</FormError>
+              <FormButtons
+                confirmButton={
+                  <Button
+                    type="submit"
+                    variant="primary/medium"
+                    name="formAction"
+                    value={"create-template" satisfies FormAction}
+                  >
+                    Create template
+                  </Button>
+                }
+                cancelButton={
+                  <DialogClose asChild>
+                    <Button variant="tertiary/medium">Cancel</Button>
+                  </DialogClose>
+                }
+              />
+            </Fieldset>
+          </Form>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

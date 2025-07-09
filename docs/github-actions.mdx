@@ -164,6 +164,8 @@ jobs:
       # docker setup - part 1
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          version: latest
 
       # docker setup - part 2
       - name: Login to DockerHub
