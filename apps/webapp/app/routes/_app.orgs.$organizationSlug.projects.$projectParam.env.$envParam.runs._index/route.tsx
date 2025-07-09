@@ -203,7 +203,8 @@ export default function Page() {
                                         organization,
                                         project,
                                         environment,
-                                        filters
+                                        filters,
+                                        selectedItems.size > 0 ? "selected" : undefined
                                       )}
                                       LeadingIcon={ListCheckedIcon}
                                       className={selectedItems.size > 0 ? "pr-1" : undefined}

@@ -249,10 +249,14 @@ export function v3CreateBulkActionPath(
   organization: OrgForPath,
   project: ProjectForPath,
   environment: EnvironmentForPath,
-  filters?: TaskRunListSearchFilters
+  filters?: TaskRunListSearchFilters,
+  mode?: "selected" | "filters"
 ) {
   const searchParams = objectToSearchParams(filters) ?? new URLSearchParams();
   searchParams.set("bulkInspector", "show");
+  if (mode) {
+    searchParams.set("mode", mode);
+  }
   const query = `?${searchParams.toString()}`;
   return `${v3RunsPath(organization, project, environment)}${query}`;
 }
