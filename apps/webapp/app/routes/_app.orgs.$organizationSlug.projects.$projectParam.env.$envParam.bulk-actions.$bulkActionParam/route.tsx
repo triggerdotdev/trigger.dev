@@ -1,5 +1,5 @@
 import { ArrowPathIcon, BookOpenIcon } from "@heroicons/react/20/solid";
-import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -37,10 +37,15 @@ import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import {
   EnvironmentParamSchema,
+  v3BulkActionPath,
   v3BulkActionsPath,
   v3CreateBulkActionPath,
   v3RunsPath,
 } from "~/utils/pathBuilder";
+import { BulkActionService } from "~/v3/services/bulk/BulkActionV2.server";
+import { logger } from "~/services/logger.server";
+import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
+import { Form } from "@remix-run/react";
 
 const BulkActionParamSchema = EnvironmentParamSchema.extend({
   bulkActionParam: z.string(),
@@ -85,6 +90,53 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 };
 
+export const action = async ({ request, params }: ActionFunctionArgs) => {
+  const userId = await requireUserId(request);
+  const { organizationSlug, projectParam, envParam, bulkActionParam } =
+    BulkActionParamSchema.parse(params);
+
+  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+  if (!project) {
+    throw new Response("Not Found", { status: 404 });
+  }
+
+  const environment = await findEnvironmentBySlug(project.id, envParam, userId);
+  if (!environment) {
+    throw new Response("Not Found", { status: 404 });
+  }
+
+  const service = new BulkActionService();
+  const [error, result] = await tryCatch(service.abort(bulkActionParam, environment.id));
+
+  if (error) {
+    logger.error("Failed to abort bulk action", {
+      error,
+    });
+
+    return redirectWithErrorMessage(
+      v3BulkActionPath(
+        { slug: organizationSlug },
+        { slug: projectParam },
+        { slug: envParam },
+        { friendlyId: bulkActionParam }
+      ),
+      request,
+      `Failed to abort bulk action: ${error.message}`
+    );
+  }
+
+  return redirectWithSuccessMessage(
+    v3BulkActionPath(
+      { slug: organizationSlug },
+      { slug: projectParam },
+      { slug: envParam },
+      { friendlyId: bulkActionParam }
+    ),
+    request,
+    "Bulk action aborted"
+  );
+};
+
 export default function Page() {
   const { bulkAction } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
@@ -108,8 +160,12 @@ export default function Page() {
       </div>
       <div className="flex items-center justify-between gap-2 border-b border-grid-dimmed px-3 text-sm">
         <BulkActionStatusCombo status={bulkAction.status} />
-        {bulkAction.status !== "PENDING" ? (
-          <Button variant="danger/small">Abort bulk action...</Button>
+        {bulkAction.status === "PENDING" ? (
+          <Form method="post">
+            <Button type="submit" variant="danger/small">
+              Abort bulk action...
+            </Button>
+          </Form>
         ) : null}
       </div>
       <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">

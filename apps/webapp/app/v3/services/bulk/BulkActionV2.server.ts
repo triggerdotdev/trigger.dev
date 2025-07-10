@@ -85,9 +85,10 @@ export class BulkActionService extends BaseService {
 
   public async process(bulkActionId: string) {
     // 1. Get the bulk action group
-    const group = await this._prisma.bulkActionGroup.findUnique({
+    const group = await this._prisma.bulkActionGroup.findFirst({
       where: { id: bulkActionId },
       select: {
+        status: true,
         friendlyId: true,
         projectId: true,
         environmentId: true,
@@ -128,6 +129,11 @@ export class BulkActionService extends BaseService {
 
     if (!group.environmentId || !group.environment) {
       throw new Error(`Bulk action group has no environment: ${bulkActionId}`);
+    }
+
+    if (group.status === BulkActionStatus.ABORTED) {
+      logger.log(`Bulk action group already aborted: ${bulkActionId}`);
+      return;
     }
 
     // 2. Parse the params
@@ -333,13 +339,46 @@ export class BulkActionService extends BaseService {
     }
 
     // 6. If there are more runs to process, queue the next batch
-
     await commonWorker.enqueue({
       id: `processBulkAction-${bulkActionId}`,
       job: "processBulkAction",
       payload: { bulkActionId },
       availableAt: new Date(Date.now() + env.BULK_ACTION_BATCH_DELAY_MS),
     });
+  }
+
+  public async abort(friendlyId: string, environmentId: string) {
+    const group = await this._prisma.bulkActionGroup.findFirst({
+      where: { friendlyId, environmentId },
+      select: {
+        id: true,
+        status: true,
+      },
+    });
+
+    if (!group) {
+      throw new Error(`Bulk action not found: ${friendlyId}`);
+    }
+
+    if (group.status === BulkActionStatus.COMPLETED) {
+      throw new Error(`Bulk action group already completed: ${friendlyId}`);
+    }
+
+    if (group.status === BulkActionStatus.ABORTED) {
+      throw new Error(`Bulk action group already aborted: ${friendlyId}`);
+    }
+
+    //ack the job (this doesn't guarantee it won't run again)
+    await commonWorker.ack(`processBulkAction-${group.id}`);
+
+    await this._prisma.bulkActionGroup.update({
+      where: { id: group.id },
+      data: { status: BulkActionStatus.ABORTED },
+    });
+
+    return {
+      bulkActionId: friendlyId,
+    };
   }
 }
 
