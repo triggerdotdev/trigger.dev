@@ -1,5 +1,10 @@
 import { BulkActionId } from "@trigger.dev/core/v3/isomorphic";
-import { BulkActionStatus, BulkActionType, type PrismaClient } from "@trigger.dev/database";
+import {
+  BulkActionNotificationType,
+  BulkActionStatus,
+  BulkActionType,
+  type PrismaClient,
+} from "@trigger.dev/database";
 import { getRunFiltersFromRequest } from "~/presenters/RunFilters.server";
 import { type CreateBulkActionPayload } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.bulkaction";
 import { clickhouseClient } from "~/services/clickhouseInstance.server";
@@ -13,6 +18,7 @@ import { tryCatch } from "@trigger.dev/core";
 import { ReplayTaskRunService } from "../replayTaskRun.server";
 import { timeFilters } from "~/components/runs/v3/SharedFilters";
 import parseDuration from "parse-duration";
+import { v3BulkActionPath } from "~/utils/pathBuilder";
 
 export class BulkActionService extends BaseService {
   public async create(
@@ -55,6 +61,10 @@ export class BulkActionService extends BaseService {
         params: filters,
         queryName: "bulk_action_v1",
         totalCount: count,
+        completionNotification:
+          payload.emailNotification === true
+            ? BulkActionNotificationType.EMAIL
+            : BulkActionNotificationType.NONE,
       },
     });
 
@@ -83,12 +93,29 @@ export class BulkActionService extends BaseService {
         project: {
           select: {
             organizationId: true,
+            slug: true,
+            organization: {
+              select: {
+                slug: true,
+              },
+            },
+          },
+        },
+        environment: {
+          select: {
+            slug: true,
           },
         },
         type: true,
         queryName: true,
         params: true,
         cursor: true,
+        completionNotification: true,
+        user: {
+          select: {
+            email: true,
+          },
+        },
       },
     });
 
@@ -96,7 +123,7 @@ export class BulkActionService extends BaseService {
       throw new Error(`Bulk action group not found: ${bulkActionId}`);
     }
 
-    if (!group.environmentId) {
+    if (!group.environmentId || !group.environment) {
       throw new Error(`Bulk action group has no environment: ${bulkActionId}`);
     }
 
@@ -253,15 +280,61 @@ export class BulkActionService extends BaseService {
       },
     });
 
-    // 5. If there are more runs to process, queue the next batch
-    if (!isFinished) {
-      await commonWorker.enqueue({
-        id: `processBulkAction-${bulkActionId}`,
-        job: "processBulkAction",
-        payload: { bulkActionId },
-        availableAt: new Date(Date.now() + env.BULK_ACTION_BATCH_DELAY_MS),
-      });
+    // 5. If finished, queue a notification and exit
+    if (isFinished) {
+      switch (group.completionNotification) {
+        case BulkActionNotificationType.NONE:
+          return;
+        case BulkActionNotificationType.EMAIL: {
+          if (!group.user) {
+            logger.error("Bulk action group has no user, skipping email notification", {
+              bulkActionId,
+            });
+            return;
+          }
+
+          await commonWorker.enqueue({
+            id: `bulkActionCompletionNotification-${bulkActionId}`,
+            job: "scheduleEmail",
+            payload: {
+              to: group.user.email,
+              email: "bulk-action-completed",
+              bulkActionId: group.friendlyId,
+              url: `${env.LOGIN_ORIGIN}${v3BulkActionPath(
+                {
+                  slug: group.project.organization.slug,
+                },
+                {
+                  slug: group.project.slug,
+                },
+                {
+                  slug: group.environment.slug,
+                },
+                {
+                  friendlyId: group.friendlyId,
+                }
+              )}`,
+              totalCount: successCount + failureCount,
+              successCount,
+              failureCount,
+              type: group.type,
+            },
+          });
+          break;
+        }
+      }
+
+      return;
     }
+
+    // 6. If there are more runs to process, queue the next batch
+
+    await commonWorker.enqueue({
+      id: `processBulkAction-${bulkActionId}`,
+      job: "processBulkAction",
+      payload: { bulkActionId },
+      availableAt: new Date(Date.now() + env.BULK_ACTION_BATCH_DELAY_MS),
+    });
   }
 }
 

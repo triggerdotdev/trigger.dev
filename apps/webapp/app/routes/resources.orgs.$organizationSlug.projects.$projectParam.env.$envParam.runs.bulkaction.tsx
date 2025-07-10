@@ -1,10 +1,11 @@
-import { ArrowPathIcon, CheckIcon, PlusIcon } from "@heroicons/react/20/solid";
+import { parse } from "@conform-to/zod";
+import { ArrowPathIcon, CheckIcon } from "@heroicons/react/20/solid";
 import { XCircleIcon } from "@heroicons/react/24/outline";
 import { Form } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/router";
+import { tryCatch } from "@trigger.dev/core";
 import { type TaskRunStatus } from "@trigger.dev/database";
 import assertNever from "assert-never";
-import { parse } from "@conform-to/zod";
 import { useEffect, useState } from "react";
 import { typedjson, useTypedFetcher } from "remix-typedjson";
 import simplur from "simplur";
@@ -12,6 +13,14 @@ import { z } from "zod";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTrigger,
+} from "~/components/primitives/Dialog";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { Header2 } from "~/components/primitives/Headers";
 import { Hint } from "~/components/primitives/Hint";
@@ -33,33 +42,22 @@ import {
   timeFilterRenderValues,
 } from "~/components/runs/v3/SharedFilters";
 import { runStatusTitle } from "~/components/runs/v3/TaskRunStatus";
-import { $replica, type PrismaClient } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
+import { useUser } from "~/hooks/useUser";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
-import { getRunFiltersFromRequest } from "~/presenters/RunFilters.server";
-import { clickhouseClient } from "~/services/clickhouseInstance.server";
-import { RunsRepository } from "~/services/runsRepository.server";
+import { findProjectBySlug } from "~/models/project.server";
+import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
+import { CreateBulkActionPresenter } from "~/presenters/v3/CreateBulkActionPresenter.server";
+import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { formatNumber } from "~/utils/numberFormatter";
-import { EnvironmentParamSchema, v3CreateBulkActionPath, v3RunsPath } from "~/utils/pathBuilder";
-import { logger } from "~/services/logger.server";
-import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
-import { findProjectBySlug } from "~/models/project.server";
-import { CreateBulkActionPresenter } from "~/presenters/v3/CreateBulkActionPresenter.server";
+import { EnvironmentParamSchema, v3BulkActionPath, v3RunsPath } from "~/utils/pathBuilder";
 import { BulkActionService } from "~/v3/services/bulk/BulkActionV2.server";
-import { tryCatch } from "@trigger.dev/core";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTrigger,
-} from "~/components/primitives/Dialog";
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
@@ -103,11 +101,15 @@ export const CreateBulkActionPayload = z.discriminatedUnion("mode", [
     action: BulkActionAction,
     selectedRunIds: z.array(z.string()),
     title: z.string().optional(),
+    failedRedirect: z.string(),
+    emailNotification: z.preprocess((value) => value === "on", z.boolean()),
   }),
   z.object({
     mode: z.literal("filter"),
     action: BulkActionAction,
     title: z.string().optional(),
+    failedRedirect: z.string(),
+    emailNotification: z.preprocess((value) => value === "on", z.boolean()),
   }),
 ]);
 export type CreateBulkActionPayload = z.infer<typeof CreateBulkActionPayload>;
@@ -129,8 +131,6 @@ export async function action({ params, request }: ActionFunctionArgs) {
 
   const formData = await request.formData();
   const submission = parse(formData, { schema: CreateBulkActionPayload });
-
-  //todo add success and failure paths in the form
 
   if (!submission.value) {
     logger.error("Invalid bulk action", {
@@ -156,12 +156,24 @@ export async function action({ params, request }: ActionFunctionArgs) {
     logger.error("Failed to create bulk action", {
       error,
     });
-    // todo decent error message
-    return redirectWithErrorMessage("/", request, "Failed to create bulk action");
+
+    return redirectWithErrorMessage(
+      submission.value.failedRedirect,
+      request,
+      `Failed to create bulk action: ${error.message}`
+    );
   }
 
-  //todo redirect to the bulk action page
-  return redirectWithSuccessMessage("/", request, "Bulk action created");
+  return redirectWithSuccessMessage(
+    v3BulkActionPath(
+      { slug: organizationSlug },
+      { slug: projectParam },
+      { slug: envParam },
+      { friendlyId: result.bulkActionId }
+    ),
+    request,
+    "Bulk action started"
+  );
 }
 
 export function CreateBulkActionInspector({
@@ -178,6 +190,7 @@ export function CreateBulkActionInspector({
   const fetcher = useTypedFetcher<typeof loader>();
   const { value, replace } = useSearchParams();
   const location = useOptimisticLocation();
+  const user = useUser();
 
   useEffect(() => {
     fetcher.load(
@@ -204,6 +217,7 @@ export function CreateBulkActionInspector({
       className="h-full"
       id="bulk-action-form"
     >
+      <input type="hidden" name="failedRedirect" value={`${location.pathname}${location.search}`} />
       <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden bg-background-bright">
         <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
           <Header2 className="whitespace-nowrap">Create a bulk action</Header2>
@@ -344,6 +358,16 @@ export function CreateBulkActionInspector({
                     ? "All matching runs will be replayed."
                     : "Runs that are still in progress will be canceled. If a run finishes before this bulk action processes it, it can’t be canceled."}
                 </Paragraph>
+                <div className="pt-3">
+                  <CheckboxWithLabel
+                    name="emailNotification"
+                    variant="simple/small"
+                    label={`Email me when it completes (${user.email})`}
+                    form="bulk-action-form"
+                    defaultChecked={false}
+                    value="on"
+                  />
+                </div>
               </div>
               <DialogFooter>
                 <Button

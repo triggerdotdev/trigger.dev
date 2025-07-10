@@ -16,6 +16,9 @@ import MagicLinkEmail from "../emails/magic-link";
 import { constructMailTransport, MailTransport, MailTransportOptions } from "./transports";
 import MfaEnabledEmail, { MfaEnabledEmailSchema } from "../emails/mfa-enabled";
 import MfaDisabledEmail, { MfaDisabledEmailSchema } from "../emails/mfa-disabled";
+import BulkActionCompletedEmail, {
+  BulkActionCompletedEmailSchema,
+} from "../emails/bulk-action-complete";
 
 export { type MailTransportOptions };
 
@@ -32,6 +35,7 @@ export const DeliverEmailSchema = z
     AlertDeploymentSuccessEmailSchema,
     MfaEnabledEmailSchema,
     MfaDisabledEmailSchema,
+    BulkActionCompletedEmailSchema,
   ])
   .and(z.object({ to: z.string() }));
 
@@ -132,6 +136,12 @@ export class EmailClient {
         return {
           subject: `Multi-factor authentication disabled on your Trigger.dev account`,
           component: <MfaDisabledEmail {...data} />,
+        };
+      }
+      case "bulk-action-completed": {
+        return {
+          subject: `Bulk action ${data.bulkActionId} completed`,
+          component: <BulkActionCompletedEmail {...data} />,
         };
       }
     }

@@ -2004,6 +2004,8 @@ model BulkActionGroup {
   /// The total number of runs that will be processed
   totalCount   Int     @default(0)
 
+  completionNotification BulkActionNotificationType @default(NONE)
+
   /// The userId who did the bulk action
   user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   userId String?
@@ -2031,6 +2033,11 @@ enum BulkActionStatus {
   PENDING
   COMPLETED
   ABORTED
+}
+
+enum BulkActionNotificationType {
+  NONE
+  EMAIL
 }
 
 model BulkActionItem {
