@@ -1,4 +1,5 @@
 import { json } from "@remix-run/server-runtime";
+import { tryCatch } from "@trigger.dev/core/utils";
 import { logger } from "~/services/logger.server";
 import { requestIdempotency } from "~/services/requestIdempotencyInstance.server";
 import { startActiveSpan } from "~/v3/tracer.server";
@@ -78,7 +79,18 @@ export async function saveRequestIdempotency(
     return;
   }
 
-  await requestIdempotency.saveRequest(requestType, requestIdempotencyKey, {
-    id: entityId,
-  });
+  const [error] = await tryCatch(
+    requestIdempotency.saveRequest(requestType, requestIdempotencyKey, {
+      id: entityId,
+    })
+  );
+
+  if (error) {
+    logger.error("request-idempotency: error saving request", {
+      error,
+      requestIdempotencyKey,
+      requestType,
+      entityId,
+    });
+  }
 }
