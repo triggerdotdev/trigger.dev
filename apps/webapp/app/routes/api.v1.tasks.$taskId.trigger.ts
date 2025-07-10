@@ -9,15 +9,14 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { EngineServiceValidationError } from "~/runEngine/concerns/errors";
-import {
-  ApiAuthenticationResultSuccess,
-  AuthenticatedEnvironment,
-  getOneTimeUseToken,
-} from "~/services/apiAuth.server";
+import { ApiAuthenticationResultSuccess, getOneTimeUseToken } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { requestIdempotency } from "~/services/requestIdempotencyInstance.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
+import {
+  handleRequestIdempotency,
+  saveRequestIdempotency,
+} from "~/utils/requestIdempotency.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { OutOfEntitlementError, TriggerTaskService } from "~/v3/services/triggerTask.server";
 
@@ -33,7 +32,7 @@ export const HeadersSchema = z.object({
   "x-trigger-worker": z.string().nullish(),
   "x-trigger-client": z.string().nullish(),
   "x-trigger-engine-version": RunEngineVersionSchema.nullish(),
-  "x-trigger-request-id": z.string().nullish(),
+  "x-trigger-request-idempotency-key": z.string().nullish(),
   traceparent: z.string().optional(),
   tracestate: z.string().optional(),
 });
@@ -63,51 +62,32 @@ const { action, loader } = createActionApiRoute(
       "x-trigger-worker": isFromWorker,
       "x-trigger-client": triggerClient,
       "x-trigger-engine-version": engineVersion,
-      "x-trigger-request-id": requestId,
+      "x-trigger-request-idempotency-key": requestIdempotencyKey,
     } = headers;
 
-    if (requestId) {
-      logger.debug("request-idempotency: checking for cached trigger request", {
-        requestId,
-      });
-
-      const cachedRequest = await requestIdempotency.checkRequest("trigger", requestId);
-
-      if (cachedRequest) {
-        logger.info("request-idempotency: found cached trigger request", {
-          requestId,
-          cachedRequest,
-        });
-
-        const cachedRun = await prisma.taskRun.findFirst({
+    const cachedResponse = await handleRequestIdempotency(requestIdempotencyKey, {
+      requestType: "trigger",
+      findCachedEntity: async (cachedRequestId) => {
+        return await prisma.taskRun.findFirst({
           where: {
-            id: cachedRequest.id,
+            id: cachedRequestId,
           },
           select: {
             friendlyId: true,
           },
         });
+      },
+      buildResponse: (cachedRun) => ({
+        id: cachedRun.friendlyId,
+        isCached: false,
+      }),
+      buildResponseHeaders: async (responseBody, cachedEntity) => {
+        return await responseHeaders(cachedEntity, authentication, triggerClient);
+      },
+    });
 
-        if (cachedRun) {
-          logger.info("request-idempotency: found cached trigger run", {
-            requestId,
-            cachedRun,
-          });
-
-          const $responseHeaders = await responseHeaders(cachedRun, authentication, triggerClient);
-
-          return json(
-            {
-              id: cachedRun.friendlyId,
-              isCached: false,
-            },
-            {
-              headers: $responseHeaders,
-              status: 200,
-            }
-          );
-        }
-      }
+    if (cachedResponse) {
+      return cachedResponse;
     }
 
     const service = new TriggerTaskService();
@@ -152,11 +132,7 @@ const { action, loader } = createActionApiRoute(
         return json({ error: "Task not found" }, { status: 404 });
       }
 
-      if (requestId) {
-        await requestIdempotency.saveRequest("trigger", requestId, {
-          id: result.run.id,
-        });
-      }
+      await saveRequestIdempotency(requestIdempotencyKey, "trigger", result.run.id);
 
       const $responseHeaders = await responseHeaders(result.run, authentication, triggerClient);
 
@@ -167,7 +143,7 @@ const { action, loader } = createActionApiRoute(
         },
         {
           headers: $responseHeaders,
-          status: 200,
+          status: 408,
         }
       );
     } catch (error) {

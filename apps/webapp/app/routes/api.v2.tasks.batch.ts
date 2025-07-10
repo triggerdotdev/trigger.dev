@@ -4,18 +4,20 @@ import {
   BatchTriggerTaskV3Response,
   generateJWT,
 } from "@trigger.dev/core/v3";
+import { prisma } from "~/db.server";
 import { env } from "~/env.server";
+import { RunEngineBatchTriggerService } from "~/runEngine/services/batchTrigger.server";
 import { AuthenticatedEnvironment, getOneTimeUseToken } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import {
+  handleRequestIdempotency,
+  saveRequestIdempotency,
+} from "~/utils/requestIdempotency.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { BatchProcessingStrategy } from "~/v3/services/batchTriggerV3.server";
 import { OutOfEntitlementError } from "~/v3/services/triggerTask.server";
 import { HeadersSchema } from "./api.v1.tasks.$taskId.trigger";
-import { RunEngineBatchTriggerService } from "~/runEngine/services/batchTrigger.server";
-import { z } from "zod";
-import { requestIdempotency } from "~/services/requestIdempotencyInstance.server";
-import { prisma } from "~/db.server";
 
 const { action, loader } = createActionApiRoute(
   {
@@ -56,7 +58,7 @@ const { action, loader } = createActionApiRoute(
       "x-trigger-client": triggerClient,
       "x-trigger-engine-version": engineVersion,
       "batch-processing-strategy": batchProcessingStrategy,
-      "x-trigger-request-id": requestId,
+      "x-trigger-request-idempotency-key": requestIdempotencyKey,
       traceparent,
       tracestate,
     } = headers;
@@ -71,26 +73,15 @@ const { action, loader } = createActionApiRoute(
       traceparent,
       tracestate,
       batchProcessingStrategy,
-      requestId,
+      requestIdempotencyKey,
     });
 
-    if (requestId) {
-      logger.debug("request-idempotency: checking for cached batch-trigger request", {
-        requestId,
-      });
-
-      const cachedRequest = await requestIdempotency.checkRequest("batch-trigger", requestId);
-
-      if (cachedRequest) {
-        logger.info("request-idempotency: found cached batch-trigger request", {
-          requestId,
-          cachedRequest,
-        });
-
-        // Find the batch and return it as a 200 response
-        const cachedBatch = await prisma.batchTaskRun.findFirst({
+    const cachedResponse = await handleRequestIdempotency(requestIdempotencyKey, {
+      requestType: "batch-trigger",
+      findCachedEntity: async (cachedRequestId) => {
+        return await prisma.batchTaskRun.findFirst({
           where: {
-            id: cachedRequest.id,
+            id: cachedRequestId,
             runtimeEnvironmentId: authentication.environment.id,
           },
           select: {
@@ -98,28 +89,18 @@ const { action, loader } = createActionApiRoute(
             runCount: true,
           },
         });
+      },
+      buildResponse: (cachedBatch) => ({
+        id: cachedBatch.friendlyId,
+        runCount: cachedBatch.runCount,
+      }),
+      buildResponseHeaders: async (responseBody, cachedEntity) => {
+        return await responseHeaders(responseBody, authentication.environment, triggerClient);
+      },
+    });
 
-        if (cachedBatch) {
-          logger.info("request-idempotency: found cached batch-trigger request", {
-            requestId,
-            cachedRequest,
-            cachedBatch,
-          });
-
-          const responseBody = {
-            id: cachedBatch.friendlyId,
-            runCount: cachedBatch.runCount,
-          };
-
-          const $responseHeaders = await responseHeaders(
-            responseBody,
-            authentication.environment,
-            triggerClient
-          );
-
-          return json(responseBody, { status: 200, headers: $responseHeaders });
-        }
-      }
+    if (cachedResponse) {
+      return cachedResponse;
     }
 
     const traceContext =
@@ -130,11 +111,7 @@ const { action, loader } = createActionApiRoute(
     const service = new RunEngineBatchTriggerService(batchProcessingStrategy ?? undefined);
 
     service.onBatchTaskRunCreated.attachOnce(async (batch) => {
-      if (requestId) {
-        await requestIdempotency.saveRequest("batch-trigger", requestId, {
-          id: batch.id,
-        });
-      }
+      await saveRequestIdempotency(requestIdempotencyKey, "batch-trigger", batch.id);
     });
 
     try {

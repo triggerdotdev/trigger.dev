@@ -201,10 +201,10 @@ async function _doZodFetch<TResponseBodySchema extends z.ZodTypeAny>(
   let $requestInit = await requestInit;
 
   return traceZodFetch({ url, requestInit: $requestInit, options }, async (span) => {
-    const requestId = await randomUUID();
+    const requestIdempotencyKey = await randomUUID();
 
     $requestInit = injectPropagationHeadersIfInWorker($requestInit);
-    $requestInit = injectRequestId(requestId, $requestInit);
+    $requestInit = injectRequestIdempotencyKey(requestIdempotencyKey, $requestInit);
 
     const result = await _doZodFetchWithRetries(schema, url, $requestInit, options);
 
@@ -631,10 +631,13 @@ function injectPropagationHeadersIfInWorker(requestInit?: RequestInit): RequestI
   };
 }
 
-function injectRequestId(requestId: string, requestInit?: RequestInit): RequestInit | undefined {
+function injectRequestIdempotencyKey(
+  requestIdempotencyKey: string,
+  requestInit?: RequestInit
+): RequestInit | undefined {
   const headers = new Headers(requestInit?.headers);
 
-  headers.set("x-trigger-request-id", requestId);
+  headers.set("x-trigger-request-idempotency-key", requestIdempotencyKey);
 
   return {
     ...requestInit,

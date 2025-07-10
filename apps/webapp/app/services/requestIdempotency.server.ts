@@ -4,6 +4,7 @@ import { MemoryStore } from "@unkey/cache/stores";
 import { RedisCacheStore } from "./unkey/redisCacheStore.server";
 import { RedisWithClusterOptions } from "~/redis.server";
 import { validate as uuidValidate, version as uuidVersion } from "uuid";
+import { startActiveSpan } from "~/v3/tracer.server";
 
 export type RequestIdempotencyServiceOptions<TTypes extends string> = {
   types: TTypes[];
@@ -53,37 +54,46 @@ export class RequestIdempotencyService<TTypes extends string> {
     this.cache = cache;
   }
 
-  async checkRequest(type: TTypes, requestId: string) {
-    if (!this.#validateRequestId(requestId)) {
-      this.logger.warn("RequestIdempotency: invalid requestId", {
-        requestId,
+  async checkRequest(type: TTypes, requestIdempotencyKey: string) {
+    if (!this.#validateRequestId(requestIdempotencyKey)) {
+      this.logger.warn("RequestIdempotency: invalid requestIdempotencyKey", {
+        requestIdempotencyKey,
       });
 
       return undefined;
     }
 
-    const key = `${type}:${requestId}`;
-    const result = await this.cache.requests.get(key);
+    return startActiveSpan("RequestIdempotency.checkRequest()", async (span) => {
+      span.setAttribute("request_id", requestIdempotencyKey);
+      span.setAttribute("type", type);
 
-    this.logger.debug("RequestIdempotency: checking request", {
-      type,
-      requestId,
-      key,
-      result,
+      const key = `${type}:${requestIdempotencyKey}`;
+      const result = await this.cache.requests.get(key);
+
+      this.logger.debug("RequestIdempotency: checking request", {
+        type,
+        requestIdempotencyKey,
+        key,
+        result,
+      });
+
+      return result.val ? result.val : undefined;
     });
-
-    return result.val ? result.val : undefined;
   }
 
-  async saveRequest(type: TTypes, requestId: string, value: RequestIdempotencyCacheEntry) {
-    if (!this.#validateRequestId(requestId)) {
-      this.logger.warn("RequestIdempotency: invalid requestId", {
-        requestId,
+  async saveRequest(
+    type: TTypes,
+    requestIdempotencyKey: string,
+    value: RequestIdempotencyCacheEntry
+  ) {
+    if (!this.#validateRequestId(requestIdempotencyKey)) {
+      this.logger.warn("RequestIdempotency: invalid requestIdempotencyKey", {
+        requestIdempotencyKey,
       });
       return undefined;
     }
 
-    const key = `${type}:${requestId}`;
+    const key = `${type}:${requestIdempotencyKey}`;
     const result = await this.cache.requests.set(key, value);
 
     if (result.err) {
@@ -94,7 +104,7 @@ export class RequestIdempotencyService<TTypes extends string> {
     } else {
       this.logger.debug("RequestIdempotency: saved request", {
         type,
-        requestId,
+        requestIdempotencyKey,
         key,
         value,
       });
@@ -103,9 +113,9 @@ export class RequestIdempotencyService<TTypes extends string> {
     return result;
   }
 
-  // The requestId should be a valid UUID
-  #validateRequestId(requestId: string): boolean {
-    return isValidV4UUID(requestId);
+  // The requestIdempotencyKey should be a valid UUID
+  #validateRequestId(requestIdempotencyKey: string): boolean {
+    return isValidV4UUID(requestIdempotencyKey);
   }
 }
 
