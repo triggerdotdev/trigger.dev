@@ -7,6 +7,7 @@ import { z } from "zod";
 import { PromoteIcon } from "~/assets/icons/PromoteIcon";
 import { DeploymentsNone, DeploymentsNoneDev } from "~/components/BlankStatePanels";
 import { GitMetadata } from "~/components/GitMetadata";
+import { RuntimeIcon } from "~/components/RuntimeIcon";
 import { UserAvatar } from "~/components/UserProfilePhoto";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
@@ -51,7 +52,6 @@ import { requireUserId } from "~/services/session.server";
 import { titleCase } from "~/utils";
 import { EnvironmentParamSchema, docsPath, v3DeploymentPath } from "~/utils/pathBuilder";
 import { createSearchParams } from "~/utils/searchParams";
-import { deploymentIndexingIsRetryable } from "~/v3/deploymentStatus";
 import { compareDeploymentVersions } from "~/v3/utils/deploymentVersions";
 
 export const meta: MetaFunction = () => {
@@ -190,6 +190,7 @@ export default function Page() {
                       >
                         Status
                       </TableHeaderCell>
+                      <TableHeaderCell>Runtime</TableHeaderCell>
                       <TableHeaderCell>Tasks</TableHeaderCell>
                       <TableHeaderCell>Deployed at</TableHeaderCell>
                       <TableHeaderCell>Deployed by</TableHeaderCell>
@@ -225,6 +226,12 @@ export default function Page() {
                               <DeploymentStatus
                                 status={deployment.status}
                                 isBuilt={deployment.isBuilt}
+                              />
+                            </TableCell>
+                            <TableCell to={path} isSelected={isSelected}>
+                              <RuntimeIcon
+                                runtime={deployment.runtime}
+                                runtimeVersion={deployment.runtimeVersion}
                               />
                             </TableCell>
                             <TableCell to={path} isSelected={isSelected}>
@@ -272,7 +279,7 @@ export default function Page() {
                         );
                       })
                     ) : (
-                      <TableBlankRow colSpan={7}>
+                      <TableBlankRow colSpan={8}>
                         <Paragraph className="flex items-center justify-center">
                           No deploys match your filters
                         </Paragraph>
@@ -326,14 +333,13 @@ function DeploymentActionsCell({
   const project = useProject();
 
   const canBeMadeCurrent = !deployment.isCurrent && deployment.isDeployed;
-  const canRetryIndexing = deployment.isLatest && deploymentIndexingIsRetryable(deployment);
   const canBeRolledBack =
     canBeMadeCurrent &&
     currentDeployment?.version &&
     compareDeploymentVersions(deployment.version, currentDeployment.version) === -1;
   const canBePromoted = canBeMadeCurrent && !canBeRolledBack;
 
-  if (!canBeMadeCurrent && !canRetryIndexing) {
+  if (!canBeRolledBack && !canBePromoted) {
     return (
       <TableCell to={path} isSelected={isSelected}>
         {""}

@@ -17,6 +17,7 @@ import sourceMapSupport from "source-map-support";
 import { registerResources } from "../indexing/registerResources.js";
 import { env } from "std-env";
 import { normalizeImportPath } from "../utilities/normalizeImportPath.js";
+import { detectRuntimeVersion } from "@trigger.dev/core/v3/build";
 
 sourceMapSupport.install({
   handleUncaughtExceptions: false,
@@ -154,6 +155,7 @@ await sendMessageInCatalog(
       queues: resourceCatalog.listQueueManifests(),
       configPath: buildManifest.configPath,
       runtime: buildManifest.runtime,
+      runtimeVersion: detectRuntimeVersion(),
       workerEntryPoint: buildManifest.runWorkerEntryPoint,
       controllerEntryPoint: buildManifest.runControllerEntryPoint,
       loaderEntryPoint: buildManifest.loaderEntryPoint,

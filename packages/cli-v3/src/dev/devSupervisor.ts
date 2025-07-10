@@ -215,6 +215,8 @@ class DevSupervisor implements WorkerRuntime {
         queues: backgroundWorker.manifest.queues,
         contentHash: manifest.contentHash,
         sourceFiles,
+        runtime: backgroundWorker.manifest.runtime,
+        runtimeVersion: backgroundWorker.manifest.runtimeVersion,
       },
       engine: "V2",
       supportsLazyAttempts: true,

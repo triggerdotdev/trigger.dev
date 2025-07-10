@@ -97,6 +97,8 @@ export class DeploymentListPresenter {
         id: string;
         shortCode: string;
         version: string;
+        runtime: string | null;
+        runtimeVersion: string | null;
         status: WorkerDeploymentStatus;
         environmentId: string;
         builtAt: Date | null;
@@ -114,6 +116,8 @@ export class DeploymentListPresenter {
   wd."id",
   wd."shortCode",
   wd."version",
+  wd."runtime",
+  wd."runtimeVersion",
   (SELECT COUNT(*) FROM ${sqlDatabaseSchema}."BackgroundWorkerTask" WHERE "BackgroundWorkerTask"."workerId" = wd."workerId") AS "tasksCount",
   wd."environmentId",
   wd."status",
@@ -148,6 +152,8 @@ LIMIT ${pageSize} OFFSET ${pageSize * (page - 1)};`;
           id: deployment.id,
           shortCode: deployment.shortCode,
           version: deployment.version,
+          runtime: deployment.runtime,
+          runtimeVersion: deployment.runtimeVersion,
           status: deployment.status,
           builtAt: deployment.builtAt,
           deployedAt: deployment.deployedAt,

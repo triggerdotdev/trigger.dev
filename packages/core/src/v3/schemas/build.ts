@@ -90,6 +90,7 @@ export const WorkerManifest = z.object({
   loaderEntryPoint: z.string().optional(),
   initEntryPoint: z.string().optional(), // Optional init.ts entry point
   runtime: BuildRuntime,
+  runtimeVersion: z.string().optional(),
   customConditions: z.array(z.string()).optional(),
   timings: z.record(z.number()).optional(),
   processKeepAlive: z
