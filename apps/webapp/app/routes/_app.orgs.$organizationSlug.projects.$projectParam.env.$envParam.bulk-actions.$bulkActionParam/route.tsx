@@ -7,7 +7,9 @@ import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { InlineCode } from "~/components/code/InlineCode";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
-import { LinkButton } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { TruncatedCopyableValue } from "~/components/primitives/TruncatedCopyableValue";
+import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Header2, Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -21,7 +23,7 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
-import { BulkActionTypeCombo } from "~/components/runs/v3/BulkAction";
+import { BulkActionStatusCombo, BulkActionTypeCombo } from "~/components/runs/v3/BulkAction";
 import { EnabledStatus } from "~/components/runs/v3/EnabledStatus";
 import { ScheduleTypeCombo } from "~/components/runs/v3/ScheduleType";
 import { UserAvatar } from "~/components/UserProfilePhoto";
@@ -90,7 +92,7 @@ export default function Page() {
   const environment = useEnvironment();
 
   return (
-    <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden bg-background-bright">
+    <div className="grid h-full max-h-full grid-rows-[2.5rem_2.5rem_1fr_3.25rem] overflow-hidden bg-background-bright">
       <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
         <Header2 className={cn("whitespace-nowrap")}>
           {bulkAction.name || bulkAction.friendlyId}
@@ -104,13 +106,21 @@ export default function Page() {
           className="pl-1"
         />
       </div>
+      <div className="flex items-center justify-between gap-2 border-b border-grid-dimmed px-3 text-sm">
+        <BulkActionStatusCombo status={bulkAction.status} />
+        {bulkAction.status !== "PENDING" ? (
+          <Button variant="danger/small">About bulk action...</Button>
+        ) : null}
+      </div>
       <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
         <div className="space-y-3">
           <div className="p-3">
             <Property.Table>
               <Property.Item>
                 <Property.Label>ID</Property.Label>
-                <Property.Value>{bulkAction.friendlyId}</Property.Value>
+                <Property.Value>
+                  <CopyableText value={bulkAction.friendlyId} />
+                </Property.Value>
               </Property.Item>
               <Property.Item>
                 <Property.Label>Bulk action</Property.Label>
@@ -160,7 +170,7 @@ export default function Page() {
             {
               bulkId: bulkAction.friendlyId,
             },
-            "filters",
+            undefined,
             "replay"
           )}
           variant="tertiary/medium"

@@ -54,6 +54,7 @@ import {
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
+import { TruncatedCopyableValue } from "~/components/primitives/TruncatedCopyableValue";
 
 type RunsTableProps = {
   total: number;
@@ -309,20 +310,7 @@ export function TaskRunsTable({
                   </TableCell>
                 )}
                 <TableCell to={path} isTabbableCell>
-                  <SimpleTooltip
-                    content={run.friendlyId}
-                    button={
-                      <span className="flex h-6 items-center gap-1">
-                        <CopyableText
-                          value={run.friendlyId.slice(-8)}
-                          copyValue={run.friendlyId}
-                          className="font-mono"
-                        />
-                      </span>
-                    }
-                    asChild
-                    disableHoverableContent
-                  />
+                  <TruncatedCopyableValue value={run.friendlyId} />
                 </TableCell>
                 <TableCell to={path}>
                   <span className="flex items-center gap-x-1">

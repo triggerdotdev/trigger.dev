@@ -11,6 +11,7 @@ import { InlineCode } from "~/components/code/InlineCode";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
+import { TruncatedCopyableValue } from "~/components/primitives/TruncatedCopyableValue";
 import { DateTime } from "~/components/primitives/DateTime";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { PaginationControls } from "~/components/primitives/Pagination";
@@ -260,7 +261,7 @@ function BulkActionsTable({ bulkActions }: { bulkActions: BulkActionListItem[] }
                 className={isSelected ? "bg-grid-dimmed" : undefined}
               >
                 <TableCell to={path} isTabbableCell>
-                  {bulkAction.friendlyId}
+                  <TruncatedCopyableValue value={bulkAction.friendlyId} />
                 </TableCell>
                 <TableCell to={path}>{bulkAction.name || "–"}</TableCell>
                 <TableCell to={path}>

@@ -193,8 +193,9 @@ export function CreateBulkActionInspector({
   const closedSearchParams = new URLSearchParams(location.search);
   closedSearchParams.delete("bulkInspector");
 
-  const impactedCount =
+  const impactedCountElement =
     mode === "selected" ? selectedItems.size : <EstimatedCount count={data?.count} />;
+  const impactedCount = mode === "selected" ? selectedItems.size : data?.count ?? 0;
 
   return (
     <Form
@@ -309,7 +310,7 @@ export function CreateBulkActionInspector({
             <DialogTrigger asChild>
               <Button
                 type="button"
-                variant="tertiary/medium"
+                variant="secondary/medium"
                 LeadingIcon={action === "replay" ? ArrowPathIcon : XCircleIcon}
                 leadingIconClassName={cn(
                   "w-[1.3rem] h-[1.3rem]",
@@ -320,12 +321,12 @@ export function CreateBulkActionInspector({
                   key: "enter",
                   enabledOnInputElements: true,
                 }}
-                disabled={impactedCount === 0}
+                disabled={impactedCountElement === 0}
               >
                 {action === "replay" ? (
-                  <span className="text-text-bright">Replay {impactedCount} runs…</span>
+                  <span className="text-text-bright">Replay {impactedCountElement} runs…</span>
                 ) : (
-                  <span className="text-text-bright">Cancel {impactedCount} runs…</span>
+                  <span className="text-text-bright">Cancel {impactedCountElement} runs…</span>
                 )}
               </Button>
             </DialogTrigger>
@@ -356,12 +357,12 @@ export function CreateBulkActionInspector({
                   type="submit"
                   form="bulk-action-form"
                   variant={action === "replay" ? "primary/medium" : "danger/medium"}
-                  disabled={impactedCount === 0}
+                  disabled={impactedCountElement === 0}
                 >
                   {action === "replay" ? (
-                    <span className="text-text-bright">Replay {impactedCount} runs</span>
+                    <span className="text-text-bright">Replay {impactedCountElement} runs</span>
                   ) : (
-                    <span className="text-text-bright">Cancel {impactedCount} runs</span>
+                    <span className="text-text-bright">Cancel {impactedCountElement} runs</span>
                   )}
                 </Button>
               </DialogFooter>
