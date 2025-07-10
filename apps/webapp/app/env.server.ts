@@ -932,6 +932,44 @@ const EnvironmentSchema = z.object({
   TRIGGER_CLI_TAG: z.string().default("latest"),
 
   HEALTHCHECK_DATABASE_DISABLED: z.string().default("0"),
+
+  REQUEST_IDEMPOTENCY_REDIS_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_HOST),
+  REQUEST_IDEMPOTENCY_REDIS_READER_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_READER_HOST),
+  REQUEST_IDEMPOTENCY_REDIS_READER_PORT: z.coerce
+    .number()
+    .optional()
+    .transform(
+      (v) =>
+        v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
+    ),
+  REQUEST_IDEMPOTENCY_REDIS_PORT: z.coerce
+    .number()
+    .optional()
+    .transform((v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)),
+  REQUEST_IDEMPOTENCY_REDIS_USERNAME: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_USERNAME),
+  REQUEST_IDEMPOTENCY_REDIS_PASSWORD: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_PASSWORD),
+  REQUEST_IDEMPOTENCY_REDIS_TLS_DISABLED: z
+    .string()
+    .default(process.env.REDIS_TLS_DISABLED ?? "false"),
+
+  REQUEST_IDEMPOTENCY_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
+
+  REQUEST_IDEMPOTENCY_TTL_IN_MS: z.coerce
+    .number()
+    .int()
+    .default(60_000 * 60 * 24),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;
