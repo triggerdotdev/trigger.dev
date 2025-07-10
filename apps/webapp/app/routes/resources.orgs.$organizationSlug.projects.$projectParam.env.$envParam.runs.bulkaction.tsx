@@ -362,7 +362,7 @@ export function CreateBulkActionInspector({
                   <CheckboxWithLabel
                     name="emailNotification"
                     variant="simple/small"
-                    label={`Email me when it completes (${user.email})`}
+                    label={`Email me when it finishes (${user.email})`}
                     form="bulk-action-form"
                     defaultChecked={false}
                     value="on"

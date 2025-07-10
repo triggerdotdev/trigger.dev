@@ -19,6 +19,7 @@ import { ReplayTaskRunService } from "../replayTaskRun.server";
 import { timeFilters } from "~/components/runs/v3/SharedFilters";
 import parseDuration from "parse-duration";
 import { v3BulkActionPath } from "~/utils/pathBuilder";
+import { formatDateTime } from "~/components/primitives/DateTime";
 
 export class BulkActionService extends BaseService {
   public async create(
@@ -116,6 +117,8 @@ export class BulkActionService extends BaseService {
             email: true,
           },
         },
+        createdAt: true,
+        completedAt: true,
       },
     });
 
@@ -318,6 +321,8 @@ export class BulkActionService extends BaseService {
               successCount,
               failureCount,
               type: group.type,
+              createdAt: formatDateTime(group.createdAt, "UTC", [], true, true),
+              completedAt: formatDateTime(group.completedAt ?? new Date(), "UTC", [], true, true),
             },
           });
           break;

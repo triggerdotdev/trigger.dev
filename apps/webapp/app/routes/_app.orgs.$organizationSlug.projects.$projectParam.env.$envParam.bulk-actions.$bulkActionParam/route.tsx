@@ -109,7 +109,7 @@ export default function Page() {
       <div className="flex items-center justify-between gap-2 border-b border-grid-dimmed px-3 text-sm">
         <BulkActionStatusCombo status={bulkAction.status} />
         {bulkAction.status !== "PENDING" ? (
-          <Button variant="danger/small">About bulk action...</Button>
+          <Button variant="danger/small">Abort bulk action...</Button>
         ) : null}
       </div>
       <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
@@ -186,6 +186,7 @@ export default function Page() {
             bulkId: bulkAction.friendlyId,
           })}
           LeadingIcon={RunsIcon}
+          leadingIconClassName="text-indigo-500"
         >
           View runs
         </LinkButton>

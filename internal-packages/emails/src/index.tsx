@@ -140,7 +140,7 @@ export class EmailClient {
       }
       case "bulk-action-completed": {
         return {
-          subject: `Bulk action ${data.bulkActionId} completed`,
+          subject: `Bulk action finished`,
           component: <BulkActionCompletedEmail {...data} />,
         };
       }
