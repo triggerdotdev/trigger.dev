@@ -123,8 +123,23 @@ function ReplayForm({
 }) {
   const navigation = useNavigation();
   const submit = useSubmit();
+
+  const [defaultPayloadJson, setDefaultPayloadJson] = useState<string>(
+    replayData.payload ?? startingJson
+  );
+  const setPayload = useCallback((code: string) => {
+    setDefaultPayloadJson(code);
+  }, []);
   const currentPayloadJson = useRef<string>(replayData.payload ?? startingJson);
+
+  const [defaultMetadataJson, setDefaultMetadataJson] = useState<string>(
+    replayData.metadata ?? startingJson
+  );
+  const setMetadata = useCallback((code: string) => {
+    setDefaultMetadataJson(code);
+  }, []);
   const currentMetadataJson = useRef<string>(replayData.metadata ?? startingJson);
+
   const formAction = `/resources/taskruns/${runFriendlyId}/replay`;
 
   const isSubmitting = navigation.formAction === formAction;
@@ -227,11 +242,17 @@ function ReplayForm({
           <div className="rounded-smbg-charcoal-900 mb-3 h-full min-h-40 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
             <JSONEditor
               autoFocus
-              defaultValue={currentPayloadJson.current}
+              defaultValue={!tab || tab === "payload" ? defaultPayloadJson : defaultMetadataJson}
               readOnly={false}
               basicSetup
               onChange={(v) => {
-                currentPayloadJson.current = v;
+                if (!tab || tab === "payload") {
+                  currentPayloadJson.current = v;
+                  setDefaultPayloadJson(v);
+                } else {
+                  currentMetadataJson.current = v;
+                  setDefaultMetadataJson(v);
+                }
               }}
               height="100%"
               min-height="100%"
