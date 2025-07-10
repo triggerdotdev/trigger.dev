@@ -1,11 +1,7 @@
-import { ArrowPathIcon, StopCircleIcon } from "@heroicons/react/20/solid";
 import { BeakerIcon, BookOpenIcon } from "@heroicons/react/24/solid";
-import { Form, type MetaFunction, useNavigation } from "@remix-run/react";
+import { type MetaFunction, useNavigation } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { IconCircleX } from "@tabler/icons-react";
-import { AnimatePresence, motion } from "framer-motion";
-import { ListChecks, ListX } from "lucide-react";
-import { Suspense, useState } from "react";
+import { Suspense } from "react";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
@@ -13,16 +9,8 @@ import { DevDisconnectedBanner, useDevPresence } from "~/components/DevPresence"
 import { StepContentContainer } from "~/components/StepContentContainer";
 import { MainCenteredContainer, PageBody } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTrigger,
-} from "~/components/primitives/Dialog";
-import { Header1, Header2 } from "~/components/primitives/Headers";
+import { LinkButton } from "~/components/primitives/Buttons";
+import { Header1 } from "~/components/primitives/Headers";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -31,11 +19,8 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
-import {
-  SelectedItemsProvider,
-  useSelectedItems,
-} from "~/components/primitives/SelectedItemsProvider";
-import { Spinner, SpinnerWhite } from "~/components/primitives/Spinner";
+import { SelectedItemsProvider } from "~/components/primitives/SelectedItemsProvider";
+import { Spinner } from "~/components/primitives/Spinner";
 import { StepNumber } from "~/components/primitives/StepNumber";
 import { TextLink } from "~/components/primitives/TextLink";
 import { RunsFilters } from "~/components/runs/v3/RunFilters";
@@ -62,7 +47,6 @@ import {
   EnvironmentParamSchema,
   v3CreateBulkActionPath,
   v3ProjectPath,
-  v3RunsPath,
   v3TestPath,
 } from "~/utils/pathBuilder";
 import { ListPagination } from "../../components/ListPagination";
@@ -130,8 +114,6 @@ export default function Page() {
   const environment = useEnvironment();
   const searchParams = useSearchParams();
 
-  const isShowingBulkActionInspector = searchParams.has("bulkInspector");
-
   return (
     <>
       <NavBar>
@@ -155,97 +137,104 @@ export default function Page() {
           maxSelectedItemCount={BULK_ACTION_RUN_LIMIT}
         >
           {({ selectedItems }) => (
-            <ResizablePanelGroup orientation="horizontal" className="max-h-full">
-              <ResizablePanel id="runs-main" min={"100px"}>
-                <div
-                  className={cn(
-                    "grid h-full max-h-full overflow-hidden",
-                    selectedItems.size === 0 ? "grid-rows-1" : "grid-rows-[1fr_auto]"
-                  )}
-                >
-                  <Suspense
-                    fallback={
-                      <div className="flex items-center justify-center py-2">
-                        <div className="mx-auto flex items-center gap-2">
-                          <Spinner />
-                          <Paragraph variant="small">Loading runs</Paragraph>
-                        </div>
-                      </div>
-                    }
-                  >
-                    <TypedAwait resolve={data}>
-                      {(list) => (
-                        <>
-                          {list.runs.length === 0 && !list.hasAnyRuns ? (
-                            list.possibleTasks.length === 0 ? (
-                              <CreateFirstTaskInstructions />
-                            ) : (
-                              <RunTaskInstructions />
-                            )
-                          ) : (
-                            <div
-                              className={cn(
-                                "grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden"
-                              )}
-                            >
-                              <div className="flex items-start justify-between gap-x-2 p-2">
-                                <RunsFilters
-                                  possibleTasks={list.possibleTasks}
-                                  bulkActions={list.bulkActions}
-                                  hasFilters={list.hasFilters}
-                                  rootOnlyDefault={rootOnlyDefault}
-                                />
-                                <div className="flex items-center justify-end gap-x-2">
-                                  {!isShowingBulkActionInspector && (
-                                    <LinkButton
-                                      variant="secondary/small"
-                                      to={v3CreateBulkActionPath(
-                                        organization,
-                                        project,
-                                        environment,
-                                        filters,
-                                        selectedItems.size > 0 ? "selected" : undefined
-                                      )}
-                                      LeadingIcon={ListCheckedIcon}
-                                      className={selectedItems.size > 0 ? "pr-1" : undefined}
-                                    >
-                                      <span className="flex items-center gap-x-1 whitespace-nowrap text-text-bright">
-                                        <span>Bulk action</span>
-                                        {selectedItems.size > 0 && (
-                                          <Badge variant="rounded">{selectedItems.size}</Badge>
-                                        )}
-                                      </span>
-                                    </LinkButton>
-                                  )}
-                                  <ListPagination list={list} />
-                                </div>
-                              </div>
-
-                              <TaskRunsTable
-                                total={list.runs.length}
-                                hasFilters={list.hasFilters}
-                                filters={list.filters}
-                                runs={list.runs}
-                                isLoading={isLoading}
-                                allowSelection
-                              />
-                            </div>
+            <Suspense
+              fallback={
+                <div className="flex items-center justify-center py-2">
+                  <div className="mx-auto flex items-center gap-2">
+                    <Spinner />
+                    <Paragraph variant="small">Loading runs</Paragraph>
+                  </div>
+                </div>
+              }
+            >
+              <TypedAwait resolve={data}>
+                {(list) => {
+                  const isShowingBulkActionInspector =
+                    searchParams.has("bulkInspector") && list.hasAnyRuns;
+                  return (
+                    <ResizablePanelGroup orientation="horizontal" className="max-h-full">
+                      <ResizablePanel id="runs-main" min={"100px"}>
+                        <div
+                          className={cn(
+                            "grid h-full max-h-full overflow-hidden",
+                            selectedItems.size === 0 ? "grid-rows-1" : "grid-rows-[1fr_auto]"
                           )}
+                        >
+                          <>
+                            {list.runs.length === 0 && !list.hasAnyRuns ? (
+                              list.possibleTasks.length === 0 ? (
+                                <CreateFirstTaskInstructions />
+                              ) : (
+                                <RunTaskInstructions />
+                              )
+                            ) : (
+                              <div
+                                className={cn(
+                                  "grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden"
+                                )}
+                              >
+                                <div className="flex items-start justify-between gap-x-2 p-2">
+                                  <RunsFilters
+                                    possibleTasks={list.possibleTasks}
+                                    bulkActions={list.bulkActions}
+                                    hasFilters={list.hasFilters}
+                                    rootOnlyDefault={rootOnlyDefault}
+                                  />
+                                  <div className="flex items-center justify-end gap-x-2">
+                                    {!isShowingBulkActionInspector && (
+                                      <LinkButton
+                                        variant="secondary/small"
+                                        to={v3CreateBulkActionPath(
+                                          organization,
+                                          project,
+                                          environment,
+                                          filters,
+                                          selectedItems.size > 0 ? "selected" : undefined
+                                        )}
+                                        LeadingIcon={ListCheckedIcon}
+                                        className={selectedItems.size > 0 ? "pr-1" : undefined}
+                                      >
+                                        <span className="flex items-center gap-x-1 whitespace-nowrap text-text-bright">
+                                          <span>Bulk action</span>
+                                          {selectedItems.size > 0 && (
+                                            <Badge variant="rounded">{selectedItems.size}</Badge>
+                                          )}
+                                        </span>
+                                      </LinkButton>
+                                    )}
+                                    <ListPagination list={list} />
+                                  </div>
+                                </div>
+
+                                <TaskRunsTable
+                                  total={list.runs.length}
+                                  hasFilters={list.hasFilters}
+                                  filters={list.filters}
+                                  runs={list.runs}
+                                  isLoading={isLoading}
+                                  allowSelection
+                                />
+                              </div>
+                            )}
+                          </>
+                        </div>
+                      </ResizablePanel>
+                      {isShowingBulkActionInspector && (
+                        <>
+                          <ResizableHandle id="runs-handle" />
+                          <ResizablePanel id="bulk-action-inspector" min="100px" default="450px">
+                            <CreateBulkActionInspector
+                              filters={filters}
+                              selectedItems={selectedItems}
+                            />
+                          </ResizablePanel>
                         </>
                       )}
-                    </TypedAwait>
-                  </Suspense>
-                </div>
-              </ResizablePanel>
-              {isShowingBulkActionInspector && (
-                <>
-                  <ResizableHandle id="runs-handle" />
-                  <ResizablePanel id="bulk-action-inspector" min="100px" default="450px">
-                    <CreateBulkActionInspector filters={filters} selectedItems={selectedItems} />
-                  </ResizablePanel>
-                </>
-              )}
-            </ResizablePanelGroup>
+                    </ResizablePanelGroup>
+                  );
+                }}
+              </TypedAwait>
+            </Suspense>
           )}
         </SelectedItemsProvider>
       </PageBody>
