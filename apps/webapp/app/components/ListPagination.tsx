@@ -15,10 +15,18 @@ export const DirectionSchema = z.union([z.literal("forward"), z.literal("backwar
 export type Direction = z.infer<typeof DirectionSchema>;
 
 export function ListPagination({ list, className }: { list: List; className?: string }) {
+  const bothDisabled = !list.pagination.previous && !list.pagination.next;
+
   return (
     <div className={cn("flex items-center", className)}>
       <PreviousButton cursor={list.pagination.previous} />
       <NextButton cursor={list.pagination.next} />
+      <div
+        className={cn(
+          "order-2 h-6 w-px bg-charcoal-600 transition-colors peer-hover/next:bg-charcoal-550 peer-hover/prev:bg-charcoal-550",
+          bothDisabled && "opacity-30"
+        )}
+      />
     </div>
   );
 }
@@ -27,14 +35,14 @@ function PreviousButton({ cursor }: { cursor?: string }) {
   const path = useCursorPath(cursor, "backward");
 
   return (
-    <div className="peer">
+    <div className={cn("peer/prev order-1", !path && "pointer-events-none")}>
       <LinkButton
         to={path ?? "#"}
         variant={"secondary/small"}
         LeadingIcon={ChevronLeftIcon}
         className={cn(
           "flex items-center rounded-r-none border-r-0 pl-2 pr-[0.5625rem]",
-          !path && "cursor-not-allowed opacity-50 group-hover/button:bg-transparent"
+          !path && "cursor-not-allowed opacity-50"
         )}
         onClick={(e) => !path && e.preventDefault()}
         shortcut={{ key: "j" }}
@@ -49,14 +57,14 @@ function NextButton({ cursor }: { cursor?: string }) {
   const path = useCursorPath(cursor, "forward");
 
   return (
-    <div className="border-l border-charcoal-600 transition peer-hover:border-l peer-hover:border-l-charcoal-550 hover:border-l-charcoal-550">
+    <div className={cn("peer/next order-3", !path && "pointer-events-none")}>
       <LinkButton
         to={path ?? "#"}
         variant={"secondary/small"}
         TrailingIcon={ChevronRightIcon}
         className={cn(
           "flex items-center rounded-l-none border-l-0 pl-[0.5625rem] pr-2",
-          !path && "cursor-not-allowed opacity-50 group-hover/button:bg-transparent"
+          !path && "cursor-not-allowed opacity-50"
         )}
         onClick={(e) => !path && e.preventDefault()}
         shortcut={{ key: "k" }}
