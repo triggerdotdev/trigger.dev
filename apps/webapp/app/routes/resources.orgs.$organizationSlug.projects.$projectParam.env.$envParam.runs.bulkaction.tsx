@@ -1,5 +1,5 @@
 import { parse } from "@conform-to/zod";
-import { ArrowPathIcon, CheckIcon } from "@heroicons/react/20/solid";
+import { ArrowPathIcon, CheckIcon, InformationCircleIcon } from "@heroicons/react/20/solid";
 import { XCircleIcon } from "@heroicons/react/24/outline";
 import { Form } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/router";
@@ -11,6 +11,14 @@ import { typedjson, useTypedFetcher } from "remix-typedjson";
 import simplur from "simplur";
 import { z } from "zod";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
+import selectRunsIndividually from "~/assets/images/select-runs-individually.png";
+import selectRunsUsingFilters from "~/assets/images/select-runs-using-filters.png";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "~/components/primitives/Accordion";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
@@ -208,7 +216,6 @@ export function CreateBulkActionInspector({
 
   const impactedCountElement =
     mode === "selected" ? selectedItems.size : <EstimatedCount count={data?.count} />;
-  const impactedCount = mode === "selected" ? selectedItems.size : data?.count ?? 0;
 
   return (
     <Form
@@ -235,6 +242,37 @@ export function CreateBulkActionInspector({
           />
         </div>
         <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+          <div className="px-3 pt-3">
+            <Accordion type="single" collapsible>
+              <AccordionItem value="item-1">
+                <AccordionTrigger
+                  leadingIcon={InformationCircleIcon}
+                  leadingIconClassName="text-blue-500"
+                >
+                  How to create a bulk action
+                </AccordionTrigger>
+                <AccordionContent>
+                  <div className="flex flex-col gap-2">
+                    <Paragraph variant="small">
+                      Select runs individually using the checkboxes.
+                    </Paragraph>
+                    <div>
+                      <img src={selectRunsIndividually} alt="Select runs individually" />
+                    </div>
+                    <Paragraph variant="small">
+                      Or select runs using the filter menus on this page.
+                    </Paragraph>
+                    <div>
+                      <img src={selectRunsUsingFilters} alt="Select runs using filters" />
+                    </div>
+                    <Paragraph variant="small">
+                      Then complete the form below and click “Cancel runs” or “Replay runs”.
+                    </Paragraph>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+          </div>
           <Fieldset className="p-3">
             {Array.from(selectedItems).map((runId) => {
               return <input key={runId} type="hidden" name="selectedRunIds" value={runId} />;

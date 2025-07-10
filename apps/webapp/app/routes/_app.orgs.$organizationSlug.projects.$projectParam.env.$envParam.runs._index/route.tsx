@@ -139,10 +139,13 @@ export default function Page() {
           {({ selectedItems }) => (
             <Suspense
               fallback={
-                <div className="flex items-center justify-center py-2">
-                  <div className="mx-auto flex items-center gap-2">
-                    <Spinner />
-                    <Paragraph variant="small">Loading runs</Paragraph>
+                <div className="grid h-full max-h-full grid-rows-[2.5rem_auto] overflow-hidden">
+                  <div className="border-b border-grid-bright" />
+                  <div className="my-2 flex items-center justify-center">
+                    <div className="mx-auto flex items-center gap-2">
+                      <Spinner />
+                      <Paragraph variant="small">Loading runs</Paragraph>
+                    </div>
                   </div>
                 </div>
               }

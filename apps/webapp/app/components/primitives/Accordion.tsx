@@ -4,6 +4,7 @@ import * as React from "react";
 import * as AccordionPrimitive from "@radix-ui/react-accordion";
 import { ChevronDown } from "lucide-react";
 import { cn } from "~/utils/cn";
+import { Icon, type RenderIcon } from "./Icon";
 
 const Accordion = AccordionPrimitive.Root;
 
@@ -19,20 +20,30 @@ const AccordionItem = React.forwardRef<
 ));
 AccordionItem.displayName = "AccordionItem";
 
+type AccordionTriggerProps = React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Trigger> & {
+  leadingIcon?: RenderIcon;
+  leadingIconClassName?: string;
+};
+
 const AccordionTrigger = React.forwardRef<
   React.ElementRef<typeof AccordionPrimitive.Trigger>,
-  React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Trigger>
->(({ className, children, ...props }, ref) => (
+  AccordionTriggerProps
+>(({ className, children, leadingIcon, leadingIconClassName, ...props }, ref) => (
   <AccordionPrimitive.Header className="flex">
     <AccordionPrimitive.Trigger
       ref={ref}
       className={cn(
-        "flex flex-1 items-center justify-between px-3 py-2 text-sm text-text-bright transition-all group-hover:bg-grid-bright [&[data-state=open]>svg]:rotate-180",
+        "flex flex-1 items-center justify-between py-2 pl-2 pr-3 text-sm text-text-bright transition-all group-hover:bg-grid-bright [&[data-state=open]>svg]:rotate-180",
         className
       )}
       {...props}
     >
-      {children}
+      <div className="flex items-center gap-1">
+        {leadingIcon && (
+          <Icon icon={leadingIcon} className={cn("size-5 shrink-0", leadingIconClassName)} />
+        )}
+        <div className="pl-0.5">{children}</div>
+      </div>
       <ChevronDown className="h-4 w-4 shrink-0 transition-transform duration-200" />
     </AccordionPrimitive.Trigger>
   </AccordionPrimitive.Header>
