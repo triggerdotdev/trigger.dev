@@ -143,7 +143,7 @@ const { action, loader } = createActionApiRoute(
         },
         {
           headers: $responseHeaders,
-          status: 408,
+          status: 200,
         }
       );
     } catch (error) {
