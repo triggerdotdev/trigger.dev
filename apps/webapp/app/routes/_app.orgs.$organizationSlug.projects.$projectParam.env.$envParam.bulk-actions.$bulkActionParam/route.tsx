@@ -45,7 +45,12 @@ import {
 import { BulkActionService } from "~/v3/services/bulk/BulkActionV2.server";
 import { logger } from "~/services/logger.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
-import { Form } from "@remix-run/react";
+import { Form, useRevalidator } from "@remix-run/react";
+import { BulkActionStatus, BulkActionType } from "@trigger.dev/database";
+import { formatNumber } from "~/utils/numberFormatter";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { useEventSource } from "~/hooks/useEventSource";
+import { useEffect } from "react";
 
 const BulkActionParamSchema = EnvironmentParamSchema.extend({
   bulkActionParam: z.string(),
@@ -143,6 +148,26 @@ export default function Page() {
   const project = useProject();
   const environment = useEnvironment();
 
+  const disabled = bulkAction.status !== BulkActionStatus.PENDING;
+
+  const streamedEvents = useEventSource(
+    `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.id}/runs/bulkaction/${bulkAction.friendlyId}/stream`,
+    {
+      event: "progress",
+      disabled,
+    }
+  );
+
+  const revalidation = useRevalidator();
+
+  useEffect(() => {
+    if (disabled || streamedEvents === null) {
+      return;
+    }
+
+    revalidation.revalidate();
+  }, [streamedEvents, disabled]);
+
   return (
     <div className="grid h-full max-h-full grid-rows-[2.5rem_2.5rem_1fr_3.25rem] overflow-hidden bg-background-bright">
       <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
@@ -170,7 +195,15 @@ export default function Page() {
       </div>
       <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
         <div className="space-y-3">
-          <div className="p-3">
+          <div className="px-3 pt-3">
+            <Meter
+              type={bulkAction.type}
+              successCount={bulkAction.successCount}
+              failureCount={bulkAction.failureCount}
+              totalCount={bulkAction.totalCount}
+            />
+          </div>
+          <div className="px-3 pb-3">
             <Property.Table>
               <Property.Item>
                 <Property.Label>ID</Property.Label>
@@ -249,4 +282,65 @@ export default function Page() {
       </div>
     </div>
   );
+}
+
+type MeterProps = {
+  type: BulkActionType;
+  successCount: number;
+  failureCount: number;
+  totalCount: number;
+};
+
+function Meter({ type, successCount, failureCount, totalCount }: MeterProps) {
+  const successPercentage = totalCount === 0 ? 0 : (successCount / totalCount) * 100;
+  const failurePercentage = totalCount === 0 ? 0 : (failureCount / totalCount) * 100;
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between">
+        <Paragraph variant="small/bright">Runs</Paragraph>
+        <Paragraph variant="extra-small">
+          {formatNumber(successCount + failureCount)}/{formatNumber(totalCount)}
+        </Paragraph>
+      </div>
+      <div className="relative h-4 w-full overflow-hidden rounded-sm bg-charcoal-900">
+        <SimpleTooltip
+          content={`${formatNumber(successCount)} ${typeText(type)} successfully`}
+          buttonClassName="h-full absolute w-full top-0 left-0 bg-success"
+          buttonStyle={{ width: `${successPercentage}%` }}
+          button={<div className="h-full w-full" />}
+        />
+        <SimpleTooltip
+          content={`${formatNumber(failureCount)} ${typeText(type)} failed`}
+          buttonClassName="h-full absolute top-0 bg-charcoal-550"
+          buttonStyle={{ left: `${successPercentage}%`, width: `${failurePercentage}%` }}
+          button={<div className="h-full w-full" />}
+        />
+      </div>
+      <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
+          <div className="h-2 w-2 rounded-[1px] bg-success" />
+          <Paragraph variant="extra-small">
+            {formatNumber(successCount)} {typeText(type)} successfully
+          </Paragraph>
+        </div>
+        <div className="flex items-center gap-1">
+          <div className="h-2 w-2 rounded-[1px] bg-charcoal-550" />
+          <Paragraph variant="extra-small">
+            {formatNumber(failureCount)} {typeText(type)} failed{" "}
+            {type === BulkActionType.CANCEL ? " (already finished)" : ""}
+          </Paragraph>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function typeText(type: BulkActionType) {
+  switch (type) {
+    case BulkActionType.CANCEL:
+      return "canceled";
+    case BulkActionType.REPLAY:
+      return "replayed";
+  }
 }

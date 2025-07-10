@@ -211,7 +211,11 @@ export class BulkActionService extends BaseService {
 
             failureCount++;
           } else {
-            successCount++;
+            if (!result || result.alreadyFinished) {
+              failureCount++;
+            } else {
+              successCount++;
+            }
           }
         }
 

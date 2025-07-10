@@ -973,7 +973,7 @@ export class RunAttemptSystem {
     finalizeRun?: boolean;
     bulkActionId?: string;
     tx?: PrismaClientOrTransaction;
-  }): Promise<ExecutionResult> {
+  }): Promise<ExecutionResult & { alreadyFinished: boolean }> {
     const prisma = tx ?? this.$.prisma;
     reason = reason ?? "Cancelled by user";
 
@@ -993,7 +993,10 @@ export class RunAttemptSystem {
               },
             });
           }
-          return executionResultFromSnapshot(latestSnapshot);
+          return {
+            alreadyFinished: true,
+            ...executionResultFromSnapshot(latestSnapshot),
+          };
         }
 
         //is pending cancellation and we're not finalizing, alert the worker again
@@ -1003,7 +1006,10 @@ export class RunAttemptSystem {
             snapshot: latestSnapshot,
             eventBus: this.$.eventBus,
           });
-          return executionResultFromSnapshot(latestSnapshot);
+          return {
+            alreadyFinished: false,
+            ...executionResultFromSnapshot(latestSnapshot),
+          };
         }
 
         //set the run to cancelled immediately
@@ -1090,7 +1096,10 @@ export class RunAttemptSystem {
             snapshot: newSnapshot,
             eventBus: this.$.eventBus,
           });
-          return executionResultFromSnapshot(newSnapshot);
+          return {
+            alreadyFinished: false,
+            ...executionResultFromSnapshot(newSnapshot),
+          };
         }
 
         //not executing, so we will actually finish the run
@@ -1157,7 +1166,10 @@ export class RunAttemptSystem {
           }
         }
 
-        return executionResultFromSnapshot(newSnapshot);
+        return {
+          alreadyFinished: false,
+          ...executionResultFromSnapshot(newSnapshot),
+        };
       });
     });
   }

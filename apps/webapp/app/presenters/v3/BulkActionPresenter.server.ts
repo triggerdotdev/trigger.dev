@@ -17,6 +17,8 @@ export class BulkActionPresenter extends BasePresenter {
         createdAt: true,
         completedAt: true,
         totalCount: true,
+        successCount: true,
+        failureCount: true,
         user: {
           select: {
             name: true,

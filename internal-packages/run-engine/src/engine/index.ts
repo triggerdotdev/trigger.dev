@@ -714,7 +714,7 @@ export class RunEngine {
     finalizeRun?: boolean;
     bulkActionId?: string;
     tx?: PrismaClientOrTransaction;
-  }): Promise<ExecutionResult> {
+  }): Promise<ExecutionResult & { alreadyFinished: boolean }> {
     return this.runAttemptSystem.cancelRun({
       runId,
       workerId,
