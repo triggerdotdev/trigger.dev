@@ -36,7 +36,9 @@ It performs a few steps to deploy:
 3. Deploys the code to the Trigger.dev instance.
 4. Registers the tasks as a new version in the environment (prod by default).
 
-You can also setup [GitHub Actions](/github-actions) to deploy your tasks automatically.
+## Deploying from CI
+
+When deploying from CI/CD environments such as GitHub Actions, GitLab CI, or Jenkins, you need to authenticate non-interactively by setting the `TRIGGER_ACCESS_TOKEN` environment variable. Please see the [CI / GitHub Actions guide](/github-actions) for more information.
 
 ## Arguments
 

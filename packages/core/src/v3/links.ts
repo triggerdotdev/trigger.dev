@@ -20,6 +20,10 @@ export const links = {
         "https://trigger.dev/docs/queue-concurrency#waiting-for-a-subtask-on-the-same-queue",
       deadlock: "https://trigger.dev/docs/queue-concurrency#deadlock",
     },
+    gitHubActions: {
+      personalAccessToken:
+        "https://trigger.dev/docs/github-actions#creating-a-personal-access-token",
+    },
   },
   site: {
     home: "https://trigger.dev",
