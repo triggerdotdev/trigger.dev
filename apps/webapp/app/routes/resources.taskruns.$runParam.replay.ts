@@ -11,6 +11,9 @@ import { requireUserId } from "~/services/session.server";
 import { sortEnvironments } from "~/utils/environmentSort";
 import { v3RunSpanPath } from "~/utils/pathBuilder";
 import { ReplayTaskRunService } from "~/v3/services/replayTaskRun.server";
+import parseDuration from "parse-duration";
+import { findCurrentWorkerDeployment } from "~/v3/models/workerDeployment.server";
+import { queueTypeFromType } from "~/presenters/v3/QueueRetrievePresenter.server";
 
 const ParamSchema = z.object({
   runParam: z.string(),
@@ -24,7 +27,18 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     select: {
       payload: true,
       payloadType: true,
+      seedMetadata: true,
+      seedMetadataType: true,
       runtimeEnvironmentId: true,
+      concurrencyKey: true,
+      maxAttempts: true,
+      maxDurationInSeconds: true,
+      machinePreset: true,
+      ttl: true,
+      idempotencyKey: true,
+      runTags: true,
+      queue: true,
+      taskIdentifier: true,
       project: {
         select: {
           environments: {
@@ -71,9 +85,82 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     throw new Response("Environment not found", { status: 404 });
   }
 
+  const task =
+    environment.type !== "DEVELOPMENT"
+      ? (await findCurrentWorkerDeployment({ environmentId: environment.id }))?.worker?.tasks.find(
+          (t) => t.slug === run.taskIdentifier
+        )
+      : await $replica.backgroundWorkerTask.findFirst({
+          select: {
+            queueId: true,
+          },
+          where: {
+            slug: run.taskIdentifier,
+            runtimeEnvironmentId: environment.id,
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+        });
+
+  const taskQueue = task?.queueId
+    ? await $replica.taskQueue.findFirst({
+        where: {
+          runtimeEnvironmentId: environment.id,
+          id: task.queueId,
+        },
+        select: {
+          friendlyId: true,
+          name: true,
+          type: true,
+          paused: true,
+        },
+      })
+    : undefined;
+
+  const backgroundWorkers = await $replica.backgroundWorker.findMany({
+    where: {
+      runtimeEnvironmentId: environment.id,
+    },
+    select: {
+      version: true,
+      engine: true,
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+    take: 20, // last 20 versions should suffice
+  });
+
+  const latestVersions = backgroundWorkers.map((v) => v.version);
+  const disableVersionSelection = environment.type === "DEVELOPMENT";
+  const allowArbitraryQueues = backgroundWorkers[0]?.engine === "V1";
+
   return typedjson({
+    concurrencyKey: run.concurrencyKey,
+    maxAttempts: run.maxAttempts,
+    maxDurationSeconds: run.maxDurationInSeconds,
+    machinePreset: run.machinePreset,
+    ttlSeconds: run.ttl ? parseDuration(run.ttl, "s") ?? undefined : undefined,
+    idempotencyKey: run.idempotencyKey,
+    runTags: run.runTags,
     payload: await prettyPrintPacket(run.payload, run.payloadType),
     payloadType: run.payloadType,
+    queue: run.queue,
+    metadata: run.seedMetadata
+      ? await prettyPrintPacket(run.seedMetadata, run.seedMetadataType)
+      : undefined,
+    defaultTaskQueue: taskQueue
+      ? {
+          id: taskQueue.friendlyId,
+          name: taskQueue.name.replace(/^task\//, ""),
+          type: queueTypeFromType(taskQueue.type),
+          paused: taskQueue.paused,
+        }
+      : undefined,
+    latestVersions,
+    disableVersionSelection,
+    allowArbitraryQueues,
     environment: {
       ...displayableEnvironment(environment, userId),
       branchName: environment.branchName ?? undefined,
@@ -176,13 +263,13 @@ export const action: ActionFunction = async ({ request, params }) => {
         },
       });
       return redirectWithErrorMessage(submission.value.failedRedirect, request, error.message);
-    } else {
-      logger.error("Failed to replay run", { error });
-      return redirectWithErrorMessage(
-        submission.value.failedRedirect,
-        request,
-        JSON.stringify(error)
-      );
     }
+
+    logger.error("Failed to replay run", { error });
+    return redirectWithErrorMessage(
+      submission.value.failedRedirect,
+      request,
+      JSON.stringify(error)
+    );
   }
 };

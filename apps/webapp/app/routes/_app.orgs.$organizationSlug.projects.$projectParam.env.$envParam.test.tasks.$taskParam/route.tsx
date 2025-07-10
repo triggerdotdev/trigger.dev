@@ -357,7 +357,7 @@ function StandardTaskForm({
   const currentPayloadJson = useRef<string>(defaultPayloadJson);
 
   const [defaultMetadataJson, setDefaultMetadataJson] = useState<string>(
-    lastRun?.seedMetadata ?? "{}"
+    lastRun?.seedMetadata ?? startingJson
   );
   const setMetadata = useCallback((code: string) => {
     setDefaultMetadataJson(code);
