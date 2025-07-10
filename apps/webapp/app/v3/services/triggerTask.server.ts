@@ -15,6 +15,7 @@ import { TriggerTaskServiceV1 } from "./triggerTaskV1.server";
 import { DefaultTraceEventsConcern } from "~/runEngine/concerns/traceEvents.server";
 import { DefaultRunChainStateManager } from "~/runEngine/concerns/runChainStates.server";
 import { env } from "~/env.server";
+import { Evt } from "evt";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -113,6 +114,7 @@ export class TriggerTaskService extends WithRunEngine {
       ),
       tracer: tracer,
     });
+
     return await service.call({
       taskId,
       environment,

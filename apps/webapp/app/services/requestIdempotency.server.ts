@@ -3,6 +3,7 @@ import { createCache, DefaultStatefulContext, Namespace, Cache as UnkeyCache } f
 import { MemoryStore } from "@unkey/cache/stores";
 import { RedisCacheStore } from "./unkey/redisCacheStore.server";
 import { RedisWithClusterOptions } from "~/redis.server";
+import { validate as uuidValidate, version as uuidVersion } from "uuid";
 
 export type RequestIdempotencyServiceOptions<TTypes extends string> = {
   types: TTypes[];
@@ -53,6 +54,14 @@ export class RequestIdempotencyService<TTypes extends string> {
   }
 
   async checkRequest(type: TTypes, requestId: string) {
+    if (!this.#validateRequestId(requestId)) {
+      this.logger.warn("RequestIdempotency: invalid requestId", {
+        requestId,
+      });
+
+      return undefined;
+    }
+
     const key = `${type}:${requestId}`;
     const result = await this.cache.requests.get(key);
 
@@ -67,6 +76,13 @@ export class RequestIdempotencyService<TTypes extends string> {
   }
 
   async saveRequest(type: TTypes, requestId: string, value: RequestIdempotencyCacheEntry) {
+    if (!this.#validateRequestId(requestId)) {
+      this.logger.warn("RequestIdempotency: invalid requestId", {
+        requestId,
+      });
+      return undefined;
+    }
+
     const key = `${type}:${requestId}`;
     const result = await this.cache.requests.set(key, value);
 
@@ -86,4 +102,13 @@ export class RequestIdempotencyService<TTypes extends string> {
 
     return result;
   }
+
+  // The requestId should be a valid UUID
+  #validateRequestId(requestId: string): boolean {
+    return isValidV4UUID(requestId);
+  }
+}
+
+function isValidV4UUID(uuid: string): boolean {
+  return uuidValidate(uuid) && uuidVersion(uuid) === 4;
 }

@@ -21,7 +21,6 @@ const { action, loader } = createActionApiRoute(
   {
     headers: HeadersSchema.extend({
       "batch-processing-strategy": BatchProcessingStrategy.nullish(),
-      "x-trigger-request-id": z.string().nullish(),
     }),
     body: BatchTriggerTaskV3RequestBody,
     allowJWT: true,
