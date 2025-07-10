@@ -5,6 +5,7 @@ import { createRedisClient, RedisClient, RedisWithClusterOptions } from "~/redis
 
 export type RedisCacheStoreConfig = {
   connection: RedisWithClusterOptions;
+  name?: string;
 };
 
 export class RedisCacheStore<TNamespace extends string, TValue = any>
@@ -14,7 +15,7 @@ export class RedisCacheStore<TNamespace extends string, TValue = any>
   private readonly redis: RedisClient;
 
   constructor(config: RedisCacheStoreConfig) {
-    this.redis = createRedisClient("trigger:cacheStore", config.connection);
+    this.redis = createRedisClient(config.name ?? "trigger:cacheStore", config.connection);
   }
 
   private buildCacheKey(namespace: TNamespace, key: string): string {

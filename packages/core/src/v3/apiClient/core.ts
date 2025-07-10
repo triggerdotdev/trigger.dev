@@ -18,6 +18,7 @@ import {
   OffsetLimitPageResponse,
 } from "./pagination.js";
 import { EventSource, type ErrorEvent } from "eventsource";
+import { randomUUID } from "../utils/crypto.js";
 
 export const defaultRetryOptions = {
   maxAttempts: 3,
@@ -200,7 +201,10 @@ async function _doZodFetch<TResponseBodySchema extends z.ZodTypeAny>(
   let $requestInit = await requestInit;
 
   return traceZodFetch({ url, requestInit: $requestInit, options }, async (span) => {
+    const requestId = await randomUUID();
+
     $requestInit = injectPropagationHeadersIfInWorker($requestInit);
+    $requestInit = injectRequestId(requestId, $requestInit);
 
     const result = await _doZodFetchWithRetries(schema, url, $requestInit, options);
 
@@ -624,6 +628,17 @@ function injectPropagationHeadersIfInWorker(requestInit?: RequestInit): RequestI
   return {
     ...requestInit,
     headers: new Headers(headersObject),
+  };
+}
+
+function injectRequestId(requestId: string, requestInit?: RequestInit): RequestInit | undefined {
+  const headers = new Headers(requestInit?.headers);
+
+  headers.set("x-trigger-request-id", requestId);
+
+  return {
+    ...requestInit,
+    headers,
   };
 }
 

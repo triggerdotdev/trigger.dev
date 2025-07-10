@@ -13,11 +13,15 @@ import { BatchProcessingStrategy } from "~/v3/services/batchTriggerV3.server";
 import { OutOfEntitlementError } from "~/v3/services/triggerTask.server";
 import { HeadersSchema } from "./api.v1.tasks.$taskId.trigger";
 import { RunEngineBatchTriggerService } from "~/runEngine/services/batchTrigger.server";
+import { z } from "zod";
+import { requestIdempotency } from "~/services/requestIdempotencyInstance.server";
+import { prisma } from "~/db.server";
 
 const { action, loader } = createActionApiRoute(
   {
     headers: HeadersSchema.extend({
       "batch-processing-strategy": BatchProcessingStrategy.nullish(),
+      "x-trigger-request-id": z.string().nullish(),
     }),
     body: BatchTriggerTaskV3RequestBody,
     allowJWT: true,
@@ -53,6 +57,7 @@ const { action, loader } = createActionApiRoute(
       "x-trigger-client": triggerClient,
       "x-trigger-engine-version": engineVersion,
       "batch-processing-strategy": batchProcessingStrategy,
+      "x-trigger-request-id": requestId,
       traceparent,
       tracestate,
     } = headers;
@@ -67,7 +72,56 @@ const { action, loader } = createActionApiRoute(
       traceparent,
       tracestate,
       batchProcessingStrategy,
+      requestId,
     });
+
+    if (requestId) {
+      logger.debug("request-idempotency: checking for cached batch-trigger request", {
+        requestId,
+      });
+
+      const cachedRequest = await requestIdempotency.checkRequest("batch-trigger", requestId);
+
+      if (cachedRequest) {
+        logger.info("request-idempotency: found cached batch-trigger request", {
+          requestId,
+          cachedRequest,
+        });
+
+        // Find the batch and return it as a 200 response
+        const cachedBatch = await prisma.batchTaskRun.findFirst({
+          where: {
+            id: cachedRequest.id,
+            runtimeEnvironmentId: authentication.environment.id,
+          },
+          select: {
+            friendlyId: true,
+            runCount: true,
+          },
+        });
+
+        if (cachedBatch) {
+          logger.info("request-idempotency: found cached batch-trigger request", {
+            requestId,
+            cachedRequest,
+            cachedBatch,
+          });
+
+          const responseBody = {
+            id: cachedBatch.friendlyId,
+            runCount: cachedBatch.runCount,
+          };
+
+          const $responseHeaders = await responseHeaders(
+            responseBody,
+            authentication.environment,
+            triggerClient
+          );
+
+          return json(responseBody, { status: 200, headers: $responseHeaders });
+        }
+      }
+    }
 
     const traceContext =
       traceparent && isFromWorker // If the request is from a worker, we should pass the trace context
@@ -75,6 +129,14 @@ const { action, loader } = createActionApiRoute(
         : undefined;
 
     const service = new RunEngineBatchTriggerService(batchProcessingStrategy ?? undefined);
+
+    service.onBatchTaskRunCreated.attachOnce(async (batch) => {
+      if (requestId) {
+        await requestIdempotency.saveRequest("batch-trigger", requestId, {
+          id: batch.id,
+        });
+      }
+    });
 
     try {
       const batch = await service.call(authentication.environment, body, {
@@ -90,7 +152,10 @@ const { action, loader } = createActionApiRoute(
         triggerClient
       );
 
-      return json(batch, { status: 202, headers: $responseHeaders });
+      return json(batch, {
+        status: 202,
+        headers: $responseHeaders,
+      });
     } catch (error) {
       logger.error("Batch trigger error", {
         error: {
