@@ -1,9 +1,13 @@
 ---
-title: "GitHub Actions"
-description: "You can easily deploy your tasks with GitHub actions."
+title: "CI / GitHub Actions"
+description: "You can easily deploy your tasks with GitHub actions and other CI environments."
 ---
 
-This simple GitHub action file will deploy your Trigger.dev tasks when new code is pushed to the `main` branch and the `trigger` directory has changes in it.
+The instructions below are specific to GitHub Actions, but the same concepts can be used with other CI systems.
+
+## GitHub Actions example
+
+This simple GitHub action workflow will deploy your Trigger.dev tasks when new code is pushed to the `main` branch and the `trigger` directory has changes in it.
 
 <Warning>
   The deploy step will fail if any version mismatches are detected. Please see the [version
