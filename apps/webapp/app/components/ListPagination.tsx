@@ -16,9 +16,31 @@ export type Direction = z.infer<typeof DirectionSchema>;
 
 export function ListPagination({ list, className }: { list: List; className?: string }) {
   return (
-    <div className={cn("flex items-center gap-1", className)}>
+    <div className={cn("flex items-center", className)}>
       <PreviousButton cursor={list.pagination.previous} />
       <NextButton cursor={list.pagination.next} />
+    </div>
+  );
+}
+
+function PreviousButton({ cursor }: { cursor?: string }) {
+  const path = useCursorPath(cursor, "backward");
+
+  return (
+    <div className="peer">
+      <LinkButton
+        to={path ?? "#"}
+        variant={"secondary/small"}
+        LeadingIcon={ChevronLeftIcon}
+        className={cn(
+          "flex items-center rounded-r-none border-r-0 pl-2 pr-[0.5625rem]",
+          !path && "cursor-not-allowed opacity-50 group-hover/button:bg-transparent"
+        )}
+        onClick={(e) => !path && e.preventDefault()}
+        shortcut={{ key: "j" }}
+        tooltip="Previous"
+        disabled={!path}
+      />
     </div>
   );
 }
@@ -27,39 +49,21 @@ function NextButton({ cursor }: { cursor?: string }) {
   const path = useCursorPath(cursor, "forward");
 
   return (
-    <LinkButton
-      to={path ?? "#"}
-      variant={"secondary/small"}
-      TrailingIcon={ChevronRightIcon}
-      className={cn(
-        "flex items-center",
-        !path && "cursor-not-allowed opacity-50 group-hover/button:bg-transparent"
-      )}
-      onClick={(e) => !path && e.preventDefault()}
-      shortcut={{ key: "k" }}
-      tooltip="Next"
-      disabled={!path}
-    />
-  );
-}
-
-function PreviousButton({ cursor }: { cursor?: string }) {
-  const path = useCursorPath(cursor, "backward");
-
-  return (
-    <LinkButton
-      to={path ?? "#"}
-      variant={"secondary/small"}
-      LeadingIcon={ChevronLeftIcon}
-      className={cn(
-        "flex items-center",
-        !path && "cursor-not-allowed opacity-50 group-hover/button:bg-transparent"
-      )}
-      onClick={(e) => !path && e.preventDefault()}
-      shortcut={{ key: "j" }}
-      tooltip="Previous"
-      disabled={!path}
-    />
+    <div className="border-l border-charcoal-600 transition peer-hover:border-l peer-hover:border-l-charcoal-550 hover:border-l-charcoal-550">
+      <LinkButton
+        to={path ?? "#"}
+        variant={"secondary/small"}
+        TrailingIcon={ChevronRightIcon}
+        className={cn(
+          "flex items-center rounded-l-none border-l-0 pl-[0.5625rem] pr-2",
+          !path && "cursor-not-allowed opacity-50 group-hover/button:bg-transparent"
+        )}
+        onClick={(e) => !path && e.preventDefault()}
+        shortcut={{ key: "k" }}
+        tooltip="Next"
+        disabled={!path}
+      />
+    </div>
   );
 }
 
