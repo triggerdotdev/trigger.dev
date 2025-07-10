@@ -1,0 +1,30 @@
+---
+title: "Lightpanda"
+sidebarTitle: "lightpanda"
+description: "Use the lightpanda build extension to be able to use Lightpanda Browser in your project"
+---
+
+<ScrapingWarning />
+
+To use Lightpanda in your project, add these build settings to your `trigger.config.ts` file:
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+import { lightpanda } from "@trigger.dev/build/extensions/lightpanda";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  build: {
+    extensions: [lightpanda()],
+  },
+});
+```
+
+And add the following environment variable in your Trigger.dev dashboard on the Environment Variables page:
+
+```bash
+LIGHTPANDA_BROWSER_PATH: "/usr/bin/lightpanda",
+```
+
+Follow [this example](/guides/examples/lightpanda) to get setup with Trigger.dev and Lightpanda in your project.
