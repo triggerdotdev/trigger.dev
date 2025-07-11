@@ -1,5 +1,13 @@
 # @trigger.dev/sdk
 
+## 4.0.0-v4-beta.23
+
+### Patch Changes
+
+- New internal idempotency implementation for trigger and batch trigger to prevent request retries from duplicating work ([#2256](https://github.com/triggerdotdev/trigger.dev/pull/2256))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.23`
+
 ## 4.0.0-v4-beta.22
 
 ### Patch Changes
