@@ -2,16 +2,12 @@ import { BookOpenIcon, PlusIcon } from "@heroicons/react/20/solid";
 import { Outlet, useParams, type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
-import { schedules } from "@trigger.dev/sdk";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { BulkActionsNone } from "~/components/BlankStatePanels";
-import { InlineCode } from "~/components/code/InlineCode";
-import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
-import { TruncatedCopyableValue } from "~/components/primitives/TruncatedCopyableValue";
 import { DateTime } from "~/components/primitives/DateTime";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { PaginationControls } from "~/components/primitives/Pagination";
@@ -30,13 +26,8 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
+import { TruncatedCopyableValue } from "~/components/primitives/TruncatedCopyableValue";
 import { BulkActionStatusCombo, BulkActionTypeCombo } from "~/components/runs/v3/BulkAction";
-import { EnabledStatus } from "~/components/runs/v3/EnabledStatus";
-import {
-  ScheduleTypeIcon,
-  scheduleTypeName,
-  ScheduleTypeCombo,
-} from "~/components/runs/v3/ScheduleType";
 import { UserAvatar } from "~/components/UserProfilePhoto";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -44,7 +35,7 @@ import { useProject } from "~/hooks/useProject";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
-  BulkActionListItem,
+  type BulkActionListItem,
   BulkActionListPresenter,
 } from "~/presenters/v3/BulkActionListPresenter.server";
 import { requireUserId } from "~/services/session.server";
@@ -54,7 +45,6 @@ import {
   EnvironmentParamSchema,
   v3BulkActionPath,
   v3CreateBulkActionPath,
-  v3SchedulePath,
 } from "~/utils/pathBuilder";
 
 export const meta: MetaFunction = () => {
@@ -154,20 +144,20 @@ export default function Page() {
               <div
                 className={cn(
                   "grid max-h-full min-h-full overflow-x-auto",
-                  totalPages > 1 ? "grid-rows-[auto_1fr_auto]" : "grid-rows-[auto_1fr]"
+                  totalPages > 1 ? "grid-rows-[auto_1fr_auto]" : "grid-rows-[1fr]"
                 )}
               >
-                <div className="flex items-center justify-end gap-x-2 p-2">
-                  <div className="flex items-center justify-end gap-x-2">
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-end gap-x-2 p-2">
                     <PaginationControls
                       currentPage={currentPage}
                       totalPages={totalPages}
                       showPageNumbers={false}
                     />
                   </div>
-                </div>
+                )}
 
-                <BulkActionsTable bulkActions={bulkActions} />
+                <BulkActionsTable bulkActions={bulkActions} totalPages={totalPages} />
                 {totalPages > 1 && (
                   <div
                     className={cn(
@@ -195,14 +185,20 @@ export default function Page() {
   );
 }
 
-function BulkActionsTable({ bulkActions }: { bulkActions: BulkActionListItem[] }) {
+function BulkActionsTable({
+  bulkActions,
+  totalPages,
+}: {
+  bulkActions: BulkActionListItem[];
+  totalPages: number;
+}) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
   const { bulkActionParam } = useParams();
 
   return (
-    <Table>
+    <Table containerClassName={cn(totalPages === 1 && "border-t-0")}>
       <TableHeader>
         <TableRow>
           <TableHeaderCell>ID</TableHeaderCell>
