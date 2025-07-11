@@ -644,6 +644,8 @@ model TaskRun {
 
   logsDeletedAt DateTime?
 
+  replayedFromTaskRunFriendlyId String?
+
   /// This represents the original task that that was triggered outside of a Trigger.dev task
   rootTaskRun   TaskRun? @relation("TaskRootRun", fields: [rootTaskRunId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   rootTaskRunId String?

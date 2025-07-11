@@ -218,6 +218,7 @@ export class SpanPresenter extends BasePresenter {
             friendlyId: true,
           },
         },
+        replayedFromTaskRunFriendlyId: true,
       },
       where: span.originalRun
         ? {
@@ -331,6 +332,7 @@ export class SpanPresenter extends BasePresenter {
       runtime: run.lockedToVersion?.runtime,
       runtimeVersion: run.lockedToVersion?.runtimeVersion,
       isTest: run.isTest,
+      replayedFromTaskRunFriendlyId: run.replayedFromTaskRunFriendlyId,
       environmentId: run.runtimeEnvironment.id,
       idempotencyKey: run.idempotencyKey,
       idempotencyKeyExpiresAt: run.idempotencyKeyExpiresAt,

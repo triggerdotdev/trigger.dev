@@ -264,6 +264,7 @@ export class RunEngineTriggerTaskService {
                   spanId: event.spanId,
                   parentSpanId:
                     options.parentAsLinkType === "replay" ? undefined : event.traceparent?.spanId,
+                  replayedFromTaskRunFriendlyId: options.replayedFromTaskRunFriendlyId,
                   lockedToVersionId: lockedToBackgroundWorker?.id,
                   taskVersion: lockedToBackgroundWorker?.version,
                   sdkVersion: lockedToBackgroundWorker?.sdkVersion,
