@@ -36,7 +36,7 @@ import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { TextLink } from "~/components/primitives/TextLink";
 import { type loader } from "~/routes/resources.taskruns.$runParam.replay";
 import { docsPath } from "~/utils/pathBuilder";
-import { ReplayTaskData } from "~/v3/replayTask";
+import { ReplayRunData } from "~/v3/replayTask";
 import { RectangleStackIcon } from "@heroicons/react/20/solid";
 import { Badge } from "~/components/primitives/Badge";
 import { RunTagInput } from "./RunTagInput";
@@ -148,27 +148,6 @@ function ReplayForm({
     replayData.payloadType === "application/json" ||
     replayData.payloadType === "application/super+json";
 
-  const submitForm = useCallback(
-    (e: React.FormEvent<HTMLFormElement>) => {
-      const formData = new FormData(e.currentTarget);
-      const data: Record<string, string> = {
-        environment: formData.get("environment") as string,
-        failedRedirect: formData.get("failedRedirect") as string,
-      };
-
-      if (editablePayload) {
-        data.payload = currentPayloadJson.current;
-      }
-
-      submit(data, {
-        action: formAction,
-        method: "post",
-      });
-      e.preventDefault();
-    },
-    [currentPayloadJson]
-  );
-
   const [tab, setTab] = useState<"payload" | "metadata">("payload");
 
   const { defaultTaskQueue } = replayData;
@@ -217,7 +196,7 @@ function ReplayForm({
       submit(formData, { method: "POST", action: formAction });
     },
     onValidate({ formData }) {
-      return parse(formData, { schema: ReplayTaskData });
+      return parse(formData, { schema: ReplayRunData });
     },
   });
 
@@ -225,8 +204,8 @@ function ReplayForm({
     <Form
       action={formAction}
       method="post"
-      onSubmit={(e) => submitForm(e)}
       className="flex flex-1 flex-col overflow-hidden px-3"
+      {...form.props}
     >
       <input type="hidden" name="failedRedirect" value={failedRedirect} />
 
@@ -242,16 +221,16 @@ function ReplayForm({
           <div className="rounded-smbg-charcoal-900 mb-3 h-full min-h-40 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
             <JSONEditor
               autoFocus
-              defaultValue={!tab || tab === "payload" ? defaultPayloadJson : defaultMetadataJson}
+              defaultValue={tab === "payload" ? defaultPayloadJson : defaultMetadataJson}
               readOnly={false}
               basicSetup
               onChange={(v) => {
-                if (!tab || tab === "payload") {
+                if (tab === "payload") {
                   currentPayloadJson.current = v;
-                  setDefaultPayloadJson(v);
+                  setPayload(v);
                 } else {
                   currentMetadataJson.current = v;
-                  setDefaultMetadataJson(v);
+                  setMetadata(v);
                 }
               }}
               height="100%"
@@ -261,7 +240,7 @@ function ReplayForm({
                 <TabContainer className="flex grow items-baseline justify-between self-end border-none">
                   <div className="flex gap-5">
                     <TabButton
-                      isActive={!tab || tab === "payload"}
+                      isActive={tab === "payload"}
                       layoutId="replay-editor"
                       onClick={() => {
                         setTab("payload");
@@ -505,8 +484,7 @@ function ReplayForm({
           <InputGroup className="flex flex-row items-center">
             <Label>Replay this run in</Label>
             <Select
-              id="environment"
-              name="environment"
+              {...conform.select(environment)}
               placeholder="Select an environment"
               defaultValue={replayData.environment.id}
               items={replayData.environments}

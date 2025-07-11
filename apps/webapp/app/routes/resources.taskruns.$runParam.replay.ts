@@ -14,6 +14,7 @@ import { ReplayTaskRunService } from "~/v3/services/replayTaskRun.server";
 import parseDuration from "parse-duration";
 import { findCurrentWorkerDeployment } from "~/v3/models/workerDeployment.server";
 import { queueTypeFromType } from "~/presenters/v3/QueueRetrievePresenter.server";
+import { ReplayRunData } from "~/v3/replayTask";
 
 const ParamSchema = z.object({
   runParam: z.string(),
@@ -179,26 +180,18 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   });
 }
 
-const FormSchema = z.object({
-  environment: z.string().optional(),
-  payload: z.string().optional(),
-  failedRedirect: z.string(),
-});
-
 export const action: ActionFunction = async ({ request, params }) => {
-  const userId = await requireUserId(request);
-
   const { runParam } = ParamSchema.parse(params);
 
   const formData = await request.formData();
-  const submission = parse(formData, { schema: FormSchema });
+  const submission = parse(formData, { schema: ReplayRunData });
 
   if (!submission.value) {
     return json(submission);
   }
 
   try {
-    const taskRun = await prisma.taskRun.findUnique({
+    const taskRun = await prisma.taskRun.findFirst({
       where: {
         friendlyId: runParam,
       },
@@ -224,6 +217,18 @@ export const action: ActionFunction = async ({ request, params }) => {
     const newRun = await replayRunService.call(taskRun, {
       environmentId: submission.value.environment,
       payload: submission.value.payload,
+      metadata: submission.value.metadata,
+      tags: submission.value.tags,
+      queue: submission.value.queue,
+      concurrencyKey: submission.value.concurrencyKey,
+      maxAttempts: submission.value.maxAttempts,
+      maxDurationSeconds: submission.value.maxDurationSeconds,
+      machine: submission.value.machine,
+      delaySeconds: submission.value.delaySeconds,
+      idempotencyKey: submission.value.idempotencyKey,
+      idempotencyKeyTTLSeconds: submission.value.idempotencyKeyTTLSeconds,
+      ttlSeconds: submission.value.ttlSeconds,
+      version: submission.value.version,
     });
 
     if (!newRun) {

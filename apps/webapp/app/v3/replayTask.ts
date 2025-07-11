@@ -1,13 +1,47 @@
 import { z } from "zod";
 import { RunOptionsData } from "./testTask";
 
-export const ReplayTaskData = z
+export const ReplayRunData = z
   .object({
     environment: z.string().optional(),
-    payload: z.string().optional(),
-    metadata: z.string().optional(),
+    payload: z
+      .string()
+      .optional()
+      .transform((val, ctx) => {
+        if (!val) {
+          return {};
+        }
+
+        try {
+          return JSON.parse(val);
+        } catch {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Payload must be a valid JSON string",
+          });
+          return z.NEVER;
+        }
+      }),
+    metadata: z
+      .string()
+      .optional()
+      .transform((val, ctx) => {
+        if (!val) {
+          return {};
+        }
+
+        try {
+          return JSON.parse(val);
+        } catch {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Metadata must be a valid JSON string",
+          });
+          return z.NEVER;
+        }
+      }),
     failedRedirect: z.string(),
   })
   .and(RunOptionsData);
 
-export type ReplayTaskData = z.infer<typeof ReplayTaskData>;
+export type ReplayRunData = z.infer<typeof ReplayRunData>;

@@ -48,6 +48,8 @@ export const RunOptionsData = z.object({
   version: z.string().optional(),
 });
 
+export type RunOptionsData = z.infer<typeof RunOptionsData>;
+
 export const TestTaskData = z
   .discriminatedUnion("triggerSource", [
     z.object({
