@@ -1,40 +1,34 @@
-import { ArrowPathIcon, BookOpenIcon } from "@heroicons/react/20/solid";
+import { ArrowPathIcon } from "@heroicons/react/20/solid";
+import { Form, useRevalidator } from "@remix-run/react";
 import { ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
+import { BulkActionStatus, BulkActionType } from "@trigger.dev/database";
+import { useEffect } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
-import { InlineCode } from "~/components/code/InlineCode";
-import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
-import { TruncatedCopyableValue } from "~/components/primitives/TruncatedCopyableValue";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTime } from "~/components/primitives/DateTime";
-import { Header2, Header3 } from "~/components/primitives/Headers";
+import { Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
-import {
-  Table,
-  TableBlankRow,
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableHeaderCell,
-  TableRow,
-} from "~/components/primitives/Table";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { BulkActionStatusCombo, BulkActionTypeCombo } from "~/components/runs/v3/BulkAction";
-import { EnabledStatus } from "~/components/runs/v3/EnabledStatus";
-import { ScheduleTypeCombo } from "~/components/runs/v3/ScheduleType";
 import { UserAvatar } from "~/components/UserProfilePhoto";
 import { useEnvironment } from "~/hooks/useEnvironment";
+import { useEventSource } from "~/hooks/useEventSource";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { BulkActionPresenter } from "~/presenters/v3/BulkActionPresenter.server";
+import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
+import { formatNumber } from "~/utils/numberFormatter";
 import {
   EnvironmentParamSchema,
   v3BulkActionPath,
@@ -43,14 +37,6 @@ import {
   v3RunsPath,
 } from "~/utils/pathBuilder";
 import { BulkActionService } from "~/v3/services/bulk/BulkActionV2.server";
-import { logger } from "~/services/logger.server";
-import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
-import { Form, useRevalidator } from "@remix-run/react";
-import { BulkActionStatus, BulkActionType } from "@trigger.dev/database";
-import { formatNumber } from "~/utils/numberFormatter";
-import { SimpleTooltip } from "~/components/primitives/Tooltip";
-import { useEventSource } from "~/hooks/useEventSource";
-import { useEffect } from "react";
 
 const BulkActionParamSchema = EnvironmentParamSchema.extend({
   bulkActionParam: z.string(),
