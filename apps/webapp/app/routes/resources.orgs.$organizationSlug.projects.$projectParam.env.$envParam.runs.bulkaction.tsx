@@ -246,7 +246,7 @@ export function CreateBulkActionInspector({
               project,
               environment
             )}?${closedSearchParams.toString()}`}
-            variant="minimal/medium"
+            variant="minimal/small"
             TrailingIcon={ExitIcon}
             shortcut={{ key: "esc" }}
             shortcutPosition="before-trailing-icon"
@@ -389,7 +389,7 @@ export function CreateBulkActionInspector({
                   key: "enter",
                   enabledOnInputElements: true,
                 }}
-                disabled={impactedCountElement === 0}
+                disabled={impactedCountElement === 0 || isDialogOpen}
               >
                 {action === "replay" ? (
                   <span className="text-text-bright">Replay {impactedCountElement} runs…</span>
@@ -436,6 +436,11 @@ export function CreateBulkActionInspector({
                   form="bulk-action-form"
                   variant={action === "replay" ? "primary/medium" : "danger/medium"}
                   disabled={impactedCountElement === 0}
+                  shortcut={{
+                    modifiers: ["meta"],
+                    key: "enter",
+                    enabledOnInputElements: true,
+                  }}
                 >
                   {action === "replay" ? (
                     <span className="text-text-bright">Replay {impactedCountElement} runs</span>
