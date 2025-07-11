@@ -427,6 +427,7 @@ export class TriggerTaskServiceV1 extends BaseService {
                       parentAttempt?.taskRun.id ??
                       dependentBatchRun?.dependentTaskAttempt?.taskRun.rootTaskRunId ??
                       dependentBatchRun?.dependentTaskAttempt?.taskRun.id,
+                    replayedFromTaskRunFriendlyId: options.replayedFromTaskRunFriendlyId,
                     batchId: dependentBatchRun?.id ?? parentBatchRun?.id,
                     resumeParentOnCompletion: !!(dependentAttempt ?? dependentBatchRun),
                     depth,
