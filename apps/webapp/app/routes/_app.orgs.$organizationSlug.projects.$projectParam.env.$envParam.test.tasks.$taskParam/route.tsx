@@ -941,7 +941,7 @@ function ScheduledTaskForm({
           />
         </div>
       </div>
-      <div className="grow overflow-y-scroll p-3">
+      <div className="grow overflow-y-scroll p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
         <Fieldset>
           <InputGroup>
             <Label htmlFor={timestamp.id} variant="small">
