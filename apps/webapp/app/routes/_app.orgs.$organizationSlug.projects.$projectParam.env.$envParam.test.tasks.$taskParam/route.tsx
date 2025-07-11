@@ -481,10 +481,10 @@ function StandardTaskForm({
                 onChange={(v) => {
                   if (!tab || tab === "payload") {
                     currentPayloadJson.current = v;
-                    setDefaultPayloadJson(v);
+                    setPayload(v);
                   } else {
                     currentMetadataJson.current = v;
-                    setDefaultMetadataJson(v);
+                    setMetadata(v);
                   }
                 }}
                 height="100%"
