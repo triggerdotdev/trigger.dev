@@ -1,6 +1,6 @@
 import { parse } from "@conform-to/zod";
 import { type ActionFunction, json, type LoaderFunctionArgs } from "@remix-run/node";
-import { prettyPrintPacket } from "@trigger.dev/core/v3";
+import { type EnvironmentType, prettyPrintPacket } from "@trigger.dev/core/v3";
 import { typedjson } from "remix-typedjson";
 import { z } from "zod";
 import { $replica, prisma } from "~/db.server";
@@ -99,54 +99,10 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     throw new Response("Environment not found", { status: 404 });
   }
 
-  const task =
-    environment.type !== "DEVELOPMENT"
-      ? (
-          await findCurrentWorkerDeployment({
-            environmentId: environment.id,
-          })
-        )?.worker?.tasks.find((t) => t.slug === run.taskIdentifier)
-      : await $replica.backgroundWorkerTask.findFirst({
-          select: {
-            queueId: true,
-          },
-          where: {
-            slug: run.taskIdentifier,
-            runtimeEnvironmentId: environment.id,
-          },
-          orderBy: {
-            createdAt: "desc",
-          },
-        });
-
-  const taskQueue = task?.queueId
-    ? await $replica.taskQueue.findFirst({
-        where: {
-          runtimeEnvironmentId: environment.id,
-          id: task.queueId,
-        },
-        select: {
-          friendlyId: true,
-          name: true,
-          type: true,
-          paused: true,
-        },
-      })
-    : undefined;
-
-  const backgroundWorkers = await $replica.backgroundWorker.findMany({
-    where: {
-      runtimeEnvironmentId: environment.id,
-    },
-    select: {
-      version: true,
-      engine: true,
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-    take: 20, // last 20 versions should suffice
-  });
+  const [taskQueue, backgroundWorkers] = await Promise.all([
+    findTaskQueue(environment, run.taskIdentifier),
+    listLatestBackgroundWorkers(environment),
+  ]);
 
   const latestVersions = backgroundWorkers.map((v) => v.version);
   const disableVersionSelection = environment.type === "DEVELOPMENT";
@@ -182,16 +138,13 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       branchName: environment.branchName ?? undefined,
     },
     environments: sortEnvironments(
-      run.project.environments.map((environment) => {
-        return {
-          ...displayableEnvironment(environment, userId),
-          branchName: environment.branchName ?? undefined,
-        };
-      })
-    ).filter((env) => {
-      if (env.type === "PREVIEW" && !env.branchName) return false;
-      return true;
-    }),
+      run.project.environments
+        .filter((env) => env.type !== "PREVIEW" || env.branchName)
+        .map((env) => ({
+          ...displayableEnvironment(env, userId),
+          branchName: env.branchName ?? undefined,
+        }))
+    ),
   });
 }
 
@@ -293,3 +246,68 @@ export const action: ActionFunction = async ({ request, params }) => {
     );
   }
 };
+
+async function findTask(
+  environment: { type: EnvironmentType; id: string },
+  taskIdentifier: string
+) {
+  if (environment.type === "DEVELOPMENT") {
+    return $replica.backgroundWorkerTask.findFirst({
+      select: {
+        queueId: true,
+      },
+      where: {
+        slug: taskIdentifier,
+        runtimeEnvironmentId: environment.id,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+  }
+
+  const currentDeployment = await findCurrentWorkerDeployment({
+    environmentId: environment.id,
+  });
+  return currentDeployment?.worker?.tasks.find((t) => t.slug === taskIdentifier);
+}
+
+async function findTaskQueue(
+  environment: { type: EnvironmentType; id: string },
+  taskIdentifier: string
+) {
+  const task = await findTask(environment, taskIdentifier);
+
+  if (!task?.queueId) {
+    return undefined;
+  }
+
+  return $replica.taskQueue.findFirst({
+    where: {
+      runtimeEnvironmentId: environment.id,
+      id: task.queueId,
+    },
+    select: {
+      friendlyId: true,
+      name: true,
+      type: true,
+      paused: true,
+    },
+  });
+}
+
+function listLatestBackgroundWorkers(environment: { id: string }, limit = 20) {
+  return $replica.backgroundWorker.findMany({
+    where: {
+      runtimeEnvironmentId: environment.id,
+    },
+    select: {
+      version: true,
+      engine: true,
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+    take: limit,
+  });
+}

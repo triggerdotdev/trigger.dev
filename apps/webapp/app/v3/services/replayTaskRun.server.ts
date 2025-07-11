@@ -35,37 +35,11 @@ export class ReplayTaskRunService extends BaseService {
       taskRunFriendlyId: existingTaskRun.friendlyId,
     });
 
-    const getExistingPayload = async () => {
-      const existingPayloadPacket = await conditionallyImportPacket({
-        data: existingTaskRun.payload,
-        dataType: existingTaskRun.payloadType,
-      });
-
-      return existingPayloadPacket.dataType === "application/json"
-        ? await parsePacket(existingPayloadPacket)
-        : existingPayloadPacket.data;
-    };
-
-    const payload = overrideOptions.payload ?? (await getExistingPayload());
-    const metadata =
-      overrideOptions.metadata ??
-      (existingTaskRun.seedMetadata
-        ? await parsePacket({
-            data: existingTaskRun.seedMetadata,
-            dataType: existingTaskRun.seedMetadataType,
-          })
-        : undefined);
+    const payload = overrideOptions.payload ?? (await this.getExistingPayload(existingTaskRun));
+    const metadata = overrideOptions.metadata ?? (await this.getExistingMetadata(existingTaskRun));
+    const tags = overrideOptions.tags ?? existingTaskRun.runTags;
 
     try {
-      const tags =
-        overrideOptions.tags ??
-        (
-          await getTagsForRunId({
-            friendlyId: existingTaskRun.friendlyId,
-            environmentId: authenticatedEnvironment.id,
-          })
-        )?.map((t) => t.name);
-
       const taskQueue = await this._prisma.taskQueue.findFirst({
         where: {
           runtimeEnvironmentId: authenticatedEnvironment.id,
@@ -129,5 +103,27 @@ export class ReplayTaskRunService extends BaseService {
 
       return;
     }
+  }
+
+  private async getExistingPayload(existingTaskRun: TaskRun) {
+    const existingPayloadPacket = await conditionallyImportPacket({
+      data: existingTaskRun.payload,
+      dataType: existingTaskRun.payloadType,
+    });
+
+    return existingPayloadPacket.dataType === "application/json"
+      ? await parsePacket(existingPayloadPacket)
+      : existingPayloadPacket.data;
+  }
+
+  private async getExistingMetadata(existingTaskRun: TaskRun) {
+    if (!existingTaskRun.seedMetadata) {
+      return undefined;
+    }
+
+    return parsePacket({
+      data: existingTaskRun.seedMetadata,
+      dataType: existingTaskRun.seedMetadataType,
+    });
   }
 }
