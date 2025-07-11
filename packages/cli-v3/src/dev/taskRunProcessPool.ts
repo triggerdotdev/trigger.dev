@@ -208,10 +208,18 @@ export class TaskRunProcessPool {
 
   private isProcessHealthy(process: TaskRunProcess): boolean {
     // Basic health checks - we can expand this later
-    return !process.isBeingKilled && process.pid !== undefined;
+    return process.isHealthy;
   }
 
   private async killProcess(process: TaskRunProcess): Promise<void> {
+    if (!process.isHealthy) {
+      logger.debug("[TaskRunProcessPool] Process is not healthy, skipping cleanup", {
+        processId: process.pid,
+      });
+
+      return;
+    }
+
     try {
       await process.cleanup(true);
     } catch (error) {
