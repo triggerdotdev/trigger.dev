@@ -272,20 +272,50 @@ function ReplayForm({
                 <TextLink to={docsPath("triggering#options")}>Read the docs.</TextLink>
               </Hint>
               <InputGroup>
-                <Label variant="small">Delay</Label>
-                <DurationPicker name={delaySeconds.name} id={delaySeconds.id} />
-                <Hint>Delays run by a specific duration.</Hint>
-                <FormError id={delaySeconds.errorId}>{delaySeconds.error}</FormError>
+                <Label htmlFor={machine.id} variant="small">
+                  Machine
+                </Label>
+                <Select
+                  {...conform.select(machine)}
+                  variant="tertiary/small"
+                  placeholder="Select machine type"
+                  dropdownIcon
+                  items={machinePresets}
+                  defaultValue={replayData.machinePreset ?? undefined}
+                >
+                  {machinePresets.map((machine) => (
+                    <SelectItem key={machine} value={machine}>
+                      {machine}
+                    </SelectItem>
+                  ))}
+                </Select>
+                <Hint>Overrides the machine preset.</Hint>
+                <FormError id={machine.errorId}>{machine.error}</FormError>
               </InputGroup>
               <InputGroup>
-                <Label variant="small">TTL</Label>
-                <DurationPicker
-                  name={ttlSeconds.name}
-                  id={ttlSeconds.id}
-                  defaultValueSeconds={replayData.ttlSeconds}
-                />
-                <Hint>Expires the run if it hasn't started within the TTL.</Hint>
-                <FormError id={ttlSeconds.errorId}>{ttlSeconds.error}</FormError>
+                <Label htmlFor={version.id} variant="small">
+                  Version
+                </Label>
+                <Select
+                  {...conform.select(version)}
+                  defaultValue="latest"
+                  variant="tertiary/small"
+                  placeholder="Select version"
+                  dropdownIcon
+                  disabled={replayData.disableVersionSelection}
+                >
+                  {replayData.latestVersions.map((version, i) => (
+                    <SelectItem key={version} value={i === 0 ? "latest" : version}>
+                      {version} {i === 0 && "(latest)"}
+                    </SelectItem>
+                  ))}
+                </Select>
+                {replayData.disableVersionSelection ? (
+                  <Hint>Only the latest version is available in the development environment.</Hint>
+                ) : (
+                  <Hint>Runs task on a specific version.</Hint>
+                )}
+                <FormError id={version.errorId}>{version.error}</FormError>
               </InputGroup>
               <InputGroup>
                 <Label htmlFor={queue.id} variant="small">
@@ -425,50 +455,20 @@ function ReplayForm({
                 <FormError id={concurrencyKey.errorId}>{concurrencyKey.error}</FormError>
               </InputGroup>
               <InputGroup>
-                <Label htmlFor={machine.id} variant="small">
-                  Machine
-                </Label>
-                <Select
-                  {...conform.select(machine)}
-                  variant="tertiary/small"
-                  placeholder="Select machine type"
-                  dropdownIcon
-                  items={machinePresets}
-                  defaultValue={replayData.machinePreset ?? undefined}
-                >
-                  {machinePresets.map((machine) => (
-                    <SelectItem key={machine} value={machine}>
-                      {machine}
-                    </SelectItem>
-                  ))}
-                </Select>
-                <Hint>Overrides the machine preset.</Hint>
-                <FormError id={machine.errorId}>{machine.error}</FormError>
+                <Label variant="small">Delay</Label>
+                <DurationPicker name={delaySeconds.name} id={delaySeconds.id} />
+                <Hint>Delays run by a specific duration.</Hint>
+                <FormError id={delaySeconds.errorId}>{delaySeconds.error}</FormError>
               </InputGroup>
               <InputGroup>
-                <Label htmlFor={version.id} variant="small">
-                  Version
-                </Label>
-                <Select
-                  {...conform.select(version)}
-                  defaultValue="latest"
-                  variant="tertiary/small"
-                  placeholder="Select version"
-                  dropdownIcon
-                  disabled={replayData.disableVersionSelection}
-                >
-                  {replayData.latestVersions.map((version, i) => (
-                    <SelectItem key={version} value={i === 0 ? "latest" : version}>
-                      {version} {i === 0 && "(latest)"}
-                    </SelectItem>
-                  ))}
-                </Select>
-                {replayData.disableVersionSelection ? (
-                  <Hint>Only the latest version is available in the development environment.</Hint>
-                ) : (
-                  <Hint>Runs task on a specific version.</Hint>
-                )}
-                <FormError id={version.errorId}>{version.error}</FormError>
+                <Label variant="small">TTL</Label>
+                <DurationPicker
+                  name={ttlSeconds.name}
+                  id={ttlSeconds.id}
+                  defaultValueSeconds={replayData.ttlSeconds}
+                />
+                <Hint>Expires the run if it hasn't started within the TTL.</Hint>
+                <FormError id={ttlSeconds.errorId}>{ttlSeconds.error}</FormError>
               </InputGroup>
               <FormError>{form.error}</FormError>
             </Fieldset>
