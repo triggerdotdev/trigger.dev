@@ -125,13 +125,13 @@ export function JSONEditor(opts: JSONEditorProps) {
     }
   }, [defaultValue, view]);
 
-  const clear = useCallback(() => {
+  const clear = () => {
     if (view === undefined) return;
     view.dispatch({
       changes: { from: 0, to: view.state.doc.length, insert: undefined },
     });
     onChange?.("");
-  }, [view]);
+  };
 
   const copy = useCallback(() => {
     if (view === undefined) return;

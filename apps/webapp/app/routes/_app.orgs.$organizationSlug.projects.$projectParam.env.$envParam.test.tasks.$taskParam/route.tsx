@@ -357,7 +357,7 @@ function StandardTaskForm({
   const currentPayloadJson = useRef<string>(defaultPayloadJson);
 
   const [defaultMetadataJson, setDefaultMetadataJson] = useState<string>(
-    lastRun?.seedMetadata ?? "{}"
+    lastRun?.seedMetadata ?? startingJson
   );
   const setMetadata = useCallback((code: string) => {
     setDefaultMetadataJson(code);
@@ -447,7 +447,7 @@ function StandardTaskForm({
               setConcurrencyKeyValue(template.concurrencyKey ?? "");
               setMaxAttemptsValue(template.maxAttempts ?? undefined);
               setMaxDurationValue(template.maxDurationSeconds ?? 0);
-              setMachineValue(template.machinePreset ?? "");
+              setMachineValue(template.machinePreset ?? undefined);
               setTagsValue(template.tags ?? []);
               setQueueValue(template.queue ?? undefined);
             }}
@@ -481,10 +481,10 @@ function StandardTaskForm({
                 onChange={(v) => {
                   if (!tab || tab === "payload") {
                     currentPayloadJson.current = v;
-                    setDefaultPayloadJson(v);
+                    setPayload(v);
                   } else {
                     currentMetadataJson.current = v;
-                    setDefaultMetadataJson(v);
+                    setMetadata(v);
                   }
                 }}
                 height="100%"
@@ -527,21 +527,55 @@ function StandardTaskForm({
                 <TextLink to={docsPath("triggering#options")}>Read the docs.</TextLink>
               </Hint>
               <InputGroup>
-                <Label variant="small">Delay</Label>
-                <DurationPicker name={delaySeconds.name} id={delaySeconds.id} />
-                <Hint>Delays run by a specific duration.</Hint>
-                <FormError id={delaySeconds.errorId}>{delaySeconds.error}</FormError>
+                <Label htmlFor={machine.id} variant="small">
+                  Machine
+                </Label>
+                <Select
+                  {...conform.select(machine)}
+                  variant="tertiary/small"
+                  placeholder="Select machine type"
+                  dropdownIcon
+                  items={machinePresets}
+                  defaultValue={undefined}
+                  value={machineValue}
+                  setValue={(e) => {
+                    if (Array.isArray(e)) return;
+                    setMachineValue(e);
+                  }}
+                >
+                  {machinePresets.map((machine) => (
+                    <SelectItem key={machine} value={machine}>
+                      {machine}
+                    </SelectItem>
+                  ))}
+                </Select>
+                <Hint>Overrides the machine preset.</Hint>
+                <FormError id={machine.errorId}>{machine.error}</FormError>
               </InputGroup>
               <InputGroup>
-                <Label variant="small">TTL</Label>
-                <DurationPicker
-                  name={ttlSeconds.name}
-                  id={ttlSeconds.id}
-                  value={ttlValue}
-                  onChange={setTtlValue}
-                />
-                <Hint>Expires the run if it hasn't started within the TTL.</Hint>
-                <FormError id={ttlSeconds.errorId}>{ttlSeconds.error}</FormError>
+                <Label htmlFor={version.id} variant="small">
+                  Version
+                </Label>
+                <Select
+                  {...conform.select(version)}
+                  defaultValue="latest"
+                  variant="tertiary/small"
+                  placeholder="Select version"
+                  dropdownIcon
+                  disabled={disableVersionSelection}
+                >
+                  {versions.map((version, i) => (
+                    <SelectItem key={version} value={i === 0 ? "latest" : version}>
+                      {version} {i === 0 && "(latest)"}
+                    </SelectItem>
+                  ))}
+                </Select>
+                {disableVersionSelection ? (
+                  <Hint>Only the latest version is available in the development environment.</Hint>
+                ) : (
+                  <Hint>Runs task on a specific version.</Hint>
+                )}
+                <FormError id={version.errorId}>{version.error}</FormError>
               </InputGroup>
               <InputGroup>
                 <Label htmlFor={queue.id} variant="small">
@@ -689,55 +723,21 @@ function StandardTaskForm({
                 <FormError id={concurrencyKey.errorId}>{concurrencyKey.error}</FormError>
               </InputGroup>
               <InputGroup>
-                <Label htmlFor={machine.id} variant="small">
-                  Machine
-                </Label>
-                <Select
-                  {...conform.select(machine)}
-                  variant="tertiary/small"
-                  placeholder="Select machine type"
-                  dropdownIcon
-                  items={machinePresets}
-                  defaultValue={undefined}
-                  value={machineValue}
-                  setValue={(e) => {
-                    if (Array.isArray(e)) return;
-                    setMachineValue(e);
-                  }}
-                >
-                  {machinePresets.map((machine) => (
-                    <SelectItem key={machine} value={machine}>
-                      {machine}
-                    </SelectItem>
-                  ))}
-                </Select>
-                <Hint>Overrides the machine preset.</Hint>
-                <FormError id={machine.errorId}>{machine.error}</FormError>
+                <Label variant="small">Delay</Label>
+                <DurationPicker name={delaySeconds.name} id={delaySeconds.id} />
+                <Hint>Delays run by a specific duration.</Hint>
+                <FormError id={delaySeconds.errorId}>{delaySeconds.error}</FormError>
               </InputGroup>
               <InputGroup>
-                <Label htmlFor={version.id} variant="small">
-                  Version
-                </Label>
-                <Select
-                  {...conform.select(version)}
-                  defaultValue="latest"
-                  variant="tertiary/small"
-                  placeholder="Select version"
-                  dropdownIcon
-                  disabled={disableVersionSelection}
-                >
-                  {versions.map((version, i) => (
-                    <SelectItem key={version} value={i === 0 ? "latest" : version}>
-                      {version} {i === 0 && "(latest)"}
-                    </SelectItem>
-                  ))}
-                </Select>
-                {disableVersionSelection ? (
-                  <Hint>Only the latest version is available in the development environment.</Hint>
-                ) : (
-                  <Hint>Runs task on a specific version.</Hint>
-                )}
-                <FormError id={version.errorId}>{version.error}</FormError>
+                <Label variant="small">TTL</Label>
+                <DurationPicker
+                  name={ttlSeconds.name}
+                  id={ttlSeconds.id}
+                  value={ttlValue}
+                  onChange={setTtlValue}
+                />
+                <Hint>Expires the run if it hasn't started within the TTL.</Hint>
+                <FormError id={ttlSeconds.errorId}>{ttlSeconds.error}</FormError>
               </InputGroup>
               <FormError>{form.error}</FormError>
             </Fieldset>
@@ -912,7 +912,7 @@ function ScheduledTaskForm({
               setConcurrencyKeyValue(template.concurrencyKey ?? "");
               setMaxAttemptsValue(template.maxAttempts ?? undefined);
               setMaxDurationValue(template.maxDurationSeconds ?? 0);
-              setMachineValue(template.machinePreset ?? "");
+              setMachineValue(template.machinePreset ?? undefined);
               setTagsValue(template.tags ?? []);
               setQueueValue(template.queue ?? undefined);
 
@@ -936,12 +936,12 @@ function ScheduledTaskForm({
               setMaxDurationValue(run.maxDurationInSeconds);
               setTagsValue(run.runTags ?? []);
               setQueueValue(run.queue);
-              setMachineValue(run.machinePreset);
+              setMachineValue(run.machinePreset ?? undefined);
             }}
           />
         </div>
       </div>
-      <div className="grow overflow-y-scroll p-3">
+      <div className="grow overflow-y-scroll p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
         <Fieldset>
           <InputGroup>
             <Label htmlFor={timestamp.id} variant="small">
@@ -1041,17 +1041,55 @@ function ScheduledTaskForm({
             <TextLink to={docsPath("triggering#options")}>Read the docs.</TextLink>
           </Hint>
           <InputGroup>
-            <Label htmlFor={ttlSeconds.id} variant="small">
-              TTL
+            <Label htmlFor={machine.id} variant="small">
+              Machine
             </Label>
-            <DurationPicker
-              name={ttlSeconds.name}
-              id={ttlSeconds.id}
-              value={ttlValue}
-              onChange={setTtlValue}
-            />
-            <Hint>Expires the run if it hasn't started within the TTL.</Hint>
-            <FormError id={ttlSeconds.errorId}>{ttlSeconds.error}</FormError>
+            <Select
+              {...conform.select(machine)}
+              variant="tertiary/small"
+              placeholder="Select machine type"
+              dropdownIcon
+              items={machinePresets}
+              defaultValue={undefined}
+              value={machineValue}
+              setValue={(e) => {
+                if (Array.isArray(e)) return;
+                setMachineValue(e);
+              }}
+            >
+              {machinePresets.map((machine) => (
+                <SelectItem key={machine} value={machine}>
+                  {machine}
+                </SelectItem>
+              ))}
+            </Select>
+            <Hint>Overrides the machine preset.</Hint>
+            <FormError id={machine.errorId}>{machine.error}</FormError>
+          </InputGroup>
+          <InputGroup>
+            <Label htmlFor={version.id} variant="small">
+              Version
+            </Label>
+            <Select
+              {...conform.select(version)}
+              defaultValue="latest"
+              variant="tertiary/small"
+              placeholder="Select version"
+              dropdownIcon
+              disabled={disableVersionSelection}
+            >
+              {versions.map((version, i) => (
+                <SelectItem key={version} value={i === 0 ? "latest" : version}>
+                  {version} {i === 0 && "(latest)"}
+                </SelectItem>
+              ))}
+            </Select>
+            {disableVersionSelection ? (
+              <Hint>Only the latest version is available in the development environment.</Hint>
+            ) : (
+              <Hint>Runs task on a specific version.</Hint>
+            )}
+            <FormError id={version.errorId}>{version.error}</FormError>
           </InputGroup>
           <InputGroup>
             <Label htmlFor={queue.id} variant="small">
@@ -1198,55 +1236,17 @@ function ScheduledTaskForm({
             <FormError id={concurrencyKey.errorId}>{concurrencyKey.error}</FormError>
           </InputGroup>
           <InputGroup>
-            <Label htmlFor={machine.id} variant="small">
-              Machine
+            <Label htmlFor={ttlSeconds.id} variant="small">
+              TTL
             </Label>
-            <Select
-              {...conform.select(machine)}
-              variant="tertiary/small"
-              placeholder="Select machine type"
-              dropdownIcon
-              items={machinePresets}
-              defaultValue={undefined}
-              value={machineValue}
-              setValue={(e) => {
-                if (Array.isArray(e)) return;
-                setMachineValue(e);
-              }}
-            >
-              {machinePresets.map((machine) => (
-                <SelectItem key={machine} value={machine}>
-                  {machine}
-                </SelectItem>
-              ))}
-            </Select>
-            <Hint>Overrides the machine preset.</Hint>
-            <FormError id={machine.errorId}>{machine.error}</FormError>
-          </InputGroup>
-          <InputGroup>
-            <Label htmlFor={version.id} variant="small">
-              Version
-            </Label>
-            <Select
-              {...conform.select(version)}
-              defaultValue="latest"
-              variant="tertiary/small"
-              placeholder="Select version"
-              dropdownIcon
-              disabled={disableVersionSelection}
-            >
-              {versions.map((version, i) => (
-                <SelectItem key={version} value={i === 0 ? "latest" : version}>
-                  {version} {i === 0 && "(latest)"}
-                </SelectItem>
-              ))}
-            </Select>
-            {disableVersionSelection ? (
-              <Hint>Only the latest version is available in the development environment.</Hint>
-            ) : (
-              <Hint>Runs task on a specific version.</Hint>
-            )}
-            <FormError id={version.errorId}>{version.error}</FormError>
+            <DurationPicker
+              name={ttlSeconds.name}
+              id={ttlSeconds.id}
+              value={ttlValue}
+              onChange={setTtlValue}
+            />
+            <Hint>Expires the run if it hasn't started within the TTL.</Hint>
+            <FormError id={ttlSeconds.errorId}>{ttlSeconds.error}</FormError>
           </InputGroup>
         </Fieldset>
       </div>
