@@ -129,7 +129,7 @@ export class RunsRepository {
         ? runIds.slice(1, options.page.size + 1)
         : runIds.slice(0, options.page.size);
 
-    const runs = await this.options.prisma.taskRun.findMany({
+    let runs = await this.options.prisma.taskRun.findMany({
       where: {
         id: {
           in: runIdsToReturn,
@@ -167,6 +167,11 @@ export class RunsRepository {
         metadataType: true,
       },
     });
+
+    // ClickHouse is slightly delayed, so we're going to do in-memory status filtering too
+    if (options.statuses && options.statuses.length > 0) {
+      runs = runs.filter((run) => options.statuses!.includes(run.status));
+    }
 
     return {
       runs,
