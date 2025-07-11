@@ -7,12 +7,13 @@ import {
 import { type Project, type RuntimeEnvironment, type TaskRunStatus } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { z } from "zod";
+import { clickhouseClient } from "~/services/clickhouseInstance.server";
 import { logger } from "~/services/logger.server";
 import { CoercedDate } from "~/utils/zod";
-import { ApiRetrieveRunPresenter } from "./ApiRetrieveRunPresenter.server";
-import { type RunListOptions, RunListPresenter } from "./RunListPresenter.server";
-import { BasePresenter } from "./basePresenter.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
+import { ApiRetrieveRunPresenter } from "./ApiRetrieveRunPresenter.server";
+import { NextRunListPresenter, type RunListOptions } from "./NextRunListPresenter.server";
+import { BasePresenter } from "./basePresenter.server";
 
 export const ApiRunListSearchParams = z.object({
   "page[size]": z.coerce.number().int().positive().min(1).max(100).optional(),
@@ -136,10 +137,12 @@ export class ApiRunListPresenter extends BasePresenter {
       }
 
       let environmentId: string | undefined;
+      let organizationId: string | undefined;
 
       // filters
       if (environment) {
         environmentId = environment.id;
+        organizationId = environment.organizationId;
       } else {
         if (searchParams["filter[env]"]) {
           const environments = await this._prisma.runtimeEnvironment.findMany({
@@ -152,11 +155,16 @@ export class ApiRunListPresenter extends BasePresenter {
           });
 
           environmentId = environments.at(0)?.id;
+          organizationId = environments.at(0)?.organizationId;
         }
       }
 
       if (!environmentId) {
         throw new ServiceValidationError("No environment found");
+      }
+
+      if (!organizationId) {
+        throw new ServiceValidationError("No organization found");
       }
 
       if (searchParams["filter[status]"]) {
@@ -205,11 +213,15 @@ export class ApiRunListPresenter extends BasePresenter {
         options.batchId = searchParams["filter[batch]"];
       }
 
-      const presenter = new RunListPresenter();
+      if (!clickhouseClient) {
+        throw new Error("Clickhouse is not supported yet");
+      }
+
+      const presenter = new NextRunListPresenter(this._prisma, clickhouseClient);
 
       logger.debug("Calling RunListPresenter", { options });
 
-      const results = await presenter.call(environmentId, options);
+      const results = await presenter.call(organizationId, environmentId, options);
 
       logger.debug("RunListPresenter results", { runs: results.runs.length });
 

@@ -18,15 +18,16 @@ import { Header3 } from "~/components/primitives/Headers";
 import { PopoverMenuItem } from "~/components/primitives/Popover";
 import { useSelectedItems } from "~/components/primitives/SelectedItemsProvider";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { TruncatedCopyableValue } from "~/components/primitives/TruncatedCopyableValue";
+import { useEnvironment } from "~/hooks/useEnvironment";
 import { useFeatures } from "~/hooks/useFeatures";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { useUser } from "~/hooks/useUser";
 import {
-  type RunListAppliedFilters,
-  type RunListItem,
-} from "~/presenters/v3/RunListPresenter.server";
-import { formatCurrencyAccurate, formatNumber } from "~/utils/numberFormatter";
+  type NextRunListAppliedFilters,
+  type NextRunListItem,
+} from "~/presenters/v3/NextRunListPresenter.server";
+import { formatCurrencyAccurate } from "~/utils/numberFormatter";
 import { docsPath, v3RunSpanPath, v3TestPath } from "~/utils/pathBuilder";
 import { DateTime } from "../../primitives/DateTime";
 import { Paragraph } from "../../primitives/Paragraph";
@@ -51,17 +52,13 @@ import {
   filterableTaskRunStatuses,
   TaskRunStatusCombo,
 } from "./TaskRunStatus";
-import { useEnvironment } from "~/hooks/useEnvironment";
-import { CopyableText } from "~/components/primitives/CopyableText";
-import { ClipboardField } from "~/components/primitives/ClipboardField";
-import { TruncatedCopyableValue } from "~/components/primitives/TruncatedCopyableValue";
 
 type RunsTableProps = {
   total: number;
   hasFilters: boolean;
-  filters: RunListAppliedFilters;
+  filters: NextRunListAppliedFilters;
   showJob?: boolean;
-  runs: RunListItem[];
+  runs: NextRunListItem[];
   isLoading?: boolean;
   allowSelection?: boolean;
   variant?: TableVariant;
@@ -411,7 +408,7 @@ export function TaskRunsTable({
   );
 }
 
-function RunActionsCell({ run, path }: { run: RunListItem; path: string }) {
+function RunActionsCell({ run, path }: { run: NextRunListItem; path: string }) {
   const location = useLocation();
 
   if (!run.isCancellable && !run.isReplayable) return <TableCell to={path}>{""}</TableCell>;
