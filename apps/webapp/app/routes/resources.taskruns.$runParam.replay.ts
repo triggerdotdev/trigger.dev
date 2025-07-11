@@ -20,9 +20,16 @@ const ParamSchema = z.object({
   runParam: z.string(),
 });
 
+const QuerySchema = z.object({
+  environmentIdOverride: z.string().optional(),
+});
+
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
   const { runParam } = ParamSchema.parse(params);
+  const { environmentIdOverride } = QuerySchema.parse(
+    Object.fromEntries(new URL(request.url).searchParams)
+  );
 
   const run = await $replica.taskRun.findFirst({
     select: {
@@ -81,16 +88,24 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     throw new Response("Not Found", { status: 404 });
   }
 
-  const environment = run.project.environments.find((env) => env.id === run.runtimeEnvironmentId);
+  const runEnvironment = run.project.environments.find(
+    (env) => env.id === run.runtimeEnvironmentId
+  );
+  const environmentOverride = run.project.environments.find(
+    (env) => env.id === environmentIdOverride
+  );
+  const environment = environmentOverride ?? runEnvironment;
   if (!environment) {
     throw new Response("Environment not found", { status: 404 });
   }
 
   const task =
     environment.type !== "DEVELOPMENT"
-      ? (await findCurrentWorkerDeployment({ environmentId: environment.id }))?.worker?.tasks.find(
-          (t) => t.slug === run.taskIdentifier
-        )
+      ? (
+          await findCurrentWorkerDeployment({
+            environmentId: environment.id,
+          })
+        )?.worker?.tasks.find((t) => t.slug === run.taskIdentifier)
       : await $replica.backgroundWorkerTask.findFirst({
           select: {
             queueId: true,
@@ -135,7 +150,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
   const latestVersions = backgroundWorkers.map((v) => v.version);
   const disableVersionSelection = environment.type === "DEVELOPMENT";
-  const allowArbitraryQueues = backgroundWorkers[0]?.engine === "V1";
+  const allowArbitraryQueues = backgroundWorkers.at(0)?.engine === "V1";
 
   return typedjson({
     concurrencyKey: run.concurrencyKey,

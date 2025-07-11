@@ -1,14 +1,7 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { DialogClose } from "@radix-ui/react-dialog";
-import {
-  Form,
-  useActionData,
-  useFetcher,
-  useNavigation,
-  useParams,
-  useSubmit,
-} from "@remix-run/react";
+import { Form, useActionData, useNavigation, useParams, useSubmit } from "@remix-run/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type UseDataFunctionReturn, useTypedFetcher } from "remix-typedjson";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
@@ -59,13 +52,22 @@ export function ReplayRunDialog({ runFriendlyId, failedRedirect }: ReplayRunDial
 }
 
 function ReplayContent({ runFriendlyId, failedRedirect }: ReplayRunDialogProps) {
-  const fetcher = useTypedFetcher<typeof loader>();
-  const isLoading = fetcher.state === "loading";
+  const replayDataFetcher = useTypedFetcher<typeof loader>();
+  const isLoading = replayDataFetcher.state === "loading";
   const queueFetcher = useTypedFetcher<typeof queuesLoader>();
 
+  const [environmentIdOverride, setEnvironmentIdOverride] = useState<string | undefined>(undefined);
+
   useEffect(() => {
-    fetcher.load(`/resources/taskruns/${runFriendlyId}/replay`);
-  }, [runFriendlyId]);
+    const searchParams = new URLSearchParams();
+    if (environmentIdOverride) {
+      searchParams.set("environmentIdOverride", environmentIdOverride);
+    }
+
+    replayDataFetcher.load(
+      `/resources/taskruns/${runFriendlyId}/replay?${searchParams.toString()}`
+    );
+  }, [runFriendlyId, environmentIdOverride]);
 
   const params = useParams();
   useEffect(() => {
@@ -74,13 +76,22 @@ function ReplayContent({ runFriendlyId, failedRedirect }: ReplayRunDialogProps) 
       searchParams.set("type", "custom");
       searchParams.set("per_page", "100");
 
+      let envSlug = params.envParam;
+
+      if (environmentIdOverride) {
+        const environmentOverride = replayDataFetcher.data?.environments.find(
+          (env) => env.id === environmentIdOverride
+        );
+        envSlug = environmentOverride?.slug ?? envSlug;
+      }
+
       queueFetcher.load(
-        `/resources/orgs/${params.organizationSlug}/projects/${params.projectParam}/env/${
-          params.envParam
-        }/queues?${searchParams.toString()}`
+        `/resources/orgs/${params.organizationSlug}/projects/${
+          params.projectParam
+        }/env/${envSlug}/queues?${searchParams.toString()}`
       );
     }
-  }, [params.organizationSlug, params.projectParam, params.envParam]);
+  }, [params.organizationSlug, params.projectParam, params.envParam, environmentIdOverride]);
 
   const customQueues = useMemo(() => {
     return queueFetcher.data?.queues ?? [];
@@ -89,16 +100,18 @@ function ReplayContent({ runFriendlyId, failedRedirect }: ReplayRunDialogProps) 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <DialogHeader className="px-3">Replay this run</DialogHeader>
-      {isLoading ? (
-        <div className="grid place-items-center p-6">
+      {isLoading && !replayDataFetcher.data ? (
+        <div className="flex h-full items-center justify-center p-6">
           <Spinner />
         </div>
-      ) : fetcher.data ? (
+      ) : replayDataFetcher.data ? (
         <ReplayForm
-          replayData={fetcher.data}
+          replayData={replayDataFetcher.data}
           failedRedirect={failedRedirect}
           runFriendlyId={runFriendlyId}
           customQueues={customQueues}
+          environmentIdOverride={environmentIdOverride}
+          setEnvironmentIdOverride={setEnvironmentIdOverride}
         />
       ) : (
         <>Failed to get run data</>
@@ -115,11 +128,15 @@ function ReplayForm({
   runFriendlyId,
   replayData,
   customQueues,
+  environmentIdOverride,
+  setEnvironmentIdOverride,
 }: {
   failedRedirect: string;
   runFriendlyId: string;
   replayData: UseDataFunctionReturn<typeof loader>;
   customQueues: UseDataFunctionReturn<typeof queuesLoader>["queues"];
+  environmentIdOverride: string | undefined;
+  setEnvironmentIdOverride: (environment: string) => void;
 }) {
   const navigation = useNavigation();
   const submit = useSubmit();
@@ -304,11 +321,15 @@ function ReplayForm({
                   dropdownIcon
                   disabled={replayData.disableVersionSelection}
                 >
-                  {replayData.latestVersions.map((version, i) => (
-                    <SelectItem key={version} value={i === 0 ? "latest" : version}>
-                      {version} {i === 0 && "(latest)"}
-                    </SelectItem>
-                  ))}
+                  {replayData.latestVersions.length === 0 ? (
+                    <SelectItem disabled>No versions available</SelectItem>
+                  ) : (
+                    replayData.latestVersions.map((version, i) => (
+                      <SelectItem key={version} value={i === 0 ? "latest" : version}>
+                        {version} {i === 0 && "(latest)"}
+                      </SelectItem>
+                    ))
+                  )}
                 </Select>
                 {replayData.disableVersionSelection ? (
                   <Hint>Only the latest version is available in the development environment.</Hint>
@@ -489,6 +510,8 @@ function ReplayForm({
               defaultValue={replayData.environment.id}
               items={replayData.environments}
               dropdownIcon
+              value={environmentIdOverride}
+              setValue={setEnvironmentIdOverride}
               variant="tertiary/medium"
               className="w-fit pl-1"
               filter={{
