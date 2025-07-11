@@ -3,6 +3,7 @@ import { Form, useRevalidator } from "@remix-run/react";
 import { ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
 import { BulkActionStatus, BulkActionType } from "@trigger.dev/database";
+import { motion } from "framer-motion";
 import { useEffect } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -290,17 +291,17 @@ function Meter({ type, successCount, failureCount, totalCount }: MeterProps) {
         </Paragraph>
       </div>
       <div className="relative h-4 w-full overflow-hidden rounded-sm bg-charcoal-900">
-        <SimpleTooltip
-          content={`${formatNumber(successCount)} ${typeText(type)} successfully`}
-          buttonClassName="h-full absolute w-full top-0 left-0 bg-success"
-          buttonStyle={{ width: `${successPercentage}%` }}
-          button={<div className="h-full w-full" />}
+        <motion.div
+          className="absolute left-0 top-0 h-full w-full bg-success"
+          initial={{ width: `${successPercentage}%` }}
+          animate={{ width: `${successPercentage}%` }}
+          transition={{ duration: 0.3, ease: "easeOut" }}
         />
-        <SimpleTooltip
-          content={`${formatNumber(failureCount)} ${typeText(type)} failed`}
-          buttonClassName="h-full absolute top-0 bg-charcoal-550"
-          buttonStyle={{ left: `${successPercentage}%`, width: `${failurePercentage}%` }}
-          button={<div className="h-full w-full" />}
+        <motion.div
+          className="absolute top-0 h-full w-full bg-charcoal-550"
+          initial={{ width: `${failurePercentage}%`, left: `${successPercentage}%` }}
+          animate={{ width: `${failurePercentage}%`, left: `${successPercentage}%` }}
+          transition={{ duration: 0.3, ease: "easeOut" }}
         />
       </div>
       <div className="flex items-center gap-2">
