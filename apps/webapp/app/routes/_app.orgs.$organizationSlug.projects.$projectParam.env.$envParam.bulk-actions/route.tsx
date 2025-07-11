@@ -145,7 +145,7 @@ export default function Page() {
       </NavBar>
       <PageBody scrollable={false}>
         {bulkActions.length === 0 ? (
-          <MainCenteredContainer className="max-w-md">
+          <MainCenteredContainer className="max-w-prose">
             <BulkActionsNone />
           </MainCenteredContainer>
         ) : (
