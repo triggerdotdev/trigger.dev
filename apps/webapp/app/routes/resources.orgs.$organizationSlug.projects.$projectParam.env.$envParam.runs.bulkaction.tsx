@@ -187,9 +187,11 @@ export async function action({ params, request }: ActionFunctionArgs) {
 export function CreateBulkActionInspector({
   filters,
   selectedItems,
+  hasBulkActions,
 }: {
   filters: TaskRunListSearchFilters;
   selectedItems: Set<string>;
+  hasBulkActions: boolean;
 }) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const organization = useOrganization();
@@ -243,8 +245,12 @@ export function CreateBulkActionInspector({
         </div>
         <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
           <div className="px-3 pt-3">
-            <Accordion type="single" collapsible>
-              <AccordionItem value="item-1">
+            <Accordion
+              type="single"
+              collapsible
+              defaultValue={!hasBulkActions ? "instructions" : undefined}
+            >
+              <AccordionItem value="instructions">
                 <AccordionTrigger
                   leadingIcon={InformationCircleIcon}
                   leadingIconClassName="text-blue-500"

@@ -229,6 +229,7 @@ export default function Page() {
                             <CreateBulkActionInspector
                               filters={filters}
                               selectedItems={selectedItems}
+                              hasBulkActions={list.bulkActions.length > 0}
                             />
                           </ResizablePanel>
                         </>
