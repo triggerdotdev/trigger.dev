@@ -174,7 +174,7 @@ export default function Page() {
         {bulkAction.status === "PENDING" ? (
           <Form method="post">
             <Button type="submit" variant="danger/small">
-              Abort bulk action...
+              Abort bulk action
             </Button>
           </Form>
         ) : null}
