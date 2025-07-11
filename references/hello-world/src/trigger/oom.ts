@@ -55,3 +55,33 @@ export const oomTask = task({
     }
   },
 });
+
+export const oomTask2 = task({
+  id: "oom-task-2",
+  machine: "micro",
+  run: async (payload: any, { ctx }) => {
+    await runMemoryLeakScenario();
+  },
+});
+
+async function runMemoryLeakScenario() {
+  console.log("🧠 Starting memory leak simulation");
+  const memoryHogs = [];
+  let iteration = 0;
+
+  while (iteration < 1000) {
+    // Allocate large chunks of memory
+    const bigArray = new Array(10000000).fill(`memory-leak-data-${iteration}`);
+    memoryHogs.push(bigArray);
+
+    await setTimeout(200);
+    iteration++;
+
+    const memUsage = process.memoryUsage();
+    console.log(
+      `🧠 Memory leak iteration ${iteration}, RSS: ${Math.round(memUsage.rss / 1024 / 1024)} MB`
+    );
+  }
+
+  console.log("🧠 Memory leak scenario completed");
+}

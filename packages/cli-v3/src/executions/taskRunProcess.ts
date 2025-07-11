@@ -442,8 +442,24 @@ export class TaskRunProcess {
     return this._isBeingKilled || this._child?.killed;
   }
 
+  get isBeingSuspended() {
+    return this._isBeingSuspended;
+  }
+
   get pid() {
     return this._childPid;
+  }
+
+  get isHealthy() {
+    if (!this._child) {
+      return false;
+    }
+
+    if (this.isBeingKilled || this.isBeingSuspended) {
+      return false;
+    }
+
+    return this._child.connected;
   }
 
   static parseExecuteError(error: unknown, dockerMode = true): TaskRunInternalError {
