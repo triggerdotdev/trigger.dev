@@ -1,5 +1,8 @@
 import { getUsername } from "~/utils/username";
 import { BasePresenter } from "./basePresenter.server";
+import { type BulkActionMode } from "~/components/BulkActionFilterSummary";
+import { parseRunListInputOptions } from "~/services/runsRepository.server";
+import { TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 
 type BulkActionOptions = {
   environmentId: string;
@@ -26,6 +29,13 @@ export class BulkActionPresenter extends BasePresenter {
             avatarUrl: true,
           },
         },
+        params: true,
+        project: {
+          select: {
+            id: true,
+            organizationId: true,
+          },
+        },
       },
       where: {
         environmentId,
@@ -37,11 +47,23 @@ export class BulkActionPresenter extends BasePresenter {
       throw new Error("Bulk action not found");
     }
 
+    //parse filters
+    const filtersParsed = TaskRunListSearchFilters.safeParse(
+      bulkAction.params && typeof bulkAction.params === "object" ? bulkAction.params : {}
+    );
+
+    let mode: BulkActionMode = "filter";
+    if (filtersParsed.success && Object.keys(filtersParsed.data).length === 0) {
+      mode = "selected";
+    }
+
     return {
       ...bulkAction,
       user: bulkAction.user
         ? { name: getUsername(bulkAction.user), avatarUrl: bulkAction.user.avatarUrl }
         : undefined,
+      filters: filtersParsed.data ?? {},
+      mode,
     };
   }
 }

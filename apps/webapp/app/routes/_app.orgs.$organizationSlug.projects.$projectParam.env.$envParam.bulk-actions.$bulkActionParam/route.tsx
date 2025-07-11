@@ -1,6 +1,6 @@
 import { ArrowPathIcon } from "@heroicons/react/20/solid";
 import { Form, useRevalidator } from "@remix-run/react";
-import { ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
 import { BulkActionStatus, BulkActionType } from "@trigger.dev/database";
 import { motion } from "framer-motion";
@@ -9,13 +9,13 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
+import { BulkActionFilterSummary } from "~/components/BulkActionFilterSummary";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
-import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { BulkActionStatusCombo, BulkActionTypeCombo } from "~/components/runs/v3/BulkAction";
 import { UserAvatar } from "~/components/UserProfilePhoto";
 import { useEnvironment } from "~/hooks/useEnvironment";
@@ -231,6 +231,18 @@ export default function Page() {
                 <Property.Label>Completed</Property.Label>
                 <Property.Value>
                   {bulkAction.completedAt ? <DateTime date={bulkAction.completedAt} /> : "–"}
+                </Property.Value>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>Summary</Property.Label>
+                <Property.Value>
+                  <BulkActionFilterSummary
+                    selected={bulkAction.totalCount}
+                    mode={bulkAction.mode}
+                    action={bulkAction.type === BulkActionType.REPLAY ? "replay" : "cancel"}
+                    filters={bulkAction.filters}
+                    final={true}
+                  />
                 </Property.Value>
               </Property.Item>
             </Property.Table>
