@@ -199,6 +199,9 @@ export function CreateBulkActionInspector({
   const environment = useEnvironment();
   const fetcher = useTypedFetcher<typeof loader>();
   const { value, replace } = useSearchParams();
+  const [action, setAction] = useState<BulkActionAction>(
+    (value("action") ?? "replay") as BulkActionAction
+  );
   const location = useOptimisticLocation();
   const user = useUser();
 
@@ -208,8 +211,11 @@ export function CreateBulkActionInspector({
     );
   }, [organization.id, project.id, environment.id, location.search]);
 
+  useEffect(() => {
+    setAction((value("action") ?? "replay") as BulkActionAction);
+  }, [value("action")]);
+
   const mode = value("mode") ?? "filter";
-  const action = value("action") ?? "replay";
 
   const data = fetcher.data != null ? fetcher.data : undefined;
 
@@ -323,7 +329,7 @@ export function CreateBulkActionInspector({
               <RadioGroup
                 name="action"
                 className="flex flex-col items-start gap-2"
-                defaultValue={action}
+                value={action}
                 onValueChange={(value) => {
                   replace({ action: value });
                 }}

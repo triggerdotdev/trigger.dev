@@ -2,7 +2,12 @@ import { BeakerIcon, BookOpenIcon } from "@heroicons/react/24/solid";
 import { type MetaFunction, useNavigation } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Suspense } from "react";
-import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
+import {
+  TypedAwait,
+  typeddefer,
+  type UseDataFunctionReturn,
+  useTypedLoaderData,
+} from "remix-typedjson";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { DevDisconnectedBanner, useDevPresence } from "~/components/DevPresence";
@@ -20,10 +25,11 @@ import {
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
 import { SelectedItemsProvider } from "~/components/primitives/SelectedItemsProvider";
+import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { Spinner } from "~/components/primitives/Spinner";
 import { StepNumber } from "~/components/primitives/StepNumber";
 import { TextLink } from "~/components/primitives/TextLink";
-import { RunsFilters } from "~/components/runs/v3/RunFilters";
+import { RunsFilters, type TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { BULK_ACTION_RUN_LIMIT } from "~/consts";
 import { $replica } from "~/db.server";
@@ -31,6 +37,7 @@ import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
+import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { getRunFiltersFromRequest } from "~/presenters/RunFilters.server";
@@ -106,13 +113,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
 export default function Page() {
   const { data, rootOnlyDefault, filters } = useTypedLoaderData<typeof loader>();
-  const navigation = useNavigation();
-  const isLoading = navigation.state !== "idle";
   const { isConnected } = useDevPresence();
-  const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-  const searchParams = useSearchParams();
 
   return (
     <>
@@ -152,94 +155,13 @@ export default function Page() {
             >
               <TypedAwait resolve={data}>
                 {(list) => {
-                  const isShowingBulkActionInspector =
-                    searchParams.has("bulkInspector") && list.hasAnyRuns;
                   return (
-                    <ResizablePanelGroup orientation="horizontal" className="max-h-full">
-                      <ResizablePanel id="runs-main" min={"100px"}>
-                        <div
-                          className={cn(
-                            "grid h-full max-h-full overflow-hidden",
-                            selectedItems.size === 0 ? "grid-rows-1" : "grid-rows-[1fr_auto]"
-                          )}
-                        >
-                          <>
-                            {list.runs.length === 0 && !list.hasAnyRuns ? (
-                              list.possibleTasks.length === 0 ? (
-                                <CreateFirstTaskInstructions />
-                              ) : (
-                                <RunTaskInstructions />
-                              )
-                            ) : (
-                              <div
-                                className={cn(
-                                  "grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden"
-                                )}
-                              >
-                                <div className="flex items-start justify-between gap-x-2 p-2">
-                                  <RunsFilters
-                                    possibleTasks={list.possibleTasks}
-                                    bulkActions={list.bulkActions}
-                                    hasFilters={list.hasFilters}
-                                    rootOnlyDefault={rootOnlyDefault}
-                                  />
-                                  <div className="flex items-center justify-end gap-x-2">
-                                    {!isShowingBulkActionInspector && (
-                                      <LinkButton
-                                        variant="secondary/small"
-                                        to={v3CreateBulkActionPath(
-                                          organization,
-                                          project,
-                                          environment,
-                                          filters,
-                                          selectedItems.size > 0 ? "selected" : undefined
-                                        )}
-                                        LeadingIcon={ListCheckedIcon}
-                                        className={selectedItems.size > 0 ? "pr-1" : undefined}
-                                      >
-                                        <span className="flex items-center gap-x-1 whitespace-nowrap text-text-bright">
-                                          <span>Bulk action</span>
-                                          {selectedItems.size > 0 && (
-                                            <Badge variant="rounded">{selectedItems.size}</Badge>
-                                          )}
-                                        </span>
-                                      </LinkButton>
-                                    )}
-                                    <ListPagination list={list} />
-                                  </div>
-                                </div>
-
-                                <TaskRunsTable
-                                  total={list.runs.length}
-                                  hasFilters={list.hasFilters}
-                                  filters={list.filters}
-                                  runs={list.runs}
-                                  isLoading={isLoading}
-                                  allowSelection
-                                />
-                              </div>
-                            )}
-                          </>
-                        </div>
-                      </ResizablePanel>
-                      {isShowingBulkActionInspector && (
-                        <>
-                          <ResizableHandle id="runs-handle" />
-                          <ResizablePanel
-                            id="bulk-action-inspector"
-                            min="300px"
-                            default="400px"
-                            max="600px"
-                          >
-                            <CreateBulkActionInspector
-                              filters={filters}
-                              selectedItems={selectedItems}
-                              hasBulkActions={list.bulkActions.length > 0}
-                            />
-                          </ResizablePanel>
-                        </>
-                      )}
-                    </ResizablePanelGroup>
+                    <RunsList
+                      list={list}
+                      selectedItems={selectedItems}
+                      rootOnlyDefault={rootOnlyDefault}
+                      filters={filters}
+                    />
                   );
                 }}
               </TypedAwait>
@@ -248,6 +170,139 @@ export default function Page() {
         </SelectedItemsProvider>
       </PageBody>
     </>
+  );
+}
+
+function RunsList({
+  list,
+  selectedItems,
+  rootOnlyDefault,
+  filters,
+}: {
+  list: Awaited<UseDataFunctionReturn<typeof loader>["data"]>;
+  selectedItems: Set<string>;
+  rootOnlyDefault: boolean;
+  filters: TaskRunListSearchFilters;
+}) {
+  const navigation = useNavigation();
+  const isLoading = navigation.state !== "idle";
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+  const { has, replace } = useSearchParams();
+
+  // Shortcut keys for bulk actions
+  useShortcutKeys({
+    shortcut: { key: "r" },
+    action: (e) => {
+      replace({
+        bulkInspector: "true",
+        action: "replay",
+        mode: selectedItems.size > 0 ? "selected" : undefined,
+      });
+    },
+  });
+  useShortcutKeys({
+    shortcut: { key: "c" },
+    action: (e) => {
+      replace({
+        bulkInspector: "true",
+        action: "cancel",
+        mode: selectedItems.size > 0 ? "selected" : undefined,
+      });
+    },
+  });
+
+  const isShowingBulkActionInspector = has("bulkInspector") && list.hasAnyRuns;
+  return (
+    <ResizablePanelGroup orientation="horizontal" className="max-h-full">
+      <ResizablePanel id="runs-main" min={"100px"}>
+        <div
+          className={cn(
+            "grid h-full max-h-full overflow-hidden",
+            selectedItems.size === 0 ? "grid-rows-1" : "grid-rows-[1fr_auto]"
+          )}
+        >
+          <>
+            {list.runs.length === 0 && !list.hasAnyRuns ? (
+              list.possibleTasks.length === 0 ? (
+                <CreateFirstTaskInstructions />
+              ) : (
+                <RunTaskInstructions />
+              )
+            ) : (
+              <div className={cn("grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden")}>
+                <div className="flex items-start justify-between gap-x-2 p-2">
+                  <RunsFilters
+                    possibleTasks={list.possibleTasks}
+                    bulkActions={list.bulkActions}
+                    hasFilters={list.hasFilters}
+                    rootOnlyDefault={rootOnlyDefault}
+                  />
+                  <div className="flex items-center justify-end gap-x-2">
+                    {!isShowingBulkActionInspector && (
+                      <LinkButton
+                        variant="secondary/small"
+                        to={v3CreateBulkActionPath(
+                          organization,
+                          project,
+                          environment,
+                          filters,
+                          selectedItems.size > 0 ? "selected" : undefined
+                        )}
+                        LeadingIcon={ListCheckedIcon}
+                        className={selectedItems.size > 0 ? "pr-1" : undefined}
+                        tooltip={
+                          <div className="-mr-1 flex items-center gap-3 text-xs text-text-dimmed">
+                            <div className="flex items-center gap-0.5">
+                              <span>Replay</span>
+                              <ShortcutKey shortcut={{ key: "r" }} variant={"small"} />
+                            </div>
+                            <div className="flex items-center gap-0.5">
+                              <span>Cancel</span>
+                              <ShortcutKey shortcut={{ key: "c" }} variant={"small"} />
+                            </div>
+                          </div>
+                        }
+                      >
+                        <span className="flex items-center gap-x-1 whitespace-nowrap text-text-bright">
+                          <span>Bulk action</span>
+                          {selectedItems.size > 0 && (
+                            <Badge variant="rounded">{selectedItems.size}</Badge>
+                          )}
+                        </span>
+                      </LinkButton>
+                    )}
+                    <ListPagination list={list} />
+                  </div>
+                </div>
+
+                <TaskRunsTable
+                  total={list.runs.length}
+                  hasFilters={list.hasFilters}
+                  filters={list.filters}
+                  runs={list.runs}
+                  isLoading={isLoading}
+                  allowSelection
+                />
+              </div>
+            )}
+          </>
+        </div>
+      </ResizablePanel>
+      {isShowingBulkActionInspector && (
+        <>
+          <ResizableHandle id="runs-handle" />
+          <ResizablePanel id="bulk-action-inspector" min="300px" default="400px" max="600px">
+            <CreateBulkActionInspector
+              filters={filters}
+              selectedItems={selectedItems}
+              hasBulkActions={list.bulkActions.length > 0}
+            />
+          </ResizablePanel>
+        </>
+      )}
+    </ResizablePanelGroup>
   );
 }
 
