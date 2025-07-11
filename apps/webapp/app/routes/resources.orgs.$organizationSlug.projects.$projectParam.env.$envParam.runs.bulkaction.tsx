@@ -107,7 +107,11 @@ export const CreateBulkActionPayload = z.discriminatedUnion("mode", [
   z.object({
     mode: z.literal("selected"),
     action: BulkActionAction,
-    selectedRunIds: z.array(z.string()),
+    selectedRunIds: z.preprocess((value) => {
+      if (Array.isArray(value)) return value;
+      if (typeof value === "string") return [value];
+      return [];
+    }, z.array(z.string())),
     title: z.string().optional(),
     failedRedirect: z.string(),
     emailNotification: z.preprocess((value) => value === "on", z.boolean()),
