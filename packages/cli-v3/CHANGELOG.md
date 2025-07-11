@@ -1,5 +1,18 @@
 # trigger.dev
 
+## 4.0.0-v4-beta.23
+
+### Patch Changes
+
+- Enhance deploy command output to better distinguish between local and remote builds ([#2254](https://github.com/triggerdotdev/trigger.dev/pull/2254))
+- Fixes a bug that would allow processes that had OOM errors to be incorrectly reused when experimental_processKeepAlive was enabled ([#2261](https://github.com/triggerdotdev/trigger.dev/pull/2261))
+- Add runtime version detection for display in the dashboard ([#2254](https://github.com/triggerdotdev/trigger.dev/pull/2254))
+- Update base images to latest compatible versions. The `node-22` runtime now uses v22.16.0 and `bun` uses the latest v1.2.18 release. The default `node` runtime is unchanged and points at v21.7.3. ([#2254](https://github.com/triggerdotdev/trigger.dev/pull/2254))
+- Fail fast in CI when running deploy with missing `TRIGGER_ACCESS_TOKEN` and add useful error message with link to docs ([#2258](https://github.com/triggerdotdev/trigger.dev/pull/2258))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.23`
+  - `@trigger.dev/build@4.0.0-v4-beta.23`
+
 ## 4.0.0-v4-beta.22
 
 ### Patch Changes
