@@ -555,9 +555,11 @@ model TaskRun {
   organizationId String?
 
   // The specific queue this run is in
-  queue         String
+  queue                                    String
   // The queueId is set when the run is locked to a specific queue
-  lockedQueueId String?
+  lockedQueueId                            String?
+  // Whether the locked queue specifies that concurrency should be released when a run is blocked by a waitpoint
+  lockedQueueReleaseConcurrencyOnWaitpoint Boolean?
 
   /// The main queue that this run is part of
   workerQueue String @default("main") @map("masterQueue")

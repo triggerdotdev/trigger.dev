@@ -27,6 +27,7 @@ export class DefaultQueueManager implements QueueManager {
   ): Promise<QueueProperties> {
     let queueName: string;
     let lockedQueueId: string | undefined;
+    let lockedQueueReleaseConcurrencyOnWaitpoint: boolean | undefined;
 
     // Determine queue name based on lockToVersion and provided options
     if (lockedBackgroundWorker) {
@@ -53,6 +54,9 @@ export class DefaultQueueManager implements QueueManager {
         // Use the validated queue name directly
         queueName = specifiedQueue.name;
         lockedQueueId = specifiedQueue.id;
+        lockedQueueReleaseConcurrencyOnWaitpoint =
+          typeof specifiedQueue.concurrencyLimit === "undefined" ||
+          specifiedQueue.releaseConcurrencyOnWaitpoint;
       } else {
         // No specific queue name provided, use the default queue for the task on the locked worker
         const lockedTask = await this.prisma.backgroundWorkerTask.findFirst({
@@ -91,6 +95,9 @@ export class DefaultQueueManager implements QueueManager {
         // Use the task's default queue name
         queueName = lockedTask.queue.name;
         lockedQueueId = lockedTask.queue.id;
+        lockedQueueReleaseConcurrencyOnWaitpoint =
+          typeof lockedTask.queue.concurrencyLimit === "undefined" ||
+          lockedTask.queue.releaseConcurrencyOnWaitpoint;
       }
     } else {
       // Task is not locked to a specific version, use regular logic
@@ -118,6 +125,7 @@ export class DefaultQueueManager implements QueueManager {
     return {
       queueName,
       lockedQueueId,
+      lockedQueueReleaseConcurrencyOnWaitpoint,
     };
   }
 
