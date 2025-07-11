@@ -503,7 +503,7 @@ function ReplayForm({
           <Button variant="tertiary/medium">Cancel</Button>
         </DialogClose>
         <div className="flex items-center gap-3">
-          <InputGroup className="flex flex-row items-center">
+          <InputGroup className="flex flex-row items-center gap-3">
             <Label>Replay this run in</Label>
             <Select
               {...conform.select(environment)}
@@ -514,7 +514,7 @@ function ReplayForm({
               value={environmentIdOverride}
               setValue={setEnvironmentIdOverride}
               variant="tertiary/medium"
-              className="w-fit pl-1"
+              className="min-w-44"
               filter={{
                 keys: [
                   (item) => item.type.replace(/\//g, " ").replace(/_/g, " "),
