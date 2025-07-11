@@ -237,6 +237,7 @@ function ReplayForm({
         <ResizablePanel id="payload" min="300px">
           <div className="rounded-smbg-charcoal-900 mb-3 h-full min-h-40 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
             <JSONEditor
+              className="h-full"
               autoFocus
               defaultValue={tab === "payload" ? defaultPayloadJson : defaultMetadataJson}
               readOnly={false}
