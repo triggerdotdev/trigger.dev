@@ -210,8 +210,8 @@ function ReplayForm({
       <input type="hidden" name="failedRedirect" value={failedRedirect} />
 
       <Paragraph className="pt-6">
-        Replaying will create a new run using the same or modified payload, executing against the
-        latest version in your selected environment.
+        Replaying will create a new run in the selected environment. You can modify the payload,
+        metadata and run options.
       </Paragraph>
       <ResizablePanelGroup
         orientation="horizontal"
