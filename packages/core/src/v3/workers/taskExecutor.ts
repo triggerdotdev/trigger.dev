@@ -15,6 +15,7 @@ import {
   attemptKey,
   flattenAttributes,
   lifecycleHooks,
+  OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT,
   runMetadata,
   waitUntil,
 } from "../index.js";
@@ -716,7 +717,9 @@ export class TaskExecutor {
                 const result = await hook.fn({ payload, ctx, signal, task: this.task.id });
 
                 if (result && typeof result === "object" && !Array.isArray(result)) {
-                  span.setAttributes(flattenAttributes(result));
+                  span.setAttributes(
+                    flattenAttributes(result, undefined, OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT)
+                  );
                   return result;
                 }
 
@@ -752,7 +755,9 @@ export class TaskExecutor {
                 const result = await taskInitHook({ payload, ctx, signal, task: this.task.id });
 
                 if (result && typeof result === "object" && !Array.isArray(result)) {
-                  span.setAttributes(flattenAttributes(result));
+                  span.setAttributes(
+                    flattenAttributes(result, undefined, OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT)
+                  );
                   return result;
                 }
 
