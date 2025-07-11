@@ -550,6 +550,7 @@ export class RunsReplicationService {
       "network error",
       "read econnreset",
       "write econnreset",
+      "timeout",
     ];
 
     return retryableConnectionPatterns.some((pattern) => errorMessage.includes(pattern));
