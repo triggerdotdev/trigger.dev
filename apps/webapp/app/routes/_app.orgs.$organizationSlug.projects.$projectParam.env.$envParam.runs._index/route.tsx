@@ -225,7 +225,12 @@ export default function Page() {
                       {isShowingBulkActionInspector && (
                         <>
                           <ResizableHandle id="runs-handle" />
-                          <ResizablePanel id="bulk-action-inspector" min="100px" default="450px">
+                          <ResizablePanel
+                            id="bulk-action-inspector"
+                            min="300px"
+                            default="400px"
+                            max="600px"
+                          >
                             <CreateBulkActionInspector
                               filters={filters}
                               selectedItems={selectedItems}
