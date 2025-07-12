@@ -265,7 +265,7 @@ export class BulkActionService extends BaseService {
 
     const isFinished = runIdsToProcess.length === 0;
 
-    logger.log("Bulk action group processed batch", {
+    logger.debug("Bulk action group processed batch", {
       bulkActionId,
       organizationId: group.project.organizationId,
       projectId: group.projectId,
