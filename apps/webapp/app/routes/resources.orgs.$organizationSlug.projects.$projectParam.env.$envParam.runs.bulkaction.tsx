@@ -205,7 +205,7 @@ export function CreateBulkActionInspector({
   const fetcher = useTypedFetcher<typeof loader>();
   const { value, replace } = useSearchParams();
   const [action, setAction] = useState<BulkActionAction>(
-    (value("action") ?? "replay") as BulkActionAction
+    bulkActionActionFromString(value("action"))
   );
   const location = useOptimisticLocation();
   const user = useUser();
@@ -217,10 +217,10 @@ export function CreateBulkActionInspector({
   }, [organization.id, project.id, environment.id, location.search]);
 
   useEffect(() => {
-    setAction((value("action") ?? "replay") as BulkActionAction);
+    setAction(bulkActionActionFromString(value("action")));
   }, [value("action")]);
 
-  const mode = value("mode") ?? "filter";
+  const mode = bulkActionModeFromString(value("mode"));
 
   const data = fetcher.data != null ? fetcher.data : undefined;
 
@@ -367,8 +367,8 @@ export function CreateBulkActionInspector({
               <Label>Preview</Label>
               <BulkActionFilterSummary
                 selected={mode === "selected" ? selectedItems.size : data?.count}
-                mode={mode as BulkActionMode}
-                action={action as BulkActionAction}
+                mode={mode}
+                action={action}
                 filters={filters}
               />
             </InputGroup>
@@ -404,8 +404,8 @@ export function CreateBulkActionInspector({
               <div className="flex flex-col gap-3 divide-y divide-grid-dimmed pt-2">
                 <BulkActionFilterSummary
                   selected={mode === "selected" ? selectedItems.size : data?.count}
-                  mode={mode as BulkActionMode}
-                  action={action as BulkActionAction}
+                  mode={mode}
+                  action={action}
                   filters={filters}
                 />
                 <Paragraph variant="small" className="pt-3">
@@ -456,4 +456,18 @@ export function CreateBulkActionInspector({
       </div>
     </Form>
   );
+}
+
+function bulkActionModeFromString(value: string | undefined): BulkActionMode {
+  if (!value) return "filter";
+  const parsed = BulkActionMode.safeParse(value);
+  if (!parsed.success) return "filter";
+  return parsed.data;
+}
+
+function bulkActionActionFromString(value: string | undefined): BulkActionAction {
+  if (!value) return "replay";
+  const parsed = BulkActionAction.safeParse(value);
+  if (!parsed.success) return "replay";
+  return parsed.data;
 }
