@@ -4,81 +4,230 @@ export const NULL_SENTINEL = "$@null((";
 export const CIRCULAR_REFERENCE_SENTINEL = "$@circular((";
 
 export function flattenAttributes(
-  obj: Record<string, unknown> | Array<unknown> | string | boolean | number | null | undefined,
+  obj: unknown,
   prefix?: string,
-  seen: WeakSet<object> = new WeakSet()
+  maxAttributeCount?: number
 ): Attributes {
-  const result: Attributes = {};
+  const flattener = new AttributeFlattener(maxAttributeCount);
+  flattener.doFlatten(obj, prefix);
+  return flattener.attributes;
+}
 
-  // Check if obj is null or undefined
-  if (obj === undefined) {
-    return result;
+class AttributeFlattener {
+  private seen: WeakSet<object> = new WeakSet();
+  private attributeCounter: number = 0;
+  private result: Attributes = {};
+
+  constructor(private maxAttributeCount?: number) {}
+
+  get attributes(): Attributes {
+    return this.result;
   }
 
-  if (obj === null) {
-    result[prefix || ""] = NULL_SENTINEL;
-    return result;
+  private canAddMoreAttributes(): boolean {
+    return this.maxAttributeCount === undefined || this.attributeCounter < this.maxAttributeCount;
   }
 
-  if (typeof obj === "string") {
-    result[prefix || ""] = obj;
-    return result;
+  private addAttribute(key: string, value: any): boolean {
+    if (!this.canAddMoreAttributes()) {
+      return false;
+    }
+    this.result[key] = value;
+    this.attributeCounter++;
+    return true;
   }
 
-  if (typeof obj === "number") {
-    result[prefix || ""] = obj;
-    return result;
-  }
+  doFlatten(obj: unknown, prefix?: string) {
+    if (!this.canAddMoreAttributes()) {
+      return;
+    }
 
-  if (typeof obj === "boolean") {
-    result[prefix || ""] = obj;
-    return result;
-  }
+    // Check if obj is null or undefined
+    if (obj === undefined) {
+      return;
+    }
 
-  if (obj instanceof Date) {
-    result[prefix || ""] = obj.toISOString();
-    return result;
-  }
+    if (obj === null) {
+      this.addAttribute(prefix || "", NULL_SENTINEL);
+      return;
+    }
 
-  // Check for circular reference
-  if (obj !== null && typeof obj === "object" && seen.has(obj)) {
-    result[prefix || ""] = CIRCULAR_REFERENCE_SENTINEL;
-    return result;
-  }
+    if (typeof obj === "string") {
+      this.addAttribute(prefix || "", obj);
+      return;
+    }
 
-  // Add object to seen set
-  if (obj !== null && typeof obj === "object") {
-    seen.add(obj);
-  }
+    if (typeof obj === "number") {
+      this.addAttribute(prefix || "", obj);
+      return;
+    }
 
-  for (const [key, value] of Object.entries(obj)) {
-    const newPrefix = `${prefix ? `${prefix}.` : ""}${Array.isArray(obj) ? `[${key}]` : key}`;
-    if (Array.isArray(value)) {
-      for (let i = 0; i < value.length; i++) {
-        if (typeof value[i] === "object" && value[i] !== null) {
-          // update null check here as well
-          Object.assign(result, flattenAttributes(value[i], `${newPrefix}.[${i}]`, seen));
-        } else {
-          if (value[i] === null) {
-            result[`${newPrefix}.[${i}]`] = NULL_SENTINEL;
-          } else {
-            result[`${newPrefix}.[${i}]`] = value[i];
-          }
-        }
+    if (typeof obj === "boolean") {
+      this.addAttribute(prefix || "", obj);
+      return;
+    }
+
+    if (obj instanceof Date) {
+      this.addAttribute(prefix || "", obj.toISOString());
+      return;
+    }
+
+    // Handle Error objects
+    if (obj instanceof Error) {
+      this.addAttribute(`${prefix || "error"}.name`, obj.name);
+      this.addAttribute(`${prefix || "error"}.message`, obj.message);
+      if (obj.stack) {
+        this.addAttribute(`${prefix || "error"}.stack`, obj.stack);
       }
-    } else if (isRecord(value)) {
-      // update null check here
-      Object.assign(result, flattenAttributes(value, newPrefix, seen));
-    } else {
-      if (typeof value === "number" || typeof value === "string" || typeof value === "boolean") {
-        result[newPrefix] = value;
-      } else if (value === null) {
-        result[newPrefix] = NULL_SENTINEL;
+      return;
+    }
+
+    // Handle functions
+    if (typeof obj === "function") {
+      const funcName = obj.name || "anonymous";
+      this.addAttribute(prefix || "", `[Function: ${funcName}]`);
+      return;
+    }
+
+    // Handle Set objects
+    if (obj instanceof Set) {
+      let index = 0;
+      for (const item of obj) {
+        if (!this.canAddMoreAttributes()) break;
+        this.#processValue(item, `${prefix || "set"}.[${index}]`);
+        index++;
+      }
+      return;
+    }
+
+    // Handle Map objects
+    if (obj instanceof Map) {
+      for (const [key, value] of obj) {
+        if (!this.canAddMoreAttributes()) break;
+        // Use the key directly if it's a string, otherwise convert it
+        const keyStr = typeof key === "string" ? key : String(key);
+        this.#processValue(value, `${prefix || "map"}.${keyStr}`);
+      }
+      return;
+    }
+
+    // Handle File objects
+    if (typeof File !== "undefined" && obj instanceof File) {
+      this.addAttribute(`${prefix || "file"}.name`, obj.name);
+      this.addAttribute(`${prefix || "file"}.size`, obj.size);
+      this.addAttribute(`${prefix || "file"}.type`, obj.type);
+      this.addAttribute(`${prefix || "file"}.lastModified`, obj.lastModified);
+      return;
+    }
+
+    // Handle ReadableStream objects
+    if (typeof ReadableStream !== "undefined" && obj instanceof ReadableStream) {
+      this.addAttribute(`${prefix || "stream"}.type`, "ReadableStream");
+      this.addAttribute(`${prefix || "stream"}.locked`, obj.locked);
+      return;
+    }
+
+    // Handle WritableStream objects
+    if (typeof WritableStream !== "undefined" && obj instanceof WritableStream) {
+      this.addAttribute(`${prefix || "stream"}.type`, "WritableStream");
+      this.addAttribute(`${prefix || "stream"}.locked`, obj.locked);
+      return;
+    }
+
+    // Handle Promise objects
+    if (obj instanceof Promise) {
+      this.addAttribute(prefix || "promise", "[Promise object]");
+      // We can't inspect promise state synchronously, so just indicate it's a promise
+      return;
+    }
+
+    // Handle RegExp objects
+    if (obj instanceof RegExp) {
+      this.addAttribute(`${prefix || "regexp"}.source`, obj.source);
+      this.addAttribute(`${prefix || "regexp"}.flags`, obj.flags);
+      return;
+    }
+
+    // Handle URL objects
+    if (typeof URL !== "undefined" && obj instanceof URL) {
+      this.addAttribute(`${prefix || "url"}.href`, obj.href);
+      this.addAttribute(`${prefix || "url"}.protocol`, obj.protocol);
+      this.addAttribute(`${prefix || "url"}.host`, obj.host);
+      this.addAttribute(`${prefix || "url"}.pathname`, obj.pathname);
+      return;
+    }
+
+    // Handle ArrayBuffer and TypedArrays
+    if (obj instanceof ArrayBuffer) {
+      this.addAttribute(`${prefix || "arraybuffer"}.byteLength`, obj.byteLength);
+      return;
+    }
+
+    // Handle TypedArrays (Uint8Array, Int32Array, etc.)
+    if (ArrayBuffer.isView(obj)) {
+      const typedArray = obj as any;
+      this.addAttribute(`${prefix || "typedarray"}.constructor`, typedArray.constructor.name);
+      this.addAttribute(`${prefix || "typedarray"}.length`, typedArray.length);
+      this.addAttribute(`${prefix || "typedarray"}.byteLength`, typedArray.byteLength);
+      this.addAttribute(`${prefix || "typedarray"}.byteOffset`, typedArray.byteOffset);
+      return;
+    }
+
+    // Check for circular reference
+    if (obj !== null && typeof obj === "object" && this.seen.has(obj)) {
+      this.addAttribute(prefix || "", CIRCULAR_REFERENCE_SENTINEL);
+      return;
+    }
+
+    // Add object to seen set
+    if (obj !== null && typeof obj === "object") {
+      this.seen.add(obj);
+    }
+
+    for (const [key, value] of Object.entries(obj)) {
+      if (!this.canAddMoreAttributes()) {
+        break;
+      }
+
+      const newPrefix = `${prefix ? `${prefix}.` : ""}${Array.isArray(obj) ? `[${key}]` : key}`;
+
+      if (Array.isArray(value)) {
+        for (let i = 0; i < value.length; i++) {
+          if (!this.canAddMoreAttributes()) {
+            break;
+          }
+          this.#processValue(value[i], `${newPrefix}.[${i}]`);
+        }
+      } else {
+        this.#processValue(value, newPrefix);
       }
     }
   }
 
-  return result;
+  #processValue(value: unknown, prefix: string) {
+    if (!this.canAddMoreAttributes()) {
+      return;
+    }
+
+    // Handle primitive values directly
+    if (value === null) {
+      this.addAttribute(prefix, NULL_SENTINEL);
+      return;
+    }
+
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+      this.addAttribute(prefix, value);
+      return;
+    }
+
+    // Handle non-primitive values by recursing
+    if (typeof value === "object" || typeof value === "function") {
+      this.doFlatten(value as any, prefix);
+    } else {
+      // Convert other types to strings (bigint, symbol, etc.)
+      this.addAttribute(prefix, String(value));
+    }
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

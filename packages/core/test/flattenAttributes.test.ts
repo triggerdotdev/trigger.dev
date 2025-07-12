@@ -1,7 +1,7 @@
 import { flattenAttributes, unflattenAttributes } from "../src/v3/utils/flattenAttributes.js";
 
 describe("flattenAttributes", () => {
-  it("handles number keys correctl", () => {
+  it("handles number keys correctly", () => {
     expect(flattenAttributes({ bar: { "25": "foo" } })).toEqual({ "bar.25": "foo" });
     expect(unflattenAttributes({ "bar.25": "foo" })).toEqual({ bar: { "25": "foo" } });
     expect(flattenAttributes({ bar: ["foo", "baz"] })).toEqual({
@@ -157,13 +157,14 @@ describe("flattenAttributes", () => {
     expect(flattenAttributes(obj, "retry.byStatus")).toEqual(expected);
   });
 
-   it("handles circular references correctly", () => {
+  it("handles circular references correctly", () => {
     const user = { name: "Alice" };
+    // @ts-expect-error
     user["blogPosts"] = [{ title: "Post 1", author: user }]; // Circular reference
 
     const result = flattenAttributes(user);
     expect(result).toEqual({
-      "name": "Alice",
+      name: "Alice",
       "blogPosts.[0].title": "Post 1",
       "blogPosts.[0].author": "$@circular((",
     });
@@ -171,13 +172,308 @@ describe("flattenAttributes", () => {
 
   it("handles nested circular references correctly", () => {
     const user = { name: "Bob" };
+    // @ts-expect-error
     user["friends"] = [user]; // Circular reference
 
     const result = flattenAttributes(user);
     expect(result).toEqual({
-      "name": "Bob",
+      name: "Bob",
       "friends.[0]": "$@circular((",
     });
+  });
+
+  it("respects maxAttributeCount limit", () => {
+    const obj = {
+      a: 1,
+      b: 2,
+      c: 3,
+      d: 4,
+      e: 5,
+    };
+
+    const result = flattenAttributes(obj, undefined, 3);
+    expect(Object.keys(result)).toHaveLength(3);
+    expect(result).toEqual({
+      a: 1,
+      b: 2,
+      c: 3,
+    });
+  });
+
+  it("respects maxAttributeCount limit with nested objects", () => {
+    const obj = {
+      level1: {
+        a: 1,
+        b: 2,
+        c: 3,
+      },
+      level2: {
+        d: 4,
+        e: 5,
+      },
+    };
+
+    const result = flattenAttributes(obj, undefined, 2);
+    expect(Object.keys(result)).toHaveLength(2);
+    expect(result).toEqual({
+      "level1.a": 1,
+      "level1.b": 2,
+    });
+  });
+
+  it("respects maxAttributeCount limit with arrays", () => {
+    const obj = {
+      array: [1, 2, 3, 4, 5],
+    };
+
+    const result = flattenAttributes(obj, undefined, 3);
+    expect(Object.keys(result)).toHaveLength(3);
+    expect(result).toEqual({
+      "array.[0]": 1,
+      "array.[1]": 2,
+      "array.[2]": 3,
+    });
+  });
+
+  it("works normally when maxAttributeCount is undefined", () => {
+    const obj = {
+      a: 1,
+      b: 2,
+      c: 3,
+    };
+
+    const result = flattenAttributes(obj);
+    expect(Object.keys(result)).toHaveLength(3);
+    expect(result).toEqual({
+      a: 1,
+      b: 2,
+      c: 3,
+    });
+  });
+
+  it("handles maxAttributeCount of 0", () => {
+    const obj = {
+      a: 1,
+      b: 2,
+    };
+
+    const result = flattenAttributes(obj, undefined, 0);
+    expect(Object.keys(result)).toHaveLength(0);
+    expect(result).toEqual({});
+  });
+
+  it("handles maxAttributeCount with primitive values", () => {
+    const result1 = flattenAttributes("test", undefined, 1);
+    expect(result1).toEqual({ "": "test" });
+
+    const result2 = flattenAttributes("test", undefined, 0);
+    expect(result2).toEqual({});
+  });
+
+  it("handles Error objects correctly", () => {
+    const error = new Error("Test error message");
+    error.stack = "Error: Test error message\n    at test.js:1:1";
+
+    const result = flattenAttributes({ error });
+    expect(result).toEqual({
+      "error.name": "Error",
+      "error.message": "Test error message",
+      "error.stack": "Error: Test error message\n    at test.js:1:1",
+    });
+  });
+
+  it("handles Error objects as top-level values", () => {
+    const error = new Error("Top level error");
+    const result = flattenAttributes(error);
+    expect(result["error.name"]).toBe("Error");
+    expect(result["error.message"]).toBe("Top level error");
+    // Stack trace is also included when present
+    expect(result["error.stack"]).toBeDefined();
+  });
+
+  it("handles function values correctly", () => {
+    function namedFunction() {}
+    const anonymousFunction = function () {};
+    const arrowFunction = () => {};
+
+    const result = flattenAttributes({
+      named: namedFunction,
+      anonymous: anonymousFunction,
+      arrow: arrowFunction,
+    });
+
+    expect(result.named).toBe("[Function: namedFunction]");
+    // Note: function expressions with variable names retain their names
+    expect(result.anonymous).toBe("[Function: anonymousFunction]");
+    // Arrow functions also get their variable names in modern JS
+    expect(result.arrow).toBe("[Function: arrowFunction]");
+  });
+
+  it("handles mixed problematic types", () => {
+    const complexObj = {
+      error: new Error("Mixed error"),
+      func: function testFunc() {},
+      date: new Date("2023-01-01"),
+      normal: "string",
+      number: 42,
+    };
+
+    const result = flattenAttributes(complexObj);
+
+    expect(result["error.name"]).toBe("Error");
+    expect(result["error.message"]).toBe("Mixed error");
+    expect(result["func"]).toBe("[Function: testFunc]");
+    expect(result["date"]).toBe("2023-01-01T00:00:00.000Z");
+    expect(result["normal"]).toBe("string");
+    expect(result["number"]).toBe(42);
+  });
+
+  it("handles bigint and symbol types", () => {
+    const obj = {
+      bigNumber: BigInt(123456789),
+      sym: Symbol("test"),
+    };
+
+    const result = flattenAttributes(obj);
+    expect(result["bigNumber"]).toBe("123456789");
+    expect(result["sym"]).toBe("Symbol(test)");
+  });
+
+  it("handles Set objects correctly", () => {
+    const mySet = new Set([1, "hello", true, { nested: "object" }]);
+    const result = flattenAttributes({ mySet });
+
+    expect(result["mySet.[0]"]).toBe(1);
+    expect(result["mySet.[1]"]).toBe("hello");
+    expect(result["mySet.[2]"]).toBe(true);
+    expect(result["mySet.[3].nested"]).toBe("object");
+  });
+
+  it("handles Map objects correctly", () => {
+    const myMap = new Map();
+    myMap.set("key1", "value1");
+    myMap.set("key2", 42);
+    myMap.set(123, "numeric key");
+
+    const result = flattenAttributes({ myMap });
+
+    expect(result["myMap.key1"]).toBe("value1");
+    expect(result["myMap.key2"]).toBe(42);
+    expect(result["myMap.123"]).toBe("numeric key");
+  });
+
+  it("handles File objects correctly", () => {
+    if (typeof File !== "undefined") {
+      const file = new File(["content"], "test.txt", {
+        type: "text/plain",
+        lastModified: 1640995200000,
+      });
+      const result = flattenAttributes({ file });
+
+      expect(result["file.name"]).toBe("test.txt");
+      expect(result["file.type"]).toBe("text/plain");
+      expect(result["file.size"]).toBe(7); // "content" is 7 bytes
+      expect(result["file.lastModified"]).toBe(1640995200000);
+    }
+  });
+
+  it("handles ReadableStream objects correctly", () => {
+    if (typeof ReadableStream !== "undefined") {
+      const stream = new ReadableStream();
+      const result = flattenAttributes({ stream });
+
+      expect(result["stream.type"]).toBe("ReadableStream");
+      expect(result["stream.locked"]).toBe(false);
+    }
+  });
+
+  it("handles Promise objects correctly", () => {
+    const resolvedPromise = Promise.resolve("value");
+    const rejectedPromise = Promise.reject(new Error("failed"));
+    const pendingPromise = new Promise(() => {}); // Never resolves
+
+    // Catch the rejection to avoid unhandled promise rejection warnings
+    rejectedPromise.catch(() => {});
+
+    const result = flattenAttributes({
+      resolved: resolvedPromise,
+      rejected: rejectedPromise,
+      pending: pendingPromise,
+    });
+
+    expect(result["resolved"]).toBe("[Promise object]");
+    expect(result["rejected"]).toBe("[Promise object]");
+    expect(result["pending"]).toBe("[Promise object]");
+  });
+
+  it("handles RegExp objects correctly", () => {
+    const regex = /hello.*world/gim;
+    const result = flattenAttributes({ regex });
+
+    expect(result["regex.source"]).toBe("hello.*world");
+    expect(result["regex.flags"]).toBe("gim");
+  });
+
+  it("handles URL objects correctly", () => {
+    if (typeof URL !== "undefined") {
+      const url = new URL("https://example.com:8080/path?query=value#fragment");
+      const result = flattenAttributes({ url });
+
+      expect(result["url.href"]).toBe("https://example.com:8080/path?query=value#fragment");
+      expect(result["url.protocol"]).toBe("https:");
+      expect(result["url.host"]).toBe("example.com:8080");
+      expect(result["url.pathname"]).toBe("/path");
+    }
+  });
+
+  it("handles ArrayBuffer correctly", () => {
+    const buffer = new ArrayBuffer(16);
+    const result = flattenAttributes({ buffer });
+
+    expect(result["buffer.byteLength"]).toBe(16);
+  });
+
+  it("handles TypedArrays correctly", () => {
+    const uint8Array = new Uint8Array([1, 2, 3, 4]);
+    const int32Array = new Int32Array([100, 200, 300]);
+
+    const result = flattenAttributes({
+      uint8: uint8Array,
+      int32: int32Array,
+    });
+
+    expect(result["uint8.constructor"]).toBe("Uint8Array");
+    expect(result["uint8.length"]).toBe(4);
+    expect(result["uint8.byteLength"]).toBe(4);
+    expect(result["uint8.byteOffset"]).toBe(0);
+
+    expect(result["int32.constructor"]).toBe("Int32Array");
+    expect(result["int32.length"]).toBe(3);
+    expect(result["int32.byteLength"]).toBe(12); // 3 * 4 bytes
+    expect(result["int32.byteOffset"]).toBe(0);
+  });
+
+  it("handles complex mixed object with all special types", () => {
+    const complexObj = {
+      error: new Error("Test error"),
+      func: function testFunc() {},
+      date: new Date("2023-01-01"),
+      mySet: new Set([1, 2, 3]),
+      myMap: new Map([["key", "value"]]),
+      regex: /test/gi,
+      bigint: BigInt(999),
+      symbol: Symbol("test"),
+    };
+
+    const result = flattenAttributes(complexObj);
+
+    // Verify we get reasonable representations for all types
+    expect(result["error.name"]).toBe("Error");
+    expect(result["func"]).toBe("[Function: testFunc]");
+    expect(result["date"]).toBe("2023-01-01T00:00:00.000Z");
+    expect(result["regex.source"]).toBe("test");
+    expect(result["bigint"]).toBe("999");
+    expect(typeof result["symbol"]).toBe("string");
   });
 });
 
@@ -246,10 +542,10 @@ describe("unflattenAttributes", () => {
     };
     expect(unflattenAttributes(flattened)).toEqual(expected);
   });
-  
+
   it("rehydrates circular references correctly", () => {
     const flattened = {
-      "name": "Alice",
+      name: "Alice",
       "blogPosts.[0].title": "Post 1",
       "blogPosts.[0].author": "$@circular((",
     };

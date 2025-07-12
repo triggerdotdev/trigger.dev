@@ -11,7 +11,8 @@ export class ConsoleInterceptor {
   constructor(
     private readonly logger: logsAPI.Logger,
     private readonly sendToStdIO: boolean,
-    private readonly interceptingDisabled: boolean
+    private readonly interceptingDisabled: boolean,
+    private readonly maxAttributeCount?: number
   ) {}
 
   // Intercept the console and send logs to the OpenTelemetry logger
@@ -92,7 +93,10 @@ export class ConsoleInterceptor {
         severityNumber,
         severityText,
         body: getLogMessage(parsed.value, severityText),
-        attributes: { ...this.#getAttributes(severityNumber), ...flattenAttributes(parsed.value) },
+        attributes: {
+          ...this.#getAttributes(severityNumber),
+          ...flattenAttributes(parsed.value, undefined, this.maxAttributeCount),
+        },
         timestamp,
       });
 
