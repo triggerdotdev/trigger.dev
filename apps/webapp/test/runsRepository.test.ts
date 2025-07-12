@@ -1158,7 +1158,7 @@ describe("RunsRepository", () => {
         },
       });
 
-      await setTimeout(1000);
+      await setTimeout(2_000);
 
       const runsRepository = new RunsRepository({
         prisma,
