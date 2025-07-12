@@ -281,7 +281,7 @@ export class BulkActionService extends BaseService {
     await this._prisma.bulkActionGroup.update({
       where: { id: bulkActionId },
       data: {
-        cursor: runIdsToProcess[runIdsToProcess.length - 1],
+        cursor: runIdsToProcess.at(runIdsToProcess.length - 1),
         successCount: {
           increment: successCount,
         },
