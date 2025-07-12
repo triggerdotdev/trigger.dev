@@ -550,6 +550,7 @@ export class RunsReplicationService {
       "network error",
       "read econnreset",
       "write econnreset",
+      "timeout",
     ];
 
     return retryableConnectionPatterns.some((pattern) => errorMessage.includes(pattern));
@@ -721,6 +722,7 @@ export class RunsReplicationService {
       expiration_ttl: run.ttl ?? "",
       output,
       concurrency_key: run.concurrencyKey ?? "",
+      bulk_action_group_ids: run.bulkActionGroupIds ?? [],
       _version: _version.toString(),
       _is_deleted: event === "delete" ? 1 : 0,
     };

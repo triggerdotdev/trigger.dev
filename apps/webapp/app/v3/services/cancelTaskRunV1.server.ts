@@ -10,6 +10,7 @@ import { CancelAttemptService } from "./cancelAttempt.server";
 import { CancelTaskAttemptDependenciesService } from "./cancelTaskAttemptDependencies.server";
 import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
 import { getTaskEventStoreTableForRun } from "../taskEventStore.server";
+import { CancelableTaskRun } from "./cancelTaskRun.server";
 
 type ExtendedTaskRun = Prisma.TaskRunGetPayload<{
   include: {
@@ -28,10 +29,11 @@ export type CancelTaskRunServiceOptions = {
   reason?: string;
   cancelAttempts?: boolean;
   cancelledAt?: Date;
+  bulkActionId?: string;
 };
 
 export class CancelTaskRunServiceV1 extends BaseService {
-  public async call(taskRun: TaskRun, options?: CancelTaskRunServiceOptions) {
+  public async call(taskRun: CancelableTaskRun, options?: CancelTaskRunServiceOptions) {
     const opts = {
       reason: "Task run was cancelled by user",
       cancelAttempts: true,
@@ -45,6 +47,19 @@ export class CancelTaskRunServiceV1 extends BaseService {
         runId: taskRun.id,
         status: taskRun.status,
       });
+
+      //add the bulk action id to the run
+      if (opts.bulkActionId) {
+        await this._prisma.taskRun.update({
+          where: { id: taskRun.id },
+          data: {
+            bulkActionGroupIds: {
+              push: opts.bulkActionId,
+            },
+          },
+        });
+      }
+
       return;
     }
 
@@ -53,6 +68,7 @@ export class CancelTaskRunServiceV1 extends BaseService {
       id: taskRun.id,
       status: "CANCELED",
       completedAt: opts.cancelledAt,
+      bulkActionId: opts.bulkActionId,
       include: {
         attempts: {
           where: {

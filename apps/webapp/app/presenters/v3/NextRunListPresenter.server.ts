@@ -75,8 +75,6 @@ export class NextRunListPresenter {
       to,
     });
 
-    const periodMs = time.period ? parseDuration(time.period) : undefined;
-
     const hasStatusFilters = statuses && statuses.length > 0;
 
     const hasFilters =
@@ -96,15 +94,16 @@ export class NextRunListPresenter {
     const possibleTasksAsync = getAllTaskIdentifiers(this.replica, environmentId);
 
     //get possible bulk actions
-    // TODO: we should replace this with the new bulk stuff and make it environment scoped
     const bulkActionsAsync = this.replica.bulkActionGroup.findMany({
       select: {
         friendlyId: true,
         type: true,
         createdAt: true,
+        name: true,
       },
       where: {
         projectId: projectId,
+        environmentId,
       },
       orderBy: {
         createdAt: "desc",
@@ -118,71 +117,29 @@ export class NextRunListPresenter {
       findDisplayableEnvironment(environmentId, userId),
     ]);
 
-    if (!displayableEnvironment) {
-      throw new ServiceValidationError("No environment found");
-    }
-
-    //we can restrict to specific runs using bulkId, or batchId
-    let restrictToRunIds: undefined | string[] = undefined;
-
-    //bulk id
-    if (bulkId) {
-      const bulkAction = await this.replica.bulkActionGroup.findFirst({
+    // If the bulk action isn't in the most recent ones, add it separately
+    if (bulkId && !bulkActions.some((bulkAction) => bulkAction.friendlyId === bulkId)) {
+      const selectedBulkAction = await this.replica.bulkActionGroup.findFirst({
         select: {
-          items: {
-            select: {
-              destinationRunId: true,
-            },
-          },
+          friendlyId: true,
+          type: true,
+          createdAt: true,
+          name: true,
         },
         where: {
           friendlyId: bulkId,
+          projectId,
+          environmentId,
         },
       });
 
-      if (bulkAction) {
-        const runIds = bulkAction.items.map((item) => item.destinationRunId).filter(Boolean);
-        restrictToRunIds = runIds;
+      if (selectedBulkAction) {
+        bulkActions.push(selectedBulkAction);
       }
     }
 
-    //batch id is a friendly id
-    if (batchId) {
-      const batch = await this.replica.batchTaskRun.findFirst({
-        select: {
-          id: true,
-        },
-        where: {
-          friendlyId: batchId,
-          runtimeEnvironmentId: environmentId,
-        },
-      });
-
-      if (batch) {
-        batchId = batch.id;
-      }
-    }
-
-    //scheduleId can be a friendlyId
-    if (scheduleId && scheduleId.startsWith("sched_")) {
-      const schedule = await this.replica.taskSchedule.findFirst({
-        select: {
-          id: true,
-        },
-        where: {
-          friendlyId: scheduleId,
-          projectId: projectId,
-        },
-      });
-
-      if (schedule) {
-        scheduleId = schedule?.id;
-      }
-    }
-
-    //show all runs if we are filtering by batchId or runId
-    if (batchId || runIds?.length || scheduleId || tasks?.length) {
-      rootOnly = false;
+    if (!displayableEnvironment) {
+      throw new ServiceValidationError("No environment found");
     }
 
     const runsRepository = new RunsRepository({
@@ -204,14 +161,14 @@ export class NextRunListPresenter {
       statuses,
       tags,
       scheduleId,
-      period: periodMs ?? undefined,
+      period,
       from: time.from ? time.from.getTime() : undefined,
       to: time.to ? clampToNow(time.to).getTime() : undefined,
       isTest,
       rootOnly,
       batchId,
-      runFriendlyIds: runIds,
-      runIds: restrictToRunIds,
+      runIds,
+      bulkId,
       page: {
         size: pageSize,
         cursor,
@@ -286,6 +243,7 @@ export class NextRunListPresenter {
         id: bulkAction.friendlyId,
         type: bulkAction.type,
         createdAt: bulkAction.createdAt,
+        name: bulkAction.name || bulkAction.friendlyId,
       })),
       filters: {
         tasks: tasks || [],

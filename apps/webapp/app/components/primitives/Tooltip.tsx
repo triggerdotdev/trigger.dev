@@ -61,6 +61,7 @@ function SimpleTooltip({
   disableHoverableContent = false,
   className,
   buttonClassName,
+  buttonStyle,
   asChild = false,
   sideOffset,
 }: {
@@ -72,13 +73,19 @@ function SimpleTooltip({
   disableHoverableContent?: boolean;
   className?: string;
   buttonClassName?: string;
+  buttonStyle?: React.CSSProperties;
   asChild?: boolean;
   sideOffset?: number;
 }) {
   return (
     <TooltipProvider disableHoverableContent={disableHoverableContent}>
       <Tooltip>
-        <TooltipTrigger tabIndex={-1} className={cn("h-fit", buttonClassName)} asChild={asChild}>
+        <TooltipTrigger
+          tabIndex={-1}
+          className={cn("h-fit", buttonClassName)}
+          style={buttonStyle}
+          asChild={asChild}
+        >
           {button}
         </TooltipTrigger>
         <TooltipContent

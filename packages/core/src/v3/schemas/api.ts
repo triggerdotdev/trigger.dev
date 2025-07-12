@@ -134,6 +134,7 @@ export const TriggerTaskRequestBody = z.object({
       ttl: z.string().or(z.number().nonnegative().int()).optional(),
       priority: z.number().optional(),
       releaseConcurrency: z.boolean().optional(),
+      bulkActionId: z.string().optional(),
     })
     .optional(),
 });

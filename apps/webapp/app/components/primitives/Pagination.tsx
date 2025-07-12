@@ -19,36 +19,75 @@ export function PaginationControls({
   }
 
   return (
-    <nav className="flex items-center gap-0.5" aria-label="Pagination">
-      <LinkButton
-        to={pageUrl(location, currentPage - 1)}
-        variant="minimal/small"
-        LeadingIcon={ChevronLeftIcon}
-        shortcut={{ key: "j" }}
-        tooltip="Previous"
-        disabled={currentPage === 1}
-        className={currentPage > 1 ? "group" : ""}
-      >
-        Prev
-      </LinkButton>
+    <nav className="flex items-center gap-1" aria-label="Pagination">
+      {showPageNumbers ? (
+        <>
+          <LinkButton
+            to={pageUrl(location, currentPage - 1)}
+            variant="secondary/small"
+            LeadingIcon={ChevronLeftIcon}
+            shortcut={{ key: "j" }}
+            tooltip="Previous"
+            disabled={currentPage === 1}
+            className={cn("px-2", currentPage > 1 ? "group" : "")}
+          />
 
-      {showPageNumbers
-        ? calculatePageLinks(currentPage, totalPages).map((page, i) => (
+          {calculatePageLinks(currentPage, totalPages).map((page, i) => (
             <PageLinkComponent page={page} key={i} location={location} />
-          ))
-        : null}
+          ))}
 
-      <LinkButton
-        to={pageUrl(location, currentPage + 1)}
-        variant="minimal/small"
-        TrailingIcon={ChevronRightIcon}
-        shortcut={{ key: "k" }}
-        tooltip="Next"
-        disabled={currentPage === totalPages}
-        className={currentPage !== totalPages ? "group" : ""}
-      >
-        Next
-      </LinkButton>
+          <LinkButton
+            to={pageUrl(location, currentPage + 1)}
+            variant="secondary/small"
+            TrailingIcon={ChevronRightIcon}
+            shortcut={{ key: "k" }}
+            tooltip="Next"
+            disabled={currentPage === totalPages}
+            className={cn("px-2", currentPage !== totalPages ? "group" : "")}
+          />
+        </>
+      ) : (
+        <div className="flex items-center">
+          <div className={cn("peer/prev order-1", currentPage === 1 && "pointer-events-none")}>
+            <LinkButton
+              to={pageUrl(location, currentPage - 1)}
+              variant="secondary/small"
+              LeadingIcon={ChevronLeftIcon}
+              shortcut={{ key: "j" }}
+              tooltip="Previous"
+              disabled={currentPage === 1}
+              className={cn(
+                "flex items-center rounded-r-none border-r-0 pl-2 pr-[0.5625rem]",
+                currentPage === 1 && "cursor-not-allowed opacity-50"
+              )}
+            />
+          </div>
+
+          <div
+            className={cn(
+              "order-2 h-6 w-px bg-charcoal-600 transition-colors peer-hover/next:bg-charcoal-550 peer-hover/prev:bg-charcoal-550",
+              currentPage === 1 && currentPage === totalPages && "opacity-30"
+            )}
+          />
+
+          <div
+            className={cn("peer/next order-3", currentPage === totalPages && "pointer-events-none")}
+          >
+            <LinkButton
+              to={pageUrl(location, currentPage + 1)}
+              variant="secondary/small"
+              TrailingIcon={ChevronRightIcon}
+              shortcut={{ key: "k" }}
+              tooltip="Next"
+              disabled={currentPage === totalPages}
+              className={cn(
+                "flex items-center rounded-l-none border-l-0 pl-[0.5625rem] pr-2",
+                currentPage === totalPages && "cursor-not-allowed opacity-50"
+              )}
+            />
+          </div>
+        </div>
+      )}
     </nav>
   );
 }

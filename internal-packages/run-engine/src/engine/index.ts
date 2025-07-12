@@ -389,6 +389,7 @@ export class RunEngine {
       scheduleId,
       scheduleInstanceId,
       createdAt,
+      bulkActionId,
     }: TriggerParams,
     tx?: PrismaClientOrTransaction
   ): Promise<TaskRun> {
@@ -463,6 +464,7 @@ export class RunEngine {
               scheduleId,
               scheduleInstanceId,
               createdAt,
+              bulkActionGroupIds: bulkActionId ? [bulkActionId] : undefined,
               executionSnapshots: {
                 create: {
                   engine: "V2",
@@ -701,6 +703,7 @@ export class RunEngine {
     completedAt,
     reason,
     finalizeRun,
+    bulkActionId,
     tx,
   }: {
     runId: string;
@@ -709,8 +712,9 @@ export class RunEngine {
     completedAt?: Date;
     reason?: string;
     finalizeRun?: boolean;
+    bulkActionId?: string;
     tx?: PrismaClientOrTransaction;
-  }): Promise<ExecutionResult> {
+  }): Promise<ExecutionResult & { alreadyFinished: boolean }> {
     return this.runAttemptSystem.cancelRun({
       runId,
       workerId,
@@ -718,6 +722,7 @@ export class RunEngine {
       completedAt,
       reason,
       finalizeRun,
+      bulkActionId,
       tx,
     });
   }

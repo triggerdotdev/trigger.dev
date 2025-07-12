@@ -146,6 +146,7 @@ export type TriggerParams = {
   scheduleId?: string;
   scheduleInstanceId?: string;
   createdAt?: Date;
+  bulkActionId?: string;
 };
 
 export type EngineWorker = Worker<typeof workerCatalog>;

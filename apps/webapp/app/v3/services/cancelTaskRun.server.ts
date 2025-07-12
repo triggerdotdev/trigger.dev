@@ -10,15 +10,22 @@ export type CancelTaskRunServiceOptions = {
   reason?: string;
   cancelAttempts?: boolean;
   cancelledAt?: Date;
+  bulkActionId?: string;
 };
 
 type CancelTaskRunServiceResult = {
   id: string;
+  alreadyFinished: boolean;
 };
+
+export type CancelableTaskRun = Pick<
+  TaskRun,
+  "id" | "engine" | "status" | "friendlyId" | "taskEventStore" | "createdAt" | "completedAt"
+>;
 
 export class CancelTaskRunService extends BaseService {
   public async call(
-    taskRun: TaskRun,
+    taskRun: CancelableTaskRun,
     options?: CancelTaskRunServiceOptions
   ): Promise<CancelTaskRunServiceResult | undefined> {
     if (taskRun.engine === RunEngineVersion.V1) {
@@ -29,26 +36,37 @@ export class CancelTaskRunService extends BaseService {
   }
 
   private async callV1(
-    taskRun: TaskRun,
+    taskRun: CancelableTaskRun,
     options?: CancelTaskRunServiceOptions
   ): Promise<CancelTaskRunServiceResult | undefined> {
     const service = new CancelTaskRunServiceV1(this._prisma);
-    return await service.call(taskRun, options);
+    const result = await service.call(taskRun, options);
+
+    if (!result) {
+      return;
+    }
+
+    return {
+      id: result.id,
+      alreadyFinished: false,
+    };
   }
 
   private async callV2(
-    taskRun: TaskRun,
+    taskRun: CancelableTaskRun,
     options?: CancelTaskRunServiceOptions
   ): Promise<CancelTaskRunServiceResult | undefined> {
     const result = await engine.cancelRun({
       runId: taskRun.id,
       completedAt: options?.cancelledAt,
       reason: options?.reason,
+      bulkActionId: options?.bulkActionId,
       tx: this._prisma,
     });
 
     return {
       id: result.run.id,
+      alreadyFinished: result.alreadyFinished,
     };
   }
 }

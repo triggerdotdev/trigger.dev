@@ -1,12 +1,14 @@
 import * as Ariakit from "@ariakit/react";
 import {
+  CalendarIcon,
   ClockIcon,
   FingerPrintIcon,
   Squares2X2Icon,
   TagIcon,
-  TrashIcon,
+  XMarkIcon,
 } from "@heroicons/react/20/solid";
 import { Form, useFetcher } from "@remix-run/react";
+import { IconToggleLeft } from "@tabler/icons-react";
 import type { BulkActionType, TaskRunStatus, TaskTriggerSource } from "@trigger.dev/database";
 import { ListChecks, ListFilterIcon } from "lucide-react";
 import { matchSorter } from "match-sorter";
@@ -43,7 +45,7 @@ import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { type loader as tagsLoader } from "~/routes/resources.projects.$projectParam.runs.tags";
 import { Button } from "../../primitives/Buttons";
-import { BulkActionStatusCombo } from "./BulkAction";
+import { BulkActionTypeCombo } from "./BulkAction";
 import { appliedSummary, FilterMenuProvider, TimeFilter } from "./SharedFilters";
 import {
   allTaskRunStatuses,
@@ -53,32 +55,49 @@ import {
   TaskRunStatusCombo,
 } from "./TaskRunStatus";
 import { TaskTriggerSourceIcon } from "./TaskTriggerSource";
+import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
+import { cn } from "~/utils/cn";
 
-export const TaskAttemptStatus = z.enum(allTaskRunStatuses);
+export const RunStatus = z.enum(allTaskRunStatuses);
+
+const StringOrStringArray = z.preprocess((value) => {
+  if (typeof value === "string") {
+    if (value.length > 0) {
+      return [value];
+    }
+
+    return undefined;
+  }
+
+  if (Array.isArray(value)) {
+    return value.filter((v) => typeof v === "string" && v.length > 0);
+  }
+
+  return undefined;
+}, z.string().array().optional());
 
 export const TaskRunListSearchFilters = z.object({
   cursor: z.string().optional(),
   direction: z.enum(["forward", "backward"]).optional(),
-  environments: z.preprocess(
-    (value) => (typeof value === "string" ? [value] : value),
-    z.string().array().optional()
-  ),
-  tasks: z.preprocess(
-    (value) => (typeof value === "string" ? [value] : value),
-    z.string().array().optional()
-  ),
-  versions: z.preprocess(
-    (value) => (typeof value === "string" ? [value] : value),
-    z.string().array().optional()
-  ),
-  statuses: z.preprocess(
-    (value) => (typeof value === "string" ? [value] : value),
-    TaskAttemptStatus.array().optional()
-  ),
-  tags: z.preprocess(
-    (value) => (typeof value === "string" ? [value] : value),
-    z.string().array().optional()
-  ),
+  environments: StringOrStringArray,
+  tasks: StringOrStringArray,
+  versions: StringOrStringArray,
+  statuses: z.preprocess((value) => {
+    if (typeof value === "string") {
+      if (value.length > 0) {
+        return [value];
+      }
+
+      return undefined;
+    }
+
+    if (Array.isArray(value)) {
+      return value.filter((v) => typeof v === "string" && v.length > 0);
+    }
+
+    return undefined;
+  }, RunStatus.array().optional()),
+  tags: StringOrStringArray,
   bulkId: z.string().optional(),
   period: z.preprocess((value) => (value === "all" ? undefined : value), z.string().optional()),
   from: z.coerce.number().optional(),
@@ -90,6 +109,109 @@ export const TaskRunListSearchFilters = z.object({
 });
 
 export type TaskRunListSearchFilters = z.infer<typeof TaskRunListSearchFilters>;
+export type TaskRunListSearchFilterKey = keyof TaskRunListSearchFilters;
+
+export function filterTitle(filterKey: string) {
+  switch (filterKey) {
+    case "cursor":
+      return "Cursor";
+    case "direction":
+      return "Direction";
+    case "statuses":
+      return "Status";
+    case "tasks":
+      return "Tasks";
+    case "tags":
+      return "Tags";
+    case "bulkId":
+      return "Bulk action";
+    case "period":
+      return "Period";
+    case "from":
+      return "From";
+    case "to":
+      return "To";
+    case "rootOnly":
+      return "Root only";
+    case "batchId":
+      return "Batch ID";
+    case "runId":
+      return "Run ID";
+    case "scheduleId":
+      return "Schedule ID";
+    default:
+      return filterKey;
+  }
+}
+
+export function filterIcon(filterKey: string): ReactNode | undefined {
+  switch (filterKey) {
+    case "cursor":
+    case "direction":
+      return undefined;
+    case "statuses":
+      return <StatusIcon className="size-4" />;
+    case "tasks":
+      return <TaskIcon className="size-4" />;
+    case "tags":
+      return <TagIcon className="size-4" />;
+    case "bulkId":
+      return <ListCheckedIcon className="size-4" />;
+    case "period":
+      return <CalendarIcon className="size-4" />;
+    case "from":
+      return <CalendarIcon className="size-4" />;
+    case "to":
+      return <CalendarIcon className="size-4" />;
+    case "rootOnly":
+      return <IconToggleLeft className="size-4" />;
+    case "batchId":
+      return <Squares2X2Icon className="size-4" />;
+    case "runId":
+      return <FingerPrintIcon className="size-4" />;
+    case "scheduleId":
+      return <ClockIcon className="size-4" />;
+    default:
+      return undefined;
+  }
+}
+
+export function getRunFiltersFromSearchParams(
+  searchParams: URLSearchParams
+): TaskRunListSearchFilters {
+  const params = {
+    cursor: searchParams.get("cursor") ?? undefined,
+    direction: searchParams.get("direction") ?? undefined,
+    statuses:
+      searchParams.getAll("statuses").filter((v) => v.length > 0).length > 0
+        ? searchParams.getAll("statuses")
+        : undefined,
+    tasks:
+      searchParams.getAll("tasks").filter((v) => v.length > 0).length > 0
+        ? searchParams.getAll("tasks")
+        : undefined,
+    period: searchParams.get("period") ?? undefined,
+    bulkId: searchParams.get("bulkId") ?? undefined,
+    tags:
+      searchParams.getAll("tags").filter((v) => v.length > 0).length > 0
+        ? searchParams.getAll("tags").map((t) => decodeURIComponent(t))
+        : undefined,
+    from: searchParams.get("from") ?? undefined,
+    to: searchParams.get("to") ?? undefined,
+    rootOnly: searchParams.has("rootOnly") ? searchParams.get("rootOnly") === "true" : undefined,
+    runId: searchParams.get("runId") ?? undefined,
+    batchId: searchParams.get("batchId") ?? undefined,
+    scheduleId: searchParams.get("scheduleId") ?? undefined,
+  };
+
+  const parsed = TaskRunListSearchFilters.safeParse(params);
+
+  if (!parsed.success) {
+    return {};
+  }
+
+  return parsed.data;
+}
 
 type RunFiltersProps = {
   possibleTasks: { slug: string; triggerSource: TaskTriggerSource }[];
@@ -97,6 +219,7 @@ type RunFiltersProps = {
     id: string;
     type: BulkActionType;
     createdAt: Date;
+    name: string;
   }[];
   rootOnlyDefault: boolean;
   hasFilters: boolean;
@@ -125,9 +248,7 @@ export function RunsFilters(props: RunFiltersProps) {
           {searchParams.has("rootOnly") && (
             <input type="hidden" name="rootOnly" value={searchParams.get("rootOnly") as string} />
           )}
-          <Button variant="minimal/small" LeadingIcon={TrashIcon}>
-            Clear all
-          </Button>
+          <Button variant="secondary/small" LeadingIcon={XMarkIcon} tooltip="Clear all filters" />
         </Form>
       )}
     </div>
@@ -145,7 +266,7 @@ const filterTypes = [
   { name: "run", title: "Run ID", icon: <FingerPrintIcon className="size-4" /> },
   { name: "batch", title: "Batch ID", icon: <Squares2X2Icon className="size-4" /> },
   { name: "schedule", title: "Schedule ID", icon: <ClockIcon className="size-4" /> },
-  { name: "bulk", title: "Bulk action", icon: <ListChecks className="size-4" /> },
+  { name: "bulk", title: "Bulk action", icon: <ListCheckedIcon className="size-4" /> },
 ] as const;
 
 type FilterType = (typeof filterTypes)[number]["name"];
@@ -162,7 +283,7 @@ function FilterMenu(props: RunFiltersProps) {
           <ListFilterIcon className="size-3.5" />
         </div>
       }
-      variant={"tertiary/small"}
+      variant={"secondary/small"}
       shortcut={shortcut}
       tooltipTitle={"Filter runs"}
     >
@@ -334,7 +455,7 @@ function AppliedStatusFilter() {
   const { values, del } = useSearchParams();
   const statuses = values("statuses");
 
-  if (statuses.length === 0) {
+  if (statuses.length === 0 || statuses.every((v) => v === "")) {
     return null;
   }
 
@@ -346,8 +467,10 @@ function AppliedStatusFilter() {
             <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
                 label="Status"
+                icon={filterIcon("statuses")}
                 value={appliedSummary(statuses.map((v) => runStatusTitle(v as TaskRunStatus)))}
                 onRemove={() => del(["statuses", "cursor", "direction"])}
+                variant="secondary/small"
               />
             </Ariakit.Select>
           }
@@ -421,7 +544,7 @@ function TasksDropdown({
 function AppliedTaskFilter({ possibleTasks }: Pick<RunFiltersProps, "possibleTasks">) {
   const { values, del } = useSearchParams();
 
-  if (values("tasks").length === 0) {
+  if (values("tasks").length === 0 || values("tasks").every((v) => v === "")) {
     return null;
   }
 
@@ -433,6 +556,7 @@ function AppliedTaskFilter({ possibleTasks }: Pick<RunFiltersProps, "possibleTas
             <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
                 label="Task"
+                icon={filterIcon("tasks")}
                 value={appliedSummary(
                   values("tasks").map((v) => {
                     const task = possibleTasks.find((task) => task.slug === v);
@@ -440,6 +564,7 @@ function AppliedTaskFilter({ possibleTasks }: Pick<RunFiltersProps, "possibleTas
                   })
                 )}
                 onRemove={() => del(["tasks", "cursor", "direction"])}
+                variant="secondary/small"
               />
             </Ariakit.Select>
           }
@@ -485,7 +610,7 @@ function BulkActionsDropdown({
     <SelectProvider value={value("bulkId")} setValue={handleChange} virtualFocus={true}>
       {trigger}
       <SelectPopover
-        className="min-w-0 max-w-[min(240px,var(--popover-available-width))]"
+        className="min-w-0 max-w-[min(320px,var(--popover-available-width))]"
         hideOnEscape={() => {
           if (onClose) {
             onClose();
@@ -498,11 +623,20 @@ function BulkActionsDropdown({
         <ComboBox placeholder={"Filter by bulk action..."} value={searchValue} />
         <SelectList>
           <SelectItem value={""}>None</SelectItem>
-          {filtered.map((item, index) => (
-            <SelectItem key={item.id} value={item.id}>
-              <div className="flex gap-3">
-                <BulkActionStatusCombo type={item.type} iconClassName="size-4" />
-                <DateTime date={item.createdAt} />
+          {filtered.map((item) => (
+            <SelectItem key={item.id} value={item.id} className="[&>div]:h-fit">
+              <div className="flex flex-col gap-1 py-1">
+                <Paragraph variant="small/bright" className="truncate">
+                  {item.name}
+                </Paragraph>
+                <div className="flex gap-3">
+                  <BulkActionTypeCombo
+                    type={item.type}
+                    iconClassName="size-4"
+                    labelClassName="text-text-dimmed"
+                  />
+                  <DateTime date={item.createdAt} />
+                </div>
               </div>
             </SelectItem>
           ))}
@@ -531,8 +665,10 @@ function AppliedBulkActionsFilter({ bulkActions }: Pick<RunFiltersProps, "bulkAc
             <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
                 label="Bulk action"
+                icon={filterIcon("bulkId")}
                 value={bulkId}
                 onRemove={() => del(["bulkId", "cursor", "direction"])}
+                variant="secondary/small"
               />
             </Ariakit.Select>
           }
@@ -562,11 +698,14 @@ function TagsDropdown({
   const handleChange = (values: string[]) => {
     clearSearchValue();
     replace({
-      tags: values,
+      tags: values.length > 0 ? values : undefined,
       cursor: undefined,
       direction: undefined,
     });
   };
+
+  const tagValues = values("tags").filter((v) => v !== "");
+  const selected = tagValues.length > 0 ? tagValues : undefined;
 
   const fetcher = useFetcher<typeof tagsLoader>();
 
@@ -581,7 +720,7 @@ function TagsDropdown({
   const filtered = useMemo(() => {
     let items: string[] = [];
     if (searchValue === "") {
-      items = values("tags");
+      items = selected ?? [];
     }
 
     if (fetcher.data === undefined) {
@@ -594,7 +733,7 @@ function TagsDropdown({
   }, [searchValue, fetcher.data]);
 
   return (
-    <SelectProvider value={values("tags")} setValue={handleChange} virtualFocus={true}>
+    <SelectProvider value={selected ?? []} setValue={handleChange} virtualFocus={true}>
       {trigger}
       <SelectPopover
         className="min-w-0 max-w-[min(240px,var(--popover-available-width))]"
@@ -638,7 +777,7 @@ function AppliedTagsFilter() {
 
   const tags = values("tags");
 
-  if (tags.length === 0) {
+  if (tags.length === 0 || tags.every((v) => v === "")) {
     return null;
   }
 
@@ -650,8 +789,10 @@ function AppliedTagsFilter() {
             <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
                 label="Tags"
+                icon={filterIcon("tags")}
                 value={appliedSummary(values("tags"))}
                 onRemove={() => del(["tags", "cursor", "direction"])}
+                variant="secondary/small"
               />
             </Ariakit.Select>
           }
@@ -678,10 +819,9 @@ function RootOnlyToggle({ defaultValue }: { defaultValue: boolean }) {
   return (
     <Switch
       disabled={disabled}
-      variant="tertiary/small"
+      variant="secondary/small"
       label="Root only"
       checked={disabled ? false : rootOnly}
-      className="bg-tertiary transition hover:bg-charcoal-600"
       onCheckedChange={(checked) => {
         replace({
           rootOnly: checked ? "true" : "false",
@@ -796,8 +936,10 @@ function AppliedRunIdFilter() {
             <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
                 label="Run ID"
+                icon={filterIcon("runId")}
                 value={runId}
                 onRemove={() => del(["runId", "cursor", "direction"])}
+                variant="secondary/small"
               />
             </Ariakit.Select>
           }
@@ -914,8 +1056,10 @@ function AppliedBatchIdFilter() {
             <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
                 label="Batch ID"
+                icon={filterIcon("batchId")}
                 value={batchId}
                 onRemove={() => del(["batchId", "cursor", "direction"])}
+                variant="secondary/small"
               />
             </Ariakit.Select>
           }
@@ -1032,8 +1176,10 @@ function AppliedScheduleIdFilter() {
             <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
                 label="Schedule ID"
+                icon={filterIcon("scheduleId")}
                 value={scheduleId}
                 onRemove={() => del(["scheduleId", "cursor", "direction"])}
+                variant="secondary/small"
               />
             </Ariakit.Select>
           }

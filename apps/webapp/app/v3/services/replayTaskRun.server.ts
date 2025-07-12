@@ -15,6 +15,7 @@ type OverrideOptions = {
   environmentId?: string;
   payload?: unknown;
   metadata?: unknown;
+  bulkActionId?: string;
 } & RunOptionsData;
 
 export class ReplayTaskRunService extends BaseService {
@@ -80,6 +81,7 @@ export class ReplayTaskRunService extends BaseService {
               undefined,
             lockToVersion:
               overrideOptions.version === "latest" ? undefined : overrideOptions.version,
+            bulkActionId: overrideOptions?.bulkActionId,
           },
         },
         {

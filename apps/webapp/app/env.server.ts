@@ -1,8 +1,7 @@
 import { z } from "zod";
+import { BoolEnv } from "./utils/boolEnv";
 import { isValidDatabaseUrl } from "./utils/db";
 import { isValidRegex } from "./utils/regex";
-import { BoolEnv } from "./utils/boolEnv";
-import { OTEL_ATTRIBUTE_PER_LINK_COUNT_LIMIT, OTEL_LINK_COUNT_LIMIT } from "@trigger.dev/core/v3";
 
 const EnvironmentSchema = z.object({
   NODE_ENV: z.union([z.literal("development"), z.literal("production"), z.literal("test")]),
@@ -970,6 +969,10 @@ const EnvironmentSchema = z.object({
     .number()
     .int()
     .default(60_000 * 60 * 24),
+
+  // Bulk action
+  BULK_ACTION_BATCH_SIZE: z.coerce.number().int().default(100),
+  BULK_ACTION_BATCH_DELAY_MS: z.coerce.number().int().default(200),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

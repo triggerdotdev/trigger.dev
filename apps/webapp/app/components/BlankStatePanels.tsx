@@ -11,14 +11,22 @@ import {
   Squares2X2Icon,
 } from "@heroicons/react/20/solid";
 import { useLocation } from "react-use";
+import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
+import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
+import openBulkActionsPanel from "~/assets/images/open-bulk-actions-panel.png";
+import selectRunsIndividually from "~/assets/images/select-runs-individually.png";
+import selectRunsUsingFilters from "~/assets/images/select-runs-using-filters.png";
 import { useEnvironment } from "~/hooks/useEnvironment";
+import { useFeatures } from "~/hooks/useFeatures";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { type MinimumEnvironment } from "~/presenters/SelectBestEnvironmentPresenter.server";
+import { NewBranchPanel } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.branches/route";
 import {
   docsPath,
   v3BillingPath,
+  v3CreateBulkActionPath,
   v3EnvironmentPath,
   v3EnvironmentVariablesPath,
   v3NewProjectAlertPath,
@@ -36,12 +44,7 @@ import { StepNumber } from "./primitives/StepNumber";
 import { TextLink } from "./primitives/TextLink";
 import { InitCommandV3, PackageManagerProvider, TriggerDevStepV3 } from "./SetupCommands";
 import { StepContentContainer } from "./StepContentContainer";
-import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
-import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
-import { useFeatures } from "~/hooks/useFeatures";
-import { DialogContent, DialogTrigger, Dialog } from "./primitives/Dialog";
 import { V4Badge } from "./V4Badge";
-import { NewBranchPanel } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.branches/route";
 
 export function HasNoTasksDev() {
   return (
@@ -566,6 +569,59 @@ export function SwitcherPanel({ title = "Switch to a deployed environment" }: { 
         environment={environment}
         className="w-auto grow-0 rounded-sm bg-grid-bright"
       />
+    </div>
+  );
+}
+
+export function BulkActionsNone() {
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+
+  return (
+    <div>
+      <div className="mb-6 flex items-center justify-between border-b pb-0.5">
+        <Header1 spacing>Create a bulk action</Header1>
+        <div className="flex items-center gap-2">
+          <LinkButton
+            variant="primary/small"
+            LeadingIcon={PlusIcon}
+            to={v3CreateBulkActionPath(organization, project, environment)}
+          >
+            New bulk action
+          </LinkButton>
+        </div>
+      </div>
+      <StepNumber stepNumber="1" title="Select runs individually" />
+      <StepContentContainer className="mb-4 flex flex-col gap-4">
+        <Paragraph>Select runs from the runs page individually.</Paragraph>
+        <div>
+          <img src={selectRunsIndividually} alt="Select runs individually" />
+        </div>
+      </StepContentContainer>
+      <div className="mb-5 ml-9 flex items-center gap-2">
+        <div className="h-px w-full bg-grid-bright" />
+        <Paragraph variant="extra-small" className="text-text-dimmed">
+          OR
+        </Paragraph>
+        <div className="h-px w-full bg-grid-bright" />
+      </div>
+      <StepNumber stepNumber="2" title="Select runs using filters" />
+      <StepContentContainer className="flex flex-col gap-4">
+        <Paragraph>
+          Use the filter menu on the runs page to select just the runs you want to bulk action.
+        </Paragraph>
+        <div>
+          <img src={selectRunsUsingFilters} alt="Select runs using filters" />
+        </div>
+      </StepContentContainer>
+      <StepNumber stepNumber="3" title="Open the bulk action panel" />
+      <StepContentContainer className="flex flex-col gap-4">
+        <Paragraph>Click the “Bulk actions” button in the top right of the runs page.</Paragraph>
+        <div>
+          <img src={openBulkActionsPanel} alt="Open the bulk action panel" />
+        </div>
+      </StepContentContainer>
     </div>
   );
 }

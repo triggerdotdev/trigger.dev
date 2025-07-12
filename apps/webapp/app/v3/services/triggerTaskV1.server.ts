@@ -443,6 +443,9 @@ export class TriggerTaskServiceV1 extends BaseService {
                     scheduleId: options.scheduleId,
                     scheduleInstanceId: options.scheduleInstanceId,
                     createdAt: options.overrideCreatedAt,
+                    bulkActionGroupIds: body.options?.bulkActionId
+                      ? [body.options.bulkActionId]
+                      : undefined,
                   },
                 });
 

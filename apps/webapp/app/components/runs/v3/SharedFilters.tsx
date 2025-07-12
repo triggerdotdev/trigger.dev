@@ -10,6 +10,7 @@ import { Label } from "~/components/primitives/Label";
 import { ComboboxProvider, SelectPopover, SelectProvider } from "~/components/primitives/Select";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { Button } from "../../primitives/Buttons";
+import { filterIcon } from "./RunFilters";
 
 export type DisplayableEnvironment = Pick<RuntimeEnvironment, "type" | "id"> & {
   userName?: string;
@@ -100,6 +101,8 @@ if (!defaultPeriodMs) {
   throw new Error("Invalid default period");
 }
 
+type TimeRangeType = "period" | "range" | "from" | "to";
+
 export const timeFilters = ({
   period,
   from,
@@ -108,16 +111,27 @@ export const timeFilters = ({
   period?: string;
   from?: string | number;
   to?: string | number;
-}): { period?: string; from?: Date; to?: Date; isDefault: boolean } => {
+}): {
+  period?: string;
+  from?: Date;
+  to?: Date;
+  isDefault: boolean;
+  rangeType: TimeRangeType;
+  label: string;
+  valueLabel: ReactNode;
+} => {
   if (period) {
-    return { period, isDefault: period === defaultPeriod };
+    return { period, isDefault: period === defaultPeriod, ...timeFilterRenderValues({ period }) };
   }
 
   if (from && to) {
+    const fromDate = typeof from === "string" ? dateFromString(from) : new Date(from);
+    const toDate = typeof to === "string" ? dateFromString(to) : new Date(to);
     return {
-      from: typeof from === "string" ? dateFromString(from) : new Date(from),
-      to: typeof to === "string" ? dateFromString(to) : new Date(to),
+      from: fromDate,
+      to: toDate,
       isDefault: false,
+      ...timeFilterRenderValues({ from: fromDate, to: toDate }),
     };
   }
 
@@ -127,6 +141,7 @@ export const timeFilters = ({
     return {
       from: fromDate,
       isDefault: false,
+      ...timeFilterRenderValues({ from: fromDate }),
     };
   }
 
@@ -136,25 +151,28 @@ export const timeFilters = ({
     return {
       to: toDate,
       isDefault: false,
+      ...timeFilterRenderValues({ to: toDate }),
     };
   }
 
   return {
     period: defaultPeriod,
     isDefault: true,
+    ...timeFilterRenderValues({ period: defaultPeriod }),
   };
 };
 
-export function TimeFilter() {
-  const { value, del } = useSearchParams();
+export function timeFilterRenderValues({
+  from,
+  to,
+  period,
+}: {
+  from?: Date;
+  to?: Date;
+  period?: string;
+}) {
+  const rangeType: TimeRangeType = from && to ? "range" : from ? "from" : to ? "to" : "period";
 
-  const { period, from, to } = timeFilters({
-    period: value("period"),
-    from: value("from"),
-    to: value("to"),
-  });
-
-  const rangeType = from && to ? "range" : from ? "from" : to ? "to" : "period";
   let valueLabel: ReactNode;
   switch (rangeType) {
     case "period":
@@ -183,13 +201,31 @@ export function TimeFilter() {
       ? "Created after"
       : "Created before";
 
+  return { label, valueLabel, rangeType };
+}
+
+export function TimeFilter() {
+  const { value, del } = useSearchParams();
+
+  const { period, from, to, label, valueLabel } = timeFilters({
+    period: value("period"),
+    from: value("from"),
+    to: value("to"),
+  });
+
   return (
     <FilterMenuProvider>
       {() => (
         <TimeDropdown
           trigger={
             <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
-              <AppliedFilter label={label} value={valueLabel} removable={false} />
+              <AppliedFilter
+                label={label}
+                icon={filterIcon("period")}
+                value={valueLabel}
+                removable={false}
+                variant="secondary/small"
+              />
             </Ariakit.Select>
           }
           period={period}
@@ -229,20 +265,23 @@ export function TimeDropdown({
     setOpen(false);
   }, [fromValue, toValue, replace]);
 
-  const handlePeriodClick = useCallback((period: string) => {
-    setFromValue(undefined);
-    setToValue(undefined);
+  const handlePeriodClick = useCallback(
+    (period: string) => {
+      replace({
+        period,
+        cursor: undefined,
+        direction: undefined,
+        from: undefined,
+        to: undefined,
+      });
 
-    replace({
-      period: period,
-      cursor: undefined,
-      direction: undefined,
-      from: undefined,
-      to: undefined,
-    });
+      setFromValue(undefined);
+      setToValue(undefined);
 
-    setOpen(false);
-  }, []);
+      setOpen(false);
+    },
+    [replace]
+  );
 
   return (
     <SelectProvider virtualFocus={true} open={open} setOpen={setOpen}>
@@ -266,8 +305,12 @@ export function TimeDropdown({
                       ? "border-indigo-500 group-hover/button:border-indigo-500"
                       : undefined
                   }
-                  onClick={() => handlePeriodClick(p.value)}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    handlePeriodClick(p.value);
+                  }}
                   fullWidth
+                  type="button"
                 >
                   {p.label}
                 </Button>
@@ -307,11 +350,13 @@ export function TimeDropdown({
             <div className="flex justify-between gap-1 border-t border-grid-bright pt-3">
               <Button
                 variant="tertiary/small"
-                onClick={() => {
+                onClick={(e) => {
+                  e.preventDefault();
                   setFromValue(from);
                   setToValue(to);
                   setOpen(false);
                 }}
+                type="button"
               >
                 Cancel
               </Button>
@@ -323,7 +368,11 @@ export function TimeDropdown({
                   enabledOnInputElements: true,
                 }}
                 disabled={!fromValue && !toValue}
-                onClick={() => apply()}
+                onClick={(e) => {
+                  e.preventDefault();
+                  apply();
+                }}
+                type="button"
               >
                 Apply
               </Button>
@@ -347,7 +396,7 @@ export function appliedSummary(values: string[], maxValues = 3) {
   return values.join(", ");
 }
 
-function dateFromString(value: string | undefined | null): Date | undefined {
+export function dateFromString(value: string | undefined | null): Date | undefined {
   if (!value) return;
 
   //is it an int?

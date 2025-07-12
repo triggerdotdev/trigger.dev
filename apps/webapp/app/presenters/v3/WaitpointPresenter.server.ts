@@ -1,8 +1,9 @@
 import { isWaitpointOutputTimeout, prettyPrintPacket } from "@trigger.dev/core/v3";
+import { clickhouseClient } from "~/services/clickhouseInstance.server";
 import { generateHttpCallbackUrl } from "~/services/httpCallback.server";
 import { logger } from "~/services/logger.server";
 import { BasePresenter } from "./basePresenter.server";
-import { type RunListItem, RunListPresenter } from "./RunListPresenter.server";
+import { NextRunListPresenter, type NextRunListItem } from "./NextRunListPresenter.server";
 import { waitpointStatusToApiStatus } from "./WaitpointListPresenter.server";
 
 export type WaitpointDetail = NonNullable<Awaited<ReturnType<WaitpointPresenter["call"]>>>;
@@ -47,6 +48,7 @@ export class WaitpointPresenter extends BasePresenter {
         environment: {
           select: {
             apiKey: true,
+            organizationId: true,
           },
         },
       },
@@ -74,15 +76,25 @@ export class WaitpointPresenter extends BasePresenter {
     }
 
     const connectedRunIds = waitpoint.connectedRuns.map((run) => run.friendlyId);
-    const connectedRuns: RunListItem[] = [];
+    const connectedRuns: NextRunListItem[] = [];
 
     if (connectedRunIds.length > 0) {
-      const runPresenter = new RunListPresenter();
-      const { runs } = await runPresenter.call(environmentId, {
-        projectId: projectId,
-        runIds: connectedRunIds,
-        pageSize: 5,
-      });
+      if (!clickhouseClient) {
+        throw new Error("Clickhouse is not supported yet");
+      }
+
+      const runPresenter = new NextRunListPresenter(this._prisma, clickhouseClient);
+      const { runs } = await runPresenter.call(
+        waitpoint.environment.organizationId,
+        environmentId,
+        {
+          projectId: projectId,
+          runIds: connectedRunIds,
+          pageSize: 5,
+          period: "31d",
+        }
+      );
+
       connectedRuns.push(...runs);
     }
 

@@ -28,9 +28,16 @@ const style = {
     button:
       "bg-transparent focus-custom hover:bg-tertiary disabled:bg-transparent disabled:pointer-events-none",
   },
+  secondary: {
+    button:
+      "bg-secondary focus-custom border border-charcoal-600 hover:text-text-bright hover:border-charcoal-550 text-text-bright hover:bg-charcoal-600",
+  },
 };
 
 const variants = {
+  "secondary/small": {
+    button: cn(sizes.small.button, style.secondary.button),
+  },
   "tertiary/small": {
     button: cn(sizes.small.button, style.tertiary.button),
   },
@@ -595,7 +602,7 @@ export interface SelectHeadingProps extends Ariakit.SelectHeadingProps {}
 export function SelectHeading({ render, ...props }: SelectHeadingProps) {
   return (
     <div className="flex h-[1.375rem] flex-none cursor-default items-center gap-2 border-b border-charcoal-700 bg-charcoal-750 px-2.5 text-xxs uppercase text-text-bright">
-      <Ariakit.SelectHeading render={<>{render}</>} />
+      <Ariakit.SelectHeading render={render} />
     </div>
   );
 }
