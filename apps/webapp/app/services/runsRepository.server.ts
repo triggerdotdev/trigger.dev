@@ -256,6 +256,11 @@ export class RunsRepository {
       convertedOptions.bulkId = BulkActionId.toId(options.bulkId);
     }
 
+    if (options.runIds) {
+      //convert to friendlyId
+      convertedOptions.runIds = options.runIds.map((runId) => RunId.toFriendlyId(runId));
+    }
+
     // Show all runs if we are filtering by batchId or runId
     if (options.batchId || options.runIds?.length || options.scheduleId || options.tasks?.length) {
       convertedOptions.rootOnly = false;
