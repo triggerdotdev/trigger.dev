@@ -1102,6 +1102,8 @@ export class RunAttemptSystem {
           output: { value: JSON.stringify(error), isError: true },
         });
 
+        await this.#finalizeRun(run);
+
         this.$.eventBus.emit("runCancelled", {
           time: new Date(),
           run: {

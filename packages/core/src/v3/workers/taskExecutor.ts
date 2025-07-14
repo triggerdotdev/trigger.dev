@@ -440,7 +440,6 @@ export class TaskExecutor {
     const abortPromise = new Promise((_, reject) => {
       signal.addEventListener("abort", () => {
         if (typeof signal.reason === "string" && signal.reason.includes("cancel")) {
-          console.log("abortPromise: cancel");
           return;
         }
 
