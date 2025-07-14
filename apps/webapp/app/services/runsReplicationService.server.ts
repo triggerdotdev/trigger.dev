@@ -214,6 +214,24 @@ export class RunsReplicationService {
     }
   }
 
+  async backfill(runs: TaskRun[]) {
+    // divide into batches of 50 to get data from Postgres
+    const flushId = nanoid();
+    // Use current timestamp as LSN (high enough to be above existing data)
+    const now = Date.now();
+    const syntheticLsn = `${now.toString(16).padStart(8, "0").toUpperCase()}/00000000`;
+    const baseVersion = lsnToUInt64(syntheticLsn);
+
+    await this.#flushBatch(
+      flushId,
+      runs.map((run, index) => ({
+        _version: baseVersion + BigInt(index),
+        run,
+        event: "insert",
+      }))
+    );
+  }
+
   #handleData(lsn: string, message: PgoutputMessage, parseDuration: bigint) {
     this.logger.debug("Handling data", {
       lsn,
