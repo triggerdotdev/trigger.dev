@@ -214,6 +214,24 @@ export class RunsReplicationService {
     }
   }
 
+  async backfill(runs: TaskRun[]) {
+    // divide into batches of 50 to get data from Postgres
+    const flushId = nanoid();
+    // Use current timestamp as LSN (high enough to be above existing data)
+    const now = Date.now();
+    const syntheticLsn = `${now.toString(16).padStart(8, "0").toUpperCase()}/00000000`;
+    const baseVersion = lsnToUInt64(syntheticLsn);
+
+    await this.#flushBatch(
+      flushId,
+      runs.map((run, index) => ({
+        _version: baseVersion + BigInt(index),
+        run,
+        event: "insert",
+      }))
+    );
+  }
+
   #handleData(lsn: string, message: PgoutputMessage, parseDuration: bigint) {
     this.logger.debug("Handling data", {
       lsn,
@@ -515,11 +533,11 @@ export class RunsReplicationService {
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
 
-        // Check if this is a retryable connection error
-        if (this.#isRetryableConnectionError(lastError)) {
-          const delay = this.#calculateConnectionRetryDelay(attempt);
+        // Check if this is a retryable error
+        if (this.#isRetryableError(lastError)) {
+          const delay = this.#calculateRetryDelay(attempt);
 
-          this.logger.warn(`Retrying RunReplication insert due to connection error`, {
+          this.logger.warn(`Retrying RunReplication insert due to error`, {
             operationName,
             flushId,
             attempt,
@@ -538,25 +556,37 @@ export class RunsReplicationService {
     return [lastError, null];
   }
 
-  // New method to check if an error is a retryable connection error
-  #isRetryableConnectionError(error: Error): boolean {
+  // Retry all errors except known permanent ones
+  #isRetryableError(error: Error): boolean {
     const errorMessage = error.message.toLowerCase();
-    const retryableConnectionPatterns = [
-      "socket hang up",
-      "econnreset",
-      "connection reset",
-      "connection refused",
-      "connection timeout",
-      "network error",
-      "read econnreset",
-      "write econnreset",
+
+    // Permanent errors that should NOT be retried
+    const permanentErrorPatterns = [
+      "authentication failed",
+      "permission denied",
+      "invalid credentials",
+      "table not found",
+      "database not found",
+      "column not found",
+      "schema mismatch",
+      "invalid query",
+      "syntax error",
+      "type error",
+      "constraint violation",
+      "duplicate key",
+      "foreign key violation",
     ];
 
-    return retryableConnectionPatterns.some((pattern) => errorMessage.includes(pattern));
+    // If it's a known permanent error, don't retry
+    if (permanentErrorPatterns.some((pattern) => errorMessage.includes(pattern))) {
+      return false;
+    }
+
+    // Retry everything else
+    return true;
   }
 
-  // New method to calculate retry delay for connection errors
-  #calculateConnectionRetryDelay(attempt: number): number {
+  #calculateRetryDelay(attempt: number): number {
     // Exponential backoff: baseDelay, baseDelay*2, baseDelay*4, etc.
     const delay = Math.min(
       this._insertBaseDelayMs * Math.pow(2, attempt - 1),
@@ -721,6 +751,7 @@ export class RunsReplicationService {
       expiration_ttl: run.ttl ?? "",
       output,
       concurrency_key: run.concurrencyKey ?? "",
+      bulk_action_group_ids: run.bulkActionGroupIds ?? [],
       _version: _version.toString(),
       _is_deleted: event === "delete" ? 1 : 0,
     };

@@ -18,15 +18,16 @@ import { Header3 } from "~/components/primitives/Headers";
 import { PopoverMenuItem } from "~/components/primitives/Popover";
 import { useSelectedItems } from "~/components/primitives/SelectedItemsProvider";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { TruncatedCopyableValue } from "~/components/primitives/TruncatedCopyableValue";
+import { useEnvironment } from "~/hooks/useEnvironment";
 import { useFeatures } from "~/hooks/useFeatures";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { useUser } from "~/hooks/useUser";
 import {
-  type RunListAppliedFilters,
-  type RunListItem,
-} from "~/presenters/v3/RunListPresenter.server";
-import { formatCurrencyAccurate, formatNumber } from "~/utils/numberFormatter";
+  type NextRunListAppliedFilters,
+  type NextRunListItem,
+} from "~/presenters/v3/NextRunListPresenter.server";
+import { formatCurrencyAccurate } from "~/utils/numberFormatter";
 import { docsPath, v3RunSpanPath, v3TestPath } from "~/utils/pathBuilder";
 import { DateTime } from "../../primitives/DateTime";
 import { Paragraph } from "../../primitives/Paragraph";
@@ -51,16 +52,13 @@ import {
   filterableTaskRunStatuses,
   TaskRunStatusCombo,
 } from "./TaskRunStatus";
-import { useEnvironment } from "~/hooks/useEnvironment";
-import { CopyableText } from "~/components/primitives/CopyableText";
-import { ClipboardField } from "~/components/primitives/ClipboardField";
 
 type RunsTableProps = {
   total: number;
   hasFilters: boolean;
-  filters: RunListAppliedFilters;
+  filters: NextRunListAppliedFilters;
   showJob?: boolean;
-  runs: RunListItem[];
+  runs: NextRunListItem[];
   isLoading?: boolean;
   allowSelection?: boolean;
   variant?: TableVariant;
@@ -93,7 +91,7 @@ export function TaskRunsTable({
         if (event.shiftKey) {
           const oldItem = runs.at(index - 1);
           const newItem = runs.at(index - 2);
-          const itemsIds = [oldItem?.id, newItem?.id].filter(Boolean);
+          const itemsIds = [oldItem?.friendlyId, newItem?.friendlyId].filter(Boolean);
           select(itemsIds);
         }
       } else if (event.key === "ArrowDown" && index < checkboxes.current.length - 1) {
@@ -102,7 +100,7 @@ export function TaskRunsTable({
         if (event.shiftKey) {
           const oldItem = runs.at(index - 1);
           const newItem = runs.at(index);
-          const itemsIds = [oldItem?.id, newItem?.id].filter(Boolean);
+          const itemsIds = [oldItem?.friendlyId, newItem?.friendlyId].filter(Boolean);
           select(itemsIds);
         }
       }
@@ -118,9 +116,9 @@ export function TaskRunsTable({
             <TableHeaderCell className="pl-3 pr-0">
               {runs.length > 0 && (
                 <Checkbox
-                  checked={hasAll(runs.map((r) => r.id))}
+                  checked={hasAll(runs.map((r) => r.friendlyId))}
                   onChange={(element) => {
-                    const ids = runs.map((r) => r.id);
+                    const ids = runs.map((r) => r.friendlyId);
                     const checked = element.currentTarget.checked;
                     if (checked) {
                       select(ids);
@@ -297,9 +295,9 @@ export function TaskRunsTable({
                 {allowSelection && (
                   <TableCell className="pl-3 pr-0">
                     <Checkbox
-                      checked={has(run.id)}
+                      checked={has(run.friendlyId)}
                       onChange={(element) => {
-                        toggle(run.id);
+                        toggle(run.friendlyId);
                       }}
                       ref={(r) => {
                         checkboxes.current[index + 1] = r;
@@ -309,20 +307,7 @@ export function TaskRunsTable({
                   </TableCell>
                 )}
                 <TableCell to={path} isTabbableCell>
-                  <SimpleTooltip
-                    content={run.friendlyId}
-                    button={
-                      <span className="flex h-6 items-center gap-1">
-                        <CopyableText
-                          value={run.friendlyId.slice(-8)}
-                          copyValue={run.friendlyId}
-                          className="font-mono"
-                        />
-                      </span>
-                    }
-                    asChild
-                    disableHoverableContent
-                  />
+                  <TruncatedCopyableValue value={run.friendlyId} />
                 </TableCell>
                 <TableCell to={path}>
                   <span className="flex items-center gap-x-1">
@@ -423,7 +408,7 @@ export function TaskRunsTable({
   );
 }
 
-function RunActionsCell({ run, path }: { run: RunListItem; path: string }) {
+function RunActionsCell({ run, path }: { run: NextRunListItem; path: string }) {
   const location = useLocation();
 
   if (!run.isCancellable && !run.isReplayable) return <TableCell to={path}>{""}</TableCell>;

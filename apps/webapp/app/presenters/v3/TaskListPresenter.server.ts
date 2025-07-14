@@ -11,7 +11,6 @@ import {
   type CurrentRunningStats,
   type DailyTaskActivity,
   type EnvironmentMetricsRepository,
-  PostgrestEnvironmentMetricsRepository,
 } from "~/services/environmentMetricsRepository.server";
 import { singleton } from "~/utils/singleton";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
@@ -110,13 +109,9 @@ export class TaskListPresenter {
 export const taskListPresenter = singleton("taskListPresenter", setupTaskListPresenter);
 
 function setupTaskListPresenter() {
-  const environmentMetricsRepository = clickhouseClient
-    ? new ClickHouseEnvironmentMetricsRepository({
-        clickhouse: clickhouseClient,
-      })
-    : new PostgrestEnvironmentMetricsRepository({
-        prisma: $replica,
-      });
+  const environmentMetricsRepository = new ClickHouseEnvironmentMetricsRepository({
+    clickhouse: clickhouseClient,
+  });
 
   return new TaskListPresenter(environmentMetricsRepository, $replica);
 }

@@ -29,6 +29,7 @@ type BaseInput = {
   error?: TaskRunError;
   metadata?: FlushedRunMetadata;
   env?: AuthenticatedEnvironment;
+  bulkActionId?: string;
 };
 
 type InputWithInclude<T extends Prisma.TaskRunInclude> = BaseInput & {
@@ -49,6 +50,7 @@ export class FinalizeTaskRunService extends BaseService {
     status,
     expiredAt,
     completedAt,
+    bulkActionId,
     include,
     attemptStatus,
     error,
@@ -98,7 +100,17 @@ export class FinalizeTaskRunService extends BaseService {
 
     const run = await this._prisma.taskRun.update({
       where: { id },
-      data: { status, expiredAt, completedAt, error: taskRunError },
+      data: {
+        status,
+        expiredAt,
+        completedAt,
+        error: taskRunError,
+        bulkActionGroupIds: bulkActionId
+          ? {
+              push: bulkActionId,
+            }
+          : undefined,
+      },
       ...(include ? { include } : {}),
     });
 

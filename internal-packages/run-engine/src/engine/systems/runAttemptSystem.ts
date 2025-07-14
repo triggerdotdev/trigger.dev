@@ -962,6 +962,7 @@ export class RunAttemptSystem {
     completedAt,
     reason,
     finalizeRun,
+    bulkActionId,
     tx,
   }: {
     runId: string;
@@ -970,8 +971,9 @@ export class RunAttemptSystem {
     completedAt?: Date;
     reason?: string;
     finalizeRun?: boolean;
+    bulkActionId?: string;
     tx?: PrismaClientOrTransaction;
-  }): Promise<ExecutionResult> {
+  }): Promise<ExecutionResult & { alreadyFinished: boolean }> {
     const prisma = tx ?? this.$.prisma;
     reason = reason ?? "Cancelled by user";
 
@@ -981,7 +983,20 @@ export class RunAttemptSystem {
 
         //already finished, do nothing
         if (latestSnapshot.executionStatus === "FINISHED") {
-          return executionResultFromSnapshot(latestSnapshot);
+          if (bulkActionId) {
+            await prisma.taskRun.update({
+              where: { id: runId },
+              data: {
+                bulkActionGroupIds: {
+                  push: bulkActionId,
+                },
+              },
+            });
+          }
+          return {
+            alreadyFinished: true,
+            ...executionResultFromSnapshot(latestSnapshot),
+          };
         }
 
         //is pending cancellation and we're not finalizing, alert the worker again
@@ -991,7 +1006,10 @@ export class RunAttemptSystem {
             snapshot: latestSnapshot,
             eventBus: this.$.eventBus,
           });
-          return executionResultFromSnapshot(latestSnapshot);
+          return {
+            alreadyFinished: false,
+            ...executionResultFromSnapshot(latestSnapshot),
+          };
         }
 
         //set the run to cancelled immediately
@@ -1006,6 +1024,11 @@ export class RunAttemptSystem {
             status: "CANCELED",
             completedAt: finalizeRun ? completedAt ?? new Date() : completedAt,
             error,
+            bulkActionGroupIds: bulkActionId
+              ? {
+                  push: bulkActionId,
+                }
+              : undefined,
           },
           select: {
             id: true,
@@ -1073,7 +1096,10 @@ export class RunAttemptSystem {
             snapshot: newSnapshot,
             eventBus: this.$.eventBus,
           });
-          return executionResultFromSnapshot(newSnapshot);
+          return {
+            alreadyFinished: false,
+            ...executionResultFromSnapshot(newSnapshot),
+          };
         }
 
         //not executing, so we will actually finish the run
@@ -1142,7 +1168,10 @@ export class RunAttemptSystem {
           }
         }
 
-        return executionResultFromSnapshot(newSnapshot);
+        return {
+          alreadyFinished: false,
+          ...executionResultFromSnapshot(newSnapshot),
+        };
       });
     });
   }

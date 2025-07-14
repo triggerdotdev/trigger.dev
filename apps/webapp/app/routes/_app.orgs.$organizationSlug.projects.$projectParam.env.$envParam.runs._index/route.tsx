@@ -1,47 +1,49 @@
-import { ArrowPathIcon, StopCircleIcon } from "@heroicons/react/20/solid";
 import { BeakerIcon, BookOpenIcon } from "@heroicons/react/24/solid";
-import { Form, type MetaFunction, useNavigation } from "@remix-run/react";
+import { type MetaFunction, useNavigation } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { IconCircleX } from "@tabler/icons-react";
-import { AnimatePresence, motion } from "framer-motion";
-import { ListChecks, ListX } from "lucide-react";
-import { Suspense, useState } from "react";
-import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
+import { Suspense } from "react";
+import {
+  TypedAwait,
+  typeddefer,
+  type UseDataFunctionReturn,
+  useTypedLoaderData,
+} from "remix-typedjson";
+import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { DevDisconnectedBanner, useDevPresence } from "~/components/DevPresence";
 import { StepContentContainer } from "~/components/StepContentContainer";
 import { MainCenteredContainer, PageBody } from "~/components/layout/AppLayout";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTrigger,
-} from "~/components/primitives/Dialog";
-import { Header1, Header2 } from "~/components/primitives/Headers";
+import { Badge } from "~/components/primitives/Badge";
+import { LinkButton } from "~/components/primitives/Buttons";
+import { Header1 } from "~/components/primitives/Headers";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
-  SelectedItemsProvider,
-  useSelectedItems,
-} from "~/components/primitives/SelectedItemsProvider";
-import { Spinner, SpinnerWhite } from "~/components/primitives/Spinner";
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "~/components/primitives/Resizable";
+import { SelectedItemsProvider } from "~/components/primitives/SelectedItemsProvider";
+import { ShortcutKey } from "~/components/primitives/ShortcutKey";
+import { Spinner } from "~/components/primitives/Spinner";
 import { StepNumber } from "~/components/primitives/StepNumber";
 import { TextLink } from "~/components/primitives/TextLink";
-import { RunsFilters, TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
+import { RunsFilters, type TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { BULK_ACTION_RUN_LIMIT } from "~/consts";
+import { $replica } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { useSearchParams } from "~/hooks/useSearchParam";
+import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
-import { RunListPresenter } from "~/presenters/v3/RunListPresenter.server";
+import { getRunFiltersFromRequest } from "~/presenters/RunFilters.server";
+import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
+import { clickhouseClient } from "~/services/clickhouseInstance.server";
 import {
-  getRootOnlyFilterPreference,
   setRootOnlyFilterPreference,
   uiPreferencesStorage,
 } from "~/services/preferences/uiPreferences.server";
@@ -50,11 +52,12 @@ import { cn } from "~/utils/cn";
 import {
   docsPath,
   EnvironmentParamSchema,
+  v3CreateBulkActionPath,
   v3ProjectPath,
-  v3RunsPath,
   v3TestPath,
 } from "~/utils/pathBuilder";
 import { ListPagination } from "../../components/ListPagination";
+import { CreateBulkActionInspector } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.bulkaction";
 
 export const meta: MetaFunction = () => {
   return [
@@ -68,15 +71,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { projectParam, organizationSlug, envParam } = EnvironmentParamSchema.parse(params);
 
-  const url = new URL(request.url);
-
-  let rootOnlyValue = false;
-  if (url.searchParams.has("rootOnly")) {
-    rootOnlyValue = url.searchParams.get("rootOnly") === "true";
-  } else {
-    rootOnlyValue = await getRootOnlyFilterPreference(request);
-  }
-
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
   if (!project) {
     throw new Error("Project not found");
@@ -87,67 +81,23 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     throw new Error("Environment not found");
   }
 
-  const s = {
-    cursor: url.searchParams.get("cursor") ?? undefined,
-    direction: url.searchParams.get("direction") ?? undefined,
-    statuses: url.searchParams.getAll("statuses"),
-    environments: [environment.id],
-    tasks: url.searchParams.getAll("tasks"),
-    period: url.searchParams.get("period") ?? undefined,
-    bulkId: url.searchParams.get("bulkId") ?? undefined,
-    tags: url.searchParams.getAll("tags").map((t) => decodeURIComponent(t)),
-    from: url.searchParams.get("from") ?? undefined,
-    to: url.searchParams.get("to") ?? undefined,
-    rootOnly: rootOnlyValue,
-    runId: url.searchParams.get("runId") ?? undefined,
-    batchId: url.searchParams.get("batchId") ?? undefined,
-    scheduleId: url.searchParams.get("scheduleId") ?? undefined,
-  };
-  const {
-    tasks,
-    versions,
-    statuses,
-    environments,
-    tags,
-    period,
-    bulkId,
-    from,
-    to,
-    cursor,
-    direction,
-    rootOnly,
-    runId,
-    batchId,
-    scheduleId,
-  } = TaskRunListSearchFilters.parse(s);
+  const filters = await getRunFiltersFromRequest(request);
 
-  const presenter = new RunListPresenter();
-  const list = presenter.call(environment.id, {
+  const presenter = new NextRunListPresenter($replica, clickhouseClient);
+  const list = presenter.call(project.organizationId, environment.id, {
     userId,
     projectId: project.id,
-    tasks,
-    versions,
-    statuses,
-    tags,
-    period,
-    bulkId,
-    from,
-    to,
-    batchId,
-    runIds: runId ? [runId] : undefined,
-    scheduleId,
-    rootOnly,
-    direction: direction,
-    cursor: cursor,
+    ...filters,
   });
 
-  const session = await setRootOnlyFilterPreference(rootOnlyValue, request);
+  const session = await setRootOnlyFilterPreference(filters.rootOnly, request);
   const cookieValue = await uiPreferencesStorage.commitSession(session);
 
   return typeddefer(
     {
       data: list,
-      rootOnlyDefault: rootOnlyValue,
+      rootOnlyDefault: filters.rootOnly,
+      filters,
     },
     {
       headers: {
@@ -158,9 +108,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export default function Page() {
-  const { data, rootOnlyDefault } = useTypedLoaderData<typeof loader>();
-  const navigation = useNavigation();
-  const isLoading = navigation.state !== "idle";
+  const { data, rootOnlyDefault, filters } = useTypedLoaderData<typeof loader>();
   const { isConnected } = useDevPresence();
   const project = useProject();
   const environment = useEnvironment();
@@ -188,65 +136,32 @@ export default function Page() {
           maxSelectedItemCount={BULK_ACTION_RUN_LIMIT}
         >
           {({ selectedItems }) => (
-            <div
-              className={cn(
-                "grid h-full max-h-full overflow-hidden",
-                selectedItems.size === 0 ? "grid-rows-1" : "grid-rows-[1fr_auto]"
-              )}
-            >
-              <Suspense
-                fallback={
-                  <div className="flex items-center justify-center py-2">
+            <Suspense
+              fallback={
+                <div className="grid h-full max-h-full grid-rows-[2.5rem_auto] overflow-hidden">
+                  <div className="border-b border-grid-bright" />
+                  <div className="my-2 flex items-center justify-center">
                     <div className="mx-auto flex items-center gap-2">
                       <Spinner />
                       <Paragraph variant="small">Loading runs</Paragraph>
                     </div>
                   </div>
-                }
-              >
-                <TypedAwait resolve={data}>
-                  {(list) => (
-                    <>
-                      {list.runs.length === 0 && !list.hasAnyRuns ? (
-                        list.possibleTasks.length === 0 ? (
-                          <CreateFirstTaskInstructions />
-                        ) : (
-                          <RunTaskInstructions />
-                        )
-                      ) : (
-                        <div
-                          className={cn(
-                            "grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden"
-                          )}
-                        >
-                          <div className="flex items-start justify-between gap-x-2 p-2">
-                            <RunsFilters
-                              possibleTasks={list.possibleTasks}
-                              bulkActions={list.bulkActions}
-                              hasFilters={list.hasFilters}
-                              rootOnlyDefault={rootOnlyDefault}
-                            />
-                            <div className="flex items-center justify-end gap-x-2">
-                              <ListPagination list={list} />
-                            </div>
-                          </div>
-
-                          <TaskRunsTable
-                            total={list.runs.length}
-                            hasFilters={list.hasFilters}
-                            filters={list.filters}
-                            runs={list.runs}
-                            isLoading={isLoading}
-                            allowSelection
-                          />
-                        </div>
-                      )}
-                    </>
-                  )}
-                </TypedAwait>
-              </Suspense>
-              <BulkActionBar />
-            </div>
+                </div>
+              }
+            >
+              <TypedAwait resolve={data}>
+                {(list) => {
+                  return (
+                    <RunsList
+                      list={list}
+                      selectedItems={selectedItems}
+                      rootOnlyDefault={rootOnlyDefault}
+                      filters={filters}
+                    />
+                  );
+                }}
+              </TypedAwait>
+            </Suspense>
           )}
         </SelectedItemsProvider>
       </PageBody>
@@ -254,181 +169,136 @@ export default function Page() {
   );
 }
 
-function BulkActionBar() {
-  const { selectedItems, deselectAll } = useSelectedItems();
-  const [barState, setBarState] = useState<"none" | "replay" | "cancel">("none");
+function RunsList({
+  list,
+  selectedItems,
+  rootOnlyDefault,
+  filters,
+}: {
+  list: Awaited<UseDataFunctionReturn<typeof loader>["data"]>;
+  selectedItems: Set<string>;
+  rootOnlyDefault: boolean;
+  filters: TaskRunListSearchFilters;
+}) {
+  const navigation = useNavigation();
+  const isLoading = navigation.state !== "idle";
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+  const { has, replace } = useSearchParams();
 
-  const hasSelectedMaximum = selectedItems.size >= BULK_ACTION_RUN_LIMIT;
+  // Shortcut keys for bulk actions
+  useShortcutKeys({
+    shortcut: { key: "r" },
+    action: (e) => {
+      replace({
+        bulkInspector: "true",
+        action: "replay",
+        mode: selectedItems.size > 0 ? "selected" : undefined,
+      });
+    },
+  });
+  useShortcutKeys({
+    shortcut: { key: "c" },
+    action: (e) => {
+      replace({
+        bulkInspector: "true",
+        action: "cancel",
+        mode: selectedItems.size > 0 ? "selected" : undefined,
+      });
+    },
+  });
 
+  const isShowingBulkActionInspector = has("bulkInspector") && list.hasAnyRuns;
   return (
-    <AnimatePresence>
-      {selectedItems.size > 0 && (
-        <motion.div
-          initial={{ translateY: "100%" }}
-          animate={{ translateY: 0 }}
-          exit={{ translateY: "100%" }}
-          className="flex items-center justify-between gap-3 border-t border-grid-bright bg-background-bright py-3 pl-4 pr-3"
+    <ResizablePanelGroup orientation="horizontal" className="max-h-full">
+      <ResizablePanel id="runs-main" min={"100px"}>
+        <div
+          className={cn(
+            "grid h-full max-h-full overflow-hidden",
+            selectedItems.size === 0 ? "grid-rows-1" : "grid-rows-[1fr_auto]"
+          )}
         >
-          <div className="flex items-center gap-1.5 text-sm text-text-bright">
-            <ListChecks className="mr-1 size-7 text-indigo-400" />
-            <Header2>Bulk actions:</Header2>
-            {hasSelectedMaximum ? (
-              <Paragraph className="text-warning">
-                Maximum of {selectedItems.size} runs selected
-              </Paragraph>
+          <>
+            {list.runs.length === 0 && !list.hasAnyRuns ? (
+              list.possibleTasks.length === 0 ? (
+                <CreateFirstTaskInstructions />
+              ) : (
+                <RunTaskInstructions />
+              )
             ) : (
-              <Paragraph className="">{selectedItems.size} runs selected</Paragraph>
+              <div className={cn("grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden")}>
+                <div className="flex items-start justify-between gap-x-2 p-2">
+                  <RunsFilters
+                    possibleTasks={list.possibleTasks}
+                    bulkActions={list.bulkActions}
+                    hasFilters={list.hasFilters}
+                    rootOnlyDefault={rootOnlyDefault}
+                  />
+                  <div className="flex items-center justify-end gap-x-2">
+                    {!isShowingBulkActionInspector && (
+                      <LinkButton
+                        variant="secondary/small"
+                        to={v3CreateBulkActionPath(
+                          organization,
+                          project,
+                          environment,
+                          filters,
+                          selectedItems.size > 0 ? "selected" : undefined
+                        )}
+                        LeadingIcon={ListCheckedIcon}
+                        className={selectedItems.size > 0 ? "pr-1" : undefined}
+                        tooltip={
+                          <div className="-mr-1 flex items-center gap-3 text-xs text-text-dimmed">
+                            <div className="flex items-center gap-0.5">
+                              <span>Replay</span>
+                              <ShortcutKey shortcut={{ key: "r" }} variant={"small"} />
+                            </div>
+                            <div className="flex items-center gap-0.5">
+                              <span>Cancel</span>
+                              <ShortcutKey shortcut={{ key: "c" }} variant={"small"} />
+                            </div>
+                          </div>
+                        }
+                      >
+                        <span className="flex items-center gap-x-1 whitespace-nowrap text-text-bright">
+                          <span>Bulk action</span>
+                          {selectedItems.size > 0 && (
+                            <Badge variant="rounded">{selectedItems.size}</Badge>
+                          )}
+                        </span>
+                      </LinkButton>
+                    )}
+                    <ListPagination list={list} />
+                  </div>
+                </div>
+
+                <TaskRunsTable
+                  total={list.runs.length}
+                  hasFilters={list.hasFilters}
+                  filters={list.filters}
+                  runs={list.runs}
+                  isLoading={isLoading}
+                  allowSelection
+                />
+              </div>
             )}
-          </div>
-          <div className="flex items-center gap-3">
-            <CancelRuns
-              onOpen={(o) => {
-                if (o) {
-                  setBarState("cancel");
-                } else {
-                  setBarState("none");
-                }
-              }}
+          </>
+        </div>
+      </ResizablePanel>
+      {isShowingBulkActionInspector && (
+        <>
+          <ResizableHandle id="runs-handle" />
+          <ResizablePanel id="bulk-action-inspector" min="300px" default="400px" max="600px">
+            <CreateBulkActionInspector
+              filters={filters}
+              selectedItems={selectedItems}
+              hasBulkActions={list.bulkActions.length > 0}
             />
-            <ReplayRuns
-              onOpen={(o) => {
-                if (o) {
-                  setBarState("replay");
-                } else {
-                  setBarState("none");
-                }
-              }}
-            />
-            <Button
-              variant="tertiary/medium"
-              shortcut={{ key: "esc", enabledOnInputElements: true }}
-              onClick={() => {
-                if (barState !== "none") return;
-                deselectAll();
-              }}
-              LeadingIcon={ListX}
-              leadingIconClassName="text-indigo-400 w-6 h-6"
-            >
-              Clear selection
-            </Button>
-          </div>
-        </motion.div>
+          </ResizablePanel>
+        </>
       )}
-    </AnimatePresence>
-  );
-}
-
-function CancelRuns({ onOpen }: { onOpen: (open: boolean) => void }) {
-  const { selectedItems } = useSelectedItems();
-
-  const organization = useOrganization();
-  const project = useProject();
-  const environment = useEnvironment();
-  const failedRedirect = v3RunsPath(organization, project, environment);
-
-  const formAction = `/resources/taskruns/bulk/cancel`;
-
-  const navigation = useNavigation();
-  const isLoading = navigation.formAction === formAction;
-
-  return (
-    <Dialog onOpenChange={(o) => onOpen(o)}>
-      <DialogTrigger asChild>
-        <Button
-          type="button"
-          variant="tertiary/medium"
-          shortcut={{ key: "c", enabledOnInputElements: true }}
-          LeadingIcon={IconCircleX}
-          leadingIconClassName="text-error w-[1.3rem] h-[1.3rem]"
-        >
-          Cancel runs
-        </Button>
-      </DialogTrigger>
-      <DialogContent key="replay">
-        <DialogHeader>Cancel {selectedItems.size} runs?</DialogHeader>
-        <DialogDescription className="pt-2">
-          Canceling these runs will stop them from running. Only runs that are not already finished
-          will be canceled, the others will remain in their existing state.
-        </DialogDescription>
-        <DialogFooter>
-          <Form action={formAction} method="post" reloadDocument>
-            <input type="hidden" name="failedRedirect" value={failedRedirect} />
-            <input type="hidden" name="organizationSlug" value={organization.slug} />
-            <input type="hidden" name="projectSlug" value={project.slug} />
-            <input type="hidden" name="environmentSlug" value={environment.slug} />
-            {[...selectedItems].map((runId) => (
-              <input key={runId} type="hidden" name="runIds" value={runId} />
-            ))}
-            <Button
-              type="submit"
-              variant="danger/medium"
-              LeadingIcon={isLoading ? SpinnerWhite : StopCircleIcon}
-              disabled={isLoading}
-              shortcut={{ modifiers: ["mod"], key: "enter" }}
-            >
-              {isLoading ? "Canceling..." : `Cancel ${selectedItems.size} runs`}
-            </Button>
-          </Form>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function ReplayRuns({ onOpen }: { onOpen: (open: boolean) => void }) {
-  const { selectedItems } = useSelectedItems();
-
-  const organization = useOrganization();
-  const project = useProject();
-  const environment = useEnvironment();
-  const failedRedirect = v3RunsPath(organization, project, environment);
-
-  const formAction = `/resources/taskruns/bulk/replay`;
-
-  const navigation = useNavigation();
-  const isLoading = navigation.formAction === formAction;
-
-  return (
-    <Dialog onOpenChange={(o) => onOpen(o)}>
-      <DialogTrigger asChild>
-        <Button
-          type="button"
-          variant="tertiary/medium"
-          shortcut={{ key: "r", enabledOnInputElements: true }}
-          LeadingIcon={ArrowPathIcon}
-          leadingIconClassName="text-blue-400 w-[1.3rem] h-[1.3rem]"
-        >
-          <span className="text-text-bright">Replay {selectedItems.size} runs</span>
-        </Button>
-      </DialogTrigger>
-      <DialogContent key="replay">
-        <DialogHeader>Replay runs?</DialogHeader>
-        <DialogDescription className="pt-2">
-          Replaying these runs will create a new run for each with the same payload and environment
-          as the original. It will use the latest version of the code for each task.
-        </DialogDescription>
-        <DialogFooter>
-          <Form action={formAction} method="post" reloadDocument>
-            <input type="hidden" name="failedRedirect" value={failedRedirect} />
-            <input type="hidden" name="organizationSlug" value={organization.slug} />
-            <input type="hidden" name="projectSlug" value={project.slug} />
-            <input type="hidden" name="environmentSlug" value={environment.slug} />
-            {[...selectedItems].map((runId) => (
-              <input key={runId} type="hidden" name="runIds" value={runId} />
-            ))}
-            <Button
-              type="submit"
-              variant="primary/medium"
-              LeadingIcon={isLoading ? SpinnerWhite : ArrowPathIcon}
-              disabled={isLoading}
-              shortcut={{ modifiers: ["mod"], key: "enter" }}
-            >
-              {isLoading ? "Replaying..." : `Replay ${selectedItems.size} runs`}
-            </Button>
-          </Form>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    </ResizablePanelGroup>
   );
 }
 

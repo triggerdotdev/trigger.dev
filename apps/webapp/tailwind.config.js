@@ -167,6 +167,7 @@ const alerts = colors.red[500];
 const projectSettings = colors.blue[500];
 const orgSettings = colors.blue[500];
 const docs = colors.blue[500];
+const bulkActions = colors.emerald[500];
 
 /** Other variables */
 const radius = "0.5rem";
@@ -242,6 +243,7 @@ module.exports = {
         projectSettings,
         orgSettings,
         docs,
+        bulkActions,
       },
       focusStyles: {
         outline: "1px solid",

@@ -1063,7 +1063,7 @@ describe("RunsRepository", () => {
         projectId: project.id,
         environmentId: runtimeEnvironment.id,
         organizationId: organization.id,
-        runFriendlyIds: ["run_abc", "run_xyz"],
+        runIds: ["run_abc", "run_xyz"],
       });
 
       expect(runs).toHaveLength(2);
@@ -1158,7 +1158,7 @@ describe("RunsRepository", () => {
         },
       });
 
-      await setTimeout(1000);
+      await setTimeout(1_000);
 
       const runsRepository = new RunsRepository({
         prisma,
@@ -1171,7 +1171,7 @@ describe("RunsRepository", () => {
         projectId: project.id,
         environmentId: runtimeEnvironment.id,
         organizationId: organization.id,
-        runIds: [run1.id, run3.id],
+        runIds: [run1.friendlyId, run3.friendlyId],
       });
 
       expect(runs).toHaveLength(2);
