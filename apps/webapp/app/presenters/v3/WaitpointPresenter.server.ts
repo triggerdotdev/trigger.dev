@@ -79,10 +79,6 @@ export class WaitpointPresenter extends BasePresenter {
     const connectedRuns: NextRunListItem[] = [];
 
     if (connectedRunIds.length > 0) {
-      if (!clickhouseClient) {
-        throw new Error("Clickhouse is not supported yet");
-      }
-
       const runPresenter = new NextRunListPresenter(this._prisma, clickhouseClient);
       const { runs } = await runPresenter.call(
         waitpoint.environment.organizationId,

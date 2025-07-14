@@ -24,10 +24,6 @@ export class CreateBulkActionPresenter extends BasePresenter {
       Object.fromEntries(new URL(request.url).searchParams)
     );
 
-    if (!clickhouseClient) {
-      throw new Error("Clickhouse client not found");
-    }
-
     const runsRepository = new RunsRepository({
       clickhouse: clickhouseClient,
       prisma: this._replica as PrismaClient,

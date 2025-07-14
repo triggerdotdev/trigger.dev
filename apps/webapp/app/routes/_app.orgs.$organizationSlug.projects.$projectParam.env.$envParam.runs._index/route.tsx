@@ -81,10 +81,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     throw new Error("Environment not found");
   }
 
-  if (!clickhouseClient) {
-    throw new Error("Clickhouse is not supported yet");
-  }
-
   const filters = await getRunFiltersFromRequest(request);
 
   const presenter = new NextRunListPresenter($replica, clickhouseClient);

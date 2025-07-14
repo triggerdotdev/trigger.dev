@@ -77,10 +77,6 @@ export class ViewSchedulePresenter {
       ? nextScheduledTimestamps(schedule.generatorExpression, schedule.timezone, new Date(), 5)
       : [];
 
-    if (!clickhouseClient) {
-      throw new Error("Clickhouse is not supported yet");
-    }
-
     const runPresenter = new NextRunListPresenter(this.#prismaClient, clickhouseClient);
     const { runs } = await runPresenter.call(schedule.project.organizationId, environmentId, {
       projectId: schedule.project.id,

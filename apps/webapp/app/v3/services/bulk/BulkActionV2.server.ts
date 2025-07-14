@@ -32,10 +32,6 @@ export class BulkActionService extends BaseService {
   ) {
     const filters = await getFilters(payload, request);
 
-    if (!clickhouseClient) {
-      throw new Error("Clickhouse client not found");
-    }
-
     // Count the runs that will be affected by the bulk action
     const runsRepository = new RunsRepository({
       clickhouse: clickhouseClient,
@@ -143,10 +139,6 @@ export class BulkActionService extends BaseService {
       environmentId: group.environmentId,
       ...(group.params && typeof group.params === "object" ? group.params : {}),
     });
-
-    if (!clickhouseClient) {
-      throw new Error("Clickhouse client not found");
-    }
 
     const runsRepository = new RunsRepository({
       clickhouse: clickhouseClient,

@@ -213,10 +213,6 @@ export class ApiRunListPresenter extends BasePresenter {
         options.batchId = searchParams["filter[batch]"];
       }
 
-      if (!clickhouseClient) {
-        throw new Error("Clickhouse is not supported yet");
-      }
-
       const presenter = new NextRunListPresenter(this._prisma, clickhouseClient);
 
       logger.debug("Calling RunListPresenter", { options });

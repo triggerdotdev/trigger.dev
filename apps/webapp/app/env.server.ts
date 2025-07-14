@@ -912,7 +912,7 @@ const EnvironmentSchema = z.object({
   RUN_REPLICATION_INSERT_MAX_DELAY_MS: z.coerce.number().int().default(2000),
 
   // Clickhouse
-  CLICKHOUSE_URL: z.string().optional(),
+  CLICKHOUSE_URL: z.string(),
   CLICKHOUSE_KEEP_ALIVE_ENABLED: z.string().default("1"),
   CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().optional(),
   CLICKHOUSE_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(10),

@@ -5,11 +5,6 @@ import { singleton } from "~/utils/singleton";
 export const clickhouseClient = singleton("clickhouseClient", initializeClickhouseClient);
 
 function initializeClickhouseClient() {
-  if (!env.CLICKHOUSE_URL) {
-    console.log("🗃️  Clickhouse service not enabled");
-    return;
-  }
-
   const url = new URL(env.CLICKHOUSE_URL);
 
   // Remove secure param
