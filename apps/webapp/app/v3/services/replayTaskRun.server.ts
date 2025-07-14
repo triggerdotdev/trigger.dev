@@ -87,6 +87,7 @@ export class ReplayTaskRunService extends BaseService {
         {
           spanParentAsLink: true,
           parentAsLinkType: "replay",
+          replayedFromTaskRunFriendlyId: existingTaskRun.friendlyId,
           traceContext: {
             traceparent: `00-${existingTaskRun.traceId}-${existingTaskRun.spanId}-01`,
           },

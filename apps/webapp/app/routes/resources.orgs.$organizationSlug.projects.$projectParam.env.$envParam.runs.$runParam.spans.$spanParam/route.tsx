@@ -63,6 +63,7 @@ import {
   v3DeploymentVersionPath,
   v3RunDownloadLogsPath,
   v3RunPath,
+  v3RunRedirectPath,
   v3RunSpanPath,
   v3RunsPath,
   v3SchedulePath,
@@ -592,6 +593,20 @@ function RunBody({
                     {run.isTest ? <CheckIcon className="size-4 text-text-dimmed" /> : "–"}
                   </Property.Value>
                 </Property.Item>
+                {run.replayedFromTaskRunFriendlyId && (
+                  <Property.Item>
+                    <Property.Label>Replayed from</Property.Label>
+                    <Property.Value>
+                      <TextLink
+                        to={v3RunRedirectPath(organization, project, {
+                          friendlyId: run.replayedFromTaskRunFriendlyId,
+                        })}
+                      >
+                        {run.replayedFromTaskRunFriendlyId}
+                      </TextLink>
+                    </Property.Value>
+                  </Property.Item>
+                )}
                 {environment && (
                   <Property.Item>
                     <Property.Label>Environment</Property.Label>

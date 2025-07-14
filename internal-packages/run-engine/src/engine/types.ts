@@ -126,6 +126,7 @@ export type TriggerParams = {
   tags: { id: string; name: string }[];
   parentTaskRunId?: string;
   rootTaskRunId?: string;
+  replayedFromTaskRunFriendlyId?: string;
   batch?: {
     id: string;
     index: number;
