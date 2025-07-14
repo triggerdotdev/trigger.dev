@@ -349,6 +349,15 @@ describe("flattenAttributes", () => {
     expect(result["mySet.[3].nested"]).toBe("object");
   });
 
+  it("handles nested Set objects correctly", () => {
+    const mySet = new Set([1, 2, 3, { nested: "object" }]);
+    const result = flattenAttributes({ mySet });
+    expect(result["mySet.[0]"]).toBe(1);
+    expect(result["mySet.[1]"]).toBe(2);
+    expect(result["mySet.[2]"]).toBe(3);
+    expect(result["mySet.[3].nested"]).toBe("object");
+  });
+
   it("handles Map objects correctly", () => {
     const myMap = new Map();
     myMap.set("key1", "value1");
@@ -360,6 +369,17 @@ describe("flattenAttributes", () => {
     expect(result["myMap.key1"]).toBe("value1");
     expect(result["myMap.key2"]).toBe(42);
     expect(result["myMap.123"]).toBe("numeric key");
+  });
+
+  it("handles nested Map objects correctly", () => {
+    const myMap = new Map();
+    myMap.set("key1", {
+      key2: "value2",
+      key3: 42,
+    });
+    const result = flattenAttributes({ myMap });
+    expect(result["myMap.key1.key2"]).toBe("value2");
+    expect(result["myMap.key1.key3"]).toBe(42);
   });
 
   it("handles File objects correctly", () => {
