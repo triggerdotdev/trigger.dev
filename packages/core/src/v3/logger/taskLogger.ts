@@ -16,6 +16,7 @@ export type TaskLoggerConfig = {
   logger: Logger;
   tracer: TriggerTracer;
   level: LogLevel;
+  maxAttributeCount?: number;
 };
 
 export type TraceOptions = Prettify<
@@ -78,7 +79,12 @@ export class OtelTaskLogger implements TaskLogger {
     severityNumber: SeverityNumber,
     properties?: Record<string, unknown>
   ) {
-    let attributes: Attributes = { ...flattenAttributes(safeJsonProcess(properties)) };
+    let attributes: Attributes = {};
+
+    if (properties) {
+      // Use flattenAttributes directly - it now handles all non-JSON friendly values efficiently
+      attributes = flattenAttributes(properties, undefined, this._config.maxAttributeCount);
+    }
 
     const icon = iconStringForSeverity(severityNumber);
     if (icon !== undefined) {
@@ -135,24 +141,4 @@ export class NoopTaskLogger implements TaskLogger {
   startSpan(): Span {
     return {} as Span;
   }
-}
-
-function safeJsonProcess(value?: Record<string, unknown>): Record<string, unknown> | undefined {
-  try {
-    return JSON.parse(JSON.stringify(value, jsonErrorReplacer));
-  } catch {
-    return value;
-  }
-}
-
-function jsonErrorReplacer(key: string, value: unknown) {
-  if (value instanceof Error) {
-    return {
-      name: value.name,
-      message: value.message,
-      stack: value.stack,
-    };
-  }
-
-  return value;
 }

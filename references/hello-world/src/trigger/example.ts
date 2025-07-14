@@ -328,3 +328,52 @@ export const circularReferenceTask = task({
     };
   },
 });
+
+export const largeAttributesTask = task({
+  id: "large-attributes",
+  machine: "large-1x",
+  run: async ({ length = 100000 }: { length: number }, { signal, ctx }) => {
+    // Create a large deeply nested object/array of objects that have more than 10k attributes when flattened
+    const start = performance.now();
+
+    const largeObject = Array.from({ length }, (_, i) => ({
+      a: i,
+      b: i,
+      c: i,
+    }));
+
+    const end = performance.now();
+
+    console.log(`[${length}] Time taken to create the large object: ${end - start}ms`);
+
+    const start2 = performance.now();
+
+    logger.info("Hello, world from the large attributes task", { largeObject });
+
+    const end2 = performance.now();
+
+    console.log(`[${length}] Time taken to log the large object: ${end2 - start2}ms`);
+
+    class MyClass {
+      constructor(public name: string) {}
+    }
+
+    logger.info("Lets log some weird stuff", {
+      error: new Error("This is an error"),
+      func: () => {
+        logger.info("This is a function");
+      },
+      date: new Date(),
+      bigInt: BigInt(1000000000000000000),
+      symbol: Symbol("symbol"),
+      myClass: new MyClass("MyClass"),
+      file: new File([], "test.txt"),
+      stream: new ReadableStream(),
+      map: new Map([["key", "value"]]),
+      set: new Set([1, 2, 3]),
+      promise: Promise.resolve("Hello, world!"),
+      promiseRejected: Promise.reject(new Error("This is a rejected promise")),
+      promisePending: Promise.resolve("Hello, world!"),
+    });
+  },
+});

@@ -283,8 +283,8 @@ const EnvironmentSchema = z.object({
   PROD_OTEL_LOG_EXPORT_TIMEOUT_MILLIS: z.string().default("30000"),
   PROD_OTEL_LOG_MAX_QUEUE_SIZE: z.string().default("512"),
 
-  TRIGGER_OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT: z.string().default("256"),
-  TRIGGER_OTEL_LOG_ATTRIBUTE_COUNT_LIMIT: z.string().default("256"),
+  TRIGGER_OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT: z.string().default("1024"),
+  TRIGGER_OTEL_LOG_ATTRIBUTE_COUNT_LIMIT: z.string().default("1024"),
   TRIGGER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT: z.string().default("131072"),
   TRIGGER_OTEL_LOG_ATTRIBUTE_VALUE_LENGTH_LIMIT: z.string().default("131072"),
   TRIGGER_OTEL_SPAN_EVENT_COUNT_LIMIT: z.string().default("10"),

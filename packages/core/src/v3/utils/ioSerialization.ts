@@ -1,13 +1,17 @@
 import { Attributes, Span } from "@opentelemetry/api";
-import { OFFLOAD_IO_PACKET_LENGTH_LIMIT, imposeAttributeLimits } from "../limits.js";
+import { z } from "zod";
+import { ApiClient } from "../apiClient/index.js";
+import { apiClientManager } from "../apiClientManager-api.js";
+import {
+  OFFLOAD_IO_PACKET_LENGTH_LIMIT,
+  OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT,
+  imposeAttributeLimits,
+} from "../limits.js";
+import type { RetryOptions } from "../schemas/index.js";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
 import { TriggerTracer } from "../tracer.js";
-import { flattenAttributes } from "./flattenAttributes.js";
-import { apiClientManager } from "../apiClientManager-api.js";
 import { zodfetch } from "../zodfetch.js";
-import { z } from "zod";
-import type { RetryOptions } from "../schemas/index.js";
-import { ApiClient } from "../apiClient/index.js";
+import { flattenAttributes } from "./flattenAttributes.js";
 
 export type IOPacket = {
   data?: string | undefined;
@@ -347,19 +351,27 @@ export async function createPacketAttributesAsJson(
   }
 
   switch (dataType) {
-    case "application/json":
-      return imposeAttributeLimits(flattenAttributes(data, undefined));
-    case "application/super+json":
+    case "application/json": {
+      return imposeAttributeLimits(
+        flattenAttributes(data, undefined, OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT)
+      );
+    }
+    case "application/super+json": {
       const { deserialize } = await loadSuperJSON();
 
       const deserialized = deserialize(data) as any;
       const jsonify = safeJsonParse(JSON.stringify(deserialized, makeSafeReplacer()));
 
-      return imposeAttributeLimits(flattenAttributes(jsonify, undefined));
-    case "application/store":
+      return imposeAttributeLimits(
+        flattenAttributes(jsonify, undefined, OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT)
+      );
+    }
+    case "application/store": {
       return data;
-    default:
+    }
+    default: {
       return {};
+    }
   }
 }
 
