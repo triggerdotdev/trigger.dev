@@ -179,6 +179,38 @@ describe("flattenAttributes", () => {
       "friends.[0]": "$@circular((",
     });
   });
+
+  it("handles . (dot) in keys correctly", () => { 
+    const obj = {
+      "Key 0.002mm": 31.4,
+    };
+    const expected = { "Key 0__DOT__002mm": 31.4 };
+    expect(flattenAttributes(obj)).toEqual(expected);
+    expect(unflattenAttributes(expected)).toEqual(obj);
+
+    const obj2 = {
+      level1: {
+        level2: {
+          value: "test",
+          "level3.key": "value",
+        },
+        array: [1, 2, 3],
+      },
+    };
+    const expected2 = {
+      "level1.level2.value": "test",
+      "level1.level2.level3__DOT__key": "value",
+      "level1.array.[0]": 1,
+      "level1.array.[1]": 2,
+      "level1.array.[2]": 3,
+    };
+    expect(flattenAttributes(obj2)).toEqual(expected2);
+
+    const PI = 3.14159265359;
+    const result = flattenAttributes(PI);
+    expect(result).toEqual({ "": PI });
+    expect(unflattenAttributes(result)).toEqual(PI);
+  });
 });
 
 describe("unflattenAttributes", () => {
@@ -259,5 +291,25 @@ describe("unflattenAttributes", () => {
       name: "Alice",
       blogPosts: [{ title: "Post 1", author: "[Circular Reference]" }],
     });
+  });
+
+  it("handles espacaped . (dot) in keys correctly and returns original object", () => {
+    const flattened = {
+      "level1.level2.value": "test",
+      "level1.level2.level3__DOT__key": "value",
+      "level1.array.[0]": 1,
+      "level1.array.[1]": 2,
+      "level1.array.[2]": 3,
+    };
+    const original = {
+      level1: {
+        level2: {
+          value: "test",
+          "level3.key": "value",
+        },
+        array: [1, 2, 3],
+      },
+    };
+    expect(unflattenAttributes(flattened)).toEqual(original);
   });
 });
