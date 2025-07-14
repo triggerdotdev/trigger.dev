@@ -56,7 +56,21 @@ export class DefaultRunChainStateManager implements RunChainStateManager {
     // Since the parent run is already running, it will definitely have a locked queue associated with it
     const { concurrency } = parentRunChainState;
 
+    const parentLockedQueueReleaseConcurrencyOnWaitpoint =
+      parentRun.lockedQueueReleaseConcurrencyOnWaitpoint;
     const parentLockedQueueId = parentRun.lockedQueueId;
+
+    if (typeof parentLockedQueueReleaseConcurrencyOnWaitpoint !== "boolean") {
+      logger.error(
+        "Parent run has no locked queue release concurrency on waitpoint, cannot determine run chain state",
+        {
+          runId: parentRun.id,
+          runState: parentRun.runChainState,
+        }
+      );
+
+      return {};
+    }
 
     if (!parentLockedQueueId) {
       logger.error("Parent run has no locked queue, cannot determine run chain state", {
@@ -101,7 +115,7 @@ export class DefaultRunChainStateManager implements RunChainStateManager {
     // if it does, we will add to the holding count for the queue
     const willReleaseConcurrency = await this.#determineIfParentRunWillReleaseConcurrency(
       request,
-      parentLockedQueueId
+      parentLockedQueueReleaseConcurrencyOnWaitpoint
     );
 
     if (!willReleaseConcurrency) {
@@ -194,38 +208,13 @@ export class DefaultRunChainStateManager implements RunChainStateManager {
 
   async #determineIfParentRunWillReleaseConcurrency(
     request: TriggerTaskRequest,
-    parentLockedQueueId: string
+    parentLockedQueueReleaseConcurrencyOnWaitpoint: boolean
   ) {
     if (typeof request.body.options?.releaseConcurrency === "boolean") {
       return request.body.options.releaseConcurrency;
     }
 
-    const parentQueue = await this.prisma.taskQueue.findFirst({
-      where: {
-        id: parentLockedQueueId,
-      },
-      select: {
-        releaseConcurrencyOnWaitpoint: true,
-        concurrencyLimit: true,
-      },
-    });
-
-    logger.debug("Determining if parent run will release concurrency", {
-      parentQueue,
-    });
-
-    if (
-      typeof parentQueue?.concurrencyLimit === "undefined" ||
-      parentQueue.concurrencyLimit === null
-    ) {
-      return true;
-    }
-
-    if (typeof parentQueue?.releaseConcurrencyOnWaitpoint === "boolean") {
-      return parentQueue.releaseConcurrencyOnWaitpoint;
-    }
-
-    return false;
+    return parentLockedQueueReleaseConcurrencyOnWaitpoint;
   }
 
   async #getParentQueueState(runChainState: RunChainState, parentLockedQueueId: string) {
