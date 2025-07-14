@@ -351,11 +351,12 @@ export async function createPacketAttributesAsJson(
   }
 
   switch (dataType) {
-    case "application/json":
+    case "application/json": {
       return imposeAttributeLimits(
         flattenAttributes(data, undefined, OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT)
       );
-    case "application/super+json":
+    }
+    case "application/super+json": {
       const { deserialize } = await loadSuperJSON();
 
       const deserialized = deserialize(data) as any;
@@ -364,10 +365,13 @@ export async function createPacketAttributesAsJson(
       return imposeAttributeLimits(
         flattenAttributes(jsonify, undefined, OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT)
       );
-    case "application/store":
+    }
+    case "application/store": {
       return data;
-    default:
+    }
+    default: {
       return {};
+    }
   }
 }
 
