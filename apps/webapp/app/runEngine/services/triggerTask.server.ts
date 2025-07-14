@@ -212,10 +212,11 @@ export class RunEngineTriggerTaskService {
           })
         : undefined;
 
-      const { queueName, lockedQueueId } = await this.queueConcern.resolveQueueProperties(
-        triggerRequest,
-        lockedToBackgroundWorker ?? undefined
-      );
+      const { queueName, lockedQueueId, lockedQueueReleaseConcurrencyOnWaitpoint } =
+        await this.queueConcern.resolveQueueProperties(
+          triggerRequest,
+          lockedToBackgroundWorker ?? undefined
+        );
 
       //upsert tags
       const tags = await createTags(
@@ -272,6 +273,7 @@ export class RunEngineTriggerTaskService {
                   concurrencyKey: body.options?.concurrencyKey,
                   queue: queueName,
                   lockedQueueId,
+                  lockedQueueReleaseConcurrencyOnWaitpoint,
                   workerQueue,
                   isTest: body.options?.test ?? false,
                   delayUntil,

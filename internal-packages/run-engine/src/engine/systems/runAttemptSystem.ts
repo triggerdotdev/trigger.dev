@@ -1,4 +1,5 @@
 import { startSpan } from "@internal/tracing";
+import { tryCatch } from "@trigger.dev/core/utils";
 import {
   CompleteRunAttemptResult,
   ExecutionResult,
@@ -36,7 +37,6 @@ import {
 import { ReleaseConcurrencySystem } from "./releaseConcurrencySystem.js";
 import { SystemResources } from "./systems.js";
 import { WaitpointSystem } from "./waitpointSystem.js";
-import { tryCatch } from "@trigger.dev/core/utils";
 
 export type RunAttemptSystemOptions = {
   resources: SystemResources;
@@ -1070,8 +1070,6 @@ export class RunAttemptSystem {
         await this.$.runQueue.acknowledgeMessage(run.runtimeEnvironment.organizationId, runId, {
           removeFromWorkerQueue: true,
         });
-
-        await this.releaseConcurrencySystem.refillTokensForSnapshot(latestSnapshot);
 
         //if executing, we need to message the worker to cancel the run and put it into `PENDING_CANCEL` status
         if (isExecuting(latestSnapshot.executionStatus)) {

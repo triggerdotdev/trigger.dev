@@ -1,21 +1,20 @@
 import { timeoutError, tryCatch } from "@trigger.dev/core/v3";
 import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import {
-  $transaction,
   Prisma,
   PrismaClientOrTransaction,
+  TaskQueue,
   TaskRunExecutionSnapshot,
   TaskRunExecutionStatus,
   Waitpoint,
 } from "@trigger.dev/database";
+import { assertNever } from "assert-never";
 import { nanoid } from "nanoid";
 import { sendNotificationToWorker } from "../eventBus.js";
-import { isExecuting, isFinishedOrPendingFinished } from "../statuses.js";
 import { EnqueueSystem } from "./enqueueSystem.js";
 import { ExecutionSnapshotSystem, getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
-import { SystemResources } from "./systems.js";
 import { ReleaseConcurrencySystem } from "./releaseConcurrencySystem.js";
-import { assertNever } from "assert-never";
+import { SystemResources } from "./systems.js";
 
 export type WaitpointSystemOptions = {
   resources: SystemResources;
@@ -35,6 +34,10 @@ export class WaitpointSystem {
     this.executionSnapshotSystem = options.executionSnapshotSystem;
     this.enqueueSystem = options.enqueueSystem;
     this.releaseConcurrencySystem = options.releaseConcurrencySystem;
+  }
+
+  shouldReleaseConcurrencyOnWaitpointForQueue(queue: TaskQueue) {
+    return typeof queue.concurrencyLimit === "undefined" || queue.releaseConcurrencyOnWaitpoint;
   }
 
   public async clearBlockingWaitpoints({
@@ -456,7 +459,25 @@ export class WaitpointSystem {
 
         if (isRunBlocked) {
           //release concurrency
-          await this.releaseConcurrencySystem.releaseConcurrencyForSnapshot(snapshot);
+          const run = await this.$.prisma.taskRun.findFirst({
+            where: { id: runId },
+            select: {
+              id: true,
+              organizationId: true,
+              lockedQueueReleaseConcurrencyOnWaitpoint: true,
+            },
+          });
+
+          if (!run) {
+            this.$.logger.error(
+              "WaitpointSystem.blockRunWithWaitpoint(): Run not found, cannot release concurrency",
+              {
+                runId,
+              }
+            );
+          } else {
+            await this.releaseConcurrencySystem.releaseConcurrency(run, releaseConcurrency);
+          }
         }
       }
 
@@ -639,8 +660,6 @@ export class WaitpointSystem {
                 })),
               }
             );
-
-            await this.releaseConcurrencySystem.refillTokensForSnapshot(snapshot);
 
             this.$.logger.debug(
               `continueRunIfUnblocked: run was still executing, sending notification`,

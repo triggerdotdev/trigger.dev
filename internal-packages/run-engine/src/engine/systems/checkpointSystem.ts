@@ -199,11 +199,6 @@ export class CheckpointSystem {
           snapshot,
         });
 
-        // Refill the token bucket for the release concurrency queue
-        await this.releaseConcurrencySystem.refillTokensForSnapshot(
-          snapshot.previousSnapshotId ?? snapshot.id
-        );
-
         return {
           ok: true as const,
           ...executionResultFromSnapshot(newSnapshot),
@@ -232,13 +227,6 @@ export class CheckpointSystem {
           workerId,
           runnerId,
         });
-
-        this.$.logger.debug("Refilling token bucket for release concurrency queue", {
-          snapshot,
-        });
-
-        // Refill the token bucket for the release concurrency queue
-        await this.releaseConcurrencySystem.refillTokensForSnapshot(snapshot.id);
 
         return {
           ok: true as const,

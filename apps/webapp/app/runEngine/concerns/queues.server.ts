@@ -55,8 +55,7 @@ export class DefaultQueueManager implements QueueManager {
         queueName = specifiedQueue.name;
         lockedQueueId = specifiedQueue.id;
         lockedQueueReleaseConcurrencyOnWaitpoint =
-          typeof specifiedQueue.concurrencyLimit === "undefined" ||
-          specifiedQueue.releaseConcurrencyOnWaitpoint;
+          this.engine.shouldReleaseConcurrencyOnWaitpointForQueue(specifiedQueue);
       } else {
         // No specific queue name provided, use the default queue for the task on the locked worker
         const lockedTask = await this.prisma.backgroundWorkerTask.findFirst({

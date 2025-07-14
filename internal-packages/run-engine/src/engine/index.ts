@@ -17,6 +17,7 @@ import {
   PrismaClient,
   PrismaClientOrTransaction,
   PrismaReplicaClient,
+  TaskQueue,
   TaskRun,
   TaskRunExecutionSnapshot,
   Waitpoint,
@@ -241,34 +242,6 @@ export class RunEngine {
 
     this.releaseConcurrencySystem = new ReleaseConcurrencySystem({
       resources,
-      maxTokensRatio: options.releaseConcurrency?.maxTokensRatio,
-      releasingsMaxAge: options.releaseConcurrency?.releasingsMaxAge,
-      releasingsPollInterval: options.releaseConcurrency?.releasingsPollInterval,
-      queueOptions:
-        typeof options.releaseConcurrency?.disabled === "boolean" &&
-        options.releaseConcurrency.disabled
-          ? undefined
-          : {
-              disableConsumers: options.releaseConcurrency?.disableConsumers,
-              redis: {
-                ...options.queue.redis, // Use base queue redis options
-                ...options.releaseConcurrency?.redis, // Allow overrides
-                keyPrefix: `${options.queue.redis.keyPrefix ?? ""}release-concurrency:`,
-              },
-              retry: {
-                maxRetries: options.releaseConcurrency?.maxRetries ?? 5,
-                backoff: {
-                  minDelay: options.releaseConcurrency?.backoff?.minDelay ?? 1000,
-                  maxDelay: options.releaseConcurrency?.backoff?.maxDelay ?? 10000,
-                  factor: options.releaseConcurrency?.backoff?.factor ?? 2,
-                },
-              },
-              consumersCount: options.releaseConcurrency?.consumersCount ?? 1,
-              pollInterval: options.releaseConcurrency?.pollInterval ?? 1000,
-              batchSize: options.releaseConcurrency?.batchSize ?? 10,
-              tracer: this.tracer,
-              meter: this.meter,
-            },
     });
 
     this.executionSnapshotSystem = new ExecutionSnapshotSystem({
@@ -332,6 +305,7 @@ export class RunEngine {
       runAttemptSystem: this.runAttemptSystem,
       machines: this.options.machines,
       releaseConcurrencySystem: this.releaseConcurrencySystem,
+      waitpointSystem: this.waitpointSystem,
     });
   }
 
@@ -361,6 +335,7 @@ export class RunEngine {
       workerQueue,
       queue,
       lockedQueueId,
+      lockedQueueReleaseConcurrencyOnWaitpoint,
       isTest,
       delayUntil,
       queuedAt,
@@ -433,6 +408,7 @@ export class RunEngine {
               concurrencyKey,
               queue,
               lockedQueueId,
+              lockedQueueReleaseConcurrencyOnWaitpoint,
               workerQueue,
               isTest,
               delayUntil,
@@ -1124,6 +1100,10 @@ export class RunEngine {
     return this.raceSimulationSystem.registerRacepointForRun({ runId, waitInterval });
   }
 
+  shouldReleaseConcurrencyOnWaitpointForQueue(queue: TaskQueue) {
+    return this.waitpointSystem.shouldReleaseConcurrencyOnWaitpointForQueue(queue);
+  }
+
   async migrateLegacyMasterQueues() {
     const workerGroups = await this.prisma.workerInstanceGroup.findMany({
       where: {
@@ -1160,7 +1140,6 @@ export class RunEngine {
   async quit() {
     try {
       //stop the run queue
-      await this.releaseConcurrencySystem.quit();
       await this.runQueue.quit();
       await this.worker.stop();
       await this.runLock.quit();
