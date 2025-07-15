@@ -9,11 +9,12 @@ export const ReplayRunData = z
       .optional()
       .transform((val, ctx) => {
         if (!val) {
-          return {};
+          return "{}";
         }
 
         try {
-          return JSON.parse(val);
+          JSON.parse(val);
+          return val;
         } catch {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
