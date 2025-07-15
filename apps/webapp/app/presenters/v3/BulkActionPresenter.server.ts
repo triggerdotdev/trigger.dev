@@ -53,7 +53,11 @@ export class BulkActionPresenter extends BasePresenter {
     );
 
     let mode: BulkActionMode = "filter";
-    if (filtersParsed.success && Object.keys(filtersParsed.data).length === 0) {
+    if (
+      filtersParsed.success &&
+      Object.keys(filtersParsed.data).length === 1 &&
+      filtersParsed.data.runId?.length
+    ) {
       mode = "selected";
     }
 

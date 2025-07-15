@@ -104,7 +104,7 @@ export const TaskRunListSearchFilters = z.object({
   to: z.coerce.number().optional(),
   rootOnly: z.coerce.boolean().optional(),
   batchId: z.string().optional(),
-  runId: z.string().optional(),
+  runId: StringOrStringArray,
   scheduleId: z.string().optional(),
 });
 
@@ -199,7 +199,10 @@ export function getRunFiltersFromSearchParams(
     from: searchParams.get("from") ?? undefined,
     to: searchParams.get("to") ?? undefined,
     rootOnly: searchParams.has("rootOnly") ? searchParams.get("rootOnly") === "true" : undefined,
-    runId: searchParams.get("runId") ?? undefined,
+    runId:
+      searchParams.getAll("runId").filter((v) => v.length > 0).length > 0
+        ? searchParams.getAll("runId")
+        : undefined,
     batchId: searchParams.get("batchId") ?? undefined,
     scheduleId: searchParams.get("scheduleId") ?? undefined,
   };
