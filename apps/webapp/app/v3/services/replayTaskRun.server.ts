@@ -122,6 +122,13 @@ export class ReplayTaskRunService extends BaseService {
     existingTaskRun: TaskRun,
     stringifiedPayloadOverride: string | undefined
   ) {
+    if (existingTaskRun.payloadType === "application/store") {
+      return conditionallyImportPacket({
+        data: existingTaskRun.payload,
+        dataType: existingTaskRun.payloadType,
+      });
+    }
+
     if (stringifiedPayloadOverride && existingTaskRun.payloadType === "application/super+json") {
       const newPayload = await replaceSuperJsonPayload(
         existingTaskRun.payload,

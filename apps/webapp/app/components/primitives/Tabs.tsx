@@ -94,7 +94,11 @@ export function TabButton({
 
   return (
     <button
-      className={cn("group flex flex-col items-center pt-1 focus-custom", props.className)}
+      className={cn(
+        "group flex flex-col items-center pt-1 focus-custom",
+        props.className,
+        props.disabled && "pointer-events-none opacity-50"
+      )}
       type="button"
       ref={ref}
       {...props}

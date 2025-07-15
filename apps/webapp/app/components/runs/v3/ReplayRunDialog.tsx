@@ -34,6 +34,8 @@ import { RectangleStackIcon } from "@heroicons/react/20/solid";
 import { Badge } from "~/components/primitives/Badge";
 import { RunTagInput } from "./RunTagInput";
 import { MachinePresetName } from "@trigger.dev/core/v3";
+import { InfoIconTooltip } from "~/components/primitives/Tooltip";
+import { divide } from "effect/Duration";
 
 type ReplayRunDialogProps = {
   runFriendlyId: string;
@@ -165,7 +167,7 @@ function ReplayForm({
     replayData.payloadType === "application/json" ||
     replayData.payloadType === "application/super+json";
 
-  const [tab, setTab] = useState<"payload" | "metadata">("payload");
+  const [tab, setTab] = useState<"payload" | "metadata">(editablePayload ? "payload" : "metadata");
 
   const { defaultTaskQueue } = replayData;
 
@@ -257,15 +259,30 @@ function ReplayForm({
               additionalActions={
                 <TabContainer className="flex grow items-baseline justify-between self-end border-none">
                   <div className="flex gap-5">
-                    <TabButton
-                      isActive={tab === "payload"}
-                      layoutId="replay-editor"
-                      onClick={() => {
-                        setTab("payload");
-                      }}
-                    >
-                      Payload
-                    </TabButton>
+                    <div className="flex items-center gap-1.5">
+                      <TabButton
+                        disabled={!editablePayload}
+                        isActive={tab === "payload"}
+                        layoutId="replay-editor"
+                        onClick={() => {
+                          setTab("payload");
+                        }}
+                      >
+                        Payload
+                      </TabButton>
+                      {!editablePayload && (
+                        <InfoIconTooltip
+                          content={
+                            <span className="text-sm">
+                              Payload is not editable for runs with{" "}
+                              <TextLink to={docsPath("triggering#large-payloads")}>
+                                large payloads.
+                              </TextLink>
+                            </span>
+                          }
+                        />
+                      )}
+                    </div>
                     <TabButton
                       isActive={tab === "metadata"}
                       layoutId="replay-editor"
