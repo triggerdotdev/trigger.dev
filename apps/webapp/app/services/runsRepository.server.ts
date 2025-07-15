@@ -34,11 +34,15 @@ const RunListInputOptionsSchema = z.object({
   isTest: z.boolean().optional(),
   rootOnly: z.boolean().optional(),
   batchId: z.string().optional(),
-  runIds: z.array(z.string()).optional(),
+  runId: z.array(z.string()).optional(),
   bulkId: z.string().optional(),
 });
 
 export type RunListInputOptions = z.infer<typeof RunListInputOptionsSchema>;
+export type RunListInputFilters = Omit<
+  RunListInputOptions,
+  "organizationId" | "projectId" | "environmentId"
+>;
 
 type FilterRunsOptions = Omit<RunListInputOptions, "period"> & {
   period: number | undefined;
@@ -256,13 +260,13 @@ export class RunsRepository {
       convertedOptions.bulkId = BulkActionId.toId(options.bulkId);
     }
 
-    if (options.runIds) {
+    if (options.runId) {
       //convert to friendlyId
-      convertedOptions.runIds = options.runIds.map((runId) => RunId.toFriendlyId(runId));
+      convertedOptions.runId = options.runId.map((r) => RunId.toFriendlyId(r));
     }
 
     // Show all runs if we are filtering by batchId or runId
-    if (options.batchId || options.runIds?.length || options.scheduleId || options.tasks?.length) {
+    if (options.batchId || options.runId?.length || options.scheduleId || options.tasks?.length) {
       convertedOptions.rootOnly = false;
     }
 
@@ -342,9 +346,10 @@ function applyRunFiltersToQueryBuilder<T>(
     });
   }
 
-  if (options.runIds && options.runIds.length > 0) {
+  if (options.runId && options.runId.length > 0) {
+    // it's important that in the query it's "runIds", otherwise it clashes with the cursor which is called "runId"
     queryBuilder.where("friendly_id IN {runIds: Array(String)}", {
-      runIds: options.runIds.map((runId) => RunId.toFriendlyId(runId)),
+      runIds: options.runId.map((runId) => RunId.toFriendlyId(runId)),
     });
   }
 }

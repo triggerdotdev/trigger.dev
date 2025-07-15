@@ -1063,7 +1063,7 @@ describe("RunsRepository", () => {
         projectId: project.id,
         environmentId: runtimeEnvironment.id,
         organizationId: organization.id,
-        runIds: ["run_abc", "run_xyz"],
+        runId: ["run_abc", "run_xyz"],
       });
 
       expect(runs).toHaveLength(2);
@@ -1171,7 +1171,7 @@ describe("RunsRepository", () => {
         projectId: project.id,
         environmentId: runtimeEnvironment.id,
         organizationId: organization.id,
-        runIds: [run1.friendlyId, run3.friendlyId],
+        runId: [run1.friendlyId, run3.friendlyId],
       });
 
       expect(runs).toHaveLength(2);

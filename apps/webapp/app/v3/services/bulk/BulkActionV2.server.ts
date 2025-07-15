@@ -8,7 +8,11 @@ import {
 import { getRunFiltersFromRequest } from "~/presenters/RunFilters.server";
 import { type CreateBulkActionPayload } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.bulkaction";
 import { clickhouseClient } from "~/services/clickhouseInstance.server";
-import { parseRunListInputOptions, RunsRepository } from "~/services/runsRepository.server";
+import {
+  parseRunListInputOptions,
+  type RunListInputFilters,
+  RunsRepository,
+} from "~/services/runsRepository.server";
 import { BaseService } from "../baseService.server";
 import { commonWorker } from "~/v3/commonWorker.server";
 import { env } from "~/env.server";
@@ -378,12 +382,13 @@ export class BulkActionService extends BaseService {
   }
 }
 
-async function getFilters(payload: CreateBulkActionPayload, request: Request) {
+async function getFilters(
+  payload: CreateBulkActionPayload,
+  request: Request
+): Promise<RunListInputFilters> {
   if (payload.mode === "selected") {
     return {
-      runIds: payload.selectedRunIds,
-      cursor: undefined,
-      direction: undefined,
+      runId: payload.selectedRunIds,
     };
   }
 

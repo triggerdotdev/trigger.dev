@@ -1,5 +1,9 @@
-import { ClickHouse } from "@internal/clickhouse";
-import { PrismaClient, PrismaClientOrTransaction, type TaskRunStatus } from "@trigger.dev/database";
+import { type ClickHouse } from "@internal/clickhouse";
+import {
+  type PrismaClient,
+  type PrismaClientOrTransaction,
+  type TaskRunStatus,
+} from "@trigger.dev/database";
 import { type Direction } from "~/components/ListPagination";
 import { timeFilters } from "~/components/runs/v3/SharedFilters";
 import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
@@ -7,7 +11,6 @@ import { getAllTaskIdentifiers } from "~/models/task.server";
 import { RunsRepository } from "~/services/runsRepository.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { isCancellableRunStatus, isFinalRunStatus, isPendingRunStatus } from "~/v3/taskStatus";
-import parseDuration from "parse-duration";
 
 export type RunListOptions = {
   userId?: string;
@@ -25,7 +28,7 @@ export type RunListOptions = {
   isTest?: boolean;
   rootOnly?: boolean;
   batchId?: string;
-  runIds?: string[];
+  runId?: string[];
   //pagination
   direction?: Direction;
   cursor?: string;
@@ -60,7 +63,7 @@ export class NextRunListPresenter {
       isTest,
       rootOnly,
       batchId,
-      runIds,
+      runId,
       from,
       to,
       direction = "forward",
@@ -85,7 +88,7 @@ export class NextRunListPresenter {
       (scheduleId !== undefined && scheduleId !== "") ||
       (tags !== undefined && tags.length > 0) ||
       batchId !== undefined ||
-      (runIds !== undefined && runIds.length > 0) ||
+      (runId !== undefined && runId.length > 0) ||
       typeof isTest === "boolean" ||
       rootOnly === true ||
       !time.isDefault;
@@ -167,7 +170,7 @@ export class NextRunListPresenter {
       isTest,
       rootOnly,
       batchId,
-      runIds,
+      runId,
       bulkId,
       page: {
         size: pageSize,

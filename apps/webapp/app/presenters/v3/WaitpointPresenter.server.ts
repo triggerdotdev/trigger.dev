@@ -85,7 +85,7 @@ export class WaitpointPresenter extends BasePresenter {
         environmentId,
         {
           projectId: projectId,
-          runIds: connectedRunIds,
+          runId: connectedRunIds,
           pageSize: 5,
           period: "31d",
         }

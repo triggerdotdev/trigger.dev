@@ -41,7 +41,7 @@ export async function getRunFiltersFromRequest(request: Request) {
     from,
     to,
     batchId,
-    runIds: runId ? [runId] : undefined,
+    runId,
     scheduleId,
     rootOnly: rootOnlyValue,
     direction: direction,
