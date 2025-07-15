@@ -275,7 +275,6 @@ export class RunEngine {
       resources,
       executionSnapshotSystem: this.executionSnapshotSystem,
       enqueueSystem: this.enqueueSystem,
-      releaseConcurrencySystem: this.releaseConcurrencySystem,
     });
 
     this.ttlSystem = new TtlSystem({

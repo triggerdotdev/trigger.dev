@@ -9,6 +9,7 @@ export type MinimalAuthenticatedEnvironment = {
   id: AuthenticatedEnvironment["id"];
   type: AuthenticatedEnvironment["type"];
   maximumConcurrencyLimit: AuthenticatedEnvironment["maximumConcurrencyLimit"];
+  concurrencyLimitBurstFactor: AuthenticatedEnvironment["concurrencyLimitBurstFactor"];
   project: {
     id: AuthenticatedEnvironment["project"]["id"];
   };

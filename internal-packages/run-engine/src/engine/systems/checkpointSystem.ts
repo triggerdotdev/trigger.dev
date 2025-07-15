@@ -195,9 +195,12 @@ export class CheckpointSystem {
           checkpointId: taskRunCheckpoint.id,
         });
 
-        this.$.logger.debug("Refilling token bucket for release concurrency queue", {
+        this.$.logger.debug("Releasing concurrency for run because it was checkpointed", {
           snapshot,
+          newSnapshot,
         });
+
+        await this.releaseConcurrencySystem.releaseConcurrency(run);
 
         return {
           ok: true as const,
@@ -227,6 +230,13 @@ export class CheckpointSystem {
           workerId,
           runnerId,
         });
+
+        this.$.logger.debug("Releasing concurrency for run because it was checkpointed", {
+          snapshot,
+          newSnapshot,
+        });
+
+        await this.releaseConcurrencySystem.releaseConcurrency(run);
 
         return {
           ok: true as const,

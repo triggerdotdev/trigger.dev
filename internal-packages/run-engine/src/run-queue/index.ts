@@ -43,6 +43,7 @@ import { CronSchema, Worker, type WorkerConcurrencyOptions } from "@trigger.dev/
 import { z } from "zod";
 import { Readable } from "node:stream";
 import { setTimeout } from "node:timers/promises";
+import { Decimal } from "@trigger.dev/database";
 
 const SemanticAttributes = {
   QUEUE: "runqueue.queue",
@@ -994,6 +995,7 @@ export class RunQueue {
           type: data.environmentType,
           //this isn't used in enqueueMessage
           maximumConcurrencyLimit: -1,
+          concurrencyLimitBurstFactor: new Decimal(1.0),
           project: {
             id: data.projectId,
           },

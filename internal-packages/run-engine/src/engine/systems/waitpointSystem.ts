@@ -20,20 +20,17 @@ export type WaitpointSystemOptions = {
   resources: SystemResources;
   executionSnapshotSystem: ExecutionSnapshotSystem;
   enqueueSystem: EnqueueSystem;
-  releaseConcurrencySystem: ReleaseConcurrencySystem;
 };
 
 export class WaitpointSystem {
   private readonly $: SystemResources;
   private readonly executionSnapshotSystem: ExecutionSnapshotSystem;
-  private readonly releaseConcurrencySystem: ReleaseConcurrencySystem;
   private readonly enqueueSystem: EnqueueSystem;
 
   constructor(private readonly options: WaitpointSystemOptions) {
     this.$ = options.resources;
     this.executionSnapshotSystem = options.executionSnapshotSystem;
     this.enqueueSystem = options.enqueueSystem;
-    this.releaseConcurrencySystem = options.releaseConcurrencySystem;
   }
 
   shouldReleaseConcurrencyOnWaitpointForQueue(queue: TaskQueue) {
@@ -456,29 +453,6 @@ export class WaitpointSystem {
 
         // Let the worker know immediately, so it can suspend the run
         await sendNotificationToWorker({ runId, snapshot, eventBus: this.$.eventBus });
-
-        if (isRunBlocked) {
-          //release concurrency
-          const run = await this.$.prisma.taskRun.findFirst({
-            where: { id: runId },
-            select: {
-              id: true,
-              organizationId: true,
-              lockedQueueReleaseConcurrencyOnWaitpoint: true,
-            },
-          });
-
-          if (!run) {
-            this.$.logger.error(
-              "WaitpointSystem.blockRunWithWaitpoint(): Run not found, cannot release concurrency",
-              {
-                runId,
-              }
-            );
-          } else {
-            await this.releaseConcurrencySystem.releaseConcurrency(run, releaseConcurrency);
-          }
-        }
       }
 
       if (timeout) {
@@ -557,6 +531,7 @@ export class WaitpointSystem {
               id: true,
               type: true,
               maximumConcurrencyLimit: true,
+              concurrencyLimitBurstFactor: true,
               project: { select: { id: true } },
               organization: { select: { id: true } },
             },

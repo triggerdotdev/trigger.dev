@@ -247,8 +247,9 @@ model RuntimeEnvironment {
   ///A memorable code for the environment
   shortcode String
 
-  maximumConcurrencyLimit Int     @default(5)
-  paused                  Boolean @default(false)
+  maximumConcurrencyLimit     Int     @default(5)
+  concurrencyLimitBurstFactor Decimal @default("2.00") @db.Decimal(4, 2)
+  paused                      Boolean @default(false)
 
   autoEnableInternalSources Boolean @default(true)
 
