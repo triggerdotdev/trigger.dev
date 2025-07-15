@@ -2,18 +2,19 @@ import {
   type MachinePresetName,
   conditionallyImportPacket,
   parsePacket,
+  stringifyIO,
 } from "@trigger.dev/core/v3";
 import { type TaskRun } from "@trigger.dev/database";
 import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
-import { getTagsForRunId } from "~/models/taskRunTag.server";
 import { logger } from "~/services/logger.server";
 import { BaseService } from "./baseService.server";
 import { OutOfEntitlementError, TriggerTaskService } from "./triggerTask.server";
 import { type RunOptionsData } from "../testTask";
+import { replaceSuperJsonPayload } from "@trigger.dev/core/v3/utils/ioSerialization";
 
 type OverrideOptions = {
   environmentId?: string;
-  payload?: unknown;
+  payload?: string;
   metadata?: unknown;
   bulkActionId?: string;
 } & RunOptionsData;
@@ -36,7 +37,15 @@ export class ReplayTaskRunService extends BaseService {
       taskRunFriendlyId: existingTaskRun.friendlyId,
     });
 
-    const payload = overrideOptions.payload ?? (await this.getExistingPayload(existingTaskRun));
+    const payloadPacket = await this.overrideExistingPayloadPacket(
+      existingTaskRun,
+      overrideOptions.payload
+    );
+    const parsedPayload =
+      payloadPacket.dataType === "application/json"
+        ? await parsePacket(payloadPacket)
+        : payloadPacket.data;
+    const payloadType = payloadPacket.dataType;
     const metadata = overrideOptions.metadata ?? (await this.getExistingMetadata(existingTaskRun));
     const tags = overrideOptions.tags ?? existingTaskRun.runTags;
 
@@ -53,8 +62,9 @@ export class ReplayTaskRunService extends BaseService {
         existingTaskRun.taskIdentifier,
         authenticatedEnvironment,
         {
-          payload,
+          payload: parsedPayload,
           options: {
+            payloadType,
             queue: taskQueue
               ? {
                   name: taskQueue.name,
@@ -108,15 +118,23 @@ export class ReplayTaskRunService extends BaseService {
     }
   }
 
-  private async getExistingPayload(existingTaskRun: TaskRun) {
-    const existingPayloadPacket = await conditionallyImportPacket({
-      data: existingTaskRun.payload,
+  private async overrideExistingPayloadPacket(
+    existingTaskRun: TaskRun,
+    stringifiedPayloadOverride: string | undefined
+  ) {
+    if (stringifiedPayloadOverride && existingTaskRun.payloadType === "application/super+json") {
+      const newPayload = await replaceSuperJsonPayload(
+        existingTaskRun.payload,
+        stringifiedPayloadOverride
+      );
+
+      return stringifyIO(newPayload);
+    }
+
+    return conditionallyImportPacket({
+      data: stringifiedPayloadOverride ?? existingTaskRun.payload,
       dataType: existingTaskRun.payloadType,
     });
-
-    return existingPayloadPacket.dataType === "application/json"
-      ? await parsePacket(existingPayloadPacket)
-      : existingPayloadPacket.data;
   }
 
   private async getExistingMetadata(existingTaskRun: TaskRun) {
