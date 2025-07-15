@@ -1534,6 +1534,9 @@ importers:
       jose:
         specifier: ^5.4.0
         version: 5.4.0
+      lodash.get:
+        specifier: ^4.4.2
+        version: 4.4.2
       nanoid:
         specifier: 3.3.8
         version: 3.3.8
@@ -1583,6 +1586,9 @@ importers:
       '@types/humanize-duration':
         specifier: ^3.27.1
         version: 3.27.1
+      '@types/lodash.get':
+        specifier: ^4.4.9
+        version: 4.4.9
       '@types/readable-stream':
         specifier: ^4.0.14
         version: 4.0.14
@@ -19069,6 +19075,12 @@ packages:
       '@types/node': 20.14.14
     dev: true
 
+  /@types/lodash.get@4.4.9:
+    resolution: {integrity: sha512-J5dvW98sxmGnamqf+/aLP87PYXyrha9xIgc2ZlHl6OHMFR2Ejdxep50QfU0abO1+CH6+ugx+8wEUN1toImAinA==}
+    dependencies:
+      '@types/lodash': 4.14.191
+    dev: true
+
   /@types/lodash.omit@4.5.7:
     resolution: {integrity: sha512-6q6cNg0tQ6oTWjSM+BcYMBhan54P/gLqBldG4AuXd3nKr0oeVekWNS4VrNEu3BhCSDXtGapi7zjhnna0s03KpA==}
     dependencies:
@@ -27237,6 +27249,11 @@ packages:
   /lodash.flatten@4.4.0:
     resolution: {integrity: sha512-C5N2Z3DgnnKr0LOpv/hKCgKdb7ZZwafIrsesve6lmzvZIRZRGaZ/l6Q8+2W7NaT+ZwO3fFlSCzCzrDCFdJfZ4g==}
     dev: true
+
+  /lodash.get@4.4.2:
+    resolution: {integrity: sha512-z+Uw/vLuy6gQe8cfaFWD7p0wVv8fJl3mbzXh33RS+0oW2wvUqiRXiQ69gLWSLpgB5/6sU+r6BlQR0MBILadqTQ==}
+    deprecated: This package is deprecated. Use the optional chaining (?.) operator instead.
+    dev: false
 
   /lodash.groupby@4.6.0:
     resolution: {integrity: sha512-5dcWxm23+VAoz+awKmBaiBvzox8+RqMgFhi7UvX9DHZr2HdxHXM/Wrf8cfKpsW37RNrvtPn6hSwNqurSILbmJw==}
