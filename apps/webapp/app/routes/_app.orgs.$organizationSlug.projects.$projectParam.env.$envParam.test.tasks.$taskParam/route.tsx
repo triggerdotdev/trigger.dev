@@ -1317,7 +1317,7 @@ function RecentRunsPopover<T extends StandardRun | ScheduledRun>({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="min-w-[294px] p-0" align="end" sideOffset={6}>
-        <div className="max-h-80 overflow-y-auto">
+        <div className="max-h-80 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
           <div className="p-1">
             {runs.map((run) => (
               <button
@@ -1398,7 +1398,7 @@ function RunTemplatesPopover({
           </Button>
         </PopoverTrigger>
         <PopoverContent className="min-w-[279px] p-0" align="end" sideOffset={6}>
-          <div className="max-h-80 overflow-y-auto">
+          <div className="max-h-80 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
             <div className="p-1">
               {templates.map((template) => (
                 <div
