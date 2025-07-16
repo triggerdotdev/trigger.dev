@@ -169,6 +169,7 @@ export class RunsRepository {
         batchId: true,
         metadata: true,
         metadataType: true,
+        machinePreset: true,
       },
     });
 

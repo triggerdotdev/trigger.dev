@@ -231,6 +231,7 @@ export class NextRunListPresenter {
           rootTaskRunId: run.rootTaskRunId,
           metadata: run.metadata,
           metadataType: run.metadataType,
+          machinePreset: run.machinePreset,
         };
       }),
       pagination: {
