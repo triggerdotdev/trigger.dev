@@ -573,7 +573,6 @@ describe("RunEngine checkpoints", () => {
           waitpoints: waitpointResult.waitpoint.id,
           projectId: authenticatedEnvironment.projectId,
           organizationId: authenticatedEnvironment.organizationId,
-          releaseConcurrency: true, // Important: Release concurrency when blocking
         });
 
         // Verify run is blocked
@@ -871,13 +870,12 @@ describe("RunEngine checkpoints", () => {
         });
         expect(waitpoint.waitpoint.status).toBe("PENDING");
 
-        // Block the first run with releaseConcurrency set to true
+        // Block the first run
         const blockedResult = await engine.blockRunWithWaitpoint({
           runId: firstRun.id,
           waitpoints: waitpoint.waitpoint.id,
           projectId: authenticatedEnvironment.projectId,
           organizationId: authenticatedEnvironment.organizationId,
-          releaseConcurrency: true,
         });
 
         // Verify first run is blocked

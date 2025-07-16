@@ -164,11 +164,6 @@ export const QueueManifest = z.object({
    *
    * If this property is omitted, the task can potentially use up the full concurrency of an environment */
   concurrencyLimit: z.number().int().min(0).max(100000).optional().nullable(),
-  /** An optional property that specifies whether to release concurrency on waitpoint.
-   *
-   * If this property is omitted, the task will not release concurrency on waitpoint.
-   */
-  releaseConcurrencyOnWaitpoint: z.boolean().optional(),
 });
 
 export type QueueManifest = z.infer<typeof QueueManifest>;

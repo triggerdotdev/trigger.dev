@@ -58,12 +58,7 @@ export const parentTask = task({
   machine: "medium-1x",
   run: async (payload: any, { ctx }) => {
     logger.log("Hello, world from the parent", { payload });
-    await childTask.triggerAndWait(
-      { message: "Hello, world!" },
-      {
-        releaseConcurrency: true,
-      }
-    );
+    await childTask.triggerAndWait({ message: "Hello, world!" });
   },
 });
 

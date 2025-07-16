@@ -17,7 +17,6 @@ import {
   PrismaClient,
   PrismaClientOrTransaction,
   PrismaReplicaClient,
-  TaskQueue,
   TaskRun,
   TaskRunExecutionSnapshot,
   Waitpoint,
@@ -32,6 +31,7 @@ import { MinimalAuthenticatedEnvironment } from "../shared/index.js";
 import { NotImplementedError, RunDuplicateIdempotencyKeyError } from "./errors.js";
 import { EventBus, EventBusEvents } from "./eventBus.js";
 import { RunLocker } from "./locking.js";
+import { getFinalRunStatuses } from "./statuses.js";
 import { BatchSystem } from "./systems/batchSystem.js";
 import { CheckpointSystem } from "./systems/checkpointSystem.js";
 import { DelayedRunSystem } from "./systems/delayedRunSystem.js";
@@ -52,7 +52,6 @@ import { TtlSystem } from "./systems/ttlSystem.js";
 import { WaitpointSystem } from "./systems/waitpointSystem.js";
 import { EngineWorker, HeartbeatTimeouts, RunEngineOptions, TriggerParams } from "./types.js";
 import { workerCatalog } from "./workerCatalog.js";
-import { getFinalRunStatuses, isFinalRunStatus } from "./statuses.js";
 
 export class RunEngine {
   private runLockRedis: Redis;
@@ -128,6 +127,7 @@ export class RunEngine {
         defaultEnvConcurrencyLimit: options.queue?.defaultEnvConcurrency ?? 10,
       }),
       defaultEnvConcurrency: options.queue?.defaultEnvConcurrency ?? 10,
+      defaultEnvConcurrencyBurstFactor: options.queue?.defaultEnvConcurrencyBurstFactor,
       logger: new Logger("RunQueue", options.queue?.logLevel ?? "info"),
       redis: { ...options.queue.redis, keyPrefix: `${options.queue.redis.keyPrefix}runqueue:` },
       retryOptions: options.queue?.retryOptions,
@@ -295,7 +295,6 @@ export class RunEngine {
       delayedRunSystem: this.delayedRunSystem,
       machines: this.options.machines,
       retryWarmStartThresholdMs: this.options.retryWarmStartThresholdMs,
-      releaseConcurrencySystem: this.releaseConcurrencySystem,
     });
 
     this.dequeueSystem = new DequeueSystem({
@@ -303,7 +302,6 @@ export class RunEngine {
       executionSnapshotSystem: this.executionSnapshotSystem,
       runAttemptSystem: this.runAttemptSystem,
       machines: this.options.machines,
-      releaseConcurrencySystem: this.releaseConcurrencySystem,
       waitpointSystem: this.waitpointSystem,
     });
   }
@@ -334,7 +332,6 @@ export class RunEngine {
       workerQueue,
       queue,
       lockedQueueId,
-      lockedQueueReleaseConcurrencyOnWaitpoint,
       isTest,
       delayUntil,
       queuedAt,
@@ -359,8 +356,6 @@ export class RunEngine {
       machine,
       workerId,
       runnerId,
-      releaseConcurrency,
-      runChainState,
       scheduleId,
       scheduleInstanceId,
       createdAt,
@@ -407,7 +402,6 @@ export class RunEngine {
               concurrencyKey,
               queue,
               lockedQueueId,
-              lockedQueueReleaseConcurrencyOnWaitpoint,
               workerQueue,
               isTest,
               delayUntil,
@@ -437,7 +431,6 @@ export class RunEngine {
               seedMetadataType,
               maxDurationInSeconds,
               machinePreset: machine,
-              runChainState,
               scheduleId,
               scheduleInstanceId,
               createdAt,
@@ -511,7 +504,6 @@ export class RunEngine {
             workerId,
             runnerId,
             tx: prisma,
-            releaseConcurrency,
           });
         }
 
@@ -920,7 +912,6 @@ export class RunEngine {
     waitpoints,
     projectId,
     organizationId,
-    releaseConcurrency,
     timeout,
     spanIdToComplete,
     batch,
@@ -932,7 +923,6 @@ export class RunEngine {
     waitpoints: string | string[];
     projectId: string;
     organizationId: string;
-    releaseConcurrency?: boolean;
     timeout?: Date;
     spanIdToComplete?: string;
     batch?: { id: string; index?: number };
@@ -945,7 +935,6 @@ export class RunEngine {
       waitpoints,
       projectId,
       organizationId,
-      releaseConcurrency,
       timeout,
       spanIdToComplete,
       batch,
@@ -1097,10 +1086,6 @@ export class RunEngine {
 
   async registerRacepointForRun({ runId, waitInterval }: { runId: string; waitInterval: number }) {
     return this.raceSimulationSystem.registerRacepointForRun({ runId, waitInterval });
-  }
-
-  shouldReleaseConcurrencyOnWaitpointForQueue(queue: TaskQueue) {
-    return this.waitpointSystem.shouldReleaseConcurrencyOnWaitpointForQueue(queue);
   }
 
   async migrateLegacyMasterQueues() {

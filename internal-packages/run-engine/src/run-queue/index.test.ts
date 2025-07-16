@@ -8,6 +8,7 @@ import { InputPayload } from "./types.js";
 import { createRedisClient } from "@internal/redis";
 import { FairQueueSelectionStrategy } from "./fairQueueSelectionStrategy.js";
 import { RunQueueFullKeyProducer } from "./keyProducer.js";
+import { Decimal } from "@trigger.dev/database";
 
 const testOptions = {
   name: "rq",
@@ -30,6 +31,7 @@ const authenticatedEnvProd = {
   id: "e1234",
   type: "PRODUCTION" as const,
   maximumConcurrencyLimit: 10,
+  concurrencyLimitBurstFactor: new Decimal(1.0),
   project: { id: "p1234" },
   organization: { id: "o1234" },
 };
@@ -38,6 +40,7 @@ const authenticatedEnvDev = {
   id: "e1234",
   type: "DEVELOPMENT" as const,
   maximumConcurrencyLimit: 10,
+  concurrencyLimitBurstFactor: new Decimal(1.0),
   project: { id: "p1234" },
   organization: { id: "o1234" },
 };

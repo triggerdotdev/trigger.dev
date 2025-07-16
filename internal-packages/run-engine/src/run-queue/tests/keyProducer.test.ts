@@ -9,7 +9,6 @@ describe("KeyProducer", () => {
       {
         id: "e1234",
         type: "PRODUCTION",
-        maximumConcurrencyLimit: 10,
         project: { id: "p1234" },
         organization: { id: "o1234" },
       },
@@ -23,11 +22,21 @@ describe("KeyProducer", () => {
     const key = keyProducer.envConcurrencyLimitKey({
       id: "e1234",
       type: "PRODUCTION",
-      maximumConcurrencyLimit: 10,
       project: { id: "p1234" },
       organization: { id: "o1234" },
     });
     expect(key).toBe("{org:o1234}:proj:p1234:env:e1234:concurrency");
+  });
+
+  it("envConcurrencyLimitBurstFactorKey", () => {
+    const keyProducer = new RunQueueFullKeyProducer();
+    const key = keyProducer.envConcurrencyLimitBurstFactorKey({
+      id: "e1234",
+      type: "PRODUCTION",
+      project: { id: "p1234" },
+      organization: { id: "o1234" },
+    });
+    expect(key).toBe("{org:o1234}:proj:p1234:env:e1234:concurrencyBurstFactor");
   });
 
   it("queueKey (no concurrency)", () => {
@@ -36,7 +45,6 @@ describe("KeyProducer", () => {
       {
         id: "e1234",
         type: "PRODUCTION",
-        maximumConcurrencyLimit: 10,
         project: { id: "p1234" },
         organization: { id: "o1234" },
       },
@@ -51,7 +59,6 @@ describe("KeyProducer", () => {
       {
         id: "e1234",
         type: "PRODUCTION",
-        maximumConcurrencyLimit: 10,
         project: { id: "p1234" },
         organization: { id: "o1234" },
       },
@@ -67,7 +74,6 @@ describe("KeyProducer", () => {
       {
         id: "e1234",
         type: "PRODUCTION",
-        maximumConcurrencyLimit: 10,
         project: { id: "p1234" },
         organization: { id: "o1234" },
       },
@@ -84,7 +90,6 @@ describe("KeyProducer", () => {
       {
         id: "e1234",
         type: "PRODUCTION",
-        maximumConcurrencyLimit: 10,
         project: { id: "p1234" },
         organization: { id: "o1234" },
       },
@@ -100,7 +105,6 @@ describe("KeyProducer", () => {
       {
         id: "e1234",
         type: "PRODUCTION",
-        maximumConcurrencyLimit: 10,
         project: { id: "p1234" },
         organization: { id: "o1234" },
       },
@@ -119,7 +123,6 @@ describe("KeyProducer", () => {
       {
         id: "e1234",
         type: "PRODUCTION",
-        maximumConcurrencyLimit: 10,
         project: { id: "p1234" },
         organization: { id: "o1234" },
       },
@@ -135,7 +138,6 @@ describe("KeyProducer", () => {
       {
         id: "e1234",
         type: "PRODUCTION",
-        maximumConcurrencyLimit: 10,
         project: { id: "p1234" },
         organization: { id: "o1234" },
       },
@@ -153,7 +155,6 @@ describe("KeyProducer", () => {
       {
         id: "e1234",
         type: "PRODUCTION",
-        maximumConcurrencyLimit: 10,
         project: { id: "p1234" },
         organization: { id: "o1234" },
       },
@@ -169,7 +170,6 @@ describe("KeyProducer", () => {
       {
         id: "e1234",
         type: "PRODUCTION",
-        maximumConcurrencyLimit: 10,
         project: { id: "p1234" },
         organization: { id: "o1234" },
       },
@@ -185,7 +185,6 @@ describe("KeyProducer", () => {
       {
         id: "e1234",
         type: "PRODUCTION",
-        maximumConcurrencyLimit: 10,
         project: { id: "p1234" },
         organization: { id: "o1234" },
       },
@@ -195,13 +194,27 @@ describe("KeyProducer", () => {
     expect(key).toBe("{org:o1234}:proj:p1234:env:e1234:concurrency");
   });
 
+  it("envConcurrencyLimitBurstFactorKeyFromQueue", () => {
+    const keyProducer = new RunQueueFullKeyProducer();
+    const queueKey = keyProducer.queueKey(
+      {
+        id: "e1234",
+        type: "PRODUCTION",
+        project: { id: "p1234" },
+        organization: { id: "o1234" },
+      },
+      "task/task-name"
+    );
+    const key = keyProducer.envConcurrencyLimitBurstFactorKeyFromQueue(queueKey);
+    expect(key).toBe("{org:o1234}:proj:p1234:env:e1234:concurrencyBurstFactor");
+  });
+
   it("envCurrentConcurrencyKeyFromQueue", () => {
     const keyProducer = new RunQueueFullKeyProducer();
     const queueKey = keyProducer.queueKey(
       {
         id: "e1234",
         type: "PRODUCTION",
-        maximumConcurrencyLimit: 10,
         project: { id: "p1234" },
         organization: { id: "o1234" },
       },
@@ -216,7 +229,6 @@ describe("KeyProducer", () => {
     const key = keyProducer.envCurrentConcurrencyKey({
       id: "e1234",
       type: "PRODUCTION",
-      maximumConcurrencyLimit: 10,
       project: { id: "p1234" },
       organization: { id: "o1234" },
     });
@@ -235,7 +247,6 @@ describe("KeyProducer", () => {
       {
         id: "e1234",
         type: "PRODUCTION",
-        maximumConcurrencyLimit: 10,
         project: { id: "p1234" },
         organization: { id: "o1234" },
       },
@@ -257,7 +268,6 @@ describe("KeyProducer", () => {
       {
         id: "e1234",
         type: "PRODUCTION",
-        maximumConcurrencyLimit: 10,
         project: { id: "p1234" },
         organization: { id: "o1234" },
       },

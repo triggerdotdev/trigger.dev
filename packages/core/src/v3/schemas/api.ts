@@ -133,7 +133,6 @@ export const TriggerTaskRequestBody = z.object({
       test: z.boolean().optional(),
       ttl: z.string().or(z.number().nonnegative().int()).optional(),
       priority: z.number().optional(),
-      releaseConcurrency: z.boolean().optional(),
       bulkActionId: z.string().optional(),
     })
     .optional(),
@@ -1056,15 +1055,6 @@ export const WaitForDurationRequestBody = z.object({
    * This means after that time if you pass the same idempotency key again, you will get a new waitpoint.
    */
   idempotencyKeyTTL: z.string().optional(),
-
-  /**
-   * If set to true, this will cause the waitpoint to release the current run from the queue's concurrency.
-   *
-   * This is useful if you want to allow other runs to execute while the waiting
-   *
-   * @default false
-   */
-  releaseConcurrency: z.boolean().optional(),
 
   /**
    * The date that the waitpoint will complete.

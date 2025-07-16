@@ -777,11 +777,9 @@ export class ApiClient {
     {
       runFriendlyId,
       waitpointFriendlyId,
-      releaseConcurrency,
     }: {
       runFriendlyId: string;
       waitpointFriendlyId: string;
-      releaseConcurrency?: boolean;
     },
     requestOptions?: ZodFetchOptions
   ) {
@@ -791,9 +789,6 @@ export class ApiClient {
       {
         method: "POST",
         headers: this.#getHeaders(false),
-        body: JSON.stringify({
-          releaseConcurrency,
-        }),
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );

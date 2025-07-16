@@ -499,15 +499,19 @@ export class FairQueueSelectionStrategy implements RunQueueSelectionStrategy {
       span.setAttribute("org_id", env.orgId);
       span.setAttribute("project_id", env.projectId);
 
-      const [currentValue, limitValue] = await Promise.all([
+      const [currentValue, limitValue, limitBurstFactor] = await Promise.all([
         this.#getEnvCurrentConcurrency(env),
         this.#getEnvConcurrencyLimit(env),
+        this.#getEnvConcurrencyLimitBurstFactor(env),
       ]);
 
       span.setAttribute("current_value", currentValue);
       span.setAttribute("limit_value", limitValue);
+      span.setAttribute("limit_burst_factor", limitBurstFactor);
 
-      return { current: currentValue, limit: limitValue };
+      const limit = Math.floor(limitValue * limitBurstFactor);
+
+      return { current: currentValue, limit };
     });
   }
 
@@ -582,6 +586,28 @@ export class FairQueueSelectionStrategy implements RunQueueSelectionStrategy {
 
       return result;
     });
+  }
+
+  async #getEnvConcurrencyLimitBurstFactor(env: EnvDescriptor) {
+    return await startSpan(
+      this.options.tracer,
+      "getEnvConcurrencyLimitBurstFactor",
+      async (span) => {
+        span.setAttribute("env_id", env.envId);
+        span.setAttribute("org_id", env.orgId);
+        span.setAttribute("project_id", env.projectId);
+
+        const key = this.options.keys.envConcurrencyLimitBurstFactorKey(env);
+
+        const result = await this._redis.get(key);
+
+        if (typeof result === "string") {
+          return Number(result);
+        }
+
+        return 1;
+      }
+    );
   }
 
   #envDescriptorFromFairQueue(queue: FairQueue): EnvDescriptor {

@@ -38,6 +38,7 @@ export type RunEngineOptions = {
     workerOptions?: WorkerConcurrencyOptions;
     retryOptions?: RetryOptions;
     defaultEnvConcurrency?: number;
+    defaultEnvConcurrencyBurstFactor?: number;
     logLevel?: LogLevel;
     queueSelectionStrategyOptions?: Pick<
       FairQueueSelectionStrategyOptions,
@@ -97,7 +98,6 @@ export type TriggerParams = {
   workerQueue?: string;
   queue: string;
   lockedQueueId?: string;
-  lockedQueueReleaseConcurrencyOnWaitpoint?: boolean;
   isTest: boolean;
   delayUntil?: Date;
   queuedAt?: Date;
@@ -125,8 +125,6 @@ export type TriggerParams = {
   machine?: MachinePresetName;
   workerId?: string;
   runnerId?: string;
-  releaseConcurrency?: boolean;
-  runChainState?: RunChainState;
   scheduleId?: string;
   scheduleInstanceId?: string;
   createdAt?: Date;

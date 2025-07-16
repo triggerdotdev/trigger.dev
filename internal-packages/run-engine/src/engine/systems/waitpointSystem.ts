@@ -13,7 +13,6 @@ import { nanoid } from "nanoid";
 import { sendNotificationToWorker } from "../eventBus.js";
 import { EnqueueSystem } from "./enqueueSystem.js";
 import { ExecutionSnapshotSystem, getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
-import { ReleaseConcurrencySystem } from "./releaseConcurrencySystem.js";
 import { SystemResources } from "./systems.js";
 
 export type WaitpointSystemOptions = {
@@ -31,10 +30,6 @@ export class WaitpointSystem {
     this.$ = options.resources;
     this.executionSnapshotSystem = options.executionSnapshotSystem;
     this.enqueueSystem = options.enqueueSystem;
-  }
-
-  shouldReleaseConcurrencyOnWaitpointForQueue(queue: TaskQueue) {
-    return typeof queue.concurrencyLimit === "undefined" || queue.releaseConcurrencyOnWaitpoint;
   }
 
   public async clearBlockingWaitpoints({
@@ -355,7 +350,6 @@ export class WaitpointSystem {
     waitpoints,
     projectId,
     organizationId,
-    releaseConcurrency,
     timeout,
     spanIdToComplete,
     batch,
@@ -367,7 +361,6 @@ export class WaitpointSystem {
     waitpoints: string | string[];
     projectId: string;
     organizationId: string;
-    releaseConcurrency?: boolean;
     timeout?: Date;
     spanIdToComplete?: string;
     batch?: { id: string; index?: number };
@@ -436,9 +429,6 @@ export class WaitpointSystem {
           snapshot: {
             executionStatus: newStatus,
             description: "Run was blocked by a waitpoint.",
-            metadata: {
-              releaseConcurrency,
-            },
           },
           previousSnapshotId: snapshot.id,
           environmentId: snapshot.environmentId,

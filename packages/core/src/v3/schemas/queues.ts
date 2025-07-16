@@ -32,8 +32,6 @@ export const QueueItem = z.object({
   concurrencyLimit: z.number().nullable(),
   /** Whether the queue is paused. If it's paused, no new runs will be started. */
   paused: z.boolean(),
-  /** Whether the queue releases concurrency on waitpoints. */
-  releaseConcurrencyOnWaitpoint: z.boolean(),
 });
 
 export type QueueItem = z.infer<typeof QueueItem>;

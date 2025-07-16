@@ -556,11 +556,9 @@ model TaskRun {
   organizationId String?
 
   // The specific queue this run is in
-  queue                                    String
+  queue         String
   // The queueId is set when the run is locked to a specific queue
-  lockedQueueId                            String?
-  // Whether the locked queue specifies that concurrency should be released when a run is blocked by a waitpoint
-  lockedQueueReleaseConcurrencyOnWaitpoint Boolean?
+  lockedQueueId String?
 
   /// The main queue that this run is part of
   workerQueue String @default("main") @map("masterQueue")
@@ -1441,9 +1439,6 @@ model TaskQueue {
   rateLimit        Json?
 
   paused Boolean @default(false)
-
-  /// If true, when a run is paused and waiting for waitpoints to be completed, the run will release the concurrency capacity.
-  releaseConcurrencyOnWaitpoint Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

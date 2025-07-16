@@ -89,7 +89,6 @@ export async function setupBackgroundWorker(
   retryOptions?: RetryOptions,
   queueOptions?: {
     customQueues?: string[];
-    releaseConcurrencyOnWaitpoint?: boolean;
     concurrencyLimit?: number | null;
   }
 ) {
@@ -170,10 +169,6 @@ export async function setupBackgroundWorker(
             id: worker.id,
           },
         },
-        releaseConcurrencyOnWaitpoint:
-          typeof queueOptions?.releaseConcurrencyOnWaitpoint === "boolean"
-            ? queueOptions.releaseConcurrencyOnWaitpoint
-            : undefined,
         tasks: {
           connect: {
             id: task.id,
@@ -232,10 +227,6 @@ export async function setupBackgroundWorker(
             id: worker.id,
           },
         },
-        releaseConcurrencyOnWaitpoint:
-          typeof queueOptions?.releaseConcurrencyOnWaitpoint === "boolean"
-            ? queueOptions.releaseConcurrencyOnWaitpoint
-            : undefined,
       },
       update: {
         concurrencyLimit:

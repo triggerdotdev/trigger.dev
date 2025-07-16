@@ -52,7 +52,6 @@ export type QueueValidationResult =
 export type QueueProperties = {
   queueName: string;
   lockedQueueId?: string;
-  lockedQueueReleaseConcurrencyOnWaitpoint?: boolean;
 };
 
 export type LockedBackgroundWorker = Pick<
@@ -144,11 +143,4 @@ export interface TraceEventConcern {
     },
     callback: (span: TracedEventSpan) => Promise<T>
   ): Promise<T>;
-}
-
-export interface RunChainStateManager {
-  validateRunChain(
-    request: TriggerTaskRequest,
-    options: { parentRun?: TaskRun; queueName: string; lockedQueueId?: string }
-  ): Promise<RunChainState>;
 }

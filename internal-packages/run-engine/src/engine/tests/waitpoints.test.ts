@@ -100,7 +100,6 @@ describe("RunEngine Waitpoints", () => {
         waitpoints: [waitpoint.id],
         projectId: authenticatedEnvironment.project.id,
         organizationId: authenticatedEnvironment.organization.id,
-        releaseConcurrency: true,
       });
       expect(result.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
       expect(result.runStatus).toBe("EXECUTING");
@@ -1220,13 +1219,12 @@ describe("RunEngine Waitpoints", () => {
         });
         expect(waitpoint.waitpoint.status).toBe("PENDING");
 
-        // Block the first run with releaseConcurrency set to true
+        // Block the first run
         const blockedResult = await engine.blockRunWithWaitpoint({
           runId: firstRun.id,
           waitpoints: waitpoint.waitpoint.id,
           projectId: authenticatedEnvironment.projectId,
           organizationId: authenticatedEnvironment.organizationId,
-          releaseConcurrency: true,
         });
 
         // Verify first run is blocked
@@ -1424,7 +1422,6 @@ describe("RunEngine Waitpoints", () => {
           waitpoints: [waitpoint.id],
           projectId: authenticatedEnvironment.project.id,
           organizationId: authenticatedEnvironment.organization.id,
-          releaseConcurrency: true,
         });
 
         // Wait for the waitpoint to complete and unblock (snapshot 3)

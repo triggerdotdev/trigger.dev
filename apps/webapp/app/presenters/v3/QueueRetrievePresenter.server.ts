@@ -76,7 +76,6 @@ export class QueueRetrievePresenter extends BasePresenter {
         queued: results[0]?.[queue.name] ?? 0,
         concurrencyLimit: queue.concurrencyLimit ?? null,
         paused: queue.paused,
-        releaseConcurrencyOnWaitpoint: queue.releaseConcurrencyOnWaitpoint,
       }),
     };
   }
@@ -106,7 +105,6 @@ export function toQueueItem(data: {
   queued: number;
   concurrencyLimit: number | null;
   paused: boolean;
-  releaseConcurrencyOnWaitpoint: boolean;
 }): QueueItem {
   return {
     id: data.friendlyId,
@@ -117,6 +115,7 @@ export function toQueueItem(data: {
     queued: data.queued,
     concurrencyLimit: data.concurrencyLimit,
     paused: data.paused,
-    releaseConcurrencyOnWaitpoint: data.releaseConcurrencyOnWaitpoint,
+    // TODO: This needs to be removed but keeping this here for now to avoid breaking existing clients
+    releaseConcurrencyOnWaitpoint: true,
   };
 }

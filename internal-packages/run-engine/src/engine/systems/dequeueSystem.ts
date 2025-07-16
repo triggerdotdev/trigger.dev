@@ -9,7 +9,6 @@ import { getMachinePreset } from "../machinePresets.js";
 import { isDequeueableExecutionStatus } from "../statuses.js";
 import { RunEngineOptions } from "../types.js";
 import { ExecutionSnapshotSystem, getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
-import { ReleaseConcurrencySystem } from "./releaseConcurrencySystem.js";
 import { RunAttemptSystem } from "./runAttemptSystem.js";
 import { SystemResources } from "./systems.js";
 import { WaitpointSystem } from "./waitpointSystem.js";
@@ -19,7 +18,6 @@ export type DequeueSystemOptions = {
   machines: RunEngineOptions["machines"];
   executionSnapshotSystem: ExecutionSnapshotSystem;
   runAttemptSystem: RunAttemptSystem;
-  releaseConcurrencySystem: ReleaseConcurrencySystem;
   waitpointSystem: WaitpointSystem;
 };
 
@@ -27,14 +25,12 @@ export class DequeueSystem {
   private readonly $: SystemResources;
   private readonly executionSnapshotSystem: ExecutionSnapshotSystem;
   private readonly runAttemptSystem: RunAttemptSystem;
-  private readonly releaseConcurrencySystem: ReleaseConcurrencySystem;
   private readonly waitpointSystem: WaitpointSystem;
 
   constructor(private readonly options: DequeueSystemOptions) {
     this.$ = options.resources;
     this.executionSnapshotSystem = options.executionSnapshotSystem;
     this.runAttemptSystem = options.runAttemptSystem;
-    this.releaseConcurrencySystem = options.releaseConcurrencySystem;
     this.waitpointSystem = options.waitpointSystem;
   }
 
@@ -323,8 +319,6 @@ export class DequeueSystem {
                   lockedById: result.task.id,
                   lockedToVersionId: result.worker.id,
                   lockedQueueId: result.queue.id,
-                  lockedQueueReleaseConcurrencyOnWaitpoint:
-                    this.waitpointSystem.shouldReleaseConcurrencyOnWaitpointForQueue(result.queue),
                   startedAt,
                   baseCostInCents: this.options.machines.baseCostInCents,
                   machinePreset: machinePreset.name,

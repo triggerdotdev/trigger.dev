@@ -61,6 +61,7 @@ export type RunQueueOptions = {
   tracer: Tracer;
   redis: RedisOptions;
   defaultEnvConcurrency: number;
+  defaultEnvConcurrencyBurstFactor?: number;
   windowSize?: number;
   keys: RunQueueKeyProducer;
   queueSelectionStrategy: RunQueueSelectionStrategy;
@@ -311,9 +312,11 @@ export class RunQueue {
   }
 
   public async updateEnvConcurrencyLimits(env: MinimalAuthenticatedEnvironment) {
-    await this.#callUpdateGlobalConcurrencyLimits({
+    await this.#callUpdateEnvironmentConcurrencyLimits({
       envConcurrencyLimitKey: this.keys.envConcurrencyLimitKey(env),
       envConcurrencyLimit: env.maximumConcurrencyLimit,
+      envConcurrencyLimitBurstFactorKey: this.keys.envConcurrencyLimitBurstFactorKey(env),
+      envConcurrencyLimitBurstFactor: env.concurrencyLimitBurstFactor.toString(),
     });
   }
 
@@ -321,6 +324,18 @@ export class RunQueue {
     const result = await this.redis.get(this.keys.envConcurrencyLimitKey(env));
 
     return result ? Number(result) : this.options.defaultEnvConcurrency;
+  }
+
+  public async getEnvConcurrencyLimitWithBurstFactor(env: MinimalAuthenticatedEnvironment) {
+    const result = await this.redis.get(this.keys.envConcurrencyLimitBurstFactorKey(env));
+
+    const burstFactor = result
+      ? Number(result)
+      : this.options.defaultEnvConcurrencyBurstFactor ?? 1;
+
+    const limit = await this.getEnvConcurrencyLimit(env);
+
+    return Math.floor(limit * burstFactor);
   }
 
   public async lengthOfQueue(
@@ -1409,6 +1424,8 @@ export class RunQueue {
     const queueConcurrencyLimitKey = this.keys.concurrencyLimitKeyFromQueue(messageQueue);
     const queueCurrentConcurrencyKey = this.keys.currentConcurrencyKeyFromQueue(messageQueue);
     const envConcurrencyLimitKey = this.keys.envConcurrencyLimitKeyFromQueue(messageQueue);
+    const envConcurrencyLimitBurstFactorKey =
+      this.keys.envConcurrencyLimitBurstFactorKeyFromQueue(messageQueue);
     const envCurrentConcurrencyKey = this.keys.envCurrentConcurrencyKeyFromQueue(messageQueue);
     const messageKeyPrefix = this.keys.messageKeyPrefixFromQueue(messageQueue);
     const envQueueKey = this.keys.envQueueKeyFromQueue(messageQueue);
@@ -1418,6 +1435,7 @@ export class RunQueue {
       messageQueue,
       queueConcurrencyLimitKey,
       envConcurrencyLimitKey,
+      envConcurrencyLimitBurstFactorKey,
       queueCurrentConcurrencyKey,
       envCurrentConcurrencyKey,
       messageKeyPrefix,
@@ -1432,6 +1450,7 @@ export class RunQueue {
       messageQueue,
       queueConcurrencyLimitKey,
       envConcurrencyLimitKey,
+      envConcurrencyLimitBurstFactorKey,
       queueCurrentConcurrencyKey,
       envCurrentConcurrencyKey,
       messageKeyPrefix,
@@ -1441,6 +1460,7 @@ export class RunQueue {
       messageQueue,
       String(Date.now()),
       String(this.options.defaultEnvConcurrency),
+      String(this.options.defaultEnvConcurrencyBurstFactor ?? 1),
       this.options.redis.keyPrefix ?? "",
       String(maxCount)
     );
@@ -1688,16 +1708,22 @@ export class RunQueue {
     );
   }
 
-  #callUpdateGlobalConcurrencyLimits({
+  #callUpdateEnvironmentConcurrencyLimits({
     envConcurrencyLimitKey,
     envConcurrencyLimit,
+    envConcurrencyLimitBurstFactorKey,
+    envConcurrencyLimitBurstFactor,
   }: {
     envConcurrencyLimitKey: string;
     envConcurrencyLimit: number;
+    envConcurrencyLimitBurstFactorKey: string;
+    envConcurrencyLimitBurstFactor: string;
   }) {
-    return this.redis.updateGlobalConcurrencyLimits(
+    return this.redis.updateEnvironmentConcurrencyLimits(
       envConcurrencyLimitKey,
-      String(envConcurrencyLimit)
+      envConcurrencyLimitBurstFactorKey,
+      String(envConcurrencyLimit),
+      envConcurrencyLimitBurstFactor
     );
   }
 
@@ -2029,29 +2055,32 @@ redis.call('SREM', envCurrentConcurrencyKey, messageId)
     });
 
     this.redis.defineCommand("dequeueMessagesFromQueue", {
-      numberOfKeys: 8,
+      numberOfKeys: 9,
       lua: `
 local queueKey = KEYS[1]
 local queueConcurrencyLimitKey = KEYS[2]
 local envConcurrencyLimitKey = KEYS[3]
-local queueCurrentConcurrencyKey = KEYS[4]
-local envCurrentConcurrencyKey = KEYS[5]
-local messageKeyPrefix = KEYS[6]
-local envQueueKey = KEYS[7]
-local masterQueueKey = KEYS[8]
+local envConcurrencyLimitBurstFactorKey = KEYS[4]
+local queueCurrentConcurrencyKey = KEYS[5]
+local envCurrentConcurrencyKey = KEYS[6]
+local messageKeyPrefix = KEYS[7]
+local envQueueKey = KEYS[8]
+local masterQueueKey = KEYS[9]
 
 local queueName = ARGV[1]
 local currentTime = tonumber(ARGV[2])
 local defaultEnvConcurrencyLimit = ARGV[3]
-local keyPrefix = ARGV[4]
-local maxCount = tonumber(ARGV[5] or '1')
+local defaultEnvConcurrencyBurstFactor = ARGV[4]
+local keyPrefix = ARGV[5]
+local maxCount = tonumber(ARGV[6] or '1')
 
 -- Check current env concurrency against the limit
 local envCurrentConcurrency = tonumber(redis.call('SCARD', envCurrentConcurrencyKey) or '0')
 local envConcurrencyLimit = tonumber(redis.call('GET', envConcurrencyLimitKey) or defaultEnvConcurrencyLimit)
-local totalEnvConcurrencyLimit = envConcurrencyLimit
+local envConcurrencyLimitBurstFactor = tonumber(redis.call('GET', envConcurrencyLimitBurstFactorKey) or defaultEnvConcurrencyBurstFactor)
+local envConcurrencyLimitWithBurstFactor = math.floor(envConcurrencyLimit * envConcurrencyLimitBurstFactor)
 
-if envCurrentConcurrency >= totalEnvConcurrencyLimit then
+if envCurrentConcurrency >= envConcurrencyLimitWithBurstFactor then
     return nil
 end
 
@@ -2066,7 +2095,7 @@ if queueCurrentConcurrency >= totalQueueConcurrencyLimit then
 end
 
 -- Calculate how many messages we can actually dequeue based on concurrency limits
-local envAvailableCapacity = totalEnvConcurrencyLimit - envCurrentConcurrency
+local envAvailableCapacity = envConcurrencyLimitWithBurstFactor - envCurrentConcurrency
 local queueAvailableCapacity = totalQueueConcurrencyLimit - queueCurrentConcurrency
 local actualMaxCount = math.min(maxCount, envAvailableCapacity, queueAvailableCapacity)
 
@@ -2322,16 +2351,19 @@ return true
 `,
     });
 
-    this.redis.defineCommand("updateGlobalConcurrencyLimits", {
-      numberOfKeys: 1,
+    this.redis.defineCommand("updateEnvironmentConcurrencyLimits", {
+      numberOfKeys: 2,
       lua: `
--- Keys: envConcurrencyLimitKey
+-- Keys: envConcurrencyLimitKey, envConcurrencyLimitBurstFactorKey
 local envConcurrencyLimitKey = KEYS[1]
+local envConcurrencyLimitBurstFactorKey = KEYS[2]
 
 -- Args: envConcurrencyLimit
 local envConcurrencyLimit = ARGV[1]
+local envConcurrencyLimitBurstFactor = ARGV[2]
 
 redis.call('SET', envConcurrencyLimitKey, envConcurrencyLimit)
+redis.call('SET', envConcurrencyLimitBurstFactorKey, envConcurrencyLimitBurstFactor)
       `,
     });
 
@@ -2431,6 +2463,7 @@ declare module "@internal/redis" {
       childQueue: string,
       queueConcurrencyLimitKey: string,
       envConcurrencyLimitKey: string,
+      envConcurrencyLimitBurstFactorKey: string,
       queueCurrentConcurrencyKey: string,
       envCurrentConcurrencyKey: string,
       messageKeyPrefix: string,
@@ -2440,6 +2473,7 @@ declare module "@internal/redis" {
       childQueueName: string,
       currentTime: string,
       defaultEnvConcurrencyLimit: string,
+      defaultEnvConcurrencyBurstFactor: string,
       keyPrefix: string,
       maxCount: string,
       callback?: Callback<string[]>
@@ -2519,9 +2553,11 @@ declare module "@internal/redis" {
       callback?: Callback<string>
     ): Result<string, Context>;
 
-    updateGlobalConcurrencyLimits(
+    updateEnvironmentConcurrencyLimits(
       envConcurrencyLimitKey: string,
+      envConcurrencyLimitBurstFactorKey: string,
       envConcurrencyLimit: string,
+      envConcurrencyLimitBurstFactor: string,
       callback?: Callback<void>
     ): Result<void, Context>;
 

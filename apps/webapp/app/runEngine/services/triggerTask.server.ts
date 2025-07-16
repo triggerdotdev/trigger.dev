@@ -30,7 +30,6 @@ import { IdempotencyKeyConcern } from "../concerns/idempotencyKeys.server";
 import type {
   PayloadProcessor,
   QueueManager,
-  RunChainStateManager,
   RunNumberIncrementer,
   TraceEventConcern,
   TriggerTaskRequest,
@@ -47,7 +46,6 @@ export class RunEngineTriggerTaskService {
   private readonly engine: RunEngine;
   private readonly tracer: Tracer;
   private readonly traceEventConcern: TraceEventConcern;
-  private readonly runChainStateManager: RunChainStateManager;
 
   constructor(opts: {
     prisma: PrismaClientOrTransaction;
@@ -58,7 +56,6 @@ export class RunEngineTriggerTaskService {
     idempotencyKeyConcern: IdempotencyKeyConcern;
     runNumberIncrementer: RunNumberIncrementer;
     traceEventConcern: TraceEventConcern;
-    runChainStateManager: RunChainStateManager;
     tracer: Tracer;
   }) {
     this.prisma = opts.prisma;
@@ -70,7 +67,6 @@ export class RunEngineTriggerTaskService {
     this.runNumberIncrementer = opts.runNumberIncrementer;
     this.tracer = opts.tracer;
     this.traceEventConcern = opts.traceEventConcern;
-    this.runChainStateManager = opts.runChainStateManager;
   }
 
   public async call({
@@ -212,11 +208,10 @@ export class RunEngineTriggerTaskService {
           })
         : undefined;
 
-      const { queueName, lockedQueueId, lockedQueueReleaseConcurrencyOnWaitpoint } =
-        await this.queueConcern.resolveQueueProperties(
-          triggerRequest,
-          lockedToBackgroundWorker ?? undefined
-        );
+      const { queueName, lockedQueueId } = await this.queueConcern.resolveQueueProperties(
+        triggerRequest,
+        lockedToBackgroundWorker ?? undefined
+      );
 
       //upsert tags
       const tags = await createTags(
@@ -228,12 +223,6 @@ export class RunEngineTriggerTaskService {
       );
 
       const depth = parentRun ? parentRun.depth + 1 : 0;
-
-      const runChainState = await this.runChainStateManager.validateRunChain(triggerRequest, {
-        parentRun: parentRun ?? undefined,
-        queueName,
-        lockedQueueId,
-      });
 
       const workerQueue = await this.queueConcern.getWorkerQueue(environment);
 
@@ -273,7 +262,6 @@ export class RunEngineTriggerTaskService {
                   concurrencyKey: body.options?.concurrencyKey,
                   queue: queueName,
                   lockedQueueId,
-                  lockedQueueReleaseConcurrencyOnWaitpoint,
                   workerQueue,
                   isTest: body.options?.test ?? false,
                   delayUntil,
@@ -302,13 +290,11 @@ export class RunEngineTriggerTaskService {
                     : undefined,
                   machine: body.options?.machine,
                   priorityMs: body.options?.priority ? body.options.priority * 1_000 : undefined,
-                  releaseConcurrency: body.options?.releaseConcurrency,
                   queueTimestamp:
                     options.queueTimestamp ??
                     (parentRun && body.options?.resumeParentOnCompletion
                       ? parentRun.queueTimestamp ?? undefined
                       : undefined),
-                  runChainState,
                   scheduleId: options.scheduleId,
                   scheduleInstanceId: options.scheduleInstanceId,
                   createdAt: options.overrideCreatedAt,

@@ -116,7 +116,6 @@ export class QueueListPresenter extends BasePresenter {
         concurrencyLimit: true,
         type: true,
         paused: true,
-        releaseConcurrencyOnWaitpoint: true,
       },
       orderBy: {
         orderableName: "asc",
@@ -146,7 +145,6 @@ export class QueueListPresenter extends BasePresenter {
         queued: results[0][queue.name] ?? 0,
         concurrencyLimit: queue.concurrencyLimit ?? null,
         paused: queue.paused,
-        releaseConcurrencyOnWaitpoint: queue.releaseConcurrencyOnWaitpoint,
       })
     );
   }

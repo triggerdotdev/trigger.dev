@@ -10,11 +10,10 @@ import {
 import { DialogClose } from "@radix-ui/react-dialog";
 import {
   Form,
-  useNavigate,
   useNavigation,
   useRevalidator,
   useSearchParams,
-  type MetaFunction,
+  type MetaFunction
 } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { type RuntimeEnvironmentType } from "@trigger.dev/database";
@@ -34,6 +33,8 @@ import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { FormButtons } from "~/components/primitives/FormButtons";
+import { Header3 } from "~/components/primitives/Headers";
+import { Input } from "~/components/primitives/Input";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -58,6 +59,7 @@ import { useEnvironment } from "~/hooks/useEnvironment";
 import { useEventSource } from "~/hooks/useEventSource";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { useThrottle } from "~/hooks/useThrottle";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
@@ -69,9 +71,6 @@ import { docsPath, EnvironmentParamSchema, v3BillingPath } from "~/utils/pathBui
 import { PauseEnvironmentService } from "~/v3/services/pauseEnvironment.server";
 import { PauseQueueService } from "~/v3/services/pauseQueue.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { Header3 } from "~/components/primitives/Headers";
-import { Input } from "~/components/primitives/Input";
-import { useThrottle } from "~/hooks/useThrottle";
 
 const SearchParamsSchema = z.object({
   query: z.string().optional(),
@@ -360,32 +359,6 @@ export default function Page() {
                     >
                       Limited by
                     </TableHeaderCell>
-                    <TableHeaderCell
-                      alignment="right"
-                      tooltip={
-                        <div className="max-w-xs p-1 text-left">
-                          <Paragraph
-                            variant="small"
-                            className="!text-wrap text-text-dimmed"
-                            spacing
-                          >
-                            When a task executing on this queue is paused and waiting for a
-                            waitpoint to complete, the queue will release the concurrency being used
-                            by the run so other runs can be started.
-                          </Paragraph>
-                          <LinkButton
-                            to={docsPath("v3/queues#release-concurrency-on-waitpoint")}
-                            variant="docs/small"
-                            LeadingIcon={BookOpenIcon}
-                            className="mt-3"
-                          >
-                            Read docs
-                          </LinkButton>
-                        </div>
-                      }
-                    >
-                      Release on waitpoint
-                    </TableHeaderCell>
                     <TableHeaderCell className="w-[1%] pl-24">
                       <span className="sr-only">Pause/resume</span>
                     </TableHeaderCell>
@@ -471,12 +444,6 @@ export default function Page() {
                             )}
                           >
                             {queue.concurrencyLimit ? "User" : "Environment"}
-                          </TableCell>
-                          <TableCell
-                            alignment="right"
-                            className={queue.paused ? "opacity-50" : undefined}
-                          >
-                            {queue.releaseConcurrencyOnWaitpoint ? "Yes" : "No"}
                           </TableCell>
                           <TableCellMenu
                             isSticky

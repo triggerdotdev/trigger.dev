@@ -46,6 +46,11 @@ export type EnvDescriptor = {
   envId: string;
 };
 
+export type RunQueueKeyProducerEnvironment = Omit<
+  MinimalAuthenticatedEnvironment,
+  "maximumConcurrencyLimit" | "concurrencyLimitBurstFactor"
+>;
+
 export interface RunQueueKeyProducer {
   //queue
   queueKey(
@@ -55,7 +60,7 @@ export interface RunQueueKeyProducer {
     queue: string,
     concurrencyKey?: string
   ): string;
-  queueKey(env: MinimalAuthenticatedEnvironment, queue: string, concurrencyKey?: string): string;
+  queueKey(env: RunQueueKeyProducerEnvironment, queue: string, concurrencyKey?: string): string;
 
   legacyMasterQueueKey(masterQueueName: string): string;
 
@@ -64,23 +69,27 @@ export interface RunQueueKeyProducer {
   masterQueueShardForEnvironment(envId: string, shardCount: number): number;
   workerQueueKey(workerQueue: string): string;
 
-  envQueueKey(env: MinimalAuthenticatedEnvironment): string;
+  envQueueKey(env: RunQueueKeyProducerEnvironment): string;
   envQueueKeyFromQueue(queue: string): string;
-  queueConcurrencyLimitKey(env: MinimalAuthenticatedEnvironment, queue: string): string;
+  queueConcurrencyLimitKey(env: RunQueueKeyProducerEnvironment, queue: string): string;
   concurrencyLimitKeyFromQueue(queue: string): string;
   currentConcurrencyKeyFromQueue(queue: string): string;
   currentConcurrencyKey(
-    env: MinimalAuthenticatedEnvironment,
+    env: RunQueueKeyProducerEnvironment,
     queue: string,
     concurrencyKey?: string
   ): string;
   disabledConcurrencyLimitKeyFromQueue(queue: string): string;
   //env oncurrency
   envCurrentConcurrencyKey(env: EnvDescriptor): string;
-  envCurrentConcurrencyKey(env: MinimalAuthenticatedEnvironment): string;
+  envCurrentConcurrencyKey(env: RunQueueKeyProducerEnvironment): string;
 
   envConcurrencyLimitKey(env: EnvDescriptor): string;
-  envConcurrencyLimitKey(env: MinimalAuthenticatedEnvironment): string;
+  envConcurrencyLimitKey(env: RunQueueKeyProducerEnvironment): string;
+
+  envConcurrencyLimitBurstFactorKey(env: EnvDescriptor): string;
+  envConcurrencyLimitBurstFactorKey(env: RunQueueKeyProducerEnvironment): string;
+  envConcurrencyLimitBurstFactorKeyFromQueue(queue: string): string;
 
   envConcurrencyLimitKeyFromQueue(queue: string): string;
   envCurrentConcurrencyKeyFromQueue(queue: string): string;
@@ -93,7 +102,7 @@ export interface RunQueueKeyProducer {
   projectIdFromQueue(queue: string): string;
   descriptorFromQueue(queue: string): QueueDescriptor;
 
-  deadLetterQueueKey(env: MinimalAuthenticatedEnvironment): string;
+  deadLetterQueueKey(env: RunQueueKeyProducerEnvironment): string;
   deadLetterQueueKey(env: EnvDescriptor): string;
   deadLetterQueueKeyFromQueue(queue: string): string;
 
