@@ -7,7 +7,7 @@ import { BookOpenIcon } from "@heroicons/react/20/solid";
 
 export function MachineTooltipInfo() {
   return (
-    <div className="flex max-w-xs flex-col gap-4 p-1">
+    <div className="flex max-w-xs flex-col gap-4 p-1 pb-2">
       <div>
         <div className="mb-0.5 flex items-center gap-1.5">
           <MachineIcon preset="no-machine" />
