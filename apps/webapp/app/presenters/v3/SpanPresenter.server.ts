@@ -372,6 +372,7 @@ export class SpanPresenter extends BasePresenter {
       workerQueue: run.workerQueue,
       spanId: run.spanId,
       isCached: !!span.originalRun,
+      machinePreset: run.machinePreset,
     };
   }
 
