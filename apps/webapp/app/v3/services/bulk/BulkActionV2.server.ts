@@ -24,6 +24,7 @@ import { timeFilters } from "~/components/runs/v3/SharedFilters";
 import parseDuration from "parse-duration";
 import { v3BulkActionPath } from "~/utils/pathBuilder";
 import { formatDateTime } from "~/components/primitives/DateTime";
+import pMap from "p-map";
 
 export class BulkActionService extends BaseService {
   public async create(
@@ -191,29 +192,33 @@ export class BulkActionService extends BaseService {
           },
         });
 
-        for (const run of runs) {
-          const [error, result] = await tryCatch(
-            cancelService.call(run, {
-              reason: `Bulk action ${group.friendlyId} cancelled run`,
-              bulkActionId: bulkActionId,
-            })
-          );
-          if (error) {
-            logger.error("Failed to cancel run", {
-              error,
-              runId: run.id,
-              status: run.status,
-            });
+        await pMap(
+          runs,
+          async (run) => {
+            const [error, result] = await tryCatch(
+              cancelService.call(run, {
+                reason: `Bulk action ${group.friendlyId} cancelled run`,
+                bulkActionId: bulkActionId,
+              })
+            );
+            if (error) {
+              logger.error("Failed to cancel run", {
+                error,
+                runId: run.id,
+                status: run.status,
+              });
 
-            failureCount++;
-          } else {
-            if (!result || result.alreadyFinished) {
               failureCount++;
             } else {
-              successCount++;
+              if (!result || result.alreadyFinished) {
+                failureCount++;
+              } else {
+                successCount++;
+              }
             }
-          }
-        }
+          },
+          { concurrency: env.BULK_ACTION_SUBBATCH_CONCURRENCY }
+        );
 
         break;
       }
@@ -228,33 +233,37 @@ export class BulkActionService extends BaseService {
           },
         });
 
-        for (const run of runs) {
-          const [error, result] = await tryCatch(
-            replayService.call(run, {
-              bulkActionId: bulkActionId,
-            })
-          );
-          if (error) {
-            logger.error("Failed to replay run, error", {
-              error,
-              runId: run.id,
-              status: run.status,
-            });
-
-            failureCount++;
-          } else {
-            if (!result) {
-              logger.error("Failed to replay run, no result", {
+        await pMap(
+          runs,
+          async (run) => {
+            const [error, result] = await tryCatch(
+              replayService.call(run, {
+                bulkActionId: bulkActionId,
+              })
+            );
+            if (error) {
+              logger.error("Failed to replay run, error", {
+                error,
                 runId: run.id,
                 status: run.status,
               });
 
               failureCount++;
             } else {
-              successCount++;
+              if (!result) {
+                logger.error("Failed to replay run, no result", {
+                  runId: run.id,
+                  status: run.status,
+                });
+
+                failureCount++;
+              } else {
+                successCount++;
+              }
             }
-          }
-        }
+          },
+          { concurrency: env.BULK_ACTION_SUBBATCH_CONCURRENCY }
+        );
         break;
       }
     }
