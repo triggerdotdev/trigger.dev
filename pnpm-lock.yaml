@@ -563,6 +563,9 @@ importers:
       p-limit:
         specifier: ^6.2.0
         version: 6.2.0
+      p-map:
+        specifier: ^6.0.0
+        version: 6.0.0
       parse-duration:
         specifier: ^2.1.0
         version: 2.1.4
@@ -29827,7 +29830,6 @@ packages:
   /p-map@6.0.0:
     resolution: {integrity: sha512-T8BatKGY+k5rU+Q/GTYgrEf2r4xRMevAN5mtXc2aPc4rS1j3s+vWTaO2Wag94neXuCAUAs8cxBL9EeB5EA6diw==}
     engines: {node: '>=16'}
-    dev: true
 
   /p-queue@6.6.2:
     resolution: {integrity: sha512-RwFpb72c/BhQLEXIZ5K2e+AhgNVmIejGlTgiB9MzZ0e93GRvqZ7uSi0dvRF7/XIXDeNkra2fNHBxTyPDGySpjQ==}
