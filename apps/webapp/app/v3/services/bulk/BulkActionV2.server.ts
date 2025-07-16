@@ -274,7 +274,7 @@ export class BulkActionService extends BaseService {
     });
 
     // 4. Update the bulk action group
-    await this._prisma.bulkActionGroup.update({
+    const updatedGroup = await this._prisma.bulkActionGroup.update({
       where: { id: bulkActionId },
       data: {
         cursor: runIdsToProcess.at(runIdsToProcess.length - 1),
@@ -323,9 +323,9 @@ export class BulkActionService extends BaseService {
                   friendlyId: group.friendlyId,
                 }
               )}`,
-              totalCount: successCount + failureCount,
-              successCount,
-              failureCount,
+              totalCount: updatedGroup.totalCount,
+              successCount: updatedGroup.successCount,
+              failureCount: updatedGroup.failureCount,
               type: group.type,
               createdAt: formatDateTime(group.createdAt, "UTC", [], true, true),
               completedAt: formatDateTime(group.completedAt ?? new Date(), "UTC", [], true, true),
