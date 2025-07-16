@@ -54,6 +54,7 @@ services:
       OBJECT_STORE_ACCESS_KEY_ID: ${OBJECT_STORE_ACCESS_KEY_ID}
       OBJECT_STORE_SECRET_ACCESS_KEY: ${OBJECT_STORE_SECRET_ACCESS_KEY}
       GRACEFUL_SHUTDOWN_TIMEOUT: 1000
+      NODE_MAX_OLD_SPACE_SIZE: ${NODE_MAX_OLD_SPACE_SIZE}
       # Bootstrap - this will automatically set up a worker group for you
       # This will NOT work for split deployments
       TRIGGER_BOOTSTRAP_ENABLED: 1
