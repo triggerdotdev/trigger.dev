@@ -738,12 +738,15 @@ function RunBody({
                   <Property.Value>{run.engine}</Property.Value>
                 </Property.Item>
                 {isAdmin && (
-                  <>
+                  <div className="border-t border-yellow-500/50 pt-2">
+                    <Paragraph spacing variant="small" className="text-yellow-500">
+                      Admin only
+                    </Paragraph>
                     <Property.Item>
                       <Property.Label>Worker queue</Property.Label>
                       <Property.Value>{run.workerQueue}</Property.Value>
                     </Property.Item>
-                  </>
+                  </div>
                 )}
               </Property.Table>
             </div>
