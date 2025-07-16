@@ -618,17 +618,7 @@ function RunBody({
                     </Property.Value>
                   </Property.Item>
                 )}
-                <Property.Item>
-                  <Property.Label>
-                    <span className="flex items-center gap-1">
-                      Machine
-                      <InfoIconTooltip content={<MachineTooltipInfo />} />
-                    </span>
-                  </Property.Label>
-                  <Property.Value className="-ml-0.5">
-                    <MachineLabelCombo preset={run.machinePreset as MachinePresetName} />
-                  </Property.Value>
-                </Property.Item>
+
                 {run.schedule && (
                   <Property.Item>
                     <Property.Label>Schedule</Property.Label>
@@ -693,6 +683,17 @@ function RunBody({
                           { style: "short" }
                         )})`
                       : "–"}
+                  </Property.Value>
+                </Property.Item>
+                <Property.Item>
+                  <Property.Label>
+                    <span className="flex items-center gap-1">
+                      Machine
+                      <InfoIconTooltip content={<MachineTooltipInfo />} />
+                    </span>
+                  </Property.Label>
+                  <Property.Value className="-ml-0.5">
+                    <MachineLabelCombo preset={run.machinePreset as MachinePresetName} />
                   </Property.Value>
                 </Property.Item>
                 <Property.Item>
