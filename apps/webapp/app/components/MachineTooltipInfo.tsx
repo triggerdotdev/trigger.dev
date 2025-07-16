@@ -1,9 +1,9 @@
-import { BookOpenIcon } from "lucide-react";
 import { MachineIcon } from "~/assets/icons/MachineIcon";
 import { docsPath } from "~/utils/pathBuilder";
 import { LinkButton } from "./primitives/Buttons";
 import { Header3 } from "./primitives/Headers";
 import { Paragraph } from "./primitives/Paragraph";
+import { BookOpenIcon } from "@heroicons/react/20/solid";
 
 export function MachineTooltipInfo() {
   return (
