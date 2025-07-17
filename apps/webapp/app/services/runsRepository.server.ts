@@ -8,6 +8,7 @@ import parseDuration from "parse-duration";
 import { z } from "zod";
 import { timeFilters } from "~/components/runs/v3/SharedFilters";
 import { type PrismaClient } from "~/db.server";
+import { MachinePresetName } from "@trigger.dev/core/v3";
 
 export type RunsRepositoryOptions = {
   clickhouse: ClickHouse;
@@ -380,6 +381,12 @@ function applyRunFiltersToQueryBuilder<T>(
 
   if (options.queues && options.queues.length > 0) {
     queryBuilder.where("queue IN {queues: Array(String)}", { queues: options.queues });
+  }
+
+  if (options.machines && options.machines.length > 0) {
+    queryBuilder.where("machine_preset IN {machines: Array(String)}", {
+      machines: options.machines,
+    });
   }
 }
 
