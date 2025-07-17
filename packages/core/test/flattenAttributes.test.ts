@@ -61,6 +61,11 @@ describe("flattenAttributes", () => {
     expect(unflattenAttributes(result)).toEqual(input);
   });
 
+  it("flattens properties that are undefined correctly", () => {
+    const result = flattenAttributes({ foo: undefined, bar: "baz" });
+    expect(result).toEqual({ bar: "baz" });
+  });
+
   it("flattens complex objects correctly", () => {
     const obj = {
       level1: {
