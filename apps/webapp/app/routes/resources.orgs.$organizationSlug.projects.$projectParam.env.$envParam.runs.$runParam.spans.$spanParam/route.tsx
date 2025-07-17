@@ -693,7 +693,7 @@ function RunBody({
                     </span>
                   </Property.Label>
                   <Property.Value className="-ml-0.5">
-                    <MachineLabelCombo preset={run.machinePreset as MachinePresetName} />
+                    <MachineLabelCombo preset={run.machinePreset} />
                   </Property.Value>
                 </Property.Item>
                 <Property.Item>

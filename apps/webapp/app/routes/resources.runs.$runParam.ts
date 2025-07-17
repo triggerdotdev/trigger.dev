@@ -5,7 +5,7 @@ import { RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { $replica } from "~/db.server";
 import { requireUserId } from "~/services/session.server";
 import { v3RunParamsSchema } from "~/utils/pathBuilder";
-import { machinePresetFromName } from "~/v3/machinePresets.server";
+import { machinePresetFromName, machinePresetFromRun } from "~/v3/machinePresets.server";
 import { FINAL_ATTEMPT_STATUSES, isFinalRunStatus } from "~/v3/taskStatus";
 
 export type RunInspectorData = UseDataFunctionReturn<typeof loader>;
@@ -183,9 +183,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       slug: run.project.slug,
       name: run.project.name,
     },
-    machine: run.machinePreset
-      ? machinePresetFromName(run.machinePreset as MachinePresetName)
-      : undefined,
+    machine: run.machinePreset ? machinePresetFromRun(run) : undefined,
   };
 
   return typedjson({

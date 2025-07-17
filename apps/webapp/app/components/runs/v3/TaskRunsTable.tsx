@@ -386,7 +386,7 @@ export function TaskRunsTable({
                   </TableCell>
                 )}
                 <TableCell to={path}>
-                  <MachineLabelCombo preset={run.machinePreset as MachinePresetName} />
+                  <MachineLabelCombo preset={run.machinePreset} />
                 </TableCell>
                 <TableCell to={path}>
                   {run.isTest ? <CheckIcon className="size-4 text-charcoal-400" /> : "–"}
