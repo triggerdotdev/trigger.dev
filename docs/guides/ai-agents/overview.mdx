@@ -6,12 +6,80 @@ description: "Real world AI agent example tasks using Trigger.dev"
 
 ## Overview
 
-This guide will show you how to set up different types of AI agent workflows with Trigger.dev. The examples take inspiration from Athropic's blog post on [building effective agents](https://www.anthropic.com/research/building-effective-agents).
+These guides will show you how to set up different types of AI agent workflows with Trigger.dev. The examples take inspiration from Athropic's blog post on [building effective agents](https://www.anthropic.com/research/building-effective-agents).
 
 <CardGroup cols={2}>
-  <Card title="Prompt chaining" img="/guides/ai-agents/prompt-chaining.png" href="/guides/ai-agents/generate-translate-copy">Chain prompts together to generate and translate marketing copy automatically</Card>
-  <Card title="Routing" img="/guides/ai-agents/routing.png" href="/guides/ai-agents/route-question">Send questions to different AI models based on complexity analysis</Card>
-  <Card title="Parallelization" img="/guides/ai-agents/parallelization.png" href="/guides/ai-agents/respond-and-check-content">Simultaneously check for inappropriate content while responding to customer inquiries</Card>
-  <Card title="Orchestrator" img="/guides/ai-agents/orchestrator-workers.png" href="/guides/ai-agents/verify-news-article">Coordinate multiple AI workers to verify news article accuracy</Card>
-  <Card title="Evaluator-optimizer" img="/guides/ai-agents/evaluator-optimizer.png" href="/guides/ai-agents/translate-and-refine">Translate text and automatically improve quality through feedback loops</Card>
+  <Card
+    title="Prompt chaining"
+    img="/guides/ai-agents/prompt-chaining.png"
+    href="/guides/ai-agents/generate-translate-copy"
+  >
+    Chain prompts together to generate and translate marketing copy automatically
+  </Card>
+  <Card title="Routing" img="/guides/ai-agents/routing.png" href="/guides/ai-agents/route-question">
+    Send questions to different AI models based on complexity analysis
+  </Card>
+  <Card
+    title="Parallelization"
+    img="/guides/ai-agents/parallelization.png"
+    href="/guides/ai-agents/respond-and-check-content"
+  >
+    Simultaneously check for inappropriate content while responding to customer inquiries
+  </Card>
+  <Card
+    title="Orchestrator"
+    img="/guides/ai-agents/orchestrator-workers.png"
+    href="/guides/ai-agents/verify-news-article"
+  >
+    Coordinate multiple AI workers to verify news article accuracy
+  </Card>
+  <Card
+    title="Evaluator-optimizer"
+    img="/guides/ai-agents/evaluator-optimizer.png"
+    href="/guides/ai-agents/translate-and-refine"
+  >
+    Translate text and automatically improve quality through feedback loops
+  </Card>
+</CardGroup>
+
+## Example projects using AI agents
+
+<CardGroup cols={2}>
+  <Card
+    icon="hand"
+    title="Human-in-the-loop workflow"
+    href="/guides/example-projects/human-in-the-loop-workflow"
+  >
+    Create audio summaries of newspaper articles using a human-in-the-loop workflow built with
+    ReactFlow and Trigger.dev waitpoint tokens.
+  </Card>
+  <Card
+    title="Mastra agents with memory"
+    icon="database"
+    href="/guides/example-projects/mastra-agents-with-memory"
+  >
+    Use Mastra to create a weather agent that can collect live weather data and generate clothing
+    recommendations.
+  </Card>
+  <Card
+    title="OpenAI Agent Python SDK guardrails"
+    icon="snake"
+    href="/guides/example-projects/openai-agent-sdk-guardrails"
+  >
+    Use the OpenAI Agent SDK to create a guardrails system for your AI agents.
+  </Card>
+  <Card
+    title="OpenAI Agent TypeScript SDK playground"
+    icon="rocket"
+    href="/guides/example-projects/openai-agents-sdk-typescript-playground"
+  >
+    A playground containing 7 AI agents using the OpenAI Agent SDK for TypeScript with Trigger.dev.
+  </Card>
+  <Card
+    title="Vercel AI SDK deep research agent"
+    icon="Triangle"
+    href="/guides/example-projects/vercel-ai-sdk-deep-research"
+  >
+    Use the Vercel AI SDK to generate comprehensive PDF reports using a deep research agent.
+  </Card>
 </CardGroup>
