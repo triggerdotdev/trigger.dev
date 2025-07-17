@@ -60,6 +60,7 @@ import {
   TaskRunStatusCombo,
 } from "./TaskRunStatus";
 import { TaskTriggerSourceIcon } from "./TaskTriggerSource";
+import { useDebounceEffect } from "~/hooks/useDebounce";
 
 export const RunStatus = z.enum(allTaskRunStatuses);
 
@@ -854,18 +855,22 @@ function QueuesDropdown({
 
   const fetcher = useFetcher<typeof queuesLoader>();
 
-  useEffect(() => {
-    const searchParams = new URLSearchParams();
-    searchParams.set("per_page", "25");
-    if (searchValue) {
-      searchParams.set("query", encodeURIComponent(searchValue));
-    }
-    fetcher.load(
-      `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${
-        environment.slug
-      }/queues?${searchParams.toString()}`
-    );
-  }, [searchValue]);
+  useDebounceEffect(
+    searchValue,
+    (s) => {
+      const searchParams = new URLSearchParams();
+      searchParams.set("per_page", "25");
+      if (searchValue) {
+        searchParams.set("query", encodeURIComponent(s));
+      }
+      fetcher.load(
+        `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${
+          environment.slug
+        }/queues?${searchParams.toString()}`
+      );
+    },
+    250
+  );
 
   const filtered = useMemo(() => {
     console.log(fetcher.data);
