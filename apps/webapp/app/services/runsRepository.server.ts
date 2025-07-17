@@ -1,13 +1,13 @@
 import { type ClickHouse, type ClickhouseQueryBuilder } from "@internal/clickhouse";
 import { type Tracer } from "@internal/tracing";
 import { type Logger, type LogLevel } from "@trigger.dev/core/logger";
-import { Prisma, TaskRunStatus } from "@trigger.dev/database";
+import { MachinePresetName } from "@trigger.dev/core/v3";
+import { BulkActionId, RunId } from "@trigger.dev/core/v3/isomorphic";
+import { TaskRunStatus } from "@trigger.dev/database";
 import parseDuration from "parse-duration";
+import { z } from "zod";
 import { timeFilters } from "~/components/runs/v3/SharedFilters";
 import { type PrismaClient } from "~/db.server";
-import { z } from "zod";
-import { BulkActionId, RunId } from "@trigger.dev/core/v3/isomorphic";
-import { MachinePresetName } from "@trigger.dev/core/v3";
 
 export type RunsRepositoryOptions = {
   clickhouse: ClickHouse;

@@ -9,7 +9,7 @@ import {
   XMarkIcon,
 } from "@heroicons/react/20/solid";
 import { Form, useFetcher } from "@remix-run/react";
-import { IconToggleLeft } from "@tabler/icons-react";
+import { IconToggleLeft, IconRotateClockwise2 } from "@tabler/icons-react";
 import { MachinePresetName } from "@trigger.dev/core/v3";
 import type { BulkActionType, TaskRunStatus, TaskTriggerSource } from "@trigger.dev/database";
 import { ListFilterIcon } from "lucide-react";
@@ -57,6 +57,7 @@ import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { type loader as queuesLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.queues";
 import { type loader as tagsLoader } from "~/routes/resources.projects.$projectParam.runs.tags";
+import { type loader as versionsLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.versions";
 import { Button } from "../../primitives/Buttons";
 import { BulkActionTypeCombo } from "./BulkAction";
 import { appliedSummary, FilterMenuProvider, TimeFilter } from "./SharedFilters";
@@ -68,6 +69,7 @@ import {
   TaskRunStatusCombo,
 } from "./TaskRunStatus";
 import { TaskTriggerSourceIcon } from "./TaskTriggerSource";
+import { Badge } from "~/components/primitives/Badge";
 
 export const RunStatus = z.enum(allTaskRunStatuses);
 
@@ -177,6 +179,8 @@ export function filterTitle(filterKey: string) {
       return "Queues";
     case "machines":
       return "Machine";
+    case "versions":
+      return "Version";
     default:
       return filterKey;
   }
@@ -213,6 +217,8 @@ export function filterIcon(filterKey: string): ReactNode | undefined {
       return <RectangleStackIcon className="size-4" />;
     case "machines":
       return <MachineDefaultIcon className="size-4" />;
+    case "versions":
+      return <IconRotateClockwise2 className="size-4" />;
     default:
       return undefined;
   }
@@ -255,6 +261,10 @@ export function getRunFiltersFromSearchParams(
       searchParams.getAll("machines").filter((v) => v.length > 0).length > 0
         ? searchParams.getAll("machines")
         : undefined,
+    versions:
+      searchParams.getAll("versions").filter((v) => v.length > 0).length > 0
+        ? searchParams.getAll("versions")
+        : undefined,
   };
 
   const parsed = TaskRunListSearchFilters.safeParse(params);
@@ -290,7 +300,8 @@ export function RunsFilters(props: RunFiltersProps) {
     searchParams.has("runId") ||
     searchParams.has("scheduleId") ||
     searchParams.has("queues") ||
-    searchParams.has("machines");
+    searchParams.has("machines") ||
+    searchParams.has("versions");
 
   return (
     <div className="flex flex-row flex-wrap items-center gap-1">
@@ -318,6 +329,7 @@ const filterTypes = [
   },
   { name: "tasks", title: "Tasks", icon: <TaskIcon className="size-4" /> },
   { name: "tags", title: "Tags", icon: <TagIcon className="size-4" /> },
+  { name: "versions", title: "Versions", icon: <IconRotateClockwise2 className="size-4" /> },
   { name: "queues", title: "Queues", icon: <RectangleStackIcon className="size-4" /> },
   { name: "machines", title: "Machines", icon: <MachineDefaultIcon className="size-4" /> },
   { name: "run", title: "Run ID", icon: <FingerPrintIcon className="size-4" /> },
@@ -370,6 +382,7 @@ function AppliedFilters({ possibleTasks, bulkActions }: RunFiltersProps) {
       <AppliedStatusFilter />
       <AppliedTaskFilter possibleTasks={possibleTasks} />
       <AppliedTagsFilter />
+      <AppliedVersionsFilter />
       <AppliedQueuesFilter />
       <AppliedMachinesFilter />
       <AppliedRunIdFilter />
@@ -410,6 +423,8 @@ function Menu(props: MenuProps) {
       return <BatchIdDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "schedule":
       return <ScheduleIdDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
+    case "versions":
+      return <VersionsDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
   }
 }
 
@@ -1118,6 +1133,153 @@ function AppliedMachinesFilter() {
                   })
                 )}
                 onRemove={() => del(["machines", "cursor", "direction"])}
+                variant="secondary/small"
+              />
+            </Ariakit.Select>
+          }
+          searchValue={search}
+          clearSearchValue={() => setSearch("")}
+        />
+      )}
+    </FilterMenuProvider>
+  );
+}
+
+function VersionsDropdown({
+  trigger,
+  clearSearchValue,
+  searchValue,
+  onClose,
+}: {
+  trigger: ReactNode;
+  clearSearchValue: () => void;
+  searchValue: string;
+  onClose?: () => void;
+}) {
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+  const { values, replace } = useSearchParams();
+
+  const handleChange = (values: string[]) => {
+    clearSearchValue();
+    replace({
+      versions: values.length > 0 ? values : undefined,
+      cursor: undefined,
+      direction: undefined,
+    });
+  };
+
+  const versionValues = values("versions").filter((v) => v !== "");
+  const selected = versionValues.length > 0 ? versionValues : undefined;
+
+  const fetcher = useFetcher<typeof versionsLoader>();
+
+  useDebounceEffect(
+    searchValue,
+    (s) => {
+      const searchParams = new URLSearchParams();
+      if (searchValue) {
+        searchParams.set("query", encodeURIComponent(s));
+      }
+      fetcher.load(
+        `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${
+          environment.slug
+        }/versions?${searchParams.toString()}`
+      );
+    },
+    250
+  );
+
+  const filtered = useMemo(() => {
+    let items: { version: string; isCurrent: boolean }[] = [];
+
+    for (const version of selected ?? []) {
+      const versionItem = fetcher.data?.versions.find((v) => v.version === version);
+      if (!versionItem) {
+        items.push({
+          version,
+          isCurrent: false,
+        });
+      }
+    }
+
+    if (fetcher.data === undefined) {
+      return matchSorter(items, searchValue);
+    }
+
+    items.push(...fetcher.data.versions);
+
+    if (searchValue === "") {
+      return items;
+    }
+
+    return matchSorter(Array.from(new Set(items)), searchValue, {
+      keys: ["version"],
+    });
+  }, [searchValue, fetcher.data]);
+
+  return (
+    <SelectProvider value={selected ?? []} setValue={handleChange} virtualFocus={true}>
+      {trigger}
+      <SelectPopover
+        className="min-w-0 max-w-[min(240px,var(--popover-available-width))]"
+        hideOnEscape={() => {
+          if (onClose) {
+            onClose();
+            return false;
+          }
+
+          return true;
+        }}
+      >
+        <ComboBox
+          value={searchValue}
+          render={(props) => (
+            <div className="flex items-center justify-stretch">
+              <input {...props} placeholder={"Filter by versions..."} />
+              {fetcher.state === "loading" && <Spinner color="muted" />}
+            </div>
+          )}
+        />
+        <SelectList>
+          {filtered.length > 0
+            ? filtered.map((version) => (
+                <SelectItem key={version.version} value={version.version}>
+                  {version.version}{" "}
+                  {version.isCurrent ? <Badge variant="extra-small">current</Badge> : null}
+                </SelectItem>
+              ))
+            : null}
+          {filtered.length === 0 && fetcher.state !== "loading" && (
+            <SelectItem disabled>No versions found</SelectItem>
+          )}
+        </SelectList>
+      </SelectPopover>
+    </SelectProvider>
+  );
+}
+
+function AppliedVersionsFilter() {
+  const { values, del } = useSearchParams();
+
+  const versions = values("versions");
+
+  if (versions.length === 0 || versions.every((v) => v === "")) {
+    return null;
+  }
+
+  return (
+    <FilterMenuProvider>
+      {(search, setSearch) => (
+        <VersionsDropdown
+          trigger={
+            <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
+              <AppliedFilter
+                label="Versions"
+                icon={filterIcon("versions")}
+                value={appliedSummary(values("versions"))}
+                onRemove={() => del(["versions", "cursor", "direction"])}
                 variant="secondary/small"
               />
             </Ariakit.Select>
