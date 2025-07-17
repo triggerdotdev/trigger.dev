@@ -39,6 +39,17 @@ describe("KeyProducer", () => {
     expect(key).toBe("{org:o1234}:proj:p1234:env:e1234:concurrencyBurstFactor");
   });
 
+  it("envCurrentDequeuedKey", () => {
+    const keyProducer = new RunQueueFullKeyProducer();
+    const key = keyProducer.envCurrentDequeuedKey({
+      orgId: "o1234",
+      projectId: "p1234",
+      envId: "e1234",
+    });
+
+    expect(key).toBe("{org:o1234}:proj:p1234:env:e1234:currentDequeued");
+  });
+
   it("queueKey (no concurrency)", () => {
     const keyProducer = new RunQueueFullKeyProducer();
     const key = keyProducer.queueKey(
@@ -68,7 +79,7 @@ describe("KeyProducer", () => {
     expect(key).toBe("{org:o1234}:proj:p1234:env:e1234:queue:task/task-name:ck:c1234");
   });
 
-  it("concurrencyLimitKeyFromQueue (w concurrency)", () => {
+  it("queueConcurrencyLimitKeyFromQueue (w concurrency)", () => {
     const keyProducer = new RunQueueFullKeyProducer();
     const queueKey = keyProducer.queueKey(
       {
@@ -80,11 +91,11 @@ describe("KeyProducer", () => {
       "task/task-name",
       "c1234"
     );
-    const key = keyProducer.concurrencyLimitKeyFromQueue(queueKey);
+    const key = keyProducer.queueConcurrencyLimitKeyFromQueue(queueKey);
     expect(key).toBe("{org:o1234}:proj:p1234:env:e1234:queue:task/task-name:concurrency");
   });
 
-  it("concurrencyLimitKeyFromQueue (no concurrency)", () => {
+  it("queueConcurrencyLimitKeyFromQueue (no concurrency)", () => {
     const keyProducer = new RunQueueFullKeyProducer();
     const queueKey = keyProducer.queueKey(
       {
@@ -95,11 +106,11 @@ describe("KeyProducer", () => {
       },
       "task/task-name"
     );
-    const key = keyProducer.concurrencyLimitKeyFromQueue(queueKey);
+    const key = keyProducer.queueConcurrencyLimitKeyFromQueue(queueKey);
     expect(key).toBe("{org:o1234}:proj:p1234:env:e1234:queue:task/task-name:concurrency");
   });
 
-  it("currentConcurrencyKeyFromQueue (w concurrency)", () => {
+  it("queueCurrentConcurrencyKeyFromQueue (w concurrency)", () => {
     const keyProducer = new RunQueueFullKeyProducer();
     const queueKey = keyProducer.queueKey(
       {
@@ -111,13 +122,13 @@ describe("KeyProducer", () => {
       "task/task-name",
       "c1234"
     );
-    const key = keyProducer.currentConcurrencyKeyFromQueue(queueKey);
+    const key = keyProducer.queueCurrentConcurrencyKeyFromQueue(queueKey);
     expect(key).toBe(
       "{org:o1234}:proj:p1234:env:e1234:queue:task/task-name:ck:c1234:currentConcurrency"
     );
   });
 
-  it("currentConcurrencyKeyFromQueue (no concurrency)", () => {
+  it("queueCurrentConcurrencyKeyFromQueue (no concurrency)", () => {
     const keyProducer = new RunQueueFullKeyProducer();
     const queueKey = keyProducer.queueKey(
       {
@@ -128,13 +139,13 @@ describe("KeyProducer", () => {
       },
       "task/task-name"
     );
-    const key = keyProducer.currentConcurrencyKeyFromQueue(queueKey);
+    const key = keyProducer.queueCurrentConcurrencyKeyFromQueue(queueKey);
     expect(key).toBe("{org:o1234}:proj:p1234:env:e1234:queue:task/task-name:currentConcurrency");
   });
 
-  it("currentConcurrencyKey (w concurrency)", () => {
+  it("queueCurrentConcurrencyKey (w concurrency)", () => {
     const keyProducer = new RunQueueFullKeyProducer();
-    const key = keyProducer.currentConcurrencyKey(
+    const key = keyProducer.queueCurrentConcurrencyKey(
       {
         id: "e1234",
         type: "PRODUCTION",
@@ -149,9 +160,9 @@ describe("KeyProducer", () => {
     );
   });
 
-  it("currentConcurrencyKey (no concurrency)", () => {
+  it("queueCurrentConcurrencyKey (no concurrency)", () => {
     const keyProducer = new RunQueueFullKeyProducer();
-    const key = keyProducer.currentConcurrencyKey(
+    const key = keyProducer.queueCurrentConcurrencyKey(
       {
         id: "e1234",
         type: "PRODUCTION",
@@ -164,7 +175,26 @@ describe("KeyProducer", () => {
     expect(key).toBe("{org:o1234}:proj:p1234:env:e1234:queue:task/task-name:currentConcurrency");
   });
 
-  it("disabledConcurrencyLimitKeyFromQueue", () => {
+  it("queueCurrentDequeuedKeyFromQueue (w concurrency)", () => {
+    const keyProducer = new RunQueueFullKeyProducer();
+    const queueKey = keyProducer.queueKey(
+      {
+        id: "e1234",
+        type: "PRODUCTION",
+        project: { id: "p1234" },
+        organization: { id: "o1234" },
+      },
+      "task/task-name",
+      "c1234"
+    );
+
+    const key = keyProducer.queueCurrentDequeuedKeyFromQueue(queueKey);
+    expect(key).toBe(
+      "{org:o1234}:proj:p1234:env:e1234:queue:task/task-name:ck:c1234:currentDequeued"
+    );
+  });
+
+  it("queueCurrentDequeuedKeyFromQueue (no concurrency)", () => {
     const keyProducer = new RunQueueFullKeyProducer();
     const queueKey = keyProducer.queueKey(
       {
@@ -175,8 +205,39 @@ describe("KeyProducer", () => {
       },
       "task/task-name"
     );
-    const key = keyProducer.disabledConcurrencyLimitKeyFromQueue(queueKey);
-    expect(key).toBe("{org:o1234}:disabledConcurrency");
+    const key = keyProducer.queueCurrentDequeuedKeyFromQueue(queueKey);
+    expect(key).toBe("{org:o1234}:proj:p1234:env:e1234:queue:task/task-name:currentDequeued");
+  });
+
+  it("queueCurrentDequeuedKey (w concurrency)", () => {
+    const keyProducer = new RunQueueFullKeyProducer();
+    const key = keyProducer.queueCurrentDequeuedKey(
+      {
+        id: "e1234",
+        type: "PRODUCTION",
+        project: { id: "p1234" },
+        organization: { id: "o1234" },
+      },
+      "task/task-name",
+      "c1234"
+    );
+    expect(key).toBe(
+      "{org:o1234}:proj:p1234:env:e1234:queue:task/task-name:ck:c1234:currentDequeued"
+    );
+  });
+
+  it("queueCurrentDequeuedKey (no concurrency)", () => {
+    const keyProducer = new RunQueueFullKeyProducer();
+    const key = keyProducer.queueCurrentDequeuedKey(
+      {
+        id: "e1234",
+        type: "PRODUCTION",
+        project: { id: "p1234" },
+        organization: { id: "o1234" },
+      },
+      "task/task-name"
+    );
+    expect(key).toBe("{org:o1234}:proj:p1234:env:e1234:queue:task/task-name:currentDequeued");
   });
 
   it("envConcurrencyLimitKeyFromQueue", () => {
@@ -222,6 +283,21 @@ describe("KeyProducer", () => {
     );
     const key = keyProducer.envCurrentConcurrencyKeyFromQueue(queueKey);
     expect(key).toBe("{org:o1234}:proj:p1234:env:e1234:currentConcurrency");
+  });
+
+  it("envCurrentDequeuedKeyFromQueue", () => {
+    const keyProducer = new RunQueueFullKeyProducer();
+    const queueKey = keyProducer.queueKey(
+      {
+        id: "e1234",
+        type: "PRODUCTION",
+        project: { id: "p1234" },
+        organization: { id: "o1234" },
+      },
+      "task/task-name"
+    );
+    const key = keyProducer.envCurrentDequeuedKeyFromQueue(queueKey);
+    expect(key).toBe("{org:o1234}:proj:p1234:env:e1234:currentDequeued");
   });
 
   it("envCurrentConcurrencyKey", () => {

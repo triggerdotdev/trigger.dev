@@ -10,10 +10,11 @@ import {
 import { DialogClose } from "@radix-ui/react-dialog";
 import {
   Form,
+  useNavigate,
   useNavigation,
   useRevalidator,
   useSearchParams,
-  type MetaFunction
+  type MetaFunction,
 } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { type RuntimeEnvironmentType } from "@trigger.dev/database";
@@ -33,8 +34,6 @@ import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { FormButtons } from "~/components/primitives/FormButtons";
-import { Header3 } from "~/components/primitives/Headers";
-import { Input } from "~/components/primitives/Input";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -59,7 +58,6 @@ import { useEnvironment } from "~/hooks/useEnvironment";
 import { useEventSource } from "~/hooks/useEventSource";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { useThrottle } from "~/hooks/useThrottle";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
@@ -71,6 +69,9 @@ import { docsPath, EnvironmentParamSchema, v3BillingPath } from "~/utils/pathBui
 import { PauseEnvironmentService } from "~/v3/services/pauseEnvironment.server";
 import { PauseQueueService } from "~/v3/services/pauseQueue.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { Header3 } from "~/components/primitives/Headers";
+import { Input } from "~/components/primitives/Input";
+import { useThrottle } from "~/hooks/useThrottle";
 
 const SearchParamsSchema = z.object({
   query: z.string().optional(),
@@ -423,16 +424,12 @@ export default function Page() {
                             alignment="right"
                             className={cn(
                               queue.paused ? "tabular-nums opacity-50" : undefined,
+                              queue.running > 0 && "text-text-bright",
                               isAtLimit && "text-warning"
                             )}
                           >
                             {queue.running}/
-                            <span
-                              className={cn(
-                                "tabular-nums text-text-dimmed",
-                                isAtLimit && "text-warning"
-                              )}
-                            >
+                            <span className={cn("tabular-nums", isAtLimit && "text-warning")}>
                               {limit}
                             </span>
                           </TableCell>

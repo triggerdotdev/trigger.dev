@@ -72,14 +72,20 @@ export interface RunQueueKeyProducer {
   envQueueKey(env: RunQueueKeyProducerEnvironment): string;
   envQueueKeyFromQueue(queue: string): string;
   queueConcurrencyLimitKey(env: RunQueueKeyProducerEnvironment, queue: string): string;
-  concurrencyLimitKeyFromQueue(queue: string): string;
-  currentConcurrencyKeyFromQueue(queue: string): string;
-  currentConcurrencyKey(
+  queueConcurrencyLimitKeyFromQueue(queue: string): string;
+  queueCurrentConcurrencyKeyFromQueue(queue: string): string;
+  queueCurrentConcurrencyKey(
     env: RunQueueKeyProducerEnvironment,
     queue: string,
     concurrencyKey?: string
   ): string;
-  disabledConcurrencyLimitKeyFromQueue(queue: string): string;
+  queueCurrentDequeuedKeyFromQueue(queue: string): string;
+  queueCurrentDequeuedKey(
+    env: RunQueueKeyProducerEnvironment,
+    queue: string,
+    concurrencyKey?: string
+  ): string;
+
   //env oncurrency
   envCurrentConcurrencyKey(env: EnvDescriptor): string;
   envCurrentConcurrencyKey(env: RunQueueKeyProducerEnvironment): string;
@@ -87,12 +93,17 @@ export interface RunQueueKeyProducer {
   envConcurrencyLimitKey(env: EnvDescriptor): string;
   envConcurrencyLimitKey(env: RunQueueKeyProducerEnvironment): string;
 
+  envCurrentDequeuedKey(env: EnvDescriptor): string;
+  envCurrentDequeuedKey(env: RunQueueKeyProducerEnvironment): string;
+
   envConcurrencyLimitBurstFactorKey(env: EnvDescriptor): string;
   envConcurrencyLimitBurstFactorKey(env: RunQueueKeyProducerEnvironment): string;
   envConcurrencyLimitBurstFactorKeyFromQueue(queue: string): string;
 
   envConcurrencyLimitKeyFromQueue(queue: string): string;
   envCurrentConcurrencyKeyFromQueue(queue: string): string;
+  envCurrentDequeuedKeyFromQueue(queue: string): string;
+
   //message payload
   messageKeyPrefixFromQueue(queue: string): string;
   messageKey(orgId: string, messageId: string): string;

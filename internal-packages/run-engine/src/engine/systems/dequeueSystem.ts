@@ -11,27 +11,23 @@ import { RunEngineOptions } from "../types.js";
 import { ExecutionSnapshotSystem, getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
 import { RunAttemptSystem } from "./runAttemptSystem.js";
 import { SystemResources } from "./systems.js";
-import { WaitpointSystem } from "./waitpointSystem.js";
 
 export type DequeueSystemOptions = {
   resources: SystemResources;
   machines: RunEngineOptions["machines"];
   executionSnapshotSystem: ExecutionSnapshotSystem;
   runAttemptSystem: RunAttemptSystem;
-  waitpointSystem: WaitpointSystem;
 };
 
 export class DequeueSystem {
   private readonly $: SystemResources;
   private readonly executionSnapshotSystem: ExecutionSnapshotSystem;
   private readonly runAttemptSystem: RunAttemptSystem;
-  private readonly waitpointSystem: WaitpointSystem;
 
   constructor(private readonly options: DequeueSystemOptions) {
     this.$ = options.resources;
     this.executionSnapshotSystem = options.executionSnapshotSystem;
     this.runAttemptSystem = options.runAttemptSystem;
-    this.waitpointSystem = options.waitpointSystem;
   }
 
   /**

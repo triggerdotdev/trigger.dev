@@ -102,7 +102,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       run.runtimeEnvironment
     );
 
-    const queueCurrentConcurrencyKey = engine.runQueue.keys.currentConcurrencyKey(
+    const queueCurrentConcurrencyKey = engine.runQueue.keys.queueCurrentConcurrencyKey(
       run.runtimeEnvironment,
       run.queue,
       run.concurrencyKey ?? undefined

@@ -4,9 +4,9 @@ import { jumpHash } from "@trigger.dev/core/v3/serverOnly";
 
 const constants = {
   CURRENT_CONCURRENCY_PART: "currentConcurrency",
+  CURRENT_DEQUEUED_PART: "currentDequeued",
   CONCURRENCY_LIMIT_PART: "concurrency",
   CONCURRENCY_LIMIT_BURST_FACTOR_PART: "concurrencyBurstFactor",
-  DISABLED_CONCURRENCY_LIMIT_PART: "disabledConcurrency",
   ENV_PART: "env",
   ORG_PART: "org",
   PROJECT_PART: "proj",
@@ -133,16 +133,28 @@ export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
     return [this.orgKeySection(orgId), this.envKeySection(envId)].join(":");
   }
 
-  concurrencyLimitKeyFromQueue(queue: string) {
+  queueConcurrencyLimitKeyFromQueue(queue: string) {
     const concurrencyQueueName = queue.replace(/:ck:.+$/, "");
     return `${concurrencyQueueName}:${constants.CONCURRENCY_LIMIT_PART}`;
   }
 
-  currentConcurrencyKeyFromQueue(queue: string) {
+  queueCurrentConcurrencyKeyFromQueue(queue: string) {
     return `${queue}:${constants.CURRENT_CONCURRENCY_PART}`;
   }
 
-  currentConcurrencyKey(
+  queueCurrentDequeuedKeyFromQueue(queue: string) {
+    return `${queue}:${constants.CURRENT_DEQUEUED_PART}`;
+  }
+
+  queueCurrentDequeuedKey(
+    env: RunQueueKeyProducerEnvironment,
+    queue: string,
+    concurrencyKey?: string
+  ): string {
+    return [this.queueKey(env, queue, concurrencyKey), constants.CURRENT_DEQUEUED_PART].join(":");
+  }
+
+  queueCurrentConcurrencyKey(
     env: RunQueueKeyProducerEnvironment,
     queue: string,
     concurrencyKey?: string
@@ -150,11 +162,6 @@ export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
     return [this.queueKey(env, queue, concurrencyKey), constants.CURRENT_CONCURRENCY_PART].join(
       ":"
     );
-  }
-
-  disabledConcurrencyLimitKeyFromQueue(queue: string) {
-    const { orgId } = this.descriptorFromQueue(queue);
-    return `{${constants.ORG_PART}:${orgId}}:${constants.DISABLED_CONCURRENCY_LIMIT_PART}`;
   }
 
   envConcurrencyLimitKeyFromQueue(queue: string) {
@@ -205,6 +212,36 @@ export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
         this.projKeySection(envOrDescriptor.projectId),
         this.envKeySection(envOrDescriptor.envId),
         constants.CURRENT_CONCURRENCY_PART,
+      ].join(":");
+    }
+  }
+
+  envCurrentDequeuedKeyFromQueue(queue: string) {
+    const { orgId, envId, projectId } = this.descriptorFromQueue(queue);
+
+    return this.envCurrentDequeuedKey({
+      orgId,
+      projectId,
+      envId,
+    });
+  }
+
+  envCurrentDequeuedKey(env: EnvDescriptor): string;
+  envCurrentDequeuedKey(env: RunQueueKeyProducerEnvironment): string;
+  envCurrentDequeuedKey(envOrDescriptor: EnvDescriptor | RunQueueKeyProducerEnvironment): string {
+    if ("id" in envOrDescriptor) {
+      return [
+        this.orgKeySection(envOrDescriptor.organization.id),
+        this.projKeySection(envOrDescriptor.project.id),
+        this.envKeySection(envOrDescriptor.id),
+        constants.CURRENT_DEQUEUED_PART,
+      ].join(":");
+    } else {
+      return [
+        this.orgKeySection(envOrDescriptor.orgId),
+        this.projKeySection(envOrDescriptor.projectId),
+        this.envKeySection(envOrDescriptor.envId),
+        constants.CURRENT_DEQUEUED_PART,
       ].join(":");
     }
   }
