@@ -8,7 +8,6 @@ import parseDuration from "parse-duration";
 import { z } from "zod";
 import { timeFilters } from "~/components/runs/v3/SharedFilters";
 import { type PrismaClient } from "~/db.server";
-import { MachinePresetName } from "@trigger.dev/core/v3";
 
 export type RunsRepositoryOptions = {
   clickhouse: ClickHouse;
@@ -47,11 +46,6 @@ export type RunListInputFilters = Omit<
   RunListInputOptions,
   "organizationId" | "projectId" | "environmentId"
 >;
-
-export type ParsedRunFilters = RunListInputFilters & {
-  cursor?: string;
-  direction?: "forward" | "backward";
-};
 
 export type ParsedRunFilters = RunListInputFilters & {
   cursor?: string;
