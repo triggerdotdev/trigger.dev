@@ -3,6 +3,7 @@ import {
   CalendarIcon,
   ClockIcon,
   FingerPrintIcon,
+  RectangleStackIcon,
   Squares2X2Icon,
   TagIcon,
   XMarkIcon,
@@ -41,9 +42,12 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "~/components/primitives/Tooltip";
+import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
+import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
+import { type loader as queuesLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.queues";
 import { type loader as tagsLoader } from "~/routes/resources.projects.$projectParam.runs.tags";
 import { Button } from "../../primitives/Buttons";
 import { BulkActionTypeCombo } from "./BulkAction";
@@ -105,6 +109,7 @@ export const TaskRunListSearchFilters = z.object({
   batchId: z.string().optional(),
   runId: StringOrStringArray,
   scheduleId: z.string().optional(),
+  queues: StringOrStringArray,
 });
 
 export type TaskRunListSearchFilters = z.infer<typeof TaskRunListSearchFilters>;
@@ -138,6 +143,8 @@ export function filterTitle(filterKey: string) {
       return "Run ID";
     case "scheduleId":
       return "Schedule ID";
+    case "queues":
+      return "Queues";
     default:
       return filterKey;
   }
@@ -170,6 +177,8 @@ export function filterIcon(filterKey: string): ReactNode | undefined {
       return <FingerPrintIcon className="size-4" />;
     case "scheduleId":
       return <ClockIcon className="size-4" />;
+    case "queues":
+      return <RectangleStackIcon className="size-4" />;
     default:
       return undefined;
   }
@@ -204,6 +213,10 @@ export function getRunFiltersFromSearchParams(
         : undefined,
     batchId: searchParams.get("batchId") ?? undefined,
     scheduleId: searchParams.get("scheduleId") ?? undefined,
+    queues:
+      searchParams.getAll("queues").filter((v) => v.length > 0).length > 0
+        ? searchParams.getAll("queues")
+        : undefined,
   };
 
   const parsed = TaskRunListSearchFilters.safeParse(params);
@@ -237,7 +250,8 @@ export function RunsFilters(props: RunFiltersProps) {
     searchParams.has("tags") ||
     searchParams.has("batchId") ||
     searchParams.has("runId") ||
-    searchParams.has("scheduleId");
+    searchParams.has("scheduleId") ||
+    searchParams.has("queues");
 
   return (
     <div className="flex flex-row flex-wrap items-center gap-1">
@@ -265,6 +279,7 @@ const filterTypes = [
   },
   { name: "tasks", title: "Tasks", icon: <TaskIcon className="size-4" /> },
   { name: "tags", title: "Tags", icon: <TagIcon className="size-4" /> },
+  { name: "queues", title: "Queues", icon: <RectangleStackIcon className="size-4" /> },
   { name: "run", title: "Run ID", icon: <FingerPrintIcon className="size-4" /> },
   { name: "batch", title: "Batch ID", icon: <Squares2X2Icon className="size-4" /> },
   { name: "schedule", title: "Schedule ID", icon: <ClockIcon className="size-4" /> },
@@ -315,6 +330,7 @@ function AppliedFilters({ possibleTasks, bulkActions }: RunFiltersProps) {
       <AppliedStatusFilter />
       <AppliedTaskFilter possibleTasks={possibleTasks} />
       <AppliedTagsFilter />
+      <AppliedQueuesFilter />
       <AppliedRunIdFilter />
       <AppliedBatchIdFilter />
       <AppliedScheduleIdFilter />
@@ -343,6 +359,8 @@ function Menu(props: MenuProps) {
       return <BulkActionsDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "tags":
       return <TagsDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
+    case "queues":
+      return <QueuesDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "run":
       return <RunIdDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "batch":
@@ -794,6 +812,175 @@ function AppliedTagsFilter() {
                 icon={filterIcon("tags")}
                 value={appliedSummary(values("tags"))}
                 onRemove={() => del(["tags", "cursor", "direction"])}
+                variant="secondary/small"
+              />
+            </Ariakit.Select>
+          }
+          searchValue={search}
+          clearSearchValue={() => setSearch("")}
+        />
+      )}
+    </FilterMenuProvider>
+  );
+}
+
+function QueuesDropdown({
+  trigger,
+  clearSearchValue,
+  searchValue,
+  onClose,
+}: {
+  trigger: ReactNode;
+  clearSearchValue: () => void;
+  searchValue: string;
+  onClose?: () => void;
+}) {
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+  const { values, replace } = useSearchParams();
+
+  const handleChange = (values: string[]) => {
+    clearSearchValue();
+    replace({
+      queues: values.length > 0 ? values : undefined,
+      cursor: undefined,
+      direction: undefined,
+    });
+  };
+
+  const queueValues = values("queues").filter((v) => v !== "");
+  const selected = queueValues.length > 0 ? queueValues : undefined;
+
+  const fetcher = useFetcher<typeof queuesLoader>();
+
+  useEffect(() => {
+    const searchParams = new URLSearchParams();
+    searchParams.set("per_page", "25");
+    if (searchValue) {
+      searchParams.set("query", encodeURIComponent(searchValue));
+    }
+    fetcher.load(
+      `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${
+        environment.slug
+      }/queues?${searchParams.toString()}`
+    );
+  }, [searchValue]);
+
+  const filtered = useMemo(() => {
+    console.log(fetcher.data);
+    let items: { name: string; type: "custom" | "task"; value: string }[] = [];
+    if (searchValue === "") {
+      // items = selected ?? [];
+      items = [];
+    }
+
+    for (const queueName of selected ?? []) {
+      const queueItem = fetcher.data?.queues.find((q) => q.name === queueName);
+      if (!queueItem) {
+        if (queueName.startsWith("task/")) {
+          items.push({
+            name: queueName.replace("task/", ""),
+            type: "task",
+            value: queueName,
+          });
+        } else {
+          items.push({
+            name: queueName,
+            type: "custom",
+            value: queueName,
+          });
+        }
+      }
+    }
+
+    if (fetcher.data === undefined) {
+      return matchSorter(items, searchValue);
+    }
+
+    items.push(
+      ...fetcher.data.queues.map((q) => ({
+        name: q.name,
+        type: q.type,
+        value: q.type === "task" ? `task/${q.name}` : q.name,
+      }))
+    );
+
+    return matchSorter(Array.from(new Set(items)), searchValue, {
+      keys: ["name"],
+    });
+  }, [searchValue, fetcher.data]);
+
+  return (
+    <SelectProvider value={selected ?? []} setValue={handleChange} virtualFocus={true}>
+      {trigger}
+      <SelectPopover
+        className="min-w-0 max-w-[min(240px,var(--popover-available-width))]"
+        hideOnEscape={() => {
+          if (onClose) {
+            onClose();
+            return false;
+          }
+
+          return true;
+        }}
+      >
+        <ComboBox
+          value={searchValue}
+          render={(props) => (
+            <div className="flex items-center justify-stretch">
+              <input {...props} placeholder={"Filter by queues..."} />
+              {fetcher.state === "loading" && <Spinner color="muted" />}
+            </div>
+          )}
+        />
+        <SelectList>
+          {filtered.length > 0
+            ? filtered.map((queue) => (
+                <SelectItem
+                  key={queue.value}
+                  value={queue.value}
+                  icon={
+                    queue.type === "task" ? (
+                      <TaskIcon className="size-4 shrink-0 text-blue-500" />
+                    ) : (
+                      <RectangleStackIcon className="size-4 shrink-0 text-purple-500" />
+                    )
+                  }
+                >
+                  {queue.name}
+                </SelectItem>
+              ))
+            : null}
+          {filtered.length === 0 && fetcher.state !== "loading" && (
+            <SelectItem disabled>No queues found</SelectItem>
+          )}
+        </SelectList>
+      </SelectPopover>
+    </SelectProvider>
+  );
+}
+
+function AppliedQueuesFilter() {
+  const { values, del } = useSearchParams();
+
+  const queues = values("queues");
+
+  if (queues.length === 0 || queues.every((v) => v === "")) {
+    return null;
+  }
+
+  return (
+    <FilterMenuProvider>
+      {(search, setSearch) => (
+        <QueuesDropdown
+          trigger={
+            <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
+              <AppliedFilter
+                label="Queues"
+                icon={filterIcon("queues")}
+                value={appliedSummary(values("queues").map((v) => v.replace("task/", "")))}
+                onRemove={() => del(["queues", "cursor", "direction"])}
                 variant="secondary/small"
               />
             </Ariakit.Select>

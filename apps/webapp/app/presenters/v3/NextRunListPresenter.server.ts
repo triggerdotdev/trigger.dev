@@ -30,6 +30,7 @@ export type RunListOptions = {
   rootOnly?: boolean;
   batchId?: string;
   runId?: string[];
+  queues?: string[];
   //pagination
   direction?: Direction;
   cursor?: string;
@@ -65,6 +66,7 @@ export class NextRunListPresenter {
       rootOnly,
       batchId,
       runId,
+      queues,
       from,
       to,
       direction = "forward",
@@ -90,6 +92,7 @@ export class NextRunListPresenter {
       (tags !== undefined && tags.length > 0) ||
       batchId !== undefined ||
       (runId !== undefined && runId.length > 0) ||
+      (queues !== undefined && queues.length > 0) ||
       typeof isTest === "boolean" ||
       rootOnly === true ||
       !time.isDefault;
@@ -173,6 +176,7 @@ export class NextRunListPresenter {
       batchId,
       runId,
       bulkId,
+      queues,
       page: {
         size: pageSize,
         cursor,
@@ -233,6 +237,10 @@ export class NextRunListPresenter {
           metadata: run.metadata,
           metadataType: run.metadataType,
           machinePreset: run.machinePreset ? machinePresetFromRun(run)?.name : undefined,
+          queue: {
+            name: run.queue.replace("task/", ""),
+            type: run.queue.startsWith("task/") ? "task" : "custom",
+          },
         };
       }),
       pagination: {

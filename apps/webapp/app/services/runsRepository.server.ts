@@ -36,6 +36,7 @@ const RunListInputOptionsSchema = z.object({
   batchId: z.string().optional(),
   runId: z.array(z.string()).optional(),
   bulkId: z.string().optional(),
+  queues: z.array(z.string()).optional(),
 });
 
 export type RunListInputOptions = z.infer<typeof RunListInputOptionsSchema>;
@@ -43,6 +44,11 @@ export type RunListInputFilters = Omit<
   RunListInputOptions,
   "organizationId" | "projectId" | "environmentId"
 >;
+
+export type ParsedRunFilters = RunListInputFilters & {
+  cursor?: string;
+  direction?: "forward" | "backward";
+};
 
 type FilterRunsOptions = Omit<RunListInputOptions, "period"> & {
   period: number | undefined;
@@ -170,6 +176,7 @@ export class RunsRepository {
         metadata: true,
         metadataType: true,
         machinePreset: true,
+        queue: true,
       },
     });
 
@@ -352,6 +359,10 @@ function applyRunFiltersToQueryBuilder<T>(
     queryBuilder.where("friendly_id IN {runIds: Array(String)}", {
       runIds: options.runId.map((runId) => RunId.toFriendlyId(runId)),
     });
+  }
+
+  if (options.queues && options.queues.length > 0) {
+    queryBuilder.where("queue IN {queues: Array(String)}", { queues: options.queues });
   }
 }
 

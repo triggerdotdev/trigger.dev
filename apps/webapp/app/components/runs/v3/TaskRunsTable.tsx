@@ -59,6 +59,7 @@ import {
 import { MachineIcon } from "~/assets/icons/MachineIcon";
 import { MachineLabelCombo } from "~/components/MachineLabelCombo";
 import { MachineTooltipInfo } from "~/components/MachineTooltipInfo";
+import { TaskIconSmall } from "~/assets/icons/TaskIcon";
 
 type RunsTableProps = {
   total: number;
@@ -82,9 +83,8 @@ export function TaskRunsTable({
 }: RunsTableProps) {
   const organization = useOrganization();
   const project = useProject();
-  const environment = useEnvironment();
   const checkboxes = useRef<(HTMLInputElement | null)[]>([]);
-  const { selectedItems, has, hasAll, select, deselect, toggle } = useSelectedItems(allowSelection);
+  const { has, hasAll, select, deselect, toggle } = useSelectedItems(allowSelection);
   const { isManagedCloud } = useFeatures();
 
   const showCompute = isManagedCloud;
@@ -213,6 +213,7 @@ export function TaskRunsTable({
           </TableHeaderCell>
           <TableHeaderCell>Test</TableHeaderCell>
           <TableHeaderCell>Created at</TableHeaderCell>
+          <TableHeaderCell>Queue</TableHeaderCell>
           <TableHeaderCell
             tooltip={
               <div className="max-w-xs p-1">
@@ -393,6 +394,22 @@ export function TaskRunsTable({
                 </TableCell>
                 <TableCell to={path}>
                   {run.createdAt ? <DateTime date={run.createdAt} /> : "–"}
+                </TableCell>
+                <TableCell to={path}>
+                  <span className="flex items-center gap-1">
+                    {run.queue.type === "task" ? (
+                      <SimpleTooltip
+                        button={<TaskIconSmall className="size-[1.125rem] text-blue-500" />}
+                        content={`This queue was automatically created from your "${run.queue.name}" task`}
+                      />
+                    ) : (
+                      <SimpleTooltip
+                        button={<RectangleStackIcon className="size-[1.125rem] text-purple-500" />}
+                        content={`This is a custom queue you added in your code.`}
+                      />
+                    )}
+                    <span>{run.queue.name}</span>
+                  </span>
                 </TableCell>
                 <TableCell to={path}>
                   {run.delayUntil ? <DateTime date={run.delayUntil} /> : "–"}
