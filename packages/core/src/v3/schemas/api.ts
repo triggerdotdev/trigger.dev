@@ -713,6 +713,7 @@ const CommonRunFields = {
   version: z.string().optional(),
   isQueued: z.boolean(),
   isExecuting: z.boolean(),
+  isWaiting: z.boolean(),
   isCompleted: z.boolean(),
   isSuccess: z.boolean(),
   isFailed: z.boolean(),

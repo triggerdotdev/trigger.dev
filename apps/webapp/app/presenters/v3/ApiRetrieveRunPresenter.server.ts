@@ -354,8 +354,7 @@ export class ApiRetrieveRunPresenter {
       status === "EXECUTING" ||
       status === "REATTEMPTING" ||
       status === "FROZEN" ||
-      status === "DEQUEUED" ||
-      status === "WAITING";
+      status === "DEQUEUED";
     const isCompleted =
       status === "COMPLETED" ||
       status === "CANCELED" ||
@@ -366,6 +365,7 @@ export class ApiRetrieveRunPresenter {
     const isFailed = isCompleted && status !== "COMPLETED";
     const isSuccess = isCompleted && status === "COMPLETED";
     const isCancelled = status === "CANCELED";
+    const isWaiting = status === "WAITING";
 
     return {
       isQueued,
@@ -374,6 +374,7 @@ export class ApiRetrieveRunPresenter {
       isFailed,
       isSuccess,
       isCancelled,
+      isWaiting,
     };
   }
 

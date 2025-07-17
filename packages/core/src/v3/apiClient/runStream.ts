@@ -47,6 +47,7 @@ export type RunShape<TRunTypes extends AnyRunTypes> = TRunTypes extends AnyRunTy
       isTest: boolean;
       isQueued: boolean;
       isExecuting: boolean;
+      isWaiting: boolean;
       isCompleted: boolean;
       isFailed: boolean;
       isSuccess: boolean;
@@ -448,13 +449,15 @@ export class RunSubscription<TRunTypes extends AnyRunTypes> {
 }
 
 const queuedStatuses = ["PENDING_VERSION", "QUEUED", "PENDING", "DELAYED"];
-const executingStatuses = ["DEQUEUED", "EXECUTING", "WAITING"];
+const waitingStatuses = ["WAITING"];
+const executingStatuses = ["DEQUEUED", "EXECUTING"];
 const failedStatuses = ["FAILED", "CRASHED", "SYSTEM_FAILURE", "EXPIRED", "TIMED_OUT"];
 const successfulStatuses = ["COMPLETED"];
 
 function booleanHelpersFromRunStatus(status: RunStatus) {
   return {
     isQueued: queuedStatuses.includes(status),
+    isWaiting: waitingStatuses.includes(status),
     isExecuting: executingStatuses.includes(status),
     isCompleted: successfulStatuses.includes(status) || failedStatuses.includes(status),
     isFailed: failedStatuses.includes(status),
