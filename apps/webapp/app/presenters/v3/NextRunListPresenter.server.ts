@@ -9,6 +9,7 @@ import { timeFilters } from "~/components/runs/v3/SharedFilters";
 import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { getAllTaskIdentifiers } from "~/models/task.server";
 import { RunsRepository } from "~/services/runsRepository.server";
+import { machinePresetFromRun } from "~/v3/machinePresets.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { isCancellableRunStatus, isFinalRunStatus, isPendingRunStatus } from "~/v3/taskStatus";
 
@@ -231,6 +232,7 @@ export class NextRunListPresenter {
           rootTaskRunId: run.rootTaskRunId,
           metadata: run.metadata,
           metadataType: run.metadataType,
+          machinePreset: run.machinePreset ? machinePresetFromRun(run)?.name : undefined,
         };
       }),
       pagination: {

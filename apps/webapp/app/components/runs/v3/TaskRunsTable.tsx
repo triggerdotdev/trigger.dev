@@ -8,7 +8,11 @@ import {
 } from "@heroicons/react/20/solid";
 import { BeakerIcon, BookOpenIcon, CheckIcon } from "@heroicons/react/24/solid";
 import { useLocation } from "@remix-run/react";
-import { formatDuration, formatDurationMilliseconds } from "@trigger.dev/core/v3";
+import {
+  formatDuration,
+  formatDurationMilliseconds,
+  MachinePresetName,
+} from "@trigger.dev/core/v3";
 import { useCallback, useRef } from "react";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
@@ -52,6 +56,9 @@ import {
   filterableTaskRunStatuses,
   TaskRunStatusCombo,
 } from "./TaskRunStatus";
+import { MachineIcon } from "~/assets/icons/MachineIcon";
+import { MachineLabelCombo } from "~/components/MachineLabelCombo";
+import { MachineTooltipInfo } from "~/components/MachineTooltipInfo";
 
 type RunsTableProps = {
   total: number;
@@ -201,6 +208,9 @@ export function TaskRunsTable({
               <TableHeaderCell>Compute</TableHeaderCell>
             </>
           )}
+          <TableHeaderCell className="pl-4" tooltip={<MachineTooltipInfo />}>
+            Machine
+          </TableHeaderCell>
           <TableHeaderCell>Test</TableHeaderCell>
           <TableHeaderCell>Created at</TableHeaderCell>
           <TableHeaderCell
@@ -375,6 +385,9 @@ export function TaskRunsTable({
                       : "–"}
                   </TableCell>
                 )}
+                <TableCell to={path}>
+                  <MachineLabelCombo preset={run.machinePreset} />
+                </TableCell>
                 <TableCell to={path}>
                   {run.isTest ? <CheckIcon className="size-4 text-charcoal-400" /> : "–"}
                 </TableCell>
