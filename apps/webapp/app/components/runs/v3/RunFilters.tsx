@@ -873,7 +873,6 @@ function QueuesDropdown({
   );
 
   const filtered = useMemo(() => {
-    console.log(fetcher.data);
     let items: { name: string; type: "custom" | "task"; value: string }[] = [];
     if (searchValue === "") {
       // items = selected ?? [];
