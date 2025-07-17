@@ -52,6 +52,11 @@ export type ParsedRunFilters = RunListInputFilters & {
   direction?: "forward" | "backward";
 };
 
+export type ParsedRunFilters = RunListInputFilters & {
+  cursor?: string;
+  direction?: "forward" | "backward";
+};
+
 type FilterRunsOptions = Omit<RunListInputOptions, "period"> & {
   period: number | undefined;
 };
@@ -371,6 +376,10 @@ function applyRunFiltersToQueryBuilder<T>(
     queryBuilder.where("machine_preset IN {machines: Array(String)}", {
       machines: options.machines,
     });
+  }
+
+  if (options.queues && options.queues.length > 0) {
+    queryBuilder.where("queue IN {queues: Array(String)}", { queues: options.queues });
   }
 }
 
