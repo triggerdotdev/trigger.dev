@@ -326,15 +326,7 @@
               }
             ]
           },
-          {
-            "group": "Python guides",
-            "pages": [
-              "guides/python/python-image-processing",
-              "guides/python/python-doc-to-markdown",
-              "guides/python/python-crawl4ai",
-              "guides/python/python-pdf-form-extractor"
-            ]
-          },
+
           {
             "group": "Example projects",
             "pages": [
@@ -344,11 +336,21 @@
               "guides/example-projects/mastra-agents-with-memory",
               "guides/example-projects/meme-generator-human-in-the-loop",
               "guides/example-projects/openai-agent-sdk-guardrails",
+              "guides/example-projects/openai-agents-sdk-typescript-playground",
               "guides/example-projects/realtime-csv-importer",
               "guides/example-projects/realtime-fal-ai",
               "guides/example-projects/turborepo-monorepo-prisma",
               "guides/example-projects/vercel-ai-sdk-deep-research",
               "guides/example-projects/vercel-ai-sdk-image-generator"
+            ]
+          },
+          {
+            "group": "Python guides",
+            "pages": [
+              "guides/python/python-image-processing",
+              "guides/python/python-doc-to-markdown",
+              "guides/python/python-crawl4ai",
+              "guides/python/python-pdf-form-extractor"
             ]
           },
           {
