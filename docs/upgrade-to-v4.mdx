@@ -749,40 +749,50 @@ await myTask.trigger({ foo: "bar" }); // Will use the queue defined on the task
 await myTask2.trigger({ foo: "bar" }); // Will use the queue defined on the task
 ```
 
-### Releasing concurrency on waits
+### Concurrency changes
 
-We've changed the default behavior on how concurrency is released when a run is paused or resumed because of a wait. Previously, the concurrency would be released immediately when the run was first paused, no matter the settings on the queue.
+We've changed a few things around how concurrency is managed at the environment and queue level:
 
-Now we will no longer release concurrency on a queue that has a specified `concurrencyLimit` when a run is paused. You can go back to the previous behavior by setting the `releaseConcurrencyOnWaitpoint` option to `true` on the queue:
+- Environment concurrency limits are now "burstable" above the base concurrency limit. The default burst factor is 2.0, meaning that the environment concurrency limit can be up to 2x the base concurrency limit. So if your base concurrency limit is 10, the environment concurrency limit can be up to 20.
+- Each individual queue has a maximum concurrency limit of the environment base concurrency limit, NOT the burstable limit. So if your base concurrency limit is 10, the queue concurrency limit can be up to 10. This means if you don't set the queue concurrency limit, it will default to the environment base concurrency limit.
+- The only time we "release" concurrency is when a run is checkpointed. This means that if you have a run that is waiting on a waitpoint, and the run is checkpointed, the concurrency will be released back into the queue, allowing other runs to execute/resume. We release the concurrency back to the queue and the environment.
 
-```ts
-const myQueue = queue({
-  name: "my-queue",
-  concurrencyLimit: 10,
-  releaseConcurrencyOnWaitpoint: true,
-});
-```
+This means that if you have a queue with a `concurrencyLimit` of 1, you can only have exactly 1 run executing at a time, but you may have more than 1 run in the `WAITING` state that belongs to that queue. Runs are only transitioned to the `WAITING` state when they are waiting on a waitpoint and have been checkpointed.
 
-You can also now control whether concurrency is released when performing a wait:
+### New Run Statuses
 
-```ts
-// This will prevent the run from being released back into the queue when the wait starts
-await wait.for({ seconds: 10, releaseConcurrency: false });
-```
+We've done some work cleaning up the run statuses. The new statuses are:
 
-The new default behavior allows you to ensure that you can control the number of executing & waiting runs on a queue, and guarantee runs will resume once they are meant to be resumed.
+- `PENDING_VERSION`: Task is waiting for a version update because it cannot execute without additional information (task, queue, etc.)
+- `QUEUED`: Task is waiting to be executed by a worker
+- `DEQUEUED`: Task has been dequeued and is being sent to a worker to start executing.
+- `EXECUTING`: Task is currently being executed by a worker
+- `WAITING`: Task has been paused by the system, and will be resumed by the system
+- `COMPLETED`: Task has been completed successfully
+- `CANCELED`: Task has been canceled by the user
+- `FAILED`: Task has failed to complete, due to an error in the system
+- `CRASHED`: Task has crashed and won't be retried, most likely the worker ran out of resources, e.g. memory or storage
+- `SYSTEM_FAILURE`: Task has failed to complete, due to an error in the system
+- `DELAYED`: Task has been scheduled to run at a specific time
+- `EXPIRED`: Task has expired and won't be executed
+- `TIMED_OUT`: Task has reached it's maxDuration and has been stopped
 
-<Note>
-  If you do choose to release concurrency on waits, be aware that it's possible a resume is delayed
-  if the concurrency that was released is not available at the time the wait completes. In this
-  case, the run will go back into the queue and will resume once concurrency becomes available.
-</Note>
+We've removed the following statuses:
 
-This new behavior effects all the wait functions:
+- `WAITING_FOR_DEPLOY`: This is no longer used, and is replaced by `PENDING_VERSION`
+- `FROZEN`: This is no longer used, and is replaced by `WAITING`
+- `INTERRUPTED`: This is no longer used
+- `REATTEMPTING`: This is no longer used, and is replaced by `EXECUTING`
 
-- Wait for duration (e.g. `wait.for({ seconds: 10 })`)
-- Wait for a child task to complete (e.g. `myTask.triggerAndWait()`, `myTask.batchTriggerAndWait([...])`)
-- Wait for a token to complete (e.g. `wait.forToken(tokenId)`)
+We've also added "boolean" helpers to runs returned via the API and from Realtime:
+
+- `isQueued`: Returns true when the status is `QUEUED`, `PENDING_VERSION`, or `DELAYED`
+- `isExecuting`: Returns true when the status is `EXECUTING`, `DEQUEUED`. These count against your concurrency limits.
+- `isWaiting`: Returns true when the status is `WAITING`. These do not count against your concurrency limits.
+- `isCompleted`: Returns true when the status is any of the completed statuses.
+- `isCanceled`: Returns true when the status is `CANCELED`
+- `isFailed`: Returns true when the status is any of the failed statuses.
+- `isSuccess`: Returns true when the status is `COMPLETED`
 
 ### Lifecycle hooks
 
