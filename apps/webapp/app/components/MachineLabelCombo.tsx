@@ -54,10 +54,6 @@ export function formatMachinePresetName(preset?: MachinePresetName | null): stri
     case "large-2x":
       return "Large 2x";
     default:
-      // Fallback for any unknown presets - capitalize first letter and replace hyphens with spaces
-      return (preset as string)
-        .split("-")
-        .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1))
-        .join(" ");
+      return preset;
   }
 }
