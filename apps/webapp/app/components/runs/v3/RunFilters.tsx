@@ -9,7 +9,7 @@ import {
   XMarkIcon,
 } from "@heroicons/react/20/solid";
 import { Form, useFetcher } from "@remix-run/react";
-import { IconToggleLeft, IconRotateClockwise2 } from "@tabler/icons-react";
+import { IconRotateClockwise2, IconToggleLeft } from "@tabler/icons-react";
 import { MachinePresetName } from "@trigger.dev/core/v3";
 import type { BulkActionType, TaskRunStatus, TaskTriggerSource } from "@trigger.dev/database";
 import { ListFilterIcon } from "lucide-react";
@@ -26,6 +26,7 @@ import {
   machines,
 } from "~/components/MachineLabelCombo";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
+import { Badge } from "~/components/primitives/Badge";
 import { DateTime } from "~/components/primitives/DateTime";
 import { FormError } from "~/components/primitives/FormError";
 import { Input } from "~/components/primitives/Input";
@@ -56,8 +57,8 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { type loader as queuesLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.queues";
-import { type loader as tagsLoader } from "~/routes/resources.projects.$projectParam.runs.tags";
 import { type loader as versionsLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.versions";
+import { type loader as tagsLoader } from "~/routes/resources.projects.$projectParam.runs.tags";
 import { Button } from "../../primitives/Buttons";
 import { BulkActionTypeCombo } from "./BulkAction";
 import { appliedSummary, FilterMenuProvider, TimeFilter } from "./SharedFilters";
@@ -69,7 +70,6 @@ import {
   TaskRunStatusCombo,
 } from "./TaskRunStatus";
 import { TaskTriggerSourceIcon } from "./TaskTriggerSource";
-import { Badge } from "~/components/primitives/Badge";
 
 export const RunStatus = z.enum(allTaskRunStatuses);
 
