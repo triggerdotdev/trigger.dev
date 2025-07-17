@@ -595,75 +595,45 @@ export class WaitpointSystem {
           return "skipped";
         }
         case "EXECUTING_WITH_WAITPOINTS": {
-          const result = await this.$.runQueue.reacquireConcurrency(
-            run.runtimeEnvironment.organization.id,
-            runId
-          );
-
-          if (result) {
-            const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(
-              this.$.prisma,
-              {
-                run: {
-                  id: runId,
-                  status: snapshot.runStatus,
-                  attemptNumber: snapshot.attemptNumber,
-                },
-                snapshot: {
-                  executionStatus: "EXECUTING",
-                  description: "Run was continued, whilst still executing.",
-                },
-                previousSnapshotId: snapshot.id,
-                environmentId: snapshot.environmentId,
-                environmentType: snapshot.environmentType,
-                projectId: snapshot.projectId,
-                organizationId: snapshot.organizationId,
-                batchId: snapshot.batchId ?? undefined,
-                completedWaitpoints: blockingWaitpoints.map((b) => ({
-                  id: b.waitpoint.id,
-                  index: b.batchIndex ?? undefined,
-                })),
-              }
-            );
-
-            this.$.logger.debug(
-              `continueRunIfUnblocked: run was still executing, sending notification`,
-              {
-                runId,
-                snapshot,
-                newSnapshot,
-              }
-            );
-
-            await sendNotificationToWorker({
-              runId,
-              snapshot: newSnapshot,
-              eventBus: this.$.eventBus,
-            });
-          } else {
-            // Because we cannot reacquire the concurrency, we need to enqueue the run again
-            // and because the run is still executing, we need to set the status to QUEUED_EXECUTING
-            const newSnapshot = await this.enqueueSystem.enqueueRun({
-              run,
-              env: run.runtimeEnvironment,
+          const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(
+            this.$.prisma,
+            {
+              run: {
+                id: runId,
+                status: snapshot.runStatus,
+                attemptNumber: snapshot.attemptNumber,
+              },
               snapshot: {
-                status: "QUEUED_EXECUTING",
-                description: "Run can continue, but is waiting for concurrency",
+                executionStatus: "EXECUTING",
+                description: "Run was continued, whilst still executing.",
               },
               previousSnapshotId: snapshot.id,
+              environmentId: snapshot.environmentId,
+              environmentType: snapshot.environmentType,
+              projectId: snapshot.projectId,
+              organizationId: snapshot.organizationId,
               batchId: snapshot.batchId ?? undefined,
               completedWaitpoints: blockingWaitpoints.map((b) => ({
                 id: b.waitpoint.id,
                 index: b.batchIndex ?? undefined,
               })),
-            });
+            }
+          );
 
-            this.$.logger.debug(`continueRunIfUnblocked: run goes to QUEUED_EXECUTING`, {
+          this.$.logger.debug(
+            `continueRunIfUnblocked: run was still executing, sending notification`,
+            {
               runId,
               snapshot,
               newSnapshot,
-            });
-          }
+            }
+          );
+
+          await sendNotificationToWorker({
+            runId,
+            snapshot: newSnapshot,
+            eventBus: this.$.eventBus,
+          });
 
           break;
         }

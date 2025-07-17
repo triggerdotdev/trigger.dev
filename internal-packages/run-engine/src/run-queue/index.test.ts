@@ -952,33 +952,6 @@ describe("RunQueue", () => {
         0
       );
       expect(await queue.currentConcurrencyOfEnvironment(authenticatedEnvProd)).toBe(0);
-
-      //reacquire the concurrency
-      await queue.reacquireConcurrency(authenticatedEnvProd.organization.id, message.messageId);
-
-      //check concurrencies are back to what they were before
-      expect(await queue.currentConcurrencyOfQueue(authenticatedEnvProd, messageProd.queue)).toBe(
-        1
-      );
-      expect(await queue.currentConcurrencyOfEnvironment(authenticatedEnvProd)).toBe(1);
-
-      //release the concurrency (with the queue this time)
-      await queue.releaseAllConcurrency(authenticatedEnvProd.organization.id, message.messageId);
-
-      //concurrencies
-      expect(await queue.currentConcurrencyOfQueue(authenticatedEnvProd, messageProd.queue)).toBe(
-        0
-      );
-      expect(await queue.currentConcurrencyOfEnvironment(authenticatedEnvProd)).toBe(0);
-
-      //reacquire the concurrency
-      await queue.reacquireConcurrency(authenticatedEnvProd.organization.id, message.messageId);
-
-      //check concurrencies are back to what they were before
-      expect(await queue.currentConcurrencyOfQueue(authenticatedEnvProd, messageProd.queue)).toBe(
-        1
-      );
-      expect(await queue.currentConcurrencyOfEnvironment(authenticatedEnvProd)).toBe(1);
     } finally {
       try {
         await queue.quit();

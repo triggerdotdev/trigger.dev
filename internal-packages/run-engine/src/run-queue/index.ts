@@ -809,56 +809,6 @@ export class RunQueue {
     );
   }
 
-  public async reacquireConcurrency(orgId: string, messageId: string) {
-    return this.#trace(
-      "reacquireConcurrency",
-      async (span) => {
-        const message = await this.readMessage(orgId, messageId);
-
-        if (!message) {
-          throw new MessageNotFoundError(messageId);
-        }
-
-        span.setAttributes({
-          [SemanticAttributes.QUEUE]: message.queue,
-          [SemanticAttributes.ORG_ID]: message.orgId,
-          [SemanticAttributes.RUN_ID]: messageId,
-          [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
-        });
-
-        const queueCurrentConcurrencyKey = this.keys.queueCurrentConcurrencyKeyFromQueue(
-          message.queue
-        );
-        const envCurrentConcurrencyKey = this.keys.envCurrentConcurrencyKeyFromQueue(message.queue);
-        const queueCurrentDequeuedKey = this.keys.queueCurrentDequeuedKeyFromQueue(message.queue);
-        const envCurrentDequeuedKey = this.keys.envCurrentDequeuedKeyFromQueue(message.queue);
-        const queueConcurrencyLimitKey = this.keys.queueConcurrencyLimitKeyFromQueue(message.queue);
-        const envConcurrencyLimitKey = this.keys.envConcurrencyLimitKeyFromQueue(message.queue);
-
-        const result = await this.redis.reacquireConcurrency(
-          queueCurrentConcurrencyKey,
-          envCurrentConcurrencyKey,
-          queueCurrentDequeuedKey,
-          envCurrentDequeuedKey,
-          queueConcurrencyLimitKey,
-          envConcurrencyLimitKey,
-          messageId,
-          String(this.options.defaultEnvConcurrency)
-        );
-
-        return !!result;
-      },
-      {
-        kind: SpanKind.CONSUMER,
-        attributes: {
-          [SEMATTRS_MESSAGING_OPERATION]: "releaseConcurrency",
-          [SEMATTRS_MESSAGE_ID]: messageId,
-          [SEMATTRS_MESSAGING_SYSTEM]: "runqueue",
-        },
-      }
-    );
-  }
-
   public async removeEnvironmentQueuesFromMasterQueue(
     runtimeEnvironmentId: string,
     organizationId: string,
@@ -2353,60 +2303,6 @@ redis.call('SREM', envCurrentDequeuedKey, messageId)
 `,
     });
 
-    this.redis.defineCommand("reacquireConcurrency", {
-      numberOfKeys: 6,
-      lua: `
--- Keys:
-local queueCurrentConcurrencyKey = KEYS[1]
-local envCurrentConcurrencyKey = KEYS[2]
-local queueCurrentDequeuedKey = KEYS[3]
-local envCurrentDequeuedKey = KEYS[4]
-local queueConcurrencyLimitKey = KEYS[5]
-local envConcurrencyLimitKey = KEYS[6]
-
--- Args:
-local messageId = ARGV[1]
-local defaultEnvConcurrencyLimit = ARGV[2]
-
--- Check if the message is already in either current concurrency set
-local isInQueueConcurrency = redis.call('SISMEMBER', queueCurrentConcurrencyKey, messageId) == 1
-local isInEnvConcurrency = redis.call('SISMEMBER', envCurrentConcurrencyKey, messageId) == 1
-
--- If it's already in both sets, we're done
-if isInQueueConcurrency and isInEnvConcurrency then
-    return true
-end
-
--- Check current env concurrency against the limit
-local envCurrentConcurrency = tonumber(redis.call('SCARD', envCurrentConcurrencyKey) or '0')
-local envConcurrencyLimit = tonumber(redis.call('GET', envConcurrencyLimitKey) or defaultEnvConcurrencyLimit)
-local totalEnvConcurrencyLimit = envConcurrencyLimit
-
-if envCurrentConcurrency >= totalEnvConcurrencyLimit then
-    return false
-end
-
--- Check current queue concurrency against the limit
-if not isInQueueConcurrency then
-    local queueCurrentConcurrency = tonumber(redis.call('SCARD', queueCurrentConcurrencyKey) or '0')
-    local queueConcurrencyLimit = math.min(tonumber(redis.call('GET', queueConcurrencyLimitKey) or '1000000'), envConcurrencyLimit)
-    local totalQueueConcurrencyLimit = queueConcurrencyLimit
-
-    if queueCurrentConcurrency >= totalQueueConcurrencyLimit then
-        return false
-    end
-end
-
--- Update the concurrency keys
-redis.call('SADD', queueCurrentConcurrencyKey, messageId)
-redis.call('SADD', envCurrentConcurrencyKey, messageId)
-redis.call('SADD', queueCurrentDequeuedKey, messageId)
-redis.call('SADD', envCurrentDequeuedKey, messageId)
-
-return true
-`,
-    });
-
     this.redis.defineCommand("updateEnvironmentConcurrencyLimits", {
       numberOfKeys: 2,
       lua: `
@@ -2609,20 +2505,6 @@ declare module "@internal/redis" {
       messageId: string,
       callback?: Callback<void>
     ): Result<void, Context>;
-
-    reacquireConcurrency(
-      // keys
-      queueCurrentConcurrencyKey: string,
-      envCurrentConcurrencyKey: string,
-      queueCurrentDequeuedKey: string,
-      envCurrentDequeuedKey: string,
-      queueConcurrencyLimitKey: string,
-      envConcurrencyLimitKey: string,
-      // args
-      messageId: string,
-      defaultEnvConcurrencyLimit: string,
-      callback?: Callback<string>
-    ): Result<string, Context>;
 
     updateEnvironmentConcurrencyLimits(
       // keys
