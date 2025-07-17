@@ -1,6 +1,8 @@
-import { type MachinePresetName } from "@trigger.dev/core/v3";
+import { MachinePresetName } from "@trigger.dev/core/v3";
 import { MachineIcon } from "~/assets/icons/MachineIcon";
 import { cn } from "~/utils/cn";
+
+export const machines = Object.values(MachinePresetName.enum);
 
 export function MachineLabelCombo({
   preset,

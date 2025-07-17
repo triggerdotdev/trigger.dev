@@ -8,12 +8,11 @@ import {
 } from "@heroicons/react/20/solid";
 import { BeakerIcon, BookOpenIcon, CheckIcon } from "@heroicons/react/24/solid";
 import { useLocation } from "@remix-run/react";
-import {
-  formatDuration,
-  formatDurationMilliseconds,
-  MachinePresetName,
-} from "@trigger.dev/core/v3";
+import { formatDuration, formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import { useCallback, useRef } from "react";
+import { TaskIconSmall } from "~/assets/icons/TaskIcon";
+import { MachineLabelCombo } from "~/components/MachineLabelCombo";
+import { MachineTooltipInfo } from "~/components/MachineTooltipInfo";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Checkbox } from "~/components/primitives/Checkbox";
@@ -56,10 +55,6 @@ import {
   filterableTaskRunStatuses,
   TaskRunStatusCombo,
 } from "./TaskRunStatus";
-import { MachineIcon } from "~/assets/icons/MachineIcon";
-import { MachineLabelCombo } from "~/components/MachineLabelCombo";
-import { MachineTooltipInfo } from "~/components/MachineTooltipInfo";
-import { TaskIconSmall } from "~/assets/icons/TaskIcon";
 
 type RunsTableProps = {
   total: number;
@@ -211,9 +206,9 @@ export function TaskRunsTable({
           <TableHeaderCell className="pl-4" tooltip={<MachineTooltipInfo />}>
             Machine
           </TableHeaderCell>
+          <TableHeaderCell>Queue</TableHeaderCell>
           <TableHeaderCell>Test</TableHeaderCell>
           <TableHeaderCell>Created at</TableHeaderCell>
-          <TableHeaderCell>Queue</TableHeaderCell>
           <TableHeaderCell
             tooltip={
               <div className="max-w-xs p-1">
@@ -390,12 +385,6 @@ export function TaskRunsTable({
                   <MachineLabelCombo preset={run.machinePreset} />
                 </TableCell>
                 <TableCell to={path}>
-                  {run.isTest ? <CheckIcon className="size-4 text-charcoal-400" /> : "–"}
-                </TableCell>
-                <TableCell to={path}>
-                  {run.createdAt ? <DateTime date={run.createdAt} /> : "–"}
-                </TableCell>
-                <TableCell to={path}>
                   <span className="flex items-center gap-1">
                     {run.queue.type === "task" ? (
                       <SimpleTooltip
@@ -410,6 +399,12 @@ export function TaskRunsTable({
                     )}
                     <span>{run.queue.name}</span>
                   </span>
+                </TableCell>
+                <TableCell to={path}>
+                  {run.isTest ? <CheckIcon className="size-4 text-charcoal-400" /> : "–"}
+                </TableCell>
+                <TableCell to={path}>
+                  {run.createdAt ? <DateTime date={run.createdAt} /> : "–"}
                 </TableCell>
                 <TableCell to={path}>
                   {run.delayUntil ? <DateTime date={run.delayUntil} /> : "–"}

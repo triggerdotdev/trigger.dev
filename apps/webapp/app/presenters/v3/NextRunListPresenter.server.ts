@@ -1,4 +1,5 @@
 import { type ClickHouse } from "@internal/clickhouse";
+import { MachinePresetName } from "@trigger.dev/core/v3";
 import {
   type PrismaClient,
   type PrismaClientOrTransaction,
@@ -31,6 +32,7 @@ export type RunListOptions = {
   batchId?: string;
   runId?: string[];
   queues?: string[];
+  machines?: MachinePresetName[];
   //pagination
   direction?: Direction;
   cursor?: string;
@@ -67,6 +69,7 @@ export class NextRunListPresenter {
       batchId,
       runId,
       queues,
+      machines,
       from,
       to,
       direction = "forward",
@@ -93,6 +96,7 @@ export class NextRunListPresenter {
       batchId !== undefined ||
       (runId !== undefined && runId.length > 0) ||
       (queues !== undefined && queues.length > 0) ||
+      (machines !== undefined && machines.length > 0) ||
       typeof isTest === "boolean" ||
       rootOnly === true ||
       !time.isDefault;
@@ -177,6 +181,7 @@ export class NextRunListPresenter {
       runId,
       bulkId,
       queues,
+      machines,
       page: {
         size: pageSize,
         cursor,

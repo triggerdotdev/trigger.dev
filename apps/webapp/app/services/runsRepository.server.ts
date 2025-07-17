@@ -7,6 +7,7 @@ import { timeFilters } from "~/components/runs/v3/SharedFilters";
 import { type PrismaClient } from "~/db.server";
 import { z } from "zod";
 import { BulkActionId, RunId } from "@trigger.dev/core/v3/isomorphic";
+import { MachinePresetName } from "@trigger.dev/core/v3";
 
 export type RunsRepositoryOptions = {
   clickhouse: ClickHouse;
@@ -37,6 +38,7 @@ const RunListInputOptionsSchema = z.object({
   runId: z.array(z.string()).optional(),
   bulkId: z.string().optional(),
   queues: z.array(z.string()).optional(),
+  machines: MachinePresetName.array().optional(),
 });
 
 export type RunListInputOptions = z.infer<typeof RunListInputOptionsSchema>;
@@ -363,6 +365,12 @@ function applyRunFiltersToQueryBuilder<T>(
 
   if (options.queues && options.queues.length > 0) {
     queryBuilder.where("queue IN {queues: Array(String)}", { queues: options.queues });
+  }
+
+  if (options.machines && options.machines.length > 0) {
+    queryBuilder.where("machine_preset IN {machines: Array(String)}", {
+      machines: options.machines,
+    });
   }
 }
 

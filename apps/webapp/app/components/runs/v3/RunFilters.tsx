@@ -10,14 +10,21 @@ import {
 } from "@heroicons/react/20/solid";
 import { Form, useFetcher } from "@remix-run/react";
 import { IconToggleLeft } from "@tabler/icons-react";
+import { MachinePresetName } from "@trigger.dev/core/v3";
 import type { BulkActionType, TaskRunStatus, TaskTriggerSource } from "@trigger.dev/database";
 import { ListFilterIcon } from "lucide-react";
 import { matchSorter } from "match-sorter";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
+import { MachineDefaultIcon } from "~/assets/icons/MachineIcon";
 import { StatusIcon } from "~/assets/icons/StatusIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
+import {
+  formatMachinePresetName,
+  MachineLabelCombo,
+  machines,
+} from "~/components/MachineLabelCombo";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { DateTime } from "~/components/primitives/DateTime";
 import { FormError } from "~/components/primitives/FormError";
@@ -42,6 +49,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "~/components/primitives/Tooltip";
+import { useDebounceEffect } from "~/hooks/useDebounce";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -60,7 +68,6 @@ import {
   TaskRunStatusCombo,
 } from "./TaskRunStatus";
 import { TaskTriggerSourceIcon } from "./TaskTriggerSource";
-import { useDebounceEffect } from "~/hooks/useDebounce";
 
 export const RunStatus = z.enum(allTaskRunStatuses);
 
@@ -79,6 +86,27 @@ const StringOrStringArray = z.preprocess((value) => {
 
   return undefined;
 }, z.string().array().optional());
+
+export const MachinePresetOrMachinePresetArray = z.preprocess((value) => {
+  if (typeof value === "string") {
+    if (value.length > 0) {
+      const parsed = MachinePresetName.safeParse(value);
+      return parsed.success ? [parsed.data] : undefined;
+    }
+
+    return undefined;
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .filter((v) => typeof v === "string" && v.length > 0)
+      .map((v) => MachinePresetName.safeParse(v))
+      .filter((result) => result.success)
+      .map((result) => result.data);
+  }
+
+  return undefined;
+}, MachinePresetName.array().optional());
 
 export const TaskRunListSearchFilters = z.object({
   cursor: z.string().optional(),
@@ -111,6 +139,7 @@ export const TaskRunListSearchFilters = z.object({
   runId: StringOrStringArray,
   scheduleId: z.string().optional(),
   queues: StringOrStringArray,
+  machines: MachinePresetOrMachinePresetArray,
 });
 
 export type TaskRunListSearchFilters = z.infer<typeof TaskRunListSearchFilters>;
@@ -146,6 +175,8 @@ export function filterTitle(filterKey: string) {
       return "Schedule ID";
     case "queues":
       return "Queues";
+    case "machines":
+      return "Machine";
     default:
       return filterKey;
   }
@@ -157,7 +188,7 @@ export function filterIcon(filterKey: string): ReactNode | undefined {
     case "direction":
       return undefined;
     case "statuses":
-      return <StatusIcon className="size-4" />;
+      return <StatusIcon className="size-4 border-text-bright" />;
     case "tasks":
       return <TaskIcon className="size-4" />;
     case "tags":
@@ -180,6 +211,8 @@ export function filterIcon(filterKey: string): ReactNode | undefined {
       return <ClockIcon className="size-4" />;
     case "queues":
       return <RectangleStackIcon className="size-4" />;
+    case "machines":
+      return <MachineDefaultIcon className="size-4" />;
     default:
       return undefined;
   }
@@ -218,6 +251,10 @@ export function getRunFiltersFromSearchParams(
       searchParams.getAll("queues").filter((v) => v.length > 0).length > 0
         ? searchParams.getAll("queues")
         : undefined,
+    machines:
+      searchParams.getAll("machines").filter((v) => v.length > 0).length > 0
+        ? searchParams.getAll("machines")
+        : undefined,
   };
 
   const parsed = TaskRunListSearchFilters.safeParse(params);
@@ -252,7 +289,8 @@ export function RunsFilters(props: RunFiltersProps) {
     searchParams.has("batchId") ||
     searchParams.has("runId") ||
     searchParams.has("scheduleId") ||
-    searchParams.has("queues");
+    searchParams.has("queues") ||
+    searchParams.has("machines");
 
   return (
     <div className="flex flex-row flex-wrap items-center gap-1">
@@ -276,11 +314,12 @@ const filterTypes = [
   {
     name: "statuses",
     title: "Status",
-    icon: <StatusIcon className="size-4" />,
+    icon: <StatusIcon className="size-4 border-text-bright" />,
   },
   { name: "tasks", title: "Tasks", icon: <TaskIcon className="size-4" /> },
   { name: "tags", title: "Tags", icon: <TagIcon className="size-4" /> },
   { name: "queues", title: "Queues", icon: <RectangleStackIcon className="size-4" /> },
+  { name: "machines", title: "Machines", icon: <MachineDefaultIcon className="size-4" /> },
   { name: "run", title: "Run ID", icon: <FingerPrintIcon className="size-4" /> },
   { name: "batch", title: "Batch ID", icon: <Squares2X2Icon className="size-4" /> },
   { name: "schedule", title: "Schedule ID", icon: <ClockIcon className="size-4" /> },
@@ -332,6 +371,7 @@ function AppliedFilters({ possibleTasks, bulkActions }: RunFiltersProps) {
       <AppliedTaskFilter possibleTasks={possibleTasks} />
       <AppliedTagsFilter />
       <AppliedQueuesFilter />
+      <AppliedMachinesFilter />
       <AppliedRunIdFilter />
       <AppliedBatchIdFilter />
       <AppliedScheduleIdFilter />
@@ -362,6 +402,8 @@ function Menu(props: MenuProps) {
       return <TagsDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "queues":
       return <QueuesDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
+    case "machines":
+      return <MachinesDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "run":
       return <RunIdDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "batch":
@@ -874,10 +916,6 @@ function QueuesDropdown({
 
   const filtered = useMemo(() => {
     let items: { name: string; type: "custom" | "task"; value: string }[] = [];
-    if (searchValue === "") {
-      // items = selected ?? [];
-      items = [];
-    }
 
     for (const queueName of selected ?? []) {
       const queueItem = fetcher.data?.queues.find((q) => q.name === queueName);
@@ -985,6 +1023,101 @@ function AppliedQueuesFilter() {
                 icon={filterIcon("queues")}
                 value={appliedSummary(values("queues").map((v) => v.replace("task/", "")))}
                 onRemove={() => del(["queues", "cursor", "direction"])}
+                variant="secondary/small"
+              />
+            </Ariakit.Select>
+          }
+          searchValue={search}
+          clearSearchValue={() => setSearch("")}
+        />
+      )}
+    </FilterMenuProvider>
+  );
+}
+
+function MachinesDropdown({
+  trigger,
+  clearSearchValue,
+  searchValue,
+  onClose,
+}: {
+  trigger: ReactNode;
+  clearSearchValue: () => void;
+  searchValue: string;
+  onClose?: () => void;
+}) {
+  const { values, replace } = useSearchParams();
+
+  const handleChange = (values: string[]) => {
+    clearSearchValue();
+    replace({ machines: values, cursor: undefined, direction: undefined });
+  };
+
+  const filtered = useMemo(() => {
+    if (searchValue === "") {
+      return machines;
+    }
+    return matchSorter(machines, searchValue);
+  }, [searchValue]);
+
+  return (
+    <SelectProvider value={values("machines")} setValue={handleChange} virtualFocus={true}>
+      {trigger}
+      <SelectPopover
+        className="min-w-0 max-w-[min(240px,var(--popover-available-width))]"
+        hideOnEscape={() => {
+          if (onClose) {
+            onClose();
+            return false;
+          }
+
+          return true;
+        }}
+      >
+        <ComboBox placeholder={"Filter by machine..."} value={searchValue} />
+        <SelectList>
+          {filtered.map((item, index) => (
+            <SelectItem
+              key={item}
+              value={item}
+              shortcut={shortcutFromIndex(index, { shortcutsEnabled: true })}
+            >
+              <MachineLabelCombo preset={item} />
+            </SelectItem>
+          ))}
+        </SelectList>
+      </SelectPopover>
+    </SelectProvider>
+  );
+}
+
+function AppliedMachinesFilter() {
+  const { values, del } = useSearchParams();
+  const machines = values("machines");
+
+  if (machines.length === 0 || machines.every((v) => v === "")) {
+    return null;
+  }
+
+  return (
+    <FilterMenuProvider>
+      {(search, setSearch) => (
+        <MachinesDropdown
+          trigger={
+            <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
+              <AppliedFilter
+                label="Machines"
+                icon={filterIcon("machines")}
+                value={appliedSummary(
+                  machines.map((v) => {
+                    const parsed = MachinePresetName.safeParse(v);
+                    if (!parsed.success) {
+                      return v;
+                    }
+                    return formatMachinePresetName(parsed.data);
+                  })
+                )}
+                onRemove={() => del(["machines", "cursor", "direction"])}
                 variant="secondary/small"
               />
             </Ariakit.Select>
