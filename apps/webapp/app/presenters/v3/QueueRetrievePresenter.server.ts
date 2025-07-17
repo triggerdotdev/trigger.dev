@@ -105,7 +105,7 @@ export function toQueueItem(data: {
   queued: number;
   concurrencyLimit: number | null;
   paused: boolean;
-}): QueueItem {
+}): QueueItem & { releaseConcurrencyOnWaitpoint: boolean } {
   return {
     id: data.friendlyId,
     //remove the task/ prefix if it exists

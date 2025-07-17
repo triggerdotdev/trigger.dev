@@ -638,18 +638,16 @@ export const TimezonesResult = z.object({
 export type TimezonesResult = z.infer<typeof TimezonesResult>;
 
 export const RunStatus = z.enum([
-  /// Task is waiting for a version update because it cannot execute without additional information (task, queue, etc.). Replaces WAITING_FOR_DEPLOY
+  /// Task is waiting for a version update because it cannot execute without additional information (task, queue, etc.)
   "PENDING_VERSION",
-  /// Task hasn't been deployed yet but is waiting to be executed
-  "WAITING_FOR_DEPLOY",
   /// Task is waiting to be executed by a worker
   "QUEUED",
+  /// Task is waiting to be executed by a worker
+  "DEQUEUED",
   /// Task is currently being executed by a worker
   "EXECUTING",
-  /// Task has failed and is waiting to be retried
-  "REATTEMPTING",
   /// Task has been paused by the system, and will be resumed by the system
-  "FROZEN",
+  "WAITING",
   /// Task has been completed successfully
   "COMPLETED",
   /// Task has been canceled by the user
@@ -658,8 +656,6 @@ export const RunStatus = z.enum([
   "FAILED",
   /// Task has crashed and won't be retried, most likely the worker ran out of resources, e.g. memory or storage
   "CRASHED",
-  /// Task was interrupted during execution, mostly this happens in development environments
-  "INTERRUPTED",
   /// Task has failed to complete, due to an error in the system
   "SYSTEM_FAILURE",
   /// Task has been scheduled to run at a specific time
@@ -758,19 +754,6 @@ export const RetrieveRunResponse = z.object({
     parent: RelatedRunDetails.optional(),
     children: z.array(RelatedRunDetails).optional(),
   }),
-  attempts: z.array(
-    z
-      .object({
-        id: z.string(),
-        status: AttemptStatus,
-        createdAt: z.coerce.date(),
-        updatedAt: z.coerce.date(),
-        startedAt: z.coerce.date().optional(),
-        completedAt: z.coerce.date().optional(),
-        error: SerializedError.optional(),
-      })
-      .optional()
-  ),
   attemptCount: z.number().default(0),
 });
 

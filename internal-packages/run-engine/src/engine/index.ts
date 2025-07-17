@@ -45,7 +45,6 @@ import {
 } from "./systems/executionSnapshotSystem.js";
 import { PendingVersionSystem } from "./systems/pendingVersionSystem.js";
 import { RaceSimulationSystem } from "./systems/raceSimulationSystem.js";
-import { ReleaseConcurrencySystem } from "./systems/releaseConcurrencySystem.js";
 import { RunAttemptSystem } from "./systems/runAttemptSystem.js";
 import { SystemResources } from "./systems/systems.js";
 import { TtlSystem } from "./systems/ttlSystem.js";
@@ -76,7 +75,6 @@ export class RunEngine {
   delayedRunSystem: DelayedRunSystem;
   ttlSystem: TtlSystem;
   pendingVersionSystem: PendingVersionSystem;
-  releaseConcurrencySystem: ReleaseConcurrencySystem;
   raceSimulationSystem: RaceSimulationSystem = new RaceSimulationSystem();
 
   constructor(private readonly options: RunEngineOptions) {
@@ -240,10 +238,6 @@ export class RunEngine {
       raceSimulationSystem: this.raceSimulationSystem,
     };
 
-    this.releaseConcurrencySystem = new ReleaseConcurrencySystem({
-      resources,
-    });
-
     this.executionSnapshotSystem = new ExecutionSnapshotSystem({
       resources,
       heartbeatTimeouts: this.heartbeatTimeouts,
@@ -256,7 +250,6 @@ export class RunEngine {
 
     this.checkpointSystem = new CheckpointSystem({
       resources,
-      releaseConcurrencySystem: this.releaseConcurrencySystem,
       executionSnapshotSystem: this.executionSnapshotSystem,
       enqueueSystem: this.enqueueSystem,
     });

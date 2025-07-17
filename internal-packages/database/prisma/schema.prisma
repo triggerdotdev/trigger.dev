@@ -771,6 +771,9 @@ enum TaskRunStatus {
   /// Task hasn't been deployed yet but is waiting to be executed. Deprecated in favor of PENDING_VERSION
   WAITING_FOR_DEPLOY
 
+  /// Task has been dequeued from the queue but is not yet executing
+  DEQUEUED
+
   /// Task is currently being executed by a worker
   EXECUTING
 

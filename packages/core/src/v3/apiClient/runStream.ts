@@ -30,7 +30,6 @@ export type RunShape<TRunTypes extends AnyRunTypes> = TRunTypes extends AnyRunTy
       output?: TRunTypes["output"];
       createdAt: Date;
       updatedAt: Date;
-      number: number;
       status: RunStatus;
       durationMs: number;
       costInCents: number;
@@ -46,6 +45,12 @@ export type RunShape<TRunTypes extends AnyRunTypes> = TRunTypes extends AnyRunTy
       metadata?: Record<string, DeserializedJson>;
       error?: SerializedError;
       isTest: boolean;
+      isQueued: boolean;
+      isExecuting: boolean;
+      isCompleted: boolean;
+      isFailed: boolean;
+      isSuccess: boolean;
+      isCancelled: boolean;
     }
   : never;
 
@@ -414,15 +419,16 @@ export class RunSubscription<TRunTypes extends AnyRunTypes> {
         ? await parsePacket({ data: row.metadata, dataType: row.metadataType })
         : undefined;
 
+    const status = apiStatusFromRunStatus(row.status);
+
     return {
       id: row.friendlyId,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       taskIdentifier: row.taskIdentifier,
-      status: apiStatusFromRunStatus(row.status),
+      status,
       payload,
       output,
-      number: row.number ?? 0,
       durationMs: row.usageDurationMs ?? 0,
       costInCents: row.costInCents ?? 0,
       baseCostInCents: row.baseCostInCents ?? 0,
@@ -436,8 +442,25 @@ export class RunSubscription<TRunTypes extends AnyRunTypes> {
       error: row.error ? createJsonErrorObject(row.error) : undefined,
       isTest: row.isTest ?? false,
       metadata,
+      ...booleanHelpersFromRunStatus(status),
     } as RunShape<TRunTypes>;
   }
+}
+
+const queuedStatuses = ["PENDING_VERSION", "QUEUED", "PENDING", "DELAYED"];
+const executingStatuses = ["DEQUEUED", "EXECUTING", "WAITING"];
+const failedStatuses = ["FAILED", "CRASHED", "SYSTEM_FAILURE", "EXPIRED", "TIMED_OUT"];
+const successfulStatuses = ["COMPLETED"];
+
+function booleanHelpersFromRunStatus(status: RunStatus) {
+  return {
+    isQueued: queuedStatuses.includes(status),
+    isExecuting: executingStatuses.includes(status),
+    isCompleted: successfulStatuses.includes(status) || failedStatuses.includes(status),
+    isFailed: failedStatuses.includes(status),
+    isSuccess: successfulStatuses.includes(status),
+    isCancelled: status === "CANCELED",
+  };
 }
 
 function apiStatusFromRunStatus(status: string): RunStatus {
@@ -445,22 +468,21 @@ function apiStatusFromRunStatus(status: string): RunStatus {
     case "DELAYED": {
       return "DELAYED";
     }
+    case "WAITING_FOR_DEPLOY":
     case "PENDING_VERSION": {
       return "PENDING_VERSION";
-    }
-    case "WAITING_FOR_DEPLOY": {
-      return "WAITING_FOR_DEPLOY";
     }
     case "PENDING": {
       return "QUEUED";
     }
     case "PAUSED":
     case "WAITING_TO_RESUME": {
-      return "FROZEN";
+      return "WAITING";
     }
-    case "RETRYING_AFTER_FAILURE": {
-      return "REATTEMPTING";
+    case "DEQUEUED": {
+      return "DEQUEUED";
     }
+    case "RETRYING_AFTER_FAILURE":
     case "EXECUTING": {
       return "EXECUTING";
     }
@@ -473,12 +495,10 @@ function apiStatusFromRunStatus(status: string): RunStatus {
     case "SYSTEM_FAILURE": {
       return "SYSTEM_FAILURE";
     }
-    case "INTERRUPTED": {
-      return "INTERRUPTED";
-    }
     case "CRASHED": {
       return "CRASHED";
     }
+    case "INTERRUPTED":
     case "COMPLETED_WITH_ERRORS": {
       return "FAILED";
     }
@@ -489,7 +509,7 @@ function apiStatusFromRunStatus(status: string): RunStatus {
       return "TIMED_OUT";
     }
     default: {
-      throw new Error(`Unknown status: ${status}`);
+      return "QUEUED";
     }
   }
 }

@@ -810,43 +810,6 @@ export class RunQueue {
     );
   }
 
-  public async releaseEnvConcurrency(orgId: string, messageId: string) {
-    return this.#trace(
-      "releaseEnvConcurrency",
-      async (span) => {
-        const message = await this.readMessage(orgId, messageId);
-
-        if (!message) {
-          this.logger.log(`[${this.name}].releaseEnvConcurrency() message not found`, {
-            messageId,
-            service: this.name,
-          });
-          return;
-        }
-
-        span.setAttributes({
-          [SemanticAttributes.QUEUE]: message.queue,
-          [SemanticAttributes.ORG_ID]: message.orgId,
-          [SemanticAttributes.RUN_ID]: messageId,
-          [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
-        });
-
-        return this.redis.releaseEnvConcurrency(
-          this.keys.envCurrentConcurrencyKeyFromQueue(message.queue),
-          messageId
-        );
-      },
-      {
-        kind: SpanKind.CONSUMER,
-        attributes: {
-          [SEMATTRS_MESSAGING_OPERATION]: "releaseEnvConcurrency",
-          [SEMATTRS_MESSAGE_ID]: messageId,
-          [SEMATTRS_MESSAGING_SYSTEM]: "runqueue",
-        },
-      }
-    );
-  }
-
   public async reacquireConcurrency(orgId: string, messageId: string) {
     return this.#trace(
       "reacquireConcurrency",

@@ -21,6 +21,7 @@ import {
   AuthenticatedWorkerInstance,
   WorkerGroupTokenService,
 } from "~/v3/services/worker/workerGroupTokenService.server";
+import { API_VERSIONS, getApiVersion } from "~/api/versions";
 
 type AnyZodSchema = z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
 
@@ -87,6 +88,7 @@ type ApiKeyHandlerFunction<
   authentication: ApiAuthenticationResultSuccess;
   request: Request;
   resource: NonNullable<TResource>;
+  apiVersion: API_VERSIONS;
 }) => Promise<Response>;
 
 export function createLoaderApiRoute<
@@ -237,6 +239,8 @@ export function createLoaderApiRoute<
         }
       }
 
+      const apiVersion = getApiVersion(request);
+
       const result = await handler({
         params: parsedParams,
         searchParams: parsedSearchParams,
@@ -244,6 +248,7 @@ export function createLoaderApiRoute<
         authentication: authenticationResult,
         request,
         resource,
+        apiVersion,
       });
       return await wrapResponse(request, result, corsStrategy !== "none");
     } catch (error) {
@@ -307,6 +312,7 @@ type PATHandlerFunction<
     : undefined;
   authentication: PersonalAccessTokenAuthenticationResult;
   request: Request;
+  apiVersion: API_VERSIONS;
 }) => Promise<Response>;
 
 export function createLoaderPATApiRoute<
@@ -390,12 +396,15 @@ export function createLoaderPATApiRoute<
         parsedHeaders = headers.data;
       }
 
+      const apiVersion = getApiVersion(request);
+
       const result = await handler({
         params: parsedParams,
         searchParams: parsedSearchParams,
         headers: parsedHeaders,
         authentication: authenticationResult,
         request,
+        apiVersion,
       });
       return await wrapResponse(request, result, corsStrategy !== "none");
     } catch (error) {

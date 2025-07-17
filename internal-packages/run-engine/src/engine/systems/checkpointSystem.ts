@@ -11,25 +11,22 @@ import {
 import { SystemResources } from "./systems.js";
 import { ServiceValidationError } from "../errors.js";
 import { EnqueueSystem } from "./enqueueSystem.js";
-import { ReleaseConcurrencySystem } from "./releaseConcurrencySystem.js";
+
 export type CheckpointSystemOptions = {
   resources: SystemResources;
   executionSnapshotSystem: ExecutionSnapshotSystem;
   enqueueSystem: EnqueueSystem;
-  releaseConcurrencySystem: ReleaseConcurrencySystem;
 };
 
 export class CheckpointSystem {
   private readonly $: SystemResources;
   private readonly executionSnapshotSystem: ExecutionSnapshotSystem;
   private readonly enqueueSystem: EnqueueSystem;
-  private readonly releaseConcurrencySystem: ReleaseConcurrencySystem;
 
   constructor(private readonly options: CheckpointSystemOptions) {
     this.$ = options.resources;
     this.executionSnapshotSystem = options.executionSnapshotSystem;
     this.enqueueSystem = options.enqueueSystem;
-    this.releaseConcurrencySystem = options.releaseConcurrencySystem;
   }
 
   /**
@@ -200,7 +197,9 @@ export class CheckpointSystem {
           newSnapshot,
         });
 
-        await this.releaseConcurrencySystem.releaseConcurrency(run);
+        if (run.organizationId) {
+          await this.$.runQueue.releaseAllConcurrency(run.organizationId, run.id);
+        }
 
         return {
           ok: true as const,
@@ -236,7 +235,9 @@ export class CheckpointSystem {
           newSnapshot,
         });
 
-        await this.releaseConcurrencySystem.releaseConcurrency(run);
+        if (run.organizationId) {
+          await this.$.runQueue.releaseAllConcurrency(run.organizationId, run.id);
+        }
 
         return {
           ok: true as const,

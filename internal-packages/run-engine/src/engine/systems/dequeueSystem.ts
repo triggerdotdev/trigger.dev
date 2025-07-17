@@ -319,6 +319,7 @@ export class DequeueSystem {
                   lockedById: result.task.id,
                   lockedToVersionId: result.worker.id,
                   lockedQueueId: result.queue.id,
+                  status: "DEQUEUED",
                   startedAt,
                   baseCostInCents: this.options.machines.baseCostInCents,
                   machinePreset: machinePreset.name,
