@@ -1,12 +1,13 @@
 import { type ClickHouse, type ClickhouseQueryBuilder } from "@internal/clickhouse";
 import { type Tracer } from "@internal/tracing";
 import { type Logger, type LogLevel } from "@trigger.dev/core/logger";
-import { Prisma, TaskRunStatus } from "@trigger.dev/database";
+import { MachinePresetName } from "@trigger.dev/core/v3";
+import { BulkActionId, RunId } from "@trigger.dev/core/v3/isomorphic";
+import { TaskRunStatus } from "@trigger.dev/database";
 import parseDuration from "parse-duration";
+import { z } from "zod";
 import { timeFilters } from "~/components/runs/v3/SharedFilters";
 import { type PrismaClient } from "~/db.server";
-import { z } from "zod";
-import { BulkActionId, RunId } from "@trigger.dev/core/v3/isomorphic";
 
 export type RunsRepositoryOptions = {
   clickhouse: ClickHouse;
@@ -36,6 +37,8 @@ const RunListInputOptionsSchema = z.object({
   batchId: z.string().optional(),
   runId: z.array(z.string()).optional(),
   bulkId: z.string().optional(),
+  queues: z.array(z.string()).optional(),
+  machines: MachinePresetName.array().optional(),
 });
 
 export type RunListInputOptions = z.infer<typeof RunListInputOptionsSchema>;
@@ -43,6 +46,11 @@ export type RunListInputFilters = Omit<
   RunListInputOptions,
   "organizationId" | "projectId" | "environmentId"
 >;
+
+export type ParsedRunFilters = RunListInputFilters & {
+  cursor?: string;
+  direction?: "forward" | "backward";
+};
 
 type FilterRunsOptions = Omit<RunListInputOptions, "period"> & {
   period: number | undefined;
@@ -170,6 +178,7 @@ export class RunsRepository {
         metadata: true,
         metadataType: true,
         machinePreset: true,
+        queue: true,
       },
     });
 
@@ -351,6 +360,16 @@ function applyRunFiltersToQueryBuilder<T>(
     // it's important that in the query it's "runIds", otherwise it clashes with the cursor which is called "runId"
     queryBuilder.where("friendly_id IN {runIds: Array(String)}", {
       runIds: options.runId.map((runId) => RunId.toFriendlyId(runId)),
+    });
+  }
+
+  if (options.queues && options.queues.length > 0) {
+    queryBuilder.where("queue IN {queues: Array(String)}", { queues: options.queues });
+  }
+
+  if (options.machines && options.machines.length > 0) {
+    queryBuilder.where("machine_preset IN {machines: Array(String)}", {
+      machines: options.machines,
     });
   }
 }

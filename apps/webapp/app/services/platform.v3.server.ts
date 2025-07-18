@@ -12,7 +12,6 @@ import {
 import { createCache, DefaultStatefulContext, Namespace } from "@unkey/cache";
 import { MemoryStore } from "@unkey/cache/stores";
 import { redirect } from "remix-typedjson";
-import { $replica } from "~/db.server";
 import { env } from "~/env.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { createEnvironment } from "~/models/organization.server";
