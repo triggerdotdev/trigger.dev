@@ -1,5 +1,5 @@
 import { openai } from "@ai-sdk/openai";
-import { generateText, Output } from "ai";
+import { generateText, Output, tool } from "ai";
 import { z } from "zod";
 import { TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 import { $replica } from "~/db.server";
@@ -12,7 +12,7 @@ import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 
 const AIFilterResponseSchema = z.object({
-  filters: TaskRunListSearchFilters,
+  filters: TaskRunListSearchFilters.omit({ environments: true }),
   explanation: z
     .string()
     .describe("A short human-readable explanation of what filters were applied"),
@@ -49,10 +49,10 @@ export async function processAIFilter(
     const queuePresenter = new QueueListPresenter();
 
     const result = await generateText({
-      model: openai("gpt-4o"),
+      model: openai("gpt-4o-mini"),
       experimental_output: Output.object({ schema: AIFilterResponseSchema }),
       tools: {
-        lookupTags: {
+        lookupTags: tool({
           description: "Look up available tags in the environment",
           parameters: z.object({
             query: z.string().optional().describe("Optional search query to filter tags"),
@@ -69,8 +69,8 @@ export async function processAIFilter(
               total: tags.tags.length,
             };
           },
-        },
-        lookupVersions: {
+        }),
+        lookupVersions: tool({
           description:
             "Look up available versions in the environment. If you specify `isCurrent` it will return a single version string if it finds one. Otherwise it will return an array of version strings.",
           parameters: z.object({
@@ -107,8 +107,8 @@ export async function processAIFilter(
               versions: versions.versions.map((v) => v.version),
             };
           },
-        },
-        lookupQueues: {
+        }),
+        lookupQueues: tool({
           description: "Look up available queues in the environment",
           parameters: z.object({
             query: z.string().optional().describe("Optional search query to filter queues"),
@@ -129,8 +129,8 @@ export async function processAIFilter(
               total: queues.success ? queues.queues.length : 0,
             };
           },
-        },
-        lookupTasks: {
+        }),
+        lookupTasks: tool({
           description:
             "Look up available tasks in the environment. It will return each one. The `slug` is used for the filtering. You also get the triggerSource which is either `STANDARD` or `SCHEDULED`",
           parameters: z.object({}),
@@ -141,8 +141,9 @@ export async function processAIFilter(
               total: tasks.length,
             };
           },
-        },
+        }),
       },
+      maxSteps: 5,
       prompt: `You are an AI assistant that converts natural language descriptions into structured filter parameters for a task run filtering system.
 
 Available filter options:
@@ -161,6 +162,7 @@ Available filter options:
 
 Common patterns to recognize:
 - "failed runs" → statuses: ["COMPLETED_WITH_ERRORS", "CRASHED", "TIMED_OUT", "SYSTEM_FAILURE"].
+- "runs not dequeued yet" → statuses: ["PENDING", "PENDING_VERSION", "DELAYED"]
 - If they say "only failed" then only use "COMPLETED_WITH_ERRORS".
 - "successful runs" → statuses: ["COMPLETED_SUCCESSFULLY"]
 - "running runs" → statuses: ["EXECUTING", "RETRYING_AFTER_FAILURE", "WAITING_TO_RESUME"]
@@ -177,6 +179,18 @@ Use the available tools to look up actual tags, versions, queues, and tasks in t
 
 Unless they specify they only want root runs, set rootOnly to false.
 
+IMPORTANT: Return ONLY the filters that are explicitly mentioned or can be reasonably inferred. If the description is unclear or doesn't match any known patterns, return an empty filters object {} and explain why in the explanation field.
+
+The filters object should only contain the fields that are actually being filtered. Do not include fields with empty arrays or undefined values.
+
+CRITICAL: The response must be a valid JSON object with exactly this structure:
+{
+  "filters": {
+    // only include fields that have actual values
+  },
+  "explanation": "string explaining what filters were applied"
+}
+
 Convert the following natural language description into structured filters:
 
 "${text}"
@@ -184,13 +198,54 @@ Convert the following natural language description into structured filters:
 Return only the filters that are explicitly mentioned or can be reasonably inferred. If the description is unclear or doesn't match any known patterns, return an empty filters object and explain why in the explanation field.`,
     });
 
+    // Add debugging to see what the AI returned
+    logger.info("AI filter response", {
+      text,
+      environmentId: environment.id,
+      result: result.experimental_output,
+      filters: result.experimental_output.filters,
+    });
+
+    // Validate the filters against the schema to catch any issues
+    const validationResult = TaskRunListSearchFilters.omit({ environments: true }).safeParse(
+      result.experimental_output.filters
+    );
+    if (!validationResult.success) {
+      logger.error("AI filter validation failed", {
+        errors: validationResult.error.errors,
+        filters: result.experimental_output.filters,
+      });
+
+      return {
+        success: false,
+        error: "AI response validation failed",
+        suggestions:
+          "The AI response contained invalid filter values. Try rephrasing your request.",
+      };
+    }
+
     return {
       success: true,
-      filters: result.experimental_output.filters,
+      filters: validationResult.data,
       explanation: result.experimental_output.explanation,
     };
   } catch (error) {
-    logger.error("AI filter processing failed", { error, text, environmentId: environment.id });
+    logger.error("AI filter processing failed", {
+      error,
+      errorMessage: error instanceof Error ? error.message : String(error),
+      text,
+      environmentId: environment.id,
+    });
+
+    // If it's a schema validation error, provide more specific feedback
+    if (error instanceof Error && error.message.includes("schema")) {
+      return {
+        success: false,
+        error: "AI response format error",
+        suggestions:
+          "The AI response didn't match the expected format. Try rephrasing your request or being more specific about what you want to filter.",
+      };
+    }
 
     return {
       success: false,
