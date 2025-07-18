@@ -6,6 +6,7 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { processAIFilter } from "~/v3/services/aiRunFilterService.server";
 import { type TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
+import { tryCatch } from "@trigger.dev/core";
 
 const RequestSchema = z.object({
   text: z.string().min(1),
@@ -47,11 +48,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   const { text } = submission.data;
 
-  const result = await processAIFilter(text, environment.id);
-
-  if (result.success) {
-    return json(result);
-  } else {
-    return json(result, { status: 400 });
+  const [error, result] = await tryCatch(processAIFilter(text, environment));
+  if (error) {
+    return json({ success: false, error: error.message }, { status: 400 });
   }
+
+  return json(result);
 }

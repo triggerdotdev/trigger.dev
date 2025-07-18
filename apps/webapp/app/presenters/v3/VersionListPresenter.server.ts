@@ -1,6 +1,6 @@
-import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { BasePresenter } from "./basePresenter.server";
 import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/isomorphic";
+import { type RuntimeEnvironment } from "@trigger.dev/database";
+import { BasePresenter } from "./basePresenter.server";
 
 const DEFAULT_ITEMS_PER_PAGE = 25;
 const MAX_ITEMS_PER_PAGE = 100;
@@ -17,7 +17,7 @@ export class VersionListPresenter extends BasePresenter {
     environment,
     query,
   }: {
-    environment: AuthenticatedEnvironment;
+    environment: Pick<RuntimeEnvironment, "id" | "type">;
     query?: string;
   }) {
     const hasFilters = query !== undefined && query.length > 0;
