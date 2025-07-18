@@ -1,16 +1,15 @@
-import { useFetcher } from "@remix-run/react";
-import { useState, useEffect } from "react";
+import { useFetcher, useNavigate } from "@remix-run/react";
+import { useEffect, useState } from "react";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
-import { Button } from "~/components/primitives/Buttons";
 import { Input } from "~/components/primitives/Input";
+import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { Spinner } from "~/components/primitives/Spinner";
-import { useSearchParams } from "~/hooks/useSearchParam";
+import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { useEnvironment } from "~/hooks/useEnvironment";
-import { type TaskRunListSearchFilters } from "./RunFilters";
+import { useSearchParams } from "~/hooks/useSearchParam";
 import { objectToSearchParams } from "~/utils/searchParams";
-import { ShortcutKey } from "~/components/primitives/ShortcutKey";
+import { type TaskRunListSearchFilters } from "./RunFilters";
 
 type AIFilterResult =
   | {
@@ -26,7 +25,7 @@ type AIFilterResult =
 
 export function AIFilterInput() {
   const [text, setText] = useState("");
-  const { replace } = useSearchParams();
+  const navigate = useNavigate();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -34,16 +33,21 @@ export function AIFilterInput() {
   const fetcher = useFetcher<AIFilterResult>();
 
   useEffect(() => {
-    if (fetcher.data?.success) {
+    if (fetcher.data?.success && fetcher.state === "loading") {
+      // Clear the input after successful application
+      setText("");
+
       const searchParams = objectToSearchParams(fetcher.data.filters);
       if (!searchParams) {
         return;
       }
 
-      replace(searchParams);
+      console.log("AI filter success", {
+        data: fetcher.data,
+        searchParams: searchParams.toString(),
+      });
 
-      // Clear the input after successful application
-      setText("");
+      navigate(`${location.pathname}?${searchParams.toString()}`, { replace: true });
 
       // TODO: Show success message with explanation
       console.log(`AI applied filters: ${fetcher.data.explanation}`);
@@ -51,7 +55,7 @@ export function AIFilterInput() {
       // TODO: Show error with suggestions
       console.error(fetcher.data.error, fetcher.data.suggestions);
     }
-  }, [fetcher.data, replace]);
+  }, [fetcher.data, navigate]);
 
   const isLoading = fetcher.state === "submitting";
 
