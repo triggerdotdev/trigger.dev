@@ -395,7 +395,9 @@ function FilterMenu(props: RunFiltersProps) {
       shortcut={shortcut}
       tooltipTitle={"Filter runs"}
       className="pr-0.5"
-    />
+    >
+      <></>
+    </SelectTrigger>
   );
 
   return (

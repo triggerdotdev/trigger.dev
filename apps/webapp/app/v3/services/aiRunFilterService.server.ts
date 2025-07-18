@@ -11,12 +11,21 @@ import { VersionListPresenter } from "~/presenters/v3/VersionListPresenter.serve
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 
-const AIFilterResponseSchema = z.object({
-  filters: TaskRunListSearchFilters.omit({ environments: true }),
-  explanation: z
-    .string()
-    .describe("A short human-readable explanation of what filters were applied"),
-});
+const AIFilterResponseSchema = z
+  .discriminatedUnion("success", [
+    z.object({
+      success: z.literal(true),
+      filters: TaskRunListSearchFilters.omit({ environments: true }),
+      explanation: z
+        .string()
+        .describe("A short human-readable explanation of what filters were applied"),
+    }),
+    z.object({
+      success: z.literal(false),
+      error: z.string(),
+    }),
+  ])
+  .describe("The response from the AI filter service");
 
 export type AIFilterResult =
   | {
@@ -27,7 +36,6 @@ export type AIFilterResult =
   | {
       success: false;
       error: string;
-      suggestions: string;
     };
 
 export async function processAIFilter(
@@ -38,7 +46,6 @@ export async function processAIFilter(
     return {
       success: false,
       error: "OpenAI API key is not configured",
-      suggestions: "Contact your administrator to configure AI features",
     };
   }
 
@@ -185,17 +192,25 @@ The filters object should only contain the fields that are actually being filter
 
 CRITICAL: The response must be a valid JSON object with exactly this structure:
 {
+  "success": true,
   "filters": {
     // only include fields that have actual values
   },
   "explanation": "string explaining what filters were applied"
 }
 
+or if you can't figure out the filters then return:
+{
+  "success": false,
+  "error": "<short human understandable suggestion>"
+}
+
+Make the error no more than 8 words.
+
 Convert the following natural language description into structured filters:
 
 "${text}"
-
-Return only the filters that are explicitly mentioned or can be reasonably inferred. If the description is unclear or doesn't match any known patterns, return an empty filters object and explain why in the explanation field.`,
+`,
     });
 
     // Add debugging to see what the AI returned
@@ -203,8 +218,14 @@ Return only the filters that are explicitly mentioned or can be reasonably infer
       text,
       environmentId: environment.id,
       result: result.experimental_output,
-      filters: result.experimental_output.filters,
     });
+
+    if (!result.experimental_output.success) {
+      return {
+        success: false,
+        error: result.experimental_output.error,
+      };
+    }
 
     // Validate the filters against the schema to catch any issues
     const validationResult = TaskRunListSearchFilters.omit({ environments: true }).safeParse(
@@ -219,8 +240,6 @@ Return only the filters that are explicitly mentioned or can be reasonably infer
       return {
         success: false,
         error: "AI response validation failed",
-        suggestions:
-          "The AI response contained invalid filter values. Try rephrasing your request.",
       };
     }
 
@@ -241,17 +260,13 @@ Return only the filters that are explicitly mentioned or can be reasonably infer
     if (error instanceof Error && error.message.includes("schema")) {
       return {
         success: false,
-        error: "AI response format error",
-        suggestions:
-          "The AI response didn't match the expected format. Try rephrasing your request or being more specific about what you want to filter.",
+        error: error.message,
       };
     }
 
     return {
       success: false,
-      error: "Failed to process AI filter request",
-      suggestions:
-        "Try being more specific about what you want to filter. Use common terms like 'failed runs', 'last 7 days', 'with tag X'. Check that your description is clear and unambiguous",
+      error: error instanceof Error ? error.message : String(error),
     };
   }
 }

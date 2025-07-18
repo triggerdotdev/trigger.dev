@@ -1,5 +1,6 @@
+import { Portal } from "@radix-ui/react-portal";
 import { useFetcher, useNavigate } from "@remix-run/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { Input } from "~/components/primitives/Input";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
@@ -32,13 +33,29 @@ export function AIFilterInput() {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-
+  const inputRef = useRef<HTMLInputElement>(null);
   const fetcher = useFetcher<AIFilterResult>();
+
+  // Calculate position for error message
+  const [errorPosition, setErrorPosition] = useState({ top: 0, left: 0, width: 0 });
+
+  useEffect(() => {
+    if (fetcher.data?.success === false && inputRef.current) {
+      const rect = inputRef.current.getBoundingClientRect();
+      setErrorPosition({
+        top: rect.bottom + window.scrollY,
+        left: rect.left + window.scrollX,
+        width: rect.width,
+      });
+    }
+  }, [fetcher.data?.success]);
 
   useEffect(() => {
     if (fetcher.data?.success && fetcher.state === "loading") {
       // Clear the input after successful application
       setText("");
+      // Ensure focus is removed after successful submission
+      setIsFocused(false);
 
       const searchParams = objectToSearchParams(fetcher.data.filters);
       if (!searchParams) {
@@ -51,6 +68,11 @@ export function AIFilterInput() {
       });
 
       navigate(`${location.pathname}?${searchParams.toString()}`, { replace: true });
+
+      //focus the input again
+      if (inputRef.current) {
+        inputRef.current.focus();
+      }
 
       // TODO: Show success message with explanation
       console.log(`AI applied filters: ${fetcher.data.explanation}`);
@@ -70,22 +92,28 @@ export function AIFilterInput() {
     >
       <motion.div
         initial={{ width: "auto" }}
-        animate={{ width: isFocused ? "24rem" : "auto" }}
+        animate={{ width: isFocused && text.length > 0 ? "24rem" : "auto" }}
         transition={{
           type: "spring",
           stiffness: 300,
           damping: 30,
         }}
+        className="animated-gradient-glow relative"
       >
         <Input
           type="text"
           name="text"
-          variant="small"
+          variant="secondary-small"
           placeholder="Describe your filters…"
           value={text}
           onChange={(e) => setText(e.target.value)}
           disabled={isLoading}
           fullWidth
+          ref={inputRef}
+          className={cn(
+            "placeholder:text-text-bright",
+            isFocused && "placeholder:text-text-dimmed"
+          )}
           onKeyDown={(e) => {
             if (e.key === "Enter" && text.trim() && !isLoading) {
               e.preventDefault();
@@ -96,7 +124,12 @@ export function AIFilterInput() {
             }
           }}
           onFocus={() => setIsFocused(true)}
-          onBlur={() => setIsFocused(false)}
+          onBlur={() => {
+            // Only blur if the text is empty or we're not loading
+            if (text.length === 0 || !isLoading) {
+              setIsFocused(false);
+            }
+          }}
           icon={<AISparkleIcon className="size-4" />}
           accessory={
             isLoading ? (
@@ -110,6 +143,20 @@ export function AIFilterInput() {
             ) : undefined
           }
         />
+        {fetcher.data?.success === false && (
+          <Portal>
+            <div
+              className="fixed z-[9999] rounded-md bg-rose-500 px-3 py-2 text-sm text-white shadow-lg"
+              style={{
+                top: `${errorPosition.top + 8}px`,
+                left: `${errorPosition.left}px`,
+                width: `${errorPosition.width}px`,
+              }}
+            >
+              {fetcher.data.error}
+            </div>
+          </Portal>
+        )}
       </motion.div>
     </fetcher.Form>
   );
