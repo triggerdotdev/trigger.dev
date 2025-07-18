@@ -28,6 +28,11 @@ export class VersionListPresenter extends BasePresenter {
       },
       where: {
         runtimeEnvironmentId: environment.id,
+        version: query
+          ? {
+              contains: query,
+            }
+          : undefined,
       },
       orderBy: {
         createdAt: "desc",
