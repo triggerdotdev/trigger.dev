@@ -2,9 +2,10 @@ import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { requireUserId } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
-import { type TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
+import { processAIFilter } from "~/v3/services/aiRunFilterService.server";
+import { type TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 
 const RequestSchema = z.object({
   text: z.string().min(1),
@@ -46,17 +47,11 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   const { text } = submission.data;
 
-  // TODO: Replace this with actual AI processing
-  // For now, return fake successful data
-  const fakeFilters: TaskRunListSearchFilters = {
-    statuses: ["COMPLETED_WITH_ERRORS", "COMPLETED_SUCCESSFULLY"],
-    machines: ["small-2x"],
-    period: "7d",
-  };
+  const result = await processAIFilter(text, environment.id);
 
-  return json<{ success: true; filters: TaskRunListSearchFilters; explanation: string }>({
-    success: true,
-    filters: fakeFilters,
-    explanation: `Applied filters: failed status, last 7 days, with tag "test-tag"`,
-  });
+  if (result.success) {
+    return json(result);
+  } else {
+    return json(result, { status: 400 });
+  }
 }

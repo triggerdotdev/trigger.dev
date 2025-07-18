@@ -10,6 +10,8 @@ import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { objectToSearchParams } from "~/utils/searchParams";
 import { type TaskRunListSearchFilters } from "./RunFilters";
+import { cn } from "~/utils/cn";
+import { motion } from "framer-motion";
 
 type AIFilterResult =
   | {
@@ -25,6 +27,7 @@ type AIFilterResult =
 
 export function AIFilterInput() {
   const [text, setText] = useState("");
+  const [isFocused, setIsFocused] = useState(false);
   const navigate = useNavigate();
   const organization = useOrganization();
   const project = useProject();
@@ -65,7 +68,15 @@ export function AIFilterInput() {
       action={`/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/runs/ai-filter`}
       method="post"
     >
-      <div className="relative flex-1">
+      <motion.div
+        initial={{ width: "auto" }}
+        animate={{ width: isFocused ? "24rem" : "auto" }}
+        transition={{
+          type: "spring",
+          stiffness: 300,
+          damping: 30,
+        }}
+      >
         <Input
           type="text"
           name="text"
@@ -74,7 +85,7 @@ export function AIFilterInput() {
           value={text}
           onChange={(e) => setText(e.target.value)}
           disabled={isLoading}
-          className="pr-10"
+          fullWidth
           onKeyDown={(e) => {
             if (e.key === "Enter" && text.trim() && !isLoading) {
               e.preventDefault();
@@ -84,19 +95,22 @@ export function AIFilterInput() {
               }
             }
           }}
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => setIsFocused(false)}
           icon={<AISparkleIcon className="size-4" />}
           accessory={
-            text.length > 0 ? (
-              <ShortcutKey shortcut={{ key: "enter" }} variant="small" />
+            isLoading ? (
+              <Spinner color="muted" className="size-4" />
+            ) : text.length > 0 ? (
+              <ShortcutKey
+                shortcut={{ key: "enter" }}
+                variant="small"
+                className={cn("transition-opacity", text.length === 0 && "opacity-0")}
+              />
             ) : undefined
           }
         />
-        {isLoading && (
-          <div className="absolute right-3 top-1/2 -translate-y-1/2">
-            <Spinner color="muted" />
-          </div>
-        )}
-      </div>
+      </motion.div>
     </fetcher.Form>
   );
 }

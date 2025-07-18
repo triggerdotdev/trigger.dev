@@ -112,37 +112,74 @@ export const MachinePresetOrMachinePresetArray = z.preprocess((value) => {
 }, MachinePresetName.array().optional());
 
 export const TaskRunListSearchFilters = z.object({
-  cursor: z.string().optional(),
-  direction: z.enum(["forward", "backward"]).optional(),
-  environments: StringOrStringArray,
-  tasks: StringOrStringArray,
-  versions: StringOrStringArray,
-  statuses: z.preprocess((value) => {
-    if (typeof value === "string") {
-      if (value.length > 0) {
-        return [value];
+  cursor: z.string().optional().describe("Cursor for pagination - used internally for navigation"),
+  direction: z
+    .enum(["forward", "backward"])
+    .optional()
+    .describe("Pagination direction - forward or backward. Used internally for navigation"),
+  environments: StringOrStringArray.describe(
+    "Environment names to filter by (DEVELOPMENT, STAGING, PREVIEW, PRODUCTION)"
+  ),
+  tasks: StringOrStringArray.describe(
+    "Task identifiers to filter by (these are user-defined names)"
+  ),
+  versions: StringOrStringArray.describe(
+    "Version identifiers to filter by (these are in this format 20250718.1). Needs to be looked up."
+  ),
+  statuses: z
+    .preprocess((value) => {
+      if (typeof value === "string") {
+        if (value.length > 0) {
+          return [value];
+        }
+
+        return undefined;
+      }
+
+      if (Array.isArray(value)) {
+        return value.filter((v) => typeof v === "string" && v.length > 0);
       }
 
       return undefined;
-    }
-
-    if (Array.isArray(value)) {
-      return value.filter((v) => typeof v === "string" && v.length > 0);
-    }
-
-    return undefined;
-  }, RunStatus.array().optional()),
-  tags: StringOrStringArray,
-  bulkId: z.string().optional(),
-  period: z.preprocess((value) => (value === "all" ? undefined : value), z.string().optional()),
-  from: z.coerce.number().optional(),
-  to: z.coerce.number().optional(),
-  rootOnly: z.coerce.boolean().optional(),
-  batchId: z.string().optional(),
-  runId: StringOrStringArray,
-  scheduleId: z.string().optional(),
-  queues: StringOrStringArray,
-  machines: MachinePresetOrMachinePresetArray,
+    }, RunStatus.array().optional())
+    .describe(`Run statuses to filter by (${filterableTaskRunStatuses.join(", ")})`),
+  tags: StringOrStringArray.describe("Tag names to filter by (these are user-defined names)"),
+  bulkId: z
+    .string()
+    .optional()
+    .describe("Bulk action ID to filter by - shows runs from a specific bulk operation"),
+  period: z
+    .preprocess((value) => (value === "all" ? undefined : value), z.string().optional())
+    .describe("Time period string (e.g., '1h', '7d', '30d', '1y') for relative time filtering"),
+  from: z.coerce
+    .number()
+    .optional()
+    .describe("Unix timestamp for start of time range - absolute time filtering"),
+  to: z.coerce
+    .number()
+    .optional()
+    .describe("Unix timestamp for end of time range - absolute time filtering"),
+  rootOnly: z.coerce
+    .boolean()
+    .optional()
+    .describe("Show only root runs (not child runs) - set to true to exclude sub-runs"),
+  batchId: z
+    .string()
+    .optional()
+    .describe(
+      "Batch ID to filter by - shows runs from a specific batch operation. They start with batch_"
+    ),
+  runId: StringOrStringArray.describe("Specific run IDs to filter by. They start with run_"),
+  scheduleId: z
+    .string()
+    .optional()
+    .describe(
+      "Schedule ID to filter by - shows runs from a specific schedule. They start with sched_"
+    ),
+  queues: StringOrStringArray.describe("Queue names to filter by (these are user-defined names)"),
+  machines: MachinePresetOrMachinePresetArray.describe(
+    `Machine presets to filter by (${machines.join(", ")})`
+  ),
 });
 
 export type TaskRunListSearchFilters = z.infer<typeof TaskRunListSearchFilters>;

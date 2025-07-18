@@ -188,6 +188,9 @@ importers:
 
   apps/webapp:
     dependencies:
+      '@ai-sdk/openai':
+        specifier: ^1.3.23
+        version: 1.3.23(zod@3.23.8)
       '@ariakit/react':
         specifier: ^0.4.6
         version: 0.4.6(react-dom@18.2.0)(react@18.2.0)
@@ -455,6 +458,9 @@ importers:
       '@whatwg-node/fetch':
         specifier: ^0.9.14
         version: 0.9.14
+      ai:
+        specifier: ^4.3.19
+        version: 4.3.19(react@18.2.0)(zod@3.23.8)
       assert-never:
         specifier: ^1.2.1
         version: 1.2.1
@@ -2499,6 +2505,17 @@ packages:
       zod: 3.23.8
     dev: false
 
+  /@ai-sdk/openai@1.3.23(zod@3.23.8):
+    resolution: {integrity: sha512-86U7rFp8yacUAOE/Jz8WbGcwMCqWvjK33wk5DXkfnAOEn3mx2r7tNSJdjukQFZbAK97VMXGPPHxF+aEARDXRXQ==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      zod: ^3.0.0
+    dependencies:
+      '@ai-sdk/provider': 1.1.3
+      '@ai-sdk/provider-utils': 2.2.8(zod@3.23.8)
+      zod: 3.23.8
+    dev: false
+
   /@ai-sdk/openai@1.3.3(zod@3.23.8):
     resolution: {integrity: sha512-CH57tonLB4DwkwqwnMmTCoIOR7cNW3bP5ciyloI7rBGJS/Bolemsoo+vn5YnwkyT9O1diWJyvYeTh7A4UfiYOw==}
     engines: {node: '>=18'}
@@ -2581,6 +2598,18 @@ packages:
       zod: 3.23.8
     dev: false
 
+  /@ai-sdk/provider-utils@2.2.8(zod@3.23.8):
+    resolution: {integrity: sha512-fqhG+4sCVv8x7nFzYnFo19ryhAa3w096Kmc3hWxMQfW/TubPOmt3A6tYZhl4mUfQWWQMsuSkLrtjlWuXBVSGQA==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      zod: ^3.23.8
+    dependencies:
+      '@ai-sdk/provider': 1.1.3
+      nanoid: 3.3.8
+      secure-json-parse: 2.7.0
+      zod: 3.23.8
+    dev: false
+
   /@ai-sdk/provider@0.0.22:
     resolution: {integrity: sha512-smZ1/2jL/JSKnbhC6ama/PxI2D/psj+YAe0c0qpd5ComQCNFltg72VFf0rpUSFMmFuj1pCCNoBOCrvyl8HTZHQ==}
     engines: {node: '>=18'}
@@ -2607,6 +2636,13 @@ packages:
     engines: {node: '>=18'}
     dependencies:
       json-schema: 0.4.0
+
+  /@ai-sdk/provider@1.1.3:
+    resolution: {integrity: sha512-qZMxYJ0qqX/RfnuIaab+zp8UAeJn/ygXXAffR5I4N0n1IrvA6qBsjc8hXLmBiMV2zoXlifkacF7sEFnYnjBcqg==}
+    engines: {node: '>=18'}
+    dependencies:
+      json-schema: 0.4.0
+    dev: false
 
   /@ai-sdk/react@0.0.53(react@19.0.0-rc.0)(zod@3.23.8):
     resolution: {integrity: sha512-sIsmTFoR/QHvUUkltmHwP4bPjwy2vko6j/Nj8ayxLhEHs04Ug+dwXQyfA7MwgimEE3BcDQpWL8ikVj0m3ZILWQ==}
@@ -2663,6 +2699,24 @@ packages:
       '@ai-sdk/ui-utils': 1.0.0(zod@3.23.8)
       react: 18.3.1
       swr: 2.2.5(react@18.3.1)
+      throttleit: 2.1.0
+      zod: 3.23.8
+    dev: false
+
+  /@ai-sdk/react@1.2.12(react@18.2.0)(zod@3.23.8):
+    resolution: {integrity: sha512-jK1IZZ22evPZoQW3vlkZ7wvjYGYF+tRBKXtrcolduIkQ/m/sOAVcVeVDUDvh1T91xCnWCdUGCPZg2avZ90mv3g==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      react: ^18 || ^19 || ^19.0.0-rc
+      zod: ^3.23.8
+    peerDependenciesMeta:
+      zod:
+        optional: true
+    dependencies:
+      '@ai-sdk/provider-utils': 2.2.8(zod@3.23.8)
+      '@ai-sdk/ui-utils': 1.2.11(zod@3.23.8)
+      react: 18.2.0
+      swr: 2.2.5(react@18.2.0)
       throttleit: 2.1.0
       zod: 3.23.8
     dev: false
@@ -2826,6 +2880,18 @@ packages:
       '@ai-sdk/provider-utils': 2.2.1(zod@3.23.8)
       zod: 3.23.8
       zod-to-json-schema: 3.24.5(zod@3.23.8)
+
+  /@ai-sdk/ui-utils@1.2.11(zod@3.23.8):
+    resolution: {integrity: sha512-3zcwCc8ezzFlwp3ZD15wAPjf2Au4s3vAbKsXQVyhxODHcmu0iyPO2Eua6D/vicq/AUm/BAo60r97O6HU+EI0+w==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      zod: ^3.23.8
+    dependencies:
+      '@ai-sdk/provider': 1.1.3
+      '@ai-sdk/provider-utils': 2.2.8(zod@3.23.8)
+      zod: 3.23.8
+      zod-to-json-schema: 3.24.5(zod@3.23.8)
+    dev: false
 
   /@ai-sdk/vue@0.0.45(vue@3.5.16)(zod@3.23.8):
     resolution: {integrity: sha512-bqeoWZqk88TQmfoPgnFUKkrvhOIcOcSH5LMPgzZ8XwDqz5tHHrMHzpPfHCj7XyYn4ROTFK/2kKdC/ta6Ko0fMw==}
@@ -20576,6 +20642,26 @@ packages:
       zod: 3.23.8
     dev: false
 
+  /ai@4.3.19(react@18.2.0)(zod@3.23.8):
+    resolution: {integrity: sha512-dIE2bfNpqHN3r6IINp9znguYdhIOheKW2LDigAMrgt/upT3B8eBGPSCblENvaZGoq+hxaN9fSMzjWpbqloP+7Q==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      react: ^18 || ^19 || ^19.0.0-rc
+      zod: ^3.23.8
+    peerDependenciesMeta:
+      react:
+        optional: true
+    dependencies:
+      '@ai-sdk/provider': 1.1.3
+      '@ai-sdk/provider-utils': 2.2.8(zod@3.23.8)
+      '@ai-sdk/react': 1.2.12(react@18.2.0)(zod@3.23.8)
+      '@ai-sdk/ui-utils': 1.2.11(zod@3.23.8)
+      '@opentelemetry/api': 1.9.0
+      jsondiffpatch: 0.6.0
+      react: 18.2.0
+      zod: 3.23.8
+    dev: false
+
   /ajv-formats@2.1.1(ajv@8.17.1):
     resolution: {integrity: sha512-Wx0Kx52hxE7C18hkMEggYlEifqWZtYaRgouJor+WMdPnQyEK13vgEWyVNup7SoeeoLMsr4kf5h6dOW11I15MUA==}
     peerDependencies:
@@ -33901,6 +33987,16 @@ packages:
       locate-character: 3.0.0
       magic-string: 0.30.17
       zimmerframe: 1.1.2
+
+  /swr@2.2.5(react@18.2.0):
+    resolution: {integrity: sha512-QtxqyclFeAsxEUeZIYmsaQ0UjimSq1RZ9Un7I68/0ClKK/U3LoyQunwkQfJZr2fc22DfIXLNDc2wFyTEikCUpg==}
+    peerDependencies:
+      react: ^16.11.0 || ^17.0.0 || ^18.0.0
+    dependencies:
+      client-only: 0.0.1
+      react: 18.2.0
+      use-sync-external-store: 1.2.2(react@18.2.0)
+    dev: false
 
   /swr@2.2.5(react@18.3.1):
     resolution: {integrity: sha512-QtxqyclFeAsxEUeZIYmsaQ0UjimSq1RZ9Un7I68/0ClKK/U3LoyQunwkQfJZr2fc22DfIXLNDc2wFyTEikCUpg==}
