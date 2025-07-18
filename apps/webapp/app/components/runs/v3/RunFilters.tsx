@@ -62,6 +62,7 @@ import { type loader as tagsLoader } from "~/routes/resources.projects.$projectP
 import { Button } from "../../primitives/Buttons";
 import { BulkActionTypeCombo } from "./BulkAction";
 import { appliedSummary, FilterMenuProvider, TimeFilter } from "./SharedFilters";
+import { AIFilterInput } from "./AIFilterInput";
 import {
   allTaskRunStatuses,
   descriptionForTaskRunStatus,
@@ -305,6 +306,7 @@ export function RunsFilters(props: RunFiltersProps) {
 
   return (
     <div className="flex flex-row flex-wrap items-center gap-1">
+      <AIFilterInput />
       <FilterMenu {...props} />
       <RootOnlyToggle defaultValue={props.rootOnlyDefault} />
       <TimeFilter />
@@ -355,9 +357,8 @@ function FilterMenu(props: RunFiltersProps) {
       variant={"secondary/small"}
       shortcut={shortcut}
       tooltipTitle={"Filter runs"}
-    >
-      Filter
-    </SelectTrigger>
+      className="pr-0.5"
+    />
   );
 
   return (

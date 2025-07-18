@@ -9,9 +9,8 @@ export function useSearchParams() {
   const location = useOptimisticLocation();
 
   const replace = useCallback(
-    (values: Values) => {
+    (values: Values | URLSearchParams) => {
       const s = set(new URLSearchParams(location.search), values);
-
       navigate(`${location.pathname}?${s.toString()}`, { replace: true });
     },
     [location, navigate]
@@ -70,7 +69,7 @@ export function useSearchParams() {
   };
 }
 
-function set(searchParams: URLSearchParams, values: Values) {
+function set(searchParams: URLSearchParams, values: Values | URLSearchParams) {
   const search = new URLSearchParams(searchParams);
   for (const [param, value] of Object.entries(values)) {
     if (value === undefined) {
