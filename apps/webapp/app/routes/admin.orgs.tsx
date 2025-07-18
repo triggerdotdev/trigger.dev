@@ -4,6 +4,7 @@ import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { CopyableText } from "~/components/primitives/CopyableText";
 import { Input } from "~/components/primitives/Input";
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -54,13 +55,14 @@ export default function AdminDashboardRoute() {
         <Form className="flex items-center gap-2">
           <Input
             placeholder="Search users or orgs"
-            variant="small"
+            variant="medium"
             icon={MagnifyingGlassIcon}
             fullWidth={true}
             name="search"
             defaultValue={filters.search}
+            autoFocus
           />
-          <Button type="submit" variant="tertiary/small">
+          <Button type="submit" variant="secondary/medium">
             Search
           </Button>
         </Form>
@@ -87,8 +89,12 @@ export default function AdminDashboardRoute() {
               organizations.map((org) => {
                 return (
                   <TableRow key={org.id}>
-                    <TableCell>{org.title}</TableCell>
-                    <TableCell>{org.slug}</TableCell>
+                    <TableCell>
+                      <CopyableText value={org.title} />
+                    </TableCell>
+                    <TableCell>
+                      <CopyableText value={org.slug} />
+                    </TableCell>
                     <TableCell>
                       {org.members.map((member) => (
                         <LinkButton
@@ -96,11 +102,13 @@ export default function AdminDashboardRoute() {
                           variant="minimal/small"
                           to={`/admin?search=${encodeURIComponent(member.user.email)}`}
                         >
-                          {member.user.email}
+                          <CopyableText value={member.user.email} />
                         </LinkButton>
                       ))}
                     </TableCell>
-                    <TableCell>{org.id}</TableCell>
+                    <TableCell>
+                      <CopyableText value={org.id} />
+                    </TableCell>
                     <TableCell>{org.v2Enabled ? "✅" : ""}</TableCell>
                     <TableCell>{org.v3Enabled ? "✅" : ""}</TableCell>
                     <TableCell>{org.deletedAt ? "☠️" : ""}</TableCell>
