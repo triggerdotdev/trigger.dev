@@ -37,8 +37,16 @@ spec:
               containerPort: {{ .Values.electric.service.targetPort }}
               protocol: TCP
           env:
+            {{- if include "trigger-v4.postgres.useSecretUrl" . }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trigger-v4.postgres.external.secretName" . }}
+                  key: {{ include "trigger-v4.postgres.external.databaseUrlKey" . }}
+            {{- else }}
             - name: DATABASE_URL
               value: {{ include "trigger-v4.postgres.connectionString" . | quote }}
+            {{- end }}
             - name: ELECTRIC_INSECURE
               value: {{ .Values.electric.config.insecure | quote }}
             - name: ELECTRIC_USAGE_REPORTING

@@ -440,7 +440,7 @@ electric:
   image:
     registry: docker.io
     repository: electricsql/electric
-    tag: "1.0.13"
+    tag: "1.0.24"
     pullPolicy: IfNotPresent
   config:
     insecure: true
