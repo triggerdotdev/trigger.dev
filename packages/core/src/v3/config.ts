@@ -260,6 +260,14 @@ export type TriggerConfig = {
       };
 
   /**
+   * @default false
+   * @description When running the dev CLI, set the current working directory to the build directory.
+   *
+   * Currently, the process.cwd() is set to the root of the project.
+   */
+  experimental_devProcessCwdInBuildDir?: boolean;
+
+  /**
    * @deprecated Use `dirs` instead
    */
   triggerDirectories?: string[];

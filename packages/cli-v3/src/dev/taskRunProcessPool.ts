@@ -47,7 +47,8 @@ export class TaskRunProcessPool {
     workerManifest: WorkerManifest,
     serverWorker: ServerBackgroundWorker,
     machineResources: MachinePresetResources,
-    env?: Record<string, string>
+    env?: Record<string, string>,
+    cwd?: string
   ): Promise<{ taskRunProcess: TaskRunProcess; isReused: boolean }> {
     const version = serverWorker.version || "unknown";
 
@@ -97,6 +98,7 @@ export class TaskRunProcessPool {
       version,
       availableCount,
       busyCount,
+      workerManifest,
     });
 
     const newProcess = new TaskRunProcess({
@@ -107,7 +109,7 @@ export class TaskRunProcessPool {
       },
       serverWorker,
       machineResources,
-      cwd: this.options.cwd,
+      cwd: cwd ?? this.options.cwd,
     }).initialize();
 
     // Add to busy processes for this version

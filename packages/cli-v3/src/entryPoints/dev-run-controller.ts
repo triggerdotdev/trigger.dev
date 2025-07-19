@@ -31,6 +31,7 @@ type DevRunControllerOptions = {
   onSubscribeToRunNotifications: (run: Run, snapshot: Snapshot) => void;
   onUnsubscribeFromRunNotifications: (run: Run, snapshot: Snapshot) => void;
   onFinished: () => void;
+  cwd?: string;
 };
 
 type Run = {
@@ -50,6 +51,7 @@ export class DevRunController {
   private readonly heartbeatIntervalSeconds: number;
   private readonly snapshotPoller: IntervalService;
   private readonly snapshotPollIntervalSeconds: number;
+  private readonly cwd?: string;
 
   private state:
     | {
@@ -77,7 +79,7 @@ export class DevRunController {
     this.worker = opts.worker;
     this.heartbeatIntervalSeconds = opts.heartbeatIntervalSeconds || 20;
     this.snapshotPollIntervalSeconds = 5;
-
+    this.cwd = opts.cwd;
     this.httpClient = opts.httpClient;
 
     this.snapshotPoller = new IntervalService({
@@ -607,6 +609,10 @@ export class DevRunController {
 
     this.snapshotPoller.start();
 
+    logger.debug("getProcess", {
+      build: this.opts.worker.build,
+    });
+
     // Get process from pool instead of creating new one
     const { taskRunProcess, isReused } = await this.opts.taskRunProcessPool.getProcess(
       this.opts.worker.manifest,
@@ -621,7 +627,8 @@ export class DevRunController {
         TRIGGER_WORKER_MANIFEST_PATH: join(this.opts.worker.build.outputPath, "index.json"),
         RUN_WORKER_SHOW_LOGS: this.opts.logLevel === "debug" ? "true" : "false",
         TRIGGER_WORKER_VERSION: this.opts.worker.serverWorker?.version,
-      }
+      },
+      this.cwd
     );
 
     this.taskRunProcess = taskRunProcess;
