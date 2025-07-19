@@ -13,6 +13,7 @@ import { objectToSearchParams } from "~/utils/searchParams";
 import { type TaskRunListSearchFilters } from "./RunFilters";
 import { cn } from "~/utils/cn";
 import { motion } from "framer-motion";
+import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives/Popover";
 
 type AIFilterResult =
   | {
@@ -90,74 +91,111 @@ export function AIFilterInput() {
       action={`/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/runs/ai-filter`}
       method="post"
     >
-      <motion.div
-        initial={{ width: "auto" }}
-        animate={{ width: isFocused && text.length > 0 ? "24rem" : "auto" }}
-        transition={{
-          type: "spring",
-          stiffness: 300,
-          damping: 30,
-        }}
-        className="animated-gradient-glow relative"
-      >
-        <Input
-          type="text"
-          name="text"
-          variant="secondary-small"
-          placeholder="Describe your filters…"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          disabled={isLoading}
-          fullWidth
-          ref={inputRef}
-          className={cn(
-            "placeholder:text-text-bright",
-            isFocused && "placeholder:text-text-dimmed"
-          )}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && text.trim() && !isLoading) {
-              e.preventDefault();
-              const form = e.currentTarget.closest("form");
-              if (form) {
-                form.requestSubmit();
+      <ErrorPopover error={fetcher.data?.success === false ? fetcher.data.error : undefined}>
+        <motion.div
+          initial={{ width: "auto" }}
+          animate={{ width: isFocused && text.length > 0 ? "24rem" : "auto" }}
+          transition={{
+            type: "spring",
+            stiffness: 300,
+            damping: 30,
+          }}
+          className="animated-gradient-glow relative"
+        >
+          <Input
+            type="text"
+            name="text"
+            variant="secondary-small"
+            placeholder="Describe your filters…"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            disabled={isLoading}
+            fullWidth
+            ref={inputRef}
+            className={cn(
+              "placeholder:text-text-bright",
+              isFocused && "placeholder:text-text-dimmed"
+            )}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && text.trim() && !isLoading) {
+                e.preventDefault();
+                const form = e.currentTarget.closest("form");
+                if (form) {
+                  form.requestSubmit();
+                }
               }
+            }}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => {
+              // Only blur if the text is empty or we're not loading
+              if (text.length === 0 || !isLoading) {
+                setIsFocused(false);
+              }
+            }}
+            icon={<AISparkleIcon className="size-4" />}
+            accessory={
+              isLoading ? (
+                <Spinner color="muted" className="size-4" />
+              ) : text.length > 0 ? (
+                <ShortcutKey
+                  shortcut={{ key: "enter" }}
+                  variant="small"
+                  className={cn("transition-opacity", text.length === 0 && "opacity-0")}
+                />
+              ) : undefined
             }
-          }}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => {
-            // Only blur if the text is empty or we're not loading
-            if (text.length === 0 || !isLoading) {
-              setIsFocused(false);
-            }
-          }}
-          icon={<AISparkleIcon className="size-4" />}
-          accessory={
-            isLoading ? (
-              <Spinner color="muted" className="size-4" />
-            ) : text.length > 0 ? (
-              <ShortcutKey
-                shortcut={{ key: "enter" }}
-                variant="small"
-                className={cn("transition-opacity", text.length === 0 && "opacity-0")}
-              />
-            ) : undefined
-          }
-        />
-        {fetcher.data?.success === false && (
-          <Portal>
-            <div
-              className="fixed z-[9999] rounded-md bg-rose-500 px-3 py-2 text-sm text-white shadow-lg"
-              style={{
-                top: `${errorPosition.top + 8}px`,
-                left: `${errorPosition.left}px`,
-                width: `${errorPosition.width}px`,
-              }}
-            >
-              {fetcher.data.error}
-            </div>
-          </Portal>
-        )}
-      </motion.div>
+          />
+          {fetcher.data?.success === false && (
+            <Portal>
+              <div
+                className="fixed z-[9999] rounded-md bg-rose-500 px-3 py-2 text-sm text-white shadow-lg"
+                style={{
+                  top: `${errorPosition.top + 8}px`,
+                  left: `${errorPosition.left}px`,
+                  width: `${errorPosition.width}px`,
+                }}
+              >
+                {fetcher.data.error}
+              </div>
+            </Portal>
+          )}
+        </motion.div>
+      </ErrorPopover>
     </fetcher.Form>
+  );
+}
+
+function ErrorPopover({
+  children,
+  error,
+  durationMs = 2_000,
+}: {
+  children: React.ReactNode;
+  error?: string;
+  durationMs?: number;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const timeout = useRef<NodeJS.Timeout | undefined>();
+
+  useEffect(() => {
+    if (timeout.current) {
+      clearTimeout(timeout.current);
+    }
+    timeout.current = setTimeout(() => {
+      setIsOpen((s) => true);
+    }, durationMs);
+
+    return () => {
+      if (timeout.current) {
+        clearTimeout(timeout.current);
+      }
+    };
+  }, [error, durationMs]);
+
+  return (
+    <Popover open={isOpen} onOpenChange={setIsOpen}>
+      <PopoverTrigger asChild>{children}</PopoverTrigger>
+      <PopoverContent>{error}</PopoverContent>
+    </Popover>
   );
 }
