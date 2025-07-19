@@ -51,14 +51,27 @@ export type InputProps = React.InputHTMLAttributes<HTMLInputElement> & {
   icon?: RenderIcon;
   accessory?: React.ReactNode;
   fullWidth?: boolean;
+  containerClassName?: string;
 };
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ className, type, accessory, fullWidth = true, variant = "medium", icon, ...props }, ref) => {
+  (
+    {
+      className,
+      type,
+      accessory,
+      fullWidth = true,
+      variant = "medium",
+      icon,
+      containerClassName,
+      ...props
+    },
+    ref
+  ) => {
     const innerRef = useRef<HTMLInputElement>(null);
     useImperativeHandle(ref, () => innerRef.current as HTMLInputElement);
 
-    const containerClassName = variants[variant].container;
+    const variantContainerClassName = variants[variant].container;
     const inputClassName = variants[variant].input;
     const iconClassName = variants[variant].iconSize;
 
@@ -67,6 +80,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
         className={cn(
           "flex items-center",
           containerBase,
+          variantContainerClassName,
           containerClassName,
           fullWidth ? "w-full" : "max-w-max"
         )}

@@ -12,7 +12,7 @@ import { useSearchParams } from "~/hooks/useSearchParam";
 import { objectToSearchParams } from "~/utils/searchParams";
 import { type TaskRunListSearchFilters } from "./RunFilters";
 import { cn } from "~/utils/cn";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives/Popover";
 
 type AIFilterResult =
@@ -36,20 +36,6 @@ export function AIFilterInput() {
   const environment = useEnvironment();
   const inputRef = useRef<HTMLInputElement>(null);
   const fetcher = useFetcher<AIFilterResult>();
-
-  // Calculate position for error message
-  const [errorPosition, setErrorPosition] = useState({ top: 0, left: 0, width: 0 });
-
-  useEffect(() => {
-    if (fetcher.data?.success === false && inputRef.current) {
-      const rect = inputRef.current.getBoundingClientRect();
-      setErrorPosition({
-        top: rect.bottom + window.scrollY,
-        left: rect.left + window.scrollX,
-        width: rect.width,
-      });
-    }
-  }, [fetcher.data?.success]);
 
   useEffect(() => {
     if (fetcher.data?.success && fetcher.state === "loading") {
@@ -100,8 +86,19 @@ export function AIFilterInput() {
             stiffness: 300,
             damping: 30,
           }}
-          className="animated-gradient-glow relative"
+          className="relative"
         >
+          <AnimatePresence>
+            {isFocused && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2, ease: "linear" }}
+                className="animated-gradient-glow pointer-events-none absolute inset-0"
+              />
+            )}
+          </AnimatePresence>
           <Input
             type="text"
             name="text"
@@ -113,9 +110,10 @@ export function AIFilterInput() {
             fullWidth
             ref={inputRef}
             className={cn(
-              "placeholder:text-text-bright",
+              "disabled:text-text-dimmed/50",
               isFocused && "placeholder:text-text-dimmed"
             )}
+            containerClassName="has-[:disabled]:opacity-100"
             onKeyDown={(e) => {
               if (e.key === "Enter" && text.trim() && !isLoading) {
                 e.preventDefault();
@@ -135,7 +133,13 @@ export function AIFilterInput() {
             icon={<AISparkleIcon className="size-4" />}
             accessory={
               isLoading ? (
-                <Spinner color="muted" className="size-4" />
+                <Spinner
+                  color={{
+                    background: "rgba(99, 102, 241, 1)",
+                    foreground: "rgba(217, 70, 239, 1)",
+                  }}
+                  className="size-4"
+                />
               ) : text.length > 0 ? (
                 <ShortcutKey
                   shortcut={{ key: "enter" }}
@@ -145,20 +149,6 @@ export function AIFilterInput() {
               ) : undefined
             }
           />
-          {fetcher.data?.success === false && (
-            <Portal>
-              <div
-                className="fixed z-[9999] rounded-md bg-rose-500 px-3 py-2 text-sm text-white shadow-lg"
-                style={{
-                  top: `${errorPosition.top + 8}px`,
-                  left: `${errorPosition.left}px`,
-                  width: `${errorPosition.width}px`,
-                }}
-              >
-                {fetcher.data.error}
-              </div>
-            </Portal>
-          )}
         </motion.div>
       </ErrorPopover>
     </fetcher.Form>
@@ -168,7 +158,7 @@ export function AIFilterInput() {
 function ErrorPopover({
   children,
   error,
-  durationMs = 2_000,
+  durationMs = 10_000,
 }: {
   children: React.ReactNode;
   error?: string;
@@ -178,11 +168,14 @@ function ErrorPopover({
   const timeout = useRef<NodeJS.Timeout | undefined>();
 
   useEffect(() => {
+    if (error) {
+      setIsOpen(true);
+    }
     if (timeout.current) {
       clearTimeout(timeout.current);
     }
     timeout.current = setTimeout(() => {
-      setIsOpen((s) => true);
+      setIsOpen(false);
     }, durationMs);
 
     return () => {
@@ -193,9 +186,15 @@ function ErrorPopover({
   }, [error, durationMs]);
 
   return (
-    <Popover open={isOpen} onOpenChange={setIsOpen}>
+    <Popover open={isOpen}>
       <PopoverTrigger asChild>{children}</PopoverTrigger>
-      <PopoverContent>{error}</PopoverContent>
+      <PopoverContent
+        align="start"
+        side="bottom"
+        className="w-[var(--radix-popover-trigger-width)] min-w-[var(--radix-popover-trigger-width)] max-w-[var(--radix-popover-trigger-width)] border border-error/20 bg-[#2F1D24] px-3 py-2 text-xs text-text-dimmed"
+      >
+        {error}
+      </PopoverContent>
     </Popover>
   );
 }
