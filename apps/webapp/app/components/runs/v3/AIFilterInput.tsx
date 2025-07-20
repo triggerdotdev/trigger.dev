@@ -112,7 +112,7 @@ export function AIFilterInput() {
               ref={inputRef}
               className={cn(
                 "disabled:text-text-dimmed/50",
-                isFocused && "placeholder:text-text-dimmed"
+                isFocused && "placeholder:text-text-dimmed/70"
               )}
               containerClassName="has-[:disabled]:opacity-100"
               onKeyDown={(e) => {

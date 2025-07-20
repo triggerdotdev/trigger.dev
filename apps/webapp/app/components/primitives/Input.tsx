@@ -39,7 +39,7 @@ const variants = {
   },
   "secondary-small": {
     container:
-      "px-1 h-6 w-full rounded border border-charcoal-600 hover:border-charcoal-550 bg-secondary hover:bg-charcoal-650",
+      "px-1 h-6 w-full rounded border border-charcoal-600 hover:border-charcoal-550 bg-grid-dimmed hover:bg-charcoal-650",
     input: "px-1 rounded text-xs",
     iconSize: "size-3 ml-0.5",
     accessory: "pr-0.5",
