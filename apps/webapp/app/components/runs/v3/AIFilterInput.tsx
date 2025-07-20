@@ -86,7 +86,7 @@ export function AIFilterInput() {
             stiffness: 300,
             damping: 30,
           }}
-          className="relative"
+          className="relative h-6 min-w-44"
         >
           <AnimatePresence>
             {isFocused && (
@@ -95,60 +95,62 @@ export function AIFilterInput() {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.2, ease: "linear" }}
-                className="animated-gradient-glow pointer-events-none absolute inset-0"
+                className="animated-gradient-glow-small pointer-events-none absolute inset-0 h-6"
               />
             )}
           </AnimatePresence>
-          <Input
-            type="text"
-            name="text"
-            variant="secondary-small"
-            placeholder="Describe your filters…"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            disabled={isLoading}
-            fullWidth
-            ref={inputRef}
-            className={cn(
-              "disabled:text-text-dimmed/50",
-              isFocused && "placeholder:text-text-dimmed"
-            )}
-            containerClassName="has-[:disabled]:opacity-100"
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && text.trim() && !isLoading) {
-                e.preventDefault();
-                const form = e.currentTarget.closest("form");
-                if (form) {
-                  form.requestSubmit();
+          <div className="absolute inset-0 left-0 top-0 h-6">
+            <Input
+              type="text"
+              name="text"
+              variant="secondary-small"
+              placeholder="Describe your filters…"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              disabled={isLoading}
+              fullWidth
+              ref={inputRef}
+              className={cn(
+                "disabled:text-text-dimmed/50",
+                isFocused && "placeholder:text-text-dimmed"
+              )}
+              containerClassName="has-[:disabled]:opacity-100"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && text.trim() && !isLoading) {
+                  e.preventDefault();
+                  const form = e.currentTarget.closest("form");
+                  if (form) {
+                    form.requestSubmit();
+                  }
                 }
+              }}
+              onFocus={() => setIsFocused(true)}
+              onBlur={() => {
+                // Only blur if the text is empty or we're not loading
+                if (text.length === 0 || !isLoading) {
+                  setIsFocused(false);
+                }
+              }}
+              icon={<AISparkleIcon className="size-4" />}
+              accessory={
+                isLoading ? (
+                  <Spinner
+                    color={{
+                      background: "rgba(99, 102, 241, 1)",
+                      foreground: "rgba(217, 70, 239, 1)",
+                    }}
+                    className="size-4 opacity-80"
+                  />
+                ) : text.length > 0 ? (
+                  <ShortcutKey
+                    shortcut={{ key: "enter" }}
+                    variant="small"
+                    className={cn("transition-opacity", text.length === 0 && "opacity-0")}
+                  />
+                ) : undefined
               }
-            }}
-            onFocus={() => setIsFocused(true)}
-            onBlur={() => {
-              // Only blur if the text is empty or we're not loading
-              if (text.length === 0 || !isLoading) {
-                setIsFocused(false);
-              }
-            }}
-            icon={<AISparkleIcon className="size-4" />}
-            accessory={
-              isLoading ? (
-                <Spinner
-                  color={{
-                    background: "rgba(99, 102, 241, 1)",
-                    foreground: "rgba(217, 70, 239, 1)",
-                  }}
-                  className="size-4"
-                />
-              ) : text.length > 0 ? (
-                <ShortcutKey
-                  shortcut={{ key: "enter" }}
-                  variant="small"
-                  className={cn("transition-opacity", text.length === 0 && "opacity-0")}
-                />
-              ) : undefined
-            }
-          />
+            />
+          </div>
         </motion.div>
       </ErrorPopover>
     </fetcher.Form>
