@@ -13,8 +13,6 @@ export function handleMetadataPacket(
   metadataType: string,
   maximumSize: number
 ): IOPacket | undefined {
-  console.log("handleMetadataPacket.maximumSize", maximumSize);
-
   let metadataPacket: IOPacket | undefined = undefined;
 
   if (typeof metadata === "string") {
@@ -30,8 +28,6 @@ export function handleMetadataPacket(
   }
 
   const byteLength = Buffer.byteLength(metadataPacket.data, "utf8");
-
-  console.log("handleMetadataPacket.byteLength", byteLength);
 
   if (byteLength > maximumSize) {
     throw new MetadataTooLargeError(`Metadata exceeds maximum size of ${maximumSize} bytes`);

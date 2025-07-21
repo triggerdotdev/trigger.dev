@@ -9,7 +9,7 @@ import type { PrismaClientOrTransaction } from "~/db.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { handleMetadataPacket, MetadataTooLargeError } from "~/utils/packets";
 import { ServiceValidationError } from "~/v3/services/common.server";
-import { Effect, Schedule, Duration } from "effect";
+import { Effect, Schedule, Duration, Fiber } from "effect";
 import { type RuntimeFiber } from "effect/Fiber";
 import { setTimeout } from "timers/promises";
 import { Logger, LogLevel } from "@trigger.dev/core/logger";
@@ -100,6 +100,12 @@ export class UpdateMetadataService {
 
     // Fork the program so it runs in the background
     this._flushFiber = Effect.runFork(program as Effect.Effect<void, never, never>);
+  }
+
+  stopFlushing() {
+    if (this._flushFiber) {
+      Effect.runFork(Fiber.interrupt(this._flushFiber));
+    }
   }
 
   private _processBufferedOperations = (
@@ -224,6 +230,11 @@ export class UpdateMetadataService {
         // Log and skip if metadata is invalid
         this.logger.warn(`Invalid metadata after operations, skipping update`);
         return;
+      }
+
+      // Testing hook before update
+      if (this.options.onBeforeUpdate) {
+        yield* _(Effect.tryPromise(() => this.options.onBeforeUpdate!(runId)));
       }
 
       const result = yield* _(
@@ -378,6 +389,11 @@ export class UpdateMetadataService {
         throw new Error(`Run ${runId} not found`);
       }
 
+      // Testing hook after read
+      if (this.options.onAfterRead) {
+        await this.options.onAfterRead(runId, run.metadataVersion);
+      }
+
       // Parse the current metadata
       const currentMetadata = await (run.metadata
         ? parsePacket({ data: run.metadata, dataType: run.metadataType })
@@ -399,6 +415,11 @@ export class UpdateMetadataService {
 
       if (!newMetadataPacket) {
         throw new ServiceValidationError("Unable to update metadata");
+      }
+
+      // Testing hook before update
+      if (this.options.onBeforeUpdate) {
+        await this.options.onBeforeUpdate(runId);
       }
 
       // Update with optimistic locking
