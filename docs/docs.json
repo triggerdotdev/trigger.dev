@@ -122,7 +122,8 @@
                 "pages": [
                   "frontend/react-hooks/overview",
                   "frontend/react-hooks/realtime",
-                  "frontend/react-hooks/triggering"
+                  "frontend/react-hooks/triggering",
+                  "frontend/react-hooks/use-wait-token"
                 ]
               }
             ]

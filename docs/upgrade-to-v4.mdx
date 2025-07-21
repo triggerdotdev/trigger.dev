@@ -18,42 +18,11 @@ import NodeVersions from "/snippets/node-versions.mdx";
 | [onCancel](/tasks/overview#oncancel-function) | Run code when a run is cancelled. |
 | [Hidden tasks](/hidden-tasks) | Create tasks that are not exported from your trigger files but can still be executed. |
 | [Middleware & locals](#middleware-and-locals) | The middleware system runs at the top level, executing before and after all lifecycle hooks. The locals API allows sharing data between middleware and hooks. |
+| [useWaitToken](/frontend/react-hooks/use-wait-token) | Use the useWaitToken hook to complete a wait token from a React component. |
 
 ## Node.js support
 
 <NodeVersions />
-
-### useWaitToken
-
-We've added a new `useWaitToken` react hook that allows you to complete a wait token from a React component, using a Public Access Token.
-
-```ts backend.ts
-import { wait } from "@trigger.dev/sdk";
-
-// Somewhere in your code, you'll need to create the token and then pass the token ID and the public token to the frontend
-const token = await wait.createToken({
-  timeout: "10m",
-});
-
-return {
-  tokenId: token.id,
-  publicToken: token.publicAccessToken, // An automatically generated public access token that expires in 1 hour
-};
-```
-
-Now you can use the `useWaitToken` hook in your frontend code:
-
-```tsx frontend.tsx
-import { useWaitToken } from "@trigger.dev/react-hooks";
-
-export function MyComponent({ publicToken, tokenId }: { publicToken: string; tokenId: string }) {
-  const { complete } = useWaitToken(tokenId, {
-    accessToken: publicToken,
-  });
-
-  return <button onClick={() => complete({ foo: "bar" })}>Complete</button>;
-}
-```
 
 ### `ai.tool`
 
