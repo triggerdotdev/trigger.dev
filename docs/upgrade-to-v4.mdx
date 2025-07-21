@@ -1100,3 +1100,18 @@ export default defineConfig({
 We recommend enabling this option and testing in a staging or preview environment before trying it out in prod, as there could be unknown issues depending on what you are doing in your tasks. [#2183](https://github.com/triggerdotdev/trigger.dev/pull/2183)
 
 </Update>
+
+<Update label="July 18, 2025" description="v4.0.0-beta.23">
+  [Release
+  v4.0.0-beta.23](https://github.com/triggerdotdev/trigger.dev/releases/tag/trigger.dev%404.0.0-v4-beta.23).
+
+- fix: Logging large objects is now much more performant and uses less memory ([#2263](https://github.com/triggerdotdev/trigger.dev/pull/2263))
+- New internal idempotency implementation for trigger and batch trigger to prevent request retries from duplicating work ([#2256](https://github.com/triggerdotdev/trigger.dev/pull/2256))
+
+- Enhance deploy command output to better distinguish between local and remote builds ([#2254](https://github.com/triggerdotdev/trigger.dev/pull/2254))
+- Fixes a bug that would allow processes that had OOM errors to be incorrectly reused when experimental_processKeepAlive was enabled ([#2261](https://github.com/triggerdotdev/trigger.dev/pull/2261))
+- Add runtime version detection for display in the dashboard ([#2254](https://github.com/triggerdotdev/trigger.dev/pull/2254))
+- Update base images to latest compatible versions. The `node-22` runtime now uses v22.16.0 and `bun` uses the latest v1.2.18 release. The default `node` runtime is unchanged and points at v21.7.3. ([#2254](https://github.com/triggerdotdev/trigger.dev/pull/2254))
+- Fail fast in CI when running deploy with missing `TRIGGER_ACCESS_TOKEN` and add useful error message with link to docs ([#2258](https://github.com/triggerdotdev/trigger.dev/pull/2258))
+
+</Update>
