@@ -1,3 +1,4 @@
+import { openai } from "@ai-sdk/openai";
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
 import { z } from "zod";
@@ -139,12 +140,15 @@ export async function action({ request, params }: ActionFunctionArgs) {
     );
   }
 
-  const service = new AIRunFilterService({
-    queryTags,
-    queryVersions,
-    queryQueues,
-    queryTasks,
-  });
+  const service = new AIRunFilterService(
+    {
+      queryTags,
+      queryVersions,
+      queryQueues,
+      queryTasks,
+    },
+    openai(env.AI_RUN_FILTER_MODEL ?? "gpt-4o-mini")
+  );
 
   const [error, result] = await tryCatch(service.call(text, environment.id));
   if (error) {

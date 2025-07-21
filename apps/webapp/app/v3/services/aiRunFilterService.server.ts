@@ -1,6 +1,6 @@
 import { openai } from "@ai-sdk/openai";
 import { type TaskTriggerSource } from "@trigger.dev/database";
-import { generateText, Output, tool } from "ai";
+import { generateText, LanguageModelV1, Output, tool } from "ai";
 import { z } from "zod";
 import { TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 import { logger } from "~/services/logger.server";
@@ -79,13 +79,14 @@ export class AIRunFilterService {
       queryVersions: QueryVersions;
       queryQueues: QueryQueues;
       queryTasks: QueryTasks;
-    }
+    },
+    private readonly model: LanguageModelV1 = openai("gpt-4o-mini")
   ) {}
 
   async call(text: string, environmentId: string): Promise<AIFilterResult> {
     try {
       const result = await generateText({
-        model: openai("gpt-4o-mini"),
+        model: this.model,
         experimental_output: Output.object({ schema: AIFilterResponseSchema }),
         tools: {
           lookupTags: tool({

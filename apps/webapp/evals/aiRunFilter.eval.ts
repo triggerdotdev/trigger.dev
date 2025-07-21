@@ -8,6 +8,8 @@ import {
   type QueryVersions,
 } from "~/v3/services/aiRunFilterService.server";
 import dotenv from "dotenv";
+import { traceAISDKModel } from "evalite/ai-sdk";
+import { openai } from "@ai-sdk/openai";
 
 dotenv.config({ path: "../../.env" });
 
@@ -232,12 +234,15 @@ evalite("AI Run Filter", {
     ];
   },
   task: async (input) => {
-    const service = new AIRunFilterService({
-      queryTags,
-      queryVersions,
-      queryQueues,
-      queryTasks,
-    });
+    const service = new AIRunFilterService(
+      {
+        queryTags,
+        queryVersions,
+        queryQueues,
+        queryTasks,
+      },
+      traceAISDKModel(openai("gpt-4o-mini"))
+    );
 
     const result = await service.call(input, "123456");
     return JSON.stringify(result);
