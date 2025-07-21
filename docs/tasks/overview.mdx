@@ -235,6 +235,29 @@ export default defineConfig({
 
 <Info>Errors thrown in the `onStart` function are ignored.</Info>
 
+### `onWait` and `onResume` functions
+
+These lifecycle hooks allow you to run code when a run is paused or resumed because of a wait:
+
+```ts
+export const myTask = task({
+  id: "my-task",
+  onWait: async ({ wait }) => {
+    console.log("Run paused", wait);
+  },
+  onResume: async ({ wait }) => {
+    console.log("Run resumed", wait);
+  },
+  run: async (payload: any, { ctx }) => {
+    console.log("Run started", ctx.run);
+
+    await wait.for({ seconds: 10 });
+
+    console.log("Run finished", ctx.run);
+  },
+});
+```
+
 ### `onSuccess` function
 
 When a task run succeeds, the `onSuccess` function is called. It's useful for sending notifications, logging, syncing state to your database, or other side effects.
@@ -265,6 +288,22 @@ export default defineConfig({
 ```
 
 <Info>Errors thrown in the `onSuccess` function are ignored.</Info>
+
+### `onComplete` function
+
+This hook is executed when a run completes, regardless of whether it succeeded or failed:
+
+```ts /trigger/on-complete.ts
+export const taskWithOnComplete = task({
+  id: "task-with-on-complete",
+  onComplete: async (payload, output, { ctx }) => {
+  if (result.ok) {
+    console.log("Run succeeded", result.data);
+  } else {
+    console.log("Run failed", result.error);
+  }
+});
+```
 
 ### `onFailure` function
 
@@ -308,6 +347,105 @@ You can define a function that will be called when an error is thrown in the `ru
 Read more about `handleError` in our [Errors and Retrying guide](/errors-retrying).
 
 <Info>Uncaught errors will throw a special internal error of the type `HANDLE_ERROR_ERROR`.</Info>
+
+### onCancel
+
+You can define an `onCancel` hook that is called when a run is cancelled. This is useful if you want to clean up any resources that were allocated for the run.
+
+```ts
+tasks.onCancel(({ ctx, signal }) => {
+  console.log("Run cancelled", signal);
+});
+```
+
+You can use the `onCancel` hook along with the `signal` passed into the run function to interrupt a call to an external service, for example using the [streamText](https://ai-sdk.dev/docs/reference/ai-sdk-core/stream-text) function from the AI SDK:
+
+```ts
+import { logger, tasks, schemaTask } from "@trigger.dev/sdk";
+import { streamText } from "ai";
+import { z } from "zod";
+
+export const interruptibleChat = schemaTask({
+  id: "interruptible-chat",
+  description: "Chat with the AI",
+  schema: z.object({
+    prompt: z.string().describe("The prompt to chat with the AI"),
+  }),
+  run: async ({ prompt }, { signal }) => {
+    const chunks: TextStreamPart<{}>[] = [];
+
+    // 👇 This is a global onCancel hook, but it's inside of the run function
+    tasks.onCancel(async () => {
+      // We have access to the chunks here, and can save them to the database
+      await saveChunksToDatabase(chunks);
+    });
+
+    try {
+      const result = streamText({
+        model: getModel(),
+        prompt,
+        experimental_telemetry: {
+          isEnabled: true,
+        },
+        tools: {},
+        abortSignal: signal, // 👈 Pass the signal to the streamText function, which aborts with the run is cancelled
+        onChunk: ({ chunk }) => {
+          chunks.push(chunk);
+        },
+      });
+
+      const textParts = [];
+
+      for await (const part of result.textStream) {
+        textParts.push(part);
+      }
+
+      return textParts.join("");
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        // streamText will throw an AbortError if the signal is aborted, so we can handle it here
+      } else {
+        throw error;
+      }
+    }
+  },
+});
+```
+
+The `onCancel` hook can optionally wait for the `run` function to finish, and access the output of the run:
+
+```ts
+import { logger, task } from "@trigger.dev/sdk";
+import { setTimeout } from "node:timers/promises";
+
+export const cancelExampleTask = task({
+  id: "cancel-example",
+  // Signal will be aborted when the task is cancelled 👇
+  run: async (payload: { message: string }, { signal }) => {
+    try {
+      // We pass the signal to setTimeout to abort the timeout if the task is cancelled
+      await setTimeout(10_000, undefined, { signal });
+    } catch (error) {
+      // Ignore the abort error
+    }
+
+    // Do some more work here
+
+    return {
+      message: "Hello, world!",
+    };
+  },
+  onCancel: async ({ runPromise }) => {
+    // You can await the runPromise to get the output of the task
+    const output = await runPromise;
+  },
+});
+```
+
+<Note>
+  You will have up to 30 seconds to complete the `runPromise` in the `onCancel` hook. After that
+  point the process will be killed.
+</Note>
 
 ## Next steps
 
