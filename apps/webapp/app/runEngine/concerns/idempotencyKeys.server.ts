@@ -81,7 +81,6 @@ export class IdempotencyKeyConcern {
                 projectId: request.environment.projectId,
                 organizationId: request.environment.organizationId,
                 tx: this.prisma,
-                releaseConcurrency: request.body.options?.releaseConcurrency,
               });
             }
           );

@@ -27,8 +27,8 @@ export const loader = createLoaderApiRoute(
       superScopes: ["read:runs", "read:all", "admin"],
     },
   },
-  async ({ authentication, resource }) => {
-    const presenter = new ApiRetrieveRunPresenter();
+  async ({ authentication, resource, apiVersion }) => {
+    const presenter = new ApiRetrieveRunPresenter(apiVersion);
     const result = await presenter.call(resource, authentication.environment);
 
     if (!result) {

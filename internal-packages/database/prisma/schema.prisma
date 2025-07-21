@@ -247,8 +247,9 @@ model RuntimeEnvironment {
   ///A memorable code for the environment
   shortcode String
 
-  maximumConcurrencyLimit Int     @default(5)
-  paused                  Boolean @default(false)
+  maximumConcurrencyLimit     Int     @default(5)
+  concurrencyLimitBurstFactor Decimal @default("2.00") @db.Decimal(4, 2)
+  paused                      Boolean @default(false)
 
   autoEnableInternalSources Boolean @default(true)
 
@@ -769,6 +770,9 @@ enum TaskRunStatus {
 
   /// Task hasn't been deployed yet but is waiting to be executed. Deprecated in favor of PENDING_VERSION
   WAITING_FOR_DEPLOY
+
+  /// Task has been dequeued from the queue but is not yet executing
+  DEQUEUED
 
   /// Task is currently being executed by a worker
   EXECUTING
@@ -1438,9 +1442,6 @@ model TaskQueue {
   rateLimit        Json?
 
   paused Boolean @default(false)
-
-  /// If true, when a run is paused and waiting for waitpoints to be completed, the run will release the concurrency capacity.
-  releaseConcurrencyOnWaitpoint Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

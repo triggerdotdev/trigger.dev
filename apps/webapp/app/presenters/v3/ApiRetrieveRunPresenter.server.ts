@@ -1,6 +1,5 @@
 import {
   AttemptStatus,
-  RetrieveRunResponse,
   RunStatus,
   SerializedError,
   TaskRunError,
@@ -12,10 +11,12 @@ import {
 } from "@trigger.dev/core/v3";
 import { Prisma, TaskRunAttemptStatus, TaskRunStatus } from "@trigger.dev/database";
 import assertNever from "assert-never";
+import { API_VERSIONS, CURRENT_API_VERSION, RunStatusUnspecifiedApiVersion } from "~/api/versions";
+import { $replica, prisma } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { generatePresignedUrl } from "~/v3/r2.server";
-import { BasePresenter } from "./basePresenter.server";
-import { $replica, prisma } from "~/db.server";
+import { tracer } from "~/v3/tracer.server";
+import { startSpanWithEnv } from "~/v3/tracing.server";
 
 // Build 'select' object
 const commonRunSelect = {
@@ -63,7 +64,9 @@ type CommonRelatedRun = Prisma.Result<
 
 type FoundRun = NonNullable<Awaited<ReturnType<typeof ApiRetrieveRunPresenter.findRun>>>;
 
-export class ApiRetrieveRunPresenter extends BasePresenter {
+export class ApiRetrieveRunPresenter {
+  constructor(private readonly apiVersion: API_VERSIONS) {}
+
   public static async findRun(friendlyId: string, env: AuthenticatedEnvironment) {
     return $replica.taskRun.findFirst({
       where: {
@@ -98,11 +101,8 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
     });
   }
 
-  public async call(
-    taskRun: FoundRun,
-    env: AuthenticatedEnvironment
-  ): Promise<RetrieveRunResponse | undefined> {
-    return this.traceWithEnv("call", env, async (span) => {
+  public async call(taskRun: FoundRun, env: AuthenticatedEnvironment) {
+    return startSpanWithEnv(tracer, "ApiRetrieveRunPresenter.call", env, async () => {
       let $payload: any;
       let $payloadPresignedUrl: string | undefined;
       let $output: any;
@@ -167,7 +167,7 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
       }
 
       return {
-        ...(await createCommonRunStructure(taskRun)),
+        ...(await createCommonRunStructure(taskRun, this.apiVersion)),
         payload: $payload,
         payloadPresignedUrl: $payloadPresignedUrl,
         output: $output,
@@ -180,13 +180,13 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
         attempts: [],
         relatedRuns: {
           root: taskRun.rootTaskRun
-            ? await createCommonRunStructure(taskRun.rootTaskRun)
+            ? await createCommonRunStructure(taskRun.rootTaskRun, this.apiVersion)
             : undefined,
           parent: taskRun.parentTaskRun
-            ? await createCommonRunStructure(taskRun.parentTaskRun)
+            ? await createCommonRunStructure(taskRun.parentTaskRun, this.apiVersion)
             : undefined,
           children: await Promise.all(
-            taskRun.childRuns.map(async (r) => await createCommonRunStructure(r))
+            taskRun.childRuns.map(async (r) => await createCommonRunStructure(r, this.apiVersion))
           ),
         },
       };
@@ -205,7 +205,7 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
     }
   }
 
-  static isStatusFinished(status: RunStatus) {
+  static isStatusFinished(status: RunStatus | RunStatusUnspecifiedApiVersion) {
     return (
       status === "COMPLETED" ||
       status === "FAILED" ||
@@ -216,7 +216,21 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
     );
   }
 
-  static apiStatusFromRunStatus(status: TaskRunStatus): RunStatus {
+  static apiStatusFromRunStatus(
+    status: TaskRunStatus,
+    apiVersion: API_VERSIONS
+  ): RunStatus | RunStatusUnspecifiedApiVersion {
+    switch (apiVersion) {
+      case CURRENT_API_VERSION: {
+        return this.apiStatusFromRunStatusV2(status);
+      }
+      default: {
+        return this.apiStatusFromRunStatusV1(status);
+      }
+    }
+  }
+
+  static apiStatusFromRunStatusV1(status: TaskRunStatus): RunStatusUnspecifiedApiVersion {
     switch (status) {
       case "DELAYED": {
         return "DELAYED";
@@ -237,6 +251,7 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
       case "RETRYING_AFTER_FAILURE": {
         return "REATTEMPTING";
       }
+      case "DEQUEUED":
       case "EXECUTING": {
         return "EXECUTING";
       }
@@ -270,19 +285,76 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
     }
   }
 
-  static apiBooleanHelpersFromTaskRunStatus(status: TaskRunStatus) {
+  static apiStatusFromRunStatusV2(status: TaskRunStatus): RunStatus {
+    switch (status) {
+      case "DELAYED": {
+        return "DELAYED";
+      }
+      case "PENDING_VERSION": {
+        return "PENDING_VERSION";
+      }
+      case "WAITING_FOR_DEPLOY": {
+        return "PENDING_VERSION";
+      }
+      case "PENDING": {
+        return "QUEUED";
+      }
+      case "PAUSED":
+      case "WAITING_TO_RESUME": {
+        return "WAITING";
+      }
+      case "DEQUEUED": {
+        return "DEQUEUED";
+      }
+      case "RETRYING_AFTER_FAILURE":
+      case "EXECUTING": {
+        return "EXECUTING";
+      }
+      case "CANCELED": {
+        return "CANCELED";
+      }
+      case "COMPLETED_SUCCESSFULLY": {
+        return "COMPLETED";
+      }
+      case "SYSTEM_FAILURE": {
+        return "SYSTEM_FAILURE";
+      }
+      case "CRASHED": {
+        return "CRASHED";
+      }
+      case "INTERRUPTED":
+      case "COMPLETED_WITH_ERRORS": {
+        return "FAILED";
+      }
+      case "EXPIRED": {
+        return "EXPIRED";
+      }
+      case "TIMED_OUT": {
+        return "TIMED_OUT";
+      }
+      default: {
+        assertNever(status);
+      }
+    }
+  }
+
+  static apiBooleanHelpersFromTaskRunStatus(status: TaskRunStatus, apiVersion: API_VERSIONS) {
     return ApiRetrieveRunPresenter.apiBooleanHelpersFromRunStatus(
-      ApiRetrieveRunPresenter.apiStatusFromRunStatus(status)
+      ApiRetrieveRunPresenter.apiStatusFromRunStatus(status, apiVersion)
     );
   }
 
-  static apiBooleanHelpersFromRunStatus(status: RunStatus) {
+  static apiBooleanHelpersFromRunStatus(status: RunStatus | RunStatusUnspecifiedApiVersion) {
     const isQueued =
       status === "QUEUED" ||
       status === "WAITING_FOR_DEPLOY" ||
       status === "DELAYED" ||
       status === "PENDING_VERSION";
-    const isExecuting = status === "EXECUTING" || status === "REATTEMPTING" || status === "FROZEN";
+    const isExecuting =
+      status === "EXECUTING" ||
+      status === "REATTEMPTING" ||
+      status === "FROZEN" ||
+      status === "DEQUEUED";
     const isCompleted =
       status === "COMPLETED" ||
       status === "CANCELED" ||
@@ -293,6 +365,7 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
     const isFailed = isCompleted && status !== "COMPLETED";
     const isSuccess = isCompleted && status === "COMPLETED";
     const isCancelled = status === "CANCELED";
+    const isWaiting = status === "WAITING";
 
     return {
       isQueued,
@@ -301,6 +374,7 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
       isFailed,
       isSuccess,
       isCancelled,
+      isWaiting,
     };
   }
 
@@ -358,7 +432,7 @@ async function resolveSchedule(run: CommonRelatedRun) {
   };
 }
 
-async function createCommonRunStructure(run: CommonRelatedRun) {
+async function createCommonRunStructure(run: CommonRelatedRun, apiVersion: API_VERSIONS) {
   const metadata = await parsePacket({
     data: run.metadata ?? undefined,
     dataType: run.metadataType,
@@ -369,7 +443,7 @@ async function createCommonRunStructure(run: CommonRelatedRun) {
     taskIdentifier: run.taskIdentifier,
     idempotencyKey: run.idempotencyKey ?? undefined,
     version: run.lockedToVersion?.version,
-    status: ApiRetrieveRunPresenter.apiStatusFromRunStatus(run.status),
+    status: ApiRetrieveRunPresenter.apiStatusFromRunStatus(run.status, apiVersion),
     createdAt: run.createdAt,
     startedAt: run.startedAt ?? undefined,
     updatedAt: run.updatedAt,
@@ -385,7 +459,7 @@ async function createCommonRunStructure(run: CommonRelatedRun) {
     tags: run.tags
       .map((t: { name: string }) => t.name)
       .sort((a: string, b: string) => a.localeCompare(b)),
-    ...ApiRetrieveRunPresenter.apiBooleanHelpersFromTaskRunStatus(run.status),
+    ...ApiRetrieveRunPresenter.apiBooleanHelpersFromTaskRunStatus(run.status, apiVersion),
     triggerFunction: resolveTriggerFunction(run),
     batchId: run.batch?.friendlyId,
     metadata,

@@ -254,7 +254,6 @@ async function createWorkerTask(
         {
           name: task.queue?.name ?? `task/${task.id}`,
           concurrencyLimit: task.queue?.concurrencyLimit,
-          releaseConcurrencyOnWaitpoint: task.queue?.releaseConcurrencyOnWaitpoint,
         },
         task.id,
         task.queue?.name ? "NAMED" : "VIRTUAL",
@@ -375,9 +374,6 @@ async function createWorkerQueue(
     concurrencyLimit ?? null,
     orderableName,
     queueType,
-    typeof queue.releaseConcurrencyOnWaitpoint === "boolean"
-      ? queue.releaseConcurrencyOnWaitpoint
-      : false,
     worker,
     prisma
   );
@@ -422,7 +418,6 @@ async function upsertWorkerQueueRecord(
   concurrencyLimit: number | null,
   orderableName: string,
   queueType: TaskQueueType,
-  releaseConcurrencyOnWaitpoint: boolean,
   worker: BackgroundWorker,
   prisma: PrismaClientOrTransaction,
   attempt: number = 0
@@ -447,7 +442,6 @@ async function upsertWorkerQueueRecord(
           name: queueName,
           orderableName,
           concurrencyLimit,
-          releaseConcurrencyOnWaitpoint,
           runtimeEnvironmentId: worker.runtimeEnvironmentId,
           projectId: worker.projectId,
           type: queueType,
@@ -468,7 +462,6 @@ async function upsertWorkerQueueRecord(
           version: "V2",
           orderableName,
           concurrencyLimit,
-          releaseConcurrencyOnWaitpoint,
         },
       });
     }
@@ -482,7 +475,6 @@ async function upsertWorkerQueueRecord(
         concurrencyLimit,
         orderableName,
         queueType,
-        releaseConcurrencyOnWaitpoint,
         worker,
         prisma,
         attempt + 1

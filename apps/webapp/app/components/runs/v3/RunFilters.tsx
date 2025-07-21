@@ -10,10 +10,11 @@ import {
 import { Form, useFetcher } from "@remix-run/react";
 import { IconToggleLeft } from "@tabler/icons-react";
 import type { BulkActionType, TaskRunStatus, TaskTriggerSource } from "@trigger.dev/database";
-import { ListChecks, ListFilterIcon } from "lucide-react";
+import { ListFilterIcon } from "lucide-react";
 import { matchSorter } from "match-sorter";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { z } from "zod";
+import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 import { StatusIcon } from "~/assets/icons/StatusIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
@@ -55,8 +56,6 @@ import {
   TaskRunStatusCombo,
 } from "./TaskRunStatus";
 import { TaskTriggerSourceIcon } from "./TaskTriggerSource";
-import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
-import { cn } from "~/utils/cn";
 
 export const RunStatus = z.enum(allTaskRunStatuses);
 

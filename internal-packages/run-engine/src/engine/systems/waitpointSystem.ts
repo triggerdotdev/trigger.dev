@@ -1,40 +1,35 @@
 import { timeoutError, tryCatch } from "@trigger.dev/core/v3";
 import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import {
-  $transaction,
   Prisma,
   PrismaClientOrTransaction,
+  TaskQueue,
   TaskRunExecutionSnapshot,
   TaskRunExecutionStatus,
   Waitpoint,
 } from "@trigger.dev/database";
+import { assertNever } from "assert-never";
 import { nanoid } from "nanoid";
 import { sendNotificationToWorker } from "../eventBus.js";
-import { isExecuting, isFinishedOrPendingFinished } from "../statuses.js";
 import { EnqueueSystem } from "./enqueueSystem.js";
 import { ExecutionSnapshotSystem, getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
 import { SystemResources } from "./systems.js";
-import { ReleaseConcurrencySystem } from "./releaseConcurrencySystem.js";
-import { assertNever } from "assert-never";
 
 export type WaitpointSystemOptions = {
   resources: SystemResources;
   executionSnapshotSystem: ExecutionSnapshotSystem;
   enqueueSystem: EnqueueSystem;
-  releaseConcurrencySystem: ReleaseConcurrencySystem;
 };
 
 export class WaitpointSystem {
   private readonly $: SystemResources;
   private readonly executionSnapshotSystem: ExecutionSnapshotSystem;
-  private readonly releaseConcurrencySystem: ReleaseConcurrencySystem;
   private readonly enqueueSystem: EnqueueSystem;
 
   constructor(private readonly options: WaitpointSystemOptions) {
     this.$ = options.resources;
     this.executionSnapshotSystem = options.executionSnapshotSystem;
     this.enqueueSystem = options.enqueueSystem;
-    this.releaseConcurrencySystem = options.releaseConcurrencySystem;
   }
 
   public async clearBlockingWaitpoints({
@@ -355,7 +350,6 @@ export class WaitpointSystem {
     waitpoints,
     projectId,
     organizationId,
-    releaseConcurrency,
     timeout,
     spanIdToComplete,
     batch,
@@ -367,7 +361,6 @@ export class WaitpointSystem {
     waitpoints: string | string[];
     projectId: string;
     organizationId: string;
-    releaseConcurrency?: boolean;
     timeout?: Date;
     spanIdToComplete?: string;
     batch?: { id: string; index?: number };
@@ -436,9 +429,6 @@ export class WaitpointSystem {
           snapshot: {
             executionStatus: newStatus,
             description: "Run was blocked by a waitpoint.",
-            metadata: {
-              releaseConcurrency,
-            },
           },
           previousSnapshotId: snapshot.id,
           environmentId: snapshot.environmentId,
@@ -453,11 +443,6 @@ export class WaitpointSystem {
 
         // Let the worker know immediately, so it can suspend the run
         await sendNotificationToWorker({ runId, snapshot, eventBus: this.$.eventBus });
-
-        if (isRunBlocked) {
-          //release concurrency
-          await this.releaseConcurrencySystem.releaseConcurrencyForSnapshot(snapshot);
-        }
       }
 
       if (timeout) {
@@ -536,6 +521,7 @@ export class WaitpointSystem {
               id: true,
               type: true,
               maximumConcurrencyLimit: true,
+              concurrencyLimitBurstFactor: true,
               project: { select: { id: true } },
               organization: { select: { id: true } },
             },
@@ -609,77 +595,45 @@ export class WaitpointSystem {
           return "skipped";
         }
         case "EXECUTING_WITH_WAITPOINTS": {
-          const result = await this.$.runQueue.reacquireConcurrency(
-            run.runtimeEnvironment.organization.id,
-            runId
-          );
-
-          if (result) {
-            const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(
-              this.$.prisma,
-              {
-                run: {
-                  id: runId,
-                  status: snapshot.runStatus,
-                  attemptNumber: snapshot.attemptNumber,
-                },
-                snapshot: {
-                  executionStatus: "EXECUTING",
-                  description: "Run was continued, whilst still executing.",
-                },
-                previousSnapshotId: snapshot.id,
-                environmentId: snapshot.environmentId,
-                environmentType: snapshot.environmentType,
-                projectId: snapshot.projectId,
-                organizationId: snapshot.organizationId,
-                batchId: snapshot.batchId ?? undefined,
-                completedWaitpoints: blockingWaitpoints.map((b) => ({
-                  id: b.waitpoint.id,
-                  index: b.batchIndex ?? undefined,
-                })),
-              }
-            );
-
-            await this.releaseConcurrencySystem.refillTokensForSnapshot(snapshot);
-
-            this.$.logger.debug(
-              `continueRunIfUnblocked: run was still executing, sending notification`,
-              {
-                runId,
-                snapshot,
-                newSnapshot,
-              }
-            );
-
-            await sendNotificationToWorker({
-              runId,
-              snapshot: newSnapshot,
-              eventBus: this.$.eventBus,
-            });
-          } else {
-            // Because we cannot reacquire the concurrency, we need to enqueue the run again
-            // and because the run is still executing, we need to set the status to QUEUED_EXECUTING
-            const newSnapshot = await this.enqueueSystem.enqueueRun({
-              run,
-              env: run.runtimeEnvironment,
+          const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(
+            this.$.prisma,
+            {
+              run: {
+                id: runId,
+                status: snapshot.runStatus,
+                attemptNumber: snapshot.attemptNumber,
+              },
               snapshot: {
-                status: "QUEUED_EXECUTING",
-                description: "Run can continue, but is waiting for concurrency",
+                executionStatus: "EXECUTING",
+                description: "Run was continued, whilst still executing.",
               },
               previousSnapshotId: snapshot.id,
+              environmentId: snapshot.environmentId,
+              environmentType: snapshot.environmentType,
+              projectId: snapshot.projectId,
+              organizationId: snapshot.organizationId,
               batchId: snapshot.batchId ?? undefined,
               completedWaitpoints: blockingWaitpoints.map((b) => ({
                 id: b.waitpoint.id,
                 index: b.batchIndex ?? undefined,
               })),
-            });
+            }
+          );
 
-            this.$.logger.debug(`continueRunIfUnblocked: run goes to QUEUED_EXECUTING`, {
+          this.$.logger.debug(
+            `continueRunIfUnblocked: run was still executing, sending notification`,
+            {
               runId,
               snapshot,
               newSnapshot,
-            });
-          }
+            }
+          );
+
+          await sendNotificationToWorker({
+            runId,
+            snapshot: newSnapshot,
+            eventBus: this.$.eventBus,
+          });
 
           break;
         }

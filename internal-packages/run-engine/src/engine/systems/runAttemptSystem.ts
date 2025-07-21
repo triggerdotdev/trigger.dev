@@ -1,4 +1,5 @@
 import { startSpan } from "@internal/tracing";
+import { tryCatch } from "@trigger.dev/core/utils";
 import {
   CompleteRunAttemptResult,
   ExecutionResult,
@@ -33,10 +34,8 @@ import {
   ExecutionSnapshotSystem,
   getLatestExecutionSnapshot,
 } from "./executionSnapshotSystem.js";
-import { ReleaseConcurrencySystem } from "./releaseConcurrencySystem.js";
 import { SystemResources } from "./systems.js";
 import { WaitpointSystem } from "./waitpointSystem.js";
-import { tryCatch } from "@trigger.dev/core/utils";
 
 export type RunAttemptSystemOptions = {
   resources: SystemResources;
@@ -44,7 +43,6 @@ export type RunAttemptSystemOptions = {
   batchSystem: BatchSystem;
   waitpointSystem: WaitpointSystem;
   delayedRunSystem: DelayedRunSystem;
-  releaseConcurrencySystem: ReleaseConcurrencySystem;
   retryWarmStartThresholdMs?: number;
   machines: RunEngineOptions["machines"];
 };
@@ -55,7 +53,6 @@ export class RunAttemptSystem {
   private readonly batchSystem: BatchSystem;
   private readonly waitpointSystem: WaitpointSystem;
   private readonly delayedRunSystem: DelayedRunSystem;
-  private readonly releaseConcurrencySystem: ReleaseConcurrencySystem;
 
   constructor(private readonly options: RunAttemptSystemOptions) {
     this.$ = options.resources;
@@ -63,7 +60,6 @@ export class RunAttemptSystem {
     this.batchSystem = options.batchSystem;
     this.waitpointSystem = options.waitpointSystem;
     this.delayedRunSystem = options.delayedRunSystem;
-    this.releaseConcurrencySystem = options.releaseConcurrencySystem;
   }
 
   public async startRunAttempt({
@@ -1070,8 +1066,6 @@ export class RunAttemptSystem {
         await this.$.runQueue.acknowledgeMessage(run.runtimeEnvironment.organizationId, runId, {
           removeFromWorkerQueue: true,
         });
-
-        await this.releaseConcurrencySystem.refillTokensForSnapshot(latestSnapshot);
 
         //if executing, we need to message the worker to cancel the run and put it into `PENDING_CANCEL` status
         if (isExecuting(latestSnapshot.executionStatus)) {

@@ -9,7 +9,6 @@ import { getMachinePreset } from "../machinePresets.js";
 import { isDequeueableExecutionStatus } from "../statuses.js";
 import { RunEngineOptions } from "../types.js";
 import { ExecutionSnapshotSystem, getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
-import { ReleaseConcurrencySystem } from "./releaseConcurrencySystem.js";
 import { RunAttemptSystem } from "./runAttemptSystem.js";
 import { SystemResources } from "./systems.js";
 
@@ -18,20 +17,17 @@ export type DequeueSystemOptions = {
   machines: RunEngineOptions["machines"];
   executionSnapshotSystem: ExecutionSnapshotSystem;
   runAttemptSystem: RunAttemptSystem;
-  releaseConcurrencySystem: ReleaseConcurrencySystem;
 };
 
 export class DequeueSystem {
   private readonly $: SystemResources;
   private readonly executionSnapshotSystem: ExecutionSnapshotSystem;
   private readonly runAttemptSystem: RunAttemptSystem;
-  private readonly releaseConcurrencySystem: ReleaseConcurrencySystem;
 
   constructor(private readonly options: DequeueSystemOptions) {
     this.$ = options.resources;
     this.executionSnapshotSystem = options.executionSnapshotSystem;
     this.runAttemptSystem = options.runAttemptSystem;
-    this.releaseConcurrencySystem = options.releaseConcurrencySystem;
   }
 
   /**
@@ -165,12 +161,6 @@ export class DequeueSystem {
                     })),
                   }
                 );
-
-                if (snapshot.previousSnapshotId) {
-                  await this.releaseConcurrencySystem.refillTokensForSnapshot(
-                    snapshot.previousSnapshotId
-                  );
-                }
 
                 await sendNotificationToWorker({
                   runId,
@@ -325,6 +315,7 @@ export class DequeueSystem {
                   lockedById: result.task.id,
                   lockedToVersionId: result.worker.id,
                   lockedQueueId: result.queue.id,
+                  status: "DEQUEUED",
                   startedAt,
                   baseCostInCents: this.options.machines.baseCostInCents,
                   machinePreset: machinePreset.name,

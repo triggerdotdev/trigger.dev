@@ -215,7 +215,6 @@ type CommonTaskOptions<
   queue?: {
     name?: string;
     concurrencyLimit?: number;
-    releaseConcurrencyOnWaitpoint?: boolean;
   };
   /** Configure the spec of the [machine](https://trigger.dev/docs/machines) you want your task to run on.
    *
@@ -842,16 +841,7 @@ export type TriggerOptions = {
   version?: string;
 };
 
-export type TriggerAndWaitOptions = Omit<TriggerOptions, "version"> & {
-  /**
-   * If set to true, this will cause the waitpoint to release the current run from the queue's concurrency.
-   *
-   * This is useful if you want to allow other runs to execute while the child task is executing
-   *
-   * @default false
-   */
-  releaseConcurrency?: boolean;
-};
+export type TriggerAndWaitOptions = Omit<TriggerOptions, "version">;
 export type BatchTriggerOptions = {
   /**
    * If no idempotencyKey is set on an individual item in the batch, it will use this key on each item + the array index.

@@ -360,32 +360,6 @@ export default function Page() {
                     >
                       Limited by
                     </TableHeaderCell>
-                    <TableHeaderCell
-                      alignment="right"
-                      tooltip={
-                        <div className="max-w-xs p-1 text-left">
-                          <Paragraph
-                            variant="small"
-                            className="!text-wrap text-text-dimmed"
-                            spacing
-                          >
-                            When a task executing on this queue is paused and waiting for a
-                            waitpoint to complete, the queue will release the concurrency being used
-                            by the run so other runs can be started.
-                          </Paragraph>
-                          <LinkButton
-                            to={docsPath("v3/queues#release-concurrency-on-waitpoint")}
-                            variant="docs/small"
-                            LeadingIcon={BookOpenIcon}
-                            className="mt-3"
-                          >
-                            Read docs
-                          </LinkButton>
-                        </div>
-                      }
-                    >
-                      Release on waitpoint
-                    </TableHeaderCell>
                     <TableHeaderCell className="w-[1%] pl-24">
                       <span className="sr-only">Pause/resume</span>
                     </TableHeaderCell>
@@ -450,16 +424,12 @@ export default function Page() {
                             alignment="right"
                             className={cn(
                               queue.paused ? "tabular-nums opacity-50" : undefined,
+                              queue.running > 0 && "text-text-bright",
                               isAtLimit && "text-warning"
                             )}
                           >
                             {queue.running}/
-                            <span
-                              className={cn(
-                                "tabular-nums text-text-dimmed",
-                                isAtLimit && "text-warning"
-                              )}
-                            >
+                            <span className={cn("tabular-nums", isAtLimit && "text-warning")}>
                               {limit}
                             </span>
                           </TableCell>
@@ -471,12 +441,6 @@ export default function Page() {
                             )}
                           >
                             {queue.concurrencyLimit ? "User" : "Environment"}
-                          </TableCell>
-                          <TableCell
-                            alignment="right"
-                            className={queue.paused ? "opacity-50" : undefined}
-                          >
-                            {queue.releaseConcurrencyOnWaitpoint ? "Yes" : "No"}
                           </TableCell>
                           <TableCellMenu
                             isSticky

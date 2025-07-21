@@ -1,10 +1,8 @@
 import { TriggerTaskRequestBody } from "@trigger.dev/core/v3";
 import { RunEngineVersion, TaskRun } from "@trigger.dev/database";
-import { env } from "~/env.server";
 import { IdempotencyKeyConcern } from "~/runEngine/concerns/idempotencyKeys.server";
 import { DefaultPayloadProcessor } from "~/runEngine/concerns/payloads.server";
 import { DefaultQueueManager } from "~/runEngine/concerns/queues.server";
-import { DefaultRunChainStateManager } from "~/runEngine/concerns/runChainStates.server";
 import { DefaultRunNumberIncrementer } from "~/runEngine/concerns/runNumbers.server";
 import { DefaultTraceEventsConcern } from "~/runEngine/concerns/traceEvents.server";
 import { RunEngineTriggerTaskService } from "~/runEngine/services/triggerTask.server";
@@ -108,10 +106,6 @@ export class TriggerTaskService extends WithRunEngine {
       ),
       runNumberIncrementer: new DefaultRunNumberIncrementer(),
       traceEventConcern,
-      runChainStateManager: new DefaultRunChainStateManager(
-        this._prisma,
-        env.RUN_ENGINE_RELEASE_CONCURRENCY_ENABLED === "1"
-      ),
       tracer: tracer,
     });
 

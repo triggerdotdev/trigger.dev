@@ -1,12 +1,8 @@
-import {
-  type ListRunResponse,
-  type ListRunResponseItem,
-  parsePacket,
-  RunStatus,
-} from "@trigger.dev/core/v3";
+import { parsePacket, RunStatus } from "@trigger.dev/core/v3";
 import { type Project, type RuntimeEnvironment, type TaskRunStatus } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { z } from "zod";
+import { API_VERSIONS, RunStatusUnspecifiedApiVersion } from "~/api/versions";
 import { clickhouseClient } from "~/services/clickhouseInstance.server";
 import { logger } from "~/services/logger.server";
 import { CoercedDate } from "~/utils/zod";
@@ -28,7 +24,9 @@ export const ApiRunListSearchParams = z.object({
       }
 
       const statuses = value.split(",");
-      const parsedStatuses = statuses.map((status) => RunStatus.safeParse(status));
+      const parsedStatuses = statuses.map((status) =>
+        RunStatus.or(RunStatusUnspecifiedApiVersion).safeParse(status)
+      );
 
       if (parsedStatuses.some((result) => !result.success)) {
         const invalidStatuses: string[] = [];
@@ -114,8 +112,9 @@ export class ApiRunListPresenter extends BasePresenter {
   public async call(
     project: Project,
     searchParams: ApiRunListSearchParams,
+    apiVersion: API_VERSIONS,
     environment?: RuntimeEnvironment
-  ): Promise<ListRunResponse> {
+  ) {
     return this.trace("call", async (span) => {
       const options: RunListOptions = {
         projectId: project.id,
@@ -145,7 +144,7 @@ export class ApiRunListPresenter extends BasePresenter {
         organizationId = environment.organizationId;
       } else {
         if (searchParams["filter[env]"]) {
-          const environments = await this._prisma.runtimeEnvironment.findMany({
+          const environments = await this._replica.runtimeEnvironment.findMany({
             where: {
               projectId: project.id,
               slug: {
@@ -213,7 +212,7 @@ export class ApiRunListPresenter extends BasePresenter {
         options.batchId = searchParams["filter[batch]"];
       }
 
-      const presenter = new NextRunListPresenter(this._prisma, clickhouseClient);
+      const presenter = new NextRunListPresenter(this._replica, clickhouseClient);
 
       logger.debug("Calling RunListPresenter", { options });
 
@@ -221,7 +220,7 @@ export class ApiRunListPresenter extends BasePresenter {
 
       logger.debug("RunListPresenter results", { runs: results.runs.length });
 
-      const data: ListRunResponseItem[] = await Promise.all(
+      const data = await Promise.all(
         results.runs.map(async (run) => {
           const metadata = await parsePacket(
             {
@@ -235,7 +234,7 @@ export class ApiRunListPresenter extends BasePresenter {
 
           return {
             id: run.friendlyId,
-            status: ApiRetrieveRunPresenter.apiStatusFromRunStatus(run.status),
+            status: ApiRetrieveRunPresenter.apiStatusFromRunStatus(run.status, apiVersion),
             taskIdentifier: run.taskIdentifier,
             idempotencyKey: run.idempotencyKey,
             version: run.version ?? undefined,
@@ -259,7 +258,7 @@ export class ApiRunListPresenter extends BasePresenter {
             depth: run.depth,
             metadata,
             ...ApiRetrieveRunPresenter.apiBooleanHelpersFromRunStatus(
-              ApiRetrieveRunPresenter.apiStatusFromRunStatus(run.status)
+              ApiRetrieveRunPresenter.apiStatusFromRunStatus(run.status, apiVersion)
             ),
           };
         })
@@ -275,7 +274,9 @@ export class ApiRunListPresenter extends BasePresenter {
     });
   }
 
-  static apiStatusToRunStatuses(status: RunStatus): TaskRunStatus[] | TaskRunStatus {
+  static apiStatusToRunStatuses(
+    status: RunStatus | RunStatusUnspecifiedApiVersion
+  ): TaskRunStatus[] | TaskRunStatus {
     switch (status) {
       case "DELAYED":
         return "DELAYED";
@@ -320,6 +321,12 @@ export class ApiRunListPresenter extends BasePresenter {
       }
       case "TIMED_OUT": {
         return "TIMED_OUT";
+      }
+      case "DEQUEUED": {
+        return "DEQUEUED";
+      }
+      case "WAITING": {
+        return "WAITING_TO_RESUME";
       }
       default: {
         assertNever(status);

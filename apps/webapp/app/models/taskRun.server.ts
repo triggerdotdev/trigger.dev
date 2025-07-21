@@ -129,6 +129,7 @@ export function batchTaskRunItemStatusForRunStatus(
     case TaskRunStatus.WAITING_FOR_DEPLOY:
     case TaskRunStatus.WAITING_TO_RESUME:
     case TaskRunStatus.RETRYING_AFTER_FAILURE:
+    case TaskRunStatus.DEQUEUED:
     case TaskRunStatus.EXECUTING:
     case TaskRunStatus.PAUSED:
     case TaskRunStatus.DELAYED:

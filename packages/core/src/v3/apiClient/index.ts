@@ -77,6 +77,7 @@ import {
   SubscribeToRunsQueryParams,
   UpdateEnvironmentVariableParams,
 } from "./types.js";
+import { API_VERSION, API_VERSION_HEADER_NAME } from "./version.js";
 
 export type CreateWaitpointTokenResponse = Prettify<
   CreateWaitpointTokenResponseBody & {
@@ -777,11 +778,9 @@ export class ApiClient {
     {
       runFriendlyId,
       waitpointFriendlyId,
-      releaseConcurrency,
     }: {
       runFriendlyId: string;
       waitpointFriendlyId: string;
-      releaseConcurrency?: boolean;
     },
     requestOptions?: ZodFetchOptions
   ) {
@@ -791,9 +790,6 @@ export class ApiClient {
       {
         method: "POST",
         headers: this.#getHeaders(false),
-        body: JSON.stringify({
-          releaseConcurrency,
-        }),
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );
@@ -1039,6 +1035,8 @@ export class ApiClient {
     if (typeof window !== "undefined" && typeof window.document !== "undefined") {
       headers["x-trigger-client"] = "browser";
     }
+
+    headers[API_VERSION_HEADER_NAME] = API_VERSION;
 
     return headers;
   }

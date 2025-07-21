@@ -6,6 +6,7 @@ import { RunQueue } from "../index.js";
 import { RunQueueFullKeyProducer } from "../keyProducer.js";
 import { InputPayload } from "../types.js";
 import { setTimeout } from "node:timers/promises";
+import { Decimal } from "@trigger.dev/database";
 
 const testOptions = {
   name: "rq",
@@ -26,6 +27,7 @@ const authenticatedEnvDev = {
   id: "e1234",
   type: "DEVELOPMENT" as const,
   maximumConcurrencyLimit: 10,
+  concurrencyLimitBurstFactor: new Decimal(2.0),
   project: { id: "p1234" },
   organization: { id: "o1234" },
 };
@@ -160,6 +162,218 @@ describe("RunQueue.dequeueMessageFromWorkerQueue", () => {
         await queue.updateEnvConcurrencyLimits({
           ...authenticatedEnvDev,
           maximumConcurrencyLimit: 1,
+        });
+
+        // Enqueue first message
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: messageDev,
+          workerQueue: "main",
+        });
+
+        // Dequeue first message to occupy the concurrency
+        await setTimeout(1000);
+
+        const dequeued1 = await queue.dequeueMessageFromWorkerQueue("test_12345", "main");
+        assertNonNullable(dequeued1);
+
+        // Enqueue second message
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: { ...messageDev, runId: "r4322" },
+          workerQueue: "main",
+        });
+
+        await setTimeout(1000);
+
+        // Try to dequeue second message
+        const dequeued2 = await queue.dequeueMessageFromWorkerQueue("test_12345", "main");
+        expect(dequeued2).toBeUndefined();
+
+        const envConcurrency = await queue.currentConcurrencyOfEnvironment(authenticatedEnvDev);
+        expect(envConcurrency).toBe(1);
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
+
+  redisTest(
+    "should not dequeue when env current concurrency equals env concurrency limit with burst factor",
+    async ({ redisContainer }) => {
+      const queue = new RunQueue({
+        ...testOptions,
+        queueSelectionStrategy: new FairQueueSelectionStrategy({
+          redis: {
+            keyPrefix: "runqueue:test:",
+            host: redisContainer.getHost(),
+            port: redisContainer.getPort(),
+          },
+          keys: testOptions.keys,
+        }),
+        redis: {
+          keyPrefix: "runqueue:test:",
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+        },
+      });
+
+      try {
+        // Set env concurrency limit to 1
+        await queue.updateEnvConcurrencyLimits({
+          ...authenticatedEnvDev,
+          maximumConcurrencyLimit: 1,
+          concurrencyLimitBurstFactor: new Decimal(2.0),
+        });
+
+        // Enqueue first message
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: messageDev,
+          workerQueue: "main",
+        });
+
+        // Dequeue first message to occupy the concurrency
+        await setTimeout(1000);
+
+        const dequeued1 = await queue.dequeueMessageFromWorkerQueue("test_12345", "main");
+        assertNonNullable(dequeued1);
+
+        // Enqueue second message
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: { ...messageDev, runId: "r4322", queue: "task/my-task-2" },
+          workerQueue: "main",
+        });
+
+        await setTimeout(1000);
+
+        // Try to dequeue second message
+        const dequeued2 = await queue.dequeueMessageFromWorkerQueue("test_12345", "main");
+        expect(dequeued2).toBeDefined();
+        assertNonNullable(dequeued2);
+        expect(dequeued2.messageId).toEqual("r4322");
+        expect(dequeued2.message.orgId).toEqual(messageDev.orgId);
+        expect(dequeued2.message.version).toEqual("2");
+
+        const envConcurrency = await queue.currentConcurrencyOfEnvironment(authenticatedEnvDev);
+        expect(envConcurrency).toBe(2);
+
+        // Enqueue the third message
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: { ...messageDev, runId: "r4323", queue: "task/my-task-3" },
+          workerQueue: "main",
+        });
+
+        await setTimeout(1000);
+
+        // Try to dequeue third message
+        const dequeued3 = await queue.dequeueMessageFromWorkerQueue("test_12345", "main");
+        expect(dequeued3).toBeUndefined();
+
+        const envConcurrencyAfter = await queue.currentConcurrencyOfEnvironment(
+          authenticatedEnvDev
+        );
+        expect(envConcurrencyAfter).toBe(2);
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
+
+  redisTest(
+    "should dequeue when env current concurrency equals env concurrency limit with burst factor",
+    async ({ redisContainer }) => {
+      const queue = new RunQueue({
+        ...testOptions,
+        queueSelectionStrategy: new FairQueueSelectionStrategy({
+          redis: {
+            keyPrefix: "runqueue:test:",
+            host: redisContainer.getHost(),
+            port: redisContainer.getPort(),
+          },
+          keys: testOptions.keys,
+        }),
+        redis: {
+          keyPrefix: "runqueue:test:",
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+        },
+      });
+
+      try {
+        // Set env concurrency limit to 1
+        await queue.updateEnvConcurrencyLimits({
+          ...authenticatedEnvDev,
+          maximumConcurrencyLimit: 1,
+          concurrencyLimitBurstFactor: new Decimal(2.0),
+        });
+
+        // Enqueue first message
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: messageDev,
+          workerQueue: "main",
+        });
+
+        // Dequeue first message to occupy the concurrency
+        await setTimeout(1000);
+
+        const dequeued1 = await queue.dequeueMessageFromWorkerQueue("test_12345", "main");
+        assertNonNullable(dequeued1);
+
+        // Enqueue second message
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: { ...messageDev, runId: "r4322", queue: "task/my-task-2" },
+          workerQueue: "main",
+        });
+
+        await setTimeout(1000);
+
+        // Try to dequeue second message
+        const dequeued2 = await queue.dequeueMessageFromWorkerQueue("test_12345", "main");
+        expect(dequeued2).toBeDefined();
+        assertNonNullable(dequeued2);
+        expect(dequeued2.messageId).toEqual("r4322");
+        expect(dequeued2.message.orgId).toEqual(messageDev.orgId);
+        expect(dequeued2.message.version).toEqual("2");
+
+        const envConcurrency = await queue.currentConcurrencyOfEnvironment(authenticatedEnvDev);
+        expect(envConcurrency).toBe(2);
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
+
+  redisTest(
+    "should not dequeue on a single queue when env current concurrency equals env concurrency limit with burst factor",
+    async ({ redisContainer }) => {
+      const queue = new RunQueue({
+        ...testOptions,
+        queueSelectionStrategy: new FairQueueSelectionStrategy({
+          redis: {
+            keyPrefix: "runqueue:test:",
+            host: redisContainer.getHost(),
+            port: redisContainer.getPort(),
+          },
+          keys: testOptions.keys,
+        }),
+        redis: {
+          keyPrefix: "runqueue:test:",
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+        },
+      });
+
+      try {
+        // Set env concurrency limit to 1
+        await queue.updateEnvConcurrencyLimits({
+          ...authenticatedEnvDev,
+          maximumConcurrencyLimit: 1,
+          concurrencyLimitBurstFactor: new Decimal(2.0),
         });
 
         // Enqueue first message

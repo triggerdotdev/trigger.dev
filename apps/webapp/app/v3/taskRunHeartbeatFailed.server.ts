@@ -50,6 +50,7 @@ export class TaskRunHeartbeatFailedService extends BaseService {
 
     switch (taskRun.status) {
       case "PENDING":
+      case "DEQUEUED":
       case "WAITING_TO_RESUME":
       case "PAUSED": {
         const backInQueue = await marqs?.nackMessage(taskRun.id);
