@@ -1158,6 +1158,15 @@ function createSearchQueryForListRuns(query?: ListRunsQueryParams): URLSearchPar
       );
     }
 
+    if (query.queue) {
+      searchParams.append(
+        "filter[queue]",
+        Array.isArray(query.queue)
+          ? query.queue.map((q) => queueNameFromQueueTypeName(q)).join(",")
+          : queueNameFromQueueTypeName(query.queue)
+      );
+    }
+
     if (query.machine) {
       searchParams.append(
         "filter[machine]",
