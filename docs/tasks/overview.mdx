@@ -136,6 +136,40 @@ export const longTask = task({
 
 See our [maxDuration guide](/runs/max-duration) for more information.
 
+## Global lifecycle hooks
+
+### `init.ts`
+
+If you create a `init.ts` file at the root of your trigger directory, it will be automatically loaded when a task is executed. This is useful if you want to register global lifecycle hooks, or initialize a database connection, etc.
+
+```ts init.ts
+import { tasks } from "@trigger.dev/sdk";
+
+tasks.onStart(({ ctx, payload, task }) => {
+  console.log("Run started", ctx.run);
+});
+```
+
+### Global lifecycle hooks
+
+You can register global lifecycle hooks that are executed for all runs, regardless of the task. While you can still define these in the `trigger.config.ts` file, you can also register them anywhere in your codebase:
+
+```ts
+import { tasks } from "@trigger.dev/sdk";
+
+tasks.onStart(({ ctx, payload, task }) => {
+  console.log("Run started", ctx.run);
+});
+
+tasks.onSuccess(({ ctx, output }) => {
+  console.log("Run finished", ctx.run);
+});
+
+tasks.onFailure(({ ctx, error }) => {
+  console.log("Run failed", ctx.run);
+});
+```
+
 ## Lifecycle functions
 
 ![Lifecycle functions](/images/lifecycle-functions.png)
