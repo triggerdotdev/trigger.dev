@@ -13,21 +13,16 @@ Here's an incredibly simple task:
 ```ts /trigger/hello-world.ts
 import { task } from "@trigger.dev/sdk/v3";
 
-//1. You need to export each task, even if it's a subtask
-export const helloWorld = task({
-  //2. Use a unique id for each task
+const helloWorld = task({
+  //1. Use a unique id for each task
   id: "hello-world",
-  //3. The run function is the main function of the task
+  //2. The run function is the main function of the task
   run: async (payload: { message: string }) => {
-    //4. You can write code that runs for a long time here, there are no timeouts
+    //3. You can write code that runs for a long time here, there are no timeouts
     console.log(payload.message);
   },
 });
 ```
-
-<Note>
-  You must `export` each task, even subtasks inside the same file. When exported they are accessible so their configuration can be registered with the platform.
-</Note>
 
 You can trigger this in two ways:
 
