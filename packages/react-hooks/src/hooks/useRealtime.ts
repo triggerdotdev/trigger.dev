@@ -591,7 +591,7 @@ async function processRealtimeBatch<TTask extends AnyTask = AnyTask>(
   }
 }
 
-// Inserts and then orders by the run number, and ensures that the run is not duplicated
+// Inserts and then orders by the run createdAt timestamp, and ensures that the run is not duplicated
 function insertRunShapeInOrder<TTask extends AnyTask>(
   previousRuns: RealtimeRun<TTask>[],
   run: RealtimeRun<TTask>
@@ -601,8 +601,8 @@ function insertRunShapeInOrder<TTask extends AnyTask>(
     return previousRuns.map((r) => (r.id === run.id ? run : r));
   }
 
-  const runNumber = run.number;
-  const index = previousRuns.findIndex((r) => r.number > runNumber);
+  const runCreatedAt = run.createdAt;
+  const index = previousRuns.findIndex((r) => r.createdAt > runCreatedAt);
   if (index === -1) {
     return [...previousRuns, run];
   }
