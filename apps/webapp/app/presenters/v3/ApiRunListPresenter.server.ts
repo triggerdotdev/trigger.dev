@@ -126,7 +126,12 @@ export const ApiRunListSearchParams = z.object({
       }
 
       const parsedValues = values.map((v) => MachinePresetName.safeParse(v));
-      const invalidValues = parsedValues.filter((result) => !result.success);
+      const invalidValues: string[] = [];
+      parsedValues.forEach((result, index) => {
+        if (!result.success) {
+          invalidValues.push(values[index]);
+        }
+      });
       if (invalidValues.length > 0) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
