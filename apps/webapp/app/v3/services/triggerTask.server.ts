@@ -13,6 +13,7 @@ import { eventRepository } from "../eventRepository.server";
 import { tracer } from "../tracer.server";
 import { WithRunEngine } from "./baseService.server";
 import { TriggerTaskServiceV1 } from "./triggerTaskV1.server";
+import { env } from "~/env.server";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -107,6 +108,7 @@ export class TriggerTaskService extends WithRunEngine {
       runNumberIncrementer: new DefaultRunNumberIncrementer(),
       traceEventConcern,
       tracer: tracer,
+      metadataMaximumSize: env.TASK_RUN_METADATA_MAXIMUM_SIZE,
     });
 
     return await service.call({

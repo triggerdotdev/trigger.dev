@@ -1,6 +1,5 @@
 import { IOPacket } from "@trigger.dev/core/v3/utils/ioSerialization";
-import { env } from "~/env.server";
-import { ServiceValidationError } from "~/v3/services/baseService.server";
+import { ServiceValidationError } from "~/v3/services/common.server";
 
 export class MetadataTooLargeError extends ServiceValidationError {
   constructor(message: string) {
@@ -9,7 +8,13 @@ export class MetadataTooLargeError extends ServiceValidationError {
   }
 }
 
-export function handleMetadataPacket(metadata: any, metadataType: string): IOPacket | undefined {
+export function handleMetadataPacket(
+  metadata: any,
+  metadataType: string,
+  maximumSize: number
+): IOPacket | undefined {
+  console.log("handleMetadataPacket.maximumSize", maximumSize);
+
   let metadataPacket: IOPacket | undefined = undefined;
 
   if (typeof metadata === "string") {
@@ -26,10 +31,10 @@ export function handleMetadataPacket(metadata: any, metadataType: string): IOPac
 
   const byteLength = Buffer.byteLength(metadataPacket.data, "utf8");
 
-  if (byteLength > env.TASK_RUN_METADATA_MAXIMUM_SIZE) {
-    throw new MetadataTooLargeError(
-      `Metadata exceeds maximum size of ${env.TASK_RUN_METADATA_MAXIMUM_SIZE} bytes`
-    );
+  console.log("handleMetadataPacket.byteLength", byteLength);
+
+  if (byteLength > maximumSize) {
+    throw new MetadataTooLargeError(`Metadata exceeds maximum size of ${maximumSize} bytes`);
   }
 
   return metadataPacket;

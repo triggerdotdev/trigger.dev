@@ -164,6 +164,7 @@ describe("RunEngineTriggerTaskService", () => {
       validator: new MockTriggerTaskValidator(),
       traceEventConcern: new MockTraceEventConcern(),
       tracer: trace.getTracer("test", "0.0.0"),
+      metadataMaximumSize: 1024 * 1024 * 1, // 1MB
     });
 
     const result = await triggerTaskService.call({
@@ -254,6 +255,7 @@ describe("RunEngineTriggerTaskService", () => {
       validator: new MockTriggerTaskValidator(),
       traceEventConcern: new MockTraceEventConcern(),
       tracer: trace.getTracer("test", "0.0.0"),
+      metadataMaximumSize: 1024 * 1024 * 1, // 1MB
     });
 
     const result = await triggerTaskService.call({
@@ -395,6 +397,7 @@ describe("RunEngineTriggerTaskService", () => {
         validator: new MockTriggerTaskValidator(),
         traceEventConcern: new MockTraceEventConcern(),
         tracer: trace.getTracer("test", "0.0.0"),
+        metadataMaximumSize: 1024 * 1024 * 1, // 1MB
       });
 
       // Test case 1: Trigger with lockToVersion but no specific queue
