@@ -251,6 +251,14 @@ export class ApiRunListPresenter extends BasePresenter {
         options.batchId = searchParams["filter[batch]"];
       }
 
+      if (searchParams["filter[queue]"]) {
+        options.queues = searchParams["filter[queue]"];
+      }
+
+      if (searchParams["filter[machine]"]) {
+        options.machines = searchParams["filter[machine]"];
+      }
+
       const presenter = new NextRunListPresenter(this._replica, clickhouseClient);
 
       logger.debug("Calling RunListPresenter", { options });

@@ -975,6 +975,9 @@ const EnvironmentSchema = z.object({
   BULK_ACTION_BATCH_SIZE: z.coerce.number().int().default(100),
   BULK_ACTION_BATCH_DELAY_MS: z.coerce.number().int().default(200),
   BULK_ACTION_SUBBATCH_CONCURRENCY: z.coerce.number().int().default(5),
+
+  // AI Run Filter
+  AI_RUN_FILTER_MODEL: z.string().optional(),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;
