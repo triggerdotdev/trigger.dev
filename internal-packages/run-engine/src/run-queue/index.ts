@@ -471,7 +471,16 @@ export class RunQueue {
     );
   }
 
+  /**
+   * Get the current concurrency of the environment
+   * @param env - The environment to get the current concurrency of
+   * @returns The current concurrency of the environment
+   */
   public async currentConcurrencyOfEnvironment(env: MinimalAuthenticatedEnvironment) {
+    // We are now using the envCurrentDequeuedKey to track the current "displayed" concurrency of the environment
+    // Operationally, we use the envCurrentConcurrencyKey to track the actual concurrency of the environment
+    // The currentDequeuedKey is incremented when a message is dequeued from the worker queue,
+    // wherease the currentConcurrencyKey is incremented when a message is dequeued from the message queue and put into the worker queue
     return this.redis.scard(this.keys.envCurrentDequeuedKey(env));
   }
 
