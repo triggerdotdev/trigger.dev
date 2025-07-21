@@ -16,110 +16,12 @@ import NodeVersions from "/snippets/node-versions.mdx";
 | [onWait and onResume](/tasks/overview#onwait-and-onresume-functions) | Run code when a run is paused or resumed because of a wait. |
 | [onComplete](/tasks/overview#oncomplete-function) | Run code when a run completes, regardless of whether it succeeded or failed. |
 | [onCancel](/tasks/overview#oncancel-function) | Run code when a run is cancelled. |
-| [Improved middleware & locals](/tasks/overview#improved-middleware-and-locals) | Our task middleware system is now much more useful. Previously it only ran "around" the `run` function, but now we've hoisted it to the top level and it now runs before/after all the other hooks. |
+| [Hidden tasks](/hidden-tasks) | Create tasks that are not exported from your trigger files but can still be executed. |
+| [Middleware & locals](#middleware-and-locals) | The middleware system runs at the top level, executing before and after all lifecycle hooks. The locals API allows sharing data between middleware and hooks. |
 
 ## Node.js support
 
 <NodeVersions />
-
-### Global lifecycle hooks
-
-We've added a new way to register global lifecycle hooks that are executed for all runs, regardless of the task. Previously, this was only possible in the `trigger.config.ts` file, but now you can register them anywhere in your codebase:
-
-```ts
-import { tasks } from "@trigger.dev/sdk";
-
-tasks.onStart(({ ctx, payload, task }) => {
-  console.log("Run started", ctx.run);
-});
-
-tasks.onSuccess(({ ctx, output }) => {
-  console.log("Run finished", ctx.run);
-});
-
-tasks.onFailure(({ ctx, error }) => {
-  console.log("Run failed", ctx.run);
-});
-```
-
-### `init.ts`
-
-If you create a `init.ts` file at the root of your trigger directory, it will be automatically loaded when a task is executed. This is useful if you want to register global lifecycle hooks, or initialize a database connection, etc.
-
-```ts init.ts
-import { tasks } from "@trigger.dev/sdk";
-
-tasks.onStart(({ ctx, payload, task }) => {
-  console.log("Run started", ctx.run);
-});
-```
-
-### Improved middleware and locals
-
-Our task middleware system is now much more useful. Previously it only ran "around" the `run` function, but now we've hoisted it to the top level and it now runs before/after all the other hooks.
-
-We've also added a new `locals` API that allows you to share data between middleware and hooks.
-
-```ts db.ts
-import { locals } from "@trigger.dev/sdk";
-import { logger, tasks } from "@trigger.dev/sdk";
-
-// This would be type of your database client here
-const DbLocal = locals.create<{ connect: () => Promise<void>; disconnect: () => Promise<void> }>(
-  "db"
-);
-
-export function getDb() {
-  return locals.getOrThrow(DbLocal);
-}
-
-export function setDb(db: { connect: () => Promise<void> }) {
-  locals.set(DbLocal, db);
-}
-
-tasks.middleware("db", async ({ ctx, payload, next, task }) => {
-  // This would be your database client here
-  const db = locals.set(DbLocal, {
-    connect: async () => {
-      logger.info("Connecting to the database");
-    },
-    disconnect: async () => {
-      logger.info("Disconnecting from the database");
-    },
-  });
-
-  await db.connect();
-
-  await next();
-
-  await db.disconnect();
-});
-
-// Disconnect when the run is paused
-tasks.onWait("db", async ({ ctx, payload, task }) => {
-  const db = getDb();
-  await db.disconnect();
-});
-
-// Reconnect when the run is resumed
-tasks.onResume("db", async ({ ctx, payload, task }) => {
-  const db = getDb();
-  await db.connect();
-});
-```
-
-Now in your tasks `run` function and all your hooks (global or task specific) you can access the database client using `getDb()`:
-
-```ts
-import { getDb } from "./db";
-
-export const myTask = task({
-  run: async (payload: any, { ctx }) => {
-    const db = getDb();
-    await db.query("SELECT 1");
-  },
-});
-```
 
 ### useWaitToken
 

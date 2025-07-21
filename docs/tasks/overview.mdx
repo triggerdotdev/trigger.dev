@@ -224,14 +224,77 @@ export const taskWithCleanup = task({
 
 <Info>Errors thrown in the `cleanup` function will fail the attempt.</Info>
 
-### `middleware` function
+### `middleware` and `locals` functions
 
-This function is called before the `run` function, it allows you to wrap the run function with custom code.
+Our task middleware system runs at the top level, executing before and after all lifecycle hooks. This allows you to wrap the entire task execution lifecycle with custom logic.
 
 <Info>
   An error thrown in `middleware` is just like an uncaught error in the run function: it will
   propagate through to `handleError()` and then will fail the attempt (causing a retry).
 </Info>
+
+The `locals` API allows you to share data between middleware and hooks.
+
+```ts db.ts
+import { locals } from "@trigger.dev/sdk";
+import { logger, tasks } from "@trigger.dev/sdk";
+
+// This would be type of your database client here
+const DbLocal = locals.create<{ connect: () => Promise<void>; disconnect: () => Promise<void> }>(
+  "db"
+);
+
+export function getDb() {
+  return locals.getOrThrow(DbLocal);
+}
+
+export function setDb(db: { connect: () => Promise<void> }) {
+  locals.set(DbLocal, db);
+}
+
+tasks.middleware("db", async ({ ctx, payload, next, task }) => {
+  // This would be your database client here
+  const db = locals.set(DbLocal, {
+    connect: async () => {
+      logger.info("Connecting to the database");
+    },
+    disconnect: async () => {
+      logger.info("Disconnecting from the database");
+    },
+  });
+
+  await db.connect();
+
+  await next();
+
+  await db.disconnect();
+});
+
+// Disconnect when the run is paused
+tasks.onWait("db", async ({ ctx, payload, task }) => {
+  const db = getDb();
+  await db.disconnect();
+});
+
+// Reconnect when the run is resumed
+tasks.onResume("db", async ({ ctx, payload, task }) => {
+  const db = getDb();
+  await db.connect();
+});
+```
+
+You can access the database client using `getDb()` in your tasks `run` function and all your hooks (global or task specific):
+
+```ts
+import { getDb } from "./db";
+
+export const myTask = task({
+  run: async (payload: any, { ctx }) => {
+    const db = getDb();
+    await db.query("SELECT 1");
+  },
+});
+```
 
 ### `onStart` function
 
