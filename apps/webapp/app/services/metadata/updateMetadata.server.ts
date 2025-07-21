@@ -9,7 +9,6 @@ import { prisma, PrismaClientOrTransaction } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { handleMetadataPacket } from "~/utils/packets";
 import { BaseService, ServiceValidationError } from "~/v3/services/baseService.server";
-import { isFinalRunStatus } from "~/v3/taskStatus";
 
 import { Effect, Schedule, Duration } from "effect";
 import { type RuntimeFiber } from "effect/Fiber";
@@ -17,6 +16,8 @@ import { logger } from "../logger.server";
 import { singleton } from "~/utils/singleton";
 import { env } from "~/env.server";
 import { setTimeout } from "timers/promises";
+
+const RUN_UPDATABLE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 
 type BufferedRunMetadataChangeOperation = {
   runId: string;
@@ -246,6 +247,7 @@ export class UpdateMetadataService extends BaseService {
           },
       select: {
         id: true,
+        completedAt: true,
         status: true,
         metadata: true,
         metadataType: true,
@@ -269,7 +271,7 @@ export class UpdateMetadataService extends BaseService {
       return;
     }
 
-    if (isFinalRunStatus(taskRun.status)) {
+    if (!this.#isRunUpdatable(taskRun)) {
       throw new ServiceValidationError("Cannot update metadata for a completed run");
     }
 
@@ -389,6 +391,17 @@ export class UpdateMetadataService extends BaseService {
       // Success! Return the new metadata
       return applyResults.newMetadata;
     }
+  }
+
+  // Checks to see if a run is updatable
+  // if there is no completedAt, the run is updatable
+  // if the run is completed, but the completedAt is within the last 10 minutes, the run is updatable
+  #isRunUpdatable(run: { completedAt: Date | null }) {
+    if (!run.completedAt) {
+      return true;
+    }
+
+    return run.completedAt.getTime() > Date.now() - RUN_UPDATABLE_WINDOW_MS;
   }
 
   async #updateRunMetadataDirectly(

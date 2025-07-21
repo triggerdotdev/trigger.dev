@@ -1,8 +1,10 @@
 import { json } from "@remix-run/server-runtime";
+import { tryCatch } from "@trigger.dev/core/utils";
 import { UpdateMetadataRequestBody } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { updateMetadataService } from "~/services/metadata/updateMetadata.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import { ServiceValidationError } from "~/v3/services/baseService.server";
 
 const ParamsSchema = z.object({
   runId: z.string(),
@@ -16,7 +18,17 @@ const { action } = createActionApiRoute(
     method: "PUT",
   },
   async ({ authentication, body, params }) => {
-    const result = await updateMetadataService.call(params.runId, body, authentication.environment);
+    const [error, result] = await tryCatch(
+      updateMetadataService.call(params.runId, body, authentication.environment)
+    );
+
+    if (error) {
+      if (error instanceof ServiceValidationError) {
+        return json({ error: error.message }, { status: error.status ?? 422 });
+      }
+
+      return json({ error: "Internal Server Error" }, { status: 500 });
+    }
 
     if (!result) {
       return json({ error: "Task Run not found" }, { status: 404 });
