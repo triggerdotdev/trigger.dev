@@ -45,8 +45,8 @@ const queryTasks: QueryTasks = {
   query: async () => {
     return {
       tasks: [
-        { slug: "task1", triggerSource: "STANDARD" },
-        { slug: "task2", triggerSource: "SCHEDULED" },
+        { slug: "email-sender", triggerSource: "STANDARD" },
+        { slug: "email-sender-scheduled", triggerSource: "SCHEDULED" },
       ],
     };
   },
@@ -55,6 +55,7 @@ const queryTasks: QueryTasks = {
 evalite("AI Run Filter", {
   data: async () => {
     return [
+      // Basic status filtering
       {
         input: "Completed runs",
         expected: JSON.stringify({
@@ -80,6 +81,152 @@ evalite("AI Run Filter", {
           filters: {
             statuses: ["EXECUTING", "RETRYING_AFTER_FAILURE", "WAITING_TO_RESUME"],
           },
+        }),
+      },
+      // Time filters
+      {
+        input: "Runs from the past 7 days",
+        expected: JSON.stringify({
+          success: true,
+          filters: {
+            period: "7d",
+          },
+        }),
+      },
+      {
+        input: "Runs from the last hour",
+        expected: JSON.stringify({
+          success: true,
+          filters: {
+            period: "1h",
+          },
+        }),
+      },
+      {
+        input: "Runs from this month",
+        expected: JSON.stringify({
+          success: true,
+          filters: {
+            period: "30d",
+          },
+        }),
+      },
+      {
+        input: "June 16",
+        expected: JSON.stringify({
+          success: true,
+          filters: {
+            from: new Date("2025-06-16").getTime(),
+            to: new Date("2025-06-17").getTime(),
+          },
+        }),
+      },
+      // Combined filters
+      {
+        input: "Failed runs from the past week",
+        expected: JSON.stringify({
+          success: true,
+          filters: {
+            statuses: ["COMPLETED_WITH_ERRORS", "CRASHED", "TIMED_OUT", "SYSTEM_FAILURE"],
+            period: "7d",
+          },
+        }),
+      },
+      {
+        input: "Successful runs from the last 24 hours",
+        expected: JSON.stringify({
+          success: true,
+          filters: {
+            statuses: ["COMPLETED_SUCCESSFULLY"],
+            period: "1d",
+          },
+        }),
+      },
+      // Root-only filtering
+      {
+        input: "Root runs only",
+        expected: JSON.stringify({
+          success: true,
+          filters: {
+            rootOnly: true,
+          },
+        }),
+      },
+      {
+        input: "Failed root runs from yesterday",
+        expected: JSON.stringify({
+          success: true,
+          filters: {
+            statuses: ["COMPLETED_WITH_ERRORS", "CRASHED", "TIMED_OUT", "SYSTEM_FAILURE"],
+            rootOnly: true,
+            period: "1d",
+          },
+        }),
+      },
+      // Machine filtering
+      {
+        input: "Runs using large machines",
+        expected: JSON.stringify({
+          success: true,
+          filters: {
+            machines: ["large-1x", "large-2x"],
+          },
+        }),
+      },
+      // Edge cases and error handling
+      {
+        input: "Runs with tag production",
+        expected: JSON.stringify({
+          success: true,
+          filters: {
+            tags: ["production"],
+          },
+        }),
+      },
+      {
+        input: "Runs from task email-sender",
+        expected: JSON.stringify({
+          success: true,
+          filters: {
+            tasks: ["email-sender"],
+          },
+        }),
+      },
+      {
+        input: "Runs in the shared queue",
+        expected: JSON.stringify({
+          success: true,
+          filters: {
+            queues: ["shared"],
+          },
+        }),
+      },
+      // Complex combinations
+      {
+        input: "Failed production runs from the past 3 days using large machines",
+        expected: JSON.stringify({
+          success: true,
+          filters: {
+            statuses: ["COMPLETED_WITH_ERRORS", "CRASHED", "TIMED_OUT", "SYSTEM_FAILURE"],
+            tags: ["production"],
+            period: "3d",
+            machines: ["large-1x", "large-2x"],
+          },
+        }),
+      },
+      // Ambiguous cases that should return errors
+      {
+        input: "Show me something",
+        expected: JSON.stringify({
+          success: false,
+          error: "Unclear what to filter",
+        }),
+      },
+      {
+        input: "Runs with unknown status",
+        expected: JSON.stringify({
+          success: false,
+          error: "Unknown status specified",
         }),
       },
     ];

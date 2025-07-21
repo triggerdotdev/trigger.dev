@@ -5,11 +5,20 @@ import { z } from "zod";
 import { TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 import { logger } from "~/services/logger.server";
 
+const AIFilters = TaskRunListSearchFilters.omit({
+  environments: true,
+  from: true,
+  to: true,
+}).extend({
+  from: z.string().optional().describe("The ISO datetime to filter from"),
+  to: z.string().optional().describe("The ISO datetime to filter to"),
+});
+
 const AIFilterResponseSchema = z
   .discriminatedUnion("success", [
     z.object({
       success: z.literal(true),
-      filters: TaskRunListSearchFilters.omit({ environments: true }),
+      filters: AIFilters,
     }),
     z.object({
       success: z.literal(false),
@@ -137,7 +146,7 @@ export class AIRunFilterService {
   Available filter options:
   - statuses: Array of run statuses (PENDING, EXECUTING, COMPLETED_SUCCESSFULLY, COMPLETED_WITH_ERRORS, CANCELED, TIMED_OUT, CRASHED, etc.)
   - period: Time period string (e.g., "1h", "7d", "30d", "1y")
-  - from/to: Unix ms timestamps for specific time ranges. You'll need to use a converter if they give you a date. Today's date is ${new Date().toISOString()}, if they only specify a day use the current month. If they don't specify a year use the current year. If they don't specify a time of day use midnight to midnight.
+  - from/to: ISO date string. Today's date is ${new Date().toISOString()}, if they only specify a day use the current month. If they don't specify a year use the current year. If they don't specify a time of day use midnight.
   - tags: Array of tag names to filter by. Use the lookupTags tool to get the tags.
   - tasks: Array of task identifiers to filter by. Use the lookupTasks tool to get the tasks.
   - machines: Array of machine presets (micro, small, small-2x, medium, large, xlarge, etc.)
@@ -148,6 +157,7 @@ export class AIRunFilterService {
   - batchId: Specific batch ID to filter by
   - scheduleId: Specific schedule ID to filter by
   
+
   Common patterns to recognize:
   - "failed runs" → statuses: ["COMPLETED_WITH_ERRORS", "CRASHED", "TIMED_OUT", "SYSTEM_FAILURE"].
   - "runs not dequeued yet" → statuses: ["PENDING", "PENDING_VERSION", "DELAYED"]
@@ -158,6 +168,7 @@ export class AIRunFilterService {
   - "past 7 days" → period: "7d"
   - "last hour" → period: "1h"
   - "this month" → period: "30d"
+  - "June 16" -> return a from/to filter.
   - "with tag X" → tags: ["X"]
   - "from task Y" → tasks: ["Y"]
   - "using large machine" → machines: ["large-1x", "large-2x"]
@@ -197,13 +208,6 @@ export class AIRunFilterService {
         },
       });
 
-      // Add debugging to see what the AI returned
-      logger.info("AI filter response", {
-        text,
-        environmentId,
-        result: result.experimental_output,
-      });
-
       if (!result.experimental_output.success) {
         return {
           success: false,
@@ -212,9 +216,7 @@ export class AIRunFilterService {
       }
 
       // Validate the filters against the schema to catch any issues
-      const validationResult = TaskRunListSearchFilters.omit({ environments: true }).safeParse(
-        result.experimental_output.filters
-      );
+      const validationResult = AIFilters.safeParse(result.experimental_output.filters);
       if (!validationResult.success) {
         logger.error("AI filter validation failed", {
           errors: validationResult.error.errors,
@@ -229,7 +231,13 @@ export class AIRunFilterService {
 
       return {
         success: true,
-        filters: validationResult.data,
+        filters: {
+          ...validationResult.data,
+          from: validationResult.data.from
+            ? new Date(validationResult.data.from).getTime()
+            : undefined,
+          to: validationResult.data.to ? new Date(validationResult.data.to).getTime() : undefined,
+        },
       };
     } catch (error) {
       logger.error("AI filter processing failed", {
