@@ -1,5 +1,12 @@
-import { redisTest } from "@internal/testcontainers";
 import { describe, expect, vi } from "vitest";
+
+// Mock the db prisma client
+vi.mock("~/db.server", () => ({
+  prisma: {},
+  $replica: {},
+}));
+
+import { redisTest } from "@internal/testcontainers";
 import { FairDequeuingStrategy } from "../app/v3/marqs/fairDequeuingStrategy.server.js";
 import {
   calculateStandardDeviation,
