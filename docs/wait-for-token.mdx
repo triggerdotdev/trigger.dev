@@ -496,3 +496,15 @@ const token = await wait.retrieveToken(tokenId);
 
 console.log(token);
 ```
+
+## Wait idempotency
+
+You can pass an idempotency key to any wait function, allowing you to skip waits if the same idempotency key is used again. This can be useful if you want to skip waits when retrying a task, for example:
+
+```ts
+// Specify the idempotency key and TTL when creating a wait token
+const token = await wait.createToken({
+  idempotencyKey: "my-idempotency-key",
+  idempotencyKeyTTL: "1h",
+});
+```
