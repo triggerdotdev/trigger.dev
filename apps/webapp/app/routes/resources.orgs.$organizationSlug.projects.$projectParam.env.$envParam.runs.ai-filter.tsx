@@ -1,25 +1,23 @@
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import { z } from "zod";
-import { requireUserId } from "~/services/session.server";
-import { EnvironmentParamSchema } from "~/utils/pathBuilder";
-import { findProjectBySlug } from "~/models/project.server";
-import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
-import { type TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 import { tryCatch } from "@trigger.dev/core";
-import {
-  AIRunFilterService,
-  QueryQueues,
-  QueryTags,
-  QueryTasks,
-  QueryVersions,
-} from "~/v3/services/aiRunFilterService.server";
-import { RunTagListPresenter } from "~/presenters/v3/RunTagListPresenter.server";
-import { QueueListPresenter } from "~/presenters/v3/QueueListPresenter.server";
-import { VersionListPresenter } from "~/presenters/v3/VersionListPresenter.server";
-import { TaskListPresenter } from "~/presenters/v3/TaskListPresenter.server";
-import { getAllTaskIdentifiers } from "~/models/task.server";
+import { z } from "zod";
 import { $replica } from "~/db.server";
 import { env } from "~/env.server";
+import { findProjectBySlug } from "~/models/project.server";
+import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
+import { getAllTaskIdentifiers } from "~/models/task.server";
+import { QueueListPresenter } from "~/presenters/v3/QueueListPresenter.server";
+import { RunTagListPresenter } from "~/presenters/v3/RunTagListPresenter.server";
+import { VersionListPresenter } from "~/presenters/v3/VersionListPresenter.server";
+import { requireUserId } from "~/services/session.server";
+import { EnvironmentParamSchema } from "~/utils/pathBuilder";
+import {
+  AIRunFilterService,
+  type QueryQueues,
+  type QueryTags,
+  type QueryTasks,
+  type QueryVersions,
+} from "~/v3/services/aiRunFilterService.server";
 
 const RequestSchema = z.object({
   text: z.string().min(1),
@@ -132,10 +130,13 @@ export async function action({ request, params }: ActionFunctionArgs) {
   };
 
   if (!env.OPENAI_API_KEY) {
-    return {
-      success: false,
-      error: "OpenAI API key is not configured",
-    };
+    return json(
+      {
+        success: false,
+        error: "OpenAI API key is not configured",
+      },
+      { status: 400 }
+    );
   }
 
   const service = new AIRunFilterService({
