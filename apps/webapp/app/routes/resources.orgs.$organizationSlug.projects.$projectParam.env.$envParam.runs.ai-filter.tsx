@@ -4,9 +4,21 @@ import { requireUserId } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
-import { processAIFilter } from "~/v3/services/aiRunFilterService.server";
 import { type TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 import { tryCatch } from "@trigger.dev/core";
+import {
+  AIRunFilterService,
+  QueryQueues,
+  QueryTags,
+  QueryTasks,
+  QueryVersions,
+} from "~/v3/services/aiRunFilterService.server";
+import { RunTagListPresenter } from "~/presenters/v3/RunTagListPresenter.server";
+import { QueueListPresenter } from "~/presenters/v3/QueueListPresenter.server";
+import { VersionListPresenter } from "~/presenters/v3/VersionListPresenter.server";
+import { TaskListPresenter } from "~/presenters/v3/TaskListPresenter.server";
+import { getAllTaskIdentifiers } from "~/models/task.server";
+import { $replica } from "~/db.server";
 
 const RequestSchema = z.object({
   text: z.string().min(1),
@@ -48,7 +60,84 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   const { text } = submission.data;
 
-  const [error, result] = await tryCatch(processAIFilter(text, environment));
+  //Tags querying
+  const queryTags: QueryTags = {
+    query: async (search) => {
+      const tagPresenter = new RunTagListPresenter();
+      const tags = await tagPresenter.call({
+        projectId: environment.projectId,
+        name: search,
+        page: 1,
+        pageSize: 50,
+      });
+      return {
+        tags: tags.tags.map((t) => t.name),
+      };
+    },
+  };
+
+  const queryQueues: QueryQueues = {
+    query: async (query, type) => {
+      const queuePresenter = new QueueListPresenter();
+      const queues = await queuePresenter.call({
+        environment,
+        query,
+        page: 1,
+        type,
+      });
+      return {
+        queues: queues.success ? queues.queues.map((q) => q.name) : [],
+      };
+    },
+  };
+
+  const queryVersions: QueryVersions = {
+    query: async (versionPrefix, isCurrent) => {
+      const versionPresenter = new VersionListPresenter();
+      const versions = await versionPresenter.call({
+        environment,
+        query: versionPrefix ? versionPrefix : undefined,
+      });
+
+      if (isCurrent) {
+        const currentVersion = versions.versions.find((v) => v.isCurrent);
+        if (currentVersion) {
+          return {
+            version: currentVersion.version,
+          };
+        }
+
+        const newestVersion = versions.versions.at(0)?.version;
+        if (newestVersion) {
+          return {
+            version: newestVersion,
+          };
+        }
+      }
+
+      return {
+        versions: versions.versions.map((v) => v.version),
+      };
+    },
+  };
+
+  const queryTasks: QueryTasks = {
+    query: async () => {
+      const tasks = await getAllTaskIdentifiers($replica, environment.id);
+      return {
+        tasks,
+      };
+    },
+  };
+
+  const service = new AIRunFilterService({
+    queryTags,
+    queryVersions,
+    queryQueues,
+    queryTasks,
+  });
+
+  const [error, result] = await tryCatch(service.call(text, environment));
   if (error) {
     return json({ success: false, error: error.message }, { status: 400 });
   }
