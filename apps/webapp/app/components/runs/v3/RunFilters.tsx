@@ -343,8 +343,8 @@ export function RunsFilters(props: RunFiltersProps) {
 
   return (
     <div className="flex flex-row flex-wrap items-center gap-1">
-      <AIFilterInput />
       <FilterMenu {...props} />
+      <AIFilterInput />
       <RootOnlyToggle defaultValue={props.rootOnlyDefault} />
       <TimeFilter />
       <AppliedFilters {...props} />

@@ -151,7 +151,7 @@ export async function processAIFilter(
         }),
       },
       maxSteps: 5,
-      prompt: `You are an AI assistant that converts natural language descriptions into structured filter parameters for a task run filtering system.
+      system: `You are an AI assistant that converts natural language descriptions into structured filter parameters for a task run filtering system.
 
 Available filter options:
 - statuses: Array of run statuses (PENDING, EXECUTING, COMPLETED_SUCCESSFULLY, COMPLETED_WITH_ERRORS, CANCELED, TIMED_OUT, CRASHED, etc.)
@@ -206,11 +206,16 @@ or if you can't figure out the filters then return:
 }
 
 Make the error no more than 8 words.
-
-Convert the following natural language description into structured filters:
-
-"${text}"
 `,
+      prompt: text,
+      experimental_telemetry: {
+        isEnabled: true,
+        metadata: {
+          environmentId: environment.id,
+          projectId: environment.projectId,
+          organizationId: environment.organizationId,
+        },
+      },
     });
 
     // Add debugging to see what the AI returned
