@@ -1,5 +1,14 @@
 # trigger.dev
 
+## 4.0.0-v4-beta.24
+
+### Patch Changes
+
+- Added experimental_devProcessCwdInBuildDir config option to opt-in to new process.cwd behavior when executing tasks in the dev CLI. Currently process.cwd maps to the "root" of your trigger.dev project (the directory that contains your trigger.config.ts file). Setting experimental_devProcessCwdInBuildDir to true changes process.cwd to instead be the temporary build directory inside of the .trigger directory. ([#2269](https://github.com/triggerdotdev/trigger.dev/pull/2269))
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.0-v4-beta.24`
+  - `@trigger.dev/core@4.0.0-v4-beta.24`
+
 ## 4.0.0-v4-beta.23
 
 ### Patch Changes
