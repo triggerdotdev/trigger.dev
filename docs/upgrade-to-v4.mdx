@@ -763,19 +763,19 @@ This means that if you have a queue with a `concurrencyLimit` of 1, you can only
 
 We've done some work cleaning up the run statuses. The new statuses are:
 
-- `PENDING_VERSION`: Task is waiting for a version update because it cannot execute without additional information (task, queue, etc.)
-- `QUEUED`: Task is waiting to be executed by a worker
+- `PENDING_VERSION`: Task is waiting for a version update because it cannot execute without additional information (task, queue, etc.).
+- `QUEUED`: Task is waiting to be executed by a worker.
 - `DEQUEUED`: Task has been dequeued and is being sent to a worker to start executing.
-- `EXECUTING`: Task is currently being executed by a worker
-- `WAITING`: Task has been paused by the system, and will be resumed by the system
-- `COMPLETED`: Task has been completed successfully
-- `CANCELED`: Task has been canceled by the user
-- `FAILED`: Task has failed to complete, due to an error in the system
-- `CRASHED`: Task has crashed and won't be retried, most likely the worker ran out of resources, e.g. memory or storage
+- `EXECUTING`: Task is currently being executed by a worker.
+- `WAITING`: Task has been paused by the system, and will be resumed by the system.
+- `COMPLETED`: Task has been completed successfully.
+- `CANCELED`: Task has been canceled by the user.
+- `FAILED`: Task has failed to complete, due to an error in the task code.
+- `CRASHED`: Task has crashed and won't be retried, most likely the worker ran out of resources, e.g. memory or storage.
 - `SYSTEM_FAILURE`: Task has failed to complete, due to an error in the system
-- `DELAYED`: Task has been scheduled to run at a specific time
-- `EXPIRED`: Task has expired and won't be executed
-- `TIMED_OUT`: Task has reached it's maxDuration and has been stopped
+- `DELAYED`: Task has been scheduled to run at a specific time.
+- `EXPIRED`: Task has expired and won't be executed,
+- `TIMED_OUT`: Task has reached its maxDuration and has been stopped.
 
 We've removed the following statuses:
 
