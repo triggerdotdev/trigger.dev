@@ -120,7 +120,7 @@ services:
       start_period: 10s
 
   electric:
-    image: electricsql/electric:${ELECTRIC_IMAGE_TAG:-1.0.13}
+    image: electricsql/electric:${ELECTRIC_IMAGE_TAG:-1.0.24}
     restart: ${RESTART_POLICY:-unless-stopped}
     logging: *logging-config
     depends_on:
