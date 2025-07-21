@@ -42,4 +42,4 @@ We've also added "boolean" helpers to runs returned via the API and from Realtim
 - `isFailed`: Returns true when the status is any of the failed statuses.
 - `isSuccess`: Returns true when the status is `COMPLETED`
 
-This change adds the ability to easily detect which runs are being counted against your concurrency limit by filtering for both `EXECUTED` or `DEQUEUED`.
+This change adds the ability to easily detect which runs are being counted against your concurrency limit by filtering for both `EXECUTING` or `DEQUEUED`.
