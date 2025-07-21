@@ -76,6 +76,138 @@ await myTask.trigger({ age: 30, dob: "2020-01-01" }); // this is valid
 await myTask.trigger({ name: "Alice", age: 30, dob: "2020-01-01" }); // this is also valid
 ```
 
+## `ai.tool`
+
+The `ai.tool` function allows you to create an AI tool from an existing `schemaTask` to use with the Vercel [AI SDK](https://vercel.com/docs/ai-sdk):
+
+```ts
+import { ai } from "@trigger.dev/sdk/ai";
+import { schemaTask } from "@trigger.dev/sdk";
+import { z } from "zod";
+import { generateText } from "ai";
+
+const myToolTask = schemaTask({
+  id: "my-tool-task",
+  schema: z.object({
+    foo: z.string(),
+  }),
+  run: async (payload: any, { ctx }) => {},
+});
+
+const myTool = ai.tool(myToolTask);
+
+export const myAiTask = schemaTask({
+  id: "my-ai-task",
+  schema: z.object({
+    text: z.string(),
+  }),
+  run: async (payload, { ctx }) => {
+    const { text } = await generateText({
+      prompt: payload.text,
+      model: openai("gpt-4o"),
+      tools: {
+        myTool,
+      },
+    });
+  },
+});
+```
+
+You can also pass the `experimental_toToolResultContent` option to the `ai.tool` function to customize the content of the tool result:
+
+```ts
+import { openai } from "@ai-sdk/openai";
+import { Sandbox } from "@e2b/code-interpreter";
+import { ai } from "@trigger.dev/sdk/ai";
+import { schemaTask } from "@trigger.dev/sdk/v3";
+import { generateObject } from "ai";
+import { z } from "zod";
+
+const chartTask = schemaTask({
+  id: "chart",
+  description: "Generate a chart using natural language",
+  schema: z.object({
+    input: z.string().describe("The chart to generate"),
+  }),
+  run: async ({ input }) => {
+    const code = await generateObject({
+      model: openai("gpt-4o"),
+      schema: z.object({
+        code: z.string().describe("The Python code to execute"),
+      }),
+      system: `
+        You are a helpful assistant that can generate Python code to be executed in a sandbox, using matplotlib.pyplot.
+
+        For example: 
+        
+        import matplotlib.pyplot as plt
+        plt.plot([1, 2, 3, 4])
+        plt.ylabel('some numbers')
+        plt.show()
+        
+        Make sure the code ends with plt.show()
+      `,
+      prompt: input,
+    });
+
+    const sandbox = await Sandbox.create();
+
+    const execution = await sandbox.runCode(code.object.code);
+
+    const firstResult = execution.results[0];
+
+    if (firstResult.png) {
+      return {
+        chart: firstResult.png,
+      };
+    } else {
+      throw new Error("No chart generated");
+    }
+  },
+});
+
+// This is useful if you want to return an image from the tool
+export const chartTool = ai.tool(chartTask, {
+  experimental_toToolResultContent: (result) => {
+    return [
+      {
+        type: "image",
+        data: result.chart,
+        mimeType: "image/png",
+      },
+    ];
+  },
+});
+```
+
+You can access the current tool execution options inside the task run function using the `ai.currentToolOptions()` function:
+
+```ts
+import { ai } from "@trigger.dev/sdk/ai";
+import { schemaTask } from "@trigger.dev/sdk";
+import { z } from "zod";
+
+const myToolTask = schemaTask({
+  id: "my-tool-task",
+  schema: z.object({
+    foo: z.string(),
+  }),
+  run: async (payload, { ctx }) => {
+    const toolOptions = ai.currentToolOptions();
+    console.log(toolOptions);
+  },
+});
+
+export const myAiTask = ai.tool(myToolTask);
+```
+
+See the [AI SDK tool execution options docs](https://sdk.vercel.ai/docs/ai-sdk-core/tools-and-tool-calling#tool-execution-options) for more details on the tool execution options.
+
+<Note>
+  `ai.tool` is compatible with `schemaTask`'s defined with Zod and ArkType schemas, or any schemas
+  that implement a `.toJsonSchema()` function.
+</Note>
+
 ## Supported schema types
 
 ### Zod
