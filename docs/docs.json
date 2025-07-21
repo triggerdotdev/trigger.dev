@@ -60,7 +60,8 @@
               "tags",
               "runs/metadata",
               "run-usage",
-              "context"
+              "context",
+              "runs/priority"
             ]
           },
           {

@@ -11,14 +11,15 @@ import NodeVersions from "/snippets/node-versions.mdx";
 |:--------|:------------|
 | [Wait for token](/wait-for-token) | Create and wait for tokens to be completed, enabling approval workflows and waiting for arbitrary external conditions. |
 | Wait idempotency | Skip waits if the same idempotency key is used again when using [wait for](/wait-for#wait-idempotency), [wait until](/wait-until#wait-idempotency), or [wait for token](/wait-for-token#wait-idempotency). |
+| [Priority](/runs/priority) | Specify a priority when triggering a task. |
+| [Global lifecycle hooks](/runs/global-lifecycle-hooks) | Register global lifecycle hooks that are executed for all runs, regardless of the task. |
 
-[Read our blog post](https://trigger.dev/blog/v4-beta-launch) for an overview of the new features.
 
-### Node.js support
+## Node.js support
 
 <NodeVersions />
 
-### Wait tokens
+{/* ### Wait tokens
 
 In addition to waiting for a specific duration, or waiting for a child task to complete, you can now create and wait for a token to be completed, giving you more flexibility and the ability to wait for arbitrary conditions. For example, you can send the token to a Slack channel, and only complete the token when the user has clicked an "Approve" button.
 
@@ -85,9 +86,9 @@ await childTask.triggerAndWait(
 );
 ```
 
-`idempotencyKeyTTL` allows you to specify how long the idempotency key should be valid for. The default is 30 days.
+`idempotencyKeyTTL` allows you to specify how long the idempotency key should be valid for. The default is 30 days. */}
 
-### Priority
+{/* ### Priority
 
 You can now specify a priority when triggering a task. This allows you to prioritize certain tasks over others, and is useful if you want to ensure that certain tasks are executed before others.
 
@@ -110,7 +111,7 @@ In this case, the second run will be executed first, because it's priority moved
   We purposefully chose to use a time duration as the priority value instead of specifying priority
   levels, because priority levels can cause "level starvation" where lower priority runs are never
   executed because there are always higher priority runs in the queue.
-</Note>
+</Note> */}
 
 ### Global lifecycle hooks
 
