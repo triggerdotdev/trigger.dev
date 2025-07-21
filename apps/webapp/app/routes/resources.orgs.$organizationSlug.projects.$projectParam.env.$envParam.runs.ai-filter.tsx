@@ -19,6 +19,7 @@ import { VersionListPresenter } from "~/presenters/v3/VersionListPresenter.serve
 import { TaskListPresenter } from "~/presenters/v3/TaskListPresenter.server";
 import { getAllTaskIdentifiers } from "~/models/task.server";
 import { $replica } from "~/db.server";
+import { env } from "~/env.server";
 
 const RequestSchema = z.object({
   text: z.string().min(1),
@@ -130,6 +131,13 @@ export async function action({ request, params }: ActionFunctionArgs) {
     },
   };
 
+  if (!env.OPENAI_API_KEY) {
+    return {
+      success: false,
+      error: "OpenAI API key is not configured",
+    };
+  }
+
   const service = new AIRunFilterService({
     queryTags,
     queryVersions,
@@ -137,7 +145,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     queryTasks,
   });
 
-  const [error, result] = await tryCatch(service.call(text, environment));
+  const [error, result] = await tryCatch(service.call(text, environment.id));
   if (error) {
     return json({ success: false, error: error.message }, { status: 400 });
   }

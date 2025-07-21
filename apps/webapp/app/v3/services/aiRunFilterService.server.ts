@@ -3,8 +3,6 @@ import { type TaskTriggerSource } from "@trigger.dev/database";
 import { generateText, Output, tool } from "ai";
 import { z } from "zod";
 import { TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
-import { env } from "~/env.server";
-import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 
 const AIFilterResponseSchema = z
@@ -12,9 +10,6 @@ const AIFilterResponseSchema = z
     z.object({
       success: z.literal(true),
       filters: TaskRunListSearchFilters.omit({ environments: true }),
-      explanation: z
-        .string()
-        .describe("A short human-readable explanation of what filters were applied"),
     }),
     z.object({
       success: z.literal(false),
@@ -62,7 +57,6 @@ export type AIFilterResult =
   | {
       success: true;
       filters: TaskRunListSearchFilters;
-      explanation: string;
     }
   | {
       success: false;
@@ -79,14 +73,7 @@ export class AIRunFilterService {
     }
   ) {}
 
-  async call(text: string, environment: AuthenticatedEnvironment): Promise<AIFilterResult> {
-    if (!env.OPENAI_API_KEY) {
-      return {
-        success: false,
-        error: "OpenAI API key is not configured",
-      };
-    }
-
+  async call(text: string, environmentId: string): Promise<AIFilterResult> {
     try {
       const result = await generateText({
         model: openai("gpt-4o-mini"),
@@ -205,9 +192,7 @@ export class AIRunFilterService {
         experimental_telemetry: {
           isEnabled: true,
           metadata: {
-            environmentId: environment.id,
-            projectId: environment.projectId,
-            organizationId: environment.organizationId,
+            environmentId,
           },
         },
       });
@@ -215,7 +200,7 @@ export class AIRunFilterService {
       // Add debugging to see what the AI returned
       logger.info("AI filter response", {
         text,
-        environmentId: environment.id,
+        environmentId,
         result: result.experimental_output,
       });
 
@@ -245,14 +230,13 @@ export class AIRunFilterService {
       return {
         success: true,
         filters: validationResult.data,
-        explanation: result.experimental_output.explanation,
       };
     } catch (error) {
       logger.error("AI filter processing failed", {
         error,
         errorMessage: error instanceof Error ? error.message : String(error),
         text,
-        environmentId: environment.id,
+        environmentId,
       });
 
       // If it's a schema validation error, provide more specific feedback
