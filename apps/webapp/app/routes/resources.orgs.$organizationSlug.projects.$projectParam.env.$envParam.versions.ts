@@ -44,7 +44,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   if (!result.success) {
     return {
       versions: [],
-      hasFilters: Boolean(query?.trim()),
+      hasFilters: query !== undefined && query.length > 0,
     };
   }
 
