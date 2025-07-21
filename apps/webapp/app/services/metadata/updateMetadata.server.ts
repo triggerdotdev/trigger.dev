@@ -5,17 +5,14 @@ import {
   RunMetadataChangeOperation,
   UpdateMetadataRequestBody,
 } from "@trigger.dev/core/v3";
-import { prisma, PrismaClientOrTransaction } from "~/db.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { handleMetadataPacket } from "~/utils/packets";
-import { BaseService, ServiceValidationError } from "~/v3/services/baseService.server";
-
-import { Effect, Schedule, Duration } from "effect";
+import type { PrismaClientOrTransaction } from "~/db.server";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { handleMetadataPacket, MetadataTooLargeError } from "~/utils/packets";
+import { ServiceValidationError } from "~/v3/services/common.server";
+import { Effect, Schedule, Duration, Fiber } from "effect";
 import { type RuntimeFiber } from "effect/Fiber";
-import { logger } from "../logger.server";
-import { singleton } from "~/utils/singleton";
-import { env } from "~/env.server";
 import { setTimeout } from "timers/promises";
+import { Logger, LogLevel } from "@trigger.dev/core/logger";
 
 const RUN_UPDATABLE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 
@@ -25,17 +22,36 @@ type BufferedRunMetadataChangeOperation = {
   operation: RunMetadataChangeOperation;
 };
 
-export class UpdateMetadataService extends BaseService {
+export type UpdateMetadataServiceOptions = {
+  prisma: PrismaClientOrTransaction;
+  flushIntervalMs?: number;
+  flushEnabled?: boolean;
+  flushLoggingEnabled?: boolean;
+  maximumSize?: number;
+  logger?: Logger;
+  logLevel?: LogLevel;
+  // Testing hooks
+  onBeforeUpdate?: (runId: string) => Promise<void>;
+  onAfterRead?: (runId: string, metadataVersion: number) => Promise<void>;
+};
+
+export class UpdateMetadataService {
   private _bufferedOperations: Map<string, BufferedRunMetadataChangeOperation[]> = new Map();
   private _flushFiber: RuntimeFiber<void> | null = null;
+  private readonly _prisma: PrismaClientOrTransaction;
+  private readonly flushIntervalMs: number;
+  private readonly flushEnabled: boolean;
+  private readonly flushLoggingEnabled: boolean;
+  private readonly maximumSize: number;
+  private readonly logger: Logger;
 
-  constructor(
-    protected readonly _prisma: PrismaClientOrTransaction = prisma,
-    private readonly flushIntervalMs: number = 5000,
-    private readonly flushEnabled: boolean = true,
-    private readonly flushLoggingEnabled: boolean = true
-  ) {
-    super();
+  constructor(private readonly options: UpdateMetadataServiceOptions) {
+    this._prisma = options.prisma;
+    this.flushIntervalMs = options.flushIntervalMs ?? 5000;
+    this.flushEnabled = options.flushEnabled ?? true;
+    this.flushLoggingEnabled = options.flushLoggingEnabled ?? true;
+    this.maximumSize = options.maximumSize ?? 1024 * 1024 * 1; // 1MB
+    this.logger = options.logger ?? new Logger("UpdateMetadataService", options.logLevel ?? "info");
 
     this._startFlushing();
   }
@@ -43,12 +59,12 @@ export class UpdateMetadataService extends BaseService {
   // Start a loop that periodically flushes buffered operations
   private _startFlushing() {
     if (!this.flushEnabled) {
-      logger.info("[UpdateMetadataService] 🚽 Flushing disabled");
+      this.logger.info("[UpdateMetadataService] 🚽 Flushing disabled");
 
       return;
     }
 
-    logger.info("[UpdateMetadataService] 🚽 Flushing started");
+    this.logger.info("[UpdateMetadataService] 🚽 Flushing started");
 
     // Create a program that sleeps, then processes buffered ops
     const program = Effect.gen(this, function* (_) {
@@ -62,7 +78,7 @@ export class UpdateMetadataService extends BaseService {
 
         yield* Effect.sync(() => {
           if (this.flushLoggingEnabled) {
-            logger.debug(`[UpdateMetadataService] Flushing operations`, {
+            this.logger.debug(`[UpdateMetadataService] Flushing operations`, {
               operations: Object.fromEntries(currentOperations),
             });
           }
@@ -77,13 +93,19 @@ export class UpdateMetadataService extends BaseService {
       // Handle any unexpected errors, ensuring program does not fail
       Effect.catchAll((error) =>
         Effect.sync(() => {
-          logger.error("Error in flushing program:", { error });
+          this.logger.error("Error in flushing program:", { error });
         })
       )
     );
 
     // Fork the program so it runs in the background
     this._flushFiber = Effect.runFork(program as Effect.Effect<void, never, never>);
+  }
+
+  stopFlushing() {
+    if (this._flushFiber) {
+      Effect.runFork(Fiber.interrupt(this._flushFiber));
+    }
   }
 
   private _processBufferedOperations = (
@@ -101,7 +123,7 @@ export class UpdateMetadataService extends BaseService {
 
         yield* Effect.sync(() => {
           if (this.flushLoggingEnabled) {
-            logger.debug(`[UpdateMetadataService] Processing operations for run`, {
+            this.logger.debug(`[UpdateMetadataService] Processing operations for run`, {
               runId,
               operationsCount: processedOps.length,
             });
@@ -111,6 +133,25 @@ export class UpdateMetadataService extends BaseService {
         // Update run with retry
         yield* _(
           this._updateRunWithOperations(runId, processedOps).pipe(
+            // Catch MetadataTooLargeError before retry logic
+            Effect.catchIf(
+              (error) => error instanceof MetadataTooLargeError,
+              (error) =>
+                Effect.sync(() => {
+                  // Log the error but don't return operations to buffer
+                  console.error(
+                    `[UpdateMetadataService] Dropping operations for run ${runId} due to metadata size limit:`,
+                    error.message
+                  );
+                  if (this.flushLoggingEnabled) {
+                    this.logger.warn(`[UpdateMetadataService] Metadata too large for run`, {
+                      runId,
+                      operationsCount: processedOps.length,
+                      error: error.message,
+                    });
+                  }
+                })
+            ),
             Effect.retry(Schedule.exponential(Duration.millis(100), 1.4)),
             Effect.catchAll((error) =>
               Effect.sync(() => {
@@ -145,6 +186,11 @@ export class UpdateMetadataService extends BaseService {
         return yield* _(Effect.fail(new Error(`Run ${runId} not found`)));
       }
 
+      // Testing hook after read
+      if (this.options.onAfterRead) {
+        yield* _(Effect.tryPromise(() => this.options.onAfterRead!(runId, run.metadataVersion)));
+      }
+
       const metadata = yield* _(
         Effect.tryPromise(() =>
           run.metadata
@@ -160,20 +206,35 @@ export class UpdateMetadataService extends BaseService {
       );
 
       if (applyResult.unappliedOperations.length === operations.length) {
-        logger.warn(`No operations applied for run ${runId}`);
+        this.logger.warn(`No operations applied for run ${runId}`);
         // If no operations were applied, return
         return;
       }
 
       // Stringify the metadata
       const newMetadataPacket = yield* _(
-        Effect.try(() => handleMetadataPacket(applyResult.newMetadata, run.metadataType))
+        Effect.try(() =>
+          handleMetadataPacket(applyResult.newMetadata, run.metadataType, this.maximumSize)
+        ).pipe(
+          Effect.mapError((error) => {
+            // Preserve the original error if it's MetadataTooLargeError
+            if ("cause" in error && error.cause instanceof MetadataTooLargeError) {
+              return error.cause;
+            }
+            return error;
+          })
+        )
       );
 
       if (!newMetadataPacket) {
         // Log and skip if metadata is invalid
-        logger.warn(`Invalid metadata after operations, skipping update`);
+        this.logger.warn(`Invalid metadata after operations, skipping update`);
         return;
+      }
+
+      // Testing hook before update
+      if (this.options.onBeforeUpdate) {
+        yield* _(Effect.tryPromise(() => this.options.onBeforeUpdate!(runId)));
       }
 
       const result = yield* _(
@@ -193,7 +254,7 @@ export class UpdateMetadataService extends BaseService {
 
       if (result.count === 0) {
         yield* Effect.sync(() => {
-          logger.warn(`Optimistic lock failed for run ${runId}`, {
+          this.logger.warn(`Optimistic lock failed for run ${runId}`, {
             metadataVersion: run.metadataVersion,
           });
         });
@@ -275,12 +336,12 @@ export class UpdateMetadataService extends BaseService {
       throw new ServiceValidationError("Cannot update metadata for a completed run");
     }
 
-    if (body.parentOperations && body.parentOperations.length > 0 && taskRun.parentTaskRun) {
-      this.#ingestRunOperations(taskRun.parentTaskRun.id, body.parentOperations);
+    if (body.parentOperations && body.parentOperations.length > 0) {
+      this.#ingestRunOperations(taskRun.parentTaskRun?.id ?? taskRun.id, body.parentOperations);
     }
 
-    if (body.rootOperations && body.rootOperations.length > 0 && taskRun.rootTaskRun) {
-      this.#ingestRunOperations(taskRun.rootTaskRun.id, body.rootOperations);
+    if (body.rootOperations && body.rootOperations.length > 0) {
+      this.#ingestRunOperations(taskRun.rootTaskRun?.id ?? taskRun.id, body.rootOperations);
     }
 
     const newMetadata = await this.#updateRunMetadata({
@@ -328,6 +389,11 @@ export class UpdateMetadataService extends BaseService {
         throw new Error(`Run ${runId} not found`);
       }
 
+      // Testing hook after read
+      if (this.options.onAfterRead) {
+        await this.options.onAfterRead(runId, run.metadataVersion);
+      }
+
       // Parse the current metadata
       const currentMetadata = await (run.metadata
         ? parsePacket({ data: run.metadata, dataType: run.metadataType })
@@ -341,6 +407,21 @@ export class UpdateMetadataService extends BaseService {
         return currentMetadata;
       }
 
+      const newMetadataPacket = handleMetadataPacket(
+        applyResults.newMetadata,
+        run.metadataType,
+        this.maximumSize
+      );
+
+      if (!newMetadataPacket) {
+        throw new ServiceValidationError("Unable to update metadata");
+      }
+
+      // Testing hook before update
+      if (this.options.onBeforeUpdate) {
+        await this.options.onBeforeUpdate(runId);
+      }
+
       // Update with optimistic locking
       const result = await this._prisma.taskRun.updateMany({
         where: {
@@ -348,8 +429,8 @@ export class UpdateMetadataService extends BaseService {
           metadataVersion: run.metadataVersion,
         },
         data: {
-          metadata: JSON.stringify(applyResults.newMetadata),
-          metadataType: run.metadataType,
+          metadata: newMetadataPacket.data,
+          metadataType: newMetadataPacket.dataType,
           metadataVersion: {
             increment: 1,
           },
@@ -358,8 +439,8 @@ export class UpdateMetadataService extends BaseService {
 
       if (result.count === 0) {
         if (this.flushLoggingEnabled) {
-          logger.debug(
-            `[UpdateMetadataService][updateRunMetadataWithOperations] Optimistic lock failed for run ${runId}`,
+          this.logger.debug(
+            `[updateRunMetadataWithOperations] Optimistic lock failed for run ${runId}`,
             {
               metadataVersion: run.metadataVersion,
             }
@@ -379,13 +460,11 @@ export class UpdateMetadataService extends BaseService {
       }
 
       if (this.flushLoggingEnabled) {
-        logger.debug(
-          `[UpdateMetadataService][updateRunMetadataWithOperations] Updated metadata for run ${runId}`,
-          {
-            metadata: applyResults.newMetadata,
-            operations: operations,
-          }
-        );
+        this.logger.debug(`[updateRunMetadataWithOperations] Updated metadata for run`, {
+          metadata: applyResults.newMetadata,
+          operations: operations,
+          runId,
+        });
       }
 
       // Success! Return the new metadata
@@ -409,10 +488,14 @@ export class UpdateMetadataService extends BaseService {
     body: UpdateMetadataRequestBody,
     existingMetadata: IOPacket
   ) {
-    const metadataPacket = handleMetadataPacket(body.metadata, "application/json");
+    const metadataPacket = handleMetadataPacket(
+      body.metadata,
+      "application/json",
+      this.maximumSize
+    );
 
     if (!metadataPacket) {
-      throw new ServiceValidationError("Invalid metadata");
+      return {};
     }
 
     if (
@@ -420,13 +503,10 @@ export class UpdateMetadataService extends BaseService {
       (existingMetadata.data && metadataPacket.data !== existingMetadata.data)
     ) {
       if (this.flushLoggingEnabled) {
-        logger.debug(
-          `[UpdateMetadataService][updateRunMetadataDirectly] Updating metadata directly for run`,
-          {
-            metadata: metadataPacket.data,
-            runId,
-          }
-        );
+        this.logger.debug(`[updateRunMetadataDirectly] Updating metadata directly for run`, {
+          metadata: metadataPacket.data,
+          runId,
+        });
       }
 
       // Update the metadata without version check
@@ -458,7 +538,7 @@ export class UpdateMetadataService extends BaseService {
     });
 
     if (this.flushLoggingEnabled) {
-      logger.debug(`[UpdateMetadataService] Ingesting operations for run`, {
+      this.logger.debug(`[ingestRunOperations] Ingesting operations for run`, {
         runId,
         bufferedOperations,
       });
@@ -468,15 +548,14 @@ export class UpdateMetadataService extends BaseService {
 
     this._bufferedOperations.set(runId, [...existingBufferedOperations, ...bufferedOperations]);
   }
-}
 
-export const updateMetadataService = singleton(
-  "update-metadata-service",
-  () =>
-    new UpdateMetadataService(
-      prisma,
-      env.BATCH_METADATA_OPERATIONS_FLUSH_INTERVAL_MS,
-      env.BATCH_METADATA_OPERATIONS_FLUSH_ENABLED === "1",
-      env.BATCH_METADATA_OPERATIONS_FLUSH_LOGGING_ENABLED === "1"
-    )
-);
+  // Testing method to manually trigger flush
+  async flushOperations() {
+    const currentOperations = new Map(this._bufferedOperations);
+    this._bufferedOperations.clear();
+
+    if (currentOperations.size > 0) {
+      await Effect.runPromise(this._processBufferedOperations(currentOperations));
+    }
+  }
+}

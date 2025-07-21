@@ -46,6 +46,7 @@ export class RunEngineTriggerTaskService {
   private readonly engine: RunEngine;
   private readonly tracer: Tracer;
   private readonly traceEventConcern: TraceEventConcern;
+  private readonly metadataMaximumSize: number;
 
   constructor(opts: {
     prisma: PrismaClientOrTransaction;
@@ -57,6 +58,7 @@ export class RunEngineTriggerTaskService {
     runNumberIncrementer: RunNumberIncrementer;
     traceEventConcern: TraceEventConcern;
     tracer: Tracer;
+    metadataMaximumSize: number;
   }) {
     this.prisma = opts.prisma;
     this.engine = opts.engine;
@@ -67,6 +69,7 @@ export class RunEngineTriggerTaskService {
     this.runNumberIncrementer = opts.runNumberIncrementer;
     this.tracer = opts.tracer;
     this.traceEventConcern = opts.traceEventConcern;
+    this.metadataMaximumSize = opts.metadataMaximumSize;
   }
 
   public async call({
@@ -188,7 +191,8 @@ export class RunEngineTriggerTaskService {
       const metadataPacket = body.options?.metadata
         ? handleMetadataPacket(
             body.options?.metadata,
-            body.options?.metadataType ?? "application/json"
+            body.options?.metadataType ?? "application/json",
+            this.metadataMaximumSize
           )
         : undefined;
 

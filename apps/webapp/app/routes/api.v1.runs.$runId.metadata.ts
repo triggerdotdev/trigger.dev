@@ -2,9 +2,9 @@ import { json } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { UpdateMetadataRequestBody } from "@trigger.dev/core/v3";
 import { z } from "zod";
-import { updateMetadataService } from "~/services/metadata/updateMetadata.server";
+import { updateMetadataService } from "~/services/metadata/updateMetadataInstance.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
-import { ServiceValidationError } from "~/v3/services/baseService.server";
+import { ServiceValidationError } from "~/v3/services/common.server";
 
 const ParamsSchema = z.object({
   runId: z.string(),
