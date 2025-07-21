@@ -121,47 +121,6 @@ export const myTask = task({
 });
 ```
 
-### Hidden tasks
-
-Previously, you were required to export the task from a file in your trigger directory to be able to execute it. We've changed the way tasks are indexed and this requirement has been removed. So you can now just define a task without exporting it, and everything will still work:
-
-```ts trigger/my-task.ts
-import { task } from "@trigger.dev/sdk";
-
-const myTask = task({
-  run: async (payload: any, { ctx }) => {},
-});
-```
-
-You can use this to define "hidden" tasks that should only ever be triggered by other tasks in the same file:
-
-```ts trigger/my-task.ts
-import { task } from "@trigger.dev/sdk";
-
-const myTask = task({
-  run: async (payload: any, { ctx }) => {},
-});
-
-export const myTask2 = task({
-  run: async (payload: any, { ctx }) => {
-    await myTask.trigger(payload);
-  },
-});
-```
-
-Or you can create a package of reusable tasks that can be imported and used in your tasks, without having to re-export them:
-
-```ts trigger/my-task.ts
-import { task } from "@trigger.dev/sdk";
-import { sendToSlack } from "@repo/tasks";
-
-export const myTask = task({
-  run: async (payload: any, { ctx }) => {
-    await sendToSlack.trigger(payload);
-  },
-});
-```
-
 ### useWaitToken
 
 We've added a new `useWaitToken` react hook that allows you to complete a wait token from a React component, using a Public Access Token.
