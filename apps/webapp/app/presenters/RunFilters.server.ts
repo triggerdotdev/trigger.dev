@@ -3,8 +3,11 @@ import {
   TaskRunListSearchFilters,
 } from "~/components/runs/v3/RunFilters";
 import { getRootOnlyFilterPreference } from "~/services/preferences/uiPreferences.server";
+import { type ParsedRunFilters } from "~/services/runsRepository.server";
 
-export async function getRunFiltersFromRequest(request: Request) {
+type FiltersFromRequest = ParsedRunFilters & Required<Pick<ParsedRunFilters, "rootOnly">>;
+
+export async function getRunFiltersFromRequest(request: Request): Promise<FiltersFromRequest> {
   const url = new URL(request.url);
   let rootOnlyValue = false;
   if (url.searchParams.has("rootOnly")) {
@@ -29,6 +32,8 @@ export async function getRunFiltersFromRequest(request: Request) {
     runId,
     batchId,
     scheduleId,
+    queues,
+    machines,
   } = TaskRunListSearchFilters.parse(s);
 
   return {
@@ -46,5 +51,7 @@ export async function getRunFiltersFromRequest(request: Request) {
     rootOnly: rootOnlyValue,
     direction: direction,
     cursor: cursor,
+    queues,
+    machines,
   };
 }

@@ -20,6 +20,20 @@ export const sdkMethods = task({
       logger.info("failed run", { run });
     }
 
+    for await (const run of runs.list({
+      queue: { type: "task", name: "sdk-methods" },
+      limit: 5,
+    })) {
+      logger.info("sdk-methods run", { run });
+    }
+
+    for await (const run of runs.list({
+      machine: ["small-1x", "small-2x"],
+      limit: 5,
+    })) {
+      logger.info("small machine run", { run });
+    }
+
     return runs;
   },
 });
