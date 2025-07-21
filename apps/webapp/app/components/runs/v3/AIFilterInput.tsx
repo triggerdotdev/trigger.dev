@@ -1,19 +1,17 @@
-import { Portal } from "@radix-ui/react-portal";
 import { useFetcher, useNavigate } from "@remix-run/react";
+import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { Input } from "~/components/primitives/Input";
+import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives/Popover";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { Spinner } from "~/components/primitives/Spinner";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { useSearchParams } from "~/hooks/useSearchParam";
+import { cn } from "~/utils/cn";
 import { objectToSearchParams } from "~/utils/searchParams";
 import { type TaskRunListSearchFilters } from "./RunFilters";
-import { cn } from "~/utils/cn";
-import { motion, AnimatePresence } from "framer-motion";
-import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives/Popover";
 
 type AIFilterResult =
   | {
@@ -39,9 +37,7 @@ export function AIFilterInput() {
 
   useEffect(() => {
     if (fetcher.data?.success && fetcher.state === "loading") {
-      // Clear the input after successful application
       setText("");
-      // Ensure focus is removed after successful submission
       setIsFocused(false);
 
       const searchParams = objectToSearchParams(fetcher.data.filters);
@@ -49,23 +45,11 @@ export function AIFilterInput() {
         return;
       }
 
-      console.log("AI filter success", {
-        data: fetcher.data,
-        searchParams: searchParams.toString(),
-      });
-
       navigate(`${location.pathname}?${searchParams.toString()}`, { replace: true });
 
-      //focus the input again
       if (inputRef.current) {
         inputRef.current.focus();
       }
-
-      // TODO: Show success message with explanation
-      console.log(`AI applied filters: ${fetcher.data.explanation}`);
-    } else if (fetcher.data?.success === false) {
-      // TODO: Show error with suggestions
-      console.error(fetcher.data.error, fetcher.data.suggestions);
     }
   }, [fetcher.data, navigate]);
 
@@ -126,7 +110,6 @@ export function AIFilterInput() {
               }}
               onFocus={() => setIsFocused(true)}
               onBlur={() => {
-                // Only blur if the text is empty or we're not loading
                 if (text.length === 0 || !isLoading) {
                   setIsFocused(false);
                 }
