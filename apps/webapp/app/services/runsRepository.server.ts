@@ -372,16 +372,6 @@ function applyRunFiltersToQueryBuilder<T>(
       machines: options.machines,
     });
   }
-
-  if (options.queues && options.queues.length > 0) {
-    queryBuilder.where("queue IN {queues: Array(String)}", { queues: options.queues });
-  }
-
-  if (options.machines && options.machines.length > 0) {
-    queryBuilder.where("machine_preset IN {machines: Array(String)}", {
-      machines: options.machines,
-    });
-  }
 }
 
 export function parseRunListInputOptions(data: any): RunListInputOptions {
