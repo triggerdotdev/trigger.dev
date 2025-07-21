@@ -1,4 +1,10 @@
-import { parsePacket, RunStatus } from "@trigger.dev/core/v3";
+import {
+  type ListRunResponse,
+  type ListRunResponseItem,
+  MachinePresetName,
+  parsePacket,
+  RunStatus,
+} from "@trigger.dev/core/v3";
 import { type Project, type RuntimeEnvironment, type TaskRunStatus } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { z } from "zod";
@@ -104,6 +110,34 @@ export const ApiRunListSearchParams = z.object({
   "filter[createdAt][to]": CoercedDate,
   "filter[createdAt][period]": z.string().optional(),
   "filter[batch]": z.string().optional(),
+  "filter[queue]": z
+    .string()
+    .optional()
+    .transform((value) => {
+      return value ? value.split(",") : undefined;
+    }),
+  "filter[machine]": z
+    .string()
+    .optional()
+    .transform((value, ctx) => {
+      const values = value ? value.split(",") : undefined;
+      if (!values) {
+        return undefined;
+      }
+
+      const parsedValues = values.map((v) => MachinePresetName.safeParse(v));
+      const invalidValues = parsedValues.filter((result) => !result.success);
+      if (invalidValues.length > 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Invalid machine values: ${invalidValues.join(", ")}`,
+        });
+
+        return z.NEVER;
+      }
+
+      return parsedValues.map((result) => result.data).filter(Boolean);
+    }),
 });
 
 type ApiRunListSearchParams = z.infer<typeof ApiRunListSearchParams>;

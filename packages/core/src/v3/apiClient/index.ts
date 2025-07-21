@@ -21,6 +21,7 @@ import {
   ListRunResponseItem,
   ListScheduleOptions,
   QueueItem,
+  QueueTypeName,
   ReplayRunResponse,
   RescheduleRunRequestBody,
   RetrieveBatchV2Response,
@@ -1147,9 +1148,33 @@ function createSearchQueryForListRuns(query?: ListRunsQueryParams): URLSearchPar
     if (query.batch) {
       searchParams.append("filter[batch]", query.batch);
     }
+
+    if (query.queue) {
+      searchParams.append(
+        "filter[queue]",
+        Array.isArray(query.queue)
+          ? query.queue.map((q) => queueNameFromQueueTypeName(q)).join(",")
+          : queueNameFromQueueTypeName(query.queue)
+      );
+    }
+
+    if (query.machine) {
+      searchParams.append(
+        "filter[machine]",
+        Array.isArray(query.machine) ? query.machine.join(",") : query.machine
+      );
+    }
   }
 
   return searchParams;
+}
+
+function queueNameFromQueueTypeName(queue: QueueTypeName): string {
+  if (queue.type === "task") {
+    return `task/${queue.name}`;
+  }
+
+  return queue.name;
 }
 
 function createSearchQueryForListWaitpointTokens(
