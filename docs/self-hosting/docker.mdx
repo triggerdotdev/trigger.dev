@@ -102,7 +102,7 @@ docker compose logs -f webapp
 6. (optional) To initialize a new project, run the following command:
 
 ```bash
-npx trigger.dev@v4-beta init -p <project-ref> -a http://localhost:8030
+npx trigger.dev@latest init -p <project-ref> -a http://localhost:8030
 ```
 
 <Warning>
@@ -349,16 +349,12 @@ TRIGGER_IMAGE_TAG=v4.0.0-v4-beta.21
 
 This section highlights some of the CLI commands and options that are useful when self-hosting. Please check the [CLI reference](/cli-introduction) for more in-depth documentation.
 
-<Warning>
-While v4 is in beta, always use `@v4-beta` instead of `@latest`. For example: `npx trigger.dev@v4-beta dev`
-</Warning>
-
 ### Login
 
 To avoid being redirected to [Trigger.dev Cloud](https://cloud.trigger.dev) when using the CLI, you need to specify the URL of your self-hosted instance with the `--api-url` or `-a` flag. For example:
 
 ```bash
-npx trigger.dev@v4-beta login -a http://trigger.example.com
+npx trigger.dev@latest login -a http://trigger.example.com
 ```
 
 Once you've logged in, you shouldn't have to specify the URL again with other commands.
@@ -368,7 +364,7 @@ Once you've logged in, you shouldn't have to specify the URL again with other co
 You can specify a profile when logging in. This allows you to easily use the CLI with multiple instances of Trigger.dev. For example:
 
 ```bash
-npx trigger.dev@v4-beta login -a http://trigger.example.com \
+npx trigger.dev@latest login -a http://trigger.example.com \
     --profile self-hosted
 ```
 
@@ -377,29 +373,29 @@ Logging in with a new profile will also make it the new default profile.
 To use a specific profile, you can use the `--profile` flag with other commands:
 
 ```bash
-npx trigger.dev@v4-beta dev --profile self-hosted
+npx trigger.dev@latest dev --profile self-hosted
 ```
 
 To list all your profiles, use the `list-profiles` command:
 
 ```bash
-npx trigger.dev@v4-beta list-profiles
+npx trigger.dev@latest list-profiles
 ```
 
 To remove a profile, use the `logout` command:
 
 ```bash
-npx trigger.dev@v4-beta logout --profile self-hosted
+npx trigger.dev@latest logout --profile self-hosted
 ```
 
 To switch to a different profile, use the `switch` command:
 
 ```bash
 # To run interactively
-npx trigger.dev@v4-beta switch
+npx trigger.dev@latest switch
 
 # To switch to a specific profile
-npx trigger.dev@v4-beta switch self-hosted
+npx trigger.dev@latest switch self-hosted
 ```
 
 ### Whoami
@@ -407,7 +403,7 @@ npx trigger.dev@v4-beta switch self-hosted
 It can be useful to check you are logged into the correct instance. Running this will also show the API URL:
 
 ```bash
-npx trigger.dev@v4-beta whoami
+npx trigger.dev@latest whoami
 ```
 
 ## CI / GitHub Actions
