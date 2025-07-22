@@ -1,5 +1,7 @@
 # internal-platform
 
+## 4.0.0-v4-beta.24
+
 ## 4.0.0-v4-beta.23
 
 ### Patch Changes

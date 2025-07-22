@@ -17,6 +17,7 @@
     "@trigger.dev/sdk": "3.3.17"
   },
   "changesets": [
+    "beige-horses-juggle",
     "big-carrots-fail",
     "blue-eyes-tickle",
     "breezy-turtles-talk",
@@ -45,6 +46,7 @@
     "lazy-panthers-shop",
     "lazy-plums-fetch",
     "light-peas-melt",
+    "little-birds-appear",
     "moody-squids-count",
     "nasty-cobras-wonder",
     "nice-colts-boil",
@@ -80,6 +82,7 @@
     "tiny-buckets-teach",
     "tricky-houses-invite",
     "twelve-actors-hide",
+    "two-eagles-report",
     "two-tigers-dream",
     "weak-jobs-hide",
     "weak-parents-sip",
