@@ -48,6 +48,7 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import {
+  InfoIconTooltip,
   SimpleTooltip,
   Tooltip,
   TooltipContent,
@@ -238,6 +239,16 @@ export default function Page() {
     }
   }, [streamedEvents]);
 
+  const limitStatus =
+    environment.running === environment.concurrencyLimit * environment.burstFactor
+      ? "limit"
+      : environment.running > environment.concurrencyLimit
+      ? "burst"
+      : "within";
+
+  const limitClassName =
+    limitStatus === "burst" ? "text-warning" : limitStatus === "limit" ? "text-error" : undefined;
+
   return (
     <PageContainer>
       <NavBar>
@@ -269,11 +280,11 @@ export default function Page() {
               title="Running"
               value={environment.running}
               animate
-              valueClassName={
-                environment.running === environment.concurrencyLimit ? "text-warning" : undefined
-              }
+              valueClassName={limitClassName}
               suffix={
-                environment.running === environment.concurrencyLimit
+                limitStatus === "burst"
+                  ? `Including ${environment.running - environment.concurrencyLimit} burst runs`
+                  : limitStatus === "limit"
                   ? "At concurrency limit"
                   : undefined
               }
@@ -283,8 +294,17 @@ export default function Page() {
               title="Concurrency limit"
               value={environment.concurrencyLimit}
               animate
-              valueClassName={
-                environment.running === environment.concurrencyLimit ? "text-warning" : undefined
+              valueClassName={limitClassName}
+              suffix={
+                environment.burstFactor > 1 ? (
+                  <span className={cn(limitClassName, "flex items-center gap-1")}>
+                    Burst limit {environment.burstFactor * environment.concurrencyLimit}{" "}
+                    <InfoIconTooltip
+                      content={`You can burst up to ${environment.burstFactor}x your concurrency limit. For a single queue you can't go above your normal limit (${environment.concurrencyLimit}), but you can burst when running across multiple queues/tasks.`}
+                      contentClassName="max-w-xs"
+                    />
+                  </span>
+                ) : undefined
               }
               accessory={
                 plan ? (
@@ -323,7 +343,14 @@ export default function Page() {
                 pagination.totalPages > 1 && "grid-rows-[auto_1fr_auto]"
               )}
             >
-              <QueueFilters />
+              <div className="flex items-center gap-2 border-t border-grid-dimmed px-1.5 py-1.5">
+                <QueueFilters />
+                <PaginationControls
+                  currentPage={pagination.currentPage}
+                  totalPages={pagination.totalPages}
+                  showPageNumbers={false}
+                />
+              </div>
               <Table containerClassName="border-t">
                 <TableHeader>
                   <TableRow>
@@ -743,7 +770,7 @@ export function QueueFilters() {
   const search = searchParams.get("query") ?? "";
 
   return (
-    <div className="flex w-full border-t border-grid-dimmed px-1.5 py-1.5">
+    <div className="flex grow">
       <Input
         name="search"
         placeholder="Search queue name"
