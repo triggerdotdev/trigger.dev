@@ -45,7 +45,7 @@ After you've initialized your project with Trigger.dev, add these build settings
 
 ```ts trigger.config.ts
 import { pythonExtension } from "@trigger.dev/python/extension";
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   runtime: "node",
@@ -76,7 +76,7 @@ export default defineConfig({
 This task uses the `python.runScript` method to run the `markdown-converter.py` script with the given document URL as an argument.
 
 ```ts src/trigger/convertToMarkdown.ts
-import { task } from "@trigger.dev/sdk/v3";
+import { task } from "@trigger.dev/sdk";
 import { python } from "@trigger.dev/python";
 import * as fs from "fs";
 import * as path from "path";

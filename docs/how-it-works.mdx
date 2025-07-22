@@ -11,7 +11,7 @@ Trigger.dev v3 allows you to integrate long-running async tasks into your applic
 For example, the below task processes a video with `ffmpeg` and sends the results to an s3 bucket, then updates a database with the results and sends an email to the user.
 
 ```ts /trigger/video.ts
-import { logger, task } from "@trigger.dev/sdk/v3";
+import { logger, task } from "@trigger.dev/sdk";
 import { updateVideoUrl } from "../db.js";
 import ffmpeg from "fluent-ffmpeg";
 import { Readable } from "node:stream";
@@ -85,7 +85,7 @@ Now in your application, you can trigger this task by calling:
 
 ```ts
 import { NextResponse } from "next/server";
-import { tasks } from "@trigger.dev/sdk/v3";
+import { tasks } from "@trigger.dev/sdk";
 import type { convertVideo } from "./trigger/video";
 //     👆 **type-only** import
 
@@ -165,7 +165,7 @@ This approach allows Trigger.dev to manage resources efficiently, handle complex
 Example of a parent and child task using the Checkpoint-Resume System:
 
 ```ts
-import { task, wait } from "@trigger.dev/sdk/v3";
+import { task, wait } from "@trigger.dev/sdk";
 
 export const parentTask = task({
   id: "parent-task",
@@ -249,7 +249,7 @@ Let's rewrite the `convert-video` task above to be more durable:
 <CodeGroup>
 
 ```ts /trigger/video.ts
-import { idempotencyKeys, logger, task } from "@trigger.dev/sdk/v3";
+import { idempotencyKeys, logger, task } from "@trigger.dev/sdk";
 import { processVideo, sendUserEmail, uploadToS3 } from "./tasks.js";
 import { updateVideoUrl } from "../db.js";
 
@@ -287,7 +287,7 @@ export const convertVideo = task({
 ```
 
 ```ts /trigger/tasks.ts
-import { task, logger } from "@trigger.dev/sdk/v3";
+import { task, logger } from "@trigger.dev/sdk";
 import ffmpeg from "fluent-ffmpeg";
 import { Readable } from "node:stream";
 import type { ReadableStream } from "node:stream/web";
@@ -441,7 +441,7 @@ The Trigger.dev logging and task dashboard is powered by OpenTelemetry traces an
 Because we use standard OpenTelemetry, you can instrument your code and OpenTelemetry compatible libraries to get detailed traces and logs of your tasks. The above trace instruments both Prisma and the AWS SDK:
 
 ```ts trigger.config.ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 import { PrismaInstrumentation } from "@prisma/instrumentation";
 import { AwsInstrumentation } from "@opentelemetry/instrumentation-aws-sdk";
 

@@ -9,7 +9,7 @@ The `schemaTask` function allows you to define a task with a runtime payload sch
 ## Usage
 
 ```ts
-import { schemaTask } from "@trigger.dev/sdk/v3";
+import { schemaTask } from "@trigger.dev/sdk";
 import { z } from "zod";
 
 const myTask = schemaTask({
@@ -34,7 +34,7 @@ const myTask = schemaTask({
 When you trigger the task directly, the payload will be validated against the schema before the [run](/runs) is created:
 
 ```ts
-import { tasks } from "@trigger.dev/sdk/v3";
+import { tasks } from "@trigger.dev/sdk";
 import { myTask } from "./trigger/myTasks";
 
 // This will call the schema parser function and validate the payload
@@ -53,7 +53,7 @@ We will also validate the payload every time before the task is run, so you can 
 Certain schema libraries, like Zod, split their type inference into "schema in" and "schema out". This means that you can define a single schema that will produce different types when triggering the task and when running the task. For example, you can define a schema that has a default value for a field, or a string coerced into a date:
 
 ```ts
-import { schemaTask } from "@trigger.dev/sdk/v3";
+import { schemaTask } from "@trigger.dev/sdk";
 import { z } from "zod";
 
 const myTask = schemaTask({
@@ -119,7 +119,7 @@ You can also pass the `experimental_toToolResultContent` option to the `ai.tool`
 import { openai } from "@ai-sdk/openai";
 import { Sandbox } from "@e2b/code-interpreter";
 import { ai } from "@trigger.dev/sdk/ai";
-import { schemaTask } from "@trigger.dev/sdk/v3";
+import { schemaTask } from "@trigger.dev/sdk";
 import { generateObject } from "ai";
 import { z } from "zod";
 
@@ -215,7 +215,7 @@ See the [AI SDK tool execution options docs](https://sdk.vercel.ai/docs/ai-sdk-c
 You can use the [Zod](https://zod.dev) schema library to define your schema. The schema will be validated using Zod's `parse` function.
 
 ```ts
-import { schemaTask } from "@trigger.dev/sdk/v3";
+import { schemaTask } from "@trigger.dev/sdk";
 import { z } from "zod";
 
 export const zodTask = schemaTask({
@@ -233,7 +233,7 @@ export const zodTask = schemaTask({
 ### Yup
 
 ```ts
-import { schemaTask } from "@trigger.dev/sdk/v3";
+import { schemaTask } from "@trigger.dev/sdk";
 import * as yup from "yup";
 
 export const yupTask = schemaTask({
@@ -251,7 +251,7 @@ export const yupTask = schemaTask({
 ### Superstruct
 
 ```ts
-import { schemaTask } from "@trigger.dev/sdk/v3";
+import { schemaTask } from "@trigger.dev/sdk";
 import { object, string } from "superstruct";
 
 export const superstructTask = schemaTask({
@@ -269,7 +269,7 @@ export const superstructTask = schemaTask({
 ### ArkType
 
 ```ts
-import { schemaTask } from "@trigger.dev/sdk/v3";
+import { schemaTask } from "@trigger.dev/sdk";
 import { type } from "arktype";
 
 export const arktypeTask = schemaTask({
@@ -287,7 +287,7 @@ export const arktypeTask = schemaTask({
 ### @effect/schema
 
 ```ts
-import { schemaTask } from "@trigger.dev/sdk/v3";
+import { schemaTask } from "@trigger.dev/sdk";
 import * as Schema from "@effect/schema/Schema";
 
 // For some funny typescript reason, you cannot pass the Schema.decodeUnknownSync directly to schemaTask
@@ -307,7 +307,7 @@ export const effectTask = schemaTask({
 ### runtypes
 
 ```ts
-import { schemaTask } from "@trigger.dev/sdk/v3";
+import { schemaTask } from "@trigger.dev/sdk";
 import * as T from "runtypes";
 
 export const runtypesTask = schemaTask({
@@ -325,7 +325,7 @@ export const runtypesTask = schemaTask({
 ### valibot
 
 ```ts
-import { schemaTask } from "@trigger.dev/sdk/v3";
+import { schemaTask } from "@trigger.dev/sdk";
 
 import * as v from "valibot";
 
@@ -349,7 +349,7 @@ export const valibotTask = schemaTask({
 ### typebox
 
 ```ts
-import { schemaTask } from "@trigger.dev/sdk/v3";
+import { schemaTask } from "@trigger.dev/sdk";
 import { Type } from "@sinclair/typebox";
 import { wrap } from "@typeschema/typebox";
 
@@ -372,7 +372,7 @@ export const typeboxTask = schemaTask({
 You can also define a custom parser function that will be called with the payload before the task is run. The parser function should return the parsed payload or throw an error if the payload is invalid.
 
 ```ts
-import { schemaTask } from "@trigger.dev/sdk/v3";
+import { schemaTask } from "@trigger.dev/sdk";
 
 export const customParserTask = schemaTask({
   id: "types/custom-parser",

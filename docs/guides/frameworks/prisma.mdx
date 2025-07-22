@@ -51,7 +51,7 @@ This is a simple task that will add a new user to the database.
 
 ```ts /trigger/prisma-add-new-user.ts
 import { PrismaClient } from "@prisma/client";
-import { task } from "@trigger.dev/sdk/v3";
+import { task } from "@trigger.dev/sdk";
 
 // Initialize Prisma client
 const prisma = new PrismaClient();
@@ -117,7 +117,7 @@ We use OpenTelemetry to [instrument](https://trigger.dev/docs/config/config-file
 If you want to automatically log all Prisma queries and mutations, you can use the Prisma instrumentation extension.
 
 ```js /trigger.config.js
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 import { PrismaInstrumentation } from "@prisma/instrumentation";
 import { OpenAIInstrumentation } from "@traceloop/instrumentation-openai";
 

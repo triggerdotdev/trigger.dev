@@ -15,7 +15,7 @@ There are two methods of authenticating with the management API: using a secret 
 Certain API functions work with both authentication methods, but require different arguments depending on the method used. For example, the `runs.list` function can be called using either a `secretKey` or a `personalAccessToken`, but the `projectRef` argument is required when using a `personalAccessToken`:
 
 ```ts
-import { configure, runs } from "@trigger.dev/sdk/v3";
+import { configure, runs } from "@trigger.dev/sdk";
 
 // Using secretKey authentication
 configure({
@@ -82,7 +82,7 @@ A PAT is a token associated with a specific user, and gives access to all the or
 For example, when uploading environment variables using a PAT, you must provide the `projectRef` and `environment` arguments:
 
 ```ts
-import { configure, envvars } from "@trigger.dev/sdk/v3";
+import { configure, envvars } from "@trigger.dev/sdk";
 
 configure({
   secretKey: process.env["TRIGGER_ACCESS_TOKEN"], // starts with tr_pat_

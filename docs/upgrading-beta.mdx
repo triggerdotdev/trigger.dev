@@ -52,10 +52,10 @@ The new build system does not effect your trigger task files at all, so those ca
 
 ### `defineConfig`
 
-You should now import the `defineConfig` function from `@trigger.dev/sdk/v3` and export the config as the default export:
+You should now import the `defineConfig` function from `@trigger.dev/sdk` and export the config as the default export:
 
 ```ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   project: "<project ref>",
@@ -71,7 +71,7 @@ The new build system will bundle all dependencies by default, so `dependenciesTo
 Now that all dependencies are bundled, there are some situations where bundling a dependency doesn't work, and needs to be made external (e.g. when a dependency includes a native module). You can now specify these dependencies as build externals in the `defineConfig` function:
 
 ```ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   project: "<project ref>",
@@ -96,7 +96,7 @@ npm add @trigger.dev/build@latest -D
 Now you can import the `additionalFiles` build extension and use it in your `trigger.config.ts` file:
 
 ```ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 import { additionalFiles } from "@trigger.dev/build/extensions/core";
 
 export default defineConfig({
@@ -122,7 +122,7 @@ npm add @trigger.dev/build@latest -D
 Now you can import the `additionalPackages` build extension and use it in your `trigger.config.ts` file:
 
 ```ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 import { additionalPackages } from "@trigger.dev/build/extensions/core";
 
 export default defineConfig({
@@ -146,7 +146,7 @@ npm add @trigger.dev/build@latest -D
 Now you can import the `syncEnvVars` build extension and use it in your `trigger.config.ts` file:
 
 ```ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 import { syncEnvVars } from "@trigger.dev/build/extensions/core";
 
 export default defineConfig({
@@ -174,7 +174,7 @@ See the [syncEnvVars](/deploy-environment-variables#sync-env-vars-from-another-s
 If you make use of decorators in your code, and have enabled the `emitDecoratorMetadata` tsconfig compiler option, you'll need to enable this in the new build sytem using the `emitDecoratorMetadata` build extension:
 
 ```ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 import { emitDecoratorMetadata } from "@trigger.dev/build/extensions/typescript";
 
 export default defineConfig({
@@ -196,7 +196,7 @@ npm add @trigger.dev/build@latest -D
 Then you can import the `prismaExtension` build extension and use it in your `trigger.config.ts` file, passing in the path to your Prisma schema file:
 
 ```ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
 
 export default defineConfig({
@@ -221,7 +221,7 @@ This will make sure that your prisma client is generated during the build proces
 If you want to also run migrations during the build process, you can pass in the `migrate` option:
 
 ```ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
 
 export default defineConfig({
@@ -263,7 +263,7 @@ generator kysely {
 ```
 
 ```ts trigger.config.ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
 
 export default defineConfig({
@@ -286,7 +286,7 @@ export default defineConfig({
 Previously, we installed [Audio Waveform](https://github.com/bbc/audiowaveform) in the build image. That's been moved to a build extension:
 
 ```ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 import { audioWaveform } from "@trigger.dev/build/extensions/audioWaveform";
 
 export default defineConfig({
@@ -302,7 +302,7 @@ export default defineConfig({
 You can now add esbuild plugins to customize the build process using the `esbuildPlugin` build extension. The example below shows how to automatically upload sourcemaps to Sentry using their esbuild plugin:
 
 ```ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 import { esbuildPlugin } from "@trigger.dev/build/extensions";
 import { sentryEsbuildPlugin } from "@sentry/esbuild-plugin";
 

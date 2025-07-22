@@ -11,7 +11,7 @@ There are different types of tasks including regular tasks and [scheduled tasks]
 Here's an incredibly simple task:
 
 ```ts /trigger/hello-world.ts
-import { task } from "@trigger.dev/sdk/v3";
+import { task } from "@trigger.dev/sdk";
 
 const helloWorld = task({
   //1. Use a unique id for each task
@@ -315,7 +315,7 @@ export const taskWithOnStart = task({
 You can also define an `onStart` function in your `trigger.config.ts` file to get notified when any task starts.
 
 ```ts trigger.config.ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   project: "proj_1234",
@@ -369,7 +369,7 @@ export const taskWithOnSuccess = task({
 You can also define an `onSuccess` function in your `trigger.config.ts` file to get notified when any task succeeds.
 
 ```ts trigger.config.ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   project: "proj_1234",
@@ -416,7 +416,7 @@ export const taskWithOnFailure = task({
 You can also define an `onFailure` function in your `trigger.config.ts` file to get notified when any task fails.
 
 ```ts trigger.config.ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   project: "proj_1234",

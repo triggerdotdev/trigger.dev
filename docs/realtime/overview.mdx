@@ -29,7 +29,7 @@ The Realtime API is built on top of [Electric SQL](https://electric-sql.com/), a
 After you trigger a task, you can subscribe to the run using the `runs.subscribeToRun` function. This function returns an async iterator that you can use to get updates on the run status.
 
 ```ts
-import { runs, tasks } from "@trigger.dev/sdk/v3";
+import { runs, tasks } from "@trigger.dev/sdk";
 
 // Somewhere in your backend code
 async function myBackend() {
@@ -47,7 +47,7 @@ Every time the run changes, the async iterator will yield the updated run. You c
 Alternatively, you can subscribe to changes to any run that includes a specific tag (or tags) using the `runs.subscribeToRunsWithTag` function.
 
 ```ts
-import { runs } from "@trigger.dev/sdk/v3";
+import { runs } from "@trigger.dev/sdk";
 
 // Somewhere in your backend code
 for await (const run of runs.subscribeToRunsWithTag("user:1234")) {
@@ -59,7 +59,7 @@ for await (const run of runs.subscribeToRunsWithTag("user:1234")) {
 If you've used `batchTrigger` to trigger multiple runs, you can also subscribe to changes to all the runs triggered in the batch using the `runs.subscribeToBatch` function.
 
 ```ts
-import { runs } from "@trigger.dev/sdk/v3";
+import { runs } from "@trigger.dev/sdk";
 
 // Somewhere in your backend code
 for await (const run of runs.subscribeToBatch("batch-id")) {
@@ -200,7 +200,7 @@ The run object returned by the async iterator has the following fields:
 You can infer the types of the run's payload and output by passing the type of the task to the `subscribeToRun` function. This will give you type-safe access to the run's payload and output.
 
 ```ts
-import { runs, tasks } from "@trigger.dev/sdk/v3";
+import { runs, tasks } from "@trigger.dev/sdk";
 import type { myTask } from "./trigger/my-task";
 
 // Somewhere in your backend code
@@ -222,7 +222,7 @@ async function myBackend() {
 When using `subscribeToRunsWithTag`, you can pass a union of task types for all the possible tasks that can have the tag.
 
 ```ts
-import { runs } from "@trigger.dev/sdk/v3";
+import { runs } from "@trigger.dev/sdk";
 import type { myTask, myOtherTask } from "./trigger/my-task";
 
 // Somewhere in your backend code

@@ -184,7 +184,7 @@ Similar to `triggerAndWait()`, the `batchTriggerAndWait()` function lets you bat
 List runs in a specific environment. You can filter the runs by status, created at, task identifier, version, and more:
 
 ```ts
-import { runs } from "@trigger.dev/sdk/v3";
+import { runs } from "@trigger.dev/sdk";
 
 // Get the first page of runs, returning up to 20 runs
 let page = await runs.list({ limit: 20 });
@@ -203,7 +203,7 @@ while (page.hasNextPage()) {
 You can also use an Async Iterator to get all runs:
 
 ```ts
-import { runs } from "@trigger.dev/sdk/v3";
+import { runs } from "@trigger.dev/sdk";
 
 for await (const run of runs.list({ limit: 20 })) {
   console.log(run);
@@ -213,7 +213,7 @@ for await (const run of runs.list({ limit: 20 })) {
 You can provide multiple filters to the `list()` function to narrow down the results:
 
 ```ts
-import { runs } from "@trigger.dev/sdk/v3";
+import { runs } from "@trigger.dev/sdk";
 
 const response = await runs.list({
   status: ["QUEUED", "EXECUTING"], // Filter by status
@@ -232,7 +232,7 @@ const response = await runs.list({
 Fetch a single run by it's ID:
 
 ```ts
-import { runs } from "@trigger.dev/sdk/v3";
+import { runs } from "@trigger.dev/sdk";
 
 const run = await runs.retrieve(runId);
 ```
@@ -240,7 +240,7 @@ const run = await runs.retrieve(runId);
 You can provide the type of the task to correctly type the `run.payload` and `run.output`:
 
 ```ts
-import { runs } from "@trigger.dev/sdk/v3";
+import { runs } from "@trigger.dev/sdk";
 import type { myTask } from "./trigger/myTask";
 
 const run = await runs.retrieve<typeof myTask>(runId);
@@ -252,7 +252,7 @@ console.log(run.output.bar); // string
 If you have just triggered a run, you can pass the entire response object to `retrieve()` and the response will already be typed:
 
 ```ts
-import { runs, tasks } from "@trigger.dev/sdk/v3";
+import { runs, tasks } from "@trigger.dev/sdk";
 import type { myTask } from "./trigger/myTask";
 
 const response = await tasks.trigger<typeof myTask>({ foo: "bar" });
@@ -267,7 +267,7 @@ console.log(run.output.bar); // string
 Cancel a run:
 
 ```ts
-import { runs } from "@trigger.dev/sdk/v3";
+import { runs } from "@trigger.dev/sdk";
 
 await runs.cancel(runId);
 ```
@@ -277,7 +277,7 @@ await runs.cancel(runId);
 Replay a run:
 
 ```ts
-import { runs } from "@trigger.dev/sdk/v3";
+import { runs } from "@trigger.dev/sdk";
 
 await runs.replay(runId);
 ```
@@ -287,7 +287,7 @@ await runs.replay(runId);
 Updates a delayed run with a new delay. Only valid when the run is in the DELAYED state.
 
 ```ts
-import { runs } from "@trigger.dev/sdk/v3";
+import { runs } from "@trigger.dev/sdk";
 
 await runs.reschedule(runId, { delay: "1h" });
 ```
@@ -297,7 +297,7 @@ await runs.reschedule(runId, { delay: "1h" });
 Subscribe to changes to a specific run in real-time:
 
 ```ts
-import { runs } from "@trigger.dev/sdk/v3";
+import { runs } from "@trigger.dev/sdk";
 
 for await (const run of runs.subscribeToRun(runId)) {
   console.log(run);
@@ -307,7 +307,7 @@ for await (const run of runs.subscribeToRun(runId)) {
 Similar to `runs.retrieve()`, you can provide the type of the task to correctly type the `run.payload` and `run.output`:
 
 ```ts
-import { runs } from "@trigger.dev/sdk/v3";
+import { runs } from "@trigger.dev/sdk";
 import type { myTask } from "./trigger/myTask";
 
 for await (const run of runs.subscribeToRun<typeof myTask>(runId)) {

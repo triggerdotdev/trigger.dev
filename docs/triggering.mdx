@@ -46,7 +46,7 @@ Triggers a single run of a task with the payload you pass in, and any options yo
 </Note>
 
 ```ts Your backend
-import { tasks } from "@trigger.dev/sdk/v3";
+import { tasks } from "@trigger.dev/sdk";
 import type { emailSequence } from "~/trigger/emails";
 //     👆 **type-only** import
 
@@ -69,7 +69,7 @@ export async function POST(request: Request) {
 You can pass in options to the task using the second argument:
 
 ```ts Your backend
-import { tasks } from "@trigger.dev/sdk/v3";
+import { tasks } from "@trigger.dev/sdk";
 import type { emailSequence } from "~/trigger/emails";
 
 //app/email/route.ts
@@ -97,7 +97,7 @@ export async function POST(request: Request) {
 Triggers multiple runs of a single task with the payloads you pass in, and any options you specify, without needing to import the task.
 
 ```ts Your backend
-import { tasks } from "@trigger.dev/sdk/v3";
+import { tasks } from "@trigger.dev/sdk";
 import type { emailSequence } from "~/trigger/emails";
 //     👆 **type-only** import
 
@@ -120,7 +120,7 @@ export async function POST(request: Request) {
 You can pass in options to the `batchTrigger` function using the second argument:
 
 ```ts Your backend
-import { tasks } from "@trigger.dev/sdk/v3";
+import { tasks } from "@trigger.dev/sdk";
 import type { emailSequence } from "~/trigger/emails";
 
 //app/email/route.ts
@@ -143,7 +143,7 @@ export async function POST(request: Request) {
 You can also pass in options for each run in the batch:
 
 ```ts Your backend
-import { tasks } from "@trigger.dev/sdk/v3";
+import { tasks } from "@trigger.dev/sdk";
 import type { emailSequence } from "~/trigger/emails";
 
 //app/email/route.ts
@@ -173,7 +173,7 @@ Triggers a single run of a task with the payload you pass in, and any options yo
 </Warning>
 
 ```ts Your backend
-import { tasks } from "@trigger.dev/sdk/v3";
+import { tasks } from "@trigger.dev/sdk";
 import type { emailSequence } from "~/trigger/emails";
 
 //app/email/route.ts
@@ -201,7 +201,7 @@ export async function POST(request: Request) {
 Triggers multiple runs of different tasks with the payloads you pass in, and any options you specify. This is useful when you need to trigger multiple tasks at once.
 
 ```ts Your backend
-import { batch } from "@trigger.dev/sdk/v3";
+import { batch } from "@trigger.dev/sdk";
 import type { myTask1, myTask2 } from "~/trigger/myTasks";
 
 export async function POST(request: Request) {
@@ -238,7 +238,7 @@ Triggers a single run of a task with the payload you pass in, and any options yo
 </Note>
 
 ```ts ./trigger/my-task.ts
-import { runs } from "@trigger.dev/sdk/v3";
+import { runs } from "@trigger.dev/sdk";
 import { myOtherTask } from "~/trigger/my-other-task";
 
 export const myTask = task({
@@ -255,7 +255,7 @@ export const myTask = task({
 To pass options to the triggered task, you can use the second argument:
 
 ```ts ./trigger/my-task.ts
-import { runs } from "@trigger.dev/sdk/v3";
+import { runs } from "@trigger.dev/sdk";
 import { myOtherTask } from "~/trigger/my-other-task";
 
 export const myTask = task({
@@ -274,7 +274,7 @@ export const myTask = task({
 Triggers multiple runs of a single task with the payloads you pass in, and any options you specify.
 
 ```ts /trigger/my-task.ts
-import { batch } from "@trigger.dev/sdk/v3";
+import { batch } from "@trigger.dev/sdk";
 import { myOtherTask } from "~/trigger/my-other-task";
 
 export const myTask = task({
@@ -291,7 +291,7 @@ export const myTask = task({
 If you need to pass options to `batchTrigger`, you can use the second argument:
 
 ```ts /trigger/my-task.ts
-import { batch } from "@trigger.dev/sdk/v3";
+import { batch } from "@trigger.dev/sdk";
 import { myOtherTask } from "~/trigger/my-other-task";
 
 export const myTask = task({
@@ -310,7 +310,7 @@ export const myTask = task({
 You can also pass in options for each run in the batch:
 
 ```ts /trigger/my-task.ts
-import { batch } from "@trigger.dev/sdk/v3";
+import { batch } from "@trigger.dev/sdk";
 import { myOtherTask } from "~/trigger/my-other-task";
 
 export const myTask = task({
@@ -416,7 +416,7 @@ export const parentTask = task({
 You can also catch the error if the child task fails and get more information about the error:
 
 ```ts /trigger/parent.ts
-import { task, SubtaskUnwrapError } from "@trigger.dev/sdk/v3";
+import { task, SubtaskUnwrapError } from "@trigger.dev/sdk";
 export const parentTask = task({
   id: "parent-task",
   run: async (payload: string) => {
@@ -565,7 +565,7 @@ export const batchParentTask = task({
 You can batch trigger multiple different tasks and wait for all the results:
 
 ```ts /trigger/batch.ts
-import { batch, task } from "@trigger.dev/sdk/v3";
+import { batch, task } from "@trigger.dev/sdk";
 
 export const parentTask = task({
   id: "parent-task",
@@ -614,7 +614,7 @@ export const childTask2 = task({
 You can batch trigger multiple different tasks by passing in the task instances. This function is especially useful when you have a static set of tasks you want to trigger:
 
 ```ts /trigger/batch.ts
-import { batch, task, runs } from "@trigger.dev/sdk/v3";
+import { batch, task, runs } from "@trigger.dev/sdk";
 
 export const parentTask = task({
   id: "parent-task",
@@ -650,7 +650,7 @@ export const childTask2 = task({
 You can batch trigger multiple different tasks by passing in the task instances, and wait for all the results. This function is especially useful when you have a static set of tasks you want to trigger:
 
 ```ts /trigger/batch.ts
-import { batch, task, runs } from "@trigger.dev/sdk/v3";
+import { batch, task, runs } from "@trigger.dev/sdk";
 
 export const parentTask = task({
   id: "parent-task",
@@ -748,7 +748,7 @@ Runs that are delayed and have not been enqueued yet will display in the dashboa
 You can cancel a delayed run using the `runs.cancel` SDK function:
 
 ```ts
-import { runs } from "@trigger.dev/sdk/v3";
+import { runs } from "@trigger.dev/sdk";
 
 await runs.cancel("run_1234");
 ```
@@ -756,7 +756,7 @@ await runs.cancel("run_1234");
 You can also reschedule a delayed run using the `runs.reschedule` SDK function:
 
 ```ts
-import { runs } from "@trigger.dev/sdk/v3";
+import { runs } from "@trigger.dev/sdk";
 
 // The delay option here takes the same format as the trigger delay option
 await runs.reschedule("run_1234", { delay: "1h" });
@@ -813,7 +813,7 @@ For this reason, the `ttl` option only accepts durations and not absolute timest
 You can provide an `idempotencyKey` to ensure that a task is only triggered once with the same key. This is useful if you are triggering a task within another task that might be retried:
 
 ```typescript
-import { idempotencyKeys, task } from "@trigger.dev/sdk/v3";
+import { idempotencyKeys, task } from "@trigger.dev/sdk";
 
 export const myTask = task({
   id: "my-task",
@@ -845,7 +845,7 @@ For more information, see our [Idempotency](/idempotency) documentation.
 Idempotency keys automatically expire after 30 days, but you can set a custom TTL for an idempotency key when triggering a task:
 
 ```typescript
-import { idempotencyKeys, task } from "@trigger.dev/sdk/v3";
+import { idempotencyKeys, task } from "@trigger.dev/sdk";
 
 export const myTask = task({
   id: "my-task",
@@ -993,7 +993,7 @@ If your payload size is larger than 512KB, instead of saving the payload to the 
 When your task runs, we automatically download the payload from the object store and pass it to your task function. We also will return to you a `payloadPresignedUrl` from the `runs.retrieve` SDK function so you can download the payload if needed:
 
 ```ts
-import { runs } from "@trigger.dev/sdk/v3";
+import { runs } from "@trigger.dev/sdk";
 
 const run = await runs.retrieve(handle);
 
@@ -1047,7 +1047,7 @@ const handle = await myTask.trigger({
 ```
 
 ```ts /trigger/myTasks.ts
-import { task } from "@trigger.dev/sdk/v3";
+import { task } from "@trigger.dev/sdk";
 
 export const myTask = task({
   id: "my-task",

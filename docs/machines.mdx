@@ -6,7 +6,7 @@ description: "Configure the number of vCPUs and GBs of RAM you want the task to 
 The `machine` configuration is optional. Using higher spec machines will increase the cost of running the task but can also improve the performance of the task if it is CPU or memory bound.
 
 ```ts /trigger/heavy-task.ts
-import {  task } from "@trigger.dev/sdk/v3";
+import {  task } from "@trigger.dev/sdk";
 
 export const heavyTask = task({
   id: "heavy-task",
@@ -20,7 +20,7 @@ export const heavyTask = task({
 The default machine is `small-1x` which has 0.5 vCPU and 0.5 GB of RAM. You can change the default machine in your `trigger.config.ts` file:
 
 ```ts trigger.config.ts
-import type { TriggerConfig } from "@trigger.dev/sdk/v3";
+import type { TriggerConfig } from "@trigger.dev/sdk";
 
 export const config: TriggerConfig = {
   machine: "small-2x",
@@ -67,8 +67,8 @@ We automatically detect common Out Of Memory errors, including when ffmpeg throw
 You can explicitly throw an Out Of Memory error in your task. This can be useful if you use a native package that detects it's going to run out of memory and then stops before it runs out. If you can detect this, you can then throw this error.
 
 ```ts /trigger/heavy-task.ts
-import {  task } from "@trigger.dev/sdk/v3";
-import { OutOfMemoryError } from "@trigger.dev/sdk/v3";
+import {  task } from "@trigger.dev/sdk";
+import { OutOfMemoryError } from "@trigger.dev/sdk";
 
 export const yourTask = task({
   id: "your-task",
@@ -88,7 +88,7 @@ If OOM errors happen regularly you need to either optimize the memory-efficiency
 If you are seeing rare OOM errors, it might make sense to add a setting to your task to retry with a large machine when an OOM happens:
 
 ```ts /trigger/heavy-task.ts
-import {  task } from "@trigger.dev/sdk/v3";
+import {  task } from "@trigger.dev/sdk";
 
 export const yourTask = task({
   id: "your-task",

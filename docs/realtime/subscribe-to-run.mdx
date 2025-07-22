@@ -9,7 +9,7 @@ import RunObject from "/snippets/realtime/run-object.mdx";
 <RequestExample>
 
 ```ts Example
-import { runs } from "@trigger.dev/sdk/v3";
+import { runs } from "@trigger.dev/sdk";
 
 for await (const run of runs.subscribeToRun("run_1234")) {
   console.log(run);
@@ -30,7 +30,7 @@ This function supports both server-side and client-side authentication. For serv
 To generate a public access token, use the `auth.createPublicToken` function:
 
 ```ts
-import { auth } from "@trigger.dev/sdk/v3";
+import { auth } from "@trigger.dev/sdk";
 
 // Somewhere in your backend code
 const publicToken = await auth.createPublicToken({
