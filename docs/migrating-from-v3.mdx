@@ -4,6 +4,7 @@ description: "What's new in v4, how to migrate, and breaking changes."
 ---
 
 import NodeVersions from "/snippets/node-versions.mdx";
+import MigrateV4UsingAi from "/snippets/migrate-v4-using-ai.mdx";
 
 ## What's new in v4?
 
@@ -46,6 +47,12 @@ Note that between steps 4 and 5, runs triggered with the v4 package will continu
   amount of concurrently executing runs. Once the runs drain from the old run engine, the
   concurrency will return to normal.
 </Warning>
+
+## Migrate using AI
+
+Use the prompt in the accordion below to help you migrate your v3 tasks to v4. The prompt gives good results when using Claude 4 Sonnet. You’ll need a relatively large token limit.
+
+<MigrateV4UsingAi />
 
 ## Installation
 
