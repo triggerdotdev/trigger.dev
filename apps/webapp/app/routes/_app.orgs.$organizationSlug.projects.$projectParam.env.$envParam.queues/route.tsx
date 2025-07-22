@@ -282,11 +282,14 @@ export default function Page() {
               animate
               valueClassName={limitClassName}
               suffix={
-                limitStatus === "burst"
-                  ? `Including ${environment.running - environment.concurrencyLimit} burst runs`
-                  : limitStatus === "limit"
-                  ? "At concurrency limit"
-                  : undefined
+                limitStatus === "burst" ? (
+                  <span className={cn(limitClassName, "flex items-center gap-1")}>
+                    Including {environment.running - environment.concurrencyLimit} burst runs{" "}
+                    <BurstFactorTooltip environment={environment} />
+                  </span>
+                ) : limitStatus === "limit" ? (
+                  "At concurrency limit"
+                ) : undefined
               }
               compactThreshold={1000000}
             />
@@ -299,10 +302,7 @@ export default function Page() {
                 environment.burstFactor > 1 ? (
                   <span className={cn(limitClassName, "flex items-center gap-1")}>
                     Burst limit {environment.burstFactor * environment.concurrencyLimit}{" "}
-                    <InfoIconTooltip
-                      content={`You can burst up to ${environment.burstFactor}x your concurrency limit. For a single queue you can't go above your normal limit (${environment.concurrencyLimit}), but you can burst when running across multiple queues/tasks.`}
-                      contentClassName="max-w-xs"
-                    />
+                    <BurstFactorTooltip environment={environment} />
                   </span>
                 ) : undefined
               }
@@ -781,5 +781,22 @@ export function QueueFilters() {
         onChange={(e) => handleSearchChange(e.target.value)}
       />
     </div>
+  );
+}
+
+function BurstFactorTooltip({
+  environment,
+}: {
+  environment: { burstFactor: number; concurrencyLimit: number };
+}) {
+  return (
+    <InfoIconTooltip
+      content={`Your single queue concurrency limit is capped at ${
+        environment.concurrencyLimit
+      }, but you can burst up to ${
+        environment.burstFactor * environment.concurrencyLimit
+      } when across multiple queues/tasks.`}
+      contentClassName="max-w-xs"
+    />
   );
 }
