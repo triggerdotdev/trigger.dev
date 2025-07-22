@@ -49,43 +49,25 @@ Note that between steps 4 and 5, runs triggered with the v4 package will continu
 
 ## Installation
 
-To opt-in to using v4, you will need to update your dependencies to the latest version of the `v4-beta` tag.
-
-<CodeGroup>
-
-```bash npm
-npm add @trigger.dev/sdk@v4-beta -E
-```
-
-```bash yarn
-yarn add @trigger.dev/sdk@v4-beta -E
-```
-
-```bash pnpm
-pnpm add @trigger.dev/sdk@v4-beta -E
-```
-
-</CodeGroup>
-
-<Note> You will need to do this for all your `@trigger.dev/*` packages. </Note>
-
-You'll also need to use the `v4-beta` version of the `trigger.dev` CLI package:
+To opt-in to using v4, you will need to update your dependencies to the latest version:
 
 <CodeGroup>
 
 ```bash npx
-npx trigger.dev@v4-beta dev
+npx trigger.dev@latest update
 ```
 
 ```bash yarn
-yarn dlx trigger.dev@v4-beta dev
+yarn dlx trigger.dev@latest update
 ```
 
 ```bash pnpm
-pnpm dlx trigger.dev@v4-beta dev
+pnpm dlx trigger.dev@latest update
 ```
 
 </CodeGroup>
+
+This command should update all of your `@trigger.dev/*` packages to a `4.x` version.
 
 ## Deprecations
 
