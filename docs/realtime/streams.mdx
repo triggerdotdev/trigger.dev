@@ -379,21 +379,22 @@ function MyComponent({ runId, publicAccessToken }: { runId: string; publicAccess
 }
 ```
 
-### Using `toolTask`
+### Using `ai.tool`
 
-As you can see above, we defined a tool which will be used in the `aiStreamingWithTools` task. You can also define a Trigger.dev task that can be used as a tool, and will automatically be invoked with `triggerAndWait` when the tool is called. This is done using the `toolTask` function:
+As you can see above, we defined a tool which will be used in the `aiStreamingWithTools` task. You can also define a Trigger.dev task that can be used as a tool, and will automatically be invoked with `triggerAndWait` when the tool is called. This is done using the `ai.tool` function:
 
 ```ts
 import { openai } from "@ai-sdk/openai";
-import { logger, metadata, runs, schemaTask, toolTask } from "@trigger.dev/sdk/v3";
+import { ai } from "@trigger.dev/sdk/ai";
+import { logger, metadata, runs, schemaTask } from "@trigger.dev/sdk/v3";
 import { streamText, tool, type TextStreamPart } from "ai";
 import { z } from "zod";
 
-export const getWeather = toolTask({
+export const getWeatherTask = schemaTask({
   id: "get-weather",
   description: "Get the weather for a location",
-  // Define the parameters for the tool, which becomes the task payload
-  parameters: z.object({
+  // Define the schema for the task payload
+  schema: z.object({
     location: z.string(),
   }),
   run: async ({ location }) => {
@@ -405,9 +406,11 @@ export const getWeather = toolTask({
   },
 });
 
+export const getWeatherTool = ai.tool(getWeatherTask);
+
 export type STREAMS = {
   // Give the stream a type of TextStreamPart along with the tools
-  openai: TextStreamPart<{ getWeather: typeof getWeather.tool }>;
+  openai: TextStreamPart<{ getWeather: typeof getWeatherTool }>;
 };
 
 export const aiStreamingWithTools = schemaTask({
@@ -428,7 +431,7 @@ export const aiStreamingWithTools = schemaTask({
       model: openai(model),
       prompt,
       tools: {
-        getWeather: getWeather.tool, // pass weatherTask.tool as a tool
+        getWeather: getWeatherTool, // pass getWeatherTool as a tool
       },
       maxSteps: 5, // Allow streamText to repeatedly call the model
     });
