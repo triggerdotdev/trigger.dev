@@ -30,7 +30,7 @@ import { Feedback } from "~/components/Feedback";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { BigNumber } from "~/components/metrics/BigNumber";
 import { Badge } from "~/components/primitives/Badge";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Button, ButtonVariant, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { FormButtons } from "~/components/primitives/FormButtons";
@@ -66,13 +66,14 @@ import { EnvironmentQueuePresenter } from "~/presenters/v3/EnvironmentQueuePrese
 import { QueueListPresenter } from "~/presenters/v3/QueueListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { docsPath, EnvironmentParamSchema, v3BillingPath } from "~/utils/pathBuilder";
+import { docsPath, EnvironmentParamSchema, v3BillingPath, v3RunsPath } from "~/utils/pathBuilder";
 import { PauseEnvironmentService } from "~/v3/services/pauseEnvironment.server";
 import { PauseQueueService } from "~/v3/services/pauseQueue.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { Header3 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
 import { useThrottle } from "~/hooks/useThrottle";
+import { RunsIcon } from "~/assets/icons/RunsIcon";
 
 const SearchParamsSchema = z.object({
   query: z.string().optional(),
@@ -272,7 +273,20 @@ export default function Page() {
               value={environment.queued}
               suffix={env.paused && environment.queued > 0 ? "paused" : undefined}
               animate
-              accessory={<EnvironmentPauseResumeButton env={env} />}
+              accessory={
+                <div className="flex items-start gap-1">
+                  <LinkButton
+                    variant="tertiary/small"
+                    to={v3RunsPath(organization, project, env, {
+                      statuses: ["PENDING"],
+                      period: "30d",
+                    })}
+                  >
+                    View runs
+                  </LinkButton>
+                  <EnvironmentPauseResumeButton env={env} />
+                </div>
+              }
               valueClassName={env.paused ? "text-warning" : undefined}
               compactThreshold={1000000}
             />
@@ -290,6 +304,17 @@ export default function Page() {
                 ) : limitStatus === "limit" ? (
                   "At concurrency limit"
                 ) : undefined
+              }
+              accessory={
+                <LinkButton
+                  variant="tertiary/small"
+                  to={v3RunsPath(organization, project, env, {
+                    statuses: ["DEQUEUED", "EXECUTING"],
+                    period: "30d",
+                  })}
+                >
+                  View runs
+                </LinkButton>
               }
               compactThreshold={1000000}
             />
@@ -397,6 +422,9 @@ export default function Page() {
                     queues.map((queue) => {
                       const limit = queue.concurrencyLimit ?? environment.concurrencyLimit;
                       const isAtLimit = queue.running === limit;
+                      const queueFilterableName = `${queue.type === "task" ? "task/" : ""}${
+                        queue.name
+                      }`;
                       return (
                         <TableRow key={queue.name}>
                           <TableCell>
@@ -476,6 +504,66 @@ export default function Page() {
                             }
                             hiddenButtons={
                               !queue.paused && <QueuePauseResumeButton queue={queue} />
+                            }
+                            popoverContent={
+                              <>
+                                {queue.paused ? (
+                                  <QueuePauseResumeButton
+                                    queue={queue}
+                                    variant="minimal/small"
+                                    fullWidth
+                                    showTooltip={false}
+                                  />
+                                ) : (
+                                  <QueuePauseResumeButton
+                                    queue={queue}
+                                    variant="minimal/small"
+                                    fullWidth
+                                    showTooltip={false}
+                                  />
+                                )}
+                                <LinkButton
+                                  variant="minimal/small"
+                                  to={v3RunsPath(organization, project, env, {
+                                    queues: [queueFilterableName],
+                                    period: "30d",
+                                  })}
+                                  fullWidth
+                                  textAlignLeft
+                                  LeadingIcon={RunsIcon}
+                                  leadingIconClassName="text-indigo-500"
+                                >
+                                  View all runs
+                                </LinkButton>
+                                <LinkButton
+                                  variant="minimal/small"
+                                  to={v3RunsPath(organization, project, env, {
+                                    queues: [queueFilterableName],
+                                    statuses: ["PENDING"],
+                                    period: "30d",
+                                  })}
+                                  fullWidth
+                                  textAlignLeft
+                                  LeadingIcon={RectangleStackIcon}
+                                  leadingIconClassName="text-queues"
+                                >
+                                  View queued runs
+                                </LinkButton>
+                                <LinkButton
+                                  variant="minimal/small"
+                                  to={v3RunsPath(organization, project, env, {
+                                    queues: [queueFilterableName],
+                                    statuses: ["DEQUEUED", "EXECUTING"],
+                                    period: "30d",
+                                  })}
+                                  fullWidth
+                                  textAlignLeft
+                                  LeadingIcon={Spinner}
+                                  leadingIconClassName="size-4 animate-none"
+                                >
+                                  View running runs
+                                </LinkButton>
+                              </>
                             }
                           />
                         </TableRow>
@@ -630,40 +718,56 @@ function EnvironmentPauseResumeButton({
 
 function QueuePauseResumeButton({
   queue,
+  variant = "tertiary/small",
+  fullWidth = false,
+  showTooltip = true,
 }: {
   /** The "id" here is a friendlyId */
   queue: { id: string; name: string; paused: boolean };
+  variant?: ButtonVariant;
+  fullWidth?: boolean;
+  showTooltip?: boolean;
 }) {
   const navigation = useNavigation();
   const [isOpen, setIsOpen] = useState(false);
 
+  const button = (
+    <Button
+      type="button"
+      variant={variant}
+      LeadingIcon={queue.paused ? PlayIcon : PauseIcon}
+      leadingIconClassName={queue.paused ? "text-success" : "text-warning"}
+      fullWidth={fullWidth}
+      textAlignLeft={fullWidth}
+    >
+      {queue.paused ? "Resume..." : "Pause..."}
+    </Button>
+  );
+
+  const trigger = showTooltip ? (
+    <div>
+      <TooltipProvider disableHoverableContent={true}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div>
+              <DialogTrigger asChild>{button}</DialogTrigger>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="right" className={"text-xs"}>
+            {queue.paused
+              ? `Resume processing runs in queue "${queue.name}"`
+              : `Pause processing runs in queue "${queue.name}"`}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    </div>
+  ) : (
+    <DialogTrigger asChild>{button}</DialogTrigger>
+  );
+
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <div>
-        <TooltipProvider disableHoverableContent={true}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div>
-                <DialogTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="tertiary/small"
-                    LeadingIcon={queue.paused ? PlayIcon : PauseIcon}
-                    leadingIconClassName={queue.paused ? "text-success" : "text-warning"}
-                  >
-                    {queue.paused ? "Resume..." : "Pause..."}
-                  </Button>
-                </DialogTrigger>
-              </div>
-            </TooltipTrigger>
-            <TooltipContent side="right" className={"text-xs"}>
-              {queue.paused
-                ? `Resume processing runs in queue "${queue.name}"`
-                : `Pause processing runs in queue "${queue.name}"`}
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      </div>
+      {trigger}
       <DialogContent>
         <DialogHeader>{queue.paused ? "Resume queue?" : "Pause queue?"}</DialogHeader>
         <div className="flex flex-col gap-3 pt-3">
