@@ -188,11 +188,6 @@ export default defineConfig({
 
 Make sure to set the `AXIOM_API_TOKEN` and `AXIOM_DATASET` environment variables in your project.
 
-<Note>
-  The `logExporters` option is available in the v4 beta SDK. See our [v4 upgrade
-  guide](/upgrade-to-v4) for more information.
-</Note>
-
 It's important to note that you cannot configure exporters using `OTEL_*` environment variables, as they would conflict with our internal telemetry. Instead you should configure the exporters via passing in arguments to the `OTLPTraceExporter` and `OTLPLogExporter` constructors. For example, here is how you can configure exporting to Honeycomb:
 
 ```ts trigger.config.ts
