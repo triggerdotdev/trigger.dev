@@ -27,7 +27,7 @@
               "video-walkthrough",
               "how-it-works",
               "limits",
-              "upgrade-to-v4"
+              "migrating-from-v3"
             ]
           },
           {
@@ -574,6 +574,10 @@
     {
       "source": "/management/projects/runs",
       "destination": "/management/overview"
+    },
+    {
+      "source": "/upgrade-to-v4",
+      "destination": "/migrating-from-v3"
     }
   ]
 }
