@@ -433,7 +433,11 @@ export class TaskRunProcess {
     const [error] = await tryCatch(killTimeout);
 
     if (error) {
-      logger.debug("kill: failed to wait for child process to exit", { killTimeout });
+      logger.debug("kill: failed to wait for child process to exit", {
+        timeoutInMs,
+        signal,
+        pid: this.pid,
+      });
     }
   }
 
