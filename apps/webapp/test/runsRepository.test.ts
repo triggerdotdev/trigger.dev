@@ -1,3 +1,11 @@
+import { describe, expect, vi } from "vitest";
+
+// Mock the db prisma client
+vi.mock("~/db.server", () => ({
+  prisma: {},
+  $replica: {},
+}));
+
 import { containerTest } from "@internal/testcontainers";
 import { setTimeout } from "node:timers/promises";
 import { RunsRepository } from "~/services/runsRepository/runsRepository.server";
