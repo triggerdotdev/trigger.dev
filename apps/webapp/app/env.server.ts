@@ -891,7 +891,7 @@ const EnvironmentSchema = z.object({
   RUN_REPLICATION_ENABLED: z.string().default("0"),
   RUN_REPLICATION_SLOT_NAME: z.string().default("task_runs_to_clickhouse_v1"),
   RUN_REPLICATION_PUBLICATION_NAME: z.string().default("task_runs_to_clickhouse_v1_publication"),
-  RUN_REPLICATION_MAX_FLUSH_CONCURRENCY: z.coerce.number().int().default(100),
+  RUN_REPLICATION_MAX_FLUSH_CONCURRENCY: z.coerce.number().int().default(2),
   RUN_REPLICATION_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
   RUN_REPLICATION_FLUSH_BATCH_SIZE: z.coerce.number().int().default(100),
   RUN_REPLICATION_LEADER_LOCK_TIMEOUT_MS: z.coerce.number().int().default(30_000),
