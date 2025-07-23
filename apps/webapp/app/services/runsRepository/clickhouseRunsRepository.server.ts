@@ -1,79 +1,26 @@
-import { type ClickHouse, type ClickhouseQueryBuilder } from "@internal/clickhouse";
-import { type Tracer } from "@internal/tracing";
-import { type Logger, type LogLevel } from "@trigger.dev/core/logger";
-import { MachinePresetName } from "@trigger.dev/core/v3";
-import { BulkActionId, RunId } from "@trigger.dev/core/v3/isomorphic";
-import { TaskRunStatus } from "@trigger.dev/database";
-import parseDuration from "parse-duration";
-import { z } from "zod";
-import { timeFilters } from "~/components/runs/v3/SharedFilters";
-import { type PrismaClient } from "~/db.server";
+import { type ClickhouseQueryBuilder } from "@internal/clickhouse";
+import { RunId } from "@trigger.dev/core/v3/isomorphic";
+import {
+  type FilterRunsOptions,
+  type IRunsRepository,
+  type ListRunsOptions,
+  type RunListInputOptions,
+  type RunsRepositoryOptions,
+  convertRunListInputOptionsToFilterRunsOptions,
+} from "./runsRepository.server";
 
-export type RunsRepositoryOptions = {
-  clickhouse: ClickHouse;
-  prisma: PrismaClient;
-  logger?: Logger;
-  logLevel?: LogLevel;
-  tracer?: Tracer;
-};
-
-const RunStatus = z.enum(Object.values(TaskRunStatus) as [TaskRunStatus, ...TaskRunStatus[]]);
-
-const RunListInputOptionsSchema = z.object({
-  organizationId: z.string(),
-  projectId: z.string(),
-  environmentId: z.string(),
-  //filters
-  tasks: z.array(z.string()).optional(),
-  versions: z.array(z.string()).optional(),
-  statuses: z.array(RunStatus).optional(),
-  tags: z.array(z.string()).optional(),
-  scheduleId: z.string().optional(),
-  period: z.string().optional(),
-  from: z.number().optional(),
-  to: z.number().optional(),
-  isTest: z.boolean().optional(),
-  rootOnly: z.boolean().optional(),
-  batchId: z.string().optional(),
-  runId: z.array(z.string()).optional(),
-  bulkId: z.string().optional(),
-  queues: z.array(z.string()).optional(),
-  machines: MachinePresetName.array().optional(),
-});
-
-export type RunListInputOptions = z.infer<typeof RunListInputOptionsSchema>;
-export type RunListInputFilters = Omit<
-  RunListInputOptions,
-  "organizationId" | "projectId" | "environmentId"
->;
-
-export type ParsedRunFilters = RunListInputFilters & {
-  cursor?: string;
-  direction?: "forward" | "backward";
-};
-
-type FilterRunsOptions = Omit<RunListInputOptions, "period"> & {
-  period: number | undefined;
-};
-
-type Pagination = {
-  page: {
-    size: number;
-    cursor?: string;
-    direction?: "forward" | "backward";
-  };
-};
-
-export type ListRunsOptions = RunListInputOptions & Pagination;
-
-export class RunsRepository {
+export class ClickHouseRunsRepository implements IRunsRepository {
   constructor(private readonly options: RunsRepositoryOptions) {}
+
+  get name() {
+    return "clickhouse";
+  }
 
   async listRunIds(options: ListRunsOptions) {
     const queryBuilder = this.options.clickhouse.taskRuns.queryBuilder();
     applyRunFiltersToQueryBuilder(
       queryBuilder,
-      await this.#convertRunListInputOptionsToFilterRunsOptions(options)
+      await convertRunListInputOptionsToFilterRunsOptions(options, this.options.prisma)
     );
 
     if (options.page.cursor) {
@@ -200,7 +147,7 @@ export class RunsRepository {
     const queryBuilder = this.options.clickhouse.taskRuns.countQueryBuilder();
     applyRunFiltersToQueryBuilder(
       queryBuilder,
-      await this.#convertRunListInputOptionsToFilterRunsOptions(options)
+      await convertRunListInputOptionsToFilterRunsOptions(options, this.options.prisma)
     );
 
     const [queryError, result] = await queryBuilder.execute();
@@ -214,73 +161,6 @@ export class RunsRepository {
     }
 
     return result[0].count;
-  }
-
-  async #convertRunListInputOptionsToFilterRunsOptions(
-    options: RunListInputOptions
-  ): Promise<FilterRunsOptions> {
-    const convertedOptions: FilterRunsOptions = {
-      ...options,
-      period: undefined,
-    };
-
-    // Convert time period to ms
-    const time = timeFilters({
-      period: options.period,
-      from: options.from,
-      to: options.to,
-    });
-    convertedOptions.period = time.period ? parseDuration(time.period) ?? undefined : undefined;
-
-    // batch friendlyId to id
-    if (options.batchId && options.batchId.startsWith("batch_")) {
-      const batch = await this.options.prisma.batchTaskRun.findFirst({
-        select: {
-          id: true,
-        },
-        where: {
-          friendlyId: options.batchId,
-          runtimeEnvironmentId: options.environmentId,
-        },
-      });
-
-      if (batch) {
-        convertedOptions.batchId = batch.id;
-      }
-    }
-
-    // scheduleId can be a friendlyId
-    if (options.scheduleId && options.scheduleId.startsWith("sched_")) {
-      const schedule = await this.options.prisma.taskSchedule.findFirst({
-        select: {
-          id: true,
-        },
-        where: {
-          friendlyId: options.scheduleId,
-          projectId: options.projectId,
-        },
-      });
-
-      if (schedule) {
-        convertedOptions.scheduleId = schedule?.id;
-      }
-    }
-
-    if (options.bulkId && options.bulkId.startsWith("bulk_")) {
-      convertedOptions.bulkId = BulkActionId.toId(options.bulkId);
-    }
-
-    if (options.runId) {
-      //convert to friendlyId
-      convertedOptions.runId = options.runId.map((r) => RunId.toFriendlyId(r));
-    }
-
-    // Show all runs if we are filtering by batchId or runId
-    if (options.batchId || options.runId?.length || options.scheduleId || options.tasks?.length) {
-      convertedOptions.rootOnly = false;
-    }
-
-    return convertedOptions;
   }
 }
 
@@ -372,8 +252,4 @@ function applyRunFiltersToQueryBuilder<T>(
       machines: options.machines,
     });
   }
-}
-
-export function parseRunListInputOptions(data: any): RunListInputOptions {
-  return RunListInputOptionsSchema.parse(data);
 }

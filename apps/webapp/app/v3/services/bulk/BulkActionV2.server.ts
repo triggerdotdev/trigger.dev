@@ -12,7 +12,7 @@ import {
   parseRunListInputOptions,
   type RunListInputFilters,
   RunsRepository,
-} from "~/services/runsRepository.server";
+} from "~/services/runsRepository/runsRepository.server";
 import { BaseService } from "../baseService.server";
 import { commonWorker } from "~/v3/commonWorker.server";
 import { env } from "~/env.server";
