@@ -51,6 +51,7 @@ export type TaskRunProcessOptions = {
   machineResources: MachinePresetResources;
   isWarmStart?: boolean;
   cwd?: string;
+  gracefulTerminationTimeoutInMs?: number;
 };
 
 export type TaskRunProcessExecuteParams = {
@@ -114,7 +115,7 @@ export class TaskRunProcess {
       console.error("Error cancelling task run process", { err });
     }
 
-    await this.kill();
+    await this.#gracefullyTerminate(this.options.gracefulTerminationTimeoutInMs);
   }
 
   async cleanup(kill = true) {
@@ -131,7 +132,7 @@ export class TaskRunProcess {
     }
 
     if (kill) {
-      await this.kill("SIGKILL");
+      await this.#gracefullyTerminate(this.options.gracefulTerminationTimeoutInMs);
     }
   }
 
@@ -395,6 +396,18 @@ export class TaskRunProcess {
     this._stderr.push(errorLine);
   }
 
+  async #gracefullyTerminate(timeoutInMs: number = 1_000) {
+    logger.debug("gracefully terminating task run process", { pid: this.pid, timeoutInMs });
+
+    await this.kill("SIGTERM", timeoutInMs);
+
+    if (this._child?.connected) {
+      logger.debug("child process is still connected, sending SIGKILL", { pid: this.pid });
+
+      await this.kill("SIGKILL");
+    }
+  }
+
   /** This will never throw. */
   async kill(signal?: number | NodeJS.Signals, timeoutInMs?: number) {
     logger.debug(`killing task run process`, {
@@ -420,7 +433,7 @@ export class TaskRunProcess {
     const [error] = await tryCatch(killTimeout);
 
     if (error) {
-      logger.debug("kill: failed to wait for child process to exit", { error });
+      logger.debug("kill: failed to wait for child process to exit", { killTimeout });
     }
   }
 
