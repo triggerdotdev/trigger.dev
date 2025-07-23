@@ -1,3 +1,5 @@
+import "./instrument.server";
+
 import { createRequestHandler } from "@remix-run/express";
 import { broadcastDevReady, logDevReady } from "@remix-run/server-runtime";
 import compression from "compression";
