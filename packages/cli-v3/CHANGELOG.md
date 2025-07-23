@@ -1,5 +1,14 @@
 # trigger.dev
 
+## 4.0.0-v4-beta.25
+
+### Patch Changes
+
+- Gracefully shutdown task run processes using SIGTERM followed by SIGKILL after a 1s timeout. This also prevents cancelled or completed runs from leaving orphaned Ttask run processes behind ([#2299](https://github.com/triggerdotdev/trigger.dev/pull/2299))
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.0-v4-beta.25`
+  - `@trigger.dev/core@4.0.0-v4-beta.25`
+
 ## 4.0.0-v4-beta.24
 
 ### Patch Changes
