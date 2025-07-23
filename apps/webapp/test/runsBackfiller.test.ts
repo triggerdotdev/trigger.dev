@@ -1,3 +1,11 @@
+import { vi } from "vitest";
+
+// Mock the db prisma client
+vi.mock("~/db.server", () => ({
+  prisma: {},
+  $replica: {},
+}));
+
 import { ClickHouse } from "@internal/clickhouse";
 import { containerTest } from "@internal/testcontainers";
 import { z } from "zod";
