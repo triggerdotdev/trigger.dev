@@ -5,6 +5,7 @@ description: Using the Trigger.dev v3 realtime API
 ---
 
 import RealtimeExamplesCards from "/snippets/realtime-examples-cards.mdx";
+import RunBooleanHelpers from "/snippets/run-boolean-helpers.mdx";
 
 Trigger.dev Realtime is a set of APIs that allow you to subscribe to runs and get real-time updates on the run status. This is useful for monitoring runs, updating UIs, and building realtime dashboards.
 
@@ -194,6 +195,23 @@ The run object returned by the async iterator has the following fields:
 <ParamField path="isTest" type="boolean" required>
   Indicates whether this is a test run.
 </ParamField>
+
+## Boolean helpers
+
+Run objects returned from Realtime subscriptions include convenient boolean helper methods to check the run's status:
+
+```ts
+import { runs } from "@trigger.dev/sdk";
+
+for await (const run of runs.subscribeToRun("run_1234")) {
+  if (run.isCompleted) {
+    console.log("Run completed successfully!");
+    break;
+  }
+}
+```
+
+<RunBooleanHelpers />
 
 ## Type-safety
 

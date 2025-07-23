@@ -3,6 +3,8 @@ title: "Runs"
 description: "Understanding the lifecycle of task run execution in Trigger.dev"
 ---
 
+import RunBooleanHelpers from "/snippets/run-boolean-helpers.mdx";
+
 In Trigger.dev, the concepts of runs and attempts are fundamental to understanding how tasks are executed and managed. This article explains these concepts in detail and provides insights into the various states a run can go through during its lifecycle.
 
 ## What are runs?
@@ -63,7 +65,7 @@ during execution (likely due to an Out of Memory error) and won’t be retried.
 <Icon icon="bug" iconType="solid" color="#E11D48" size={17} /> **System failure**: An unrecoverable system
 error has occurred.
 
-<Icon icon="trash-can" iconType="solid" color="#878C99" size={17} /> **Expired**: The run's Time-to-Live
+<Icon icon="trash-can" iconType="solid" color="#878C99" size={17} /> **Expired**: The run's [Time-to-Live](#time-to-live-ttl)
 (TTL) has passed before it could start executing.
 
 ## Attempts
@@ -86,6 +88,35 @@ A run is considered finished when:
 2. The task has reached its retry limit and all attempts have failed
 
 At this point, the run will have either an output (if successful) or an error (if failed).
+
+## Boolean helpers
+
+Run objects returned from the API and Realtime include convenient boolean helper methods to check the run's status:
+
+```ts
+import { runs } from "@trigger.dev/sdk";
+
+const run = await runs.retrieve("run_1234");
+
+if (run.isCompleted) {
+  console.log("Run completed successfully");
+}
+```
+
+<RunBooleanHelpers />
+
+These helpers are also available when subscribing to Realtime run updates:
+
+```ts
+import { runs } from "@trigger.dev/sdk";
+
+for await (const run of runs.subscribeToRun("run_1234")) {
+  if (run.isCompleted) {
+    console.log("Run completed successfully!");
+    break;
+  }
+}
+```
 
 ## Advanced run features
 
