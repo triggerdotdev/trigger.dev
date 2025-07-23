@@ -1,18 +1,18 @@
-import { type ClickHouse, type ClickhouseQueryBuilder } from "@internal/clickhouse";
+import { type ClickHouse } from "@internal/clickhouse";
 import { type Tracer } from "@internal/tracing";
 import { type Logger, type LogLevel } from "@trigger.dev/core/logger";
 import { MachinePresetName } from "@trigger.dev/core/v3";
 import { BulkActionId, RunId } from "@trigger.dev/core/v3/isomorphic";
-import { Prisma, TaskRunStatus } from "@trigger.dev/database";
+import { type Prisma, TaskRunStatus } from "@trigger.dev/database";
 import parseDuration from "parse-duration";
 import { z } from "zod";
 import { timeFilters } from "~/components/runs/v3/SharedFilters";
 import { type PrismaClient } from "~/db.server";
-import { ClickHouseRunsRepository } from "./clickhouseRunsRepository.server";
-import { PostgresRunsRepository } from "./postgresRunsRepository.server";
 import { FEATURE_FLAG, makeFlags } from "~/v3/featureFlags.server";
 import { startActiveSpan } from "~/v3/tracer.server";
 import { logger } from "../logger.server";
+import { ClickHouseRunsRepository } from "./clickhouseRunsRepository.server";
+import { PostgresRunsRepository } from "./postgresRunsRepository.server";
 
 export type RunsRepositoryOptions = {
   clickhouse: ClickHouse;
@@ -121,6 +121,7 @@ export class RunsRepository implements IRunsRepository {
   private readonly clickHouseRunsRepository: ClickHouseRunsRepository;
   private readonly postgresRunsRepository: PostgresRunsRepository;
   private readonly defaultRepository: "clickhouse" | "postgres";
+  private readonly logger: Logger;
 
   constructor(
     private readonly options: RunsRepositoryOptions & {
@@ -130,6 +131,7 @@ export class RunsRepository implements IRunsRepository {
     this.clickHouseRunsRepository = new ClickHouseRunsRepository(options);
     this.postgresRunsRepository = new PostgresRunsRepository(options);
     this.defaultRepository = options.defaultRepository ?? "clickhouse";
+    this.logger = options.logger ?? logger;
   }
 
   get name() {
@@ -163,11 +165,38 @@ export class RunsRepository implements IRunsRepository {
     return startActiveSpan(
       "runsRepository.listRunIds",
       async () => {
-        return repository.listRunIds(options);
+        try {
+          return await repository.listRunIds(options);
+        } catch (error) {
+          // If ClickHouse fails, retry with Postgres
+          if (repository.name === "clickhouse") {
+            this.logger?.warn("ClickHouse failed, retrying with Postgres", { error });
+            return startActiveSpan(
+              "runsRepository.listRunIds.fallback",
+              async () => {
+                return await this.postgresRunsRepository.listRunIds(options);
+              },
+              {
+                attributes: {
+                  "repository.name": "postgres",
+                  "fallback.reason": "clickhouse_error",
+                  "fallback.error": error instanceof Error ? error.message : String(error),
+                  organizationId: options.organizationId,
+                  projectId: options.projectId,
+                  environmentId: options.environmentId,
+                },
+              }
+            );
+          }
+          throw error;
+        }
       },
       {
         attributes: {
           "repository.name": repository.name,
+          organizationId: options.organizationId,
+          projectId: options.projectId,
+          environmentId: options.environmentId,
         },
       }
     );
@@ -184,11 +213,38 @@ export class RunsRepository implements IRunsRepository {
     return startActiveSpan(
       "runsRepository.listRuns",
       async () => {
-        return repository.listRuns(options);
+        try {
+          return await repository.listRuns(options);
+        } catch (error) {
+          // If ClickHouse fails, retry with Postgres
+          if (repository.name === "clickhouse") {
+            this.logger?.warn("ClickHouse failed, retrying with Postgres", { error });
+            return startActiveSpan(
+              "runsRepository.listRuns.fallback",
+              async () => {
+                return await this.postgresRunsRepository.listRuns(options);
+              },
+              {
+                attributes: {
+                  "repository.name": "postgres",
+                  "fallback.reason": "clickhouse_error",
+                  "fallback.error": error instanceof Error ? error.message : String(error),
+                  organizationId: options.organizationId,
+                  projectId: options.projectId,
+                  environmentId: options.environmentId,
+                },
+              }
+            );
+          }
+          throw error;
+        }
       },
       {
         attributes: {
           "repository.name": repository.name,
+          organizationId: options.organizationId,
+          projectId: options.projectId,
+          environmentId: options.environmentId,
         },
       }
     );
@@ -199,11 +255,38 @@ export class RunsRepository implements IRunsRepository {
     return startActiveSpan(
       "runsRepository.countRuns",
       async () => {
-        return repository.countRuns(options);
+        try {
+          return await repository.countRuns(options);
+        } catch (error) {
+          // If ClickHouse fails, retry with Postgres
+          if (repository.name === "clickhouse") {
+            this.logger?.warn("ClickHouse failed, retrying with Postgres", { error });
+            return startActiveSpan(
+              "runsRepository.countRuns.fallback",
+              async () => {
+                return await this.postgresRunsRepository.countRuns(options);
+              },
+              {
+                attributes: {
+                  "repository.name": "postgres",
+                  "fallback.reason": "clickhouse_error",
+                  "fallback.error": error instanceof Error ? error.message : String(error),
+                  organizationId: options.organizationId,
+                  projectId: options.projectId,
+                  environmentId: options.environmentId,
+                },
+              }
+            );
+          }
+          throw error;
+        }
       },
       {
         attributes: {
           "repository.name": repository.name,
+          organizationId: options.organizationId,
+          projectId: options.projectId,
+          environmentId: options.environmentId,
         },
       }
     );
