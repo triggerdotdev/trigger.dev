@@ -53,6 +53,7 @@ export type RunsReplicationServiceOptions = {
   logLevel?: LogLevel;
   tracer?: Tracer;
   waitForAsyncInsert?: boolean;
+  insertStrategy?: "insert" | "insert_async";
   // Retry configuration for insert operations
   insertMaxRetries?: number;
   insertBaseDelayMs?: number;
@@ -90,6 +91,7 @@ export class RunsReplicationService {
   private _insertMaxRetries: number;
   private _insertBaseDelayMs: number;
   private _insertMaxDelayMs: number;
+  private _insertStrategy: "insert" | "insert_async";
 
   public readonly events: EventEmitter<RunsReplicationServiceEvents>;
 
@@ -100,6 +102,8 @@ export class RunsReplicationService {
     this._tracer = options.tracer ?? trace.getTracer("runs-replication-service");
 
     this._acknowledgeTimeoutMs = options.acknowledgeTimeoutMs ?? 1_000;
+
+    this._insertStrategy = options.insertStrategy ?? "insert";
 
     this._replicationClient = new LogicalReplicationClient({
       pgConfig: {
@@ -598,15 +602,26 @@ export class RunsReplicationService {
     return delay + jitter;
   }
 
+  #getClickhouseInsertSettings() {
+    if (this._insertStrategy === "insert") {
+      return {};
+    } else if (this._insertStrategy === "insert_async") {
+      return {
+        async_insert: 1 as const,
+        async_insert_max_data_size: "1000000",
+        async_insert_busy_timeout_ms: 1000,
+        wait_for_async_insert: this.options.waitForAsyncInsert ? (1 as const) : (0 as const),
+      };
+    }
+  }
+
   async #insertTaskRunInserts(taskRunInserts: TaskRunV2[], attempt: number) {
     return await startSpan(this._tracer, "insertTaskRunsInserts", async (span) => {
       const [insertError, insertResult] = await this.options.clickhouse.taskRuns.insert(
         taskRunInserts,
         {
           params: {
-            clickhouse_settings: {
-              wait_for_async_insert: this.options.waitForAsyncInsert ? 1 : 0,
-            },
+            clickhouse_settings: this.#getClickhouseInsertSettings(),
           },
         }
       );
@@ -631,9 +646,7 @@ export class RunsReplicationService {
         payloadInserts,
         {
           params: {
-            clickhouse_settings: {
-              wait_for_async_insert: this.options.waitForAsyncInsert ? 1 : 0,
-            },
+            clickhouse_settings: this.#getClickhouseInsertSettings(),
           },
         }
       );

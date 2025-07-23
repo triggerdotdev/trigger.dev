@@ -56,10 +56,6 @@ export function insertTaskRuns(ch: ClickhouseWriter, settings?: ClickHouseSettin
     table: "trigger_dev.task_runs_v2",
     schema: TaskRunV2,
     settings: {
-      async_insert: 1,
-      wait_for_async_insert: 0,
-      async_insert_max_data_size: "1000000",
-      async_insert_busy_timeout_ms: 1000,
       enable_json_type: 1,
       type_json_skip_duplicated_paths: 1,
       ...settings,
