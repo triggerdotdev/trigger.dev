@@ -22,11 +22,10 @@ A run can go through **various** states during its lifecycle. The following diag
 
 Runs can also find themselves in lots of other states depending on what's happening at any given time. The following sections describe all the possible states in more detail.
 
-### Initial States
+### Initial states
 
-<Icon icon="rectangle-history" iconType="solid" color="#FBBF24" size={17} /> **Waiting for deploy**:
-If a task is triggered before it has been deployed, the run enters this state and waits for the task
-to be deployed.
+<Icon icon="rectangle-history" iconType="solid" color="#FBBF24" size={17} /> **Pending version**:
+The task is waiting for a version update because it cannot execute without additional information (task, queue, etc.).
 
 <Icon icon="clock" iconType="solid" color="#878C99" size={17} /> **Delayed**: When a run is triggered
 with a delay, it enters this state until the specified delay period has passed.
@@ -34,18 +33,17 @@ with a delay, it enters this state until the specified delay period has passed.
 <Icon icon="rectangle-history" iconType="solid" color="#878C99" size={17} /> **Queued**: The run is ready
 to be executed and is waiting in the queue.
 
-### Execution States
+<Icon icon="rectangle-history" iconType="solid" color="#878C99" size={17} /> **Dequeued**: The task has been dequeued and is being sent to a worker to start executing.
+
+### Execution states
 
 <Icon icon="spinner-third" iconType="duotone" color="#3B82F6" size={17} /> **Executing**: The task is
-currently running.
-
-<Icon icon="arrows-rotate" iconType="solid" color="#3B82F6" size={17} /> **Reattempting**: The task has
-failed and is being retried.
+currently being executed by a worker.
 
 <Icon icon="hourglass" iconType="solid" color="#878C99" size={17} /> **Waiting**: You have used a
 [triggerAndWait()](/triggering#yourtask-triggerandwait), [batchTriggerAndWait()](/triggering#yourtask-batchtriggerandwait) or a [wait function](/wait). When the wait is complete, the task will resume execution.
 
-### Final States
+### Final states
 
 <Icon icon="circle-check" iconType="solid" color="#28BF5C" size={17} /> **Completed**: The task has successfully
 finished execution.
@@ -54,16 +52,13 @@ finished execution.
 by the user.
 
 <Icon icon="circle-xmark" iconType="solid" color="#E11D48" size={17} /> **Failed**: The task has failed
-to complete successfully.
+to complete successfully due to an error in the task code.
 
 <Icon icon="alarm-exclamation" iconType="solid" color="#E11D48" size={17} /> **Timed out**: Task has
 failed because it exceeded its `maxDuration`.
 
 <Icon icon="fire" iconType="solid" color="#E11D48" size={17} /> **Crashed**: The worker process crashed
-during execution (likely due to an Out of Memory error).
-
-<Icon icon="bolt-slash" iconType="solid" color="#E11D48" size={17} /> **Interrupted**: In development
-mode, when the CLI is disconnected.
+during execution (likely due to an Out of Memory error) and won’t be retried.
 
 <Icon icon="bug" iconType="solid" color="#E11D48" size={17} /> **System failure**: An unrecoverable system
 error has occurred.
