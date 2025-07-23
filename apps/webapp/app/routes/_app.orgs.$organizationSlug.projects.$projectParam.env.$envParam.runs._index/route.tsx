@@ -58,6 +58,7 @@ import {
 } from "~/utils/pathBuilder";
 import { ListPagination } from "../../components/ListPagination";
 import { CreateBulkActionInspector } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.bulkaction";
+import { Callout } from "~/components/primitives/Callout";
 
 export const meta: MetaFunction = () => {
   return [
@@ -149,7 +150,17 @@ export default function Page() {
                 </div>
               }
             >
-              <TypedAwait resolve={data}>
+              <TypedAwait
+                resolve={data}
+                errorElement={
+                  <div className="flex items-center justify-center px-3 py-12">
+                    <Callout variant="error" className="max-w-fit">
+                      Unable to load your task runs. Please refresh the page or try again in a
+                      moment.
+                    </Callout>
+                  </div>
+                }
+              >
                 {(list) => {
                   return (
                     <RunsList
