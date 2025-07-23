@@ -1175,3 +1175,11 @@ We recommend enabling this option and testing in a staging or preview environmen
 - Added runs.list filtering for queue and machine ([#2277](https://github.com/triggerdotdev/trigger.dev/pull/2277))
 
 </Update>
+
+<Update label="July 23, 2025" description="v4.0.0-beta.25">
+  [Release
+  v4.0.0-beta.25](https://github.com/triggerdotdev/trigger.dev/releases/tag/trigger.dev%404.0.0-v4-beta.25).
+
+- Gracefully shutdown task run processes using SIGTERM followed by SIGKILL after a 1s timeout. This also prevents cancelled or completed runs from leaving orphaned task run processes behind ([#2299](https://github.com/triggerdotdev/trigger.dev/pull/2299))
+
+</Update>
