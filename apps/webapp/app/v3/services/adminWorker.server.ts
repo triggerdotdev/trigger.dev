@@ -32,6 +32,7 @@ function initializeWorker() {
           to: z.coerce.date(),
           cursor: z.string().optional(),
           batchSize: z.coerce.number().int().default(500),
+          delayIntervalMs: z.coerce.number().int().default(1000),
         }),
         visibilityTimeoutMs: 60_000 * 15, // 15 minutes
         retry: {
@@ -76,9 +77,10 @@ function initializeWorker() {
               to: payload.to,
               cursor,
               batchSize: payload.batchSize,
+              delayIntervalMs: payload.delayIntervalMs,
             },
             id,
-            availableAt: new Date(Date.now() + 1000),
+            availableAt: new Date(Date.now() + payload.delayIntervalMs),
             cancellationKey: id,
           });
         }

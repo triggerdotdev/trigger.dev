@@ -8,6 +8,7 @@ const Body = z.object({
   from: z.coerce.date(),
   to: z.coerce.date(),
   batchSize: z.number().optional(),
+  delayIntervalMs: z.number().optional(),
 });
 
 const Params = z.object({
@@ -15,6 +16,7 @@ const Params = z.object({
 });
 
 const DEFAULT_BATCH_SIZE = 500;
+const DEFAULT_DELAY_INTERVAL_MS = 1000;
 
 export async function action({ request, params }: ActionFunctionArgs) {
   // Next authenticate the request
@@ -43,7 +45,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   try {
     const body = await request.json();
 
-    const { from, to, batchSize } = Body.parse(body);
+    const { from, to, batchSize, delayIntervalMs } = Body.parse(body);
 
     await adminWorker.enqueue({
       job: "admin.backfillRunsToReplication",
@@ -51,6 +53,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         from,
         to,
         batchSize: batchSize ?? DEFAULT_BATCH_SIZE,
+        delayIntervalMs: delayIntervalMs ?? DEFAULT_DELAY_INTERVAL_MS,
       },
       id: batchId,
     });
