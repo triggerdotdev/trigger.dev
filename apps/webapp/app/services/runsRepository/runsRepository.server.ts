@@ -12,6 +12,7 @@ import { ClickHouseRunsRepository } from "./clickhouseRunsRepository.server";
 import { PostgresRunsRepository } from "./postgresRunsRepository.server";
 import { FEATURE_FLAG, makeFlags } from "~/v3/featureFlags.server";
 import { startActiveSpan } from "~/v3/tracer.server";
+import { logger } from "../logger.server";
 
 export type RunsRepositoryOptions = {
   clickhouse: ClickHouse;
@@ -119,10 +120,16 @@ export interface IRunsRepository {
 export class RunsRepository implements IRunsRepository {
   private readonly clickHouseRunsRepository: ClickHouseRunsRepository;
   private readonly postgresRunsRepository: PostgresRunsRepository;
+  private readonly defaultRepository: "clickhouse" | "postgres";
 
-  constructor(private readonly options: RunsRepositoryOptions) {
+  constructor(
+    private readonly options: RunsRepositoryOptions & {
+      defaultRepository?: "clickhouse" | "postgres";
+    }
+  ) {
     this.clickHouseRunsRepository = new ClickHouseRunsRepository(options);
     this.postgresRunsRepository = new PostgresRunsRepository(options);
+    this.defaultRepository = options.defaultRepository ?? "clickhouse";
   }
 
   get name() {
@@ -134,10 +141,12 @@ export class RunsRepository implements IRunsRepository {
       const getFlag = makeFlags(this.options.prisma);
       const runsListRepository = await getFlag({
         key: FEATURE_FLAG.runsListRepository,
-        defaultValue: "clickhouse",
+        defaultValue: this.defaultRepository,
       });
 
       span.setAttribute("repository.name", runsListRepository);
+
+      logger.log("runsListRepository", { runsListRepository });
 
       switch (runsListRepository) {
         case "postgres":
