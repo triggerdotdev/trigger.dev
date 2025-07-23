@@ -11,6 +11,7 @@ import { type PrismaClient } from "~/db.server";
 import { ClickHouseRunsRepository } from "./clickhouseRunsRepository.server";
 import { PostgresRunsRepository } from "./postgresRunsRepository.server";
 import { FEATURE_FLAG, makeFlags } from "~/v3/featureFlags.server";
+import { startActiveSpan } from "~/v3/tracer.server";
 
 export type RunsRepositoryOptions = {
   clickhouse: ClickHouse;
@@ -103,6 +104,7 @@ export type ListedRun = Prisma.TaskRunGetPayload<{
 export type ListRunsOptions = RunListInputOptions & Pagination;
 
 export interface IRunsRepository {
+  name: string;
   listRunIds(options: ListRunsOptions): Promise<string[]>;
   listRuns(options: ListRunsOptions): Promise<{
     runs: ListedRun[];
@@ -123,25 +125,43 @@ export class RunsRepository implements IRunsRepository {
     this.postgresRunsRepository = new PostgresRunsRepository(options);
   }
 
-  async #getRepository() {
-    const getFlag = makeFlags(this.options.prisma);
-    const runsListRepository = await getFlag({
-      key: FEATURE_FLAG.runsListRepository,
-      defaultValue: "clickhouse",
-    });
+  get name() {
+    return "runsRepository";
+  }
 
-    switch (runsListRepository) {
-      case "postgres":
-        return this.postgresRunsRepository;
-      case "clickhouse":
-      default:
-        return this.clickHouseRunsRepository;
-    }
+  async #getRepository(): Promise<IRunsRepository> {
+    return startActiveSpan("runsRepository.getRepository", async (span) => {
+      const getFlag = makeFlags(this.options.prisma);
+      const runsListRepository = await getFlag({
+        key: FEATURE_FLAG.runsListRepository,
+        defaultValue: "clickhouse",
+      });
+
+      span.setAttribute("repository.name", runsListRepository);
+
+      switch (runsListRepository) {
+        case "postgres":
+          return this.postgresRunsRepository;
+        case "clickhouse":
+        default:
+          return this.clickHouseRunsRepository;
+      }
+    });
   }
 
   async listRunIds(options: ListRunsOptions): Promise<string[]> {
     const repository = await this.#getRepository();
-    return repository.listRunIds(options);
+    return startActiveSpan(
+      "runsRepository.listRunIds",
+      async () => {
+        return repository.listRunIds(options);
+      },
+      {
+        attributes: {
+          "repository.name": repository.name,
+        },
+      }
+    );
   }
 
   async listRuns(options: ListRunsOptions): Promise<{
@@ -152,12 +172,32 @@ export class RunsRepository implements IRunsRepository {
     };
   }> {
     const repository = await this.#getRepository();
-    return repository.listRuns(options);
+    return startActiveSpan(
+      "runsRepository.listRuns",
+      async () => {
+        return repository.listRuns(options);
+      },
+      {
+        attributes: {
+          "repository.name": repository.name,
+        },
+      }
+    );
   }
 
   async countRuns(options: RunListInputOptions): Promise<number> {
     const repository = await this.#getRepository();
-    return repository.countRuns(options);
+    return startActiveSpan(
+      "runsRepository.countRuns",
+      async () => {
+        return repository.countRuns(options);
+      },
+      {
+        attributes: {
+          "repository.name": repository.name,
+        },
+      }
+    );
   }
 }
 

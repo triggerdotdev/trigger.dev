@@ -1,21 +1,22 @@
-import { Prisma, type TaskRunStatus } from "@trigger.dev/database";
-import parseDuration from "parse-duration";
-import { MachinePresetName } from "@trigger.dev/core/v3";
-import { BulkActionId, RunId } from "@trigger.dev/core/v3/isomorphic";
-import { timeFilters } from "~/components/runs/v3/SharedFilters";
+import { RunId } from "@trigger.dev/core/v3/isomorphic";
+import { Prisma } from "@trigger.dev/database";
 import { sqlDatabaseSchema } from "~/db.server";
 import {
   type FilterRunsOptions,
-  type RunListInputOptions,
   type IRunsRepository,
   type ListRunsOptions,
-  type RunsRepositoryOptions,
   type ListedRun,
+  type RunListInputOptions,
+  type RunsRepositoryOptions,
   convertRunListInputOptionsToFilterRunsOptions,
 } from "./runsRepository.server";
 
 export class PostgresRunsRepository implements IRunsRepository {
   constructor(private readonly options: RunsRepositoryOptions) {}
+
+  get name() {
+    return "postgres";
+  }
 
   async listRunIds(options: ListRunsOptions) {
     const filterOptions = await convertRunListInputOptionsToFilterRunsOptions(

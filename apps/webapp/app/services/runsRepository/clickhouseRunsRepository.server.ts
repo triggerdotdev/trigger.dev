@@ -1,18 +1,20 @@
-import { timeFilters } from "~/components/runs/v3/SharedFilters";
+import { type ClickhouseQueryBuilder } from "@internal/clickhouse";
+import { RunId } from "@trigger.dev/core/v3/isomorphic";
 import {
   type FilterRunsOptions,
-  type RunListInputOptions,
   type IRunsRepository,
   type ListRunsOptions,
+  type RunListInputOptions,
   type RunsRepositoryOptions,
   convertRunListInputOptionsToFilterRunsOptions,
 } from "./runsRepository.server";
-import parseDuration from "parse-duration";
-import { BulkActionId, RunId } from "@trigger.dev/core/v3/isomorphic";
-import { type ClickhouseQueryBuilder } from "@internal/clickhouse";
 
 export class ClickHouseRunsRepository implements IRunsRepository {
   constructor(private readonly options: RunsRepositoryOptions) {}
+
+  get name() {
+    return "clickhouse";
+  }
 
   async listRunIds(options: ListRunsOptions) {
     const queryBuilder = this.options.clickhouse.taskRuns.queryBuilder();
