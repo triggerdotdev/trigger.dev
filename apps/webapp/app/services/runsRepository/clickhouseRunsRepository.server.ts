@@ -5,6 +5,7 @@ import {
   type IRunsRepository,
   type ListRunsOptions,
   type RunsRepositoryOptions,
+  convertRunListInputOptionsToFilterRunsOptions,
 } from "./runsRepository.server";
 import parseDuration from "parse-duration";
 import { BulkActionId, RunId } from "@trigger.dev/core/v3/isomorphic";
@@ -17,7 +18,7 @@ export class ClickHouseRunsRepository implements IRunsRepository {
     const queryBuilder = this.options.clickhouse.taskRuns.queryBuilder();
     applyRunFiltersToQueryBuilder(
       queryBuilder,
-      await this.#convertRunListInputOptionsToFilterRunsOptions(options)
+      await convertRunListInputOptionsToFilterRunsOptions(options, this.options.prisma)
     );
 
     if (options.page.cursor) {
@@ -144,7 +145,7 @@ export class ClickHouseRunsRepository implements IRunsRepository {
     const queryBuilder = this.options.clickhouse.taskRuns.countQueryBuilder();
     applyRunFiltersToQueryBuilder(
       queryBuilder,
-      await this.#convertRunListInputOptionsToFilterRunsOptions(options)
+      await convertRunListInputOptionsToFilterRunsOptions(options, this.options.prisma)
     );
 
     const [queryError, result] = await queryBuilder.execute();
@@ -158,73 +159,6 @@ export class ClickHouseRunsRepository implements IRunsRepository {
     }
 
     return result[0].count;
-  }
-
-  async #convertRunListInputOptionsToFilterRunsOptions(
-    options: RunListInputOptions
-  ): Promise<FilterRunsOptions> {
-    const convertedOptions: FilterRunsOptions = {
-      ...options,
-      period: undefined,
-    };
-
-    // Convert time period to ms
-    const time = timeFilters({
-      period: options.period,
-      from: options.from,
-      to: options.to,
-    });
-    convertedOptions.period = time.period ? parseDuration(time.period) ?? undefined : undefined;
-
-    // batch friendlyId to id
-    if (options.batchId && options.batchId.startsWith("batch_")) {
-      const batch = await this.options.prisma.batchTaskRun.findFirst({
-        select: {
-          id: true,
-        },
-        where: {
-          friendlyId: options.batchId,
-          runtimeEnvironmentId: options.environmentId,
-        },
-      });
-
-      if (batch) {
-        convertedOptions.batchId = batch.id;
-      }
-    }
-
-    // scheduleId can be a friendlyId
-    if (options.scheduleId && options.scheduleId.startsWith("sched_")) {
-      const schedule = await this.options.prisma.taskSchedule.findFirst({
-        select: {
-          id: true,
-        },
-        where: {
-          friendlyId: options.scheduleId,
-          projectId: options.projectId,
-        },
-      });
-
-      if (schedule) {
-        convertedOptions.scheduleId = schedule?.id;
-      }
-    }
-
-    if (options.bulkId && options.bulkId.startsWith("bulk_")) {
-      convertedOptions.bulkId = BulkActionId.toId(options.bulkId);
-    }
-
-    if (options.runId) {
-      //convert to friendlyId
-      convertedOptions.runId = options.runId.map((r) => RunId.toFriendlyId(r));
-    }
-
-    // Show all runs if we are filtering by batchId or runId
-    if (options.batchId || options.runId?.length || options.scheduleId || options.tasks?.length) {
-      convertedOptions.rootOnly = false;
-    }
-
-    return convertedOptions;
   }
 }
 

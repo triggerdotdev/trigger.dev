@@ -9,6 +9,8 @@ import { z } from "zod";
 import { timeFilters } from "~/components/runs/v3/SharedFilters";
 import { type PrismaClient } from "~/db.server";
 import { ClickHouseRunsRepository } from "./clickhouseRunsRepository.server";
+import { PostgresRunsRepository } from "./postgresRunsRepository.server";
+import { FEATURE_FLAG, makeFlags } from "~/v3/featureFlags.server";
 
 export type RunsRepositoryOptions = {
   clickhouse: ClickHouse;
@@ -65,7 +67,7 @@ type Pagination = {
   };
 };
 
-type ListedRun = Prisma.TaskRunGetPayload<{
+export type ListedRun = Prisma.TaskRunGetPayload<{
   select: {
     id: true;
     friendlyId: true;
@@ -114,29 +116,119 @@ export interface IRunsRepository {
 
 export class RunsRepository implements IRunsRepository {
   private readonly clickHouseRunsRepository: ClickHouseRunsRepository;
+  private readonly postgresRunsRepository: PostgresRunsRepository;
+
   constructor(private readonly options: RunsRepositoryOptions) {
     this.clickHouseRunsRepository = new ClickHouseRunsRepository(options);
+    this.postgresRunsRepository = new PostgresRunsRepository(options);
   }
 
-  listRunIds(options: ListRunsOptions): Promise<string[]> {
-    return this.clickHouseRunsRepository.listRunIds(options);
+  async #getRepository() {
+    const getFlag = makeFlags(this.options.prisma);
+    const runsListRepository = await getFlag({
+      key: FEATURE_FLAG.runsListRepository,
+      defaultValue: "clickhouse",
+    });
+
+    switch (runsListRepository) {
+      case "postgres":
+        return this.postgresRunsRepository;
+      case "clickhouse":
+      default:
+        return this.clickHouseRunsRepository;
+    }
   }
 
-  listRuns(options: ListRunsOptions): Promise<{
+  async listRunIds(options: ListRunsOptions): Promise<string[]> {
+    const repository = await this.#getRepository();
+    return repository.listRunIds(options);
+  }
+
+  async listRuns(options: ListRunsOptions): Promise<{
     runs: ListedRun[];
     pagination: {
       nextCursor: string | null;
       previousCursor: string | null;
     };
   }> {
-    return this.clickHouseRunsRepository.listRuns(options);
+    const repository = await this.#getRepository();
+    return repository.listRuns(options);
   }
 
-  countRuns(options: RunListInputOptions): Promise<number> {
-    return this.clickHouseRunsRepository.countRuns(options);
+  async countRuns(options: RunListInputOptions): Promise<number> {
+    const repository = await this.#getRepository();
+    return repository.countRuns(options);
   }
 }
 
 export function parseRunListInputOptions(data: any): RunListInputOptions {
   return RunListInputOptionsSchema.parse(data);
+}
+
+export async function convertRunListInputOptionsToFilterRunsOptions(
+  options: RunListInputOptions,
+  prisma: RunsRepositoryOptions["prisma"]
+): Promise<FilterRunsOptions> {
+  const convertedOptions: FilterRunsOptions = {
+    ...options,
+    period: undefined,
+  };
+
+  // Convert time period to ms
+  const time = timeFilters({
+    period: options.period,
+    from: options.from,
+    to: options.to,
+  });
+  convertedOptions.period = time.period ? parseDuration(time.period) ?? undefined : undefined;
+
+  // Batch friendlyId to id
+  if (options.batchId && options.batchId.startsWith("batch_")) {
+    const batch = await prisma.batchTaskRun.findFirst({
+      select: {
+        id: true,
+      },
+      where: {
+        friendlyId: options.batchId,
+        runtimeEnvironmentId: options.environmentId,
+      },
+    });
+
+    if (batch) {
+      convertedOptions.batchId = batch.id;
+    }
+  }
+
+  // ScheduleId can be a friendlyId
+  if (options.scheduleId && options.scheduleId.startsWith("sched_")) {
+    const schedule = await prisma.taskSchedule.findFirst({
+      select: {
+        id: true,
+      },
+      where: {
+        friendlyId: options.scheduleId,
+        projectId: options.projectId,
+      },
+    });
+
+    if (schedule) {
+      convertedOptions.scheduleId = schedule?.id;
+    }
+  }
+
+  if (options.bulkId && options.bulkId.startsWith("bulk_")) {
+    convertedOptions.bulkId = BulkActionId.toId(options.bulkId);
+  }
+
+  if (options.runId) {
+    // Convert to friendlyId
+    convertedOptions.runId = options.runId.map((r) => RunId.toFriendlyId(r));
+  }
+
+  // Show all runs if we are filtering by batchId or runId
+  if (options.batchId || options.runId?.length || options.scheduleId || options.tasks?.length) {
+    convertedOptions.rootOnly = false;
+  }
+
+  return convertedOptions;
 }
