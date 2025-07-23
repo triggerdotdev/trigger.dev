@@ -1,72 +1,16 @@
-import { type ClickHouse, type ClickhouseQueryBuilder } from "@internal/clickhouse";
-import { type Tracer } from "@internal/tracing";
-import { type Logger, type LogLevel } from "@trigger.dev/core/logger";
-import { MachinePresetName } from "@trigger.dev/core/v3";
-import { BulkActionId, RunId } from "@trigger.dev/core/v3/isomorphic";
-import { TaskRunStatus } from "@trigger.dev/database";
-import parseDuration from "parse-duration";
-import { z } from "zod";
 import { timeFilters } from "~/components/runs/v3/SharedFilters";
-import { type PrismaClient } from "~/db.server";
+import {
+  type FilterRunsOptions,
+  type RunListInputOptions,
+  type IRunsRepository,
+  type ListRunsOptions,
+  type RunsRepositoryOptions,
+} from "./runsRepository.server";
+import parseDuration from "parse-duration";
+import { BulkActionId, RunId } from "@trigger.dev/core/v3/isomorphic";
+import { type ClickhouseQueryBuilder } from "@internal/clickhouse";
 
-export type RunsRepositoryOptions = {
-  clickhouse: ClickHouse;
-  prisma: PrismaClient;
-  logger?: Logger;
-  logLevel?: LogLevel;
-  tracer?: Tracer;
-};
-
-const RunStatus = z.enum(Object.values(TaskRunStatus) as [TaskRunStatus, ...TaskRunStatus[]]);
-
-const RunListInputOptionsSchema = z.object({
-  organizationId: z.string(),
-  projectId: z.string(),
-  environmentId: z.string(),
-  //filters
-  tasks: z.array(z.string()).optional(),
-  versions: z.array(z.string()).optional(),
-  statuses: z.array(RunStatus).optional(),
-  tags: z.array(z.string()).optional(),
-  scheduleId: z.string().optional(),
-  period: z.string().optional(),
-  from: z.number().optional(),
-  to: z.number().optional(),
-  isTest: z.boolean().optional(),
-  rootOnly: z.boolean().optional(),
-  batchId: z.string().optional(),
-  runId: z.array(z.string()).optional(),
-  bulkId: z.string().optional(),
-  queues: z.array(z.string()).optional(),
-  machines: MachinePresetName.array().optional(),
-});
-
-export type RunListInputOptions = z.infer<typeof RunListInputOptionsSchema>;
-export type RunListInputFilters = Omit<
-  RunListInputOptions,
-  "organizationId" | "projectId" | "environmentId"
->;
-
-export type ParsedRunFilters = RunListInputFilters & {
-  cursor?: string;
-  direction?: "forward" | "backward";
-};
-
-type FilterRunsOptions = Omit<RunListInputOptions, "period"> & {
-  period: number | undefined;
-};
-
-type Pagination = {
-  page: {
-    size: number;
-    cursor?: string;
-    direction?: "forward" | "backward";
-  };
-};
-
-export type ListRunsOptions = RunListInputOptions & Pagination;
-
-export class RunsRepository {
+export class ClickHouseRunsRepository implements IRunsRepository {
   constructor(private readonly options: RunsRepositoryOptions) {}
 
   async listRunIds(options: ListRunsOptions) {
@@ -372,8 +316,4 @@ function applyRunFiltersToQueryBuilder<T>(
       machines: options.machines,
     });
   }
-}
-
-export function parseRunListInputOptions(data: any): RunListInputOptions {
-  return RunListInputOptionsSchema.parse(data);
 }

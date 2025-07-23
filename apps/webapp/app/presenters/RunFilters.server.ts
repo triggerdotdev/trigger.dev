@@ -3,7 +3,7 @@ import {
   TaskRunListSearchFilters,
 } from "~/components/runs/v3/RunFilters";
 import { getRootOnlyFilterPreference } from "~/services/preferences/uiPreferences.server";
-import { type ParsedRunFilters } from "~/services/runsRepository.server";
+import { type ParsedRunFilters } from "~/services/runsRepository/runsRepository.server";
 
 type FiltersFromRequest = ParsedRunFilters & Required<Pick<ParsedRunFilters, "rootOnly">>;
 

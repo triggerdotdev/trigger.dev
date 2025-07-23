@@ -1,6 +1,6 @@
 import { containerTest } from "@internal/testcontainers";
 import { setTimeout } from "node:timers/promises";
-import { RunsRepository } from "~/services/runsRepository.server";
+import { RunsRepository } from "~/services/runsRepository/runsRepository.server";
 import { setupClickhouseReplication } from "./utils/replicationUtils";
 
 vi.setConfig({ testTimeout: 60_000 });
