@@ -1,5 +1,5 @@
 import type { ClickHouse, RawTaskRunPayloadV1, TaskRunV2 } from "@internal/clickhouse";
-import { RedisOptions } from "@internal/redis";
+import { type RedisOptions } from "@internal/redis";
 import {
   LogicalReplicationClient,
   type MessageDelete,
@@ -8,14 +8,13 @@ import {
   type PgoutputMessage,
 } from "@internal/replication";
 import { recordSpanError, startSpan, trace, type Tracer } from "@internal/tracing";
-import { Logger, LogLevel } from "@trigger.dev/core/logger";
+import { Logger, type LogLevel } from "@trigger.dev/core/logger";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { parsePacketAsJson } from "@trigger.dev/core/v3/utils/ioSerialization";
-import { TaskRun } from "@trigger.dev/database";
+import { type TaskRun } from "@trigger.dev/database";
 import { nanoid } from "nanoid";
 import EventEmitter from "node:events";
 import pLimit from "p-limit";
-import { logger } from "./logger.server";
 import { detectBadJsonStrings } from "~/utils/detectBadJsonStrings";
 
 interface TransactionEvent<T = any> {
@@ -64,6 +63,9 @@ type TaskRunInsert = { _version: bigint; run: TaskRun; event: "insert" | "update
 
 export type RunsReplicationServiceEvents = {
   message: [{ lsn: string; message: PgoutputMessage; service: RunsReplicationService }];
+  batchFlushed: [
+    { flushId: string; taskRunInserts: TaskRunV2[]; payloadInserts: RawTaskRunPayloadV1[] }
+  ];
 };
 
 export class RunsReplicationService {
@@ -130,6 +132,29 @@ export class RunsReplicationService {
       flushInterval: options.flushIntervalMs ?? 100,
       maxConcurrency: options.maxFlushConcurrency ?? 100,
       callback: this.#flushBatch.bind(this),
+      // we can do some pre-merging to reduce the amount of data we need to send to clickhouse
+      mergeBatch: (existingBatch: TaskRunInsert[], newBatch: TaskRunInsert[]) => {
+        const merged = new Map<string, TaskRunInsert>();
+
+        for (const item of existingBatch) {
+          const key = `${item.event}_${item.run.id}`;
+          merged.set(key, item);
+        }
+
+        for (const item of newBatch) {
+          const key = `${item.event}_${item.run.id}`;
+          const existingItem = merged.get(key);
+
+          // Keep the run with the higher version (latest)
+          // and take the last occurrence for that version.
+          // Items originating from the same DB transaction have the same version.
+          if (!existingItem || item._version >= existingItem._version) {
+            merged.set(key, item);
+          }
+        }
+
+        return Array.from(merged.values());
+      },
       logger: new Logger("ConcurrentFlushScheduler", options.logLevel ?? "info"),
       tracer: options.tracer,
     });
@@ -467,11 +492,33 @@ export class RunsReplicationService {
 
       const taskRunInserts = preparedInserts
         .map(({ taskRunInsert }) => taskRunInsert)
-        .filter(Boolean);
+        .filter(Boolean)
+        // batch inserts in clickhouse are more performant if the items
+        // are pre-sorted by the primary key
+        .sort((a, b) => {
+          if (a.organization_id !== b.organization_id) {
+            return a.organization_id < b.organization_id ? -1 : 1;
+          }
+          if (a.project_id !== b.project_id) {
+            return a.project_id < b.project_id ? -1 : 1;
+          }
+          if (a.environment_id !== b.environment_id) {
+            return a.environment_id < b.environment_id ? -1 : 1;
+          }
+          if (a.created_at !== b.created_at) {
+            return a.created_at - b.created_at;
+          }
+          return a.run_id < b.run_id ? -1 : 1;
+        });
 
       const payloadInserts = preparedInserts
         .map(({ payloadInsert }) => payloadInsert)
-        .filter(Boolean);
+        .filter(Boolean)
+        // batch inserts in clickhouse are more performant if the items
+        // are pre-sorted by the primary key
+        .sort((a, b) => {
+          return a.run_id < b.run_id ? -1 : 1;
+        });
 
       span.setAttribute("task_run_inserts", taskRunInserts.length);
       span.setAttribute("payload_inserts", payloadInserts.length);
@@ -519,6 +566,8 @@ export class RunsReplicationService {
         taskRunInserts: taskRunInserts.length,
         payloadInserts: payloadInserts.length,
       });
+
+      this.events.emit("batchFlushed", { flushId, taskRunInserts, payloadInserts });
     });
   }
 
@@ -825,12 +874,13 @@ export type ConcurrentFlushSchedulerConfig<T> = {
   flushInterval: number;
   maxConcurrency?: number;
   callback: (flushId: string, batch: T[]) => Promise<void>;
+  mergeBatch?: (existingBatch: T[], newBatch: T[]) => T[];
   tracer?: Tracer;
   logger?: Logger;
 };
 
 export class ConcurrentFlushScheduler<T> {
-  private currentBatch: T[]; // Adjust the type according to your data structure
+  private currentBatch: T[];
   private readonly BATCH_SIZE: number;
   private readonly flushInterval: number;
   private readonly MAX_CONCURRENCY: number;
@@ -855,7 +905,10 @@ export class ConcurrentFlushScheduler<T> {
   }
 
   addToBatch(items: T[]): void {
-    this.currentBatch = this.currentBatch.concat(items);
+    this.currentBatch = this.config.mergeBatch
+      ? this.config.mergeBatch(this.currentBatch, items)
+      : this.currentBatch.concat(items);
+
     this.#flushNextBatchIfNeeded();
   }
 
