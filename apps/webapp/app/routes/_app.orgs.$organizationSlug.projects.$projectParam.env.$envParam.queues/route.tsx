@@ -280,6 +280,7 @@ export default function Page() {
                     to={v3RunsPath(organization, project, env, {
                       statuses: ["PENDING"],
                       period: "30d",
+                      rootOnly: false,
                     })}
                   >
                     View runs
@@ -311,6 +312,7 @@ export default function Page() {
                   to={v3RunsPath(organization, project, env, {
                     statuses: ["DEQUEUED", "EXECUTING"],
                     period: "30d",
+                    rootOnly: false,
                   })}
                 >
                   View runs
@@ -527,6 +529,7 @@ export default function Page() {
                                   to={v3RunsPath(organization, project, env, {
                                     queues: [queueFilterableName],
                                     period: "30d",
+                                    rootOnly: false,
                                   })}
                                   fullWidth
                                   textAlignLeft
@@ -541,6 +544,7 @@ export default function Page() {
                                     queues: [queueFilterableName],
                                     statuses: ["PENDING"],
                                     period: "30d",
+                                    rootOnly: false,
                                   })}
                                   fullWidth
                                   textAlignLeft
@@ -555,6 +559,7 @@ export default function Page() {
                                     queues: [queueFilterableName],
                                     statuses: ["DEQUEUED", "EXECUTING"],
                                     period: "30d",
+                                    rootOnly: false,
                                   })}
                                   fullWidth
                                   textAlignLeft
