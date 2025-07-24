@@ -20,5 +20,7 @@ if (process.env.SENTRY_DSN) {
 
     serverName: process.env.SERVICE_NAME,
     environment: process.env.APP_ENV,
+
+    ignoreErrors: ["queryRoute() call aborted"],
   });
 }
