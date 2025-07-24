@@ -1286,8 +1286,10 @@ function VersionsDropdown({
           {filtered.length > 0
             ? filtered.map((version) => (
                 <SelectItem key={version.version} value={version.version}>
-                  {version.version}{" "}
-                  {version.isCurrent ? <Badge variant="extra-small">current</Badge> : null}
+                  <span className="flex items-center gap-2">
+                    <span className="grow truncate">{version.version}</span>
+                    {version.isCurrent ? <Badge variant="extra-small">Current</Badge> : null}
+                  </span>
                 </SelectItem>
               ))
             : null}
