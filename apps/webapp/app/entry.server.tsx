@@ -173,7 +173,7 @@ function handleBrowserRequest(
 
 export const handleError = wrapHandleErrorWithSentry((error, { request }) => {
   if (request instanceof Request) {
-    logger.error("Error in handleError", {
+    logger.debug("Error in handleError", {
       error,
       request: {
         url: request.url,
@@ -181,7 +181,7 @@ export const handleError = wrapHandleErrorWithSentry((error, { request }) => {
       },
     });
   } else {
-    logger.error("Error in handleError", {
+    logger.debug("Error in handleError", {
       error,
     });
   }
