@@ -23,6 +23,9 @@ export class Logger {
   #jsonReplacer?: (key: string, value: unknown) => unknown;
   #additionalFields: () => Record<string, unknown>;
 
+  // Add a static "onError" method that will be called when an error is logged
+  static onError: (message: string, ...args: Array<Record<string, unknown> | undefined>) => void;
+
   constructor(
     name: string,
     level: LogLevel = "info",
@@ -67,6 +70,10 @@ export class Logger {
     if (this.#level < 1) return;
 
     this.#structuredLog(console.error, message, "error", ...args);
+
+    if (Logger.onError) {
+      Logger.onError(message, ...args);
+    }
   }
 
   warn(message: string, ...args: Array<Record<string, unknown> | undefined>) {
