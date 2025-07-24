@@ -63,6 +63,9 @@ type TaskRunInsert = { _version: bigint; run: TaskRun; event: "insert" | "update
 
 export type RunsReplicationServiceEvents = {
   message: [{ lsn: string; message: PgoutputMessage; service: RunsReplicationService }];
+  batchFlushed: [
+    { flushId: string; taskRunInserts: TaskRunV2[]; payloadInserts: RawTaskRunPayloadV1[] }
+  ];
 };
 
 export class RunsReplicationService {
@@ -561,6 +564,8 @@ export class RunsReplicationService {
         taskRunInserts: taskRunInserts.length,
         payloadInserts: payloadInserts.length,
       });
+
+      this.events.emit("batchFlushed", { flushId, taskRunInserts, payloadInserts });
     });
   }
 
