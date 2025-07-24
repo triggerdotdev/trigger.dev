@@ -1,5 +1,5 @@
 import type { ClickHouse, RawTaskRunPayloadV1, TaskRunV2 } from "@internal/clickhouse";
-import { RedisOptions } from "@internal/redis";
+import { type RedisOptions } from "@internal/redis";
 import {
   LogicalReplicationClient,
   type MessageDelete,
@@ -8,14 +8,13 @@ import {
   type PgoutputMessage,
 } from "@internal/replication";
 import { recordSpanError, startSpan, trace, type Tracer } from "@internal/tracing";
-import { Logger, LogLevel } from "@trigger.dev/core/logger";
+import { Logger, type LogLevel } from "@trigger.dev/core/logger";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { parsePacketAsJson } from "@trigger.dev/core/v3/utils/ioSerialization";
-import { TaskRun } from "@trigger.dev/database";
+import { type TaskRun } from "@trigger.dev/database";
 import { nanoid } from "nanoid";
 import EventEmitter from "node:events";
 import pLimit from "p-limit";
-import { logger } from "./logger.server";
 import { detectBadJsonStrings } from "~/utils/detectBadJsonStrings";
 
 interface TransactionEvent<T = any> {
@@ -130,6 +129,7 @@ export class RunsReplicationService {
       flushInterval: options.flushIntervalMs ?? 100,
       maxConcurrency: options.maxFlushConcurrency ?? 100,
       callback: this.#flushBatch.bind(this),
+      // we can do some pre-merging to reduce the amount of data we need to send to clickhouse
       mergeBatch: (existingBatch: TaskRunInsert[], newBatch: TaskRunInsert[]) => {
         const merged = new Map<string, TaskRunInsert>();
 
@@ -487,11 +487,33 @@ export class RunsReplicationService {
 
       const taskRunInserts = preparedInserts
         .map(({ taskRunInsert }) => taskRunInsert)
-        .filter(Boolean);
+        .filter(Boolean)
+        // batch inserts in clickhouse are more performant if the items
+        // are pre-sorted by the primary key
+        .sort((a, b) => {
+          if (a.organization_id !== b.organization_id) {
+            return a.organization_id < b.organization_id ? -1 : 1;
+          }
+          if (a.project_id !== b.project_id) {
+            return a.project_id < b.project_id ? -1 : 1;
+          }
+          if (a.environment_id !== b.environment_id) {
+            return a.environment_id < b.environment_id ? -1 : 1;
+          }
+          if (a.created_at !== b.created_at) {
+            return a.created_at - b.created_at;
+          }
+          return a.run_id < b.run_id ? -1 : 1;
+        });
 
       const payloadInserts = preparedInserts
         .map(({ payloadInsert }) => payloadInsert)
-        .filter(Boolean);
+        .filter(Boolean)
+        // batch inserts in clickhouse are more performant if the items
+        // are pre-sorted by the primary key
+        .sort((a, b) => {
+          return a.run_id < b.run_id ? -1 : 1;
+        });
 
       span.setAttribute("task_run_inserts", taskRunInserts.length);
       span.setAttribute("payload_inserts", payloadInserts.length);
