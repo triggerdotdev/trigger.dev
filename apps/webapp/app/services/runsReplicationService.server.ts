@@ -130,6 +130,26 @@ export class RunsReplicationService {
       flushInterval: options.flushIntervalMs ?? 100,
       maxConcurrency: options.maxFlushConcurrency ?? 100,
       callback: this.#flushBatch.bind(this),
+      mergeBatch: (existingBatch: TaskRunInsert[], newBatch: TaskRunInsert[]) => {
+        const merged = new Map<string, TaskRunInsert>();
+
+        for (const item of existingBatch) {
+          const key = `${item.event}_${item.run.id}`;
+          merged.set(key, item);
+        }
+
+        for (const item of newBatch) {
+          const key = `${item.event}_${item.run.id}`;
+          const existingItem = merged.get(key);
+
+          // keep the run with the higher version (latest)
+          if (!existingItem || item._version > existingItem._version) {
+            merged.set(key, item);
+          }
+        }
+
+        return Array.from(merged.values());
+      },
       logger: new Logger("ConcurrentFlushScheduler", options.logLevel ?? "info"),
       tracer: options.tracer,
     });
@@ -825,12 +845,13 @@ export type ConcurrentFlushSchedulerConfig<T> = {
   flushInterval: number;
   maxConcurrency?: number;
   callback: (flushId: string, batch: T[]) => Promise<void>;
+  mergeBatch?: (existingBatch: T[], newBatch: T[]) => T[];
   tracer?: Tracer;
   logger?: Logger;
 };
 
 export class ConcurrentFlushScheduler<T> {
-  private currentBatch: T[]; // Adjust the type according to your data structure
+  private currentBatch: T[];
   private readonly BATCH_SIZE: number;
   private readonly flushInterval: number;
   private readonly MAX_CONCURRENCY: number;
@@ -855,7 +876,10 @@ export class ConcurrentFlushScheduler<T> {
   }
 
   addToBatch(items: T[]): void {
-    this.currentBatch = this.currentBatch.concat(items);
+    this.currentBatch = this.config.mergeBatch
+      ? this.config.mergeBatch(this.currentBatch, items)
+      : this.currentBatch.concat(items);
+
     this.#flushNextBatchIfNeeded();
   }
 
