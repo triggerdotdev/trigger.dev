@@ -3,7 +3,7 @@ import { Logger } from "@trigger.dev/core/logger";
 import { sensitiveDataReplacer } from "./sensitiveDataReplacer";
 import { AsyncLocalStorage } from "async_hooks";
 import { getHttpContext } from "./httpAsyncStorage.server";
-import { captureMessage } from "@sentry/remix";
+import { captureException, captureMessage } from "@sentry/remix";
 
 const currentFieldsStore = new AsyncLocalStorage<Record<string, unknown>>();
 
@@ -12,11 +12,40 @@ export function trace<T>(fields: Record<string, unknown>, fn: () => T): T {
 }
 
 Logger.onError = (message, ...args) => {
-  captureMessage(message, {
-    level: "error",
-  });
+  const error = extractErrorFromArgs(args);
+
+  if (error) {
+    captureException(error, {
+      extra: {
+        message,
+        ...flattenArgs(args),
+      },
+    });
+  } else {
+    captureMessage(message, {
+      level: "error",
+      extra: flattenArgs(args),
+    });
+  }
 };
 
+function extractErrorFromArgs(args: Array<Record<string, unknown> | undefined>) {
+  for (const arg of args) {
+    if (arg && "error" in arg && arg.error instanceof Error) {
+      return arg.error;
+    }
+  }
+  return;
+}
+
+function flattenArgs(args: Array<Record<string, unknown> | undefined>) {
+  return args.reduce((acc, arg) => {
+    if (arg) {
+      return { ...acc, ...arg };
+    }
+    return acc;
+  }, {});
+}
 export const logger = new Logger(
   "webapp",
   (process.env.APP_LOG_LEVEL ?? "debug") as LogLevel,
