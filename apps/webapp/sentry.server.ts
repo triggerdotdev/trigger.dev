@@ -1,5 +1,4 @@
 import * as Sentry from "@sentry/remix";
-import { eventLoopBlockIntegration } from "@sentry/node-native";
 
 if (process.env.SENTRY_DSN) {
   console.log("🔭 Initializing Sentry");
@@ -21,7 +20,5 @@ if (process.env.SENTRY_DSN) {
 
     serverName: process.env.SERVICE_NAME,
     environment: process.env.APP_ENV,
-
-    integrations: [eventLoopBlockIntegration({ threshold: 1000 })],
   });
 }
