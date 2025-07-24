@@ -20,7 +20,7 @@ if (process.env.SENTRY_DSN) {
     shutdownTimeout: 10,
 
     serverName: process.env.SERVICE_NAME,
-    environment: process.env.NODE_ENV,
+    environment: process.env.APP_ENV,
 
     integrations: [eventLoopBlockIntegration({ threshold: 1000 })],
   });

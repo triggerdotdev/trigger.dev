@@ -42,9 +42,19 @@ RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpx prisma@
 
 ## Builder (builds the webapp)
 FROM base AS builder
+RUN apt-get update && apt-get install -y openssl dumb-init ca-certificates
 WORKDIR /triggerdotdev
 # Corepack is used to install pnpm
 RUN corepack enable
+
+ARG SENTRY_RELEASE
+ARG SENTRY_ORG
+ARG SENTRY_PROJECT
+# Remove SENTRY_AUTH_TOKEN from build args since we'll use secrets
+ENV SENTRY_RELEASE=${SENTRY_RELEASE} \
+    SENTRY_ORG=${SENTRY_ORG} \
+    SENTRY_PROJECT=${SENTRY_PROJECT}
+# Remove SENTRY_AUTH_TOKEN from env vars since it will be mounted as secret
 
 # Goose and schemas
 COPY --from=goose_builder /go/bin/goose /usr/local/bin/goose
@@ -60,7 +70,9 @@ RUN chmod +x ./scripts/entrypoint.sh
 COPY --chown=node:node .configs/tsconfig.base.json .configs/tsconfig.base.json
 COPY --chown=node:node scripts/updateVersion.ts scripts/updateVersion.ts
 RUN pnpm run generate
-RUN pnpm run build --filter=webapp...
+RUN --mount=type=secret,id=sentry_auth_token \
+    SENTRY_AUTH_TOKEN=$(cat /run/secrets/sentry_auth_token) \
+    pnpm run build --filter=webapp...
 
 # Runner
 FROM ${NODE_IMAGE} AS runner
