@@ -145,8 +145,10 @@ export class RunsReplicationService {
           const key = `${item.event}_${item.run.id}`;
           const existingItem = merged.get(key);
 
-          // keep the run with the higher version (latest)
-          if (!existingItem || item._version > existingItem._version) {
+          // Keep the run with the higher version (latest)
+          // and take the last occurrence for that version.
+          // Items originating from the same DB transaction have the same version.
+          if (!existingItem || item._version >= existingItem._version) {
             merged.set(key, item);
           }
         }
