@@ -7,8 +7,8 @@ import {
   conditionallyImportPacket,
   createJsonErrorObject,
   logger,
-  parsePacket,
 } from "@trigger.dev/core/v3";
+import { parsePacketAsJson } from "@trigger.dev/core/v3/utils/ioSerialization";
 import { Prisma, TaskRunAttemptStatus, TaskRunStatus } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { API_VERSIONS, CURRENT_API_VERSION, RunStatusUnspecifiedApiVersion } from "~/api/versions";
@@ -133,7 +133,7 @@ export class ApiRetrieveRunPresenter {
           });
         }
       } else {
-        $payload = await parsePacket(payloadPacket);
+        $payload = await parsePacketAsJson(payloadPacket);
       }
 
       if (taskRun.status === "COMPLETED_SUCCESSFULLY") {
@@ -162,7 +162,7 @@ export class ApiRetrieveRunPresenter {
             });
           }
         } else {
-          $output = await parsePacket(outputPacket);
+          $output = await parsePacketAsJson(outputPacket);
         }
       }
 
@@ -433,7 +433,7 @@ async function resolveSchedule(run: CommonRelatedRun) {
 }
 
 async function createCommonRunStructure(run: CommonRelatedRun, apiVersion: API_VERSIONS) {
-  const metadata = await parsePacket({
+  const metadata = await parsePacketAsJson({
     data: run.metadata ?? undefined,
     dataType: run.metadataType,
   });
