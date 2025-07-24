@@ -754,11 +754,6 @@ describe("RunsReplicationService (part 2/2)", () => {
       expect(queryError).toBeNull();
       expect(result?.length).toBe(10);
 
-      console.log("Data", {
-        runsData,
-        result,
-      });
-
       // Check a few random runs for correctness
       for (let i = 0; i < 9; i++) {
         const expected = runsData[i];
@@ -810,6 +805,17 @@ describe("RunsReplicationService (part 2/2)", () => {
         logger: new Logger("runs-replication-merge-batch", "info"),
       });
 
+      // Listen to batchFlushed events to verify merging
+      const batchFlushedEvents: Array<{
+        flushId: string;
+        taskRunInserts: any[];
+        payloadInserts: any[];
+      }> = [];
+
+      runsReplicationService.events.on("batchFlushed", (event) => {
+        batchFlushedEvents.push(event);
+      });
+
       await runsReplicationService.start();
 
       const organization = await prisma.organization.create({
@@ -842,80 +848,57 @@ describe("RunsReplicationService (part 2/2)", () => {
 
       // Create a run and rapidly update it multiple times in a transaction
       // This should create multiple events for the same run that get merged
-      const [taskRun] = await prisma.$transaction(async (tx) => {
-        const run = await tx.taskRun.create({
-          data: {
-            friendlyId: `run_merge_${Date.now()}`,
-            taskIdentifier: "my-task-merge",
-            payload: JSON.stringify({ version: 1 }),
-            payloadType: "application/json",
-            traceId: `merge-${Date.now()}`,
-            spanId: `merge-${Date.now()}`,
-            queue: "test-merge-batch",
-            runtimeEnvironmentId: runtimeEnvironment.id,
-            projectId: project.id,
-            organizationId: organization.id,
-            environmentType: "DEVELOPMENT",
-            engine: "V2",
-            status: "PENDING",
-          },
-        });
-
-        await tx.taskRun.update({
-          where: { id: run.id },
-          data: { status: "EXECUTING", payload: JSON.stringify({ version: 2 }) },
-        });
-
-        await tx.taskRun.update({
-          where: { id: run.id },
-          data: { status: "COMPLETED_SUCCESSFULLY", payload: JSON.stringify({ version: 3 }) },
-        });
-
-        return [run];
+      const run = await prisma.taskRun.create({
+        data: {
+          friendlyId: `run_merge_${Date.now()}`,
+          taskIdentifier: "my-task-merge",
+          payload: JSON.stringify({ version: 1 }),
+          payloadType: "application/json",
+          traceId: `merge-${Date.now()}`,
+          spanId: `merge-${Date.now()}`,
+          queue: "test-merge-batch",
+          runtimeEnvironmentId: runtimeEnvironment.id,
+          projectId: project.id,
+          organizationId: organization.id,
+          environmentType: "DEVELOPMENT",
+          engine: "V2",
+          status: "PENDING_VERSION",
+        },
+      });
+      await prisma.taskRun.update({
+        where: { id: run.id },
+        data: { status: "DEQUEUED" },
+      });
+      await prisma.taskRun.update({
+        where: { id: run.id },
+        data: { status: "EXECUTING" },
+      });
+      await prisma.taskRun.update({
+        where: { id: run.id },
+        data: { status: "PAUSED" },
+      });
+      await prisma.taskRun.update({
+        where: { id: run.id },
+        data: { status: "EXECUTING" },
+      });
+      await prisma.taskRun.update({
+        where: { id: run.id },
+        data: { status: "COMPLETED_SUCCESSFULLY" },
       });
 
-      // Wait for replication
-      await setTimeout(2000);
+      await setTimeout(1000);
 
-      // Query ClickHouse for the run using FINAL
-      const queryRuns = clickhouse.reader.query({
-        name: "runs-replication-merge-batch",
-        query: "SELECT * FROM trigger_dev.task_runs_v2 FINAL WHERE run_id = {run_id:String}",
-        schema: z.any(),
-        params: z.object({ run_id: z.string() }),
-      });
-
-      const [queryError, result] = await queryRuns({ run_id: taskRun.id });
-
-      expect(queryError).toBeNull();
-      expect(result?.length).toBe(1);
-
-      // Should have the final status from the last update
-      expect(result?.[0]).toEqual(
+      expect(batchFlushedEvents?.[0].taskRunInserts).toHaveLength(2);
+      expect(batchFlushedEvents?.[0].taskRunInserts[0]).toEqual(
         expect.objectContaining({
-          run_id: taskRun.id,
-          status: "COMPLETED_SUCCESSFULLY",
+          run_id: run.id,
+          status: "PENDING_VERSION",
         })
       );
-
-      // Check payload was also updated to latest version
-      const queryPayloads = clickhouse.reader.query({
-        name: "runs-replication-merge-batch",
-        query: "SELECT * FROM trigger_dev.raw_task_runs_payload_v1 WHERE run_id = {run_id:String}",
-        schema: z.any(),
-        params: z.object({ run_id: z.string() }),
-      });
-
-      const [payloadError, payloadResult] = await queryPayloads({ run_id: taskRun.id });
-
-      expect(payloadError).toBeNull();
-      expect(payloadResult?.length).toBe(1);
-      expect(payloadResult?.[0]).toEqual(
+      expect(batchFlushedEvents?.[0].taskRunInserts[1]).toEqual(
         expect.objectContaining({
-          run_id: taskRun.id,
-          payload: expect.objectContaining({
-            data: { version: 3 },
-          }),
+          run_id: run.id,
+          status: "COMPLETED_SUCCESSFULLY",
         })
       );
 
@@ -947,6 +930,17 @@ describe("RunsReplicationService (part 2/2)", () => {
         leaderLockExtendIntervalMs: 1000,
         ackIntervalSeconds: 5,
         logger: new Logger("runs-replication-sorting", "info"),
+      });
+
+      // Listen to batchFlushed events to verify sorting
+      const batchFlushedEvents: Array<{
+        flushId: string;
+        taskRunInserts: any[];
+        payloadInserts: any[];
+      }> = [];
+
+      runsReplicationService.events.on("batchFlushed", (event) => {
+        batchFlushedEvents.push(event);
       });
 
       await runsReplicationService.start();
@@ -1004,85 +998,121 @@ describe("RunsReplicationService (part 2/2)", () => {
 
       const now = Date.now();
 
-      // Create runs in reverse alphabetical order by organization
-      // The sorting should put org2 (org-a) before org1 (org-z)
-      const [run1, run2] = await prisma.$transaction(async (tx) => {
-        const run1 = await tx.taskRun.create({
-          data: {
-            friendlyId: `run_sort_org_z_${now}`,
-            taskIdentifier: "my-task-sort",
-            payload: JSON.stringify({ org: "z" }),
-            payloadType: "application/json",
-            traceId: `sort-z-${now}`,
-            spanId: `sort-z-${now}`,
-            queue: "test-sorting",
-            runtimeEnvironmentId: env1.id,
-            projectId: project1.id,
-            organizationId: org1.id,
-            environmentType: "DEVELOPMENT",
-            engine: "V2",
-            status: "PENDING",
-            createdAt: new Date(now + 100), // Later timestamp
-          },
-        });
-
-        const run2 = await tx.taskRun.create({
-          data: {
-            friendlyId: `run_sort_org_a_${now}`,
-            taskIdentifier: "my-task-sort",
-            payload: JSON.stringify({ org: "a" }),
-            payloadType: "application/json",
-            traceId: `sort-a-${now}`,
-            spanId: `sort-a-${now}`,
-            queue: "test-sorting",
-            runtimeEnvironmentId: env2.id,
-            projectId: project2.id,
-            organizationId: org2.id,
-            environmentType: "DEVELOPMENT",
-            engine: "V2",
-            status: "PENDING",
-            createdAt: new Date(now), // Earlier timestamp
-          },
-        });
-
-        return [run1, run2];
+      const run1 = await prisma.taskRun.create({
+        data: {
+          friendlyId: `run_sort_org_z_${now}`,
+          taskIdentifier: "my-task-sort",
+          payload: JSON.stringify({ org: "z" }),
+          payloadType: "application/json",
+          traceId: `sort-z-${now}`,
+          spanId: `sort-z-${now}`,
+          queue: "test-sorting",
+          runtimeEnvironmentId: env1.id,
+          projectId: project1.id,
+          organizationId: org1.id,
+          environmentType: "DEVELOPMENT",
+          engine: "V2",
+          status: "PENDING",
+          createdAt: new Date(now + 2000),
+        },
+      });
+      await prisma.taskRun.update({
+        where: { id: run1.id },
+        data: { status: "DEQUEUED" },
       });
 
-      // Wait for replication
-      await setTimeout(2000);
-
-      // Query ClickHouse for both runs
-      const queryRuns = clickhouse.reader.query({
-        name: "runs-replication-sorting",
-        query: `SELECT run_id, organization_id, project_id, environment_id, created_at, friendly_id 
-                FROM trigger_dev.task_runs_v2 FINAL 
-                WHERE run_id IN ({run_id_1:String}, {run_id_2:String})
-                ORDER BY organization_id, project_id, environment_id, created_at, run_id`,
-        schema: z.any(),
-        params: z.object({ run_id_1: z.string(), run_id_2: z.string() }),
+      await prisma.taskRun.create({
+        data: {
+          friendlyId: `run_sort_org_a_${now}`,
+          taskIdentifier: "my-task-sort",
+          payload: JSON.stringify({ org: "a" }),
+          payloadType: "application/json",
+          traceId: `sort-a-${now}`,
+          spanId: `sort-a-${now}`,
+          queue: "test-sorting",
+          runtimeEnvironmentId: env2.id,
+          projectId: project2.id,
+          organizationId: org2.id,
+          environmentType: "DEVELOPMENT",
+          engine: "V2",
+          status: "PENDING",
+          createdAt: new Date(now + 1000),
+        },
       });
 
-      const [queryError, result] = await queryRuns({ run_id_1: run1.id, run_id_2: run2.id });
+      await prisma.taskRun.create({
+        data: {
+          friendlyId: `run_sort_org_a_${now}_2`,
+          taskIdentifier: "my-task-sort",
+          payload: JSON.stringify({ org: "a" }),
+          payloadType: "application/json",
+          traceId: `sort-a-${now}`,
+          spanId: `sort-a-${now}`,
+          queue: "test-sorting",
+          runtimeEnvironmentId: env2.id,
+          projectId: project2.id,
+          organizationId: org2.id,
+          environmentType: "DEVELOPMENT",
+          engine: "V2",
+          status: "PENDING",
+          createdAt: new Date(now),
+        },
+      });
 
-      expect(queryError).toBeNull();
-      expect(result?.length).toBe(2);
+      await setTimeout(1000);
 
-      // Due to sorting, org2 (org-a) should come first even though it was created second
-      expect(result?.[0]).toEqual(
-        expect.objectContaining({
-          run_id: run2.id,
-          organization_id: org2.id,
-          friendly_id: `run_sort_org_a_${now}`,
-        })
-      );
+      expect(batchFlushedEvents[0]?.taskRunInserts.length).toBeGreaterThan(1);
+      expect(batchFlushedEvents[0]?.payloadInserts.length).toBeGreaterThan(1);
 
-      expect(result?.[1]).toEqual(
-        expect.objectContaining({
-          run_id: run1.id,
-          organization_id: org1.id,
-          friendly_id: `run_sort_org_z_${now}`,
-        })
-      );
+      // Verify sorting order: organization_id, project_id, environment_id, created_at, run_id
+      for (let i = 1; i < batchFlushedEvents[0]?.taskRunInserts.length; i++) {
+        const prev = batchFlushedEvents[0]?.taskRunInserts[i - 1];
+        const curr = batchFlushedEvents[0]?.taskRunInserts[i];
+
+        const prevKey = [
+          prev.organization_id,
+          prev.project_id,
+          prev.environment_id,
+          prev.created_at,
+          prev.run_id,
+        ];
+        const currKey = [
+          curr.organization_id,
+          curr.project_id,
+          curr.environment_id,
+          curr.created_at,
+          curr.run_id,
+        ];
+
+        const keysAreEqual = prevKey.every((val, idx) => val === currKey[idx]);
+        if (keysAreEqual) {
+          // Also valid order
+          continue;
+        }
+
+        // Compare tuples lexicographically
+        let isCorrectOrder = false;
+        for (let j = 0; j < prevKey.length; j++) {
+          if (prevKey[j] < currKey[j]) {
+            isCorrectOrder = true;
+            break;
+          }
+          if (prevKey[j] > currKey[j]) {
+            isCorrectOrder = false;
+            break;
+          }
+          // If equal, continue to next field
+        }
+
+        expect(isCorrectOrder).toBeTruthy();
+      }
+
+      // Verify payloadInserts are also sorted by run_id
+      for (let i = 1; i < batchFlushedEvents[0]?.payloadInserts.length; i++) {
+        const prev = batchFlushedEvents[0]?.payloadInserts[i - 1];
+        const curr = batchFlushedEvents[0]?.payloadInserts[i];
+        expect(prev.run_id <= curr.run_id).toBeTruthy();
+      }
 
       await runsReplicationService.stop();
     }
