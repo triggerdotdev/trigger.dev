@@ -219,49 +219,15 @@ export const TaskRun = z.object({
   version: z.string().optional(),
   metadata: z.record(DeserializedJsonSchema).optional(),
   maxDuration: z.number().optional(),
-  /** @deprecated */
-  context: z.any(),
-  /**
-   * @deprecated For live values use the `usage` SDK functions
-   * @link https://trigger.dev/docs/run-usage
-   */
-  durationMs: z.number().default(0),
-  /**
-   * @deprecated For live values use the `usage` SDK functions
-   * @link https://trigger.dev/docs/run-usage
-   */
-  costInCents: z.number().default(0),
-  /**
-   * @deprecated For live values use the `usage` SDK functions
-   * @link https://trigger.dev/docs/run-usage
-   */
-  baseCostInCents: z.number().default(0),
   /** The priority of the run. Wih a value of 10 it will be dequeued before runs that were triggered 9 seconds before it (assuming they had no priority set).  */
   priority: z.number().optional(),
+  baseCostInCents: z.number().optional(),
+
+  parentTaskRunId: z.string().optional(),
+  rootTaskRunId: z.string().optional(),
 });
 
 export type TaskRun = z.infer<typeof TaskRun>;
-
-export const TaskRunExecutionTask = z.object({
-  id: z.string(),
-  filePath: z.string(),
-  exportName: z.string().optional(),
-});
-
-export type TaskRunExecutionTask = z.infer<typeof TaskRunExecutionTask>;
-
-export const TaskRunExecutionAttempt = z.object({
-  number: z.number(),
-  startedAt: z.coerce.date(),
-  /** @deprecated */
-  id: z.string(),
-  /** @deprecated */
-  backgroundWorkerId: z.string(),
-  /** @deprecated */
-  backgroundWorkerTaskId: z.string(),
-  /** @deprecated */
-  status: z.string(),
-});
 
 export const GitMeta = z.object({
   commitAuthorName: z.string().optional(),
@@ -276,6 +242,18 @@ export const GitMeta = z.object({
 });
 
 export type GitMeta = z.infer<typeof GitMeta>;
+
+export const TaskRunExecutionTask = z.object({
+  id: z.string(),
+  filePath: z.string(),
+});
+
+export type TaskRunExecutionTask = z.infer<typeof TaskRunExecutionTask>;
+
+export const TaskRunExecutionAttempt = z.object({
+  number: z.number(),
+  startedAt: z.coerce.date(),
+});
 
 export type TaskRunExecutionAttempt = z.infer<typeof TaskRunExecutionAttempt>;
 
@@ -317,10 +295,88 @@ export const TaskRunExecutionBatch = z.object({
   id: z.string(),
 });
 
-export const TaskRunExecution = z.object({
+export const TaskRunExecutionDeployment = z.object({
+  id: z.string(),
+  shortCode: z.string(),
+  version: z.string(),
+  runtime: z.string(),
+  runtimeVersion: z.string(),
+  git: GitMeta.optional(),
+});
+
+export type TaskRunExecutionDeployment = z.infer<typeof TaskRunExecutionDeployment>;
+
+const StaticTaskRunExecutionShape = {
   task: TaskRunExecutionTask,
+  queue: TaskRunExecutionQueue,
+  environment: TaskRunExecutionEnvironment,
+  organization: TaskRunExecutionOrganization,
+  project: TaskRunExecutionProject,
+  machine: MachinePreset,
+  batch: TaskRunExecutionBatch.optional(),
+  deployment: TaskRunExecutionDeployment.optional(),
+};
+
+export const StaticTaskRunExecution = z.object(StaticTaskRunExecutionShape);
+
+export type StaticTaskRunExecution = z.infer<typeof StaticTaskRunExecution>;
+
+export const TaskRunExecution = z.object({
   attempt: TaskRunExecutionAttempt,
   run: TaskRun.and(
+    z.object({
+      traceContext: z.record(z.unknown()).optional(),
+    })
+  ),
+  ...StaticTaskRunExecutionShape,
+});
+
+export type TaskRunExecution = z.infer<typeof TaskRunExecution>;
+
+export const V3TaskRunExecutionTask = z.object({
+  id: z.string(),
+  filePath: z.string(),
+  exportName: z.string().optional(),
+});
+
+export type V3TaskRunExecutionTask = z.infer<typeof V3TaskRunExecutionTask>;
+
+export const V3TaskRunExecutionAttempt = z.object({
+  number: z.number(),
+  startedAt: z.coerce.date(),
+  id: z.string(),
+  backgroundWorkerId: z.string(),
+  backgroundWorkerTaskId: z.string(),
+  status: z.string(),
+});
+
+export type V3TaskRunExecutionAttempt = z.infer<typeof V3TaskRunExecutionAttempt>;
+
+export const V3TaskRun = z.object({
+  id: z.string(),
+  payload: z.string(),
+  payloadType: z.string(),
+  tags: z.array(z.string()),
+  isTest: z.boolean().default(false),
+  createdAt: z.coerce.date(),
+  startedAt: z.coerce.date().default(() => new Date()),
+  idempotencyKey: z.string().optional(),
+  maxAttempts: z.number().optional(),
+  version: z.string().optional(),
+  metadata: z.record(DeserializedJsonSchema).optional(),
+  maxDuration: z.number().optional(),
+  context: z.unknown(),
+  durationMs: z.number(),
+  costInCents: z.number(),
+  baseCostInCents: z.number(),
+});
+
+export type V3TaskRun = z.infer<typeof V3TaskRun>;
+
+export const V3TaskRunExecution = z.object({
+  task: V3TaskRunExecutionTask,
+  attempt: V3TaskRunExecutionAttempt,
+  run: V3TaskRun.and(
     z.object({
       traceContext: z.record(z.unknown()).optional(),
     })
@@ -329,25 +385,20 @@ export const TaskRunExecution = z.object({
   environment: TaskRunExecutionEnvironment,
   organization: TaskRunExecutionOrganization,
   project: TaskRunExecutionProject,
-  batch: TaskRunExecutionBatch.optional(),
   machine: MachinePreset,
+  batch: TaskRunExecutionBatch.optional(),
 });
 
-export type TaskRunExecution = z.infer<typeof TaskRunExecution>;
+export type V3TaskRunExecution = z.infer<typeof V3TaskRunExecution>;
 
 export const TaskRunContext = z.object({
-  task: TaskRunExecutionTask,
-  attempt: TaskRunExecutionAttempt.omit({
-    backgroundWorkerId: true,
-    backgroundWorkerTaskId: true,
+  attempt: TaskRunExecutionAttempt,
+  run: TaskRun.omit({
+    payload: true,
+    payloadType: true,
+    metadata: true,
   }),
-  run: TaskRun.omit({ payload: true, payloadType: true, metadata: true }),
-  queue: TaskRunExecutionQueue,
-  environment: TaskRunExecutionEnvironment,
-  organization: TaskRunExecutionOrganization,
-  project: TaskRunExecutionProject,
-  batch: TaskRunExecutionBatch.optional(),
-  machine: MachinePreset.optional(),
+  ...StaticTaskRunExecutionShape,
 });
 
 export type TaskRunContext = z.infer<typeof TaskRunContext>;

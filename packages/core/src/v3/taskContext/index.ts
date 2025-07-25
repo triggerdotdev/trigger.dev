@@ -82,11 +82,9 @@ export class TaskContextAPI {
   get contextAttributes(): Attributes {
     if (this.ctx) {
       return {
-        [SemanticInternalAttributes.ATTEMPT_ID]: this.ctx.attempt.id,
         [SemanticInternalAttributes.ATTEMPT_NUMBER]: this.ctx.attempt.number,
         [SemanticInternalAttributes.TASK_SLUG]: this.ctx.task.id,
         [SemanticInternalAttributes.TASK_PATH]: this.ctx.task.filePath,
-        [SemanticInternalAttributes.TASK_EXPORT_NAME]: this.ctx.task.exportName,
         [SemanticInternalAttributes.QUEUE_NAME]: this.ctx.queue.name,
         [SemanticInternalAttributes.QUEUE_ID]: this.ctx.queue.id,
         [SemanticInternalAttributes.RUN_ID]: this.ctx.run.id,

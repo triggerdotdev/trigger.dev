@@ -1,7 +1,12 @@
 import { createRedisClient, Redis, type RedisOptions } from "@internal/redis";
 import { startSpan, type Tracer } from "@internal/tracing";
-import { createCache, DefaultStatefulContext, Namespace, Cache as UnkeyCache } from "@unkey/cache";
-import { MemoryStore } from "@unkey/cache/stores";
+import {
+  createCache,
+  DefaultStatefulContext,
+  Namespace,
+  type UnkeyCache,
+  MemoryStore,
+} from "@internal/cache";
 import { randomUUID } from "crypto";
 import seedrandom from "seedrandom";
 import {

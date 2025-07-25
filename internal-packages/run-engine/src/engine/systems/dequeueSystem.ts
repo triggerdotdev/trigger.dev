@@ -1,6 +1,6 @@
 import { startSpan } from "@internal/tracing";
 import { assertExhaustive } from "@trigger.dev/core";
-import { DequeuedMessage, RetryOptions } from "@trigger.dev/core/v3";
+import { DequeuedMessage, RetryOptions, tryCatch } from "@trigger.dev/core/v3";
 import { getMaxDuration } from "@trigger.dev/core/v3/isomorphic";
 import { PrismaClientOrTransaction } from "@trigger.dev/database";
 import { getRunWithBackgroundWorkerTasks } from "../db/worker.js";
@@ -9,7 +9,7 @@ import { getMachinePreset } from "../machinePresets.js";
 import { isDequeueableExecutionStatus } from "../statuses.js";
 import { RunEngineOptions } from "../types.js";
 import { ExecutionSnapshotSystem, getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
-import { RunAttemptSystem } from "./runAttemptSystem.js";
+import { RunAttemptSystem, safeParseGitMeta } from "./runAttemptSystem.js";
 import { SystemResources } from "./systems.js";
 
 export type DequeueSystemOptions = {

@@ -1,14 +1,9 @@
-import {
-  type MachinePresetName,
-  prettyPrintPacket,
-  SemanticInternalAttributes,
-  TaskRunError,
-} from "@trigger.dev/core/v3";
+import { prettyPrintPacket, SemanticInternalAttributes, TaskRunError } from "@trigger.dev/core/v3";
 import { getMaxDuration } from "@trigger.dev/core/v3/isomorphic";
 import { RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { logger } from "~/services/logger.server";
 import { eventRepository, rehydrateAttribute } from "~/v3/eventRepository.server";
-import { machinePresetFromName, machinePresetFromRun } from "~/v3/machinePresets.server";
+import { machinePresetFromRun } from "~/v3/machinePresets.server";
 import { getTaskEventStoreTableForRun, type TaskEventStoreTable } from "~/v3/taskEventStore.server";
 import { isFailedRunStatus, isFinalRunStatus } from "~/v3/taskStatus";
 import { BasePresenter } from "./basePresenter.server";
@@ -132,11 +127,7 @@ export class SpanPresenter extends BasePresenter {
         isTest: true,
         maxDurationInSeconds: true,
         taskEventStore: true,
-        tags: {
-          select: {
-            name: true,
-          },
-        },
+        runTags: true,
         machinePreset: true,
         lockedToVersion: {
           select: {
@@ -274,12 +265,12 @@ export class SpanPresenter extends BasePresenter {
     const context = {
       task: {
         id: run.taskIdentifier,
-        filePath: run.lockedBy?.filePath,
+        filePath: run.lockedBy?.filePath ?? "",
       },
       run: {
         id: run.friendlyId,
         createdAt: run.createdAt,
-        tags: run.tags.map((tag) => tag.name),
+        tags: run.runTags,
         isTest: run.isTest,
         idempotencyKey: run.idempotencyKey ?? undefined,
         startedAt: run.startedAt ?? run.createdAt,
@@ -292,6 +283,7 @@ export class SpanPresenter extends BasePresenter {
       },
       queue: {
         name: run.queue,
+        id: run.queue,
       },
       environment: {
         id: run.runtimeEnvironment.id,
@@ -342,7 +334,7 @@ export class SpanPresenter extends BasePresenter {
         isCustomQueue: !run.queue.startsWith("task/"),
         concurrencyKey: run.concurrencyKey,
       },
-      tags: run.tags.map((tag) => tag.name),
+      tags: run.runTags,
       baseCostInCents: run.baseCostInCents,
       costInCents: run.costInCents,
       totalCostInCents: run.costInCents + run.baseCostInCents,

@@ -25,7 +25,7 @@
     "@internal/tracing": "workspace:*",
     "@trigger.dev/core": "workspace:*",
     "@trigger.dev/database": "workspace:*",
-    "@unkey/cache": "^1.5.0",
+    "@internal/cache": "workspace:*",
     "assert-never": "^1.2.1",
     "nanoid": "3.3.8",
     "redlock": "5.0.0-beta.2",

@@ -11,8 +11,8 @@ import {
 import {
   AckCallbackResult,
   MachinePreset,
-  ProdTaskRunExecution,
-  ProdTaskRunExecutionPayload,
+  V3ProdTaskRunExecution,
+  V3ProdTaskRunExecutionPayload,
   TaskRunError,
   TaskRunErrorCodes,
   TaskRunExecution,
@@ -1679,7 +1679,7 @@ class SharedQueueTasks {
   private async _executionFromAttempt(
     attempt: AttemptForExecution,
     machinePreset?: MachinePreset
-  ): Promise<ProdTaskRunExecution> {
+  ): Promise<V3ProdTaskRunExecution> {
     const { backgroundWorkerTask, taskRun, queue } = attempt;
 
     if (!machinePreset) {
@@ -1693,7 +1693,7 @@ class SharedQueueTasks {
       dataType: taskRun.metadataType,
     });
 
-    const execution: ProdTaskRunExecution = {
+    const execution: V3ProdTaskRunExecution = {
       task: {
         id: backgroundWorkerTask.slug,
         filePath: backgroundWorkerTask.filePath,
@@ -1784,7 +1784,7 @@ class SharedQueueTasks {
     setToExecuting?: boolean;
     isRetrying?: boolean;
     skipStatusChecks?: boolean;
-  }): Promise<ProdTaskRunExecutionPayload | undefined> {
+  }): Promise<V3ProdTaskRunExecutionPayload | undefined> {
     const attempt = await prisma.taskRunAttempt.findFirst({
       where: {
         id,
@@ -1874,7 +1874,7 @@ class SharedQueueTasks {
       machinePreset
     );
 
-    const payload: ProdTaskRunExecutionPayload = {
+    const payload: V3ProdTaskRunExecutionPayload = {
       execution,
       traceContext: taskRun.traceContext as Record<string, unknown>,
       environment: variables.reduce((acc: Record<string, string>, curr) => {
@@ -1888,7 +1888,7 @@ class SharedQueueTasks {
 
   async getResumePayload(attemptId: string): Promise<
     | {
-        execution: ProdTaskRunExecution;
+        execution: V3ProdTaskRunExecution;
         completion: TaskRunExecutionResult;
       }
     | undefined
@@ -1927,7 +1927,7 @@ class SharedQueueTasks {
 
   async getResumePayloads(attemptIds: string[]): Promise<
     Array<{
-      execution: ProdTaskRunExecution;
+      execution: V3ProdTaskRunExecution;
       completion: TaskRunExecutionResult;
     }>
   > {
@@ -1985,7 +1985,7 @@ class SharedQueueTasks {
     id: string,
     setToExecuting?: boolean,
     isRetrying?: boolean
-  ): Promise<ProdTaskRunExecutionPayload | undefined> {
+  ): Promise<V3ProdTaskRunExecutionPayload | undefined> {
     const run = await prisma.taskRun.findFirst({
       where: {
         id,

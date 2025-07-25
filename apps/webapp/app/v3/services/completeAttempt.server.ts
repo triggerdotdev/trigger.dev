@@ -2,13 +2,13 @@ import { Attributes } from "@opentelemetry/api";
 import {
   MachinePresetName,
   TaskRunContext,
-  TaskRunError,
   TaskRunErrorCodes,
   TaskRunExecution,
   TaskRunExecutionResult,
   TaskRunExecutionRetry,
   TaskRunFailedExecutionResult,
   TaskRunSuccessfulExecutionResult,
+  V3TaskRunExecution,
   flattenAttributes,
   isOOMRunError,
   sanitizeError,
@@ -60,7 +60,7 @@ export class CompleteAttemptService extends BaseService {
     checkpoint,
   }: {
     completion: TaskRunExecutionResult;
-    execution: TaskRunExecution;
+    execution: V3TaskRunExecution;
     env?: AuthenticatedEnvironment;
     checkpoint?: CheckpointData;
   }): Promise<"COMPLETED" | "RETRIED"> {
@@ -196,7 +196,7 @@ export class CompleteAttemptService extends BaseService {
     checkpoint,
   }: {
     completion: TaskRunFailedExecutionResult;
-    execution: TaskRunExecution;
+    execution: V3TaskRunExecution;
     taskRunAttempt: NonNullable<FoundAttempt>;
     env?: AuthenticatedEnvironment;
     checkpoint?: CheckpointData;
@@ -559,7 +559,7 @@ export class CompleteAttemptService extends BaseService {
     forceRequeue = false,
     oomMachine,
   }: {
-    execution: TaskRunExecution;
+    execution: V3TaskRunExecution;
     executionRetry: TaskRunExecutionRetry;
     executionRetryInferred: boolean;
     taskRunAttempt: NonNullable<FoundAttempt>;
@@ -648,7 +648,7 @@ export class CompleteAttemptService extends BaseService {
     executionRetryInferred,
     checkpoint,
   }: {
-    execution: TaskRunExecution;
+    execution: V3TaskRunExecution;
     taskRunAttempt: NonNullable<FoundAttempt>;
     executionRetry: TaskRunExecutionRetry;
     executionRetryInferred: boolean;
