@@ -52,6 +52,7 @@ import {
 } from "./executionSnapshotSystem.js";
 import { SystemResources } from "./systems.js";
 import { WaitpointSystem } from "./waitpointSystem.js";
+import { BatchId, RunId } from "@trigger.dev/core/v3/isomorphic";
 
 export type RunAttemptSystemOptions = {
   resources: SystemResources;
@@ -81,6 +82,19 @@ type BackwardsCompatibleTaskRunExecution = Omit<TaskRunExecution, "task" | "atte
     baseCostInCents: number;
   };
 };
+
+const ORG_FRESH_TTL = 60000 * 60 * 24; // 1 day
+const ORG_STALE_TTL = 60000 * 60 * 24 * 2; // 2 days
+const PROJECT_FRESH_TTL = 60000 * 60 * 24; // 1 day
+const PROJECT_STALE_TTL = 60000 * 60 * 24 * 2; // 2 days
+const TASK_FRESH_TTL = 60000 * 60 * 24; // 1 day
+const TASK_STALE_TTL = 60000 * 60 * 24 * 2; // 2 days
+const MACHINE_PRESET_FRESH_TTL = 60000 * 60 * 24; // 1 day
+const MACHINE_PRESET_STALE_TTL = 60000 * 60 * 24 * 2; // 2 days
+const DEPLOYMENT_FRESH_TTL = 60000 * 60 * 24; // 1 day
+const DEPLOYMENT_STALE_TTL = 60000 * 60 * 24 * 2; // 2 days
+const QUEUE_FRESH_TTL = 60000 * 60; // 1 hour
+const QUEUE_STALE_TTL = 60000 * 60 * 2; // 2 hours
 
 export class RunAttemptSystem {
   private readonly $: SystemResources;
@@ -119,33 +133,33 @@ export class RunAttemptSystem {
     this.cache = createCache({
       orgs: new Namespace<TaskRunExecutionOrganization>(ctx, {
         stores: [memory, redisCacheStore],
-        fresh: 60000,
-        stale: 180000,
+        fresh: ORG_FRESH_TTL,
+        stale: ORG_STALE_TTL,
       }),
       projects: new Namespace<TaskRunExecutionProject>(ctx, {
         stores: [memory, redisCacheStore],
-        fresh: 60000,
-        stale: 180000,
+        fresh: PROJECT_FRESH_TTL,
+        stale: PROJECT_STALE_TTL,
       }),
       tasks: new Namespace<BackwardsCompatibleTaskRunExecution["task"]>(ctx, {
         stores: [memory, redisCacheStore],
-        fresh: 60000,
-        stale: 180000,
+        fresh: TASK_FRESH_TTL,
+        stale: TASK_STALE_TTL,
       }),
       machinePresets: new Namespace<MachinePreset>(ctx, {
         stores: [memory, redisCacheStore],
-        fresh: 60000,
-        stale: 180000,
+        fresh: MACHINE_PRESET_FRESH_TTL,
+        stale: MACHINE_PRESET_STALE_TTL,
       }),
       deployments: new Namespace<TaskRunExecutionDeployment>(ctx, {
         stores: [memory, redisCacheStore],
-        fresh: 60000,
-        stale: 180000,
+        fresh: DEPLOYMENT_FRESH_TTL,
+        stale: DEPLOYMENT_STALE_TTL,
       }),
       queues: new Namespace<TaskRunExecutionQueue>(ctx, {
         stores: [memory, redisCacheStore],
-        fresh: 60000,
-        stale: 180000,
+        fresh: QUEUE_FRESH_TTL,
+        stale: QUEUE_STALE_TTL,
       }),
     });
   }
@@ -193,16 +207,9 @@ export class RunAttemptSystem {
             organizationId: true,
           },
         },
-        parentTaskRun: {
-          select: {
-            friendlyId: true,
-          },
-        },
-        rootTaskRun: {
-          select: {
-            friendlyId: true,
-          },
-        },
+        parentTaskRunId: true,
+        rootTaskRunId: true,
+        batchId: true,
       },
     });
 
@@ -252,8 +259,8 @@ export class RunAttemptSystem {
         version: run.taskVersion ?? "unknown",
         maxDuration: run.maxDurationInSeconds ?? undefined,
         priority: run.priorityMs === 0 ? undefined : run.priorityMs / 1_000,
-        parentTaskRunId: run.parentTaskRun?.friendlyId ?? undefined,
-        rootTaskRunId: run.rootTaskRun?.friendlyId,
+        parentTaskRunId: run.parentTaskRunId ? RunId.toFriendlyId(run.parentTaskRunId) : undefined,
+        rootTaskRunId: run.rootTaskRunId ? RunId.toFriendlyId(run.rootTaskRunId) : undefined,
       },
       attempt: {
         number: run.attemptNumber ?? 1,
@@ -272,6 +279,7 @@ export class RunAttemptSystem {
         branchName: run.runtimeEnvironment.branchName ?? undefined,
         git: safeParseGitMeta(run.runtimeEnvironment.git),
       },
+      batch: run.batchId ? { id: BatchId.toFriendlyId(run.batchId) } : undefined,
     };
   }
 
@@ -407,6 +415,7 @@ export class RunAttemptSystem {
                   costInCents: true,
                   traceContext: true,
                   priorityMs: true,
+                  batchId: true,
                   runtimeEnvironment: {
                     select: {
                       id: true,
@@ -417,16 +426,8 @@ export class RunAttemptSystem {
                       organizationId: true,
                     },
                   },
-                  parentTaskRun: {
-                    select: {
-                      friendlyId: true,
-                    },
-                  },
-                  rootTaskRun: {
-                    select: {
-                      friendlyId: true,
-                    },
-                  },
+                  parentTaskRunId: true,
+                  rootTaskRunId: true,
                 },
               });
 
@@ -567,8 +568,12 @@ export class RunAttemptSystem {
               baseCostInCents: updatedRun.baseCostInCents,
               traceContext: updatedRun.traceContext as Record<string, string | undefined>,
               priority: updatedRun.priorityMs === 0 ? undefined : updatedRun.priorityMs / 1_000,
-              parentTaskRunId: updatedRun.parentTaskRun?.friendlyId ?? undefined,
-              rootTaskRunId: updatedRun.rootTaskRun?.friendlyId ?? undefined,
+              parentTaskRunId: updatedRun.parentTaskRunId
+                ? RunId.toFriendlyId(updatedRun.parentTaskRunId)
+                : undefined,
+              rootTaskRunId: updatedRun.rootTaskRunId
+                ? RunId.toFriendlyId(updatedRun.rootTaskRunId)
+                : undefined,
             },
             task,
             queue,
@@ -583,7 +588,11 @@ export class RunAttemptSystem {
             project,
             machine: machinePreset,
             deployment,
-            batch: { id: "TODO" },
+            batch: updatedRun.batchId
+              ? {
+                  id: BatchId.toFriendlyId(updatedRun.batchId),
+                }
+              : undefined,
           };
 
           return { run: updatedRun, snapshot, execution };
