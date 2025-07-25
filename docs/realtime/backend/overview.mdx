@@ -16,6 +16,15 @@ The backend API provides three main categories of functionality:
 - **[Metadata](/realtime/backend/metadata)** - Update and subscribe to run metadata in real-time
 - **[Streams](/realtime/backend/streams)** - Emit and consume real-time streaming data from your tasks
 
+## Authentication
+
+All backend functions support both server-side and client-side authentication:
+
+- **Server-side**: Use your API key (automatically handled in tasks)
+- **Client-side**: Generate a Public Access Token with appropriate scopes
+
+See our [authentication guide](/realtime/auth) for detailed information on creating and using tokens.
+
 ## Quick example
 
 Subscribe to a run:
@@ -50,14 +59,5 @@ export const myTask = task({
   },
 });
 ```
-
-## Authentication
-
-All backend functions support both server-side and client-side authentication:
-
-- **Server-side**: Use your API key (automatically handled in tasks)
-- **Client-side**: Generate a Public Access Token with appropriate scopes
-
-See our [authentication guide](/realtime/auth) for detailed information on creating and using tokens.
 
 <RealtimeExamplesCards />{" "}

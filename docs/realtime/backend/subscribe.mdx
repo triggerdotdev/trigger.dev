@@ -10,8 +10,6 @@ These functions allow you to subscribe to run updates from your backend code. Ea
 
 Subscribes to all changes to a specific run.
 
-<RequestExample>
-
 ```ts Example
 import { runs } from "@trigger.dev/sdk/v3";
 
@@ -19,8 +17,6 @@ for await (const run of runs.subscribeToRun("run_1234")) {
   console.log(run);
 }
 ```
-
-</RequestExample>
 
 This function subscribes to all changes to a run. It returns an async iterator that yields the run object whenever the run is updated. The iterator will complete when the run is finished.
 
@@ -32,8 +28,6 @@ This function subscribes to all changes to a run. It returns an async iterator t
 
 Subscribes to all changes to runs with a specific tag.
 
-<RequestExample>
-
 ```ts Example
 import { runs } from "@trigger.dev/sdk/v3";
 
@@ -41,8 +35,6 @@ for await (const run of runs.subscribeToRunsWithTag("user:1234")) {
   console.log(run);
 }
 ```
-
-</RequestExample>
 
 This function subscribes to all changes to runs with a specific tag. It returns an async iterator that yields the run object whenever a run with the specified tag is updated. This iterator will never complete, so you must manually break out of the loop when you no longer want to receive updates.
 
@@ -54,8 +46,6 @@ This function subscribes to all changes to runs with a specific tag. It returns 
 
 Subscribes to all changes for runs in a batch.
 
-<RequestExample>
-
 ```ts Example
 import { runs } from "@trigger.dev/sdk/v3";
 
@@ -63,8 +53,6 @@ for await (const run of runs.subscribeToBatch("batch_1234")) {
   console.log(run);
 }
 ```
-
-</RequestExample>
 
 This function subscribes to all changes for runs in a batch. It returns an async iterator that yields a run object whenever a run in the batch is updated. The iterator does not complete on its own, you must manually `break` the loop when you want to stop listening for updates.
 
