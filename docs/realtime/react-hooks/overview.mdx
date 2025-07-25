@@ -1,12 +1,12 @@
 ---
-title: Overview
+title: React hooks overview
 sidebarTitle: Overview
-description: Using the Trigger.dev v3 API from your React application.
+description: Using the Trigger.dev Realtime API from your React applications.
 ---
 
 import RealtimeExamplesCards from "/snippets/realtime-examples-cards.mdx";
 
-Our react hooks package provides a set of hooks that make it easy to interact with the Trigger.dev API from your React application, using our [frontend API](/frontend/overview). You can use these hooks to fetch runs, and subscribe to real-time updates, and trigger tasks from your frontend application.
+Our React hooks package provides a set of hooks that make it easy to interact with the Trigger.dev Realtime API from your React applications. You can use these hooks to subscribe to real-time updates, and trigger tasks from your frontend.
 
 ## Installation
 
@@ -30,7 +30,7 @@ yarn install @trigger.dev/react-hooks
 
 ## Authentication
 
-All hooks accept an optional last argument `options` that accepts an `accessToken` param, which should be a valid Public Access Token. Learn more about [generating tokens in the frontend guide](/frontend/overview).
+All hooks accept an optional last argument `options` that accepts an `accessToken` param, which should be a valid Public Access Token. Learn more about [generating tokens in our authentication guide](/realtime/auth).
 
 ```tsx
 import { useRealtimeRun } from "@trigger.dev/react-hooks";
@@ -51,7 +51,9 @@ export function MyComponent({
 }
 ```
 
-Alternatively, you can use our `TriggerAuthContext` provider
+### TriggerAuthContext
+
+Alternatively, you can use our `TriggerAuthContext` provider to avoid passing the token to every hook:
 
 ```tsx
 import { TriggerAuthContext } from "@trigger.dev/react-hooks";
@@ -250,6 +252,15 @@ We offer two "styles" of hooks: SWR and Realtime. The SWR hooks use the [swr](ht
   we recommend using the Realtime hooks for most use-cases.
 </Note>
 
+## Available hooks
+
+We provide several categories of hooks:
+
+- **[Realtime hooks](/realtime/react-hooks/realtime)** - Subscribe to runs, batches, and streams using real-time updates
+- **[Metadata hooks](/realtime/react-hooks/metadata)** - Subscribe to run metadata updates in React components
+- **[Triggering hooks](/realtime/react-hooks/triggering)** - Trigger tasks from your frontend application
+- **[SWR hooks](#swr-hooks)** - Fetch data once and cache it using SWR
+
 ## SWR Hooks
 
 ### useRun
@@ -291,7 +302,7 @@ export function MyComponent({ runId }: { runId: string }) {
 }
 ```
 
-### Common options
+### Common SWR options
 
 You can pass the following options to the all SWR hooks:
 
@@ -308,7 +319,7 @@ You can pass the following options to the all SWR hooks:
   use-cases. Use the Realtime hooks instead.
 </ParamField>
 
-### Common return values
+### Common SWR return values
 
 <ResponseField name="error" type="Error">
   An error object if an error occurred while fetching the data.
@@ -326,12 +337,4 @@ You can pass the following options to the all SWR hooks:
   A boolean indicating if an error occurred while fetching the data.
 </ResponseField>
 
-## Realtime hooks
-
-See our [Realtime hooks documentation](/frontend/react-hooks/realtime) for more information.
-
-## Trigger Hooks
-
-See our [Trigger hooks documentation](/frontend/react-hooks/triggering) for more information.
-
-<RealtimeExamplesCards />
+<RealtimeExamplesCards />{" "}

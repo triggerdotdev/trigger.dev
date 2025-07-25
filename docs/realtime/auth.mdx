@@ -1,14 +1,14 @@
 ---
-title: Overview & Authentication
-sidebarTitle: Overview & Auth
-description: Using the Trigger.dev SDK from your frontend application.
+title: Authentication
+sidebarTitle: Authentication
+description: Authenticating real-time API requests with Public Access Tokens
 ---
 
-You can use our [React hooks](/frontend/react-hooks) in your frontend application to interact with the Trigger.dev API. This guide will show you how to generate Public Access Tokens that can be used to authenticate your requests.
+To use the Realtime API, you need to authenticate your requests with Public Access Tokens. These tokens provide secure, scoped access to your runs and can be used in both frontend and backend applications.
 
-## Authentication
+## Creating Public Access Tokens
 
-To create a Public Access Token, you can use the `auth.createPublicToken` function in your **backend** code:
+You can create a Public Access Token using the `auth.createPublicToken` function in your **backend** code:
 
 ```tsx
 import { auth } from "@trigger.dev/sdk/v3";
@@ -16,7 +16,7 @@ import { auth } from "@trigger.dev/sdk/v3";
 const publicToken = await auth.createPublicToken(); // 👈 this public access token has no permissions, so is pretty useless!
 ```
 
-### Scopes
+## Scopes
 
 By default a Public Access Token has no permissions. You must specify the scopes you need when creating a Public Access Token:
 
@@ -103,7 +103,7 @@ const publicToken = await auth.createPublicToken({
 });
 ```
 
-### Expiration
+## Expiration
 
 By default, Public Access Token's expire after 15 minutes. You can specify a different expiration time when creating a Public Access Token:
 
@@ -166,6 +166,78 @@ const handle = await tasks.batchTrigger("my-task", [
 console.log(handle.publicAccessToken);
 ```
 
-## Usage
+## Trigger tokens
 
-To learn how to use these Public Access Tokens, see our [React hooks](/frontend/react-hooks) guide.
+For triggering tasks from your frontend, you need special "trigger" tokens. These tokens can only be used once to trigger a task and are more secure than regular Public Access Tokens.
+
+```ts
+import { auth } from "@trigger.dev/sdk/v3";
+
+// Somewhere in your backend code
+const triggerToken = await auth.createTriggerPublicToken("my-task");
+```
+
+These tokens also expire, with the default expiration time being 15 minutes. You can specify a custom expiration time:
+
+```ts
+import { auth } from "@trigger.dev/sdk/v3";
+
+// Somewhere in your backend code
+const triggerToken = await auth.createTriggerPublicToken("my-task", {
+  expirationTime: "24hr",
+});
+```
+
+You can pass multiple tasks to create a token that can trigger multiple tasks:
+
+```ts
+import { auth } from "@trigger.dev/sdk/v3";
+
+// Somewhere in your backend code
+const triggerToken = await auth.createTriggerPublicToken(["my-task-1", "my-task-2"]);
+```
+
+You can also create tokens that can be used multiple times:
+
+```ts
+import { auth } from "@trigger.dev/sdk/v3";
+
+// Somewhere in your backend code
+const triggerToken = await auth.createTriggerPublicToken("my-task", {
+  multipleUse: true, // ❌ Use this with caution!
+});
+```
+
+## Using tokens
+
+Once you have a Public Access Token, you can use it to authenticate requests to the Realtime API:
+
+### Backend usage
+
+```ts
+import { runs } from "@trigger.dev/sdk/v3";
+
+// Using the token with backend functions
+for await (const run of runs.subscribeToRun("run_1234", {
+  accessToken: publicToken,
+})) {
+  console.log(run);
+}
+```
+
+### Frontend usage
+
+```tsx
+import { useRealtimeRun } from "@trigger.dev/react-hooks";
+
+export function MyComponent({ runId, publicAccessToken }) {
+  const { run, error } = useRealtimeRun(runId, {
+    accessToken: publicAccessToken,
+  });
+
+  if (error) return <div>Error: {error.message}</div>;
+  return <div>Run: {run?.id}</div>;
+}
+```
+
+See our [React hooks documentation](/realtime/react-hooks) for more details on using hooks in your frontend application.

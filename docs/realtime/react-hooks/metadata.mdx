@@ -1,0 +1,357 @@
+---
+title: Metadata hooks
+sidebarTitle: Metadata
+description: Subscribe to run metadata updates in React components
+---
+
+import RealtimeExamplesCards from "/snippets/realtime-examples-cards.mdx";
+
+These hooks allow you to subscribe to run metadata updates in your React components. Metadata is perfect for displaying progress bars, status indicators, and other real-time information from your tasks.
+
+<Note>
+  To learn how to update metadata from your tasks, see our [backend metadata
+  documentation](/realtime/backend/metadata).
+</Note>
+
+## useRealtimeRun with metadata
+
+The `useRealtimeRun` hook automatically includes metadata updates. Whenever your task updates metadata using `metadata.set()`, `metadata.append()`, or other metadata methods, your component will re-render with the updated data.
+
+```tsx
+"use client"; // This is needed for Next.js App Router or other RSC frameworks
+
+import { useRealtimeRun } from "@trigger.dev/react-hooks";
+
+export function ProgressMonitor({
+  runId,
+  publicAccessToken,
+}: {
+  runId: string;
+  publicAccessToken: string;
+}) {
+  const { run, error, isLoading } = useRealtimeRun(runId, {
+    accessToken: publicAccessToken,
+  });
+
+  if (isLoading) return <div>Loading run...</div>;
+  if (error) return <div>Error: {error.message}</div>;
+  if (!run) return <div>Run not found</div>;
+
+  const progress = run.metadata?.progress as
+    | {
+        current: number;
+        total: number;
+        percentage: number;
+        currentItem: string;
+      }
+    | undefined;
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h3>Run Status: {run.status}</h3>
+        <p>Run ID: {run.id}</p>
+      </div>
+
+      {progress && (
+        <div className="space-y-2">
+          <div className="flex justify-between text-sm">
+            <span>Progress</span>
+            <span>{progress.percentage}%</span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-2">
+            <div
+              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+              style={{ width: `${progress.percentage}%` }}
+            />
+          </div>
+          <p className="text-sm text-gray-600">
+            Processing: {progress.currentItem} ({progress.current}/{progress.total})
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+## Progress bar component
+
+Here's a reusable progress bar component that subscribes to metadata updates:
+
+```tsx
+"use client";
+
+import { useRealtimeRun } from "@trigger.dev/react-hooks";
+
+interface ProgressBarProps {
+  runId: string;
+  publicAccessToken: string;
+  title?: string;
+}
+
+export function ProgressBar({ runId, publicAccessToken, title }: ProgressBarProps) {
+  const { run } = useRealtimeRun(runId, {
+    accessToken: publicAccessToken,
+  });
+
+  const progress = run?.metadata?.progress as
+    | {
+        current?: number;
+        total?: number;
+        percentage?: number;
+        currentItem?: string;
+      }
+    | undefined;
+
+  const percentage = progress?.percentage ?? 0;
+  const isComplete = run?.status === "COMPLETED";
+  const isFailed = run?.status === "FAILED";
+
+  return (
+    <div className="w-full space-y-2">
+      {title && <h4 className="font-medium">{title}</h4>}
+
+      <div className="w-full bg-gray-200 rounded-full h-3">
+        <div
+          className={`h-3 rounded-full transition-all duration-500 ${
+            isFailed ? "bg-red-500" : isComplete ? "bg-green-500" : "bg-blue-500"
+          }`}
+          style={{ width: `${percentage}%` }}
+        />
+      </div>
+
+      <div className="flex justify-between text-sm text-gray-600">
+        <span>
+          {progress?.current && progress?.total
+            ? `${progress.current}/${progress.total} items`
+            : "Processing..."}
+        </span>
+        <span>{percentage}%</span>
+      </div>
+
+      {progress?.currentItem && (
+        <p className="text-sm text-gray-500 truncate">Current: {progress.currentItem}</p>
+      )}
+    </div>
+  );
+}
+```
+
+## Real-time status indicator
+
+Display status updates and logs in real-time:
+
+```tsx
+"use client";
+
+import { useRealtimeRun } from "@trigger.dev/react-hooks";
+
+interface StatusIndicatorProps {
+  runId: string;
+  publicAccessToken: string;
+}
+
+export function StatusIndicator({ runId, publicAccessToken }: StatusIndicatorProps) {
+  const { run } = useRealtimeRun(runId, {
+    accessToken: publicAccessToken,
+  });
+
+  const status = run?.metadata?.status as string | undefined;
+  const logs = run?.metadata?.logs as string[] | undefined;
+
+  const getStatusColor = (status: string | undefined) => {
+    switch (status) {
+      case "completed":
+        return "text-green-600 bg-green-100";
+      case "failed":
+        return "text-red-600 bg-red-100";
+      case "running":
+        return "text-blue-600 bg-blue-100";
+      default:
+        return "text-gray-600 bg-gray-100";
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center space-x-2">
+        <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(status)}`}>
+          {status || run?.status || "Unknown"}
+        </span>
+        <span className="text-sm text-gray-500">Run {run?.id}</span>
+      </div>
+
+      {logs && logs.length > 0 && (
+        <div className="bg-gray-50 rounded-lg p-4">
+          <h4 className="font-medium mb-2">Logs</h4>
+          <div className="space-y-1 max-h-48 overflow-y-auto">
+            {logs.map((log, index) => (
+              <div key={index} className="text-sm text-gray-700 font-mono">
+                {log}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+## Live deployment monitor
+
+Monitor deployment progress with multiple stages:
+
+```tsx
+"use client";
+
+import { useRealtimeRun } from "@trigger.dev/react-hooks";
+
+interface DeploymentMonitorProps {
+  runId: string;
+  publicAccessToken: string;
+}
+
+const DEPLOYMENT_STAGES = [
+  "initializing",
+  "building",
+  "testing",
+  "deploying",
+  "verifying",
+  "completed",
+] as const;
+
+export function DeploymentMonitor({ runId, publicAccessToken }: DeploymentMonitorProps) {
+  const { run } = useRealtimeRun(runId, {
+    accessToken: publicAccessToken,
+  });
+
+  const status = run?.metadata?.status as string | undefined;
+  const logs = run?.metadata?.logs as string[] | undefined;
+  const currentStageIndex = DEPLOYMENT_STAGES.indexOf(status as any);
+
+  return (
+    <div className="space-y-6">
+      <h3 className="text-lg font-semibold">Deployment Progress</h3>
+
+      {/* Stage indicators */}
+      <div className="space-y-4">
+        {DEPLOYMENT_STAGES.map((stage, index) => {
+          const isActive = currentStageIndex === index;
+          const isCompleted = currentStageIndex > index;
+          const isFailed = run?.status === "FAILED" && currentStageIndex === index;
+
+          return (
+            <div key={stage} className="flex items-center space-x-3">
+              <div
+                className={`w-6 h-6 rounded-full flex items-center justify-center text-sm font-medium ${
+                  isFailed
+                    ? "bg-red-500 text-white"
+                    : isCompleted
+                    ? "bg-green-500 text-white"
+                    : isActive
+                    ? "bg-blue-500 text-white"
+                    : "bg-gray-200 text-gray-600"
+                }`}
+              >
+                {isCompleted ? "✓" : index + 1}
+              </div>
+              <span
+                className={`capitalize ${
+                  isActive
+                    ? "font-medium text-blue-600"
+                    : isCompleted
+                    ? "text-green-600"
+                    : isFailed
+                    ? "text-red-600"
+                    : "text-gray-500"
+                }`}
+              >
+                {stage}
+              </span>
+              {isActive && (
+                <div className="animate-spin w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full" />
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Recent logs */}
+      {logs && logs.length > 0 && (
+        <div className="bg-black text-green-400 rounded-lg p-4 font-mono text-sm">
+          <div className="space-y-1 max-h-32 overflow-y-auto">
+            {logs.slice(-5).map((log, index) => (
+              <div key={index}>
+                <span className="text-gray-500">$ </span>
+                {log}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+## Type safety
+
+Define TypeScript interfaces for your metadata to get full type safety:
+
+```tsx
+"use client";
+
+import { useRealtimeRun } from "@trigger.dev/react-hooks";
+
+interface TaskMetadata {
+  progress?: {
+    current: number;
+    total: number;
+    percentage: number;
+    currentItem: string;
+  };
+  status?: "initializing" | "processing" | "completed" | "failed";
+  user?: {
+    id: string;
+    name: string;
+  };
+  logs?: string[];
+}
+
+export function TypedMetadataComponent({
+  runId,
+  publicAccessToken,
+}: {
+  runId: string;
+  publicAccessToken: string;
+}) {
+  const { run } = useRealtimeRun(runId, {
+    accessToken: publicAccessToken,
+  });
+
+  // Type-safe metadata access
+  const metadata = run?.metadata as TaskMetadata | undefined;
+
+  return (
+    <div>
+      {metadata?.progress && <p>Progress: {metadata.progress.percentage}%</p>}
+
+      {metadata?.user && (
+        <p>
+          User: {metadata.user.name} ({metadata.user.id})
+        </p>
+      )}
+
+      {metadata?.status && <p>Status: {metadata.status}</p>}
+    </div>
+  );
+}
+```
+
+## Authentication
+
+React hooks require public access tokens for authentication. These tokens can be scoped to specific runs, tasks, tags, or batches. See our [authentication guide](/realtime/auth) for details on creating and using public access tokens.
+
+<RealtimeExamplesCards />{" "}

@@ -12,29 +12,9 @@ We provide a set of hooks that can be used to trigger tasks from your frontend a
 
 We've created a [Demo application](https://github.com/triggerdotdev/realtime-llm-battle) that demonstrates how to use our React hooks to trigger tasks in a Next.js application. The application uses the `@trigger.dev/react-hooks` package to trigger a task and subscribe to the run in real-time.
 
-## Installation
-
-Install the `@trigger.dev/react-hooks` package in your project:
-
-<CodeGroup>
-
-```bash npm
-npm add @trigger.dev/react-hooks
-```
-
-```bash pnpm
-pnpm add @trigger.dev/react-hooks
-```
-
-```bash yarn
-yarn install @trigger.dev/react-hooks
-```
-
-</CodeGroup>
-
 ## Authentication
 
-To authenticate a trigger hook, you must provide a special one-time use "trigger" token. These tokens are very similar to [Public Access Tokens](/frontend/overview#authentication), but they can only be used once to trigger a task. You can generate a trigger token using the `auth.createTriggerPublicToken` function in your backend code:
+To authenticate a trigger hook, you must provide a special one-time use "trigger" token. These tokens are very similar to [Public Access Tokens](/realtime/auth), but they can only be used once to trigger a task. You can generate a trigger token using the `auth.createTriggerPublicToken` function in your backend code:
 
 ```ts
 import { auth } from "@trigger.dev/sdk/v3";
@@ -74,7 +54,7 @@ const triggerToken = await auth.createTriggerPublicToken("my-task", {
 <Note>
   After generating the trigger token in your backend, you must pass it to your frontend application.
   We have a guide on how to do this in the [React hooks
-  overview](/frontend/react-hooks/overview#passing-the-token-to-the-frontend).
+  overview](/realtime/react-hooks#passing-the-token-to-the-frontend).
 </Note>
 
 ## Hooks
@@ -127,7 +107,7 @@ submit({ foo: "bar" }, { tags: ["tag1", "tag2"] });
 
 #### Using the handle object
 
-You can use the `handle` object to initiate a subsequent [realtime hook](/frontend/react-hooks/realtime#userealtimerun) to subscribe to the run.
+You can use the `handle` object to initiate a subsequent [realtime hook](/realtime/react-hooks/realtime#userealtimerun) to subscribe to the run.
 
 ```tsx
 "use client"; // This is needed for Next.js App Router or other RSC frameworks
@@ -251,4 +231,4 @@ export function MyComponent({ publicAccessToken }: { publicAccessToken: string }
 }
 ```
 
-<RealtimeExamplesCards />
+<RealtimeExamplesCards />{" "}

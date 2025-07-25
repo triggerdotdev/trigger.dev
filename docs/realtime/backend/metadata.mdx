@@ -1,0 +1,225 @@
+---
+title: Metadata
+sidebarTitle: Metadata
+description: Update and subscribe to run metadata in real-time from your backend
+---
+
+import RealtimeExamplesCards from "/snippets/realtime-examples-cards.mdx";
+
+The metadata API allows you to update custom metadata on runs and receive real-time updates when metadata changes. This is useful for tracking progress, storing intermediate results, or adding custom status information that can be monitored in real-time.
+
+<Note>
+  For frontend applications using React, see our [React hooks metadata
+  documentation](/realtime/react-hooks/metadata) for consuming metadata updates in your UI.
+</Note>
+
+## How metadata works with realtime
+
+When you update metadata from within a task using `metadata.set()`, `metadata.append()`, or other metadata methods, all subscribers to that run will automatically receive the updated run object containing the new metadata.
+
+This makes metadata perfect for:
+
+- Progress tracking
+- Status updates
+- Intermediate results
+- Custom notifications
+
+## Updating metadata from tasks
+
+Use the metadata API within your task to update metadata in real-time:
+
+```ts
+import { task, metadata } from "@trigger.dev/sdk/v3";
+
+export const progressTask = task({
+  id: "progress-task",
+  run: async (payload: { items: string[] }) => {
+    const total = payload.items.length;
+
+    for (let i = 0; i < payload.items.length; i++) {
+      // Update progress metadata
+      metadata.set("progress", {
+        current: i + 1,
+        total: total,
+        percentage: Math.round(((i + 1) / total) * 100),
+        currentItem: payload.items[i],
+      });
+
+      // Process the item
+      await processItem(payload.items[i]);
+    }
+
+    metadata.set("status", "completed");
+    return { processed: total };
+  },
+});
+
+async function processItem(item: string) {
+  // Simulate work
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+}
+```
+
+## Subscribing to metadata updates
+
+Subscribe to runs and receive real-time metadata updates:
+
+```ts
+import { runs } from "@trigger.dev/sdk/v3";
+import type { progressTask } from "./trigger/progress-task";
+
+async function monitorProgress(runId: string) {
+  for await (const run of runs.subscribeToRun<typeof progressTask>(runId)) {
+    console.log(`Run ${run.id} status: ${run.status}`);
+
+    if (run.metadata?.progress) {
+      const progress = run.metadata.progress as {
+        current: number;
+        total: number;
+        percentage: number;
+        currentItem: string;
+      };
+
+      console.log(`Progress: ${progress.current}/${progress.total} (${progress.percentage}%)`);
+      console.log(`Processing: ${progress.currentItem}`);
+    }
+
+    if (run.metadata?.status === "completed") {
+      console.log("Task completed!");
+      break;
+    }
+  }
+}
+```
+
+## Common metadata patterns
+
+### Progress tracking
+
+Track progress with percentage and current step:
+
+```ts
+import { task, metadata } from "@trigger.dev/sdk/v3";
+
+export const batchProcessingTask = task({
+  id: "batch-processing",
+  run: async (payload: { records: any[] }) => {
+    for (let i = 0; i < payload.records.length; i++) {
+      const record = payload.records[i];
+
+      // Update progress
+      metadata.set("progress", {
+        step: i + 1,
+        total: payload.records.length,
+        percentage: Math.round(((i + 1) / payload.records.length) * 100),
+        currentRecord: record.id,
+      });
+
+      await processRecord(record);
+    }
+  },
+});
+```
+
+### Status updates with logs
+
+Append log entries while maintaining status:
+
+```ts
+import { task, metadata } from "@trigger.dev/sdk/v3";
+
+export const deploymentTask = task({
+  id: "deployment",
+  run: async (payload: { version: string }) => {
+    metadata.set("status", "initializing");
+    metadata.append("logs", "Starting deployment...");
+
+    // Step 1
+    metadata.set("status", "building");
+    metadata.append("logs", "Building application...");
+    await buildApplication();
+
+    // Step 2
+    metadata.set("status", "deploying");
+    metadata.append("logs", "Deploying to production...");
+    await deployToProduction();
+
+    // Step 3
+    metadata.set("status", "verifying");
+    metadata.append("logs", "Running health checks...");
+    await runHealthChecks();
+
+    metadata.set("status", "completed");
+    metadata.append("logs", "Deployment successful!");
+  },
+});
+```
+
+### User context and notifications
+
+Store user information and notification preferences:
+
+```ts
+import { task, metadata } from "@trigger.dev/sdk/v3";
+
+export const userTask = task({
+  id: "user-task",
+  run: async (payload: { userId: string; action: string }) => {
+    // Set user context in metadata
+    metadata.set("user", {
+      id: payload.userId,
+      action: payload.action,
+      startedAt: new Date().toISOString(),
+    });
+
+    // Update status for user notifications
+    metadata.set("notification", {
+      type: "info",
+      message: `Starting ${payload.action} for user ${payload.userId}`,
+    });
+
+    await performUserAction(payload);
+
+    metadata.set("notification", {
+      type: "success",
+      message: `${payload.action} completed successfully`,
+    });
+  },
+});
+```
+
+## Type safety
+
+You can get type safety for your metadata by defining types:
+
+```ts
+import { runs } from "@trigger.dev/sdk/v3";
+import type { progressTask } from "./trigger/progress-task";
+
+interface ProgressMetadata {
+  progress?: {
+    current: number;
+    total: number;
+    percentage: number;
+    currentItem: string;
+  };
+  status?: "running" | "completed" | "failed";
+}
+
+async function monitorTypedProgress(runId: string) {
+  for await (const run of runs.subscribeToRun<typeof progressTask>(runId)) {
+    const metadata = run.metadata as ProgressMetadata;
+
+    if (metadata?.progress) {
+      // Now you have full type safety
+      console.log(`Progress: ${metadata.progress.percentage}%`);
+    }
+  }
+}
+```
+
+## Authentication
+
+Backend metadata subscriptions support both server-side and client-side authentication. For server-side authentication, use your API key. For client-side authentication, you must generate a public access token with read access to the specific run, task, or tag. See our [authentication guide](/realtime/auth) for details.
+
+<RealtimeExamplesCards />{" "}

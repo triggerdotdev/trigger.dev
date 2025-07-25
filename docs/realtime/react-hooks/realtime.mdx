@@ -9,7 +9,7 @@ import RealtimeExamplesCards from "/snippets/realtime-examples-cards.mdx";
 These hooks allow you to subscribe to runs, batches, and streams using [Trigger.dev realtime](/realtime). Before reading this guide:
 
 - Read our [Realtime documentation](/realtime) to understand how the Trigger.dev realtime API works.
-- Read how to [setup and authenticate](/frontend/overview) using the `@trigger.dev/react-hooks` package.
+- Read how to [setup and authenticate](/realtime/react-hooks) using the `@trigger.dev/react-hooks` package.
 
 ## Hooks
 
@@ -89,7 +89,7 @@ export function MyComponent({
 }
 ```
 
-See our [Realtime documentation](/realtime) for more information about the type of the run object and more.
+See our [run object reference](/realtime/run-object) for the complete schema and [How it Works documentation](/realtime/how-it-works) for more technical details.
 
 ### useRealtimeRunsWithTag
 
@@ -194,110 +194,6 @@ export function MyComponent({ batchId }: { batchId: string }) {
 
 See our [Realtime documentation](/realtime) for more information.
 
-### useRealtimeRunWithStreams
-
-The `useRealtimeRunWithStreams` hook allows you to subscribe to a run by its ID and also receive any streams that are emitted by the task. See our [Realtime documentation](/realtime#streams) for more information about emitting streams from a task.
-
-```tsx
-"use client"; // This is needed for Next.js App Router or other RSC frameworks
-
-import { useRealtimeRunWithStreams } from "@trigger.dev/react-hooks";
-
-export function MyComponent({
-  runId,
-  publicAccessToken,
-}: {
-  runId: string;
-  publicAccessToken: string;
-}) {
-  const { run, streams, error } = useRealtimeRunWithStreams(runId, {
-    accessToken: publicAccessToken,
-  });
-
-  if (error) return <div>Error: {error.message}</div>;
-
-  return (
-    <div>
-      <div>Run: {run.id}</div>
-      <div>
-        {Object.keys(streams).map((stream) => (
-          <div key={stream}>Stream: {stream}</div>
-        ))}
-      </div>
-    </div>
-  );
-}
-```
-
-You can provide the type of the streams to the `useRealtimeRunWithStreams` hook:
-
-```tsx
-import { useRealtimeRunWithStreams } from "@trigger.dev/react-hooks";
-import type { myTask } from "@/trigger/myTask";
-
-type STREAMS = {
-  openai: string; // this is the type of each "part" of the stream
-};
-
-export function MyComponent({
-  runId,
-  publicAccessToken,
-}: {
-  runId: string;
-  publicAccessToken: string;
-}) {
-  const { run, streams, error } = useRealtimeRunWithStreams<typeof myTask, STREAMS>(runId, {
-    accessToken: publicAccessToken,
-  });
-
-  if (error) return <div>Error: {error.message}</div>;
-
-  const text = streams.openai?.map((part) => part).join("");
-
-  return (
-    <div>
-      <div>Run: {run.id}</div>
-      <div>{text}</div>
-    </div>
-  );
-}
-```
-
-As you can see above, each stream is an array of the type you provided, keyed by the stream name. If instead of a pure text stream you have a stream of objects, you can provide the type of the object:
-
-```tsx
-import type { TextStreamPart } from "ai";
-import type { myTask } from "@/trigger/myTask";
-
-type STREAMS = { openai: TextStreamPart<{}> };
-
-export function MyComponent({
-  runId,
-  publicAccessToken,
-}: {
-  runId: string;
-  publicAccessToken: string;
-}) {
-  const { run, streams, error } = useRealtimeRunWithStreams<typeof myTask, STREAMS>(runId, {
-    accessToken: publicAccessToken,
-  });
-
-  if (error) return <div>Error: {error.message}</div>;
-
-  const text = streams.openai
-    ?.filter((stream) => stream.type === "text-delta")
-    ?.map((part) => part.text)
-    .join("");
-
-  return (
-    <div>
-      <div>Run: {run.id}</div>
-      <div>{text}</div>
-    </div>
-  );
-}
-```
-
 ## Common options
 
 ### accessToken & baseURL
@@ -386,35 +282,4 @@ export function MyComponent({
 
 This allows you to change the ID of the subscription based on some state. Passing in a different ID will unsubscribe from the current subscription and subscribe to the new one (and remove any cached data).
 
-### experimental_throttleInMs
-
-The `*withStreams` variants of the Realtime hooks accept an `experimental_throttleInMs` option to throttle the updates from the server. This can be useful if you are getting too many updates and want to reduce the number of updates.
-
-```tsx
-import { useRealtimeRunsWithStreams } from "@trigger.dev/react-hooks";
-
-export function MyComponent({
-  runId,
-  publicAccessToken,
-}: {
-  runId: string;
-  publicAccessToken: string;
-}) {
-  const { runs, error } = useRealtimeRunsWithStreams(tag, {
-    accessToken: publicAccessToken,
-    experimental_throttleInMs: 1000, // Throttle updates to once per second
-  });
-
-  if (error) return <div>Error: {error.message}</div>;
-
-  return (
-    <div>
-      {runs.map((run) => (
-        <div key={run.id}>Run: {run.id}</div>
-      ))}
-    </div>
-  );
-}
-```
-
-<RealtimeExamplesCards />
+<RealtimeExamplesCards />{" "}
