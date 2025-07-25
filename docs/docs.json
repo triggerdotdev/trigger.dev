@@ -124,7 +124,6 @@
                   "realtime/react-hooks/overview",
                   "realtime/react-hooks/triggering",
                   "realtime/react-hooks/realtime",
-                  "realtime/react-hooks/metadata",
                   "realtime/react-hooks/streams",
                   "realtime/react-hooks/swr"
                 ]

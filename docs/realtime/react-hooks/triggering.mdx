@@ -12,51 +12,6 @@ We provide a set of hooks that can be used to trigger tasks from your frontend a
 
 We've created a [Demo application](https://github.com/triggerdotdev/realtime-llm-battle) that demonstrates how to use our React hooks to trigger tasks in a Next.js application. The application uses the `@trigger.dev/react-hooks` package to trigger a task and subscribe to the run in real-time.
 
-## Authentication
-
-To authenticate a trigger hook, you must provide a special one-time use "trigger" token. These tokens are very similar to [Public Access Tokens](/realtime/auth), but they can only be used once to trigger a task. You can generate a trigger token using the `auth.createTriggerPublicToken` function in your backend code:
-
-```ts
-import { auth } from "@trigger.dev/sdk/v3";
-// Somewhere in your backend code
-const triggerToken = await auth.createTriggerPublicToken("my-task");
-```
-
-These tokens also expire, with the default expiration time being 15 minutes. You can specify a custom expiration time by passing a `expirationTime` parameter:
-
-```ts
-import { auth } from "@trigger.dev/sdk/v3";
-// Somewhere in your backend code
-const triggerToken = await auth.createTriggerPublicToken("my-task", {
-  expirationTime: "24hr",
-});
-```
-
-You can also pass multiple tasks to the `createTriggerPublicToken` function to create a token that can trigger multiple tasks:
-
-```ts
-import { auth } from "@trigger.dev/sdk/v3";
-// Somewhere in your backend code
-const triggerToken = await auth.createTriggerPublicToken(["my-task-1", "my-task-2"]);
-```
-
-You can also pass the `multipleUse` parameter to create a token that can be used multiple times:
-
-```ts
-import { auth } from "@trigger.dev/sdk/v3";
-
-// Somewhere in your backend code
-const triggerToken = await auth.createTriggerPublicToken("my-task", {
-  multipleUse: true, // ❌ Use this with caution!
-});
-```
-
-<Note>
-  After generating the trigger token in your backend, you must pass it to your frontend application.
-  We have a guide on how to do this in the [React hooks
-  overview](/realtime/react-hooks#passing-the-token-to-the-frontend).
-</Note>
-
 ## Hooks
 
 ### useTaskTrigger
