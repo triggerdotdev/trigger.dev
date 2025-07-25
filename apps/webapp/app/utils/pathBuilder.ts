@@ -459,6 +459,10 @@ export function v3BillingPath(organization: OrgForPath, message?: string) {
   }`;
 }
 
+export function v3BillingAlertsPath(organization: OrgForPath) {
+  return `${organizationPath(organization)}/settings/billing-alerts`;
+}
+
 export function v3StripePortalPath(organization: OrgForPath) {
   return `/resources/${organization.slug}/subscription/portal`;
 }

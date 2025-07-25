@@ -1,4 +1,5 @@
 import {
+  BellAlertIcon,
   ChartBarIcon,
   Cog8ToothIcon,
   CreditCardIcon,
@@ -12,6 +13,7 @@ import {
   organizationSettingsPath,
   organizationTeamPath,
   rootPath,
+  v3BillingAlertsPath,
   v3BillingPath,
   v3UsagePath,
 } from "~/utils/pathBuilder";
@@ -67,27 +69,34 @@ export function OrganizationSettingsSideMenu({
             <SideMenuHeader title="Organization" />
           </div>
           {isManagedCloud && (
-            <SideMenuItem
-              name="Usage"
-              icon={ChartBarIcon}
-              activeIconColor="text-indigo-500"
-              to={v3UsagePath(organization)}
-              data-action="usage"
-            />
-          )}
-          {isManagedCloud && (
-            <SideMenuItem
-              name="Billing"
-              icon={CreditCardIcon}
-              activeIconColor="text-emerald-500"
-              to={v3BillingPath(organization)}
-              data-action="billing"
-              badge={
-                currentPlan?.v3Subscription?.isPaying ? (
-                  <Badge variant="extra-small">{currentPlan?.v3Subscription?.plan?.title}</Badge>
-                ) : undefined
-              }
-            />
+            <>
+              <SideMenuItem
+                name="Usage"
+                icon={ChartBarIcon}
+                activeIconColor="text-indigo-500"
+                to={v3UsagePath(organization)}
+                data-action="usage"
+              />
+              <SideMenuItem
+                name="Billing"
+                icon={CreditCardIcon}
+                activeIconColor="text-emerald-500"
+                to={v3BillingPath(organization)}
+                data-action="billing"
+                badge={
+                  currentPlan?.v3Subscription?.isPaying ? (
+                    <Badge variant="extra-small">{currentPlan?.v3Subscription?.plan?.title}</Badge>
+                  ) : undefined
+                }
+              />
+              <SideMenuItem
+                name="Billing alerts"
+                icon={BellAlertIcon}
+                activeIconColor="text-rose-500"
+                to={v3BillingAlertsPath(organization)}
+                data-action="billing-alerts"
+              />
+            </>
           )}
           <SideMenuItem
             name="Team"

@@ -17,7 +17,7 @@ import {
   Plans,
   SetPlanBody,
   SubscriptionResult,
-} from "@trigger.dev/platform/v3";
+} from "@trigger.dev/platform";
 import React, { useEffect, useState } from "react";
 import { z } from "zod";
 import { DefinitionTip } from "~/components/DefinitionTooltip";
