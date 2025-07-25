@@ -231,6 +231,7 @@ export default function Page() {
                     <CheckboxWithLabel
                       name={alertLevels.name}
                       id={`level_${level}`}
+                      key={level}
                       value={level.toString()}
                       variant="simple/small"
                       label={
