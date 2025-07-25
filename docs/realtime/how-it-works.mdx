@@ -1,0 +1,91 @@
+---
+title: How it works
+sidebarTitle: How it works
+description: Technical details about the Trigger.dev Realtime API
+---
+
+## Architecture
+
+The Realtime API is built on top of [Electric SQL](https://electric-sql.com/), an open-source PostgreSQL syncing engine. The Trigger.dev API wraps Electric SQL and provides a simple API to subscribe to [runs](/runs) and get real-time updates.
+
+## Run changes
+
+You will receive updates whenever a run changes for the following reasons:
+
+- The run moves to a new state. See our [run lifecycle docs](/runs#the-run-lifecycle) for more information.
+- [Run tags](/tags) are added or removed.
+- [Run metadata](/runs/metadata) is updated.
+
+## Run object
+
+The run object returned by realtime subscriptions is optimized for streaming updates and differs from the management API's run object. See the [run object reference](/realtime/run-object) for the complete schema and field descriptions.
+
+## Type-safety
+
+You can infer the types of the run's payload and output by passing the type of the task to the `subscribeToRun` function. This will give you type-safe access to the run's payload and output.
+
+```ts
+import { runs, tasks } from "@trigger.dev/sdk/v3";
+import type { myTask } from "./trigger/my-task";
+
+// Somewhere in your backend code
+async function myBackend() {
+  const handle = await tasks.trigger("my-task", { some: "data" });
+
+  for await (const run of runs.subscribeToRun<typeof myTask>(handle.id)) {
+    // This will log the run every time it changes
+    console.log(run.payload.some);
+
+    if (run.output) {
+      // This will log the output if it exists
+      console.log(run.output.some);
+    }
+  }
+}
+```
+
+When using `subscribeToRunsWithTag`, you can pass a union of task types for all the possible tasks that can have the tag.
+
+```ts
+import { runs } from "@trigger.dev/sdk/v3";
+import type { myTask, myOtherTask } from "./trigger/my-task";
+
+// Somewhere in your backend code
+for await (const run of runs.subscribeToRunsWithTag<typeof myTask | typeof myOtherTask>("my-tag")) {
+  // You can narrow down the type based on the taskIdentifier
+  switch (run.taskIdentifier) {
+    case "my-task": {
+      console.log("Run output:", run.output.foo); // This will be type-safe
+      break;
+    }
+    case "my-other-task": {
+      console.log("Run output:", run.output.bar); // This will be type-safe
+      break;
+    }
+  }
+}
+```
+
+## Run metadata
+
+The run metadata API gives you the ability to add or update custom metadata on a run, which will cause the run to be updated. This allows you to extend the realtime API with custom data attached to a run that can be used for various purposes. Some common use cases include:
+
+- Adding a link to a related resource
+- Adding a reference to a user or organization
+- Adding a custom status with progress information
+
+See our [run metadata docs](/runs/metadata) for more on how to use this feature.
+
+### Using w/Realtime & React hooks
+
+We suggest combining run metadata with the realtime API and our [React hooks](/realtime/react-hooks) to bridge the gap between your trigger.dev tasks and your UI. This allows you to update your UI in real-time based on changes to the run metadata. As a simple example, you could add a custom status to a run with a progress value, and update your UI based on that progress.
+
+We have a full demo app repo available [here](https://github.com/triggerdotdev/nextjs-realtime-simple-demo)
+
+## Limits
+
+The Realtime API in the Trigger.dev Cloud limits the number of concurrent subscriptions, depending on your plan. If you exceed the limit, you will receive an error when trying to subscribe to a run. For more information, see our [pricing page](https://trigger.dev/pricing).
+
+## Known issues
+
+There is currently a known issue where the realtime API does not work if subscribing to a run that has a large payload or large output and are stored in object store instead of the database. We are working on a fix for this issue: https://github.com/triggerdotdev/trigger.dev/issues/1451. As a workaround you'll need to keep payloads and outputs below 128KB when using the realtime API.
