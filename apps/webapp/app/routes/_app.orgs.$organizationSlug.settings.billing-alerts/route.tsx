@@ -3,7 +3,7 @@ import { parse } from "@conform-to/zod";
 import { BellAlertIcon, CurrencyDollarIcon, EnvelopeIcon } from "@heroicons/react/20/solid";
 import { Form, useActionData, type MetaFunction } from "@remix-run/react";
 import { type ActionFunction, json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { Fragment, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
@@ -30,6 +30,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { getBillingAlerts, setBillingAlert } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
+import { formatCurrency, formatNumber } from "~/utils/numberFormatter";
 import {
   OrganizationParamsSchema,
   organizationPath,
@@ -146,7 +147,6 @@ export const action: ActionFunction = async ({ request, params }) => {
 export default function Page() {
   const { alerts } = useTypedLoaderData<typeof loader>();
   const [dollarAmount, setDollarAmount] = useState(alerts.amount.toFixed(2));
-  const organization = useOrganization();
 
   const lastSubmission = useActionData();
 
@@ -162,10 +162,16 @@ export default function Page() {
     },
   });
 
-  const fieldValues = useRef<string[]>([""]);
+  const fieldValues = useRef<string[]>(alerts.emails);
   const emailFields = useFieldList(form.ref, { ...emails, defaultValue: alerts.emails });
 
   const checkboxLevels = [0.75, 0.9, 1.0];
+
+  useEffect(() => {
+    if (alerts.emails.length > 0) {
+      requestIntent(form.ref.current ?? undefined, list.append(emails.name));
+    }
+  }, []);
 
   return (
     <PageContainer>
@@ -180,11 +186,11 @@ export default function Page() {
           <div>
             <Header2 spacing>Billing alerts</Header2>
             <Paragraph spacing variant="small">
-              Receive emails when your compute spend crosses the thresholds set below.
+              Receive an email when your compute spend crosses different thresholds.
             </Paragraph>
             <Form method="post" {...form.props}>
               <Fieldset>
-                <InputGroup>
+                <InputGroup fullWidth>
                   <Label htmlFor={amount.id}>Amount</Label>
                   <Input
                     {...conform.input(amount, { type: "number" })}
@@ -202,10 +208,11 @@ export default function Page() {
                     placeholder="Enter an amount"
                     icon={<span className="-mt-0.5 block pl-0.5 text-sm text-text-dimmed">$</span>}
                     className="pl-px"
+                    fullWidth
                   />
                   <FormError id={amount.errorId}>{amount.error}</FormError>
                 </InputGroup>
-                <InputGroup>
+                <InputGroup fullWidth>
                   <Label htmlFor={alertLevels.id}>Alert me when I reach</Label>
                   {checkboxLevels.map((level) => (
                     <CheckboxWithLabel
@@ -213,21 +220,28 @@ export default function Page() {
                       id={`level_${level}`}
                       value={level.toString()}
                       variant="simple/small"
-                      label={`${level * 100}% ($${(Number(dollarAmount) * level).toFixed(2)})`}
-                      defaultChecked
+                      label={
+                        <span>
+                          {level * 100}%{" "}
+                          <span className="text-text-dimmed">
+                            ({formatCurrency(Number(dollarAmount) * level, false)})
+                          </span>
+                        </span>
+                      }
+                      defaultChecked={alerts.alertLevels.includes(level)}
                       className="pr-0"
+                      readOnly={level === 1.0}
                     />
                   ))}
                   <FormError id={alertLevels.errorId}>{alertLevels.error}</FormError>
                 </InputGroup>
-                <InputGroup>
+                <InputGroup fullWidth>
                   <Label htmlFor={emails.id}>Email addresses</Label>
                   {emailFields.map((email, index) => (
                     <Fragment key={email.key}>
                       <Input
                         {...conform.input(email, { type: "email" })}
                         placeholder={index === 0 ? "Enter an email address" : "Add another email"}
-                        icon={EnvelopeIcon}
                         autoFocus={index === 0}
                         onChange={(e) => {
                           fieldValues.current[index] = e.target.value;
@@ -238,6 +252,7 @@ export default function Page() {
                             requestIntent(form.ref.current ?? undefined, list.append(emails.name));
                           }
                         }}
+                        fullWidth
                       />
                       <FormError id={email.errorId}>{email.error}</FormError>
                     </Fragment>
