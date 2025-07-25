@@ -1,4 +1,4 @@
-import { parsePacket, TaskRunExecution } from "@trigger.dev/core/v3";
+import { parsePacket, V3TaskRunExecution } from "@trigger.dev/core/v3";
 import { TaskRun, TaskRunAttempt } from "@trigger.dev/database";
 import { MAX_TASK_RUN_ATTEMPTS } from "~/consts";
 import { $transaction, prisma, PrismaClientOrTransaction } from "~/db.server";
@@ -25,7 +25,7 @@ export class CreateTaskRunAttemptService extends BaseService {
     setToExecuting?: boolean;
     startAtZero?: boolean;
   }): Promise<{
-    execution: TaskRunExecution;
+    execution: V3TaskRunExecution;
     run: TaskRun;
     attempt: TaskRunAttempt;
   }> {
@@ -189,7 +189,7 @@ export class CreateTaskRunAttemptService extends BaseService {
         dataType: taskRun.metadataType,
       });
 
-      const execution: TaskRunExecution = {
+      const execution: V3TaskRunExecution = {
         task: {
           id: lockedBy.slug,
           filePath: lockedBy.filePath,

@@ -921,6 +921,24 @@ importers:
 
   docs: {}
 
+  internal-packages/cache:
+    dependencies:
+      '@internal/redis':
+        specifier: workspace:*
+        version: link:../redis
+      '@trigger.dev/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@unkey/cache':
+        specifier: ^1.5.0
+        version: 1.5.0
+      '@unkey/error':
+        specifier: ^0.2.0
+        version: 0.2.0
+      superjson:
+        specifier: ^2.2.1
+        version: 2.2.1
+
   internal-packages/clickhouse:
     dependencies:
       '@clickhouse/client':
@@ -1054,6 +1072,9 @@ importers:
 
   internal-packages/run-engine:
     dependencies:
+      '@internal/cache':
+        specifier: workspace:*
+        version: link:../cache
       '@internal/redis':
         specifier: workspace:*
         version: link:../redis
@@ -1069,9 +1090,6 @@ importers:
       '@trigger.dev/redis-worker':
         specifier: workspace:*
         version: link:../../packages/redis-worker
-      '@unkey/cache':
-        specifier: ^1.5.0
-        version: 1.5.0
       assert-never:
         specifier: ^1.2.1
         version: 1.2.1

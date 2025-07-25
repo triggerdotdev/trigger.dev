@@ -65,12 +65,12 @@ export const usage = {
             durationMs: 0,
           },
           total: {
-            costInCents: run?.costInCents ?? 0,
-            durationMs: run?.durationMs ?? 0,
+            costInCents: 0,
+            durationMs: 0,
           },
         },
         baseCostInCents: run?.baseCostInCents ?? 0,
-        totalCostInCents: (run?.costInCents ?? 0) + (run?.baseCostInCents ?? 0),
+        totalCostInCents: run?.baseCostInCents ?? 0,
       };
     }
 
@@ -83,12 +83,12 @@ export const usage = {
           durationMs: sample.cpuTime,
         },
         total: {
-          costInCents: (run?.costInCents ?? 0) + currentCostInCents,
-          durationMs: (run?.durationMs ?? 0) + sample.cpuTime,
+          costInCents: currentCostInCents,
+          durationMs: sample.cpuTime,
         },
       },
       baseCostInCents: run?.baseCostInCents ?? 0,
-      totalCostInCents: (run?.costInCents ?? 0) + currentCostInCents + (run?.baseCostInCents ?? 0),
+      totalCostInCents: currentCostInCents + (run?.baseCostInCents ?? 0),
     };
   },
   /**
