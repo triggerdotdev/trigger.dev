@@ -1,8 +1,7 @@
 import { conform, list, requestIntent, useFieldList, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { BellAlertIcon, CurrencyDollarIcon, EnvelopeIcon } from "@heroicons/react/20/solid";
 import { Form, useActionData, type MetaFunction } from "@remix-run/react";
-import { type ActionFunction, json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { json, type ActionFunction, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -12,12 +11,11 @@ import {
   PageBody,
   PageContainer,
 } from "~/components/layout/AppLayout";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Button } from "~/components/primitives/Buttons";
 import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
-import { FormTitle } from "~/components/primitives/FormTitle";
 import { Header2 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
@@ -26,16 +24,16 @@ import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/Page
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
-import { useOrganization } from "~/hooks/useOrganizations";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { getBillingAlerts, setBillingAlert } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
-import { formatCurrency, formatNumber } from "~/utils/numberFormatter";
+import { formatCurrency } from "~/utils/numberFormatter";
 import {
   OrganizationParamsSchema,
   organizationPath,
   v3BillingAlertsPath,
 } from "~/utils/pathBuilder";
+import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 
 export const meta: MetaFunction = () => {
   return [
@@ -146,6 +144,7 @@ export const action: ActionFunction = async ({ request, params }) => {
 
 export default function Page() {
   const { alerts } = useTypedLoaderData<typeof loader>();
+  const plan = useCurrentPlan();
   const [dollarAmount, setDollarAmount] = useState(alerts.amount.toFixed(2));
 
   const lastSubmission = useActionData();
@@ -173,6 +172,8 @@ export default function Page() {
     }
   }, []);
 
+  const isFree = !plan?.v3Subscription?.isPaying;
+
   return (
     <PageContainer>
       <NavBar>
@@ -192,24 +193,36 @@ export default function Page() {
               <Fieldset>
                 <InputGroup fullWidth>
                   <Label htmlFor={amount.id}>Amount</Label>
-                  <Input
-                    {...conform.input(amount, { type: "number" })}
-                    value={dollarAmount}
-                    onChange={(e) => {
-                      const numberValue = Number(e.target.value);
-                      if (numberValue < 0) {
-                        setDollarAmount("");
-                        return;
+                  {isFree ? (
+                    <>
+                      <Paragraph variant="small" className="text-text-dimmed">
+                        ${dollarAmount}
+                      </Paragraph>
+                      <input type="hidden" name={amount.name} value={dollarAmount} />
+                    </>
+                  ) : (
+                    <Input
+                      {...conform.input(amount, { type: "number" })}
+                      value={dollarAmount}
+                      onChange={(e) => {
+                        const numberValue = Number(e.target.value);
+                        if (numberValue < 0) {
+                          setDollarAmount("");
+                          return;
+                        }
+                        setDollarAmount(e.target.value);
+                      }}
+                      step={0.01}
+                      min={0}
+                      placeholder="Enter an amount"
+                      icon={
+                        <span className="-mt-0.5 block pl-0.5 text-sm text-text-dimmed">$</span>
                       }
-                      setDollarAmount(e.target.value);
-                    }}
-                    step={0.01}
-                    min={0}
-                    placeholder="Enter an amount"
-                    icon={<span className="-mt-0.5 block pl-0.5 text-sm text-text-dimmed">$</span>}
-                    className="pl-px"
-                    fullWidth
-                  />
+                      className="pl-px"
+                      fullWidth
+                      readOnly={isFree}
+                    />
+                  )}
                   <FormError id={amount.errorId}>{amount.error}</FormError>
                 </InputGroup>
                 <InputGroup fullWidth>
