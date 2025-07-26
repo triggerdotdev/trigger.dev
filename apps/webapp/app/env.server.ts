@@ -256,6 +256,8 @@ const EnvironmentSchema = z.object({
   EVENTS_MAX_CONCURRENCY: z.coerce.number().int().default(10),
   EVENTS_MAX_BATCH_SIZE: z.coerce.number().int().default(500),
   EVENTS_MEMORY_PRESSURE_THRESHOLD: z.coerce.number().int().default(2000),
+  EVENTS_LOAD_SHEDDING_THRESHOLD: z.coerce.number().int().default(5000),
+  EVENTS_LOAD_SHEDDING_ENABLED: z.coerce.boolean().default(true),
   SHARED_QUEUE_CONSUMER_POOL_SIZE: z.coerce.number().int().default(10),
   SHARED_QUEUE_CONSUMER_INTERVAL_MS: z.coerce.number().int().default(100),
   SHARED_QUEUE_CONSUMER_NEXT_TICK_INTERVAL_MS: z.coerce.number().int().default(100),

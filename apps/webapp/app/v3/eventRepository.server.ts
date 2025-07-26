@@ -111,6 +111,8 @@ export type EventRepoConfig = {
   maxConcurrency?: number;
   maxBatchSize?: number;
   memoryPressureThreshold?: number;
+  loadSheddingThreshold?: number;
+  loadSheddingEnabled?: boolean;
 };
 
 export type QueryOptions = Prisma.TaskEventWhereInput;
@@ -220,6 +222,12 @@ export class EventRepository {
       maxConcurrency: _config.maxConcurrency,
       maxBatchSize: _config.maxBatchSize,
       memoryPressureThreshold: _config.memoryPressureThreshold,
+      loadSheddingThreshold: _config.loadSheddingThreshold,
+      loadSheddingEnabled: _config.loadSheddingEnabled,
+      isDroppableEvent: (event: CreatableEvent) => {
+        // Only drop LOG events during load shedding
+        return event.kind === TaskEventKind.LOG;
+      },
     });
 
     this._redisPublishClient = createRedisClient("trigger:eventRepoPublisher", this._config.redis);
@@ -1340,6 +1348,8 @@ function initializeEventRepo() {
     maxConcurrency: env.EVENTS_MAX_CONCURRENCY,
     maxBatchSize: env.EVENTS_MAX_BATCH_SIZE,
     memoryPressureThreshold: env.EVENTS_MEMORY_PRESSURE_THRESHOLD,
+    loadSheddingThreshold: env.EVENTS_LOAD_SHEDDING_THRESHOLD,
+    loadSheddingEnabled: env.EVENTS_LOAD_SHEDDING_ENABLED,
     redis: {
       port: env.PUBSUB_REDIS_PORT,
       host: env.PUBSUB_REDIS_HOST,
@@ -1396,6 +1406,26 @@ function initializeEventRepo() {
     collect() {
       const status = repo.flushSchedulerStatus;
       this.set(status.activeFlushes);
+    },
+    registers: [metricsRegister],
+  });
+
+  new Gauge({
+    name: "event_flush_scheduler_dropped_events",
+    help: "Total number of events dropped due to load shedding",
+    collect() {
+      const status = repo.flushSchedulerStatus;
+      this.set(status.metrics.droppedEvents);
+    },
+    registers: [metricsRegister],
+  });
+
+  new Gauge({
+    name: "event_flush_scheduler_is_load_shedding",
+    help: "Whether load shedding is currently active (1 = active, 0 = inactive)",
+    collect() {
+      const status = repo.flushSchedulerStatus;
+      this.set(status.isLoadShedding ? 1 : 0);
     },
     registers: [metricsRegister],
   });

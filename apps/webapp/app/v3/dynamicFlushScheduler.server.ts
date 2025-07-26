@@ -1,6 +1,7 @@
 import { nanoid } from "nanoid";
 import pLimit from "p-limit";
 import { logger } from "~/services/logger.server";
+import { TaskEventKind } from "@trigger.dev/database";
 
 export type DynamicFlushSchedulerConfig<T> = {
   batchSize: number;
@@ -11,6 +12,9 @@ export type DynamicFlushSchedulerConfig<T> = {
   maxConcurrency?: number;
   maxBatchSize?: number;
   memoryPressureThreshold?: number; // Number of items that triggers increased concurrency
+  loadSheddingThreshold?: number; // Number of items that triggers load shedding
+  loadSheddingEnabled?: boolean;
+  isDroppableEvent?: (item: T) => boolean; // Function to determine if an event can be dropped
 };
 
 export class DynamicFlushScheduler<T> {
@@ -35,7 +39,15 @@ export class DynamicFlushScheduler<T> {
     flushedBatches: 0,
     failedBatches: 0,
     totalItemsFlushed: 0,
+    droppedEvents: 0,
+    droppedEventsByKind: new Map<string, number>(),
   };
+
+  // New properties for load shedding
+  private readonly loadSheddingThreshold: number;
+  private readonly loadSheddingEnabled: boolean;
+  private readonly isDroppableEvent?: (item: T) => boolean;
+  private isLoadShedding: boolean = false;
 
   constructor(config: DynamicFlushSchedulerConfig<T>) {
     this.batchQueue = [];
@@ -52,6 +64,11 @@ export class DynamicFlushScheduler<T> {
     this.maxBatchSize = config.maxBatchSize ?? config.batchSize * 5;
     this.memoryPressureThreshold = config.memoryPressureThreshold ?? config.batchSize * 20;
     
+    // Initialize load shedding parameters
+    this.loadSheddingThreshold = config.loadSheddingThreshold ?? config.batchSize * 50;
+    this.loadSheddingEnabled = config.loadSheddingEnabled ?? true;
+    this.isDroppableEvent = config.isDroppableEvent;
+    
     // Start with minimum concurrency
     this.limiter = pLimit(this.minConcurrency);
     
@@ -60,8 +77,45 @@ export class DynamicFlushScheduler<T> {
   }
 
   addToBatch(items: T[]): void {
-    this.currentBatch.push(...items);
-    this.totalQueuedItems += items.length;
+    let itemsToAdd = items;
+    
+    // Apply load shedding if enabled and we're over the threshold
+    if (this.loadSheddingEnabled && this.totalQueuedItems >= this.loadSheddingThreshold) {
+      const { kept, dropped } = this.applyLoadShedding(items);
+      itemsToAdd = kept;
+      
+      if (dropped.length > 0) {
+        this.metrics.droppedEvents += dropped.length;
+        
+        // Track dropped events by kind if possible
+        dropped.forEach((item) => {
+          const kind = this.getEventKind(item);
+          if (kind) {
+            const currentCount = this.metrics.droppedEventsByKind.get(kind) || 0;
+            this.metrics.droppedEventsByKind.set(kind, currentCount + 1);
+          }
+        });
+        
+        if (!this.isLoadShedding) {
+          this.isLoadShedding = true;
+          logger.warn("Load shedding activated", {
+            totalQueuedItems: this.totalQueuedItems,
+            threshold: this.loadSheddingThreshold,
+            droppedCount: dropped.length,
+          });
+        }
+      }
+    } else if (this.isLoadShedding && this.totalQueuedItems < this.loadSheddingThreshold * 0.8) {
+      this.isLoadShedding = false;
+      logger.info("Load shedding deactivated", {
+        totalQueuedItems: this.totalQueuedItems,
+        threshold: this.loadSheddingThreshold,
+        totalDropped: this.metrics.droppedEvents,
+      });
+    }
+    
+    this.currentBatch.push(...itemsToAdd);
+    this.totalQueuedItems += itemsToAdd.length;
 
     // Check if we need to create a batch
     if (this.currentBatch.length >= this.currentBatchSize) {
@@ -217,6 +271,11 @@ export class DynamicFlushScheduler<T> {
   private startMetricsReporter(): void {
     // Report metrics every 30 seconds
     setInterval(() => {
+      const droppedByKind: Record<string, number> = {};
+      this.metrics.droppedEventsByKind.forEach((count, kind) => {
+        droppedByKind[kind] = count;
+      });
+      
       logger.info("DynamicFlushScheduler metrics", {
         totalQueuedItems: this.totalQueuedItems,
         batchQueueLength: this.batchQueue.length,
@@ -225,13 +284,50 @@ export class DynamicFlushScheduler<T> {
         activeConcurrent: this.limiter.activeCount,
         pendingConcurrent: this.limiter.pendingCount,
         currentBatchSize: this.currentBatchSize,
-        metrics: this.metrics,
+        isLoadShedding: this.isLoadShedding,
+        metrics: {
+          ...this.metrics,
+          droppedEventsByKind,
+        },
       });
     }, 30000);
   }
 
+  private applyLoadShedding(items: T[]): { kept: T[]; dropped: T[] } {
+    if (!this.isDroppableEvent) {
+      // If no function provided to determine droppable events, keep all
+      return { kept: items, dropped: [] };
+    }
+    
+    const kept: T[] = [];
+    const dropped: T[] = [];
+    
+    for (const item of items) {
+      if (this.isDroppableEvent(item)) {
+        dropped.push(item);
+      } else {
+        kept.push(item);
+      }
+    }
+    
+    return { kept, dropped };
+  }
+  
+  private getEventKind(item: T): string | undefined {
+    // Try to extract the kind from the event if it has one
+    if (item && typeof item === 'object' && 'kind' in item) {
+      return String(item.kind);
+    }
+    return undefined;
+  }
+
   // Method to get current status
   getStatus() {
+    const droppedByKind: Record<string, number> = {};
+    this.metrics.droppedEventsByKind.forEach((count, kind) => {
+      droppedByKind[kind] = count;
+    });
+    
     return {
       queuedItems: this.totalQueuedItems,
       batchQueueLength: this.batchQueue.length,
@@ -239,7 +335,11 @@ export class DynamicFlushScheduler<T> {
       concurrency: this.limiter.concurrency,
       activeFlushes: this.limiter.activeCount,
       pendingFlushes: this.limiter.pendingCount,
-      metrics: { ...this.metrics },
+      isLoadShedding: this.isLoadShedding,
+      metrics: { 
+        ...this.metrics,
+        droppedEventsByKind: droppedByKind,
+      },
     };
   }
 
