@@ -226,15 +226,15 @@ export class DynamicFlushScheduler<T> {
   private adjustConcurrency(backOff: boolean = false): void {
     const currentConcurrency = this.limiter.concurrency;
     let newConcurrency = currentConcurrency;
+    
+    // Calculate pressure metrics - moved outside the if/else block
+    const queuePressure = this.totalQueuedItems / this.memoryPressureThreshold;
+    const timeSinceLastFlush = Date.now() - this.lastFlushTime;
 
     if (backOff) {
       // Reduce concurrency on failures
       newConcurrency = Math.max(this.minConcurrency, Math.floor(currentConcurrency * 0.75));
     } else {
-      // Calculate pressure metrics
-      const queuePressure = this.totalQueuedItems / this.memoryPressureThreshold;
-      const timeSinceLastFlush = Date.now() - this.lastFlushTime;
-
       if (queuePressure > 0.8 || timeSinceLastFlush > this.FLUSH_INTERVAL * 2) {
         // High pressure - increase concurrency
         newConcurrency = Math.min(this.maxConcurrency, currentConcurrency + 2);
