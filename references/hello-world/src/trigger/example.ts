@@ -373,3 +373,68 @@ export const largeAttributesTask = task({
     });
   },
 });
+
+export const lotsOfLogsParentTask = task({
+  id: "lots-of-logs-parent",
+  run: async (payload: { count: number }, { ctx }) => {
+    logger.info("Hello, world from the lots of logs parent task", { count: payload.count });
+    await lotsOfLogsTask.batchTriggerAndWait(
+      Array.from({ length: 20 }, (_, i) => ({
+        payload: { count: payload.count },
+      }))
+    );
+  },
+});
+
+export const lotsOfLogsTask = task({
+  id: "lots-of-logs",
+  run: async (payload: { count: number }, { ctx }) => {
+    logger.info("Hello, world from the lots of logs task", { count: payload.count });
+
+    for (let i = 0; i < payload.count; i++) {
+      logger.info("Hello, world from the lots of logs task", { count: i });
+    }
+
+    await setTimeout(1000);
+
+    for (let i = 0; i < payload.count; i++) {
+      logger.info("Hello, world from the lots of logs task", { count: i });
+    }
+
+    await setTimeout(1000);
+
+    for (let i = 0; i < payload.count; i++) {
+      logger.info("Hello, world from the lots of logs task", { count: i });
+    }
+
+    await setTimeout(1000);
+
+    for (let i = 0; i < payload.count; i++) {
+      logger.info("Hello, world from the lots of logs task", { count: i });
+    }
+
+    await setTimeout(1000);
+
+    for (let i = 0; i < payload.count; i++) {
+      logger.info("Hello, world from the lots of logs task", { count: i });
+    }
+
+    await setTimeout(1000);
+
+    for (let i = 0; i < payload.count; i++) {
+      logger.info("Hello, world from the lots of logs task", { count: i });
+    }
+
+    await setTimeout(1000);
+
+    for (let i = 0; i < payload.count; i++) {
+      logger.info("Hello, world from the lots of logs task", { count: i });
+    }
+
+    await setTimeout(1000);
+
+    for (let i = 0; i < payload.count; i++) {
+      logger.info("Hello, world from the lots of logs task", { count: i });
+    }
+  },
+});
