@@ -18,13 +18,13 @@ export type DynamicFlushSchedulerConfig<T> = {
 };
 
 export class DynamicFlushScheduler<T> {
-  private batchQueue: T[][]; 
-  private currentBatch: T[]; 
+  private batchQueue: T[][];
+  private currentBatch: T[];
   private readonly BATCH_SIZE: number;
   private readonly FLUSH_INTERVAL: number;
   private flushTimer: NodeJS.Timeout | null;
   private readonly callback: (flushId: string, batch: T[]) => Promise<void>;
-  
+
   // New properties for dynamic scaling
   private readonly minConcurrency: number;
   private readonly maxConcurrency: number;
@@ -57,36 +57,36 @@ export class DynamicFlushScheduler<T> {
     this.FLUSH_INTERVAL = config.flushInterval;
     this.callback = config.callback;
     this.flushTimer = null;
-    
+
     // Initialize dynamic scaling parameters
     this.minConcurrency = config.minConcurrency ?? 1;
     this.maxConcurrency = config.maxConcurrency ?? 10;
     this.maxBatchSize = config.maxBatchSize ?? config.batchSize * 5;
     this.memoryPressureThreshold = config.memoryPressureThreshold ?? config.batchSize * 20;
-    
+
     // Initialize load shedding parameters
     this.loadSheddingThreshold = config.loadSheddingThreshold ?? config.batchSize * 50;
     this.loadSheddingEnabled = config.loadSheddingEnabled ?? true;
     this.isDroppableEvent = config.isDroppableEvent;
-    
+
     // Start with minimum concurrency
     this.limiter = pLimit(this.minConcurrency);
-    
+
     this.startFlushTimer();
     this.startMetricsReporter();
   }
 
   addToBatch(items: T[]): void {
     let itemsToAdd = items;
-    
+
     // Apply load shedding if enabled and we're over the threshold
     if (this.loadSheddingEnabled && this.totalQueuedItems >= this.loadSheddingThreshold) {
       const { kept, dropped } = this.applyLoadShedding(items);
       itemsToAdd = kept;
-      
+
       if (dropped.length > 0) {
         this.metrics.droppedEvents += dropped.length;
-        
+
         // Track dropped events by kind if possible
         dropped.forEach((item) => {
           const kind = this.getEventKind(item);
@@ -95,7 +95,7 @@ export class DynamicFlushScheduler<T> {
             this.metrics.droppedEventsByKind.set(kind, currentCount + 1);
           }
         });
-        
+
         if (!this.isLoadShedding) {
           this.isLoadShedding = true;
           logger.warn("Load shedding activated", {
@@ -113,7 +113,7 @@ export class DynamicFlushScheduler<T> {
         totalDropped: this.metrics.droppedEvents,
       });
     }
-    
+
     this.currentBatch.push(...itemsToAdd);
     this.totalQueuedItems += itemsToAdd.length;
 
@@ -121,14 +121,14 @@ export class DynamicFlushScheduler<T> {
     if (this.currentBatch.length >= this.currentBatchSize) {
       this.createBatch();
     }
-    
+
     // Adjust concurrency based on queue pressure
     this.adjustConcurrency();
   }
 
   private createBatch(): void {
     if (this.currentBatch.length === 0) return;
-    
+
     this.batchQueue.push(this.currentBatch);
     this.currentBatch = [];
     this.flushBatches();
@@ -155,7 +155,7 @@ export class DynamicFlushScheduler<T> {
 
   private async flushBatches(): Promise<void> {
     const batchesToFlush: T[][] = [];
-    
+
     // Dequeue all available batches up to current concurrency limit
     while (this.batchQueue.length > 0 && batchesToFlush.length < this.limiter.concurrency) {
       const batch = this.batchQueue.shift();
@@ -163,7 +163,7 @@ export class DynamicFlushScheduler<T> {
         batchesToFlush.push(batch);
       }
     }
-    
+
     if (batchesToFlush.length === 0) return;
 
     // Schedule all batches for concurrent processing
@@ -171,18 +171,18 @@ export class DynamicFlushScheduler<T> {
       this.limiter(async () => {
         const flushId = nanoid();
         const itemCount = batch.length;
-        
+
         try {
           const startTime = Date.now();
           await this.callback(flushId, batch);
-          
+
           const duration = Date.now() - startTime;
           this.totalQueuedItems -= itemCount;
           this.consecutiveFlushFailures = 0;
           this.lastFlushTime = Date.now();
           this.metrics.flushedBatches++;
           this.metrics.totalItemsFlushed += itemCount;
-          
+
           logger.debug("Batch flushed successfully", {
             flushId,
             itemCount,
@@ -194,18 +194,18 @@ export class DynamicFlushScheduler<T> {
         } catch (error) {
           this.consecutiveFlushFailures++;
           this.metrics.failedBatches++;
-          
+
           logger.error("Error flushing batch", {
             flushId,
             itemCount,
             error,
             consecutiveFailures: this.consecutiveFlushFailures,
           });
-          
+
           // Re-queue the batch at the front if it fails
           this.batchQueue.unshift(batch);
           this.totalQueuedItems += itemCount;
-          
+
           // Back off on failures
           if (this.consecutiveFlushFailures > 3) {
             this.adjustConcurrency(true);
@@ -213,7 +213,7 @@ export class DynamicFlushScheduler<T> {
         }
       })
     );
-    
+
     // Don't await here - let them run concurrently
     Promise.allSettled(flushPromises).then(() => {
       // After flush completes, check if we need to flush more
@@ -226,7 +226,7 @@ export class DynamicFlushScheduler<T> {
   private adjustConcurrency(backOff: boolean = false): void {
     const currentConcurrency = this.limiter.concurrency;
     let newConcurrency = currentConcurrency;
-    
+
     if (backOff) {
       // Reduce concurrency on failures
       newConcurrency = Math.max(this.minConcurrency, Math.floor(currentConcurrency * 0.75));
@@ -234,7 +234,7 @@ export class DynamicFlushScheduler<T> {
       // Calculate pressure metrics
       const queuePressure = this.totalQueuedItems / this.memoryPressureThreshold;
       const timeSinceLastFlush = Date.now() - this.lastFlushTime;
-      
+
       if (queuePressure > 0.8 || timeSinceLastFlush > this.FLUSH_INTERVAL * 2) {
         // High pressure - increase concurrency
         newConcurrency = Math.min(this.maxConcurrency, currentConcurrency + 2);
@@ -243,7 +243,7 @@ export class DynamicFlushScheduler<T> {
         newConcurrency = Math.max(this.minConcurrency, currentConcurrency - 1);
       }
     }
-    
+
     // Adjust batch size based on pressure
     if (this.totalQueuedItems > this.memoryPressureThreshold) {
       this.currentBatchSize = Math.min(
@@ -253,11 +253,11 @@ export class DynamicFlushScheduler<T> {
     } else {
       this.currentBatchSize = this.BATCH_SIZE;
     }
-    
+
     // Update concurrency if changed
     if (newConcurrency !== currentConcurrency) {
       this.limiter = pLimit(newConcurrency);
-      
+
       logger.info("Adjusted flush concurrency", {
         previousConcurrency: currentConcurrency,
         newConcurrency,
@@ -267,7 +267,7 @@ export class DynamicFlushScheduler<T> {
       });
     }
   }
-  
+
   private startMetricsReporter(): void {
     // Report metrics every 30 seconds
     setInterval(() => {
@@ -275,7 +275,7 @@ export class DynamicFlushScheduler<T> {
       this.metrics.droppedEventsByKind.forEach((count, kind) => {
         droppedByKind[kind] = count;
       });
-      
+
       logger.info("DynamicFlushScheduler metrics", {
         totalQueuedItems: this.totalQueuedItems,
         batchQueueLength: this.batchQueue.length,
@@ -287,7 +287,7 @@ export class DynamicFlushScheduler<T> {
         isLoadShedding: this.isLoadShedding,
         metrics: {
           ...this.metrics,
-          droppedEventsByKind,
+          droppedByKind,
         },
       });
     }, 30000);
@@ -298,10 +298,10 @@ export class DynamicFlushScheduler<T> {
       // If no function provided to determine droppable events, keep all
       return { kept: items, dropped: [] };
     }
-    
+
     const kept: T[] = [];
     const dropped: T[] = [];
-    
+
     for (const item of items) {
       if (this.isDroppableEvent(item)) {
         dropped.push(item);
@@ -309,13 +309,13 @@ export class DynamicFlushScheduler<T> {
         kept.push(item);
       }
     }
-    
+
     return { kept, dropped };
   }
-  
+
   private getEventKind(item: T): string | undefined {
     // Try to extract the kind from the event if it has one
-    if (item && typeof item === 'object' && 'kind' in item) {
+    if (item && typeof item === "object" && "kind" in item) {
       return String(item.kind);
     }
     return undefined;
@@ -327,7 +327,7 @@ export class DynamicFlushScheduler<T> {
     this.metrics.droppedEventsByKind.forEach((count, kind) => {
       droppedByKind[kind] = count;
     });
-    
+
     return {
       queuedItems: this.totalQueuedItems,
       batchQueueLength: this.batchQueue.length,
@@ -336,7 +336,7 @@ export class DynamicFlushScheduler<T> {
       activeFlushes: this.limiter.activeCount,
       pendingFlushes: this.limiter.pendingCount,
       isLoadShedding: this.isLoadShedding,
-      metrics: { 
+      metrics: {
         ...this.metrics,
         droppedEventsByKind: droppedByKind,
       },
@@ -348,12 +348,12 @@ export class DynamicFlushScheduler<T> {
     if (this.flushTimer) {
       clearInterval(this.flushTimer);
     }
-    
+
     // Flush any remaining items
     if (this.currentBatch.length > 0) {
       this.createBatch();
     }
-    
+
     // Wait for all pending flushes to complete
     while (this.batchQueue.length > 0 || this.limiter.activeCount > 0) {
       await new Promise((resolve) => setTimeout(resolve, 100));
