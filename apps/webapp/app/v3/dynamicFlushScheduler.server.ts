@@ -1,7 +1,6 @@
+import { Logger } from "@trigger.dev/core/logger";
 import { nanoid } from "nanoid";
 import pLimit from "p-limit";
-import { logger } from "~/services/logger.server";
-import { TaskEventKind } from "@trigger.dev/database";
 
 export type DynamicFlushSchedulerConfig<T> = {
   batchSize: number;
@@ -48,6 +47,8 @@ export class DynamicFlushScheduler<T> {
   private readonly loadSheddingEnabled: boolean;
   private readonly isDroppableEvent?: (item: T) => boolean;
   private isLoadShedding: boolean = false;
+
+  private readonly logger: Logger = new Logger("EventRepo.DynamicFlushScheduler", "debug");
 
   constructor(config: DynamicFlushSchedulerConfig<T>) {
     this.batchQueue = [];
@@ -98,16 +99,17 @@ export class DynamicFlushScheduler<T> {
 
         if (!this.isLoadShedding) {
           this.isLoadShedding = true;
-          logger.warn("Load shedding activated", {
-            totalQueuedItems: this.totalQueuedItems,
-            threshold: this.loadSheddingThreshold,
-            droppedCount: dropped.length,
-          });
         }
+
+        this.logger.warn("Load shedding", {
+          totalQueuedItems: this.totalQueuedItems,
+          threshold: this.loadSheddingThreshold,
+          droppedCount: dropped.length,
+        });
       }
     } else if (this.isLoadShedding && this.totalQueuedItems < this.loadSheddingThreshold * 0.8) {
       this.isLoadShedding = false;
-      logger.info("Load shedding deactivated", {
+      this.logger.info("Load shedding deactivated", {
         totalQueuedItems: this.totalQueuedItems,
         threshold: this.loadSheddingThreshold,
         totalDropped: this.metrics.droppedEvents,
@@ -183,7 +185,7 @@ export class DynamicFlushScheduler<T> {
           this.metrics.flushedBatches++;
           this.metrics.totalItemsFlushed += itemCount;
 
-          logger.debug("Batch flushed successfully", {
+          this.logger.debug("Batch flushed successfully", {
             flushId,
             itemCount,
             duration,
@@ -195,7 +197,7 @@ export class DynamicFlushScheduler<T> {
           this.consecutiveFlushFailures++;
           this.metrics.failedBatches++;
 
-          logger.error("Error flushing batch", {
+          this.logger.error("Error flushing batch", {
             flushId,
             itemCount,
             error,
@@ -223,13 +225,21 @@ export class DynamicFlushScheduler<T> {
     });
   }
 
+  private lastConcurrencyAdjustment: number = Date.now();
+  
   private adjustConcurrency(backOff: boolean = false): void {
     const currentConcurrency = this.limiter.concurrency;
     let newConcurrency = currentConcurrency;
-    
+
     // Calculate pressure metrics - moved outside the if/else block
     const queuePressure = this.totalQueuedItems / this.memoryPressureThreshold;
     const timeSinceLastFlush = Date.now() - this.lastFlushTime;
+    const timeSinceLastAdjustment = Date.now() - this.lastConcurrencyAdjustment;
+
+    // Don't adjust too frequently (except for backoff)
+    if (!backOff && timeSinceLastAdjustment < 1000) {
+      return;
+    }
 
     if (backOff) {
       // Reduce concurrency on failures
@@ -258,12 +268,13 @@ export class DynamicFlushScheduler<T> {
     if (newConcurrency !== currentConcurrency) {
       this.limiter = pLimit(newConcurrency);
 
-      logger.info("Adjusted flush concurrency", {
+      this.logger.info("Adjusted flush concurrency", {
         previousConcurrency: currentConcurrency,
         newConcurrency,
         queuePressure,
         totalQueuedItems: this.totalQueuedItems,
         currentBatchSize: this.currentBatchSize,
+        memoryPressureThreshold: this.memoryPressureThreshold,
       });
     }
   }
@@ -276,7 +287,7 @@ export class DynamicFlushScheduler<T> {
         droppedByKind[kind] = count;
       });
 
-      logger.info("DynamicFlushScheduler metrics", {
+      this.logger.info("DynamicFlushScheduler metrics", {
         totalQueuedItems: this.totalQueuedItems,
         batchQueueLength: this.batchQueue.length,
         currentBatchLength: this.currentBatch.length,

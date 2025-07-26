@@ -1349,7 +1349,7 @@ function initializeEventRepo() {
     maxBatchSize: env.EVENTS_MAX_BATCH_SIZE,
     memoryPressureThreshold: env.EVENTS_MEMORY_PRESSURE_THRESHOLD,
     loadSheddingThreshold: env.EVENTS_LOAD_SHEDDING_THRESHOLD,
-    loadSheddingEnabled: env.EVENTS_LOAD_SHEDDING_ENABLED,
+    loadSheddingEnabled: env.EVENTS_LOAD_SHEDDING_ENABLED === "1",
     redis: {
       port: env.PUBSUB_REDIS_PORT,
       host: env.PUBSUB_REDIS_HOST,
