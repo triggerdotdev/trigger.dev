@@ -28,6 +28,7 @@ import { QueueOptions } from "./queues.js";
 import { AnySchemaParseFn, inferSchemaIn, inferSchemaOut, Schema } from "./schemas.js";
 import { inferToolParameters, ToolTaskParameters } from "./tools.js";
 import { Prettify } from "./utils.js";
+import { JSONSchema } from "./jsonSchema.js";
 
 export type Queue = QueueOptions;
 export type TaskSchema = Schema;
@@ -344,7 +345,7 @@ type CommonTaskOptions<
    * JSON Schema for the task payload. This will be synced to the server during indexing.
    * Should be a valid JSON Schema Draft 7 object.
    */
-  payloadSchema?: Record<string, unknown>;
+  payloadSchema?: JSONSchema;
 };
 
 export type TaskOptions<
