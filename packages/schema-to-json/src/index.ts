@@ -1,4 +1,8 @@
+import type { JSONSchema7, JSONSchema7Definition } from '@types/json-schema';
+
 export type Schema = unknown;
+export type JSONSchema = JSONSchema7;
+export type JSONSchemaDefinition = JSONSchema7Definition;
 
 export interface ConversionOptions {
   /**
@@ -13,9 +17,9 @@ export interface ConversionOptions {
 
 export interface ConversionResult {
   /**
-   * The JSON Schema representation
+   * The JSON Schema representation (JSON Schema Draft 7)
    */
-  jsonSchema: any;
+  jsonSchema: JSONSchema;
   /**
    * The detected schema type
    */

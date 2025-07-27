@@ -43,6 +43,7 @@
     "check-exports": "tshy --check-exports"
   },
   "dependencies": {
+    "@types/json-schema": "^7.0.15",
     "zod-to-json-schema": "^3.24.5",
     "@sodaru/yup-to-json-schema": "^2.0.1"
   },
