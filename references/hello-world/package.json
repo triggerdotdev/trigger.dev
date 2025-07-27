@@ -8,10 +8,14 @@
   "dependencies": {
     "@trigger.dev/build": "workspace:*",
     "@trigger.dev/sdk": "workspace:*",
+    "@trigger.dev/schema-to-json": "workspace:*",
+    "arktype": "^2.0.0",
     "openai": "^4.97.0",
     "puppeteer-core": "^24.15.0",
     "replicate": "^1.0.1",
-    "zod": "3.23.8"
+    "yup": "^1.6.1",
+    "zod": "3.23.8",
+    "@sinclair/typebox": "^0.34.3"
   },
   "scripts": {
     "dev": "trigger dev",
