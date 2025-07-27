@@ -1,13 +1,8 @@
-import { task, schemaTask, logger } from "@trigger.dev/sdk/v3";
+import { task, schemaTask, logger, type JSONSchema } from "@trigger.dev/sdk/v3";
 import { z } from "zod";
-import { schemaToJsonSchema, initializeSchemaConverters, type JSONSchema } from "@trigger.dev/schema-to-json";
 import * as y from "yup";
 import { type } from "arktype";
 import { Type, Static } from "@sinclair/typebox";
-
-// Initialize converters for schemas that need external libraries
-// This is only needed if you want to convert Zod 3, Yup, or Effect schemas
-await initializeSchemaConverters();
 
 // ===========================================
 // Example 1: Using schemaTask with Zod
@@ -235,8 +230,12 @@ export const processEventWithTypeBox = task({
 });
 
 // ===========================================
-// Example 6: Converting schemas at build time
+// Example 6: Using plain task with a Zod schema
 // ===========================================
+// If you need to use a plain task but have a Zod schema,
+// you should use schemaTask instead for better DX.
+// This example shows what NOT to do:
+
 const notificationSchema = z.object({
   recipientId: z.string(),
   type: z.enum(["email", "sms", "push"]),
@@ -247,17 +246,25 @@ const notificationSchema = z.object({
   metadata: z.record(z.unknown()).optional(),
 });
 
-// Convert the schema to JSON Schema at build time
-const notificationJsonSchema = schemaToJsonSchema(notificationSchema);
-
-export const sendNotificationWithConversion = task({
-  id: "json-schema-conversion-example",
-  // Use the converted JSON Schema
-  payloadSchema: notificationJsonSchema?.jsonSchema,
+// ❌ Don't do this - use schemaTask instead!
+export const sendNotificationBadExample = task({
+  id: "json-schema-dont-do-this",
   run: async (payload, { ctx }) => {
-    // Validate the payload using the original Zod schema
+    // You'd have to manually validate
     const notification = notificationSchema.parse(payload);
     
+    logger.info("This is not ideal - use schemaTask instead!");
+
+    return { sent: true };
+  },
+});
+
+// ✅ Do this instead - much better!
+export const sendNotificationGoodExample = schemaTask({
+  id: "json-schema-do-this-instead",
+  schema: notificationSchema,
+  run: async (notification, { ctx }) => {
+    // notification is already validated and typed!
     logger.info("Sending notification", { 
       recipientId: notification.recipientId,
       type: notification.type,

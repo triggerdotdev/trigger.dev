@@ -28,9 +28,16 @@ import {
   TaskRunExecutionResult,
   TaskRunPromise,
 } from "@trigger.dev/core/v3";
-import { schemaToJsonSchema } from "@trigger.dev/schema-to-json";
+import { schemaToJsonSchema, initializeSchemaConverters } from "@trigger.dev/schema-to-json";
 import { PollOptions, runs } from "./runs.js";
 import { tracer } from "./tracer.js";
+
+// Initialize schema converters once when the module loads
+// This happens automatically, users don't need to know about it
+initializeSchemaConverters().catch(() => {
+  // Silently fail if converters can't be initialized
+  // Built-in conversions will still work
+});
 
 import type {
   AnyOnCatchErrorHookFunction,

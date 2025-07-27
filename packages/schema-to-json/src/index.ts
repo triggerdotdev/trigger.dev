@@ -1,8 +1,18 @@
-import type { JSONSchema7, JSONSchema7Definition } from '@types/json-schema';
+import type { JSONSchema7, JSONSchema7Definition, JSONSchema7Type, JSONSchema7TypeName, JSONSchema7Object, JSONSchema7Array } from '@types/json-schema';
 
 export type Schema = unknown;
 export type JSONSchema = JSONSchema7;
 export type JSONSchemaDefinition = JSONSchema7Definition;
+
+// Re-export the standard JSON Schema types for convenience
+export type {
+  JSONSchema7,
+  JSONSchema7Type,
+  JSONSchema7TypeName,
+  JSONSchema7Definition,
+  JSONSchema7Object,
+  JSONSchema7Array,
+} from '@types/json-schema';
 
 export interface ConversionOptions {
   /**
