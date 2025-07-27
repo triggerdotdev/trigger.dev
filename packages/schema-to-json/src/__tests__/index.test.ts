@@ -1,12 +1,32 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { z } from 'zod';
 import * as y from 'yup';
 import { type } from 'arktype';
 import { Schema } from '@effect/schema';
 import { Type } from '@sinclair/typebox';
-import { schemaToJsonSchema, canConvertSchema, detectSchemaType } from '../index.js';
+import { 
+  schemaToJsonSchema, 
+  canConvertSchema, 
+  detectSchemaType, 
+  initializeSchemaConverters,
+  areConvertersInitialized 
+} from '../index.js';
+
+// Initialize converters before running tests
+beforeAll(async () => {
+  await initializeSchemaConverters();
+});
 
 describe('schemaToJsonSchema', () => {
+  describe('Initialization', () => {
+    it('should have converters initialized', () => {
+      const status = areConvertersInitialized();
+      expect(status.zod).toBe(true);
+      expect(status.yup).toBe(true);
+      expect(status.effect).toBe(true);
+    });
+  });
+
   describe('Zod schemas', () => {
     it('should convert a simple Zod object schema', () => {
       const schema = z.object({
