@@ -280,6 +280,7 @@ async function createWorkerTask(
         fileId: tasksToBackgroundFiles?.get(task.id) ?? null,
         maxDurationInSeconds: task.maxDuration ? clampMaxDuration(task.maxDuration) : null,
         queueId: queue.id,
+        payloadSchema: task.payloadSchema,
       },
     });
   } catch (error) {

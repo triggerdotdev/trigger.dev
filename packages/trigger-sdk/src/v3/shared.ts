@@ -11,6 +11,7 @@ import {
   flattenIdempotencyKey,
   getEnvVar,
   getSchemaParseFn,
+  getSchemaToJsonSchema,
   InitOutput,
   lifecycleHooks,
   makeIdempotencyKey,
@@ -204,6 +205,7 @@ export function createTask<
     retry: params.retry ? { ...defaultRetryOptions, ...params.retry } : undefined,
     machine: typeof params.machine === "string" ? { preset: params.machine } : params.machine,
     maxDuration: params.maxDuration,
+    payloadSchema: params.payloadSchema,
     fns: {
       run: params.run,
     },
@@ -334,6 +336,7 @@ export function createSchemaTask<
     retry: params.retry ? { ...defaultRetryOptions, ...params.retry } : undefined,
     machine: typeof params.machine === "string" ? { preset: params.machine } : params.machine,
     maxDuration: params.maxDuration,
+    payloadSchema: params.schema ? getSchemaToJsonSchema(params.schema) : undefined,
     fns: {
       run: params.run,
       parsePayload,
