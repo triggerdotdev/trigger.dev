@@ -62,6 +62,35 @@ describe('schemaToJsonSchema', () => {
       expect(result?.jsonSchema).toBeDefined();
       // The exact structure depends on zod-to-json-schema implementation
     });
+
+    it('should handle Zod 4 schema with built-in toJsonSchema method', () => {
+      // Mock a Zod 4 schema with toJsonSchema method
+      const mockZod4Schema = {
+        parse: (val: unknown) => val,
+        parseAsync: async (val: unknown) => val,
+        toJsonSchema: () => ({
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            count: { type: 'number' }
+          },
+          required: ['id', 'count']
+        })
+      };
+
+      const result = schemaToJsonSchema(mockZod4Schema);
+      
+      expect(result).toBeDefined();
+      expect(result?.schemaType).toBe('zod');
+      expect(result?.jsonSchema).toEqual({
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          count: { type: 'number' }
+        },
+        required: ['id', 'count']
+      });
+    });
   });
 
   describe('Yup schemas', () => {
