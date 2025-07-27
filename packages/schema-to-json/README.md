@@ -10,7 +10,9 @@ npm install @trigger.dev/schema-to-json
 
 ## Supported Schema Libraries
 
-- ✅ **Zod** - Full support via `zod-to-json-schema`
+- ✅ **Zod** - Full support
+  - Zod 4: Native support via built-in `toJsonSchema` method
+  - Zod 3: Support via `zod-to-json-schema` library
 - ✅ **Yup** - Full support via `@sodaru/yup-to-json-schema`
 - ✅ **ArkType** - Native support (built-in `toJsonSchema` method)
 - ✅ **Effect/Schema** - Full support via Effect's JSONSchema module

@@ -48,6 +48,20 @@ export function schemaToJsonSchema(schema: Schema, options?: ConversionOptions):
 
   // Check if it's a Zod schema
   if (typeof parser.parseAsync === "function" || typeof parser.parse === "function") {
+    // Check if it's Zod 4 with built-in toJsonSchema method
+    if (typeof parser.toJsonSchema === "function") {
+      try {
+        const jsonSchema = parser.toJsonSchema();
+        return {
+          jsonSchema: options?.additionalProperties ? { ...jsonSchema, ...options.additionalProperties } : jsonSchema,
+          schemaType: 'zod'
+        };
+      } catch (error) {
+        console.warn('Failed to convert Zod 4 schema using built-in toJsonSchema:', error);
+      }
+    }
+
+    // Fall back to zod-to-json-schema library (for Zod 3 or if built-in method fails)
     try {
       const { zodToJsonSchema } = require('zod-to-json-schema');
       const jsonSchema = options?.name 
@@ -68,7 +82,7 @@ export function schemaToJsonSchema(schema: Schema, options?: ConversionOptions):
         schemaType: 'zod'
       };
     } catch (error) {
-      console.warn('Failed to convert Zod schema to JSON Schema:', error);
+      console.warn('Failed to convert Zod schema to JSON Schema using zod-to-json-schema:', error);
       return undefined;
     }
   }

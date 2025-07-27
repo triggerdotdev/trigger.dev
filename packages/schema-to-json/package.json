@@ -57,7 +57,7 @@
     "valibot": "^1.0.0-beta.8",
     "vitest": "^2.1.8",
     "yup": "^1.6.1",
-    "zod": "^3.24.1"
+    "zod": "^3.24.1 || ^4.0.0"
   },
   "peerDependencies": {
     "@effect/schema": "^0.76.5",
@@ -68,7 +68,7 @@
     "typebox": "^0.34.3",
     "valibot": "^1.0.0-beta.8",
     "yup": "^1.6.1",
-    "zod": "^3.24.1"
+    "zod": "^3.24.1 || ^4.0.0"
   },
   "peerDependenciesMeta": {
     "@effect/schema": {
