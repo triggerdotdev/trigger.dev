@@ -342,8 +342,9 @@ type CommonTaskOptions<
 
   /**
    * JSON Schema for the task payload. This will be synced to the server during indexing.
+   * Should be a valid JSON Schema Draft 7 object.
    */
-  payloadSchema?: any;
+  payloadSchema?: Record<string, unknown>;
 };
 
 export type TaskOptions<
