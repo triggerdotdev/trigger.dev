@@ -73,6 +73,7 @@ export * from "./utils/interval.js";
 export * from "./config.js";
 export {
   getSchemaParseFn,
+  getSchemaToJsonSchema,
   type AnySchemaParseFn,
   type SchemaParseFn,
   isSchemaZodEsque,

@@ -339,6 +339,11 @@ type CommonTaskOptions<
    * onFailure is called after a task run has failed (meaning the run function threw an error and won't be retried anymore)
    */
   onFailure?: OnFailureHookFunction<TPayload, TInitOutput>;
+
+  /**
+   * JSON Schema for the task payload. This will be synced to the server during indexing.
+   */
+  payloadSchema?: any;
 };
 
 export type TaskOptions<
