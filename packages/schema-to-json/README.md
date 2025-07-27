@@ -8,14 +8,27 @@ Convert various schema validation libraries to JSON Schema format.
 npm install @trigger.dev/schema-to-json
 ```
 
+## Important: Bundle Safety
+
+This package is designed to be **bundle-safe**. It does NOT bundle any schema libraries (zod, yup, etc.) as dependencies. Instead:
+
+1. **Built-in conversions** work immediately (ArkType, Zod 4, TypeBox)
+2. **External conversions** (Zod 3, Yup, Effect) require the conversion libraries to be available at runtime
+
+This design ensures that:
+- ✅ Your bundle size stays small
+- ✅ You only include the schema libraries you actually use
+- ✅ Tree-shaking works properly
+- ✅ No unnecessary dependencies are installed
+
 ## Supported Schema Libraries
 
 - ✅ **Zod** - Full support
-  - Zod 4: Native support via built-in `toJsonSchema` method
-  - Zod 3: Support via `zod-to-json-schema` library
-- ✅ **Yup** - Full support via `@sodaru/yup-to-json-schema`
+  - Zod 4: Native support via built-in `toJsonSchema` method (no external deps needed)
+  - Zod 3: Requires `zod-to-json-schema` to be installed
+- ✅ **Yup** - Requires `@sodaru/yup-to-json-schema` to be installed
 - ✅ **ArkType** - Native support (built-in `toJsonSchema` method)
-- ✅ **Effect/Schema** - Full support via Effect's JSONSchema module
+- ✅ **Effect/Schema** - Requires `effect` or `@effect/schema` to be installed
 - ✅ **TypeBox** - Native support (already JSON Schema compliant)
 - ⏳ **Valibot** - Coming soon
 - ⏳ **Superstruct** - Coming soon
@@ -23,11 +36,33 @@ npm install @trigger.dev/schema-to-json
 
 ## Usage
 
+### Basic Usage (Built-in conversions only)
+
 ```typescript
 import { schemaToJsonSchema } from '@trigger.dev/schema-to-json';
+import { type } from 'arktype';
+
+// Works immediately for schemas with built-in conversion
+const arkSchema = type({
+  name: 'string',
+  age: 'number',
+});
+
+const result = schemaToJsonSchema(arkSchema);
+console.log(result);
+// { jsonSchema: {...}, schemaType: 'arktype' }
+```
+
+### Full Usage (With external conversion libraries)
+
+```typescript
+import { schemaToJsonSchema, initializeSchemaConverters } from '@trigger.dev/schema-to-json';
 import { z } from 'zod';
 
-// Convert a Zod schema
+// Initialize converters once in your app (loads conversion libraries if available)
+await initializeSchemaConverters();
+
+// Now you can convert Zod 3, Yup, and Effect schemas
 const zodSchema = z.object({
   name: z.string(),
   age: z.number(),
@@ -66,6 +101,12 @@ Convert a schema to JSON Schema format.
 - `{ jsonSchema, schemaType }` - The converted JSON Schema and detected type
 - `undefined` - If the schema cannot be converted
 
+### `initializeSchemaConverters()`
+
+Initialize the external conversion libraries. Call this once in your application if you need to convert schemas that don't have built-in JSON Schema support (Zod 3, Yup, Effect).
+
+**Returns:** `Promise<void>`
+
 ### `canConvertSchema(schema)`
 
 Check if a schema can be converted to JSON Schema.
@@ -77,6 +118,12 @@ Check if a schema can be converted to JSON Schema.
 Detect the type of schema.
 
 **Returns:** `'zod' | 'yup' | 'arktype' | 'effect' | 'valibot' | 'superstruct' | 'runtypes' | 'typebox' | 'unknown'`
+
+### `areConvertersInitialized()`
+
+Check which conversion libraries are available.
+
+**Returns:** `{ zod: boolean, yup: boolean, effect: boolean }`
 
 ## Peer Dependencies
 
