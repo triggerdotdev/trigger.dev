@@ -8,7 +8,6 @@
   "dependencies": {
     "@trigger.dev/build": "workspace:*",
     "@trigger.dev/sdk": "workspace:*",
-    "@trigger.dev/schema-to-json": "workspace:*",
     "arktype": "^2.0.0",
     "openai": "^4.97.0",
     "puppeteer-core": "^24.15.0",

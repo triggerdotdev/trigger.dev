@@ -14,6 +14,7 @@ export * from "./timeout.js";
 export * from "./webhooks.js";
 export * from "./locals.js";
 export * from "./otel.js";
+export * from "./schemas.js";
 export type { Context };
 
 import type { Context } from "./shared.js";
