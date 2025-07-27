@@ -11,7 +11,6 @@ import {
   flattenIdempotencyKey,
   getEnvVar,
   getSchemaParseFn,
-  getSchemaToJsonSchema,
   InitOutput,
   lifecycleHooks,
   makeIdempotencyKey,
@@ -29,6 +28,7 @@ import {
   TaskRunExecutionResult,
   TaskRunPromise,
 } from "@trigger.dev/core/v3";
+import { schemaToJsonSchema } from "@trigger.dev/schema-to-json";
 import { PollOptions, runs } from "./runs.js";
 import { tracer } from "./tracer.js";
 
@@ -336,7 +336,7 @@ export function createSchemaTask<
     retry: params.retry ? { ...defaultRetryOptions, ...params.retry } : undefined,
     machine: typeof params.machine === "string" ? { preset: params.machine } : params.machine,
     maxDuration: params.maxDuration,
-    payloadSchema: params.schema ? getSchemaToJsonSchema(params.schema) : undefined,
+    payloadSchema: params.schema ? schemaToJsonSchema(params.schema)?.jsonSchema : undefined,
     fns: {
       run: params.run,
       parsePayload,

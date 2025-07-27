@@ -146,36 +146,3 @@ export function getSchemaParseFn<TType>(procedureParser: Schema): SchemaParseFn<
 
   throw new Error("Could not find a validator fn");
 }
-
-export function getSchemaToJsonSchema(schema: Schema): any | undefined {
-  const parser = schema as any;
-
-  // Check if schema has a built-in toJsonSchema method (e.g., ArkType)
-  if (typeof parser.toJsonSchema === "function") {
-    return parser.toJsonSchema();
-  }
-
-  // Check if it's a Zod schema
-  if (typeof parser.parseAsync === "function" || typeof parser.parse === "function") {
-    // Zod schema detected, but we need zod-to-json-schema library to convert
-    // Return undefined for now, will be handled by the caller
-    return undefined;
-  }
-
-  // Check if it's a Yup schema
-  if (typeof parser.validateSync === "function") {
-    // Yup schema detected, but we need a yup-to-json-schema library to convert
-    // Return undefined for now, will be handled by the caller
-    return undefined;
-  }
-
-  // Check if it's an Effect schema
-  if (parser._tag === "Schema" || parser._tag === "SchemaClass") {
-    // Effect schema detected, but we need Effect's JSONSchema.make to convert
-    // Return undefined for now, will be handled by the caller
-    return undefined;
-  }
-
-  // For other schema types, return undefined
-  return undefined;
-}
