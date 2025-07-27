@@ -1,0 +1,109 @@
+{
+  "name": "@trigger.dev/schema-to-json",
+  "version": "4.0.0-v4-beta.25",
+  "description": "Convert various schema validation libraries to JSON Schema",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/triggerdotdev/trigger.dev",
+    "directory": "packages/schema-to-json"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=18.20.0"
+  },
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "import": {
+        "@triggerdotdev/source": "./src/index.ts",
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "@triggerdotdev/source": "./src/index.ts",
+        "types": "./dist/commonjs/index.d.ts",
+        "default": "./dist/commonjs/index.js"
+      }
+    }
+  },
+  "scripts": {
+    "clean": "rimraf dist",
+    "build": "npm run clean && npm run build:tshy",
+    "build:tshy": "tshy",
+    "dev": "tshy --watch",
+    "typecheck": "tsc -p tsconfig.src.json --noEmit",
+    "test": "vitest",
+    "update-version": "changeset version && node scripts/updateVersion.js",
+    "check-exports": "tshy --check-exports"
+  },
+  "dependencies": {
+    "zod-to-json-schema": "^3.24.5",
+    "@sodaru/yup-to-json-schema": "^2.0.1"
+  },
+  "devDependencies": {
+    "@effect/schema": "^0.76.5",
+    "arktype": "^2.0.0",
+    "effect": "^3.11.11",
+    "runtypes": "^6.7.0",
+    "superstruct": "^2.0.2",
+    "tshy": "^3.0.2",
+    "typebox": "^0.34.3",
+    "valibot": "^1.0.0-beta.8",
+    "vitest": "^2.1.8",
+    "yup": "^1.6.1",
+    "zod": "^3.24.1"
+  },
+  "peerDependencies": {
+    "@effect/schema": "^0.76.5",
+    "arktype": "^2.0.0",
+    "effect": "^3.11.11",
+    "runtypes": "^6.7.0",
+    "superstruct": "^2.0.2", 
+    "typebox": "^0.34.3",
+    "valibot": "^1.0.0-beta.8",
+    "yup": "^1.6.1",
+    "zod": "^3.24.1"
+  },
+  "peerDependenciesMeta": {
+    "@effect/schema": {
+      "optional": true
+    },
+    "arktype": {
+      "optional": true
+    },
+    "effect": {
+      "optional": true
+    },
+    "runtypes": {
+      "optional": true
+    },
+    "superstruct": {
+      "optional": true
+    },
+    "typebox": {
+      "optional": true
+    },
+    "valibot": {
+      "optional": true
+    },
+    "yup": {
+      "optional": true
+    },
+    "zod": {
+      "optional": true
+    }
+  },
+  "tshy": {
+    "selfLink": false,
+    "exports": {
+      ".": "./src/index.ts"
+    },
+    "project": "./tsconfig.src.json"
+  }
+}
