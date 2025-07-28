@@ -1,14 +1,12 @@
 import type { BuildExtension } from "@trigger.dev/core/v3/build";
 
 type LightpandaOpts = {
-  arch?: "aarch64" | "x86_64";
-  version?: "nightly";
+  version?: "nightly" | "latest";
   disableTelemetry?: boolean;
 };
 
 export const lightpanda = ({
-  arch = "x86_64",
-  version = "nightly",
+  version = "latest",
   disableTelemetry = false,
 }: LightpandaOpts = {}): BuildExtension => ({
   name: "lightpanda",
@@ -17,28 +15,12 @@ export const lightpanda = ({
       return;
     }
 
-    const arch = context.targetPlatform === "linux/arm64" ? "aarch64" : "x86_64";
+    context.logger.debug(`Adding lightpanda`, { version, disableTelemetry });
 
-    context.logger.debug(`Adding lightpanda`, { arch, version, disableTelemetry });
-
-    const instructions: string[] = [];
-
-    // Install required packages
-    instructions.push(
-      `RUN apt-get update && apt-get install --no-install-recommends -y \
-          curl \
-          ca-certificates \
-        && update-ca-certificates \
-        && apt-get clean && rm -rf /var/lib/apt/lists/*`
-    );
-
-    // Install Lightpanda
-    instructions.push(
-      `RUN curl -L -f --retry 3 -o lightpanda https://github.com/lightpanda-io/browser/releases/download/${version}/lightpanda-${arch}-linux || (echo "Failed to download Lightpanda binary" && exit 1) \
-        && chmod a+x ./lightpanda \
-        && mv ./lightpanda /usr/bin/lightpanda \
-        && /usr/bin/lightpanda version || (echo "Downloaded binary is not functional" && exit 1)`
-    );
+    const instructions = [
+      `COPY --from=lightpanda/browser:${version} /usr/bin/lightpanda /usr/local/bin/lightpanda`,
+      `RUN /usr/local/bin/lightpanda version || (echo "lightpanda binary is not functional" && exit 1)`,
+    ] satisfies string[];
 
     context.addLayer({
       id: "lightpanda",
@@ -47,7 +29,6 @@ export const lightpanda = ({
       },
       deploy: {
         env: {
-          LIGHTPANDA_BROWSER_PATH: "/usr/bin/lightpanda",
           ...(disableTelemetry ? { LIGHTPANDA_DISABLE_TELEMETRY: "true" } : {}),
         },
         override: true,
