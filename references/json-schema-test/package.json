@@ -1,0 +1,19 @@
+{
+  "name": "json-schema-test",
+  "version": "1.0.0",
+  "description": "Test project for JSON schema functionality",
+  "type": "module",
+  "scripts": {
+    "dev": "trigger.dev@beta dev",
+    "trigger:deploy": "trigger.dev@beta deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@trigger.dev/sdk": "workspace:*",
+    "zod": "3.22.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.8",
+    "typescript": "^5.7.2"
+  }
+}
