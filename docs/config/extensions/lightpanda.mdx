@@ -1,0 +1,60 @@
+---
+title: "Lightpanda"
+sidebarTitle: "lightpanda"
+description: "Use the lightpanda build extension to add Lightpanda browser to your project"
+tag: "v4"
+---
+
+import UpgradeToV4Note from "/snippets/upgrade-to-v4-note.mdx";
+
+<UpgradeToV4Note />
+
+To use the Lightpanda browser in your project, add the extension to your `trigger.config.ts` file:
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk";
+import { lightpanda } from "@trigger.dev/build/extensions/lightpanda";
+
+export default defineConfig({
+  project: "<project ref>",
+  build: {
+    extensions: [lightpanda()],
+  },
+});
+```
+
+## Options
+
+- `version`: The version of the browser to install. Default: `"latest"`.
+- `disableTelemetry`: Whether to disable telemetry. Default: `false`.
+
+For example:
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk";
+import { lightpanda } from "@trigger.dev/build/extensions/lightpanda";
+
+export default defineConfig({
+  project: "<project ref>",
+  build: {
+    extensions: [
+      lightpanda({
+        version: "nightly",
+        disableTelemetry: true,
+      }),
+    ],
+  },
+});
+```
+
+## Development
+
+When running in dev, you will first have to download the Lightpanda browser binary and make sure it's in your `PATH`. See [Lightpanda's installation guide](https://lightpanda.io/docs/getting-started/installation).
+
+## Next steps
+
+<CardGroup>
+  <Card title="Lightpanda" color="#6ac6e2" icon="bolt" href="/guides/examples/lightpanda">
+    Learn how to use Lightpanda in your project.
+  </Card>
+</CardGroup>

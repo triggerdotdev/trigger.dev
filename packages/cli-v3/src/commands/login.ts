@@ -14,7 +14,11 @@ import {
   wrapCommandAction,
 } from "../cli/common.js";
 import { chalkLink, prettyError } from "../utilities/cliOutput.js";
-import { readAuthConfigProfile, writeAuthConfigProfile } from "../utilities/configFiles.js";
+import {
+  readAuthConfigProfile,
+  writeAuthConfigProfile,
+  writeAuthConfigCurrentProfileName,
+} from "../utilities/configFiles.js";
 import { printInitialBanner } from "../utilities/initialBanner.js";
 import { LoginResult } from "../utilities/session.js";
 import { whoAmI } from "./whoami.js";
@@ -283,6 +287,11 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
           throw new Error(whoAmIResult.error);
         }
 
+        const profileName = options?.profile ?? "default";
+
+        // Set this profile as the current default
+        writeAuthConfigCurrentProfileName(profileName);
+
         if (opts.embedded) {
           log.step("Logged in successfully");
         } else {
@@ -293,7 +302,7 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
 
         return {
           ok: true as const,
-          profile: options?.profile ?? "default",
+          profile: profileName,
           userId: whoAmIResult.data.userId,
           email: whoAmIResult.data.email,
           dashboardUrl: whoAmIResult.data.dashboardUrl,
