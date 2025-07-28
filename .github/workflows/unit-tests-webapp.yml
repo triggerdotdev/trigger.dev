@@ -87,6 +87,7 @@ jobs:
           MAGIC_LINK_SECRET: "secret"
           ENCRYPTION_KEY: "secret"
           DEPLOY_REGISTRY_HOST: "docker.io"
+          CLICKHOUSE_URL: "http://default:password@localhost:8123"
 
       - name: Gather all reports
         if: ${{ !cancelled() }}

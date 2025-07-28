@@ -4,7 +4,7 @@ import { InfoIconTooltip, SimpleTooltip } from "./Tooltip";
 
 const variants = {
   small: {
-    text: "font-sans text-sm font-normal text-text-bright leading-tight flex items-center gap-1",
+    text: "font-sans text-[0.8125rem] font-normal text-text-bright leading-tight flex items-center gap-1",
   },
   medium: {
     text: "font-sans text-sm text-text-bright leading-tight flex items-center gap-1",

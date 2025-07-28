@@ -8,7 +8,7 @@ import { getMaxDuration } from "@trigger.dev/core/v3/isomorphic";
 import { RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { logger } from "~/services/logger.server";
 import { eventRepository, rehydrateAttribute } from "~/v3/eventRepository.server";
-import { machinePresetFromName } from "~/v3/machinePresets.server";
+import { machinePresetFromName, machinePresetFromRun } from "~/v3/machinePresets.server";
 import { getTaskEventStoreTableForRun, type TaskEventStoreTable } from "~/v3/taskEventStore.server";
 import { isFailedRunStatus, isFinalRunStatus } from "~/v3/taskStatus";
 import { BasePresenter } from "./basePresenter.server";
@@ -142,6 +142,8 @@ export class SpanPresenter extends BasePresenter {
           select: {
             version: true,
             sdkVersion: true,
+            runtime: true,
+            runtimeVersion: true,
           },
         },
         engine: true,
@@ -216,6 +218,7 @@ export class SpanPresenter extends BasePresenter {
             friendlyId: true,
           },
         },
+        replayedFromTaskRunFriendlyId: true,
       },
       where: span.originalRun
         ? {
@@ -266,6 +269,8 @@ export class SpanPresenter extends BasePresenter {
         })
       : undefined;
 
+    const machine = run.machinePreset ? machinePresetFromRun(run) : undefined;
+
     const context = {
       task: {
         id: run.taskIdentifier,
@@ -304,9 +309,7 @@ export class SpanPresenter extends BasePresenter {
         slug: run.project.slug,
         name: run.project.name,
       },
-      machine: run.machinePreset
-        ? machinePresetFromName(run.machinePreset as MachinePresetName)
-        : undefined,
+      machine,
     };
 
     return {
@@ -326,7 +329,10 @@ export class SpanPresenter extends BasePresenter {
       taskIdentifier: run.taskIdentifier,
       version: run.lockedToVersion?.version,
       sdkVersion: run.lockedToVersion?.sdkVersion,
+      runtime: run.lockedToVersion?.runtime,
+      runtimeVersion: run.lockedToVersion?.runtimeVersion,
       isTest: run.isTest,
+      replayedFromTaskRunFriendlyId: run.replayedFromTaskRunFriendlyId,
       environmentId: run.runtimeEnvironment.id,
       idempotencyKey: run.idempotencyKey,
       idempotencyKeyExpiresAt: run.idempotencyKeyExpiresAt,
@@ -366,6 +372,7 @@ export class SpanPresenter extends BasePresenter {
       workerQueue: run.workerQueue,
       spanId: run.spanId,
       isCached: !!span.originalRun,
+      machinePreset: machine?.name,
     };
   }
 

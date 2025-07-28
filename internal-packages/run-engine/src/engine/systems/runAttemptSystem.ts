@@ -1,4 +1,5 @@
 import { startSpan } from "@internal/tracing";
+import { tryCatch } from "@trigger.dev/core/utils";
 import {
   CompleteRunAttemptResult,
   ExecutionResult,
@@ -33,10 +34,8 @@ import {
   ExecutionSnapshotSystem,
   getLatestExecutionSnapshot,
 } from "./executionSnapshotSystem.js";
-import { ReleaseConcurrencySystem } from "./releaseConcurrencySystem.js";
 import { SystemResources } from "./systems.js";
 import { WaitpointSystem } from "./waitpointSystem.js";
-import { tryCatch } from "@trigger.dev/core/utils";
 
 export type RunAttemptSystemOptions = {
   resources: SystemResources;
@@ -44,7 +43,6 @@ export type RunAttemptSystemOptions = {
   batchSystem: BatchSystem;
   waitpointSystem: WaitpointSystem;
   delayedRunSystem: DelayedRunSystem;
-  releaseConcurrencySystem: ReleaseConcurrencySystem;
   retryWarmStartThresholdMs?: number;
   machines: RunEngineOptions["machines"];
 };
@@ -55,7 +53,6 @@ export class RunAttemptSystem {
   private readonly batchSystem: BatchSystem;
   private readonly waitpointSystem: WaitpointSystem;
   private readonly delayedRunSystem: DelayedRunSystem;
-  private readonly releaseConcurrencySystem: ReleaseConcurrencySystem;
 
   constructor(private readonly options: RunAttemptSystemOptions) {
     this.$ = options.resources;
@@ -63,7 +60,6 @@ export class RunAttemptSystem {
     this.batchSystem = options.batchSystem;
     this.waitpointSystem = options.waitpointSystem;
     this.delayedRunSystem = options.delayedRunSystem;
-    this.releaseConcurrencySystem = options.releaseConcurrencySystem;
   }
 
   public async startRunAttempt({
@@ -962,6 +958,7 @@ export class RunAttemptSystem {
     completedAt,
     reason,
     finalizeRun,
+    bulkActionId,
     tx,
   }: {
     runId: string;
@@ -970,8 +967,9 @@ export class RunAttemptSystem {
     completedAt?: Date;
     reason?: string;
     finalizeRun?: boolean;
+    bulkActionId?: string;
     tx?: PrismaClientOrTransaction;
-  }): Promise<ExecutionResult> {
+  }): Promise<ExecutionResult & { alreadyFinished: boolean }> {
     const prisma = tx ?? this.$.prisma;
     reason = reason ?? "Cancelled by user";
 
@@ -981,7 +979,20 @@ export class RunAttemptSystem {
 
         //already finished, do nothing
         if (latestSnapshot.executionStatus === "FINISHED") {
-          return executionResultFromSnapshot(latestSnapshot);
+          if (bulkActionId) {
+            await prisma.taskRun.update({
+              where: { id: runId },
+              data: {
+                bulkActionGroupIds: {
+                  push: bulkActionId,
+                },
+              },
+            });
+          }
+          return {
+            alreadyFinished: true,
+            ...executionResultFromSnapshot(latestSnapshot),
+          };
         }
 
         //is pending cancellation and we're not finalizing, alert the worker again
@@ -991,7 +1002,10 @@ export class RunAttemptSystem {
             snapshot: latestSnapshot,
             eventBus: this.$.eventBus,
           });
-          return executionResultFromSnapshot(latestSnapshot);
+          return {
+            alreadyFinished: false,
+            ...executionResultFromSnapshot(latestSnapshot),
+          };
         }
 
         //set the run to cancelled immediately
@@ -1006,6 +1020,11 @@ export class RunAttemptSystem {
             status: "CANCELED",
             completedAt: finalizeRun ? completedAt ?? new Date() : completedAt,
             error,
+            bulkActionGroupIds: bulkActionId
+              ? {
+                  push: bulkActionId,
+                }
+              : undefined,
           },
           select: {
             id: true,
@@ -1048,8 +1067,6 @@ export class RunAttemptSystem {
           removeFromWorkerQueue: true,
         });
 
-        await this.releaseConcurrencySystem.refillTokensForSnapshot(latestSnapshot);
-
         //if executing, we need to message the worker to cancel the run and put it into `PENDING_CANCEL` status
         if (isExecuting(latestSnapshot.executionStatus)) {
           const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(prisma, {
@@ -1073,7 +1090,10 @@ export class RunAttemptSystem {
             snapshot: newSnapshot,
             eventBus: this.$.eventBus,
           });
-          return executionResultFromSnapshot(newSnapshot);
+          return {
+            alreadyFinished: false,
+            ...executionResultFromSnapshot(newSnapshot),
+          };
         }
 
         //not executing, so we will actually finish the run
@@ -1101,6 +1121,8 @@ export class RunAttemptSystem {
           id: run.associatedWaitpoint.id,
           output: { value: JSON.stringify(error), isError: true },
         });
+
+        await this.#finalizeRun(run);
 
         this.$.eventBus.emit("runCancelled", {
           time: new Date(),
@@ -1140,7 +1162,10 @@ export class RunAttemptSystem {
           }
         }
 
-        return executionResultFromSnapshot(newSnapshot);
+        return {
+          alreadyFinished: false,
+          ...executionResultFromSnapshot(newSnapshot),
+        };
       });
     });
   }

@@ -7,6 +7,7 @@ export type Environment = {
   running: number;
   queued: number;
   concurrencyLimit: number;
+  burstFactor: number;
 };
 
 export class EnvironmentQueuePresenter extends BasePresenter {
@@ -26,6 +27,7 @@ export class EnvironmentQueuePresenter extends BasePresenter {
       running,
       queued,
       concurrencyLimit: environment.maximumConcurrencyLimit,
+      burstFactor: environment.concurrencyLimitBurstFactor.toNumber(),
     };
   }
 }

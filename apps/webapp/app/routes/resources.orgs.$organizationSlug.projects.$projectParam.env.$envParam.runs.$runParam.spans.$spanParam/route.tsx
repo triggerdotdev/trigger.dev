@@ -7,6 +7,7 @@ import {
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import {
   formatDurationMilliseconds,
+  MachinePresetName,
   type TaskRunError,
   taskRunErrorEnhancer,
 } from "@trigger.dev/core/v3";
@@ -18,6 +19,8 @@ import { AdminDebugRun } from "~/components/admin/debugRun";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { Feedback } from "~/components/Feedback";
+import { MachineLabelCombo } from "~/components/MachineLabelCombo";
+import { MachineTooltipInfo } from "~/components/MachineTooltipInfo";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { DateTime, DateTimeAccurate } from "~/components/primitives/DateTime";
@@ -45,6 +48,7 @@ import { SpanTitle } from "~/components/runs/v3/SpanTitle";
 import { TaskRunAttemptStatusCombo } from "~/components/runs/v3/TaskRunAttemptStatus";
 import { TaskRunStatusCombo, TaskRunStatusReason } from "~/components/runs/v3/TaskRunStatus";
 import { WaitpointDetailTable } from "~/components/runs/v3/WaitpointDetails";
+import { RuntimeIcon } from "~/components/RuntimeIcon";
 import { WarmStartCombo } from "~/components/WarmStarts";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -62,6 +66,7 @@ import {
   v3DeploymentVersionPath,
   v3RunDownloadLogsPath,
   v3RunPath,
+  v3RunRedirectPath,
   v3RunSpanPath,
   v3RunsPath,
   v3SchedulePath,
@@ -576,11 +581,35 @@ function RunBody({
                   </Property.Value>
                 </Property.Item>
                 <Property.Item>
+                  <Property.Label>Runtime</Property.Label>
+                  <Property.Value>
+                    <RuntimeIcon
+                      runtime={run.runtime}
+                      runtimeVersion={run.runtimeVersion}
+                      withLabel
+                    />
+                  </Property.Value>
+                </Property.Item>
+                <Property.Item>
                   <Property.Label>Test run</Property.Label>
                   <Property.Value>
                     {run.isTest ? <CheckIcon className="size-4 text-text-dimmed" /> : "–"}
                   </Property.Value>
                 </Property.Item>
+                {run.replayedFromTaskRunFriendlyId && (
+                  <Property.Item>
+                    <Property.Label>Replayed from</Property.Label>
+                    <Property.Value>
+                      <TextLink
+                        to={v3RunRedirectPath(organization, project, {
+                          friendlyId: run.replayedFromTaskRunFriendlyId,
+                        })}
+                      >
+                        {run.replayedFromTaskRunFriendlyId}
+                      </TextLink>
+                    </Property.Value>
+                  </Property.Item>
+                )}
                 {environment && (
                   <Property.Item>
                     <Property.Label>Environment</Property.Label>
@@ -589,6 +618,7 @@ function RunBody({
                     </Property.Value>
                   </Property.Item>
                 )}
+
                 {run.schedule && (
                   <Property.Item>
                     <Property.Label>Schedule</Property.Label>
@@ -656,6 +686,17 @@ function RunBody({
                   </Property.Value>
                 </Property.Item>
                 <Property.Item>
+                  <Property.Label>
+                    <span className="flex items-center gap-1">
+                      Machine
+                      <InfoIconTooltip content={<MachineTooltipInfo />} />
+                    </span>
+                  </Property.Label>
+                  <Property.Value className="-ml-0.5">
+                    <MachineLabelCombo preset={run.machinePreset} />
+                  </Property.Value>
+                </Property.Item>
+                <Property.Item>
                   <Property.Label>Run invocation cost</Property.Label>
                   <Property.Value>
                     {run.baseCostInCents > 0
@@ -698,12 +739,15 @@ function RunBody({
                   <Property.Value>{run.engine}</Property.Value>
                 </Property.Item>
                 {isAdmin && (
-                  <>
+                  <div className="border-t border-yellow-500/50 pt-2">
+                    <Paragraph spacing variant="small" className="text-yellow-500">
+                      Admin only
+                    </Paragraph>
                     <Property.Item>
                       <Property.Label>Worker queue</Property.Label>
                       <Property.Value>{run.workerQueue}</Property.Value>
                     </Property.Item>
-                  </>
+                  </div>
                 )}
               </Property.Table>
             </div>

@@ -14,9 +14,10 @@ metadata:
 ---
 {{- if .Values.supervisor.rbac.create }}
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
+kind: Role
 metadata:
-  name: {{ include "trigger-v4.supervisorClusterRoleName" . }}
+  name: {{ include "trigger-v4.supervisorRoleName" . }}
+  namespace: {{ default .Release.Namespace .Values.supervisor.config.kubernetes.namespace }}
   labels:
     {{- $component := "supervisor" }}
     {{- include "trigger-v4.componentLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 4 }}
@@ -26,19 +27,20 @@ rules:
     verbs: ["create", "delete", "deletecollection", "get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
+kind: RoleBinding
 metadata:
-  name: {{ include "trigger-v4.supervisorClusterRoleName" . }}-binding
+  name: {{ include "trigger-v4.supervisorRoleName" . }}-binding
+  namespace: {{ default .Release.Namespace .Values.supervisor.config.kubernetes.namespace }}
   labels:
     {{- $component := "supervisor" }}
     {{- include "trigger-v4.componentLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 4 }}
 subjects:
   - kind: ServiceAccount
     name: {{ include "trigger-v4.supervisorServiceAccountName" . }}
-    namespace: {{ .Release.Namespace }}
+    namespace: {{ default .Release.Namespace }}
 roleRef:
-  kind: ClusterRole
-  name: {{ include "trigger-v4.supervisorClusterRoleName" . }}
+  kind: Role
+  name: {{ include "trigger-v4.supervisorRoleName" . }}
   apiGroup: rbac.authorization.k8s.io
 {{- end }}
 ---

@@ -3,6 +3,7 @@ import {
   BookOpenIcon,
   ChevronDownIcon,
   ChevronUpIcon,
+  ExclamationTriangleIcon,
   LightBulbIcon,
   MagnifyingGlassIcon,
   UserPlusIcon,
@@ -299,7 +300,10 @@ export default function Page() {
                                       </>
                                     }
                                   >
-                                    <TypedAwait resolve={runningStats}>
+                                    <TypedAwait
+                                      resolve={runningStats}
+                                      errorElement={<FailedToLoadStats />}
+                                    >
                                       {(data) => {
                                         const taskData = data[task.slug];
                                         return taskData?.running ?? "0";
@@ -309,7 +313,10 @@ export default function Page() {
                                 </TableCell>
                                 <TableCell to={path}>
                                   <Suspense fallback={<></>}>
-                                    <TypedAwait resolve={runningStats}>
+                                    <TypedAwait
+                                      resolve={runningStats}
+                                      errorElement={<FailedToLoadStats />}
+                                    >
                                       {(data) => {
                                         const taskData = data[task.slug];
                                         return taskData?.queued ?? "0";
@@ -319,7 +326,10 @@ export default function Page() {
                                 </TableCell>
                                 <TableCell to={path} actionClassName="py-1.5">
                                   <Suspense fallback={<TaskActivityBlankState />}>
-                                    <TypedAwait resolve={activity}>
+                                    <TypedAwait
+                                      resolve={activity}
+                                      errorElement={<FailedToLoadStats />}
+                                    >
                                       {(data) => {
                                         const taskData = data[task.slug];
                                         return (
@@ -339,7 +349,10 @@ export default function Page() {
                                 </TableCell>
                                 <TableCell to={path}>
                                   <Suspense fallback={<></>}>
-                                    <TypedAwait resolve={durations}>
+                                    <TypedAwait
+                                      resolve={durations}
+                                      errorElement={<FailedToLoadStats />}
+                                    >
                                       {(data) => {
                                         const taskData = data[task.slug];
                                         return taskData
@@ -826,5 +839,14 @@ function LinkWithIcon({
       </div>
       <AnimatingArrow direction={isExternal ? "topRight" : "right"} theme="dimmed" />
     </Link>
+  );
+}
+
+function FailedToLoadStats() {
+  return (
+    <SimpleTooltip
+      button={<ExclamationTriangleIcon className="size-4 text-warning" />}
+      content="We were unable to load the task stats, please try again later."
+    />
   );
 }

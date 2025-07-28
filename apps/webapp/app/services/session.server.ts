@@ -53,6 +53,7 @@ export async function requireUser(request: Request) {
       updatedAt: user.updatedAt,
       dashboardPreferences: user.dashboardPreferences,
       confirmedBasicDetails: user.confirmedBasicDetails,
+      mfaEnabledAt: user.mfaEnabledAt,
       isImpersonating: !!impersonationId,
     };
   }

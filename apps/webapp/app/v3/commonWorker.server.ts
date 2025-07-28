@@ -20,6 +20,7 @@ import { ResumeBatchRunService } from "./services/resumeBatchRun.server";
 import { ResumeTaskDependencyService } from "./services/resumeTaskDependency.server";
 import { RetryAttemptService } from "./services/retryAttempt.server";
 import { TimeoutDeploymentService } from "./services/timeoutDeployment.server";
+import { BulkActionService } from "./services/bulk/BulkActionV2.server";
 
 function initializeWorker() {
   const redisOptions = {
@@ -114,6 +115,7 @@ function initializeWorker() {
           maxAttempts: 5,
         },
       },
+      // @deprecated, moved to batchTriggerWorker.server.ts
       "v3.processBatchTaskRun": {
         schema: z.object({
           batchId: z.string(),
@@ -127,6 +129,7 @@ function initializeWorker() {
           maxAttempts: 5,
         },
       },
+      // @deprecated, moved to batchTriggerWorker.server.ts
       "runengine.processBatchTaskRun": {
         schema: z.object({
           batchId: z.string(),
@@ -187,6 +190,15 @@ function initializeWorker() {
           maxAttempts: 6,
         },
       },
+      processBulkAction: {
+        schema: z.object({
+          bulkActionId: z.string(),
+        }),
+        visibilityTimeoutMs: 180_000,
+        retry: {
+          maxAttempts: 5,
+        },
+      },
     },
     concurrency: {
       workers: env.COMMON_WORKER_CONCURRENCY_WORKERS,
@@ -229,10 +241,12 @@ function initializeWorker() {
         const service = new CancelDevSessionRunsService();
         await service.call(payload);
       },
+      // @deprecated, moved to batchTriggerWorker.server.ts
       "v3.processBatchTaskRun": async ({ payload }) => {
         const service = new BatchTriggerV3Service(payload.strategy);
         await service.processBatchTaskRun(payload);
       },
+      // @deprecated, moved to batchTriggerWorker.server.ts
       "runengine.processBatchTaskRun": async ({ payload }) => {
         const service = new RunEngineBatchTriggerService(payload.strategy);
         await service.processBatchTaskRun(payload);
@@ -263,6 +277,10 @@ function initializeWorker() {
         const service = new EnqueueDelayedRunService();
 
         await service.call(payload.runId);
+      },
+      processBulkAction: async ({ payload }) => {
+        const service = new BulkActionService();
+        await service.process(payload.bulkActionId);
       },
     },
   });

@@ -215,6 +215,8 @@ class DevSupervisor implements WorkerRuntime {
         queues: backgroundWorker.manifest.queues,
         contentHash: manifest.contentHash,
         sourceFiles,
+        runtime: backgroundWorker.manifest.runtime,
+        runtimeVersion: backgroundWorker.manifest.runtimeVersion,
       },
       engine: "V2",
       supportsLazyAttempts: true,
@@ -351,6 +353,16 @@ class DevSupervisor implements WorkerRuntime {
           continue;
         }
 
+        logger.debug("[DevSupervisor] dequeueRuns. Creating run controller", {
+          run: message.run.friendlyId,
+          worker,
+          config: this.options.config,
+        });
+
+        const cwd = this.options.config.experimental_devProcessCwdInBuildDir
+          ? worker.build.outputPath
+          : undefined;
+
         //new run
         runController = new DevRunController({
           runFriendlyId: message.run.friendlyId,
@@ -358,6 +370,7 @@ class DevSupervisor implements WorkerRuntime {
           httpClient: this.options.client,
           logLevel: this.options.args.logLevel,
           taskRunProcessPool: this.taskRunProcessPool,
+          cwd,
           onFinished: () => {
             logger.debug("[DevSupervisor] Run finished", { runId: message.run.friendlyId });
 

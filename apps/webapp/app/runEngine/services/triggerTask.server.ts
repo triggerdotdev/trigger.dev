@@ -30,7 +30,6 @@ import { IdempotencyKeyConcern } from "../concerns/idempotencyKeys.server";
 import type {
   PayloadProcessor,
   QueueManager,
-  RunChainStateManager,
   RunNumberIncrementer,
   TraceEventConcern,
   TriggerTaskRequest,
@@ -47,7 +46,7 @@ export class RunEngineTriggerTaskService {
   private readonly engine: RunEngine;
   private readonly tracer: Tracer;
   private readonly traceEventConcern: TraceEventConcern;
-  private readonly runChainStateManager: RunChainStateManager;
+  private readonly metadataMaximumSize: number;
 
   constructor(opts: {
     prisma: PrismaClientOrTransaction;
@@ -58,8 +57,8 @@ export class RunEngineTriggerTaskService {
     idempotencyKeyConcern: IdempotencyKeyConcern;
     runNumberIncrementer: RunNumberIncrementer;
     traceEventConcern: TraceEventConcern;
-    runChainStateManager: RunChainStateManager;
     tracer: Tracer;
+    metadataMaximumSize: number;
   }) {
     this.prisma = opts.prisma;
     this.engine = opts.engine;
@@ -70,7 +69,7 @@ export class RunEngineTriggerTaskService {
     this.runNumberIncrementer = opts.runNumberIncrementer;
     this.tracer = opts.tracer;
     this.traceEventConcern = opts.traceEventConcern;
-    this.runChainStateManager = opts.runChainStateManager;
+    this.metadataMaximumSize = opts.metadataMaximumSize;
   }
 
   public async call({
@@ -192,7 +191,8 @@ export class RunEngineTriggerTaskService {
       const metadataPacket = body.options?.metadata
         ? handleMetadataPacket(
             body.options?.metadata,
-            body.options?.metadataType ?? "application/json"
+            body.options?.metadataType ?? "application/json",
+            this.metadataMaximumSize
           )
         : undefined;
 
@@ -228,12 +228,6 @@ export class RunEngineTriggerTaskService {
 
       const depth = parentRun ? parentRun.depth + 1 : 0;
 
-      const runChainState = await this.runChainStateManager.validateRunChain(triggerRequest, {
-        parentRun: parentRun ?? undefined,
-        queueName,
-        lockedQueueId,
-      });
-
       const workerQueue = await this.queueConcern.getWorkerQueue(environment);
 
       try {
@@ -264,6 +258,7 @@ export class RunEngineTriggerTaskService {
                   spanId: event.spanId,
                   parentSpanId:
                     options.parentAsLinkType === "replay" ? undefined : event.traceparent?.spanId,
+                  replayedFromTaskRunFriendlyId: options.replayedFromTaskRunFriendlyId,
                   lockedToVersionId: lockedToBackgroundWorker?.id,
                   taskVersion: lockedToBackgroundWorker?.version,
                   sdkVersion: lockedToBackgroundWorker?.sdkVersion,
@@ -299,16 +294,15 @@ export class RunEngineTriggerTaskService {
                     : undefined,
                   machine: body.options?.machine,
                   priorityMs: body.options?.priority ? body.options.priority * 1_000 : undefined,
-                  releaseConcurrency: body.options?.releaseConcurrency,
                   queueTimestamp:
                     options.queueTimestamp ??
                     (parentRun && body.options?.resumeParentOnCompletion
                       ? parentRun.queueTimestamp ?? undefined
                       : undefined),
-                  runChainState,
                   scheduleId: options.scheduleId,
                   scheduleInstanceId: options.scheduleInstanceId,
                   createdAt: options.overrideCreatedAt,
+                  bulkActionId: body.options?.bulkActionId,
                 },
                 this.prisma
               );

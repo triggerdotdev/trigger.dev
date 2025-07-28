@@ -1,19 +1,18 @@
 import { type RedisOptions } from "@internal/redis";
-import { Worker, type WorkerConcurrencyOptions } from "@trigger.dev/redis-worker";
 import { Meter, Tracer } from "@internal/tracing";
+import { Logger, LogLevel } from "@trigger.dev/core/logger";
 import {
   MachinePreset,
   MachinePresetName,
-  QueueOptions,
   RetryOptions,
   RunChainState,
 } from "@trigger.dev/core/v3";
 import { PrismaClient, PrismaReplicaClient } from "@trigger.dev/database";
+import { Worker, type WorkerConcurrencyOptions } from "@trigger.dev/redis-worker";
 import { FairQueueSelectionStrategyOptions } from "../run-queue/fairQueueSelectionStrategy.js";
 import { MinimalAuthenticatedEnvironment } from "../shared/index.js";
-import { workerCatalog } from "./workerCatalog.js";
-import { Logger, LogLevel } from "@trigger.dev/core/logger";
 import { LockRetryConfig } from "./locking.js";
+import { workerCatalog } from "./workerCatalog.js";
 
 export type RunEngineOptions = {
   prisma: PrismaClient;
@@ -39,6 +38,7 @@ export type RunEngineOptions = {
     workerOptions?: WorkerConcurrencyOptions;
     retryOptions?: RetryOptions;
     defaultEnvConcurrency?: number;
+    defaultEnvConcurrencyBurstFactor?: number;
     logLevel?: LogLevel;
     queueSelectionStrategyOptions?: Pick<
       FairQueueSelectionStrategyOptions,
@@ -66,23 +66,6 @@ export type RunEngineOptions = {
   meter?: Meter;
   logger?: Logger;
   logLevel?: LogLevel;
-  releaseConcurrency?: {
-    disabled?: boolean;
-    maxTokensRatio?: number;
-    releasingsMaxAge?: number;
-    releasingsPollInterval?: number;
-    redis?: Partial<RedisOptions>;
-    maxRetries?: number;
-    consumersCount?: number;
-    pollInterval?: number;
-    batchSize?: number;
-    backoff?: {
-      minDelay?: number; // Defaults to 1000
-      maxDelay?: number; // Defaults to 60000
-      factor?: number; // Defaults to 2
-    };
-    disableConsumers?: boolean;
-  };
 };
 
 export type HeartbeatTimeouts = {
@@ -126,6 +109,7 @@ export type TriggerParams = {
   tags: { id: string; name: string }[];
   parentTaskRunId?: string;
   rootTaskRunId?: string;
+  replayedFromTaskRunFriendlyId?: string;
   batch?: {
     id: string;
     index: number;
@@ -141,11 +125,10 @@ export type TriggerParams = {
   machine?: MachinePresetName;
   workerId?: string;
   runnerId?: string;
-  releaseConcurrency?: boolean;
-  runChainState?: RunChainState;
   scheduleId?: string;
   scheduleInstanceId?: string;
   createdAt?: Date;
+  bulkActionId?: string;
 };
 
 export type EngineWorker = Worker<typeof workerCatalog>;

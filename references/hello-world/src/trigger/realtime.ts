@@ -39,7 +39,7 @@ export const realtimeUpToDateTask = task({
   run: async ({ runId }: { runId?: string }) => {
     if (!runId) {
       const handle = await helloWorldTask.trigger(
-        { hello: "world" },
+        { hello: "world", sleepFor: 1000 },
         {
           tags: ["hello-world", "realtime"],
         }

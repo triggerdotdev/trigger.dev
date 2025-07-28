@@ -9,10 +9,10 @@ import { timeFilters } from "~/components/runs/v3/SharedFilters";
 export type BatchListOptions = {
   userId?: string;
   projectId: string;
+  environmentId: string;
   //filters
   friendlyId?: string;
   statuses?: BatchTaskRunStatus[];
-  environments?: string[];
   period?: string;
   from?: number;
   to?: number;
@@ -34,7 +34,7 @@ export class BatchListPresenter extends BasePresenter {
     projectId,
     friendlyId,
     statuses,
-    environments,
+    environmentId,
     period,
     from,
     to,
@@ -81,16 +81,6 @@ export class BatchListPresenter extends BasePresenter {
       },
     });
 
-    let environmentIds = project.environments.map((e) => e.id);
-    if (environments && environments.length > 0) {
-      //if environments are passed in, we only include them if they're in the project
-      environmentIds = environments.filter((e) => project.environments.some((pe) => pe.id === e));
-    }
-
-    if (environmentIds.length === 0) {
-      throw new Error("No matching environments found for the project");
-    }
-
     const periodMs = time.period ? parse(time.period) : undefined;
 
     //get the batches
@@ -120,8 +110,8 @@ export class BatchListPresenter extends BasePresenter {
 FROM
     ${sqlDatabaseSchema}."BatchTaskRun" b
 WHERE
-    -- environments
-    b."runtimeEnvironmentId" IN (${Prisma.join(environmentIds)})
+    -- environment
+    b."runtimeEnvironmentId" = ${environmentId}
     -- cursor
     ${
       cursor
@@ -186,9 +176,7 @@ WHERE
     if (!hasAnyBatches) {
       const firstBatch = await this._replica.batchTaskRun.findFirst({
         where: {
-          runtimeEnvironmentId: {
-            in: environmentIds,
-          },
+          runtimeEnvironmentId: environmentId,
         },
       });
 
@@ -233,7 +221,6 @@ WHERE
       filters: {
         friendlyId,
         statuses: statuses || [],
-        environments: environments || [],
       },
       hasFilters,
       hasAnyBatches,

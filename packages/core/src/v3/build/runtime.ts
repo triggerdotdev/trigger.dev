@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "url";
 import { BuildRuntime } from "../schemas/build.js";
 import { dedupFlags } from "./flags.js";
+import { homedir } from "node:os";
 
 export const DEFAULT_RUNTIME = "node" satisfies BuildRuntime;
 
@@ -31,7 +32,7 @@ export function execPathForRuntime(runtime: BuildRuntime): string {
         return join(process.env.BUN_INSTALL_BIN, "bun");
       }
 
-      return join("~", ".bin", "bin", "bun");
+      return join(homedir(), ".bun", "bin", "bun");
     default:
       throw new Error(`Unsupported runtime ${runtime}`);
   }
@@ -82,5 +83,21 @@ function nodeRuntimeNeedsGlobalWebCryptoFlag(): boolean {
     return process.versions.node.startsWith("18.");
   } catch {
     return false;
+  }
+}
+
+export function detectRuntimeVersion(): string | undefined {
+  try {
+    // Check if we're running under Bun
+    const isBun = typeof process.versions.bun === "string";
+
+    if (isBun) {
+      return process.versions.bun;
+    }
+
+    // Otherwise, return Node.js version
+    return process.versions.node;
+  } catch {
+    return undefined;
   }
 }

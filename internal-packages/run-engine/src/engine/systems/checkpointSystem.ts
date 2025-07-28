@@ -11,25 +11,22 @@ import {
 import { SystemResources } from "./systems.js";
 import { ServiceValidationError } from "../errors.js";
 import { EnqueueSystem } from "./enqueueSystem.js";
-import { ReleaseConcurrencySystem } from "./releaseConcurrencySystem.js";
+
 export type CheckpointSystemOptions = {
   resources: SystemResources;
   executionSnapshotSystem: ExecutionSnapshotSystem;
   enqueueSystem: EnqueueSystem;
-  releaseConcurrencySystem: ReleaseConcurrencySystem;
 };
 
 export class CheckpointSystem {
   private readonly $: SystemResources;
   private readonly executionSnapshotSystem: ExecutionSnapshotSystem;
   private readonly enqueueSystem: EnqueueSystem;
-  private readonly releaseConcurrencySystem: ReleaseConcurrencySystem;
 
   constructor(private readonly options: CheckpointSystemOptions) {
     this.$ = options.resources;
     this.executionSnapshotSystem = options.executionSnapshotSystem;
     this.enqueueSystem = options.enqueueSystem;
-    this.releaseConcurrencySystem = options.releaseConcurrencySystem;
   }
 
   /**
@@ -195,14 +192,14 @@ export class CheckpointSystem {
           checkpointId: taskRunCheckpoint.id,
         });
 
-        this.$.logger.debug("Refilling token bucket for release concurrency queue", {
+        this.$.logger.debug("Releasing concurrency for run because it was checkpointed", {
           snapshot,
+          newSnapshot,
         });
 
-        // Refill the token bucket for the release concurrency queue
-        await this.releaseConcurrencySystem.refillTokensForSnapshot(
-          snapshot.previousSnapshotId ?? snapshot.id
-        );
+        if (run.organizationId) {
+          await this.$.runQueue.releaseAllConcurrency(run.organizationId, run.id);
+        }
 
         return {
           ok: true as const,
@@ -233,12 +230,14 @@ export class CheckpointSystem {
           runnerId,
         });
 
-        this.$.logger.debug("Refilling token bucket for release concurrency queue", {
+        this.$.logger.debug("Releasing concurrency for run because it was checkpointed", {
           snapshot,
+          newSnapshot,
         });
 
-        // Refill the token bucket for the release concurrency queue
-        await this.releaseConcurrencySystem.refillTokensForSnapshot(snapshot.id);
+        if (run.organizationId) {
+          await this.$.runQueue.releaseAllConcurrency(run.organizationId, run.id);
+        }
 
         return {
           ok: true as const,

@@ -10,6 +10,7 @@ import {
   type ShapeStreamInterface,
 } from "@electric-sql/client";
 import { AsyncIterableStream, createAsyncIterableStream } from "../streams/asyncIterableStream.js";
+import { API_VERSION_HEADER_NAME, API_VERSION } from "./version.js";
 
 export type ZodShapeStreamOptions = {
   headers?: Record<string, string>;
@@ -43,6 +44,7 @@ export function zodShapeStream<TShapeSchema extends z.ZodTypeAny>(
     headers: {
       ...options?.headers,
       "x-trigger-electric-version": "1.0.0-beta.1",
+      [API_VERSION_HEADER_NAME]: API_VERSION,
     },
     fetchClient: options?.fetchClient,
     signal: abortController.signal,

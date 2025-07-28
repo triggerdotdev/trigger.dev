@@ -1,5 +1,24 @@
 # internal-platform
 
+## 4.0.0-v4-beta.25
+
+## 4.0.0-v4-beta.24
+
+## 4.0.0-v4-beta.23
+
+### Patch Changes
+
+- Add runtime version detection for display in the dashboard ([#2254](https://github.com/triggerdotdev/trigger.dev/pull/2254))
+- Fail fast in CI when running deploy with missing `TRIGGER_ACCESS_TOKEN` and add useful error message with link to docs ([#2258](https://github.com/triggerdotdev/trigger.dev/pull/2258))
+- Fix Bun runtime path resolution fallback ([#2254](https://github.com/triggerdotdev/trigger.dev/pull/2254))
+
+## 4.0.0-v4-beta.22
+
+### Patch Changes
+
+- Add project details to the whoami command ([#2231](https://github.com/triggerdotdev/trigger.dev/pull/2231))
+- Fixes an issue with realtime when re-subscribing to a run, that would temporarily display stale data and the changes. Now when re-subscribing to a run only the latest changes will be vended ([#2162](https://github.com/triggerdotdev/trigger.dev/pull/2162))
+
 ## 4.0.0-v4-beta.21
 
 ### Patch Changes

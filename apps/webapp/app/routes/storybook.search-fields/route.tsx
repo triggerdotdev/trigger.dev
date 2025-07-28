@@ -5,6 +5,7 @@ import { Fieldset } from "~/components/primitives/Fieldset";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
+import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 
 export default function Story() {
   return (
@@ -18,9 +19,12 @@ export default function Story() {
                 placeholder="Search"
                 required={true}
                 icon={MagnifyingGlassIcon}
-                shortcut="⌘K"
+                accessory={
+                  <ShortcutKey shortcut={{ key: "k", modifiers: ["meta"] }} variant="small" />
+                }
               />
             </InputGroup>
+
             <InputGroup>
               <Label>Small search input</Label>
               <Input
@@ -28,7 +32,9 @@ export default function Story() {
                 required={true}
                 variant="small"
                 icon={MagnifyingGlassIcon}
-                shortcut="⌘K"
+                accessory={
+                  <ShortcutKey shortcut={{ key: "k", modifiers: ["meta"] }} variant="small" />
+                }
                 fullWidth={false}
               />
             </InputGroup>
@@ -48,7 +54,9 @@ export default function Story() {
                 placeholder="Search"
                 required={true}
                 icon={MagnifyingGlassIcon}
-                shortcut="⌘K"
+                accessory={
+                  <ShortcutKey shortcut={{ key: "k", modifiers: ["meta"] }} variant="small" />
+                }
               />
             </InputGroup>
             <InputGroup>
@@ -57,7 +65,9 @@ export default function Story() {
                 placeholder="Search"
                 required={true}
                 icon={MagnifyingGlassIcon}
-                shortcut="⌘K"
+                accessory={
+                  <ShortcutKey shortcut={{ key: "k", modifiers: ["meta"] }} variant="small" />
+                }
               />
             </InputGroup>
             <InputGroup>
@@ -66,7 +76,9 @@ export default function Story() {
                 placeholder="Search"
                 required={true}
                 icon={MagnifyingGlassIcon}
-                shortcut="⌘K"
+                accessory={
+                  <ShortcutKey shortcut={{ key: "k", modifiers: ["meta"] }} variant="small" />
+                }
               />
             </InputGroup>
           </Fieldset>

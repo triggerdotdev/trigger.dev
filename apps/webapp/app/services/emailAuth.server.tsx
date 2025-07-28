@@ -1,11 +1,12 @@
-import { EmailLinkStrategy } from "remix-auth-email-link";
 import type { Authenticator } from "remix-auth";
-import type { AuthUser } from "./authUser";
-import { findOrCreateUser } from "~/models/user.server";
+import { EmailLinkStrategy } from "remix-auth-email-link";
 import { env } from "~/env.server";
+import { findOrCreateUser } from "~/models/user.server";
 import { sendMagicLinkEmail } from "~/services/email.server";
-import { postAuthentication } from "./postAuth.server";
+import type { AuthUser } from "./authUser";
 import { logger } from "./logger.server";
+
+import { postAuthentication } from "./postAuth.server";
 
 let secret = env.MAGIC_LINK_SECRET;
 if (!secret) throw new Error("Missing MAGIC_LINK_SECRET env variable.");

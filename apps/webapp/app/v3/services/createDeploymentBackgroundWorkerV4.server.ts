@@ -71,6 +71,8 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
           sdkVersion: body.metadata.packageVersion,
           supportsLazyAttempts: body.supportsLazyAttempts,
           engine: body.engine,
+          runtime: body.metadata.runtime,
+          runtimeVersion: body.metadata.runtimeVersion,
         },
       });
 
@@ -160,6 +162,8 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
           workerId: backgroundWorker.id,
           builtAt: new Date(),
           type: backgroundWorker.engine === "V2" ? "MANAGED" : "V1",
+          // runtime is already set when the deployment is created, we only need to set the version
+          runtimeVersion: body.metadata.runtimeVersion,
         },
       });
 

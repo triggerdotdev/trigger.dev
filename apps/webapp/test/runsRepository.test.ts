@@ -1,6 +1,14 @@
+import { describe, expect, vi } from "vitest";
+
+// Mock the db prisma client
+vi.mock("~/db.server", () => ({
+  prisma: {},
+  $replica: {},
+}));
+
 import { containerTest } from "@internal/testcontainers";
 import { setTimeout } from "node:timers/promises";
-import { RunsRepository } from "~/services/runsRepository.server";
+import { RunsRepository } from "~/services/runsRepository/runsRepository.server";
 import { setupClickhouseReplication } from "./utils/replicationUtils";
 
 vi.setConfig({ testTimeout: 60_000 });
@@ -1063,7 +1071,7 @@ describe("RunsRepository", () => {
         projectId: project.id,
         environmentId: runtimeEnvironment.id,
         organizationId: organization.id,
-        runFriendlyIds: ["run_abc", "run_xyz"],
+        runId: ["run_abc", "run_xyz"],
       });
 
       expect(runs).toHaveLength(2);
@@ -1158,7 +1166,7 @@ describe("RunsRepository", () => {
         },
       });
 
-      await setTimeout(1000);
+      await setTimeout(1_000);
 
       const runsRepository = new RunsRepository({
         prisma,
@@ -1171,7 +1179,7 @@ describe("RunsRepository", () => {
         projectId: project.id,
         environmentId: runtimeEnvironment.id,
         organizationId: organization.id,
-        runIds: [run1.id, run3.id],
+        runId: [run1.friendlyId, run3.friendlyId],
       });
 
       expect(runs).toHaveLength(2);

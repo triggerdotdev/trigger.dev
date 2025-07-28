@@ -14,7 +14,7 @@ interface BigNumberProps {
   valueClassName?: string;
   defaultValue?: number;
   accessory?: ReactNode;
-  suffix?: string;
+  suffix?: ReactNode;
   suffixClassName?: string;
   compactThreshold?: number;
 }

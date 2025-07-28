@@ -16,10 +16,19 @@ export const loader = createSSELoader({
     const environment = await $replica.runtimeEnvironment.findFirst({
       where: {
         slug: envParam,
-        type: "DEVELOPMENT",
-        orgMember: {
-          userId,
-        },
+        OR: [
+          {
+            type: {
+              in: ["PREVIEW", "STAGING", "PRODUCTION"],
+            },
+          },
+          {
+            type: "DEVELOPMENT",
+            orgMember: {
+              userId,
+            },
+          },
+        ],
         project: {
           slug: projectParam,
         },

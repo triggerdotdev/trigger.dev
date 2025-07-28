@@ -16,6 +16,13 @@ export const WhoAmIResponseSchema = z.object({
   userId: z.string(),
   email: z.string().email(),
   dashboardUrl: z.string(),
+  project: z
+    .object({
+      name: z.string(),
+      url: z.string(),
+      orgTitle: z.string(),
+    })
+    .optional(),
 });
 
 export type WhoAmIResponse = z.infer<typeof WhoAmIResponseSchema>;
@@ -126,7 +133,7 @@ export const TriggerTaskRequestBody = z.object({
       test: z.boolean().optional(),
       ttl: z.string().or(z.number().nonnegative().int()).optional(),
       priority: z.number().optional(),
-      releaseConcurrency: z.boolean().optional(),
+      bulkActionId: z.string().optional(),
     })
     .optional(),
 });
@@ -341,6 +348,7 @@ export const InitializeDeploymentRequestBody = z.object({
   selfHosted: z.boolean().optional(),
   gitMeta: GitMeta.optional(),
   type: z.enum(["MANAGED", "UNMANAGED", "V1"]).optional(),
+  runtime: z.string().optional(),
 });
 
 export type InitializeDeploymentRequestBody = z.infer<typeof InitializeDeploymentRequestBody>;
@@ -630,18 +638,16 @@ export const TimezonesResult = z.object({
 export type TimezonesResult = z.infer<typeof TimezonesResult>;
 
 export const RunStatus = z.enum([
-  /// Task is waiting for a version update because it cannot execute without additional information (task, queue, etc.). Replaces WAITING_FOR_DEPLOY
+  /// Task is waiting for a version update because it cannot execute without additional information (task, queue, etc.)
   "PENDING_VERSION",
-  /// Task hasn't been deployed yet but is waiting to be executed
-  "WAITING_FOR_DEPLOY",
   /// Task is waiting to be executed by a worker
   "QUEUED",
+  /// Task is waiting to be executed by a worker
+  "DEQUEUED",
   /// Task is currently being executed by a worker
   "EXECUTING",
-  /// Task has failed and is waiting to be retried
-  "REATTEMPTING",
   /// Task has been paused by the system, and will be resumed by the system
-  "FROZEN",
+  "WAITING",
   /// Task has been completed successfully
   "COMPLETED",
   /// Task has been canceled by the user
@@ -650,8 +656,6 @@ export const RunStatus = z.enum([
   "FAILED",
   /// Task has crashed and won't be retried, most likely the worker ran out of resources, e.g. memory or storage
   "CRASHED",
-  /// Task was interrupted during execution, mostly this happens in development environments
-  "INTERRUPTED",
   /// Task has failed to complete, due to an error in the system
   "SYSTEM_FAILURE",
   /// Task has been scheduled to run at a specific time
@@ -709,6 +713,7 @@ const CommonRunFields = {
   version: z.string().optional(),
   isQueued: z.boolean(),
   isExecuting: z.boolean(),
+  isWaiting: z.boolean(),
   isCompleted: z.boolean(),
   isSuccess: z.boolean(),
   isFailed: z.boolean(),
@@ -750,19 +755,6 @@ export const RetrieveRunResponse = z.object({
     parent: RelatedRunDetails.optional(),
     children: z.array(RelatedRunDetails).optional(),
   }),
-  attempts: z.array(
-    z
-      .object({
-        id: z.string(),
-        status: AttemptStatus,
-        createdAt: z.coerce.date(),
-        updatedAt: z.coerce.date(),
-        startedAt: z.coerce.date().optional(),
-        completedAt: z.coerce.date().optional(),
-        error: SerializedError.optional(),
-      })
-      .optional()
-  ),
   attemptCount: z.number().default(0),
 });
 
@@ -1047,15 +1039,6 @@ export const WaitForDurationRequestBody = z.object({
    * This means after that time if you pass the same idempotency key again, you will get a new waitpoint.
    */
   idempotencyKeyTTL: z.string().optional(),
-
-  /**
-   * If set to true, this will cause the waitpoint to release the current run from the queue's concurrency.
-   *
-   * This is useful if you want to allow other runs to execute while the waiting
-   *
-   * @default false
-   */
-  releaseConcurrency: z.boolean().optional(),
 
   /**
    * The date that the waitpoint will complete.

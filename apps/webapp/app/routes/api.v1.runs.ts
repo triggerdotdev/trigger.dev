@@ -17,11 +17,12 @@ export const loader = createLoaderApiRoute(
     },
     findResource: async () => 1, // This is a dummy function, we don't need to find a resource
   },
-  async ({ searchParams, authentication }) => {
+  async ({ searchParams, authentication, apiVersion }) => {
     const presenter = new ApiRunListPresenter();
     const result = await presenter.call(
       authentication.environment.project,
       searchParams,
+      apiVersion,
       authentication.environment
     );
 

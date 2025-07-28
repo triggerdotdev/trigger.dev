@@ -54,6 +54,7 @@ services:
       OBJECT_STORE_ACCESS_KEY_ID: ${OBJECT_STORE_ACCESS_KEY_ID}
       OBJECT_STORE_SECRET_ACCESS_KEY: ${OBJECT_STORE_SECRET_ACCESS_KEY}
       GRACEFUL_SHUTDOWN_TIMEOUT: 1000
+      NODE_MAX_OLD_SPACE_SIZE: ${NODE_MAX_OLD_SPACE_SIZE}
       # Bootstrap - this will automatically set up a worker group for you
       # This will NOT work for split deployments
       TRIGGER_BOOTSTRAP_ENABLED: 1
@@ -75,6 +76,7 @@ services:
       # DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT: 100
       # Internal OTEL configuration
       INTERNAL_OTEL_TRACE_LOGGING_ENABLED: ${INTERNAL_OTEL_TRACE_LOGGING_ENABLED:-0}
+      TRIGGER_CLI_TAG: ${TRIGGER_CLI_TAG:-v4-beta}
 
   postgres:
     image: postgres:${POSTGRES_IMAGE_TAG:-14}
@@ -118,7 +120,7 @@ services:
       start_period: 10s
 
   electric:
-    image: electricsql/electric:${ELECTRIC_IMAGE_TAG:-1.0.13}
+    image: electricsql/electric:${ELECTRIC_IMAGE_TAG:-1.0.24}
     restart: ${RESTART_POLICY:-unless-stopped}
     logging: *logging-config
     depends_on:

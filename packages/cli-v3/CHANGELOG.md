@@ -1,5 +1,48 @@
 # trigger.dev
 
+## 4.0.0-v4-beta.25
+
+### Patch Changes
+
+- Gracefully shutdown task run processes using SIGTERM followed by SIGKILL after a 1s timeout. This also prevents cancelled or completed runs from leaving orphaned Ttask run processes behind ([#2299](https://github.com/triggerdotdev/trigger.dev/pull/2299))
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.0-v4-beta.25`
+  - `@trigger.dev/core@4.0.0-v4-beta.25`
+
+## 4.0.0-v4-beta.24
+
+### Patch Changes
+
+- Added experimental_devProcessCwdInBuildDir config option to opt-in to new process.cwd behavior when executing tasks in the dev CLI. Currently process.cwd maps to the "root" of your trigger.dev project (the directory that contains your trigger.config.ts file). Setting experimental_devProcessCwdInBuildDir to true changes process.cwd to instead be the temporary build directory inside of the .trigger directory. ([#2269](https://github.com/triggerdotdev/trigger.dev/pull/2269))
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.0-v4-beta.24`
+  - `@trigger.dev/core@4.0.0-v4-beta.24`
+
+## 4.0.0-v4-beta.23
+
+### Patch Changes
+
+- Enhance deploy command output to better distinguish between local and remote builds ([#2254](https://github.com/triggerdotdev/trigger.dev/pull/2254))
+- Fixes a bug that would allow processes that had OOM errors to be incorrectly reused when experimental_processKeepAlive was enabled ([#2261](https://github.com/triggerdotdev/trigger.dev/pull/2261))
+- Add runtime version detection for display in the dashboard ([#2254](https://github.com/triggerdotdev/trigger.dev/pull/2254))
+- Update base images to latest compatible versions. The `node-22` runtime now uses v22.16.0 and `bun` uses the latest v1.2.18 release. The default `node` runtime is unchanged and points at v21.7.3. ([#2254](https://github.com/triggerdotdev/trigger.dev/pull/2254))
+- Fail fast in CI when running deploy with missing `TRIGGER_ACCESS_TOKEN` and add useful error message with link to docs ([#2258](https://github.com/triggerdotdev/trigger.dev/pull/2258))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.23`
+  - `@trigger.dev/build@4.0.0-v4-beta.23`
+
+## 4.0.0-v4-beta.22
+
+### Patch Changes
+
+- Fix update command version mismatch detection ([#2199](https://github.com/triggerdotdev/trigger.dev/pull/2199))
+- Add project details to the whoami command ([#2231](https://github.com/triggerdotdev/trigger.dev/pull/2231))
+- experimental processKeepAlive ([#2183](https://github.com/triggerdotdev/trigger.dev/pull/2183))
+- Serialize metadata to prevent invalid metadata from breaking run completions ([#2219](https://github.com/triggerdotdev/trigger.dev/pull/2219))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.22`
+  - `@trigger.dev/build@4.0.0-v4-beta.22`
+
 ## 4.0.0-v4-beta.21
 
 ### Patch Changes

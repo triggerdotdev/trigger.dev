@@ -6,6 +6,7 @@ import { RunQueue } from "../index.js";
 import { RunQueueFullKeyProducer } from "../keyProducer.js";
 import { InputPayload } from "../types.js";
 import { setTimeout } from "node:timers/promises";
+import { Decimal } from "@trigger.dev/database";
 
 const testOptions = {
   name: "rq",
@@ -26,6 +27,7 @@ const authenticatedEnvDev = {
   id: "e1234",
   type: "DEVELOPMENT" as const,
   maximumConcurrencyLimit: 10,
+  concurrencyLimitBurstFactor: new Decimal(2.0),
   project: { id: "p1234" },
   organization: { id: "o1234" },
 };

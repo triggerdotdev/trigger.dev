@@ -58,12 +58,7 @@ export const parentTask = task({
   machine: "medium-1x",
   run: async (payload: any, { ctx }) => {
     logger.log("Hello, world from the parent", { payload });
-    await childTask.triggerAndWait(
-      { message: "Hello, world!" },
-      {
-        releaseConcurrency: true,
-      }
-    );
+    await childTask.triggerAndWait({ message: "Hello, world!", aReallyBigInt: BigInt(10000) });
   },
 });
 
@@ -108,10 +103,11 @@ export const childTask = task({
       message,
       failureChance = 0.3,
       duration = 3_000,
-    }: { message?: string; failureChance?: number; duration?: number },
+      aReallyBigInt,
+    }: { message?: string; failureChance?: number; duration?: number; aReallyBigInt?: bigint },
     { ctx }
   ) => {
-    logger.info("Hello, world from the child", { message, failureChance });
+    logger.info("Hello, world from the child", { message, failureChance, aReallyBigInt });
 
     if (Math.random() < failureChance) {
       throw new Error("Random error at start");
@@ -299,5 +295,146 @@ export const resourceMonitorTest = task({
     return {
       message: "Hello, resources!",
     };
+  },
+});
+
+export const circularReferenceTask = task({
+  id: "circular-reference",
+  run: async (payload: { message: string }, { ctx }) => {
+    logger.info("Hello, world from the circular reference task", { message: payload.message });
+
+    // Create an object
+    const user = {
+      name: "Alice",
+      details: {
+        age: 30,
+        email: "alice@example.com",
+      },
+    };
+
+    // Create the circular reference
+    // @ts-expect-error - This is a circular reference
+    user.details.user = user;
+
+    // Now user.details.user points back to the user object itself
+    // This creates a circular reference that standard JSON can't handle
+
+    return {
+      user,
+    };
+  },
+});
+
+export const largeAttributesTask = task({
+  id: "large-attributes",
+  machine: "large-1x",
+  run: async ({ length = 100000 }: { length: number }, { signal, ctx }) => {
+    // Create a large deeply nested object/array of objects that have more than 10k attributes when flattened
+    const start = performance.now();
+
+    const largeObject = Array.from({ length }, (_, i) => ({
+      a: i,
+      b: i,
+      c: i,
+    }));
+
+    const end = performance.now();
+
+    console.log(`[${length}] Time taken to create the large object: ${end - start}ms`);
+
+    const start2 = performance.now();
+
+    logger.info("Hello, world from the large attributes task", { largeObject });
+
+    const end2 = performance.now();
+
+    console.log(`[${length}] Time taken to log the large object: ${end2 - start2}ms`);
+
+    class MyClass {
+      constructor(public name: string) {}
+    }
+
+    logger.info("Lets log some weird stuff", {
+      error: new Error("This is an error"),
+      func: () => {
+        logger.info("This is a function");
+      },
+      date: new Date(),
+      bigInt: BigInt(1000000000000000000),
+      symbol: Symbol("symbol"),
+      myClass: new MyClass("MyClass"),
+      file: new File([], "test.txt"),
+      stream: new ReadableStream(),
+      map: new Map([["key", "value"]]),
+      set: new Set([1, 2, 3]),
+      promise: Promise.resolve("Hello, world!"),
+      promiseRejected: Promise.reject(new Error("This is a rejected promise")),
+      promisePending: Promise.resolve("Hello, world!"),
+    });
+  },
+});
+
+export const lotsOfLogsParentTask = task({
+  id: "lots-of-logs-parent",
+  run: async (payload: { count: number }, { ctx }) => {
+    logger.info("Hello, world from the lots of logs parent task", { count: payload.count });
+    await lotsOfLogsTask.batchTriggerAndWait(
+      Array.from({ length: 20 }, (_, i) => ({
+        payload: { count: payload.count },
+      }))
+    );
+  },
+});
+
+export const lotsOfLogsTask = task({
+  id: "lots-of-logs",
+  run: async (payload: { count: number }, { ctx }) => {
+    logger.info("Hello, world from the lots of logs task", { count: payload.count });
+
+    for (let i = 0; i < payload.count; i++) {
+      logger.info("Hello, world from the lots of logs task", { count: i });
+    }
+
+    await setTimeout(1000);
+
+    for (let i = 0; i < payload.count; i++) {
+      logger.info("Hello, world from the lots of logs task", { count: i });
+    }
+
+    await setTimeout(1000);
+
+    for (let i = 0; i < payload.count; i++) {
+      logger.info("Hello, world from the lots of logs task", { count: i });
+    }
+
+    await setTimeout(1000);
+
+    for (let i = 0; i < payload.count; i++) {
+      logger.info("Hello, world from the lots of logs task", { count: i });
+    }
+
+    await setTimeout(1000);
+
+    for (let i = 0; i < payload.count; i++) {
+      logger.info("Hello, world from the lots of logs task", { count: i });
+    }
+
+    await setTimeout(1000);
+
+    for (let i = 0; i < payload.count; i++) {
+      logger.info("Hello, world from the lots of logs task", { count: i });
+    }
+
+    await setTimeout(1000);
+
+    for (let i = 0; i < payload.count; i++) {
+      logger.info("Hello, world from the lots of logs task", { count: i });
+    }
+
+    await setTimeout(1000);
+
+    for (let i = 0; i < payload.count; i++) {
+      logger.info("Hello, world from the lots of logs task", { count: i });
+    }
   },
 });

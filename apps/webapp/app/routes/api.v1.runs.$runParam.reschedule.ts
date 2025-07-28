@@ -2,6 +2,7 @@ import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { RescheduleRunRequestBody } from "@trigger.dev/core/v3/schemas";
 import { z } from "zod";
+import { getApiVersion } from "~/api/versions";
 import { prisma } from "~/db.server";
 import { ApiRetrieveRunPresenter } from "~/presenters/v3/ApiRetrieveRunPresenter.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
@@ -70,7 +71,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
       return json({ error: "Run not found" }, { status: 404 });
     }
 
-    const presenter = new ApiRetrieveRunPresenter();
+    const apiVersion = getApiVersion(request);
+
+    const presenter = new ApiRetrieveRunPresenter(apiVersion);
     const result = await presenter.call(run, authenticationResult.environment);
 
     if (!result) {

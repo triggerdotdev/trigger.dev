@@ -124,6 +124,7 @@ export class InitializeDeploymentService extends BaseService {
           imageReference: imageRef,
           imagePlatform: env.DEPLOY_IMAGE_PLATFORM,
           git: payload.gitMeta ?? undefined,
+          runtime: payload.runtime ?? undefined,
         },
       });
 

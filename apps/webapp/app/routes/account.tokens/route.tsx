@@ -257,7 +257,6 @@ function CreatePersonalAccessToken() {
                 defaultValue=""
                 icon={ShieldCheckIcon}
                 autoComplete="off"
-                data-1p-ignore
               />
               <Hint>
                 This will help you to identify your token. Tokens called "cli" are automatically

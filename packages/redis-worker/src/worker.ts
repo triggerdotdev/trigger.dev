@@ -113,7 +113,7 @@ class Worker<TCatalog extends WorkerCatalog> {
   private shutdownTimeoutMs: number;
 
   // The p-limit limiter to control overall concurrency.
-  private limiter: ReturnType<typeof pLimit>;
+  private limiters: Record<string, ReturnType<typeof pLimit>> = {};
 
   constructor(private options: WorkerOptions<TCatalog>) {
     this.logger = options.logger ?? new Logger("Worker", "debug");
@@ -137,9 +137,6 @@ class Worker<TCatalog extends WorkerCatalog> {
 
     const { workers = 1, tasksPerWorker = 1, limit = 10 } = options.concurrency ?? {};
     this.concurrency = { workers, tasksPerWorker, limit };
-
-    // Create a p-limit instance using this limit.
-    this.limiter = pLimit(this.concurrency.limit);
 
     const masterQueueObservableGauge = this.meter.createObservableGauge("redis_worker.queue.size", {
       description: "The number of items in the queue",
@@ -203,15 +200,21 @@ class Worker<TCatalog extends WorkerCatalog> {
   }
 
   async #updateConcurrencyLimitActiveMetric(observableResult: ObservableResult<Attributes>) {
-    observableResult.observe(this.limiter.activeCount, {
-      worker_name: this.options.name,
-    });
+    for (const [workerId, limiter] of Object.entries(this.limiters)) {
+      observableResult.observe(limiter.activeCount, {
+        worker_name: this.options.name,
+        worker_id: workerId,
+      });
+    }
   }
 
   async #updateConcurrencyLimitPendingMetric(observableResult: ObservableResult<Attributes>) {
-    observableResult.observe(this.limiter.pendingCount, {
-      worker_name: this.options.name,
-    });
+    for (const [workerId, limiter] of Object.entries(this.limiters)) {
+      observableResult.observe(limiter.pendingCount, {
+        worker_name: this.options.name,
+        worker_id: workerId,
+      });
+    }
   }
 
   public start() {
@@ -261,12 +264,14 @@ class Worker<TCatalog extends WorkerCatalog> {
     payload,
     visibilityTimeoutMs,
     availableAt,
+    cancellationKey,
   }: {
     id?: string;
     job: K;
     payload: z.infer<TCatalog[K]["schema"]>;
     visibilityTimeoutMs?: number;
     availableAt?: Date;
+    cancellationKey?: string;
   }) {
     return startSpan(
       this.tracer,
@@ -288,6 +293,7 @@ class Worker<TCatalog extends WorkerCatalog> {
             item: payload,
             visibilityTimeoutMs: timeout,
             availableAt,
+            cancellationKey,
           }),
           {
             job_type: String(job),
@@ -388,6 +394,17 @@ class Worker<TCatalog extends WorkerCatalog> {
     );
   }
 
+  /**
+   * Cancels a job before it's enqueued.
+   * @param cancellationKey - The cancellation key to cancel.
+   * @returns A promise that resolves when the job is cancelled.
+   *
+   * Any jobs enqueued with the same cancellation key will be not be enqueued.
+   */
+  cancel(cancellationKey: string) {
+    return startSpan(this.tracer, "cancel", () => this.queue.cancel(cancellationKey));
+  }
+
   ack(id: string) {
     return startSpan(
       this.tracer,
@@ -417,6 +434,9 @@ class Worker<TCatalog extends WorkerCatalog> {
     workerIndex: number,
     totalWorkers: number
   ): Promise<void> {
+    const limiter = pLimit(this.concurrency.limit);
+    this.limiters[workerId] = limiter;
+
     const pollIntervalMs = this.options.pollIntervalMs ?? 1000;
     const immediatePollIntervalMs = this.options.immediatePollIntervalMs ?? 100;
 
@@ -438,12 +458,12 @@ class Worker<TCatalog extends WorkerCatalog> {
 
     while (!this.isShuttingDown) {
       // Check overall load. If at capacity, wait a bit before trying to dequeue more.
-      if (this.limiter.activeCount + this.limiter.pendingCount >= this.concurrency.limit) {
+      if (limiter.activeCount + limiter.pendingCount >= this.concurrency.limit) {
         this.logger.debug("Worker at capacity, waiting", {
           workerId,
           concurrencyOptions: this.concurrency,
-          activeCount: this.limiter.activeCount,
-          pendingCount: this.limiter.pendingCount,
+          activeCount: limiter.activeCount,
+          pendingCount: limiter.pendingCount,
         });
 
         await Worker.delay(pollIntervalMs);
@@ -451,13 +471,20 @@ class Worker<TCatalog extends WorkerCatalog> {
         continue;
       }
 
+      // If taskCount is 10, concurrency limit is 100, and there are 98 active workers, we should dequeue 2 items at most.
+      // If taskCount is 10, concurrency limit is 100, and there are 12 active workers, we should dequeue 10 items at most.
+      const $taskCount = Math.min(
+        taskCount,
+        this.concurrency.limit - limiter.activeCount - limiter.pendingCount
+      );
+
       try {
         const items = await this.withHistogram(
           this.metrics.dequeueDuration,
-          this.queue.dequeue(taskCount),
+          this.queue.dequeue($taskCount),
           {
             worker_id: workerId,
-            task_count: taskCount,
+            task_count: $taskCount,
           }
         );
 
@@ -465,8 +492,8 @@ class Worker<TCatalog extends WorkerCatalog> {
           this.logger.debug("No items to dequeue", {
             workerId,
             concurrencyOptions: this.concurrency,
-            activeCount: this.limiter.activeCount,
-            pendingCount: this.limiter.pendingCount,
+            activeCount: limiter.activeCount,
+            pendingCount: limiter.pendingCount,
           });
 
           await Worker.delay(pollIntervalMs);
@@ -477,17 +504,17 @@ class Worker<TCatalog extends WorkerCatalog> {
           workerId,
           itemCount: items.length,
           concurrencyOptions: this.concurrency,
-          activeCount: this.limiter.activeCount,
-          pendingCount: this.limiter.pendingCount,
+          activeCount: limiter.activeCount,
+          pendingCount: limiter.pendingCount,
         });
 
         // Schedule each item using the limiter.
         for (const item of items) {
-          this.limiter(() => this.processItem(item as AnyQueueItem, items.length, workerId)).catch(
-            (err) => {
-              this.logger.error("Unhandled error in processItem:", { error: err, workerId, item });
-            }
-          );
+          limiter(() =>
+            this.processItem(item as AnyQueueItem, items.length, workerId, limiter)
+          ).catch((err) => {
+            this.logger.error("Unhandled error in processItem:", { error: err, workerId, item });
+          });
         }
       } catch (error) {
         this.logger.error("Error dequeuing items:", { name: this.options.name, error });
@@ -508,7 +535,8 @@ class Worker<TCatalog extends WorkerCatalog> {
   private async processItem(
     { id, job, item, visibilityTimeoutMs, attempt, timestamp, deduplicationKey }: AnyQueueItem,
     batchSize: number,
-    workerId: string
+    workerId: string,
+    limiter: ReturnType<typeof pLimit>
   ): Promise<void> {
     const catalogItem = this.options.catalog[job as any];
     const handler = this.jobs[job as any];
@@ -553,9 +581,9 @@ class Worker<TCatalog extends WorkerCatalog> {
           job_timestamp: timestamp.getTime(),
           job_age_in_ms: Date.now() - timestamp.getTime(),
           worker_id: workerId,
-          worker_limit_concurrency: this.limiter.concurrency,
-          worker_limit_active: this.limiter.activeCount,
-          worker_limit_pending: this.limiter.pendingCount,
+          worker_limit_concurrency: limiter.concurrency,
+          worker_limit_active: limiter.activeCount,
+          worker_limit_pending: limiter.pendingCount,
           worker_name: this.options.name,
           batch_size: batchSize,
         },
