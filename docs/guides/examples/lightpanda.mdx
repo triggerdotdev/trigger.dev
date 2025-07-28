@@ -1,7 +1,7 @@
 ---
-title: "Get a webpage's content using Lightpanda browser"
+title: "Lightpanda"
 sidebarTitle: "Lightpanda"
-description: "In these examples, we will show you how to crawl using Lightpanda browser and Trigger.dev."
+description: "These examples demonstrate how to use Lightpanda with Trigger.dev."
 tag: "v4"
 ---
 
@@ -14,23 +14,26 @@ import UpgradeToV4Note from "/snippets/upgrade-to-v4-note.mdx";
 
 Lightpanda is a purpose-built browser for AI and automation workflows. It is 10x faster, uses 10x less RAM than Chrome headless.
 
-You will find here are a couple of examples of how to use Lightpanda with Trigger.dev.
+Here are a few examples of how to use Lightpanda with Trigger.dev.
 
 <ScrapingWarning />
 
-## Prerequisites
+## Limitations
 
-- A project with [Trigger.dev initialized](/quick-start)
-- A [Lightpanda](https://lightpanda.io/) cloud token (for the 1st example)
+- Lightpanda does not support the `puppeteer` screenshot feature.
 
-## Example \#1 - Get links from a website using Lightpanda cloud & Puppeteer
+## Using Lightpanda Cloud
 
-In this task, we use Lightpanda browser to get links from a provided URL.
-You will have to pass the URL as a payload when triggering the task.
+### Prerequisites
 
-Make sure to add `$LIGHTPANDA_TOKEN` to your Trigger.dev dashboard on the Environment Variables page:
+- A [Lightpanda](https://lightpanda.io/) cloud token
+
+### Get links from a website
+In this task we use Lightpanda browser to get links from a provided URL. You will have to pass the URL as a payload when triggering the task.
+
+Make sure to add `LIGHTPANDA_TOKEN` to your Trigger.dev dashboard on the Environment Variables page:
 ```bash
-LIGHTPANDA_TOKEN: "<your-token>",
+LIGHTPANDA_TOKEN="<your-token>"
 ```
 
 ```ts trigger/lightpanda-cloud-puppeteer.ts
@@ -86,30 +89,31 @@ export const lightpandaCloudPuppeteer = task({
   },
 });
 ```
+
 ### Proxies
 
 Proxies can be used with your browser via the proxy query string parameter. By default, the proxy used is "datacenter" which is a pool of shared datacenter IPs.
-`datacenter` accepts an optional `country` query string parameter, an [ISO 3166-1 alpha-2](https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2) country code.
+`datacenter` accepts an optional `country` query string parameter which is an [ISO 3166-1 alpha-2](https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2) country code.
 
-_Example using a German IP :_
-
-```wss://cloud.lightpanda.io/ws?proxy=datacenter&country=de&token=TOKEN```
-
+```bash
+# This example will use a German IP
+wss://cloud.lightpanda.io/ws?proxy=datacenter&country=de&token=${token}
+```
 
 ### Session
-A session is alive until you close it or the connection is closed. The max time duration of a session is 15 min.
 
+A session is alive until you close it or the connection is closed. The max duration of a session is 15 minutes.
 
-## Example \#2 - Get a webpage using Lightpanda
-
-Using the Lightpanda binary we will dump the HTML for a provided URL.
-You will have to pass the URL as a payload when triggering the task.
-
+## Using Lightpanda browser directly
 
 ### Prerequisites
+
 - Setup the [Lightpanda build extension](/config/extensions/lightpanda)
 
-### Task
+### Get the HTML of a webpage
+
+This task will dump the HTML of a provided URL using the Lightpanda browser binary. You will have to pass the URL as a payload when triggering the task.
+
 ```ts trigger/lightpanda-fetch.ts
 import { logger, task } from "@trigger.dev/sdk";
 import { execSync } from "node:child_process";
@@ -138,15 +142,9 @@ export const lightpandaFetch = task({
 });
 ```
 
-## Example \#3 - Launch and use a Lightpanda CDP server
+### Lightpanda CDP with Puppeteer
 
-This task initialises a Lightpanda CDP server to allow you to scrape directly via Trigger.dev.
-
-### Prerequisites
-- Setup the [Lightpanda build extension](/config/extensions/lightpanda)
-
-### Task
-Your task will have to launch a child process in order to have the websocket available to scrape using Puppeteer.
+This task initializes a Lightpanda CDP server and uses it with `puppeteer-core` to scrape a provided URL.
 
 ```ts trigger/lightpanda-cdp.ts
 import { logger, task } from "@trigger.dev/sdk";

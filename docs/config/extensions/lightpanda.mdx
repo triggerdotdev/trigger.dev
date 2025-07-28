@@ -17,16 +17,15 @@ import { lightpanda } from "@trigger.dev/build/extensions/lightpanda";
 
 export default defineConfig({
   project: "<project ref>",
-  // Your other config settings...
   build: {
     extensions: [lightpanda()],
   },
 });
 ```
 
-### Options
+## Options
 
-- `version`: The version of the browser to install. Default: `"nightly"`.
+- `version`: The version of the browser to install. Default: `"latest"`.
 - `disableTelemetry`: Whether to disable telemetry. Default: `false`.
 
 For example:
@@ -48,18 +47,14 @@ export default defineConfig({
 });
 ```
 
-### Environment variables
+## Development
 
-The extension sets the following environment variables during the build:
+When running in dev, you will first have to download the Lightpanda browser binary and make sure it's in your `PATH`. See [Lightpanda's installation guide](https://lightpanda.io/docs/getting-started/installation).
 
-- `LIGHTPANDA_BROWSER_PATH`: Set to `/usr/bin/lightpanda` so the browser can be found at runtime
+## Next steps
 
-#### Development
-
-When running in dev, you will first have to download the Lightpanda browser binary. See [Lightpanda's installation guide](https://lightpanda.io/docs/getting-started/installation).
-
-Then, set the `LIGHTPANDA_BROWSER_PATH` environment variable to the path of the Lightpanda browser binary.
-
-```bash
-export LIGHTPANDA_BROWSER_PATH="/usr/local/bin/lightpanda"
-```
+<CardGroup>
+  <Card title="Lightpanda" color="#6ac6e2" icon="bolt" href="/guides/examples/lightpanda">
+    Learn how to use Lightpanda in your project.
+  </Card>
+</CardGroup>
