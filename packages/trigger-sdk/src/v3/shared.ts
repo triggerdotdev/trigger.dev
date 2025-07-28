@@ -84,6 +84,7 @@ import type {
   TaskBatchOutputHandle,
   TaskIdentifier,
   TaskOptions,
+  TaskOptionsWithSchema,
   TaskOutput,
   TaskOutputHandle,
   TaskPayload,
@@ -136,6 +137,16 @@ export function queue(options: QueueOptions): Queue {
   return options;
 }
 
+// Overload: when payloadSchema is provided, payload type should be any
+export function createTask<
+  TIdentifier extends string,
+  TOutput = unknown,
+  TInitOutput extends InitOutput = any,
+>(
+  params: TaskOptionsWithSchema<TIdentifier, TOutput, TInitOutput>
+): Task<TIdentifier, any, TOutput>;
+
+// Overload: normal case without payloadSchema
 export function createTask<
   TIdentifier extends string,
   TInput = void,
@@ -143,7 +154,18 @@ export function createTask<
   TInitOutput extends InitOutput = any,
 >(
   params: TaskOptions<TIdentifier, TInput, TOutput, TInitOutput>
-): Task<TIdentifier, TInput, TOutput> {
+): Task<TIdentifier, TInput, TOutput>;
+
+export function createTask<
+  TIdentifier extends string,
+  TInput = void,
+  TOutput = unknown,
+  TInitOutput extends InitOutput = any,
+>(
+  params:
+    | TaskOptions<TIdentifier, TInput, TOutput, TInitOutput>
+    | TaskOptionsWithSchema<TIdentifier, TOutput, TInitOutput>
+): Task<TIdentifier, TInput, TOutput> | Task<TIdentifier, any, TOutput> {
   const task: Task<TIdentifier, TInput, TOutput> = {
     id: params.id,
     description: params.description,

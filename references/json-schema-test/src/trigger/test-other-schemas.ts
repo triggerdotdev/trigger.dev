@@ -1,6 +1,17 @@
 import { schemaTask } from "@trigger.dev/sdk/v3";
 import { Type } from "@sinclair/typebox";
-import { array, object, string, number, boolean, optional, union, literal, record, Infer } from "superstruct";
+import {
+  array,
+  object,
+  string,
+  number,
+  boolean,
+  optional,
+  union,
+  literal,
+  record,
+  Infer,
+} from "superstruct";
 import * as S from "@effect/schema/Schema";
 import { type } from "arktype";
 import * as v from "valibot";
@@ -14,11 +25,7 @@ const typeBoxSchema = Type.Object({
   author: Type.Object({
     name: Type.String(),
     email: Type.String({ format: "email" }),
-    role: Type.Union([
-      Type.Literal("admin"),
-      Type.Literal("editor"),
-      Type.Literal("viewer"),
-    ]),
+    role: Type.Union([Type.Literal("admin"), Type.Literal("editor"), Type.Literal("viewer")]),
   }),
   tags: Type.Array(Type.String(), { minItems: 1, maxItems: 5 }),
   published: Type.Boolean(),
@@ -28,7 +35,7 @@ const typeBoxSchema = Type.Object({
 
 export const typeBoxTask = schemaTask({
   id: "typebox-schema-task",
-  schema: typeBoxSchema,
+  schema: typeBoxSchema as any,
   run: async (payload, { ctx }) => {
     // TypeBox provides static type inference
     const id: string = payload.id;
@@ -82,9 +89,8 @@ export const superstructTask = schemaTask({
     const accountBalance = payload.account.balance;
     const isApproved = payload.approved;
 
-    const newBalance = payload.transaction.type === "credit" 
-      ? accountBalance + amount 
-      : accountBalance - amount;
+    const newBalance =
+      payload.transaction.type === "credit" ? accountBalance + amount : accountBalance - amount;
 
     return {
       transactionId,
@@ -110,25 +116,29 @@ const effectSchema = S.Struct({
     email: S.String,
     attributes: S.optional(S.Record(S.String, S.Unknown)),
   }),
-  product: S.optional(S.Struct({
-    productId: S.String,
-    name: S.String,
-    price: S.Number,
-    category: S.String,
-  })),
-  location: S.optional(S.Struct({
-    country: S.String,
-    city: S.optional(S.String),
-    region: S.optional(S.String),
-  })),
+  product: S.optional(
+    S.Struct({
+      productId: S.String,
+      name: S.String,
+      price: S.Number,
+      category: S.String,
+    })
+  ),
+  location: S.optional(
+    S.Struct({
+      country: S.String,
+      city: S.optional(S.String),
+      region: S.optional(S.String),
+    })
+  ),
 });
 
 type EffectEvent = S.Schema.Type<typeof effectSchema>;
 
 export const effectSchemaTask = schemaTask({
   id: "effect-schema-task",
-  schema: effectSchema,
-  run: async (payload: EffectEvent, { ctx }) => {
+  schema: effectSchema as any,
+  run: async (payload: any, { ctx }) => {
     // Effect Schema provides type safety
     const eventId = payload.event.eventId;
     const eventType = payload.event.eventType;
@@ -262,13 +272,13 @@ const runtypesSchema = rt.Record({
         type: rt.Literal("bank"),
         accountNumber: rt.String,
         routingNumber: rt.String,
-      }),
+      })
     ),
     status: rt.Union(
       rt.Literal("pending"),
       rt.Literal("processing"),
       rt.Literal("completed"),
-      rt.Literal("failed"),
+      rt.Literal("failed")
     ),
   }),
   customer: rt.Record({
@@ -291,11 +301,12 @@ export const runtypesTask = schemaTask({
     const currency = payload.payment.currency;
     const status = payload.payment.status;
     const customerEmail = payload.customer.email;
-    
+
     // Discriminated union handling
-    const paymentDetails = payload.payment.method.type === "card"
-      ? `Card ending in ${payload.payment.method.last4}`
-      : `Bank account ${payload.payment.method.accountNumber}`;
+    const paymentDetails =
+      payload.payment.method.type === "card"
+        ? `Card ending in ${payload.payment.method.last4}`
+        : `Bank account ${payload.payment.method.accountNumber}`;
 
     return {
       paymentId,
@@ -336,7 +347,7 @@ export const testAllSchemas = schemaTask({
     const superstructResult = await superstructTask.trigger({
       transaction: {
         id: "txn123",
-        amount: 100.50,
+        amount: 100.5,
         currency: "USD",
         type: "credit",
         description: "Test transaction",

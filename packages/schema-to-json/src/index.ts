@@ -1,18 +1,8 @@
-import type { JSONSchema7, JSONSchema7Definition, JSONSchema7Type, JSONSchema7TypeName, JSONSchema7Object, JSONSchema7Array } from '@types/json-schema';
+// Import JSONSchema from core to ensure compatibility
+import type { JSONSchema } from "@trigger.dev/core/v3";
 
 export type Schema = unknown;
-export type JSONSchema = JSONSchema7;
-export type JSONSchemaDefinition = JSONSchema7Definition;
-
-// Re-export the standard JSON Schema types for convenience
-export type {
-  JSONSchema7,
-  JSONSchema7Type,
-  JSONSchema7TypeName,
-  JSONSchema7Definition,
-  JSONSchema7Object,
-  JSONSchema7Array,
-} from '@types/json-schema';
+export type { JSONSchema };
 
 export interface ConversionOptions {
   /**
@@ -33,22 +23,34 @@ export interface ConversionResult {
   /**
    * The detected schema type
    */
-  schemaType: 'zod' | 'yup' | 'arktype' | 'effect' | 'valibot' | 'superstruct' | 'runtypes' | 'typebox' | 'unknown';
+  schemaType:
+    | "zod"
+    | "yup"
+    | "arktype"
+    | "effect"
+    | "valibot"
+    | "superstruct"
+    | "runtypes"
+    | "typebox"
+    | "unknown";
 }
 
 /**
  * Convert a schema from various validation libraries to JSON Schema
- * 
+ *
  * This function attempts to convert schemas without requiring external dependencies to be bundled.
  * It will only succeed if:
  * 1. The schema has built-in JSON Schema conversion (ArkType, Zod 4, TypeBox)
  * 2. The required conversion library is available at runtime (zod-to-json-schema, @sodaru/yup-to-json-schema, etc.)
- * 
+ *
  * @param schema The schema to convert
  * @param options Optional conversion options
  * @returns The conversion result or undefined if conversion is not possible
  */
-export function schemaToJsonSchema(schema: Schema, options?: ConversionOptions): ConversionResult | undefined {
+export function schemaToJsonSchema(
+  schema: Schema,
+  options?: ConversionOptions
+): ConversionResult | undefined {
   const parser = schema as any;
 
   // Check if schema has a built-in toJsonSchema method (e.g., ArkType, Zod 4)
@@ -56,10 +58,15 @@ export function schemaToJsonSchema(schema: Schema, options?: ConversionOptions):
     try {
       const jsonSchema = parser.toJsonSchema();
       // Determine if it's Zod or ArkType based on other methods
-      const schemaType = (typeof parser.parseAsync === "function" || typeof parser.parse === "function") ? 'zod' : 'arktype';
+      const schemaType =
+        typeof parser.parseAsync === "function" || typeof parser.parse === "function"
+          ? "zod"
+          : "arktype";
       return {
-        jsonSchema: options?.additionalProperties ? { ...jsonSchema, ...options.additionalProperties } : jsonSchema,
-        schemaType
+        jsonSchema: options?.additionalProperties
+          ? { ...jsonSchema, ...options.additionalProperties }
+          : jsonSchema,
+        schemaType,
       };
     } catch (error) {
       // If toJsonSchema fails, continue to other checks
@@ -67,40 +74,46 @@ export function schemaToJsonSchema(schema: Schema, options?: ConversionOptions):
   }
 
   // Check if it's a TypeBox schema (has Static and Kind symbols)
-  if (parser[Symbol.for('TypeBox.Kind')] !== undefined) {
+  if (parser[Symbol.for("TypeBox.Kind")] !== undefined) {
     // TypeBox schemas are already JSON Schema compliant
     return {
-      jsonSchema: options?.additionalProperties ? { ...parser, ...options.additionalProperties } : parser,
-      schemaType: 'typebox'
+      jsonSchema: options?.additionalProperties
+        ? { ...parser, ...options.additionalProperties }
+        : parser,
+      schemaType: "typebox",
     };
   }
 
   // For schemas that need external libraries, we need to check if they're available
   // This approach avoids bundling the dependencies while still allowing runtime usage
-  
+
   // Check if it's a Zod schema (without built-in toJsonSchema)
   if (typeof parser.parseAsync === "function" || typeof parser.parse === "function") {
     try {
       // Try to access zod-to-json-schema if it's available
       // @ts-ignore - This is intentionally dynamic
-      if (typeof globalThis.__zodToJsonSchema !== 'undefined') {
+      if (typeof globalThis.__zodToJsonSchema !== "undefined") {
         // @ts-ignore
         const { zodToJsonSchema } = globalThis.__zodToJsonSchema;
-        const jsonSchema = options?.name 
+        const jsonSchema = options?.name
           ? zodToJsonSchema(parser, options.name)
           : zodToJsonSchema(parser);
-        
-        if (jsonSchema && typeof jsonSchema === 'object' && '$schema' in jsonSchema) {
+
+        if (jsonSchema && typeof jsonSchema === "object" && "$schema" in jsonSchema) {
           const { $schema, ...rest } = jsonSchema as any;
           return {
-            jsonSchema: options?.additionalProperties ? { ...rest, ...options.additionalProperties } : rest,
-            schemaType: 'zod'
+            jsonSchema: options?.additionalProperties
+              ? { ...rest, ...options.additionalProperties }
+              : rest,
+            schemaType: "zod",
           };
         }
-        
+
         return {
-          jsonSchema: options?.additionalProperties ? { ...jsonSchema, ...options.additionalProperties } : jsonSchema,
-          schemaType: 'zod'
+          jsonSchema: options?.additionalProperties
+            ? { ...jsonSchema, ...options.additionalProperties }
+            : jsonSchema,
+          schemaType: "zod",
         };
       }
     } catch (error) {
@@ -112,13 +125,15 @@ export function schemaToJsonSchema(schema: Schema, options?: ConversionOptions):
   if (typeof parser.validateSync === "function" && typeof parser.describe === "function") {
     try {
       // @ts-ignore
-      if (typeof globalThis.__yupToJsonSchema !== 'undefined') {
+      if (typeof globalThis.__yupToJsonSchema !== "undefined") {
         // @ts-ignore
         const { convertSchema } = globalThis.__yupToJsonSchema;
         const jsonSchema = convertSchema(parser);
         return {
-          jsonSchema: options?.additionalProperties ? { ...jsonSchema, ...options.additionalProperties } : jsonSchema,
-          schemaType: 'yup'
+          jsonSchema: options?.additionalProperties
+            ? { ...jsonSchema, ...options.additionalProperties }
+            : jsonSchema,
+          schemaType: "yup",
         };
       }
     } catch (error) {
@@ -127,16 +142,22 @@ export function schemaToJsonSchema(schema: Schema, options?: ConversionOptions):
   }
 
   // Check if it's an Effect schema
-  if (parser._tag === "Schema" || parser._tag === "SchemaClass" || typeof parser.ast === "function") {
+  if (
+    parser._tag === "Schema" ||
+    parser._tag === "SchemaClass" ||
+    typeof parser.ast === "function"
+  ) {
     try {
       // @ts-ignore
-      if (typeof globalThis.__effectJsonSchema !== 'undefined') {
+      if (typeof globalThis.__effectJsonSchema !== "undefined") {
         // @ts-ignore
         const { JSONSchema } = globalThis.__effectJsonSchema;
         const jsonSchema = JSONSchema.make(parser);
         return {
-          jsonSchema: options?.additionalProperties ? { ...jsonSchema, ...options.additionalProperties } : jsonSchema,
-          schemaType: 'effect'
+          jsonSchema: options?.additionalProperties
+            ? { ...jsonSchema, ...options.additionalProperties }
+            : jsonSchema,
+          schemaType: "effect",
         };
       }
     } catch (error) {
@@ -158,14 +179,14 @@ export function schemaToJsonSchema(schema: Schema, options?: ConversionOptions):
 export async function initializeSchemaConverters(): Promise<void> {
   try {
     // @ts-ignore
-    globalThis.__zodToJsonSchema = await import('zod-to-json-schema');
+    globalThis.__zodToJsonSchema = await import("zod-to-json-schema");
   } catch {
     // Zod conversion not available
   }
 
   try {
     // @ts-ignore
-    globalThis.__yupToJsonSchema = await import('@sodaru/yup-to-json-schema');
+    globalThis.__yupToJsonSchema = await import("@sodaru/yup-to-json-schema");
   } catch {
     // Yup conversion not available
   }
@@ -174,9 +195,9 @@ export async function initializeSchemaConverters(): Promise<void> {
     // Try Effect first, then @effect/schema
     let module;
     try {
-      module = await import('effect');
+      module = await import("effect");
     } catch {
-      module = await import('@effect/schema');
+      module = await import("@effect/schema");
     }
     if (module?.JSONSchema) {
       // @ts-ignore
@@ -198,9 +219,9 @@ export function canConvertSchema(schema: Schema): boolean {
 /**
  * Get the detected schema type
  */
-export function detectSchemaType(schema: Schema): ConversionResult['schemaType'] {
+export function detectSchemaType(schema: Schema): ConversionResult["schemaType"] {
   const result = schemaToJsonSchema(schema);
-  return result?.schemaType ?? 'unknown';
+  return result?.schemaType ?? "unknown";
 }
 
 /**
@@ -213,10 +234,10 @@ export function areConvertersInitialized(): {
 } {
   return {
     // @ts-ignore
-    zod: typeof globalThis.__zodToJsonSchema !== 'undefined',
+    zod: typeof globalThis.__zodToJsonSchema !== "undefined",
     // @ts-ignore
-    yup: typeof globalThis.__yupToJsonSchema !== 'undefined',
+    yup: typeof globalThis.__yupToJsonSchema !== "undefined",
     // @ts-ignore
-    effect: typeof globalThis.__effectJsonSchema !== 'undefined',
+    effect: typeof globalThis.__effectJsonSchema !== "undefined",
   };
 }

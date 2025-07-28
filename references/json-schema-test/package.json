@@ -10,7 +10,15 @@
   },
   "dependencies": {
     "@trigger.dev/sdk": "workspace:*",
-    "zod": "3.22.3"
+    "zod": "3.22.3",
+    "@sinclair/typebox": "^0.34.3",
+    "superstruct": "^2.0.2",
+    "@effect/schema": "^0.75.5",
+    "effect": "^3.11.11",
+    "arktype": "^2.0.0",
+    "valibot": "^1.0.0-beta.8",
+    "runtypes": "^6.7.0",
+    "yup": "^1.6.1"
   },
   "devDependencies": {
     "@types/node": "^20.14.8",

@@ -31,7 +31,7 @@ export const plainJsonSchemaTask = task({
   run: async (payload, { ctx }) => {
     // payload is any, but schema is properly stored
     console.log("Received payload:", payload);
-    
+
     return {
       taskId: ctx.task.id,
       runId: ctx.run.id,
@@ -64,7 +64,7 @@ export const zodSchemaTask = schemaTask({
   run: async (payload, { ctx }) => {
     // Full type inference from Zod schema
     console.log("Processing user:", payload.userName);
-    
+
     // All these are properly typed
     const id: string = payload.userId;
     const name: string = payload.userName;
@@ -73,7 +73,7 @@ export const zodSchemaTask = schemaTask({
     const theme: "light" | "dark" | "auto" = payload.preferences.theme;
     const notifications: boolean = payload.preferences.notifications;
     const tagCount: number = payload.tags.length;
-    
+
     return {
       processedUserId: id,
       processedUserName: name,
@@ -90,13 +90,17 @@ export const zodSchemaTask = schemaTask({
 const orderSchema = z.object({
   orderId: z.string(),
   customerId: z.string(),
-  items: z.array(z.object({
-    productId: z.string(),
-    productName: z.string(),
-    quantity: z.number().positive(),
-    unitPrice: z.number().positive(),
-    discount: z.number().min(0).max(100).default(0),
-  })).min(1),
+  items: z
+    .array(
+      z.object({
+        productId: z.string(),
+        productName: z.string(),
+        quantity: z.number().positive(),
+        unitPrice: z.number().positive(),
+        discount: z.number().min(0).max(100).default(0),
+      })
+    )
+    .min(1),
   shippingAddress: z.object({
     street: z.string(),
     city: z.string(),
@@ -104,13 +108,15 @@ const orderSchema = z.object({
     zipCode: z.string(),
     country: z.string().default("US"),
   }),
-  billingAddress: z.object({
-    street: z.string(),
-    city: z.string(),
-    state: z.string(),
-    zipCode: z.string(),
-    country: z.string(),
-  }).optional(),
+  billingAddress: z
+    .object({
+      street: z.string(),
+      city: z.string(),
+      state: z.string(),
+      zipCode: z.string(),
+      country: z.string(),
+    })
+    .optional(),
   paymentMethod: z.discriminatedUnion("type", [
     z.object({
       type: z.literal("credit_card"),
@@ -127,7 +133,9 @@ const orderSchema = z.object({
       routingNumber: z.string(),
     }),
   ]),
-  orderStatus: z.enum(["pending", "processing", "shipped", "delivered", "cancelled"]).default("pending"),
+  orderStatus: z
+    .enum(["pending", "processing", "shipped", "delivered", "cancelled"])
+    .default("pending"),
   createdAt: z.string().datetime(),
   notes: z.string().optional(),
 });
@@ -141,14 +149,14 @@ export const complexOrderTask = schemaTask({
     const firstItem = payload.items[0];
     const productName = firstItem.productName;
     const quantity = firstItem.quantity;
-    
+
     // Calculate totals with full type safety
     const subtotal = payload.items.reduce((sum, item) => {
       const itemTotal = item.quantity * item.unitPrice;
       const discount = itemTotal * (item.discount / 100);
       return sum + (itemTotal - discount);
     }, 0);
-    
+
     // Discriminated union handling
     let paymentSummary: string;
     switch (payload.paymentMethod.type) {
@@ -162,11 +170,11 @@ export const complexOrderTask = schemaTask({
         paymentSummary = `Bank transfer ending in ${payload.paymentMethod.accountNumber.slice(-4)}`;
         break;
     }
-    
+
     // Optional field handling
     const hasBillingAddress = !!payload.billingAddress;
     const billingCity = payload.billingAddress?.city ?? payload.shippingAddress.city;
-    
+
     return {
       orderId,
       customerId: payload.customerId,
@@ -187,7 +195,7 @@ export const testTriggerTypeSafety = task({
   id: "test-trigger-type-safety",
   run: async (_, { ctx }) => {
     console.log("Testing trigger type safety...");
-    
+
     // Valid trigger - should compile
     const handle1 = await zodSchemaTask.trigger({
       userId: "550e8400-e29b-41d4-a716-446655440000",
@@ -202,7 +210,7 @@ export const testTriggerTypeSafety = task({
       tags: ["customer", "premium"],
       createdAt: new Date().toISOString(),
     });
-    
+
     // Using defaults - should also compile
     const handle2 = await zodSchemaTask.trigger({
       userId: "550e8400-e29b-41d4-a716-446655440001",
@@ -212,7 +220,7 @@ export const testTriggerTypeSafety = task({
       preferences: {}, // Will use defaults
       // tags will default to []
     });
-    
+
     // Test triggerAndWait with result handling
     const result = await zodSchemaTask.triggerAndWait({
       userId: "550e8400-e29b-41d4-a716-446655440002",
@@ -223,13 +231,13 @@ export const testTriggerTypeSafety = task({
         theme: "light",
       },
     });
-    
+
     if (result.ok) {
       // Type-safe access to output
       console.log("Processed user:", result.output.processedUserName);
       console.log("User email:", result.output.processedUserEmail);
       console.log("Theme:", result.output.theme);
-      
+
       return {
         success: true,
         processedUserId: result.output.processedUserId,
@@ -249,7 +257,7 @@ export const testBatchOperations = task({
   id: "test-batch-operations",
   run: async (_, { ctx }) => {
     console.log("Testing batch operations...");
-    
+
     // Batch trigger
     const batchHandle = await zodSchemaTask.batchTrigger([
       {
@@ -277,9 +285,9 @@ export const testBatchOperations = task({
         },
       },
     ]);
-    
+
     console.log(`Triggered batch ${batchHandle.batchId} with ${batchHandle.runCount} runs`);
-    
+
     // Batch trigger and wait
     const batchResult = await zodSchemaTask.batchTriggerAndWait([
       {
@@ -304,9 +312,9 @@ export const testBatchOperations = task({
         },
       },
     ]);
-    
+
     // Process results with type safety
-    const processed = batchResult.runs.map(run => {
+    const processed = batchResult.runs.map((run) => {
       if (run.ok) {
         return {
           success: true,
@@ -322,11 +330,11 @@ export const testBatchOperations = task({
         };
       }
     });
-    
+
     return {
       batchId: batchResult.id,
       totalRuns: batchResult.runs.length,
-      successfulRuns: processed.filter(p => p.success).length,
+      successfulRuns: processed.filter((p) => p.success).length,
       processed,
     };
   },
@@ -337,7 +345,7 @@ export const integrationTest = task({
   id: "json-schema-integration-test",
   run: async (_, { ctx }) => {
     console.log("Running integration test...");
-    
+
     const results = {
       plainTask: false,
       zodTask: false,
@@ -345,7 +353,7 @@ export const integrationTest = task({
       triggerTypes: false,
       batchOps: false,
     };
-    
+
     try {
       // Test plain JSON schema task
       const plainResult = await plainJsonSchemaTask.trigger({
@@ -358,19 +366,21 @@ export const integrationTest = task({
         metadata: { source: "integration-test" },
       });
       results.plainTask = !!plainResult.id;
-      
+
       // Test Zod schema task
-      const zodResult = await zodSchemaTask.triggerAndWait({
-        userId: "int-test-001",
-        userName: "Integration Test User",
-        userEmail: "integration@example.com",
-        age: 35,
-        preferences: {
-          theme: "auto",
-        },
-      }).unwrap();
+      const zodResult = await zodSchemaTask
+        .triggerAndWait({
+          userId: "int-test-001",
+          userName: "Integration Test User",
+          userEmail: "integration@example.com",
+          age: 35,
+          preferences: {
+            theme: "auto",
+          },
+        })
+        .unwrap();
       results.zodTask = zodResult.processedUserId === "int-test-001";
-      
+
       // Test complex schema
       const complexResult = await complexOrderTask.trigger({
         orderId: "order-int-001",
@@ -398,27 +408,24 @@ export const integrationTest = task({
         createdAt: new Date().toISOString(),
       });
       results.complexTask = !!complexResult.id;
-      
+
       // Test trigger type safety
-      const triggerResult = await testTriggerTypeSafety.triggerAndWait({});
+      const triggerResult = await testTriggerTypeSafety.triggerAndWait(undefined);
       results.triggerTypes = triggerResult.ok && triggerResult.output.success;
-      
+
       // Test batch operations
-      const batchResult = await testBatchOperations.triggerAndWait({});
+      const batchResult = await testBatchOperations.triggerAndWait(undefined);
       results.batchOps = batchResult.ok && batchResult.output.successfulRuns > 0;
-      
     } catch (error) {
       console.error("Integration test error:", error);
     }
-    
-    const allPassed = Object.values(results).every(r => r);
-    
+
+    const allPassed = Object.values(results).every((r) => r);
+
     return {
       success: allPassed,
       results,
-      message: allPassed 
-        ? "All JSON schema tests passed!" 
-        : "Some tests failed - check results",
+      message: allPassed ? "All JSON schema tests passed!" : "Some tests failed - check results",
     };
   },
 });
