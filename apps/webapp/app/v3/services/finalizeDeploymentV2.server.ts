@@ -271,10 +271,12 @@ async function ensureLoggedIntoDockerRegistry(
   if (isEcrRegistry(registryHost)) {
     auth = await getEcrAuthToken({
       registryHost,
-      assumeRole: {
-        roleArn: env.DEPLOY_REGISTRY_ECR_ASSUME_ROLE_ARN,
-        externalId: env.DEPLOY_REGISTRY_ECR_ASSUME_ROLE_EXTERNAL_ID,
-      },
+      assumeRole: env.DEPLOY_REGISTRY_ECR_ASSUME_ROLE_ARN
+        ? {
+            roleArn: env.DEPLOY_REGISTRY_ECR_ASSUME_ROLE_ARN,
+            externalId: env.DEPLOY_REGISTRY_ECR_ASSUME_ROLE_EXTERNAL_ID,
+          }
+        : undefined,
     });
   } else if (!auth) {
     throw new Error("Authentication required for non-ECR registry");
