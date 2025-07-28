@@ -355,6 +355,16 @@ export type TaskOptions<
   TInitOutput extends InitOutput = any,
 > = CommonTaskOptions<TIdentifier, TPayload, TOutput, TInitOutput>;
 
+// Task options when payloadSchema is provided - payload should be any
+export type TaskOptionsWithSchema<
+  TIdentifier extends string,
+  TOutput = unknown,
+  TInitOutput extends InitOutput = any,
+> = Omit<CommonTaskOptions<TIdentifier, any, TOutput, TInitOutput>, "run"> & {
+  payloadSchema: JSONSchema;
+  run: (payload: any, params: RunFnParams<TInitOutput>) => Promise<TOutput>;
+};
+
 export type TaskWithSchemaOptions<
   TIdentifier extends string,
   TSchema extends TaskSchema | undefined = undefined,
