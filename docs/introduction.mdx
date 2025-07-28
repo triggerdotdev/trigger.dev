@@ -12,7 +12,11 @@ mode: "center"
   <Card title="Examples" img="/images/intro-examples.jpg" href="/guides/introduction#example-tasks">
     Explore dozens of examples tasks to use in your own projects
   </Card>
-  <Card title="Frameworks" img="/images/intro-frameworks.jpg" href="/guides/introduction#frameworks">
+  <Card
+    title="Frameworks"
+    img="/images/intro-frameworks.jpg"
+    href="/guides/introduction#frameworks"
+  >
     Learn how to use Trigger.dev with your favorite frameworks
   </Card>
   <Card title="Video walkthrough" img="/images/intro-video.jpg" href="/video-walkthrough">
@@ -24,7 +28,7 @@ mode: "center"
 
 Trigger.dev is an open source background jobs framework that lets you write reliable workflows in plain async code. Run long-running AI tasks, handle complex background jobs, and build AI agents with built-in queuing, automatic retries, and real-time monitoring. No timeouts, elastic scaling, and zero infrastructure management required.
 
-We provide everything you need to build and manage background tasks: a CLI and SDK for writing tasks in your existing codebase, support for both [regular](/tasks/overview) and [scheduled](/tasks/scheduled) tasks, full observability through our dashboard, and a [Realtime API](/realtime) with [React hooks](/frontend/react-hooks#realtime-hooks) for showing task status in your frontend. You can use [Trigger.dev Cloud](https://cloud.trigger.dev) or [self-host](/open-source-self-hosting) on your own infrastructure.
+We provide everything you need to build and manage background tasks: a CLI and SDK for writing tasks in your existing codebase, support for both [regular](/tasks/overview) and [scheduled](/tasks/scheduled) tasks, full observability through our dashboard, and a [Realtime API](/realtime) with [React hooks](/realtime/react-hooks#realtime-hooks) for showing task status in your frontend. You can use [Trigger.dev Cloud](https://cloud.trigger.dev) or [self-host](/open-source-self-hosting) on your own infrastructure.
 
 ## Learn the concepts
 
@@ -39,7 +43,8 @@ We provide everything you need to build and manage background tasks: a CLI and S
     Runs are the instances of tasks that are executed. Learn how they work.
   </Card>
   <Card title="API keys" icon="key" href="/apikeys" color="#EAEA08">
-    API keys are used to authenticate requests to the Trigger.dev API. Learn how to create and use them.
+    API keys are used to authenticate requests to the Trigger.dev API. Learn how to create and use
+    them.
   </Card>
 </CardGroup>
 
@@ -52,13 +57,18 @@ We provide everything you need to build and manage background tasks: a CLI and S
   <Card title="Realtime API" icon="loader" href="/realtime" color="#22C55E">
     The Realtime API allows you to trigger tasks and get the status of runs.
   </Card>
-  <Card title="React hooks" icon="react" href="/frontend/react-hooks" color="#3B82F6">
+  <Card title="React hooks" icon="react" href="/realtime/react-hooks" color="#3B82F6">
     React hooks are a way to show task status in your frontend.
   </Card>
   <Card title="Waits" icon="calendar-clock" href="/wait" color="#F59E0B">
     Waits are a way to wait for a task to finish before continuing.
   </Card>
-  <Card title="Errors and retries" icon="message-exclamation" href="/errors-retrying" color="#F43F5E">
+  <Card
+    title="Errors and retries"
+    icon="message-exclamation"
+    href="/errors-retrying"
+    color="#F43F5E"
+  >
     Learn how to handle errors and retries.
   </Card>
   <Card title="Concurrency & Queues" icon="line-height" href="/queue-concurrency" color="#D946EF">
@@ -69,37 +79,89 @@ We provide everything you need to build and manage background tasks: a CLI and S
 ## Explore by example
 
 <CardGroup cols={3}>
-  <Card title="FFmpeg" img="/images/intro-ffmpeg.jpg" href="/guides/examples/ffmpeg-video-processing"/>
-  <Card title="Fal.ai" img="/images/intro-fal.jpg" href="/guides/examples/fal-ai-image-to-cartoon"/>
-  <Card title="Puppeteer" img="/images/intro-puppeteer.jpg" href="/guides/examples/puppeteer"/>
-  <Card title="LibreOffice" img="/images/intro-libreoffice.jpg" href="/guides/examples/libreoffice-pdf-conversion"/>
-  <Card title="OpenAI" img="/images/intro-openai.jpg" href="/guides/examples/open-ai-with-retrying"/>
-  <Card title="Browserbase" img="/images/intro-browserbase.jpg" href="/guides/examples/scrape-hacker-news"/>
-  <Card title="Sentry" img="/images/intro-sentry.jpg" href="/guides/examples/sentry-error-tracking"/>
-  <Card title="Resend" img="/images/intro-resend.jpg" href="/guides/examples/resend-email-sequence"/>
-  <Card title="Vercel AI SDK" img="/images/intro-vercel.jpg" href="/guides/examples/vercel-ai-sdk"/>
-  <Card title="Sharp" img="/images/intro-sharp.jpg" href="/guides/examples/sharp-image-processing"/>
-  <Card title="Deepgram" img="/images/intro-deepgram.jpg" href="/guides/examples/deepgram-transcribe-audio"/>
-  <Card title="Supabase" img="/images/intro-supabase.jpg" href="/guides/examples/supabase-database-operations"/>
-  <Card title="DALL•E" img="/images/intro-openai.jpg" href="/guides/examples/dall-e3-generate-image"/>
-  <Card title="Firecrawl" img="/images/intro-firecrawl.jpg" href="/guides/examples/firecrawl-url-crawl"/>
+  <Card
+    title="FFmpeg"
+    img="/images/intro-ffmpeg.jpg"
+    href="/guides/examples/ffmpeg-video-processing"
+  />
+  <Card
+    title="Fal.ai"
+    img="/images/intro-fal.jpg"
+    href="/guides/examples/fal-ai-image-to-cartoon"
+  />
+  <Card title="Puppeteer" img="/images/intro-puppeteer.jpg" href="/guides/examples/puppeteer" />
+  <Card
+    title="LibreOffice"
+    img="/images/intro-libreoffice.jpg"
+    href="/guides/examples/libreoffice-pdf-conversion"
+  />
+  <Card
+    title="OpenAI"
+    img="/images/intro-openai.jpg"
+    href="/guides/examples/open-ai-with-retrying"
+  />
+  <Card
+    title="Browserbase"
+    img="/images/intro-browserbase.jpg"
+    href="/guides/examples/scrape-hacker-news"
+  />
+  <Card
+    title="Sentry"
+    img="/images/intro-sentry.jpg"
+    href="/guides/examples/sentry-error-tracking"
+  />
+  <Card
+    title="Resend"
+    img="/images/intro-resend.jpg"
+    href="/guides/examples/resend-email-sequence"
+  />
+  <Card
+    title="Vercel AI SDK"
+    img="/images/intro-vercel.jpg"
+    href="/guides/examples/vercel-ai-sdk"
+  />
+  <Card
+    title="Sharp"
+    img="/images/intro-sharp.jpg"
+    href="/guides/examples/sharp-image-processing"
+  />
+  <Card
+    title="Deepgram"
+    img="/images/intro-deepgram.jpg"
+    href="/guides/examples/deepgram-transcribe-audio"
+  />
+  <Card
+    title="Supabase"
+    img="/images/intro-supabase.jpg"
+    href="/guides/examples/supabase-database-operations"
+  />
+  <Card
+    title="DALL•E"
+    img="/images/intro-openai.jpg"
+    href="/guides/examples/dall-e3-generate-image"
+  />
+  <Card
+    title="Firecrawl"
+    img="/images/intro-firecrawl.jpg"
+    href="/guides/examples/firecrawl-url-crawl"
+  />
 </CardGroup>
 
 ## Explore by build extension
 
-| Extension | What it does | Docs |
-|:----------|:------------|:--------------|
-| prismaExtension | Use Prisma with Trigger.dev | [Learn more](/config/extensions/prismaExtension) |
-| pythonExtension | Execute Python scripts in Trigger.dev | [Learn more](/config/extensions/pythonExtension) |
-| puppeteer | Use Puppeteer with Trigger.dev | [Learn more](/config/extensions/puppeteer) |
-| ffmpeg | Use FFmpeg with Trigger.dev | [Learn more](/config/extensions/ffmpeg) |
-| aptGet | Install system packages with aptGet | [Learn more](/config/extensions/aptGet) |
-| additionalFiles | Copy additional files to the build directory | [Learn more](/config/extensions/additionalFiles) |
-| additionalPackages | Include additional packages in the build | [Learn more](/config/extensions/additionalPackages) |
-| syncEnvVars | Automatically sync environment variables to Trigger.dev | [Learn more](/config/extensions/syncEnvVars) |
-| esbuildPlugin | Add existing or custom esbuild plugins to your build process | [Learn more](/config/extensions/esbuildPlugin) |
-| emitDecoratorMetadata | Support for the emitDecoratorMetadata TypeScript compiler | [Learn more](/config/extensions/emitDecoratorMetadata) |
-| audioWaveform | Support for Audio Waveform in your project | [Learn more](/config/extensions/audioWaveform) |
+| Extension             | What it does                                                 | Docs                                                   |
+| :-------------------- | :----------------------------------------------------------- | :----------------------------------------------------- |
+| prismaExtension       | Use Prisma with Trigger.dev                                  | [Learn more](/config/extensions/prismaExtension)       |
+| pythonExtension       | Execute Python scripts in Trigger.dev                        | [Learn more](/config/extensions/pythonExtension)       |
+| puppeteer             | Use Puppeteer with Trigger.dev                               | [Learn more](/config/extensions/puppeteer)             |
+| ffmpeg                | Use FFmpeg with Trigger.dev                                  | [Learn more](/config/extensions/ffmpeg)                |
+| aptGet                | Install system packages with aptGet                          | [Learn more](/config/extensions/aptGet)                |
+| additionalFiles       | Copy additional files to the build directory                 | [Learn more](/config/extensions/additionalFiles)       |
+| additionalPackages    | Include additional packages in the build                     | [Learn more](/config/extensions/additionalPackages)    |
+| syncEnvVars           | Automatically sync environment variables to Trigger.dev      | [Learn more](/config/extensions/syncEnvVars)           |
+| esbuildPlugin         | Add existing or custom esbuild plugins to your build process | [Learn more](/config/extensions/esbuildPlugin)         |
+| emitDecoratorMetadata | Support for the emitDecoratorMetadata TypeScript compiler    | [Learn more](/config/extensions/emitDecoratorMetadata) |
+| audioWaveform         | Support for Audio Waveform in your project                   | [Learn more](/config/extensions/audioWaveform)         |
 
 ## Getting help
 

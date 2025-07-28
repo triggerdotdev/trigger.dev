@@ -39,11 +39,11 @@ This demo is a full stack example that uses the following:
 - View the Trigger.dev task code in the [src/trigger/batch.ts](https://github.com/triggerdotdev/examples/blob/main/batch-llm-evaluator/src/trigger/batch.ts) file.
 - The `evaluateModels` task uses the `batch.triggerByTaskAndWait` method to distribute the task to the different LLM models.
 - It then passes the results through to a `summarizeEvals` task that calculates some dummy "tags" for each LLM response.
-- We use a [useRealtimeRunsWithTag](https://trigger.dev/docs/frontend/react-hooks/realtime#userealtimerunswithtag) hook to subscribe to the different evaluation tasks runs in the [src/components/llm-evaluator.tsx](https://github.com/triggerdotdev/examples/blob/main/batch-llm-evaluator/src/components/llm-evaluator.tsx) file.
+- We use a [useRealtimeRunsWithTag](/realtime/react-hooks/realtime#userealtimerunswithtag) hook to subscribe to the different evaluation tasks runs in the [src/components/llm-evaluator.tsx](https://github.com/triggerdotdev/examples/blob/main/batch-llm-evaluator/src/components/llm-evaluator.tsx) file.
 - We then pass the relevant run down into three different components for the different models:
   - The `AnthropicEval` component: [src/components/evals/Anthropic.tsx](https://github.com/triggerdotdev/examples/blob/main/batch-llm-evaluator/src/components/evals/Anthropic.tsx)
   - The `XAIEval` component: [src/components/evals/XAI.tsx](https://github.com/triggerdotdev/examples/blob/main/batch-llm-evaluator/src/components/evals/XAI.tsx)
   - The `OpenAIEval` component: [src/components/evals/OpenAI.tsx](https://github.com/triggerdotdev/examples/blob/main/batch-llm-evaluator/src/components/evals/OpenAI.tsx)
-- Each of these components then uses [useRealtimeRunWithStreams](https://trigger.dev/docs/frontend/react-hooks/realtime#userealtimerunwithstreams) to subscribe to the different LLM responses.
+- Each of these components then uses [useRealtimeRunWithStreams](/realtime/react-hooks/streams) to subscribe to the different LLM responses.
 
 <RealtimeLearnMore />
