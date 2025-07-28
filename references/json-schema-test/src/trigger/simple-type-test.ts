@@ -19,10 +19,10 @@ export const testZodTypeInference = schemaTask({
     const name = payload.name; // string
     const email = payload.email; // string
     const age = payload.age; // number
-    
+
     // This would cause a TypeScript error if uncommented:
     // const invalid = payload.nonExistentField;
-    
+
     return {
       userId: id,
       userName: name,
@@ -33,7 +33,7 @@ export const testZodTypeInference = schemaTask({
 });
 
 // Test 2: JSONSchema type is properly exported and usable
-const jsonSchemaExample: JSONSchema = {
+const jsonSchemaExample = {
   type: "object",
   properties: {
     message: { type: "string" },
@@ -41,7 +41,7 @@ const jsonSchemaExample: JSONSchema = {
     active: { type: "boolean" },
   },
   required: ["message", "count"],
-};
+} satisfies JSONSchema;
 
 export const testJSONSchemaType = task({
   id: "test-json-schema-type",
@@ -68,7 +68,7 @@ export const testTriggerTypeSafety = task({
       email: "john@example.com",
       age: 30,
     });
-    
+
     // This would cause TypeScript errors if uncommented:
     // const handle2 = await testZodTypeInference.trigger({
     //   id: 123, // wrong type
@@ -76,7 +76,7 @@ export const testTriggerTypeSafety = task({
     //   email: "not-an-email", // invalid format (caught at runtime)
     //   age: "thirty", // wrong type
     // });
-    
+
     // Test triggerAndWait
     const result = await testZodTypeInference.triggerAndWait({
       id: "456",
@@ -84,14 +84,14 @@ export const testTriggerTypeSafety = task({
       email: "jane@example.com",
       age: 25,
     });
-    
+
     if (result.ok) {
       // Type inference works on the output
       const userId: string = result.output.userId;
       const userName: string = result.output.userName;
       const userEmail: string = result.output.userEmail;
       const userAge: number = result.output.userAge;
-      
+
       return {
         success: true,
         userId,
@@ -124,14 +124,14 @@ export const testBatchTypeSafety = task({
       },
       {
         payload: {
-          id: "2", 
+          id: "2",
           name: "User Two",
           email: "user2@example.com",
           age: 30,
         },
       },
     ]);
-    
+
     // Batch trigger and wait
     const batchResult = await testZodTypeInference.batchTriggerAndWait([
       {
@@ -145,17 +145,17 @@ export const testBatchTypeSafety = task({
       {
         payload: {
           id: "4",
-          name: "User Four", 
+          name: "User Four",
           email: "user4@example.com",
           age: 50,
         },
       },
     ]);
-    
+
     // Process results with type safety
     const successfulUsers: string[] = [];
     const failedUsers: string[] = [];
-    
+
     for (const run of batchResult.runs) {
       if (run.ok) {
         // output is properly typed
@@ -164,7 +164,7 @@ export const testBatchTypeSafety = task({
         failedUsers.push(run.id);
       }
     }
-    
+
     return {
       batchId: batchHandle.batchId,
       batchRunCount: batchHandle.runCount,
@@ -179,19 +179,23 @@ export const testBatchTypeSafety = task({
 const complexSchema = z.object({
   order: z.object({
     id: z.string(),
-    items: z.array(z.object({
-      productId: z.string(),
-      quantity: z.number(),
-      price: z.number(),
-    })),
+    items: z.array(
+      z.object({
+        productId: z.string(),
+        quantity: z.number(),
+        price: z.number(),
+      })
+    ),
     customer: z.object({
       id: z.string(),
       email: z.string().email(),
-      address: z.object({
-        street: z.string(),
-        city: z.string(),
-        country: z.string(),
-      }).optional(),
+      address: z
+        .object({
+          street: z.string(),
+          city: z.string(),
+          country: z.string(),
+        })
+        .optional(),
     }),
   }),
   metadata: z.record(z.unknown()).optional(),
@@ -207,13 +211,10 @@ export const testComplexSchema = schemaTask({
     const quantity = firstItem?.quantity ?? 0;
     const customerEmail = payload.order.customer.email;
     const city = payload.order.customer.address?.city;
-    
+
     // Calculate total
-    const total = payload.order.items.reduce(
-      (sum, item) => sum + (item.quantity * item.price),
-      0
-    );
-    
+    const total = payload.order.items.reduce((sum, item) => sum + item.quantity * item.price, 0);
+
     return {
       orderId,
       customerEmail,
@@ -231,7 +232,7 @@ export const verifySchemaRegistration = task({
   run: async (_, { ctx }) => {
     // This test verifies that when we create tasks with schemas,
     // they properly register the payloadSchema for syncing to the server
-    
+
     return {
       test: "Schema registration",
       message: "If this task runs, schema registration is working",
