@@ -62,7 +62,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 
   const alerts = await getBillingAlerts(organization.id);
   if (!alerts) {
-    throw new Response(null, { status: 404, statusText: "Plans not found" });
+    throw new Response(null, { status: 404, statusText: "Billing alerts not found" });
   }
 
   return typedjson({
