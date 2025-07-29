@@ -328,10 +328,15 @@ const zodIpc = new ZodIpcConnection({
 
       resetExecutionEnvironment();
 
-      initializeUsageManager({
+      const prodManager = initializeUsageManager({
         usageIntervalMs: getEnvVar("USAGE_HEARTBEAT_INTERVAL_MS"),
         usageEventUrl: getEnvVar("USAGE_EVENT_URL"),
         triggerJWT: getEnvVar("TRIGGER_JWT"),
+      });
+
+      prodManager.setInitialState({
+        cpuTime: execution.run.durationMs ?? 0,
+        costInCents: execution.run.costInCents ?? 0,
       });
 
       standardRunTimelineMetricsManager.registerMetricsFromExecution(metrics, isWarmStart);
@@ -690,6 +695,8 @@ function initializeUsageManager({
 
   usage.setGlobalUsageManager(prodUsageManager);
   timeout.setGlobalManager(new UsageTimeoutManager(devUsageManager));
+
+  return prodUsageManager;
 }
 
 _sharedWorkerRuntime = new SharedRuntimeManager(zodIpc, true);

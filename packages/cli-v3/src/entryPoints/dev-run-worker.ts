@@ -505,6 +505,11 @@ const zodIpc = new ZodIpcConnection({
             getNumberEnvVar("TRIGGER_RUN_METADATA_FLUSH_INTERVAL", 1000)
           );
 
+          devUsageManager.setInitialState({
+            cpuTime: execution.run.durationMs ?? 0,
+            costInCents: execution.run.costInCents ?? 0,
+          });
+
           _executionMeasurement = usage.start();
 
           const timeoutController = timeout.abortAfterTimeout(execution.run.maxDuration);

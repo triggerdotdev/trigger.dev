@@ -225,6 +225,10 @@ export const TaskRun = z.object({
 
   parentTaskRunId: z.string().optional(),
   rootTaskRunId: z.string().optional(),
+
+  // These are only used during execution, not in run.ctx
+  durationMs: z.number().optional(),
+  costInCents: z.number().optional(),
 });
 
 export type TaskRun = z.infer<typeof TaskRun>;
@@ -397,6 +401,8 @@ export const TaskRunContext = z.object({
     payload: true,
     payloadType: true,
     metadata: true,
+    durationMs: true,
+    costInCents: true,
   }),
   ...StaticTaskRunExecutionShape,
 });
