@@ -403,6 +403,35 @@ export const TaskRunContext = z.object({
 
 export type TaskRunContext = z.infer<typeof TaskRunContext>;
 
+export const V3TaskRunExecutionEnvironment = z.object({
+  id: z.string(),
+  slug: z.string(),
+  type: z.enum(["PRODUCTION", "STAGING", "DEVELOPMENT", "PREVIEW"]),
+});
+
+export type V3TaskRunExecutionEnvironment = z.infer<typeof V3TaskRunExecutionEnvironment>;
+
+export const V3TaskRunContext = z.object({
+  attempt: V3TaskRunExecutionAttempt.omit({
+    backgroundWorkerId: true,
+    backgroundWorkerTaskId: true,
+  }),
+  run: V3TaskRun.omit({
+    payload: true,
+    payloadType: true,
+    metadata: true,
+  }),
+  task: V3TaskRunExecutionTask,
+  queue: TaskRunExecutionQueue,
+  environment: V3TaskRunExecutionEnvironment,
+  organization: TaskRunExecutionOrganization,
+  project: TaskRunExecutionProject,
+  batch: TaskRunExecutionBatch.optional(),
+  machine: MachinePreset.optional(),
+});
+
+export type V3TaskRunContext = z.infer<typeof V3TaskRunContext>;
+
 export const TaskRunExecutionRetry = z.object({
   timestamp: z.number(),
   /** Retry delay in milliseconds */

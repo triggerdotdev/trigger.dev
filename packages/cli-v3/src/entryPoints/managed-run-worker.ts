@@ -483,6 +483,7 @@ const zodIpc = new ZodIpcConnection({
         }
 
         runMetadataManager.runId = execution.run.id;
+        runMetadataManager.runIdIsRoot = typeof execution.run.rootTaskRunId === "undefined";
         _executionCount++;
 
         const executor = new TaskExecutor(task, {
