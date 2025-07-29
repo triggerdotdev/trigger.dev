@@ -34,6 +34,7 @@ import {
   v3BillingAlertsPath,
 } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { tryCatch } from "@trigger.dev/core";
 
 export const meta: MetaFunction = () => {
   return [
@@ -60,7 +61,11 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     throw new Response(null, { status: 404, statusText: "Organization not found" });
   }
 
-  const alerts = await getBillingAlerts(organization.id);
+  const [error, alerts] = await tryCatch(getBillingAlerts(organization.id));
+  if (error) {
+    throw new Response(null, { status: 404, statusText: `Billing alerts error: ${error}` });
+  }
+
   if (!alerts) {
     throw new Response(null, { status: 404, statusText: "Billing alerts not found" });
   }
@@ -120,10 +125,20 @@ export const action: ActionFunction = async ({ request, params }) => {
       );
     }
 
-    const updatedAlert = await setBillingAlert(organization.id, {
-      ...submission.value,
-      amount: submission.value.amount * 100,
-    });
+    const [error, updatedAlert] = await tryCatch(
+      setBillingAlert(organization.id, {
+        ...submission.value,
+        amount: submission.value.amount * 100,
+      })
+    );
+    if (error) {
+      return redirectWithErrorMessage(
+        v3BillingAlertsPath({ slug: organizationSlug }),
+        request,
+        "Failed to update billing alert"
+      );
+    }
+
     if (!updatedAlert) {
       return redirectWithErrorMessage(
         v3BillingAlertsPath({ slug: organizationSlug }),
@@ -170,7 +185,7 @@ export default function Page() {
     if (alerts.emails.length > 0) {
       requestIntent(form.ref.current ?? undefined, list.append(emails.name));
     }
-  }, [alerts.emails, emails.name, form.ref]);
+  }, [emails.name, form.ref]);
   const isFree = !plan?.v3Subscription?.isPaying;
 
   return (
