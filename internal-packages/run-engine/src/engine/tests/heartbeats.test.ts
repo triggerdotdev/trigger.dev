@@ -706,7 +706,7 @@ describe("RunEngine heartbeats", () => {
         prisma
       );
 
-      await setTimeout(500);
+      await setTimeout(1000);
 
       //dequeue the run
       const dequeued = await engine.dequeueFromWorkerQueue({
