@@ -170,8 +170,7 @@ export default function Page() {
     if (alerts.emails.length > 0) {
       requestIntent(form.ref.current ?? undefined, list.append(emails.name));
     }
-  }, []);
-
+  }, [alerts.emails, emails.name, form.ref]);
   const isFree = !plan?.v3Subscription?.isPaying;
 
   return (
