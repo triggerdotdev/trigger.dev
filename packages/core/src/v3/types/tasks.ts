@@ -897,6 +897,7 @@ export type TaskMetadataWithFunctions = TaskMetadata & {
     onStart?: (payload: any, params: StartFnParams) => Promise<void>;
     parsePayload?: AnySchemaParseFn;
   };
+  schema?: TaskSchema;
 };
 
 export type RunTypes<TTaskIdentifier extends string, TPayload, TOutput> = {

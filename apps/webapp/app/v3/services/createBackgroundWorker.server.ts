@@ -77,7 +77,7 @@ export class CreateBackgroundWorkerService extends BaseService {
           version: nextVersion,
           runtimeEnvironmentId: environment.id,
           projectId: project.id,
-          metadata: body.metadata,
+          metadata: body.metadata as any,
           contentHash: body.metadata.contentHash,
           cliVersion: body.metadata.cliPackageVersion,
           sdkVersion: body.metadata.packageVersion,
@@ -280,7 +280,7 @@ async function createWorkerTask(
         fileId: tasksToBackgroundFiles?.get(task.id) ?? null,
         maxDurationInSeconds: task.maxDuration ? clampMaxDuration(task.maxDuration) : null,
         queueId: queue.id,
-        payloadSchema: task.payloadSchema,
+        payloadSchema: task.payloadSchema as any,
       },
     });
   } catch (error) {

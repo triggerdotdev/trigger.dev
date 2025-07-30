@@ -65,7 +65,7 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
           version: deployment.version,
           runtimeEnvironmentId: environment.id,
           projectId: environment.projectId,
-          metadata: body.metadata,
+          metadata: body.metadata as any,
           contentHash: body.metadata.contentHash,
           cliVersion: body.metadata.cliPackageVersion,
           sdkVersion: body.metadata.packageVersion,

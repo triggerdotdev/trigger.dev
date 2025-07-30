@@ -19,7 +19,7 @@ export const helloWorldTask = task({
       env: process.env,
     });
 
-    logger.debug("debug: Hello, world!", { payload });
+    logger.debug("debug: Hello, worlds!", { payload });
     logger.info("info: Hello, world!", { payload });
     logger.log("log: Hello, world!", { payload });
     logger.warn("warn: Hello, world!", { payload });

@@ -18,6 +18,7 @@ import { registerResources } from "../indexing/registerResources.js";
 import { env } from "std-env";
 import { normalizeImportPath } from "../utilities/normalizeImportPath.js";
 import { detectRuntimeVersion } from "@trigger.dev/core/v3/build";
+import { schemaToJsonSchema, initializeSchemaConverters } from "@trigger.dev/schema-to-json";
 
 sourceMapSupport.install({
   handleUncaughtExceptions: false,
@@ -100,7 +101,7 @@ async function bootstrap() {
 
 const { buildManifest, importErrors, config, timings } = await bootstrap();
 
-let tasks = resourceCatalog.listTaskManifests();
+let tasks = await convertSchemasToJsonSchemas(resourceCatalog.listTaskManifests());
 
 // If the config has retry defaults, we need to apply them to all tasks that don't have any retry settings
 if (config.retries?.default) {
@@ -190,3 +191,20 @@ await new Promise<void>((resolve) => {
     resolve();
   }, 10);
 });
+
+async function convertSchemasToJsonSchemas(tasks: TaskManifest[]): Promise<TaskManifest[]> {
+  await initializeSchemaConverters();
+
+  const convertedTasks = tasks.map((task) => {
+    const schema = resourceCatalog.getTaskSchema(task.id);
+
+    if (schema) {
+      const result = schemaToJsonSchema(schema);
+      return { ...task, payloadSchema: result?.jsonSchema };
+    }
+
+    return task;
+  });
+
+  return convertedTasks;
+}
