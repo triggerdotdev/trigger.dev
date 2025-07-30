@@ -8,7 +8,9 @@ import {
   defaultMachine as defaultMachineFromPlatform,
   machines as machinesFromPlatform,
   type MachineCode,
-} from "@trigger.dev/platform/v3";
+  type UpdateBillingAlertsRequest,
+  type BillingAlertsResult,
+} from "@trigger.dev/platform";
 import { createCache, DefaultStatefulContext, Namespace } from "@unkey/cache";
 import { MemoryStore } from "@unkey/cache/stores";
 import { redirect } from "remix-typedjson";
@@ -465,6 +467,31 @@ export async function projectCreated(organization: Organization, project: Projec
       });
     }
   }
+}
+
+export async function getBillingAlerts(
+  organizationId: string
+): Promise<BillingAlertsResult | undefined> {
+  if (!client) return undefined;
+  const result = await client.getBillingAlerts(organizationId);
+  if (!result.success) {
+    logger.error("Error getting billing alert", { error: result.error, organizationId });
+    throw new Error("Error getting billing alert");
+  }
+  return result;
+}
+
+export async function setBillingAlert(
+  organizationId: string,
+  alert: UpdateBillingAlertsRequest
+): Promise<BillingAlertsResult | undefined> {
+  if (!client) return undefined;
+  const result = await client.updateBillingAlerts(organizationId, alert);
+  if (!result.success) {
+    logger.error("Error setting billing alert", { error: result.error, organizationId });
+    throw new Error("Error setting billing alert");
+  }
+  return result;
 }
 
 function isCloud(): boolean {
