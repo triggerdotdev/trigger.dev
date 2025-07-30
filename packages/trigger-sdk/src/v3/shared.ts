@@ -28,16 +28,8 @@ import {
   TaskRunExecutionResult,
   TaskRunPromise,
 } from "@trigger.dev/core/v3";
-import { schemaToJsonSchema, initializeSchemaConverters } from "@trigger.dev/schema-to-json";
 import { PollOptions, runs } from "./runs.js";
 import { tracer } from "./tracer.js";
-
-// Initialize schema converters once when the module loads
-// This happens automatically, users don't need to know about it
-initializeSchemaConverters().catch(() => {
-  // Silently fail if converters can't be initialized
-  // Built-in conversions will still work
-});
 
 import type {
   AnyOnCatchErrorHookFunction,
@@ -365,11 +357,11 @@ export function createSchemaTask<
     retry: params.retry ? { ...defaultRetryOptions, ...params.retry } : undefined,
     machine: typeof params.machine === "string" ? { preset: params.machine } : params.machine,
     maxDuration: params.maxDuration,
-    payloadSchema: params.schema ? schemaToJsonSchema(params.schema)?.jsonSchema : undefined,
     fns: {
       run: params.run,
       parsePayload,
     },
+    schema: params.schema,
   });
 
   const queue = params.queue;

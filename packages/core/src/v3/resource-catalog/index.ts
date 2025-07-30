@@ -1,7 +1,7 @@
 const API_NAME = "resource-catalog";
 
 import { QueueManifest, TaskManifest, WorkerManifest } from "../schemas/index.js";
-import { TaskMetadataWithFunctions } from "../types/index.js";
+import { TaskMetadataWithFunctions, TaskSchema } from "../types/index.js";
 import { getGlobal, registerGlobal, unregisterGlobal } from "../utils/globals.js";
 import { type ResourceCatalog } from "./catalog.js";
 import { NoopResourceCatalog } from "./noopResourceCatalog.js";
@@ -63,6 +63,10 @@ export class ResourceCatalogAPI {
 
   public getTask(id: string): TaskMetadataWithFunctions | undefined {
     return this.#getCatalog().getTask(id);
+  }
+
+  public getTaskSchema(id: string): TaskSchema | undefined {
+    return this.#getCatalog().getTaskSchema(id);
   }
 
   public taskExists(id: string): boolean {
