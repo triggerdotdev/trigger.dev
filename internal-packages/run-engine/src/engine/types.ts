@@ -58,6 +58,9 @@ export type RunEngineOptions = {
     automaticExtensionThreshold?: number;
     retryConfig?: LockRetryConfig;
   };
+  cache?: {
+    redis: RedisOptions;
+  };
   /** If not set then checkpoints won't ever be used */
   retryWarmStartThresholdMs?: number;
   heartbeatTimeoutsMs?: Partial<HeartbeatTimeouts>;

@@ -57,7 +57,7 @@ export const parentTask = task({
   id: "parent",
   machine: "medium-1x",
   run: async (payload: any, { ctx }) => {
-    logger.log("Hello, world from the parent", { payload });
+    logger.log("Hello, world from the parent", { payload, ctx });
     await childTask.triggerAndWait({ message: "Hello, world!", aReallyBigInt: BigInt(10000) });
   },
 });
@@ -107,7 +107,7 @@ export const childTask = task({
     }: { message?: string; failureChance?: number; duration?: number; aReallyBigInt?: bigint },
     { ctx }
   ) => {
-    logger.info("Hello, world from the child", { message, failureChance, aReallyBigInt });
+    logger.info("Hello, world from the child", { ctx, failureChance, aReallyBigInt });
 
     if (Math.random() < failureChance) {
       throw new Error("Random error at start");
