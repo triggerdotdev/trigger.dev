@@ -345,7 +345,7 @@ type CommonTaskOptions<
    * JSON Schema for the task payload. This will be synced to the server during indexing.
    * Should be a valid JSON Schema Draft 7 object.
    */
-  payloadSchema?: JSONSchema;
+  jsonSchema?: JSONSchema;
 };
 
 export type TaskOptions<
@@ -360,9 +360,8 @@ export type TaskOptionsWithSchema<
   TIdentifier extends string,
   TOutput = unknown,
   TInitOutput extends InitOutput = any,
-> = Omit<CommonTaskOptions<TIdentifier, any, TOutput, TInitOutput>, "run"> & {
-  payloadSchema: JSONSchema;
-  run: (payload: any, params: RunFnParams<TInitOutput>) => Promise<TOutput>;
+> = CommonTaskOptions<TIdentifier, any, TOutput, TInitOutput> & {
+  jsonSchema: JSONSchema;
 };
 
 export type TaskWithSchemaOptions<

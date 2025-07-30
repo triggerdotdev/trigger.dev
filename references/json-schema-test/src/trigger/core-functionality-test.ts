@@ -24,11 +24,11 @@ const manualSchema: JSONSchema = {
   required: ["id", "name", "email"],
 };
 
-// Test 2: Plain task accepts payloadSchema
+// Test 2: Plain task accepts jsonSchema
 export const plainJsonSchemaTask = task({
   id: "plain-json-schema-task",
-  payloadSchema: manualSchema,
-  run: async (payload, { ctx }) => {
+  jsonSchema: manualSchema,
+  run: async (payload: any, { ctx }) => {
     // payload is any, but schema is properly stored
     console.log("Received payload:", payload);
 
