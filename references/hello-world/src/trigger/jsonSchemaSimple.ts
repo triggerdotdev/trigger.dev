@@ -13,10 +13,14 @@ const emailSchema = z.object({
   to: z.string().email(),
   subject: z.string(),
   body: z.string(),
-  attachments: z.array(z.object({
-    filename: z.string(),
-    url: z.string().url(),
-  })).optional(),
+  attachments: z
+    .array(
+      z.object({
+        filename: z.string(),
+        url: z.string().url(),
+      })
+    )
+    .optional(),
 });
 
 export const sendEmailSchemaTask = schemaTask({
@@ -30,15 +34,15 @@ export const sendEmailSchemaTask = schemaTask({
     //   body: string;
     //   attachments?: Array<{ filename: string; url: string; }>;
     // }
-    
-    logger.info("Sending email", { 
+
+    logger.info("Sending email", {
       to: payload.to,
       subject: payload.subject,
       hasAttachments: !!payload.attachments?.length,
     });
 
     // Your email sending logic here...
-    
+
     return {
       sent: true,
       messageId: `msg_${ctx.run.id}`,
@@ -53,19 +57,19 @@ export const sendEmailSchemaTask = schemaTask({
 // - Good for when you already have JSON Schema definitions
 export const sendEmailPlainTask = task({
   id: "send-email-plain-task",
-  payloadSchema: {
+  jsonSchema: {
     type: "object",
     properties: {
-      to: { 
-        type: "string", 
+      to: {
+        type: "string",
         format: "email",
         description: "Recipient email address",
       },
-      subject: { 
+      subject: {
         type: "string",
         maxLength: 200,
       },
-      body: { 
+      body: {
         type: "string",
       },
       attachments: {
@@ -84,13 +88,13 @@ export const sendEmailPlainTask = task({
   } satisfies JSONSchema, // Use 'satisfies' for type checking
   run: async (payload, { ctx }) => {
     // payload is typed as 'any' - you need to validate/cast it yourself
-    logger.info("Sending email", { 
+    logger.info("Sending email", {
       to: payload.to,
       subject: payload.subject,
     });
 
     // Your email sending logic here...
-    
+
     return {
       sent: true,
       messageId: `msg_${ctx.run.id}`,
@@ -147,16 +151,22 @@ export const demonstrateBenefits = task({
 // ===========================================
 const userRegistrationSchema = z.object({
   email: z.string().email(),
-  username: z.string().min(3).max(20).regex(/^[a-zA-Z0-9_]+$/),
+  username: z
+    .string()
+    .min(3)
+    .max(20)
+    .regex(/^[a-zA-Z0-9_]+$/),
   password: z.string().min(8),
   profile: z.object({
     firstName: z.string(),
     lastName: z.string(),
     dateOfBirth: z.string().optional(), // ISO date string
-    preferences: z.object({
-      newsletter: z.boolean().default(false),
-      notifications: z.boolean().default(true),
-    }).default({}),
+    preferences: z
+      .object({
+        newsletter: z.boolean().default(false),
+        notifications: z.boolean().default(true),
+      })
+      .default({}),
   }),
   referralCode: z.string().optional(),
 });
@@ -170,7 +180,7 @@ export const registerUser = schemaTask({
     maxTimeoutInMs: 10000,
   },
   run: async (payload, { ctx }) => {
-    logger.info("Registering new user", { 
+    logger.info("Registering new user", {
       email: payload.email,
       username: payload.username,
     });

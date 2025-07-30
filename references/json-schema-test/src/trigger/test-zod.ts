@@ -37,12 +37,14 @@ export const zodSchemaTask = schemaTask({
 const complexSchema = z.object({
   order: z.object({
     orderId: z.string().uuid(),
-    items: z.array(z.object({
-      productId: z.string(),
-      quantity: z.number().positive(),
-      price: z.number().positive(),
-      discount: z.number().min(0).max(100).optional(),
-    })),
+    items: z.array(
+      z.object({
+        productId: z.string(),
+        quantity: z.number().positive(),
+        price: z.number().positive(),
+        discount: z.number().min(0).max(100).optional(),
+      })
+    ),
     customer: z.object({
       customerId: z.string(),
       email: z.string().email(),
@@ -82,7 +84,7 @@ export const complexZodTask = schemaTask({
     const quantity: number = firstItem.quantity;
     const customerEmail: string = payload.order.customer.email;
     const zipCode: string = payload.order.customer.shippingAddress.zipCode;
-    
+
     // Discriminated union type checking
     if (payload.order.paymentMethod.type === "credit_card") {
       const brand: "visa" | "mastercard" | "amex" = payload.order.paymentMethod.brand;
@@ -127,13 +129,15 @@ const manualJsonSchema: JSONSchema = {
 
 export const plainJsonSchemaTask = task({
   id: "plain-json-schema-task",
-  payloadSchema: manualJsonSchema,
+  jsonSchema: manualJsonSchema,
   run: async (payload, { ctx }) => {
     // With plain task, payload is 'any' so we need to manually type it
     const taskId = payload.taskId as string;
     const priority = payload.priority as number;
     const tags = payload.tags as string[] | undefined;
-    const config = payload.config as { timeout: number; retries: number; async?: boolean } | undefined;
+    const config = payload.config as
+      | { timeout: number; retries: number; async?: boolean }
+      | undefined;
 
     return {
       processed: true,
@@ -232,7 +236,7 @@ export const testTriggerAndWait = task({
       const processed: boolean = result.output.processed;
       const userId: string = result.output.userId;
       const userName: string = result.output.userName;
-      
+
       return {
         success: true,
         processedUserId: userId,
@@ -253,14 +257,16 @@ export const testUnwrap = task({
   run: async (_, { ctx }) => {
     try {
       // Using unwrap() for cleaner code
-      const output = await zodSchemaTask.triggerAndWait({
-        id: "user789",
-        name: "Bob Johnson",
-        email: "bob@example.com",
-        age: 35,
-        isActive: true,
-        roles: ["user"],
-      }).unwrap();
+      const output = await zodSchemaTask
+        .triggerAndWait({
+          id: "user789",
+          name: "Bob Johnson",
+          email: "bob@example.com",
+          age: 35,
+          isActive: true,
+          roles: ["user"],
+        })
+        .unwrap();
 
       // output is directly typed without needing to check result.ok
       const processed: boolean = output.processed;

@@ -12,10 +12,12 @@ const userSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
   age: z.number().int().min(0).max(150),
-  preferences: z.object({
-    newsletter: z.boolean().default(false),
-    theme: z.enum(["light", "dark"]).default("light"),
-  }).optional(),
+  preferences: z
+    .object({
+      newsletter: z.boolean().default(false),
+      theme: z.enum(["light", "dark"]).default("light"),
+    })
+    .optional(),
 });
 
 export const processUserWithZod = schemaTask({
@@ -23,9 +25,9 @@ export const processUserWithZod = schemaTask({
   schema: userSchema,
   run: async (payload, { ctx }) => {
     // payload is fully typed based on the Zod schema
-    logger.info("Processing user with Zod schema", { 
-      userId: payload.id, 
-      userName: payload.name 
+    logger.info("Processing user with Zod schema", {
+      userId: payload.id,
+      userName: payload.name,
     });
 
     // The schema is automatically converted to JSON Schema and synced
@@ -43,20 +45,20 @@ export const processUserWithZod = schemaTask({
 export const processOrderManualSchema = task({
   id: "json-schema-manual-example",
   // Manually provide JSON Schema for the payload
-  payloadSchema: {
+  jsonSchema: {
     $schema: "http://json-schema.org/draft-07/schema#",
     type: "object",
     title: "Order Processing Request",
     description: "Schema for processing customer orders",
     properties: {
-      orderId: { 
-        type: "string", 
+      orderId: {
+        type: "string",
         pattern: "^ORD-[0-9]+$",
-        description: "Order ID in format ORD-XXXXX"
+        description: "Order ID in format ORD-XXXXX",
       },
-      customerId: { 
-        type: "string", 
-        format: "uuid" 
+      customerId: {
+        type: "string",
+        format: "uuid",
       },
       items: {
         type: "array",
@@ -72,8 +74,8 @@ export const processOrderManualSchema = task({
           additionalProperties: false,
         },
       },
-      totalAmount: { 
-        type: "number", 
+      totalAmount: {
+        type: "number",
         minimum: 0,
         multipleOf: 0.01,
       },
@@ -87,8 +89,8 @@ export const processOrderManualSchema = task({
     additionalProperties: false,
   } satisfies JSONSchema,
   run: async (payload, { ctx }) => {
-    logger.info("Processing order with manual JSON Schema", { 
-      orderId: payload.orderId 
+    logger.info("Processing order with manual JSON Schema", {
+      orderId: payload.orderId,
     });
 
     // Note: With plain tasks, the payload is typed as 'any'
@@ -105,7 +107,10 @@ export const processOrderManualSchema = task({
 // Example 3: Using schemaTask with Yup
 // ===========================================
 const productSchema = y.object({
-  sku: y.string().required().matches(/^[A-Z]{3}-[0-9]{5}$/),
+  sku: y
+    .string()
+    .required()
+    .matches(/^[A-Z]{3}-[0-9]{5}$/),
   name: y.string().required().min(3).max(100),
   description: y.string().max(500),
   price: y.number().required().positive(),
@@ -117,7 +122,7 @@ export const processProductWithYup = schemaTask({
   id: "json-schema-yup-example",
   schema: productSchema,
   run: async (payload, { ctx }) => {
-    logger.info("Processing product with Yup schema", { 
+    logger.info("Processing product with Yup schema", {
       sku: payload.sku,
       name: payload.name,
     });
@@ -138,11 +143,13 @@ const invoiceSchema = type({
   date: "Date",
   dueDate: "Date",
   "discount?": "number",
-  lineItems: [{
-    description: "string",
-    quantity: "integer",
-    unitPrice: "number",
-  }],
+  lineItems: [
+    {
+      description: "string",
+      quantity: "number",
+      unitPrice: "number",
+    },
+  ],
   customer: {
     id: "string",
     name: "string",
@@ -154,15 +161,12 @@ export const processInvoiceWithArkType = schemaTask({
   id: "json-schema-arktype-example",
   schema: invoiceSchema,
   run: async (payload, { ctx }) => {
-    logger.info("Processing invoice with ArkType schema", { 
+    logger.info("Processing invoice with ArkType schema", {
       invoiceNumber: payload.invoiceNumber,
       customerName: payload.customer.name,
     });
 
-    const total = payload.lineItems.reduce(
-      (sum, item) => sum + (item.quantity * item.unitPrice),
-      0
-    );
+    const total = payload.lineItems.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
 
     const discount = payload.discount || 0;
     const finalAmount = total * (1 - discount / 100);
@@ -198,12 +202,12 @@ type EventType = Static<typeof eventSchema>;
 export const processEventWithTypeBox = task({
   id: "json-schema-typebox-example",
   // TypeBox schemas are already JSON Schema compliant
-  payloadSchema: eventSchema,
-  run: async (payload, { ctx }) => {
+  jsonSchema: eventSchema,
+  run: async (payload: EventType, { ctx }) => {
     // Cast to get TypeScript type safety
-    const event = payload as EventType;
-    
-    logger.info("Processing event with TypeBox schema", { 
+    const event = payload;
+
+    logger.info("Processing event with TypeBox schema", {
       eventId: event.eventId,
       eventType: event.eventType,
       userId: event.userId,
@@ -252,7 +256,7 @@ export const sendNotificationBadExample = task({
   run: async (payload, { ctx }) => {
     // You'd have to manually validate
     const notification = notificationSchema.parse(payload);
-    
+
     logger.info("This is not ideal - use schemaTask instead!");
 
     return { sent: true };
@@ -265,14 +269,14 @@ export const sendNotificationGoodExample = schemaTask({
   schema: notificationSchema,
   run: async (notification, { ctx }) => {
     // notification is already validated and typed!
-    logger.info("Sending notification", { 
+    logger.info("Sending notification", {
       recipientId: notification.recipientId,
       type: notification.type,
       priority: notification.priority,
     });
 
     // Simulate sending notification
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
 
     return {
       sent: true,
@@ -302,12 +306,16 @@ const companySchema = z.object({
     billing: addressSchema,
     shipping: addressSchema.optional(),
   }),
-  contacts: z.array(z.object({
-    name: z.string(),
-    email: z.string().email(),
-    phone: z.string().optional(),
-    role: z.enum(["primary", "billing", "technical"]),
-  })).min(1),
+  contacts: z
+    .array(
+      z.object({
+        name: z.string(),
+        email: z.string().email(),
+        phone: z.string().optional(),
+        role: z.enum(["primary", "billing", "technical"]),
+      })
+    )
+    .min(1),
   settings: z.object({
     invoicePrefix: z.string().default("INV"),
     paymentTerms: z.number().int().min(0).max(90).default(30),
@@ -324,7 +332,7 @@ export const processCompanyWithComplexSchema = schemaTask({
     factor: 2,
   },
   run: async (payload, { ctx }) => {
-    logger.info("Processing company with complex schema", { 
+    logger.info("Processing company with complex schema", {
       companyId: payload.companyId,
       name: payload.name,
       contactCount: payload.contacts.length,
@@ -332,7 +340,7 @@ export const processCompanyWithComplexSchema = schemaTask({
 
     // Process each contact
     for (const contact of payload.contacts) {
-      logger.info("Processing contact", { 
+      logger.info("Processing contact", {
         name: contact.name,
         role: contact.role,
       });
@@ -342,7 +350,7 @@ export const processCompanyWithComplexSchema = schemaTask({
       processed: true,
       companyId: payload.companyId,
       name: payload.name,
-      primaryContact: payload.contacts.find(c => c.role === "primary"),
+      primaryContact: payload.contacts.find((c) => c.role === "primary"),
     };
   },
 });

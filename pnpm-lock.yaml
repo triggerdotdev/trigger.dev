@@ -1805,7 +1805,7 @@ importers:
         version: link:../core
       zod-to-json-schema:
         specifier: ^3.24.5
-        version: 3.24.5(zod@4.0.10)
+        version: 3.24.5(zod@3.25.76)
     devDependencies:
       '@effect/schema':
         specifier: ^0.75.5
@@ -1819,6 +1819,9 @@ importers:
       effect:
         specifier: ^3.11.11
         version: 3.17.1
+      rimraf:
+        specifier: 6.0.1
+        version: 6.0.1
       runtypes:
         specifier: ^6.7.0
         version: 6.7.0
@@ -1839,7 +1842,7 @@ importers:
         version: 1.6.1
       zod:
         specifier: ^3.24.1 || ^4.0.0
-        version: 4.0.10
+        version: 3.25.76
 
   packages/trigger-sdk:
     dependencies:
@@ -20118,8 +20121,12 @@ packages:
   /@types/json-schema@7.0.11:
     resolution: {integrity: sha512-wOuvG1SN4Us4rez+tylwwwCV1psiNVOkJeM3AUWUNWg/jDQY2+HE/444y5gc+jBmRqASOm2Oeh5c1axHobwRKQ==}
 
+  /@types/json-schema@7.0.13:
+    resolution: {integrity: sha512-RbSSoHliUbnXj3ny0CNFOoxrIDV6SUGyStHsvDqosw6CkdPV8TtWGlfecuK4ToyMEAql6pzNxgCFKanovUzlgQ==}
+
   /@types/json-schema@7.0.15:
     resolution: {integrity: sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA==}
+    dev: true
 
   /@types/json5@0.0.29:
     resolution: {integrity: sha512-dRLjCWHYg4oaA77cxO64oO+7JwCwnIzkZPdrrC71jQmQtlhM556pwKo5bUzqvZndkVbeFLIIi+9TC40JNF5hNQ==}
@@ -20718,7 +20725,7 @@ packages:
       eslint: ^6.0.0 || ^7.0.0 || ^8.0.0
     dependencies:
       '@eslint-community/eslint-utils': 4.4.0(eslint@8.31.0)
-      '@types/json-schema': 7.0.15
+      '@types/json-schema': 7.0.13
       '@types/semver': 7.5.1
       '@typescript-eslint/scope-manager': 5.59.6
       '@typescript-eslint/types': 5.59.6
@@ -32782,7 +32789,7 @@ packages:
       - utf-8-validate
     dev: false
 
-  /puppeteer@23.4.0(typescript@5.5.4):
+  /puppeteer@23.4.0(typescript@5.8.3):
     resolution: {integrity: sha512-FxgFFJI7NAsX8uebiEDSjS86vufz9TaqERQHShQT0lCbSRI3jUPEcz/0HdwLiYvfYNsc1zGjqY3NsGZya4PvUA==}
     engines: {node: '>=18'}
     hasBin: true
@@ -34330,7 +34337,7 @@ packages:
     resolution: {integrity: sha512-pN/yOAvcC+5rQ5nERGuwrjLlYvLTbCibnZ1I7B1LaiAz9BRBlE9GMgE/eqV30P7aJQUf7Ddimy/RsbYO/GrVGg==}
     engines: {node: '>= 10.13.0'}
     dependencies:
-      '@types/json-schema': 7.0.15
+      '@types/json-schema': 7.0.13
       ajv: 6.12.6
       ajv-keywords: 3.5.2(ajv@6.12.6)
     dev: false
@@ -37665,7 +37672,7 @@ packages:
     hasBin: true
     dependencies:
       cac: 6.7.14
-      debug: 4.4.0(supports-color@10.0.0)
+      debug: 4.4.1(supports-color@10.0.0)
       es-module-lexer: 1.7.0
       pathe: 1.1.2
       vite: 5.2.7(@types/node@20.14.14)
@@ -37863,7 +37870,7 @@ packages:
       '@vitest/spy': 2.1.9
       '@vitest/utils': 2.1.9
       chai: 5.2.0
-      debug: 4.4.0(supports-color@10.0.0)
+      debug: 4.4.1(supports-color@10.0.0)
       expect-type: 1.2.1
       magic-string: 0.30.17
       pathe: 1.1.2
@@ -38648,12 +38655,12 @@ packages:
     dependencies:
       zod: 3.23.8
 
-  /zod-to-json-schema@3.24.5(zod@4.0.10):
+  /zod-to-json-schema@3.24.5(zod@3.25.76):
     resolution: {integrity: sha512-/AuWwMP+YqiPbsJx5D6TfgRTc4kTLjsh5SOcd4bLsfUg2RcEXrFMJl1DGgdHy2aCfsIA/cr/1JM0xcB2GZji8g==}
     peerDependencies:
       zod: ^3.24.1
     dependencies:
-      zod: 4.0.10
+      zod: 3.25.76
     dev: false
 
   /zod-validation-error@1.5.0(zod@3.23.8):
@@ -38674,7 +38681,6 @@ packages:
 
   /zod@3.25.76:
     resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
-    dev: false
 
   /zustand@4.5.5(@types/react@18.2.69)(react@18.2.0):
     resolution: {integrity: sha512-+0PALYNJNgK6hldkgDq2vLrw5f6g/jCInz52n9RTpropGgeAf/ioFUCdtsjCqu4gNhW9D01rUQBROoRjdzyn2Q==}

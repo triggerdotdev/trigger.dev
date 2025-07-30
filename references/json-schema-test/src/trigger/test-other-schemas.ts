@@ -1,4 +1,4 @@
-import { schemaTask } from "@trigger.dev/sdk/v3";
+import { schemaTask } from "@trigger.dev/sdk";
 import { Type } from "@sinclair/typebox";
 import {
   array,
@@ -35,7 +35,7 @@ const typeBoxSchema = Type.Object({
 
 export const typeBoxTask = schemaTask({
   id: "typebox-schema-task",
-  schema: typeBoxSchema as any,
+  schema: typeBoxSchema,
   run: async (payload, { ctx }) => {
     // TypeBox provides static type inference
     const id: string = payload.id;
@@ -114,7 +114,6 @@ const effectSchema = S.Struct({
   user: S.Struct({
     userId: S.String,
     email: S.String,
-    attributes: S.optional(S.Record(S.String, S.Unknown)),
   }),
   product: S.optional(
     S.Struct({
@@ -137,8 +136,8 @@ type EffectEvent = S.Schema.Type<typeof effectSchema>;
 
 export const effectSchemaTask = schemaTask({
   id: "effect-schema-task",
-  schema: effectSchema as any,
-  run: async (payload: any, { ctx }) => {
+  schema: effectSchema,
+  run: async (payload, { ctx }) => {
     // Effect Schema provides type safety
     const eventId = payload.event.eventId;
     const eventType = payload.event.eventType;

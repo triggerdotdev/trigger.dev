@@ -1,5 +1,5 @@
 // This file tests the core JSON schema functionality without external dependencies
-import { schemaTask, task, type JSONSchema } from "@trigger.dev/sdk/v3";
+import { schemaTask, task, type JSONSchema } from "@trigger.dev/sdk";
 import { z } from "zod";
 
 // Test 1: Basic type inference with schemaTask
@@ -45,7 +45,7 @@ const jsonSchemaExample = {
 
 export const testJSONSchemaType = task({
   id: "test-json-schema-type",
-  payloadSchema: jsonSchemaExample,
+  jsonSchema: jsonSchemaExample,
   run: async (payload, { ctx }) => {
     // payload is 'any' with plain task, but the schema is properly typed
     return {
