@@ -27,7 +27,7 @@ const server = new McpServer({
 // This could be a good fit for the `resource` entity in MCP.
 // Also, a custom `prompt` entity could be useful to instruct the LLM to prompt the user
 // for selecting a task from a list of matching tasks, when the confidence for an exact match is low.
-server.tool("list-all-tasks", "List all available task IDs in the worker.", async () => {
+server.tool("list-all-tasks", "List all available task IDs in the worker.", async (params) => {
   return {
     content: [
       {
