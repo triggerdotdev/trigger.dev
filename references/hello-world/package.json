@@ -13,7 +13,7 @@
     "puppeteer-core": "^24.15.0",
     "replicate": "^1.0.1",
     "yup": "^1.6.1",
-    "zod": "3.23.8",
+    "zod": "3.25.76",
     "@sinclair/typebox": "^0.34.3"
   },
   "scripts": {
