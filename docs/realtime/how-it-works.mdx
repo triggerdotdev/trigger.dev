@@ -1,7 +1,7 @@
 ---
 title: How it works
 sidebarTitle: How it works
-description: Technical details about the Trigger.dev Realtime API
+description: Technical details about how the Trigger.dev Realtime API works
 ---
 
 ## Architecture
@@ -18,74 +18,75 @@ You will receive updates whenever a run changes for the following reasons:
 
 ## Run object
 
-The run object returned by realtime subscriptions is optimized for streaming updates and differs from the management API's run object. See the [run object reference](/realtime/run-object) for the complete schema and field descriptions.
+The run object returned by Realtime subscriptions is optimized for streaming updates and differs from the management API's run object. See [the run object](/realtime/run-object) page for the complete schema and field descriptions.
 
-## Type-safety
+## Basic usage
 
-You can infer the types of the run's payload and output by passing the type of the task to the `subscribeToRun` function. This will give you type-safe access to the run's payload and output.
+After you trigger a task, you can subscribe to the run using the `runs.subscribeToRun` function. This function returns an async iterator that you can use to get updates on the run status.
 
 ```ts
 import { runs, tasks } from "@trigger.dev/sdk/v3";
-import type { myTask } from "./trigger/my-task";
 
 // Somewhere in your backend code
 async function myBackend() {
   const handle = await tasks.trigger("my-task", { some: "data" });
 
-  for await (const run of runs.subscribeToRun<typeof myTask>(handle.id)) {
+  for await (const run of runs.subscribeToRun(handle.id)) {
     // This will log the run every time it changes
-    console.log(run.payload.some);
-
-    if (run.output) {
-      // This will log the output if it exists
-      console.log(run.output.some);
-    }
+    console.log(run);
   }
 }
 ```
 
-When using `subscribeToRunsWithTag`, you can pass a union of task types for all the possible tasks that can have the tag.
+Every time the run changes, the async iterator will yield the updated run. You can use this to update your UI, log the run status, or take any other action.
+
+Alternatively, you can subscribe to changes to any run that includes a specific tag (or tags) using the `runs.subscribeToRunsWithTag` function.
 
 ```ts
 import { runs } from "@trigger.dev/sdk/v3";
-import type { myTask, myOtherTask } from "./trigger/my-task";
 
 // Somewhere in your backend code
-for await (const run of runs.subscribeToRunsWithTag<typeof myTask | typeof myOtherTask>("my-tag")) {
-  // You can narrow down the type based on the taskIdentifier
-  switch (run.taskIdentifier) {
-    case "my-task": {
-      console.log("Run output:", run.output.foo); // This will be type-safe
-      break;
-    }
-    case "my-other-task": {
-      console.log("Run output:", run.output.bar); // This will be type-safe
-      break;
-    }
-  }
+for await (const run of runs.subscribeToRunsWithTag("user:1234")) {
+  // This will log the run every time it changes, for all runs with the tag "user:1234"
+  console.log(run);
+}
+```
+
+If you've used `batchTrigger` to trigger multiple runs, you can also subscribe to changes to all the runs triggered in the batch using the `runs.subscribeToBatch` function.
+
+```ts
+import { runs } from "@trigger.dev/sdk/v3";
+
+// Somewhere in your backend code
+for await (const run of runs.subscribeToBatch("batch-id")) {
+  // This will log the run every time it changes, for all runs in the batch with the ID "batch-id"
+  console.log(run);
 }
 ```
 
 ## Run metadata
 
-The run metadata API gives you the ability to add or update custom metadata on a run, which will cause the run to be updated. This allows you to extend the realtime API with custom data attached to a run that can be used for various purposes. Some common use cases include:
+The run metadata API gives you the ability to add or update custom metadata on a run, which will cause the run to be updated. This allows you to extend the Realtime API with custom data attached to a run that can be used for various purposes. Some common use cases include:
 
 - Adding a link to a related resource
 - Adding a reference to a user or organization
 - Adding a custom status with progress information
 
-See our [run metadata docs](/runs/metadata) for more on how to use this feature.
+See our [run metadata docs](/runs/metadata) for more on how to write tasks that use the metadata API.
 
-### Using w/Realtime & React hooks
+### Using metadata with Realtime & React hooks
 
-We suggest combining run metadata with the realtime API and our [React hooks](/realtime/react-hooks) to bridge the gap between your trigger.dev tasks and your UI. This allows you to update your UI in real-time based on changes to the run metadata. As a simple example, you could add a custom status to a run with a progress value, and update your UI based on that progress.
+You can combine run metadata with the Realtime API to bridge the gap between your trigger.dev tasks and your applications in two ways:
 
-We have a full demo app repo available [here](https://github.com/triggerdotdev/nextjs-realtime-simple-demo)
+1. Using our [React hooks](/realtime/react-hooks/subscribe#using-metadata) to subscribe to metadata updates and update your UI in real-time.
+2. Using our [backend functions](/realtime/backend) to subscribe to metadata updates in your backend.
 
 ## Limits
 
 The Realtime API in the Trigger.dev Cloud limits the number of concurrent subscriptions, depending on your plan. If you exceed the limit, you will receive an error when trying to subscribe to a run. For more information, see our [pricing page](https://trigger.dev/pricing).
 
-## Known issues
+## Learn more
 
-There is currently a known issue where the realtime API does not work if subscribing to a run that has a large payload or large output and are stored in object store instead of the database. We are working on a fix for this issue: https://github.com/triggerdotdev/trigger.dev/issues/1451. As a workaround you'll need to keep payloads and outputs below 128KB when using the realtime API.
+- Read our Realtime blog post ["How we built a real-time service that handles 20,000 updates per second](https://trigger.dev/blog/how-we-built-realtime)
+- Using Realtime: [React Hooks (frontend)](/realtime/react-hooks)
+- Using [Backend (server-side)](/realtime/backend)
