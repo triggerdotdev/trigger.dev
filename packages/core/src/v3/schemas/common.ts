@@ -311,7 +311,8 @@ export const TaskRunExecutionDeployment = z.object({
 export type TaskRunExecutionDeployment = z.infer<typeof TaskRunExecutionDeployment>;
 
 const StaticTaskRunExecutionShape = {
-  task: TaskRunExecutionTask,
+  // Passthrough needed for backwards compatibility
+  task: TaskRunExecutionTask.passthrough(),
   queue: TaskRunExecutionQueue,
   environment: TaskRunExecutionEnvironment,
   organization: TaskRunExecutionOrganization,
@@ -326,7 +327,8 @@ export const StaticTaskRunExecution = z.object(StaticTaskRunExecutionShape);
 export type StaticTaskRunExecution = z.infer<typeof StaticTaskRunExecution>;
 
 export const TaskRunExecution = z.object({
-  attempt: TaskRunExecutionAttempt,
+  // Passthrough needed for backwards compatibility
+  attempt: TaskRunExecutionAttempt.passthrough(),
   run: TaskRun.and(
     z.object({
       traceContext: z.record(z.unknown()).optional(),
