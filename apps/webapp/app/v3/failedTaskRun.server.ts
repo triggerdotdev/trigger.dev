@@ -4,6 +4,7 @@ import {
   TaskRunExecution,
   TaskRunExecutionRetry,
   TaskRunFailedExecutionResult,
+  V3TaskRunExecution,
 } from "@trigger.dev/core/v3";
 import type { Prisma, TaskRun } from "@trigger.dev/database";
 import * as semver from "semver";
@@ -129,7 +130,7 @@ export class FailedTaskRunRetryHelper extends BaseService {
   async #getRetriableAttemptExecution(
     run: TaskRunWithAttempts,
     completion: TaskRunFailedExecutionResult
-  ): Promise<TaskRunExecution | undefined> {
+  ): Promise<V3TaskRunExecution | undefined> {
     let attempt = run.attempts[0];
 
     // We need to create an attempt if:

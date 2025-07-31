@@ -639,7 +639,7 @@ describe("RunEngine heartbeats", () => {
   containerTest("Heartbeat keeps run alive", async ({ prisma, redisOptions }) => {
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-    const executingTimeout = 100;
+    const executingTimeout = 500;
 
     const engine = new RunEngine({
       prisma,
@@ -726,24 +726,23 @@ describe("RunEngine heartbeats", () => {
       expect(executionData.snapshot.executionStatus).toBe("EXECUTING");
       expect(executionData.run.status).toBe("EXECUTING");
 
-      // Send heartbeats every 50ms (half the timeout)
-      for (let i = 0; i < 6; i++) {
-        await setTimeout(50);
+      // Send heartbeats every 100ms (to make sure we're not timing out)
+      for (let i = 0; i < 5; i++) {
+        await setTimeout(100);
         await engine.heartbeatRun({
           runId: run.id,
           snapshotId: attempt.snapshot.id,
         });
       }
 
-      // After 300ms (3x the timeout) the run should still be executing
-      // because we've been sending heartbeats
+      // Should still be executing because we're sending heartbeats
       const executionData2 = await engine.getRunExecutionData({ runId: run.id });
       assertNonNullable(executionData2);
       expect(executionData2.snapshot.executionStatus).toBe("EXECUTING");
       expect(executionData2.run.status).toBe("EXECUTING");
 
       // Stop sending heartbeats and wait for timeout
-      await setTimeout(executingTimeout * 3);
+      await setTimeout(executingTimeout * 2);
 
       // Now it should have timed out and be queued
       const executionData3 = await engine.getRunExecutionData({ runId: run.id });

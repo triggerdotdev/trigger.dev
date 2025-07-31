@@ -95,6 +95,7 @@ export const SnapshotId = new IdUtil("snapshot");
 export const WaitpointId = new IdUtil("waitpoint");
 export const BatchId = new IdUtil("batch");
 export const BulkActionId = new IdUtil("bulk");
+export const AttemptId = new IdUtil("attempt");
 
 export class IdGenerator {
   private alphabet: string;

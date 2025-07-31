@@ -285,7 +285,7 @@ export default function Page() {
                   >
                     View runs
                   </LinkButton>
-                  <EnvironmentPauseResumeButton env={env} />
+                  {environment.runsEnabled ? <EnvironmentPauseResumeButton env={env} /> : null}
                 </div>
               }
               valueClassName={env.paused ? "text-warning" : undefined}
