@@ -19,7 +19,7 @@ import {
   WaitReason,
 } from "./schemas.js";
 import { CompletedWaitpoint } from "./runEngine.js";
-import { DebugLogPropertiesInput } from "../runEngineWorker/index.js";
+import { DebugLogPropertiesInput } from "../runEngineWorker/supervisor/schemas.js";
 
 export const AckCallbackResult = z.discriminatedUnion("success", [
   z.object({
