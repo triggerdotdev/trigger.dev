@@ -4,6 +4,7 @@ import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { clickhouseClient } from "~/services/clickhouseInstance.server";
 import { nextScheduledTimestamps } from "~/v3/utils/calculateNextSchedule.server";
 import { NextRunListPresenter } from "./NextRunListPresenter.server";
+import { scheduleWhereClause } from "~/models/schedules.server";
 
 type ViewScheduleOptions = {
   userId?: string;
@@ -63,10 +64,7 @@ export class ViewSchedulePresenter {
         },
         active: true,
       },
-      where: {
-        friendlyId,
-        projectId,
-      },
+      where: scheduleWhereClause(projectId, friendlyId),
     });
 
     if (!schedule) {
