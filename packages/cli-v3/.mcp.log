@@ -1,0 +1,19 @@
+[2025-07-31T11:21:07.328Z] get_project_details - [ { roots: { roots: [] }, projectRef: 'asdasdjaskdjasd' } ]
+[2025-07-31T11:26:08.494Z][version=0.16.2 capabilities=sampling,elicitation,roots] get_project_details - [ { roots: { roots: [] }, projectRef: 'asdaasd' } ]
+[2025-07-31T11:27:06.469Z][client=mcp-inspector version=0.16.2 capabilities=sampling,elicitation,roots] get_project_details - [ { roots: { roots: [] }, projectRef: 'asdadas' } ]
+[2025-07-31T11:28:40.476Z][client=mcp-inspector version=0.16.2 capabilities=sampling,elicitation,roots] get_project_details - [
+  {
+    roots: { roots: [] },
+    projectRef: 'asdadasd',
+    extra: {
+      signal: AbortSignal { aborted: false },
+      sessionId: undefined,
+      _meta: { progressToken: 1 },
+      sendNotification: [Function: sendNotification],
+      sendRequest: [Function: sendRequest],
+      authInfo: undefined,
+      requestId: 1,
+      requestInfo: undefined
+    }
+  }
+]
