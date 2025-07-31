@@ -11,11 +11,17 @@ We provide a set of hooks that can be used to trigger tasks from your frontend a
 <Note>
   For triggering tasks from your frontend, you need to use “trigger” tokens. These can only be used
   once to trigger a task and are more secure than regular Public Access Tokens. To learn more about
-  how to create and use these tokens, see our [Trigger Tokens](/realtime/auth#trigger-tokens)
-  documentation.
+  how to create and use these tokens, see our [Trigger
+  Tokens](/realtime/auth#trigger-tokens-for-frontend-triggering-only) documentation.
 </Note>
 
 ## Hooks
+
+We provide three hooks for triggering tasks from your frontend application:
+
+- `useTaskTrigger` - Trigger a task from your frontend application.
+- `useRealtimeTaskTrigger` - Trigger a task from your frontend application and subscribe to the run.
+- `useRealtimeTaskTriggerWithStreams` - Trigger a task from your frontend application and subscribe to the run, and also receive any streams that are emitted by the task.
 
 ### useTaskTrigger
 
@@ -26,7 +32,7 @@ The `useTaskTrigger` hook allows you to trigger a task from your frontend applic
 
 import { useTaskTrigger } from "@trigger.dev/react-hooks";
 import type { myTask } from "@/trigger/myTask";
-//     👆 This is the type of your task
+//     👆 This is the type of your task, include this to get type-safety
 
 export function MyComponent({ publicAccessToken }: { publicAccessToken: string }) {
   //                         pass the type of your task here 👇
@@ -65,7 +71,7 @@ submit({ foo: "bar" }, { tags: ["tag1", "tag2"] });
 
 #### Using the handle object
 
-You can use the `handle` object to initiate a subsequent [realtime hook](/realtime/react-hooks/realtime#userealtimerun) to subscribe to the run.
+You can use the `handle` object to initiate a subsequent [realtime hook](/realtime/react-hooks/subscribe#userealtimerun) to subscribe to the run.
 
 ```tsx
 "use client"; // This is needed for Next.js App Router or other RSC frameworks
