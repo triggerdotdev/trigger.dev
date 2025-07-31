@@ -41,23 +41,4 @@ for await (const run of runs.subscribeToRun(handle.id)) {
 }
 ```
 
-Stream data from a task:
-
-```ts
-import { task, metadata } from "@trigger.dev/sdk/v3";
-
-export const myTask = task({
-  id: "my-task",
-  run: async (payload) => {
-    // Stream real-time data
-    const stream = await metadata.stream("openai", openaiCompletion);
-
-    // Process the stream
-    for await (const chunk of stream) {
-      console.log("Streaming chunk:", chunk);
-    }
-  },
-});
-```
-
 <RealtimeExamplesCards />{" "}

@@ -1,7 +1,7 @@
 ---
 title: Realtime overview
 sidebarTitle: Overview
-description: Using the Trigger.dev Realtime API to subscribe to runs in real-time.
+description: Using the Trigger.dev Realtime API to trigger and subscribe to runs in real-time.
 ---
 
 import RealtimeExamplesCards from "/snippets/realtime-examples-cards.mdx";
@@ -10,51 +10,37 @@ Trigger.dev Realtime allows you to trigger, subscribe to, and get real-time upda
 
 ## Authentication
 
-All Realtime subscriptions require authentication so you can securely trigger and subscribe to runs. See our [authentication guide](/realtime/auth) for details on:
-
-- Creating Public Access Tokens to subscribe to runs
-- Creating Trigger Tokens to trigger tasks from your frontend
-- Scoping tokens to specific runs, tasks, tags, or batches
-- Auto-generated tokens from `tasks.trigger()`
+All Realtime subscriptions require authentication so you can securely trigger and subscribe to runs. See our [authentication guide](/realtime/auth) for more details.
 
 ## How run subscriptions work
 
-You can subscribe to real-time updates for:
+You can subscribe to real-time updates for different scopes of runs:
 
-- **Specific runs** - Monitor individual run progress
-- **Runs with specific tags** - Track runs by category or user
-- **Task runs** - All runs for specific tasks
-- **Batch runs** - All runs in a batch
+- **Specific runs** - Monitor individual run progress by run ID
+- **Runs with specific tags** - Track all runs that have certain [tags](/tags) (e.g., all runs tagged with `user:123`)
+- **Batch runs** - All runs within a specific batch
+- **Trigger + subscribe combos** - Trigger a task and immediately subscribe to its run (frontend only)
 
-When you subscribe to runs, you automatically receive the complete [run object](/realtime/run-object) containing status, timestamps, metadata, tags, and more whenever:
+Once subscribed, you'll receive the complete [run object](/realtime/run-object) with automatic real-time updates whenever the run changes, including:
 
-- Run status changes (queued → executing → completed, etc.)
-- [Run metadata](/runs/metadata) is updated
-- [Run tags](/tags) are added or removed
-- [Stream data](/realtime/backend#streams) is emitted
+- **Status changes** - queued → executing → completed, etc.
+- **Metadata updates** - Custom progress tracking, status updates, user data, etc. ([backend](/realtime/backend/metadata) | [React hooks](/realtime/react-hooks/realtime#using-metadata))
+- **Tag changes** - When [tags](/tags) are added or removed from the run
+- **Stream data** - Real-time data chunks from your tasks, perfect for AI/LLM streaming ([backend](/realtime/backend/streams) | [React hooks](/realtime/react-hooks/streams))
 
-Your tasks can also send additional custom data:
-
-- **Metadata updates** - Update custom metadata on runs that gets streamed to subscribers ([backend](/realtime/backend/metadata) | [React hooks](/realtime/react-hooks/realtime#using-metadata))
-- **Stream function** - Stream data chunks in real-time, perfect for AI/LLM streaming ([backend](/realtime/backend/streams) | [React hooks](/realtime/react-hooks/streams))
-
-## Implementation approaches
-
-### Backend implementation
-
-Use our server-side SDK to subscribe to runs from your backend code, other tasks, or serverless functions. Perfect for triggering workflows, sending notifications, or updating databases based on run status changes.
-
-→ **[See Backend functions guide](/realtime/backend)**
+## Realtime approaches
 
 ### Frontend implementation
 
 Use our React hooks to build real-time UIs that update as runs execute. Ideal for progress bars, status indicators, and live dashboards.
 
-→ **[See React hooks guide](/realtime/react-hooks)**
+→ **[See our React hooks guide](/realtime/react-hooks)**
 
-## Technical details
+### Backend implementation
 
-Learn more about the underlying technology and run object structure in our [How it Works](/realtime/how-it-works) guide.
+Use our server-side SDK to subscribe to runs from your backend code, other tasks, or serverless functions. Perfect for triggering workflows, sending notifications, or updating databases based on run status changes.
+
+→ **[See our Backend guide](/realtime/backend)**
 
 ## Realtime demo
 
