@@ -7,6 +7,8 @@ import { login } from "./login.js";
 import { performSearch } from "../mcp/mintlifyClient.js";
 import { logger } from "../utilities/logger.js";
 import { FileLogger } from "../mcp/logger.js";
+import { McpContext } from "../mcp/context.js";
+import { registerGetProjectDetailsTool } from "../mcp/tools.js";
 
 const McpCommandOptions = CommonCommandOptions.extend({
   projectRef: z.string().optional(),
@@ -54,6 +56,12 @@ export async function mcpCommand(options: McpCommandOptions) {
     ? new FileLogger(options.logFile, server)
     : undefined;
 
+  const context = new McpContext(server, {
+    login: authorization,
+    projectRef: options.projectRef,
+    fileLogger,
+  });
+
   server.registerTool(
     "search_docs",
     {
@@ -69,24 +77,7 @@ export async function mcpCommand(options: McpCommandOptions) {
     }
   );
 
-  server.registerTool(
-    "get_project_details",
-    {
-      description: "Get the details of the project",
-      inputSchema: {
-        projectRef: z.string().optional(),
-      },
-    },
-    async ({ projectRef }, extra) => {
-      const roots = await server.server.listRoots();
-
-      fileLogger?.log("get_project_details", { roots, projectRef, extra });
-
-      return {
-        content: [{ type: "text", text: "Not implemented" }],
-      };
-    }
-  );
+  registerGetProjectDetailsTool(context);
 
   // Start receiving messages on stdin and sending messages on stdout
   const transport = new StdioServerTransport();
