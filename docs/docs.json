@@ -133,7 +133,6 @@
                 "pages": [
                   "realtime/backend/overview",
                   "realtime/backend/subscribe",
-                  "realtime/backend/metadata",
                   "realtime/backend/streams"
                 ]
               }

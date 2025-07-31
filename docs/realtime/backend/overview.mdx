@@ -10,7 +10,7 @@ Use these backend functions to subscribe to runs and streams from your server-si
 
 ## Overview
 
-The backend API provides three main categories of functionality:
+There are three main categories of functionality:
 
 - **[Subscribe functions](/realtime/backend/subscribe)** - Subscribe to run updates using async iterators
 - **[Metadata](/realtime/backend/metadata)** - Update and subscribe to run metadata in real-time
@@ -40,5 +40,3 @@ for await (const run of runs.subscribeToRun(handle.id)) {
   console.log(`Run ${run.id} status: ${run.status}`);
 }
 ```
-
-<RealtimeExamplesCards />{" "}
