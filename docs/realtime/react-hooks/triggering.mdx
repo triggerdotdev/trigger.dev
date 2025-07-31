@@ -8,9 +8,12 @@ import RealtimeExamplesCards from "/snippets/realtime-examples-cards.mdx";
 
 We provide a set of hooks that can be used to trigger tasks from your frontend application.
 
-## Demo
-
-We've created a [Demo application](https://github.com/triggerdotdev/realtime-llm-battle) that demonstrates how to use our React hooks to trigger tasks in a Next.js application. The application uses the `@trigger.dev/react-hooks` package to trigger a task and subscribe to the run in real-time.
+<Note>
+  For triggering tasks from your frontend, you need to use “trigger” tokens. These can only be used
+  once to trigger a task and are more secure than regular Public Access Tokens. To learn more about
+  how to create and use these tokens, see our [Trigger Tokens](/realtime/auth#trigger-tokens)
+  documentation.
+</Note>
 
 ## Hooks
 

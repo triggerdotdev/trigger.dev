@@ -6,9 +6,18 @@ description: Using the Trigger.dev Realtime API to subscribe to runs in real-tim
 
 import RealtimeExamplesCards from "/snippets/realtime-examples-cards.mdx";
 
-Trigger.dev Realtime allows you subscribe to runs and get real-time updates as they execute. This is useful for monitoring runs, updating UIs, and building real-time dashboards.
+Trigger.dev Realtime allows you to trigger, subscribe to, and get real-time updates for runs. This is useful for monitoring runs, updating UIs, and building real-time dashboards.
 
-## What you can subscribe to
+## Authentication
+
+All Realtime subscriptions require authentication so you can securely trigger and subscribe to runs. See our [authentication guide](/realtime/auth) for details on:
+
+- Creating Public Access Tokens to subscribe to runs
+- Creating Trigger Tokens to trigger tasks from your frontend
+- Scoping tokens to specific runs, tasks, tags, or batches
+- Auto-generated tokens from `tasks.trigger()`
+
+## How run subscriptions work
 
 You can subscribe to real-time updates for:
 
@@ -17,7 +26,7 @@ You can subscribe to real-time updates for:
 - **Task runs** - All runs for specific tasks
 - **Batch runs** - All runs in a batch
 
-You automatically receive the complete [run object](/realtime/run-object) containing status, timestamps, metadata, tags, and more whenever:
+When you subscribe to runs, you automatically receive the complete [run object](/realtime/run-object) containing status, timestamps, metadata, tags, and more whenever:
 
 - Run status changes (queued → executing → completed, etc.)
 - [Run metadata](/runs/metadata) is updated
@@ -29,23 +38,15 @@ Your tasks can also send additional custom data:
 - **Metadata updates** - Update custom metadata on runs that gets streamed to subscribers ([backend](/realtime/backend/metadata) | [React hooks](/realtime/react-hooks/realtime#using-metadata))
 - **Stream function** - Stream data chunks in real-time, perfect for AI/LLM streaming ([backend](/realtime/backend/streams) | [React hooks](/realtime/react-hooks/streams))
 
-## Authentication
-
-All Realtime subscriptions require authentication. See our [authentication guide](/realtime/auth) for details on:
-
-- Creating Public Access Tokens for frontend use
-- Scoping tokens to specific runs, tasks, tags, or batches
-- Auto-generated tokens from `tasks.trigger()`
-
 ## Implementation approaches
 
-### Backend subscriptions
+### Backend implementation
 
 Use our server-side SDK to subscribe to runs from your backend code, other tasks, or serverless functions. Perfect for triggering workflows, sending notifications, or updating databases based on run status changes.
 
 → **[See Backend functions guide](/realtime/backend)**
 
-### Frontend subscriptions
+### Frontend implementation
 
 Use our React hooks to build real-time UIs that update as runs execute. Ideal for progress bars, status indicators, and live dashboards.
 
