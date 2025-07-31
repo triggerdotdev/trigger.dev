@@ -1,7 +1,7 @@
 ---
 title: Realtime overview
 sidebarTitle: Overview
-description: Using the Trigger.dev Realtime API to trigger and subscribe to runs in real-time.
+description: Using the Trigger.dev Realtime API to trigger and/or subscribe to runs in real-time.
 ---
 
 import RealtimeExamplesCards from "/snippets/realtime-examples-cards.mdx";
@@ -12,7 +12,7 @@ Trigger.dev Realtime allows you to trigger, subscribe to, and get real-time upda
 
 All Realtime subscriptions require authentication so you can securely trigger and subscribe to runs. See our [authentication guide](/realtime/auth) for more details.
 
-## How run subscriptions work
+## What you can do with Realtime
 
 You can subscribe to real-time updates for different scopes of runs:
 
@@ -21,12 +21,12 @@ You can subscribe to real-time updates for different scopes of runs:
 - **Batch runs** - All runs within a specific batch
 - **Trigger + subscribe combos** - Trigger a task and immediately subscribe to its run (frontend only)
 
-Once subscribed, you'll receive the complete [run object](/realtime/run-object) with automatic real-time updates whenever the run changes, including:
+Once subscribed, you'll receive the complete [run object](/realtime/run-object) with automatic real-time updates whenever the [run changes](/realtime/how-it-works#run-changes), including:
 
 - **Status changes** - queued → executing → completed, etc.
-- **Metadata updates** - Custom progress tracking, status updates, user data, etc. ([backend](/realtime/backend/metadata) | [React hooks](/realtime/react-hooks/realtime#using-metadata))
+- **Metadata updates** - Custom progress tracking, status updates, user data, etc. ([React hooks](/realtime/react-hooks/subscribe#using-metadata) | [backend](/realtime/backend/metadata))
 - **Tag changes** - When [tags](/tags) are added or removed from the run
-- **Stream data** - Real-time data chunks from your tasks, perfect for AI/LLM streaming ([backend](/realtime/backend/streams) | [React hooks](/realtime/react-hooks/streams))
+- **Stream data** - Real-time data chunks from your tasks, perfect for AI/LLM streaming ([React hooks](/realtime/react-hooks/streams) | [backend](/realtime/backend/streams))
 
 ## Realtime approaches
 
@@ -41,17 +41,3 @@ Use our React hooks to build real-time UIs that update as runs execute. Ideal fo
 Use our server-side SDK to subscribe to runs from your backend code, other tasks, or serverless functions. Perfect for triggering workflows, sending notifications, or updating databases based on run status changes.
 
 → **[See our Backend guide](/realtime/backend)**
-
-## Realtime demo
-
-<iframe
-  width="100%"
-  height="315"
-  src="https://www.youtube.com/embed/RhJAbSGkS88?si=4Z72SfygeklNI3As"
-  title="YouTube video player"
-  allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-  referrerPolicy="strict-origin-when-cross-origin"
-  allowFullScreen
-/>
-
-<RealtimeExamplesCards />
