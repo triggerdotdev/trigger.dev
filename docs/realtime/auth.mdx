@@ -10,18 +10,19 @@ To use the Realtime API, you need to authenticate your requests with Public Acce
 
 There are two types of tokens you can use with the Realtime API:
 
-- **[Public Access Tokens](#public-access-tokens-for-subscribing-to-runs)** - Used to read and subscribe to run data. Can be used in both frontend and backend applications.
-- **[Trigger Tokens](#trigger-tokens-for-frontend-triggering-only)** - Used to trigger tasks from your frontend. These are more secure, single-use tokens that can only be used in frontend applications.
+- **[Public Access Tokens](#public-access-tokens-for-subscribing-to-runs)** - Used to read and subscribe to run data. Can be used in both the frontend and backend.
+- **[Trigger Tokens](#trigger-tokens-for-frontend-triggering-only)** - Used to trigger tasks from your frontend. These are more secure, single-use tokens that can only be used in the frontend.
 
 ## Public Access Tokens (for subscribing to runs)
 
-Public Access Tokens are used to read and subscribe to run data. They can be used in both frontend and backend applications to subscribe to runs.
+Use Public Access Tokens to subscribe to runs and receive real-time updates in your frontend or backend.
 
 ### Creating Public Access Tokens
 
 You can create a Public Access Token using the `auth.createPublicToken` function in your **backend** code:
 
 ```tsx
+// Somewhere in your backend code
 import { auth } from "@trigger.dev/sdk/v3";
 
 const publicToken = await auth.createPublicToken(); // 👈 this public access token has no permissions, so is pretty useless!
@@ -144,7 +145,7 @@ See our [triggering documentation](/triggering) for detailed examples of how to 
 
 Once you have a Public Access Token, you can use it to authenticate requests to the Realtime API in both backend and frontend applications.
 
-**Backend usage:** See our [backend subscription documentation](/realtime/backend/subscribe) for examples of using tokens with backend functions.
+**Backend usage:** See our [backend documentation](/realtime/backend) for examples of what you can do with Realtime in your backend once you have authenticated with a token.
 
 **Frontend usage:** See our [React hooks documentation](/realtime/react-hooks) for examples of using tokens with frontend components.
 
@@ -198,8 +199,6 @@ const triggerToken = await auth.createTriggerPublicToken("my-task", {
 });
 ```
 
-### Triggering tasks from frontend with Trigger Tokens
+### Triggering tasks from the frontend with Trigger Tokens
 
-To trigger tasks from your frontend, you need to use special Trigger Tokens created in your backend. See our [React hooks triggering documentation](/realtime/react-hooks/triggering) for complete examples.
-
-See our [React hooks documentation](/realtime/react-hooks) for more details on using hooks in your frontend application.
+Check out our [React hooks documentation](/realtime/react-hooks) for examples of how to use Trigger Tokens in your frontend applications.
