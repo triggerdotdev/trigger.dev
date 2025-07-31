@@ -21,6 +21,7 @@ import {
   runtime,
   runTimelineMetrics,
   taskContext,
+  TaskRunContext,
   TaskRunErrorCodes,
   TaskRunExecution,
   timeout,
@@ -175,11 +176,11 @@ async function doBootstrap() {
     const { config, handleError } = await importConfig(workerManifest.configPath);
 
     const tracingSDK = new TracingSDK({
-      url: env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318",
+      url: env.TRIGGER_OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318",
       instrumentations: config.telemetry?.instrumentations ?? config.instrumentations ?? [],
       exporters: config.telemetry?.exporters ?? [],
       logExporters: config.telemetry?.logExporters ?? [],
-      diagLogLevel: (env.OTEL_LOG_LEVEL as TracingDiagnosticLogLevel) ?? "none",
+      diagLogLevel: (env.TRIGGER_OTEL_LOG_LEVEL as TracingDiagnosticLogLevel) ?? "none",
       forceFlushTimeoutMillis: 30_000,
     });
 
@@ -361,6 +362,14 @@ const zodIpc = new ZodIpcConnection({
         return;
       }
 
+      const ctx = TaskRunContext.parse(execution);
+
+      taskContext.setGlobalTaskContext({
+        ctx,
+        worker: metadata,
+        isWarmStart: isWarmStart ?? false,
+      });
+
       try {
         const { tracer, tracingSDK, consoleInterceptor, config, workerManifest } =
           await bootstrap();
@@ -516,7 +525,7 @@ const zodIpc = new ZodIpcConnection({
 
           const signal = AbortSignal.any([_cancelController.signal, timeoutController.signal]);
 
-          const { result } = await executor.execute(execution, metadata, traceContext, signal);
+          const { result } = await executor.execute(execution, ctx, traceContext, signal);
 
           if (_isRunning && !_isCancelled) {
             const usageSample = usage.stop(_executionMeasurement);

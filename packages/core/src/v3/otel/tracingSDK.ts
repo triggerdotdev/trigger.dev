@@ -1,25 +1,18 @@
 import { DiagConsoleLogger, DiagLogLevel, TracerProvider, diag } from "@opentelemetry/api";
-import { RandomIdGenerator } from "@opentelemetry/sdk-trace-base";
 import { logs } from "@opentelemetry/api-logs";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { registerInstrumentations, type Instrumentation } from "@opentelemetry/instrumentation";
-import {
-  DetectorSync,
-  IResource,
-  Resource,
-  ResourceAttributes,
-  ResourceDetectionConfig,
-  detectResourcesSync,
-  processDetectorSync,
-} from "@opentelemetry/resources";
+import { detectResources, processDetector, resourceFromAttributes } from "@opentelemetry/resources";
 import {
   BatchLogRecordProcessor,
-  LoggerProvider,
   LogRecordExporter,
+  LogRecordProcessor,
+  LoggerProvider,
   ReadableLogRecord,
   SimpleLogRecordProcessor,
 } from "@opentelemetry/sdk-logs";
+import { RandomIdGenerator, SpanProcessor } from "@opentelemetry/sdk-trace-base";
 import {
   BatchSpanProcessor,
   NodeTracerProvider,
@@ -45,39 +38,7 @@ import {
   TaskContextSpanProcessor,
 } from "../taskContext/otelProcessors.js";
 import { getEnvVar } from "../utils/getEnv.js";
-
-class AsyncResourceDetector implements DetectorSync {
-  private _promise: Promise<ResourceAttributes>;
-  private _resolver?: (value: ResourceAttributes) => void;
-  private _resolved: boolean = false;
-
-  constructor() {
-    this._promise = new Promise((resolver) => {
-      this._resolver = resolver;
-    });
-  }
-
-  get isResolved() {
-    return this._resolved;
-  }
-
-  detect(_config?: ResourceDetectionConfig): Resource {
-    return new Resource({}, this._promise);
-  }
-
-  resolveWithAttributes(attributes: ResourceAttributes) {
-    if (!this._resolver) {
-      throw new Error("Resolver not available");
-    }
-
-    if (this._resolved) {
-      return;
-    }
-
-    this._resolved = true;
-    this._resolver(attributes);
-  }
-}
+import { taskContext } from "../task-context-api.js";
 
 export type TracingDiagnosticLogLevel =
   | "none"
@@ -91,7 +52,6 @@ export type TracingDiagnosticLogLevel =
 export type TracingSDKConfig = {
   url: string;
   forceFlushTimeoutMillis?: number;
-  resource?: IResource;
   instrumentations?: Instrumentation[];
   exporters?: SpanExporter[];
   logExporters?: LogRecordExporter[];
@@ -101,7 +61,6 @@ export type TracingSDKConfig = {
 const idGenerator = new RandomIdGenerator();
 
 export class TracingSDK {
-  public readonly asyncResourceDetector = new AsyncResourceDetector();
   private readonly _logProvider: LoggerProvider;
   private readonly _spanExporter: SpanExporter;
   private readonly _traceProvider: NodeTracerProvider;
@@ -112,27 +71,75 @@ export class TracingSDK {
   constructor(private readonly config: TracingSDKConfig) {
     setLogLevel(config.diagLogLevel ?? "none");
 
-    const envResourceAttributesSerialized = getEnvVar("OTEL_RESOURCE_ATTRIBUTES");
+    const envResourceAttributesSerialized = getEnvVar("TRIGGER_OTEL_RESOURCE_ATTRIBUTES");
     const envResourceAttributes = envResourceAttributesSerialized
       ? JSON.parse(envResourceAttributesSerialized)
       : {};
 
-    const commonResources = detectResourcesSync({
-      detectors: [this.asyncResourceDetector, processDetectorSync],
+    const commonResources = detectResources({
+      detectors: [processDetector],
     })
       .merge(
-        new Resource({
+        resourceFromAttributes({
           [SemanticResourceAttributes.CLOUD_PROVIDER]: "trigger.dev",
           [SemanticResourceAttributes.SERVICE_NAME]:
-            getEnvVar("OTEL_SERVICE_NAME") ?? "trigger.dev",
+            getEnvVar("TRIGGER_OTEL_SERVICE_NAME") ?? "trigger.dev",
           [SemanticInternalAttributes.TRIGGER]: true,
           [SemanticInternalAttributes.CLI_VERSION]: VERSION,
           [SemanticInternalAttributes.SDK_VERSION]: VERSION,
           [SemanticInternalAttributes.SDK_LANGUAGE]: "typescript",
         })
       )
-      .merge(config.resource ?? new Resource({}))
-      .merge(new Resource(envResourceAttributes));
+      .merge(resourceFromAttributes(envResourceAttributes))
+      .merge(resourceFromAttributes(taskContext.resourceAttributes));
+
+    const spanExporter = new OTLPTraceExporter({
+      url: `${config.url}/v1/traces`,
+      timeoutMillis: config.forceFlushTimeoutMillis,
+    });
+
+    const spanProcessors: Array<SpanProcessor> = [];
+
+    spanProcessors.push(
+      new TaskContextSpanProcessor(
+        VERSION,
+        getEnvVar("TRIGGER_OTEL_BATCH_PROCESSING_ENABLED") === "1"
+          ? new BatchSpanProcessor(spanExporter, {
+              maxExportBatchSize: parseInt(
+                getEnvVar("TRIGGER_OTEL_SPAN_MAX_EXPORT_BATCH_SIZE") ?? "64"
+              ),
+              scheduledDelayMillis: parseInt(
+                getEnvVar("TRIGGER_OTEL_SPAN_SCHEDULED_DELAY_MILLIS") ?? "200"
+              ),
+              exportTimeoutMillis: parseInt(
+                getEnvVar("TRIGGER_OTEL_SPAN_EXPORT_TIMEOUT_MILLIS") ?? "30000"
+              ),
+              maxQueueSize: parseInt(getEnvVar("TRIGGER_OTEL_SPAN_MAX_QUEUE_SIZE") ?? "512"),
+            })
+          : new SimpleSpanProcessor(spanExporter)
+      )
+    );
+
+    const externalTraceId = idGenerator.generateTraceId();
+
+    for (const exporter of config.exporters ?? []) {
+      spanProcessors.push(
+        getEnvVar("TRIGGER_OTEL_BATCH_PROCESSING_ENABLED") === "1"
+          ? new BatchSpanProcessor(new ExternalSpanExporterWrapper(exporter, externalTraceId), {
+              maxExportBatchSize: parseInt(
+                getEnvVar("TRIGGER_OTEL_SPAN_MAX_EXPORT_BATCH_SIZE") ?? "64"
+              ),
+              scheduledDelayMillis: parseInt(
+                getEnvVar("TRIGGER_OTEL_SPAN_SCHEDULED_DELAY_MILLIS") ?? "200"
+              ),
+              exportTimeoutMillis: parseInt(
+                getEnvVar("TRIGGER_OTEL_SPAN_EXPORT_TIMEOUT_MILLIS") ?? "30000"
+              ),
+              maxQueueSize: parseInt(getEnvVar("TRIGGER_OTEL_SPAN_MAX_QUEUE_SIZE") ?? "512"),
+            })
+          : new SimpleSpanProcessor(new ExternalSpanExporterWrapper(exporter, externalTraceId))
+      );
+    }
 
     const traceProvider = new NodeTracerProvider({
       forceFlushTimeoutMillis: config.forceFlushTimeoutMillis,
@@ -145,49 +152,8 @@ export class TracingSDK {
         linkCountLimit: OTEL_LINK_COUNT_LIMIT,
         attributePerLinkCountLimit: OTEL_ATTRIBUTE_PER_LINK_COUNT_LIMIT,
       },
+      spanProcessors,
     });
-
-    const spanExporter = new OTLPTraceExporter({
-      url: `${config.url}/v1/traces`,
-      timeoutMillis: config.forceFlushTimeoutMillis,
-    });
-
-    traceProvider.addSpanProcessor(
-      new TaskContextSpanProcessor(
-        traceProvider.getTracer("trigger-dev-worker", VERSION),
-        getEnvVar("OTEL_BATCH_PROCESSING_ENABLED") === "1"
-          ? new BatchSpanProcessor(spanExporter, {
-              maxExportBatchSize: parseInt(getEnvVar("OTEL_SPAN_MAX_EXPORT_BATCH_SIZE") ?? "64"),
-              scheduledDelayMillis: parseInt(
-                getEnvVar("OTEL_SPAN_SCHEDULED_DELAY_MILLIS") ?? "200"
-              ),
-              exportTimeoutMillis: parseInt(
-                getEnvVar("OTEL_SPAN_EXPORT_TIMEOUT_MILLIS") ?? "30000"
-              ),
-              maxQueueSize: parseInt(getEnvVar("OTEL_SPAN_MAX_QUEUE_SIZE") ?? "512"),
-            })
-          : new SimpleSpanProcessor(spanExporter)
-      )
-    );
-
-    const externalTraceId = idGenerator.generateTraceId();
-
-    for (const exporter of config.exporters ?? []) {
-      traceProvider.addSpanProcessor(
-        getEnvVar("OTEL_BATCH_PROCESSING_ENABLED") === "1"
-          ? new BatchSpanProcessor(new ExternalSpanExporterWrapper(exporter, externalTraceId), {
-              maxExportBatchSize: parseInt(getEnvVar("OTEL_SPAN_MAX_EXPORT_BATCH_SIZE") ?? "64"),
-              scheduledDelayMillis: parseInt(
-                getEnvVar("OTEL_SPAN_SCHEDULED_DELAY_MILLIS") ?? "200"
-              ),
-              exportTimeoutMillis: parseInt(
-                getEnvVar("OTEL_SPAN_EXPORT_TIMEOUT_MILLIS") ?? "30000"
-              ),
-              maxQueueSize: parseInt(getEnvVar("OTEL_SPAN_MAX_QUEUE_SIZE") ?? "512"),
-            })
-          : new SimpleSpanProcessor(new ExternalSpanExporterWrapper(exporter, externalTraceId))
-      );
-    }
 
     traceProvider.register();
 
@@ -200,16 +166,7 @@ export class TracingSDK {
       url: `${config.url}/v1/logs`,
     });
 
-    // To start a logger, you first need to initialize the Logger provider.
-    const loggerProvider = new LoggerProvider({
-      resource: commonResources,
-      logRecordLimits: {
-        attributeCountLimit: OTEL_LOG_ATTRIBUTE_COUNT_LIMIT,
-        attributeValueLengthLimit: OTEL_LOG_ATTRIBUTE_VALUE_LENGTH_LIMIT,
-      },
-    });
-
-    loggerProvider.addLogRecordProcessor(
+    const logProcessors: Array<LogRecordProcessor> = [
       new TaskContextLogProcessor(
         getEnvVar("OTEL_BATCH_PROCESSING_ENABLED") === "1"
           ? new BatchLogRecordProcessor(logExporter, {
@@ -219,11 +176,11 @@ export class TracingSDK {
               maxQueueSize: parseInt(getEnvVar("OTEL_LOG_MAX_QUEUE_SIZE") ?? "512"),
             })
           : new SimpleLogRecordProcessor(logExporter)
-      )
-    );
+      ),
+    ];
 
     for (const externalLogExporter of config.logExporters ?? []) {
-      loggerProvider.addLogRecordProcessor(
+      logProcessors.push(
         getEnvVar("OTEL_BATCH_PROCESSING_ENABLED") === "1"
           ? new BatchLogRecordProcessor(
               new ExternalLogRecordExporterWrapper(externalLogExporter, externalTraceId),
@@ -243,6 +200,16 @@ export class TracingSDK {
             )
       );
     }
+
+    // To start a logger, you first need to initialize the Logger provider.
+    const loggerProvider = new LoggerProvider({
+      resource: commonResources,
+      logRecordLimits: {
+        attributeCountLimit: OTEL_LOG_ATTRIBUTE_COUNT_LIMIT,
+        attributeValueLengthLimit: OTEL_LOG_ATTRIBUTE_VALUE_LENGTH_LIMIT,
+      },
+      processors: logProcessors,
+    });
 
     this._logProvider = loggerProvider;
     this._spanExporter = spanExporter;
@@ -312,9 +279,9 @@ class ExternalSpanExporterWrapper {
     return {
       ...span,
       spanContext: () => ({ ...spanContext, traceId: this.externalTraceId }),
-      parentSpanId: span.attributes[SemanticInternalAttributes.SPAN_ATTEMPT]
+      parentSpanContext: span.attributes[SemanticInternalAttributes.SPAN_ATTEMPT]
         ? undefined
-        : span.parentSpanId,
+        : span.parentSpanContext,
     };
   }
 
