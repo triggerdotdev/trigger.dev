@@ -1,5 +1,5 @@
-import { Context, context, SpanKind, trace } from "@opentelemetry/api";
-import { VERSION } from "../../version.js";
+import { Context, context, SpanKind } from "@opentelemetry/api";
+import { promiseWithResolvers } from "../../utils.js";
 import { ApiError, RateLimitError } from "../apiClient/errors.js";
 import { ConsoleInterceptor } from "../consoleInterceptor.js";
 import {
@@ -31,7 +31,6 @@ import { runTimelineMetrics } from "../run-timeline-metrics-api.js";
 import {
   COLD_VARIANT,
   RetryOptions,
-  ServerBackgroundWorker,
   TaskRunContext,
   TaskRunErrorCodes,
   TaskRunExecution,
@@ -40,7 +39,6 @@ import {
   WARM_VARIANT,
 } from "../schemas/index.js";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
-import { taskContext } from "../task-context-api.js";
 import { TriggerTracer } from "../tracer.js";
 import { tryCatch } from "../tryCatch.js";
 import { HandleErrorModificationOptions, TaskMetadataWithFunctions } from "../types/index.js";
@@ -52,7 +50,6 @@ import {
   stringifyIO,
 } from "../utils/ioSerialization.js";
 import { calculateNextRetryDelay } from "../utils/retries.js";
-import { promiseWithResolvers } from "../../utils.js";
 
 export type TaskExecutorOptions = {
   tracingSDK: TracingSDK;
@@ -93,12 +90,10 @@ export class TaskExecutor {
 
   async execute(
     execution: TaskRunExecution,
-    worker: ServerBackgroundWorker,
+    ctx: TaskRunContext,
     traceContext: Record<string, unknown>,
-    signal: AbortSignal,
-    isWarmStart?: boolean
+    signal: AbortSignal
   ): Promise<{ result: TaskRunExecutionResult }> {
-    const ctx = TaskRunContext.parse(execution);
     const attemptMessage = `Attempt ${execution.attempt.number}`;
 
     const originalPacket = {
@@ -106,20 +101,8 @@ export class TaskExecutor {
       dataType: execution.run.payloadType,
     };
 
-    taskContext.setGlobalTaskContext({
-      ctx,
-      worker,
-      isWarmStart: isWarmStart ?? this._isWarmStart,
-    });
-
     if (execution.run.metadata) {
       runMetadata.enterWithMetadata(execution.run.metadata);
-    }
-
-    if (!this._tracingSDK.asyncResourceDetector.isResolved) {
-      this._tracingSDK.asyncResourceDetector.resolveWithAttributes({
-        ...taskContext.resourceAttributes,
-      });
     }
 
     const result = await this._tracer.startActiveSpan(
