@@ -4,12 +4,7 @@ sidebarTitle: Subscribe
 description: Get live updates from runs, batches, metadata, and more in your frontend application.
 ---
 
-import RealtimeExamplesCards from "/snippets/realtime-examples-cards.mdx";
-
-These hooks allow you to subscribe to runs, batches, and streams using [Trigger.dev realtime](/realtime). They automatically include real-time updates for run status, metadata, output, and other properties. Before reading this guide:
-
-- Read our [Realtime documentation](/realtime) to understand how the Trigger.dev realtime API works.
-- Read how to [setup and authenticate](/realtime/react-hooks) using the `@trigger.dev/react-hooks` package.
+These hooks allow you to subscribe to runs, batches, and streams using [Trigger.dev realtime](/realtime). They automatically include real-time updates for run status, metadata, output, and other properties.
 
 ## Hooks
 
@@ -206,11 +201,13 @@ See our [Realtime documentation](/realtime) for more information.
 All realtime hooks automatically include metadata updates. Whenever your task updates metadata using `metadata.set()`, `metadata.append()`, or other metadata methods, your component will re-render with the updated data.
 
 <Note>
-  To learn how to write tasks that use metadata, see our [writing tasks using
+  To learn how to write tasks with metadata updates, see our [writing tasks using
   metadata](/runs/metadata) guide.
 </Note>
 
 ### Progress monitoring
+
+This example demonstrates how to create a progress monitor component that can be used to display the progress of a run:
 
 ```tsx
 "use client"; // This is needed for Next.js App Router or other RSC frameworks
@@ -271,6 +268,8 @@ export function ProgressMonitor({
 ```
 
 ### Reusable progress bar
+
+This example demonstrates how to create a reusable progress bar component that can be used to display the percentage progress of a run:
 
 ```tsx
 "use client";
@@ -333,6 +332,8 @@ export function ProgressBar({ runId, publicAccessToken, title }: ProgressBarProp
 
 ### Status indicator with logs
 
+This example demonstrates how to create a status indicator component that can be used to display the status of a run, and also logs that are emitted by the task:
+
 ```tsx
 "use client";
 
@@ -391,6 +392,8 @@ export function StatusIndicator({ runId, publicAccessToken }: StatusIndicatorPro
 ```
 
 ### Multi-stage deployment monitor
+
+This example demonstrates how to create a multi-stage deployment monitor component that can be used to display the progress of a deployment:
 
 ```tsx
 "use client";
@@ -626,5 +629,3 @@ export function MyComponent({
 ```
 
 This allows you to change the ID of the subscription based on some state. Passing in a different ID will unsubscribe from the current subscription and subscribe to the new one (and remove any cached data).
-
-<RealtimeExamplesCards />{" "}

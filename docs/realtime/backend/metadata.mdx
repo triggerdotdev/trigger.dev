@@ -27,7 +27,9 @@ This makes metadata perfect for:
 
 ## Updating metadata from tasks
 
-Use the metadata API within your task to update metadata in real-time:
+Use the metadata API within your task to update metadata in real-time. In this basic example task, we're updating the progress of a task as it processes items:
+
+### Example task
 
 ```ts
 import { task, metadata } from "@trigger.dev/sdk/v3";
@@ -61,9 +63,9 @@ async function processItem(item: string) {
 }
 ```
 
-## Subscribing to metadata updates
+### Subscribing to metadata updates
 
-Subscribe to runs and receive real-time metadata updates:
+We can now subscribe to the runs and receive real-time metadata updates.
 
 ```ts
 import { runs } from "@trigger.dev/sdk/v3";
@@ -92,6 +94,8 @@ async function monitorProgress(runId: string) {
   }
 }
 ```
+
+For more information on how to write tasks that use the metadata API, see our [run metadata docs](/runs/metadata).
 
 ## Common metadata patterns
 
