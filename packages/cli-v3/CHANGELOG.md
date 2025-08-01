@@ -1,5 +1,15 @@
 # trigger.dev
 
+## 4.0.0-v4-beta.26
+
+### Patch Changes
+
+- Allow any runs to finish after SIGTERM but disable warm starts ([#2316](https://github.com/triggerdotdev/trigger.dev/pull/2316))
+- Switch to profile after successful login ([#2192](https://github.com/triggerdotdev/trigger.dev/pull/2192))
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.0-v4-beta.26`
+  - `@trigger.dev/core@4.0.0-v4-beta.26`
+
 ## 4.0.0-v4-beta.25
 
 ### Patch Changes
