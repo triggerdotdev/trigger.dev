@@ -93,10 +93,9 @@ const { action, loader } = createActionApiRoute(
     const service = new TriggerTaskService();
 
     try {
-      const traceContext =
-        traceparent && isFromWorker /// If the request is from a worker, we should pass the trace context
-          ? { traceparent, tracestate }
-          : undefined;
+      const traceContext = isFromWorker
+        ? { traceparent, tracestate }
+        : { external: { traceparent, tracestate } };
 
       const oneTimeUseToken = await getOneTimeUseToken(authentication);
 
@@ -105,6 +104,14 @@ const { action, loader } = createActionApiRoute(
         idempotencyKey,
         idempotencyKeyTTL,
         triggerVersion,
+        headers,
+        options: body.options,
+        isFromWorker,
+        traceContext,
+      });
+
+      logger.debug("[otelContext]", {
+        taskId: params.taskId,
         headers,
         options: body.options,
         isFromWorker,

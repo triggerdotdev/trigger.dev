@@ -12,7 +12,7 @@ export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
   idempotencyKeyExpiresAt?: Date;
   triggerVersion?: string;
-  traceContext?: Record<string, string | undefined>;
+  traceContext?: Record<string, unknown>;
   spanParentAsLink?: boolean;
   parentAsLinkType?: "replay" | "trigger";
   batchId?: string;
@@ -119,7 +119,7 @@ export interface TriggerTaskValidator {
 export type TracedEventSpan = {
   traceId: string;
   spanId: string;
-  traceContext: Record<string, string | undefined>;
+  traceContext: Record<string, unknown>;
   traceparent?: {
     traceId: string;
     spanId: string;
