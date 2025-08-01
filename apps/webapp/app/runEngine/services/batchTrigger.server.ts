@@ -42,7 +42,7 @@ export type BatchProcessingOptions = z.infer<typeof BatchProcessingOptions>;
 
 export type BatchTriggerTaskServiceOptions = {
   triggerVersion?: string;
-  traceContext?: Record<string, string | undefined>;
+  traceContext?: Record<string, string | undefined | Record<string, string | undefined>>;
   spanParentAsLink?: boolean;
   oneTimeUseToken?: string;
 };
