@@ -1,4 +1,4 @@
-import { Context } from "@opentelemetry/api";
+import { context, Context } from "@opentelemetry/api";
 import { getGlobal, registerGlobal, unregisterGlobal } from "../utils/globals.js";
 import { TraceContextManager } from "./types.js";
 
@@ -16,7 +16,7 @@ class NoopTraceContextManager implements TraceContextManager {
   }
 
   extractContext(): Context {
-    throw new Error("extractContext is not implemented");
+    return context.active();
   }
 
   withExternalTrace<T>(fn: () => T): T {
