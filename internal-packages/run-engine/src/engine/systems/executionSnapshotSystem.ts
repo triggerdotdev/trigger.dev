@@ -277,7 +277,8 @@ export class ExecutionSnapshotSystem {
         description: snapshot.description,
         previousSnapshotId,
         runId: run.id,
-        runStatus: run.status,
+        // We can't set the runStatus to DEQUEUED because it will break older runners
+        runStatus: run.status === "DEQUEUED" ? "PENDING" : run.status,
         attemptNumber: run.attemptNumber ?? undefined,
         batchId,
         environmentId,
