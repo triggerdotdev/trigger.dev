@@ -1,11 +1,6 @@
-import {
-  DiagConsoleLogger,
-  DiagLogLevel,
-  SpanContext,
-  TracerProvider,
-  diag,
-} from "@opentelemetry/api";
+import { DiagConsoleLogger, DiagLogLevel, TracerProvider, diag } from "@opentelemetry/api";
 import { logs } from "@opentelemetry/api-logs";
+import { TraceState } from "@opentelemetry/core";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { registerInstrumentations, type Instrumentation } from "@opentelemetry/instrumentation";
@@ -39,13 +34,13 @@ import {
   OTEL_SPAN_EVENT_COUNT_LIMIT,
 } from "../limits.js";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
+import { taskContext } from "../task-context-api.js";
 import {
   TaskContextLogProcessor,
   TaskContextSpanProcessor,
 } from "../taskContext/otelProcessors.js";
+import { traceContext } from "../trace-context-api.js";
 import { getEnvVar } from "../utils/getEnv.js";
-import { taskContext } from "../task-context-api.js";
-import { TraceState } from "@opentelemetry/core";
 
 export type TracingDiagnosticLogLevel =
   | "none"
@@ -63,7 +58,6 @@ export type TracingSDKConfig = {
   exporters?: SpanExporter[];
   logExporters?: LogRecordExporter[];
   diagLogLevel?: TracingDiagnosticLogLevel;
-  externalTraceContext?: unknown;
 };
 
 const idGenerator = new RandomIdGenerator();
@@ -129,7 +123,7 @@ export class TracingSDK {
     );
 
     const externalTraceId = idGenerator.generateTraceId();
-    const externalTraceContext = extractExternalTraceContext(config.externalTraceContext);
+    const externalTraceContext = traceContext.getExternalTraceContext();
 
     for (const exporter of config.exporters ?? []) {
       spanProcessors.push(
@@ -407,31 +401,4 @@ class ExternalLogRecordExporterWrapper {
       },
     });
   }
-}
-
-function extractExternalTraceContext(traceContext: unknown) {
-  if (typeof traceContext !== "object" || traceContext === null) {
-    return undefined;
-  }
-
-  const tracestate =
-    "tracestate" in traceContext && typeof traceContext.tracestate === "string"
-      ? traceContext.tracestate
-      : undefined;
-
-  if ("traceparent" in traceContext && typeof traceContext.traceparent === "string") {
-    const [version, traceId, spanId] = traceContext.traceparent.split("-");
-
-    if (!traceId || !spanId) {
-      return undefined;
-    }
-
-    return {
-      traceId,
-      spanId,
-      tracestate: tracestate,
-    };
-  }
-
-  return undefined;
 }

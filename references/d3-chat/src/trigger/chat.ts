@@ -1,7 +1,7 @@
 import { anthropic } from "@ai-sdk/anthropic";
 import { openai } from "@ai-sdk/openai";
 import { ai } from "@trigger.dev/sdk/ai";
-import { logger, metadata, runs, schemaTask, tasks, wait } from "@trigger.dev/sdk/v3";
+import { logger, metadata, runs, schemaTask, tasks, wait, otel } from "@trigger.dev/sdk/v3";
 import { sql } from "@vercel/postgres";
 import {
   CoreMessage,
@@ -17,6 +17,25 @@ import { sendSQLApprovalMessage } from "../lib/slack";
 import { crawler } from "./crawler";
 import { chartTool } from "./sandbox";
 import { QueryApproval } from "./schemas";
+import { context, propagation } from "@opentelemetry/api";
+
+async function callNextjsApp() {
+  return await otel.withExternalTrace(async () => {
+    const headersObject = {};
+
+    propagation.inject(context.active(), headersObject);
+
+    const result = await fetch("http://localhost:3000/api/demo-call-from-trigger", {
+      headers: new Headers(headersObject),
+      method: "POST",
+      body: JSON.stringify({
+        message: "Hello from Trigger.dev",
+      }),
+    });
+
+    return result.json();
+  });
+}
 
 const queryApprovalTask = schemaTask({
   id: "query-approval",
@@ -28,6 +47,8 @@ const queryApprovalTask = schemaTask({
   }),
   run: async ({ userId, input, query }) => {
     logger.info("queryApproval: starting", { projectRef: process.env.TRIGGER_PROJECT_REF });
+
+    await callNextjsApp();
 
     const token = await wait.createToken({
       tags: [`user:${userId}`, "approval"],
