@@ -738,6 +738,12 @@ function RunBody({
                   <Property.Label>Run Engine</Property.Label>
                   <Property.Value>{run.engine}</Property.Value>
                 </Property.Item>
+                {run.externalTraceId && (
+                  <Property.Item>
+                    <Property.Label>External Trace ID</Property.Label>
+                    <Property.Value>{run.externalTraceId}</Property.Value>
+                  </Property.Item>
+                )}
                 {isAdmin && (
                   <div className="border-t border-yellow-500/50 pt-2">
                     <Paragraph spacing variant="small" className="text-yellow-500">
