@@ -78,6 +78,7 @@
                       "config/extensions/pythonExtension",
                       "config/extensions/playwright",
                       "config/extensions/puppeteer",
+                      "config/extensions/lightpanda",
                       "config/extensions/ffmpeg",
                       "config/extensions/aptGet",
                       "config/extensions/additionalFiles",
@@ -168,6 +169,7 @@
             "group": "Troubleshooting",
             "pages": [
               "troubleshooting",
+              "how-to-reduce-your-spend",
               "troubleshooting-debugging-in-vscode",
               "upgrading-packages",
               "troubleshooting-uptime-status",
@@ -364,6 +366,7 @@
               "guides/examples/fal-ai-realtime",
               "guides/examples/ffmpeg-video-processing",
               "guides/examples/firecrawl-url-crawl",
+              "guides/examples/lightpanda",
               "guides/examples/libreoffice-pdf-conversion",
               "guides/examples/open-ai-with-retrying",
               "guides/examples/pdf-to-image",

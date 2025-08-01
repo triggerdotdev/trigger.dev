@@ -484,6 +484,8 @@ const zodIpc = new ZodIpcConnection({
         }
 
         runMetadataManager.runId = execution.run.id;
+        runMetadataManager.runIdIsRoot = typeof execution.run.rootTaskRunId === "undefined";
+
         _executionCount++;
 
         const executor = new TaskExecutor(task, {
@@ -502,6 +504,11 @@ const zodIpc = new ZodIpcConnection({
           runMetadataManager.startPeriodicFlush(
             getNumberEnvVar("TRIGGER_RUN_METADATA_FLUSH_INTERVAL", 1000)
           );
+
+          devUsageManager.setInitialState({
+            cpuTime: execution.run.durationMs ?? 0,
+            costInCents: execution.run.costInCents ?? 0,
+          });
 
           _executionMeasurement = usage.start();
 

@@ -8,6 +8,7 @@ export type Environment = {
   queued: number;
   concurrencyLimit: number;
   burstFactor: number;
+  runsEnabled: boolean;
 };
 
 export class EnvironmentQueuePresenter extends BasePresenter {
@@ -23,11 +24,25 @@ export class EnvironmentQueuePresenter extends BasePresenter {
     const running = (engineV1Executing ?? 0) + (engineV2Executing ?? 0);
     const queued = (engineV1Queued ?? 0) + (engineV2Queued ?? 0);
 
+    const organization = await this._replica.organization.findFirst({
+      where: {
+        id: environment.organizationId,
+      },
+      select: {
+        runsEnabled: true,
+      },
+    });
+
+    if (!organization) {
+      throw new Error("Organization not found");
+    }
+
     return {
       running,
       queued,
       concurrencyLimit: environment.maximumConcurrencyLimit,
       burstFactor: environment.concurrencyLimitBurstFactor.toNumber(),
+      runsEnabled: environment.type === "DEVELOPMENT" || organization.runsEnabled,
     };
   }
 }

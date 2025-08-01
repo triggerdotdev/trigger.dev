@@ -300,6 +300,7 @@ model RuntimeEnvironment {
   @@unique([projectId, shortcode])
   @@index([parentEnvironmentId])
   @@index([projectId])
+  @@index([organizationId])
 }
 
 enum RuntimeEnvironmentType {

@@ -107,6 +107,12 @@ export type EventRepoConfig = {
   retentionInDays: number;
   partitioningEnabled: boolean;
   tracer?: Tracer;
+  minConcurrency?: number;
+  maxConcurrency?: number;
+  maxBatchSize?: number;
+  memoryPressureThreshold?: number;
+  loadSheddingThreshold?: number;
+  loadSheddingEnabled?: boolean;
 };
 
 export type QueryOptions = Prisma.TaskEventWhereInput;
@@ -199,6 +205,10 @@ export class EventRepository {
     return this._subscriberCount;
   }
 
+  get flushSchedulerStatus() {
+    return this._flushScheduler.getStatus();
+  }
+
   constructor(
     db: PrismaClient = prisma,
     readReplica: PrismaReplicaClient = $replica,
@@ -208,6 +218,16 @@ export class EventRepository {
       batchSize: _config.batchSize,
       flushInterval: _config.batchInterval,
       callback: this.#flushBatch.bind(this),
+      minConcurrency: _config.minConcurrency,
+      maxConcurrency: _config.maxConcurrency,
+      maxBatchSize: _config.maxBatchSize,
+      memoryPressureThreshold: _config.memoryPressureThreshold,
+      loadSheddingThreshold: _config.loadSheddingThreshold,
+      loadSheddingEnabled: _config.loadSheddingEnabled,
+      isDroppableEvent: (event: CreatableEvent) => {
+        // Only drop LOG events during load shedding
+        return event.kind === TaskEventKind.LOG;
+      },
     });
 
     this._redisPublishClient = createRedisClient("trigger:eventRepoPublisher", this._config.redis);
@@ -1324,6 +1344,12 @@ function initializeEventRepo() {
     batchInterval: env.EVENTS_BATCH_INTERVAL,
     retentionInDays: env.EVENTS_DEFAULT_LOG_RETENTION,
     partitioningEnabled: env.TASK_EVENT_PARTITIONING_ENABLED === "1",
+    minConcurrency: env.EVENTS_MIN_CONCURRENCY,
+    maxConcurrency: env.EVENTS_MAX_CONCURRENCY,
+    maxBatchSize: env.EVENTS_MAX_BATCH_SIZE,
+    memoryPressureThreshold: env.EVENTS_MEMORY_PRESSURE_THRESHOLD,
+    loadSheddingThreshold: env.EVENTS_LOAD_SHEDDING_THRESHOLD,
+    loadSheddingEnabled: env.EVENTS_LOAD_SHEDDING_ENABLED === "1",
     redis: {
       port: env.PUBSUB_REDIS_PORT,
       host: env.PUBSUB_REDIS_HOST,
@@ -1339,6 +1365,67 @@ function initializeEventRepo() {
     help: "Number of event repository subscribers",
     collect() {
       this.set(repo.subscriberCount);
+    },
+    registers: [metricsRegister],
+  });
+
+  // Add metrics for flush scheduler
+  new Gauge({
+    name: "event_flush_scheduler_queued_items",
+    help: "Total number of items queued in the flush scheduler",
+    collect() {
+      const status = repo.flushSchedulerStatus;
+      this.set(status.queuedItems);
+    },
+    registers: [metricsRegister],
+  });
+
+  new Gauge({
+    name: "event_flush_scheduler_batch_queue_length",
+    help: "Number of batches waiting to be flushed",
+    collect() {
+      const status = repo.flushSchedulerStatus;
+      this.set(status.batchQueueLength);
+    },
+    registers: [metricsRegister],
+  });
+
+  new Gauge({
+    name: "event_flush_scheduler_concurrency",
+    help: "Current concurrency level of the flush scheduler",
+    collect() {
+      const status = repo.flushSchedulerStatus;
+      this.set(status.concurrency);
+    },
+    registers: [metricsRegister],
+  });
+
+  new Gauge({
+    name: "event_flush_scheduler_active_flushes",
+    help: "Number of active flush operations",
+    collect() {
+      const status = repo.flushSchedulerStatus;
+      this.set(status.activeFlushes);
+    },
+    registers: [metricsRegister],
+  });
+
+  new Gauge({
+    name: "event_flush_scheduler_dropped_events",
+    help: "Total number of events dropped due to load shedding",
+    collect() {
+      const status = repo.flushSchedulerStatus;
+      this.set(status.metrics.droppedEvents);
+    },
+    registers: [metricsRegister],
+  });
+
+  new Gauge({
+    name: "event_flush_scheduler_is_load_shedding",
+    help: "Whether load shedding is currently active (1 = active, 0 = inactive)",
+    collect() {
+      const status = repo.flushSchedulerStatus;
+      this.set(status.isLoadShedding ? 1 : 0);
     },
     registers: [metricsRegister],
   });

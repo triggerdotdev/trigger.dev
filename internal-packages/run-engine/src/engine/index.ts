@@ -9,6 +9,7 @@ import {
   ExecutionResult,
   RunExecutionData,
   StartRunAttemptResult,
+  TaskRunContext,
   TaskRunExecutionResult,
 } from "@trigger.dev/core/v3";
 import { RunId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
@@ -288,6 +289,7 @@ export class RunEngine {
       delayedRunSystem: this.delayedRunSystem,
       machines: this.options.machines,
       retryWarmStartThresholdMs: this.options.retryWarmStartThresholdMs,
+      redisOptions: this.options.cache?.redis ?? this.options.runLock.redis,
     });
 
     this.dequeueSystem = new DequeueSystem({
@@ -1052,6 +1054,10 @@ export class RunEngine {
       });
       return null;
     }
+  }
+
+  async resolveTaskRunContext(runId: string): Promise<TaskRunContext> {
+    return this.runAttemptSystem.resolveTaskRunContext(runId);
   }
 
   async getSnapshotsSince({
