@@ -13,6 +13,7 @@ export * from "./metadata.js";
 export * from "./timeout.js";
 export * from "./webhooks.js";
 export * from "./locals.js";
+export * from "./otel.js";
 export type { Context };
 
 import type { Context } from "./shared.js";

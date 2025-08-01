@@ -17,6 +17,7 @@ import {
   lifecycleHooks,
   OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT,
   runMetadata,
+  traceContext,
   waitUntil,
 } from "../index.js";
 import {
@@ -91,7 +92,6 @@ export class TaskExecutor {
   async execute(
     execution: TaskRunExecution,
     ctx: TaskRunContext,
-    traceContext: Record<string, unknown>,
     signal: AbortSignal
   ): Promise<{ result: TaskRunExecutionResult }> {
     const attemptMessage = `Attempt ${execution.attempt.number}`;
@@ -352,7 +352,7 @@ export class TaskExecutor {
             ? runTimelineMetrics.convertMetricsToSpanEvents()
             : undefined,
       },
-      this._tracer.extractContext(traceContext),
+      traceContext.extractContext(),
       signal
     );
 
