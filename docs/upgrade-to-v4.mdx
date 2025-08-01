@@ -1183,3 +1183,18 @@ We recommend enabling this option and testing in a staging or preview environmen
 - Gracefully shutdown task run processes using SIGTERM followed by SIGKILL after a 1s timeout. This also prevents cancelled or completed runs from leaving orphaned task run processes behind ([#2299](https://github.com/triggerdotdev/trigger.dev/pull/2299))
 
 </Update>
+
+<Update label="August 1, 2025" description="v4.0.0-beta.26">
+  [Release
+  v4.0.0-beta.26](https://github.com/triggerdotdev/trigger.dev/releases/tag/trigger.dev%404.0.0-v4-beta.26).
+
+- Allow any runs to finish after SIGTERM but disable warm starts ([#2316](https://github.com/triggerdotdev/trigger.dev/pull/2316))
+- Switch to profile after successful login ([#2192](https://github.com/triggerdotdev/trigger.dev/pull/2192))
+- Fixed importing from runEngine/index.js breaking non-node runtimes ([#2328](https://github.com/triggerdotdev/trigger.dev/pull/2328))
+- Added and cleaned up the run ctx param ([#2322](https://github.com/triggerdotdev/trigger.dev/pull/2322)):
+  - New optional properties `ctx.run.parentTaskRunId` and `ctx.run.rootTaskRunId` reference the current run's root/parent ID
+  - Removed deprecated properties from `ctx`
+  - Added a new `ctx.deployment` object that contains information about the deployment associated with the run
+  - Updated `metadata.root` and `metadata.parent` to work even when the run is a "root" run (meaning it doesn't have a parent or a root associated run)
+
+</Update>
