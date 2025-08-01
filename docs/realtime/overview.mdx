@@ -8,13 +8,9 @@ import RealtimeExamplesCards from "/snippets/realtime-examples-cards.mdx";
 
 Trigger.dev Realtime allows you to trigger, subscribe to, and get real-time updates for runs. This is useful for monitoring runs, updating UIs, and building real-time dashboards.
 
-## Authentication
-
-All Realtime subscriptions require authentication so you can securely trigger and subscribe to runs. See our [authentication guide](/realtime/auth) for more details.
-
 ## What you can do with Realtime
 
-You can subscribe to real-time updates for different scopes of runs:
+Subscribe to real-time updates for different scopes of runs:
 
 - **Specific runs** - Monitor individual run progress by run ID
 - **Runs with specific tags** - Track all runs that have certain [tags](/tags) (e.g., all runs tagged with `user:123`)
@@ -27,6 +23,10 @@ Once subscribed, you'll receive the complete [run object](/realtime/run-object) 
 - **Metadata updates** - Custom progress tracking, status updates, user data, etc. ([React hooks](/realtime/react-hooks/subscribe#using-metadata) | [backend](/realtime/backend/metadata))
 - **Tag changes** - When [tags](/tags) are added or removed from the run
 - **Stream data** - Real-time data chunks from your tasks, perfect for AI/LLM streaming ([React hooks](/realtime/react-hooks/streams) | [backend](/realtime/backend/streams))
+
+## Authentication
+
+All Realtime subscriptions require authentication so you can securely trigger and subscribe to runs. See our [authentication guide](/realtime/auth) for more details.
 
 ## Realtime approaches
 

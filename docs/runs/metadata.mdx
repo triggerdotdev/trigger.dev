@@ -514,6 +514,104 @@ Combined with [Realtime](/realtime), you could use this to show a live progress 
   height="100%"
 />
 
+## More metadata task examples
+
+Using metadata updates in conjunction with our [Realtime React hooks](/realtime/react-hooks/overview) can be a powerful way to build real-time UIs. Here are some example tasks demonstrating how to use metadata in your tasks to track progress, status, and more:
+
+### Progress tracking
+
+Track progress with percentage and current step:
+
+```ts
+import { task, metadata } from "@trigger.dev/sdk/v3";
+
+export const batchProcessingTask = task({
+  id: "batch-processing",
+  run: async (payload: { records: any[] }) => {
+    for (let i = 0; i < payload.records.length; i++) {
+      const record = payload.records[i];
+
+      // Update progress
+      metadata.set("progress", {
+        step: i + 1,
+        total: payload.records.length,
+        percentage: Math.round(((i + 1) / payload.records.length) * 100),
+        currentRecord: record.id,
+      });
+
+      await processRecord(record);
+    }
+  },
+});
+```
+
+### Status updates with logs
+
+Append log entries while maintaining status:
+
+```ts
+import { task, metadata } from "@trigger.dev/sdk/v3";
+
+export const deploymentTask = task({
+  id: "deployment",
+  run: async (payload: { version: string }) => {
+    metadata.set("status", "initializing");
+    metadata.append("logs", "Starting deployment...");
+
+    // Step 1
+    metadata.set("status", "building");
+    metadata.append("logs", "Building application...");
+    await buildApplication();
+
+    // Step 2
+    metadata.set("status", "deploying");
+    metadata.append("logs", "Deploying to production...");
+    await deployToProduction();
+
+    // Step 3
+    metadata.set("status", "verifying");
+    metadata.append("logs", "Running health checks...");
+    await runHealthChecks();
+
+    metadata.set("status", "completed");
+    metadata.append("logs", "Deployment successful!");
+  },
+});
+```
+
+### User context and notifications
+
+Store user information and notification preferences:
+
+```ts
+import { task, metadata } from "@trigger.dev/sdk/v3";
+
+export const userTask = task({
+  id: "user-task",
+  run: async (payload: { userId: string; action: string }) => {
+    // Set user context in metadata
+    metadata.set("user", {
+      id: payload.userId,
+      action: payload.action,
+      startedAt: new Date().toISOString(),
+    });
+
+    // Update status for user notifications
+    metadata.set("notification", {
+      type: "info",
+      message: `Starting ${payload.action} for user ${payload.userId}`,
+    });
+
+    await performUserAction(payload);
+
+    metadata.set("notification", {
+      type: "success",
+      message: `${payload.action} completed successfully`,
+    });
+  },
+});
+```
+
 ## Metadata propagation
 
 Metadata is NOT propagated to child tasks. If you want to pass metadata to a child task, you must do so explicitly:
