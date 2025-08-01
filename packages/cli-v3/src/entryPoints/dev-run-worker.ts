@@ -165,7 +165,7 @@ async function loadWorkerManifest() {
   return WorkerManifest.parse(raw);
 }
 
-async function doBootstrap() {
+async function doBootstrap(traceContext: Record<string, unknown>) {
   return await runTimelineMetrics.measureMetric("trigger.dev/start", "bootstrap", {}, async () => {
     log("Bootstrapping worker");
 
@@ -182,6 +182,7 @@ async function doBootstrap() {
       logExporters: config.telemetry?.logExporters ?? [],
       diagLogLevel: (env.TRIGGER_OTEL_LOG_LEVEL as TracingDiagnosticLogLevel) ?? "none",
       forceFlushTimeoutMillis: 30_000,
+      externalTraceContext: traceContext.external,
     });
 
     const otelTracer: Tracer = tracingSDK.getTracer("trigger-dev-worker", VERSION);
@@ -265,9 +266,9 @@ let bootstrapCache:
     }
   | undefined;
 
-async function bootstrap() {
+async function bootstrap(traceContext: Record<string, unknown>) {
   if (!bootstrapCache) {
-    bootstrapCache = await doBootstrap();
+    bootstrapCache = await doBootstrap(traceContext);
   }
 
   return bootstrapCache;
@@ -371,8 +372,9 @@ const zodIpc = new ZodIpcConnection({
       });
 
       try {
-        const { tracer, tracingSDK, consoleInterceptor, config, workerManifest } =
-          await bootstrap();
+        const { tracer, tracingSDK, consoleInterceptor, config, workerManifest } = await bootstrap(
+          traceContext
+        );
 
         _tracingSDK = tracingSDK;
 

@@ -89,7 +89,7 @@ export type TriggerParams = {
   payload: string;
   payloadType: string;
   context: any;
-  traceContext: Record<string, string | undefined>;
+  traceContext: Record<string, unknown>;
   traceId: string;
   spanId: string;
   parentSpanId?: string;

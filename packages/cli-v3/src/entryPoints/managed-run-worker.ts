@@ -156,7 +156,7 @@ async function loadWorkerManifest() {
   return WorkerManifest.parse(raw);
 }
 
-async function doBootstrap() {
+async function doBootstrap(traceContext: Record<string, unknown>) {
   return await runTimelineMetrics.measureMetric("trigger.dev/start", "bootstrap", {}, async () => {
     const workerManifest = await loadWorkerManifest();
 
@@ -173,6 +173,7 @@ async function doBootstrap() {
       forceFlushTimeoutMillis: 30_000,
       exporters: config.telemetry?.exporters ?? [],
       logExporters: config.telemetry?.logExporters ?? [],
+      externalTraceContext: traceContext.external,
     });
 
     const otelTracer: Tracer = tracingSDK.getTracer("trigger-dev-worker", VERSION);
@@ -254,9 +255,9 @@ let bootstrapCache:
     }
   | undefined;
 
-async function bootstrap() {
+async function bootstrap(traceContext: Record<string, unknown>) {
   if (!bootstrapCache) {
-    bootstrapCache = await doBootstrap();
+    bootstrapCache = await doBootstrap(traceContext);
   }
 
   return bootstrapCache;
@@ -375,8 +376,9 @@ const zodIpc = new ZodIpcConnection({
       });
 
       try {
-        const { tracer, tracingSDK, consoleInterceptor, config, workerManifest } =
-          await bootstrap();
+        const { tracer, tracingSDK, consoleInterceptor, config, workerManifest } = await bootstrap(
+          traceContext
+        );
 
         _tracingSDK = tracingSDK;
 

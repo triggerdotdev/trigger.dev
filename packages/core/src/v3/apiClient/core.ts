@@ -617,10 +617,6 @@ export function hasOwn(obj: Object, key: string): boolean {
 function injectPropagationHeadersIfInWorker(requestInit?: RequestInit): RequestInit | undefined {
   const headers = new Headers(requestInit?.headers);
 
-  if (headers.get("x-trigger-worker") !== "true") {
-    return requestInit;
-  }
-
   const headersObject = Object.fromEntries(headers.entries());
 
   propagation.inject(context.active(), headersObject);
