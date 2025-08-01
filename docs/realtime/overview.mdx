@@ -8,9 +8,7 @@ import RealtimeExamplesCards from "/snippets/realtime-examples-cards.mdx";
 
 Trigger.dev Realtime allows you to trigger, subscribe to, and get real-time updates for runs. This is useful for monitoring runs, updating UIs, and building real-time dashboards.
 
-## What you can do with Realtime
-
-Subscribe to real-time updates for different scopes of runs:
+You can subscribe to real-time updates for different scopes of runs:
 
 - **Specific runs** - Monitor individual run progress by run ID
 - **Runs with specific tags** - Track all runs that have certain [tags](/tags) (e.g., all runs tagged with `user:123`)
@@ -20,21 +18,21 @@ Subscribe to real-time updates for different scopes of runs:
 Once subscribed, you'll receive the complete [run object](/realtime/run-object) with automatic real-time updates whenever the [run changes](/realtime/how-it-works#run-changes), including:
 
 - **Status changes** - queued → executing → completed, etc.
-- **Metadata updates** - Custom progress tracking, status updates, user data, etc. ([React hooks](/realtime/react-hooks/subscribe#using-metadata) | [backend](/realtime/backend/metadata))
+- **Metadata updates** - Custom progress tracking, status updates, user data, etc. ([React hooks](/realtime/react-hooks/subscribe#using-metadata-to-show-progress-in-your-ui) | [backend](/realtime/backend/subscribe#subscribe-to-metadata-updates-from-your-tasks))
 - **Tag changes** - When [tags](/tags) are added or removed from the run
 - **Stream data** - Real-time data chunks from your tasks, perfect for AI/LLM streaming ([React hooks](/realtime/react-hooks/streams) | [backend](/realtime/backend/streams))
 
-## Authentication
+## Using Realtime in your applications
+
+### Authentication
 
 All Realtime subscriptions require authentication so you can securely trigger and subscribe to runs. See our [authentication guide](/realtime/auth) for more details.
-
-## Realtime approaches
 
 ### Frontend implementation
 
 Use our React hooks to build real-time UIs that update as runs execute. Ideal for progress bars, status indicators, and live dashboards.
 
-→ **[See our React hooks guide](/realtime/react-hooks)**
+→ **[See our React hooks guide](/realtime/react-hooks/)**
 
 ### Backend implementation
 
