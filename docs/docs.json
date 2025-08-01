@@ -167,6 +167,7 @@
             "group": "Troubleshooting",
             "pages": [
               "troubleshooting",
+              "how-to-reduce-your-spend",
               "troubleshooting-debugging-in-vscode",
               "upgrading-packages",
               "troubleshooting-uptime-status",
