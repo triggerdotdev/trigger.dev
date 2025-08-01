@@ -1,5 +1,28 @@
 # @trigger.dev/sdk
 
+## 4.0.0-v4-beta.26
+
+### Patch Changes
+
+- fix: importing from runEngine/index.js breaks non-node runtimes ([#2328](https://github.com/triggerdotdev/trigger.dev/pull/2328))
+- Added and cleaned up the run ctx param: ([#2322](https://github.com/triggerdotdev/trigger.dev/pull/2322))
+
+  - New optional properties `ctx.run.parentTaskRunId` and `ctx.run.rootTaskRunId` reference the current run's root/parent ID.
+  - Removed deprecated properties from `ctx`
+  - Added a new `ctx.deployment` object that contains information about the deployment associated with the run.
+
+  We also update `metadata.root` and `metadata.parent` to work even when the run is a "root" run (meaning it doesn't have a parent or a root associated run). This now works:
+
+  ```ts
+  metadata.root.set("foo", "bar");
+  metadata.parent.set("baz", 1);
+  metadata.current().foo; // "bar"
+  metadata.current().baz; // 1
+  ```
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.26`
+
 ## 4.0.0-v4-beta.25
 
 ### Patch Changes
