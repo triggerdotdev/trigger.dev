@@ -1,0 +1,221 @@
+---
+title: Streams hooks
+sidebarTitle: Streams
+description: Subscribe to real-time streams from your tasks in React components
+---
+
+These hooks allow you to consume real-time streams from your tasks. Streams are useful for displaying AI/LLM outputs as they're generated, or any other real-time data from your tasks.
+
+<Note>
+  To learn how to emit streams from your tasks, see our [backend streams
+  documentation](/realtime/backend/streams).
+</Note>
+
+## useRealtimeRunWithStreams
+
+The `useRealtimeRunWithStreams` hook allows you to subscribe to a run by its ID and also receive any streams that are emitted by the task.
+
+```tsx
+"use client"; // This is needed for Next.js App Router or other RSC frameworks
+
+import { useRealtimeRunWithStreams } from "@trigger.dev/react-hooks";
+
+export function MyComponent({
+  runId,
+  publicAccessToken,
+}: {
+  runId: string;
+  publicAccessToken: string;
+}) {
+  const { run, streams, error } = useRealtimeRunWithStreams(runId, {
+    accessToken: publicAccessToken,
+  });
+
+  if (error) return <div>Error: {error.message}</div>;
+
+  return (
+    <div>
+      <div>Run: {run.id}</div>
+      <div>
+        {Object.keys(streams).map((stream) => (
+          <div key={stream}>Stream: {stream}</div>
+        ))}
+      </div>
+    </div>
+  );
+}
+```
+
+You can also provide the type of the streams to the `useRealtimeRunWithStreams` hook to get type-safety:
+
+```tsx
+import { useRealtimeRunWithStreams } from "@trigger.dev/react-hooks";
+import type { myTask } from "@/trigger/myTask";
+
+type STREAMS = {
+  openai: string; // this is the type of each "part" of the stream
+};
+
+export function MyComponent({
+  runId,
+  publicAccessToken,
+}: {
+  runId: string;
+  publicAccessToken: string;
+}) {
+  const { run, streams, error } = useRealtimeRunWithStreams<typeof myTask, STREAMS>(runId, {
+    accessToken: publicAccessToken,
+  });
+
+  if (error) return <div>Error: {error.message}</div>;
+
+  const text = streams.openai?.map((part) => part).join("");
+
+  return (
+    <div>
+      <div>Run: {run.id}</div>
+      <div>{text}</div>
+    </div>
+  );
+}
+```
+
+As you can see above, each stream is an array of the type you provided, keyed by the stream name. If instead of a pure text stream you have a stream of objects, you can provide the type of the object:
+
+```tsx
+import type { TextStreamPart } from "ai";
+import type { myTask } from "@/trigger/myTask";
+
+type STREAMS = { openai: TextStreamPart<{}> };
+
+export function MyComponent({
+  runId,
+  publicAccessToken,
+}: {
+  runId: string;
+  publicAccessToken: string;
+}) {
+  const { run, streams, error } = useRealtimeRunWithStreams<typeof myTask, STREAMS>(runId, {
+    accessToken: publicAccessToken,
+  });
+
+  if (error) return <div>Error: {error.message}</div>;
+
+  const text = streams.openai
+    ?.filter((stream) => stream.type === "text-delta")
+    ?.map((part) => part.text)
+    .join("");
+
+  return (
+    <div>
+      <div>Run: {run.id}</div>
+      <div>{text}</div>
+    </div>
+  );
+}
+```
+
+## Streaming AI responses
+
+Here's a more complete example showing how to display streaming OpenAI responses:
+
+```tsx
+import { useRealtimeRunWithStreams } from "@trigger.dev/react-hooks";
+import type { aiStreaming, STREAMS } from "./trigger/ai-streaming";
+
+function MyComponent({ runId, publicAccessToken }: { runId: string; publicAccessToken: string }) {
+  const { streams } = useRealtimeRunWithStreams<typeof aiStreaming, STREAMS>(runId, {
+    accessToken: publicAccessToken,
+  });
+
+  if (!streams.openai) {
+    return <div>Loading...</div>;
+  }
+
+  const text = streams.openai.join(""); // `streams.openai` is an array of strings
+
+  return (
+    <div>
+      <h2>OpenAI response:</h2>
+      <p>{text}</p>
+    </div>
+  );
+}
+```
+
+## AI SDK with tools
+
+When using the AI SDK with tools, you can access tool calls and results:
+
+```tsx
+import { useRealtimeRunWithStreams } from "@trigger.dev/react-hooks";
+import type { aiStreamingWithTools, STREAMS } from "./trigger/ai-streaming";
+
+function MyComponent({ runId, publicAccessToken }: { runId: string; publicAccessToken: string }) {
+  const { streams } = useRealtimeRunWithStreams<typeof aiStreamingWithTools, STREAMS>(runId, {
+    accessToken: publicAccessToken,
+  });
+
+  if (!streams.openai) {
+    return <div>Loading...</div>;
+  }
+
+  // streams.openai is an array of TextStreamPart
+  const toolCall = streams.openai.find(
+    (stream) => stream.type === "tool-call" && stream.toolName === "getWeather"
+  );
+  const toolResult = streams.openai.find((stream) => stream.type === "tool-result");
+  const textDeltas = streams.openai.filter((stream) => stream.type === "text-delta");
+
+  const text = textDeltas.map((delta) => delta.textDelta).join("");
+  const weatherLocation = toolCall ? toolCall.args.location : undefined;
+  const weather = toolResult ? toolResult.result.temperature : undefined;
+
+  return (
+    <div>
+      <h2>OpenAI response:</h2>
+      <p>{text}</p>
+      <h2>Weather:</h2>
+      <p>
+        {weatherLocation
+          ? `The weather in ${weatherLocation} is ${weather} degrees.`
+          : "No weather data"}
+      </p>
+    </div>
+  );
+}
+```
+
+## Common options
+
+### experimental_throttleInMs
+
+The `*withStreams` variants of the Realtime hooks accept an `experimental_throttleInMs` option to throttle the updates from the server. This can be useful if you are getting too many updates and want to reduce the number of updates.
+
+```tsx
+import { useRealtimeRunWithStreams } from "@trigger.dev/react-hooks";
+
+export function MyComponent({
+  runId,
+  publicAccessToken,
+}: {
+  runId: string;
+  publicAccessToken: string;
+}) {
+  const { run, streams, error } = useRealtimeRunWithStreams(runId, {
+    accessToken: publicAccessToken,
+    experimental_throttleInMs: 1000, // Throttle updates to once per second
+  });
+
+  if (error) return <div>Error: {error.message}</div>;
+
+  return (
+    <div>
+      <div>Run: {run.id}</div>
+      {/* Display streams */}
+    </div>
+  );
+}
+```
+
+All other options (accessToken, baseURL, enabled, id) work the same as the other realtime hooks.
