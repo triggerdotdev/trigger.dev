@@ -7,7 +7,6 @@ import {
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import {
   formatDurationMilliseconds,
-  MachinePresetName,
   type TaskRunError,
   taskRunErrorEnhancer,
 } from "@trigger.dev/core/v3";
@@ -804,14 +803,15 @@ function RunBody({
               {run.isCached ? "Jump to original run" : "Focus on run"}
             </LinkButton>
           )}
+          <AdminDebugRun friendlyId={run.friendlyId} />
         </div>
-        <AdminDebugRun friendlyId={run.friendlyId} />
         <div className="flex items-center gap-4">
           {run.logsDeletedAt === null ? (
             <LinkButton
               to={v3RunDownloadLogsPath({ friendlyId: runParam })}
               LeadingIcon={CloudArrowDownIcon}
-              variant="tertiary/medium"
+              leadingIconClassName="text-indigo-400"
+              variant="secondary/medium"
               target="_blank"
               download
             >
