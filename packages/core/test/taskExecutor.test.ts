@@ -1942,5 +1942,5 @@ function executeTask(
 
   const $signal = signal ? signal : new AbortController().signal;
 
-  return executor.execute(execution, worker, {}, $signal);
+  return executor.execute(execution, execution, $signal);
 }

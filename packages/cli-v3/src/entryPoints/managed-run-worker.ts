@@ -20,6 +20,7 @@ import {
   runtime,
   runTimelineMetrics,
   taskContext,
+  TaskRunContext,
   TaskRunErrorCodes,
   TaskRunExecution,
   timeout,
@@ -28,6 +29,7 @@ import {
   waitUntil,
   WorkerManifest,
   WorkerToExecutorMessageCatalog,
+  traceContext,
 } from "@trigger.dev/core/v3";
 import { TriggerTracer } from "@trigger.dev/core/v3/tracer";
 import {
@@ -52,6 +54,7 @@ import {
   TracingSDK,
   usage,
   UsageTimeoutManager,
+  StandardTraceContextManager,
 } from "@trigger.dev/core/v3/workers";
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { readFile } from "node:fs/promises";
@@ -119,6 +122,9 @@ resourceCatalog.setGlobalResourceCatalog(standardResourceCatalog);
 const durableClock = new DurableClock();
 clock.setGlobalClock(durableClock);
 
+const standardTraceContextManager = new StandardTraceContextManager();
+traceContext.setGlobalManager(standardTraceContextManager);
+
 const runMetadataManager = new StandardMetadataManager(
   apiClientManager.clientOrThrow(),
   getEnvVar("TRIGGER_STREAM_URL", getEnvVar("TRIGGER_API_URL")) ?? "https://api.trigger.dev"
@@ -166,9 +172,9 @@ async function doBootstrap() {
     );
 
     const tracingSDK = new TracingSDK({
-      url: env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318",
+      url: env.TRIGGER_OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318",
       instrumentations: config.instrumentations ?? [],
-      diagLogLevel: (env.OTEL_LOG_LEVEL as TracingDiagnosticLogLevel) ?? "none",
+      diagLogLevel: (env.TRIGGER_OTEL_LOG_LEVEL as TracingDiagnosticLogLevel) ?? "none",
       forceFlushTimeoutMillis: 30_000,
       exporters: config.telemetry?.exporters ?? [],
       logExporters: config.telemetry?.logExporters ?? [],
@@ -287,6 +293,7 @@ function resetExecutionEnvironment() {
   _sharedWorkerRuntime?.reset();
   durableClock.reset();
   taskContext.disable();
+  standardTraceContextManager.reset();
 
   console.log(`[${new Date().toISOString()}] Reset execution environment`);
 }
@@ -328,6 +335,8 @@ const zodIpc = new ZodIpcConnection({
 
       resetExecutionEnvironment();
 
+      standardTraceContextManager.traceContext = traceContext;
+
       const prodManager = initializeUsageManager({
         usageIntervalMs: getEnvVar("USAGE_HEARTBEAT_INTERVAL_MS"),
         usageEventUrl: getEnvVar("USAGE_EVENT_URL"),
@@ -364,6 +373,14 @@ const zodIpc = new ZodIpcConnection({
 
         return;
       }
+
+      const ctx = TaskRunContext.parse(execution);
+
+      taskContext.setGlobalTaskContext({
+        ctx,
+        worker: metadata,
+        isWarmStart: isWarmStart ?? false,
+      });
 
       try {
         const { tracer, tracingSDK, consoleInterceptor, config, workerManifest } =
@@ -514,7 +531,7 @@ const zodIpc = new ZodIpcConnection({
 
           const signal = AbortSignal.any([_cancelController.signal, timeoutController.signal]);
 
-          const { result } = await executor.execute(execution, metadata, traceContext, signal);
+          const { result } = await executor.execute(execution, ctx, signal);
 
           if (_isRunning && !_isCancelled) {
             const usageSample = usage.stop(_executionMeasurement);

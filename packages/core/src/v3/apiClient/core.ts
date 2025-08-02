@@ -4,7 +4,7 @@ import { RetryOptions } from "../schemas/index.js";
 import { calculateNextRetryDelay } from "../utils/retries.js";
 import { ApiConnectionError, ApiError, ApiSchemaValidationError } from "./errors.js";
 
-import { Attributes, context, propagation, Span } from "@opentelemetry/api";
+import { Attributes, context, propagation, Span, trace } from "@opentelemetry/api";
 import { suppressTracing } from "@opentelemetry/core";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
 import type { TriggerTracer } from "../tracer.js";
@@ -616,10 +616,6 @@ export function hasOwn(obj: Object, key: string): boolean {
 // and return the new requestInit.
 function injectPropagationHeadersIfInWorker(requestInit?: RequestInit): RequestInit | undefined {
   const headers = new Headers(requestInit?.headers);
-
-  if (headers.get("x-trigger-worker") !== "true") {
-    return requestInit;
-  }
 
   const headersObject = Object.fromEntries(headers.entries());
 

@@ -19,7 +19,7 @@ export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
   idempotencyKeyExpiresAt?: Date;
   triggerVersion?: string;
-  traceContext?: Record<string, string | undefined>;
+  traceContext?: Record<string, unknown>;
   spanParentAsLink?: boolean;
   parentAsLinkType?: "replay" | "trigger";
   batchId?: string;

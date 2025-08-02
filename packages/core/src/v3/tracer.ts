@@ -63,10 +63,6 @@ export class TriggerTracer {
     return this._logger;
   }
 
-  extractContext(traceContext?: Record<string, unknown>) {
-    return propagation.extract(context.active(), traceContext ?? {});
-  }
-
   startActiveSpan<T>(
     name: string,
     fn: (span: Span) => Promise<T>,

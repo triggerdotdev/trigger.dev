@@ -1,17 +1,16 @@
-import { LogRecord, LogRecordProcessor } from "@opentelemetry/sdk-logs";
+import { Context, trace, Tracer } from "@opentelemetry/api";
+import { LogRecordProcessor, SdkLogRecord } from "@opentelemetry/sdk-logs";
 import { Span, SpanProcessor } from "@opentelemetry/sdk-trace-base";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
-import { Context } from "@opentelemetry/api";
-import { flattenAttributes } from "../utils/flattenAttributes.js";
 import { taskContext } from "../task-context-api.js";
-import { Tracer } from "@opentelemetry/api";
+import { flattenAttributes } from "../utils/flattenAttributes.js";
 
 export class TaskContextSpanProcessor implements SpanProcessor {
   private _innerProcessor: SpanProcessor;
   private _tracer: Tracer;
 
-  constructor(tracer: Tracer, innerProcessor: SpanProcessor) {
-    this._tracer = tracer;
+  constructor(version: string, innerProcessor: SpanProcessor) {
+    this._tracer = trace.getTracer("trigger-dev-worker", version);
     this._innerProcessor = innerProcessor;
   }
 
@@ -91,7 +90,7 @@ export class TaskContextLogProcessor implements LogRecordProcessor {
   forceFlush(): Promise<void> {
     return this._innerProcessor.forceFlush();
   }
-  onEmit(logRecord: LogRecord, context?: Context | undefined): void {
+  onEmit(logRecord: SdkLogRecord, context?: Context | undefined): void {
     // Adds in the context attributes to the log record
     if (taskContext.ctx) {
       logRecord.setAttributes(

@@ -8,6 +8,7 @@ import type { RuntimeManager } from "../runtime/manager.js";
 import { RunTimelineMetricsManager } from "../runTimelineMetrics/types.js";
 import { TaskContext } from "../taskContext/types.js";
 import { TimeoutManager } from "../timeout/types.js";
+import { TraceContextManager } from "../traceContext/types.js";
 import { UsageManager } from "../usage/types.js";
 import { WaitUntilManager } from "../waitUntil/types.js";
 import { _globalThis } from "./platform.js";
@@ -66,4 +67,5 @@ type TriggerDotDevGlobalAPI = {
   ["run-timeline-metrics"]?: RunTimelineMetricsManager;
   ["lifecycle-hooks"]?: LifecycleHooksManager;
   ["locals"]?: LocalsManager;
+  ["trace-context"]?: TraceContextManager;
 };
