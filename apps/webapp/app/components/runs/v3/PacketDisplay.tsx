@@ -33,6 +33,7 @@ export function PacketDisplay({
           code={data}
           maxLines={20}
           showLineNumbers={false}
+          showTextWrapping
         />
       );
     }
