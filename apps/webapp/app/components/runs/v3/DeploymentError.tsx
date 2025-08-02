@@ -18,6 +18,7 @@ export function DeploymentError({ errorData }: DeploymentErrorProps) {
           showLineNumbers={false}
           code={errorData.stack}
           maxLines={20}
+          showTextWrapping
         />
       )}
       {errorData.stderr && (
@@ -28,6 +29,7 @@ export function DeploymentError({ errorData }: DeploymentErrorProps) {
             showLineNumbers={false}
             code={errorData.stderr}
             maxLines={20}
+            showTextWrapping
           />
         </>
       )}
