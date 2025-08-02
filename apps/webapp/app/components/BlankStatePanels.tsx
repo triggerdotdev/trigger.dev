@@ -12,7 +12,6 @@ import {
 } from "@heroicons/react/20/solid";
 import { useLocation } from "react-use";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
-import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
 import openBulkActionsPanel from "~/assets/images/open-bulk-actions-panel.png";
 import selectRunsIndividually from "~/assets/images/select-runs-individually.png";
@@ -33,7 +32,7 @@ import {
   v3NewSchedulePath,
 } from "~/utils/pathBuilder";
 import { InlineCode } from "./code/InlineCode";
-import { environmentFullTitle } from "./environments/EnvironmentLabel";
+import { environmentFullTitle, EnvironmentIcon } from "./environments/EnvironmentLabel";
 import { Feedback } from "./Feedback";
 import { EnvironmentSelector } from "./navigation/EnvironmentSelector";
 import { Button, LinkButton } from "./primitives/Buttons";
@@ -42,7 +41,12 @@ import { InfoPanel } from "./primitives/InfoPanel";
 import { Paragraph } from "./primitives/Paragraph";
 import { StepNumber } from "./primitives/StepNumber";
 import { TextLink } from "./primitives/TextLink";
-import { InitCommandV3, PackageManagerProvider, TriggerDevStepV3 } from "./SetupCommands";
+import {
+  InitCommandV3,
+  PackageManagerProvider,
+  TriggerDeployStep,
+  TriggerDevStepV3,
+} from "./SetupCommands";
 import { StepContentContainer } from "./StepContentContainer";
 import { V4Badge } from "./V4Badge";
 
@@ -87,26 +91,44 @@ export function HasNoTasksDev() {
 
 export function HasNoTasksDeployed({ environment }: { environment: MinimumEnvironment }) {
   return (
-    <InfoPanel
-      title={`You don't have any deployed tasks in ${environmentFullTitle(environment)}`}
-      icon={TaskIcon}
-      iconClassName="text-tasks"
-      panelClassName="max-w-full"
-      accessory={
-        <LinkButton
-          to={docsPath("deployment/overview")}
-          variant="docs/small"
-          LeadingIcon={BookOpenIcon}
-        >
-          How to deploy tasks
-        </LinkButton>
-      }
-    >
-      <Paragraph spacing variant="small">
-        Run the <TextLink to={docsPath("deployment/overview")}>CLI deploy command</TextLink> to
-        deploy your tasks to the {environmentFullTitle(environment)} environment.
-      </Paragraph>
-    </InfoPanel>
+    <PackageManagerProvider>
+      <div>
+        <div className="mb-6 flex items-center justify-between border-b">
+          <div className="mb-2 flex items-center gap-2">
+            <EnvironmentIcon environment={environment} className="-ml-1 size-8" />
+            <Header1>Deploy your tasks to {environmentFullTitle(environment)}</Header1>
+          </div>
+          <div className="flex items-center gap-2">
+            <LinkButton
+              variant="minimal/small"
+              LeadingIcon={BookOpenIcon}
+              to={docsPath("/troubleshooting#deployment")}
+            >
+              Troubleshooting
+            </LinkButton>
+          </div>
+        </div>
+        <StepNumber stepNumber="1a" title="Run the CLI 'deploy' command" />
+        <StepContentContainer>
+          <Paragraph spacing>
+            This will deploy your tasks to the {environmentFullTitle(environment)} environment. Read
+            the <TextLink to={docsPath("deployment/overview")}>full guide</TextLink>.
+          </Paragraph>
+          <TriggerDeployStep environment={environment} />
+        </StepContentContainer>
+        <StepNumber stepNumber="1b" title="Or deploy using GitHub Actions" />
+        <StepContentContainer>
+          <Paragraph spacing>
+            Read the <TextLink to={docsPath("github-actions")}>GitHub Actions guide</TextLink> to
+            get started.
+          </Paragraph>
+        </StepContentContainer>
+        <StepNumber stepNumber="2" title="Waiting for tasks to deploy" displaySpinner />
+        <StepContentContainer>
+          <Paragraph>This page will automatically refresh when your tasks are deployed.</Paragraph>
+        </StepContentContainer>
+      </div>
+    </PackageManagerProvider>
   );
 }
 
