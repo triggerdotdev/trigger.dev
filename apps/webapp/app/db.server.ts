@@ -122,12 +122,21 @@ function getClient() {
         url: databaseUrl.href,
       },
     },
-    // @ts-expect-error
     log: [
+      // events
       {
-        emit: "stdout",
+        emit: "event",
         level: "error",
       },
+      {
+        emit: "event",
+        level: "info",
+      },
+      {
+        emit: "event",
+        level: "warn",
+      },
+      // stdout
       {
         emit: "stdout",
         level: "info",
@@ -136,15 +145,59 @@ function getClient() {
         emit: "stdout",
         level: "warn",
       },
-    ].concat(
-      process.env.VERBOSE_PRISMA_LOGS === "1"
+      ...((process.env.PRISMA_ERRORS_STDOUT_ENABLED === "1"
         ? [
-            { emit: "event", level: "query" },
-            { emit: "stdout", level: "query" },
+            {
+              emit: "stdout",
+              level: "error",
+            },
           ]
-        : []
-    ),
+        : []) satisfies Prisma.LogDefinition[]),
+      // verbose
+      ...((process.env.VERBOSE_PRISMA_LOGS === "1"
+        ? [
+            {
+              emit: "event",
+              level: "query",
+            },
+            {
+              emit: "stdout",
+              level: "query",
+            },
+          ]
+        : []) satisfies Prisma.LogDefinition[]),
+    ],
   });
+
+  client.$on("info", (log) => {
+    logger.info("PrismaClient info", {
+      clientType: "writer",
+      timestamp: log.timestamp,
+      message: log.message,
+      target: log.target,
+    });
+  });
+
+  client.$on("warn", (log) => {
+    logger.warn("PrismaClient warn", {
+      clientType: "writer",
+      timestamp: log.timestamp,
+      message: log.message,
+      target: log.target,
+    });
+  });
+
+  // Only use structured logging for errors if we're not already logging them to stdout
+  if (process.env.PRISMA_ERRORS_STDOUT_ENABLED !== "1") {
+    client.$on("error", (log) => {
+      logger.error("PrismaClient error", {
+        clientType: "writer",
+        timestamp: log.timestamp,
+        message: log.message,
+        target: log.target,
+      });
+    });
+  }
 
   // connect eagerly
   client.$connect();
@@ -174,12 +227,21 @@ function getReplicaClient() {
         url: replicaUrl.href,
       },
     },
-    // @ts-expect-error
     log: [
+      // events
       {
-        emit: "stdout",
+        emit: "event",
         level: "error",
       },
+      {
+        emit: "event",
+        level: "info",
+      },
+      {
+        emit: "event",
+        level: "warn",
+      },
+      // stdout
       {
         emit: "stdout",
         level: "info",
@@ -188,15 +250,59 @@ function getReplicaClient() {
         emit: "stdout",
         level: "warn",
       },
-    ].concat(
-      process.env.VERBOSE_PRISMA_LOGS === "1"
+      ...((process.env.PRISMA_ERRORS_STDOUT_ENABLED === "1"
         ? [
-            { emit: "event", level: "query" },
-            { emit: "stdout", level: "query" },
+            {
+              emit: "stdout",
+              level: "error",
+            },
           ]
-        : []
-    ),
+        : []) satisfies Prisma.LogDefinition[]),
+      // verbose
+      ...((process.env.VERBOSE_PRISMA_LOGS === "1"
+        ? [
+            {
+              emit: "event",
+              level: "query",
+            },
+            {
+              emit: "stdout",
+              level: "query",
+            },
+          ]
+        : []) satisfies Prisma.LogDefinition[]),
+    ],
   });
+
+  replicaClient.$on("info", (log) => {
+    logger.info("PrismaClient info", {
+      clientType: "reader",
+      timestamp: log.timestamp,
+      message: log.message,
+      target: log.target,
+    });
+  });
+
+  replicaClient.$on("warn", (log) => {
+    logger.warn("PrismaClient warn", {
+      clientType: "reader",
+      timestamp: log.timestamp,
+      message: log.message,
+      target: log.target,
+    });
+  });
+
+  // Only use structured logging for errors if we're not already logging them to stdout
+  if (process.env.PRISMA_ERRORS_STDOUT_ENABLED !== "1") {
+    replicaClient.$on("error", (log) => {
+      logger.error("PrismaClient error", {
+        clientType: "reader",
+        timestamp: log.timestamp,
+        message: log.message,
+        target: log.target,
+      });
+    });
+  }
 
   // connect eagerly
   replicaClient.$connect();
