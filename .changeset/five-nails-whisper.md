@@ -60,6 +60,7 @@ You can also now propagate your external trace context when calling back into yo
 
 ```ts
 import { otel, task } from "@trigger.dev/sdk";
+import { context, propagation } from "@opentelemetry/api";
 
 async function callNextjsApp() {
   return await otel.withExternalTrace(async () => {
