@@ -176,12 +176,18 @@ export class TracingSDK {
 
     const logProcessors: Array<LogRecordProcessor> = [
       new TaskContextLogProcessor(
-        getEnvVar("OTEL_BATCH_PROCESSING_ENABLED") === "1"
+        getEnvVar("TRIGGER_OTEL_BATCH_PROCESSING_ENABLED") === "1"
           ? new BatchLogRecordProcessor(logExporter, {
-              maxExportBatchSize: parseInt(getEnvVar("OTEL_LOG_MAX_EXPORT_BATCH_SIZE") ?? "64"),
-              scheduledDelayMillis: parseInt(getEnvVar("OTEL_LOG_SCHEDULED_DELAY_MILLIS") ?? "200"),
-              exportTimeoutMillis: parseInt(getEnvVar("OTEL_LOG_EXPORT_TIMEOUT_MILLIS") ?? "30000"),
-              maxQueueSize: parseInt(getEnvVar("OTEL_LOG_MAX_QUEUE_SIZE") ?? "512"),
+              maxExportBatchSize: parseInt(
+                getEnvVar("TRIGGER_OTEL_LOG_MAX_EXPORT_BATCH_SIZE") ?? "64"
+              ),
+              scheduledDelayMillis: parseInt(
+                getEnvVar("TRIGGER_OTEL_LOG_SCHEDULED_DELAY_MILLIS") ?? "200"
+              ),
+              exportTimeoutMillis: parseInt(
+                getEnvVar("TRIGGER_OTEL_LOG_EXPORT_TIMEOUT_MILLIS") ?? "30000"
+              ),
+              maxQueueSize: parseInt(getEnvVar("TRIGGER_OTEL_LOG_MAX_QUEUE_SIZE") ?? "512"),
             })
           : new SimpleLogRecordProcessor(logExporter)
       ),
@@ -189,7 +195,7 @@ export class TracingSDK {
 
     for (const externalLogExporter of config.logExporters ?? []) {
       logProcessors.push(
-        getEnvVar("OTEL_BATCH_PROCESSING_ENABLED") === "1"
+        getEnvVar("TRIGGER_OTEL_BATCH_PROCESSING_ENABLED") === "1"
           ? new BatchLogRecordProcessor(
               new ExternalLogRecordExporterWrapper(
                 externalLogExporter,
@@ -197,14 +203,16 @@ export class TracingSDK {
                 externalTraceContext
               ),
               {
-                maxExportBatchSize: parseInt(getEnvVar("OTEL_LOG_MAX_EXPORT_BATCH_SIZE") ?? "64"),
+                maxExportBatchSize: parseInt(
+                  getEnvVar("TRIGGER_OTEL_LOG_MAX_EXPORT_BATCH_SIZE") ?? "64"
+                ),
                 scheduledDelayMillis: parseInt(
-                  getEnvVar("OTEL_LOG_SCHEDULED_DELAY_MILLIS") ?? "200"
+                  getEnvVar("TRIGGER_OTEL_LOG_SCHEDULED_DELAY_MILLIS") ?? "200"
                 ),
                 exportTimeoutMillis: parseInt(
-                  getEnvVar("OTEL_LOG_EXPORT_TIMEOUT_MILLIS") ?? "30000"
+                  getEnvVar("TRIGGER_OTEL_LOG_EXPORT_TIMEOUT_MILLIS") ?? "30000"
                 ),
-                maxQueueSize: parseInt(getEnvVar("OTEL_LOG_MAX_QUEUE_SIZE") ?? "512"),
+                maxQueueSize: parseInt(getEnvVar("TRIGGER_OTEL_LOG_MAX_QUEUE_SIZE") ?? "512"),
               }
             )
           : new SimpleLogRecordProcessor(
