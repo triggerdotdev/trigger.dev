@@ -172,18 +172,22 @@ function getClient() {
   client.$on("info", (log) => {
     logger.info("PrismaClient info", {
       clientType: "writer",
-      timestamp: log.timestamp,
-      message: log.message,
-      target: log.target,
+      event: {
+        timestamp: log.timestamp,
+        message: log.message,
+        target: log.target,
+      },
     });
   });
 
   client.$on("warn", (log) => {
     logger.warn("PrismaClient warn", {
       clientType: "writer",
-      timestamp: log.timestamp,
-      message: log.message,
-      target: log.target,
+      event: {
+        timestamp: log.timestamp,
+        message: log.message,
+        target: log.target,
+      },
     });
   });
 
@@ -192,9 +196,11 @@ function getClient() {
     client.$on("error", (log) => {
       logger.error("PrismaClient error", {
         clientType: "writer",
-        timestamp: log.timestamp,
-        message: log.message,
-        target: log.target,
+        event: {
+          timestamp: log.timestamp,
+          message: log.message,
+          target: log.target,
+        },
       });
     });
   }
@@ -277,18 +283,22 @@ function getReplicaClient() {
   replicaClient.$on("info", (log) => {
     logger.info("PrismaClient info", {
       clientType: "reader",
-      timestamp: log.timestamp,
-      message: log.message,
-      target: log.target,
+      event: {
+        timestamp: log.timestamp,
+        message: log.message,
+        target: log.target,
+      },
     });
   });
 
   replicaClient.$on("warn", (log) => {
     logger.warn("PrismaClient warn", {
       clientType: "reader",
-      timestamp: log.timestamp,
-      message: log.message,
-      target: log.target,
+      event: {
+        timestamp: log.timestamp,
+        message: log.message,
+        target: log.target,
+      },
     });
   });
 
@@ -297,9 +307,11 @@ function getReplicaClient() {
     replicaClient.$on("error", (log) => {
       logger.error("PrismaClient error", {
         clientType: "reader",
-        timestamp: log.timestamp,
-        message: log.message,
-        target: log.target,
+        event: {
+          timestamp: log.timestamp,
+          message: log.message,
+          target: log.target,
+        },
       });
     });
   }
