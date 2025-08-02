@@ -5,6 +5,7 @@ import {
   ChatBubbleLeftRightIcon,
   ClockIcon,
   PlusIcon,
+  QuestionMarkCircleIcon,
   RectangleGroupIcon,
   RectangleStackIcon,
   ServerStackIcon,
@@ -31,6 +32,7 @@ import {
   v3NewProjectAlertPath,
   v3NewSchedulePath,
 } from "~/utils/pathBuilder";
+import { AskAI } from "./AskAI";
 import { InlineCode } from "./code/InlineCode";
 import { environmentFullTitle, EnvironmentIcon } from "./environments/EnvironmentLabel";
 import { Feedback } from "./Feedback";
@@ -41,6 +43,7 @@ import { InfoPanel } from "./primitives/InfoPanel";
 import { Paragraph } from "./primitives/Paragraph";
 import { StepNumber } from "./primitives/StepNumber";
 import { TextLink } from "./primitives/TextLink";
+import { SimpleTooltip } from "./primitives/Tooltip";
 import {
   InitCommandV3,
   PackageManagerProvider,
@@ -98,14 +101,30 @@ export function HasNoTasksDeployed({ environment }: { environment: MinimumEnviro
             <EnvironmentIcon environment={environment} className="-ml-1 size-8" />
             <Header1>Deploy your tasks to {environmentFullTitle(environment)}</Header1>
           </div>
-          <div className="flex items-center gap-2">
-            <LinkButton
-              variant="minimal/small"
-              LeadingIcon={BookOpenIcon}
-              to={docsPath("/troubleshooting#deployment")}
-            >
-              Troubleshooting
-            </LinkButton>
+          <div className="flex items-center">
+            <SimpleTooltip
+              button={
+                <LinkButton
+                  variant="small-menu-item"
+                  LeadingIcon={BookOpenIcon}
+                  leadingIconClassName="text-blue-500"
+                  to={docsPath("deployment/overview")}
+                />
+              }
+              content="Deploy docs"
+            />
+            <SimpleTooltip
+              button={
+                <LinkButton
+                  variant="small-menu-item"
+                  LeadingIcon={QuestionMarkCircleIcon}
+                  leadingIconClassName="text-blue-500"
+                  to={docsPath("troubleshooting#deployment")}
+                />
+              }
+              content="Troubleshooting docs"
+            />
+            <AskAI />
           </div>
         </div>
         <StepNumber stepNumber="1a" title="Run the CLI 'deploy' command" />
