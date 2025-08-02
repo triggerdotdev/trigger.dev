@@ -9,7 +9,7 @@ type DeploymentErrorProps = {
 
 export function DeploymentError({ errorData }: DeploymentErrorProps) {
   return (
-    <div className="flex flex-col gap-2 rounded-sm border border-rose-500/50 p-3">
+    <div className="mx-3 mb-3 flex flex-col gap-2 rounded-sm border border-rose-500/50 p-3">
       <DeploymentErrorHeader title={errorData.name ?? "Error"} titleClassName="text-rose-500" />
       {errorData.message && <Callout variant="error">{errorData.message}</Callout>}
       {errorData.stack && (
