@@ -143,7 +143,7 @@ export default function Page() {
   const emailFields = useFieldList(form.ref, emails);
 
   return (
-    <MainCenteredContainer>
+    <MainCenteredContainer className="max-w-[26rem] rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg">
       <div>
         <FormTitle
           LeadingIcon={<UserPlusIcon className="size-6 text-indigo-500" />}
@@ -203,7 +203,7 @@ export default function Page() {
                 </Button>
               }
               cancelButton={
-                <LinkButton to={organizationTeamPath(organization)} variant={"tertiary/small"}>
+                <LinkButton to={organizationTeamPath(organization)} variant={"secondary/small"}>
                   Cancel
                 </LinkButton>
               }
