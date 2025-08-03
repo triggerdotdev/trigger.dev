@@ -385,7 +385,7 @@ export class RunEngine {
               payload,
               payloadType,
               context,
-              traceContext: traceContext as any,
+              traceContext,
               traceId,
               spanId,
               parentSpanId,

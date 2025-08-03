@@ -6,6 +6,7 @@ import {
   MachinePresetName,
   RetryOptions,
   RunChainState,
+  TriggerTraceContext,
 } from "@trigger.dev/core/v3";
 import { PrismaClient, PrismaReplicaClient } from "@trigger.dev/database";
 import { Worker, type WorkerConcurrencyOptions } from "@trigger.dev/redis-worker";
@@ -89,7 +90,7 @@ export type TriggerParams = {
   payload: string;
   payloadType: string;
   context: any;
-  traceContext: Record<string, unknown>;
+  traceContext: TriggerTraceContext;
   traceId: string;
   spanId: string;
   parentSpanId?: string;

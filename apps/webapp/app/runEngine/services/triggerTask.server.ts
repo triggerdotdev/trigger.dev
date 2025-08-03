@@ -356,7 +356,7 @@ export class RunEngineTriggerTaskService {
     traceContext: Record<string, unknown>,
     parentRunTraceContext: unknown,
     parentSpanId: string | undefined
-  ): Record<string, unknown> {
+  ): TriggerTraceContext {
     if (!parentRunTraceContext) {
       return traceContext;
     }
