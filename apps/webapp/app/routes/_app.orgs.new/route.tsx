@@ -7,7 +7,8 @@ import { json, redirect } from "@remix-run/node";
 import { Form, useActionData, useNavigation } from "@remix-run/react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
-import { MainCenteredContainer } from "~/components/layout/AppLayout";
+import { BackgroundWrapper } from "~/components/BackgroundWrapper";
+import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
@@ -94,85 +95,92 @@ export default function NewOrganizationPage() {
   const isLoading = navigation.state === "submitting" || navigation.state === "loading";
 
   return (
-    <MainCenteredContainer className="max-w-[22rem]">
-      <FormTitle
-        LeadingIcon={<BuildingOffice2Icon className="size-6 text-fuchsia-600" />}
-        title="Create an Organization"
-      />
-      <Form method="post" {...form.props}>
-        <Fieldset>
-          <InputGroup>
-            <Label htmlFor={orgName.id}>Organization name</Label>
-            <Input
-              {...conform.input(orgName, { type: "text" })}
-              placeholder="Your Organization name"
-              icon={BuildingOffice2Icon}
-              autoFocus
-            />
-            <Hint>E.g. your company name or your workspace name.</Hint>
-            <FormError id={orgName.errorId}>{orgName.error}</FormError>
-          </InputGroup>
-          {isManagedCloud && (
-            <>
-              <InputGroup>
-                <Label htmlFor={"companySize"}>Number of employees</Label>
-                <RadioGroup name="companySize" className="flex items-center justify-between gap-2">
-                  <RadioGroupItem
-                    id="employees-1-5"
-                    label="1-5"
-                    value={"1-5"}
-                    variant="button/small"
-                    className="grow"
-                  />
-                  <RadioGroupItem
-                    id="employees-6-49"
-                    label="6-49"
-                    value={"6-49"}
-                    variant="button/small"
-                    className="grow"
-                  />
-                  <RadioGroupItem
-                    id="employees-50-99"
-                    label="50-99"
-                    value={"50-99"}
-                    variant="button/small"
-                    className="grow"
-                  />
-                  <RadioGroupItem
-                    id="employees-100+"
-                    label="100+"
-                    value={"100+"}
-                    variant="button/small"
-                    className="grow"
-                  />
-                </RadioGroup>
-              </InputGroup>
-              <InputGroup>
-                <Label htmlFor={"whyUseUs"}>What problem are you trying to solve?</Label>
-                <TextArea name="whyUseUs" rows={4} spellCheck={false} />
-                <Hint>
-                  Your answer will help us understand your use case and provide better support.
-                </Hint>
-              </InputGroup>
-            </>
-          )}
-
-          <FormButtons
-            confirmButton={
-              <Button type="submit" variant={"primary/small"} disabled={isLoading}>
-                Create
-              </Button>
-            }
-            cancelButton={
-              hasOrganizations ? (
-                <LinkButton to={rootPath()} variant={"tertiary/small"}>
-                  Cancel
-                </LinkButton>
-              ) : null
-            }
+    <AppContainer className="bg-charcoal-900">
+      <BackgroundWrapper>
+        <MainCenteredContainer className="max-w-[26rem] rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg">
+          <FormTitle
+            LeadingIcon={<BuildingOffice2Icon className="size-6 text-fuchsia-600" />}
+            title="Create an Organization"
           />
-        </Fieldset>
-      </Form>
-    </MainCenteredContainer>
+          <Form method="post" {...form.props}>
+            <Fieldset>
+              <InputGroup>
+                <Label htmlFor={orgName.id}>Organization name</Label>
+                <Input
+                  {...conform.input(orgName, { type: "text" })}
+                  placeholder="Your Organization name"
+                  icon={BuildingOffice2Icon}
+                  autoFocus
+                />
+                <Hint>E.g. your company name or your workspace name.</Hint>
+                <FormError id={orgName.errorId}>{orgName.error}</FormError>
+              </InputGroup>
+              {isManagedCloud && (
+                <>
+                  <InputGroup>
+                    <Label htmlFor={"companySize"}>Number of employees</Label>
+                    <RadioGroup
+                      name="companySize"
+                      className="flex items-center justify-between gap-2"
+                    >
+                      <RadioGroupItem
+                        id="employees-1-5"
+                        label="1-5"
+                        value={"1-5"}
+                        variant="button/small"
+                        className="grow"
+                      />
+                      <RadioGroupItem
+                        id="employees-6-49"
+                        label="6-49"
+                        value={"6-49"}
+                        variant="button/small"
+                        className="grow"
+                      />
+                      <RadioGroupItem
+                        id="employees-50-99"
+                        label="50-99"
+                        value={"50-99"}
+                        variant="button/small"
+                        className="grow"
+                      />
+                      <RadioGroupItem
+                        id="employees-100+"
+                        label="100+"
+                        value={"100+"}
+                        variant="button/small"
+                        className="grow"
+                      />
+                    </RadioGroup>
+                  </InputGroup>
+                  <InputGroup>
+                    <Label htmlFor={"whyUseUs"}>What problem are you trying to solve?</Label>
+                    <TextArea name="whyUseUs" rows={4} spellCheck={false} />
+                    <Hint>
+                      Your answer will help us understand your use case and provide better support.
+                    </Hint>
+                  </InputGroup>
+                </>
+              )}
+
+              <FormButtons
+                confirmButton={
+                  <Button type="submit" variant={"primary/small"} disabled={isLoading}>
+                    Create
+                  </Button>
+                }
+                cancelButton={
+                  hasOrganizations ? (
+                    <LinkButton to={rootPath()} variant={"tertiary/small"}>
+                      Cancel
+                    </LinkButton>
+                  ) : null
+                }
+              />
+            </Fieldset>
+          </Form>
+        </MainCenteredContainer>
+      </BackgroundWrapper>
+    </AppContainer>
   );
 }
