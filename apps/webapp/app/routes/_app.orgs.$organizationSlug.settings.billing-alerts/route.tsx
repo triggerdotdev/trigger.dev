@@ -205,8 +205,11 @@ export default function Page() {
               <Header2 spacing>Billing alerts</Header2>
               <Paragraph variant="small">
                 Receive an email when your compute spend crosses different thresholds. You can also
-                learn how to reduce your compute spend in the{" "}
-                <TextLink to={docsPath("how-to-reduce-your-spend")}>docs</TextLink>.
+                learn how to{" "}
+                <TextLink to={docsPath("how-to-reduce-your-spend")}>
+                  reduce your compute spend
+                </TextLink>
+                .
               </Paragraph>
             </div>
             <Form method="post" {...form.props}>
