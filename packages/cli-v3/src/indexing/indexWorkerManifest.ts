@@ -61,7 +61,7 @@ export async function indexWorkerManifest({
       }
 
       resolved = true;
-      child.kill();
+      child.kill("SIGKILL");
       reject(new Error("Worker timed out"));
     }, 20_000);
 
@@ -79,21 +79,21 @@ export async function indexWorkerManifest({
           } else {
             resolve(message.payload.manifest);
           }
-          child.kill();
+          child.kill("SIGKILL");
           break;
         }
         case "TASKS_FAILED_TO_PARSE": {
           clearTimeout(timeout);
           resolved = true;
           reject(new TaskMetadataParseError(message.payload.zodIssues, message.payload.tasks));
-          child.kill();
+          child.kill("SIGKILL");
           break;
         }
         case "UNCAUGHT_EXCEPTION": {
           clearTimeout(timeout);
           resolved = true;
           reject(new UncaughtExceptionError(message.payload.error, message.payload.origin));
-          child.kill();
+          child.kill("SIGKILL");
           break;
         }
       }

@@ -77,10 +77,12 @@ export class InitializeDeploymentService extends BaseService {
           nextVersion,
           environmentSlug: environment.slug,
           registryTags: env.DEPLOY_REGISTRY_ECR_TAGS,
-          assumeRole: {
-            roleArn: env.DEPLOY_REGISTRY_ECR_ASSUME_ROLE_ARN,
-            externalId: env.DEPLOY_REGISTRY_ECR_ASSUME_ROLE_EXTERNAL_ID,
-          },
+          assumeRole: env.DEPLOY_REGISTRY_ECR_ASSUME_ROLE_ARN
+            ? {
+                roleArn: env.DEPLOY_REGISTRY_ECR_ASSUME_ROLE_ARN,
+                externalId: env.DEPLOY_REGISTRY_ECR_ASSUME_ROLE_EXTERNAL_ID,
+              }
+            : undefined,
         })
       );
 
@@ -124,6 +126,7 @@ export class InitializeDeploymentService extends BaseService {
           imageReference: imageRef,
           imagePlatform: env.DEPLOY_IMAGE_PLATFORM,
           git: payload.gitMeta ?? undefined,
+          runtime: payload.runtime ?? undefined,
         },
       });
 

@@ -26,11 +26,12 @@ export const loader = createLoaderApiRoute(
       superScopes: ["read:runs", "read:all", "admin"],
     },
   },
-  async ({ authentication, request, resource: batchRun }) => {
+  async ({ authentication, request, resource: batchRun, apiVersion }) => {
     return realtimeClient.streamBatch(
       request.url,
       authentication.environment,
       batchRun.id,
+      apiVersion,
       authentication.realtime,
       request.headers.get("x-trigger-electric-version") ?? undefined
     );

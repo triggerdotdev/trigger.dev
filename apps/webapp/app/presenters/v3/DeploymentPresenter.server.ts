@@ -72,6 +72,8 @@ export class DeploymentPresenter {
         id: true,
         shortCode: true,
         version: true,
+        runtime: true,
+        runtimeVersion: true,
         errorData: true,
         imageReference: true,
         imagePlatform: true,
@@ -157,6 +159,8 @@ export class DeploymentPresenter {
         deployedBy: deployment.triggeredBy,
         sdkVersion: deployment.worker?.sdkVersion,
         cliVersion: deployment.worker?.cliVersion,
+        runtime: deployment.runtime,
+        runtimeVersion: deployment.runtimeVersion,
         imageReference: deployment.imageReference,
         imagePlatform: deployment.imagePlatform,
         externalBuildData:

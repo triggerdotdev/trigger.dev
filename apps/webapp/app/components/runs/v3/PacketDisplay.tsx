@@ -16,7 +16,7 @@ export function PacketDisplay({
     case "application/store": {
       return (
         <div className="flex flex-col">
-          <Paragraph variant="base/bright" className="w-full border-b border-grid-dimmed py-2.5">
+          <Paragraph variant="base/bright" className="w-full py-2.5 text-sm">
             {title}
           </Paragraph>
           <LinkButton LeadingIcon={CloudArrowDownIcon} to={data} variant="tertiary/medium" download>

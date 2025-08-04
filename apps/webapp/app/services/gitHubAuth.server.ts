@@ -3,8 +3,8 @@ import { GitHubStrategy } from "remix-auth-github";
 import { env } from "~/env.server";
 import { findOrCreateUser } from "~/models/user.server";
 import type { AuthUser } from "./authUser";
-import { postAuthentication } from "./postAuth.server";
 import { logger } from "./logger.server";
+import { postAuthentication } from "./postAuth.server";
 
 export function addGitHubStrategy(
   authenticator: Authenticator<AuthUser>,
@@ -44,7 +44,7 @@ export function addGitHubStrategy(
           userId: user.id,
         };
       } catch (error) {
-        console.error(error);
+        logger.error("GitHub login failed", { error: JSON.stringify(error) });
         throw error;
       }
     }

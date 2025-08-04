@@ -198,18 +198,151 @@ webapp:
 
 ### External services
 
-You can disable the built-in services and use external services instead. For example:
+You can disable the built-in services and use external services instead. The chart supports both direct configuration and existing Kubernetes secrets for secure credential management.
+
+#### PostgreSQL
+
+**Direct configuration:**
+```yaml
+postgres:
+  deploy: false
+  external:
+    databaseUrl: "postgresql://user:password@host:5432/database?schema=public"
+    directUrl: "" # Optional, defaults to databaseUrl
+```
+
+**Using existing secrets (recommended):**
+```yaml
+postgres:
+  deploy: false
+  external:
+    existingSecret: "postgres-credentials"
+    # Optional: Use secretKeys to specify the key names in the secret
+    # secretKeys:
+    #   databaseUrlKey: "postgres-database-url" # default
+    #   directUrlKey: "postgres-direct-url"     # default
+```
+
+#### Redis
+
+**Direct configuration:**
+```yaml
+redis:
+  deploy: false
+  external:
+    host: "my-redis.example.com"
+    port: 6379
+    password: "my-password"
+    tls:
+      enabled: true
+```
+
+**Using existing secrets (recommended):**
+```yaml
+redis:
+  deploy: false
+  external:
+    host: "my-redis.example.com"
+    port: 6379
+    existingSecret: "redis-credentials"
+    # existingSecretPasswordKey: "redis-password" # default (optional)
+    tls:
+      enabled: true
+```
+
+#### ClickHouse
+
+**Direct configuration:**
+```yaml
+clickhouse:
+  deploy: false
+  external:
+    host: "my-clickhouse.example.com"
+    port: 8123
+    username: "my-username"
+    password: "my-password"
+```
+
+**Using existing secrets (recommended):**
+```yaml
+clickhouse:
+  deploy: false
+  external:
+    host: "my-clickhouse.example.com"
+    port: 8123
+    username: "my-username"
+    existingSecret: "clickhouse-credentials"
+    # existingSecretKey: "clickhouse-password" # default (optional)
+```
+
+#### S3 Object Storage
+
+**Direct configuration:**
+```yaml
+minio:
+  deploy: false
+s3:
+  external:
+    endpoint: "https://s3.amazonaws.com"
+    accessKeyId: "my-access-key"
+    secretAccessKey: "my-secret-key"
+```
+
+**Using existing secrets (recommended):**
+```yaml
+minio:
+  deploy: false
+s3:
+  external:
+    endpoint: "https://s3.amazonaws.com"
+    existingSecret: "s3-credentials"
+    # Optional: Use secretKeys to specify the key names in the secret
+    # secretKeys:
+    #   accessKeyIdKey: "access-key-id"     # default
+    #   secretAccessKeyKey: "secret-access-key" # default
+```
+
+### PostgreSQL SSL with custom CA certificates
+
+When connecting to PostgreSQL instances that require custom CA certificates (such as AWS RDS with SSL verification), you can mount the CA certificate as a volume and configure the webapp to use it:
 
 ```yaml
 postgres:
   deploy: false
   external:
-    host: "my-postgres.example.com"
-    port: 5432
-    database: "my-database"
-    username: "my-username"
-    password: "my-password"
+    databaseUrl: "postgresql://user:password@mydb.example.com:5432/triggerdb?schema=public&sslmode=require"
+    # Alternatively, use an existing secret
+    existingSecret: "postgres-credentials"
+    # secretKeys:
+    #   databaseUrlKey: "postgres-database-url" # default
+  connection:
+    sslMode: "require"
+
+# Webapp configuration with SSL CA certificate
+webapp:
+  extraEnvVars:
+    - name: NODE_EXTRA_CA_CERTS
+      value: "/etc/ssl/certs/postgres-ca.crt"
+  
+  extraVolumes:
+    - name: postgres-ca-cert
+      secret:
+        secretName: postgres-ca-secret
+        items:
+          - key: ca.crt
+            path: postgres-ca.crt
+  
+  extraVolumeMounts:
+    - name: postgres-ca-cert
+      mountPath: /etc/ssl/certs
+      readOnly: true
 ```
+
+**Benefits:**
+- No plaintext credentials in `values.yaml` or Helm releases
+- Complete `DATABASE_URL` stored securely in Kubernetes secrets
+- Compatible with secret management tools (External Secrets Operator, etc.)
+- Follows Kubernetes security best practices
 
 ## Worker token
 

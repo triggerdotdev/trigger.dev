@@ -9,6 +9,7 @@ import {
   ExecutionResult,
   RunExecutionData,
   StartRunAttemptResult,
+  TaskRunContext,
   TaskRunExecutionResult,
 } from "@trigger.dev/core/v3";
 import { RunId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
@@ -31,6 +32,7 @@ import { MinimalAuthenticatedEnvironment } from "../shared/index.js";
 import { NotImplementedError, RunDuplicateIdempotencyKeyError } from "./errors.js";
 import { EventBus, EventBusEvents } from "./eventBus.js";
 import { RunLocker } from "./locking.js";
+import { getFinalRunStatuses } from "./statuses.js";
 import { BatchSystem } from "./systems/batchSystem.js";
 import { CheckpointSystem } from "./systems/checkpointSystem.js";
 import { DelayedRunSystem } from "./systems/delayedRunSystem.js";
@@ -44,14 +46,12 @@ import {
 } from "./systems/executionSnapshotSystem.js";
 import { PendingVersionSystem } from "./systems/pendingVersionSystem.js";
 import { RaceSimulationSystem } from "./systems/raceSimulationSystem.js";
-import { ReleaseConcurrencySystem } from "./systems/releaseConcurrencySystem.js";
 import { RunAttemptSystem } from "./systems/runAttemptSystem.js";
 import { SystemResources } from "./systems/systems.js";
 import { TtlSystem } from "./systems/ttlSystem.js";
 import { WaitpointSystem } from "./systems/waitpointSystem.js";
 import { EngineWorker, HeartbeatTimeouts, RunEngineOptions, TriggerParams } from "./types.js";
 import { workerCatalog } from "./workerCatalog.js";
-import { getFinalRunStatuses, isFinalRunStatus } from "./statuses.js";
 
 export class RunEngine {
   private runLockRedis: Redis;
@@ -76,7 +76,6 @@ export class RunEngine {
   delayedRunSystem: DelayedRunSystem;
   ttlSystem: TtlSystem;
   pendingVersionSystem: PendingVersionSystem;
-  releaseConcurrencySystem: ReleaseConcurrencySystem;
   raceSimulationSystem: RaceSimulationSystem = new RaceSimulationSystem();
 
   constructor(private readonly options: RunEngineOptions) {
@@ -127,6 +126,7 @@ export class RunEngine {
         defaultEnvConcurrencyLimit: options.queue?.defaultEnvConcurrency ?? 10,
       }),
       defaultEnvConcurrency: options.queue?.defaultEnvConcurrency ?? 10,
+      defaultEnvConcurrencyBurstFactor: options.queue?.defaultEnvConcurrencyBurstFactor,
       logger: new Logger("RunQueue", options.queue?.logLevel ?? "info"),
       redis: { ...options.queue.redis, keyPrefix: `${options.queue.redis.keyPrefix}runqueue:` },
       retryOptions: options.queue?.retryOptions,
@@ -239,38 +239,6 @@ export class RunEngine {
       raceSimulationSystem: this.raceSimulationSystem,
     };
 
-    this.releaseConcurrencySystem = new ReleaseConcurrencySystem({
-      resources,
-      maxTokensRatio: options.releaseConcurrency?.maxTokensRatio,
-      releasingsMaxAge: options.releaseConcurrency?.releasingsMaxAge,
-      releasingsPollInterval: options.releaseConcurrency?.releasingsPollInterval,
-      queueOptions:
-        typeof options.releaseConcurrency?.disabled === "boolean" &&
-        options.releaseConcurrency.disabled
-          ? undefined
-          : {
-              disableConsumers: options.releaseConcurrency?.disableConsumers,
-              redis: {
-                ...options.queue.redis, // Use base queue redis options
-                ...options.releaseConcurrency?.redis, // Allow overrides
-                keyPrefix: `${options.queue.redis.keyPrefix ?? ""}release-concurrency:`,
-              },
-              retry: {
-                maxRetries: options.releaseConcurrency?.maxRetries ?? 5,
-                backoff: {
-                  minDelay: options.releaseConcurrency?.backoff?.minDelay ?? 1000,
-                  maxDelay: options.releaseConcurrency?.backoff?.maxDelay ?? 10000,
-                  factor: options.releaseConcurrency?.backoff?.factor ?? 2,
-                },
-              },
-              consumersCount: options.releaseConcurrency?.consumersCount ?? 1,
-              pollInterval: options.releaseConcurrency?.pollInterval ?? 1000,
-              batchSize: options.releaseConcurrency?.batchSize ?? 10,
-              tracer: this.tracer,
-              meter: this.meter,
-            },
-    });
-
     this.executionSnapshotSystem = new ExecutionSnapshotSystem({
       resources,
       heartbeatTimeouts: this.heartbeatTimeouts,
@@ -283,7 +251,6 @@ export class RunEngine {
 
     this.checkpointSystem = new CheckpointSystem({
       resources,
-      releaseConcurrencySystem: this.releaseConcurrencySystem,
       executionSnapshotSystem: this.executionSnapshotSystem,
       enqueueSystem: this.enqueueSystem,
     });
@@ -302,7 +269,6 @@ export class RunEngine {
       resources,
       executionSnapshotSystem: this.executionSnapshotSystem,
       enqueueSystem: this.enqueueSystem,
-      releaseConcurrencySystem: this.releaseConcurrencySystem,
     });
 
     this.ttlSystem = new TtlSystem({
@@ -323,7 +289,7 @@ export class RunEngine {
       delayedRunSystem: this.delayedRunSystem,
       machines: this.options.machines,
       retryWarmStartThresholdMs: this.options.retryWarmStartThresholdMs,
-      releaseConcurrencySystem: this.releaseConcurrencySystem,
+      redisOptions: this.options.cache?.redis ?? this.options.runLock.redis,
     });
 
     this.dequeueSystem = new DequeueSystem({
@@ -331,7 +297,6 @@ export class RunEngine {
       executionSnapshotSystem: this.executionSnapshotSystem,
       runAttemptSystem: this.runAttemptSystem,
       machines: this.options.machines,
-      releaseConcurrencySystem: this.releaseConcurrencySystem,
     });
   }
 
@@ -372,6 +337,7 @@ export class RunEngine {
       tags,
       parentTaskRunId,
       rootTaskRunId,
+      replayedFromTaskRunFriendlyId,
       batch,
       resumeParentOnCompletion,
       depth,
@@ -384,11 +350,10 @@ export class RunEngine {
       machine,
       workerId,
       runnerId,
-      releaseConcurrency,
-      runChainState,
       scheduleId,
       scheduleInstanceId,
       createdAt,
+      bulkActionId,
     }: TriggerParams,
     tx?: PrismaClientOrTransaction
   ): Promise<TaskRun> {
@@ -450,6 +415,7 @@ export class RunEngine {
               oneTimeUseToken,
               parentTaskRunId,
               rootTaskRunId,
+              replayedFromTaskRunFriendlyId,
               batchId: batch?.id,
               resumeParentOnCompletion,
               depth,
@@ -459,10 +425,10 @@ export class RunEngine {
               seedMetadataType,
               maxDurationInSeconds,
               machinePreset: machine,
-              runChainState,
               scheduleId,
               scheduleInstanceId,
               createdAt,
+              bulkActionGroupIds: bulkActionId ? [bulkActionId] : undefined,
               executionSnapshots: {
                 create: {
                   engine: "V2",
@@ -532,7 +498,6 @@ export class RunEngine {
             workerId,
             runnerId,
             tx: prisma,
-            releaseConcurrency,
           });
         }
 
@@ -701,6 +666,7 @@ export class RunEngine {
     completedAt,
     reason,
     finalizeRun,
+    bulkActionId,
     tx,
   }: {
     runId: string;
@@ -709,8 +675,9 @@ export class RunEngine {
     completedAt?: Date;
     reason?: string;
     finalizeRun?: boolean;
+    bulkActionId?: string;
     tx?: PrismaClientOrTransaction;
-  }): Promise<ExecutionResult> {
+  }): Promise<ExecutionResult & { alreadyFinished: boolean }> {
     return this.runAttemptSystem.cancelRun({
       runId,
       workerId,
@@ -718,6 +685,7 @@ export class RunEngine {
       completedAt,
       reason,
       finalizeRun,
+      bulkActionId,
       tx,
     });
   }
@@ -938,7 +906,6 @@ export class RunEngine {
     waitpoints,
     projectId,
     organizationId,
-    releaseConcurrency,
     timeout,
     spanIdToComplete,
     batch,
@@ -950,7 +917,6 @@ export class RunEngine {
     waitpoints: string | string[];
     projectId: string;
     organizationId: string;
-    releaseConcurrency?: boolean;
     timeout?: Date;
     spanIdToComplete?: string;
     batch?: { id: string; index?: number };
@@ -963,7 +929,6 @@ export class RunEngine {
       waitpoints,
       projectId,
       organizationId,
-      releaseConcurrency,
       timeout,
       spanIdToComplete,
       batch,
@@ -1091,6 +1056,10 @@ export class RunEngine {
     }
   }
 
+  async resolveTaskRunContext(runId: string): Promise<TaskRunContext> {
+    return this.runAttemptSystem.resolveTaskRunContext(runId);
+  }
+
   async getSnapshotsSince({
     runId,
     snapshotId,
@@ -1153,7 +1122,6 @@ export class RunEngine {
   async quit() {
     try {
       //stop the run queue
-      await this.releaseConcurrencySystem.quit();
       await this.runQueue.quit();
       await this.worker.stop();
       await this.runLock.quit();

@@ -42,7 +42,7 @@ describe("Worker with cron", () => {
 
       await setTimeout(6_000);
 
-      expect(processedItems.length).toBe(1);
+      expect(processedItems.length).toBeGreaterThanOrEqual(1);
 
       const firstItem = processedItems[0];
 

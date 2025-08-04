@@ -60,6 +60,10 @@ export function personalAccessTokensPath() {
   return `/account/tokens`;
 }
 
+export function accountSecurityPath() {
+  return `/account/security`;
+}
+
 export function invitesPath() {
   return `/invites`;
 }
@@ -163,6 +167,23 @@ export function v3ApiKeysPath(
   return `${v3EnvironmentPath(organization, project, environment)}/apikeys`;
 }
 
+export function v3BulkActionsPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/bulk-actions`;
+}
+
+export function v3BulkActionPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath,
+  bulkAction: { friendlyId: string }
+) {
+  return `${v3BulkActionsPath(organization, project, environment)}/${bulkAction.friendlyId}`;
+}
+
 export function v3EnvironmentVariablesPath(
   organization: OrgForPath,
   project: ProjectForPath,
@@ -233,15 +254,24 @@ export function v3RunsPath(
   return `${v3EnvironmentPath(organization, project, environment)}/runs${query}`;
 }
 
-export function v3RunsNextPath(
+export function v3CreateBulkActionPath(
   organization: OrgForPath,
   project: ProjectForPath,
   environment: EnvironmentForPath,
-  filters?: TaskRunListSearchFilters
+  filters?: TaskRunListSearchFilters,
+  mode?: "selected" | "filters",
+  action?: "replay" | "cancel"
 ) {
-  const searchParams = objectToSearchParams(filters);
-  const query = searchParams ? `?${searchParams.toString()}` : "";
-  return `${v3EnvironmentPath(organization, project, environment)}/runs/next${query}`;
+  const searchParams = objectToSearchParams(filters) ?? new URLSearchParams();
+  searchParams.set("bulkInspector", "show");
+  if (mode) {
+    searchParams.set("mode", mode);
+  }
+  if (action) {
+    searchParams.set("action", action);
+  }
+  const query = `?${searchParams.toString()}`;
+  return `${v3RunsPath(organization, project, environment)}${query}`;
 }
 
 export function v3RunPath(
@@ -427,6 +457,10 @@ export function v3BillingPath(organization: OrgForPath, message?: string) {
   return `${organizationPath(organization)}/settings/billing${
     message ? `?message=${encodeURIComponent(message)}` : ""
   }`;
+}
+
+export function v3BillingAlertsPath(organization: OrgForPath) {
+  return `${organizationPath(organization)}/settings/billing-alerts`;
 }
 
 export function v3StripePortalPath(organization: OrgForPath) {

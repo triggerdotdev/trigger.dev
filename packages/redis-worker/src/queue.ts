@@ -83,6 +83,10 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
     this.schema = schema;
   }
 
+  async cancel(cancellationKey: string): Promise<void> {
+    await this.redis.set(`cancellationKey:${cancellationKey}`, "1", "EX", 60 * 60 * 24); // 1 day
+  }
+
   async enqueue({
     id,
     job,
@@ -90,6 +94,7 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
     attempt,
     availableAt,
     visibilityTimeoutMs,
+    cancellationKey,
   }: {
     id?: string;
     job: MessageCatalogKey<TMessageCatalog>;
@@ -97,6 +102,7 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
     attempt?: number;
     availableAt?: Date;
     visibilityTimeoutMs: number;
+    cancellationKey?: string;
   }): Promise<void> {
     try {
       const score = availableAt ? availableAt.getTime() : Date.now();
@@ -109,13 +115,16 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
         deduplicationKey,
       });
 
-      const result = await this.redis.enqueueItem(
-        `queue`,
-        `items`,
-        id ?? nanoid(),
-        score,
-        serializedItem
-      );
+      const result = cancellationKey
+        ? await this.redis.enqueueItemWithCancellationKey(
+            `queue`,
+            `items`,
+            `cancellationKey:${cancellationKey}`,
+            id ?? nanoid(),
+            score,
+            serializedItem
+          )
+        : await this.redis.enqueueItem(`queue`, `items`, id ?? nanoid(), score, serializedItem);
 
       if (result !== 1) {
         throw new Error("Enqueue operation failed");
@@ -409,6 +418,29 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
       `,
     });
 
+    this.redis.defineCommand("enqueueItemWithCancellationKey", {
+      numberOfKeys: 3,
+      lua: `
+        local queue = KEYS[1]
+        local items = KEYS[2]
+        local cancellationKey = KEYS[3]
+
+        local id = ARGV[1]
+        local score = ARGV[2]
+        local serializedItem = ARGV[3]
+
+        -- if the cancellation key exists, return 1
+        if redis.call('EXISTS', cancellationKey) == 1 then
+          return 1
+        end
+
+        redis.call('ZADD', queue, score, id)
+        redis.call('HSET', items, id, serializedItem)
+
+        return 1
+      `,
+    });
+
     this.redis.defineCommand("dequeueItems", {
       numberOfKeys: 2,
       lua: `
@@ -592,6 +624,18 @@ declare module "@internal/redis" {
       //keys
       queue: string,
       items: string,
+      //args
+      id: string,
+      score: number,
+      serializedItem: string,
+      callback?: Callback<number>
+    ): Result<number, Context>;
+
+    enqueueItemWithCancellationKey(
+      //keys
+      queue: string,
+      items: string,
+      cancellationKey: string,
       //args
       id: string,
       score: number,

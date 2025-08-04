@@ -47,7 +47,8 @@ export class TaskRunProcessPool {
     workerManifest: WorkerManifest,
     serverWorker: ServerBackgroundWorker,
     machineResources: MachinePresetResources,
-    env?: Record<string, string>
+    env?: Record<string, string>,
+    cwd?: string
   ): Promise<{ taskRunProcess: TaskRunProcess; isReused: boolean }> {
     const version = serverWorker.version || "unknown";
 
@@ -97,6 +98,7 @@ export class TaskRunProcessPool {
       version,
       availableCount,
       busyCount,
+      workerManifest,
     });
 
     const newProcess = new TaskRunProcess({
@@ -107,7 +109,7 @@ export class TaskRunProcessPool {
       },
       serverWorker,
       machineResources,
-      cwd: this.options.cwd,
+      cwd: cwd ?? this.options.cwd,
     }).initialize();
 
     // Add to busy processes for this version
@@ -208,10 +210,18 @@ export class TaskRunProcessPool {
 
   private isProcessHealthy(process: TaskRunProcess): boolean {
     // Basic health checks - we can expand this later
-    return !process.isBeingKilled && process.pid !== undefined;
+    return process.isHealthy;
   }
 
   private async killProcess(process: TaskRunProcess): Promise<void> {
+    if (!process.isHealthy) {
+      logger.debug("[TaskRunProcessPool] Process is not healthy, skipping cleanup", {
+        processId: process.pid,
+      });
+
+      return;
+    }
+
     try {
       await process.cleanup(true);
     } catch (error) {

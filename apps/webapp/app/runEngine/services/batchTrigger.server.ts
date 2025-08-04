@@ -8,8 +8,9 @@ import {
 } from "@trigger.dev/core/v3";
 import { BatchId, RunId } from "@trigger.dev/core/v3/isomorphic";
 import { BatchTaskRun, Prisma } from "@trigger.dev/database";
+import { Evt } from "evt";
 import { z } from "zod";
-import { $transaction, prisma, PrismaClientOrTransaction } from "~/db.server";
+import { prisma, PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
@@ -51,6 +52,7 @@ export type BatchTriggerTaskServiceOptions = {
  */
 export class RunEngineBatchTriggerService extends WithRunEngine {
   private _batchProcessingStrategy: BatchProcessingStrategy;
+  public onBatchTaskRunCreated: Evt<BatchTaskRun> = new Evt();
 
   constructor(
     batchProcessingStrategy?: BatchProcessingStrategy,
@@ -168,6 +170,8 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
         },
       });
 
+      this.onBatchTaskRunCreated.post(batch);
+
       if (body.parentRunId && body.resumeParentOnCompletion) {
         await this._engine.blockRunWithCreatedBatch({
           runId: RunId.fromFriendlyId(body.parentRunId),
@@ -258,6 +262,8 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
           oneTimeUseToken: options.oneTimeUseToken,
         },
       });
+
+      this.onBatchTaskRunCreated.post(batch);
 
       if (body.parentRunId && body.resumeParentOnCompletion) {
         await this._engine.blockRunWithCreatedBatch({

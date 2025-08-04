@@ -1,0 +1,17 @@
+{
+  "name": "references-effect",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "trigger.dev": "workspace:*"
+  },
+  "dependencies": {
+    "@trigger.dev/build": "workspace:*",
+    "@trigger.dev/sdk": "workspace:*",
+    "effect": "3.17.1"
+  },
+  "scripts": {
+    "dev": "trigger dev",
+    "deploy": "trigger deploy"
+  }
+}

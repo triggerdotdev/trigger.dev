@@ -135,7 +135,7 @@ export class TaskRunProcessProvider {
       this.sendDebugLog("Not keeping TaskRunProcess alive, cleaning up", {
         executionCount: this.executionCount,
         maxExecutionCount: this.processKeepAliveMaxExecutionCount,
-        isHealthy: this.isProcessHealthy(process),
+        isHealthy: process.isHealthy,
       });
 
       // Cleanup the process completely
@@ -284,19 +284,12 @@ export class TaskRunProcessProvider {
     return (
       !!this.persistentProcess &&
       this.executionCount < this.processKeepAliveMaxExecutionCount &&
-      this.isProcessHealthy(this.persistentProcess)
+      this.persistentProcess.isHealthy
     );
   }
 
   private shouldKeepProcessAlive(process: TaskRunProcess): boolean {
-    return (
-      this.executionCount < this.processKeepAliveMaxExecutionCount && this.isProcessHealthy(process)
-    );
-  }
-
-  private isProcessHealthy(process: TaskRunProcess): boolean {
-    // Basic health check - TaskRunProcess will handle more detailed internal health checks
-    return !process.isBeingKilled && process.pid !== undefined;
+    return this.executionCount < this.processKeepAliveMaxExecutionCount && process.isHealthy;
   }
 
   private async cleanupProcess(taskRunProcess: TaskRunProcess): Promise<void> {

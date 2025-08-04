@@ -1,4 +1,9 @@
-import { RunStatus, WaitpointTokenStatus } from "../schemas/index.js";
+import {
+  MachinePresetName,
+  QueueTypeName,
+  RunStatus,
+  WaitpointTokenStatus,
+} from "../schemas/index.js";
 import { CursorPageParams } from "./pagination.js";
 
 export interface ImportEnvironmentVariablesParams {
@@ -32,6 +37,27 @@ export interface ListRunsQueryParams extends CursorPageParams {
   schedule?: string;
   isTest?: boolean;
   batch?: string;
+  /**
+   * The queue type and name, or multiple of them.
+   *
+   * @example
+   * ```ts
+   * const runs = await runs.list({
+   *   queue: { type: "task", name: "my-task-id" },
+   * });
+   *
+   * // Or multiple queues
+   * const runs = await runs.list({
+   *   queue: [
+   *     { type: "custom", name: "my-custom-queue" },
+   *     { type: "task", name: "my-task-id" },
+   *   ],
+   * });
+   * ```
+   * */
+  queue?: Array<QueueTypeName> | QueueTypeName;
+  /** The machine name, or multiple of them. */
+  machine?: Array<MachinePresetName> | MachinePresetName;
 }
 
 export interface ListProjectRunsQueryParams extends CursorPageParams, ListRunsQueryParams {

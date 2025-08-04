@@ -71,6 +71,31 @@
     filter: blur(0.5rem);
     opacity: 0.1;
   }
+
+  .animated-gradient-glow-small {
+    position: relative;
+    overflow: visible;
+  }
+
+  .animated-gradient-glow-small::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    z-index: -1;
+    background: conic-gradient(
+      from var(--gradient-angle),
+      rgb(99 102 241),
+      rgb(245 158 11),
+      rgb(236 72 153),
+      rgb(245 158 11),
+      rgb(99 102 241)
+    );
+    border-radius: inherit;
+    animation: gradient-rotation 3s linear infinite;
+    pointer-events: none;
+    filter: blur(0.2rem);
+    opacity: 0.3;
+  }
 }
 
 @keyframes gradient-rotation {

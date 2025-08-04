@@ -75,9 +75,7 @@ export function WaitpointTokenFilters(props: WaitpointTokenFiltersProps) {
       <AppliedFilters />
       {hasFilters && (
         <Form className="h-6">
-          <Button variant="minimal/small" LeadingIcon={TrashIcon}>
-            Clear all
-          </Button>
+          <Button variant="minimal/small" LeadingIcon={TrashIcon} tooltip="Clear all filters" />
         </Form>
       )}
     </div>
@@ -109,7 +107,7 @@ function FilterMenu() {
           <ListFilterIcon className="size-3.5" />
         </div>
       }
-      variant={"minimal/small"}
+      variant={"secondary/small"}
       shortcut={shortcut}
       tooltipTitle={"Filter runs"}
     >
@@ -285,10 +283,12 @@ function AppliedStatusFilter() {
             <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
                 label="Status"
+                icon={<StatusIcon className="size-3.5" />}
                 value={appliedSummary(
                   statuses.map((v) => waitpointStatusTitle(v as WaitpointTokenStatus))
                 )}
                 onRemove={() => del(["statuses", "cursor", "direction"])}
+                variant="secondary/small"
               />
             </Ariakit.Select>
           }
@@ -409,8 +409,10 @@ function AppliedTagsFilter() {
             <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
                 label="Tags"
+                icon={<TagIcon className="size-3.5" />}
                 value={appliedSummary(values("tags"))}
                 onRemove={() => del(["tags", "cursor", "direction"])}
+                variant="secondary/small"
               />
             </Ariakit.Select>
           }
@@ -527,8 +529,10 @@ function AppliedWaitpointIdFilter() {
             <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
                 label="ID"
+                icon={<FingerPrintIcon className="size-3.5" />}
                 value={id}
                 onRemove={() => del(["id", "cursor", "direction"])}
+                variant="secondary/small"
               />
             </Ariakit.Select>
           }
@@ -594,7 +598,7 @@ function IdempotencyKeyDropdown({
           <div className="flex flex-col gap-1">
             <Label>Idempotency key</Label>
             <Input
-              placeholder="waitpoint_"
+              placeholder=""
               value={idempotencyKey ?? ""}
               onChange={(e) => setIdempotencyKey(e.target.value)}
               variant="small"
@@ -643,8 +647,10 @@ function AppliedIdempotencyKeyFilter() {
             <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
                 label="Idempotency key"
+                icon={<ListChecks className="size-3.5" />}
                 value={idempotencyKey}
                 onRemove={() => del(["idempotencyKey", "cursor", "direction"])}
+                variant="secondary/small"
               />
             </Ariakit.Select>
           }

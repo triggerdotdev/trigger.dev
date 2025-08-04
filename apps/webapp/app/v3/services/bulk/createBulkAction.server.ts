@@ -1,10 +1,10 @@
-import { BulkActionType } from "@trigger.dev/database";
+import { type BulkActionType } from "@trigger.dev/database";
 import { bulkActionVerb } from "~/components/runs/v3/BulkAction";
+import { BULK_ACTION_RUN_LIMIT } from "~/consts";
 import { logger } from "~/services/logger.server";
 import { generateFriendlyId } from "../../friendlyIdentifiers";
 import { BaseService } from "../baseService.server";
 import { PerformBulkActionService } from "./performBulkAction.server";
-import { BULK_ACTION_RUN_LIMIT } from "~/consts";
 
 type BulkAction = {
   projectId: string;

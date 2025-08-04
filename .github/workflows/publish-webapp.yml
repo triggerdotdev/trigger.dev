@@ -86,3 +86,8 @@ jobs:
             BUILD_GIT_SHA=${{ steps.set_build_info.outputs.BUILD_GIT_SHA }}
             BUILD_GIT_REF_NAME=${{ steps.set_build_info.outputs.BUILD_GIT_REF_NAME }}
             BUILD_TIMESTAMP_SECONDS=${{ steps.set_build_info.outputs.BUILD_TIMESTAMP_SECONDS }}
+            SENTRY_RELEASE=${{ steps.set_build_info.outputs.BUILD_GIT_SHA }}
+            SENTRY_ORG=triggerdev
+            SENTRY_PROJECT=trigger-cloud
+          secrets: |
+            sentry_auth_token=${{ secrets.SENTRY_AUTH_TOKEN }}

@@ -6,16 +6,17 @@ import {
 } from "@trigger.dev/core/v3";
 import { TaskRun } from "@trigger.dev/database";
 import { z } from "zod";
+import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { EngineServiceValidationError } from "~/runEngine/concerns/errors";
-import {
-  ApiAuthenticationResultSuccess,
-  AuthenticatedEnvironment,
-  getOneTimeUseToken,
-} from "~/services/apiAuth.server";
+import { ApiAuthenticationResultSuccess, getOneTimeUseToken } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
+import {
+  handleRequestIdempotency,
+  saveRequestIdempotency,
+} from "~/utils/requestIdempotency.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { OutOfEntitlementError, TriggerTaskService } from "~/v3/services/triggerTask.server";
 
@@ -31,6 +32,7 @@ export const HeadersSchema = z.object({
   "x-trigger-worker": z.string().nullish(),
   "x-trigger-client": z.string().nullish(),
   "x-trigger-engine-version": RunEngineVersionSchema.nullish(),
+  "x-trigger-request-idempotency-key": z.string().nullish(),
   traceparent: z.string().optional(),
   tracestate: z.string().optional(),
 });
@@ -60,7 +62,33 @@ const { action, loader } = createActionApiRoute(
       "x-trigger-worker": isFromWorker,
       "x-trigger-client": triggerClient,
       "x-trigger-engine-version": engineVersion,
+      "x-trigger-request-idempotency-key": requestIdempotencyKey,
     } = headers;
+
+    const cachedResponse = await handleRequestIdempotency(requestIdempotencyKey, {
+      requestType: "trigger",
+      findCachedEntity: async (cachedRequestId) => {
+        return await prisma.taskRun.findFirst({
+          where: {
+            id: cachedRequestId,
+          },
+          select: {
+            friendlyId: true,
+          },
+        });
+      },
+      buildResponse: (cachedRun) => ({
+        id: cachedRun.friendlyId,
+        isCached: false,
+      }),
+      buildResponseHeaders: async (responseBody, cachedEntity) => {
+        return await responseHeaders(cachedEntity, authentication, triggerClient);
+      },
+    });
+
+    if (cachedResponse) {
+      return cachedResponse;
+    }
 
     const service = new TriggerTaskService();
 
@@ -104,6 +132,8 @@ const { action, loader } = createActionApiRoute(
         return json({ error: "Task not found" }, { status: 404 });
       }
 
+      await saveRequestIdempotency(requestIdempotencyKey, "trigger", result.run.id);
+
       const $responseHeaders = await responseHeaders(result.run, authentication, triggerClient);
 
       return json(
@@ -113,6 +143,7 @@ const { action, loader } = createActionApiRoute(
         },
         {
           headers: $responseHeaders,
+          status: 200,
         }
       );
     } catch (error) {
@@ -132,7 +163,7 @@ const { action, loader } = createActionApiRoute(
 );
 
 async function responseHeaders(
-  run: TaskRun,
+  run: Pick<TaskRun, "friendlyId">,
   authentication: ApiAuthenticationResultSuccess,
   triggerClient?: string | null
 ): Promise<Record<string, string>> {

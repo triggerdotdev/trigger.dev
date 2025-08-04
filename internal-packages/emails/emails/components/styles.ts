@@ -29,6 +29,11 @@ export const hr = {
   margin: "20px 0",
 };
 
+export const sans = {
+  fontFamily:
+    '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Ubuntu,sans-serif',
+};
+
 export const paragraph = {
   color: "#878C99",
   fontFamily:
@@ -64,6 +69,10 @@ export const bullets = {
   lineHeight: "24px",
   textAlign: "left" as const,
   margin: "0",
+};
+
+export const grey = {
+  color: "#878C99",
 };
 
 export const anchor = {

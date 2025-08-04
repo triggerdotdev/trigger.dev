@@ -215,7 +215,6 @@ export function createTask<
     resourceCatalog.registerQueueMetadata({
       name: queue.name,
       concurrencyLimit: queue.concurrencyLimit,
-      releaseConcurrencyOnWaitpoint: queue.releaseConcurrencyOnWaitpoint,
     });
   }
 
@@ -347,7 +346,6 @@ export function createSchemaTask<
     resourceCatalog.registerQueueMetadata({
       name: queue.name,
       concurrencyLimit: queue.concurrencyLimit,
-      releaseConcurrencyOnWaitpoint: queue.releaseConcurrencyOnWaitpoint,
     });
   }
 
@@ -1315,7 +1313,6 @@ async function triggerAndWait_internal<TIdentifier extends string, TPayload, TOu
         {
           payload: payloadPacket.data,
           options: {
-            dependentAttempt: ctx.attempt.id,
             lockToVersion: taskContext.worker?.version, // Lock to current version because we're waiting for it to finish
             queue: options?.queue ? { name: options.queue } : undefined,
             concurrencyKey: options?.concurrencyKey,
@@ -1333,7 +1330,6 @@ async function triggerAndWait_internal<TIdentifier extends string, TPayload, TOu
             idempotencyKeyTTL: options?.idempotencyKeyTTL,
             machine: options?.machine,
             priority: options?.priority,
-            releaseConcurrency: options?.releaseConcurrency,
           },
         },
         {},

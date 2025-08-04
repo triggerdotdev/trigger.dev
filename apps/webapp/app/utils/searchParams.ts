@@ -13,7 +13,9 @@ export function objectToSearchParams(
   Object.entries(obj).forEach(([key, value]) => {
     if (value === undefined) return;
     if (Array.isArray(value)) {
-      searchParams.append(key, value.join(","));
+      for (const v of value) {
+        searchParams.append(key, v.toString());
+      }
     } else {
       searchParams.append(key, value.toString());
     }

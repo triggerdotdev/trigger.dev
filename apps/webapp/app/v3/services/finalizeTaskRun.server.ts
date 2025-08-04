@@ -3,7 +3,7 @@ import { type Prisma, type TaskRun } from "@trigger.dev/database";
 import { findQueueInEnvironment } from "~/models/taskQueue.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { updateMetadataService } from "~/services/metadata/updateMetadata.server";
+import { updateMetadataService } from "~/services/metadata/updateMetadataInstance.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { socketIo } from "../handleSocketIo.server";
@@ -29,6 +29,7 @@ type BaseInput = {
   error?: TaskRunError;
   metadata?: FlushedRunMetadata;
   env?: AuthenticatedEnvironment;
+  bulkActionId?: string;
 };
 
 type InputWithInclude<T extends Prisma.TaskRunInclude> = BaseInput & {
@@ -49,6 +50,7 @@ export class FinalizeTaskRunService extends BaseService {
     status,
     expiredAt,
     completedAt,
+    bulkActionId,
     include,
     attemptStatus,
     error,
@@ -98,7 +100,17 @@ export class FinalizeTaskRunService extends BaseService {
 
     const run = await this._prisma.taskRun.update({
       where: { id },
-      data: { status, expiredAt, completedAt, error: taskRunError },
+      data: {
+        status,
+        expiredAt,
+        completedAt,
+        error: taskRunError,
+        bulkActionGroupIds: bulkActionId
+          ? {
+              push: bulkActionId,
+            }
+          : undefined,
+      },
       ...(include ? { include } : {}),
     });
 

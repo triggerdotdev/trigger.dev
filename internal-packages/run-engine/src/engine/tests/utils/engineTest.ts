@@ -34,15 +34,6 @@ type EngineOptions = {
     machines?: RunEngineOptions["machines"]["machines"];
     baseCostInCents?: number;
   };
-  releaseConcurrency?: {
-    maxTokensRatio?: number;
-    maxRetries?: number;
-    consumersCount?: number;
-    pollInterval?: number;
-    batchSize?: number;
-    releasingsPollInterval?: number;
-    releasingsMaxAge?: number;
-  };
 };
 
 const engineOptions = async ({}: TaskContext, use: Use<EngineOptions>) => {
@@ -67,13 +58,6 @@ const engineOptions = async ({}: TaskContext, use: Use<EngineOptions>) => {
         },
       },
       baseCostInCents: 0.0001,
-    },
-    releaseConcurrency: {
-      maxTokensRatio: 1,
-      maxRetries: 3,
-      consumersCount: 1,
-      pollInterval: 500,
-      batchSize: 1,
     },
   };
 
@@ -113,15 +97,6 @@ const engine = async (
       defaultMachine: engineOptions.machines?.defaultMachine ?? ("small-1x" as const),
       machines: engineOptions.machines?.machines ?? {},
       baseCostInCents: engineOptions.machines?.baseCostInCents ?? 0.0001,
-    },
-    releaseConcurrency: {
-      maxTokensRatio: engineOptions.releaseConcurrency?.maxTokensRatio ?? 1,
-      maxRetries: engineOptions.releaseConcurrency?.maxRetries ?? 3,
-      consumersCount: engineOptions.releaseConcurrency?.consumersCount ?? 1,
-      pollInterval: engineOptions.releaseConcurrency?.pollInterval ?? 500,
-      batchSize: engineOptions.releaseConcurrency?.batchSize ?? 1,
-      releasingsPollInterval: engineOptions.releaseConcurrency?.releasingsPollInterval,
-      releasingsMaxAge: engineOptions.releaseConcurrency?.releasingsMaxAge,
     },
     tracer: trace.getTracer("test", "0.0.0"),
   });

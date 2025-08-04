@@ -31,6 +31,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
           organizationId: true,
           project: true,
           maximumConcurrencyLimit: true,
+          concurrencyLimitBurstFactor: true,
           organization: {
             select: {
               id: true,
@@ -101,7 +102,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       run.runtimeEnvironment
     );
 
-    const queueCurrentConcurrencyKey = engine.runQueue.keys.currentConcurrencyKey(
+    const queueCurrentConcurrencyKey = engine.runQueue.keys.queueCurrentConcurrencyKey(
       run.runtimeEnvironment,
       run.queue,
       run.concurrencyKey ?? undefined
@@ -119,10 +120,6 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     const envConcurrencyLimitKey = engine.runQueue.keys.envConcurrencyLimitKey(
       run.runtimeEnvironment
     );
-
-    const releaseConcurrencyBucketKey = `engine:release-concurrency:org:${run.runtimeEnvironment.organizationId}:proj:${run.runtimeEnvironment.project.id}:env:${run.runtimeEnvironment.id}:bucket`;
-    const releaseConcurrencyQueueKey = `engine:release-concurrency:org:${run.runtimeEnvironment.organizationId}:proj:${run.runtimeEnvironment.project.id}:env:${run.runtimeEnvironment.id}:queue`;
-    const releaseConcurrencyMetadataKey = `engine:release-concurrency:org:${run.runtimeEnvironment.organizationId}:proj:${run.runtimeEnvironment.project.id}:env:${run.runtimeEnvironment.id}:metadata`;
 
     const withPrefix = (key: string) => `engine:runqueue:${key}`;
 
@@ -142,22 +139,6 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       {
         label: "Env concurrency limit",
         key: withPrefix(envConcurrencyLimitKey),
-      },
-      {
-        label: "Release concurrency bucket",
-        key: releaseConcurrencyBucketKey,
-      },
-      {
-        label: "Release concurrency queue",
-        key: releaseConcurrencyQueueKey,
-      },
-      {
-        label: "Release concurrency metadata",
-        key: releaseConcurrencyMetadataKey,
-      },
-      {
-        label: "Release concurrency releasings",
-        key: "engine:release-concurrency:releasings",
       },
     ];
 

@@ -1,13 +1,18 @@
 import { Attributes, Span } from "@opentelemetry/api";
-import { OFFLOAD_IO_PACKET_LENGTH_LIMIT, imposeAttributeLimits } from "../limits.js";
+import { z } from "zod";
+import { ApiClient } from "../apiClient/index.js";
+import { apiClientManager } from "../apiClientManager-api.js";
+import {
+  OFFLOAD_IO_PACKET_LENGTH_LIMIT,
+  OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT,
+  imposeAttributeLimits,
+} from "../limits.js";
+import type { RetryOptions } from "../schemas/index.js";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
 import { TriggerTracer } from "../tracer.js";
-import { flattenAttributes } from "./flattenAttributes.js";
-import { apiClientManager } from "../apiClientManager-api.js";
 import { zodfetch } from "../zodfetch.js";
-import { z } from "zod";
-import type { RetryOptions } from "../schemas/index.js";
-import { ApiClient } from "../apiClient/index.js";
+import { flattenAttributes } from "./flattenAttributes.js";
+import get from "lodash.get";
 
 export type IOPacket = {
   data?: string | undefined;
@@ -347,19 +352,27 @@ export async function createPacketAttributesAsJson(
   }
 
   switch (dataType) {
-    case "application/json":
-      return imposeAttributeLimits(flattenAttributes(data, undefined));
-    case "application/super+json":
+    case "application/json": {
+      return imposeAttributeLimits(
+        flattenAttributes(data, undefined, OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT)
+      );
+    }
+    case "application/super+json": {
       const { deserialize } = await loadSuperJSON();
 
       const deserialized = deserialize(data) as any;
       const jsonify = safeJsonParse(JSON.stringify(deserialized, makeSafeReplacer()));
 
-      return imposeAttributeLimits(flattenAttributes(jsonify, undefined));
-    case "application/store":
+      return imposeAttributeLimits(
+        flattenAttributes(jsonify, undefined, OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT)
+      );
+    }
+    case "application/store": {
       return data;
-    default:
+    }
+    default: {
       return {};
+    }
   }
 }
 
@@ -400,7 +413,15 @@ interface ReplacerOptions {
 }
 
 function makeSafeReplacer(options?: ReplacerOptions) {
+  const seen = new WeakSet<any>();
+
   return function replacer(key: string, value: any) {
+    if (typeof value === "object" && value !== null) {
+      if (seen.has(value)) {
+        return "[Circular]";
+      }
+      seen.add(value);
+    }
     // Check if the key should be filtered out
     if (options?.filteredKeys?.includes(key)) {
       return undefined;
@@ -485,13 +506,46 @@ function safeJsonParse(value: string): any {
   }
 }
 
+/**
+ * Replaces the data in a SuperJSON-serialized string with new payload data while preserving
+ * the original type metadata (Dates, BigInts, Sets, Maps, etc.).
+ *
+ * It is primarily useful for our run replay functionality where we want to preserve the original
+ * type metadata for the new payload.
+ *
+ * Note that `undefined` type metadata is ignored when the corresponding field is overriden in the
+ * new payload, i.e., fields which were previously undefined in the original payload are restored into
+ * the primitive type they have in the new payload, instead of `undefined`.
+ * This is a workaround for https://github.com/triggerdotdev/trigger.dev/issues/1968.
+ *
+ * @param original - A SuperJSON-serialized string containing the original data with type metadata
+ * @param newPayload - A JSON string containing the new data to replace the original payload
+ * @returns The deserialized object with new data but original type metadata preserved
+ *
+ * @throws {Error} If the newPayload is not valid JSON
+ */
 export async function replaceSuperJsonPayload(original: string, newPayload: string) {
   const superjson = await loadSuperJSON();
   const originalObject = superjson.parse(original);
+  const newPayloadObject = JSON.parse(newPayload);
   const { meta } = superjson.serialize(originalObject);
 
+  if (meta?.values) {
+    const originalUndefinedKeys = Object.entries(meta.values)
+      .filter(([, value]) => Array.isArray(value) && value.at(0) === "undefined")
+      .map(([key]) => key);
+
+    const overridenUndefinedKeys = originalUndefinedKeys.filter(
+      (key) => get(newPayloadObject, key) !== undefined
+    );
+
+    overridenUndefinedKeys.forEach((key) => {
+      delete (meta.values as Record<string, any>)[key];
+    });
+  }
+
   const newSuperJson = {
-    json: JSON.parse(newPayload) as any,
+    json: newPayloadObject,
     meta,
   };
 

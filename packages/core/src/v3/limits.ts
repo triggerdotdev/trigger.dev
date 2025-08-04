@@ -13,11 +13,11 @@ function getOtelEnvVarLimit(key: string, defaultValue: number) {
 
 export const OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT = getOtelEnvVarLimit(
   "TRIGGER_OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT",
-  256
+  1024
 );
 export const OTEL_LOG_ATTRIBUTE_COUNT_LIMIT = getOtelEnvVarLimit(
   "TRIGGER_OTEL_LOG_ATTRIBUTE_COUNT_LIMIT",
-  256
+  1024
 );
 export const OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT = getOtelEnvVarLimit(
   "TRIGGER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT",
@@ -49,10 +49,6 @@ export function imposeAttributeLimits(attributes: Attributes): Attributes {
   for (const [key, value] of Object.entries(attributes)) {
     if (calculateAttributeValueLength(value) > OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT) {
       continue;
-    }
-
-    if (Object.keys(newAttributes).length >= OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT) {
-      break;
     }
 
     newAttributes[key] = value;

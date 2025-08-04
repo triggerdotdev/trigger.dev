@@ -14,6 +14,7 @@ import {
   localsAPI,
   logger,
   LogLevel,
+  OTEL_LOG_ATTRIBUTE_COUNT_LIMIT,
   resourceCatalog,
   runMetadata,
   runtime,
@@ -182,7 +183,8 @@ async function doBootstrap() {
       typeof config.enableConsoleLogging === "boolean" ? config.enableConsoleLogging : true,
       typeof config.disableConsoleInterceptor === "boolean"
         ? config.disableConsoleInterceptor
-        : false
+        : false,
+      OTEL_LOG_ATTRIBUTE_COUNT_LIMIT
     );
 
     const configLogLevel = triggerLogLevel ?? config.logLevel ?? "info";
@@ -191,6 +193,7 @@ async function doBootstrap() {
       logger: otelLogger,
       tracer: tracer,
       level: logLevels.includes(configLogLevel as any) ? (configLogLevel as LogLevel) : "info",
+      maxAttributeCount: OTEL_LOG_ATTRIBUTE_COUNT_LIMIT,
     });
 
     logger.setGlobalTaskLogger(otelTaskLogger);
@@ -325,10 +328,15 @@ const zodIpc = new ZodIpcConnection({
 
       resetExecutionEnvironment();
 
-      initializeUsageManager({
+      const prodManager = initializeUsageManager({
         usageIntervalMs: getEnvVar("USAGE_HEARTBEAT_INTERVAL_MS"),
         usageEventUrl: getEnvVar("USAGE_EVENT_URL"),
         triggerJWT: getEnvVar("TRIGGER_JWT"),
+      });
+
+      prodManager.setInitialState({
+        cpuTime: execution.run.durationMs ?? 0,
+        costInCents: execution.run.costInCents ?? 0,
       });
 
       standardRunTimelineMetricsManager.registerMetricsFromExecution(metrics, isWarmStart);
@@ -480,6 +488,7 @@ const zodIpc = new ZodIpcConnection({
         }
 
         runMetadataManager.runId = execution.run.id;
+        runMetadataManager.runIdIsRoot = typeof execution.run.rootTaskRunId === "undefined";
         _executionCount++;
 
         const executor = new TaskExecutor(task, {
@@ -686,6 +695,8 @@ function initializeUsageManager({
 
   usage.setGlobalUsageManager(prodUsageManager);
   timeout.setGlobalManager(new UsageTimeoutManager(devUsageManager));
+
+  return prodUsageManager;
 }
 
 _sharedWorkerRuntime = new SharedRuntimeManager(zodIpc, true);

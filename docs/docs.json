@@ -78,6 +78,7 @@
                       "config/extensions/pythonExtension",
                       "config/extensions/playwright",
                       "config/extensions/puppeteer",
+                      "config/extensions/lightpanda",
                       "config/extensions/ffmpeg",
                       "config/extensions/aptGet",
                       "config/extensions/additionalFiles",
@@ -166,6 +167,7 @@
             "group": "Troubleshooting",
             "pages": [
               "troubleshooting",
+              "how-to-reduce-your-spend",
               "troubleshooting-debugging-in-vscode",
               "upgrading-packages",
               "troubleshooting-uptime-status",
@@ -326,6 +328,24 @@
               }
             ]
           },
+
+          {
+            "group": "Example projects",
+            "pages": [
+              "guides/example-projects/batch-llm-evaluator",
+              "guides/example-projects/claude-thinking-chatbot",
+              "guides/example-projects/human-in-the-loop-workflow",
+              "guides/example-projects/mastra-agents-with-memory",
+              "guides/example-projects/meme-generator-human-in-the-loop",
+              "guides/example-projects/openai-agent-sdk-guardrails",
+              "guides/example-projects/openai-agents-sdk-typescript-playground",
+              "guides/example-projects/realtime-csv-importer",
+              "guides/example-projects/realtime-fal-ai",
+              "guides/example-projects/turborepo-monorepo-prisma",
+              "guides/example-projects/vercel-ai-sdk-deep-research",
+              "guides/example-projects/vercel-ai-sdk-image-generator"
+            ]
+          },
           {
             "group": "Python guides",
             "pages": [
@@ -333,21 +353,6 @@
               "guides/python/python-doc-to-markdown",
               "guides/python/python-crawl4ai",
               "guides/python/python-pdf-form-extractor"
-            ]
-          },
-          {
-            "group": "Example projects",
-            "pages": [
-              "guides/example-projects/batch-llm-evaluator",
-              "guides/example-projects/claude-thinking-chatbot",
-              "guides/example-projects/human-in-the-loop-workflow",
-              "guides/example-projects/meme-generator-human-in-the-loop",
-              "guides/example-projects/openai-agent-sdk-guardrails",
-              "guides/example-projects/realtime-csv-importer",
-              "guides/example-projects/realtime-fal-ai",
-              "guides/example-projects/turborepo-monorepo-prisma",
-              "guides/example-projects/vercel-ai-sdk-deep-research",
-              "guides/example-projects/vercel-ai-sdk-image-generator"
             ]
           },
           {
@@ -359,6 +364,7 @@
               "guides/examples/fal-ai-realtime",
               "guides/examples/ffmpeg-video-processing",
               "guides/examples/firecrawl-url-crawl",
+              "guides/examples/lightpanda",
               "guides/examples/libreoffice-pdf-conversion",
               "guides/examples/open-ai-with-retrying",
               "guides/examples/pdf-to-image",

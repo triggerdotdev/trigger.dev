@@ -33,6 +33,8 @@ export const BackgroundWorkerMetadata = z.object({
   tasks: z.array(TaskResource),
   queues: z.array(QueueManifest).optional(),
   sourceFiles: z.array(BackgroundWorkerSourceFileMetadata).optional(),
+  runtime: z.string().optional(),
+  runtimeVersion: z.string().optional(),
 });
 
 export type BackgroundWorkerMetadata = z.infer<typeof BackgroundWorkerMetadata>;

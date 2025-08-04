@@ -14,7 +14,11 @@ import {
   wrapCommandAction,
 } from "../cli/common.js";
 import { chalkLink, prettyError } from "../utilities/cliOutput.js";
-import { readAuthConfigProfile, writeAuthConfigProfile } from "../utilities/configFiles.js";
+import {
+  readAuthConfigProfile,
+  writeAuthConfigProfile,
+  writeAuthConfigCurrentProfileName,
+} from "../utilities/configFiles.js";
 import { printInitialBanner } from "../utilities/initialBanner.js";
 import { LoginResult } from "../utilities/session.js";
 import { whoAmI } from "./whoami.js";
@@ -22,12 +26,13 @@ import { logger } from "../utilities/logger.js";
 import { spinner } from "../utilities/windows.js";
 import { isLinuxServer } from "../utilities/linux.js";
 import { VERSION } from "../version.js";
-import { env } from "std-env";
+import { env, isCI } from "std-env";
 import { CLOUD_API_URL } from "../consts.js";
 import {
   isPersonalAccessToken,
   NotPersonalAccessTokenError,
 } from "../utilities/isPersonalAccessToken.js";
+import { links } from "@trigger.dev/core/v3";
 
 export const LoginCommandOptions = CommonCommandOptions.extend({
   apiUrl: z.string(),
@@ -210,6 +215,24 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
         }
       }
 
+      if (isCI) {
+        const apiUrl =
+          env.TRIGGER_API_URL ?? authConfig?.apiUrl ?? opts.defaultApiUrl ?? CLOUD_API_URL;
+
+        const isSelfHosted = apiUrl !== CLOUD_API_URL;
+
+        // This is fine, as the api URL will generally be the same as the dashboard URL for self-hosted instances
+        const dashboardUrl = isSelfHosted ? apiUrl : "https://cloud.trigger.dev";
+
+        throw new Error(
+          `Authentication required in CI environment. Please set the TRIGGER_ACCESS_TOKEN environment variable with a Personal Access Token.
+
+- You can generate one here: ${dashboardUrl}/account/tokens
+
+- For more information, see: ${links.docs.gitHubActions.personalAccessToken}`
+        );
+      }
+
       if (opts.embedded) {
         log.step("You must login to continue.");
       }
@@ -264,6 +287,11 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
           throw new Error(whoAmIResult.error);
         }
 
+        const profileName = options?.profile ?? "default";
+
+        // Set this profile as the current default
+        writeAuthConfigCurrentProfileName(profileName);
+
         if (opts.embedded) {
           log.step("Logged in successfully");
         } else {
@@ -274,7 +302,7 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
 
         return {
           ok: true as const,
-          profile: options?.profile ?? "default",
+          profile: profileName,
           userId: whoAmIResult.data.userId,
           email: whoAmIResult.data.email,
           dashboardUrl: whoAmIResult.data.dashboardUrl,

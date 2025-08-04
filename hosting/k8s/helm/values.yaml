@@ -15,7 +15,7 @@ fullnameOverride: ""
 secrets:
   # Enable/disable creation of secrets
   # Set to false to use external secret management (Vault, Infisical, External Secrets, etc.)
-  # When disabled, use extraEnvVars and podAnnotations for secret injection
+  # When disabled, you can also use extraEnvVars and podAnnotations for secret injection
   enabled: true
 
   # Name of existing secret to use instead of creating one
@@ -25,8 +25,6 @@ secrets:
   #   - MAGIC_LINK_SECRET
   #   - ENCRYPTION_KEY
   #   - MANAGED_WORKER_SECRET
-  #   - OBJECT_STORE_ACCESS_KEY_ID
-  #   - OBJECT_STORE_SECRET_ACCESS_KEY
   existingSecret: ""
 
   # Session secret for user authentication (32 hex chars)
@@ -37,10 +35,7 @@ secrets:
   encryptionKey: "f686147ab967943ebbe9ed3b496e465a"
   # Worker secret for managed worker authentication (32 hex chars)
   managedWorkerSecret: "447c29678f9eaf289e9c4b70d3dd8a7f"
-  # Object store credentials (change for production)
-  objectStore:
-    accessKeyId: "admin"
-    secretAccessKey: "very-safe-password"
+  # Object store credentials moved to s3.auth and s3.external section
 
 # Webapp configuration
 webapp:
@@ -104,6 +99,10 @@ webapp:
     #   cpu: 500m
     #   memory: 1Gi
 
+  # Connectivity check configuration
+  connectivityCheck:
+    postgres: true # Set to false to disable DATABASE_HOST env var (overrides postgres.external.connectivityCheck)
+
   # Extra environment variables for webapp
   extraEnvVars:
     []
@@ -114,6 +113,10 @@ webapp:
     #     secretKeyRef:
     #       name: my-secret
     #       key: secret-key
+    #
+    # Example: PostgreSQL SSL with custom CA certificate
+    # - name: NODE_EXTRA_CA_CERTS
+    #   value: "/etc/ssl/certs/postgres-ca.crt"
 
   # Extra volumes for the webapp pod
   extraVolumes:
@@ -124,6 +127,14 @@ webapp:
     # - name: secret-volume
     #   secret:
     #     secretName: my-secret
+    #
+    # Example: PostgreSQL SSL CA certificate volume
+    # - name: postgres-ca-cert
+    #   secret:
+    #     secretName: postgres-ca-secret
+    #     items:
+    #       - key: ca.crt
+    #         path: postgres-ca.crt
 
   # Extra volume mounts for the webapp container
   extraVolumeMounts:
@@ -133,6 +144,11 @@ webapp:
     #   readOnly: true
     # - name: secret-volume
     #   mountPath: /etc/secrets
+    #   readOnly: true
+    #
+    # Example: PostgreSQL SSL CA certificate mount
+    # - name: postgres-ca-cert
+    #   mountPath: /etc/ssl/certs
     #   readOnly: true
 
   # ServiceMonitor for Prometheus monitoring
@@ -339,6 +355,7 @@ supervisor:
   affinity: {}
 
 # PostgreSQL configuration
+# Subchart: https://github.com/bitnami/charts/tree/main/bitnami/postgresql
 postgres:
   deploy: true
 
@@ -363,17 +380,32 @@ postgres:
   # Custom connection settings
   connection:
     schema: "public"
-    sslMode: "disable" # Use "require" or "verify-full" for production
+    sslMode: "disable" # Use "require" or "verify-full" for production with custom CA
 
     # External PostgreSQL connection (when deploy: false)
   external:
-    host: ""
-    port: 5432
-    database: ""
-    username: ""
-    password: ""
+    # Database URL configuration - simplified approach using URLs instead of individual parameters
+    databaseUrl: "" # Full PostgreSQL connection URL (e.g., postgresql://user:pass@host:port/db?schema=public&sslmode=prefer)
+    directUrl: "" # Optional: Direct URL for migrations (if not set, databaseUrl will be used)
+    #
+    # Optional: Connectivity check configuration during webapp startup
+    connectivityCheck:
+      host: "" # Optional: hostname:port for wait-for-it script (e.g., "postgres.example.com:5432")
+    #
+    # Secure credential management
+    existingSecret: "" # Name of existing secret containing DATABASE_URL
+    secretKeys:
+      databaseUrlKey: "postgres-database-url" # Key in existing secret containing complete DATABASE_URL
+      directUrlKey: "postgres-direct-url" # Key in existing secret containing direct URL (optional)
+    #
+    # Example: For SSL connections with custom CA (e.g., AWS RDS):
+    # 1. Set connection.sslMode to "require" or "verify-full"
+    # 2. Create a secret with your CA certificate:
+    #    kubectl create secret generic postgres-ca-secret --from-file=ca.crt=/path/to/rds-ca-cert.pem
+    # 3. Configure extraVolumes, extraVolumeMounts, and extraEnvVars (see webapp section above)
 
 # Redis configuration
+# Subchart: https://github.com/bitnami/charts/tree/main/bitnami/redis
 redis:
   deploy: true
 
@@ -394,7 +426,13 @@ redis:
   external:
     host: ""
     port: 6379
-    password: ""
+    password: "" # Optional - ignored if existingSecret is set
+    tls:
+      enabled: false # Set to true for Redis instances requiring TLS (e.g., AWS ElastiCache)
+    #
+    # Secure credential management
+    existingSecret: "" # Name of existing secret containing password
+    existingSecretPasswordKey: "redis-password" # Key in existing secret containing password
 
 # Electric configuration
 electric:
@@ -402,7 +440,7 @@ electric:
   image:
     registry: docker.io
     repository: electricsql/electric
-    tag: "1.0.13"
+    tag: "1.0.24"
     pullPolicy: IfNotPresent
   config:
     insecure: true
@@ -457,6 +495,7 @@ electric:
     #   value: "custom-value"
 
 # ClickHouse configuration
+# Subchart: https://github.com/bitnami/charts/tree/main/bitnami/clickhouse
 clickhouse:
   deploy: true
 
@@ -486,8 +525,12 @@ clickhouse:
     httpPort: 8123
     nativePort: 9000
     username: ""
-    password: ""
+    password: "" # Optional - ignored if existingSecret is set
     secure: false # Set to true for external secure connections
+    #
+    # Secure credential management
+    existingSecret: "" # Name of existing secret containing password
+    existingSecretKey: "clickhouse-password" # Key in existing secret containing password
 
   # ClickHouse configuration override
   # These defaults are based on official recommendations for systems with <16GB RAM:
@@ -512,6 +555,7 @@ clickhouse:
       </clickhouse>
 
 # S3-compatible object storage configuration
+# Subchart: https://github.com/bitnami/charts/tree/main/bitnami/minio
 s3:
   # Set to false to use external S3-compatible storage
   # Set to true to deploy internal MinIO (default)
@@ -522,6 +566,13 @@ s3:
   auth:
     rootUser: "admin"
     rootPassword: "very-safe-password"
+    # Webapp credentials for S3 access (defaults to root credentials if not specified)
+    accessKeyId: "" # Defaults to rootUser if empty
+    secretAccessKey: "" # Defaults to rootPassword if empty
+    # Existing secret support for webapp credentials
+    existingSecret: "" # If set, accessKeyId/secretAccessKey will be ignored
+    accessKeyIdSecretKey: "access-key-id" # Key in existingSecret containing access key ID
+    secretAccessKeySecretKey: "secret-access-key" # Key in existingSecret containing secret access key
 
   # The required "packets" bucket is created by default.
   defaultBuckets: "packets"
@@ -534,8 +585,13 @@ s3:
   # External S3 connection (when deploy: false)
   external:
     endpoint: "" # e.g., "https://s3.amazonaws.com" or "https://your-minio.com:9000"
-    accessKeyId: ""
-    secretAccessKey: ""
+    accessKeyId: "admin" # Default for internal MinIO - change for production
+    secretAccessKey: "very-safe-password" # Default for internal MinIO - change for production
+    #
+    # Secure credential management
+    existingSecret: "" # Name of existing secret containing S3 credentials
+    existingSecretAccessKeyIdKey: "access-key-id" # Key in existing secret containing access key ID
+    existingSecretSecretAccessKeyKey: "secret-access-key" # Key in existing secret containing secret access key
 
 # Docker Registry configuration
 registry:

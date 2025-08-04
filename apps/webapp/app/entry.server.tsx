@@ -16,6 +16,7 @@ import {
 } from "./components/primitives/OperatingSystemProvider";
 import { singleton } from "./utils/singleton";
 import { bootstrap } from "./bootstrap";
+import { wrapHandleErrorWithSentry } from "@sentry/remix";
 
 const ABORT_DELAY = 30000;
 
@@ -170,9 +171,21 @@ function handleBrowserRequest(
   });
 }
 
-export function handleError(error: unknown, { request, params, context }: DataFunctionArgs) {
-  logError(error, request);
-}
+export const handleError = wrapHandleErrorWithSentry((error, { request }) => {
+  if (request instanceof Request) {
+    logger.debug("Error in handleError", {
+      error,
+      request: {
+        url: request.url,
+        method: request.method,
+      },
+    });
+  } else {
+    logger.debug("Error in handleError", {
+      error,
+    });
+  }
+});
 
 Worker.init().catch((error) => {
   logError(error);

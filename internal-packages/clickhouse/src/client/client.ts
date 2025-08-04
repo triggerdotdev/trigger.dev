@@ -62,6 +62,7 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
         ...config.clickhouseSettings,
         output_format_json_quote_64bit_integers: 0,
         output_format_json_quote_64bit_floats: 0,
+        cancel_http_readonly_queries_on_client_close: 1,
       },
       log: {
         level: convertLogLevelToClickhouseLogLevel(config.logLevel),

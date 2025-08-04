@@ -1,4 +1,54 @@
 import { z } from "zod";
+import { MachinePresetName } from "@trigger.dev/core/v3/schemas";
+
+export const RunOptionsData = z.object({
+  delaySeconds: z
+    .number()
+    .min(0)
+    .optional()
+    .transform((val) => (val === 0 ? undefined : val)),
+  ttlSeconds: z
+    .number()
+    .min(0)
+    .optional()
+    .transform((val) => (val === 0 ? undefined : val)),
+  idempotencyKey: z.string().optional(),
+  idempotencyKeyTTLSeconds: z
+    .number()
+    .min(0)
+    .optional()
+    .transform((val) => (val === 0 ? undefined : val)),
+  queue: z.string().optional(),
+  concurrencyKey: z.string().optional(),
+  maxAttempts: z.number().min(1).optional(),
+  machine: MachinePresetName.optional(),
+  maxDurationSeconds: z
+    .number()
+    .min(0)
+    .optional()
+    .transform((val) => (val === 0 ? undefined : val)),
+  tags: z
+    .string()
+    .optional()
+    .transform((val) => {
+      if (!val || val.trim() === "") {
+        return undefined;
+      }
+      return val
+        .split(",")
+        .map((tag) => tag.trim())
+        .filter((tag) => tag.length > 0);
+    })
+    .refine((tags) => !tags || tags.length <= 10, {
+      message: "Maximum 10 tags allowed",
+    })
+    .refine((tags) => !tags || tags.every((tag) => tag.length <= 128), {
+      message: "Each tag must be at most 128 characters long",
+    }),
+  version: z.string().optional(),
+});
+
+export type RunOptionsData = z.infer<typeof RunOptionsData>;
 
 export const TestTaskData = z
   .discriminatedUnion("triggerSource", [
@@ -52,6 +102,7 @@ export const TestTaskData = z
       externalId: z.preprocess((val) => (val === "" ? undefined : val), z.string().optional()),
     }),
   ])
+  .and(RunOptionsData)
   .and(
     z.object({
       taskIdentifier: z.string(),

@@ -1,13 +1,18 @@
-import { ClickHouse } from "@internal/clickhouse";
-import { PrismaClient, PrismaClientOrTransaction, type TaskRunStatus } from "@trigger.dev/database";
+import { type ClickHouse } from "@internal/clickhouse";
+import { MachinePresetName } from "@trigger.dev/core/v3";
+import {
+  type PrismaClient,
+  type PrismaClientOrTransaction,
+  type TaskRunStatus,
+} from "@trigger.dev/database";
 import { type Direction } from "~/components/ListPagination";
 import { timeFilters } from "~/components/runs/v3/SharedFilters";
 import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { getAllTaskIdentifiers } from "~/models/task.server";
-import { RunsRepository } from "~/services/runsRepository.server";
+import { RunsRepository } from "~/services/runsRepository/runsRepository.server";
+import { machinePresetFromRun } from "~/v3/machinePresets.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { isCancellableRunStatus, isFinalRunStatus, isPendingRunStatus } from "~/v3/taskStatus";
-import parseDuration from "parse-duration";
 
 export type RunListOptions = {
   userId?: string;
@@ -25,7 +30,9 @@ export type RunListOptions = {
   isTest?: boolean;
   rootOnly?: boolean;
   batchId?: string;
-  runIds?: string[];
+  runId?: string[];
+  queues?: string[];
+  machines?: MachinePresetName[];
   //pagination
   direction?: Direction;
   cursor?: string;
@@ -60,7 +67,9 @@ export class NextRunListPresenter {
       isTest,
       rootOnly,
       batchId,
-      runIds,
+      runId,
+      queues,
+      machines,
       from,
       to,
       direction = "forward",
@@ -75,8 +84,6 @@ export class NextRunListPresenter {
       to,
     });
 
-    const periodMs = time.period ? parseDuration(time.period) : undefined;
-
     const hasStatusFilters = statuses && statuses.length > 0;
 
     const hasFilters =
@@ -87,7 +94,9 @@ export class NextRunListPresenter {
       (scheduleId !== undefined && scheduleId !== "") ||
       (tags !== undefined && tags.length > 0) ||
       batchId !== undefined ||
-      (runIds !== undefined && runIds.length > 0) ||
+      (runId !== undefined && runId.length > 0) ||
+      (queues !== undefined && queues.length > 0) ||
+      (machines !== undefined && machines.length > 0) ||
       typeof isTest === "boolean" ||
       rootOnly === true ||
       !time.isDefault;
@@ -96,15 +105,16 @@ export class NextRunListPresenter {
     const possibleTasksAsync = getAllTaskIdentifiers(this.replica, environmentId);
 
     //get possible bulk actions
-    // TODO: we should replace this with the new bulk stuff and make it environment scoped
     const bulkActionsAsync = this.replica.bulkActionGroup.findMany({
       select: {
         friendlyId: true,
         type: true,
         createdAt: true,
+        name: true,
       },
       where: {
         projectId: projectId,
+        environmentId,
       },
       orderBy: {
         createdAt: "desc",
@@ -118,71 +128,29 @@ export class NextRunListPresenter {
       findDisplayableEnvironment(environmentId, userId),
     ]);
 
-    if (!displayableEnvironment) {
-      throw new ServiceValidationError("No environment found");
-    }
-
-    //we can restrict to specific runs using bulkId, or batchId
-    let restrictToRunIds: undefined | string[] = undefined;
-
-    //bulk id
-    if (bulkId) {
-      const bulkAction = await this.replica.bulkActionGroup.findFirst({
+    // If the bulk action isn't in the most recent ones, add it separately
+    if (bulkId && !bulkActions.some((bulkAction) => bulkAction.friendlyId === bulkId)) {
+      const selectedBulkAction = await this.replica.bulkActionGroup.findFirst({
         select: {
-          items: {
-            select: {
-              destinationRunId: true,
-            },
-          },
+          friendlyId: true,
+          type: true,
+          createdAt: true,
+          name: true,
         },
         where: {
           friendlyId: bulkId,
+          projectId,
+          environmentId,
         },
       });
 
-      if (bulkAction) {
-        const runIds = bulkAction.items.map((item) => item.destinationRunId).filter(Boolean);
-        restrictToRunIds = runIds;
+      if (selectedBulkAction) {
+        bulkActions.push(selectedBulkAction);
       }
     }
 
-    //batch id is a friendly id
-    if (batchId) {
-      const batch = await this.replica.batchTaskRun.findFirst({
-        select: {
-          id: true,
-        },
-        where: {
-          friendlyId: batchId,
-          runtimeEnvironmentId: environmentId,
-        },
-      });
-
-      if (batch) {
-        batchId = batch.id;
-      }
-    }
-
-    //scheduleId can be a friendlyId
-    if (scheduleId && scheduleId.startsWith("sched_")) {
-      const schedule = await this.replica.taskSchedule.findFirst({
-        select: {
-          id: true,
-        },
-        where: {
-          friendlyId: scheduleId,
-          projectId: projectId,
-        },
-      });
-
-      if (schedule) {
-        scheduleId = schedule?.id;
-      }
-    }
-
-    //show all runs if we are filtering by batchId or runId
-    if (batchId || runIds?.length || scheduleId || tasks?.length) {
-      rootOnly = false;
+    if (!displayableEnvironment) {
+      throw new ServiceValidationError("No environment found");
     }
 
     const runsRepository = new RunsRepository({
@@ -204,14 +172,16 @@ export class NextRunListPresenter {
       statuses,
       tags,
       scheduleId,
-      period: periodMs ?? undefined,
+      period,
       from: time.from ? time.from.getTime() : undefined,
       to: time.to ? clampToNow(time.to).getTime() : undefined,
       isTest,
       rootOnly,
       batchId,
-      runFriendlyIds: runIds,
-      runIds: restrictToRunIds,
+      runId,
+      bulkId,
+      queues,
+      machines,
       page: {
         size: pageSize,
         cursor,
@@ -271,6 +241,11 @@ export class NextRunListPresenter {
           rootTaskRunId: run.rootTaskRunId,
           metadata: run.metadata,
           metadataType: run.metadataType,
+          machinePreset: run.machinePreset ? machinePresetFromRun(run)?.name : undefined,
+          queue: {
+            name: run.queue.replace("task/", ""),
+            type: run.queue.startsWith("task/") ? "task" : "custom",
+          },
         };
       }),
       pagination: {
@@ -286,6 +261,7 @@ export class NextRunListPresenter {
         id: bulkAction.friendlyId,
         type: bulkAction.type,
         createdAt: bulkAction.createdAt,
+        name: bulkAction.name || bulkAction.friendlyId,
       })),
       filters: {
         tasks: tasks || [],

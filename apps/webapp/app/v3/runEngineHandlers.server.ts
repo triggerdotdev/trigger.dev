@@ -13,7 +13,7 @@ import { roomFromFriendlyRunId, socketIo } from "./handleSocketIo.server";
 import { engine } from "./runEngine.server";
 import { PerformTaskRunAlertsService } from "./services/alerts/performTaskRunAlerts.server";
 import { RunId } from "@trigger.dev/core/v3/isomorphic";
-import { updateMetadataService } from "~/services/metadata/updateMetadata.server";
+import { updateMetadataService } from "~/services/metadata/updateMetadataInstance.server";
 import { findEnvironmentFromRun } from "~/models/runtimeEnvironment.server";
 import { env } from "~/env.server";
 import { getTaskEventStoreTableForRun } from "./taskEventStore.server";

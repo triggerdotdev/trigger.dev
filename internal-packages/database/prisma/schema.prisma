@@ -46,10 +46,34 @@ model User {
   orgMemberships OrgMember[]
   sentInvites    OrgMemberInvite[]
 
+  mfaEnabledAt         DateTime?
+  mfaSecretReference   SecretReference? @relation(fields: [mfaSecretReferenceId], references: [id])
+  mfaSecretReferenceId String?
+  /// Hash of the last used code to prevent replay attacks
+  mfaLastUsedCode      String?
+
   invitationCode       InvitationCode?       @relation(fields: [invitationCodeId], references: [id])
   invitationCodeId     String?
   personalAccessTokens PersonalAccessToken[]
   deployments          WorkerDeployment[]
+  backupCodes          MfaBackupCode[]
+  bulkActions          BulkActionGroup[]
+}
+
+model MfaBackupCode {
+  id   String @id @default(cuid())
+  /// Hash of the actual code
+  code String
+
+  user   User   @relation(fields: [userId], references: [id])
+  userId String
+
+  usedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, code])
 }
 
 // @deprecated This model is no longer used as the Cloud is out of private beta
@@ -223,8 +247,9 @@ model RuntimeEnvironment {
   ///A memorable code for the environment
   shortcode String
 
-  maximumConcurrencyLimit Int     @default(5)
-  paused                  Boolean @default(false)
+  maximumConcurrencyLimit     Int     @default(5)
+  concurrencyLimitBurstFactor Decimal @default("2.00") @db.Decimal(4, 2)
+  paused                      Boolean @default(false)
 
   autoEnableInternalSources Boolean @default(true)
 
@@ -269,11 +294,13 @@ model RuntimeEnvironment {
   workerInstances      WorkerInstance[]
   executionSnapshots   TaskRunExecutionSnapshot[]
   waitpointTags        WaitpointTag[]
+  BulkActionGroup      BulkActionGroup[]
 
   @@unique([projectId, slug, orgMemberId])
   @@unique([projectId, shortcode])
   @@index([parentEnvironmentId])
   @@index([projectId])
+  @@index([organizationId])
 }
 
 enum RuntimeEnvironmentType {
@@ -346,6 +373,7 @@ model SecretReference {
   createdAt               DateTime                  @default(now())
   updatedAt               DateTime                  @updatedAt
   OrganizationIntegration OrganizationIntegration[]
+  User                    User[]
 }
 
 enum SecretStoreProvider {
@@ -395,6 +423,9 @@ model BackgroundWorker {
 
   version  String
   metadata Json
+
+  runtime        String?
+  runtimeVersion String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -615,7 +646,11 @@ model TaskRun {
   sourceBulkActionItems      BulkActionItem[] @relation("SourceActionItemRun")
   destinationBulkActionItems BulkActionItem[] @relation("DestinationActionItemRun")
 
+  bulkActionGroupIds String[] @default([])
+
   logsDeletedAt DateTime?
+
+  replayedFromTaskRunFriendlyId String?
 
   /// This represents the original task that that was triggered outside of a Trigger.dev task
   rootTaskRun   TaskRun? @relation("TaskRootRun", fields: [rootTaskRunId], references: [id], onDelete: SetNull, onUpdate: NoAction)
@@ -692,6 +727,35 @@ model TaskRun {
   @@index([status, runtimeEnvironmentId, createdAt, id(sort: Desc)])
 }
 
+model TaskRunTemplate {
+  id String @id @default(cuid())
+
+  taskSlug      String
+  triggerSource TaskTriggerSource
+
+  label String
+
+  payload            String?
+  payloadType        String   @default("application/json")
+  metadata           String?
+  metadataType       String   @default("application/json")
+  queue              String?
+  concurrencyKey     String?
+  ttlSeconds         Int?
+  maxAttempts        Int?
+  maxDurationSeconds Int?
+  tags               String[]
+  machinePreset      String?
+
+  projectId      String
+  organizationId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId, taskSlug, triggerSource, createdAt(sort: Desc)])
+}
+
 enum TaskRunStatus {
   ///
   /// NON-FINAL STATUSES
@@ -707,6 +771,9 @@ enum TaskRunStatus {
 
   /// Task hasn't been deployed yet but is waiting to be executed. Deprecated in favor of PENDING_VERSION
   WAITING_FOR_DEPLOY
+
+  /// Task has been dequeued from the queue but is not yet executing
+  DEQUEUED
 
   /// Task is currently being executed by a worker
   EXECUTING
@@ -1377,9 +1444,6 @@ model TaskQueue {
 
   paused Boolean @default(false)
 
-  /// If true, when a run is paused and waiting for waitpoints to be completed, the run will release the concurrency capacity.
-  releaseConcurrencyOnWaitpoint Boolean @default(false)
-
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1620,6 +1684,9 @@ model WorkerDeployment {
   friendlyId  String @unique
   shortCode   String
   version     String
+
+  runtime        String?
+  runtimeVersion String?
 
   imageReference String?
   imagePlatform  String  @default("linux/amd64")
@@ -1918,14 +1985,45 @@ model BulkActionGroup {
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   projectId String
 
+  /// If this is set then it's a V2 Bulk Action that supports queries
+  environment   RuntimeEnvironment? @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String?
+
   type  BulkActionType
   items BulkActionItem[]
 
   /// When the group is created it's pending. After we've processed all the items it's completed. This does not mean the associated runs are completed.
   status BulkActionStatus @default(PENDING)
 
+  /// The query that will be executed to get the runs to process (if null, we are passing run ids directly)
+  queryName    String?
+  /// The params that will be passed to the query
+  params       Json?
+  /// The cursor that will be passed to the query (null for the first page)
+  cursor       Json?
+  /// The number of runs that have been processed successfully
+  successCount Int     @default(0)
+  /// The number of runs that have been failed
+  failureCount Int     @default(0)
+  /// The total number of runs that will be processed
+  totalCount   Int     @default(0)
+
+  completionNotification BulkActionNotificationType @default(NONE)
+
+  /// The userId who did the bulk action
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  userId String?
+
+  /// The name of the bulk action
+  name String?
+
+  /// The time the bulk action was completed
+  completedAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([environmentId, createdAt(sort: Desc)])
 }
 
 enum BulkActionType {
@@ -1938,12 +2036,19 @@ enum BulkActionType {
 enum BulkActionStatus {
   PENDING
   COMPLETED
+  ABORTED
+}
+
+enum BulkActionNotificationType {
+  NONE
+  EMAIL
 }
 
 model BulkActionItem {
   id String @id @default(cuid())
 
-  friendlyId String @unique
+  /// @deprecated not used in new BulkActions
+  friendlyId String?
 
   group   BulkActionGroup @relation(fields: [groupId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   groupId String

@@ -12,6 +12,7 @@ import {
   type DeploymentSuccessWebhook,
   isOOMRunError,
   type RunFailedWebhook,
+  RunStatus,
   TaskRunError,
 } from "@trigger.dev/core/v3";
 import { type ProjectAlertChannelType, type ProjectAlertType } from "@trigger.dev/database";
@@ -40,6 +41,7 @@ import { alertsRateLimiter } from "~/v3/alertsRateLimiter.server";
 import { alertsWorker } from "~/v3/alertsWorker.server";
 import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
 import { BaseService } from "../baseService.server";
+import { CURRENT_API_VERSION } from "~/api/versions";
 
 type FoundAlert = Prisma.Result<
   typeof prisma.projectAlert,
@@ -352,7 +354,10 @@ export class DeliverAlertService extends BaseService {
                   run: {
                     id: alert.taskRun.friendlyId,
                     number: alert.taskRun.number,
-                    status: ApiRetrieveRunPresenter.apiStatusFromRunStatus(alert.taskRun.status),
+                    status: ApiRetrieveRunPresenter.apiStatusFromRunStatus(
+                      alert.taskRun.status,
+                      CURRENT_API_VERSION
+                    ) as RunStatus,
                     createdAt: alert.taskRun.createdAt,
                     startedAt: alert.taskRun.startedAt ?? undefined,
                     completedAt: alert.taskRun.completedAt ?? undefined,

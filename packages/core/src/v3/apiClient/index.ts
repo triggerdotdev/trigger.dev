@@ -21,6 +21,7 @@ import {
   ListRunResponseItem,
   ListScheduleOptions,
   QueueItem,
+  QueueTypeName,
   ReplayRunResponse,
   RescheduleRunRequestBody,
   RetrieveBatchV2Response,
@@ -77,6 +78,7 @@ import {
   SubscribeToRunsQueryParams,
   UpdateEnvironmentVariableParams,
 } from "./types.js";
+import { API_VERSION, API_VERSION_HEADER_NAME } from "./version.js";
 
 export type CreateWaitpointTokenResponse = Prettify<
   CreateWaitpointTokenResponseBody & {
@@ -777,11 +779,9 @@ export class ApiClient {
     {
       runFriendlyId,
       waitpointFriendlyId,
-      releaseConcurrency,
     }: {
       runFriendlyId: string;
       waitpointFriendlyId: string;
-      releaseConcurrency?: boolean;
     },
     requestOptions?: ZodFetchOptions
   ) {
@@ -791,9 +791,6 @@ export class ApiClient {
       {
         method: "POST",
         headers: this.#getHeaders(false),
-        body: JSON.stringify({
-          releaseConcurrency,
-        }),
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );
@@ -1040,6 +1037,8 @@ export class ApiClient {
       headers["x-trigger-client"] = "browser";
     }
 
+    headers[API_VERSION_HEADER_NAME] = API_VERSION;
+
     return headers;
   }
 
@@ -1149,9 +1148,33 @@ function createSearchQueryForListRuns(query?: ListRunsQueryParams): URLSearchPar
     if (query.batch) {
       searchParams.append("filter[batch]", query.batch);
     }
+
+    if (query.queue) {
+      searchParams.append(
+        "filter[queue]",
+        Array.isArray(query.queue)
+          ? query.queue.map((q) => queueNameFromQueueTypeName(q)).join(",")
+          : queueNameFromQueueTypeName(query.queue)
+      );
+    }
+
+    if (query.machine) {
+      searchParams.append(
+        "filter[machine]",
+        Array.isArray(query.machine) ? query.machine.join(",") : query.machine
+      );
+    }
   }
 
   return searchParams;
+}
+
+function queueNameFromQueueTypeName(queue: QueueTypeName): string {
+  if (queue.type === "task") {
+    return `task/${queue.name}`;
+  }
+
+  return queue.name;
 }
 
 function createSearchQueryForListWaitpointTokens(

@@ -21,6 +21,7 @@ export interface JSONEditorProps extends Omit<ReactCodeMirrorProps, "onBlur"> {
   showClearButton?: boolean;
   linterEnabled?: boolean;
   allowEmpty?: boolean;
+  additionalActions?: React.ReactNode;
 }
 
 const languages = {
@@ -64,6 +65,7 @@ export function JSONEditor(opts: JSONEditorProps) {
     showClearButton = true,
     linterEnabled,
     allowEmpty,
+    additionalActions,
   } = {
     ...defaultProps,
     ...opts,
@@ -123,13 +125,13 @@ export function JSONEditor(opts: JSONEditorProps) {
     }
   }, [defaultValue, view]);
 
-  const clear = useCallback(() => {
+  const clear = () => {
     if (view === undefined) return;
     view.dispatch({
       changes: { from: 0, to: view.state.doc.length, insert: undefined },
     });
     onChange?.("");
-  }, [view]);
+  };
 
   const copy = useCallback(() => {
     if (view === undefined) return;
@@ -152,6 +154,7 @@ export function JSONEditor(opts: JSONEditorProps) {
     >
       {showButtons && (
         <div className="mx-3 flex items-center justify-end gap-2 border-b border-grid-dimmed">
+          {additionalActions && additionalActions}
           {showClearButton && (
             <Button
               type="button"

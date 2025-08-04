@@ -244,6 +244,7 @@ function getWorkerQueue() {
           return await service.call(payload.deploymentId);
         },
       },
+      // @deprecated, new bulk actions use the new bulk actions worker
       "v3.performBulkAction": {
         priority: 0,
         maxAttempts: 3,
@@ -253,6 +254,7 @@ function getWorkerQueue() {
           return await service.call(payload.bulkActionGroupId);
         },
       },
+      // @deprecated, new bulk actions use the new bulk actions worker
       "v3.performBulkActionItem": {
         priority: 0,
         maxAttempts: 3,
