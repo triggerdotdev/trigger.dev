@@ -758,12 +758,12 @@ function RunBody({
             </div>
           ) : tab === "context" ? (
             <div className="flex flex-col gap-4 py-3">
-              <CodeBlock code={run.context} showLineNumbers={false} />
+              <CodeBlock code={run.context} showLineNumbers={false} showTextWrapping />
             </div>
           ) : tab === "metadata" ? (
             <div className="flex flex-col gap-4 py-3">
               {run.metadata ? (
-                <CodeBlock code={run.metadata} showLineNumbers={false} />
+                <CodeBlock code={run.metadata} showLineNumbers={false} showTextWrapping />
               ) : (
                 <Callout to="https://trigger.dev/docs/runs/metadata" variant="docs">
                   No metadata set for this run. View our metadata documentation to learn more.
