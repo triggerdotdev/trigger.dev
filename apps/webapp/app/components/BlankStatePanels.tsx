@@ -477,6 +477,10 @@ export function BranchesNoBranchableEnvironment() {
         Preview branches in Trigger.dev create isolated environments for testing new features before
         production.
       </Paragraph>
+      <Paragraph variant="small">
+        You must be on <V4Badge inline /> to access preview branches. Read our{" "}
+        <TextLink to={docsPath("upgrade-to-v4")}>upgrade to v4 guide</TextLink> to learn more.
+      </Paragraph>
     </InfoPanel>
   );
 }
