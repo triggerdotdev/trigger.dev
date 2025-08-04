@@ -371,12 +371,13 @@ export default function Page() {
                                         icon={RunsIcon}
                                         to={path}
                                         title="View runs"
-                                        leadingIconClassName="text-teal-500"
+                                        leadingIconClassName="text-runs"
                                       />
                                       <PopoverMenuItem
                                         icon={BeakerIcon}
                                         to={testPath}
                                         title="Test task"
+                                        leadingIconClassName="text-tests"
                                       />
                                     </>
                                   }
