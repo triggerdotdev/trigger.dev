@@ -77,7 +77,6 @@ import {
   type TaskActivity,
   type TaskListItem,
   taskListPresenter,
-  TaskListPresenter,
 } from "~/presenters/v3/TaskListPresenter.server";
 import {
   getUsefulLinksPreference,
@@ -411,7 +410,7 @@ export default function Page() {
                   <HasNoTasksDev />
                 </MainCenteredContainer>
               ) : (
-                <MainCenteredContainer className="max-w-md">
+                <MainCenteredContainer className="max-w-prose">
                   <HasNoTasksDeployed environment={environment} />
                 </MainCenteredContainer>
               )}
