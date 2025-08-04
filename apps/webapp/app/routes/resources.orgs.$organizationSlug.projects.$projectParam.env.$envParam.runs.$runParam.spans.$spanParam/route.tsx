@@ -45,7 +45,10 @@ import { RunTag } from "~/components/runs/v3/RunTag";
 import { SpanEvents } from "~/components/runs/v3/SpanEvents";
 import { SpanTitle } from "~/components/runs/v3/SpanTitle";
 import { TaskRunAttemptStatusCombo } from "~/components/runs/v3/TaskRunAttemptStatus";
-import { TaskRunStatusCombo, TaskRunStatusReason } from "~/components/runs/v3/TaskRunStatus";
+import {
+  descriptionForTaskRunStatus,
+  TaskRunStatusCombo,
+} from "~/components/runs/v3/TaskRunStatus";
 import { WaitpointDetailTable } from "~/components/runs/v3/WaitpointDetails";
 import { RuntimeIcon } from "~/components/RuntimeIcon";
 import { WarmStartCombo } from "~/components/WarmStarts";
@@ -402,7 +405,10 @@ function RunBody({
                 <Property.Item>
                   <Property.Label>Status</Property.Label>
                   <Property.Value>
-                    <TaskRunStatusCombo status={run.status} />
+                    <SimpleTooltip
+                      button={<TaskRunStatusCombo status={run.status} />}
+                      content={descriptionForTaskRunStatus(run.status)}
+                    />
                   </Property.Value>
                 </Property.Item>
                 <Property.Item>
@@ -766,9 +772,11 @@ function RunBody({
             </div>
           ) : (
             <div className="flex flex-col gap-4 pt-3">
-              <div className="space-y-2 border-b border-grid-bright pb-3">
-                <TaskRunStatusCombo status={run.status} className="text-sm" />
-                <TaskRunStatusReason status={run.status} statusReason={run.statusReason} />
+              <div className="border-b border-grid-bright pb-3">
+                <SimpleTooltip
+                  button={<TaskRunStatusCombo status={run.status} className="text-sm" />}
+                  content={descriptionForTaskRunStatus(run.status)}
+                />
               </div>
               <RunTimeline run={run} />
 
