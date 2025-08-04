@@ -2,6 +2,7 @@ import { conform, list, requestIntent, useFieldList, useForm } from "@conform-to
 import { parse } from "@conform-to/zod";
 import { Form, useActionData, type MetaFunction } from "@remix-run/react";
 import { json, type ActionFunction, type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { tryCatch } from "@trigger.dev/core";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -22,6 +23,7 @@ import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { TextLink } from "~/components/primitives/TextLink";
 import { prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
@@ -29,12 +31,12 @@ import { getBillingAlerts, setBillingAlert } from "~/services/platform.v3.server
 import { requireUserId } from "~/services/session.server";
 import { formatCurrency } from "~/utils/numberFormatter";
 import {
+  docsPath,
   OrganizationParamsSchema,
   organizationPath,
   v3BillingAlertsPath,
 } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { tryCatch } from "@trigger.dev/core";
 
 export const meta: MetaFunction = () => {
   return [
@@ -199,10 +201,17 @@ export default function Page() {
       <PageBody scrollable={true}>
         <MainHorizontallyCenteredContainer>
           <div>
-            <Header2 spacing>Billing alerts</Header2>
-            <Paragraph spacing variant="small">
-              Receive an email when your compute spend crosses different thresholds.
-            </Paragraph>
+            <div className="mb-3 border-b border-grid-dimmed pb-3">
+              <Header2 spacing>Billing alerts</Header2>
+              <Paragraph variant="small">
+                Receive an email when your compute spend crosses different thresholds. You can also
+                learn how to{" "}
+                <TextLink to={docsPath("how-to-reduce-your-spend")}>
+                  reduce your compute spend
+                </TextLink>
+                .
+              </Paragraph>
+            </div>
             <Form method="post" {...form.props}>
               <Fieldset>
                 <InputGroup fullWidth>
