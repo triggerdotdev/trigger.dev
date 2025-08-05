@@ -1230,25 +1230,23 @@ export class EventRepository {
 
         return events;
       } catch (error) {
-        if (error instanceof Prisma.PrismaClientUnknownRequestError) {
-          logger.error("Failed to insert events, most likely because of null characters", {
-            error: {
-              name: error.name,
-              message: error.message,
-              stack: error.stack,
-              clientVersion: error.clientVersion,
-            },
+        if (isRetriablePrismaError(error)) {
+          const isKnownError = error instanceof Prisma.PrismaClientKnownRequestError;
+          span.setAttribute("prisma_error_type", isKnownError ? "known" : "unknown");
+
+          const errorDetails = getPrismaErrorDetails(error);
+          if (errorDetails.code) {
+            span.setAttribute("prisma_error_code", errorDetails.code);
+          }
+
+          logger.error("Failed to insert events, will attempt bisection", {
+            error: errorDetails,
           });
 
           if (events.length === 1) {
             logger.debug("Attempting to insert event individually and it failed", {
               event: events[0],
-              error: {
-                name: error.name,
-                message: error.message,
-                stack: error.stack,
-                clientVersion: error.clientVersion,
-              },
+              error: errorDetails,
             });
 
             span.setAttribute("failed_event_count", 1);
@@ -1258,12 +1256,7 @@ export class EventRepository {
 
           if (depth > MAX_FLUSH_DEPTH) {
             logger.error("Failed to insert events, reached maximum depth", {
-              error: {
-                name: error.name,
-                message: error.message,
-                stack: error.stack,
-                clientVersion: error.clientVersion,
-              },
+              error: errorDetails,
               depth,
               eventsCount: events.length,
             });
@@ -1916,4 +1909,63 @@ export async function recordRunDebugLog(
       isDebug: true,
     },
   });
+}
+
+/**
+ * Extracts error details from Prisma errors in a type-safe way.
+ * Only includes 'code' property for PrismaClientKnownRequestError.
+ */
+function getPrismaErrorDetails(
+  error: Prisma.PrismaClientUnknownRequestError | Prisma.PrismaClientKnownRequestError
+): {
+  name: string;
+  message: string;
+  stack: string | undefined;
+  clientVersion: string;
+  code?: string;
+} {
+  const base = {
+    name: error.name,
+    message: error.message,
+    stack: error.stack,
+    clientVersion: error.clientVersion,
+  };
+
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    return { ...base, code: error.code };
+  }
+
+  return base;
+}
+
+/**
+ * Checks if a PrismaClientKnownRequestError is a Unicode/hex escape error.
+ */
+function isUnicodeError(error: Prisma.PrismaClientKnownRequestError): boolean {
+  return (
+    error.message.includes("lone leading surrogate in hex escape") ||
+    error.message.includes("unexpected end of hex escape") ||
+    error.message.includes("invalid Unicode") ||
+    error.message.includes("invalid escape sequence")
+  );
+}
+
+/**
+ * Determines if a Prisma error should be retried with bisection logic.
+ * Returns true for errors that might be resolved by splitting the batch.
+ */
+function isRetriablePrismaError(
+  error: unknown
+): error is Prisma.PrismaClientUnknownRequestError | Prisma.PrismaClientKnownRequestError {
+  if (error instanceof Prisma.PrismaClientUnknownRequestError) {
+    // Always retry unknown errors with bisection
+    return true;
+  }
+
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    // Only retry known errors if they're Unicode/hex escape related
+    return isUnicodeError(error);
+  }
+
+  return false;
 }

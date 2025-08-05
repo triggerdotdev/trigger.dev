@@ -143,16 +143,18 @@ export function SideMenu({
     >
       <div
         className={cn(
-          "flex items-center justify-between overflow-hidden border-b px-1 py-1 transition duration-300",
+          "flex items-center overflow-hidden border-b px-1 py-1 transition duration-300",
           showHeaderDivider ? "border-grid-bright" : "border-transparent"
         )}
       >
-        <ProjectSelector
-          organizations={organizations}
-          organization={organization}
-          project={project}
-          user={user}
-        />
+        <div className="min-w-0 flex-1">
+          <ProjectSelector
+            organizations={organizations}
+            organization={organization}
+            project={project}
+            user={user}
+          />
+        </div>
         {isAdmin && !user.isImpersonating ? (
           <TooltipProvider disableHoverableContent={true}>
             <Tooltip>

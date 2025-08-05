@@ -7,7 +7,6 @@ import {
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import {
   formatDurationMilliseconds,
-  MachinePresetName,
   type TaskRunError,
   taskRunErrorEnhancer,
 } from "@trigger.dev/core/v3";
@@ -46,7 +45,10 @@ import { RunTag } from "~/components/runs/v3/RunTag";
 import { SpanEvents } from "~/components/runs/v3/SpanEvents";
 import { SpanTitle } from "~/components/runs/v3/SpanTitle";
 import { TaskRunAttemptStatusCombo } from "~/components/runs/v3/TaskRunAttemptStatus";
-import { TaskRunStatusCombo, TaskRunStatusReason } from "~/components/runs/v3/TaskRunStatus";
+import {
+  descriptionForTaskRunStatus,
+  TaskRunStatusCombo,
+} from "~/components/runs/v3/TaskRunStatus";
 import { WaitpointDetailTable } from "~/components/runs/v3/WaitpointDetails";
 import { RuntimeIcon } from "~/components/RuntimeIcon";
 import { WarmStartCombo } from "~/components/WarmStarts";
@@ -403,7 +405,10 @@ function RunBody({
                 <Property.Item>
                   <Property.Label>Status</Property.Label>
                   <Property.Value>
-                    <TaskRunStatusCombo status={run.status} />
+                    <SimpleTooltip
+                      button={<TaskRunStatusCombo status={run.status} />}
+                      content={descriptionForTaskRunStatus(run.status)}
+                    />
                   </Property.Value>
                 </Property.Item>
                 <Property.Item>
@@ -753,12 +758,12 @@ function RunBody({
             </div>
           ) : tab === "context" ? (
             <div className="flex flex-col gap-4 py-3">
-              <CodeBlock code={run.context} showLineNumbers={false} />
+              <CodeBlock code={run.context} showLineNumbers={false} showTextWrapping />
             </div>
           ) : tab === "metadata" ? (
             <div className="flex flex-col gap-4 py-3">
               {run.metadata ? (
-                <CodeBlock code={run.metadata} showLineNumbers={false} />
+                <CodeBlock code={run.metadata} showLineNumbers={false} showTextWrapping />
               ) : (
                 <Callout to="https://trigger.dev/docs/runs/metadata" variant="docs">
                   No metadata set for this run. View our metadata documentation to learn more.
@@ -767,9 +772,11 @@ function RunBody({
             </div>
           ) : (
             <div className="flex flex-col gap-4 pt-3">
-              <div className="space-y-2 border-b border-grid-bright pb-3">
-                <TaskRunStatusCombo status={run.status} className="text-sm" />
-                <TaskRunStatusReason status={run.status} statusReason={run.statusReason} />
+              <div className="border-b border-grid-bright pb-3">
+                <SimpleTooltip
+                  button={<TaskRunStatusCombo status={run.status} className="text-sm" />}
+                  content={descriptionForTaskRunStatus(run.status)}
+                />
               </div>
               <RunTimeline run={run} />
 
@@ -804,14 +811,15 @@ function RunBody({
               {run.isCached ? "Jump to original run" : "Focus on run"}
             </LinkButton>
           )}
+          <AdminDebugRun friendlyId={run.friendlyId} />
         </div>
-        <AdminDebugRun friendlyId={run.friendlyId} />
         <div className="flex items-center gap-4">
           {run.logsDeletedAt === null ? (
             <LinkButton
               to={v3RunDownloadLogsPath({ friendlyId: runParam })}
               LeadingIcon={CloudArrowDownIcon}
-              variant="tertiary/medium"
+              leadingIconClassName="text-indigo-400"
+              variant="secondary/medium"
               target="_blank"
               download
             >
@@ -855,7 +863,7 @@ function RunError({ error }: { error: TaskRunError }) {
           <Header3 className="text-rose-500">{name}</Header3>
           {enhancedError.message && (
             <Callout variant="error">
-              <pre className="text-wrap font-sans text-sm font-normal text-rose-200">
+              <pre className="text-wrap font-sans text-sm font-normal text-rose-200 [word-break:break-word]">
                 {enhancedError.message}
               </pre>
             </Callout>

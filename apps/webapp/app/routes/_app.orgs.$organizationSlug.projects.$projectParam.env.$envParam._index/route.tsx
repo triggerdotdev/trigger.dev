@@ -77,7 +77,6 @@ import {
   type TaskActivity,
   type TaskListItem,
   taskListPresenter,
-  TaskListPresenter,
 } from "~/presenters/v3/TaskListPresenter.server";
 import {
   getUsefulLinksPreference,
@@ -372,12 +371,13 @@ export default function Page() {
                                         icon={RunsIcon}
                                         to={path}
                                         title="View runs"
-                                        leadingIconClassName="text-teal-500"
+                                        leadingIconClassName="text-runs"
                                       />
                                       <PopoverMenuItem
                                         icon={BeakerIcon}
                                         to={testPath}
                                         title="Test task"
+                                        leadingIconClassName="text-tests"
                                       />
                                     </>
                                   }
@@ -411,7 +411,7 @@ export default function Page() {
                   <HasNoTasksDev />
                 </MainCenteredContainer>
               ) : (
-                <MainCenteredContainer className="max-w-md">
+                <MainCenteredContainer className="max-w-prose">
                   <HasNoTasksDeployed environment={environment} />
                 </MainCenteredContainer>
               )}
