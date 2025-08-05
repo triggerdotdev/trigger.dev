@@ -1142,6 +1142,7 @@ model WorkerInstanceGroup {
   /// If unmanged, it will be prefixed with the project ID e.g. "project_1-us-east-1"
   masterQueue String @unique
 
+  /// "N. Virginia, USA", "Frankfurt, Germany", etc. Used for display purposes
   description String?
   hidden      Boolean @default(false)
 
@@ -1158,6 +1159,11 @@ model WorkerInstanceGroup {
 
   project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   projectId String?
+
+  cloudProvider String?
+  /// "usa", "europe", etc. Used like a pseudo enum for things like flags
+  location      String?
+  staticIPs     String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
