@@ -50,8 +50,7 @@
   },
   "dependencies": {
     "@opentelemetry/api": "1.9.0",
-    "@opentelemetry/api-logs": "0.52.1",
-    "@opentelemetry/semantic-conventions": "1.25.1",
+    "@opentelemetry/semantic-conventions": "1.36.0",
     "@trigger.dev/core": "workspace:4.0.0-v4-beta.26",
     "chalk": "^5.2.0",
     "cronstrue": "^2.21.0",
