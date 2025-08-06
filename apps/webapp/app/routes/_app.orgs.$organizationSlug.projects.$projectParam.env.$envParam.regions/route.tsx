@@ -56,11 +56,6 @@ import {
 } from "~/utils/pathBuilder";
 import { SetDefaultRegionService } from "~/v3/services/setDefaultRegion.server";
 
-export const RegionsOptions = z.object({
-  search: z.string().optional(),
-  page: z.preprocess((val) => Number(val), z.number()).optional(),
-});
-
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { projectParam } = ProjectParamSchema.parse(params);
