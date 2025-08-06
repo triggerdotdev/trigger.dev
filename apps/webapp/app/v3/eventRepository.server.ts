@@ -2,9 +2,14 @@ import { Attributes, AttributeValue, Link, trace, TraceFlags, Tracer } from "@op
 import { RandomIdGenerator } from "@opentelemetry/sdk-trace-base";
 import { SemanticResourceAttributes } from "@opentelemetry/semantic-conventions";
 import {
+  correctErrorStackTrace,
+  createPacketAttributesAsJson,
   ExceptionEventProperties,
   ExceptionSpanEvent,
+  flattenAttributes,
+  isExceptionSpanEvent,
   NULL_SENTINEL,
+  omit,
   PRIMARY_VARIANT,
   SemanticInternalAttributes,
   SpanEvent,
@@ -13,28 +18,24 @@ import {
   TaskEventEnvironment,
   TaskEventStyle,
   TaskRunError,
-  correctErrorStackTrace,
-  createPacketAttributesAsJson,
-  flattenAttributes,
-  isExceptionSpanEvent,
-  omit,
   unflattenAttributes,
 } from "@trigger.dev/core/v3";
+import { parseTraceparent, serializeTraceparent } from "@trigger.dev/core/v3/isomorphic";
 import { Prisma, TaskEvent, TaskEventKind, TaskEventStatus } from "@trigger.dev/database";
+import { nanoid } from "nanoid";
 import { createHash } from "node:crypto";
 import { EventEmitter } from "node:stream";
 import { Gauge } from "prom-client";
-import { $replica, PrismaClient, PrismaReplicaClient, prisma } from "~/db.server";
+import { $replica, prisma, PrismaClient, PrismaReplicaClient } from "~/db.server";
 import { env } from "~/env.server";
 import { metricsRegister } from "~/metrics.server";
+import { createRedisClient, RedisClient, RedisWithClusterOptions } from "~/redis.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 import { DynamicFlushScheduler } from "./dynamicFlushScheduler.server";
-import { startActiveSpan } from "./tracer.server";
-import { createRedisClient, RedisClient, RedisWithClusterOptions } from "~/redis.server";
-import { startSpan } from "./tracing.server";
-import { nanoid } from "nanoid";
 import { TaskEventStore, TaskEventStoreTable } from "./taskEventStore.server";
+import { startActiveSpan } from "./tracer.server";
+import { startSpan } from "./tracing.server";
 
 const MAX_FLUSH_DEPTH = 5;
 
@@ -80,7 +81,7 @@ export type SetAttribute<T extends TraceAttributes> = (key: keyof T, value: T[ke
 
 export type TraceEventOptions = {
   kind?: CreatableEventKind;
-  context?: Record<string, string | undefined>;
+  context?: Record<string, unknown>;
   spanParentAsLink?: boolean;
   parentAsLinkType?: "trigger" | "replay";
   spanIdSeed?: string;
@@ -932,7 +933,7 @@ export class EventRepository {
       traceId,
       spanId,
       parentId,
-      tracestate,
+      tracestate: typeof tracestate === "string" ? tracestate : undefined,
       message: message,
       serviceName: "api server",
       serviceNamespace: "trigger.dev",
@@ -989,6 +990,11 @@ export class EventRepository {
   ): Promise<TResult> {
     const propagatedContext = extractContextFromCarrier(options.context ?? {});
 
+    logger.debug("[otelContext]", {
+      propagatedContext,
+      options,
+    });
+
     const start = process.hrtime.bigint();
     const startTime = options.startTime ?? getNowInNanoseconds();
 
@@ -1002,7 +1008,8 @@ export class EventRepository {
       : this.generateSpanId();
 
     const traceContext = {
-      traceparent: `00-${traceId}-${spanId}-01`,
+      ...options.context,
+      traceparent: serializeTraceparent(traceId, spanId),
     };
 
     const links: Link[] =
@@ -1087,7 +1094,7 @@ export class EventRepository {
       traceId,
       spanId,
       parentId,
-      tracestate,
+      tracestate: typeof tracestate === "string" ? tracestate : undefined,
       duration: options.incomplete ? 0 : duration,
       isPartial: failedWithError ? false : options.incomplete,
       isError: !!failedWithError,
@@ -1486,34 +1493,19 @@ function excludePartialEventsWithCorrespondingFullEvent(batch: CreatableEvent[])
   );
 }
 
-export function extractContextFromCarrier(carrier: Record<string, string | undefined>) {
+export function extractContextFromCarrier(carrier: Record<string, unknown>) {
   const traceparent = carrier["traceparent"];
   const tracestate = carrier["tracestate"];
 
+  if (typeof traceparent !== "string") {
+    return undefined;
+  }
+
   return {
+    ...carrier,
     traceparent: parseTraceparent(traceparent),
     tracestate,
   };
-}
-
-function parseTraceparent(traceparent?: string): { traceId: string; spanId: string } | undefined {
-  if (!traceparent) {
-    return undefined;
-  }
-
-  const parts = traceparent.split("-");
-
-  if (parts.length !== 4) {
-    return undefined;
-  }
-
-  const [version, traceId, spanId, flags] = parts;
-
-  if (version !== "00") {
-    return undefined;
-  }
-
-  return { traceId, spanId };
 }
 
 function prepareEvent(event: QueriedEvent): PreparedEvent {

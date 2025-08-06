@@ -296,3 +296,16 @@ export const RunChainState = z.object({
 });
 
 export type RunChainState = z.infer<typeof RunChainState>;
+
+export const TriggerTraceContext = z.object({
+  traceparent: z.string().optional(),
+  tracestate: z.string().optional(),
+  external: z
+    .object({
+      traceparent: z.string().optional(),
+      tracestate: z.string().optional(),
+    })
+    .optional(),
+});
+
+export type TriggerTraceContext = z.infer<typeof TriggerTraceContext>;
