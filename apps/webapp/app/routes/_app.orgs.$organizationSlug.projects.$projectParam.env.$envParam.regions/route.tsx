@@ -1,4 +1,4 @@
-import { ArrowRightIcon, ChatBubbleLeftEllipsisIcon } from "@heroicons/react/20/solid";
+import { ArrowRightIcon, ChatBubbleLeftEllipsisIcon, MapPinIcon } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
@@ -235,24 +235,27 @@ export default function Page() {
                         );
                       })
                     )}
-                    <TableRow>
+                    <TableRow className="h-[3.125rem]">
                       <TableCell colSpan={4}>
                         <Paragraph variant="extra-small">Suggest a new region</Paragraph>
                       </TableCell>
-                      <TableCell alignment="right">
-                        <Feedback
-                          button={
-                            <Button
-                              variant="tertiary/small"
-                              LeadingIcon={ChatBubbleLeftEllipsisIcon}
-                              leadingIconClassName="text-indigo-500"
-                            >
-                              Suggest a region…
-                            </Button>
-                          }
-                          defaultValue="region"
-                        />
-                      </TableCell>
+                      <TableCellMenu
+                        alignment="right"
+                        visibleButtons={
+                          <Feedback
+                            button={
+                              <Button
+                                variant="secondary/small"
+                                LeadingIcon={ChatBubbleLeftEllipsisIcon}
+                                leadingIconClassName="text-indigo-500"
+                              >
+                                Suggest a region…
+                              </Button>
+                            }
+                            defaultValue="region"
+                          />
+                        }
+                      />
                     </TableRow>
                   </TableBody>
                 </Table>
@@ -278,7 +281,15 @@ function SetDefaultDialog({
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button variant="secondary/small">Set as default…</Button>
+        <Button
+          variant="secondary/small"
+          LeadingIcon={MapPinIcon}
+          leadingIconClassName="text-blue-500"
+          iconSpacing="gap-2"
+          className="pl-2"
+        >
+          Set as default…
+        </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
