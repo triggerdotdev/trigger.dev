@@ -31,7 +31,7 @@
     }
   },
   "scripts": {
-    "clean": "rimraf dist .tshy .tshy-build .turbo",
+    "clean": "rimraf dist",
     "build": "pnpm run clean && pnpm run build:tshy && pnpm run update-version",
     "build:tshy": "tshy",
     "dev": "tshy --watch",
