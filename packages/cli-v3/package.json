@@ -135,7 +135,7 @@
     "tinyglobby": "^0.2.10",
     "ws": "^8.18.0",
     "xdg-app-paths": "^8.3.0",
-    "zod": "3.23.8",
+    "zod": "3.25.76",
     "zod-validation-error": "^1.5.0"
   },
   "engines": {
