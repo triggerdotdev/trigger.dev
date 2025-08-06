@@ -1273,7 +1273,7 @@ importers:
         specifier: 0.0.1-cli.2.80.0
         version: 0.0.1-cli.2.80.0
       '@modelcontextprotocol/sdk':
-        specifier: ^1.6.1
+        specifier: ^1.17.0
         version: 1.17.1(supports-color@10.0.0)
       '@opentelemetry/api':
         specifier: 1.9.0
@@ -23649,6 +23649,7 @@ packages:
       path-key: 3.1.1
       shebang-command: 2.0.0
       which: 2.0.2
+    dev: false
 
   /crypto-js@4.1.1:
     resolution: {integrity: sha512-o2JlM7ydqd3Qk9CA0L4NL6mTzU2sdx96a+oOfPu8Mkl/PK51vSyoi8/rQ8NknZtk44vq15lmhAj9CIAGwgeWKw==}
