@@ -192,9 +192,8 @@ export async function initializeSchemaConverters(): Promise<void> {
     let module;
     try {
       module = await import("effect");
-    } catch {
-      module = await import("@effect/schema");
-    }
+    } catch {}
+
     if (module?.JSONSchema) {
       // @ts-ignore
       globalThis.__effectJsonSchema = { JSONSchema: module.JSONSchema };

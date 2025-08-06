@@ -31,8 +31,8 @@
     }
   },
   "scripts": {
-    "clean": "rimraf dist",
-    "build": "npm run clean && npm run build:tshy",
+    "clean": "rimraf dist .tshy .tshy-build .turbo",
+    "build": "pnpm run clean && pnpm run build:tshy && pnpm run update-version",
     "build:tshy": "tshy",
     "dev": "tshy --watch",
     "typecheck": "tsc -p tsconfig.src.json --noEmit",
@@ -81,7 +81,7 @@
     "superstruct": {
       "optional": true
     },
-    "typebox": {
+    "@sinclair/typebox": {
       "optional": true
     },
     "valibot": {

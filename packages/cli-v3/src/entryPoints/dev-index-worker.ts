@@ -199,8 +199,12 @@ async function convertSchemasToJsonSchemas(tasks: TaskManifest[]): Promise<TaskM
     const schema = resourceCatalog.getTaskSchema(task.id);
 
     if (schema) {
-      const result = schemaToJsonSchema(schema);
-      return { ...task, payloadSchema: result?.jsonSchema };
+      try {
+        const result = schemaToJsonSchema(schema);
+        return { ...task, payloadSchema: result?.jsonSchema };
+      } catch {
+        return task;
+      }
     }
 
     return task;

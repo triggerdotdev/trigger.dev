@@ -1,6 +1,6 @@
 {
   "extends": "./tsconfig.json",
-  "include": ["./test/**/*.ts"],
+  "include": ["./tests/**/*.ts"],
   "references": [{ "path": "./tsconfig.src.json" }],
   "compilerOptions": {
     "isolatedDeclarations": false,

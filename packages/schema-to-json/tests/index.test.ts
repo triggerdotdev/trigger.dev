@@ -10,7 +10,7 @@ import {
   detectSchemaType,
   initializeSchemaConverters,
   areConvertersInitialized,
-} from "../index.js";
+} from "../src/index.js";
 
 // Initialize converters before running tests
 beforeAll(async () => {

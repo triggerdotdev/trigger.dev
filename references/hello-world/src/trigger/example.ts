@@ -14,7 +14,7 @@ export const helloWorldTask = task({
     logger.info("Hello, world from the onStart hook", { payload, init });
   },
   run: async (payload: any, { ctx }) => {
-    logger.info("Hello, world from the init", { ctx, payload });
+    logger.info("Hello, world froms the init", { ctx, payload });
     logger.info("env vars", {
       env: process.env,
     });
