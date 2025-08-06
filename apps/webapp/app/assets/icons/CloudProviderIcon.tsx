@@ -37,51 +37,38 @@ export function AWS({ className }: { className?: string }) {
 export function DigitalOcean({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 240 240" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <g clipPath="url(#clip0_18901_83649)">
-        <g clipPath="url(#clip1_18901_83649)">
-          <mask
-            id="mask0_18901_83649"
-            style={{ maskType: "luminance" }}
-            maskUnits="userSpaceOnUse"
-            x="-656"
-            y="-453"
-            width="3336"
-            height="4318"
-          >
-            <path d="M-655.431 -452.042H2679.87V3864.37H-655.431V-452.042Z" fill="white" />
-          </mask>
-          <g mask="url(#mask0_18901_83649)">
-            <path
-              d="M120.002 240V193.531C169.326 193.531 207.45 144.708 188.627 92.86C181.649 73.6591 166.335 58.3369 147.127 51.367C95.281 32.5514 46.4844 70.6768 46.4761 119.986L46.4677 120.003H0C0 41.423 75.9132 -19.7568 158.243 5.95328C194.223 17.1789 222.814 45.7709 234.047 81.7517C259.757 164.093 198.57 240 120.002 240Z"
-              fill="#0069FF"
-            />
-            <path
-              fillRule="evenodd"
-              clipRule="evenodd"
-              d="M120.108 193.646H73.7744V147.319L73.7828 147.311H120.1L120.108 147.319V193.646Z"
-              fill="#0069FF"
-            />
-            <path
-              fillRule="evenodd"
-              clipRule="evenodd"
-              d="M73.7644 229.245H38.1701L38.1617 229.237V193.642H73.7727V229.237L73.7644 229.245Z"
-              fill="#0069FF"
-            />
-            <path
-              fillRule="evenodd"
-              clipRule="evenodd"
-              d="M38.1903 193.646H8.3511L8.33435 193.638V163.814L8.3511 163.789H38.1735L38.1903 163.798V193.646Z"
-              fill="#0069FF"
-            />
-          </g>
-        </g>
+      <g clipPath="url(#clip0_18907_83670)">
+        <path
+          d="M120.001 218.82V180.552C160.62 180.552 192.015 140.347 176.514 97.6503C170.768 81.8384 158.157 69.2205 142.339 63.4808C99.6439 47.9862 59.4601 79.3824 59.4532 119.988L59.4463 120.002H21.1802C21.1802 55.292 83.6945 4.91045 151.493 26.0827C181.122 35.327 204.667 58.8724 213.918 88.5025C235.089 156.31 184.703 218.82 120.001 218.82Z"
+          fill="#0069FF"
+        />
+        <path
+          fillRule="evenodd"
+          clipRule="evenodd"
+          d="M120.089 180.647H81.9333V142.497L81.9402 142.49H120.082L120.089 142.497V180.647Z"
+          fill="#0069FF"
+        />
+        <path
+          fillRule="evenodd"
+          clipRule="evenodd"
+          d="M81.925 209.964H52.6132L52.6063 209.957V180.644H81.9319V209.957L81.925 209.964Z"
+          fill="#0069FF"
+        />
+        <path
+          fillRule="evenodd"
+          clipRule="evenodd"
+          d="M52.6298 180.647H28.0573L28.0435 180.64V156.081L28.0573 156.06H52.616L52.6298 156.067V180.647Z"
+          fill="#0069FF"
+        />
       </g>
       <defs>
-        <clipPath id="clip0_18901_83649">
-          <rect width="240" height="240" fill="white" />
-        </clipPath>
-        <clipPath id="clip1_18901_83649">
-          <rect width="240" height="240" fill="white" />
+        <clipPath id="clip0_18907_83670">
+          <rect
+            width="197.64"
+            height="197.64"
+            fill="white"
+            transform="translate(21.1802 21.1802)"
+          />
         </clipPath>
       </defs>
     </svg>
