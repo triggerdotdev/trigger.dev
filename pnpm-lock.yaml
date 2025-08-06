@@ -1810,6 +1810,9 @@ importers:
         specifier: ^3.24.5
         version: 3.24.5(zod@3.25.76)
     devDependencies:
+      '@arethetypeswrong/cli':
+        specifier: ^0.15.4
+        version: 0.15.4
       '@sinclair/typebox':
         specifier: ^0.34.3
         version: 0.34.38
