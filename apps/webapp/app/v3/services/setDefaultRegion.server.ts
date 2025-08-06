@@ -1,7 +1,15 @@
 import { BaseService, ServiceValidationError } from "./baseService.server";
 
 export class SetDefaultRegionService extends BaseService {
-  public async call({ projectId, regionId }: { projectId: string; regionId: string }) {
+  public async call({
+    projectId,
+    regionId,
+    isAdmin = false,
+  }: {
+    projectId: string;
+    regionId: string;
+    isAdmin?: boolean;
+  }) {
     const workerGroup = await this._prisma.workerInstanceGroup.findFirst({
       where: {
         id: regionId,
@@ -23,12 +31,14 @@ export class SetDefaultRegionService extends BaseService {
     }
 
     // If their project is restricted, only allow them to set default regions that are allowed
-    if (project.allowedMasterQueues.length > 0) {
-      if (!project.allowedMasterQueues.includes(workerGroup.masterQueue)) {
-        throw new ServiceValidationError("You're not allowed to set this region as default");
+    if (!isAdmin) {
+      if (project.allowedMasterQueues.length > 0) {
+        if (!project.allowedMasterQueues.includes(workerGroup.masterQueue)) {
+          throw new ServiceValidationError("You're not allowed to set this region as default");
+        }
+      } else if (workerGroup.hidden) {
+        throw new ServiceValidationError("This region is not available to you");
       }
-    } else if (workerGroup.hidden) {
-      throw new ServiceValidationError("This region is not available to you");
     }
 
     await this._prisma.project.update({

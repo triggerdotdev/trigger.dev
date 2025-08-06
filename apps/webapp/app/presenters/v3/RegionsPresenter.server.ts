@@ -12,10 +12,19 @@ export type Region = {
   location?: string;
   staticIPs?: string | null;
   isDefault: boolean;
+  isHidden: boolean;
 };
 
 export class RegionsPresenter extends BasePresenter {
-  public async call({ userId, projectSlug }: { userId: User["id"]; projectSlug: Project["slug"] }) {
+  public async call({
+    userId,
+    projectSlug,
+    isAdmin = false,
+  }: {
+    userId: User["id"];
+    projectSlug: Project["slug"];
+    isAdmin?: boolean;
+  }) {
     const project = await this._replica.project.findFirst({
       select: {
         id: true,
@@ -56,16 +65,18 @@ export class RegionsPresenter extends BasePresenter {
         cloudProvider: true,
         location: true,
         staticIPs: true,
+        hidden: true,
       },
-      where:
-        // Hide hidden unless they're allowed to use them
+      where: isAdmin
+        ? undefined
+        : // Hide hidden unless they're allowed to use them
         project.allowedMasterQueues.length > 0
-          ? {
-              masterQueue: { in: project.allowedMasterQueues },
-            }
-          : {
-              hidden: false,
-            },
+        ? {
+            masterQueue: { in: project.allowedMasterQueues },
+          }
+        : {
+            hidden: false,
+          },
       orderBy: {
         name: "asc",
       },
@@ -79,6 +90,7 @@ export class RegionsPresenter extends BasePresenter {
       location: region.location ?? undefined,
       staticIPs: region.staticIPs ?? undefined,
       isDefault: region.id === defaultWorkerInstanceGroupId,
+      isHidden: region.hidden,
     }));
 
     if (project.defaultWorkerGroupId) {
@@ -90,6 +102,7 @@ export class RegionsPresenter extends BasePresenter {
           cloudProvider: true,
           location: true,
           staticIPs: true,
+          hidden: true,
         },
         where: { id: project.defaultWorkerGroupId },
       });
@@ -109,6 +122,7 @@ export class RegionsPresenter extends BasePresenter {
           location: defaultWorkerGroup.location ?? undefined,
           staticIPs: defaultWorkerGroup.staticIPs ?? undefined,
           isDefault: true,
+          isHidden: defaultWorkerGroup.hidden,
         });
       }
     }

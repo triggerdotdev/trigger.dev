@@ -46,10 +46,11 @@ import {
 } from "~/components/primitives/Table";
 import { TextLink } from "~/components/primitives/TextLink";
 import { useOrganization } from "~/hooks/useOrganizations";
+import { useHasAdminAccess } from "~/hooks/useUser";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { type Region, RegionsPresenter } from "~/presenters/v3/RegionsPresenter.server";
-import { requireUserId } from "~/services/session.server";
+import { requireUser, requireUserId } from "~/services/session.server";
 import {
   docsPath,
   EnvironmentParamSchema,
@@ -60,14 +61,15 @@ import {
 import { SetDefaultRegionService } from "~/v3/services/setDefaultRegion.server";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const userId = await requireUserId(request);
+  const user = await requireUser(request);
   const { projectParam } = ProjectParamSchema.parse(params);
 
   const presenter = new RegionsPresenter();
   const [error, result] = await tryCatch(
     presenter.call({
-      userId,
+      userId: user.id,
       projectSlug: projectParam,
+      isAdmin: user.admin || user.isImpersonating,
     })
   );
 
@@ -86,10 +88,10 @@ const FormSchema = z.object({
 });
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
-  const userId = await requireUserId(request);
+  const user = await requireUser(request);
   const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
 
-  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+  const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
 
   const redirectPath = regionsPath(
     { slug: organizationSlug },
@@ -113,6 +115,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     service.call({
       projectId: project.id,
       regionId: parsedFormData.data.regionId,
+      isAdmin: user.admin || user.isImpersonating,
     })
   );
 
@@ -126,6 +129,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 export default function Page() {
   const { regions, isPaying } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
+  const isAdmin = useHasAdminAccess();
 
   return (
     <PageContainer>
@@ -162,6 +166,7 @@ export default function Page() {
                       <TableHeaderCell>Cloud Provider</TableHeaderCell>
                       <TableHeaderCell>Location</TableHeaderCell>
                       <TableHeaderCell>Static IPs</TableHeaderCell>
+                      {isAdmin && <TableHeaderCell>Admin</TableHeaderCell>}
                       <TableHeaderCell
                         alignment="right"
                         tooltip={
@@ -240,6 +245,9 @@ export default function Page() {
                                 "Not available"
                               )}
                             </TableCell>
+                            {isAdmin && (
+                              <TableCell>{region.isHidden ? "Hidden" : "Visible"}</TableCell>
+                            )}
                             {region.isDefault ? (
                               <TableCell alignment="right">
                                 <Badge variant="small" className="inline-grid">
@@ -259,8 +267,9 @@ export default function Page() {
                         );
                       })
                     )}
+
                     <TableRow className="h-[3.125rem]">
-                      <TableCell colSpan={4}>
+                      <TableCell colSpan={isAdmin ? 5 : 4}>
                         <Paragraph variant="extra-small">Suggest a new region</Paragraph>
                       </TableCell>
                       <TableCellMenu
