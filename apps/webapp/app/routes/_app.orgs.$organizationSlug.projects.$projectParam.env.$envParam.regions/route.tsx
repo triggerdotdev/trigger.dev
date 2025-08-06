@@ -1,5 +1,7 @@
 import { BookOpenIcon } from "@heroicons/react/24/solid";
-import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { Form } from "@remix-run/react";
+import { ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { tryCatch } from "@trigger.dev/core";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { CloudProviderIcon } from "~/assets/icons/CloudProviderIcon";
@@ -10,7 +12,7 @@ import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { InlineCode } from "~/components/code/InlineCode";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
-import { LinkButton } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
@@ -27,12 +29,21 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
+import { TextLink } from "~/components/primitives/TextLink";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
+import { findProjectBySlug } from "~/models/project.server";
 import { RegionsPresenter } from "~/presenters/v3/RegionsPresenter.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
-import { docsPath, ProjectParamSchema } from "~/utils/pathBuilder";
+import {
+  docsPath,
+  EnvironmentParamSchema,
+  ProjectParamSchema,
+  regionsPath,
+} from "~/utils/pathBuilder";
+import { SetDefaultRegionService } from "~/v3/services/setDefaultRegion.server";
 
 export const RegionsOptions = z.object({
   search: z.string().optional(),
@@ -43,31 +54,68 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { projectParam } = ProjectParamSchema.parse(params);
 
-  const searchParams = new URL(request.url).searchParams;
-  const parsedSearchParams = RegionsOptions.safeParse(Object.fromEntries(searchParams));
-  const options = parsedSearchParams.success ? parsedSearchParams.data : {};
-
-  try {
-    const presenter = new RegionsPresenter();
-    const result = await presenter.call({
+  const presenter = new RegionsPresenter();
+  const [error, result] = await tryCatch(
+    presenter.call({
       userId,
       projectSlug: projectParam,
-    });
+    })
+  );
 
-    return typedjson(result);
-  } catch (error) {
-    logger.error("Error loading regions page", { error });
+  if (error) {
     throw new Response(undefined, {
       status: 400,
-      statusText: "Something went wrong, if this problem persists please contact support.",
+      statusText: error.message,
     });
   }
+
+  return typedjson(result);
+};
+
+const FormSchema = z.object({
+  regionId: z.string(),
+});
+
+export const action = async ({ request, params }: ActionFunctionArgs) => {
+  const userId = await requireUserId(request);
+  const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
+
+  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+
+  const redirectPath = regionsPath(
+    { slug: organizationSlug },
+    { slug: projectParam },
+    { slug: envParam }
+  );
+
+  if (!project) {
+    throw redirectWithErrorMessage(redirectPath, request, "Project not found");
+  }
+
+  const formData = await request.formData();
+  const parsedFormData = FormSchema.safeParse(Object.fromEntries(formData));
+
+  if (!parsedFormData.success) {
+    throw redirectWithErrorMessage(redirectPath, request, "No region specified");
+  }
+
+  const service = new SetDefaultRegionService();
+  const [error, result] = await tryCatch(
+    service.call({
+      projectId: project.id,
+      regionId: parsedFormData.data.regionId,
+    })
+  );
+
+  if (error) {
+    return redirectWithErrorMessage(redirectPath, request, error.message);
+  }
+
+  return redirectWithSuccessMessage(redirectPath, request, `Set ${result.name} as default`);
 };
 
 export default function Page() {
   const { regions } = useTypedLoaderData<typeof loader>();
-  const organization = useOrganization();
-  const project = useProject();
 
   return (
     <PageContainer>
@@ -112,11 +160,20 @@ export default function Page() {
                       <TableHeaderCell>Cloud Provider</TableHeaderCell>
                       <TableHeaderCell>Location</TableHeaderCell>
                       <TableHeaderCell>Static IPs</TableHeaderCell>
-                      <TableHeaderCell>
-                        <span className="sr-only">Is default?</span>
-                      </TableHeaderCell>
-                      <TableHeaderCell>
-                        <span className="sr-only">Actions</span>
+                      <TableHeaderCell
+                        alignment="right"
+                        tooltip={
+                          <Paragraph variant="small">
+                            When you trigger a run it will execute in your default region, unless
+                            you{" "}
+                            <TextLink to={docsPath("triggering#region")}>
+                              specify a region when triggering
+                            </TextLink>
+                            .
+                          </Paragraph>
+                        }
+                      >
+                        Default region
                       </TableHeaderCell>
                     </TableRow>
                   </TableHeader>
@@ -163,23 +220,29 @@ export default function Page() {
                                   variant={"secondary/small"}
                                 />
                               ) : (
-                                "–"
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              {region.isDefault ? (
-                                <Badge variant="outline-rounded" className="inline-grid">
-                                  Default
-                                </Badge>
-                              ) : (
-                                "–"
+                                "Not available"
                               )}
                             </TableCell>
                             <TableCellMenu
                               className="pl-32"
                               isSticky
-                              popoverContent={
-                                <PopoverMenuItem to="#" title="View region details" />
+                              visibleButtons={
+                                region.isDefault ? (
+                                  <Badge variant="outline-rounded" className="inline-grid">
+                                    Default
+                                  </Badge>
+                                ) : (
+                                  <Form method="post">
+                                    <Button
+                                      variant="secondary/small"
+                                      type="submit"
+                                      name="regionId"
+                                      value={region.id}
+                                    >
+                                      Set as default...
+                                    </Button>
+                                  </Form>
+                                )
                               }
                             />
                           </TableRow>

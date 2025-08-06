@@ -107,8 +107,21 @@ export class RegionsPresenter extends BasePresenter {
       }
     }
 
+    // Default first
+    const sorted = regions.sort((a, b) => {
+      if (a.isDefault) return -1;
+      if (b.isDefault) return 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    // Remove later duplicates
+    const unique = sorted.filter((region, index, self) => {
+      const firstIndex = self.findIndex((t) => t.id === region.id);
+      return index === firstIndex;
+    });
+
     return {
-      regions,
+      regions: unique.sort((a, b) => a.name.localeCompare(b.name)),
     };
   }
 }
