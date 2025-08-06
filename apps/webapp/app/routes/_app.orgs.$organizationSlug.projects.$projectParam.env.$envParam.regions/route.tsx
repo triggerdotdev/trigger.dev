@@ -234,7 +234,7 @@ export default function Page() {
                               isSticky
                               visibleButtons={
                                 region.isDefault ? (
-                                  <Badge variant="outline-rounded" className="inline-grid">
+                                  <Badge variant="small" className="inline-grid">
                                     Default
                                   </Badge>
                                 ) : (
