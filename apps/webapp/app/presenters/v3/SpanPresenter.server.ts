@@ -1,11 +1,11 @@
 import {
-  MachinePreset,
+  type MachinePreset,
   prettyPrintPacket,
   SemanticInternalAttributes,
-  TaskRunContext,
+  type TaskRunContext,
   TaskRunError,
   TriggerTraceContext,
-  V3TaskRunContext,
+  type V3TaskRunContext,
 } from "@trigger.dev/core/v3";
 import { AttemptId, getMaxDuration, parseTraceparent } from "@trigger.dev/core/v3/isomorphic";
 import { RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
@@ -176,6 +176,22 @@ export class SpanPresenter extends BasePresenter {
 
     const externalTraceId = this.#getExternalTraceId(run.traceContext);
 
+    let region: { name: string; location: string | null } | null = null;
+
+    if (run.runtimeEnvironment.type !== "DEVELOPMENT" && run.engine !== "V1") {
+      const workerGroup = await this._replica.workerInstanceGroup.findFirst({
+        select: {
+          name: true,
+          location: true,
+        },
+        where: {
+          masterQueue: run.workerQueue,
+        },
+      });
+
+      region = workerGroup ?? null;
+    }
+
     return {
       id: run.id,
       friendlyId: run.friendlyId,
@@ -233,6 +249,7 @@ export class SpanPresenter extends BasePresenter {
       maxDurationInSeconds: getMaxDuration(run.maxDurationInSeconds),
       batch: run.batch ? { friendlyId: run.batch.friendlyId } : undefined,
       engine: run.engine,
+      region,
       workerQueue: run.workerQueue,
       spanId: run.spanId,
       isCached: !!span.originalRun,
