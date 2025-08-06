@@ -1,11 +1,11 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { FileLogger } from "./logger.js";
-import { LoginResult } from "../utilities/session.js";
 
 export type McpContextOptions = {
-  login: LoginResult;
   projectRef?: string;
   fileLogger?: FileLogger;
+  apiUrl?: string;
+  profile?: string;
 };
 
 export class McpContext {
