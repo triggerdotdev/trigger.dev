@@ -201,10 +201,7 @@ export default function Page() {
                             <TableCell>
                               <span className="flex items-center gap-2">
                                 {region.location ? (
-                                  <FlagIcon
-                                    region={region.location}
-                                    className="aspect-auto h-3 w-4"
-                                  />
+                                  <FlagIcon region={region.location} className="size-5" />
                                 ) : null}
                                 {region.description ?? "–"}
                               </span>
