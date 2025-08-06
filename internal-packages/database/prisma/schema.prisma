@@ -335,6 +335,9 @@ model Project {
   defaultWorkerGroup   WorkerInstanceGroup? @relation("ProjectDefaultWorkerGroup", fields: [defaultWorkerGroupId], references: [id])
   defaultWorkerGroupId String?
 
+  /// The master queues they are allowed to use (impacts what they can set as default and trigger runs with)
+  allowedMasterQueues String[] @default([])
+
   environments           RuntimeEnvironment[]
   backgroundWorkers      BackgroundWorker[]
   backgroundWorkerTasks  BackgroundWorkerTask[]

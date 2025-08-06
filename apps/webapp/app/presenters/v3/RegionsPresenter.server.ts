@@ -22,6 +22,7 @@ export class RegionsPresenter extends BasePresenter {
         id: true,
         organizationId: true,
         defaultWorkerGroupId: true,
+        allowedMasterQueues: true,
       },
       where: {
         slug: projectSlug,
@@ -57,9 +58,15 @@ export class RegionsPresenter extends BasePresenter {
         location: true,
         staticIPs: true,
       },
-      where: {
-        hidden: false,
-      },
+      where:
+        // Hide hidden unless they're allowed to use them
+        project.allowedMasterQueues.length > 0
+          ? {
+              masterQueue: { in: project.allowedMasterQueues },
+            }
+          : {
+              hidden: false,
+            },
       orderBy: {
         name: "asc",
       },
