@@ -142,11 +142,7 @@ export function schemaToJsonSchema(
   }
 
   // Check if it's an Effect schema
-  if (
-    parser._tag === "Schema" ||
-    parser._tag === "SchemaClass" ||
-    typeof parser.ast === "function"
-  ) {
+  if (typeof parser.ast === "object" && typeof parser.ast._tag === "string") {
     try {
       // @ts-ignore
       if (typeof globalThis.__effectJsonSchema !== "undefined") {

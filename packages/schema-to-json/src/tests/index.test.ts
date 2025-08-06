@@ -1,9 +1,8 @@
-import { describe, it, expect, beforeAll } from "vitest";
 import { z } from "zod";
 import * as y from "yup";
 // @ts-ignore
 import { type } from "arktype";
-import { Schema } from "@effect/schema";
+import { Schema } from "effect";
 import { Type } from "@sinclair/typebox";
 import {
   schemaToJsonSchema,
