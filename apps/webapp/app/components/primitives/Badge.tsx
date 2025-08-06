@@ -7,7 +7,7 @@ const variants = {
   "extra-small":
     "grid place-items-center border border-charcoal-650 rounded-sm px-1 h-4 text-xxs bg-background-bright text-blue-500 whitespace-nowrap",
   small:
-    "grid place-items-center border border-charcoal-650 rounded-sm px-1.5 h-5 text-xs bg-background-bright text-blue-500 whitespace-nowrap",
+    "grid place-items-center border border-charcoal-650 rounded-sm px-1 h-5 text-xs bg-background-bright text-blue-500 whitespace-nowrap",
   "outline-rounded":
     "grid place-items-center rounded-full px-1 h-4 tracking-wider text-xxs border border-blue-500 text-blue-500 uppercase whitespace-nowrap",
   rounded:

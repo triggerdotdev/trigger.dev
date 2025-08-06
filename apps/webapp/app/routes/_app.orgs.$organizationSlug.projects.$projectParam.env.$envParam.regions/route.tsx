@@ -229,19 +229,21 @@ export default function Page() {
                                 "Not available"
                               )}
                             </TableCell>
-                            <TableCellMenu
-                              className="pl-32"
-                              isSticky
-                              visibleButtons={
-                                region.isDefault ? (
-                                  <Badge variant="small" className="inline-grid">
-                                    Default
-                                  </Badge>
-                                ) : (
+                            {region.isDefault ? (
+                              <TableCell alignment="right">
+                                <Badge variant="small" className="inline-grid">
+                                  Default
+                                </Badge>
+                              </TableCell>
+                            ) : (
+                              <TableCellMenu
+                                className="pl-32"
+                                isSticky
+                                visibleButtons={
                                   <SetDefaultDialog regions={regions} newDefaultRegion={region} />
-                                )
-                              }
-                            />
+                                }
+                              />
+                            )}
                           </TableRow>
                         );
                       })
@@ -252,6 +254,7 @@ export default function Page() {
                       </TableCell>
                       <TableCellMenu
                         alignment="right"
+                        isSticky
                         visibleButtons={
                           <Feedback
                             button={
@@ -308,7 +311,7 @@ function SetDefaultDialog({
         </DialogHeader>
         <DialogDescription>
           <Paragraph>
-            Are you sure you want to set {newDefaultRegion.name} as your default region?
+            Are you sure you want to set {newDefaultRegion.name} as your new default region?
           </Paragraph>
 
           <div className="my-4 flex">
