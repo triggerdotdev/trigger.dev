@@ -77,7 +77,8 @@ export class CreateBackgroundWorkerService extends BaseService {
           version: nextVersion,
           runtimeEnvironmentId: environment.id,
           projectId: project.id,
-          metadata: body.metadata as any,
+          // body.metadata has an index signature that Prisma doesn't like (from the JSONSchema type) so we are safe to just cast it
+          metadata: body.metadata as Prisma.InputJsonValue,
           contentHash: body.metadata.contentHash,
           cliVersion: body.metadata.cliPackageVersion,
           sdkVersion: body.metadata.packageVersion,
