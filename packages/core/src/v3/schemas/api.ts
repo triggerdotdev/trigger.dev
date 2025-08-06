@@ -51,6 +51,23 @@ export const GetProjectsResponseBody = z.array(GetProjectResponseBody);
 
 export type GetProjectsResponseBody = z.infer<typeof GetProjectsResponseBody>;
 
+export const GetOrgsResponseBody = z.array(
+  z.object({
+    id: z.string(),
+    title: z.string(),
+    slug: z.string(),
+    createdAt: z.coerce.date(),
+  })
+);
+
+export type GetOrgsResponseBody = z.infer<typeof GetOrgsResponseBody>;
+
+export const CreateProjectRequestBody = z.object({
+  name: z.string(),
+});
+
+export type CreateProjectRequestBody = z.infer<typeof CreateProjectRequestBody>;
+
 export const GetProjectEnvResponse = z.object({
   apiKey: z.string(),
   name: z.string(),
