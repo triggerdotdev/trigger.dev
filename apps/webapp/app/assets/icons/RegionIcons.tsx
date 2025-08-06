@@ -198,8 +198,8 @@ export function FlagEurope({ className }: { className?: string }) {
           y2="71.9297"
           gradientUnits="userSpaceOnUse"
         >
-          <stop stop-color="white" stop-opacity="0.7" />
-          <stop offset="1" stop-opacity="0.3" />
+          <stop stopColor="white" stopOpacity="0.7" />
+          <stop offset="1" stopOpacity="0.3" />
         </linearGradient>
         <clipPath id="clip0_18900_83553">
           <rect x="0.09375" width="95.9062" height="71.9297" rx="5.99414" fill="white" />
