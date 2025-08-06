@@ -1,0 +1,1019 @@
+[2025-08-06T14:43:22.556Z][client=unknown version=unknown capabilities=] running mcp command - [
+  {
+    options: {
+      apiUrl: 'http://localhost:3030',
+      logLevel: 'log',
+      skipTelemetry: false,
+      profile: 'default',
+      logFile: '/Users/eric/code/triggerdotdev/trigger.dev/packages/cli-v3/.mcp.log'
+    }
+  }
+]
+[2025-08-06T14:45:33.066Z][client=unknown version=unknown capabilities=] running mcp command - [
+  {
+    options: {
+      apiUrl: 'http://localhost:3030',
+      logLevel: 'log',
+      skipTelemetry: false,
+      profile: 'default',
+      logFile: '/Users/eric/code/triggerdotdev/trigger.dev/packages/cli-v3/.mcp.log'
+    }
+  }
+]
+[2025-08-06T14:45:58.648Z][client=unknown version=unknown capabilities=] running mcp command - [
+  {
+    options: {
+      apiUrl: 'http://localhost:3030',
+      logLevel: 'log',
+      skipTelemetry: false,
+      profile: 'default',
+      logFile: '/Users/eric/code/triggerdotdev/trigger.dev/packages/cli-v3/.mcp.log'
+    }
+  }
+]
+[2025-08-06T14:47:30.623Z][client=unknown version=unknown capabilities=] running mcp command - [
+  {
+    options: {
+      apiUrl: 'http://localhost:3030',
+      logLevel: 'log',
+      skipTelemetry: false,
+      profile: 'default',
+      logFile: '/Users/eric/code/triggerdotdev/trigger.dev/packages/cli-v3/.mcp.log'
+    }
+  }
+]
+[2025-08-06T14:48:19.568Z][client=unknown version=unknown capabilities=] running mcp command - [
+  {
+    options: {
+      apiUrl: 'http://localhost:3030',
+      logLevel: 'log',
+      skipTelemetry: false,
+      profile: 'default',
+      logFile: '.mcp.log'
+    }
+  }
+]
+[2025-08-06T14:48:40.488Z][client=mcp-inspector version=0.16.2 capabilities=sampling,elicitation,roots] calling list_projects - [ { extra: undefined } ]
+[2025-08-06T14:51:02.465Z][client=unknown version=unknown capabilities=] running mcp command - [
+  {
+    options: {
+      apiUrl: 'http://localhost:3030',
+      logLevel: 'log',
+      skipTelemetry: false,
+      profile: 'default',
+      logFile: '.mcp.log'
+    }
+  }
+]
+[2025-08-06T14:51:04.644Z][client=unknown version=unknown capabilities=] running mcp command - [
+  {
+    options: {
+      apiUrl: 'http://localhost:3030',
+      logLevel: 'log',
+      skipTelemetry: false,
+      profile: 'default',
+      logFile: '.mcp.log'
+    }
+  }
+]
+[2025-08-06T14:51:07.328Z][client=mcp-inspector version=0.16.2 capabilities=sampling,elicitation,roots] calling list_projects - [ { extra: undefined } ]
+[2025-08-06T14:54:22.315Z][client=unknown version=unknown capabilities=] running mcp command - [
+  {
+    options: {
+      apiUrl: 'http://localhost:3030',
+      logLevel: 'log',
+      skipTelemetry: false,
+      profile: 'default',
+      logFile: '.mcp.log'
+    }
+  }
+]
+[2025-08-06T14:54:26.974Z][client=mcp-inspector version=0.16.2 capabilities=sampling,elicitation,roots] calling list_projects - [ { extra: undefined } ]
+[2025-08-06T14:54:42.240Z][client=mcp-inspector version=0.16.2 capabilities=sampling,elicitation,roots] list_projects - [
+  {
+    roots: { roots: [] },
+    extra: undefined,
+    auth: {
+      ok: true,
+      profile: 'default',
+      userId: 'cm8zs71op0000dy61xccjp8rz',
+      email: 'eric@trigger.dev',
+      dashboardUrl: 'http://localhost:3030',
+      auth: {
+        accessToken: 'tr_pat_i4te69sn99d6131kf9tfrjjqknegrrod6z4hvarn',
+        apiUrl: 'http://localhost:3030'
+      }
+    }
+  }
+]
+[2025-08-06T14:54:55.277Z][client=mcp-inspector version=0.16.2 capabilities=sampling,elicitation,roots] calling list_projects - [ { extra: undefined } ]
+[2025-08-06T14:54:55.349Z][client=mcp-inspector version=0.16.2 capabilities=sampling,elicitation,roots] list_projects - [
+  {
+    roots: { roots: [] },
+    extra: undefined,
+    auth: {
+      ok: true,
+      profile: 'default',
+      userId: 'cm8zs71op0000dy61xccjp8rz',
+      email: 'eric@trigger.dev',
+      dashboardUrl: 'http://localhost:3030',
+      auth: {
+        accessToken: 'tr_pat_i4te69sn99d6131kf9tfrjjqknegrrod6z4hvarn',
+        apiUrl: 'http://localhost:3030'
+      }
+    }
+  }
+]
+[2025-08-06T14:56:05.206Z][client=unknown version=unknown capabilities=] running mcp command - [
+  {
+    options: {
+      apiUrl: 'http://localhost:3030',
+      logLevel: 'log',
+      skipTelemetry: false,
+      profile: 'default',
+      logFile: '/Users/eric/code/triggerdotdev/trigger.dev/packages/cli-v3/.mcp.log'
+    }
+  }
+]
+[2025-08-06T14:56:48.414Z][client=unknown version=unknown capabilities=] running mcp command - [
+  {
+    options: {
+      apiUrl: 'http://localhost:3030',
+      logLevel: 'log',
+      skipTelemetry: false,
+      profile: 'default',
+      logFile: '/Users/eric/code/triggerdotdev/trigger.dev/packages/cli-v3/.mcp.log'
+    }
+  }
+]
+[2025-08-06T14:57:08.913Z][client=claude version=0.1.0 capabilities=roots] calling list_projects - [ { extra: undefined } ]
+[2025-08-06T15:02:55.893Z][client=unknown version=unknown capabilities=] running mcp command - [
+  {
+    options: {
+      apiUrl: 'http://localhost:3030',
+      logLevel: 'log',
+      skipTelemetry: false,
+      profile: 'default',
+      logFile: '/Users/eric/code/triggerdotdev/trigger.dev/packages/cli-v3/.mcp.log'
+    }
+  }
+]
+[2025-08-06T15:03:06.069Z][client=claude version=0.1.0 capabilities=roots] calling list_projects - [ { extra: undefined } ]
+[2025-08-06T15:03:07.280Z][client=claude version=0.1.0 capabilities=roots] list_projects - [
+  {
+    roots: {
+      roots: [
+        {
+          uri: 'file:///Users/eric/code/triggerdotdev/experiments/claude-code-trigger-mcp-example'
+        }
+      ]
+    },
+    extra: undefined,
+    auth: {
+      ok: true,
+      profile: 'default',
+      userId: 'cm8zs71op0000dy61xccjp8rz',
+      email: 'eric@trigger.dev',
+      dashboardUrl: 'http://localhost:3030',
+      auth: {
+        accessToken: 'tr_pat_i4te69sn99d6131kf9tfrjjqknegrrod6z4hvarn',
+        apiUrl: 'http://localhost:3030'
+      }
+    }
+  }
+]
+[2025-08-06T15:22:09.433Z][client=unknown version=unknown capabilities=] running mcp command - [
+  {
+    options: {
+      apiUrl: 'http://localhost:3030',
+      logLevel: 'log',
+      skipTelemetry: false,
+      profile: 'default',
+      logFile: '/Users/eric/code/triggerdotdev/trigger.dev/packages/cli-v3/.mcp.log'
+    }
+  }
+]
+[2025-08-06T15:22:16.791Z][client=claude version=0.1.0 capabilities=roots] calling list_projects - [ { extra: undefined } ]
+[2025-08-06T15:22:18.023Z][client=claude version=0.1.0 capabilities=roots] list_projects - [
+  {
+    roots: {
+      roots: [
+        {
+          uri: 'file:///Users/eric/code/triggerdotdev/experiments/claude-code-trigger-mcp-example'
+        }
+      ]
+    },
+    extra: undefined,
+    auth: {
+      ok: true,
+      profile: 'default',
+      userId: 'cm8zs71op0000dy61xccjp8rz',
+      email: 'eric@trigger.dev',
+      dashboardUrl: 'http://localhost:3030',
+      auth: {
+        accessToken: 'tr_pat_i4te69sn99d6131kf9tfrjjqknegrrod6z4hvarn',
+        apiUrl: 'http://localhost:3030'
+      }
+    }
+  }
+]
+[2025-08-06T15:22:21.408Z][client=claude version=0.1.0 capabilities=roots] calling list_projects - [ { extra: undefined } ]
+[2025-08-06T15:22:21.437Z][client=claude version=0.1.0 capabilities=roots] list_projects - [
+  {
+    roots: {
+      roots: [
+        {
+          uri: 'file:///Users/eric/code/triggerdotdev/experiments/claude-code-trigger-mcp-example'
+        }
+      ]
+    },
+    extra: undefined,
+    auth: {
+      ok: true,
+      profile: 'default',
+      userId: 'cm8zs71op0000dy61xccjp8rz',
+      email: 'eric@trigger.dev',
+      dashboardUrl: 'http://localhost:3030',
+      auth: {
+        accessToken: 'tr_pat_i4te69sn99d6131kf9tfrjjqknegrrod6z4hvarn',
+        apiUrl: 'http://localhost:3030'
+      }
+    }
+  }
+]
+[2025-08-06T15:24:10.360Z][client=unknown version=unknown capabilities=] running mcp command - [
+  {
+    options: {
+      apiUrl: 'http://localhost:3030',
+      logLevel: 'log',
+      skipTelemetry: false,
+      profile: 'default',
+      logFile: '/Users/eric/code/triggerdotdev/trigger.dev/packages/cli-v3/.mcp.log'
+    }
+  }
+]
+[2025-08-06T15:24:17.824Z][client=claude version=0.1.0 capabilities=roots] calling list_projects - [ { extra: undefined } ]
+[2025-08-06T15:24:17.963Z][client=claude version=0.1.0 capabilities=roots] list_projects - [
+  {
+    roots: {
+      roots: [
+        {
+          uri: 'file:///Users/eric/code/triggerdotdev/experiments/claude-code-trigger-mcp-example'
+        }
+      ]
+    },
+    extra: undefined,
+    auth: {
+      ok: true,
+      profile: 'default',
+      userId: 'cm8zs71op0000dy61xccjp8rz',
+      email: 'eric@trigger.dev',
+      dashboardUrl: 'http://localhost:3030',
+      auth: {
+        accessToken: 'tr_pat_i4te69sn99d6131kf9tfrjjqknegrrod6z4hvarn',
+        apiUrl: 'http://localhost:3030'
+      }
+    }
+  }
+]
+[2025-08-06T15:24:50.696Z][client=unknown version=unknown capabilities=] running mcp command - [
+  {
+    options: {
+      apiUrl: 'http://localhost:3030',
+      logLevel: 'log',
+      skipTelemetry: false,
+      profile: 'default',
+      logFile: '/Users/eric/code/triggerdotdev/trigger.dev/packages/cli-v3/.mcp.log'
+    }
+  }
+]
+[2025-08-06T15:24:58.672Z][client=claude version=0.1.0 capabilities=roots] calling list_projects - [ { extra: undefined } ]
+[2025-08-06T15:24:58.737Z][client=claude version=0.1.0 capabilities=roots] list_projects - [
+  {
+    roots: {
+      roots: [
+        {
+          uri: 'file:///Users/eric/code/triggerdotdev/experiments/claude-code-trigger-mcp-example'
+        }
+      ]
+    },
+    extra: undefined,
+    auth: {
+      ok: true,
+      profile: 'default',
+      userId: 'cm8zs71op0000dy61xccjp8rz',
+      email: 'eric@trigger.dev',
+      dashboardUrl: 'http://localhost:3030',
+      auth: {
+        accessToken: 'tr_pat_i4te69sn99d6131kf9tfrjjqknegrrod6z4hvarn',
+        apiUrl: 'http://localhost:3030'
+      }
+    }
+  }
+]
+[2025-08-06T15:24:58.779Z][client=claude version=0.1.0 capabilities=roots] list_projects - [
+  {
+    projects: [
+      {
+        id: 'cm8zs7f8q0005dy61xchafcd0',
+        externalRef: 'proj_cdmymsrobxmcgjqzhdkq',
+        name: 'd3-chat',
+        slug: 'd3-chat-BusM',
+        createdAt: 2025-04-02T10:26:00.554Z,
+        organization: {
+          id: 'cm8zs78wb0002dy616dg75tv3',
+          title: 'eric allam',
+          slug: 'eric-allam-8c81',
+          createdAt: 2025-04-02T10:25:52.331Z
+        }
+      },
+      {
+        id: 'cm9l85r8f084ldy88j2cxo2os',
+        externalRef: 'proj_xkqwfeaexxywhbcinarx',
+        name: 'prisma-6.6',
+        slug: 'prisma-66-xfDL',
+        createdAt: 2025-04-17T10:35:46.335Z,
+        organization: {
+          id: 'cm8zs78wb0002dy616dg75tv3',
+          title: 'eric allam',
+          slug: 'eric-allam-8c81',
+          createdAt: 2025-04-02T10:25:52.331Z
+        }
+      },
+      {
+        id: 'cma2k4ur5003ody2jcla5oy6f',
+        externalRef: 'proj_elphtlzhktmmmouectgs',
+        name: 'v3.3.17',
+        slug: 'v3317-ehWU',
+        createdAt: 2025-04-29T13:43:04.626Z,
+        organization: {
+          id: 'cm9jw3sso0000dyw29p2p4bsh',
+          title: 'trigger-test-suite',
+          slug: 'trigger-test-suite-318c',
+          createdAt: 2025-04-16T12:10:33.480Z
+        }
+      },
+      {
+        id: 'cmay0hxte0000dyk6u61ubfkt',
+        externalRef: 'proj_bzhdaqhlymtuhlrcgbqy',
+        name: 'nextjs-realtime',
+        slug: 'nextjs-realtime-p27z',
+        createdAt: 2025-05-21T14:02:00.434Z,
+        organization: {
+          id: 'cm8zs78wb0002dy616dg75tv3',
+          title: 'eric allam',
+          slug: 'eric-allam-8c81',
+          createdAt: 2025-04-02T10:25:52.331Z
+        }
+      },
+      {
+        id: 'cm9kddfbz01zpdy88t9dstecu',
+        externalRef: 'proj_rrkpdguyagvsoktglnod',
+        name: 'hello-world',
+        slug: 'hello-world-wCOj',
+        createdAt: 2025-04-16T20:13:56.063Z,
+        organization: {
+          id: 'cm8zs78wb0002dy616dg75tv3',
+          title: 'eric allam',
+          slug: 'eric-allam-8c81',
+          createdAt: 2025-04-02T10:25:52.331Z
+        }
+      },
+      {
+        id: 'cmc92za6w009jdy1njlyhjrp0',
+        externalRef: 'proj_gpuytcxphmpndzzwgqrl',
+        name: 'schedules',
+        slug: 'schedules-1Uif',
+        createdAt: 2025-06-23T12:36:39.128Z,
+        organization: {
+          id: 'cm8zs78wb0002dy616dg75tv3',
+          title: 'eric allam',
+          slug: 'eric-allam-8c81',
+          createdAt: 2025-04-02T10:25:52.331Z
+        }
+      },
+      {
+        id: 'cmc9azbof0000dy12yyit6skv',
+        externalRef: 'proj_pzerbyupqjjbzelloufq',
+        name: 'claude-code',
+        slug: 'claude-code-DjkC',
+        createdAt: 2025-06-23T16:20:37.984Z,
+        organization: {
+          id: 'cm8zs78wb0002dy616dg75tv3',
+          title: 'eric allam',
+          slug: 'eric-allam-8c81',
+          createdAt: 2025-04-02T10:25:52.331Z
+        }
+      },
+      {
+        id: 'cmdd2zs6s000idyqphbrpjgwp',
+        externalRef: 'proj_avkanrowkpyppuivupjy',
+        name: 'statuses',
+        slug: 'statuses-vOIR',
+        createdAt: 2025-07-21T12:27:49.492Z,
+        organization: {
+          id: 'cm8zs78wb0002dy616dg75tv3',
+          title: 'eric allam',
+          slug: 'eric-allam-8c81',
+          createdAt: 2025-04-02T10:25:52.331Z
+        }
+      },
+      {
+        id: 'cmdd37odg0057dyqpysj52e1u',
+        externalRef: 'proj_dxuwdxphpeebwbspartp',
+        name: 'statuses v3',
+        slug: 'statuses-v3-yX2N',
+        createdAt: 2025-07-21T12:33:57.796Z,
+        organization: {
+          id: 'cm8zs78wb0002dy616dg75tv3',
+          title: 'eric allam',
+          slug: 'eric-allam-8c81',
+          createdAt: 2025-04-02T10:25:52.331Z
+        }
+      },
+      {
+        id: 'cmdfrn1jz000idyceda12ymxz',
+        externalRef: 'proj_ljnfrpjvadpuzlfayrkx',
+        name: 'effect',
+        slug: 'effect-2TpG',
+        createdAt: 2025-07-23T09:33:17.856Z,
+        organization: {
+          id: 'cm8zs78wb0002dy616dg75tv3',
+          title: 'eric allam',
+          slug: 'eric-allam-8c81',
+          createdAt: 2025-04-02T10:25:52.331Z
+        }
+      },
+      {
+        id: 'cmdg1bg9f002edy5jjgs9zdat',
+        externalRef: 'proj_wjujihqrbjrjrpxslycp',
+        name: 'v4.0.0',
+        slug: 'v400-3fjf',
+        createdAt: 2025-07-23T14:04:13.203Z,
+        organization: {
+          id: 'cm9jw3sso0000dyw29p2p4bsh',
+          title: 'trigger-test-suite',
+          slug: 'trigger-test-suite-318c',
+          createdAt: 2025-04-16T12:10:33.480Z
+        }
+      }
+    ]
+  }
+]
+[2025-08-06T15:27:07.201Z][client=unknown version=unknown capabilities=] running mcp command - [
+  {
+    options: {
+      apiUrl: 'http://localhost:3030',
+      logLevel: 'log',
+      skipTelemetry: false,
+      profile: 'default',
+      logFile: '/Users/eric/code/triggerdotdev/trigger.dev/packages/cli-v3/.mcp.log'
+    }
+  }
+]
+[2025-08-06T15:27:14.861Z][client=claude version=0.1.0 capabilities=roots] calling list_projects - [ { extra: undefined } ]
+[2025-08-06T15:27:15.005Z][client=claude version=0.1.0 capabilities=roots] list_projects - [
+  {
+    roots: {
+      roots: [
+        {
+          uri: 'file:///Users/eric/code/triggerdotdev/experiments/claude-code-trigger-mcp-example'
+        }
+      ]
+    },
+    extra: undefined,
+    auth: {
+      ok: true,
+      profile: 'default',
+      userId: 'cm8zs71op0000dy61xccjp8rz',
+      email: 'eric@trigger.dev',
+      dashboardUrl: 'http://localhost:3030',
+      auth: {
+        accessToken: 'tr_pat_i4te69sn99d6131kf9tfrjjqknegrrod6z4hvarn',
+        apiUrl: 'http://localhost:3030'
+      }
+    }
+  }
+]
+[2025-08-06T15:27:15.022Z][client=claude version=0.1.0 capabilities=roots] list_projects - [
+  {
+    projects: [
+      {
+        id: 'cm8zs7f8q0005dy61xchafcd0',
+        externalRef: 'proj_cdmymsrobxmcgjqzhdkq',
+        name: 'd3-chat',
+        slug: 'd3-chat-BusM',
+        createdAt: 2025-04-02T10:26:00.554Z,
+        organization: {
+          id: 'cm8zs78wb0002dy616dg75tv3',
+          title: 'eric allam',
+          slug: 'eric-allam-8c81',
+          createdAt: 2025-04-02T10:25:52.331Z
+        }
+      },
+      {
+        id: 'cm9l85r8f084ldy88j2cxo2os',
+        externalRef: 'proj_xkqwfeaexxywhbcinarx',
+        name: 'prisma-6.6',
+        slug: 'prisma-66-xfDL',
+        createdAt: 2025-04-17T10:35:46.335Z,
+        organization: {
+          id: 'cm8zs78wb0002dy616dg75tv3',
+          title: 'eric allam',
+          slug: 'eric-allam-8c81',
+          createdAt: 2025-04-02T10:25:52.331Z
+        }
+      },
+      {
+        id: 'cma2k4ur5003ody2jcla5oy6f',
+        externalRef: 'proj_elphtlzhktmmmouectgs',
+        name: 'v3.3.17',
+        slug: 'v3317-ehWU',
+        createdAt: 2025-04-29T13:43:04.626Z,
+        organization: {
+          id: 'cm9jw3sso0000dyw29p2p4bsh',
+          title: 'trigger-test-suite',
+          slug: 'trigger-test-suite-318c',
+          createdAt: 2025-04-16T12:10:33.480Z
+        }
+      },
+      {
+        id: 'cmay0hxte0000dyk6u61ubfkt',
+        externalRef: 'proj_bzhdaqhlymtuhlrcgbqy',
+        name: 'nextjs-realtime',
+        slug: 'nextjs-realtime-p27z',
+        createdAt: 2025-05-21T14:02:00.434Z,
+        organization: {
+          id: 'cm8zs78wb0002dy616dg75tv3',
+          title: 'eric allam',
+          slug: 'eric-allam-8c81',
+          createdAt: 2025-04-02T10:25:52.331Z
+        }
+      },
+      {
+        id: 'cm9kddfbz01zpdy88t9dstecu',
+        externalRef: 'proj_rrkpdguyagvsoktglnod',
+        name: 'hello-world',
+        slug: 'hello-world-wCOj',
+        createdAt: 2025-04-16T20:13:56.063Z,
+        organization: {
+          id: 'cm8zs78wb0002dy616dg75tv3',
+          title: 'eric allam',
+          slug: 'eric-allam-8c81',
+          createdAt: 2025-04-02T10:25:52.331Z
+        }
+      },
+      {
+        id: 'cmc92za6w009jdy1njlyhjrp0',
+        externalRef: 'proj_gpuytcxphmpndzzwgqrl',
+        name: 'schedules',
+        slug: 'schedules-1Uif',
+        createdAt: 2025-06-23T12:36:39.128Z,
+        organization: {
+          id: 'cm8zs78wb0002dy616dg75tv3',
+          title: 'eric allam',
+          slug: 'eric-allam-8c81',
+          createdAt: 2025-04-02T10:25:52.331Z
+        }
+      },
+      {
+        id: 'cmc9azbof0000dy12yyit6skv',
+        externalRef: 'proj_pzerbyupqjjbzelloufq',
+        name: 'claude-code',
+        slug: 'claude-code-DjkC',
+        createdAt: 2025-06-23T16:20:37.984Z,
+        organization: {
+          id: 'cm8zs78wb0002dy616dg75tv3',
+          title: 'eric allam',
+          slug: 'eric-allam-8c81',
+          createdAt: 2025-04-02T10:25:52.331Z
+        }
+      },
+      {
+        id: 'cmdd2zs6s000idyqphbrpjgwp',
+        externalRef: 'proj_avkanrowkpyppuivupjy',
+        name: 'statuses',
+        slug: 'statuses-vOIR',
+        createdAt: 2025-07-21T12:27:49.492Z,
+        organization: {
+          id: 'cm8zs78wb0002dy616dg75tv3',
+          title: 'eric allam',
+          slug: 'eric-allam-8c81',
+          createdAt: 2025-04-02T10:25:52.331Z
+        }
+      },
+      {
+        id: 'cmdd37odg0057dyqpysj52e1u',
+        externalRef: 'proj_dxuwdxphpeebwbspartp',
+        name: 'statuses v3',
+        slug: 'statuses-v3-yX2N',
+        createdAt: 2025-07-21T12:33:57.796Z,
+        organization: {
+          id: 'cm8zs78wb0002dy616dg75tv3',
+          title: 'eric allam',
+          slug: 'eric-allam-8c81',
+          createdAt: 2025-04-02T10:25:52.331Z
+        }
+      },
+      {
+        id: 'cmdfrn1jz000idyceda12ymxz',
+        externalRef: 'proj_ljnfrpjvadpuzlfayrkx',
+        name: 'effect',
+        slug: 'effect-2TpG',
+        createdAt: 2025-07-23T09:33:17.856Z,
+        organization: {
+          id: 'cm8zs78wb0002dy616dg75tv3',
+          title: 'eric allam',
+          slug: 'eric-allam-8c81',
+          createdAt: 2025-04-02T10:25:52.331Z
+        }
+      },
+      {
+        id: 'cmdg1bg9f002edy5jjgs9zdat',
+        externalRef: 'proj_wjujihqrbjrjrpxslycp',
+        name: 'v4.0.0',
+        slug: 'v400-3fjf',
+        createdAt: 2025-07-23T14:04:13.203Z,
+        organization: {
+          id: 'cm9jw3sso0000dyw29p2p4bsh',
+          title: 'trigger-test-suite',
+          slug: 'trigger-test-suite-318c',
+          createdAt: 2025-04-16T12:10:33.480Z
+        }
+      }
+    ]
+  }
+]
+[2025-08-06T15:28:34.610Z][client=unknown version=unknown capabilities=] running mcp command - [
+  {
+    options: {
+      apiUrl: 'http://localhost:3030',
+      logLevel: 'log',
+      skipTelemetry: false,
+      profile: 'default',
+      logFile: '.mcp.log'
+    }
+  }
+]
+[2025-08-06T15:28:38.768Z][client=mcp-inspector version=0.16.2 capabilities=sampling,elicitation,roots] calling list_projects - [ { extra: undefined } ]
+[2025-08-06T15:28:38.941Z][client=mcp-inspector version=0.16.2 capabilities=sampling,elicitation,roots] list_projects - [
+  {
+    roots: { roots: [] },
+    extra: undefined,
+    auth: {
+      ok: true,
+      profile: 'default',
+      userId: 'cm8zs71op0000dy61xccjp8rz',
+      email: 'eric@trigger.dev',
+      dashboardUrl: 'http://localhost:3030',
+      auth: {
+        accessToken: 'tr_pat_i4te69sn99d6131kf9tfrjjqknegrrod6z4hvarn',
+        apiUrl: 'http://localhost:3030'
+      }
+    }
+  }
+]
+[2025-08-06T15:28:38.983Z][client=mcp-inspector version=0.16.2 capabilities=sampling,elicitation,roots] list_projects - [
+  {
+    projects: [
+      {
+        id: 'cm8zs7f8q0005dy61xchafcd0',
+        externalRef: 'proj_cdmymsrobxmcgjqzhdkq',
+        name: 'd3-chat',
+        slug: 'd3-chat-BusM',
+        createdAt: 2025-04-02T10:26:00.554Z,
+        organization: {
+          id: 'cm8zs78wb0002dy616dg75tv3',
+          title: 'eric allam',
+          slug: 'eric-allam-8c81',
+          createdAt: 2025-04-02T10:25:52.331Z
+        }
+      },
+      {
+        id: 'cm9l85r8f084ldy88j2cxo2os',
+        externalRef: 'proj_xkqwfeaexxywhbcinarx',
+        name: 'prisma-6.6',
+        slug: 'prisma-66-xfDL',
+        createdAt: 2025-04-17T10:35:46.335Z,
+        organization: {
+          id: 'cm8zs78wb0002dy616dg75tv3',
+          title: 'eric allam',
+          slug: 'eric-allam-8c81',
+          createdAt: 2025-04-02T10:25:52.331Z
+        }
+      },
+      {
+        id: 'cma2k4ur5003ody2jcla5oy6f',
+        externalRef: 'proj_elphtlzhktmmmouectgs',
+        name: 'v3.3.17',
+        slug: 'v3317-ehWU',
+        createdAt: 2025-04-29T13:43:04.626Z,
+        organization: {
+          id: 'cm9jw3sso0000dyw29p2p4bsh',
+          title: 'trigger-test-suite',
+          slug: 'trigger-test-suite-318c',
+          createdAt: 2025-04-16T12:10:33.480Z
+        }
+      },
+      {
+        id: 'cmay0hxte0000dyk6u61ubfkt',
+        externalRef: 'proj_bzhdaqhlymtuhlrcgbqy',
+        name: 'nextjs-realtime',
+        slug: 'nextjs-realtime-p27z',
+        createdAt: 2025-05-21T14:02:00.434Z,
+        organization: {
+          id: 'cm8zs78wb0002dy616dg75tv3',
+          title: 'eric allam',
+          slug: 'eric-allam-8c81',
+          createdAt: 2025-04-02T10:25:52.331Z
+        }
+      },
+      {
+        id: 'cm9kddfbz01zpdy88t9dstecu',
+        externalRef: 'proj_rrkpdguyagvsoktglnod',
+        name: 'hello-world',
+        slug: 'hello-world-wCOj',
+        createdAt: 2025-04-16T20:13:56.063Z,
+        organization: {
+          id: 'cm8zs78wb0002dy616dg75tv3',
+          title: 'eric allam',
+          slug: 'eric-allam-8c81',
+          createdAt: 2025-04-02T10:25:52.331Z
+        }
+      },
+      {
+        id: 'cmc92za6w009jdy1njlyhjrp0',
+        externalRef: 'proj_gpuytcxphmpndzzwgqrl',
+        name: 'schedules',
+        slug: 'schedules-1Uif',
+        createdAt: 2025-06-23T12:36:39.128Z,
+        organization: {
+          id: 'cm8zs78wb0002dy616dg75tv3',
+          title: 'eric allam',
+          slug: 'eric-allam-8c81',
+          createdAt: 2025-04-02T10:25:52.331Z
+        }
+      },
+      {
+        id: 'cmc9azbof0000dy12yyit6skv',
+        externalRef: 'proj_pzerbyupqjjbzelloufq',
+        name: 'claude-code',
+        slug: 'claude-code-DjkC',
+        createdAt: 2025-06-23T16:20:37.984Z,
+        organization: {
+          id: 'cm8zs78wb0002dy616dg75tv3',
+          title: 'eric allam',
+          slug: 'eric-allam-8c81',
+          createdAt: 2025-04-02T10:25:52.331Z
+        }
+      },
+      {
+        id: 'cmdd2zs6s000idyqphbrpjgwp',
+        externalRef: 'proj_avkanrowkpyppuivupjy',
+        name: 'statuses',
+        slug: 'statuses-vOIR',
+        createdAt: 2025-07-21T12:27:49.492Z,
+        organization: {
+          id: 'cm8zs78wb0002dy616dg75tv3',
+          title: 'eric allam',
+          slug: 'eric-allam-8c81',
+          createdAt: 2025-04-02T10:25:52.331Z
+        }
+      },
+      {
+        id: 'cmdd37odg0057dyqpysj52e1u',
+        externalRef: 'proj_dxuwdxphpeebwbspartp',
+        name: 'statuses v3',
+        slug: 'statuses-v3-yX2N',
+        createdAt: 2025-07-21T12:33:57.796Z,
+        organization: {
+          id: 'cm8zs78wb0002dy616dg75tv3',
+          title: 'eric allam',
+          slug: 'eric-allam-8c81',
+          createdAt: 2025-04-02T10:25:52.331Z
+        }
+      },
+      {
+        id: 'cmdfrn1jz000idyceda12ymxz',
+        externalRef: 'proj_ljnfrpjvadpuzlfayrkx',
+        name: 'effect',
+        slug: 'effect-2TpG',
+        createdAt: 2025-07-23T09:33:17.856Z,
+        organization: {
+          id: 'cm8zs78wb0002dy616dg75tv3',
+          title: 'eric allam',
+          slug: 'eric-allam-8c81',
+          createdAt: 2025-04-02T10:25:52.331Z
+        }
+      },
+      {
+        id: 'cmdg1bg9f002edy5jjgs9zdat',
+        externalRef: 'proj_wjujihqrbjrjrpxslycp',
+        name: 'v4.0.0',
+        slug: 'v400-3fjf',
+        createdAt: 2025-07-23T14:04:13.203Z,
+        organization: {
+          id: 'cm9jw3sso0000dyw29p2p4bsh',
+          title: 'trigger-test-suite',
+          slug: 'trigger-test-suite-318c',
+          createdAt: 2025-04-16T12:10:33.480Z
+        }
+      }
+    ]
+  }
+]
+[2025-08-06T15:29:41.920Z][client=unknown version=unknown capabilities=] running mcp command - [
+  {
+    options: {
+      apiUrl: 'http://localhost:3030',
+      logLevel: 'log',
+      skipTelemetry: false,
+      profile: 'default',
+      logFile: '/Users/eric/code/triggerdotdev/trigger.dev/packages/cli-v3/.mcp.log'
+    }
+  }
+]
+[2025-08-06T15:29:46.604Z][client=unknown version=unknown capabilities=] running mcp command - [
+  {
+    options: {
+      apiUrl: 'http://localhost:3030',
+      logLevel: 'log',
+      skipTelemetry: false,
+      profile: 'default',
+      logFile: '/Users/eric/code/triggerdotdev/trigger.dev/packages/cli-v3/.mcp.log'
+    }
+  }
+]
+[2025-08-06T15:29:50.827Z][client=claude version=0.1.0 capabilities=roots] calling list_projects - [ { extra: undefined } ]
+[2025-08-06T15:29:50.934Z][client=claude version=0.1.0 capabilities=roots] list_projects - [
+  {
+    roots: {
+      roots: [
+        {
+          uri: 'file:///Users/eric/code/triggerdotdev/experiments/claude-code-trigger-mcp-example'
+        }
+      ]
+    },
+    extra: undefined,
+    auth: {
+      ok: true,
+      profile: 'default',
+      userId: 'cm8zs71op0000dy61xccjp8rz',
+      email: 'eric@trigger.dev',
+      dashboardUrl: 'http://localhost:3030',
+      auth: {
+        accessToken: 'tr_pat_i4te69sn99d6131kf9tfrjjqknegrrod6z4hvarn',
+        apiUrl: 'http://localhost:3030'
+      }
+    }
+  }
+]
+[2025-08-06T15:29:50.950Z][client=claude version=0.1.0 capabilities=roots] list_projects - [
+  {
+    projects: [
+      {
+        id: 'cm8zs7f8q0005dy61xchafcd0',
+        externalRef: 'proj_cdmymsrobxmcgjqzhdkq',
+        name: 'd3-chat',
+        slug: 'd3-chat-BusM',
+        createdAt: 2025-04-02T10:26:00.554Z,
+        organization: {
+          id: 'cm8zs78wb0002dy616dg75tv3',
+          title: 'eric allam',
+          slug: 'eric-allam-8c81',
+          createdAt: 2025-04-02T10:25:52.331Z
+        }
+      },
+      {
+        id: 'cm9l85r8f084ldy88j2cxo2os',
+        externalRef: 'proj_xkqwfeaexxywhbcinarx',
+        name: 'prisma-6.6',
+        slug: 'prisma-66-xfDL',
+        createdAt: 2025-04-17T10:35:46.335Z,
+        organization: {
+          id: 'cm8zs78wb0002dy616dg75tv3',
+          title: 'eric allam',
+          slug: 'eric-allam-8c81',
+          createdAt: 2025-04-02T10:25:52.331Z
+        }
+      },
+      {
+        id: 'cma2k4ur5003ody2jcla5oy6f',
+        externalRef: 'proj_elphtlzhktmmmouectgs',
+        name: 'v3.3.17',
+        slug: 'v3317-ehWU',
+        createdAt: 2025-04-29T13:43:04.626Z,
+        organization: {
+          id: 'cm9jw3sso0000dyw29p2p4bsh',
+          title: 'trigger-test-suite',
+          slug: 'trigger-test-suite-318c',
+          createdAt: 2025-04-16T12:10:33.480Z
+        }
+      },
+      {
+        id: 'cmay0hxte0000dyk6u61ubfkt',
+        externalRef: 'proj_bzhdaqhlymtuhlrcgbqy',
+        name: 'nextjs-realtime',
+        slug: 'nextjs-realtime-p27z',
+        createdAt: 2025-05-21T14:02:00.434Z,
+        organization: {
+          id: 'cm8zs78wb0002dy616dg75tv3',
+          title: 'eric allam',
+          slug: 'eric-allam-8c81',
+          createdAt: 2025-04-02T10:25:52.331Z
+        }
+      },
+      {
+        id: 'cm9kddfbz01zpdy88t9dstecu',
+        externalRef: 'proj_rrkpdguyagvsoktglnod',
+        name: 'hello-world',
+        slug: 'hello-world-wCOj',
+        createdAt: 2025-04-16T20:13:56.063Z,
+        organization: {
+          id: 'cm8zs78wb0002dy616dg75tv3',
+          title: 'eric allam',
+          slug: 'eric-allam-8c81',
+          createdAt: 2025-04-02T10:25:52.331Z
+        }
+      },
+      {
+        id: 'cmc92za6w009jdy1njlyhjrp0',
+        externalRef: 'proj_gpuytcxphmpndzzwgqrl',
+        name: 'schedules',
+        slug: 'schedules-1Uif',
+        createdAt: 2025-06-23T12:36:39.128Z,
+        organization: {
+          id: 'cm8zs78wb0002dy616dg75tv3',
+          title: 'eric allam',
+          slug: 'eric-allam-8c81',
+          createdAt: 2025-04-02T10:25:52.331Z
+        }
+      },
+      {
+        id: 'cmc9azbof0000dy12yyit6skv',
+        externalRef: 'proj_pzerbyupqjjbzelloufq',
+        name: 'claude-code',
+        slug: 'claude-code-DjkC',
+        createdAt: 2025-06-23T16:20:37.984Z,
+        organization: {
+          id: 'cm8zs78wb0002dy616dg75tv3',
+          title: 'eric allam',
+          slug: 'eric-allam-8c81',
+          createdAt: 2025-04-02T10:25:52.331Z
+        }
+      },
+      {
+        id: 'cmdd2zs6s000idyqphbrpjgwp',
+        externalRef: 'proj_avkanrowkpyppuivupjy',
+        name: 'statuses',
+        slug: 'statuses-vOIR',
+        createdAt: 2025-07-21T12:27:49.492Z,
+        organization: {
+          id: 'cm8zs78wb0002dy616dg75tv3',
+          title: 'eric allam',
+          slug: 'eric-allam-8c81',
+          createdAt: 2025-04-02T10:25:52.331Z
+        }
+      },
+      {
+        id: 'cmdd37odg0057dyqpysj52e1u',
+        externalRef: 'proj_dxuwdxphpeebwbspartp',
+        name: 'statuses v3',
+        slug: 'statuses-v3-yX2N',
+        createdAt: 2025-07-21T12:33:57.796Z,
+        organization: {
+          id: 'cm8zs78wb0002dy616dg75tv3',
+          title: 'eric allam',
+          slug: 'eric-allam-8c81',
+          createdAt: 2025-04-02T10:25:52.331Z
+        }
+      },
+      {
+        id: 'cmdfrn1jz000idyceda12ymxz',
+        externalRef: 'proj_ljnfrpjvadpuzlfayrkx',
+        name: 'effect',
+        slug: 'effect-2TpG',
+        createdAt: 2025-07-23T09:33:17.856Z,
+        organization: {
+          id: 'cm8zs78wb0002dy616dg75tv3',
+          title: 'eric allam',
+          slug: 'eric-allam-8c81',
+          createdAt: 2025-04-02T10:25:52.331Z
+        }
+      },
+      {
+        id: 'cmdg1bg9f002edy5jjgs9zdat',
+        externalRef: 'proj_wjujihqrbjrjrpxslycp',
+        name: 'v4.0.0',
+        slug: 'v400-3fjf',
+        createdAt: 2025-07-23T14:04:13.203Z,
+        organization: {
+          id: 'cm9jw3sso0000dyw29p2p4bsh',
+          title: 'trigger-test-suite',
+          slug: 'trigger-test-suite-318c',
+          createdAt: 2025-04-16T12:10:33.480Z
+        }
+      }
+    ]
+  }
+]

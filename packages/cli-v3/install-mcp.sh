@@ -79,7 +79,7 @@ try {
     // Add/update trigger.dev entry
     config.mcpServers['trigger'] = {
         command: nodePath,
-        args: [cliPath, 'mcp', '--log-file', logFile]
+        args: [cliPath, 'mcp', '--log-file', logFile, '--api-url', 'http://localhost:3030']
     };
 
     // Write back to file with proper formatting

@@ -29,7 +29,11 @@ export type WhoAmIResponse = z.infer<typeof WhoAmIResponseSchema>;
 
 export const GetProjectResponseBody = z.object({
   id: z.string(),
-  externalRef: z.string(),
+  externalRef: z
+    .string()
+    .describe(
+      "The external reference for the project, also known as the project ref, a unique identifier starting with proj_"
+    ),
   name: z.string(),
   slug: z.string(),
   createdAt: z.coerce.date(),

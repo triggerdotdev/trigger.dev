@@ -8,7 +8,8 @@ import { performSearch } from "../mcp/mintlifyClient.js";
 import { logger } from "../utilities/logger.js";
 import { FileLogger } from "../mcp/logger.js";
 import { McpContext } from "../mcp/context.js";
-import { registerGetProjectDetailsTool } from "../mcp/tools.js";
+import { registerGetProjectDetailsTool, registerListProjectsTool } from "../mcp/tools.js";
+import { CLOUD_API_URL } from "../consts.js";
 
 const McpCommandOptions = CommonCommandOptions.extend({
   projectRef: z.string().optional(),
@@ -34,18 +35,6 @@ export function configureMcpCommand(program: Command) {
 export async function mcpCommand(options: McpCommandOptions) {
   logger.loggerLevel = "none";
 
-  const authorization = await login({
-    embedded: true,
-    silent: true,
-    defaultApiUrl: options.apiUrl,
-    profile: options.profile,
-  });
-
-  if (!authorization.ok) {
-    process.exitCode = 1;
-    return;
-  }
-
   const server = new McpServer({
     name: "triggerdev",
     version: "1.0.0",
@@ -57,10 +46,13 @@ export async function mcpCommand(options: McpCommandOptions) {
     : undefined;
 
   const context = new McpContext(server, {
-    login: authorization,
     projectRef: options.projectRef,
     fileLogger,
+    apiUrl: options.apiUrl ?? CLOUD_API_URL,
+    profile: options.profile,
   });
+
+  fileLogger?.log("running mcp command", { options });
 
   server.registerTool(
     "search_docs",
@@ -78,6 +70,7 @@ export async function mcpCommand(options: McpCommandOptions) {
   );
 
   registerGetProjectDetailsTool(context);
+  registerListProjectsTool(context);
 
   // Start receiving messages on stdin and sending messages on stdout
   const transport = new StdioServerTransport();
