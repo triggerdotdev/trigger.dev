@@ -1,7 +1,7 @@
-import { BookOpenIcon } from "@heroicons/react/24/solid";
 import { Form } from "@remix-run/react";
-import { ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
+import { useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { CloudProviderIcon } from "~/assets/icons/CloudProviderIcon";
@@ -9,15 +9,22 @@ import { FlagIcon } from "~/assets/icons/RegionIcons";
 import { cloudProviderTitle } from "~/components/CloudProvider";
 import { V4Title } from "~/components/V4Badge";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
-import { InlineCode } from "~/components/code/InlineCode";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Button } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { CopyableText } from "~/components/primitives/CopyableText";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "~/components/primitives/Dialog";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { PopoverMenuItem } from "~/components/primitives/Popover";
 import * as Property from "~/components/primitives/PropertyTable";
 import {
   Table,
@@ -30,12 +37,9 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { TextLink } from "~/components/primitives/TextLink";
-import { useOrganization } from "~/hooks/useOrganizations";
-import { useProject } from "~/hooks/useProject";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
-import { RegionsPresenter } from "~/presenters/v3/RegionsPresenter.server";
-import { logger } from "~/services/logger.server";
+import { type Region, RegionsPresenter } from "~/presenters/v3/RegionsPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import {
   docsPath,
@@ -132,14 +136,6 @@ export default function Page() {
               ))}
             </Property.Table>
           </AdminDebugTooltip>
-
-          <LinkButton
-            variant={"docs/small"}
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("deployment/preview-branches")}
-          >
-            Regions docs
-          </LinkButton>
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
@@ -232,16 +228,7 @@ export default function Page() {
                                     Default
                                   </Badge>
                                 ) : (
-                                  <Form method="post">
-                                    <Button
-                                      variant="secondary/small"
-                                      type="submit"
-                                      name="regionId"
-                                      value={region.id}
-                                    >
-                                      Set as default...
-                                    </Button>
-                                  </Form>
+                                  <SetDefaultDialog region={region} />
                                 )
                               }
                             />
@@ -257,5 +244,39 @@ export default function Page() {
         </div>
       </PageBody>
     </PageContainer>
+  );
+}
+
+function SetDefaultDialog({ region }: { region: Region }) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <DialogTrigger asChild>
+        <Button variant="secondary/small">Set as default...</Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Set as default</DialogTitle>
+        </DialogHeader>
+        <DialogDescription>
+          <Paragraph>
+            When you trigger a run it will execute in your default region, unless you{" "}
+            <TextLink to={docsPath("triggering#region")}>specify a region when triggering</TextLink>
+            .
+          </Paragraph>
+        </DialogDescription>
+        <DialogFooter>
+          <Button variant="secondary/small" onClick={() => setIsOpen(false)}>
+            Cancel
+          </Button>
+          <Form method="post">
+            <Button variant="secondary/small" type="submit" name="regionId" value={region.id}>
+              Set as default
+            </Button>
+          </Form>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
