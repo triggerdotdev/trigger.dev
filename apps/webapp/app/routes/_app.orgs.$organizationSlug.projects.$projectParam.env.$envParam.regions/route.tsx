@@ -1,4 +1,4 @@
-import { ArrowRightIcon } from "@heroicons/react/20/solid";
+import { ArrowRightIcon, ChatBubbleLeftEllipsisIcon } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
@@ -8,6 +8,7 @@ import { z } from "zod";
 import { CloudProviderIcon } from "~/assets/icons/CloudProviderIcon";
 import { FlagIcon } from "~/assets/icons/RegionIcons";
 import { cloudProviderTitle } from "~/components/CloudProvider";
+import { Feedback } from "~/components/Feedback";
 import { V4Title } from "~/components/V4Badge";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
@@ -234,6 +235,25 @@ export default function Page() {
                         );
                       })
                     )}
+                    <TableRow>
+                      <TableCell colSpan={4}>
+                        <Paragraph variant="extra-small">Suggest a new region</Paragraph>
+                      </TableCell>
+                      <TableCell alignment="right">
+                        <Feedback
+                          button={
+                            <Button
+                              variant="tertiary/small"
+                              LeadingIcon={ChatBubbleLeftEllipsisIcon}
+                              leadingIconClassName="text-indigo-500"
+                            >
+                              Suggest a region…
+                            </Button>
+                          }
+                          defaultValue="region"
+                        />
+                      </TableCell>
+                    </TableRow>
                   </TableBody>
                 </Table>
               </div>
@@ -258,7 +278,7 @@ function SetDefaultDialog({
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button variant="secondary/small">Set as default...</Button>
+        <Button variant="secondary/small">Set as default…</Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
