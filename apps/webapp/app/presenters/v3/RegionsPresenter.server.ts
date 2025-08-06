@@ -1,9 +1,8 @@
-import { type z } from "zod";
-import { type PrismaClient, prisma } from "~/db.server";
 import { type Project } from "~/models/project.server";
 import { type User } from "~/models/user.server";
-import { FEATURE_FLAG, flags, makeFlags } from "~/v3/featureFlags.server";
+import { FEATURE_FLAG, makeFlags } from "~/v3/featureFlags.server";
 import { BasePresenter } from "./basePresenter.server";
+import { getCurrentPlan } from "~/services/platform.v3.server";
 
 export type Region = {
   id: string;
@@ -11,7 +10,7 @@ export type Region = {
   description?: string;
   cloudProvider?: string;
   location?: string;
-  staticIPs?: string;
+  staticIPs?: string | null;
   isDefault: boolean;
 };
 
@@ -122,13 +121,25 @@ export class RegionsPresenter extends BasePresenter {
     });
 
     // Remove later duplicates
-    const unique = sorted.filter((region, index, self) => {
+    let unique = sorted.filter((region, index, self) => {
       const firstIndex = self.findIndex((t) => t.id === region.id);
       return index === firstIndex;
     });
 
+    // Don't show static IPs for free users
+    // Even if they had the IPs they wouldn't work, but this makes it less confusing
+    const currentPlan = await getCurrentPlan(project.organizationId);
+    const isPaying = currentPlan?.v3Subscription.isPaying === true;
+    if (!isPaying) {
+      unique = unique.map((region) => ({
+        ...region,
+        staticIPs: region.staticIPs ? null : undefined,
+      }));
+    }
+
     return {
       regions: unique.sort((a, b) => a.name.localeCompare(b.name)),
+      isPaying,
     };
   }
 }

@@ -1,5 +1,6 @@
 import {
   ArrowRightIcon,
+  ArrowUpCircleIcon,
   BookOpenIcon,
   ChatBubbleLeftEllipsisIcon,
   MapPinIcon,
@@ -44,6 +45,7 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { TextLink } from "~/components/primitives/TextLink";
+import { useOrganization } from "~/hooks/useOrganizations";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { type Region, RegionsPresenter } from "~/presenters/v3/RegionsPresenter.server";
@@ -53,6 +55,7 @@ import {
   EnvironmentParamSchema,
   ProjectParamSchema,
   regionsPath,
+  v3BillingPath,
 } from "~/utils/pathBuilder";
 import { SetDefaultRegionService } from "~/v3/services/setDefaultRegion.server";
 
@@ -121,7 +124,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 };
 
 export default function Page() {
-  const { regions } = useTypedLoaderData<typeof loader>();
+  const { regions, isPaying } = useTypedLoaderData<typeof loader>();
+  const organization = useOrganization();
 
   return (
     <PageContainer>
@@ -215,7 +219,19 @@ export default function Page() {
                               </span>
                             </TableCell>
                             <TableCell>
-                              {region.staticIPs ? (
+                              {region.staticIPs === null ? (
+                                <LinkButton
+                                  variant="secondary/small"
+                                  to={v3BillingPath(
+                                    organization,
+                                    "Upgrade your plan to unlock static IPs"
+                                  )}
+                                  LeadingIcon={ArrowUpCircleIcon}
+                                  leadingIconClassName="text-indigo-500"
+                                >
+                                  Unlock static IPs
+                                </LinkButton>
+                              ) : region.staticIPs !== undefined ? (
                                 <ClipboardField
                                   value={region.staticIPs}
                                   variant={"secondary/small"}
