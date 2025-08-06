@@ -1,4 +1,9 @@
-import { ArrowRightIcon, ChatBubbleLeftEllipsisIcon, MapPinIcon } from "@heroicons/react/20/solid";
+import {
+  ArrowRightIcon,
+  BookOpenIcon,
+  ChatBubbleLeftEllipsisIcon,
+  MapPinIcon,
+} from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
@@ -13,7 +18,7 @@ import { V4Title } from "~/components/V4Badge";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
-import { Button } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import {
@@ -161,14 +166,20 @@ export default function Page() {
                       <TableHeaderCell
                         alignment="right"
                         tooltip={
-                          <Paragraph variant="small">
-                            When you trigger a run it will execute in your default region, unless
-                            you{" "}
-                            <TextLink to={docsPath("triggering#region")}>
-                              specify a region when triggering
-                            </TextLink>
-                            .
-                          </Paragraph>
+                          <div className="max-w-[12rem]">
+                            <Paragraph variant="small">
+                              When you trigger a run it will execute in your default region, unless
+                              you override the region when triggering.
+                            </Paragraph>
+                            <LinkButton
+                              variant="docs/small"
+                              LeadingIcon={BookOpenIcon}
+                              to={docsPath("triggering#region")}
+                              className="mb-1 mt-3"
+                            >
+                              Read docs
+                            </LinkButton>
+                          </div>
                         }
                       >
                         Default region
