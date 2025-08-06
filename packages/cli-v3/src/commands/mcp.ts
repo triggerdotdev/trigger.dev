@@ -3,13 +3,17 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { Command } from "commander";
 import { z } from "zod";
 import { CommonCommandOptions, commonOptions, wrapCommandAction } from "../cli/common.js";
-import { login } from "./login.js";
-import { performSearch } from "../mcp/mintlifyClient.js";
-import { logger } from "../utilities/logger.js";
-import { FileLogger } from "../mcp/logger.js";
-import { McpContext } from "../mcp/context.js";
-import { registerGetProjectDetailsTool, registerListProjectsTool } from "../mcp/tools.js";
 import { CLOUD_API_URL } from "../consts.js";
+import { McpContext } from "../mcp/context.js";
+import { FileLogger } from "../mcp/logger.js";
+import {
+  registerCreateProjectTool,
+  registerGetProjectDetailsTool,
+  registerListOrgsTool,
+  registerListProjectsTool,
+  registerSearchDocsTool,
+} from "../mcp/tools.js";
+import { logger } from "../utilities/logger.js";
 
 const McpCommandOptions = CommonCommandOptions.extend({
   projectRef: z.string().optional(),
@@ -54,23 +58,11 @@ export async function mcpCommand(options: McpCommandOptions) {
 
   fileLogger?.log("running mcp command", { options });
 
-  server.registerTool(
-    "search_docs",
-    {
-      description:
-        "Search across the Trigger.dev documentation to find relevant information, code examples, API references, and guides. Use this tool when you need to answer questions about Trigger.dev, find specific documentation, understand how features work, or locate implementation details. The search returns contextual content with titles and direct links to the documentation pages",
-      inputSchema: {
-        query: z.string(),
-      },
-    },
-    async ({ query }) => {
-      const results = await performSearch(query);
-      return results;
-    }
-  );
-
+  registerSearchDocsTool(context);
   registerGetProjectDetailsTool(context);
   registerListProjectsTool(context);
+  registerListOrgsTool(context);
+  registerCreateProjectTool(context);
 
   // Start receiving messages on stdin and sending messages on stdout
   const transport = new StdioServerTransport();

@@ -31,6 +31,8 @@ import {
   WorkersCreateRequestBody,
   WorkersCreateResponseBody,
   WorkersListResponseBody,
+  CreateProjectRequestBody,
+  GetOrgsResponseBody,
 } from "@trigger.dev/core/v3";
 import {
   WorkloadDebugLogRequestBody,
@@ -133,6 +135,31 @@ export class CliApiClient {
         Authorization: `Bearer ${this.accessToken}`,
         "Content-Type": "application/json",
       },
+    });
+  }
+
+  async getOrgs() {
+    if (!this.accessToken) {
+      throw new Error("getOrgs: No access token");
+    }
+
+    return wrapZodFetch(GetOrgsResponseBody, `${this.apiURL}/api/v1/orgs`, {
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        "Content-Type": "application/json",
+      },
+    });
+  }
+
+  async createProject(orgParam: string, body: CreateProjectRequestBody) {
+    if (!this.accessToken) {
+      throw new Error("createProject: No access token");
+    }
+
+    return wrapZodFetch(GetProjectResponseBody, `${this.apiURL}/api/v1/orgs/${orgParam}/projects`, {
+      method: "POST",
+      headers: this.getHeaders(),
+      body: JSON.stringify(body),
     });
   }
 
