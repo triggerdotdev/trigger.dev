@@ -510,6 +510,8 @@ model BackgroundWorkerTask {
 
   triggerSource TaskTriggerSource @default(STANDARD)
 
+  payloadSchema Json?
+
   @@unique([workerId, slug])
   // Quick lookup of task identifiers
   @@index([projectId, slug])

@@ -28,6 +28,7 @@ import { QueueOptions } from "./queues.js";
 import { AnySchemaParseFn, inferSchemaIn, inferSchemaOut, Schema } from "./schemas.js";
 import { inferToolParameters, ToolTaskParameters } from "./tools.js";
 import { Prettify } from "./utils.js";
+import { JSONSchema } from "./jsonSchema.js";
 
 export type Queue = QueueOptions;
 export type TaskSchema = Schema;
@@ -339,6 +340,12 @@ type CommonTaskOptions<
    * onFailure is called after a task run has failed (meaning the run function threw an error and won't be retried anymore)
    */
   onFailure?: OnFailureHookFunction<TPayload, TInitOutput>;
+
+  /**
+   * JSON Schema for the task payload. This will be synced to the server during indexing.
+   * Should be a valid JSON Schema Draft 7 object.
+   */
+  jsonSchema?: JSONSchema;
 };
 
 export type TaskOptions<
@@ -347,6 +354,15 @@ export type TaskOptions<
   TOutput = unknown,
   TInitOutput extends InitOutput = any,
 > = CommonTaskOptions<TIdentifier, TPayload, TOutput, TInitOutput>;
+
+// Task options when payloadSchema is provided - payload should be any
+export type TaskOptionsWithSchema<
+  TIdentifier extends string,
+  TOutput = unknown,
+  TInitOutput extends InitOutput = any,
+> = CommonTaskOptions<TIdentifier, any, TOutput, TInitOutput> & {
+  jsonSchema: JSONSchema;
+};
 
 export type TaskWithSchemaOptions<
   TIdentifier extends string,
@@ -881,6 +897,7 @@ export type TaskMetadataWithFunctions = TaskMetadata & {
     onStart?: (payload: any, params: StartFnParams) => Promise<void>;
     parsePayload?: AnySchemaParseFn;
   };
+  schema?: TaskSchema;
 };
 
 export type RunTypes<TTaskIdentifier extends string, TPayload, TOutput> = {

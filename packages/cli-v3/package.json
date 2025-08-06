@@ -91,6 +91,7 @@
     "@opentelemetry/semantic-conventions": "1.36.0",
     "@trigger.dev/build": "workspace:4.0.0-v4-beta.26",
     "@trigger.dev/core": "workspace:4.0.0-v4-beta.26",
+    "@trigger.dev/schema-to-json": "workspace:4.0.0-v4-beta.26",
     "ansi-escapes": "^7.0.0",
     "braces": "^3.0.3",
     "c12": "^1.11.1",

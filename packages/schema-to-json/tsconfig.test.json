@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["./tests/**/*.ts"],
+  "references": [{ "path": "./tsconfig.src.json" }],
+  "compilerOptions": {
+    "isolatedDeclarations": false,
+    "composite": true,
+    "sourceMap": true,
+    "types": ["vitest/globals"]
+  }
+}
