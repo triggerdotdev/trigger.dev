@@ -1,5 +1,6 @@
 import { BuildManifest, BuildTarget } from "@trigger.dev/core/v3";
 import { binaryForRuntime, BuildContext, BuildExtension } from "@trigger.dev/core/v3/build";
+import { readFileSync } from "node:fs";
 import assert from "node:assert";
 import { existsSync } from "node:fs";
 import { cp, readdir } from "node:fs/promises";
@@ -85,6 +86,27 @@ export class PrismaExtension implements BuildExtension {
         `PrismaExtension could not find the prisma schema at ${this._resolvedSchemaPath}. Make sure the path is correct: ${this.options.schema}, relative to the working dir ${context.workingDir}`
       );
     }
+
+    // --- Additional diagnostics for Prisma 6.6+ support ---
+    try {
+      const schemaContents = readFileSync(this._resolvedSchemaPath, "utf-8");
+      const generatorBlocks = [...schemaContents.matchAll(/generator\s+(\w+)\s+\{([\s\S]*?)\}/g)].map((m) => {
+        const body = (m[2] ?? "") as string;
+        const provider = body.match(/provider\s*=\s*["']([^"']+)["']/)?.[1];
+        const output = body.match(/output\s*=\s*["']([^"']+)["']/)?.[1];
+        return {
+          name: m[1],
+          provider,
+          output,
+        };
+      });
+
+      context.logger.debug(`Prisma generators detected`, {
+        generators: generatorBlocks,
+      });
+    } catch (err) {
+      context.logger.warn(`Failed to parse generators from prisma schema: ${(err as Error).message}`);
+    }
   }
 
   async onBuildComplete(context: BuildContext, manifest: BuildManifest) {
@@ -113,6 +135,11 @@ export class PrismaExtension implements BuildExtension {
     context.logger.debug(`PrismaExtension is generating the Prisma client for version ${version}`);
 
     const usingSchemaFolder = dirname(this._resolvedSchemaPath).endsWith("schema");
+
+    context.logger.debug(`Schema folder detection`, {
+      usingSchemaFolder,
+      schemaPath: this._resolvedSchemaPath,
+    });
 
     const commands: string[] = [];
 
