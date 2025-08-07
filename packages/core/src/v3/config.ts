@@ -280,19 +280,15 @@ export type TriggerConfig = {
   processKeepAlive?: ProcessKeepAlive;
 
   /**
-   * This still works but use `devProcessCwdInBuildDir` instead.
-   *
-   * @deprecated (use devProcessCwdInBuildDir instead)
-   */
-  experimental_devProcessCwdInBuildDir?: boolean;
-
-  /**
    * @default false
-   * @description When running the dev CLI, set the current working directory to the build directory.
+   * @description If set to true when running the dev CLI, the current working directory will be set to where the command is run from.
    *
-   * Currently, the process.cwd() is set to the root of the project.
+   * The new default (when this flag isn't passed) is to set the current working directory to the build directory.
+   * This more closely matches the behavior of the CLI when running in production and is highly recommended.
+   *
+   * This impacts the value of process.cwd() in your task code.
    */
-  devProcessCwdInBuildDir?: boolean;
+  legacyDevProcessCwdBehaviour?: boolean;
 
   /**
    * @deprecated Use `dirs` instead
