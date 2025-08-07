@@ -8,7 +8,7 @@ import {
   RealtimeRunSkipColumns,
 } from "@trigger.dev/core/v3";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { KeyedMutator, useSWR } from "../utils/trigger-swr.js";
+import { KeyedMutator, useInternalSWR } from "../utils/trigger-swr.js";
 import { useApiClient, UseApiClientOptions } from "./useApiClient.js";
 import { createThrottledQueue } from "../utils/throttle.js";
 
@@ -78,15 +78,15 @@ export function useRealtimeRun<TTask extends AnyTask>(
   const idKey = options?.id ?? hookId;
 
   // Store the streams state in SWR, using the idKey as the key to share states.
-  const { data: run, mutate: mutateRun } = useSWR<RealtimeRun<TTask>>([idKey, "run"], null);
+  const { data: run, mutate: mutateRun } = useInternalSWR<RealtimeRun<TTask>>([idKey, "run"], null);
 
-  const { data: error = undefined, mutate: setError } = useSWR<undefined | Error>(
+  const { data: error = undefined, mutate: setError } = useInternalSWR<undefined | Error>(
     [idKey, "error"],
     null
   );
 
   // Add state to track when the subscription is complete
-  const { data: isComplete = false, mutate: setIsComplete } = useSWR<boolean>(
+  const { data: isComplete = false, mutate: setIsComplete } = useInternalSWR<boolean>(
     [idKey, "complete"],
     null
   );
@@ -224,7 +224,7 @@ export function useRealtimeRunWithStreams<
   const [initialStreamsFallback] = useState({} as StreamResults<TStreams>);
 
   // Store the streams state in SWR, using the idKey as the key to share states.
-  const { data: streams, mutate: mutateStreams } = useSWR<StreamResults<TStreams>>(
+  const { data: streams, mutate: mutateStreams } = useInternalSWR<StreamResults<TStreams>>(
     [idKey, "streams"],
     null,
     {
@@ -239,15 +239,15 @@ export function useRealtimeRunWithStreams<
   }, [streams]);
 
   // Store the streams state in SWR, using the idKey as the key to share states.
-  const { data: run, mutate: mutateRun } = useSWR<RealtimeRun<TTask>>([idKey, "run"], null);
+  const { data: run, mutate: mutateRun } = useInternalSWR<RealtimeRun<TTask>>([idKey, "run"], null);
 
   // Add state to track when the subscription is complete
-  const { data: isComplete = false, mutate: setIsComplete } = useSWR<boolean>(
+  const { data: isComplete = false, mutate: setIsComplete } = useInternalSWR<boolean>(
     [idKey, "complete"],
     null
   );
 
-  const { data: error = undefined, mutate: setError } = useSWR<undefined | Error>(
+  const { data: error = undefined, mutate: setError } = useInternalSWR<undefined | Error>(
     [idKey, "error"],
     null
   );
@@ -401,7 +401,7 @@ export function useRealtimeRunsWithTag<TTask extends AnyTask>(
   const idKey = options?.id ?? hookId;
 
   // Store the streams state in SWR, using the idKey as the key to share states.
-  const { data: runs, mutate: mutateRuns } = useSWR<RealtimeRun<TTask>[]>([idKey, "run"], null, {
+  const { data: runs, mutate: mutateRuns } = useInternalSWR<RealtimeRun<TTask>[]>([idKey, "run"], null, {
     fallbackData: [],
   });
 
@@ -411,7 +411,7 @@ export function useRealtimeRunsWithTag<TTask extends AnyTask>(
     runsRef.current = runs ?? [];
   }, [runs]);
 
-  const { data: error = undefined, mutate: setError } = useSWR<undefined | Error>(
+  const { data: error = undefined, mutate: setError } = useInternalSWR<undefined | Error>(
     [idKey, "error"],
     null
   );
@@ -499,7 +499,7 @@ export function useRealtimeBatch<TTask extends AnyTask>(
   const idKey = options?.id ?? hookId;
 
   // Store the streams state in SWR, using the idKey as the key to share states.
-  const { data: runs, mutate: mutateRuns } = useSWR<RealtimeRun<TTask>[]>([idKey, "run"], null, {
+  const { data: runs, mutate: mutateRuns } = useInternalSWR<RealtimeRun<TTask>[]>([idKey, "run"], null, {
     fallbackData: [],
   });
 
@@ -509,7 +509,7 @@ export function useRealtimeBatch<TTask extends AnyTask>(
     runsRef.current = runs ?? [];
   }, [runs]);
 
-  const { data: error = undefined, mutate: setError } = useSWR<undefined | Error>(
+  const { data: error = undefined, mutate: setError } = useInternalSWR<undefined | Error>(
     [idKey, "error"],
     null
   );
