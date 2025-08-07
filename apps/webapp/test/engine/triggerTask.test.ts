@@ -474,4 +474,91 @@ describe("RunEngineTriggerTaskService", () => {
       await engine.quit();
     }
   );
+
+  containerTest("should pass concurrencyKey through to run ctx", async ({ prisma, redisOptions }) => {
+    const engine = new RunEngine({
+      prisma,
+      worker: {
+        redis: redisOptions,
+        workers: 1,
+        tasksPerWorker: 10,
+        pollIntervalMs: 100,
+      },
+      queue: {
+        redis: redisOptions,
+      },
+      runLock: {
+        redis: redisOptions,
+      },
+      machines: {
+        defaultMachine: "small-1x",
+        machines: {
+          "small-1x": {
+            name: "small-1x" as const,
+            cpu: 0.5,
+            memory: 0.5,
+            centsPerMs: 0.0001,
+          },
+        },
+        baseCostInCents: 0.0005,
+      },
+      tracer: trace.getTracer("test", "0.0.0"),
+    });
+
+    const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+    const taskIdentifier = "test-task";
+    await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+    const queuesManager = new DefaultQueueManager(prisma, engine);
+    const idempotencyKeyConcern = new IdempotencyKeyConcern(
+      prisma,
+      engine,
+      new MockTraceEventConcern()
+    );
+    const triggerTaskService = new RunEngineTriggerTaskService({
+      engine,
+      prisma,
+      runNumberIncrementer: new MockRunNumberIncrementer(),
+      payloadProcessor: new MockPayloadProcessor(),
+      queueConcern: queuesManager,
+      idempotencyKeyConcern,
+      validator: new MockTriggerTaskValidator(),
+      traceEventConcern: new MockTraceEventConcern(),
+      tracer: trace.getTracer("test", "0.0.0"),
+      metadataMaximumSize: 1024 * 1024 * 1, // 1MB
+    });
+
+    const concurrencyKey = "user-123";
+    const result = await triggerTaskService.call({
+      taskId: taskIdentifier,
+      environment: authenticatedEnvironment,
+      body: {
+        payload: { test: "test" },
+        options: {
+          concurrencyKey,
+        },
+      },
+    });
+
+    expect(result).toBeDefined();
+    expect(result?.run.friendlyId).toBeDefined();
+    expect(result?.run.status).toBe("PENDING");
+    expect(result?.isCached).toBe(false);
+
+    const run = await prisma.taskRun.findUnique({
+      where: {
+        id: result?.run.id,
+      },
+    });
+
+    expect(run).toBeDefined();
+    expect(run?.concurrencyKey).toBe(concurrencyKey);
+
+    // Optionally, fetch the run context and check ctx.run.concurrencyKey
+    if (run) {
+      const ctx = await engine["runAttemptSystem"].resolveTaskRunContext(run.id);
+      expect(ctx.run.concurrencyKey).toBe(concurrencyKey);
+    }
+
+    await engine.quit();
+  });
 });
