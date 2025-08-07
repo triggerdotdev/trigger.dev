@@ -12,18 +12,20 @@ show_help() {
     echo "Usage: $0 [OPTIONS]"
     echo ""
     echo "Options:"
-    echo "  -t, --target TARGET    Install target: claude, cursor, or all (default: all)"
+    echo "  -t, --target TARGET    Install target: claude, cursor, vscode, or all (default: all)"
     echo "  -h, --help            Show this help message"
     echo ""
     echo "Targets:"
     echo "  claude    Install for Claude Code (~/.claude.json)"
     echo "  cursor    Install for Cursor (~/.cursor/mcp.json)"
+    echo "  vscode    Install for VS Code (~/Library/Application Support/Code/User/mcp.json)"
     echo "  all       Install for all supported targets"
     echo ""
     echo "Examples:"
     echo "  $0                    # Install for all targets"
     echo "  $0 -t claude         # Install only for Claude Code"
     echo "  $0 -t cursor         # Install only for Cursor"
+    echo "  $0 -t vscode         # Install only for VS Code"
 }
 
 # Parse arguments
@@ -47,11 +49,11 @@ done
 
 # Validate target
 case $TARGET in
-    claude|cursor|all)
+    claude|cursor|vscode|all)
         ;;
     *)
         echo "❌ Invalid target: $TARGET"
-        echo "Valid targets are: claude, cursor, all"
+        echo "Valid targets are: claude, cursor, vscode, all"
         exit 1
         ;;
 esac
@@ -233,6 +235,81 @@ install_cursor() {
     "
 }
 
+# Function to install for VS Code
+install_vscode() {
+    echo ""
+    echo "🔧 Installing for VS Code..."
+    
+    local VSCODE_DIR="$HOME/Library/Application Support/Code/User"
+    local VSCODE_CONFIG="$VSCODE_DIR/mcp.json"
+    
+    echo "📁 VS Code configuration file: $VSCODE_CONFIG"
+
+    # Create VS Code User directory if it doesn't exist
+    if [ ! -d "$VSCODE_DIR" ]; then
+        echo "📝 Creating VS Code User configuration directory..."
+        mkdir -p "$VSCODE_DIR"
+    fi
+
+    # Check if VS Code config exists, create if it doesn't
+    if [ ! -f "$VSCODE_CONFIG" ]; then
+        echo "📝 Creating new VS Code configuration file..."
+        echo '{"servers": {}}' > "$VSCODE_CONFIG"
+    fi
+
+    # Use Node.js to manipulate the JSON
+    echo "🔧 Updating VS Code configuration..."
+
+    node -e "
+    const fs = require('fs');
+    const path = require('path');
+
+    const configPath = '$VSCODE_CONFIG';
+    const nodePath = '$NODE_PATH';
+    const cliPath = '$CLI_PATH';
+    const logFile = '$MCP_LOG_FILE';
+
+    try {
+        // Read existing config
+        let config;
+        try {
+            const configContent = fs.readFileSync(configPath, 'utf8');
+            config = JSON.parse(configContent);
+        } catch (error) {
+            console.log('📝 Creating new configuration structure...');
+            config = {};
+        }
+
+        // Ensure servers object exists
+        if (!config.servers) {
+            config.servers = {};
+        }
+
+        // Add/update trigger.dev entry
+        config.servers['trigger'] = {
+            command: nodePath,
+            args: [cliPath, 'mcp', '--log-file', logFile, '--api-url', 'http://localhost:3030']
+        };
+
+        // Write back to file with proper formatting
+        fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+        
+        console.log('✅ Successfully installed Trigger.dev MCP server to VS Code');
+        console.log('');
+        console.log('📋 VS Code Configuration:');
+        console.log('   • Config file:', configPath);
+        console.log('   • Node.js path:', nodePath);
+        console.log('   • CLI path:', cliPath);
+        console.log('');
+        console.log('💡 You can now use Trigger.dev MCP commands in VS Code.');
+        
+    } catch (error) {
+        console.error('❌ Error updating VS Code configuration:', error.message);
+        process.exit(1);
+    }
+    "
+}
+
 # Install based on target
 case $TARGET in
     claude)
@@ -241,9 +318,13 @@ case $TARGET in
     cursor)
         install_cursor
         ;;
+    vscode)
+        install_vscode
+        ;;
     all)
         install_claude
         install_cursor
+        install_vscode
         ;;
 esac
 
