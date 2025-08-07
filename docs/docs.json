@@ -328,7 +328,6 @@
               }
             ]
           },
-
           {
             "group": "Example projects",
             "pages": [
@@ -384,7 +383,9 @@
           },
           {
             "group": "Migration guides",
-            "pages": ["migration-mergent"]
+            "pages": [
+              "migration-mergent"
+            ]
           },
           {
             "group": "Community packages",
@@ -405,7 +406,10 @@
     "href": "https://trigger.dev"
   },
   "api": {
-    "openapi": ["openapi.yml", "v3-openapi.yaml"],
+    "openapi": [
+      "openapi.yml",
+      "v3-openapi.yaml"
+    ],
     "playground": {
       "display": "simple"
     }

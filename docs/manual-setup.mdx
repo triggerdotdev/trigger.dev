@@ -1,0 +1,656 @@
+---
+title: "Manual setup"
+description: "How to manually setup Trigger.dev in your project."
+---
+
+This guide covers how to manually set up Trigger.dev in your project, including configuration for different package managers, monorepos, and build extensions. This guide replicates all the steps performed by the `trigger.dev init` command. Follow our [Quickstart](/quick-start) for a more streamlined setup.
+
+## Prerequisites
+
+- Node.js 18+ (or Bun runtime)
+- A Trigger.dev account (sign up at [trigger.dev](https://trigger.dev))
+- TypeScript 5.0.4 or later (for TypeScript projects)
+
+## CLI Authentication
+
+Before setting up your project, you need to authenticate the CLI with Trigger.dev:
+
+```bash
+# Login to Trigger.dev
+npx trigger.dev@v4-beta login
+
+# Or with a specific API URL (for self-hosted instances)
+npx trigger.dev@v4-beta login --api-url https://your-trigger-instance.com
+```
+
+This will open your browser to authenticate. Once authenticated, you'll need to select or create a project in the Trigger.dev dashboard to get your project reference (e.g., `proj_abc123`).
+
+## Package installation
+
+Install the required packages based on your package manager:
+
+<CodeGroup>
+
+```bash npm
+npm add @trigger.dev/sdk@v4-beta
+npm add --save-dev @trigger.dev/build@v4-beta
+```
+
+```bash pnpm
+pnpm add @trigger.dev/sdk@v4-beta
+pnpm add -D @trigger.dev/build@v4-beta
+```
+
+```bash yarn
+yarn add @trigger.dev/sdk@v4-beta
+yarn add -D @trigger.dev/build@v4-beta
+```
+
+```bash bun
+bun add @trigger.dev/sdk@v4-beta
+bun add -D @trigger.dev/build@v4-beta
+```
+
+</CodeGroup>
+
+## Environment variables
+
+For local development, you need to set up the `TRIGGER_SECRET_KEY` environment variable. This key authenticates your application with Trigger.dev.
+
+1. Go to your project dashboard in Trigger.dev
+2. Navigate to the "API Keys" page
+3. Copy the **DEV** secret key
+4. Add it to your local environment file:
+
+```bash
+TRIGGER_SECRET_KEY=tr_dev_xxxxxxxxxx
+```
+
+### Self-hosted instances
+
+If you're using a self-hosted Trigger.dev instance, also set:
+
+```bash
+TRIGGER_API_URL=https://your-trigger-instance.com
+```
+
+## CLI setup
+
+You can run the Trigger.dev CLI in two ways:
+
+### Option 1: Using npx/pnpm dlx/yarn dlx
+
+```bash
+# npm
+npx trigger.dev@v4-beta dev
+
+# pnpm
+pnpm dlx trigger.dev@v4-beta dev
+
+# yarn
+yarn dlx trigger.dev@v4-beta dev
+```
+
+### Option 2: Add as dev dependency
+
+Add the CLI to your `package.json`:
+
+```json
+{
+  "devDependencies": {
+    "trigger.dev": "4.0.0-v4-beta.26"
+  }
+}
+```
+
+Then add scripts to your `package.json`:
+
+```json
+{
+  "scripts": {
+    "dev:trigger": "trigger dev",
+    "deploy:trigger": "trigger deploy"
+  }
+}
+```
+
+### Version pinning
+
+Make sure to pin the version of the CLI to the same version as the SDK that you are using:
+
+```json
+"devDependencies": {
+  "trigger.dev": "4.0.0-v4-beta.26",
+  "@trigger.dev/build": "4.0.0-v4-beta.26"
+},
+"dependencies": {
+  "@trigger.dev/sdk": "4.0.0-v4-beta.26"
+}
+```
+
+While running the CLI `dev` or `deploy` commands, the CLI will automatically detect mismatched versions and warn you.
+
+## Configuration file
+
+Create a `trigger.config.ts` file in your project root (or `trigger.config.mjs` for JavaScript projects):
+
+```typescript
+import { defineConfig } from "@trigger.dev/sdk";
+
+export default defineConfig({
+  // Your project ref from the Trigger.dev dashboard
+  project: "<your-project-ref>", // e.g., "proj_abc123"
+
+  // Directories containing your tasks
+  dirs: ["./src/trigger"], // Customize based on your project structure
+
+  // Retry configuration
+  retries: {
+    enabledInDev: false, // Enable retries in development
+    default: {
+      maxAttempts: 3,
+      minTimeoutInMs: 1000,
+      maxTimeoutInMs: 10000,
+      factor: 2,
+      randomize: true,
+    },
+  },
+
+  // Build configuration (optional)
+  build: {
+    extensions: [], // Build extensions go here
+  },
+
+  // Max duration of a task in seconds
+  maxDuration: 3600,
+});
+```
+
+### Using the Bun runtime
+
+By default, Trigger.dev will use the Node.js runtime. If you're using Bun, you can specify the runtime:
+
+```typescript
+import { defineConfig } from "@trigger.dev/sdk";
+
+export default defineConfig({
+  project: "<your-project-ref>",
+  runtime: "bun",
+  dirs: ["./src/trigger"],
+});
+```
+
+See our [Bun runtime documentation](/runtime/bun) for more information.
+
+## Add your first task
+
+Create a `trigger` directory (matching the `dirs` in your config) and add an example task:
+
+```typescript src/trigger/example.ts
+import { task } from "@trigger.dev/sdk";
+
+export const helloWorld = task({
+  id: "hello-world",
+  run: async (payload: { name: string }) => {
+    console.log(`Hello ${payload.name}!`);
+
+    return {
+      message: `Hello ${payload.name}!`,
+      timestamp: new Date().toISOString(),
+    };
+  },
+});
+```
+
+See our [Tasks](/tasks/overview) docs for more information on how to create tasks.
+
+## TypeScript config
+
+If you're using TypeScript, add `trigger.config.ts` to your `tsconfig.json` include array:
+
+```json
+{
+  "compilerOptions": {
+    // ... your existing options
+  },
+  "include": [
+    // ... your existing includes
+    "trigger.config.ts"
+  ]
+}
+```
+
+## Git config
+
+Add `.trigger` to your `.gitignore` file to exclude Trigger.dev's local development files:
+
+```bash
+# Trigger.dev
+.trigger
+```
+
+If you don't have a `.gitignore` file, create one with this content.
+
+## React hooks setup
+
+If you're building a React frontend application and want to display task status in real-time, install the React hooks package:
+
+### Installation
+
+```bash
+# npm
+npm install @trigger.dev/react-hooks@v4-beta
+
+# pnpm
+pnpm add @trigger.dev/react-hooks@v4-beta
+
+# yarn
+yarn add @trigger.dev/react-hooks@v4-beta
+
+# bun
+bun add @trigger.dev/react-hooks@v4-beta
+```
+
+### Basic usage
+
+1. **Generate a Public Access Token** in your backend:
+
+```typescript
+import { auth } from "@trigger.dev/sdk";
+
+// In your backend API
+export async function getPublicAccessToken() {
+  const publicAccessToken = await auth.createPublicToken({
+    scopes: ["read:runs"], // Customize based on needs
+  });
+
+  return publicAccessToken;
+}
+```
+
+2. **Use hooks to monitor tasks**:
+
+```tsx
+import { useRealtimeRun } from "@trigger.dev/react-hooks";
+
+export function TaskStatus({
+  runId,
+  publicAccessToken,
+}: {
+  runId: string;
+  publicAccessToken: string;
+}) {
+  const { run, error } = useRealtimeRun(runId, {
+    accessToken: publicAccessToken,
+  });
+
+  if (error) return <div>Error: {error.message}</div>;
+  if (!run) return <div>Loading...</div>;
+
+  return (
+    <div>
+      <p>Status: {run.status}</p>
+      <p>Progress: {run.completedAt ? "Complete" : "Running..."}</p>
+    </div>
+  );
+}
+```
+
+For more information, see the [React Hooks documentation](/frontend/react-hooks/overview).
+
+## Build extensions
+
+Build extensions allow you to customize the build process. Ensure you have the `@trigger.dev/build` package installed in your project (see [package installation](#package-installation)).
+
+Now you can use any of the built-in extensions:
+
+```typescript
+import { defineConfig } from "@trigger.dev/sdk";
+import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
+
+export default defineConfig({
+  project: "<project-ref>",
+  build: {
+    extensions: [
+      prismaExtension({
+        schema: "prisma/schema.prisma",
+        migrate: true, // Run migrations on deploy
+      }),
+    ],
+  },
+});
+```
+
+See our [Build extensions](/config/extensions/overview) docs for more information on how to use build extensions and the available extensions.
+
+## Monorepo setup
+
+There are two main approaches for setting up Trigger.dev in a monorepo:
+
+1. **Tasks as a package**: Create a separate package for your Trigger.dev tasks that can be shared across apps
+2. **Tasks in apps**: Install Trigger.dev directly in individual apps that need background tasks
+
+Both approaches work well depending on your needs. Use the tasks package approach if you want to share tasks across multiple applications, or the app-based approach if tasks are specific to individual apps.
+
+### Approach 1: Tasks as a package (Turborepo)
+
+This approach creates a dedicated tasks package that can be consumed by multiple apps in your monorepo.
+
+#### 1. Set up workspace configuration
+
+**Root `package.json`**:
+```json
+{
+  "name": "my-monorepo",
+  "private": true,
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint"
+  },
+  "devDependencies": {
+    "turbo": "^2.4.4",
+    "typescript": "5.8.2"
+  },
+  "packageManager": "pnpm@9.0.0"
+}
+```
+
+**`pnpm-workspace.yaml`**:
+```yaml
+packages:
+  - "apps/*"
+  - "packages/*"
+```
+
+**`turbo.json`**:
+```json
+{
+  "$schema": "https://turbo.build/schema.json",
+  "ui": "tui",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": [".next/**", "!.next/cache/**"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "lint": {
+      "dependsOn": ["^lint"]
+    }
+  }
+}
+```
+
+#### 2. Create the tasks package
+
+**`packages/tasks/package.json`**:
+```json
+{
+  "name": "@repo/tasks",
+  "version": "0.0.0",
+  "dependencies": {
+    "@trigger.dev/sdk": "4.0.0-v4-beta.26"
+  },
+  "devDependencies": {
+    "@trigger.dev/build": "4.0.0-v4-beta.26"
+  },
+  "exports": {
+    ".": "./src/trigger/index.ts",
+    "./trigger": "./src/index.ts"
+  }
+}
+```
+
+**`packages/tasks/trigger.config.ts`**:
+```typescript
+import { defineConfig } from "@trigger.dev/sdk";
+
+export default defineConfig({
+  project: "<your-project-ref>", // Replace with your project reference
+  dirs: ["./src/trigger"],
+  retries: {
+    enabledInDev: true,
+    default: {
+      maxAttempts: 3,
+      minTimeoutInMs: 1000,
+      maxTimeoutInMs: 10000,
+      factor: 2,
+      randomize: true,
+    },
+  },
+  maxDuration: 3600,
+});
+```
+
+**`packages/tasks/src/index.ts`**:
+```typescript
+export * from "@trigger.dev/sdk"; // Export values and types from the Trigger.dev sdk
+```
+
+**`packages/tasks/src/trigger/index.ts`**:
+```typescript
+// Export tasks
+export * from "./example";
+```
+
+**`packages/tasks/src/trigger/example.ts`**:
+```typescript
+import { task } from "@trigger.dev/sdk";
+
+export const helloWorld = task({
+  id: "hello-world",
+  run: async (payload: { name: string }) => {
+    console.log(`Hello ${payload.name}!`);
+
+    return {
+      message: `Hello ${payload.name}!`,
+      timestamp: new Date().toISOString(),
+    };
+  },
+});
+```
+
+#### 3. Use tasks in your apps
+
+**`apps/web/package.json`**:
+```json
+{
+  "name": "web",
+  "dependencies": {
+    "@repo/tasks": "workspace:*",
+    "next": "^15.2.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  }
+}
+```
+
+**`apps/web/app/api/actions.ts`**:
+```typescript
+"use server";
+
+import { helloWorld } from "@repo/tasks";
+
+export async function triggerHelloWorld(name: string) {
+  const handle = await helloWorld.trigger({
+    name: name,
+  });
+
+  return { runId: handle.id };
+}
+```
+
+#### 4. Development workflow
+
+Run the development server for the tasks package:
+
+```bash
+# From the root of your monorepo
+cd packages/tasks
+npx trigger.dev@v4-beta dev
+
+# Or using turbo (if you add dev:trigger script to tasks package.json)
+turbo run dev:trigger --filter=@repo/tasks
+```
+
+### Approach 2: Tasks in apps (Turborepo)
+
+This approach installs Trigger.dev directly in individual apps that need background tasks.
+
+#### 1. Install in your app
+
+**`apps/web/package.json`**:
+```json
+{
+  "name": "web",
+  "dependencies": {
+    "@trigger.dev/sdk": "4.0.0-v4-beta.26",
+    "next": "^15.2.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@trigger.dev/build": "4.0.0-v4-beta.26"
+  }
+}
+```
+
+#### 2. Add configuration
+
+**`apps/web/trigger.config.ts`**:
+```typescript
+import { defineConfig } from "@trigger.dev/sdk";
+
+export default defineConfig({
+  project: "<your-project-ref>", // Replace with your project reference
+  dirs: ["./src/trigger"],
+  retries: {
+    enabledInDev: true,
+    default: {
+      maxAttempts: 3,
+      minTimeoutInMs: 1000,
+      maxTimeoutInMs: 10000,
+      factor: 2,
+      randomize: true,
+    },
+  },
+  maxDuration: 3600,
+});
+```
+
+#### 3. Create tasks
+
+**`apps/web/src/trigger/example.ts`**:
+```typescript
+import { task } from "@trigger.dev/sdk";
+
+export const helloWorld = task({
+  id: "hello-world",
+  run: async (payload: { name: string }) => {
+    console.log(`Hello ${payload.name}!`);
+
+    return {
+      message: `Hello ${payload.name}!`,
+      timestamp: new Date().toISOString(),
+    };
+  },
+});
+```
+
+#### 4. Use tasks in your app
+
+**`apps/web/app/api/actions.ts`**:
+```typescript
+"use server";
+
+import { helloWorld } from "../../src/trigger/example";
+
+export async function triggerHelloWorld(name: string) {
+  const handle = await helloWorld.trigger({
+    name: name,
+  });
+
+  return { runId: handle.id };
+}
+```
+
+#### 5. Development workflow
+
+```bash
+# From the app directory
+cd apps/web
+npx trigger.dev@v4-beta dev
+
+# Or from the root using turbo
+turbo run dev:trigger --filter=web
+```
+
+### Nx Monorepo
+
+For Nx monorepos, you can use a similar pattern with libraries:
+
+#### 1. Create a tasks library
+
+```bash
+nx generate @nx/js:library tasks --directory=libs/tasks
+```
+
+#### 2. Add Trigger.dev configuration
+
+**`libs/tasks/trigger.config.ts`**:
+```typescript
+import { defineConfig } from "@trigger.dev/sdk";
+
+export default defineConfig({
+  project: "<your-project-ref>",
+  dirs: ["./src/lib/trigger"],
+});
+```
+
+#### 3. Update project configuration
+
+**`libs/tasks/project.json`**:
+```json
+{
+  "targets": {
+    "dev:trigger": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npx trigger.dev@v4-beta dev",
+        "cwd": "libs/tasks"
+      }
+    },
+    "deploy:trigger": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npx trigger.dev@v4-beta deploy",
+        "cwd": "libs/tasks"
+      }
+    }
+  }
+}
+```
+
+### Environment variables in monorepos
+
+Each package or app that uses Trigger.dev needs access to the environment variables:
+
+- For the **tasks package approach**: Set environment variables in the tasks package directory
+- For the **app-based approach**: Set environment variables in each app that uses Trigger.dev
+
+You can also set environment variables at the root level and have them inherited by all packages.
+
+## Example projects
+
+You can find a growing list of example projects in our [examples](/guides/introduction) section.
+
+## Troubleshooting
+
+If you run into any issues, please check our [Troubleshooting](/troubleshooting) page.
+
+## Feedback
+
+If you have any feedback, please let us know by [opening an issue](https://github.com/triggerdotdev/trigger.dev/issues).
