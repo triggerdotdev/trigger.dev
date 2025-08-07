@@ -855,6 +855,21 @@ export type TriggerOptions = {
    * to the same version as the parent task that is triggering the child tasks.
    */
   version?: string;
+
+  /**
+   * Specify the region to run the task in. This overrides the default region set for your project in the dashboard.
+   *
+   * Check the Regions page in the dashboard for regions that are available to you.
+   *
+   * In DEV this won't do anything, so it's fine to set it in your code.
+   *
+   * @example
+   *
+   * ```ts
+   * await myTask.trigger({ foo: "bar" }, { region: "us-east-1" });
+   * ```
+   */
+  region?: string;
 };
 
 export type TriggerAndWaitOptions = Omit<TriggerOptions, "version">;
