@@ -50,8 +50,7 @@
   },
   "dependencies": {
     "@opentelemetry/api": "1.9.0",
-    "@opentelemetry/api-logs": "0.52.1",
-    "@opentelemetry/semantic-conventions": "1.25.1",
+    "@opentelemetry/semantic-conventions": "1.36.0",
     "@trigger.dev/core": "workspace:4.0.0-v4-beta.26",
     "chalk": "^5.2.0",
     "cronstrue": "^2.21.0",
@@ -75,10 +74,10 @@
     "tshy": "^3.0.2",
     "tsx": "4.17.0",
     "typed-emitter": "^2.1.0",
-    "zod": "3.23.8"
+    "zod": "3.25.76"
   },
   "peerDependencies": {
-    "zod": "^3.0.0",
+    "zod": "^3.0.0 || ^4.0.0",
     "ai": "^4.2.0"
   },
   "peerDependenciesMeta": {

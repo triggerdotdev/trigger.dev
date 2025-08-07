@@ -33,7 +33,7 @@
     "react-dom": "^19.0.0",
     "tailwind-merge": "^3.0.2",
     "tw-animate-css": "^1.2.4",
-    "zod": "3.23.8",
+    "zod": "3.25.76",
     "zod-to-json-schema": "^3.24.5"
   },
   "devDependencies": {

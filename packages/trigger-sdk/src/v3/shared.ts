@@ -76,6 +76,7 @@ import type {
   TaskBatchOutputHandle,
   TaskIdentifier,
   TaskOptions,
+  TaskOptionsWithSchema,
   TaskOutput,
   TaskOutputHandle,
   TaskPayload,
@@ -128,6 +129,16 @@ export function queue(options: QueueOptions): Queue {
   return options;
 }
 
+// Overload: when payloadSchema is provided, payload type should be any
+export function createTask<
+  TIdentifier extends string,
+  TOutput = unknown,
+  TInitOutput extends InitOutput = any,
+>(
+  params: TaskOptionsWithSchema<TIdentifier, TOutput, TInitOutput>
+): Task<TIdentifier, any, TOutput>;
+
+// Overload: normal case without payloadSchema
 export function createTask<
   TIdentifier extends string,
   TInput = void,
@@ -135,7 +146,18 @@ export function createTask<
   TInitOutput extends InitOutput = any,
 >(
   params: TaskOptions<TIdentifier, TInput, TOutput, TInitOutput>
-): Task<TIdentifier, TInput, TOutput> {
+): Task<TIdentifier, TInput, TOutput>;
+
+export function createTask<
+  TIdentifier extends string,
+  TInput = void,
+  TOutput = unknown,
+  TInitOutput extends InitOutput = any,
+>(
+  params:
+    | TaskOptions<TIdentifier, TInput, TOutput, TInitOutput>
+    | TaskOptionsWithSchema<TIdentifier, TOutput, TInitOutput>
+): Task<TIdentifier, TInput, TOutput> | Task<TIdentifier, any, TOutput> {
   const task: Task<TIdentifier, TInput, TOutput> = {
     id: params.id,
     description: params.description,
@@ -204,6 +226,7 @@ export function createTask<
     retry: params.retry ? { ...defaultRetryOptions, ...params.retry } : undefined,
     machine: typeof params.machine === "string" ? { preset: params.machine } : params.machine,
     maxDuration: params.maxDuration,
+    payloadSchema: params.jsonSchema,
     fns: {
       run: params.run,
     },
@@ -338,6 +361,7 @@ export function createSchemaTask<
       run: params.run,
       parsePayload,
     },
+    schema: params.schema,
   });
 
   const queue = params.queue;
@@ -603,6 +627,7 @@ export async function batchTriggerById<TTask extends AnyTask>(
               idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
               machine: item.options?.machine,
               priority: item.options?.priority,
+              region: item.options?.region,
               lockToVersion: item.options?.version ?? getEnvVar("TRIGGER_VERSION"),
             },
           } satisfies BatchTriggerTaskV2RequestBody["items"][0];
@@ -772,6 +797,7 @@ export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
                   idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
                   machine: item.options?.machine,
                   priority: item.options?.priority,
+                  region: item.options?.region,
                 },
               } satisfies BatchTriggerTaskV2RequestBody["items"][0];
             })
@@ -931,6 +957,7 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
               idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
               machine: item.options?.machine,
               priority: item.options?.priority,
+              region: item.options?.region,
               lockToVersion: item.options?.version ?? getEnvVar("TRIGGER_VERSION"),
             },
           } satisfies BatchTriggerTaskV2RequestBody["items"][0];
@@ -1102,6 +1129,7 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
                   idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
                   machine: item.options?.machine,
                   priority: item.options?.priority,
+                  region: item.options?.region,
                 },
               } satisfies BatchTriggerTaskV2RequestBody["items"][0];
             })
@@ -1174,6 +1202,7 @@ async function trigger_internal<TRunTypes extends AnyRunTypes>(
         parentRunId: taskContext.ctx?.run.id,
         machine: options?.machine,
         priority: options?.priority,
+        region: options?.region,
         lockToVersion: options?.version ?? getEnvVar("TRIGGER_VERSION"),
       },
     },
@@ -1246,6 +1275,7 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
               idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
               machine: item.options?.machine,
               priority: item.options?.priority,
+              region: item.options?.region,
               lockToVersion: item.options?.version ?? getEnvVar("TRIGGER_VERSION"),
             },
           } satisfies BatchTriggerTaskV2RequestBody["items"][0];
@@ -1330,6 +1360,7 @@ async function triggerAndWait_internal<TIdentifier extends string, TPayload, TOu
             idempotencyKeyTTL: options?.idempotencyKeyTTL,
             machine: options?.machine,
             priority: options?.priority,
+            region: options?.region,
           },
         },
         {},
@@ -1420,6 +1451,7 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
                   idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
                   machine: item.options?.machine,
                   priority: item.options?.priority,
+                  region: item.options?.region,
                 },
               } satisfies BatchTriggerTaskV2RequestBody["items"][0];
             })

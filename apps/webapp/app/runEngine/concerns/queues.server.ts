@@ -14,6 +14,7 @@ import { WorkerGroupService } from "~/v3/services/worker/workerGroupService.serv
 import type { RunEngine } from "~/v3/runEngine.server";
 import { env } from "~/env.server";
 import { EngineServiceValidationError } from "./errors";
+import { tryCatch } from "@trigger.dev/core/v3";
 
 export class DefaultQueueManager implements QueueManager {
   constructor(
@@ -196,7 +197,10 @@ export class DefaultQueueManager implements QueueManager {
     };
   }
 
-  async getWorkerQueue(environment: AuthenticatedEnvironment): Promise<string | undefined> {
+  async getWorkerQueue(
+    environment: AuthenticatedEnvironment,
+    regionOverride?: string
+  ): Promise<string | undefined> {
     if (environment.type === "DEVELOPMENT") {
       return environment.id;
     }
@@ -206,9 +210,16 @@ export class DefaultQueueManager implements QueueManager {
       engine: this.engine,
     });
 
-    const workerGroup = await workerGroupService.getDefaultWorkerGroupForProject({
-      projectId: environment.projectId,
-    });
+    const [error, workerGroup] = await tryCatch(
+      workerGroupService.getDefaultWorkerGroupForProject({
+        projectId: environment.projectId,
+        regionOverride,
+      })
+    );
+
+    if (error) {
+      throw new EngineServiceValidationError(error.message);
+    }
 
     if (!workerGroup) {
       throw new EngineServiceValidationError("No worker group found");

@@ -15,6 +15,7 @@ export const feedbackTypeLabel = {
   enterprise: "Enterprise enquiry",
   feedback: "General feedback",
   concurrency: "Increase my concurrency",
+  region: "Suggest a new region",
 };
 
 export type FeedbackType = keyof typeof feedbackTypeLabel;

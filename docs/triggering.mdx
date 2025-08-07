@@ -980,6 +980,18 @@ View our [metadata doc](/runs/metadata) for more information.
 
 View our [maxDuration doc](/runs/max-duration) for more information.
 
+### `region`
+
+You can override the default region when you trigger a run:
+
+```ts
+await yourTask.trigger(payload, { region: "eu-central-1" });
+```
+
+If you don't specify a region it will use the default for your project. Go to the "Regions" page in the dashboard to see available regions or switch your default.
+
+The region is where your runs are executed, it does not change where the run payload, output, tags, logs, or are any other data is stored.
+
 ## Large Payloads
 
 We recommend keeping your task payloads as small as possible. We currently have a hard limit on task payloads above 10MB.

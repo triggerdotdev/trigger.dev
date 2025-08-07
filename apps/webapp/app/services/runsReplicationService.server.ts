@@ -59,7 +59,13 @@ export type RunsReplicationServiceOptions = {
   insertMaxDelayMs?: number;
 };
 
-type TaskRunInsert = { _version: bigint; run: TaskRun; event: "insert" | "update" | "delete" };
+type PostgresTaskRun = TaskRun & { masterQueue: string };
+
+type TaskRunInsert = {
+  _version: bigint;
+  run: PostgresTaskRun;
+  event: "insert" | "update" | "delete";
+};
 
 export type RunsReplicationServiceEvents = {
   message: [{ lsn: string; message: PgoutputMessage; service: RunsReplicationService }];
@@ -243,7 +249,7 @@ export class RunsReplicationService {
     }
   }
 
-  async backfill(runs: TaskRun[]) {
+  async backfill(runs: PostgresTaskRun[]) {
     // divide into batches of 50 to get data from Postgres
     const flushId = nanoid();
     // Use current timestamp as LSN (high enough to be above existing data)
@@ -352,7 +358,7 @@ export class RunsReplicationService {
         const replicationLagMs = Date.now() - Number(message.commitTime / 1000n);
         this._currentTransaction.commitEndLsn = message.commitEndLsn;
         this._currentTransaction.replicationLagMs = replicationLagMs;
-        const transaction = this._currentTransaction as Transaction<TaskRun>;
+        const transaction = this._currentTransaction as Transaction<PostgresTaskRun>;
         this._currentTransaction = null;
 
         if (transaction.commitEndLsn) {
@@ -370,7 +376,7 @@ export class RunsReplicationService {
     }
   }
 
-  #handleTransaction(transaction: Transaction<TaskRun>) {
+  #handleTransaction(transaction: Transaction<PostgresTaskRun>) {
     if (this._isShutDownComplete) return;
 
     if (this._isShuttingDown) {
@@ -764,7 +770,7 @@ export class RunsReplicationService {
   }
 
   async #prepareTaskRunInsert(
-    run: TaskRun,
+    run: PostgresTaskRun,
     organizationId: string,
     environmentType: string,
     event: "insert" | "update" | "delete",
@@ -814,6 +820,7 @@ export class RunsReplicationService {
       output,
       concurrency_key: run.concurrencyKey ?? "",
       bulk_action_group_ids: run.bulkActionGroupIds ?? [],
+      worker_queue: run.masterQueue,
       _version: _version.toString(),
       _is_deleted: event === "delete" ? 1 : 0,
     };

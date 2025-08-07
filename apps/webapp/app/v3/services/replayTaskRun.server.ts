@@ -92,6 +92,7 @@ export class ReplayTaskRunService extends BaseService {
             lockToVersion:
               overrideOptions.version === "latest" ? undefined : overrideOptions.version,
             bulkActionId: overrideOptions?.bulkActionId,
+            region: existingTaskRun.workerQueue,
           },
         },
         {

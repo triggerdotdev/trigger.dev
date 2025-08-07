@@ -10,8 +10,14 @@ import {
   taskRunErrorEnhancer,
   taskRunErrorToString,
   TriggerTaskRequestBody,
+  TriggerTraceContext,
 } from "@trigger.dev/core/v3";
-import { RunId, stringifyDuration } from "@trigger.dev/core/v3/isomorphic";
+import {
+  parseTraceparent,
+  RunId,
+  serializeTraceparent,
+  stringifyDuration,
+} from "@trigger.dev/core/v3/isomorphic";
 import type { PrismaClientOrTransaction } from "@trigger.dev/database";
 import { createTags } from "~/models/taskRunTag.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
@@ -228,7 +234,7 @@ export class RunEngineTriggerTaskService {
 
       const depth = parentRun ? parentRun.depth + 1 : 0;
 
-      const workerQueue = await this.queueConcern.getWorkerQueue(environment);
+      const workerQueue = await this.queueConcern.getWorkerQueue(environment, body.options?.region);
 
       try {
         return await this.traceEventConcern.traceRun(triggerRequest, async (event) => {
@@ -253,7 +259,11 @@ export class RunEngineTriggerTaskService {
                   payload: payloadPacket.data ?? "",
                   payloadType: payloadPacket.dataType,
                   context: body.context,
-                  traceContext: event.traceContext,
+                  traceContext: this.#propagateExternalTraceContext(
+                    event.traceContext,
+                    parentRun?.traceContext,
+                    event.traceparent?.spanId
+                  ),
                   traceId: event.traceId,
                   spanId: event.spanId,
                   parentSpanId:
@@ -340,5 +350,50 @@ export class RunEngineTriggerTaskService {
         throw error;
       }
     });
+  }
+
+  #propagateExternalTraceContext(
+    traceContext: Record<string, unknown>,
+    parentRunTraceContext: unknown,
+    parentSpanId: string | undefined
+  ): TriggerTraceContext {
+    if (!parentRunTraceContext) {
+      return traceContext;
+    }
+
+    const parsedParentRunTraceContext = TriggerTraceContext.safeParse(parentRunTraceContext);
+
+    if (!parsedParentRunTraceContext.success) {
+      return traceContext;
+    }
+
+    const { external } = parsedParentRunTraceContext.data;
+
+    if (!external) {
+      return traceContext;
+    }
+
+    if (!external.traceparent) {
+      return traceContext;
+    }
+
+    const parsedTraceparent = parseTraceparent(external.traceparent);
+
+    if (!parsedTraceparent) {
+      return traceContext;
+    }
+
+    const newExternalTraceparent = serializeTraceparent(
+      parsedTraceparent.traceId,
+      parentSpanId ?? parsedTraceparent.spanId
+    );
+
+    return {
+      ...traceContext,
+      external: {
+        ...external,
+        traceparent: newExternalTraceparent,
+      },
+    };
   }
 }

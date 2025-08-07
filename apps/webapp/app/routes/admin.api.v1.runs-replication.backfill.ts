@@ -59,7 +59,12 @@ export async function action({ request }: ActionFunctionArgs) {
       throw new Error("Runs replication instance not found");
     }
 
-    await runsReplicationInstance.backfill(runs);
+    await runsReplicationInstance.backfill(
+      runs.map((run) => ({
+        ...run,
+        masterQueue: run.workerQueue,
+      }))
+    );
 
     logger.info("Backfilled runs", { runs });
 

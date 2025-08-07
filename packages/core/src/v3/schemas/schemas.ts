@@ -189,6 +189,7 @@ const taskMetadata = {
   triggerSource: z.string().optional(),
   schedule: ScheduleMetadata.optional(),
   maxDuration: z.number().optional(),
+  payloadSchema: z.unknown().optional(),
 };
 
 export const TaskMetadata = z.object(taskMetadata);
@@ -296,3 +297,16 @@ export const RunChainState = z.object({
 });
 
 export type RunChainState = z.infer<typeof RunChainState>;
+
+export const TriggerTraceContext = z.object({
+  traceparent: z.string().optional(),
+  tracestate: z.string().optional(),
+  external: z
+    .object({
+      traceparent: z.string().optional(),
+      tracestate: z.string().optional(),
+    })
+    .optional(),
+});
+
+export type TriggerTraceContext = z.infer<typeof TriggerTraceContext>;
