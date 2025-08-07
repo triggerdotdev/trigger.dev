@@ -334,6 +334,8 @@ export const TaskRunExecution = z.object({
       traceContext: z.record(z.unknown()).optional(),
     })
   ),
+  // The concurrencyKey creates a copy of the queue per unique value
+  concurrencyKey: z.string().optional(),
   ...StaticTaskRunExecutionShape,
 });
 
@@ -406,6 +408,8 @@ export const TaskRunContext = z.object({
     durationMs: true,
     costInCents: true,
   }),
+  // The concurrencyKey used for this run, if any
+  concurrencyKey: z.string().optional(),
   ...StaticTaskRunExecutionShape,
 });
 
