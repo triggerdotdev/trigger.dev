@@ -9,6 +9,7 @@ import { FileLogger } from "../mcp/logger.js";
 import {
   registerCreateProjectTool,
   registerGetProjectDetailsTool,
+  registerInitializeProjectTool,
   registerListOrgsTool,
   registerListProjectsTool,
   registerSearchDocsTool,
@@ -42,7 +43,8 @@ export async function mcpCommand(options: McpCommandOptions) {
   const server = new McpServer({
     name: "triggerdev",
     version: "1.0.0",
-    description: "Trigger.dev MCP server. Search the Trigger.dev docs.",
+    description:
+      "Trigger.dev MCP server to automate your Trigger.dev projects and answer questions about Trigger.dev by searching the docs. If you need help setting up Trigger.dev in your project please refer to https://trigger.dev/docs/manual-setup. If the user asks for help with adding Trigger.dev to their project, please refer to https://trigger.dev/docs/manual-setup.",
   });
 
   const fileLogger: FileLogger | undefined = options.logFile
@@ -59,6 +61,7 @@ export async function mcpCommand(options: McpCommandOptions) {
   fileLogger?.log("running mcp command", { options });
 
   registerSearchDocsTool(context);
+  registerInitializeProjectTool(context);
   registerGetProjectDetailsTool(context);
   registerListProjectsTool(context);
   registerListOrgsTool(context);
