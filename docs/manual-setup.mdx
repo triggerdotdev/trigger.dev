@@ -7,7 +7,7 @@ This guide covers how to manually set up Trigger.dev in your project, including 
 
 ## Prerequisites
 
-- Node.js 18+ (or Bun runtime)
+- Node.js 18.20+ (or Bun runtime)
 - A Trigger.dev account (sign up at [trigger.dev](https://trigger.dev))
 - TypeScript 5.0.4 or later (for TypeScript projects)
 
@@ -617,63 +617,6 @@ npx trigger.dev@v4-beta dev
 # Or from the root using turbo
 turbo run dev:trigger --filter=web
 ```
-
-### Nx Monorepo
-
-For Nx monorepos, you can use a similar pattern with libraries:
-
-#### 1. Create a tasks library
-
-```bash
-nx generate @nx/js:library tasks --directory=libs/tasks
-```
-
-#### 2. Add Trigger.dev configuration
-
-**`libs/tasks/trigger.config.ts`**:
-
-```typescript
-import { defineConfig } from "@trigger.dev/sdk";
-
-export default defineConfig({
-  project: "<your-project-ref>",
-  dirs: ["./src/lib/trigger"],
-});
-```
-
-#### 3. Update project configuration
-
-**`libs/tasks/project.json`**:
-
-```json
-{
-  "targets": {
-    "dev:trigger": {
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "npx trigger.dev@v4-beta dev",
-        "cwd": "libs/tasks"
-      }
-    },
-    "deploy:trigger": {
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "npx trigger.dev@v4-beta deploy",
-        "cwd": "libs/tasks"
-      }
-    }
-  }
-}
-```
-
-### Environment variables in monorepos
-
-Each package or app that uses Trigger.dev needs access to the environment variables:
-
-- For the **tasks package approach**: Set environment variables in the tasks package directory
-- For the **app-based approach**: Set environment variables in each app that uses Trigger.dev
-
-You can also set environment variables at the root level and have them inherited by all packages.
 
 ## Example projects
 
