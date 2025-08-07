@@ -101,22 +101,21 @@ class DevSupervisor implements WorkerRuntime {
     // Initialize the task run process pool
     const env = await this.#getEnvVars();
 
+    const processKeepAlive =
+      this.options.config.processKeepAlive ?? this.options.config.experimental_processKeepAlive;
+
     const enableProcessReuse =
-      typeof this.options.config.experimental_processKeepAlive === "boolean"
-        ? this.options.config.experimental_processKeepAlive
-        : typeof this.options.config.experimental_processKeepAlive === "object"
-        ? this.options.config.experimental_processKeepAlive.enabled
+      typeof processKeepAlive === "boolean"
+        ? processKeepAlive
+        : typeof processKeepAlive === "object"
+        ? processKeepAlive.enabled
         : false;
 
     const maxPoolSize =
-      typeof this.options.config.experimental_processKeepAlive === "object"
-        ? this.options.config.experimental_processKeepAlive.devMaxPoolSize ?? 25
-        : 25;
+      typeof processKeepAlive === "object" ? processKeepAlive.devMaxPoolSize ?? 25 : 25;
 
     const maxExecutionsPerProcess =
-      typeof this.options.config.experimental_processKeepAlive === "object"
-        ? this.options.config.experimental_processKeepAlive.maxExecutionsPerProcess ?? 50
-        : 50;
+      typeof processKeepAlive === "object" ? processKeepAlive.maxExecutionsPerProcess ?? 50 : 50;
 
     if (enableProcessReuse) {
       logger.debug("[DevSupervisor] Enabling process reuse", {
@@ -359,9 +358,10 @@ class DevSupervisor implements WorkerRuntime {
           config: this.options.config,
         });
 
-        const cwd = this.options.config.experimental_devProcessCwdInBuildDir
-          ? worker.build.outputPath
-          : undefined;
+        const cwd =
+          this.options.config.legacyDevProcessCwdBehaviour === true
+            ? undefined
+            : worker.build.outputPath;
 
         //new run
         runController = new DevRunController({
