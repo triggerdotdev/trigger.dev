@@ -339,6 +339,7 @@ This approach creates a dedicated tasks package that can be consumed by multiple
 #### 1. Set up workspace configuration
 
 **Root `package.json`**:
+
 ```json
 {
   "name": "my-monorepo",
@@ -357,6 +358,7 @@ This approach creates a dedicated tasks package that can be consumed by multiple
 ```
 
 **`pnpm-workspace.yaml`**:
+
 ```yaml
 packages:
   - "apps/*"
@@ -364,6 +366,7 @@ packages:
 ```
 
 **`turbo.json`**:
+
 ```json
 {
   "$schema": "https://turbo.build/schema.json",
@@ -387,6 +390,7 @@ packages:
 #### 2. Create the tasks package
 
 **`packages/tasks/package.json`**:
+
 ```json
 {
   "name": "@repo/tasks",
@@ -405,6 +409,7 @@ packages:
 ```
 
 **`packages/tasks/trigger.config.ts`**:
+
 ```typescript
 import { defineConfig } from "@trigger.dev/sdk";
 
@@ -426,17 +431,20 @@ export default defineConfig({
 ```
 
 **`packages/tasks/src/index.ts`**:
+
 ```typescript
 export * from "@trigger.dev/sdk"; // Export values and types from the Trigger.dev sdk
 ```
 
 **`packages/tasks/src/trigger/index.ts`**:
+
 ```typescript
 // Export tasks
 export * from "./example";
 ```
 
 **`packages/tasks/src/trigger/example.ts`**:
+
 ```typescript
 import { task } from "@trigger.dev/sdk";
 
@@ -453,9 +461,12 @@ export const helloWorld = task({
 });
 ```
 
+See our [turborepo-prisma-tasks-package example](https://github.com/triggerdotdev/examples/tree/main/monorepos/turborepo-prisma-tasks-package) for a more complete example.
+
 #### 3. Use tasks in your apps
 
 **`apps/web/package.json`**:
+
 ```json
 {
   "name": "web",
@@ -469,6 +480,7 @@ export const helloWorld = task({
 ```
 
 **`apps/web/app/api/actions.ts`**:
+
 ```typescript
 "use server";
 
@@ -510,6 +522,7 @@ This approach installs Trigger.dev directly in individual apps that need backgro
 #### 1. Install in your app
 
 **`apps/web/package.json`**:
+
 ```json
 {
   "name": "web",
@@ -528,6 +541,7 @@ This approach installs Trigger.dev directly in individual apps that need backgro
 #### 2. Add configuration
 
 **`apps/web/trigger.config.ts`**:
+
 ```typescript
 import { defineConfig } from "@trigger.dev/sdk";
 
@@ -551,6 +565,7 @@ export default defineConfig({
 #### 3. Create tasks
 
 **`apps/web/src/trigger/example.ts`**:
+
 ```typescript
 import { task } from "@trigger.dev/sdk";
 
@@ -570,17 +585,25 @@ export const helloWorld = task({
 #### 4. Use tasks in your app
 
 **`apps/web/app/api/actions.ts`**:
+
 ```typescript
 "use server";
 
-import { helloWorld } from "../../src/trigger/example";
+import { tasks } from "@trigger.dev/sdk";
+import type { helloWorld } from "../../src/trigger/example";
+//     👆 type only import
 
 export async function triggerHelloWorld(name: string) {
-  const handle = await helloWorld.trigger({
-    name: name,
-  });
+  try {
+    const handle = await tasks.trigger<typeof helloWorld>("hello-world", {
+      name: name,
+    });
 
-  return { runId: handle.id };
+    return handle.id;
+  } catch (error) {
+    console.error(error);
+    return { error: "something went wrong" };
+  }
 }
 ```
 
@@ -608,6 +631,7 @@ nx generate @nx/js:library tasks --directory=libs/tasks
 #### 2. Add Trigger.dev configuration
 
 **`libs/tasks/trigger.config.ts`**:
+
 ```typescript
 import { defineConfig } from "@trigger.dev/sdk";
 
@@ -620,6 +644,7 @@ export default defineConfig({
 #### 3. Update project configuration
 
 **`libs/tasks/project.json`**:
+
 ```json
 {
   "targets": {
