@@ -171,22 +171,23 @@ export type TriggerConfig = {
     external?: string[];
 
     /**
-     * **WARNING: This is an experimental feature and might be removed in a future version.**
+     * This still works but use `autoDetectExternal` instead.
      *
-     * Automatically detect dependencies that shouldn't be bundled and mark them as external. For example, native modules.
-     *
-     * Turning this on will not affect dependencies that were manually added to the `external` array.
-     *
-     * @default false
-     *
-     * @deprecated (experimental)
+     * @deprecated (use autoDetectExternal instead)
      */
     experimental_autoDetectExternal?: boolean;
 
     /**
-     * This still works but use `keepNames` instead.
+     * Automatically detect dependencies that shouldn't be bundled and mark them as external. For example, native modules.
+     *
+     * Turn this off if you are having issues and want to manually specify all `external` dependencies.
      *
      * @default true
+     */
+    autoDetectExternal?: boolean;
+
+    /**
+     * This still works but use `keepNames` instead.
      *
      * @deprecated (use keepNames instead)
      */
@@ -202,6 +203,13 @@ export type TriggerConfig = {
     keepNames?: boolean;
 
     /**
+     * This still works but use `minify` instead.
+     *
+     * @deprecated (use minify instead)
+     */
+    experimental_minify?: boolean;
+
+    /**
      * **WARNING: This is an experimental feature and might be removed in a future version.**
      *
      * "Minification is not safe for 100% of all JavaScript code" - esbuild docs
@@ -211,10 +219,8 @@ export type TriggerConfig = {
      * @link https://esbuild.github.io/api/#minify
      *
      * @default false
-     *
-     * @deprecated (experimental)
      */
-    experimental_minify?: boolean;
+    minify?: boolean;
 
     jsx?: {
       /**

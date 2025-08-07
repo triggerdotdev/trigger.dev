@@ -180,7 +180,10 @@ async function createBuildOptions(
     options.resolvedConfig.build?.keepNames ??
     options.resolvedConfig.build?.experimental_keepNames ??
     true;
-  const minify = options.resolvedConfig.build?.experimental_minify ?? false;
+  const minify =
+    options.resolvedConfig.build?.minify ??
+    options.resolvedConfig.build?.experimental_minify ??
+    false;
 
   const $buildPlugins = await buildPlugins(options.target, options.resolvedConfig);
 
