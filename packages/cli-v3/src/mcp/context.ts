@@ -6,6 +6,7 @@ export type McpContextOptions = {
   fileLogger?: FileLogger;
   apiUrl?: string;
   profile?: string;
+  devOnly?: boolean;
 };
 
 export class McpContext {

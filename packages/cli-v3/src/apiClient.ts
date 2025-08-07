@@ -33,6 +33,9 @@ import {
   WorkersListResponseBody,
   CreateProjectRequestBody,
   GetOrgsResponseBody,
+  GetWorkerByTagResponse,
+  GetJWTRequestBody,
+  GetJWTResponse,
 } from "@trigger.dev/core/v3";
 import {
   WorkloadDebugLogRequestBody,
@@ -161,6 +164,36 @@ export class CliApiClient {
       headers: this.getHeaders(),
       body: JSON.stringify(body),
     });
+  }
+
+  async getWorkerByTag(projectRef: string, envName: string, tagName: string = "current") {
+    if (!this.accessToken) {
+      throw new Error("getWorkerByTag: No access token");
+    }
+
+    return wrapZodFetch(
+      GetWorkerByTagResponse,
+      `${this.apiURL}/api/v1/projects/${projectRef}/${envName}/workers/${tagName}`,
+      {
+        headers: this.getHeaders(),
+      }
+    );
+  }
+
+  async getJWT(projectRef: string, envName: string, body: GetJWTRequestBody) {
+    if (!this.accessToken) {
+      throw new Error("getJWT: No access token");
+    }
+
+    return wrapZodFetch(
+      GetJWTResponse,
+      `${this.apiURL}/api/v1/projects/${projectRef}/${envName}/jwt`,
+      {
+        method: "POST",
+        headers: this.getHeaders(),
+        body: JSON.stringify(body),
+      }
+    );
   }
 
   async createBackgroundWorker(projectRef: string, body: CreateBackgroundWorkerRequestBody) {

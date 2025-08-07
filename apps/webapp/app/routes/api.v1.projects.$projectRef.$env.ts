@@ -70,7 +70,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   return json(result);
 }
 
-async function getEnvironmentFromEnv({
+export async function getEnvironmentFromEnv({
   projectId,
   userId,
   env,
