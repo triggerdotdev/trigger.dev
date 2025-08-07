@@ -7,11 +7,12 @@ import {
   isPersonalAccessToken,
   NotPersonalAccessTokenError,
 } from "../utilities/isPersonalAccessToken.js";
-import { LoginResult } from "../utilities/session.js";
+import { LoginResult, LoginResultOk } from "../utilities/session.js";
 import { getPersonalAccessToken } from "../commands/login.js";
 import open from "open";
 import pRetry from "p-retry";
 import { McpContext } from "./context.js";
+import { ApiClient } from "@trigger.dev/core/v3";
 
 export type McpAuthOptions = {
   server: McpServer;
@@ -176,4 +177,25 @@ async function askForLoginPermission(server: McpServer, authorizationCodeUrl: st
   });
 
   return result.action === "accept" && result.content?.allowLogin;
+}
+
+export async function createApiClientWithPublicJWT(
+  auth: LoginResultOk,
+  projectRef: string,
+  envName: string,
+  scopes: string[]
+) {
+  const cliApiClient = new CliApiClient(auth.auth.apiUrl, auth.auth.accessToken);
+
+  const jwt = await cliApiClient.getJWT(projectRef, envName, {
+    claims: {
+      scopes,
+    },
+  });
+
+  if (!jwt.success) {
+    return;
+  }
+
+  return new ApiClient(auth.auth.apiUrl, jwt.data.token);
 }
