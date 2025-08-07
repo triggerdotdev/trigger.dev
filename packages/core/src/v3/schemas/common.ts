@@ -222,6 +222,7 @@ export const TaskRun = z.object({
   /** The priority of the run. Wih a value of 10 it will be dequeued before runs that were triggered 9 seconds before it (assuming they had no priority set).  */
   priority: z.number().optional(),
   baseCostInCents: z.number().optional(),
+  concurrencyKey: z.string().optional(),
 
   parentTaskRunId: z.string().optional(),
   rootTaskRunId: z.string().optional(),
@@ -375,6 +376,7 @@ export const V3TaskRun = z.object({
   durationMs: z.number(),
   costInCents: z.number(),
   baseCostInCents: z.number(),
+  concurrencyKey: z.string().optional(),
 });
 
 export type V3TaskRun = z.infer<typeof V3TaskRun>;

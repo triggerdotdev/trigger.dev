@@ -944,6 +944,28 @@ describe("TaskExecutor", () => {
     });
   });
 
+  test("should include concurrencyKey in task context", async () => {
+    let capturedContext: any;
+
+    const task = {
+      id: "test-task",
+      fns: {
+        run: async (payload: any, params: RunFnParams<any>) => {
+          capturedContext = params.ctx;
+          return {
+            output: "test-output",
+          };
+        },
+      },
+    };
+
+    const result = await executeTask(task, { test: "data" }, undefined, undefined, "user-123");
+
+    expect(result.result.ok).toBe(true);
+    expect(capturedContext).toBeDefined();
+    expect(capturedContext.run.concurrencyKey).toBe("user-123");
+  });
+
   test("should handle middleware errors correctly", async () => {
     const executionOrder: string[] = [];
     const expectedError = new Error("Middleware error");
@@ -1846,7 +1868,8 @@ function executeTask(
   task: TaskMetadataWithFunctions,
   payload: any,
   signal?: AbortSignal,
-  retrySettings?: RetryOptions
+  retrySettings?: RetryOptions,
+  concurrencyKey?: string
 ) {
   const tracingSDK = new TracingSDK({
     url: "http://localhost:4318",
@@ -1904,6 +1927,7 @@ function executeTask(
       baseCostInCents: 0,
       priority: 0,
       maxDuration: 1000,
+      concurrencyKey: concurrencyKey,
     },
     machine: {
       name: "micro",

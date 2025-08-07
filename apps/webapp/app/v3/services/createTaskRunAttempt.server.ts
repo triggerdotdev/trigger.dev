@@ -220,6 +220,7 @@ export class CreateTaskRunAttemptService extends BaseService {
           version: lockedBy.worker.version,
           metadata,
           maxDuration: taskRun.maxDurationInSeconds ?? undefined,
+          concurrencyKey: taskRun.concurrencyKey ?? undefined,
         },
         queue: {
           id: queue.friendlyId,
