@@ -73,7 +73,12 @@ export class RunsBackfillerService {
         lastCreatedAt: runs[runs.length - 1].createdAt,
       });
 
-      await this.runsReplicationInstance.backfill(runs);
+      await this.runsReplicationInstance.backfill(
+        runs.map((run) => ({
+          ...run,
+          masterQueue: run.workerQueue,
+        }))
+      );
 
       const lastRun = runs[runs.length - 1];
 
