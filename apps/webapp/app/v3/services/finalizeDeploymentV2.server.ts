@@ -86,7 +86,11 @@ export class FinalizeDeploymentV2Service extends BaseService {
     const isV4Deployment = deployment.type === "MANAGED";
     const registryConfig = getRegistryConfig(isV4Deployment);
 
-    if (!registryConfig.host || !registryConfig.username || !registryConfig.password) {
+    // For non-ECR registries, username and password are required upfront
+    if (
+      !isEcrRegistry(registryConfig.host) &&
+      (!registryConfig.username || !registryConfig.password)
+    ) {
       throw new ServiceValidationError("Missing deployment registry credentials");
     }
 
