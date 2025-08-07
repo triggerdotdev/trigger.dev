@@ -385,7 +385,7 @@ export class DequeueSystem {
                 {
                   run: {
                     id: runId,
-                    status: snapshot.runStatus,
+                    status: lockedTaskRun.status,
                     attemptNumber: lockedTaskRun.attemptNumber,
                   },
                   snapshot: {
