@@ -187,6 +187,7 @@ export class RunAttemptSystem {
         machinePreset: true,
         runTags: true,
         isTest: true,
+        concurrencyKey: true,
         idempotencyKey: true,
         startedAt: true,
         maxAttempts: true,
@@ -248,6 +249,7 @@ export class RunAttemptSystem {
     ]);
 
     return {
+      concurrencyKey: run.concurrencyKey ?? undefined,
       run: {
         id: run.friendlyId,
         tags: run.runTags,

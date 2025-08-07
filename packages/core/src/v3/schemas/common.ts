@@ -398,6 +398,8 @@ export const V3TaskRunExecution = z.object({
 export type V3TaskRunExecution = z.infer<typeof V3TaskRunExecution>;
 
 export const TaskRunContext = z.object({
+  /** The concurrency key used when triggering this run, if any */
+  concurrencyKey: z.string().optional(),
   attempt: TaskRunExecutionAttempt,
   run: TaskRun.omit({
     payload: true,
@@ -420,6 +422,8 @@ export const V3TaskRunExecutionEnvironment = z.object({
 export type V3TaskRunExecutionEnvironment = z.infer<typeof V3TaskRunExecutionEnvironment>;
 
 export const V3TaskRunContext = z.object({
+  /** The concurrency key used when triggering this run, if any */
+  concurrencyKey: z.string().optional(),
   attempt: V3TaskRunExecutionAttempt.omit({
     backgroundWorkerId: true,
     backgroundWorkerTaskId: true,
