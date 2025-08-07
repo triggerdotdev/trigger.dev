@@ -1136,7 +1136,7 @@ export class RunAttemptSystem {
     const prisma = tx ?? this.$.prisma;
 
     return await this.$.runLock.lock("tryNackAndRequeue", [run.id], async () => {
-      //we nack the message, this allows another work to pick up the run
+      //we nack the message, this allows another worker to pick up the run
       const gotRequeued = await this.$.runQueue.nackMessage({
         orgId,
         messageId: run.id,
@@ -1152,8 +1152,22 @@ export class RunAttemptSystem {
         return { wasRequeued: false, ...result };
       }
 
+      const requeuedRun = await prisma.taskRun.update({
+        where: {
+          id: run.id,
+        },
+        data: {
+          status: "PENDING",
+        },
+        select: {
+          id: true,
+          status: true,
+          attemptNumber: true,
+        },
+      });
+
       const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(prisma, {
-        run: run,
+        run: requeuedRun,
         snapshot: {
           executionStatus: "QUEUED",
           description: "Requeued the run after a failure",
