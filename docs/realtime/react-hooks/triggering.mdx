@@ -4,80 +4,22 @@ sidebarTitle: Triggering
 description: Triggering tasks from your frontend application.
 ---
 
-import RealtimeExamplesCards from "/snippets/realtime-examples-cards.mdx";
-
 We provide a set of hooks that can be used to trigger tasks from your frontend application.
 
-## Demo
-
-We've created a [Demo application](https://github.com/triggerdotdev/realtime-llm-battle) that demonstrates how to use our React hooks to trigger tasks in a Next.js application. The application uses the `@trigger.dev/react-hooks` package to trigger a task and subscribe to the run in real-time.
-
-## Installation
-
-Install the `@trigger.dev/react-hooks` package in your project:
-
-<CodeGroup>
-
-```bash npm
-npm add @trigger.dev/react-hooks
-```
-
-```bash pnpm
-pnpm add @trigger.dev/react-hooks
-```
-
-```bash yarn
-yarn install @trigger.dev/react-hooks
-```
-
-</CodeGroup>
-
-## Authentication
-
-To authenticate a trigger hook, you must provide a special one-time use "trigger" token. These tokens are very similar to [Public Access Tokens](/frontend/overview#authentication), but they can only be used once to trigger a task. You can generate a trigger token using the `auth.createTriggerPublicToken` function in your backend code:
-
-```ts
-import { auth } from "@trigger.dev/sdk/v3";
-// Somewhere in your backend code
-const triggerToken = await auth.createTriggerPublicToken("my-task");
-```
-
-These tokens also expire, with the default expiration time being 15 minutes. You can specify a custom expiration time by passing a `expirationTime` parameter:
-
-```ts
-import { auth } from "@trigger.dev/sdk/v3";
-// Somewhere in your backend code
-const triggerToken = await auth.createTriggerPublicToken("my-task", {
-  expirationTime: "24hr",
-});
-```
-
-You can also pass multiple tasks to the `createTriggerPublicToken` function to create a token that can trigger multiple tasks:
-
-```ts
-import { auth } from "@trigger.dev/sdk/v3";
-// Somewhere in your backend code
-const triggerToken = await auth.createTriggerPublicToken(["my-task-1", "my-task-2"]);
-```
-
-You can also pass the `multipleUse` parameter to create a token that can be used multiple times:
-
-```ts
-import { auth } from "@trigger.dev/sdk/v3";
-
-// Somewhere in your backend code
-const triggerToken = await auth.createTriggerPublicToken("my-task", {
-  multipleUse: true, // ❌ Use this with caution!
-});
-```
-
 <Note>
-  After generating the trigger token in your backend, you must pass it to your frontend application.
-  We have a guide on how to do this in the [React hooks
-  overview](/frontend/react-hooks/overview#passing-the-token-to-the-frontend).
+  For triggering tasks from your frontend, you need to use “trigger” tokens. These can only be used
+  once to trigger a task and are more secure than regular Public Access Tokens. To learn more about
+  how to create and use these tokens, see our [Trigger
+  Tokens](/realtime/auth#trigger-tokens-for-frontend-triggering-only) documentation.
 </Note>
 
 ## Hooks
+
+We provide three hooks for triggering tasks from your frontend application:
+
+- `useTaskTrigger` - Trigger a task from your frontend application.
+- `useRealtimeTaskTrigger` - Trigger a task from your frontend application and subscribe to the run.
+- `useRealtimeTaskTriggerWithStreams` - Trigger a task from your frontend application and subscribe to the run, and also receive any streams that are emitted by the task.
 
 ### useTaskTrigger
 
@@ -88,7 +30,7 @@ The `useTaskTrigger` hook allows you to trigger a task from your frontend applic
 
 import { useTaskTrigger } from "@trigger.dev/react-hooks";
 import type { myTask } from "@/trigger/myTask";
-//     👆 This is the type of your task
+//     👆 This is the type of your task, include this to get type-safety
 
 export function MyComponent({ publicAccessToken }: { publicAccessToken: string }) {
   //                         pass the type of your task here 👇
@@ -127,7 +69,7 @@ submit({ foo: "bar" }, { tags: ["tag1", "tag2"] });
 
 #### Using the handle object
 
-You can use the `handle` object to initiate a subsequent [realtime hook](/frontend/react-hooks/realtime#userealtimerun) to subscribe to the run.
+You can use the `handle` object to initiate a subsequent [Realtime hook](/realtime/react-hooks/subscribe#userealtimerun) to subscribe to the run.
 
 ```tsx
 "use client"; // This is needed for Next.js App Router or other RSC frameworks
@@ -193,7 +135,7 @@ export function MyComponent({ publicAccessToken }: { publicAccessToken: string }
     return <div>Error: {error.message}</div>;
   }
 
-  // This is the realtime run object, which will automatically update when the run changes
+  // This is the Realtime run object, which will automatically update when the run changes
   if (run) {
     return <div>Run ID: {run.id}</div>;
   }
@@ -250,5 +192,3 @@ export function MyComponent({ publicAccessToken }: { publicAccessToken: string }
   );
 }
 ```
-
-<RealtimeExamplesCards />

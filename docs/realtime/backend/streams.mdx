@@ -1,20 +1,23 @@
 ---
-title: Realtime streams
+title: Streams
 sidebarTitle: Streams
-description: Stream data in realtime from inside your tasks
+description: Emit and consume real-time streaming data from your tasks
 ---
 
-import RealtimeExamplesCards from "/snippets/realtime-examples-cards.mdx";
+The Streams API allows you to stream data from your tasks to the outside world in realtime using the [metadata](/runs/metadata) system. This is particularly useful for streaming LLM outputs or any other real-time data.
 
-The world is going realtime, and so should your tasks. With the Streams API, you can stream data from your tasks to the outside world in realtime. This is useful for a variety of use cases, including AI.
+<Note>
+  For frontend applications using React, see our [React hooks streams
+  documentation](/realtime/react-hooks/streams) for consuming streams in your UI.
+</Note>
 
-## How it works
+## How streams work
 
-The Streams API is a simple API that allows you to send data from your tasks to the outside world in realtime using the [metadata](/runs/metadata) system. You can send any kind of data that is streamed in realtime, but the most common use case is to send streaming output from streaming LLM providers, like OpenAI.
+Streams use the metadata system to send data chunks in real-time. You register a stream with a specific key using `metadata.stream`, and then consumers can subscribe to receive those chunks as they're emitted.
 
-## Usage
+## Basic streaming example
 
-To use the Streams API, you need to register a stream with a specific key using `metadata.stream`. The following example uses the OpenAI SDK with `stream: true` to stream the output of the LLM model in realtime:
+Here's how to stream data from OpenAI in your task:
 
 ```ts
 import { task, metadata } from "@trigger.dev/sdk/v3";
@@ -56,12 +59,9 @@ export const myTask = task({
 });
 ```
 
-You can then subscribe to the stream using the `runs.subscribeToRun` method:
+## Subscribing to streams from backend
 
-<Note>
-  `runs.subscribeToRun` should be used from your backend or another task. To subscribe to a run from
-  your frontend, you can use our [React hooks](/frontend/react-hooks).
-</Note>
+You can subscribe to the stream using the `runs.subscribeToRun` method with `.withStreams()`:
 
 ```ts
 import { runs } from "@trigger.dev/sdk/v3";
@@ -86,7 +86,9 @@ async function subscribeToStream(runId: string) {
 }
 ```
 
-You can register and subscribe to multiple streams in the same task. Let's add a stream from the response body of a fetch request:
+## Multiple streams
+
+You can register and subscribe to multiple streams in the same task:
 
 ```ts
 import { task, metadata } from "@trigger.dev/sdk/v3";
@@ -97,7 +99,7 @@ const openai = new OpenAI({
 });
 
 export type STREAMS = {
-  openai: OpenAI.ChatCompletionChunk; // The type of the chunk is determined by the provider
+  openai: OpenAI.ChatCompletionChunk;
   fetch: string; // The response body will be an array of strings
 };
 
@@ -110,7 +112,7 @@ export const myTask = task({
       stream: true,
     });
 
-    // Register the stream with the key "openai"
+    // Register the OpenAI stream
     await metadata.stream("openai", completion);
 
     const response = await fetch("https://jsonplaceholder.typicode.com/posts");
@@ -119,7 +121,7 @@ export const myTask = task({
       return;
     }
 
-    // Register the stream with the key "fetch"
+    // Register a fetch response stream
     // Pipe the response.body through a TextDecoderStream to convert it to a string
     await metadata.stream("fetch", response.body.pipeThrough(new TextDecoderStream()));
   },
@@ -133,7 +135,7 @@ export const myTask = task({
   task.
 </Note>
 
-And then subscribing to the streams:
+Then subscribe to both streams:
 
 ```ts
 import { runs } from "@trigger.dev/sdk/v3";
@@ -141,7 +143,6 @@ import type { myTask, STREAMS } from "./trigger/my-task";
 
 // Somewhere in your backend
 async function subscribeToStream(runId: string) {
-  // Use a for-await loop to subscribe to the stream
   for await (const part of runs.subscribeToRun<typeof myTask>(runId).withStreams<STREAMS>()) {
     switch (part.type) {
       case "run": {
@@ -163,45 +164,9 @@ async function subscribeToStream(runId: string) {
 }
 ```
 
-## React hooks
+## Using with the AI SDK
 
-If you're building a frontend application, you can use our React hooks to subscribe to streams. Here's an example of how you can use the `useRealtimeRunWithStreams` hook to subscribe to a stream:
-
-```tsx
-import { useRealtimeRunWithStreams } from "@trigger.dev/react-hooks";
-import type { myTask, STREAMS } from "./trigger/my-task";
-
-// Somewhere in your React component
-function MyComponent({ runId, publicAccessToken }: { runId: string; publicAccessToken: string }) {
-  const { run, streams } = useRealtimeRunWithStreams<typeof myTask, STREAMS>(runId, {
-    accessToken: publicAccessToken,
-  });
-
-  if (!run) {
-    return <div>Loading...</div>;
-  }
-
-  return (
-    <div>
-      <h1>Run ID: {run.id}</h1>
-      <h2>Streams:</h2>
-      <ul>
-        {Object.entries(streams).map(([key, value]) => (
-          <li key={key}>
-            <strong>{key}</strong>: {JSON.stringify(value)}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-```
-
-Read more about using the React hooks in the [React hooks](/frontend/react-hooks) documentation.
-
-## Usage with the `ai` SDK
-
-The [ai SDK](https://sdk.vercel.ai/docs/introduction) provides a higher-level API for working with AI models. You can use the `ai` SDK with the Streams API by using the `streamText` method:
+The [AI SDK](https://sdk.vercel.ai/docs/introduction) provides a higher-level API for working with AI models. You can use it with the Streams API:
 
 ```ts
 import { openai } from "@ai-sdk/openai";
@@ -244,35 +209,9 @@ export const aiStreaming = schemaTask({
 });
 ```
 
-And then render the stream in your frontend:
+## Using AI SDK with tools
 
-```tsx
-import { useRealtimeRunWithStreams } from "@trigger.dev/react-hooks";
-import type { aiStreaming, STREAMS } from "./trigger/ai-streaming";
-
-function MyComponent({ runId, publicAccessToken }: { runId: string; publicAccessToken: string }) {
-  const { streams } = useRealtimeRunWithStreams<typeof aiStreaming, STREAMS>(runId, {
-    accessToken: publicAccessToken,
-  });
-
-  if (!streams.openai) {
-    return <div>Loading...</div>;
-  }
-
-  const text = streams.openai.join(""); // `streams.openai` is an array of strings
-
-  return (
-    <div>
-      <h2>OpenAI response:</h2>
-      <p>{text}</p>
-    </div>
-  );
-}
-```
-
-### Using tools and `fullStream`
-
-When calling `streamText`, you can provide a `tools` object that allows the LLM to use additional tools. You can then access the tool call and results using the `fullStream` method:
+When using tools with the AI SDK, you can access tool calls and results using the `fullStream`:
 
 ```ts
 import { openai } from "@ai-sdk/openai";
@@ -306,7 +245,7 @@ export const aiStreamingWithTools = schemaTask({
     prompt: z
       .string()
       .default(
-        "Based on the temperature, will I need to wear extra clothes today in San Fransico? Please be detailed."
+        "Based on the temperature, will I need to wear extra clothes today in San Francisco? Please be detailed."
       ),
   }),
   run: async ({ model, prompt }) => {
@@ -338,50 +277,9 @@ export const aiStreamingWithTools = schemaTask({
 });
 ```
 
-Now you can get access to the tool call and results in your frontend:
+## Using toolTask
 
-```tsx
-import { useRealtimeRunWithStreams } from "@trigger.dev/react-hooks";
-import type { aiStreamingWithTools, STREAMS } from "./trigger/ai-streaming";
-
-function MyComponent({ runId, publicAccessToken }: { runId: string; publicAccessToken: string }) {
-  const { streams } = useRealtimeRunWithStreams<typeof aiStreamingWithTools, STREAMS>(runId, {
-    accessToken: publicAccessToken,
-  });
-
-  if (!streams.openai) {
-    return <div>Loading...</div>;
-  }
-
-  // streams.openai is an array of TextStreamPart
-  const toolCall = streams.openai.find(
-    (stream) => stream.type === "tool-call" && stream.toolName === "getWeather"
-  );
-  const toolResult = streams.openai.find((stream) => stream.type === "tool-result");
-  const textDeltas = streams.openai.filter((stream) => stream.type === "text-delta");
-
-  const text = textDeltas.map((delta) => delta.textDelta).join("");
-  const weatherLocation = toolCall ? toolCall.args.location : undefined;
-  const weather = toolResult ? toolResult.result.temperature : undefined;
-
-  return (
-    <div>
-      <h2>OpenAI response:</h2>
-      <p>{text}</p>
-      <h2>Weather:</h2>
-      <p>
-        {weatherLocation
-          ? `The weather in ${weatherLocation} is ${weather} degrees.`
-          : "No weather data"}
-      </p>
-    </div>
-  );
-}
-```
-
-### Using `toolTask`
-
-As you can see above, we defined a tool which will be used in the `aiStreamingWithTools` task. You can also define a Trigger.dev task that can be used as a tool, and will automatically be invoked with `triggerAndWait` when the tool is called. This is done using the `toolTask` function:
+You can define a Trigger.dev task that can be used as a tool, and will automatically be invoked with `triggerAndWait` when the tool is called:
 
 ```ts
 import { openai } from "@ai-sdk/openai";
@@ -418,7 +316,7 @@ export const aiStreamingWithTools = schemaTask({
     prompt: z
       .string()
       .default(
-        "Based on the temperature, will I need to wear extra clothes today in San Fransico? Please be detailed."
+        "Based on the temperature, will I need to wear extra clothes today in San Francisco? Please be detailed."
       ),
   }),
   run: async ({ model, prompt }) => {
@@ -451,5 +349,3 @@ export const aiStreamingWithTools = schemaTask({
   },
 });
 ```
-
-<RealtimeExamplesCards />
