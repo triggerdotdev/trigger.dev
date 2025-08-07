@@ -210,6 +210,7 @@ export class RunAttemptSystem {
         parentTaskRunId: true,
         rootTaskRunId: true,
         batchId: true,
+        workerQueue: true,
       },
     });
 
@@ -261,6 +262,7 @@ export class RunAttemptSystem {
         priority: run.priorityMs === 0 ? undefined : run.priorityMs / 1_000,
         parentTaskRunId: run.parentTaskRunId ? RunId.toFriendlyId(run.parentTaskRunId) : undefined,
         rootTaskRunId: run.rootTaskRunId ? RunId.toFriendlyId(run.rootTaskRunId) : undefined,
+        region: run.runtimeEnvironment.type !== "DEVELOPMENT" ? run.workerQueue : undefined,
       },
       attempt: {
         number: run.attemptNumber ?? 1,
@@ -428,6 +430,7 @@ export class RunAttemptSystem {
                   },
                   parentTaskRunId: true,
                   rootTaskRunId: true,
+                  workerQueue: true,
                 },
               });
 
@@ -574,6 +577,10 @@ export class RunAttemptSystem {
               rootTaskRunId: updatedRun.rootTaskRunId
                 ? RunId.toFriendlyId(updatedRun.rootTaskRunId)
                 : undefined,
+              region:
+                updatedRun.runtimeEnvironment.type !== "DEVELOPMENT"
+                  ? updatedRun.workerQueue
+                  : undefined,
             },
             task,
             queue,

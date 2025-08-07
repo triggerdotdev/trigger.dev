@@ -229,6 +229,8 @@ export const TaskRun = z.object({
   // These are only used during execution, not in run.ctx
   durationMs: z.number().optional(),
   costInCents: z.number().optional(),
+
+  region: z.string().optional(),
 });
 
 export type TaskRun = z.infer<typeof TaskRun>;
