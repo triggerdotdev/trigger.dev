@@ -478,9 +478,32 @@ export function registerTriggerTaskTool(context: McpContext) {
 
       const taskRunUrl = `${auth.dashboardUrl}/projects/v3/${$projectRef}/runs/${result.id}`;
 
-      return {
-        content: [{ type: "text", text: JSON.stringify({ ...result, taskRunUrl }, null, 2) }],
-      };
+      if (environment === "dev") {
+        const cliApiClient = new CliApiClient(auth.auth.apiUrl, auth.auth.accessToken);
+
+        const devStatus = await cliApiClient.getDevStatus($projectRef);
+        const isConnected = devStatus.success ? devStatus.data.isConnected : false;
+        const connectionMessage = isConnected
+          ? undefined
+          : "The dev CLI is not connected to this project, because it is not currently running. Make sure to run the dev command to execute triggered tasks.";
+
+        if (connectionMessage) {
+          return {
+            content: [
+              { type: "text", text: JSON.stringify({ ...result, taskRunUrl }, null, 2) },
+              { type: "text", text: connectionMessage },
+            ],
+          };
+        } else {
+          return {
+            content: [{ type: "text", text: JSON.stringify({ ...result, taskRunUrl }, null, 2) }],
+          };
+        }
+      } else {
+        return {
+          content: [{ type: "text", text: JSON.stringify({ ...result, taskRunUrl }, null, 2) }],
+        };
+      }
     }
   );
 }

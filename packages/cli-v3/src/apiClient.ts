@@ -196,6 +196,20 @@ export class CliApiClient {
     );
   }
 
+  async getDevStatus(projectRef: string) {
+    if (!this.accessToken) {
+      throw new Error("getJWT: No access token");
+    }
+
+    return wrapZodFetch(
+      z.object({ isConnected: z.boolean() }),
+      `${this.apiURL}/api/v1/projects/${projectRef}/dev-status`,
+      {
+        headers: this.getHeaders(),
+      }
+    );
+  }
+
   async createBackgroundWorker(projectRef: string, body: CreateBackgroundWorkerRequestBody) {
     if (!this.accessToken) {
       throw new Error("createBackgroundWorker: No access token");
