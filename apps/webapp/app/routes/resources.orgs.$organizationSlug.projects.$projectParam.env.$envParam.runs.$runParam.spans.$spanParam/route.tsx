@@ -76,6 +76,7 @@ import {
 } from "~/utils/pathBuilder";
 import { createTimelineSpanEventsFromSpanEvents } from "~/utils/timelineSpanEvents";
 import { CompleteWaitpointForm } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.waitpoints.$waitpointFriendlyId.complete/route";
+import { FlagIcon } from "~/assets/icons/RegionIcons";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { projectParam, organizationSlug, envParam, runParam, spanParam } =
@@ -701,6 +702,19 @@ function RunBody({
                     <MachineLabelCombo preset={run.machinePreset} />
                   </Property.Value>
                 </Property.Item>
+                {run.region && (
+                  <Property.Item>
+                    <Property.Label>Region</Property.Label>
+                    <Property.Value>
+                      <span className="flex items-center gap-1">
+                        {run.region.location ? (
+                          <FlagIcon region={run.region.location} className="size-5" />
+                        ) : null}
+                        {run.region.name}
+                      </span>
+                    </Property.Value>
+                  </Property.Item>
+                )}
                 <Property.Item>
                   <Property.Label>Run invocation cost</Property.Label>
                   <Property.Value>

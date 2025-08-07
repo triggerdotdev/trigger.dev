@@ -234,7 +234,7 @@ export class RunEngineTriggerTaskService {
 
       const depth = parentRun ? parentRun.depth + 1 : 0;
 
-      const workerQueue = await this.queueConcern.getWorkerQueue(environment);
+      const workerQueue = await this.queueConcern.getWorkerQueue(environment, body.options?.region);
 
       try {
         return await this.traceEventConcern.traceRun(triggerRequest, async (event) => {

@@ -30,7 +30,7 @@ export class RegionsPresenter extends BasePresenter {
         id: true,
         organizationId: true,
         defaultWorkerGroupId: true,
-        allowedMasterQueues: true,
+        allowedWorkerQueues: true,
       },
       where: {
         slug: projectSlug,
@@ -70,9 +70,9 @@ export class RegionsPresenter extends BasePresenter {
       where: isAdmin
         ? undefined
         : // Hide hidden unless they're allowed to use them
-        project.allowedMasterQueues.length > 0
+        project.allowedWorkerQueues.length > 0
         ? {
-            masterQueue: { in: project.allowedMasterQueues },
+            masterQueue: { in: project.allowedWorkerQueues },
           }
         : {
             hidden: false,

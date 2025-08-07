@@ -67,7 +67,10 @@ export interface QueueManager {
   ): Promise<QueueProperties>;
   getQueueName(request: TriggerTaskRequest): Promise<string>;
   validateQueueLimits(env: AuthenticatedEnvironment): Promise<QueueValidationResult>;
-  getWorkerQueue(env: AuthenticatedEnvironment): Promise<string | undefined>;
+  getWorkerQueue(
+    env: AuthenticatedEnvironment,
+    regionOverride?: string
+  ): Promise<string | undefined>;
 }
 
 export interface PayloadProcessor {

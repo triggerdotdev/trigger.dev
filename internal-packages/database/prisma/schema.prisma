@@ -336,7 +336,7 @@ model Project {
   defaultWorkerGroupId String?
 
   /// The master queues they are allowed to use (impacts what they can set as default and trigger runs with)
-  allowedMasterQueues String[] @default([])
+  allowedWorkerQueues String[] @default([]) @map("allowedMasterQueues")
 
   environments           RuntimeEnvironment[]
   backgroundWorkers      BackgroundWorker[]

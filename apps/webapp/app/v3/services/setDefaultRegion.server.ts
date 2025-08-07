@@ -32,8 +32,8 @@ export class SetDefaultRegionService extends BaseService {
 
     // If their project is restricted, only allow them to set default regions that are allowed
     if (!isAdmin) {
-      if (project.allowedMasterQueues.length > 0) {
-        if (!project.allowedMasterQueues.includes(workerGroup.masterQueue)) {
+      if (project.allowedWorkerQueues.length > 0) {
+        if (!project.allowedWorkerQueues.includes(workerGroup.masterQueue)) {
           throw new ServiceValidationError("You're not allowed to set this region as default");
         }
       } else if (workerGroup.hidden) {
