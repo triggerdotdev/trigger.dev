@@ -197,6 +197,7 @@ export class RunAttemptSystem {
         traceContext: true,
         priorityMs: true,
         taskIdentifier: true,
+        concurrencyKey: true,
         runtimeEnvironment: {
           select: {
             id: true,
@@ -261,6 +262,7 @@ export class RunAttemptSystem {
         priority: run.priorityMs === 0 ? undefined : run.priorityMs / 1_000,
         parentTaskRunId: run.parentTaskRunId ? RunId.toFriendlyId(run.parentTaskRunId) : undefined,
         rootTaskRunId: run.rootTaskRunId ? RunId.toFriendlyId(run.rootTaskRunId) : undefined,
+        concurrencyKey: run.concurrencyKey ?? undefined,
       },
       attempt: {
         number: run.attemptNumber ?? 1,
