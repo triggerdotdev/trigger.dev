@@ -184,17 +184,22 @@ export type TriggerConfig = {
     experimental_autoDetectExternal?: boolean;
 
     /**
-     * **WARNING: This is an experimental feature and might be removed in a future version.**
+     * This still works but use `keepNames` instead.
      *
-     * Preserve the original names of functions and classes in the bundle. This can fix issues with frameworks that rely on the original names for registration and binding, for example MikroORM.
+     * @default true
+     *
+     * @deprecated (use keepNames instead)
+     */
+    experimental_keepNames?: boolean;
+
+    /* Set to false to minify the original names of functions and classes in the bundle.
+     * This can make bundles smaller at the cost of compatibility with frameworks that rely on function/class/variable names.
      *
      * @link https://esbuild.github.io/api/#keep-names
      *
-     * @default false
-     *
-     * @deprecated (experimental)
+     * @default true
      */
-    experimental_keepNames?: boolean;
+    keepNames?: boolean;
 
     /**
      * **WARNING: This is an experimental feature and might be removed in a future version.**
