@@ -69,7 +69,7 @@ submit({ foo: "bar" }, { tags: ["tag1", "tag2"] });
 
 #### Using the handle object
 
-You can use the `handle` object to initiate a subsequent [realtime hook](/realtime/react-hooks/subscribe#userealtimerun) to subscribe to the run.
+You can use the `handle` object to initiate a subsequent [Realtime hook](/realtime/react-hooks/subscribe#userealtimerun) to subscribe to the run.
 
 ```tsx
 "use client"; // This is needed for Next.js App Router or other RSC frameworks
@@ -135,7 +135,7 @@ export function MyComponent({ publicAccessToken }: { publicAccessToken: string }
     return <div>Error: {error.message}</div>;
   }
 
-  // This is the realtime run object, which will automatically update when the run changes
+  // This is the Realtime run object, which will automatically update when the run changes
   if (run) {
     return <div>Run ID: {run.id}</div>;
   }
