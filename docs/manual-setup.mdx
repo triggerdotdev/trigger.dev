@@ -472,14 +472,21 @@ export const helloWorld = task({
 ```typescript
 "use server";
 
-import { helloWorld } from "@repo/tasks";
+import { tasks } from "@repo/tasks/trigger";
+import type { helloWorld } from "@repo/tasks";
+//     👆 type only import
 
 export async function triggerHelloWorld(name: string) {
-  const handle = await helloWorld.trigger({
-    name: name,
-  });
+  try {
+    const handle = await tasks.trigger<typeof helloWorld>("hello-world", {
+      name: name,
+    });
 
-  return { runId: handle.id };
+    return handle.id;
+  } catch (error) {
+    console.error(error);
+    return { error: "something went wrong" };
+  }
 }
 ```
 
