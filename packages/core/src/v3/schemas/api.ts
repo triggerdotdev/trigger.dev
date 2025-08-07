@@ -77,6 +77,46 @@ export const GetProjectEnvResponse = z.object({
 
 export type GetProjectEnvResponse = z.infer<typeof GetProjectEnvResponse>;
 
+// Zod schema for the response body type
+export const GetWorkerTaskResponse = z.object({
+  id: z.string(),
+  slug: z.string(),
+  filePath: z.string(),
+  triggerSource: z.string(),
+  createdAt: z.coerce.date(),
+  payloadSchema: z.any().nullish(),
+});
+
+export const GetWorkerByTagResponse = z.object({
+  worker: z.object({
+    id: z.string(),
+    version: z.string(),
+    engine: z.string().nullish(),
+    sdkVersion: z.string().nullish(),
+    cliVersion: z.string().nullish(),
+    tasks: z.array(GetWorkerTaskResponse),
+  }),
+});
+
+export type GetWorkerByTagResponse = z.infer<typeof GetWorkerByTagResponse>;
+
+export const GetJWTRequestBody = z.object({
+  claims: z
+    .object({
+      scopes: z.array(z.string()).default([]),
+    })
+    .optional(),
+  expirationTime: z.union([z.number(), z.string()]).optional(),
+});
+
+export type GetJWTRequestBody = z.infer<typeof GetJWTRequestBody>;
+
+export const GetJWTResponse = z.object({
+  token: z.string(),
+});
+
+export type GetJWTResponse = z.infer<typeof GetJWTResponse>;
+
 export const CreateBackgroundWorkerRequestBody = z.object({
   localOnly: z.boolean(),
   metadata: BackgroundWorkerMetadata,

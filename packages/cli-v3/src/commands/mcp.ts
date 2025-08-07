@@ -8,17 +8,19 @@ import { McpContext } from "../mcp/context.js";
 import { FileLogger } from "../mcp/logger.js";
 import {
   registerCreateProjectTool,
-  registerGetProjectDetailsTool,
+  registerGetTasksTool,
   registerInitializeProjectTool,
   registerListOrgsTool,
   registerListProjectsTool,
   registerSearchDocsTool,
+  registerTriggerTaskTool,
 } from "../mcp/tools.js";
 import { logger } from "../utilities/logger.js";
 
 const McpCommandOptions = CommonCommandOptions.extend({
   projectRef: z.string().optional(),
   logFile: z.string().optional(),
+  devOnly: z.boolean().default(false),
 });
 
 export type McpCommandOptions = z.infer<typeof McpCommandOptions>;
@@ -29,6 +31,10 @@ export function configureMcpCommand(program: Command) {
       .command("mcp")
       .description("Run the MCP server")
       .option("-p, --project-ref <project ref>", "The project ref to use")
+      .option(
+        "--dev-only",
+        "Only run the MCP server for the dev environment. Attempts to access other environments will fail."
+      )
       .option("--log-file <log file>", "The file to log to")
   ).action(async (options) => {
     wrapCommandAction("mcp", McpCommandOptions, options, async (opts) => {
@@ -62,7 +68,8 @@ export async function mcpCommand(options: McpCommandOptions) {
 
   registerSearchDocsTool(context);
   registerInitializeProjectTool(context);
-  registerGetProjectDetailsTool(context);
+  registerGetTasksTool(context);
+  registerTriggerTaskTool(context);
   registerListProjectsTool(context);
   registerListOrgsTool(context);
   registerCreateProjectTool(context);

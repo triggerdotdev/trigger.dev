@@ -1,6 +1,10 @@
-import { GetOrgsResponseBody, GetProjectsResponseBody } from "@trigger.dev/core/v3/schemas";
+import {
+  GetOrgsResponseBody,
+  GetProjectsResponseBody,
+  MachinePresetName,
+} from "@trigger.dev/core/v3/schemas";
 import { CliApiClient } from "../apiClient.js";
-import { mcpAuth } from "./auth.js";
+import { createApiClientWithPublicJWT, mcpAuth } from "./auth.js";
 import { McpContext } from "./context.js";
 import { ProjectRefSchema } from "./schemas.js";
 import { respondWithError } from "./utils.js";
@@ -8,38 +12,7 @@ import { z } from "zod";
 import { performSearch } from "./mintlifyClient.js";
 import { LoginResultOk } from "../utilities/session.js";
 import { loadConfig } from "../config.js";
-
-export function registerGetProjectDetailsTool(context: McpContext) {
-  context.server.registerTool(
-    "get_project_details",
-    {
-      description: "Get the details of the project",
-      inputSchema: {
-        projectRef: ProjectRefSchema,
-      },
-    },
-    async ({ projectRef }, extra) => {
-      const auth = await mcpAuth({
-        server: context.server,
-        defaultApiUrl: context.options.apiUrl,
-        profile: context.options.profile,
-        context,
-      });
-
-      if (!auth.ok) {
-        throw new Error(auth.error);
-      }
-
-      const roots = await context.server.server.listRoots();
-
-      context.logger?.log("get_project_details", { roots, projectRef, extra, auth });
-
-      return {
-        content: [{ type: "text", text: "Not implemented" }],
-      };
-    }
-  );
-}
+import path from "path";
 
 export function registerListProjectsTool(context: McpContext) {
   context.server.registerTool(
@@ -264,9 +237,9 @@ export function registerInitializeProjectTool(context: McpContext) {
       const projectRefResult = await resolveProjectRef(
         context,
         auth,
-        cwd,
         orgParam,
         projectName,
+        cwd,
         projectRef
       );
 
@@ -295,6 +268,237 @@ export function registerInitializeProjectTool(context: McpContext) {
   );
 }
 
+export function registerGetTasksTool(context: McpContext) {
+  context.server.registerTool(
+    "get_tasks",
+    {
+      description: "Get all tasks in the project",
+      inputSchema: {
+        projectRef: ProjectRefSchema,
+        configPath: z
+          .string()
+          .describe(
+            "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+          )
+          .optional(),
+        environment: z
+          .enum(["dev", "staging", "preview", "production"])
+          .describe("The environment to get tasks for")
+          .default("dev"),
+        branch: z
+          .string()
+          .describe("The branch to get tasks for, only used for preview environments")
+          .optional(),
+      },
+    },
+    async ({ projectRef, configPath, environment, branch }) => {
+      context.logger?.log("calling get_tasks", { projectRef, configPath, environment, branch });
+
+      if (context.options.devOnly && environment !== "dev") {
+        return respondWithError(
+          `This MCP server is only available for the dev environment. You tried to access the ${environment} environment. Remove the --dev-only flag to access other environments.`
+        );
+      }
+
+      const projectRefResult = await resolveExistingProjectRef(context, projectRef, configPath);
+
+      if (projectRefResult.status === "error") {
+        return respondWithError(projectRefResult.error);
+      }
+
+      const $projectRef = projectRefResult.projectRef;
+
+      context.logger?.log("get_tasks projectRefResult", { projectRefResult });
+
+      const auth = await mcpAuth({
+        server: context.server,
+        defaultApiUrl: context.options.apiUrl,
+        profile: context.options.profile,
+        context,
+      });
+
+      if (!auth.ok) {
+        return respondWithError(auth.error);
+      }
+
+      const cliApiClient = new CliApiClient(auth.auth.apiUrl, auth.auth.accessToken);
+
+      // TODO: support other tags and preview branches
+      const worker = await cliApiClient.getWorkerByTag($projectRef, environment, "current");
+
+      if (!worker.success) {
+        return respondWithError(worker.error);
+      }
+
+      return {
+        content: [{ type: "text", text: JSON.stringify(worker.data, null, 2) }],
+      };
+    }
+  );
+}
+
+export function registerTriggerTaskTool(context: McpContext) {
+  context.server.registerTool(
+    "trigger_task",
+    {
+      description: "Trigger a task",
+      inputSchema: {
+        projectRef: ProjectRefSchema,
+        configPath: z
+          .string()
+          .describe(
+            "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+          )
+          .optional(),
+        environment: z
+          .enum(["dev", "staging", "preview", "production"])
+          .describe("The environment to trigger the task in")
+          .default("dev"),
+        branch: z
+          .string()
+          .describe("The branch to trigger the task in, only used for preview environments")
+          .optional(),
+        taskId: z
+          .string()
+          .describe(
+            "The ID/slug of the task to trigger. Use the get_tasks tool to get a list of tasks and ask the user to select one if it's not clear which one to use."
+          ),
+        payload: z
+          .string()
+          .transform((val, ctx) => {
+            try {
+              return JSON.parse(val);
+            } catch {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: "The payload must be a valid JSON string",
+              });
+              return z.NEVER;
+            }
+          })
+          .describe("The payload to trigger the task with, must be a valid JSON string"),
+        options: z
+          .object({
+            queue: z
+              .object({
+                name: z
+                  .string()
+                  .describe(
+                    "The name of the queue to trigger the task in, by default will use the queue configured in the task"
+                  ),
+              })
+              .optional(),
+            delay: z
+              .string()
+              .or(z.coerce.date())
+              .describe("The delay before the task run is executed")
+              .optional(),
+            idempotencyKey: z
+              .string()
+              .describe("The idempotency key to use for the task run")
+              .optional(),
+            machine: MachinePresetName.describe(
+              "The machine preset to use for the task run"
+            ).optional(),
+            maxAttempts: z
+              .number()
+              .int()
+              .describe("The maximum number of attempts to retry the task run")
+              .optional(),
+            maxDuration: z
+              .number()
+              .describe("The maximum duration in seconds of the task run")
+              .optional(),
+            tags: z
+              .array(z.string())
+              .describe(
+                "Tags to add to the task run. Must be less than 128 characters and cannot have more than 5"
+              )
+              .optional(),
+            ttl: z
+              .string()
+              .or(z.number().nonnegative().int())
+              .describe(
+                "The time to live of the task run. If the run doesn't start executing within this time, it will be automatically cancelled."
+              )
+              .default("10m"),
+          })
+          .optional(),
+      },
+    },
+    async ({ projectRef, configPath, environment, branch, taskId, payload, options }) => {
+      context.logger?.log("calling trigger_task", {
+        projectRef,
+        configPath,
+        environment,
+        branch,
+        taskId,
+        payload,
+      });
+
+      if (context.options.devOnly && environment !== "dev") {
+        return respondWithError(
+          `This MCP server is only available for the dev environment. You tried to access the ${environment} environment. Remove the --dev-only flag to access other environments.`
+        );
+      }
+
+      const projectRefResult = await resolveExistingProjectRef(context, projectRef, configPath);
+
+      if (projectRefResult.status === "error") {
+        return respondWithError(projectRefResult.error);
+      }
+
+      const $projectRef = projectRefResult.projectRef;
+
+      context.logger?.log("trigger_task projectRefResult", { projectRefResult });
+
+      const auth = await mcpAuth({
+        server: context.server,
+        defaultApiUrl: context.options.apiUrl,
+        profile: context.options.profile,
+        context,
+      });
+
+      if (!auth.ok) {
+        return respondWithError(auth.error);
+      }
+
+      const apiClient = await createApiClientWithPublicJWT(auth, $projectRef, environment, [
+        "write:tasks",
+      ]);
+
+      if (!apiClient) {
+        return respondWithError("Failed to create API client with public JWT");
+      }
+
+      const result = await apiClient.triggerTask(taskId, {
+        payload,
+        options,
+      });
+
+      const taskRunUrl = `${auth.dashboardUrl}/projects/v3/${$projectRef}/runs/${result.id}`;
+
+      return {
+        content: [{ type: "text", text: JSON.stringify({ ...result, taskRunUrl }, null, 2) }],
+      };
+    }
+  );
+}
+
+async function resolveCwd(context: McpContext) {
+  const response = await context.server.server.listRoots();
+
+  if (response.roots.length >= 1) {
+    return response.roots[0]?.uri ? fileUriToPath(response.roots[0].uri) : undefined;
+  }
+
+  return undefined;
+}
+
+function fileUriToPath(uri: string) {
+  return uri.replace("file://", "");
+}
+
 type ProjectRefResult =
   | {
       status: "argument";
@@ -316,9 +520,9 @@ type ProjectRefResult =
 async function resolveProjectRef(
   context: McpContext,
   auth: LoginResultOk,
-  cwd: string,
   orgParam: string,
   projectName: string,
+  cwd?: string,
   projectRef?: string
 ): Promise<ProjectRefResult> {
   if (projectRef) {
@@ -328,8 +532,17 @@ async function resolveProjectRef(
     };
   }
 
+  const $cwd = cwd ?? (await resolveCwd(context));
+
+  if (!$cwd) {
+    return {
+      status: "error",
+      error: "No current working directory found. Please provide a projectRef or a cwd.",
+    };
+  }
+
   // Try to load the config file
-  const config = await safeLoadConfig(cwd);
+  const config = await safeLoadConfig($cwd);
 
   if (
     config?.configFile &&
@@ -368,6 +581,71 @@ async function resolveProjectRef(
   return {
     status: "new",
     projectRef: project.data.externalRef,
+  };
+}
+
+async function resolveExistingProjectRef(
+  context: McpContext,
+  projectRef?: string,
+  cwd?: string
+): Promise<ProjectRefResult> {
+  if (projectRef) {
+    return {
+      status: "argument",
+      projectRef,
+    };
+  }
+
+  let $cwd = cwd;
+
+  function isRelativePath(path: string) {
+    return !path.startsWith("/");
+  }
+
+  if (!cwd) {
+    $cwd = await resolveCwd(context);
+  } else if (isRelativePath(cwd)) {
+    const resolvedCwd = await resolveCwd(context);
+
+    if (!resolvedCwd) {
+      return {
+        status: "error",
+        error: "No current working directory found. Please provide a projectRef or a cwd.",
+      };
+    }
+
+    $cwd = path.resolve(resolvedCwd, cwd);
+  }
+
+  if (!$cwd) {
+    return {
+      status: "error",
+      error: "No current working directory found. Please provide a projectRef or a cwd.",
+    };
+  }
+
+  // Try to load the config file
+  const config = await safeLoadConfig($cwd);
+
+  if (
+    config?.configFile &&
+    typeof config.project === "string" &&
+    config.project.startsWith("proj_")
+  ) {
+    context.logger?.log("resolve_project_ref existing project", {
+      config,
+      projectRef: config.project,
+    });
+
+    return {
+      status: "existing",
+      projectRef: config.project,
+    };
+  }
+
+  return {
+    status: "error",
+    error: "No existing project found. Please provide a projectRef or a cwd.",
   };
 }
 
