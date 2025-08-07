@@ -10,6 +10,7 @@ import {
 import { STSClient, AssumeRoleCommand } from "@aws-sdk/client-sts";
 import { tryCatch } from "@trigger.dev/core";
 import { logger } from "~/services/logger.server";
+import { type RegistryConfig } from "./registryConfig.server";
 
 // Optional configuration for cross-account access
 export type AssumeRoleConfig = {
@@ -97,30 +98,24 @@ export async function createEcrClient({
 }
 
 export async function getDeploymentImageRef({
-  host,
-  namespace,
+  registry,
   projectRef,
   nextVersion,
   environmentSlug,
-  registryTags,
-  assumeRole,
 }: {
-  host: string;
-  namespace: string;
+  registry: RegistryConfig;
   projectRef: string;
   nextVersion: string;
   environmentSlug: string;
-  registryTags?: string;
-  assumeRole?: AssumeRoleConfig;
 }): Promise<{
   imageRef: string;
   isEcr: boolean;
   repoCreated: boolean;
 }> {
-  const repositoryName = `${namespace}/${projectRef}`;
-  const imageRef = `${host}/${repositoryName}:${nextVersion}.${environmentSlug}`;
+  const repositoryName = `${registry.namespace}/${projectRef}`;
+  const imageRef = `${registry.host}/${repositoryName}:${nextVersion}.${environmentSlug}`;
 
-  if (!isEcrRegistry(host)) {
+  if (!isEcrRegistry(registry.host)) {
     return {
       imageRef,
       isEcr: false,
@@ -131,16 +126,19 @@ export async function getDeploymentImageRef({
   const [ecrRepoError, ecrData] = await tryCatch(
     ensureEcrRepositoryExists({
       repositoryName,
-      registryHost: host,
-      registryTags,
-      assumeRole,
+      registryHost: registry.host,
+      registryTags: registry.ecrTags,
+      assumeRole: {
+        roleArn: registry.ecrAssumeRoleArn,
+        externalId: registry.ecrAssumeRoleExternalId,
+      },
     })
   );
 
   if (ecrRepoError) {
     logger.error("Failed to ensure ECR repository exists", {
       repositoryName,
-      host,
+      host: registry.host,
       ecrRepoError: ecrRepoError.message,
     });
     throw ecrRepoError;
