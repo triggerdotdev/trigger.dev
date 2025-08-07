@@ -926,7 +926,6 @@ export class RunAttemptSystem {
                   id: runId,
                 },
                 data: {
-                  status: "RETRYING_AFTER_FAILURE",
                   machinePreset: retryResult.machine,
                 },
                 include: {
