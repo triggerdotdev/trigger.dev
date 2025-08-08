@@ -1639,6 +1639,7 @@ export const AttemptForExecutionGetPayload = {
         baseCostInCents: true,
         maxDurationInSeconds: true,
         tags: true,
+        concurrencyKey: true,
       },
     },
     queue: {
@@ -1722,6 +1723,7 @@ class SharedQueueTasks {
         baseCostInCents: taskRun.baseCostInCents,
         metadata,
         maxDuration: taskRun.maxDurationInSeconds ?? undefined,
+        concurrencyKey: taskRun.concurrencyKey ?? undefined,
       },
       queue: {
         id: queue.friendlyId,

@@ -189,6 +189,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       version: run.lockedToVersion?.version,
       parentTaskRunId: run.parentTaskRun?.friendlyId ?? undefined,
       rootTaskRunId: run.rootTaskRun?.friendlyId ?? undefined,
+      concurrencyKey: run.concurrencyKey ?? undefined,
     },
     queue: {
       name: run.queue,
