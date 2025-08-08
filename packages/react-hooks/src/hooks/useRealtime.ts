@@ -9,6 +9,7 @@ import {
 } from "@trigger.dev/core/v3";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { KeyedMutator, useSWR } from "../utils/trigger-swr.js";
+import { logIfFetcherPresent } from "../utils/swrMiddleware.js";
 import { useApiClient, UseApiClientOptions } from "./useApiClient.js";
 import { createThrottledQueue } from "../utils/throttle.js";
 
@@ -78,17 +79,23 @@ export function useRealtimeRun<TTask extends AnyTask>(
   const idKey = options?.id ?? hookId;
 
   // Store the streams state in SWR, using the idKey as the key to share states.
-  const { data: run, mutate: mutateRun } = useSWR<RealtimeRun<TTask>>([idKey, "run"], null);
+  const { data: run, mutate: mutateRun } = useSWR<RealtimeRun<TTask>>(
+    [idKey, "run"],
+    null,
+    { use: [logIfFetcherPresent("realtime:run")] }
+  );
 
   const { data: error = undefined, mutate: setError } = useSWR<undefined | Error>(
     [idKey, "error"],
-    null
+    null,
+    { use: [logIfFetcherPresent("realtime:error")] }
   );
 
   // Add state to track when the subscription is complete
   const { data: isComplete = false, mutate: setIsComplete } = useSWR<boolean>(
     [idKey, "complete"],
-    null
+    null,
+    { use: [logIfFetcherPresent("realtime:complete")] }
   );
 
   // Abort controller to cancel the current API call.
@@ -229,6 +236,7 @@ export function useRealtimeRunWithStreams<
     null,
     {
       fallbackData: initialStreamsFallback,
+      use: [logIfFetcherPresent("realtime:streams")],
     }
   );
 
@@ -239,17 +247,23 @@ export function useRealtimeRunWithStreams<
   }, [streams]);
 
   // Store the streams state in SWR, using the idKey as the key to share states.
-  const { data: run, mutate: mutateRun } = useSWR<RealtimeRun<TTask>>([idKey, "run"], null);
+  const { data: run, mutate: mutateRun } = useSWR<RealtimeRun<TTask>>(
+    [idKey, "run"],
+    null,
+    { use: [logIfFetcherPresent("realtime:run")] }
+  );
 
   // Add state to track when the subscription is complete
   const { data: isComplete = false, mutate: setIsComplete } = useSWR<boolean>(
     [idKey, "complete"],
-    null
+    null,
+    { use: [logIfFetcherPresent("realtime:complete")] }
   );
 
   const { data: error = undefined, mutate: setError } = useSWR<undefined | Error>(
     [idKey, "error"],
-    null
+    null,
+    { use: [logIfFetcherPresent("realtime:error")] }
   );
 
   // Abort controller to cancel the current API call.
@@ -403,6 +417,7 @@ export function useRealtimeRunsWithTag<TTask extends AnyTask>(
   // Store the streams state in SWR, using the idKey as the key to share states.
   const { data: runs, mutate: mutateRuns } = useSWR<RealtimeRun<TTask>[]>([idKey, "run"], null, {
     fallbackData: [],
+    use: [logIfFetcherPresent("realtime:runs")],
   });
 
   // Keep the latest streams in a ref.
@@ -413,7 +428,8 @@ export function useRealtimeRunsWithTag<TTask extends AnyTask>(
 
   const { data: error = undefined, mutate: setError } = useSWR<undefined | Error>(
     [idKey, "error"],
-    null
+    null,
+    { use: [logIfFetcherPresent("realtime:error")] }
   );
 
   // Abort controller to cancel the current API call.
@@ -501,6 +517,7 @@ export function useRealtimeBatch<TTask extends AnyTask>(
   // Store the streams state in SWR, using the idKey as the key to share states.
   const { data: runs, mutate: mutateRuns } = useSWR<RealtimeRun<TTask>[]>([idKey, "run"], null, {
     fallbackData: [],
+    use: [logIfFetcherPresent("realtime:runs")],
   });
 
   // Keep the latest streams in a ref.
@@ -511,7 +528,8 @@ export function useRealtimeBatch<TTask extends AnyTask>(
 
   const { data: error = undefined, mutate: setError } = useSWR<undefined | Error>(
     [idKey, "error"],
-    null
+    null,
+    { use: [logIfFetcherPresent("realtime:error")] }
   );
 
   // Abort controller to cancel the current API call.
