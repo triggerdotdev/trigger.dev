@@ -1097,7 +1097,7 @@ export class EventRepository {
       tracestate: typeof tracestate === "string" ? tracestate : undefined,
       duration: options.incomplete ? 0 : duration,
       isPartial: failedWithError ? false : options.incomplete,
-      isError: !!failedWithError,
+      isError: options.isError === true || !!failedWithError,
       message: message,
       serviceName: "api server",
       serviceNamespace: "trigger.dev",
