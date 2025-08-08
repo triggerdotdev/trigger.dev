@@ -68,7 +68,7 @@ export async function wrapCommandAction<T extends z.AnyZodObject, TResult>(
     if (e instanceof SkipLoggingError) {
       // do nothing
     } else if (e instanceof OutroCommandError) {
-      outro("Operation cancelled");
+      outro(e.message ?? "Operation cancelled");
     } else if (e instanceof SkipCommandError) {
       // do nothing
     } else if (e instanceof BundleError) {
