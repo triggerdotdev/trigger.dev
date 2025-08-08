@@ -13,6 +13,7 @@ import { performSearch } from "./mintlifyClient.js";
 import { LoginResultOk } from "../utilities/session.js";
 import { loadConfig } from "../config.js";
 import path from "path";
+import { hasRootsCapability } from "./capabilities.js";
 
 export function registerListProjectsTool(context: McpContext) {
   context.server.registerTool(
@@ -619,15 +620,32 @@ async function resolveExistingProjectRef(
     };
   }
 
-  let $cwd = cwd;
+  // If cwd is a path to the actual trigger.config.ts file, then we should set the cwd to the directory of the file
+  let $cwd = cwd ? (path.extname(cwd) !== "" ? path.dirname(cwd) : cwd) : undefined;
 
   function isRelativePath(path: string) {
     return !path.startsWith("/");
   }
 
   if (!cwd) {
+    if (!hasRootsCapability(context)) {
+      return {
+        status: "error",
+        error:
+          "The current MCP server does not support the roots capability, so please call the tool again with a projectRef or an absolute path as cwd parameter",
+      };
+    }
+
     $cwd = await resolveCwd(context);
   } else if (isRelativePath(cwd)) {
+    if (!hasRootsCapability(context)) {
+      return {
+        status: "error",
+        error:
+          "The current MCP server does not support the roots capability, so please call the tool again with a projectRef or an absolute path as cwd parameter",
+      };
+    }
+
     const resolvedCwd = await resolveCwd(context);
 
     if (!resolvedCwd) {
