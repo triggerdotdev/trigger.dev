@@ -155,3 +155,53 @@ prismaExtension({
   migrate: false,
 }),
 ```
+
+### Example Usage (Prisma 6.6.0+)
+
+```ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
+
+export default defineConfig({
+  project: "<project ref>",
+  build: {
+    extensions: [
+      prismaExtension({
+        schema: "prisma/schema.prisma",
+        output: "prisma/generated/client", // required for Prisma 6.6.0+
+        version: "6.6.0", // optional
+      }),
+    ],
+  },
+});
+```
+
+### Using `prisma.config.ts`
+
+If you have a `prisma.config.ts` file, you can specify `schema` and `output` there instead of in the extension options:
+
+```ts
+// prisma.config.ts
+export default {
+  schema: "prisma/schema.prisma",
+  output: "prisma/generated/client",
+};
+```
+
+The extension will use these values automatically if not provided in the extension options.
+
+### Migrations
+
+The `migrations` directory must be alongside your `schema.prisma` file. The extension will copy migrations from this location during the build process if `migrate: true` is set.
+
+### Migration Guide: Upgrading to Prisma 6.6.0+
+
+1. Move your `schema.prisma` file into a dedicated directory (e.g., `prisma/schema/`).
+2. Place your `migrations` directory alongside `schema.prisma`.
+3. Specify the `schema` and `output` options in your `prismaExtension` call or in `prisma.config.ts`.
+4. Update any code that previously expected the client in `node_modules` to use the new output path.
+5. If you use multiple schemas, repeat the above for each schema.
+
+### Error Handling
+
+If required paths are missing or misconfigured, the extension will throw clear errors to help you fix your setup.

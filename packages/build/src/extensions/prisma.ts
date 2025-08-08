@@ -1,45 +1,30 @@
 import { BuildManifest, BuildTarget } from "@trigger.dev/core/v3";
 import { binaryForRuntime, BuildContext, BuildExtension } from "@trigger.dev/core/v3/build";
 import assert from "node:assert";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { cp, readdir } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, resolve, extname } from "node:path";
+import { pathToFileURL } from "url";
+
+// Utility to load prisma.config.ts if it exists
+async function loadPrismaConfig(workingDir: string): Promise<any | undefined> {
+  const configPath = resolve(workingDir, "prisma.config.ts");
+  if (!existsSync(configPath)) return undefined;
+  // Use dynamic import to load the config (assumes ESM or transpiled TS)
+  try {
+    const config = await import(pathToFileURL(configPath).href);
+    return config.default || config;
+  } catch (e) {
+    throw new Error(`Failed to load prisma.config.ts: ${e}`);
+  }
+}
 
 export type PrismaExtensionOptions = {
-  schema: string;
+  schema?: string; // Now optional if provided in config
+  output?: string; // New: explicit output path for Prisma client
   migrate?: boolean;
   version?: string;
-  /**
-   * Adds the `--sql` flag to the `prisma generate` command. This will generate the SQL files for the Prisma schema. Requires the `typedSql preview feature and prisma 5.19.0 or later.
-   */
   typedSql?: boolean;
-  /**
-   * The client generator to use. Set this param to prevent all generators in the prisma schema from being generated.
-   *
-   * @example
-   *
-   * ### Prisma schema
-   *
-   * ```prisma
-   * generator client {
-   *  provider = "prisma-client-js"
-   * }
-   *
-   * generator typegraphql {
-   *  provider = "typegraphql-prisma"
-   *  output = "./generated/type-graphql"
-   * }
-   * ```
-   *
-   * ### PrismaExtension
-   *
-   * ```ts
-   * prismaExtension({
-   *  schema: "./prisma/schema.prisma",
-   *  clientGenerator: "client"
-   * });
-   * ```
-   */
   clientGenerator?: string;
   directUrlEnvVarName?: string;
 };
@@ -52,10 +37,10 @@ export function prismaExtension(options: PrismaExtensionOptions): PrismaExtensio
 
 export class PrismaExtension implements BuildExtension {
   moduleExternals: string[];
-
   public readonly name = "PrismaExtension";
-
   private _resolvedSchemaPath?: string;
+  private _resolvedOutputPath?: string;
+  private _prismaConfig?: any;
 
   constructor(private options: PrismaExtensionOptions) {
     this.moduleExternals = ["@prisma/client", "@prisma/engines"];
@@ -73,169 +58,91 @@ export class PrismaExtension implements BuildExtension {
     if (context.target === "dev") {
       return;
     }
-
-    // Resolve the path to the prisma schema, relative to the config.directory
-    this._resolvedSchemaPath = resolve(context.workingDir, this.options.schema);
-
-    context.logger.debug(`Resolved the prisma schema to: ${this._resolvedSchemaPath}`);
-
-    // Check that the prisma schema exists
-    if (!existsSync(this._resolvedSchemaPath)) {
+    // Load prisma.config.ts if it exists
+    this._prismaConfig = await loadPrismaConfig(context.workingDir);
+    // Determine schema path
+    const schemaPath =
+      this.options.schema || this._prismaConfig?.schema || this._prismaConfig?.schemaPath;
+    if (!schemaPath) {
       throw new Error(
-        `PrismaExtension could not find the prisma schema at ${this._resolvedSchemaPath}. Make sure the path is correct: ${this.options.schema}, relative to the working dir ${context.workingDir}`
+        `PrismaExtension requires a schema path. Provide it in options or prisma.config.ts (schema or schemaPath).`
       );
     }
+    this._resolvedSchemaPath = resolve(context.workingDir, schemaPath);
+    context.logger.debug(`Resolved the prisma schema to: ${this._resolvedSchemaPath}`);
+    if (!existsSync(this._resolvedSchemaPath)) {
+      throw new Error(
+        `PrismaExtension could not find the prisma schema at ${this._resolvedSchemaPath}. Make sure the path is correct: ${schemaPath}, relative to the working dir ${context.workingDir}`
+      );
+    }
+    // Determine output path for Prisma client
+    const outputPath =
+      this.options.output || this._prismaConfig?.output || this._prismaConfig?.clientOutput;
+    if (!outputPath) {
+      throw new Error(
+        `PrismaExtension requires an output path for the Prisma client. Provide it in options or prisma.config.ts (output or clientOutput).`
+      );
+    }
+    this._resolvedOutputPath = resolve(context.workingDir, outputPath);
+    context.logger.debug(`Resolved the Prisma client output to: ${this._resolvedOutputPath}`);
   }
 
   async onBuildComplete(context: BuildContext, manifest: BuildManifest) {
     if (context.target === "dev") {
       return;
     }
-
     assert(this._resolvedSchemaPath, "Resolved schema path is not set");
-
+    assert(this._resolvedOutputPath, "Resolved output path is not set");
     context.logger.debug("Looking for @prisma/client in the externals", {
       externals: manifest.externals,
     });
-
     const prismaExternal = manifest.externals?.find(
       (external) => external.name === "@prisma/client"
     );
-
     const version = prismaExternal?.version ?? this.options.version;
-
     if (!version) {
       throw new Error(
         `PrismaExtension could not determine the version of @prisma/client. It's possible that the @prisma/client was not used in the project. If this isn't the case, please provide a version in the PrismaExtension options.`
       );
     }
-
     context.logger.debug(`PrismaExtension is generating the Prisma client for version ${version}`);
-
-    const usingSchemaFolder = dirname(this._resolvedSchemaPath).endsWith("schema");
-
     const commands: string[] = [];
-
-    let prismaDir: string | undefined;
-
     const generatorFlags: string[] = [];
-
     if (this.options.clientGenerator) {
       generatorFlags.push(`--generator=${this.options.clientGenerator}`);
     }
-
     if (this.options.typedSql) {
       generatorFlags.push(`--sql`);
-
-      const prismaDir = usingSchemaFolder
-        ? dirname(dirname(this._resolvedSchemaPath))
-        : dirname(this._resolvedSchemaPath);
-
-      context.logger.debug(`Using typedSql`);
-
-      // Find all the files prisma/sql/*.sql
-      const sqlFiles = await readdir(join(prismaDir, "sql")).then((files) =>
-        files.filter((file) => file.endsWith(".sql"))
-      );
-
-      context.logger.debug(`Found sql files`, {
-        sqlFiles,
-      });
-
-      const sqlDestinationPath = join(manifest.outputPath, "prisma", "sql");
-
-      for (const file of sqlFiles) {
-        const destination = join(sqlDestinationPath, file);
-        const source = join(prismaDir, "sql", file);
-
-        context.logger.debug(`Copying the sql from ${source} to ${destination}`);
-
-        await cp(source, destination);
-      }
     }
-
-    if (usingSchemaFolder) {
-      const schemaDir = dirname(this._resolvedSchemaPath);
-
-      prismaDir = dirname(schemaDir);
-
-      context.logger.debug(`Using the schema folder: ${schemaDir}`);
-
-      // Find all the files in schemaDir that end with .prisma (excluding the schema.prisma file)
-      const prismaFiles = await readdir(schemaDir).then((files) =>
-        files.filter((file) => file.endsWith(".prisma"))
-      );
-
-      context.logger.debug(`Found prisma files in the schema folder`, {
-        prismaFiles,
-      });
-
-      const schemaDestinationPath = join(manifest.outputPath, "prisma", "schema");
-
-      const allPrismaFiles = [...prismaFiles];
-
-      for (const file of allPrismaFiles) {
-        const destination = join(schemaDestinationPath, file);
-        const source = join(schemaDir, file);
-
-        context.logger.debug(`Copying the prisma schema from ${source} to ${destination}`);
-
-        await cp(source, destination);
-      }
-
-      commands.push(
-        `${binaryForRuntime(
-          manifest.runtime
-        )} node_modules/prisma/build/index.js generate ${generatorFlags.join(" ")}` // Don't add the --schema flag or this will fail
-      );
-    } else {
-      prismaDir = dirname(this._resolvedSchemaPath);
-      // Now we need to add a layer that:
-      // Copies the prisma schema to the build outputPath
-      // Adds the `prisma` CLI dependency to the dependencies
-      // Adds the `prisma generate` command, which generates the Prisma client
-      const schemaDestinationPath = join(manifest.outputPath, "prisma", "schema.prisma");
-      // Copy the prisma schema to the build output path
-      context.logger.debug(
-        `Copying the prisma schema from ${this._resolvedSchemaPath} to ${schemaDestinationPath}`
-      );
-
-      await cp(this._resolvedSchemaPath, schemaDestinationPath);
-
-      commands.push(
-        `${binaryForRuntime(
-          manifest.runtime
-        )} node_modules/prisma/build/index.js generate --schema=./prisma/schema.prisma ${generatorFlags.join(
-          " "
-        )}`
-      );
-    }
-
-    const env: Record<string, string | undefined> = {};
-
+    // Copy schema.prisma to output
+    const schemaDestinationPath = join(manifest.outputPath, "prisma", "schema.prisma");
+    context.logger.debug(
+      `Copying the prisma schema from ${this._resolvedSchemaPath} to ${schemaDestinationPath}`
+    );
+    await cp(this._resolvedSchemaPath, schemaDestinationPath);
+    // Copy migrations if enabled
     if (this.options.migrate) {
-      // Copy the migrations directory to the build output path
-      const migrationsDir = join(prismaDir, "migrations");
+      const migrationsDir = join(dirname(this._resolvedSchemaPath), "migrations");
       const migrationsDestinationPath = join(manifest.outputPath, "prisma", "migrations");
-
       context.logger.debug(
         `Copying the prisma migrations from ${migrationsDir} to ${migrationsDestinationPath}`
       );
-
       await cp(migrationsDir, migrationsDestinationPath, { recursive: true });
-
       commands.push(
         `${binaryForRuntime(manifest.runtime)} node_modules/prisma/build/index.js migrate deploy`
       );
     }
-
+    // Generate Prisma client using explicit output and schema
+    commands.push(
+      `${binaryForRuntime(manifest.runtime)} node_modules/prisma/build/index.js generate --schema=./prisma/schema.prisma --output=${this._resolvedOutputPath} ${generatorFlags.join(" ")}`
+    );
+    // Set up environment variables
+    const env: Record<string, string | undefined> = {};
     env.DATABASE_URL = manifest.deploy.env?.DATABASE_URL;
-
     if (this.options.directUrlEnvVarName) {
       env[this.options.directUrlEnvVarName] =
         manifest.deploy.env?.[this.options.directUrlEnvVarName] ??
         process.env[this.options.directUrlEnvVarName];
-
       if (!env[this.options.directUrlEnvVarName]) {
         context.logger.warn(
           `prismaExtension could not resolve the ${this.options.directUrlEnvVarName} environment variable. Make sure you add it to your environment variables or provide it as an environment variable to the deploy CLI command. See our docs for more info: https://trigger.dev/docs/deploy-environment-variables`
@@ -245,13 +152,11 @@ export class PrismaExtension implements BuildExtension {
       env.DIRECT_URL = manifest.deploy.env?.DIRECT_URL;
       env.DIRECT_DATABASE_URL = manifest.deploy.env?.DIRECT_DATABASE_URL;
     }
-
     if (!env.DATABASE_URL) {
       context.logger.warn(
         `prismaExtension could not resolve the DATABASE_URL environment variable. Make sure you add it to your environment variables. See our docs for more info: https://trigger.dev/docs/deploy-environment-variables`
       );
     }
-
     context.logger.debug(`Adding the prisma layer with the following commands`, {
       commands,
       env,
@@ -259,7 +164,6 @@ export class PrismaExtension implements BuildExtension {
         prisma: version,
       },
     });
-
     context.addLayer({
       id: "prisma",
       commands,
