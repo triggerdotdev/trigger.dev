@@ -1,5 +1,19 @@
 # trigger.dev
 
+## 4.0.0-v4-beta.27
+
+### Patch Changes
+
+- improve contrast for chalkWorker in light mode ([#2239](https://github.com/triggerdotdev/trigger.dev/pull/2239))
+- All experimental flags have been promoted to non-experimental, but the experimental ones still work (for now). keepNames and autoDetectExternal now default to true. ([#2371](https://github.com/triggerdotdev/trigger.dev/pull/2371))
+- - Improve playwright non-headless chrome installation ([#2347](https://github.com/triggerdotdev/trigger.dev/pull/2347))
+  - Prevent spinner message duplication in narrow terminals
+- Upgrade to zod 3.25.76 ([#2352](https://github.com/triggerdotdev/trigger.dev/pull/2352))
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.0-v4-beta.27`
+  - `@trigger.dev/core@4.0.0-v4-beta.27`
+  - `@trigger.dev/schema-to-json@4.0.0-v4-beta.27`
+
 ## 4.0.0-v4-beta.26
 
 ### Patch Changes
