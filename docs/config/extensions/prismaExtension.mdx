@@ -10,7 +10,9 @@ If you are using Prisma, you should use the prisma build extension.
 - Generates the Prisma client during the deploy process
 - Optionally will migrate the database during the deploy process
 - Support for TypedSQL and multiple schema files
-- You can use `prismaSchemaFolder` to specify just the directory containing your schema file, instead of the full path
+- **Full support for Prisma 6.6.0+ with new client generators and output paths**
+- Supports both single-file and multi-file schemas
+- Automatically detects schema configuration from `package.json` and `prisma.config.ts`
 - You can add the extension twice if you have multiple separate schemas in the same project (example below)
 
 You can use it for a simple Prisma setup like this:
@@ -64,6 +66,91 @@ export default defineConfig({
 ### clientGenerator
 
 If you have multiple `generator` statements defined in your schema file, you can pass in the `clientGenerator` option to specify the `prisma-client-js` generator, which will prevent other generators from being generated. Some examples where you may need to do this include when using the `prisma-kysely` or `prisma-json-types-generator` generators.
+
+## Prisma 6.6.0+ Compatibility
+
+Starting with Prisma 6.6.0, Prisma introduced significant changes to client generation:
+
+- The new `prisma-client` generator requires an `output` path
+- Multi-file schemas are now generally available
+- Schema location detection has changed
+
+### Using with Prisma 6.6.0+
+
+The extension automatically detects and handles these changes. For best compatibility:
+
+1. **Specify an output path in your generator:**
+
+```prisma
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/client"
+}
+```
+
+2. **For the new `prisma-client` generator:**
+
+```prisma
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+```
+
+3. **Configure schema location in `package.json` (optional):**
+
+```json
+{
+  "prisma": {
+    "schema": "prisma/schema"
+  }
+}
+```
+
+### Advanced Configuration Options
+
+For Prisma 6.6.0+ projects with complex setups:
+
+```ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
+
+export default defineConfig({
+  project: "<project ref>",
+  build: {
+    extensions: [
+      prismaExtension({
+        schema: "prisma/schema.prisma",
+        clientOutput: "../src/generated/client", // Override detected output path
+        configFile: "prisma.config.ts", // Path to prisma config file
+        migrate: true,
+      }),
+    ],
+  },
+});
+```
+
+### Multi-file Schema Support
+
+The extension fully supports multi-file schemas:
+
+```
+prisma/
+├── schema/
+│   ├── schema.prisma      # Main file with datasource/generator
+│   ├── user.prisma        # User models
+│   └── post.prisma        # Post models
+└── migrations/
+```
+
+Configure it like this:
+
+```ts
+prismaExtension({
+  schema: "prisma/schema", // Point to the directory
+  migrate: true,
+})
+```
 
 <CodeGroup>
 
