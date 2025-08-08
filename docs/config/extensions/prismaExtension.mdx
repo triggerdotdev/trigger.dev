@@ -9,8 +9,6 @@ If you are using Prisma, you should use the prisma build extension.
 - Automatically handles copying Prisma files to the build directory
 - Generates the Prisma client during the deploy process
 - Optionally will migrate the database during the deploy process
-- Support for TypedSQL and multiple schema files
-- You can use `prismaSchemaFolder` to specify just the directory containing your schema file, instead of the full path
 - You can add the extension twice if you have multiple separate schemas in the same project (example below)
 
 You can use it for a simple Prisma setup like this:
@@ -109,14 +107,27 @@ export default defineConfig({
 });
 ```
 
-</CodeGroup>
+### Prisma 6.6.0+
 
-### TypedSQL
+In Prisma 6.6.0+, the `output` path for the Prisma client is no longer in `node_modules` by default. This means that the `prismaExtension` will no longer work out of the box with this version. To fix this, you will need to add the following to your `package.json` file:
 
-If you are using [TypedSQL](https://www.prisma.io/typedsql), you'll need to enable it via the `typedSql` option:
+```json
+{
+  "prisma": {
+    "schema": "prisma/schema.prisma"
+  }
+}
+```
+
+This will ensure that the Prisma client is generated in the correct location.
+
+### The `copy` option
+
+By default, the prisma schema and migrations are copied to the output directory. You can set this to false to disable this behavior.
 
 ```ts
 import { defineConfig } from "@trigger.dev/sdk/v3";
+import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
 
 export default defineConfig({
   project: "<project ref>",
@@ -125,12 +136,14 @@ export default defineConfig({
     extensions: [
       prismaExtension({
         schema: "prisma/schema.prisma",
-        typedSql: true,
+        copy: false,
       }),
     ],
   },
 });
 ```
+
+</CodeGroup>
 
 <Note>
   The `prismaExtension` will inject the `DATABASE_URL` environment variable into the build process. Learn more about setting environment variables for deploying in our [Environment Variables](/deploy-environment-variables) guide.
