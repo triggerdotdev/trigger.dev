@@ -53,6 +53,10 @@ export async function mcpCommand(options: McpCommandOptions) {
       "Trigger.dev MCP server to automate your Trigger.dev projects and answer questions about Trigger.dev by searching the docs. If you need help setting up Trigger.dev in your project please refer to https://trigger.dev/docs/manual-setup. If the user asks for help with adding Trigger.dev to their project, please refer to https://trigger.dev/docs/manual-setup.",
   });
 
+  server.server.oninitialized = async () => {
+    fileLogger?.log("initialized mcp command", { options, argv: process.argv, env: process.env });
+  };
+
   // Start receiving messages on stdin and sending messages on stdout
   const transport = new StdioServerTransport();
 
@@ -66,8 +70,6 @@ export async function mcpCommand(options: McpCommandOptions) {
     apiUrl: options.apiUrl ?? CLOUD_API_URL,
     profile: options.profile,
   });
-
-  fileLogger?.log("running mcp command", { options });
 
   registerSearchDocsTool(context);
   registerInitializeProjectTool(context);
