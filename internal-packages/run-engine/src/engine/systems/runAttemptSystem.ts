@@ -181,6 +181,7 @@ export class RunAttemptSystem {
         lockedById: true,
         lockedQueueId: true,
         queue: true,
+        concurrencyKey: true,
         attemptNumber: true,
         status: true,
         ttl: true,
@@ -249,6 +250,7 @@ export class RunAttemptSystem {
     ]);
 
     return {
+      concurrencyKey: run.concurrencyKey ?? undefined,
       run: {
         id: run.friendlyId,
         tags: run.runTags,
@@ -398,6 +400,7 @@ export class RunAttemptSystem {
                   lockedById: true,
                   lockedQueueId: true,
                   queue: true,
+                  concurrencyKey: true,
                   attemptNumber: true,
                   status: true,
                   ttl: true,
@@ -536,6 +539,7 @@ export class RunAttemptSystem {
             ]);
 
           const execution: BackwardsCompatibleTaskRunExecution = {
+            concurrencyKey: updatedRun.concurrencyKey ?? undefined,
             attempt: {
               number: nextAttemptNumber,
               startedAt: latestSnapshot.updatedAt,
