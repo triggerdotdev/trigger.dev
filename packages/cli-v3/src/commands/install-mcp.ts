@@ -19,6 +19,7 @@ const clients = [
   "gemini-cli",
   "crush",
   "cline",
+  "amp",
 ] as const;
 const scopes = ["user", "project", "local"] as const;
 
@@ -57,6 +58,9 @@ const clientScopes: ClientScopes = {
   cline: {
     user: "~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json",
   },
+  amp: {
+    user: "~/.config/amp/settings.json",
+  },
 };
 
 const InstallMcpCommandOptions = z.object({
@@ -91,7 +95,8 @@ export function configureInstallMcpCommand(program: Command) {
     .option("--scope <scope>", "Choose the scope of the MCP server, either user or project")
     .option(
       "--client <clients...>",
-      "Choose the client (or clients) to install the MCP server into"
+      "Choose the client (or clients) to install the MCP server into. We currently support: " +
+        clients.join(", ")
     )
     .option("--log-file <log file>", "Configure the MCP server to write logs to a file")
     .option(
@@ -295,6 +300,9 @@ function resolveMcpServerConfigJsonPath(
     case "cline": {
       return ["mcpServers", "trigger"];
     }
+    case "amp": {
+      return ["amp.mcpServers", "trigger"];
+    }
     case "claude-code": {
       if (scope.scope === "local") {
         const projectPath = process.cwd();
@@ -368,6 +376,12 @@ function resolveMcpServerConfig(
       };
     }
     case "cline": {
+      return {
+        command: "npx",
+        args,
+      };
+    }
+    case "amp": {
       return {
         command: "npx",
         args,
