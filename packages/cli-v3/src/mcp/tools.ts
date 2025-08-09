@@ -509,6 +509,85 @@ export function registerTriggerTaskTool(context: McpContext) {
   );
 }
 
+export function registerGetRunDetailsTool(context: McpContext) {
+  context.server.registerTool(
+    "get_run_details",
+    {
+      description: "Get the details of a run",
+      inputSchema: {
+        projectRef: ProjectRefSchema,
+        configPath: z
+          .string()
+          .describe(
+            "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+          )
+          .optional(),
+        environment: z
+          .enum(["dev", "staging", "preview", "production"])
+          .describe("The environment to trigger the task in")
+          .default("dev"),
+        branch: z
+          .string()
+          .describe("The branch to trigger the task in, only used for preview environments")
+          .optional(),
+        runId: z.string().describe("The ID of the run to get the details of, starts with run_"),
+      },
+    },
+    async ({ projectRef, configPath, environment, branch, runId }) => {
+      context.logger?.log("calling get_run_details", {
+        projectRef,
+        configPath,
+        environment,
+        branch,
+        runId,
+      });
+
+      if (context.options.devOnly && environment !== "dev") {
+        return respondWithError(
+          `This MCP server is only available for the dev environment. You tried to access the ${environment} environment. Remove the --dev-only flag to access other environments.`
+        );
+      }
+
+      const projectRefResult = await resolveExistingProjectRef(context, projectRef, configPath);
+
+      if (projectRefResult.status === "error") {
+        return respondWithError(projectRefResult.error);
+      }
+
+      const $projectRef = projectRefResult.projectRef;
+
+      context.logger?.log("get_run_details projectRefResult", { projectRefResult });
+
+      const auth = await mcpAuth({
+        server: context.server,
+        defaultApiUrl: context.options.apiUrl,
+        profile: context.options.profile,
+        context,
+      });
+
+      if (!auth.ok) {
+        return respondWithError(auth.error);
+      }
+
+      const apiClient = await createApiClientWithPublicJWT(auth, $projectRef, environment, [
+        `read:runs:${runId}`,
+      ]);
+
+      if (!apiClient) {
+        return respondWithError("Failed to create API client with public JWT");
+      }
+
+      const result = await apiClient.retrieveRun(runId);
+
+      const runUrl = `${auth.dashboardUrl}/projects/v3/${$projectRef}/runs/${result.id}`;
+
+      return {
+        content: [{ type: "text", text: JSON.stringify({ ...result, runUrl }, null, 2) }],
+      };
+    }
+  );
+}
+
 async function resolveCwd(context: McpContext) {
   const response = await context.server.server.listRoots();
 
