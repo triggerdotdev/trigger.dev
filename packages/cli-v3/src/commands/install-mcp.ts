@@ -11,7 +11,15 @@ import { cliLink } from "../utilities/cliOutput.js";
 const cliVersion = VERSION as string;
 const cliTag = cliVersion.includes("v4-beta") ? "v4-beta" : "latest";
 
-const clients = ["claude-code", "cursor", "vscode", "windsurf", "gemini-cli", "crush"] as const;
+const clients = [
+  "claude-code",
+  "cursor",
+  "vscode",
+  "windsurf",
+  "gemini-cli",
+  "crush",
+  "cline",
+] as const;
 const scopes = ["user", "project", "local"] as const;
 
 type ClientScopes = {
@@ -45,6 +53,9 @@ const clientScopes: ClientScopes = {
     user: "~/.config/crush/crush.json",
     project: "./crush.json",
     local: "./.crush.json",
+  },
+  cline: {
+    user: "~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json",
   },
 };
 
@@ -281,6 +292,9 @@ function resolveMcpServerConfigJsonPath(
     case "gemini-cli": {
       return ["mcpServers", "trigger"];
     }
+    case "cline": {
+      return ["mcpServers", "trigger"];
+    }
     case "claude-code": {
       if (scope.scope === "local") {
         const projectPath = process.cwd();
@@ -348,6 +362,12 @@ function resolveMcpServerConfig(
       };
     }
     case "gemini-cli": {
+      return {
+        command: "npx",
+        args,
+      };
+    }
+    case "cline": {
       return {
         command: "npx",
         args,
