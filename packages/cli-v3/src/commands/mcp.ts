@@ -14,6 +14,7 @@ import {
   registerListProjectsTool,
   registerSearchDocsTool,
   registerTriggerTaskTool,
+  registerGetRunDetailsTool,
 } from "../mcp/tools.js";
 import { logger } from "../utilities/logger.js";
 
@@ -75,6 +76,7 @@ export async function mcpCommand(options: McpCommandOptions) {
   registerInitializeProjectTool(context);
   registerGetTasksTool(context);
   registerTriggerTaskTool(context);
+  registerGetRunDetailsTool(context);
   registerListProjectsTool(context);
   registerListOrgsTool(context);
   registerCreateProjectTool(context);
