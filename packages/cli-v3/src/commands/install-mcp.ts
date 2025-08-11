@@ -29,6 +29,7 @@ const clients = [
   "crush",
   "cline",
   "openai-codex",
+  "opencode",
   "amp",
 ] as const;
 const scopes = ["user", "project", "local"] as const;
@@ -81,6 +82,10 @@ const clientScopes: ClientScopes = {
   "openai-codex": {
     user: "~/.codex/config.toml",
   },
+  opencode: {
+    user: "~/.config/opencode/opencode.json",
+    project: "./opencode.json",
+  },
 };
 
 const clientLabels: ClientLabels = {
@@ -94,6 +99,7 @@ const clientLabels: ClientLabels = {
   cline: "Cline",
   "openai-codex": "OpenAI Codex CLI",
   amp: "Sourcegraph AMP",
+  opencode: "opencode",
 };
 
 type SupportedClients = (typeof clients)[number];
@@ -321,7 +327,7 @@ async function installMcpServerForClient(
   return { configPath, clientName, scope };
 }
 
-type McpServerConfig = Record<string, string | Array<string> | undefined>;
+type McpServerConfig = Record<string, string | Array<string> | boolean | undefined>;
 type McpServerScope = {
   scope: (typeof scopes)[number];
   location: string;
@@ -446,6 +452,9 @@ function resolveMcpServerConfigJsonPath(
     case "openai-codex": {
       return ["mcp_servers", "trigger"];
     }
+    case "opencode": {
+      return ["mcp", "trigger"];
+    }
   }
 }
 
@@ -532,6 +541,13 @@ function resolveMcpServerConfig(
         source: "custom",
         command: "npx",
         args,
+      };
+    }
+    case "opencode": {
+      return {
+        type: "local",
+        command: ["npx", ...args],
+        enabled: true,
       };
     }
   }
