@@ -1155,7 +1155,6 @@ export class RunEngine {
           }
         );
 
-        await this.worker.ack(`heartbeatSnapshot.${runId}`);
         return;
       }
 
