@@ -490,32 +490,6 @@ export async function batchTriggerAndWait<TTask extends AnyTask>(
   >("tasks.batchTriggerAndWait()", id, items, undefined, options, requestOptions);
 }
 
-/**
- * Trigger a task by its identifier with the given payload and poll until the run is completed.
- *
- * @example
- *
- * ```ts
- * import { tasks, runs } from "@trigger.dev/sdk/v3";
- * import type { myTask } from "./myTasks"; // Import just the type of the task
- *
- * const run = await tasks.triggerAndPoll<typeof myTask>("my-task", { foo: "bar" }); // The id and payload are fully typesafe
- * console.log(run.output) // The output is also fully typed
- * ```
- *
- * @returns {Run} The completed run, either successful or failed.
- */
-export async function triggerAndPoll<TTask extends AnyTask>(
-  id: TaskIdentifier<TTask>,
-  payload: TaskPayload<TTask>,
-  options?: TriggerOptions & PollOptions,
-  requestOptions?: TriggerApiRequestOptions
-): Promise<RetrieveRunResult<TTask>> {
-  const handle = await trigger(id, payload, options, requestOptions);
-
-  return runs.poll(handle, options, requestOptions);
-}
-
 export async function batchTrigger<TTask extends AnyTask>(
   id: TaskIdentifier<TTask>,
   items: Array<BatchItem<TaskPayload<TTask>>>,

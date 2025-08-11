@@ -7,12 +7,11 @@ description: "Tasks need to be triggered in order to run."
 
 Trigger tasks **from your backend**:
 
-| Function                 | What it does                                                                                     |                               |
-| :----------------------- | :----------------------------------------------------------------------------------------------- | ----------------------------- |
-| `tasks.trigger()`        | Triggers a task and returns a handle you can use to fetch and manage the run.                    | [Docs](#tasks-trigger)        |
-| `tasks.batchTrigger()`   | Triggers a single task in a batch and returns a handle you can use to fetch and manage the runs. | [Docs](#tasks-batchtrigger)   |
-| `tasks.triggerAndPoll()` | Triggers a task and then polls the run until it’s complete.                                      | [Docs](#tasks-triggerandpoll) |
-| `batch.trigger()`        | Similar to `tasks.batchTrigger` but allows running multiple different tasks                      | [Docs](#batch-trigger)        |
+| Function               | What it does                                                                                     |                             |
+| :--------------------- | :----------------------------------------------------------------------------------------------- | --------------------------- |
+| `tasks.trigger()`      | Triggers a task and returns a handle you can use to fetch and manage the run.                    | [Docs](#tasks-trigger)      |
+| `tasks.batchTrigger()` | Triggers a single task in a batch and returns a handle you can use to fetch and manage the runs. | [Docs](#tasks-batchtrigger) |
+| `batch.trigger()`      | Similar to `tasks.batchTrigger` but allows running multiple different tasks                      | [Docs](#batch-trigger)      |
 
 Trigger tasks **from inside a another task**:
 
@@ -159,40 +158,6 @@ export async function POST(request: Request) {
 
   //return a success response with the handle
   return Response.json(batchHandle);
-}
-```
-
-### tasks.triggerAndPoll()
-
-Triggers a single run of a task with the payload you pass in, and any options you specify, and then polls the run until it's complete.
-
-<Warning>
-  We don't recommend using `triggerAndPoll()`, especially inside a web request, as it will block the
-  request until the run is complete. Please see our [Realtime docs](/realtime) for a better way to
-  handle this.
-</Warning>
-
-```ts Your backend
-import { tasks } from "@trigger.dev/sdk/v3";
-import type { emailSequence } from "~/trigger/emails";
-
-//app/email/route.ts
-export async function POST(request: Request) {
-  //get the JSON from the request
-  const data = await request.json();
-
-  // Pass the task type to `triggerAndPoll()` as a generic argument, giving you full type checking
-  const result = await tasks.triggerAndPoll<typeof emailSequence>(
-    "email-sequence",
-    {
-      to: data.email,
-      name: data.name,
-    },
-    { pollIntervalMs: 5000 }
-  );
-
-  //return a success response with the result
-  return Response.json(result);
 }
 ```
 
