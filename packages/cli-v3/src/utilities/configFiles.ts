@@ -29,6 +29,11 @@ const CliConfigFile = z.object({
   version: z.literal(2),
   currentProfile: z.string().default(DEFFAULT_PROFILE),
   profiles: z.record(CliConfigProfileSettings),
+  settings: z
+    .object({
+      hasSeenMCPInstallPrompt: z.boolean().default(false),
+    })
+    .optional(),
 });
 type CliConfigFile = z.infer<typeof CliConfigFile>;
 
@@ -50,6 +55,9 @@ function getBlankConfig(): CliConfigFile {
     version: 2,
     currentProfile: DEFFAULT_PROFILE,
     profiles: {},
+    settings: {
+      hasSeenMCPInstallPrompt: false,
+    },
   };
 }
 
@@ -91,6 +99,21 @@ export function readAuthConfigProfile(
     logger.debug(`Error reading auth config file: ${error}`);
     return undefined;
   }
+}
+
+export function readConfigHasSeenMCPInstallPrompt(): boolean {
+  const config = getConfig();
+  return typeof config.settings?.hasSeenMCPInstallPrompt === "boolean"
+    ? config.settings.hasSeenMCPInstallPrompt
+    : false;
+}
+
+export function writeConfigHasSeenMCPInstallPrompt(hasSeenMCPInstallPrompt: boolean) {
+  const config = getConfig();
+  config.settings = {
+    hasSeenMCPInstallPrompt,
+  };
+  writeAuthConfigFile(config);
 }
 
 export function deleteAuthConfigProfile(profile: string = DEFFAULT_PROFILE) {

@@ -1,6 +1,11 @@
 import { intro, isCancel, log, outro, select, text } from "@clack/prompts";
 import { context, trace } from "@opentelemetry/api";
-import { GetProjectResponseBody, LogLevel, flattenAttributes } from "@trigger.dev/core/v3";
+import {
+  GetProjectResponseBody,
+  LogLevel,
+  flattenAttributes,
+  tryCatch,
+} from "@trigger.dev/core/v3";
 import { recordSpanException } from "@trigger.dev/core/v3/workers";
 import chalk from "chalk";
 import { Command, Option as CommandOption } from "commander";
@@ -33,6 +38,11 @@ import { logger } from "../utilities/logger.js";
 import { spinner } from "../utilities/windows.js";
 import { VERSION } from "../version.js";
 import { login } from "./login.js";
+import {
+  readConfigHasSeenMCPInstallPrompt,
+  writeConfigHasSeenMCPInstallPrompt,
+} from "../utilities/configFiles.js";
+import { installMcpServer } from "./install-mcp.js";
 
 const cliVersion = VERSION as string;
 const cliTag = cliVersion.includes("v4-beta") ? "v4-beta" : "latest";
@@ -106,6 +116,43 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
   // Validate --yes flag requirements
   if (options.yes && !options.projectRef) {
     throw new Error("--project-ref is required when using --yes flag");
+  }
+
+  const hasSeenMCPInstallPrompt = readConfigHasSeenMCPInstallPrompt();
+
+  if (!hasSeenMCPInstallPrompt) {
+    const installChoice = await select({
+      message: "Choose how you want to initialize your project:",
+      options: [
+        {
+          value: "mcp",
+          label: "Trigger.dev MCP",
+          hint: "Automatically install the Trigger.dev MCP server and then vibe your way to a new project.",
+        },
+        { value: "cli", label: "CLI", hint: "Continue with the CLI" },
+      ],
+    });
+
+    const continueWithCLI = isCancel(installChoice) || installChoice === "cli";
+
+    if (!continueWithCLI) {
+      log.step("Welcome to the Trigger.dev MCP server install wizard 🧙");
+
+      const [installError] = await tryCatch(
+        installMcpServer({
+          yolo: false,
+          tag: options.tag,
+          logLevel: options.logLevel,
+        })
+      );
+
+      if (installError) {
+        outro(`Failed to install MCP server: ${installError.message}`);
+        return;
+      }
+
+      return;
+    }
   }
 
   intro("Initializing project");
@@ -204,7 +251,7 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
     `${authorization.dashboardUrl}/projects/v3/${selectedProject.externalRef}`
   );
 
-  log.success("Successfully initialized project for Trigger.dev v3 🫡");
+  log.success("Successfully initialized your Trigger.dev project 🫡");
   log.info("Next steps:");
   log.info(
     `   1. To start developing, run ${chalk.green(
