@@ -1,20 +1,20 @@
-import { intro, isCancel, multiselect, select, spinner, log, outro, confirm } from "@clack/prompts";
+import { confirm, intro, isCancel, log, multiselect, select, spinner } from "@clack/prompts";
+import chalk from "chalk";
 import { Command } from "commander";
+import { extname } from "node:path";
 import { z } from "zod";
 import { OutroCommandError, wrapCommandAction } from "../cli/common.js";
+import { cliLink } from "../utilities/cliOutput.js";
+import { writeConfigHasSeenMCPInstallPrompt } from "../utilities/configFiles.js";
 import {
   expandTilde,
-  safeReadJSONFile,
+  safeReadJSONCFile,
   safeReadTomlFile,
   writeJSONFile,
   writeTomlFile,
 } from "../utilities/fileSystem.js";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { VERSION } from "../version.js";
-import chalk from "chalk";
-import { cliLink } from "../utilities/cliOutput.js";
-import { extname } from "node:path";
-import { writeConfigHasSeenMCPInstallPrompt } from "../utilities/configFiles.js";
 
 const cliVersion = VERSION as string;
 const cliTag = cliVersion.includes("v4-beta") ? "v4-beta" : "latest";
@@ -23,6 +23,7 @@ const clients = [
   "claude-code",
   "cursor",
   "vscode",
+  "zed",
   "windsurf",
   "gemini-cli",
   "crush",
@@ -56,6 +57,9 @@ const clientScopes: ClientScopes = {
     user: "~/Library/Application Support/Code/User/mcp.json",
     project: "./.vscode/mcp.json",
   },
+  zed: {
+    user: "~/.config/zed/settings.json",
+  },
   windsurf: {
     user: "~/.codeium/windsurf/mcp_config.json",
   },
@@ -83,6 +87,7 @@ const clientLabels: ClientLabels = {
   "claude-code": "Claude Code",
   cursor: "Cursor",
   vscode: "VSCode",
+  zed: "Zed",
   windsurf: "Windsurf",
   "gemini-cli": "Gemini CLI",
   crush: "Charm Crush",
@@ -344,7 +349,7 @@ async function writeMcpServerConfig(
 
   switch (extension) {
     case ".json": {
-      let existingConfig = await safeReadJSONFile(fullPath);
+      let existingConfig = await safeReadJSONCFile(fullPath);
 
       if (!existingConfig) {
         existingConfig = {};
@@ -425,6 +430,9 @@ function resolveMcpServerConfigJsonPath(
     }
     case "amp": {
       return ["amp.mcpServers", "trigger"];
+    }
+    case "zed": {
+      return ["context_servers", "trigger"];
     }
     case "claude-code": {
       if (scope.scope === "local") {
@@ -515,6 +523,13 @@ function resolveMcpServerConfig(
     }
     case "openai-codex": {
       return {
+        command: "npx",
+        args,
+      };
+    }
+    case "zed": {
+      return {
+        source: "custom",
         command: "npx",
         args,
       };
