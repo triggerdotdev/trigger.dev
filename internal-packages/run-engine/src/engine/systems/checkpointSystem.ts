@@ -270,11 +270,25 @@ export class CheckpointSystem {
       const snapshot = await getLatestExecutionSnapshot(prisma, runId);
 
       if (snapshot.id !== snapshotId) {
-        throw new ServiceValidationError("Snapshot ID doesn't match the latest snapshot", 400);
+        throw new ServiceValidationError(
+          "Snapshot ID doesn't match the latest snapshot in continueRunExecution",
+          400,
+          {
+            snapshotId,
+            latestSnapshotId: snapshot.id,
+          }
+        );
       }
 
       if (!isPendingExecuting(snapshot.executionStatus)) {
-        throw new ServiceValidationError("Snapshot is not in a valid state to continue", 400);
+        throw new ServiceValidationError(
+          "Snapshot is not in a valid state to continue in continueRunExecution",
+          400,
+          {
+            snapshotId,
+            snapshotStatus: snapshot.executionStatus,
+          }
+        );
       }
 
       // Get the run and update the status
