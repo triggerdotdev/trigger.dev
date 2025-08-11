@@ -3,7 +3,7 @@ import fsModule, { writeFile } from "fs/promises";
 import fs from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import pathModule from "node:path";
-import TOML from "@iarna/toml";
+import { parseJSONC, stringifyJSONC, parseTOML, stringifyTOML } from "confbox";
 
 // Creates a file at the given path, if the directory doesn't exist it will be created
 export async function createFile(
@@ -123,19 +123,29 @@ export async function createTempDir(): Promise<string> {
 }
 
 export async function safeReadTomlFile(path: string) {
-  try {
-    const fileExists = await pathExists(path);
+  const fileExists = await pathExists(path);
 
-    if (!fileExists) return;
+  if (!fileExists) return;
 
-    const fileContents = await readFile(path);
+  const fileContents = await readFile(path);
 
-    return TOML.parse(fileContents.replace(/\r\n/g, "\n"));
-  } catch {
-    return;
-  }
+  return parseTOML(fileContents.replace(/\r\n/g, "\n"));
 }
 
 export async function writeTomlFile(path: string, toml: any) {
-  await safeWriteFile(path, TOML.stringify(toml));
+  await safeWriteFile(path, stringifyTOML(toml));
+}
+
+export async function safeReadJSONCFile(path: string) {
+  const fileExists = await pathExists(path);
+
+  if (!fileExists) return;
+
+  const fileContents = await readFile(path);
+
+  return parseJSONC(fileContents.replace(/\r\n/g, "\n"));
+}
+
+export async function writeJSONCFile(path: string, json: any) {
+  await safeWriteFile(path, stringifyJSONC(json));
 }
