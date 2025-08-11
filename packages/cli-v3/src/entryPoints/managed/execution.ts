@@ -300,7 +300,7 @@ export class RunExecution {
           return;
         }
 
-        await this.exitTaskRunProcessWithoutFailingRun({ flush: true, reason: "re-queued" });
+        await this.exitTaskRunProcessWithoutFailingRun({ flush: true, reason: "already-finished" });
         return;
       }
       case "QUEUED_EXECUTING":
