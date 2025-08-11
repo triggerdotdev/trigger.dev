@@ -17,6 +17,11 @@ import {
   registerGetRunDetailsTool,
 } from "../mcp/tools.js";
 import { logger } from "../utilities/logger.js";
+import { intro, outro } from "@clack/prompts";
+import { installMcpServer } from "./install-mcp.js";
+import { tryCatch } from "@trigger.dev/core/utils";
+import { VERSION } from "@trigger.dev/core";
+import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 
 const McpCommandOptions = CommonCommandOptions.extend({
   projectRef: z.string().optional(),
@@ -45,6 +50,27 @@ export function configureMcpCommand(program: Command) {
 }
 
 export async function mcpCommand(options: McpCommandOptions) {
+  if (process.stdout.isTTY) {
+    await printStandloneInitialBanner(true);
+
+    intro("Welcome to the Trigger.dev MCP server install wizard 🧙");
+
+    const [installError] = await tryCatch(
+      installMcpServer({
+        yolo: false,
+        tag: VERSION as string,
+        logLevel: "log",
+      })
+    );
+
+    if (installError) {
+      outro(`Failed to install MCP server: ${installError.message}`);
+      return;
+    }
+
+    return;
+  }
+
   logger.loggerLevel = "none";
 
   const server = new McpServer({

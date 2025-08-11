@@ -3,6 +3,7 @@ import fsModule, { writeFile } from "fs/promises";
 import fs from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import pathModule from "node:path";
+import TOML from "@iarna/toml";
 
 // Creates a file at the given path, if the directory doesn't exist it will be created
 export async function createFile(
@@ -119,4 +120,22 @@ export async function createTempDir(): Promise<string> {
   const directory = await fsModule.mkdtemp(tempDirPath);
 
   return directory;
+}
+
+export async function safeReadTomlFile(path: string) {
+  try {
+    const fileExists = await pathExists(path);
+
+    if (!fileExists) return;
+
+    const fileContents = await readFile(path);
+
+    return TOML.parse(fileContents.replace(/\r\n/g, "\n"));
+  } catch {
+    return;
+  }
+}
+
+export async function writeTomlFile(path: string, toml: any) {
+  await safeWriteFile(path, TOML.stringify(toml));
 }

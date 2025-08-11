@@ -1272,6 +1272,9 @@ importers:
       '@depot/cli':
         specifier: 0.0.1-cli.2.80.0
         version: 0.0.1-cli.2.80.0
+      '@iarna/toml':
+        specifier: ^2.2.5
+        version: 2.2.5
       '@modelcontextprotocol/sdk':
         specifier: ^1.17.0
         version: 1.17.1(supports-color@10.0.0)
@@ -8411,6 +8414,10 @@ packages:
 
   /@humanwhocodes/object-schema@1.2.1:
     resolution: {integrity: sha512-ZnQMnLV4e7hDlUvw8H+U8ASL02SS2Gn6+9Ac3wGGLIe7+je2AeAOxPY+izIPJDfFDb7eDjev0Us8MO1iFRN8hA==}
+
+  /@iarna/toml@2.2.5:
+    resolution: {integrity: sha512-trnsAYxU3xnS1gPHPyU961coFyLkh4gAD/0zQ5mymY4yOZ+CYvsPqUbOFSw0aDM4y0tV7tiFxL/1XfXPNC6IPg==}
+    dev: false
 
   /@img/sharp-darwin-arm64@0.33.5:
     resolution: {integrity: sha512-UT4p+iz/2H4twwAoLCqfA9UH5pI6DggwKEGuaPy7nCVQ8ZsiY5PIcrRvD1DzuY3qYL07NtIQcWnBSY/heikIFQ==}

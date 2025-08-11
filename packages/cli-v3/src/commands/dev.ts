@@ -13,6 +13,14 @@ import { runtimeChecks } from "../utilities/runtimeCheck.js";
 import { getProjectClient, LoginResultOk } from "../utilities/session.js";
 import { login } from "./login.js";
 import { updateTriggerPackages } from "./update.js";
+import {
+  readConfigHasSeenMCPInstallPrompt,
+  writeConfigHasSeenMCPInstallPrompt,
+} from "../utilities/configFiles.js";
+import { confirm, isCancel, log } from "@clack/prompts";
+import { installMcpServer } from "./install-mcp.js";
+import { tryCatch } from "@trigger.dev/core/utils";
+import { VERSION } from "@trigger.dev/core";
 
 const DevCommandOptions = CommonCommandOptions.extend({
   debugOtel: z.boolean().default(false),
@@ -69,6 +77,33 @@ export function configureDevCommand(program: Command) {
 
 export async function devCommand(options: DevCommandOptions) {
   runtimeChecks();
+
+  const hasSeenMCPInstallPrompt = readConfigHasSeenMCPInstallPrompt();
+
+  if (!hasSeenMCPInstallPrompt) {
+    const installChoice = await confirm({
+      message: "Would you like to install the Trigger.dev MCP server?",
+      initialValue: true,
+    });
+
+    const skipInstall = isCancel(installChoice) || !installChoice;
+
+    if (!skipInstall) {
+      log.step("Welcome to the Trigger.dev MCP server install wizard 🧙");
+
+      const [installError] = await tryCatch(
+        installMcpServer({
+          yolo: false,
+          tag: VERSION as string,
+          logLevel: options.logLevel,
+        })
+      );
+
+      if (installError) {
+        log.error(`Failed to install MCP server: ${installError.message}`);
+      }
+    }
+  }
 
   const authorization = await login({
     embedded: true,

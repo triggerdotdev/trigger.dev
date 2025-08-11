@@ -1,12 +1,20 @@
-import { intro, isCancel, multiselect, select, spinner, log, outro } from "@clack/prompts";
+import { intro, isCancel, multiselect, select, spinner, log, outro, confirm } from "@clack/prompts";
 import { Command } from "commander";
 import { z } from "zod";
 import { OutroCommandError, wrapCommandAction } from "../cli/common.js";
-import { expandTilde, safeReadJSONFile, writeJSONFile } from "../utilities/fileSystem.js";
+import {
+  expandTilde,
+  safeReadJSONFile,
+  safeReadTomlFile,
+  writeJSONFile,
+  writeTomlFile,
+} from "../utilities/fileSystem.js";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { VERSION } from "../version.js";
 import chalk from "chalk";
 import { cliLink } from "../utilities/cliOutput.js";
+import { extname } from "node:path";
+import { writeConfigHasSeenMCPInstallPrompt } from "../utilities/configFiles.js";
 
 const cliVersion = VERSION as string;
 const cliTag = cliVersion.includes("v4-beta") ? "v4-beta" : "latest";
@@ -19,6 +27,7 @@ const clients = [
   "gemini-cli",
   "crush",
   "cline",
+  "openai-codex",
   "amp",
 ] as const;
 const scopes = ["user", "project", "local"] as const;
@@ -27,6 +36,10 @@ type ClientScopes = {
   [key in (typeof clients)[number]]: {
     [key in (typeof scopes)[number]]?: string;
   };
+};
+
+type ClientLabels = {
+  [key in (typeof clients)[number]]: string;
 };
 
 const clientScopes: ClientScopes = {
@@ -61,12 +74,30 @@ const clientScopes: ClientScopes = {
   amp: {
     user: "~/.config/amp/settings.json",
   },
+  "openai-codex": {
+    user: "~/.codex/config.toml",
+  },
 };
+
+const clientLabels: ClientLabels = {
+  "claude-code": "Claude Code",
+  cursor: "Cursor",
+  vscode: "VSCode",
+  windsurf: "Windsurf",
+  "gemini-cli": "Gemini CLI",
+  crush: "Charm Crush",
+  cline: "Cline",
+  "openai-codex": "OpenAI Codex CLI",
+  amp: "Sourcegraph AMP",
+};
+
+type SupportedClients = (typeof clients)[number];
+type ResolvedClients = SupportedClients | "unsupported";
 
 const InstallMcpCommandOptions = z.object({
   projectRef: z.string().optional(),
   tag: z.string().default(cliVersion),
-  devOnly: z.boolean().default(false),
+  devOnly: z.boolean().optional(),
   yolo: z.boolean().default(false),
   scope: z.enum(scopes).optional(),
   client: z.enum(clients).array().optional(),
@@ -126,9 +157,45 @@ export async function installMcpCommand(options: unknown) {
 }
 
 async function _installMcpCommand(options: InstallMcpCommandOptions) {
-  intro("Installing Trigger.dev MCP server");
+  intro("Welcome to the Trigger.dev MCP server install wizard 🧙");
 
-  const results = await installMcpServer(options);
+  await installMcpServer(options);
+}
+
+type InstallMcpServerResults = Array<InstallMcpServerResult>;
+
+type InstallMcpServerResult = {
+  configPath: string;
+  clientName: (typeof clients)[number];
+  scope: McpServerScope;
+};
+
+export async function installMcpServer(
+  options: InstallMcpCommandOptions
+): Promise<InstallMcpServerResults> {
+  const opts = InstallMcpCommandOptions.parse(options);
+
+  writeConfigHasSeenMCPInstallPrompt(true);
+
+  const devOnly = await resolveDevOnly(opts);
+
+  opts.devOnly = devOnly;
+
+  const clientNames = await resolveClients(opts);
+
+  if (clientNames.length === 1 && clientNames.includes("unsupported")) {
+    return handleUnsupportedClientOnly(opts);
+  }
+
+  const results = [];
+
+  for (const clientName of clientNames) {
+    const result = await installMcpServerForClient(clientName, opts);
+
+    if (result) {
+      results.push(result);
+    }
+  }
 
   if (results.length > 0) {
     log.step("Installed to:");
@@ -166,37 +233,74 @@ async function _installMcpCommand(options: InstallMcpCommandOptions) {
     )} or email help@trigger.dev`
   );
 
-  outro(`MCP Server ready to go!`);
-}
-
-type InstallMcpServerResults = Array<InstallMcpServerResult>;
-
-type InstallMcpServerResult = {
-  configPath: string;
-  clientName: (typeof clients)[number];
-  scope: McpServerScope;
-};
-
-export async function installMcpServer(
-  options: InstallMcpCommandOptions
-): Promise<InstallMcpServerResults> {
-  const clientNames = await resolveClients(options);
-
-  const results = [];
-
-  for (const clientName of clientNames) {
-    const result = await installMcpServerForClient(clientName, options);
-
-    results.push(result);
-  }
-
   return results;
 }
 
+function handleUnsupportedClientOnly(options: InstallMcpCommandOptions): InstallMcpServerResults {
+  log.info("Manual MCP server configuration");
+
+  const args = [`trigger.dev@${options.tag}`, "mcp"];
+
+  if (options.logFile) {
+    args.push("--log-file", options.logFile);
+  }
+
+  if (options.apiUrl) {
+    args.push("--api-url", options.apiUrl);
+  }
+
+  if (options.devOnly) {
+    args.push("--dev-only");
+  }
+
+  if (options.projectRef) {
+    args.push("--project-ref", options.projectRef);
+  }
+
+  if (options.logLevel && options.logLevel !== "log") {
+    args.push("--log-level", options.logLevel);
+  }
+
+  log.message(
+    "Since your client isn't directly supported yet, you'll need to configure it manually:"
+  );
+  log.message("");
+  log.message(`${chalk.yellow("Command:")} ${chalk.green("npx")}`);
+  log.message(`${chalk.yellow("Arguments:")} ${chalk.green(args.join(" "))}`);
+  log.message("");
+  log.message("Add this MCP server configuration to your client's settings:");
+  log.message(`  • ${chalk.cyan("Server name:")} trigger`);
+  log.message(`  • ${chalk.cyan("Command:")} npx`);
+  log.message(`  • ${chalk.cyan("Args:")} ${args.map((arg) => `"${arg}"`).join(", ")}`);
+  log.message("");
+  log.message("Most MCP clients use a JSON configuration format like:");
+  log.message(
+    chalk.dim(`{
+  "mcpServers": {
+    "trigger": {
+      "command": "npx",
+      "args": [${args.map((arg) => `"${arg}"`).join(", ")}]
+    }
+  }
+}`)
+  );
+
+  return [];
+}
+
 async function installMcpServerForClient(
-  clientName: (typeof clients)[number],
+  clientName: ResolvedClients,
   options: InstallMcpCommandOptions
 ) {
+  if (clientName === "unsupported") {
+    // This should not happen as unsupported clients are handled separately
+    // but if it does, provide helpful output
+    log.message(
+      `${chalk.yellow("⚠")} Skipping unsupported client - see manual configuration above`
+    );
+    return;
+  }
+
   const clientSpinner = spinner({ indicator: "dots" });
 
   clientSpinner.start(`Installing in ${clientName}`);
@@ -236,15 +340,34 @@ async function writeMcpServerConfig(
 ) {
   const fullPath = expandTilde(location);
 
-  let existingConfig = await safeReadJSONFile(fullPath);
+  const extension = extname(fullPath);
 
-  if (!existingConfig) {
-    existingConfig = {};
+  switch (extension) {
+    case ".json": {
+      let existingConfig = await safeReadJSONFile(fullPath);
+
+      if (!existingConfig) {
+        existingConfig = {};
+      }
+
+      const newConfig = applyConfigToExistingConfig(existingConfig, pathComponents, config);
+
+      await writeJSONFile(fullPath, newConfig, true);
+      break;
+    }
+    case ".toml": {
+      let existingConfig = await safeReadTomlFile(fullPath);
+
+      if (!existingConfig) {
+        existingConfig = {};
+      }
+
+      const newConfig = applyConfigToExistingConfig(existingConfig, pathComponents, config);
+
+      await writeTomlFile(fullPath, newConfig);
+      break;
+    }
   }
-
-  const newConfig = applyConfigToExistingConfig(existingConfig, pathComponents, config);
-
-  await writeJSONFile(fullPath, newConfig, true);
 
   return fullPath;
 }
@@ -311,6 +434,9 @@ function resolveMcpServerConfigJsonPath(
       } else {
         return ["mcpServers", "trigger"];
       }
+    }
+    case "openai-codex": {
+      return ["mcp_servers", "trigger"];
     }
   }
 }
@@ -387,6 +513,12 @@ function resolveMcpServerConfig(
         args,
       };
     }
+    case "openai-codex": {
+      return {
+        command: "npx",
+        args,
+      };
+    }
   }
 }
 
@@ -412,6 +544,13 @@ async function resolveScopeForClient(
   }
 
   const scopeOptions = resolveScopeOptionsForClient(clientName);
+
+  if (scopeOptions.length === 1) {
+    return {
+      scope: scopeOptions[0]!.value.scope,
+      location: scopeOptions[0]!.value.location,
+    };
+  }
 
   const selectedScope = await select({
     message: `Where should the MCP server for ${clientName} be installed?`,
@@ -455,9 +594,7 @@ function scopeHint(scope: (typeof scopes)[number], location: string) {
   }
 }
 
-async function resolveClients(
-  options: InstallMcpCommandOptions
-): Promise<(typeof clients)[number][]> {
+async function resolveClients(options: InstallMcpCommandOptions): Promise<ResolvedClients[]> {
   if (options.client) {
     return options.client;
   }
@@ -466,12 +603,30 @@ async function resolveClients(
     return [...clients];
   }
 
+  const selectOptions: Array<{
+    value: string;
+    label: string;
+    hint?: string;
+  }> = clients.map((client) => ({
+    value: client,
+    label: clientLabels[client],
+  }));
+
+  selectOptions.push({
+    value: "unsupported",
+    label: "Unsupported client",
+    hint: "We don't support this client yet, but you can still install the MCP server manually.",
+  });
+
+  const $selectOptions = selectOptions as Array<{
+    value: ResolvedClients;
+    label: string;
+    hint?: string;
+  }>;
+
   const selectedClients = await multiselect({
     message: "Select one or more clients to install the MCP server into",
-    options: clients.map((client) => ({
-      value: client,
-      label: client,
-    })),
+    options: $selectOptions,
     required: true,
   });
 
@@ -480,4 +635,21 @@ async function resolveClients(
   }
 
   return selectedClients;
+}
+
+async function resolveDevOnly(options: InstallMcpCommandOptions) {
+  if (typeof options.devOnly === "boolean") {
+    return options.devOnly;
+  }
+
+  const devOnly = await confirm({
+    message: "Restrict the MCP server to the dev environment only?",
+    initialValue: false,
+  });
+
+  if (isCancel(devOnly)) {
+    return false;
+  }
+
+  return devOnly;
 }
