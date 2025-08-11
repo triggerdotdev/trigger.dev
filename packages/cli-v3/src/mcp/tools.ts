@@ -3,17 +3,21 @@ import {
   GetProjectsResponseBody,
   MachinePresetName,
 } from "@trigger.dev/core/v3/schemas";
+import path, { dirname, join } from "path";
+import { x } from "tinyexec";
+import { z } from "zod";
 import { CliApiClient } from "../apiClient.js";
+import { getPackageJson, tryResolveTriggerPackageVersion } from "../commands/update.js";
+import { loadConfig } from "../config.js";
+import { LoginResultOk } from "../utilities/session.js";
+import { VERSION } from "../version.js";
 import { createApiClientWithPublicJWT, mcpAuth } from "./auth.js";
+import { hasRootsCapability } from "./capabilities.js";
 import { McpContext } from "./context.js";
+import { performSearch } from "./mintlifyClient.js";
 import { ProjectRefSchema } from "./schemas.js";
 import { respondWithError } from "./utils.js";
-import { z } from "zod";
-import { performSearch } from "./mintlifyClient.js";
-import { LoginResultOk } from "../utilities/session.js";
-import { loadConfig } from "../config.js";
-import path from "path";
-import { hasRootsCapability } from "./capabilities.js";
+import { resolveSync as esmResolve } from "mlly";
 
 export function registerListProjectsTool(context: McpContext) {
   context.server.registerTool(
@@ -283,7 +287,7 @@ export function registerGetTasksTool(context: McpContext) {
           )
           .optional(),
         environment: z
-          .enum(["dev", "staging", "preview", "production"])
+          .enum(["dev", "staging", "prod", "preview"])
           .describe("The environment to get tasks for")
           .default("dev"),
         branch: z
@@ -352,7 +356,7 @@ export function registerTriggerTaskTool(context: McpContext) {
           )
           .optional(),
         environment: z
-          .enum(["dev", "staging", "preview", "production"])
+          .enum(["dev", "staging", "prod", "preview"])
           .describe("The environment to trigger the task in")
           .default("dev"),
         branch: z
@@ -523,7 +527,7 @@ export function registerGetRunDetailsTool(context: McpContext) {
           )
           .optional(),
         environment: z
-          .enum(["dev", "staging", "preview", "production"])
+          .enum(["dev", "staging", "prod", "preview"])
           .describe("The environment to trigger the task in")
           .default("dev"),
         branch: z
@@ -588,6 +592,223 @@ export function registerGetRunDetailsTool(context: McpContext) {
   );
 }
 
+export function registerDeployTool(context: McpContext) {
+  context.server.registerTool(
+    "deploy",
+    {
+      description: "Deploy a project",
+      inputSchema: {
+        projectRef: ProjectRefSchema,
+        configPath: z
+          .string()
+          .describe(
+            "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+          )
+          .optional(),
+        environment: z
+          .enum(["staging", "prod", "preview"])
+          .describe("The environment to trigger the task in")
+          .default("prod"),
+        branch: z
+          .string()
+          .describe("The branch to trigger the task in, only used for preview environments")
+          .optional(),
+        skipPromotion: z
+          .boolean()
+          .describe("Skip promoting the deployment to the current deployment for the environment")
+          .optional(),
+        skipSyncEnvVars: z
+          .boolean()
+          .describe("Skip syncing environment variables when using the syncEnvVars extension")
+          .optional(),
+        skipUpdateCheck: z
+          .boolean()
+          .describe("Skip checking for @trigger.dev package updates")
+          .optional(),
+      },
+    },
+    async ({
+      projectRef,
+      configPath,
+      environment,
+      branch,
+      skipPromotion,
+      skipSyncEnvVars,
+      skipUpdateCheck,
+    }) => {
+      context.logger?.log("calling deploy", {
+        projectRef,
+        configPath,
+        environment,
+        branch,
+        env: process.env,
+        argv: process.argv,
+        execArgv: process.execArgv,
+        execPath: process.execPath,
+      });
+
+      if (context.options.devOnly) {
+        return respondWithError(
+          `This MCP server is only available for the dev environment. The deploy command is not allowed with the --dev-only flag.`
+        );
+      }
+
+      const cwdResult = await resolveProjectDir(context, configPath);
+
+      if (!cwdResult.ok) {
+        return respondWithError(cwdResult.error);
+      }
+
+      context.logger?.log("deploy cwdResult", { cwdResult });
+
+      const auth = await mcpAuth({
+        server: context.server,
+        defaultApiUrl: context.options.apiUrl,
+        profile: context.options.profile,
+        context,
+      });
+
+      if (!auth.ok) {
+        return respondWithError(auth.error);
+      }
+
+      // TODO: Spawn the deploy command using process.argv[0] for the executable and process.argv[1] for the command
+      const args = ["deploy", "--env", environment, "--api-url", auth.auth.apiUrl];
+
+      if (environment === "preview" && branch) {
+        args.push("--branch", branch);
+      }
+
+      if (context.options.profile) {
+        args.push("--profile", context.options.profile);
+      }
+
+      if (skipPromotion) {
+        args.push("--skip-promotion");
+      }
+
+      if (skipSyncEnvVars) {
+        args.push("--skip-sync-env-vars");
+      }
+
+      if (skipUpdateCheck) {
+        args.push("--skip-update-check");
+      }
+
+      const [nodePath, cliPath] = await resolveCLIExec(context, cwdResult.cwd);
+
+      context.logger?.log("deploy process args", {
+        nodePath,
+        cliPath,
+        args,
+      });
+
+      const deployProcess = x(nodePath, [cliPath, ...args], {
+        nodeOptions: {
+          cwd: cwdResult.cwd,
+          env: {
+            TRIGGER_MCP_SERVER: "1",
+          },
+        },
+      });
+
+      const logs = [];
+
+      for await (const line of deployProcess) {
+        logs.push(line);
+      }
+
+      context.logger?.log("deploy deployProcess", {
+        logs,
+      });
+
+      if (deployProcess.exitCode !== 0) {
+        return respondWithError(logs.join("\n"));
+      }
+
+      return {
+        content: [{ type: "text", text: logs.join("\n") }],
+      };
+    }
+  );
+}
+
+async function resolveCLIExec(context: McpContext, cwd: string): Promise<[string, string]> {
+  // Lets first try to get the version of the CLI package
+  const installedCLI = await tryResolveTriggerCLIPath(context, cwd);
+
+  if (installedCLI) {
+    context.logger?.log("resolve_cli_exec installedCLI", { installedCLI });
+
+    return [process.argv[0] ?? "node", installedCLI.path];
+  }
+
+  const sdkVersion = await tryResolveTriggerPackageVersion("@trigger.dev/sdk", cwd);
+
+  if (!sdkVersion) {
+    context.logger?.log("resolve_cli_exec no sdk version found", { cwd });
+
+    return [process.argv[0] ?? "npx", process.argv[1] ?? "trigger.dev@latest"];
+  }
+
+  if (sdkVersion === VERSION) {
+    context.logger?.log("resolve_cli_exec sdk version is the same as the current version", {
+      sdkVersion,
+    });
+
+    return [process.argv[0] ?? "npx", process.argv[1] ?? "trigger.dev@latest"];
+  }
+
+  return ["npx", `trigger.dev@${sdkVersion}`];
+}
+
+async function tryResolveTriggerCLIPath(
+  context: McpContext,
+  basedir: string
+): Promise<
+  | {
+      path: string;
+      version: string;
+    }
+  | undefined
+> {
+  try {
+    const resolvedPathFileURI = esmResolve("trigger.dev", {
+      url: basedir,
+    });
+
+    const resolvedPath = fileUriToPath(resolvedPathFileURI);
+
+    context.logger?.log("resolve_cli_exec resolvedPathFileURI", { resolvedPathFileURI });
+
+    const { packageJson } = await getPackageJson(resolvedPath, {
+      test: (filePath) => {
+        // We need to skip any type-marker files
+        if (filePath.includes("dist/commonjs")) {
+          return false;
+        }
+
+        if (filePath.includes("dist/esm")) {
+          return false;
+        }
+
+        return true;
+      },
+    });
+
+    if (packageJson.version) {
+      context.logger?.log("resolve_cli_exec packageJson", { packageJson });
+
+      return { path: resolvedPath, version: packageJson.version };
+    }
+
+    return;
+  } catch (error) {
+    context.logger?.log("resolve_cli_exec error", { error });
+    return undefined;
+  }
+}
+
 async function resolveCwd(context: McpContext) {
   const response = await context.server.server.listRoots();
 
@@ -647,20 +868,23 @@ async function resolveProjectRef(
   // Try to load the config file
   const config = await safeLoadConfig($cwd);
 
-  if (
-    config?.configFile &&
-    typeof config.project === "string" &&
-    config.project.startsWith("proj_")
-  ) {
-    context.logger?.log("resolve_project_ref existing project", {
-      config,
-      projectRef: config.project,
-    });
+  if (config?.configFile) {
+    if (typeof config.project === "string" && config.project.startsWith("proj_")) {
+      context.logger?.log("resolve_project_ref existing project", {
+        config,
+        projectRef: config.project,
+      });
 
-    return {
-      status: "existing",
-      projectRef: config.project,
-    };
+      return {
+        status: "existing",
+        projectRef: config.project,
+      };
+    } else {
+      return {
+        status: "error",
+        error: "Could not find the project ref in the config file. Please provide a projectRef.",
+      };
+    }
   }
 
   // Okay now we will create a new project
@@ -699,53 +923,17 @@ async function resolveExistingProjectRef(
     };
   }
 
-  // If cwd is a path to the actual trigger.config.ts file, then we should set the cwd to the directory of the file
-  let $cwd = cwd ? (path.extname(cwd) !== "" ? path.dirname(cwd) : cwd) : undefined;
+  const cwdResult = await resolveProjectDir(context, cwd);
 
-  function isRelativePath(path: string) {
-    return !path.startsWith("/");
-  }
-
-  if (!cwd) {
-    if (!hasRootsCapability(context)) {
-      return {
-        status: "error",
-        error:
-          "The current MCP server does not support the roots capability, so please call the tool again with a projectRef or an absolute path as cwd parameter",
-      };
-    }
-
-    $cwd = await resolveCwd(context);
-  } else if (isRelativePath(cwd)) {
-    if (!hasRootsCapability(context)) {
-      return {
-        status: "error",
-        error:
-          "The current MCP server does not support the roots capability, so please call the tool again with a projectRef or an absolute path as cwd parameter",
-      };
-    }
-
-    const resolvedCwd = await resolveCwd(context);
-
-    if (!resolvedCwd) {
-      return {
-        status: "error",
-        error: "No current working directory found. Please provide a projectRef or a cwd.",
-      };
-    }
-
-    $cwd = path.resolve(resolvedCwd, cwd);
-  }
-
-  if (!$cwd) {
+  if (!cwdResult.ok) {
     return {
       status: "error",
-      error: "No current working directory found. Please provide a projectRef or a cwd.",
+      error: cwdResult.error,
     };
   }
 
   // Try to load the config file
-  const config = await safeLoadConfig($cwd);
+  const config = await safeLoadConfig(cwdResult.cwd);
 
   if (
     config?.configFile &&
@@ -766,6 +954,71 @@ async function resolveExistingProjectRef(
   return {
     status: "error",
     error: "No existing project found. Please provide a projectRef or a cwd.",
+  };
+}
+
+type ResolveProjectDirResult =
+  | {
+      ok: true;
+      cwd: string;
+    }
+  | {
+      ok: false;
+      error: string;
+    };
+
+async function resolveProjectDir(
+  context: McpContext,
+  cwd?: string
+): Promise<ResolveProjectDirResult> {
+  // If cwd is a path to the actual trigger.config.ts file, then we should set the cwd to the directory of the file
+  let $cwd = cwd ? (path.extname(cwd) !== "" ? path.dirname(cwd) : cwd) : undefined;
+
+  function isRelativePath(path: string) {
+    return !path.startsWith("/");
+  }
+
+  if (!cwd) {
+    if (!hasRootsCapability(context)) {
+      return {
+        ok: false,
+        error:
+          "The current MCP server does not support the roots capability, so please call the tool again with a projectRef or an absolute path as cwd parameter",
+      };
+    }
+
+    $cwd = await resolveCwd(context);
+  } else if (isRelativePath(cwd)) {
+    if (!hasRootsCapability(context)) {
+      return {
+        ok: false,
+        error:
+          "The current MCP server does not support the roots capability, so please call the tool again with a projectRef or an absolute path as cwd parameter",
+      };
+    }
+
+    const resolvedCwd = await resolveCwd(context);
+
+    if (!resolvedCwd) {
+      return {
+        ok: false,
+        error: "No current working directory found. Please provide a projectRef or a cwd.",
+      };
+    }
+
+    $cwd = path.resolve(resolvedCwd, cwd);
+  }
+
+  if (!$cwd) {
+    return {
+      ok: false,
+      error: "No current working directory found. Please provide a projectRef or a cwd.",
+    };
+  }
+
+  return {
+    ok: true,
+    cwd: $cwd,
   };
 }
 

@@ -1,7 +1,7 @@
 import { confirm, intro, isCancel, log, outro } from "@clack/prompts";
 import { Command } from "commander";
 import { detectPackageManager, installDependencies } from "nypm";
-import { basename, dirname, resolve } from "path";
+import { basename, dirname, join, resolve } from "path";
 import { PackageJson, readPackageJSON, type ResolveOptions, resolvePackageJSON } from "pkg-types";
 import { z } from "zod";
 import { CommonCommandOptions, OutroCommandError, wrapCommandAction } from "../cli/common.js";
@@ -319,7 +319,7 @@ async function getTriggerDependencies(
         continue;
       }
 
-      const $version = await tryResolveTriggerPackageVersion(name, packageJsonPath);
+      const $version = await tryResolveTriggerPackageVersion(name, dirname(packageJsonPath));
 
       deps.push({ type, name, version: $version ?? version });
     }
@@ -328,13 +328,13 @@ async function getTriggerDependencies(
   return deps;
 }
 
-async function tryResolveTriggerPackageVersion(
+export async function tryResolveTriggerPackageVersion(
   name: string,
-  packageJsonPath: string
+  basedir: string
 ): Promise<string | undefined> {
   try {
     const resolvedPath = nodeResolve.sync(name, {
-      basedir: dirname(packageJsonPath),
+      basedir,
     });
 
     logger.debug(`Resolved ${name} package version path`, { name, resolvedPath });
