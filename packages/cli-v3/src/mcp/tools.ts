@@ -19,6 +19,7 @@ import { performSearch } from "./mintlifyClient.js";
 import { ProjectRefSchema } from "./schemas.js";
 import { respondWithError } from "./utils.js";
 import { resolveSync as esmResolve } from "mlly";
+import { tryCatch } from "@trigger.dev/core/utils";
 
 export function registerListProjectsTool(context: McpContext) {
   context.server.registerTool(
@@ -614,6 +615,92 @@ export function registerGetRunDetailsTool(context: McpContext) {
           content: [{ type: "text", text: JSON.stringify({ ...runResult, runUrl }, null, 2) }],
         };
       }
+    }
+  );
+}
+
+export function registerCancelRunTool(context: McpContext) {
+  context.server.registerTool(
+    "cancel_run",
+    {
+      description: "Cancel a run",
+      inputSchema: {
+        runId: z.string().describe("The ID of the run to cancel, starts with run_"),
+        projectRef: ProjectRefSchema,
+        configPath: z
+          .string()
+          .describe(
+            "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+          )
+          .optional(),
+        environment: z
+          .enum(["dev", "staging", "prod", "preview"])
+          .describe("The environment to trigger the task in")
+          .default("dev"),
+        branch: z
+          .string()
+          .describe("The branch to trigger the task in, only used for preview environments")
+          .optional(),
+      },
+    },
+    async ({ projectRef, configPath, environment, branch, runId }) => {
+      context.logger?.log("calling cancel_run", {
+        projectRef,
+        configPath,
+        environment,
+        branch,
+        runId,
+      });
+
+      if (context.options.devOnly && environment !== "dev") {
+        return respondWithError(
+          `This MCP server is only available for the dev environment. You tried to access the ${environment} environment. Remove the --dev-only flag to access other environments.`
+        );
+      }
+
+      const projectRefResult = await resolveExistingProjectRef(context, projectRef, configPath);
+
+      if (projectRefResult.status === "error") {
+        return respondWithError(projectRefResult.error);
+      }
+
+      const $projectRef = projectRefResult.projectRef;
+
+      context.logger?.log("cancel_run projectRefResult", { projectRefResult });
+
+      const auth = await mcpAuth({
+        server: context.server,
+        defaultApiUrl: context.options.apiUrl,
+        profile: context.options.profile,
+        context,
+      });
+
+      if (!auth.ok) {
+        return respondWithError(auth.error);
+      }
+
+      const apiClient = await createApiClientWithPublicJWT(auth, $projectRef, environment, [
+        `write:runs:${runId}`,
+        `read:runs:${runId}`,
+      ]);
+
+      if (!apiClient) {
+        return respondWithError("Failed to create API client with public JWT");
+      }
+
+      const [cancelError] = await tryCatch(apiClient.cancelRun(runId));
+
+      if (cancelError) {
+        return respondWithError(cancelError.message);
+      }
+
+      const retrieveResult = await apiClient.retrieveRun(runId);
+
+      const runUrl = `${auth.dashboardUrl}/projects/v3/${$projectRef}/runs/${runId}`;
+
+      return {
+        content: [{ type: "text", text: JSON.stringify({ ...retrieveResult, runUrl }, null, 2) }],
+      };
     }
   );
 }

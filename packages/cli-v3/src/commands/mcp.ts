@@ -10,6 +10,7 @@ import { CLOUD_API_URL } from "../consts.js";
 import { McpContext } from "../mcp/context.js";
 import { FileLogger } from "../mcp/logger.js";
 import {
+  registerCancelRunTool,
   registerCreateProjectTool,
   registerDeployTool,
   registerGetRunDetailsTool,
@@ -105,6 +106,7 @@ export async function mcpCommand(options: McpCommandOptions) {
   registerGetTasksTool(context);
   registerTriggerTaskTool(context);
   registerGetRunDetailsTool(context);
+  registerCancelRunTool(context);
   registerListRunsTool(context);
   registerListProjectsTool(context);
   registerListOrgsTool(context);
