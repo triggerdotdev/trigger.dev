@@ -361,7 +361,6 @@ export class ExecutionSnapshotSystem {
         runnerId,
       });
 
-      await this.$.worker.ack(`heartbeatSnapshot.${runId}`);
       return executionResultFromSnapshot(latestSnapshot);
     }
 

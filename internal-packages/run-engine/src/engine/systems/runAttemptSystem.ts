@@ -318,9 +318,16 @@ export class RunAttemptSystem {
             //if there is a big delay between the snapshot and the attempt, the snapshot might have changed
             //we just want to log because elsewhere it should have been put back into a state where it can be attempted
             this.$.logger.warn(
-              "RunEngine.createRunAttempt(): snapshot has changed since the attempt was created, ignoring."
+              "RunEngine.createRunAttempt(): snapshot has changed since the attempt was created, ignoring.",
+              {
+                snapshotId,
+                latestSnapshotId: latestSnapshot.id,
+              }
             );
-            throw new ServiceValidationError("Snapshot changed", 409);
+            throw new ServiceValidationError("Snapshot changed inside startRunAttempt", 409, {
+              snapshotId,
+              latestSnapshotId: latestSnapshot.id,
+            });
           }
 
           const taskRun = await prisma.taskRun.findFirst({
