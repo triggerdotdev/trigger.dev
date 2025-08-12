@@ -436,6 +436,66 @@ Deploy a project to staging or production environments.
 ```
 </CodeGroup>
 
+### list_deployments
+
+List deployments for a project with comprehensive filtering options.
+
+<ParamField query="projectRef" type="string" optional>
+  The trigger.dev project ref, starts with `proj_`. We will attempt to automatically detect the
+  project ref if running inside a directory that includes a trigger.config.ts file.
+</ParamField>
+
+<ParamField query="configPath" type="string" optional>
+  The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the
+  root dir (like in a monorepo setup).
+</ParamField>
+
+<ParamField query="environment" type="string" default="prod">
+  The environment to list deployments for. Options: `staging`, `prod`, `preview`
+</ParamField>
+
+<ParamField query="branch" type="string" optional>
+  The branch to list deployments from, only used for preview environments
+</ParamField>
+
+<ParamField query="cursor" type="string" optional>
+  The deployment ID to start the search from, to get the next page
+</ParamField>
+
+<ParamField query="limit" type="number" optional>
+  The number of deployments to return, defaults to 20 (max 100)
+</ParamField>
+
+<ParamField query="status" type="string" optional>
+  Filter deployments that are in this status. Options: `PENDING`, `BUILDING`, `DEPLOYING`, `DEPLOYED`, `FAILED`, `CANCELED`, `TIMED_OUT`
+</ParamField>
+
+<ParamField query="from" type="string" optional>
+  The date to start the search from, in ISO 8601 format
+</ParamField>
+
+<ParamField query="to" type="string" optional>
+  The date to end the search, in ISO 8601 format
+</ParamField>
+
+<ParamField query="period" type="string" optional>
+  The period to search within. Examples: `1d`, `7d`, `3h`
+</ParamField>
+
+<CodeGroup>
+```json Example Usage
+{
+  "tool": "list_deployments",
+  "arguments": {
+    "projectRef": "proj_abc123",
+    "environment": "prod",
+    "status": "DEPLOYED",
+    "limit": 10
+  }
+}
+```
+</CodeGroup>
+
 <Callout type="warning">
   The deploy tool is not available when the MCP server is running with the `--dev-only` flag.
 </Callout>
