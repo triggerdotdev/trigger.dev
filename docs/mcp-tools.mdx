@@ -496,6 +496,32 @@ List deployments for a project with comprehensive filtering options.
 ```
 </CodeGroup>
 
+### list_preview_branches
+
+List all preview branches in the project.
+
+<ParamField query="projectRef" type="string" optional>
+  The trigger.dev project ref, starts with `proj_`. We will attempt to automatically detect the
+  project ref if running inside a directory that includes a trigger.config.ts file.
+</ParamField>
+
+<ParamField query="configPath" type="string" optional>
+  The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the
+  root dir (like in a monorepo setup). If not provided, we will try to find the config file in the
+  current working directory.
+</ParamField>
+
+<CodeGroup>
+```json Example Usage
+{
+  "tool": "list_preview_branches",
+  "arguments": {
+    "projectRef": "proj_abc123"
+  }
+}
+```
+</CodeGroup>
+
 <Callout type="warning">
-  The deploy tool is not available when the MCP server is running with the `--dev-only` flag.
+  The deploy tool and list_preview_branches tool are not available when the MCP server is running with the `--dev-only` flag.
 </Callout>
