@@ -339,6 +339,18 @@ export class ApiClient {
     );
   }
 
+  retrieveRunTrace(runId: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      z.any(), // TODO: define a proper schema for this
+      `${this.baseUrl}/api/v1/runs/${runId}/trace`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
   listRuns(
     query?: ListRunsQueryParams,
     requestOptions?: ZodFetchOptions
