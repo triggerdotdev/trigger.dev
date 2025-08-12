@@ -536,15 +536,22 @@ export function registerGetRunDetailsTool(context: McpContext) {
           .describe("The branch to trigger the task in, only used for preview environments")
           .optional(),
         runId: z.string().describe("The ID of the run to get the details of, starts with run_"),
+        debugMode: z
+          .boolean()
+          .describe(
+            "Enable debug mode to get more detailed information about the run, including the entire trace (all logs and spans for the run and any child run). Set this to true if prompted to debug a run."
+          )
+          .optional(),
       },
     },
-    async ({ projectRef, configPath, environment, branch, runId }) => {
+    async ({ projectRef, configPath, environment, branch, runId, debugMode }) => {
       context.logger?.log("calling get_run_details", {
         projectRef,
         configPath,
         environment,
         branch,
         runId,
+        debugMode,
       });
 
       if (context.options.devOnly && environment !== "dev") {
@@ -582,13 +589,31 @@ export function registerGetRunDetailsTool(context: McpContext) {
         return respondWithError("Failed to create API client with public JWT");
       }
 
-      const result = await apiClient.retrieveRun(runId);
+      if (debugMode) {
+        const [runResult, traceResult] = await Promise.all([
+          apiClient.retrieveRun(runId),
+          apiClient.retrieveRunTrace(runId),
+        ]);
 
-      const runUrl = `${auth.dashboardUrl}/projects/v3/${$projectRef}/runs/${result.id}`;
+        const runUrl = `${auth.dashboardUrl}/projects/v3/${$projectRef}/runs/${runResult.id}`;
 
-      return {
-        content: [{ type: "text", text: JSON.stringify({ ...result, runUrl }, null, 2) }],
-      };
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({ ...runResult, runUrl, trace: traceResult }, null, 2),
+            },
+          ],
+        };
+      } else {
+        const runResult = await apiClient.retrieveRun(runId);
+
+        const runUrl = `${auth.dashboardUrl}/projects/v3/${$projectRef}/runs/${runResult.id}`;
+
+        return {
+          content: [{ type: "text", text: JSON.stringify({ ...runResult, runUrl }, null, 2) }],
+        };
+      }
     }
   );
 }
@@ -1207,4 +1232,29 @@ ${projectEnv.success ? `TRIGGER_API_URL=${projectEnv.data.apiUrl}` : ""}
 To view the project dashboard, visit: ${auth.dashboardUrl}/projects/v3/${projectRef}
 
 ${text}`;
+}
+
+async function getWritingTasksGuide(prompt: string) {
+  const urls = [
+    "https://trigger.dev/docs/tasks/overview.md",
+    "https://trigger.dev/docs/tasks/schemaTask.md",
+    "https://trigger.dev/docs/tasks/scheduled.md",
+    "https://trigger.dev/docs/triggering.md",
+    "https://trigger.dev/docs/writing-tasks-introduction.md",
+  ];
+
+  const responses = await Promise.all(urls.map((url) => fetch(url)));
+  const texts = await Promise.all(responses.map((response) => response.text()));
+
+  const text = texts.join("\n\n");
+
+  return `
+## Trigger.dev Task Writing Guide:
+
+${text}
+
+## Now please write the tasks based on the following prompt:
+
+${prompt}
+`;
 }

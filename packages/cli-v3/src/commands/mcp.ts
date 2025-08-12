@@ -1,5 +1,8 @@
+import { intro, outro } from "@clack/prompts";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { VERSION } from "@trigger.dev/core";
+import { tryCatch } from "@trigger.dev/core/utils";
 import { Command } from "commander";
 import { z } from "zod";
 import { CommonCommandOptions, commonOptions, wrapCommandAction } from "../cli/common.js";
@@ -8,22 +11,19 @@ import { McpContext } from "../mcp/context.js";
 import { FileLogger } from "../mcp/logger.js";
 import {
   registerCreateProjectTool,
+  registerDeployTool,
+  registerGetRunDetailsTool,
   registerGetTasksTool,
   registerInitializeProjectTool,
   registerListOrgsTool,
   registerListProjectsTool,
+  registerListRunsTool,
   registerSearchDocsTool,
   registerTriggerTaskTool,
-  registerGetRunDetailsTool,
-  registerDeployTool,
-  registerListRunsTool,
 } from "../mcp/tools.js";
-import { logger } from "../utilities/logger.js";
-import { intro, outro } from "@clack/prompts";
-import { installMcpServer } from "./install-mcp.js";
-import { tryCatch } from "@trigger.dev/core/utils";
-import { VERSION } from "@trigger.dev/core";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
+import { logger } from "../utilities/logger.js";
+import { installMcpServer } from "./install-mcp.js";
 
 const McpCommandOptions = CommonCommandOptions.extend({
   projectRef: z.string().optional(),
