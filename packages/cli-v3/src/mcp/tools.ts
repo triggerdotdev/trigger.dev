@@ -1,4 +1,5 @@
 import {
+  ApiDeploymentListParams,
   GetOrgsResponseBody,
   GetProjectsResponseBody,
   MachinePresetName,
@@ -989,6 +990,100 @@ export function registerDeployTool(context: McpContext) {
 
       return {
         content: [{ type: "text", text: logs.join("\n") }],
+      };
+    }
+  );
+}
+
+export function registerListDeploymentsTool(context: McpContext) {
+  context.server.registerTool(
+    "list_deployments",
+    {
+      description: "List deployments for a project",
+      inputSchema: {
+        projectRef: ProjectRefSchema,
+        configPath: z
+          .string()
+          .describe(
+            "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+          )
+          .optional(),
+        environment: z
+          .enum(["staging", "prod", "preview"])
+          .describe("The environment to list deployments for")
+          .default("prod"),
+        branch: z
+          .string()
+          .describe("The branch to trigger the task in, only used for preview environments")
+          .optional(),
+        ...ApiDeploymentListParams,
+      },
+    },
+    async ({
+      projectRef,
+      configPath,
+      environment,
+      branch,
+      cursor,
+      limit,
+      status,
+      from,
+      to,
+      period,
+    }) => {
+      context.logger?.log("calling list_deployments", {
+        projectRef,
+        configPath,
+        environment,
+        branch,
+        cursor,
+        limit,
+        status,
+        from,
+        to,
+        period,
+      });
+
+      const projectRefResult = await resolveExistingProjectRef(context, projectRef, configPath);
+
+      if (projectRefResult.status === "error") {
+        return respondWithError(projectRefResult.error);
+      }
+
+      const $projectRef = projectRefResult.projectRef;
+
+      context.logger?.log("list_deployments projectRefResult", { projectRefResult });
+
+      const auth = await mcpAuth({
+        server: context.server,
+        defaultApiUrl: context.options.apiUrl,
+        profile: context.options.profile,
+        context,
+      });
+
+      if (!auth.ok) {
+        return respondWithError(auth.error);
+      }
+
+      const apiClient = await createApiClientWithPublicJWT(auth, $projectRef, environment, [
+        "read:deployments",
+      ]);
+
+      if (!apiClient) {
+        return respondWithError("Failed to create API client with public JWT");
+      }
+
+      const result = await apiClient.listDeployments({
+        cursor: cursor,
+        limit,
+        status,
+        from,
+        to,
+        period,
+      });
+
+      return {
+        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
       };
     }
   );

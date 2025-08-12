@@ -3,6 +3,9 @@ import { VERSION } from "../../version.js";
 import { generateJWT } from "../jwt.js";
 import {
   AddTagsRequestBody,
+  ApiDeploymentListOptions,
+  ApiDeploymentListResponseItem,
+  ApiDeploymentListSearchParams,
   BatchTaskRunExecutionResult,
   BatchTriggerTaskV3RequestBody,
   BatchTriggerTaskV3Response,
@@ -969,6 +972,41 @@ export class ApiClient {
         signal: options?.signal,
         onFetchError: options?.onFetchError,
       }
+    );
+  }
+
+  listDeployments(options?: ApiDeploymentListOptions, requestOptions?: ZodFetchOptions) {
+    const searchParams = new URLSearchParams();
+
+    if (options?.status) {
+      searchParams.append("status", options.status);
+    }
+
+    if (options?.period) {
+      searchParams.append("period", options.period);
+    }
+
+    if (options?.from) {
+      searchParams.append("from", options.from);
+    }
+
+    if (options?.to) {
+      searchParams.append("to", options.to);
+    }
+
+    return zodfetchCursorPage(
+      ApiDeploymentListResponseItem,
+      `${this.baseUrl}/api/v1/deployments`,
+      {
+        query: searchParams,
+        after: options?.cursor,
+        limit: options?.limit,
+      },
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );
   }
 

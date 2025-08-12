@@ -16,6 +16,7 @@ import {
   registerGetRunDetailsTool,
   registerGetTasksTool,
   registerInitializeProjectTool,
+  registerListDeploymentsTool,
   registerListOrgsTool,
   registerListProjectsTool,
   registerListRunsTool,
@@ -112,6 +113,7 @@ export async function mcpCommand(options: McpCommandOptions) {
   registerListOrgsTool(context);
   registerCreateProjectTool(context);
   registerDeployTool(context);
+  registerListDeploymentsTool(context);
 
   await server.connect(transport);
 }
