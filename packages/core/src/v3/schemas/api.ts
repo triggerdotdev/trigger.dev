@@ -1200,3 +1200,18 @@ export const ApiDeploymentListResponseItem = z.object({
 });
 
 export type ApiDeploymentListResponseItem = z.infer<typeof ApiDeploymentListResponseItem>;
+
+export const ApiBranchListResponseBody = z.object({
+  branches: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      createdAt: z.coerce.date(),
+      updatedAt: z.coerce.date(),
+      git: z.record(z.any()).optional(),
+      isPaused: z.boolean(),
+    })
+  ),
+});
+
+export type ApiBranchListResponseBody = z.infer<typeof ApiBranchListResponseBody>;
