@@ -1,0 +1,17 @@
+[phases.setup]
+nixPkgs = ['nodejs', 'docker', 'docker-compose', 'openssl']
+
+[phases.build]
+cmds = [
+    "npm install -g pnpm@8.15.5",
+    "pnpm install --frozen-lockfile",
+    "pnpm run generate",
+    "pnpm run build --filter=webapp"
+]
+
+[start]
+cmd = "cd apps/webapp && pnpm start"
+
+[variables]
+NODE_ENV = "production"
+PORT = "3000"

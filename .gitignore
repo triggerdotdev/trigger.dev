@@ -64,3 +64,12 @@ apps/**/public/build
 /packages/trigger-sdk/src/package.json
 /packages/python/src/package.json
 .claude
+
+# Railway deployment - ignore generated files with secrets
+.env.production
+.env.railway.deploy
+.env.local
+.env.*.local
+worker_token
+
+# Note: .env.railway is a template and should be committed

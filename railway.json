@@ -1,0 +1,45 @@
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "builder": "NIXPACKS",
+    "buildCommand": "pnpm install --frozen-lockfile && pnpm run generate && pnpm run build --filter=webapp"
+  },
+  "deploy": {
+    "startCommand": "cd apps/webapp && pnpm start",
+    "healthcheckPath": "/healthcheck",
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 10
+  },
+  "environments": {
+    "production": {
+      "build": {
+        "NODE_ENV": "production"
+      },
+      "deploy": {
+        "PORT": "${{PORT}}",
+        "NODE_ENV": "production",
+        "APP_ORIGIN": "https://${{RAILWAY_PUBLIC_DOMAIN}}",
+        "LOGIN_ORIGIN": "https://${{RAILWAY_PUBLIC_DOMAIN}}",
+        "API_ORIGIN": "https://${{RAILWAY_PUBLIC_DOMAIN}}",
+        "DEV_OTEL_EXPORTER_OTLP_ENDPOINT": "https://${{RAILWAY_PUBLIC_DOMAIN}}/otel",
+        "DATABASE_URL": "${{Postgres.DATABASE_URL}}",
+        "DIRECT_URL": "${{Postgres.DATABASE_URL}}",
+        "REDIS_HOST": "${{Redis.RAILWAY_PRIVATE_DOMAIN}}",
+        "REDIS_PORT": "${{Redis.REDISPORT}}",
+        "REDIS_PASSWORD": "${{Redis.REDISPASSWORD}}",
+        "SESSION_SECRET": "${{shared.SESSION_SECRET}}",
+        "MAGIC_LINK_SECRET": "${{shared.MAGIC_LINK_SECRET}}",
+        "ENCRYPTION_KEY": "${{shared.ENCRYPTION_KEY}}",
+        "MANAGED_WORKER_SECRET": "${{shared.MANAGED_WORKER_SECRET}}",
+        "NODE_MAX_OLD_SPACE_SIZE": "4096",
+        "GRACEFUL_SHUTDOWN_TIMEOUT": "1000",
+        "TRIGGER_TELEMETRY_DISABLED": "1",
+        "TRIGGER_CLI_TAG": "v4-beta",
+        "TRIGGER_BOOTSTRAP_ENABLED": "1",
+        "TRIGGER_BOOTSTRAP_WORKER_GROUP_NAME": "railway",
+        "APP_LOG_LEVEL": "info",
+        "REDIS_TLS_DISABLED": "true"
+      }
+    }
+  }
+}
