@@ -51,6 +51,10 @@ The `install-mcp` command supports the following options:
 - `-a, --api-url <value>` - Configure a custom Trigger.dev API URL
 - `-l, --log-level <level>` - Set CLI log level (debug, info, log, warn, error, none)
 
+## Authentication
+
+You can use the MCP server without authentication with the `search_docs` tool, but for any other tool call you will need to authenticate the MCP server via the same method as the [Trigger.dev CLI](/cli-login-commands).The first time you attempt to use a tool that requires authentication, you will be prompted to authenticate the MCP server via the MCP client.
+
 ### Examples
 
 Install for all supported clients:
@@ -75,19 +79,19 @@ npx trigger.dev@latest install-mcp --dev-only --project-ref proj_abc123
 
 The Trigger.dev MCP Server supports the following clients:
 
-| Client               | Configuration File                                                                                              | Documentation                                                                                                                                    |
-| -------------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Claude Code**      | `~/.claude.json` or `./.mcp.json`                                                                               | [Claude Code MCP Docs](https://docs.anthropic.com/en/docs/claude-code/mcp)                                                                       |
-| **Cursor**           | `~/.cursor/mcp.json` or `./.cursor/mcp.json`                                                                    | [Cursor MCP Docs](https://docs.cursor.com/features/mcp)                                                                                          |
-| **VSCode**           | `~/Library/Application Support/Code/User/mcp.json` or `./.vscode/mcp.json`                                      | [VSCode MCP Docs](https://code.visualstudio.com/docs/copilot/chat/mcp-servers)                                                                   |
-| **Zed**              | `~/.config/zed/settings.json`                                                                                   | [Zed Context Servers Docs](https://zed.dev/docs/context-servers)                                                                                 |
-| **Windsurf**         | `~/.codeium/windsurf/mcp_config.json`                                                                           | [Windsurf MCP Docs](https://docs.codeium.com/windsurf/mcp)                                                                                       |
-| **Gemini CLI**       | `~/.gemini/settings.json` or `./.gemini/settings.json`                                                          | [Gemini CLI MCP Tutorial](https://medium.com/@joe.njenga/gemini-cli-mcp-tutorial-setup-commands-practical-use-step-by-step-example-b57f55db5f4a) |
-| **Charm Crush**      | `~/.config/crush/crush.json` or `./crush.json`                                                                  | [Charm MCP Docs](https://github.com/charmbracelet/mcp)                                                                                           |
-| **Cline**            | `~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json` | [Cline MCP Docs](https://github.com/saoudrizwan/claude-dev#mcp)                                                                                  |
-| **OpenAI Codex CLI** | `~/.codex/config.toml`                                                                                          | See OpenAI Codex CLI documentation for MCP configuration                                                                                         |
-| **Sourcegraph AMP**  | `~/.config/amp/settings.json`                                                                                   | [Sourcegraph AMP MCP Docs](https://docs.sourcegraph.com/amp/mcp)                                                                                 |
-| **opencode**         | `~/.config/opencode/opencode.json` or `./opencode.json`                                                         | [opencode MCP Docs](https://opencode.ai/docs/mcp-servers/)                                                                                       |
+| Client               | Scope Options        | Configuration File                                                                                              | Documentation                                                                                                                                    |
+| -------------------- | -------------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Claude Code**      | user, project, local | `~/.claude.json` or `./.mcp.json` (project/local scope)                                                         | [Claude Code MCP Docs](https://docs.anthropic.com/en/docs/claude-code/mcp)                                                                       |
+| **Cursor**           | user, project        | `~/.cursor/mcp.json` (user) or `./.cursor/mcp.json` (project)                                                   | [Cursor MCP Docs](https://docs.cursor.com/features/mcp)                                                                                          |
+| **VSCode**           | user, project        | `~/Library/Application Support/Code/User/mcp.json` (user) or `./.vscode/mcp.json` (project)                     | [VSCode MCP Docs](https://code.visualstudio.com/docs/copilot/chat/mcp-servers)                                                                   |
+| **Zed**              | user                 | `~/.config/zed/settings.json`                                                                                   | [Zed Context Servers Docs](https://zed.dev/docs/context-servers)                                                                                 |
+| **Windsurf**         | user                 | `~/.codeium/windsurf/mcp_config.json`                                                                           | [Windsurf MCP Docs](https://docs.codeium.com/windsurf/mcp)                                                                                       |
+| **Gemini CLI**       | user, project        | `~/.gemini/settings.json` (user) or `./.gemini/settings.json` (project)                                         | [Gemini CLI MCP Tutorial](https://medium.com/@joe.njenga/gemini-cli-mcp-tutorial-setup-commands-practical-use-step-by-step-example-b57f55db5f4a) |
+| **Charm Crush**      | user, project, local | `~/.config/crush/crush.json` (user), `./crush.json` (project), or `./.crush.json` (local)                       | [Charm MCP Docs](https://github.com/charmbracelet/mcp)                                                                                           |
+| **Cline**            | user                 | `~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json` | [Cline MCP Docs](https://github.com/saoudrizwan/claude-dev#mcp)                                                                                  |
+| **OpenAI Codex CLI** | user                 | `~/.codex/config.toml`                                                                                          | See OpenAI Codex CLI documentation for MCP configuration                                                                                         |
+| **Sourcegraph AMP**  | user                 | `~/.config/amp/settings.json`                                                                                   | [Sourcegraph AMP MCP Docs](https://docs.sourcegraph.com/amp/mcp)                                                                                 |
+| **opencode**         | user, project        | `~/.config/opencode/opencode.json` (user) or `./opencode.json` (project)                                        | [opencode MCP Docs](https://opencode.ai/docs/mcp-servers/)                                                                                       |
 
 ## Manual Configuration
 
@@ -169,12 +173,14 @@ After installation, restart your MCP client and look for a server named "trigger
 
 Once installed, you can start using the MCP server by asking your AI assistant questions like:
 
-- "Add trigger.dev to my project"
-- "List my Trigger.dev projects"
-- "Show me all tasks in my project"
-- "Trigger the email-notification task"
-- "How do I create a scheduled task in Trigger.dev?"
-- "Search Trigger.dev docs for webhook examples"
+- `"Search the trigger docs for a ffmpeg example"`
+- `"Initialize trigger.dev in my project"`
+- `"Get all tasks in my project"`
+- `"Trigger my foobar task with a sample payload"`
+- `"Get the details of the latest run for my foobar task"`
+- `"List all runs for my foobar task"`
+- `"Deploy my project to staging"`
+- `"Deploy my project to production"`
 
 ## Next Steps
 
