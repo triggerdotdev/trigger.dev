@@ -2,6 +2,7 @@ import {
   GetOrgsResponseBody,
   GetProjectsResponseBody,
   MachinePresetName,
+  RunStatus,
 } from "@trigger.dev/core/v3/schemas";
 import path, { dirname, join } from "path";
 import { x } from "tinyexec";
@@ -587,6 +588,154 @@ export function registerGetRunDetailsTool(context: McpContext) {
 
       return {
         content: [{ type: "text", text: JSON.stringify({ ...result, runUrl }, null, 2) }],
+      };
+    }
+  );
+}
+
+export function registerListRunsTool(context: McpContext) {
+  context.server.registerTool(
+    "list_runs",
+    {
+      description: "List all runs for a project",
+      inputSchema: {
+        projectRef: ProjectRefSchema,
+        configPath: z
+          .string()
+          .describe(
+            "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+          )
+          .optional(),
+        environment: z
+          .enum(["dev", "staging", "prod", "preview"])
+          .describe("The environment to trigger the task in")
+          .default("dev"),
+        branch: z
+          .string()
+          .describe("The branch to trigger the task in, only used for preview environments")
+          .optional(),
+        cursor: z
+          .string()
+          .describe("The cursor to use for pagination, starts with run_")
+          .optional(),
+        limit: z
+          .number()
+          .int()
+          .describe("The number of runs to list in a single page. Up to 100")
+          .optional(),
+        status: RunStatus.describe("Filter for runs with this run status").optional(),
+        taskIdentifier: z
+          .string()
+          .describe("Filter for runs that match this task identifier")
+          .optional(),
+        version: z
+          .string()
+          .describe("Filter for runs that match this version, e.g. 20250808.3")
+          .optional(),
+        tag: z.string().describe("Filter for runs that include this tag").optional(),
+        from: z
+          .string()
+          .describe("Filter for runs created after this ISO 8601 timestamp")
+          .optional(),
+        to: z
+          .string()
+          .describe("Filter for runs created before this ISO 8601 timestamp")
+          .optional(),
+        period: z
+          .string()
+          .describe("Filter for runs created in the last N time period. e.g. 7d, 30d, 365d")
+          .optional(),
+        machine: MachinePresetName.describe(
+          "Filter for runs that match this machine preset"
+        ).optional(),
+      },
+    },
+    async ({
+      projectRef,
+      configPath,
+      environment,
+      branch,
+      cursor,
+      limit,
+      status,
+      taskIdentifier,
+      version,
+      tag,
+      from,
+      to,
+      period,
+      machine,
+    }) => {
+      context.logger?.log("calling list_runs", {
+        projectRef,
+        configPath,
+        environment,
+        branch,
+        cursor,
+        limit,
+        status,
+        taskIdentifier,
+        version,
+        tag,
+        from,
+        to,
+        period,
+        machine,
+      });
+
+      if (context.options.devOnly && environment !== "dev") {
+        return respondWithError(
+          `This MCP server is only available for the dev environment. You tried to access the ${environment} environment. Remove the --dev-only flag to access other environments.`
+        );
+      }
+
+      const projectRefResult = await resolveExistingProjectRef(context, projectRef, configPath);
+
+      if (projectRefResult.status === "error") {
+        return respondWithError(projectRefResult.error);
+      }
+
+      const $projectRef = projectRefResult.projectRef;
+
+      context.logger?.log("list_runs projectRefResult", { projectRefResult });
+
+      const auth = await mcpAuth({
+        server: context.server,
+        defaultApiUrl: context.options.apiUrl,
+        profile: context.options.profile,
+        context,
+      });
+
+      if (!auth.ok) {
+        return respondWithError(auth.error);
+      }
+
+      const apiClient = await createApiClientWithPublicJWT(auth, $projectRef, environment, [
+        "read:runs",
+      ]);
+
+      if (!apiClient) {
+        return respondWithError("Failed to create API client with public JWT");
+      }
+
+      const $from = typeof from === "string" ? new Date(from) : undefined;
+      const $to = typeof to === "string" ? new Date(to) : undefined;
+
+      const result = await apiClient.listRuns({
+        after: cursor,
+        limit,
+        status,
+        taskIdentifier,
+        version,
+        tag,
+        from: $from,
+        to: $to,
+        period,
+        machine,
+      });
+
+      return {
+        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
       };
     }
   );

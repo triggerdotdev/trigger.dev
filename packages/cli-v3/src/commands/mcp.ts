@@ -16,6 +16,7 @@ import {
   registerTriggerTaskTool,
   registerGetRunDetailsTool,
   registerDeployTool,
+  registerListRunsTool,
 } from "../mcp/tools.js";
 import { logger } from "../utilities/logger.js";
 import { intro, outro } from "@clack/prompts";
@@ -104,6 +105,7 @@ export async function mcpCommand(options: McpCommandOptions) {
   registerGetTasksTool(context);
   registerTriggerTaskTool(context);
   registerGetRunDetailsTool(context);
+  registerListRunsTool(context);
   registerListProjectsTool(context);
   registerListOrgsTool(context);
   registerCreateProjectTool(context);
