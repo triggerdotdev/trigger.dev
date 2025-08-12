@@ -5,21 +5,27 @@ description: "Learn about the tools available in the Trigger.dev MCP Server"
 tag: "new"
 ---
 
-The Trigger.dev MCP Server provides a comprehensive set of tools to interact with your Trigger.dev projects, tasks, and documentation. Below is a detailed reference of all available tools.
+The Trigger.dev MCP Server provides a comprehensive set of tools that enable AI assistants to interact with your Trigger.dev projects. These tools cover everything from project management to task execution and monitoring.
 
-## Documentation Tools
+## Documentation and Search Tools
 
 ### search_docs
 
 Search across the Trigger.dev documentation to find relevant information, code examples, API references, and guides.
 
-**Description:** Use this tool when you need to answer questions about Trigger.dev, find specific documentation, understand how features work, or locate implementation details. The search returns contextual content with titles and direct links to the documentation pages.
+<ParamField query="query" type="string" required>
+  The search query to find information in the Trigger.dev documentation
+</ParamField>
 
-**Parameters:**
-- `query` (string, required): The search query to find relevant documentation
+**Usage Examples:**
 
-**Example Usage:**
-```json
+- "How do I create a scheduled task?"
+- "webhook examples"
+- "deployment configuration"
+- "error handling patterns"
+
+<CodeGroup>
+```json Example Usage
 {
   "tool": "search_docs",
   "arguments": {
@@ -27,6 +33,7 @@ Search across the Trigger.dev documentation to find relevant information, code e
   }
 }
 ```
+</CodeGroup>
 
 ## Project Management Tools
 
@@ -34,103 +41,112 @@ Search across the Trigger.dev documentation to find relevant information, code e
 
 List all projects in your Trigger.dev account.
 
-**Description:** Retrieves a list of all projects you have access to across all organizations.
+**No parameters required**
 
-**Parameters:** None
+<ResponseField name="projects" type="array">
+  Array of project objects containing project details, IDs, and metadata
+</ResponseField>
 
-**Output:** Returns an array of project objects with details like project name, ID, external reference, and organization information.
-
-**Example Usage:**
-```json
+<CodeGroup>
+```json Example Response
 {
-  "tool": "list_projects",
-  "arguments": {}
+  "projects": [
+    {
+      "id": "proj_abc123",
+      "name": "My App",
+      "slug": "my-app",
+      "organizationId": "org_xyz789"
+    }
+  ]
 }
 ```
+</CodeGroup>
 
 ### list_orgs
 
 List all organizations you have access to.
 
-**Description:** Retrieves a list of all organizations in your Trigger.dev account.
+**No parameters required**
 
-**Parameters:** None
-
-**Output:** Returns an array of organization objects with details like organization name, slug, and ID.
-
-**Example Usage:**
-```json
-{
-  "tool": "list_orgs",
-  "arguments": {}
-}
-```
+<ResponseField name="orgs" type="array">
+  Array of organization objects containing organization details and metadata
+</ResponseField>
 
 ### create_project_in_org
 
-Create a new project in a specified organization.
+Create a new project in an organization.
 
-**Description:** Creates a new Trigger.dev project within an organization. Use the `list_orgs` tool first to get available organizations.
+<ParamField query="orgParam" type="string" required>
+  The organization to create the project in, can either be the organization slug or the ID. Use the
+  `list_orgs` tool to get a list of organizations and ask the user to select one.
+</ParamField>
 
-**Parameters:**
-- `orgParam` (string, required): The organization to create the project in, can be either the organization slug or ID
-- `name` (string, required): The name of the project to create
+<ParamField query="name" type="string" required>
+  The name of the project to create
+</ParamField>
 
-**Example Usage:**
-```json
+<CodeGroup>
+```json Example Usage
 {
   "tool": "create_project_in_org",
   "arguments": {
-    "orgParam": "my-org-slug",
-    "name": "My New Project"
+    "orgParam": "my-org",
+    "name": "New Project"
   }
 }
 ```
-
-## Project Initialization
+</CodeGroup>
 
 ### initialize_project
 
-Initialize Trigger.dev in your project with automatic configuration.
+Initialize Trigger.dev in your project with automatic setup and configuration.
 
-**Description:** Sets up Trigger.dev in a new or existing project. This tool will either create a new project or use an existing one, and provide setup instructions.
+<ParamField query="orgParam" type="string" required>
+  The organization to create the project in, can either be the organization slug or the ID. Use the
+  `list_orgs` tool to get a list of organizations and ask the user to select one.
+</ParamField>
 
-**Parameters:**
-- `orgParam` (string, required): The organization to create/use the project in (organization slug or ID)
-- `projectRef` (string, optional): The project reference starting with "proj_". If not provided, a new project will be created
-- `projectName` (string, required): Name for the project (used when creating new projects)
-- `cwd` (string, required): The current working directory of the project
+<ParamField query="projectRef" type="string" optional>
+  The trigger.dev project ref, starts with `proj_`. We will attempt to automatically detect the
+  project ref if running inside a directory that includes a trigger.config.ts file.
+</ParamField>
 
-**Output:** Provides manual setup instructions with project-specific configuration details.
+<ParamField query="projectName" type="string" required>
+  The name of the project to create. If projectRef is not provided, we will use this name to create
+  a new project in the organization you select.
+</ParamField>
 
-**Example Usage:**
-```json
-{
-  "tool": "initialize_project",
-  "arguments": {
-    "orgParam": "my-org",
-    "projectName": "My App",
-    "cwd": "/path/to/my/project"
-  }
-}
-```
+<ParamField query="cwd" type="string" required>
+  The current working directory of the project
+</ParamField>
 
 ## Task Management Tools
 
 ### get_tasks
 
-Retrieve all tasks in a project for a specific environment.
+Get all tasks in a project.
 
-**Description:** Gets a list of all available tasks in your Trigger.dev project, including their IDs, names, and configuration.
+<ParamField query="projectRef" type="string" optional>
+  The trigger.dev project ref, starts with `proj_`. We will attempt to automatically detect the
+  project ref if running inside a directory that includes a trigger.config.ts file.
+</ParamField>
 
-**Parameters:**
-- `projectRef` (string, optional): The project reference starting with "proj_". Will auto-detect from config if not provided
-- `configPath` (string, optional): Path to trigger.config.ts file (for monorepo setups)
-- `environment` (string, optional): Environment to get tasks for - `"dev"`, `"staging"`, `"prod"`, or `"preview"` (default: "dev")
-- `branch` (string, optional): Branch name for preview environments
+<ParamField query="configPath" type="string" optional>
+  The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the
+  root dir (like in a monorepo setup). If not provided, we will try to find the config file in the
+  current working directory.
+</ParamField>
 
-**Example Usage:**
-```json
+<ParamField query="environment" type="string" default="dev">
+  The environment to get tasks for. Options: `dev`, `staging`, `prod`, `preview`
+</ParamField>
+
+<ParamField query="branch" type="string" optional>
+  The branch to get tasks for, only used for preview environments
+</ParamField>
+
+<CodeGroup>
+```json Example Usage
 {
   "tool": "get_tasks",
   "arguments": {
@@ -139,206 +155,245 @@ Retrieve all tasks in a project for a specific environment.
   }
 }
 ```
+</CodeGroup>
 
 ### trigger_task
 
-Trigger a task execution with optional configuration.
+Trigger a task to run.
 
-**Description:** Executes a specific task with custom payload and execution options.
+<ParamField query="projectRef" type="string" optional>
+  The trigger.dev project ref, starts with `proj_`. We will attempt to automatically detect the
+  project ref if running inside a directory that includes a trigger.config.ts file.
+</ParamField>
 
-**Parameters:**
-- `projectRef` (string, optional): The project reference (will auto-detect if not provided)
-- `configPath` (string, optional): Path to trigger.config.ts file
-- `environment` (string, optional): Target environment (default: "dev")
-- `branch` (string, optional): Branch for preview environments
-- `taskId` (string, required): The task ID/slug to trigger
-- `payload` (string, required): JSON string containing the task payload
-- `options` (object, optional): Execution options including:
-  - `queue.name` (string): Queue name to use
-  - `delay` (string|date): Execution delay
-  - `idempotencyKey` (string): Unique key for deduplication
-  - `machine` (string): Machine preset ("micro", "small-1x", "small-2x", "medium-1x", "medium-2x", "large-1x", "large-2x")
-  - `maxAttempts` (number): Maximum retry attempts
-  - `maxDuration` (number): Maximum execution time in seconds
-  - `tags` (array): Tags for the run (max 5, each max 128 chars)
-  - `ttl` (string|number): Time to live (default: "10m")
+<ParamField query="configPath" type="string" optional>
+  The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the
+  root dir (like in a monorepo setup).
+</ParamField>
 
-**Example Usage:**
-```json
+<ParamField query="environment" type="string" default="dev">
+  The environment to trigger the task in. Options: `dev`, `staging`, `prod`, `preview`
+</ParamField>
+
+<ParamField query="branch" type="string" optional>
+  The branch to trigger the task in, only used for preview environments
+</ParamField>
+
+<ParamField query="taskId" type="string" required>
+  The ID/slug of the task to trigger. Use the `get_tasks` tool to get a list of tasks and ask the
+  user to select one if it's not clear which one to use.
+</ParamField>
+
+<ParamField query="payload" type="string" required>
+  The payload to trigger the task with, must be a valid JSON string
+</ParamField>
+
+<ParamField query="options" type="object" optional>
+  Additional options for the task run
+  <Expandable title="options properties">
+    <ParamField query="queue.name" type="string" optional>
+      The name of the queue to trigger the task in, by default will use the queue configured in the
+      task
+    </ParamField>
+    <ParamField query="delay" type="string | datetime" optional>
+      The delay before the task run is executed
+    </ParamField>
+    <ParamField query="idempotencyKey" type="string" optional>
+      The idempotency key to use for the task run
+    </ParamField>
+    <ParamField query="machine" type="string" optional>
+      The machine preset to use for the task run. Options: `micro`, `small-1x`, `small-2x`,
+      `medium-1x`, `medium-2x`, `large-1x`, `large-2x`
+    </ParamField>
+    <ParamField query="maxAttempts" type="integer" optional>
+      The maximum number of attempts to retry the task run
+    </ParamField>
+    <ParamField query="maxDuration" type="number" optional>
+      The maximum duration in seconds of the task run
+    </ParamField>
+    <ParamField query="tags" type="array" optional>
+      Tags to add to the task run. Must be less than 128 characters and cannot have more than 5
+    </ParamField>
+    <ParamField query="ttl" type="string | integer" default="10m">
+      The time to live of the task run. If the run doesn't start executing within this time, it will
+      be automatically cancelled.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<CodeGroup>
+```json Example Usage
 {
   "tool": "trigger_task",
   "arguments": {
+    "projectRef": "proj_abc123",
     "taskId": "email-notification",
-    "payload": "{\"email\": \"user@example.com\", \"message\": \"Hello!\"}",
+    "payload": "{\"email\": \"user@example.com\", \"subject\": \"Hello World\"}",
     "options": {
-      "machine": "small-1x",
       "tags": ["urgent"],
-      "ttl": "5m"
+      "maxAttempts": 3
     }
   }
 }
 ```
+</CodeGroup>
 
 ## Run Monitoring Tools
 
 ### get_run_details
 
-Get detailed information about a specific task run.
+Get the details of a specific task run.
 
-**Description:** Retrieves comprehensive details about a task run, including status, logs, and execution information.
+<ParamField query="projectRef" type="string" optional>
+  The trigger.dev project ref, starts with `proj_`. We will attempt to automatically detect the
+  project ref if running inside a directory that includes a trigger.config.ts file.
+</ParamField>
 
-**Parameters:**
-- `projectRef` (string, optional): Project reference (auto-detected if not provided)
-- `configPath` (string, optional): Path to trigger.config.ts file
-- `environment` (string, optional): Environment (default: "dev")
-- `branch` (string, optional): Branch for preview environments
-- `runId` (string, required): The run ID starting with "run_"
+<ParamField query="configPath" type="string" optional>
+  The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the
+  root dir (like in a monorepo setup).
+</ParamField>
 
-**Example Usage:**
-```json
-{
-  "tool": "get_run_details",
-  "arguments": {
-    "runId": "run_abc123def456"
-  }
-}
-```
+<ParamField query="environment" type="string" default="dev">
+  The environment to get the run details from. Options: `dev`, `staging`, `prod`, `preview`
+</ParamField>
+
+<ParamField query="branch" type="string" optional>
+  The branch to get the run details from, only used for preview environments
+</ParamField>
+
+<ParamField query="runId" type="string" required>
+  The ID of the run to get the details of, starts with `run_`
+</ParamField>
 
 ### list_runs
 
-List and filter task runs in a project.
+List all runs for a project with comprehensive filtering options.
 
-**Description:** Retrieves a paginated list of task runs with powerful filtering capabilities.
+<ParamField query="projectRef" type="string" optional>
+  The trigger.dev project ref, starts with `proj_`. We will attempt to automatically detect the
+  project ref if running inside a directory that includes a trigger.config.ts file.
+</ParamField>
 
-**Parameters:**
-- `projectRef` (string, optional): Project reference
-- `configPath` (string, optional): Path to trigger.config.ts file
-- `environment` (string, optional): Environment (default: "dev")
-- `branch` (string, optional): Branch for preview environments
-- `cursor` (string, optional): Pagination cursor starting with "run_"
-- `limit` (number, optional): Number of runs per page (max 100)
-- `status` (string, optional): Filter by run status:
-  - "PENDING_VERSION", "QUEUED", "DEQUEUED", "EXECUTING"
-  - "WAITING", "COMPLETED", "CANCELED", "FAILED"
-  - "CRASHED", "SYSTEM_FAILURE", "DELAYED", "EXPIRED", "TIMED_OUT"
-- `taskIdentifier` (string, optional): Filter by task identifier
-- `version` (string, optional): Filter by version (e.g., "20250808.3")
-- `tag` (string, optional): Filter by tag
-- `from` (string, optional): Filter runs created after ISO 8601 timestamp
-- `to` (string, optional): Filter runs created before ISO 8601 timestamp
-- `period` (string, optional): Filter runs from last N time period (e.g., "7d", "30d", "365d")
-- `machine` (string, optional): Filter by machine preset
+<ParamField query="configPath" type="string" optional>
+  The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the
+  root dir (like in a monorepo setup).
+</ParamField>
 
-**Example Usage:**
-```json
+<ParamField query="environment" type="string" default="dev">
+  The environment to list runs from. Options: `dev`, `staging`, `prod`, `preview`
+</ParamField>
+
+<ParamField query="branch" type="string" optional>
+  The branch to list runs from, only used for preview environments
+</ParamField>
+
+<ParamField query="cursor" type="string" optional>
+  The cursor to use for pagination, starts with `run_`
+</ParamField>
+
+<ParamField query="limit" type="integer" optional>
+  The number of runs to list in a single page. Up to 100
+</ParamField>
+
+<ParamField query="status" type="string" optional>
+  Filter for runs with this run status. Options: `PENDING_VERSION`, `QUEUED`, `DEQUEUED`,
+  `EXECUTING`, `WAITING`, `COMPLETED`, `CANCELED`, `FAILED`, `CRASHED`, `SYSTEM_FAILURE`, `DELAYED`,
+  `EXPIRED`, `TIMED_OUT`
+</ParamField>
+
+<ParamField query="taskIdentifier" type="string" optional>
+  Filter for runs that match this task identifier
+</ParamField>
+
+<ParamField query="version" type="string" optional>
+  Filter for runs that match this version, e.g. `20250808.3`
+</ParamField>
+
+<ParamField query="tag" type="string" optional>
+  Filter for runs that include this tag
+</ParamField>
+
+<ParamField query="from" type="string" optional>
+  Filter for runs created after this ISO 8601 timestamp
+</ParamField>
+
+<ParamField query="to" type="string" optional>
+  Filter for runs created before this ISO 8601 timestamp
+</ParamField>
+
+<ParamField query="period" type="string" optional>
+  Filter for runs created in the last N time period. Examples: `7d`, `30d`, `365d`
+</ParamField>
+
+<ParamField query="machine" type="string" optional>
+  Filter for runs that match this machine preset. Options: `micro`, `small-1x`, `small-2x`,
+  `medium-1x`, `medium-2x`, `large-1x`, `large-2x`
+</ParamField>
+
+<CodeGroup>
+```json Example Usage
 {
   "tool": "list_runs",
   "arguments": {
+    "projectRef": "proj_abc123",
     "status": "COMPLETED",
-    "taskIdentifier": "email-notification",
-    "limit": 20,
+    "limit": 10,
     "period": "7d"
   }
 }
 ```
+</CodeGroup>
 
 ## Deployment Tools
 
 ### deploy
 
-Deploy your project to staging, production, or preview environments.
+Deploy a project to staging or production environments.
 
-**Description:** Deploys your Trigger.dev project to the specified environment. Not available when MCP server is configured with `--dev-only`.
+<ParamField query="projectRef" type="string" optional>
+  The trigger.dev project ref, starts with `proj_`. We will attempt to automatically detect the
+  project ref if running inside a directory that includes a trigger.config.ts file.
+</ParamField>
 
-**Parameters:**
-- `projectRef` (string, optional): Project reference (auto-detected if not provided)
-- `configPath` (string, optional): Path to trigger.config.ts file
-- `environment` (string, optional): Target environment - `"staging"`, `"prod"`, or `"preview"` (default: "prod")
-- `branch` (string, optional): Branch name for preview environments
-- `skipPromotion` (boolean, optional): Skip promoting deployment to current
-- `skipSyncEnvVars` (boolean, optional): Skip syncing environment variables
-- `skipUpdateCheck` (boolean, optional): Skip checking for package updates
+<ParamField query="configPath" type="string" optional>
+  The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the
+  root dir (like in a monorepo setup).
+</ParamField>
 
-**Example Usage:**
-```json
+<ParamField query="environment" type="string" default="prod">
+  The environment to deploy to. Options: `staging`, `prod`, `preview`
+</ParamField>
+
+<ParamField query="branch" type="string" optional>
+  The branch to deploy, only used for preview environments
+</ParamField>
+
+<ParamField query="skipPromotion" type="boolean" optional>
+  Skip promoting the deployment to the current deployment for the environment
+</ParamField>
+
+<ParamField query="skipSyncEnvVars" type="boolean" optional>
+  Skip syncing environment variables when using the syncEnvVars extension
+</ParamField>
+
+<ParamField query="skipUpdateCheck" type="boolean" optional>
+  Skip checking for @trigger.dev package updates
+</ParamField>
+
+<CodeGroup>
+```json Example Usage
 {
   "tool": "deploy",
   "arguments": {
+    "projectRef": "proj_abc123",
     "environment": "prod",
     "skipUpdateCheck": true
   }
 }
 ```
+</CodeGroup>
 
-## Environment Restrictions
-
-When the MCP server is configured with the `--dev-only` flag, the following tools are restricted:
-
-- **Limited to dev environment only:**
-  - `get_tasks`
-  - `trigger_task` 
-  - `get_run_details`
-  - `list_runs`
-
-- **Completely unavailable:**
-  - `deploy`
-
-## Error Handling
-
-All tools return structured error messages when:
-- Authentication fails
-- Project references are invalid
-- Environment restrictions are violated
-- API calls fail
-- Invalid parameters are provided
-
-## Usage Examples
-
-### Complete Workflow Example
-
-1. **List your projects:**
-```json
-{"tool": "list_projects", "arguments": {}}
-```
-
-2. **Get tasks in a project:**
-```json
-{"tool": "get_tasks", "arguments": {"projectRef": "proj_abc123"}}
-```
-
-3. **Trigger a task:**
-```json
-{
-  "tool": "trigger_task",
-  "arguments": {
-    "taskId": "process-webhook",
-    "payload": "{\"webhook_data\": {\"user_id\": 123}}"
-  }
-}
-```
-
-4. **Monitor the run:**
-```json
-{"tool": "get_run_details", "arguments": {"runId": "run_xyz789"}}
-```
-
-### Search and Setup Workflow
-
-1. **Search documentation:**
-```json
-{"tool": "search_docs", "arguments": {"query": "getting started tutorial"}}
-```
-
-2. **Initialize project:**
-```json
-{
-  "tool": "initialize_project",
-  "arguments": {
-    "orgParam": "my-org",
-    "projectName": "My New App",
-    "cwd": "/Users/me/my-app"
-  }
-}
-```
-
-This comprehensive toolset enables full management of your Trigger.dev projects directly from your AI assistant.
+<Callout type="warning">
+  The deploy tool is not available when the MCP server is running with the `--dev-only` flag.
+</Callout>
