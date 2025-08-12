@@ -267,9 +267,46 @@ Get the details of a specific task run.
 </ParamField>
 
 <ParamField query="debugMode" type="boolean" optional>
-  If true, the run trace will be returned in the response which can be helpful for debugging.
-  Defaults to false.
+  Enable debug mode to get more detailed information about the run, including the entire trace (all logs and spans for the run and any child run). Set this to true if prompted to debug a run.
 </ParamField>
+
+### cancel_run
+
+Cancel a running task.
+
+<ParamField query="runId" type="string" required>
+  The ID of the run to cancel, starts with `run_`
+</ParamField>
+
+<ParamField query="projectRef" type="string" optional>
+  The trigger.dev project ref, starts with `proj_`. We will attempt to automatically detect the
+  project ref if running inside a directory that includes a trigger.config.ts file.
+</ParamField>
+
+<ParamField query="configPath" type="string" optional>
+  The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the
+  root dir (like in a monorepo setup).
+</ParamField>
+
+<ParamField query="environment" type="string" default="dev">
+  The environment to cancel the run in. Options: `dev`, `staging`, `prod`, `preview`
+</ParamField>
+
+<ParamField query="branch" type="string" optional>
+  The branch to cancel the run in, only used for preview environments
+</ParamField>
+
+<CodeGroup>
+```json Example Usage
+{
+  "tool": "cancel_run",
+  "arguments": {
+    "runId": "run_abc123",
+    "projectRef": "proj_abc123"
+  }
+}
+```
+</CodeGroup>
 
 ### list_runs
 
