@@ -160,6 +160,35 @@ railway up --detach
 - GitHub account (for source deployment)
 - (Optional) Email service credentials for magic links
 
+## ⚙️ Build Process
+
+Railway uses a two-phase deployment process that requires special handling for environment variables:
+
+### Build vs Runtime Environment Variables
+
+**Build Phase:**
+- Railway only provides basic build environment variables
+- Prisma needs `DATABASE_URL` and `DIRECT_URL` to generate the client
+- Solution: Copy `.env.example` to `.env` during build to provide placeholders
+
+**Runtime Phase:**  
+- Railway provides full environment variables (cross-service references)
+- Node.js automatically uses Railway's environment variables over `.env` file
+- Real database credentials override placeholders seamlessly
+
+### Build Command Sequence
+```bash
+cp .env.example .env                    # Provide build-time placeholders
+pnpm install --frozen-lockfile         # Install dependencies  
+pnpm run generate                       # Generate Prisma client (uses placeholders)
+pnpm run build --filter=webapp         # Build application
+```
+
+**At Runtime:**
+- Railway's `${{Postgres.DATABASE_URL}}` overrides the placeholder
+- Railway's `${{Redis.RAILWAY_PRIVATE_DOMAIN}}` provides real Redis host
+- No secrets from `.env` are used in production
+
 ## 🏗️ Architecture Overview
 
 This Railway deployment uses a **simplified, cloud-native architecture**:
@@ -376,6 +405,11 @@ In Railway dashboard:
 - **Check build logs** - `railway logs --build` to see compilation issues
 - **Verify environment variables** - Check cross-service references are properly set
 - **Check service health** - All services (webapp, PostgreSQL, Redis) should show as healthy
+
+#### Build failures
+- **"IO error for .env file"** - This is expected; the build process copies `.env.example` to `.env` automatically
+- **"DATABASE_URL not found during generate"** - Ensure build command includes `cp .env.example .env` before `pnpm run generate`
+- **Prisma generate fails** - Check that `.env.example` contains valid placeholder values for `DATABASE_URL` and `DIRECT_URL`
 
 #### Railway CLI issues
 - **`railway add postgresql` fails** - Use correct syntax: `railway add --database postgres`

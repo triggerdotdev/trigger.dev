@@ -18,7 +18,7 @@
       },
       "build": {
         "builder": "nixpacks",
-        "buildCommand": "pnpm install --frozen-lockfile && pnpm run generate && pnpm run build --filter=webapp"
+        "buildCommand": "cp .env.example .env && pnpm install --frozen-lockfile && pnpm run generate && pnpm run build --filter=webapp"
       },
       "deploy": {
         "startCommand": "cd apps/webapp && pnpm start",

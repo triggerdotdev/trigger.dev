@@ -3,6 +3,7 @@ nixPkgs = ['nodejs', 'docker', 'docker-compose', 'openssl']
 
 [phases.build]
 cmds = [
+    "cp .env.example .env",
     "npm install -g pnpm@8.15.5",
     "pnpm install --frozen-lockfile",
     "pnpm run generate",
