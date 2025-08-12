@@ -1139,3 +1139,64 @@ export function timeoutError(timeout: Date) {
     message: `Waitpoint timed out at ${timeout.toISOString()}`,
   };
 }
+
+const ApiDeploymentCommonShape = {
+  from: z.string().describe("The date to start the search from, in ISO 8601 format").optional(),
+  to: z.string().describe("The date to end the search, in ISO 8601 format").optional(),
+  period: z.string().describe("The period to search within (e.g. 1d, 7d, 3h, etc.)").optional(),
+  status: z
+    .enum(["PENDING", "BUILDING", "DEPLOYING", "DEPLOYED", "FAILED", "CANCELED", "TIMED_OUT"])
+    .describe("Filter deployments that are in this status")
+    .optional(),
+};
+
+const ApiDeploymentListPaginationCursor = z
+  .string()
+  .describe("The deployment ID to start the search from, to get the next page")
+  .optional();
+
+const ApiDeploymentListPaginationLimit = z.coerce
+  .number()
+  .describe("The number of deployments to return, defaults to 20 (max 100)")
+  .optional();
+
+export const ApiDeploymentListParams = {
+  ...ApiDeploymentCommonShape,
+  cursor: ApiDeploymentListPaginationCursor,
+  limit: ApiDeploymentListPaginationLimit,
+};
+
+export const ApiDeploymentListOptions = z.object(ApiDeploymentListParams);
+
+export type ApiDeploymentListOptions = z.infer<typeof ApiDeploymentListOptions>;
+
+export const ApiDeploymentListSearchParams = z.object({
+  ...ApiDeploymentCommonShape,
+  "page[after]": ApiDeploymentListPaginationCursor,
+  "page[size]": ApiDeploymentListPaginationLimit,
+});
+
+export type ApiDeploymentListSearchParams = z.infer<typeof ApiDeploymentListSearchParams>;
+
+export const ApiDeploymentListResponseItem = z.object({
+  id: z.string(),
+  createdAt: z.coerce.date(),
+  shortCode: z.string(),
+  version: z.string(),
+  runtime: z.string(),
+  runtimeVersion: z.string(),
+  status: z.enum([
+    "PENDING",
+    "BUILDING",
+    "DEPLOYING",
+    "DEPLOYED",
+    "FAILED",
+    "CANCELED",
+    "TIMED_OUT",
+  ]),
+  deployedAt: z.coerce.date().optional(),
+  git: z.record(z.any()).optional(),
+  error: DeploymentErrorData.optional(),
+});
+
+export type ApiDeploymentListResponseItem = z.infer<typeof ApiDeploymentListResponseItem>;
