@@ -266,6 +266,11 @@ Get the details of a specific task run.
   The ID of the run to get the details of, starts with `run_`
 </ParamField>
 
+<ParamField query="debugMode" type="boolean" optional>
+  If true, the run trace will be returned in the response which can be helpful for debugging.
+  Defaults to false.
+</ParamField>
+
 ### list_runs
 
 List all runs for a project with comprehensive filtering options.
