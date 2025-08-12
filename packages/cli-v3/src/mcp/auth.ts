@@ -183,9 +183,10 @@ export async function createApiClientWithPublicJWT(
   auth: LoginResultOk,
   projectRef: string,
   envName: string,
-  scopes: string[]
+  scopes: string[],
+  previewBranch?: string
 ) {
-  const cliApiClient = new CliApiClient(auth.auth.apiUrl, auth.auth.accessToken);
+  const cliApiClient = new CliApiClient(auth.auth.apiUrl, auth.auth.accessToken, previewBranch);
 
   const jwt = await cliApiClient.getJWT(projectRef, envName, {
     claims: {

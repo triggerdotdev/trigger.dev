@@ -3,6 +3,7 @@ import {
   ApiRunListPresenter,
   ApiRunListSearchParams,
 } from "~/presenters/v3/ApiRunListPresenter.server";
+import { logger } from "~/services/logger.server";
 import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
 export const loader = createLoaderApiRoute(
@@ -17,7 +18,9 @@ export const loader = createLoaderApiRoute(
     },
     findResource: async () => 1, // This is a dummy function, we don't need to find a resource
   },
-  async ({ searchParams, authentication, apiVersion }) => {
+  async ({ searchParams, authentication, apiVersion, headers }) => {
+    logger.info("api.v1.runs.loader", { searchParams, authentication, apiVersion, headers });
+
     const presenter = new ApiRunListPresenter();
     const result = await presenter.call(
       authentication.environment.project,

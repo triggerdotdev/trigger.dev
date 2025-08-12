@@ -74,8 +74,29 @@ export async function action({ request, params }: LoaderFunctionArgs) {
     );
   }
 
+  const triggerBranch = request.headers.get("x-trigger-branch") ?? undefined;
+
+  let previewBranchEnvironmentId: string | undefined;
+
+  if (triggerBranch) {
+    const previewBranch = await prisma.runtimeEnvironment.findFirst({
+      where: {
+        projectId: project.id,
+        branchName: triggerBranch,
+        parentEnvironmentId: runtimeEnv.id,
+        archivedAt: null,
+      },
+    });
+
+    if (previewBranch) {
+      previewBranchEnvironmentId = previewBranch.id;
+    } else {
+      return json({ error: `Preview branch ${triggerBranch} not found` }, { status: 404 });
+    }
+  }
+
   const claims = {
-    sub: runtimeEnv.id,
+    sub: previewBranchEnvironmentId ?? runtimeEnv.id,
     pub: true,
     ...parsedBody.data.claims,
   };

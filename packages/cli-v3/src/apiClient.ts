@@ -36,6 +36,7 @@ import {
   GetWorkerByTagResponse,
   GetJWTRequestBody,
   GetJWTResponse,
+  ApiBranchListResponseBody,
 } from "@trigger.dev/core/v3";
 import {
   WorkloadDebugLogRequestBody,
@@ -274,6 +275,20 @@ export class CliApiClient {
         method: "POST",
         headers: this.getHeaders(),
         body: JSON.stringify({ branch }),
+      }
+    );
+  }
+
+  async listBranches(projectRef: string) {
+    if (!this.accessToken) {
+      throw new Error("listBranches: No access token");
+    }
+
+    return wrapZodFetch(
+      ApiBranchListResponseBody,
+      `${this.apiURL}/api/v1/projects/${projectRef}/branches`,
+      {
+        headers: this.getHeaders(),
       }
     );
   }

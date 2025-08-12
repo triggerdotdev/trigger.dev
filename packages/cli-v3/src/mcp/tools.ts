@@ -329,7 +329,7 @@ export function registerGetTasksTool(context: McpContext) {
         return respondWithError(auth.error);
       }
 
-      const cliApiClient = new CliApiClient(auth.auth.apiUrl, auth.auth.accessToken);
+      const cliApiClient = new CliApiClient(auth.auth.apiUrl, auth.auth.accessToken, branch);
 
       // TODO: support other tags and preview branches
       const worker = await cliApiClient.getWorkerByTag($projectRef, environment, "current");
@@ -471,9 +471,13 @@ export function registerTriggerTaskTool(context: McpContext) {
         return respondWithError(auth.error);
       }
 
-      const apiClient = await createApiClientWithPublicJWT(auth, $projectRef, environment, [
-        "write:tasks",
-      ]);
+      const apiClient = await createApiClientWithPublicJWT(
+        auth,
+        $projectRef,
+        environment,
+        ["write:tasks"],
+        branch
+      );
 
       if (!apiClient) {
         return respondWithError("Failed to create API client with public JWT");
@@ -583,9 +587,13 @@ export function registerGetRunDetailsTool(context: McpContext) {
         return respondWithError(auth.error);
       }
 
-      const apiClient = await createApiClientWithPublicJWT(auth, $projectRef, environment, [
-        `read:runs:${runId}`,
-      ]);
+      const apiClient = await createApiClientWithPublicJWT(
+        auth,
+        $projectRef,
+        environment,
+        [`read:runs:${runId}`],
+        branch
+      );
 
       if (!apiClient) {
         return respondWithError("Failed to create API client with public JWT");
@@ -680,10 +688,13 @@ export function registerCancelRunTool(context: McpContext) {
         return respondWithError(auth.error);
       }
 
-      const apiClient = await createApiClientWithPublicJWT(auth, $projectRef, environment, [
-        `write:runs:${runId}`,
-        `read:runs:${runId}`,
-      ]);
+      const apiClient = await createApiClientWithPublicJWT(
+        auth,
+        $projectRef,
+        environment,
+        [`write:runs:${runId}`, `read:runs:${runId}`],
+        branch
+      );
 
       if (!apiClient) {
         return respondWithError("Failed to create API client with public JWT");
@@ -823,9 +834,13 @@ export function registerListRunsTool(context: McpContext) {
         return respondWithError(auth.error);
       }
 
-      const apiClient = await createApiClientWithPublicJWT(auth, $projectRef, environment, [
-        "read:runs",
-      ]);
+      const apiClient = await createApiClientWithPublicJWT(
+        auth,
+        $projectRef,
+        environment,
+        ["read:runs"],
+        branch
+      );
 
       if (!apiClient) {
         return respondWithError("Failed to create API client with public JWT");
@@ -1065,9 +1080,13 @@ export function registerListDeploymentsTool(context: McpContext) {
         return respondWithError(auth.error);
       }
 
-      const apiClient = await createApiClientWithPublicJWT(auth, $projectRef, environment, [
-        "read:deployments",
-      ]);
+      const apiClient = await createApiClientWithPublicJWT(
+        auth,
+        $projectRef,
+        environment,
+        ["read:deployments"],
+        branch
+      );
 
       if (!apiClient) {
         return respondWithError("Failed to create API client with public JWT");
@@ -1084,6 +1103,64 @@ export function registerListDeploymentsTool(context: McpContext) {
 
       return {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+      };
+    }
+  );
+}
+
+export function registerListPreviewBranchesTool(context: McpContext) {
+  context.server.registerTool(
+    "list_preview_branches",
+    {
+      description: "List all preview branches in the project",
+      inputSchema: {
+        projectRef: ProjectRefSchema,
+        configPath: z
+          .string()
+          .describe(
+            "The path to the trigger.config.ts file. Only used when the trigger.config.ts file is not at the root dir (like in a monorepo setup). If not provided, we will try to find the config file in the current working directory"
+          )
+          .optional(),
+      },
+    },
+    async ({ projectRef, configPath }) => {
+      context.logger?.log("calling list_preview_branches", { projectRef, configPath });
+
+      if (context.options.devOnly) {
+        return respondWithError(`This MCP server is only available for the dev environment. `);
+      }
+
+      const projectRefResult = await resolveExistingProjectRef(context, projectRef, configPath);
+
+      if (projectRefResult.status === "error") {
+        return respondWithError(projectRefResult.error);
+      }
+
+      const $projectRef = projectRefResult.projectRef;
+
+      context.logger?.log("list_preview_branches projectRefResult", { projectRefResult });
+
+      const auth = await mcpAuth({
+        server: context.server,
+        defaultApiUrl: context.options.apiUrl,
+        profile: context.options.profile,
+        context,
+      });
+
+      if (!auth.ok) {
+        return respondWithError(auth.error);
+      }
+
+      const cliApiClient = new CliApiClient(auth.auth.apiUrl, auth.auth.accessToken);
+
+      const branches = await cliApiClient.listBranches($projectRef);
+
+      if (!branches.success) {
+        return respondWithError(branches.error);
+      }
+
+      return {
+        content: [{ type: "text", text: JSON.stringify(branches.data, null, 2) }],
       };
     }
   );
@@ -1414,29 +1491,4 @@ ${projectEnv.success ? `TRIGGER_API_URL=${projectEnv.data.apiUrl}` : ""}
 To view the project dashboard, visit: ${auth.dashboardUrl}/projects/v3/${projectRef}
 
 ${text}`;
-}
-
-async function getWritingTasksGuide(prompt: string) {
-  const urls = [
-    "https://trigger.dev/docs/tasks/overview.md",
-    "https://trigger.dev/docs/tasks/schemaTask.md",
-    "https://trigger.dev/docs/tasks/scheduled.md",
-    "https://trigger.dev/docs/triggering.md",
-    "https://trigger.dev/docs/writing-tasks-introduction.md",
-  ];
-
-  const responses = await Promise.all(urls.map((url) => fetch(url)));
-  const texts = await Promise.all(responses.map((response) => response.text()));
-
-  const text = texts.join("\n\n");
-
-  return `
-## Trigger.dev Task Writing Guide:
-
-${text}
-
-## Now please write the tasks based on the following prompt:
-
-${prompt}
-`;
 }

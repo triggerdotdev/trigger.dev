@@ -22,6 +22,7 @@ import {
   registerListRunsTool,
   registerSearchDocsTool,
   registerTriggerTaskTool,
+  registerListPreviewBranchesTool,
 } from "../mcp/tools.js";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
@@ -114,6 +115,7 @@ export async function mcpCommand(options: McpCommandOptions) {
   registerCreateProjectTool(context);
   registerDeployTool(context);
   registerListDeploymentsTool(context);
+  registerListPreviewBranchesTool(context);
 
   await server.connect(transport);
 }
