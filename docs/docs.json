@@ -180,6 +180,13 @@
             ]
           },
           {
+            "group": "MCP Server",
+            "pages": [
+              "mcp-introduction",
+              "mcp-tools"
+            ]
+          },
+          {
             "group": "Using the Dashboard",
             "pages": [
               "run-tests",
