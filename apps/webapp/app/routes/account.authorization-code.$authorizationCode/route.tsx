@@ -1,11 +1,8 @@
 import { CheckCircleIcon } from "@heroicons/react/24/solid";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { title } from "process";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
-import { ErrorIcon } from "~/assets/icons/ErrorIcon";
 import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayout";
-import { LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { Header1 } from "~/components/primitives/Headers";
 import { Icon } from "~/components/primitives/Icon";
@@ -13,10 +10,14 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { logger } from "~/services/logger.server";
 import { createPersonalAccessTokenFromAuthorizationCode } from "~/services/personalAccessToken.server";
 import { requireUserId } from "~/services/session.server";
-import { rootPath } from "~/utils/pathBuilder";
 
 const ParamsSchema = z.object({
   authorizationCode: z.string(),
+});
+
+const SearchParamsSchema = z.object({
+  source: z.string().optional(),
+  clientName: z.string().optional(),
 });
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -32,6 +33,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     });
   }
 
+  const url = new URL(request.url);
+  const searchObject = Object.fromEntries(url.searchParams.entries());
+
+  const searchParams = SearchParamsSchema.safeParse(searchObject);
+
+  const source = (searchParams.success ? searchParams.data.source : undefined) ?? "cli";
+  const clientName = (searchParams.success ? searchParams.data.clientName : undefined) ?? "unknown";
+
   try {
     const personalAccessToken = await createPersonalAccessTokenFromAuthorizationCode(
       parsedParams.data.authorizationCode,
@@ -39,6 +48,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     );
     return typedjson({
       success: true as const,
+      source,
+      clientName,
     });
   } catch (error) {
     if (error instanceof Response) {
@@ -49,6 +60,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       return typedjson({
         success: false as const,
         error: error.message,
+        source,
+        clientName,
       });
     }
 
@@ -73,7 +86,7 @@ export default function Page() {
                 <Icon icon={CheckCircleIcon} className="h-6 w-6 text-emerald-500" /> Successfully
                 authenticated
               </Header1>
-              <Paragraph>Return to your terminal to continue.</Paragraph>
+              <Paragraph>{getInstructionsForSource(result.source, result.clientName)}</Paragraph>
             </div>
           ) : (
             <div>
@@ -90,4 +103,22 @@ export default function Page() {
       </MainCenteredContainer>
     </AppContainer>
   );
+}
+
+const prettyClientNames: Record<string, string> = {
+  "claude-code": "Claude Code",
+  "cursor-vscode": "Cursor",
+  "Visual Studio Code": "VSCode",
+  "windsurf-client": "Windsurf",
+  "claude-ai": "Claude Desktop",
+};
+
+function getInstructionsForSource(source: string, clientName: string) {
+  if (source === "mcp") {
+    if (clientName) {
+      return `Return to your ${prettyClientNames[clientName] ?? clientName} to continue.`;
+    }
+  }
+
+  return `Return to your terminal to continue.`;
 }

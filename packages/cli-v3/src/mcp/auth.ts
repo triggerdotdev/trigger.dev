@@ -92,10 +92,19 @@ export async function mcpAuth(options: McpAuthOptions): Promise<LoginResult> {
   //generate authorization code
   const authorizationCodeResult = await createAuthorizationCode(apiClient);
 
+  const url = new URL(authorizationCodeResult.url);
+
+  url.searchParams.set("source", "mcp");
+
+  const clientName = options.server.server.getClientVersion()?.name;
+
+  if (clientName) {
+    url.searchParams.set("clientName", clientName);
+  }
   // Only elicitInput if the client has the elicitation capability
 
   // Elicit the user to visit the authorization code URL
-  const allowLogin = await askForLoginPermission(opts.server, authorizationCodeResult.url);
+  const allowLogin = await askForLoginPermission(opts.server, url.toString());
 
   if (!allowLogin) {
     return {
@@ -105,7 +114,7 @@ export async function mcpAuth(options: McpAuthOptions): Promise<LoginResult> {
   }
 
   // Open the authorization code URL in the browser
-  await open(authorizationCodeResult.url);
+  await open(url.toString());
 
   // Poll for the personal access token
   const indexResult = await pRetry(
