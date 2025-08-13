@@ -757,6 +757,87 @@ railway variables --set "CLICKHOUSE_URL="  # Empty string bypasses validation
 
 **Note:** v4-beta has a validation bug where `CLICKHOUSE_URL` is required but should be optional.
 
+### Q: How do I set up ClickHouse for analytics?
+**A:** ClickHouse requires database and table creation after connecting:
+
+**1. Connect to ClickHouse Cloud:**
+```bash
+# Test connection
+curl --user 'default:YOUR_PASSWORD' \
+  --data-binary 'SELECT 1' \
+  https://your-host.clickhouse.cloud:8443
+
+# Set in Railway
+railway variables --set "CLICKHOUSE_URL=https://default:YOUR_PASSWORD@your-host.clickhouse.cloud:8443"
+```
+
+**2. Create required database and tables:**
+```bash
+# Create database
+curl --user 'default:YOUR_PASSWORD' \
+  --data-binary 'CREATE DATABASE IF NOT EXISTS trigger_dev' \
+  https://your-host.clickhouse.cloud:8443
+
+# Create main analytics table (copy this as single command)
+curl --user 'default:YOUR_PASSWORD' \
+  --data-binary 'CREATE TABLE IF NOT EXISTS trigger_dev.task_runs_v2
+(
+  environment_id            String,
+  organization_id           String,
+  project_id                String,
+  run_id                    String,
+  environment_type          LowCardinality(String),
+  friendly_id               String,
+  attempt                   UInt8     DEFAULT 1,
+  engine                    LowCardinality(String),
+  status                    LowCardinality(String),
+  task_identifier           String,
+  queue                     String,
+  schedule_id               String,
+  batch_id                  String,
+  concurrency_key           String,
+  bulk_action_group_ids     Array(String),
+  worker_queue              String,
+  created_at                DateTime64(3, '\''UTC'\'') DEFAULT now64(3),
+  started_at                Nullable(DateTime64(3, '\''UTC'\'')),
+  completed_at              Nullable(DateTime64(3, '\''UTC'\'')),
+  cost_in_cents             Nullable(UInt32),
+  base_cost_in_cents        Nullable(UInt32),
+  duration_ms               Nullable(UInt32),
+  tags                      Array(String),
+  payload                   Nullable(String),
+  metadata                  Map(String, String),
+  context                   Nullable(String),
+  machine_preset            LowCardinality(String),
+  task_slug                 String,
+  task_file_path            String,
+  task_export_name          String,
+  sdk_version               LowCardinality(String),
+  cli_version               LowCardinality(String)
+)
+ENGINE = MergeTree()
+ORDER BY (organization_id, project_id, environment_id, created_at, run_id)' \
+  https://your-host.clickhouse.cloud:8443
+```
+
+**3. Verify setup:**
+```bash
+# Check database exists
+curl --user 'default:YOUR_PASSWORD' \
+  --data-binary 'SHOW DATABASES' \
+  https://your-host.clickhouse.cloud:8443
+
+# Check table exists  
+curl --user 'default:YOUR_PASSWORD' \
+  --data-binary 'SHOW TABLES FROM trigger_dev' \
+  https://your-host.clickhouse.cloud:8443
+
+# Test query
+curl --user 'default:YOUR_PASSWORD' \
+  --data-binary 'SELECT count() FROM trigger_dev.task_runs_v2' \
+  https://your-host.clickhouse.cloud:8443
+```
+
 ## 🐛 Advanced Troubleshooting: Known Deployment Issues
 
 *This section documents critical issues discovered during Railway deployment testing and their solutions.*
