@@ -142,6 +142,24 @@ export const helloWorld = task({
 - CLI available via `trigger.dev` package for deployments
 - Self-hosting supported via Docker/Kubernetes
 
+## Railway Deployment Best Practices
+
+### Environment Variables
+- **ALWAYS use Railway template variables** for cross-service references:
+  - `${{Postgres.DATABASE_URL}}` - PostgreSQL connection string
+  - `${{Redis.RAILWAY_PRIVATE_DOMAIN}}` - Redis hostname
+  - `${{Redis.REDISPORT}}` - Redis port
+  - `${{Redis.REDISPASSWORD}}` - Redis password
+  - `${{RAILWAY_PUBLIC_DOMAIN}}` - Service public domain
+- **NEVER hardcode connection strings** - they change between deployments
+- Use `railway variables --set KEY=value` for application-specific variables
+- Generate secrets with `openssl rand -hex 16`
+
+### Common Railway Issues
+- ClickHouse validation: Set `CLICKHOUSE_URL=` (empty) to bypass v4-beta validation bug
+- Missing domains: Run `railway domain` to generate public domain for service
+- Cross-service references: Ensure service names match exactly (case-sensitive)
+
 ## Development Best Practices
 
 - Use appropriate machine presets (micro to large-2x) based on resource needs
