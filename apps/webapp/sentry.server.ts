@@ -22,5 +22,6 @@ if (process.env.SENTRY_DSN) {
     environment: process.env.APP_ENV,
 
     ignoreErrors: ["queryRoute() call aborted"],
+    includeLocalVariables: false,
   });
 }
