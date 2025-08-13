@@ -757,6 +757,235 @@ railway variables --set "CLICKHOUSE_URL="  # Empty string bypasses validation
 
 **Note:** v4-beta has a validation bug where `CLICKHOUSE_URL` is required but should be optional.
 
+## 🐛 Advanced Troubleshooting: Known Deployment Issues
+
+*This section documents critical issues discovered during Railway deployment testing and their solutions.*
+
+### Redis Internal DNS Resolution (ENOTFOUND redis.railway.internal)
+
+**Problem:** Application crashes with `getaddrinfo ENOTFOUND redis.railway.internal` errors despite Redis service running.
+
+**Root Cause:** Railway's internal DNS only provides IPv6 addresses, but ioredis defaults to IPv4-only lookups.
+
+**Solutions:**
+
+**Option 1: IPv6 Support (Long-term)**
+```typescript
+// In redis.server.ts - add family: 0 to Redis configuration
+const redis = new Redis({
+  connectionName,
+  host: options.host,
+  port: options.port,
+  username: options.username,
+  password: options.password,
+  family: 0, // Support both IPv4 and IPv6 (required for Railway internal DNS)
+  // ... other options
+});
+```
+
+**Option 2: Public Endpoint Workaround (Immediate)**
+```bash
+# Get Redis public endpoint details
+railway service Redis
+railway variables | grep -E "REDIS|RAILWAY_TCP"
+
+# Set variables to use public endpoint
+railway variables --set "REDIS_HOST=yamanote.proxy.rlwy.net"
+railway variables --set "REDIS_PORT=15486"
+railway variables --set "REDIS_PASSWORD=${REDIS_PASSWORD}"  # Keep existing password
+```
+
+### Database Migration Issues
+
+**Problem:** Login fails with "The column `User.authIdentifier` does not exist" after deployment.
+
+**Root Cause:** Database migrations didn't complete properly due to internal DNS issues or timeouts.
+
+**Solution:**
+```bash
+# Use public Postgres endpoint for migrations
+# Get connection details
+railway service Postgres
+railway variables | grep -E "DATABASE_URL|RAILWAY_TCP"
+
+# Complete migrations using public endpoint
+DATABASE_URL="postgresql://postgres:${PASSWORD}@trolley.proxy.rlwy.net:14560/railway" \
+DIRECT_URL="postgresql://postgres:${PASSWORD}@trolley.proxy.rlwy.net:14560/railway" \
+npx prisma migrate deploy --schema=./internal-packages/database/prisma/schema.prisma
+
+# If migrations fail partway through, force schema sync
+DATABASE_URL="postgresql://postgres:${PASSWORD}@trolley.proxy.rlwy.net:14560/railway" \
+DIRECT_URL="postgresql://postgres:${PASSWORD}@trolley.proxy.rlwy.net:14560/railway" \
+npx prisma db push --schema=./internal-packages/database/prisma/schema.prisma --accept-data-loss
+```
+
+### Railway Configuration Application Issues
+
+**Problem:** Changes to `railway.json` don't apply even after git push.
+
+**Root Cause:** `railway redeploy` only restarts existing deployment without reading new configuration files.
+
+**Solution:**
+```bash
+# WRONG: This doesn't apply railway.json changes
+railway redeploy --yes
+
+# CORRECT: This uploads code and applies railway.json
+railway up --detach
+
+# Key difference:
+# - railway up = Upload code + build + apply railway.json + deploy
+# - railway redeploy = Restart last deployment (ignores new code/config)
+```
+
+### Authentication/Magic Link Failures
+
+**Problem:** Magic links are authenticated but user is redirected back to login screen.
+
+**Root Cause:** Missing database schema columns or email transport configuration.
+
+**Solutions:**
+
+**Database Schema:**
+```bash
+# Verify all required tables exist
+railway connect PostgreSQL
+\dt  # List tables in PostgreSQL
+
+# If User table missing authIdentifier column, force schema sync
+npx prisma db push --accept-data-loss
+```
+
+**Email Transport:**
+```bash
+# For development/testing, set empty email transport for console fallback
+railway variables --set "EMAIL_TRANSPORT="
+
+# For production, configure real email provider (optional)
+railway variables --set "EMAIL_TRANSPORT=resend"
+railway variables --set "RESEND_API_KEY=your_key"
+railway variables --set "FROM_EMAIL=noreply@yourdomain.com"
+```
+
+### Service Startup Dependency Issues
+
+**Problem:** Application starts before database/Redis services are ready.
+
+**Root Cause:** Railway doesn't guarantee service startup order.
+
+**Solution:**
+```bash
+# Ensure all services are running before deploying webapp
+railway service Redis && railway status
+railway service Postgres && railway status
+railway service Trigger.dev && railway up --detach
+```
+
+### Internal DNS vs Public Endpoint Matrix
+
+| Service | Internal DNS (Preferred) | Public Endpoint (Workaround) | Issue |
+|---------|-------------------------|-------------------------------|-------|
+| **Redis** | `redis.railway.internal:6379` | `yamanote.proxy.rlwy.net:15486` | IPv6 DNS resolution |
+| **Postgres** | `postgres.railway.internal:5432` | `trolley.proxy.rlwy.net:14560` | Migration timeouts |
+| **App** | `app.railway.internal` | `yourapp.railway.app` | No known issues |
+
+### Environment Variable Debugging
+
+**Problem:** Variables appear set but application doesn't receive them.
+
+**Root Cause:** Cached deployment or incorrect service context.
+
+**Debugging:**
+```bash
+# Check current service context
+railway status
+
+# Verify variables are set on correct service
+railway variables | grep -E "DATABASE_URL|REDIS_HOST|SESSION_SECRET"
+
+# Force fresh deployment with variables
+railway up --detach
+
+# Test variable resolution in deployed environment
+railway run env | grep -E "DATABASE_URL|REDIS_HOST"
+```
+
+### Build vs Runtime Variable Issues
+
+**Problem:** Variables work in Railway dashboard but fail during build or runtime.
+
+**Root Cause:** Railway.json template variables vs manually set variables conflict.
+
+**Solutions:**
+
+**For Build Time:**
+```bash
+# These must be set manually (not via railway.json)
+railway variables --set "SESSION_SECRET=$(openssl rand -hex 16)"
+railway variables --set "MAGIC_LINK_SECRET=$(openssl rand -hex 16)"
+railway variables --set "ENCRYPTION_KEY=$(openssl rand -hex 16)"
+```
+
+**For Runtime:**
+```json
+// railway.json - these work for runtime only
+{
+  "environments": {
+    "production": {
+      "deploy": {
+        "DATABASE_URL": "${{Postgres.DATABASE_URL}}",
+        "REDIS_HOST": "${{Redis.RAILWAY_PRIVATE_DOMAIN}}",
+        "APP_ORIGIN": "https://${{RAILWAY_PUBLIC_DOMAIN}}"
+      }
+    }
+  }
+}
+```
+
+### Complete Recovery Procedure
+
+If deployment fails completely, follow this recovery sequence:
+
+```bash
+# 1. Verify service context and status
+railway status
+railway service Redis && railway status
+railway service Postgres && railway status
+
+# 2. Fix critical environment variables
+railway service Trigger.dev
+railway variables --set "PORT=3030"
+railway variables --set "EMAIL_TRANSPORT="
+railway variables --set "SESSION_SECRET=$(openssl rand -hex 16)"
+
+# 3. Use public endpoints for problematic services
+railway variables --set "REDIS_HOST=yamanote.proxy.rlwy.net"
+railway variables --set "REDIS_PORT=15486"
+
+# 4. Complete database migrations
+DATABASE_URL="postgresql://postgres:${PASSWORD}@trolley.proxy.rlwy.net:14560/railway" \
+npx prisma db push --schema=./internal-packages/database/prisma/schema.prisma --accept-data-loss
+
+# 5. Fresh deployment
+railway up --detach
+
+# 6. Monitor logs
+railway logs
+```
+
+### Performance Impact of Workarounds
+
+**Public Endpoints vs Internal DNS:**
+- **Latency:** +2-5ms additional latency via public proxy
+- **Security:** Still encrypted, but traffic routes through Railway's edge
+- **Reliability:** Public endpoints may have different rate limits
+- **Cost:** No additional charges for public endpoint usage
+
+**When to Use Each:**
+- **Development/Testing:** Public endpoints for reliability
+- **Production:** Internal DNS once IPv6 support is added to codebase
+- **Hybrid:** Public for migrations, internal for runtime (if working)
+
 ### Q: How do I handle file uploads/storage?
 **A:** Railway provides persistent volumes. Configure `OBJECT_STORE_BASE_URL` to use Railway's file storage or integrate with external services like AWS S3.
 
