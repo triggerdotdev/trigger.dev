@@ -181,6 +181,19 @@ export const helloWorld = task({
 - **Build failures**: Ensure `.env.example` exists and symlinks resolve correctly
 
 ### Railway Deployment Troubleshooting
+**Redis connection errors (getaddrinfo ENOTFOUND redis.railway.internal):**
+```bash
+# 1. Ensure Redis service is running
+railway service Redis
+railway status  # Should show deployed, not "No deployments found"
+railway up      # If Redis service isn't running, this starts it
+
+# 2. IPv6/IPv4 compatibility issue (most common cause):
+# Railway's internal DNS only provides IPv6 addresses, but ioredis defaults to IPv4-only
+# Fix: Add family: 0 to ioredis configuration to support both IPv4 and IPv6
+# This is already implemented in apps/webapp/app/redis.server.ts
+```
+
 **Deployment failing with "PORT must be integer":**
 ```bash
 railway variables --set "PORT=3030"  # Remix apps need explicit port
