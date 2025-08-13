@@ -86,6 +86,8 @@ export async function devCommand(options: DevCommandOptions) {
       initialValue: true,
     });
 
+    writeConfigHasSeenMCPInstallPrompt(true);
+
     const skipInstall = isCancel(installChoice) || !installChoice;
 
     if (!skipInstall) {
