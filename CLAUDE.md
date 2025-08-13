@@ -150,6 +150,9 @@ export const helloWorld = task({
 - Variables must exist first before railway.json can reference them
 - Cross-service references work automatically: `${{Postgres.DATABASE_URL}}`
 - Service variables must be set manually: `railway variables --set SESSION_SECRET=value`
+- **CRITICAL: railway.json only applies during `railway up`, not `railway redeploy`**
+- Use `railway up --detach` to deploy with railway.json changes
+- Use `railway redeploy` only to restart existing deployment without config changes
 
 ### Environment Variable Categories
 **Railway Auto-Provided (✅ Work automatically):**
