@@ -144,21 +144,69 @@ export const helloWorld = task({
 
 ## Railway Deployment Best Practices
 
-### Environment Variables
-- **ALWAYS use Railway template variables** for cross-service references:
-  - `${{Postgres.DATABASE_URL}}` - PostgreSQL connection string
-  - `${{Redis.RAILWAY_PRIVATE_DOMAIN}}` - Redis hostname
-  - `${{Redis.REDISPORT}}` - Redis port
-  - `${{Redis.REDISPASSWORD}}` - Redis password
-  - `${{RAILWAY_PUBLIC_DOMAIN}}` - Service public domain
+### How railway.json Works
+- **railway.json is a TEMPLATE, not a variable creator**
+- It defines variable mapping but doesn't create the variables
+- Variables must exist first before railway.json can reference them
+- Cross-service references work automatically: `${{Postgres.DATABASE_URL}}`
+- Service variables must be set manually: `railway variables --set SESSION_SECRET=value`
+
+### Environment Variable Categories
+**Railway Auto-Provided (✅ Work automatically):**
+- `${{PORT}}` - Service port (but set PORT=3030 for Remix apps)
+- `${{Postgres.DATABASE_URL}}` - PostgreSQL connection string
+- `${{Redis.RAILWAY_PRIVATE_DOMAIN}}` - Redis hostname
+- `${{Redis.REDISPORT}}` - Redis port
+- `${{Redis.REDISPASSWORD}}` - Redis password
+- `${{RAILWAY_PUBLIC_DOMAIN}}` - Service public domain
+
+**Manual Required (❌ Must set with CLI):**
+- `SESSION_SECRET`, `MAGIC_LINK_SECRET`, `ENCRYPTION_KEY`, `MANAGED_WORKER_SECRET`
+- Generate with: `openssl rand -hex 16`
+- Set with: `railway variables --set KEY=value`
+
+### Critical railway.json Syntax Rules
+- ✅ **Correct**: `"SESSION_SECRET": "${{SESSION_SECRET}}"`
+- ❌ **Invalid**: `"SESSION_SECRET": "${{shared.SESSION_SECRET}}"` (breaks parsing)
+- **NEVER use `${{shared.*}}` syntax** - not supported by Railway
 - **NEVER hardcode connection strings** - they change between deployments
-- Use `railway variables --set KEY=value` for application-specific variables
-- Generate secrets with `openssl rand -hex 16`
+- Service names are case-sensitive: `Postgres` not `PostgreSQL`
 
 ### Common Railway Issues
-- ClickHouse validation: Set `CLICKHOUSE_URL=` (empty) to bypass v4-beta validation bug
-- Missing domains: Run `railway domain` to generate public domain for service
-- Cross-service references: Ensure service names match exactly (case-sensitive)
+- **Port validation**: Set `PORT=3030` explicitly for Remix apps
+- **ClickHouse validation**: Set `CLICKHOUSE_URL=` (empty) or real cloud URL to bypass v4-beta validation bug  
+- **Missing domains**: Run `railway domain` to generate public domain for service
+- **Service creation**: Create separate webapp service, don't deploy to Redis/Postgres services
+- **railway.json not applying**: Variables must exist before railway.json can reference them
+- **Build failures**: Ensure `.env.example` exists and symlinks resolve correctly
+
+### Railway Deployment Troubleshooting
+**Deployment failing with "PORT must be integer":**
+```bash
+railway variables --set "PORT=3030"  # Remix apps need explicit port
+```
+
+**Environment variables not applying from railway.json:**
+```bash
+# Variables must exist first, then railway.json can reference them
+railway variables --set "SESSION_SECRET=$(openssl rand -hex 16)"
+railway variables --set "MAGIC_LINK_SECRET=$(openssl rand -hex 16)"
+railway variables --set "ENCRYPTION_KEY=$(openssl rand -hex 16)"
+railway variables --set "MANAGED_WORKER_SECRET=$(openssl rand -hex 16)"
+```
+
+**ClickHouse validation error:**
+```bash
+# v4-beta bug - either disable or use real instance
+railway variables --set "CLICKHOUSE_URL="  # Empty to bypass
+# OR
+railway variables --set "CLICKHOUSE_URL=https://user:pass@host:8443"  # Real instance
+```
+
+**Missing public domain:**
+```bash
+railway domain  # Generates Railway-provided domain
+```
 
 ## Development Best Practices
 

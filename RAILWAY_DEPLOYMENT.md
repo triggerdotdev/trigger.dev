@@ -314,10 +314,78 @@ Railway's cross-service variable references provide several advantages:
 ### ✅ **Example References**
 ```bash
 # Direct service references (Railway handles these automatically)
-DATABASE_URL=${{PostgreSQL.DATABASE_URL}}
+DATABASE_URL=${{Postgres.DATABASE_URL}}        # Note: 'Postgres' not 'PostgreSQL'
 REDIS_HOST=${{Redis.RAILWAY_PRIVATE_DOMAIN}}
 REDIS_PORT=${{Redis.REDISPORT}}
 APP_ORIGIN=https://${{RAILWAY_PUBLIC_DOMAIN}}
+```
+
+## 🔧 How railway.json Actually Works
+
+### Understanding railway.json
+**Key Insight: railway.json is a TEMPLATE, not a variable creator**
+
+```json
+{
+  "environments": {
+    "production": {
+      "deploy": {
+        "SESSION_SECRET": "${{SESSION_SECRET}}",     // Looks for existing variable
+        "DATABASE_URL": "${{Postgres.DATABASE_URL}}"   // Railway auto-provides this
+      }
+    }
+  }
+}
+```
+
+### What railway.json Does ✅
+- Defines build/deploy configuration
+- Creates variable mapping template
+- Resolves Railway template variables at deployment
+- Tells Railway "set these environment variables to these values"
+
+### What railway.json Does NOT Do ❌
+- Create environment variables on services
+- Generate secrets automatically
+- Set up cross-service connections
+- Work with invalid `${{shared.*}}` syntax
+
+### Two Types of Variables
+
+**1. Railway Auto-Provided (Work automatically) ✅**
+```bash
+${{PORT}}                           # Railway-provided port
+${{Postgres.DATABASE_URL}}          # From PostgreSQL service
+${{Redis.RAILWAY_PRIVATE_DOMAIN}}   # From Redis service
+${{RAILWAY_PUBLIC_DOMAIN}}          # Service's public domain
+```
+
+**2. Service Variables (Must set manually) ⚠️**
+```bash
+${{SESSION_SECRET}}                 # Must set: railway variables --set SESSION_SECRET=...
+${{MAGIC_LINK_SECRET}}             # Must set: railway variables --set MAGIC_LINK_SECRET=...
+${{ENCRYPTION_KEY}}                # Must set: railway variables --set ENCRYPTION_KEY=...
+```
+
+### Deployment Flow
+1. Railway reads `railway.json`: "This service needs SESSION_SECRET"
+2. Railway checks service variables: "Does SESSION_SECRET exist?"
+3. **If exists**: Uses value and deploys ✅
+4. **If missing**: Deployment fails with missing variable error ❌
+
+### Common railway.json Mistakes
+```json
+// ❌ WRONG - Invalid shared syntax (breaks parsing)
+"SESSION_SECRET": "${{shared.SESSION_SECRET}}"
+
+// ✅ CORRECT - Direct variable reference
+"SESSION_SECRET": "${{SESSION_SECRET}}"
+
+// ❌ WRONG - Incorrect service name
+"DATABASE_URL": "${{PostgreSQL.DATABASE_URL}}"
+
+// ✅ CORRECT - Exact service name (case-sensitive)
+"DATABASE_URL": "${{Postgres.DATABASE_URL}}"
 ```
 
 ## 🎯 Post-Deployment Steps
@@ -380,6 +448,112 @@ Deploy it:
 npx trigger.dev@v4-beta deploy
 ```
 
+## 🚨 Complete Troubleshooting Guide
+
+### Step-by-Step Deployment Failure Resolution
+
+**1. Check Deployment Status**
+```bash
+railway status --json | jq '.services.edges[] | {name: .node.name, status: .node.serviceInstances.edges[0].node.latestDeployment.status}'
+```
+
+**2. Verify Service Context**
+```bash
+railway status  # Ensure you're on the webapp service, not Redis/Postgres
+```
+
+**3. Generate Missing Components**
+```bash
+# Generate public domain if missing
+railway domain
+
+# Check if domain was created
+railway variables | grep RAILWAY_PUBLIC_DOMAIN
+```
+
+**4. Set Required Environment Variables**
+```bash
+# Generate and set secrets (if missing)
+railway variables --set "SESSION_SECRET=$(openssl rand -hex 16)"
+railway variables --set "MAGIC_LINK_SECRET=$(openssl rand -hex 16)"
+railway variables --set "ENCRYPTION_KEY=$(openssl rand -hex 16)"
+railway variables --set "MANAGED_WORKER_SECRET=$(openssl rand -hex 16)"
+
+# Set application configuration
+railway variables --set "PORT=3030"                    # Critical for Remix apps
+railway variables --set "NODE_ENV=production"
+railway variables --set "APP_LOG_LEVEL=info"
+railway variables --set "REDIS_TLS_DISABLED=true"
+
+# Set database connections (using Railway templates)
+railway variables --set "DATABASE_URL=\${{Postgres.DATABASE_URL}}"
+railway variables --set "DIRECT_URL=\${{Postgres.DATABASE_URL}}"
+railway variables --set "REDIS_HOST=\${{Redis.RAILWAY_PRIVATE_DOMAIN}}"
+railway variables --set "REDIS_PORT=\${{Redis.REDISPORT}}"
+railway variables --set "REDIS_PASSWORD=\${{Redis.REDISPASSWORD}}"
+
+# Set origin URLs (using Railway domain)
+railway variables --set "APP_ORIGIN=https://\${{RAILWAY_PUBLIC_DOMAIN}}"
+railway variables --set "LOGIN_ORIGIN=https://\${{RAILWAY_PUBLIC_DOMAIN}}"
+railway variables --set "API_ORIGIN=https://\${{RAILWAY_PUBLIC_DOMAIN}}"
+
+# Handle ClickHouse validation (v4-beta)
+railway variables --set "CLICKHOUSE_URL="              # Empty to bypass, or real URL
+```
+
+**5. Verify Variable Configuration**
+```bash
+# Check all variables are set
+railway variables | grep -E "(SESSION_SECRET|DATABASE_URL|REDIS_HOST|PORT|APP_ORIGIN)"
+
+# Verify count (should have ~20 variables)
+railway variables | grep -c "│"
+```
+
+**6. Deploy and Monitor**
+```bash
+# Deploy with monitoring
+railway up --detach
+
+# Wait 30 seconds then check status
+sleep 30 && railway status --json | jq '.services.edges[] | select(.node.name == "Trigger.dev") | .node.serviceInstances.edges[0].node.latestDeployment.status'
+```
+
+**7. Access Build Logs**
+If deployment fails, check Railway dashboard using the Build Logs URL from `railway up` output.
+
+### Quick Fix Commands
+
+**Fix PORT Error:**
+```bash
+railway variables --set "PORT=3030"
+railway up --detach
+```
+
+**Fix Missing Variables:**
+```bash
+railway variables --set "SESSION_SECRET=$(openssl rand -hex 16)" \
+                  --set "MAGIC_LINK_SECRET=$(openssl rand -hex 16)" \
+                  --set "ENCRYPTION_KEY=$(openssl rand -hex 16)" \
+                  --set "MANAGED_WORKER_SECRET=$(openssl rand -hex 16)"
+```
+
+**Fix ClickHouse Validation:**
+```bash
+# For testing (disable ClickHouse)
+railway variables --set "CLICKHOUSE_URL="
+
+# For production (use ClickHouse Cloud)
+railway variables --set "CLICKHOUSE_URL=https://user:password@host.clickhouse.cloud:8443"
+```
+
+**Fix Service Context:**
+```bash
+# If deploying to wrong service
+railway service "Trigger.dev"  # Switch to webapp service
+railway up --detach
+```
+
 ## 🔍 Monitoring & Troubleshooting
 
 ### View Logs
@@ -418,10 +592,42 @@ In Railway dashboard:
 - **"Service: None" after linking** - This is normal before adding services
 
 #### Railway-specific issues  
-- **Service references not working** - Ensure services are named correctly (PostgreSQL, Redis)
+- **Service references not working** - Ensure services are named correctly (`Postgres`, `Redis` - case sensitive)
 - **Private domain resolution** - Check that `RAILWAY_PRIVATE_DOMAIN` variables are available
-- **Port conflicts** - Railway auto-assigns ports, no manual configuration needed
 - **Cross-service variables not populating** - Verify service names match exactly (case-sensitive)
+- **railway.json not applying variables** - Variables must exist before railway.json can reference them
+
+#### Environment Variable Issues
+- **"PORT must be integer between 0 and 65535"** - Set `PORT=3030` explicitly for Remix apps:
+  ```bash
+  railway variables --set "PORT=3030"
+  ```
+- **Missing SESSION_SECRET, MAGIC_LINK_SECRET, etc.** - These must be set manually:
+  ```bash
+  railway variables --set "SESSION_SECRET=$(openssl rand -hex 16)"
+  railway variables --set "MAGIC_LINK_SECRET=$(openssl rand -hex 16)"
+  railway variables --set "ENCRYPTION_KEY=$(openssl rand -hex 16)"
+  railway variables --set "MANAGED_WORKER_SECRET=$(openssl rand -hex 16)"
+  ```
+- **ClickHouse validation error in v4-beta** - Either disable or use real instance:
+  ```bash
+  # Option 1: Bypass validation (for testing)
+  railway variables --set "CLICKHOUSE_URL="
+  
+  # Option 2: Use ClickHouse Cloud
+  railway variables --set "CLICKHOUSE_URL=https://user:pass@host.clickhouse.cloud:8443"
+  ```
+- **No public domain for service** - Generate Railway domain:
+  ```bash
+  railway domain  # Creates Railway-provided domain
+  ```
+- **Cross-service variables empty** - Ensure dependent services are running and named correctly
+
+#### Service Creation Issues
+- **Deploying to wrong service** - Check `railway status` to verify current service context
+- **Creating webapp service** - Use `railway add --service "ServiceName"` for empty services
+- **Service naming conflicts** - Service names must be unique in project
+- **Corrupted service deployments** - Use `railway down -y` to remove bad deployments
 
 ### Performance Tuning
 
@@ -537,7 +743,19 @@ REDIS_TLS_DISABLED=true         # Railway Redis uses internal TLS
 ## ❓ Frequently Asked Questions
 
 ### Q: Can I use ClickHouse for analytics?
-**A:** Not in this simplified deployment. ClickHouse requires additional setup. Railway's built-in analytics may be sufficient for most use cases.
+**A:** Yes! You can use ClickHouse Cloud or self-hosted ClickHouse:
+
+**ClickHouse Cloud:**
+```bash
+railway variables --set "CLICKHOUSE_URL=https://user:password@host.clickhouse.cloud:8443"
+```
+
+**Disable ClickHouse (v4-beta validation workaround):**
+```bash
+railway variables --set "CLICKHOUSE_URL="  # Empty string bypasses validation
+```
+
+**Note:** v4-beta has a validation bug where `CLICKHOUSE_URL` is required but should be optional.
 
 ### Q: How do I handle file uploads/storage?
 **A:** Railway provides persistent volumes. Configure `OBJECT_STORE_BASE_URL` to use Railway's file storage or integrate with external services like AWS S3.
