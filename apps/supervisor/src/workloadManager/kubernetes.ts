@@ -13,19 +13,56 @@ type ResourceQuantities = {
   [K in "cpu" | "memory" | "ephemeral-storage"]?: string;
 };
 
+interface TierConfig {
+  enabled: boolean;
+  labelKey: string;
+  freeValue: string;
+  paidValue: string;
+}
+
 export class KubernetesWorkloadManager implements WorkloadManager {
   private readonly logger = new SimpleStructuredLogger("kubernetes-workload-provider");
   private k8s: K8sApi;
   private namespace = env.KUBERNETES_NAMESPACE;
+  private tierConfig: TierConfig;
 
   constructor(private opts: WorkloadManagerOptions) {
     this.k8s = createK8sApi();
+    this.tierConfig = this.tierSchedulingConfig;
 
     if (opts.workloadApiDomain) {
       this.logger.warn("[KubernetesWorkloadManager] ⚠️ Custom workload API domain", {
         domain: opts.workloadApiDomain,
       });
     }
+  }
+
+  private get tierSchedulingConfig(): TierConfig {
+    return {
+      enabled: env.ENABLE_TIER_SCHEDULING,
+      labelKey: env.TIER_LABEL_KEY,
+      freeValue: env.TIER_LABEL_VALUE_FREE,
+      paidValue: env.TIER_LABEL_VALUE_PAID,
+    };
+  }
+
+  private addTierScheduling(
+    podSpec: Omit<k8s.V1PodSpec, "containers">,
+    isPaidTier: boolean
+  ): Omit<k8s.V1PodSpec, "containers"> {
+    if (!this.tierConfig.enabled) {
+      return podSpec;
+    }
+
+    const labelValue = isPaidTier ? this.tierConfig.paidValue : this.tierConfig.freeValue;
+
+    return {
+      ...podSpec,
+      nodeSelector: {
+        ...podSpec.nodeSelector,
+        [this.tierConfig.labelKey]: labelValue,
+      },
+    };
   }
 
   async create(opts: WorkloadManagerCreateOptions) {
@@ -48,7 +85,7 @@ export class KubernetesWorkloadManager implements WorkloadManager {
             },
           },
           spec: {
-            ...this.#defaultPodSpec,
+            ...this.addTierScheduling(this.#defaultPodSpec, opts.isPaidTier ?? false),
             terminationGracePeriodSeconds: 60 * 60,
             containers: [
               {

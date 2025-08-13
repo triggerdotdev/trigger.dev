@@ -32,4 +32,6 @@ export interface WorkloadManagerCreateOptions {
   runFriendlyId: string;
   snapshotId: string;
   snapshotFriendlyId: string;
+  // tier scheduling
+  isPaidTier?: boolean;
 }
