@@ -73,3 +73,6 @@ apps/**/public/build
 worker_token
 
 # Note: .env.railway is a template and should be committed
+
+# Claude Code
+.mcp.json
