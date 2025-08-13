@@ -224,6 +224,16 @@ railway variables --set "CLICKHOUSE_URL=https://user:pass@host:8443"  # Real ins
 railway domain  # Generates Railway-provided domain
 ```
 
+**Database migration failures:**
+```bash
+# If migrations fail partway through, force schema sync
+DATABASE_URL="<public_postgres_url>" npx prisma db push --schema=./internal-packages/database/prisma/schema.prisma --accept-data-loss
+
+# Use public endpoints for migrations due to internal DNS issues:
+# Postgres: trolley.proxy.rlwy.net:14560
+# Redis: yamanote.proxy.rlwy.net:15486
+```
+
 ## Development Best Practices
 
 - Use appropriate machine presets (micro to large-2x) based on resource needs
