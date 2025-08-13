@@ -26,23 +26,21 @@ function formatDate(date: Date) {
 
 // Force consistent garbage collection before taking heap snapshot
 async function forceConsistentGC(rounds = 5): Promise<void> {
-  if (typeof global.gc !== 'function') {
-    console.warn('⚠️ global.gc not available - heap snapshots may be inconsistent');
+  if (typeof global.gc !== "function") {
+    console.warn("⚠️ global.gc not available - heap snapshots may be inconsistent");
     return;
   }
 
   // Force multiple GC rounds to ensure consistent state
   for (let i = 0; i < rounds; i++) {
-    global.gc(true);  // Major GC
-    await new Promise(resolve => setTimeout(resolve, 20));
-    global.gc(false); // Minor GC (if available)
+    global.gc(); // Major GC
     if (i < rounds - 1) {
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 50));
     }
   }
-  
+
   // Final wait for any pending cleanup
-  await new Promise(resolve => setTimeout(resolve, 200));
+  await new Promise((resolve) => setTimeout(resolve, 200));
 }
 
 export async function loader({ request }: DataFunctionArgs) {
