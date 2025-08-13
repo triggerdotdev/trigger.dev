@@ -298,6 +298,7 @@ export class RunEngine {
       runAttemptSystem: this.runAttemptSystem,
       machines: this.options.machines,
       billing: this.options.billing,
+      redisOptions: this.options.cache?.redis ?? this.options.runLock.redis,
     });
   }
 
@@ -1347,5 +1348,13 @@ export class RunEngine {
         id: run.id,
         orgId: run.organizationId!,
       }));
+  }
+
+  /**
+   * Invalidates the billing cache for an organization when their plan changes
+   * Runs in background and handles all errors internally
+   */
+  invalidateBillingCache(orgId: string): void {
+    this.dequeueSystem.invalidateBillingCache(orgId);
   }
 }
