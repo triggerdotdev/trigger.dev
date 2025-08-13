@@ -20,7 +20,7 @@ class MemoryLeakDetector {
     // Create timestamped directory for this run
     const runTimestamp = new Date().toISOString().replace(/[:.]/g, "-");
     const baseDir = options.baseDir || "./.memory-snapshots";
-    const runDir = `${baseDir}/${runTimestamp}`;
+    const runDir = `${baseDir}/${runTimestamp}-${options.label || "memory-leak-detector"}`;
 
     this.options = {
       // Server configuration
@@ -234,7 +234,7 @@ class MemoryLeakDetector {
         this.log(`Using NODE_PATH: ${nodePath}`);
 
         // Start the server with memory inspection flags
-        this.serverProcess = spawn("node", ["--max-old-space-size=16384", "./build/server.js"], {
+        this.serverProcess = spawn("node", ["--max-old-space-size=16384", "--expose-gc", "./build/server.js"], {
           cwd: process.cwd(),
           stdio: ["ignore", "pipe", "pipe"],
           env: {
@@ -809,6 +809,9 @@ function parseArgs() {
       case "--sentry-dsn":
         options.sentryDsn = value;
         break;
+      case "--label":
+        options.label = value;
+        break;
       case "--verbose":
         options.verbose = true;
         i--; // No value for this flag
@@ -824,6 +827,7 @@ Options:
   --requests <number>    Number of test requests (default: 100)  
   --delay <ms>          Delay between requests (default: 50)
   --endpoints <list>     Comma-separated API endpoints to test
+  --label <string>       Label for the run
   --threshold <MB>       Memory leak threshold in MB (default: 50)
   --token <string>       Admin Bearer token for V8 heap snapshots
   --api-key <string>     API key for API requests
