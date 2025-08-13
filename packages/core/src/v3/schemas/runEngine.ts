@@ -261,5 +261,12 @@ export const DequeuedMessage = z.object({
   project: z.object({
     id: z.string(),
   }),
+  billing: z
+    .object({
+      currentPlan: z.object({
+        isPaying: z.boolean(),
+      }),
+    })
+    .optional(),
 });
 export type DequeuedMessage = z.infer<typeof DequeuedMessage>;

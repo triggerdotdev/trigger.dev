@@ -1,5 +1,5 @@
 import { startSpan } from "@internal/tracing";
-import { assertExhaustive } from "@trigger.dev/core";
+import { assertExhaustive, tryCatch } from "@trigger.dev/core";
 import { DequeuedMessage, RetryOptions } from "@trigger.dev/core/v3";
 import { getMaxDuration } from "@trigger.dev/core/v3/isomorphic";
 import { PrismaClientOrTransaction } from "@trigger.dev/database";
@@ -17,6 +17,7 @@ export type DequeueSystemOptions = {
   machines: RunEngineOptions["machines"];
   executionSnapshotSystem: ExecutionSnapshotSystem;
   runAttemptSystem: RunAttemptSystem;
+  billing?: RunEngineOptions["billing"];
 };
 
 export class DequeueSystem {
@@ -380,6 +381,24 @@ export class DequeueSystem {
               const currentAttemptNumber = lockedTaskRun.attemptNumber ?? 0;
               const nextAttemptNumber = currentAttemptNumber + 1;
 
+              // Get billing information if available
+              let isPaying = false;
+              if (this.options.billing?.getCurrentPlan) {
+                const [error, planResult] = await tryCatch(
+                  this.options.billing.getCurrentPlan(orgId)
+                );
+
+                if (error) {
+                  this.$.logger.error("Failed to get billing information", {
+                    orgId,
+                    runId,
+                    error: error.message,
+                  });
+                } else {
+                  isPaying = planResult.isPaying;
+                }
+              }
+
               const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(
                 prisma,
                 {
@@ -447,6 +466,11 @@ export class DequeueSystem {
                 },
                 project: {
                   id: lockedTaskRun.projectId,
+                },
+                billing: {
+                  currentPlan: {
+                    isPaying,
+                  },
                 },
               } satisfies DequeuedMessage;
             }

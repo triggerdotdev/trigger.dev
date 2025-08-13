@@ -30,6 +30,9 @@ export type RunEngineOptions = {
     machines: Record<string, MachinePreset>;
     baseCostInCents: number;
   };
+  billing?: {
+    getCurrentPlan: (orgId: string) => Promise<{ isPaying: boolean }>;
+  };
   queue: {
     redis: RedisOptions;
     shardCount?: number;

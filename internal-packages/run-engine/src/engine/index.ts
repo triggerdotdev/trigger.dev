@@ -297,6 +297,7 @@ export class RunEngine {
       executionSnapshotSystem: this.executionSnapshotSystem,
       runAttemptSystem: this.runAttemptSystem,
       machines: this.options.machines,
+      billing: this.options.billing,
     });
   }
 
