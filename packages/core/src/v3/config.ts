@@ -280,10 +280,10 @@ export type TriggerConfig = {
   processKeepAlive?: ProcessKeepAlive;
 
   /**
-   * @default false
+   * @default true
    * @description If set to true when running the dev CLI, the current working directory will be set to where the command is run from.
    *
-   * The new default (when this flag isn't passed) is to set the current working directory to the build directory.
+   * Setting this to `false` will set the current working directory to the build directory.
    * This more closely matches the behavior of the CLI when running in production and is highly recommended.
    *
    * This impacts the value of process.cwd() in your task code.

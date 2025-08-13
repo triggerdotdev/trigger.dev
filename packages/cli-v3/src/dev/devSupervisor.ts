@@ -358,10 +358,12 @@ class DevSupervisor implements WorkerRuntime {
           config: this.options.config,
         });
 
-        const cwd =
-          this.options.config.legacyDevProcessCwdBehaviour === true
-            ? undefined
-            : worker.build.outputPath;
+        const legacyDevProcessCwdBehaviour =
+          typeof this.options.config.legacyDevProcessCwdBehaviour === "boolean"
+            ? this.options.config.legacyDevProcessCwdBehaviour
+            : true;
+
+        const cwd = legacyDevProcessCwdBehaviour === true ? undefined : worker.build.outputPath;
 
         //new run
         runController = new DevRunController({
