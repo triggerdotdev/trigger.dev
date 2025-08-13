@@ -133,6 +133,8 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
       ],
     });
 
+    writeConfigHasSeenMCPInstallPrompt(true);
+
     const continueWithCLI = isCancel(installChoice) || installChoice === "cli";
 
     if (!continueWithCLI) {
