@@ -42,7 +42,7 @@ export function createRedisClient(
         username: options.username,
         password: options.password,
         enableAutoPipelining: true,
-        family: 0, // Support both IPv4 and IPv6 (required for Railway internal DNS)
+        family: 6, // Explicit IPv6 (Railway internal DNS is IPv6-only)
         ...(options.tlsDisabled
           ? {
               checkServerIdentity: () => {
@@ -70,7 +70,7 @@ export function createRedisClient(
       password: options.password,
       enableAutoPipelining: true,
       keyPrefix: options.keyPrefix,
-      family: 0, // Support both IPv4 and IPv6 (required for Railway internal DNS)
+      family: 6, // Explicit IPv6 (Railway internal DNS is IPv6-only)
       ...(options.tlsDisabled ? {} : { tls: {} }),
     });
   }
