@@ -21,7 +21,6 @@ import { logger } from "~/services/logger.server";
 import { newProjectPath, organizationBillingPath } from "~/utils/pathBuilder";
 import { singleton } from "~/utils/singleton";
 import { RedisCacheStore } from "./unkey/redisCacheStore.server";
-import { engine } from "~/v3/runEngine.server";
 import { existsSync, readFileSync } from "node:fs";
 import { z } from "zod";
 import { MachinePresetName } from "@trigger.dev/core/v3";
@@ -286,7 +285,8 @@ export async function setPlan(
   organization: { id: string; slug: string },
   request: Request,
   callerPath: string,
-  plan: SetPlanBody
+  plan: SetPlanBody,
+  opts?: { invalidateBillingCache?: (orgId: string) => void }
 ) {
   if (!client) {
     throw redirectWithErrorMessage(callerPath, request, "Error setting plan");
@@ -310,7 +310,7 @@ export async function setPlan(
       case "free_connected": {
         if (result.accepted) {
           // Invalidate billing cache since plan changed
-          engine.invalidateBillingCache(organization.id);
+          opts?.invalidateBillingCache?.(organization.id);
           return redirect(newProjectPath(organization, "You're on the Free plan."));
         } else {
           return redirectWithErrorMessage(
@@ -325,7 +325,7 @@ export async function setPlan(
       }
       case "updated_subscription": {
         // Invalidate billing cache since subscription changed
-        engine.invalidateBillingCache(organization.id);
+        opts?.invalidateBillingCache?.(organization.id);
         return redirectWithSuccessMessage(
           callerPath,
           request,
@@ -334,7 +334,7 @@ export async function setPlan(
       }
       case "canceled_subscription": {
         // Invalidate billing cache since subscription was canceled
-        engine.invalidateBillingCache(organization.id);
+        opts?.invalidateBillingCache?.(organization.id);
         return redirectWithSuccessMessage(callerPath, request, "Subscription canceled.");
       }
     }
