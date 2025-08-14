@@ -225,6 +225,7 @@ export class CreateTaskRunAttemptService extends BaseService {
           id: queue.friendlyId,
           name: queue.name,
         },
+        concurrencyKey: taskRun.concurrencyKey ?? undefined,
         environment: {
           id: environment.id,
           slug: environment.slug,

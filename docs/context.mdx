@@ -125,6 +125,11 @@ export const parentTask = task({
   </Expandable>
 </ResponseField>
 
+<ResponseField name="concurrencyKey" type="string" optional>
+  If set, the run is queued under this key. Runs with the same key execute sequentially.
+  See <a href="/queue-concurrency">Queue concurrency</a> and <a href="/triggering#concurrencykey">Triggering: concurrencyKey</a>.
+</ResponseField>
+
 <ResponseField name="environment" type="object">
   <Expandable title="properties">
     <ResponseField name="id" type="string">
