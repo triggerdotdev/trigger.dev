@@ -761,6 +761,8 @@ const EnvironmentSchema = z.object({
     .int()
     .default(60_000 * 5), // 5 minutes
 
+  BATCH_TRIGGER_CACHED_RUNS_CHECK_ENABLED: BoolEnv.default("false"),
+
   BATCH_TRIGGER_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
   BATCH_TRIGGER_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),
   BATCH_TRIGGER_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(10),
