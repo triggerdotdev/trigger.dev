@@ -29,12 +29,10 @@ import { VERSION } from "../version.js";
 import { env, isCI } from "std-env";
 import { CLOUD_API_URL } from "../consts.js";
 import {
-  isPersonalAccessToken,
-  isOrganizationAccessToken,
   validateAccessToken,
   NotPersonalAccessTokenError,
   NotAccessTokenError,
-} from "../utilities/isPersonalAccessToken.js";
+} from "../utilities/accessTokens.js";
 import { links } from "@trigger.dev/core/v3";
 
 export const LoginCommandOptions = CommonCommandOptions.extend({

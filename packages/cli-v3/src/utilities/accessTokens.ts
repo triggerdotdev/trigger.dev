@@ -1,11 +1,11 @@
 const personalTokenPrefix = "tr_pat_";
 const organizationTokenPrefix = "tr_oat_";
 
-export function isPersonalAccessToken(token: string) {
+function isPersonalAccessToken(token: string) {
   return token.startsWith(personalTokenPrefix);
 }
 
-export function isOrganizationAccessToken(token: string) {
+function isOrganizationAccessToken(token: string) {
   return token.startsWith(organizationTokenPrefix);
 }
 
