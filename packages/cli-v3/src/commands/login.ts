@@ -30,7 +30,10 @@ import { env, isCI } from "std-env";
 import { CLOUD_API_URL } from "../consts.js";
 import {
   isPersonalAccessToken,
+  isOrganizationAccessToken,
+  validateAccessToken,
   NotPersonalAccessTokenError,
+  NotAccessTokenError,
 } from "../utilities/isPersonalAccessToken.js";
 import { links } from "@trigger.dev/core/v3";
 
@@ -94,8 +97,12 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
       const accessTokenFromEnv = env.TRIGGER_ACCESS_TOKEN;
 
       if (accessTokenFromEnv) {
-        if (!isPersonalAccessToken(accessTokenFromEnv)) {
-          throw new NotPersonalAccessTokenError(
+        const validationResult = validateAccessToken(accessTokenFromEnv);
+
+        if (!validationResult.success) {
+          // We deliberately don't surface the existence of organization access tokens to the user for now, as they're only used internally.
+          // Once we expose them in the application, we should also communicate that option here.
+          throw new NotAccessTokenError(
             "Your TRIGGER_ACCESS_TOKEN is not a Personal Access Token, they start with 'tr_pat_'. You can generate one here: https://cloud.trigger.dev/account/tokens"
           );
         }
@@ -119,6 +126,7 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
           dashboardUrl: userData.data.dashboardUrl,
           auth: {
             accessToken: auth.accessToken,
+            tokenType: validationResult.type,
             apiUrl: auth.apiUrl,
           },
         };
@@ -188,6 +196,7 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
                 auth: {
                   accessToken: authConfig.accessToken,
                   apiUrl: authConfig.apiUrl ?? opts.defaultApiUrl,
+                  tokenType: "personal" as const,
                 },
               };
             }
@@ -209,6 +218,7 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
               auth: {
                 accessToken: authConfig.accessToken,
                 apiUrl: authConfig.apiUrl ?? opts.defaultApiUrl,
+                tokenType: "personal" as const,
               },
             };
           }
@@ -270,7 +280,10 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
         getPersonalAccessTokenSpinner.stop(`Logged in with token ${indexResult.obfuscatedToken}`);
 
         writeAuthConfigProfile(
-          { accessToken: indexResult.token, apiUrl: opts.defaultApiUrl },
+          {
+            accessToken: indexResult.token,
+            apiUrl: opts.defaultApiUrl,
+          },
           options?.profile
         );
 
@@ -309,6 +322,7 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
           auth: {
             accessToken: indexResult.token,
             apiUrl: authConfig?.apiUrl ?? opts.defaultApiUrl,
+            tokenType: "personal" as const,
           },
         };
       } catch (e) {
