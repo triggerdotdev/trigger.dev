@@ -22,11 +22,9 @@ export class KubernetesWorkloadManager implements WorkloadManager {
   private readonly logger = new SimpleStructuredLogger("kubernetes-workload-provider");
   private k8s: K8sApi;
   private namespace = env.KUBERNETES_NAMESPACE;
-  private placementConfig: PlacementConfig;
 
   constructor(private opts: WorkloadManagerOptions) {
     this.k8s = createK8sApi();
-    this.placementConfig = this.placementTagsConfig;
 
     if (opts.workloadApiDomain) {
       this.logger.warn("[KubernetesWorkloadManager] ⚠️ Custom workload API domain", {
@@ -35,7 +33,7 @@ export class KubernetesWorkloadManager implements WorkloadManager {
     }
   }
 
-  private get placementTagsConfig(): PlacementConfig {
+  private get placementConfig(): PlacementConfig {
     return {
       enabled: env.PLACEMENT_TAGS_ENABLED,
       prefix: env.PLACEMENT_TAGS_PREFIX,
