@@ -62,7 +62,10 @@ export interface QueueManager {
     lockedBackgroundWorker?: LockedBackgroundWorker
   ): Promise<QueueProperties>;
   getQueueName(request: TriggerTaskRequest): Promise<string>;
-  validateQueueLimits(env: AuthenticatedEnvironment): Promise<QueueValidationResult>;
+  validateQueueLimits(
+    env: AuthenticatedEnvironment,
+    itemsToAdd?: number
+  ): Promise<QueueValidationResult>;
   getWorkerQueue(
     env: AuthenticatedEnvironment,
     regionOverride?: string
