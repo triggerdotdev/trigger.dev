@@ -307,7 +307,6 @@ export class RunEngine {
       runAttemptSystem: this.runAttemptSystem,
       machines: this.options.machines,
       billingCache: this.billingCache,
-      redisOptions: this.options.cache?.redis ?? this.options.runLock.redis,
     });
   }
 
@@ -382,7 +381,7 @@ export class RunEngine {
         const currentPlan = await this.billingCache.getCurrentPlan(environment.organization.id);
 
         if (currentPlan.err || !currentPlan.val) {
-          // If billing lookup fails, don't block the trigger - planType will be null
+          // If billing lookup fails, don't block the trigger - planType will be undefined
           this.logger.warn(
             "Failed to get billing info during trigger, proceeding without planType",
             {

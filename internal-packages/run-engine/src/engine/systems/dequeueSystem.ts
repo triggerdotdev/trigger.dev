@@ -1,4 +1,3 @@
-import type { RedisOptions } from "@internal/redis";
 import type { BillingCache } from "../billingCache.js";
 import { startSpan } from "@internal/tracing";
 import { assertExhaustive } from "@trigger.dev/core";
@@ -20,7 +19,6 @@ export type DequeueSystemOptions = {
   executionSnapshotSystem: ExecutionSnapshotSystem;
   runAttemptSystem: RunAttemptSystem;
   billingCache: BillingCache;
-  redisOptions: RedisOptions;
 };
 
 export class DequeueSystem {
