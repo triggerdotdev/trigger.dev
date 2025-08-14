@@ -846,35 +846,30 @@ curl --user 'default:YOUR_PASSWORD' \
 
 **Problem:** Application crashes with `getaddrinfo ENOTFOUND redis.railway.internal` errors despite Redis service running.
 
-**Root Cause:** Railway's internal DNS only provides IPv6 addresses, but ioredis defaults to IPv4-only lookups.
+**Root Cause:** Railway's internal DNS provides IPv6-only addresses, but ioredis defaults to IPv4-only DNS lookups.
 
-**Solutions:**
+**✅ DEFINITIVE SOLUTION (IMPLEMENTED):**
+The `@internal/redis` package includes `family: 0` in defaultOptions, enabling dual-stack IPv4/IPv6 DNS resolution for ALL Redis clients system-wide.
 
-**Option 1: IPv6 Support (Long-term)**
+**Location:** `internal-packages/redis/src/index.ts:12`
 ```typescript
-// In redis.server.ts - add family: 0 to Redis configuration
-const redis = new Redis({
-  connectionName,
-  host: options.host,
-  port: options.port,
-  username: options.username,
-  password: options.password,
-  family: 0, // Support both IPv4 and IPv6 (required for Railway internal DNS)
-  // ... other options
-});
+const defaultOptions: Partial<RedisOptions> = {
+  // ... retry strategies
+  family: 0, // Support both IPv4 and IPv6 (Railway internal DNS)
+};
 ```
 
-**Option 2: Public Endpoint Workaround (Immediate)**
-```bash
-# Get Redis public endpoint details
-railway service Redis
-railway variables | grep -E "REDIS|RAILWAY_TCP"
+**What this fixes automatically:**
+- `engine:run-attempt-system:cache:` (Run Engine cache system)
+- `engine:runqueue:`, `engine:worker:` (Run Engine queuing and workers)  
+- `schedule:schedule:` (Schedule engine)
+- All webapp Redis clients (MarQS, Socket.IO, real-time streams, etc.)
+- Any Redis client using `@internal/redis` createRedisClient
 
-# Set variables to use public endpoint
-railway variables --set "REDIS_HOST=yamanote.proxy.rlwy.net"
-railway variables --set "REDIS_PORT=15486"
-railway variables --set "REDIS_PASSWORD=${REDIS_PASSWORD}"  # Keep existing password
-```
+**Architecture Confirmation:** 
+- ✅ Railway internal DNS (`${{Redis.RAILWAY_PRIVATE_DOMAIN}}`) is the CORRECT approach
+- ✅ All Redis communication is server-side only (no client-side Redis connections)
+- ✅ Internal DNS provides better security, performance, and cost efficiency than public endpoints
 
 ### Database Migration Issues
 
@@ -964,11 +959,13 @@ railway service Trigger.dev && railway up --detach
 
 ### Internal DNS vs Public Endpoint Matrix
 
-| Service | Internal DNS (Preferred) | Public Endpoint (Workaround) | Issue |
-|---------|-------------------------|-------------------------------|-------|
-| **Redis** | `redis.railway.internal:6379` | `yamanote.proxy.rlwy.net:15486` | IPv6 DNS resolution |
-| **Postgres** | `postgres.railway.internal:5432` | `trolley.proxy.rlwy.net:14560` | Migration timeouts |
-| **App** | `app.railway.internal` | `yourapp.railway.app` | No known issues |
+| Service | Internal DNS (Recommended) | Public Endpoint | Status |
+|---------|-------------------------|------------------|--------|
+| **Redis** | `redis.railway.internal:6379` | `yamanote.proxy.rlwy.net:15486` | ✅ **RESOLVED** - IPv6 DNS fixed in @internal/redis |
+| **Postgres** | `postgres.railway.internal:5432` | `trolley.proxy.rlwy.net:14560` | ⚠️ Use public for migrations if timeouts occur |
+| **App** | `app.railway.internal` | `yourapp.railway.app` | ✅ No known issues |
+
+**Recommendation:** Use internal DNS for all services. Redis DNS issues are permanently resolved.
 
 ### Environment Variable Debugging
 
@@ -1090,6 +1087,23 @@ railway logs
 4. **Access Control** - Use `WHITELISTED_EMAILS` for private instances
 5. **Regular Updates** - Keep dependencies updated via Railway's auto-deployment
 6. **Monitoring** - Enable Railway's built-in monitoring and alerts
+
+## 🎉 Recent Improvements
+
+### Redis DNS Resolution - PERMANENTLY RESOLVED ✅
+
+The persistent `getaddrinfo ENOTFOUND redis.railway.internal` errors have been **definitively resolved** through architectural improvements:
+
+- **Root fix**: Added `family: 0` to `@internal/redis` defaultOptions for system-wide IPv4/IPv6 DNS support
+- **Scope**: Resolves ALL Redis connection issues across the entire application
+- **Architecture**: Confirmed Railway internal DNS usage is correct and optimal
+- **Performance**: No workarounds needed - direct internal network communication
+
+**Error messages that are now resolved:**
+- `engine:run-attempt-system:cache:` 
+- `engine:runqueue:`, `engine:worker:`
+- `schedule:schedule:`
+- All MarQS, Socket.IO, and worker Redis connections
 
 ## 🆘 Support
 

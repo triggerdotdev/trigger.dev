@@ -184,17 +184,38 @@ export const helloWorld = task({
 - **Build failures**: Ensure `.env.example` exists and symlinks resolve correctly
 
 ### Railway Deployment Troubleshooting
-**Redis connection errors (getaddrinfo ENOTFOUND redis.railway.internal):**
-```bash
-# 1. Ensure Redis service is running
-railway service Redis
-railway status  # Should show deployed, not "No deployments found"
-railway up      # If Redis service isn't running, this starts it
 
-# 2. IPv6/IPv4 compatibility issue (most common cause):
-# Railway's internal DNS only provides IPv6 addresses, but ioredis defaults to IPv4-only
-# Fix: Add family: 0 to ioredis configuration to support both IPv4 and IPv6
-# This is already implemented in apps/webapp/app/redis.server.ts
+#### Redis DNS Resolution Issues
+**Problem:** `getaddrinfo ENOTFOUND redis.railway.internal` errors
+
+**Root Cause:** Railway's internal DNS provides IPv6-only addresses, but ioredis defaults to IPv4-only DNS lookups.
+
+**✅ SOLUTION IMPLEMENTED:** The `@internal/redis` package now includes `family: 0` in defaultOptions (internal-packages/redis/src/index.ts:12), which enables dual-stack IPv4/IPv6 DNS resolution for ALL Redis clients system-wide.
+
+**What this fixes:**
+- `engine:run-attempt-system:cache:` (RedisCacheStore)
+- `engine:runqueue:`, `engine:worker:` (Run Engine systems)
+- `schedule:schedule:` (ScheduleEngineWorker)
+- All webapp Redis clients (MarQS, Socket.IO, workers, etc.)
+
+**Architecture:** Railway internal DNS usage is CORRECT - all Redis communication should use `${{Redis.RAILWAY_PRIVATE_DOMAIN}}` for security and performance.
+
+```typescript
+// @internal/redis defaultOptions now includes:
+const defaultOptions: Partial<RedisOptions> = {
+  // ... other options
+  family: 0, // Support both IPv4 and IPv6 (Railway internal DNS)
+};
+```
+
+**If issues persist:**
+```bash
+# 1. Verify Redis service is running
+railway service Redis
+railway status
+
+# 2. Check deployment includes latest @internal/redis fix
+git log --oneline | grep "Fix Railway internal DNS resolution for all Redis clients"
 ```
 
 **Deployment failing with "PORT must be integer":**
@@ -229,9 +250,38 @@ railway domain  # Generates Railway-provided domain
 # If migrations fail partway through, force schema sync
 DATABASE_URL="<public_postgres_url>" npx prisma db push --schema=./internal-packages/database/prisma/schema.prisma --accept-data-loss
 
-# Use public endpoints for migrations due to internal DNS issues:
+# Note: Use public Postgres endpoint for migrations if needed due to potential timeout issues
 # Postgres: trolley.proxy.rlwy.net:14560
-# Redis: yamanote.proxy.rlwy.net:15486
+# Redis should always use internal DNS (DNS issues are now resolved)
+```
+
+## Redis Architecture
+
+### Central Redis Client Factory
+All Redis connections use the `@internal/redis` package's `createRedisClient` function, which provides:
+- Automatic retry strategies
+- IPv4/IPv6 dual-stack DNS support (`family: 0`)
+- Consistent error handling and logging
+- Environment-specific configuration
+
+### Redis Connection Patterns
+- **Main Redis client**: `apps/webapp/app/redis.server.ts` (webapp-specific with additional DNS logging)
+- **Internal packages**: All use `@internal/redis` createRedisClient (cache, run-engine, workers)
+- **Environment variables**: All inherit from base `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`
+
+### Railway-Specific Configuration
+- Uses Railway internal DNS: `${{Redis.RAILWAY_PRIVATE_DOMAIN}}`
+- All server-side Redis communication (no client-side Redis connections exist)
+- IPv6 DNS resolution handled automatically by `@internal/redis` defaultOptions
+
+### Adding New Redis Clients
+When adding new Redis connections, use the existing patterns:
+```typescript
+// For webapp-specific clients
+import { createRedisClient } from "./redis.server";
+
+// For internal packages  
+import { createRedisClient } from "@internal/redis";
 ```
 
 ## Development Best Practices
