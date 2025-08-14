@@ -1,6 +1,6 @@
 import { GitMeta } from "@trigger.dev/core/v3";
 import { type z } from "zod";
-import { Prisma, type PrismaClient, prisma } from "~/db.server";
+import { type Prisma, type PrismaClient, prisma } from "~/db.server";
 import { type Project } from "~/models/project.server";
 import { type User } from "~/models/user.server";
 import { type BranchesOptions } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.branches/route";
@@ -38,6 +38,13 @@ export type GitMetaLinks = {
   commitMessage: string;
   /** The commit author */
   commitAuthor: string;
+
+  /** The git provider, e.g., `github` */
+  provider?: string;
+
+  source?: "trigger_github_app" | "github_actions" | "local";
+  ghUsername?: string;
+  ghUserAvatarUrl?: string;
 };
 
 export class BranchesPresenter {
@@ -239,5 +246,9 @@ export function processGitMetadata(data: Prisma.JsonValue): GitMetaLinks | null 
     isDirty: parsed.data.dirty ?? false,
     commitMessage: parsed.data.commitMessage ?? "",
     commitAuthor: parsed.data.commitAuthorName ?? "",
+    provider: parsed.data.provider,
+    source: parsed.data.source,
+    ghUsername: parsed.data.ghUsername,
+    ghUserAvatarUrl: parsed.data.ghUserAvatarUrl,
   };
 }
