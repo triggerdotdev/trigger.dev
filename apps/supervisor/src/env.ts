@@ -77,11 +77,9 @@ const Env = z.object({
   KUBERNETES_EPHEMERAL_STORAGE_SIZE_LIMIT: z.string().default("10Gi"),
   KUBERNETES_EPHEMERAL_STORAGE_SIZE_REQUEST: z.string().default("2Gi"),
 
-  // Tier scheduling settings
-  ENABLE_TIER_SCHEDULING: BoolEnv.default(false),
-  TIER_LABEL_KEY: z.string().default("node.cluster.x-k8s.io/paid"),
-  TIER_LABEL_VALUE_FREE: z.string().default("false"),
-  TIER_LABEL_VALUE_PAID: z.string().default("true"),
+  // Placement tags settings
+  PLACEMENT_TAGS_ENABLED: BoolEnv.default(false),
+  PLACEMENT_TAGS_PREFIX: z.string().default("node.cluster.x-k8s.io"),
 
   // Metrics
   METRICS_ENABLED: BoolEnv.default(true),

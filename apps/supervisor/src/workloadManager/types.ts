@@ -1,4 +1,4 @@
-import { type EnvironmentType, type MachinePreset } from "@trigger.dev/core/v3";
+import type { EnvironmentType, MachinePreset, PlacementTag } from "@trigger.dev/core/v3";
 
 export interface WorkloadManagerOptions {
   workloadApiProtocol: "http" | "https";
@@ -23,6 +23,7 @@ export interface WorkloadManagerCreateOptions {
   version: string;
   nextAttemptNumber?: number;
   dequeuedAt: Date;
+  placementTags?: PlacementTag[];
   // identifiers
   envId: string;
   envType: EnvironmentType;
@@ -32,6 +33,4 @@ export interface WorkloadManagerCreateOptions {
   runFriendlyId: string;
   snapshotId: string;
   snapshotFriendlyId: string;
-  // tier scheduling
-  isPaidTier?: boolean;
 }

@@ -247,7 +247,7 @@ class ManagedSupervisor {
           nextAttemptNumber: message.run.attemptNumber,
           snapshotId: message.snapshot.id,
           snapshotFriendlyId: message.snapshot.friendlyId,
-          isPaidTier: message.billing?.currentPlan.isPaying ?? false,
+          placementTags: message.placementTags,
         });
 
         // Disabled for now

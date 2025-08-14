@@ -1,7 +1,7 @@
 import type { BillingCache } from "../billingCache.js";
 import { startSpan } from "@internal/tracing";
 import { assertExhaustive } from "@trigger.dev/core";
-import { DequeuedMessage, RetryOptions } from "@trigger.dev/core/v3";
+import { DequeuedMessage, RetryOptions, placementTag } from "@trigger.dev/core/v3";
 import { getMaxDuration } from "@trigger.dev/core/v3/isomorphic";
 import { PrismaClientOrTransaction } from "@trigger.dev/database";
 import { getRunWithBackgroundWorkerTasks } from "../db/worker.js";
@@ -474,11 +474,7 @@ export class DequeueSystem {
                 project: {
                   id: lockedTaskRun.projectId,
                 },
-                billing: {
-                  currentPlan: {
-                    isPaying,
-                  },
-                },
+                placementTags: [placementTag("paid", isPaying ? "true" : "false")],
               } satisfies DequeuedMessage;
             }
           );

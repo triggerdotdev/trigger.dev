@@ -4,7 +4,7 @@ import {
   type WorkloadManagerCreateOptions,
   type WorkloadManagerOptions,
 } from "./types.js";
-import type { EnvironmentType, MachinePreset } from "@trigger.dev/core/v3";
+import type { EnvironmentType, MachinePreset, PlacementTag } from "@trigger.dev/core/v3";
 import { env } from "../env.js";
 import { type K8sApi, createK8sApi, type k8s } from "../clients/kubernetes.js";
 import { getRunnerId } from "../util.js";
@@ -13,22 +13,20 @@ type ResourceQuantities = {
   [K in "cpu" | "memory" | "ephemeral-storage"]?: string;
 };
 
-interface TierConfig {
+interface PlacementConfig {
   enabled: boolean;
-  labelKey: string;
-  freeValue: string;
-  paidValue: string;
+  prefix: string;
 }
 
 export class KubernetesWorkloadManager implements WorkloadManager {
   private readonly logger = new SimpleStructuredLogger("kubernetes-workload-provider");
   private k8s: K8sApi;
   private namespace = env.KUBERNETES_NAMESPACE;
-  private tierConfig: TierConfig;
+  private placementConfig: PlacementConfig;
 
   constructor(private opts: WorkloadManagerOptions) {
     this.k8s = createK8sApi();
-    this.tierConfig = this.tierSchedulingConfig;
+    this.placementConfig = this.placementTagsConfig;
 
     if (opts.workloadApiDomain) {
       this.logger.warn("[KubernetesWorkloadManager] ⚠️ Custom workload API domain", {
@@ -37,32 +35,54 @@ export class KubernetesWorkloadManager implements WorkloadManager {
     }
   }
 
-  private get tierSchedulingConfig(): TierConfig {
+  private get placementTagsConfig(): PlacementConfig {
     return {
-      enabled: env.ENABLE_TIER_SCHEDULING,
-      labelKey: env.TIER_LABEL_KEY,
-      freeValue: env.TIER_LABEL_VALUE_FREE,
-      paidValue: env.TIER_LABEL_VALUE_PAID,
+      enabled: env.PLACEMENT_TAGS_ENABLED,
+      prefix: env.PLACEMENT_TAGS_PREFIX,
     };
   }
 
-  private addTierScheduling(
+  private addPlacementTags(
     podSpec: Omit<k8s.V1PodSpec, "containers">,
-    isPaidTier: boolean
+    placementTags?: PlacementTag[]
   ): Omit<k8s.V1PodSpec, "containers"> {
-    if (!this.tierConfig.enabled) {
+    if (!this.placementConfig.enabled || !placementTags || placementTags.length === 0) {
       return podSpec;
     }
 
-    const labelValue = isPaidTier ? this.tierConfig.paidValue : this.tierConfig.freeValue;
+    const nodeSelector: Record<string, string> = { ...podSpec.nodeSelector };
+
+    // Convert placement tags to nodeSelector labels
+    for (const tag of placementTags) {
+      const labelKey = `${this.placementConfig.prefix}/${tag.key}`;
+
+      // Print warnings (if any)
+      this.printTagWarnings(tag);
+
+      // For now we only support single values via nodeSelector
+      nodeSelector[labelKey] = tag.values?.[0] ?? "";
+    }
 
     return {
       ...podSpec,
-      nodeSelector: {
-        ...podSpec.nodeSelector,
-        [this.tierConfig.labelKey]: labelValue,
-      },
+      nodeSelector,
     };
+  }
+
+  private printTagWarnings(tag: PlacementTag) {
+    if (!tag.values || tag.values.length === 0) {
+      // No values provided
+      this.logger.warn(
+        "[KubernetesWorkloadManager] Placement tag has no values, using empty string",
+        tag
+      );
+    } else if (tag.values.length > 1) {
+      // Multiple values provided
+      this.logger.warn(
+        "[KubernetesWorkloadManager] Placement tag has multiple values, only using first one",
+        tag
+      );
+    }
   }
 
   async create(opts: WorkloadManagerCreateOptions) {
@@ -85,7 +105,7 @@ export class KubernetesWorkloadManager implements WorkloadManager {
             },
           },
           spec: {
-            ...this.addTierScheduling(this.#defaultPodSpec, opts.isPaidTier ?? false),
+            ...this.addPlacementTags(this.#defaultPodSpec, opts.placementTags),
             terminationGracePeriodSeconds: 60 * 60,
             containers: [
               {
