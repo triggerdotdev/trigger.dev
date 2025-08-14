@@ -24,25 +24,6 @@ function formatDate(date: Date) {
     .padStart(2, "0")}_${milliseconds.toString().padStart(3, "0")}`;
 }
 
-// Force consistent garbage collection before taking heap snapshot
-async function forceConsistentGC(rounds = 5): Promise<void> {
-  if (typeof global.gc !== "function") {
-    console.warn("⚠️ global.gc not available - heap snapshots may be inconsistent");
-    return;
-  }
-
-  // Force multiple GC rounds to ensure consistent state
-  for (let i = 0; i < rounds; i++) {
-    global.gc(); // Major GC
-    if (i < rounds - 1) {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-  }
-
-  // Final wait for any pending cleanup
-  await new Promise((resolve) => setTimeout(resolve, 200));
-}
-
 export async function loader({ request }: DataFunctionArgs) {
   const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
 
@@ -59,9 +40,6 @@ export async function loader({ request }: DataFunctionArgs) {
   if (!user?.admin) {
     throw new Response("You must be an admin to perform this action", { status: 403 });
   }
-
-  // Force consistent GC state before taking snapshot
-  await forceConsistentGC();
 
   const tempDir = os.tmpdir();
   const filepath = path.join(
