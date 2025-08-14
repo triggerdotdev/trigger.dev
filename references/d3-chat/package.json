@@ -26,6 +26,8 @@
     "@opentelemetry/api-logs": "^0.203.0",
     "@opentelemetry/exporter-logs-otlp-http": "0.203.0",
     "@opentelemetry/exporter-trace-otlp-http": "0.203.0",
+    "@opentelemetry/instrumentation-http": "0.203.0",
+    "@opentelemetry/instrumentation-undici": "0.14.0",
     "@opentelemetry/instrumentation": "^0.203.0",
     "@opentelemetry/sdk-logs": "^0.203.0",
     "@radix-ui/react-avatar": "^1.1.3",

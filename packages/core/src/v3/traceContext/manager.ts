@@ -39,7 +39,12 @@ export class StandardTraceContextManager implements TraceContextManager {
     const spanContext = {
       traceId: externalTraceContext.traceId,
       spanId: currentSpanContext.spanId,
-      traceFlags: TraceFlags.SAMPLED,
+      traceFlags:
+        typeof externalTraceContext.traceFlags === "string"
+          ? externalTraceContext.traceFlags === "01"
+            ? TraceFlags.SAMPLED
+            : TraceFlags.NONE
+          : TraceFlags.SAMPLED,
       isRemote: true,
     };
 
@@ -60,7 +65,7 @@ function extractExternalTraceContext(traceContext: unknown) {
       : undefined;
 
   if ("traceparent" in traceContext && typeof traceContext.traceparent === "string") {
-    const [version, traceId, spanId] = traceContext.traceparent.split("-");
+    const [version, traceId, spanId, traceFlags] = traceContext.traceparent.split("-");
 
     if (!traceId || !spanId) {
       return undefined;
@@ -69,6 +74,7 @@ function extractExternalTraceContext(traceContext: unknown) {
     return {
       traceId,
       spanId,
+      traceFlags,
       tracestate: tracestate,
     };
   }

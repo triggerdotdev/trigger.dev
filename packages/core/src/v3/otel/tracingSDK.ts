@@ -21,7 +21,7 @@ import {
   SimpleSpanProcessor,
   SpanExporter,
 } from "@opentelemetry/sdk-trace-node";
-import { SemanticResourceAttributes } from "@opentelemetry/semantic-conventions";
+import { SemanticResourceAttributes, SEMATTRS_HTTP_URL } from "@opentelemetry/semantic-conventions";
 import { VERSION } from "../../version.js";
 import {
   OTEL_ATTRIBUTE_PER_EVENT_COUNT_LIMIT,
@@ -287,17 +287,27 @@ function setLogLevel(level: TracingDiagnosticLogLevel) {
 }
 
 class ExternalSpanExporterWrapper {
+  private readonly _isExternallySampled: boolean;
+
   constructor(
     private underlyingExporter: SpanExporter,
     private externalTraceId: string,
     private externalTraceContext:
-      | { traceId: string; spanId: string; tracestate?: string }
+      | { traceId: string; spanId: string; tracestate?: string; traceFlags?: string }
       | undefined
-  ) {}
+  ) {
+    this._isExternallySampled =
+      typeof externalTraceContext?.traceFlags === "string"
+        ? externalTraceContext.traceFlags === "01"
+        : true;
+  }
 
   private transformSpan(span: ReadableSpan): ReadableSpan | undefined {
-    if (span.attributes[SemanticInternalAttributes.SPAN_PARTIAL]) {
-      // Skip partial spans
+    if (!this._isExternallySampled) {
+      return;
+    }
+
+    if (isSpanInternalOnly(span)) {
       return;
     }
 
@@ -325,8 +335,15 @@ class ExternalSpanExporterWrapper {
         traceState: this.externalTraceContext.tracestate
           ? new TraceState(this.externalTraceContext.tracestate)
           : undefined,
-        traceFlags: parentSpanContext?.traceFlags ?? 0,
+        traceFlags:
+          typeof this.externalTraceContext.traceFlags === "string"
+            ? this.externalTraceContext.traceFlags === "01"
+              ? 1
+              : 0
+            : parentSpanContext?.traceFlags ?? 0,
       };
+    } else if (isAttemptSpan) {
+      parentSpanContext = undefined;
     }
 
     return {
@@ -360,15 +377,28 @@ class ExternalSpanExporterWrapper {
 }
 
 class ExternalLogRecordExporterWrapper {
+  private readonly _isExternallySampled: boolean;
+
   constructor(
     private underlyingExporter: LogRecordExporter,
     private externalTraceId: string,
     private externalTraceContext:
-      | { traceId: string; spanId: string; tracestate?: string }
+      | { traceId: string; spanId: string; tracestate?: string; traceFlags?: string }
       | undefined
-  ) {}
+  ) {
+    this._isExternallySampled =
+      typeof externalTraceContext?.traceFlags === "string"
+        ? externalTraceContext.traceFlags === "01"
+        : true;
+  }
 
   export(logs: any[], resultCallback: (result: any) => void): void {
+    if (!this._isExternallySampled) {
+      this.underlyingExporter.export([], resultCallback);
+
+      return;
+    }
+
     const modifiedLogs = logs.map(this.transformLogRecord.bind(this));
 
     this.underlyingExporter.export(modifiedLogs, resultCallback);
@@ -409,4 +439,41 @@ class ExternalLogRecordExporterWrapper {
       },
     });
   }
+}
+
+function isSpanInternalOnly(span: ReadableSpan): boolean {
+  if (span.attributes[SemanticInternalAttributes.SPAN_PARTIAL]) {
+    // Skip partial spans
+    return true;
+  }
+
+  const urlPath = span.attributes["url.path"];
+
+  if (typeof urlPath === "string" && urlPath === "/api/v1/usage/ingest") {
+    return true;
+  }
+
+  const httpUrl = span.attributes[SEMATTRS_HTTP_URL] ?? span.attributes["url.full"];
+
+  if (typeof httpUrl === "string" && httpUrl.includes("https://api.trigger.dev")) {
+    return true;
+  }
+
+  if (typeof httpUrl === "string" && httpUrl.includes("https://billing.trigger.dev")) {
+    return true;
+  }
+
+  if (typeof httpUrl === "string" && httpUrl.includes("https://cloud.trigger.dev")) {
+    return true;
+  }
+
+  if (typeof httpUrl === "string" && httpUrl.includes("https://engine.trigger.dev")) {
+    return true;
+  }
+
+  if (typeof httpUrl === "string" && httpUrl.includes("/api/v1/usage/ingest")) {
+    return true;
+  }
+
+  return false;
 }

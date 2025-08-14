@@ -385,7 +385,8 @@ export class RunEngineTriggerTaskService {
 
     const newExternalTraceparent = serializeTraceparent(
       parsedTraceparent.traceId,
-      parentSpanId ?? parsedTraceparent.spanId
+      parentSpanId ?? parsedTraceparent.spanId,
+      parsedTraceparent.traceFlags
     );
 
     return {
