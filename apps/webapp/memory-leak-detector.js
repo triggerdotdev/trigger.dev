@@ -44,6 +44,7 @@ class MemoryLeakDetector {
 
       // API endpoints to test (configurable)
       apiEndpoints: options.apiEndpoints || ["/api/v1/runs"],
+      postApiEndpoints: options.postApiEndpoints || ["/api/v1/mock"],
 
       // Memory analysis thresholds
       memoryLeakThreshold: options.memoryLeakThreshold || 50, // MB increase
@@ -110,6 +111,9 @@ class MemoryLeakDetector {
       let snapshotData;
 
       if (this.options.adminToken) {
+        this.log(`Running GC before snapshot...`);
+        await this.runGc();
+
         // Use the admin API endpoint to get actual V8 heap snapshot
         this.log(`Taking V8 heap snapshot via admin API: ${label}...`);
 
@@ -211,6 +215,52 @@ class MemoryLeakDetector {
     });
   }
 
+  async runGc() {
+    return new Promise((resolve, reject) => {
+      const requestOptions = {
+        hostname: "localhost",
+        port: this.options.serverPort,
+        path: "/admin/api/v1/gc",
+        method: "GET",
+        timeout: 120000, // GC can take a while
+        headers: {
+          Authorization: `Bearer ${this.options.adminToken}`,
+          "User-Agent": "memory-leak-detector/1.0",
+        },
+      };
+
+      const req = http.request(requestOptions, (res) => {
+        if (res.statusCode !== 200) {
+          reject(new Error(`Admin API returned ${res.statusCode}: ${res.statusMessage}`));
+          return;
+        }
+
+        res.on("data", (chunk) => {
+          this.log(`GC run completed`);
+        });
+
+        res.on("end", () => {
+          resolve();
+        });
+
+        res.on("error", (error) => {
+          reject(error);
+        });
+      });
+
+      req.on("error", (error) => {
+        reject(new Error(`Failed to connect to admin API: ${error.message}`));
+      });
+
+      req.on("timeout", () => {
+        req.destroy();
+        reject(new Error("Admin API request timeout"));
+      });
+
+      req.end();
+    });
+  }
+
   async startServer() {
     return new Promise((resolve, reject) => {
       this.log("Starting server...");
@@ -234,18 +284,22 @@ class MemoryLeakDetector {
         this.log(`Using NODE_PATH: ${nodePath}`);
 
         // Start the server with memory inspection flags
-        this.serverProcess = spawn("node", ["--max-old-space-size=16384", "--expose-gc", "./build/server.js"], {
-          cwd: process.cwd(),
-          stdio: ["ignore", "pipe", "pipe"],
-          env: {
-            ...process.env,
-            NODE_ENV: "production",
-            NODE_PATH: nodePath,
-            PORT: this.options.serverPort,
-            // Disable Sentry to prevent memory leaks from it
-            SENTRY_DSN: this.options.sentryDsn,
-          },
-        });
+        this.serverProcess = spawn(
+          "node",
+          ["--max-old-space-size=16384", "--expose-gc", "./build/server.js"],
+          {
+            cwd: process.cwd(),
+            stdio: ["ignore", "pipe", "pipe"],
+            env: {
+              ...process.env,
+              NODE_ENV: "production",
+              NODE_PATH: nodePath,
+              PORT: this.options.serverPort,
+              // Disable Sentry to prevent memory leaks from it
+              SENTRY_DSN: this.options.sentryDsn,
+            },
+          }
+        );
 
         let serverReady = false;
         const timeout = setTimeout(() => {
@@ -346,7 +400,7 @@ class MemoryLeakDetector {
   }
 
   async performRequestPhase(phaseName, numRequests) {
-    this.log(`Starting ${phaseName} phase with ${numRequests} requests...`);
+    this.log(`Starting ${phaseName} phase with ${numRequests} GET requests...`);
 
     const startTime = performance.now();
     let successfulRequests = 0;
@@ -358,6 +412,58 @@ class MemoryLeakDetector {
 
       try {
         const response = await this.makeRequest(endpoint);
+
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          successfulRequests++;
+        } else {
+          failedRequests++;
+          errors.push({
+            endpoint,
+            statusCode: response.statusCode,
+            error: `HTTP ${response.statusCode}`,
+            phase: phaseName,
+          });
+        }
+      } catch (error) {
+        failedRequests++;
+        errors.push({
+          endpoint: error.endpoint,
+          error: error.error?.message || "Unknown error",
+          phase: phaseName,
+        });
+      }
+
+      // Add delay between requests
+      if (i < numRequests - 1) {
+        await this.delay(this.options.requestDelay);
+      }
+
+      // Progress reporting
+      if (this.options.verbose && numRequests > 25 && (i + 1) % 25 === 0) {
+        this.log(`${phaseName}: ${i + 1}/${numRequests} requests completed`);
+      }
+    }
+
+    this.log(`Continuing with ${phaseName} phase with ${numRequests} POST requests...`);
+
+    for (let i = 0; i < numRequests; i++) {
+      const endpoint = this.options.postApiEndpoints[i % this.options.postApiEndpoints.length];
+
+      try {
+        // Send a LARGE body to try and trigger a memory leak
+        const response = await this.makeRequest(endpoint, {
+          method: "POST",
+          body: JSON.stringify(
+            Array.from({ length: 1000 }, (_, index) => ({
+              id: index,
+              name: `Mock ${index}`,
+              description: `Mock ${index} description`,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              uuid: crypto.randomUUID(),
+            }))
+          ),
+        });
 
         if (response.statusCode >= 200 && response.statusCode < 300) {
           successfulRequests++;
