@@ -133,6 +133,33 @@ model PersonalAccessToken {
   authorizationCodes AuthorizationCode[]
 }
 
+model OrganizationAccessToken {
+  id String @id @default(cuid())
+
+  /// User-provided name for the token
+  name String
+
+  /// This is the token encrypted using the ENCRYPTION_KEY
+  encryptedToken Json
+
+  /// This is shown in the UI, with ********
+  obfuscatedToken String
+
+  /// This is used to find the token in the database
+  hashedToken String @unique
+
+  organization   Organization   @relation(fields: [organizationId], references: [id])
+  organizationId String
+
+  /// Optional expiration date for the token
+  expiresAt      DateTime?
+  revokedAt      DateTime?
+  lastAccessedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model Organization {
   id    String @id @default(cuid())
   slug  String @unique
@@ -174,6 +201,7 @@ model Organization {
   members                  OrgMember[]
   invites                  OrgMemberInvite[]
   organizationIntegrations OrganizationIntegration[]
+  organizationAccessTokens OrganizationAccessToken[]
   workerGroups             WorkerInstanceGroup[]
   workerInstances          WorkerInstance[]
   executionSnapshots       TaskRunExecutionSnapshot[]
