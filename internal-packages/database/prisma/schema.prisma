@@ -133,11 +133,19 @@ model PersonalAccessToken {
   authorizationCodes AuthorizationCode[]
 }
 
+enum OrganizationAccessTokenType {
+  USER
+  SYSTEM
+}
+
 model OrganizationAccessToken {
   id String @id @default(cuid())
 
   /// User-provided name for the token
   name String
+
+  /// Used to differentiate between user-generated and system-generated tokens
+  type OrganizationAccessTokenType @default(USER)
 
   /// This is the token encrypted using the ENCRYPTION_KEY
   encryptedToken Json

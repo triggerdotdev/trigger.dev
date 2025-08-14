@@ -1,6 +1,9 @@
+CREATE TYPE "OrganizationAccessTokenType" AS ENUM ('USER', 'SYSTEM');
+
 CREATE TABLE "OrganizationAccessToken" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
+    "type" "OrganizationAccessTokenType" NOT NULL DEFAULT 'USER',
     "encryptedToken" JSONB NOT NULL,
     "obfuscatedToken" TEXT NOT NULL,
     "hashedToken" TEXT NOT NULL,
