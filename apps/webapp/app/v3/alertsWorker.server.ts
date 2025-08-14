@@ -16,6 +16,7 @@ function initializeWorker() {
     username: env.ALERTS_WORKER_REDIS_USERNAME,
     password: env.ALERTS_WORKER_REDIS_PASSWORD,
     enableAutoPipelining: true,
+    family: 0, // Support both IPv4 and IPv6 (Railway internal DNS)
     ...(env.ALERTS_WORKER_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
   };
 

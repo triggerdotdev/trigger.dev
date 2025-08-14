@@ -20,7 +20,10 @@ class TaskRunConcurrencyTracker implements MessageQueueSubscriber {
   private redis: Redis;
 
   constructor(config: Options) {
-    this.redis = new Redis(config.redis);
+    this.redis = new Redis({
+      ...config.redis,
+      family: 0, // Support both IPv4 and IPv6 (Railway internal DNS)
+    });
   }
 
   async messageEnqueued(message: MessagePayload): Promise<void> {}

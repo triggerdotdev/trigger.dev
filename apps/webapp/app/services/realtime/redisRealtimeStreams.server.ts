@@ -22,7 +22,10 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
     environment: AuthenticatedEnvironment,
     signal: AbortSignal
   ): Promise<Response> {
-    const redis = new Redis(this.options.redis ?? {});
+    const redis = new Redis({
+      ...this.options.redis ?? {},
+      family: 0, // Support both IPv4 and IPv6 (Railway internal DNS)
+    });
     const streamKey = `stream:${runId}:${streamId}`;
     let isCleanedUp = false;
 
@@ -129,7 +132,10 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
     runId: string,
     streamId: string
   ): Promise<Response> {
-    const redis = new Redis(this.options.redis ?? {});
+    const redis = new Redis({
+      ...this.options.redis ?? {},
+      family: 0, // Support both IPv4 and IPv6 (Railway internal DNS)
+    });
     const streamKey = `stream:${runId}:${streamId}`;
 
     async function cleanup() {

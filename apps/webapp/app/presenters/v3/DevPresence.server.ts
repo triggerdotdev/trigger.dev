@@ -7,7 +7,10 @@ export class DevPresence {
   private redis: Redis;
 
   constructor(options: RedisOptions) {
-    this.redis = new Redis(options);
+    this.redis = new Redis({
+      ...options,
+      family: 0, // Support both IPv4 and IPv6 (Railway internal DNS)
+    });
   }
 
   async isConnected(environmentId: string) {

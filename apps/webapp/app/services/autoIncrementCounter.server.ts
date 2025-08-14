@@ -11,7 +11,10 @@ export class AutoIncrementCounter {
   private _redis: Redis;
 
   constructor(private options: AutoIncrementCounterOptions) {
-    this._redis = new Redis(options.redis);
+    this._redis = new Redis({
+      ...options.redis,
+      family: 0, // Support both IPv4 and IPv6 (Railway internal DNS)
+    });
   }
 
   async incrementInTransaction<T>(

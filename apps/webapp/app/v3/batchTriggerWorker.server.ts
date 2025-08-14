@@ -15,6 +15,7 @@ function initializeWorker() {
     username: env.BATCH_TRIGGER_WORKER_REDIS_USERNAME,
     password: env.BATCH_TRIGGER_WORKER_REDIS_PASSWORD,
     enableAutoPipelining: true,
+    family: 0, // Support both IPv4 and IPv6 (Railway internal DNS)
     ...(env.BATCH_TRIGGER_WORKER_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
   };
 
