@@ -3,7 +3,7 @@ import { customAlphabet } from "nanoid";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { logger } from "./logger.server";
-import { decryptToken, encryptToken, hashToken } from "~/utils/tokens";
+import { decryptToken, encryptToken, hashToken } from "~/utils/tokens.server";
 import { env } from "~/env.server";
 
 const tokenValueLength = 40;
