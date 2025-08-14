@@ -334,6 +334,12 @@ type AuthenticationMethod = "personalAccessToken" | "organizationAccessToken" | 
 type AllowedAuthenticationMethods = Record<AuthenticationMethod, boolean> &
   ({ personalAccessToken: true } | { organizationAccessToken: true } | { apiKey: true });
 
+const defaultAllowedAuthenticationMethods: AllowedAuthenticationMethods = {
+  personalAccessToken: true,
+  organizationAccessToken: true,
+  apiKey: true,
+};
+
 type FilteredAuthenticationResult<
   T extends AllowedAuthenticationMethods = AllowedAuthenticationMethods
 > =
@@ -350,7 +356,8 @@ type FilteredAuthenticationResult<
  *
  * Supports personal access tokens, organization access tokens, and API keys.
  * Returns the appropriate authentication result based on the token type found.
- * The return type is conditionally filtered to only include authentication methods that are enabled.
+ *
+ * This method currently only allows private keys for the `apiKey` authentication method.
  *
  * @template T - The allowed authentication methods configuration type
  * @param request - The incoming HTTP request containing authentication headers
@@ -373,18 +380,16 @@ export async function authenticateRequest<
   T extends AllowedAuthenticationMethods = AllowedAuthenticationMethods
 >(
   request: Request,
-  allowedAuthenticationMethods: T = {
-    personalAccessToken: true,
-    organizationAccessToken: true,
-    apiKey: true,
-  } satisfies AllowedAuthenticationMethods as T
+  allowedAuthenticationMethods?: T
 ): Promise<FilteredAuthenticationResult<T> | undefined> {
+  const allowedMethods = allowedAuthenticationMethods ?? defaultAllowedAuthenticationMethods;
+
   const { apiKey, branchName } = getApiKeyFromRequest(request);
   if (!apiKey) {
     return;
   }
 
-  if (allowedAuthenticationMethods.personalAccessToken && isPersonalAccessToken(apiKey)) {
+  if (allowedMethods.personalAccessToken && isPersonalAccessToken(apiKey)) {
     const result = await authenticateApiRequestWithPersonalAccessToken(request);
 
     if (!result) {
@@ -400,7 +405,7 @@ export async function authenticateRequest<
     > as FilteredAuthenticationResult<T>;
   }
 
-  if (allowedAuthenticationMethods.organizationAccessToken && isOrganizationAccessToken(apiKey)) {
+  if (allowedMethods.organizationAccessToken && isOrganizationAccessToken(apiKey)) {
     const result = await authenticateApiRequestWithOrganizationAccessToken(request);
 
     if (!result) {
@@ -416,7 +421,7 @@ export async function authenticateRequest<
     > as FilteredAuthenticationResult<T>;
   }
 
-  if (allowedAuthenticationMethods.apiKey) {
+  if (allowedMethods.apiKey) {
     const result = await authenticateApiKey(apiKey, { allowPublicKey: false, branchName });
 
     if (!result) {
