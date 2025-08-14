@@ -14,6 +14,24 @@ export type RedisWithClusterOptions = {
 
 export type RedisClient = Redis | Cluster;
 
+// Custom DNS lookup that supports both IPv4 and IPv6
+function dnsLookup(address: string, callback: (err: Error | null, address?: string, family?: number) => void) {
+  // Use Node.js DNS with dual-stack support (both IPv4 and IPv6)
+  require("dns").lookup(address, { family: 0, all: false }, (err, resolvedAddress, family) => {
+    if (err) {
+      logger.error("DNS lookup failed", { address, error: err.message });
+      callback(err);
+    } else {
+      logger.debug("DNS lookup successful", { 
+        address, 
+        resolved: resolvedAddress, 
+        family: family === 6 ? 'IPv6' : 'IPv4' 
+      });
+      callback(null, resolvedAddress, family);
+    }
+  });
+}
+
 export function createRedisClient(
   connectionName: string,
   options: RedisWithClusterOptions
@@ -42,7 +60,8 @@ export function createRedisClient(
         username: options.username,
         password: options.password,
         enableAutoPipelining: true,
-        family: 6, // Explicit IPv6 (Railway internal DNS is IPv6-only)
+        family: 0, // Support both IPv4 and IPv6
+        dnsLookup: dnsLookup, // Custom DNS resolution with dual-stack support
         ...(options.tlsDisabled
           ? {
               checkServerIdentity: () => {
@@ -52,7 +71,7 @@ export function createRedisClient(
             }
           : { tls: {} }),
       },
-      dnsLookup: (address, callback) => callback(null, address),
+      dnsLookup: dnsLookup, // Also apply to cluster-level DNS lookups
       slotsRefreshTimeout: 10000,
     });
   } else {
@@ -70,7 +89,8 @@ export function createRedisClient(
       password: options.password,
       enableAutoPipelining: true,
       keyPrefix: options.keyPrefix,
-      family: 6, // Explicit IPv6 (Railway internal DNS is IPv6-only)
+      family: 0, // Support both IPv4 and IPv6
+      dnsLookup: dnsLookup, // Custom DNS resolution with dual-stack support
       ...(options.tlsDisabled ? {} : { tls: {} }),
     });
   }
