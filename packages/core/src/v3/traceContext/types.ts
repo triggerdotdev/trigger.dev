@@ -8,7 +8,7 @@ export interface TraceContextManager {
     | {
         traceId: string;
         spanId: string;
-        traceFlags?: string;
+        traceFlags: number;
         tracestate?: string;
       }
     | undefined;

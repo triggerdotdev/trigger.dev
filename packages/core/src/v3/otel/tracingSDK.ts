@@ -1,4 +1,10 @@
-import { DiagConsoleLogger, DiagLogLevel, TracerProvider, diag } from "@opentelemetry/api";
+import {
+  DiagConsoleLogger,
+  DiagLogLevel,
+  TraceFlags,
+  TracerProvider,
+  diag,
+} from "@opentelemetry/api";
 import { logs } from "@opentelemetry/api-logs";
 import { TraceState } from "@opentelemetry/core";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
@@ -293,13 +299,10 @@ class ExternalSpanExporterWrapper {
     private underlyingExporter: SpanExporter,
     private externalTraceId: string,
     private externalTraceContext:
-      | { traceId: string; spanId: string; tracestate?: string; traceFlags?: string }
+      | { traceId: string; spanId: string; traceFlags: number; tracestate?: string }
       | undefined
   ) {
-    this._isExternallySampled =
-      typeof externalTraceContext?.traceFlags === "string"
-        ? externalTraceContext.traceFlags === "01"
-        : true;
+    this._isExternallySampled = isTraceFlagSampled(externalTraceContext?.traceFlags);
   }
 
   private transformSpan(span: ReadableSpan): ReadableSpan | undefined {
@@ -383,13 +386,10 @@ class ExternalLogRecordExporterWrapper {
     private underlyingExporter: LogRecordExporter,
     private externalTraceId: string,
     private externalTraceContext:
-      | { traceId: string; spanId: string; tracestate?: string; traceFlags?: string }
+      | { traceId: string; spanId: string; tracestate?: string; traceFlags: number }
       | undefined
   ) {
-    this._isExternallySampled =
-      typeof externalTraceContext?.traceFlags === "string"
-        ? externalTraceContext.traceFlags === "01"
-        : true;
+    this._isExternallySampled = isTraceFlagSampled(externalTraceContext?.traceFlags);
   }
 
   export(logs: any[], resultCallback: (result: any) => void): void {
@@ -455,25 +455,42 @@ function isSpanInternalOnly(span: ReadableSpan): boolean {
 
   const httpUrl = span.attributes[SEMATTRS_HTTP_URL] ?? span.attributes["url.full"];
 
-  if (typeof httpUrl === "string" && httpUrl.includes("https://api.trigger.dev")) {
+  const url = safeParseUrl(httpUrl);
+
+  if (!url) {
+    return false;
+  }
+
+  const internalHosts = [
+    "api.trigger.dev",
+    "billing.trigger.dev",
+    "cloud.trigger.dev",
+    "engine.trigger.dev",
+    "platform.trigger.dev",
+  ];
+
+  return (
+    internalHosts.some((host) => url.hostname.includes(host)) ||
+    url.pathname.includes("/api/v1/usage/ingest")
+  );
+}
+
+function safeParseUrl(url: unknown): URL | undefined {
+  if (typeof url !== "string") {
+    return undefined;
+  }
+
+  try {
+    return new URL(url);
+  } catch (e) {
+    return undefined;
+  }
+}
+
+function isTraceFlagSampled(traceFlags?: number): boolean {
+  if (typeof traceFlags !== "number") {
     return true;
   }
 
-  if (typeof httpUrl === "string" && httpUrl.includes("https://billing.trigger.dev")) {
-    return true;
-  }
-
-  if (typeof httpUrl === "string" && httpUrl.includes("https://cloud.trigger.dev")) {
-    return true;
-  }
-
-  if (typeof httpUrl === "string" && httpUrl.includes("https://engine.trigger.dev")) {
-    return true;
-  }
-
-  if (typeof httpUrl === "string" && httpUrl.includes("/api/v1/usage/ingest")) {
-    return true;
-  }
-
-  return false;
+  return (traceFlags & TraceFlags.SAMPLED) === TraceFlags.SAMPLED;
 }

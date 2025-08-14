@@ -1,5 +1,6 @@
 import { Context, context, propagation, trace, TraceFlags } from "@opentelemetry/api";
 import { TraceContextManager } from "./types.js";
+import { parseTraceParent } from "@opentelemetry/core";
 
 export class StandardTraceContextManager implements TraceContextManager {
   public traceContext: Record<string, unknown> = {};
@@ -39,12 +40,7 @@ export class StandardTraceContextManager implements TraceContextManager {
     const spanContext = {
       traceId: externalTraceContext.traceId,
       spanId: currentSpanContext.spanId,
-      traceFlags:
-        typeof externalTraceContext.traceFlags === "string"
-          ? externalTraceContext.traceFlags === "01"
-            ? TraceFlags.SAMPLED
-            : TraceFlags.NONE
-          : TraceFlags.SAMPLED,
+      traceFlags: externalTraceContext.traceFlags,
       isRemote: true,
     };
 
@@ -65,16 +61,16 @@ function extractExternalTraceContext(traceContext: unknown) {
       : undefined;
 
   if ("traceparent" in traceContext && typeof traceContext.traceparent === "string") {
-    const [version, traceId, spanId, traceFlags] = traceContext.traceparent.split("-");
+    const externalSpanContext = parseTraceParent(traceContext.traceparent);
 
-    if (!traceId || !spanId) {
+    if (!externalSpanContext) {
       return undefined;
     }
 
     return {
-      traceId,
-      spanId,
-      traceFlags,
+      traceId: externalSpanContext.traceId,
+      spanId: externalSpanContext.spanId,
+      traceFlags: externalSpanContext.traceFlags,
       tracestate: tracestate,
     };
   }
