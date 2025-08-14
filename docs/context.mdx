@@ -90,6 +90,9 @@ export const parentTask = task({
     <ResponseField name="idempotencyKey" type="string" optional>
       An optional [idempotency key](/idempotency) for the task run.
     </ResponseField>
+    <ResponseField name="concurrencyKey" type="string" optional>
+      An optional [concurrency key](/triggering#concurrencykey) that groups runs by key for concurrency control.
+    </ResponseField>
     <ResponseField name="maxAttempts" type="number" optional>
       The [maximum number of attempts](/triggering#maxattempts) allowed for this task run.
     </ResponseField>
