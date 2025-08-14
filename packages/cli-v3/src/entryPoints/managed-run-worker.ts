@@ -133,11 +133,6 @@ runMetadata.setGlobalManager(runMetadataManager);
 
 const waitUntilManager = new StandardWaitUntilManager();
 waitUntil.setGlobalManager(waitUntilManager);
-// Wait for all streams to finish before completing the run
-waitUntil.register({
-  requiresResolving: () => runMetadataManager.hasActiveStreams(),
-  promise: () => runMetadataManager.waitForAllStreams(),
-});
 
 const triggerLogLevel = getEnvVar("TRIGGER_LOG_LEVEL");
 
@@ -294,6 +289,12 @@ function resetExecutionEnvironment() {
   durableClock.reset();
   taskContext.disable();
   standardTraceContextManager.reset();
+
+  // Wait for all streams to finish before completing the run
+  waitUntil.register({
+    requiresResolving: () => runMetadataManager.hasActiveStreams(),
+    promise: () => runMetadataManager.waitForAllStreams(),
+  });
 
   console.log(`[${new Date().toISOString()}] Reset execution environment`);
 }
