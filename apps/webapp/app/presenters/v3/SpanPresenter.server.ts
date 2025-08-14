@@ -559,6 +559,7 @@ export class SpanPresenter extends BasePresenter {
         tags: run.runTags,
         isTest: run.isTest,
         idempotencyKey: run.idempotencyKey ?? undefined,
+        concurrencyKey: run.concurrencyKey ?? undefined,
         startedAt: run.startedAt ?? run.createdAt,
         durationMs: run.usageDurationMs,
         costInCents: run.costInCents,
