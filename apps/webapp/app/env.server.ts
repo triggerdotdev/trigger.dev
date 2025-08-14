@@ -23,7 +23,12 @@ const EnvironmentSchema = z.object({
   DATABASE_READ_REPLICA_URL: z.string().optional(),
   SESSION_SECRET: z.string(),
   MAGIC_LINK_SECRET: z.string(),
-  ENCRYPTION_KEY: z.string(),
+  ENCRYPTION_KEY: z
+    .string()
+    .refine(
+      (val) => Buffer.from(val, "utf8").length === 32,
+      "ENCRYPTION_KEY must be exactly 32 bytes"
+    ),
   WHITELISTED_EMAILS: z
     .string()
     .refine(isValidRegex, "WHITELISTED_EMAILS must be a valid regex.")
