@@ -185,7 +185,7 @@ async function getIdentityFromOAT(
     };
   }
 
-  const projectPath = v3ProjectPath({ slug: project.organization.slug }, { slug: project.slug });
+  const projectPath = v3ProjectPath(project.organization, project);
   return {
     success: true,
     result: {
