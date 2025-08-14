@@ -110,14 +110,23 @@ function createRunEngine() {
         const plan = await getCurrentPlan(orgId);
 
         if (!plan) {
-          return { isPaying: false };
+          return {
+            isPaying: false,
+            type: "free",
+          };
         }
 
         if (!plan.v3Subscription) {
-          return { isPaying: false };
+          return {
+            isPaying: false,
+            type: "free",
+          };
         }
 
-        return { isPaying: plan.v3Subscription.isPaying };
+        return {
+          isPaying: plan.v3Subscription.isPaying,
+          type: plan.v3Subscription.plan?.type ?? "free",
+        };
       },
     },
   });

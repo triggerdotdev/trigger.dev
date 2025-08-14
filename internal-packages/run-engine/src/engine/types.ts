@@ -5,7 +5,6 @@ import {
   MachinePreset,
   MachinePresetName,
   RetryOptions,
-  RunChainState,
   TriggerTraceContext,
 } from "@trigger.dev/core/v3";
 import { PrismaClient, PrismaReplicaClient } from "@trigger.dev/database";
@@ -14,6 +13,7 @@ import { FairQueueSelectionStrategyOptions } from "../run-queue/fairQueueSelecti
 import { MinimalAuthenticatedEnvironment } from "../shared/index.js";
 import { LockRetryConfig } from "./locking.js";
 import { workerCatalog } from "./workerCatalog.js";
+import { type BillingPlan } from "./billingCache.js";
 
 export type RunEngineOptions = {
   prisma: PrismaClient;
@@ -31,7 +31,7 @@ export type RunEngineOptions = {
     baseCostInCents: number;
   };
   billing?: {
-    getCurrentPlan: (orgId: string) => Promise<{ isPaying: boolean }>;
+    getCurrentPlan: (orgId: string) => Promise<BillingPlan>;
   };
   queue: {
     redis: RedisOptions;

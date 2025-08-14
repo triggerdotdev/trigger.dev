@@ -1,3 +1,4 @@
+import { BillingCache } from "./billingCache.js";
 import { createRedisClient, Redis } from "@internal/redis";
 import { getMeter, Meter, startSpan, trace, Tracer } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
@@ -77,6 +78,8 @@ export class RunEngine {
   ttlSystem: TtlSystem;
   pendingVersionSystem: PendingVersionSystem;
   raceSimulationSystem: RaceSimulationSystem = new RaceSimulationSystem();
+
+  private readonly billingCache: BillingCache;
 
   constructor(private readonly options: RunEngineOptions) {
     this.logger = options.logger ?? new Logger("RunEngine", this.options.logLevel ?? "info");
@@ -292,12 +295,18 @@ export class RunEngine {
       redisOptions: this.options.cache?.redis ?? this.options.runLock.redis,
     });
 
+    this.billingCache = new BillingCache({
+      billingOptions: this.options.billing,
+      redisOptions: this.options.cache?.redis ?? this.options.runLock.redis,
+      logger: this.logger,
+    });
+
     this.dequeueSystem = new DequeueSystem({
       resources,
       executionSnapshotSystem: this.executionSnapshotSystem,
       runAttemptSystem: this.runAttemptSystem,
       machines: this.options.machines,
-      billing: this.options.billing,
+      billingCache: this.billingCache,
       redisOptions: this.options.cache?.redis ?? this.options.runLock.redis,
     });
   }
@@ -366,13 +375,37 @@ export class RunEngine {
       "trigger",
       async (span) => {
         const status = delayUntil ? "DELAYED" : "PENDING";
+        const runId = RunId.fromFriendlyId(friendlyId);
+
+        // Get billing information to store with the run
+        let planType: string | undefined;
+        const currentPlan = await this.billingCache.getCurrentPlan(environment.organization.id);
+
+        if (currentPlan.err || !currentPlan.val) {
+          // If billing lookup fails, don't block the trigger - planType will be null
+          this.logger.warn(
+            "Failed to get billing info during trigger, proceeding without planType",
+            {
+              orgId: environment.organization.id,
+              runId,
+              error:
+                currentPlan.err instanceof Error
+                  ? currentPlan.err.message
+                  : String(currentPlan.err),
+              hasValue: !!currentPlan.val,
+            }
+          );
+          planType = undefined;
+        } else {
+          planType = currentPlan.val.type;
+        }
 
         //create run
         let taskRun: TaskRun;
         try {
           taskRun = await prisma.taskRun.create({
             data: {
-              id: RunId.fromFriendlyId(friendlyId),
+              id: runId,
               engine: "V2",
               status,
               number,
@@ -431,6 +464,7 @@ export class RunEngine {
               scheduleInstanceId,
               createdAt,
               bulkActionGroupIds: bulkActionId ? [bulkActionId] : undefined,
+              planType,
               executionSnapshots: {
                 create: {
                   engine: "V2",
@@ -1355,6 +1389,6 @@ export class RunEngine {
    * Runs in background and handles all errors internally
    */
   invalidateBillingCache(orgId: string): void {
-    this.dequeueSystem.invalidateBillingCache(orgId);
+    this.billingCache.invalidate(orgId);
   }
 }

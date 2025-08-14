@@ -1,12 +1,5 @@
-import {
-  createCache,
-  DefaultStatefulContext,
-  MemoryStore,
-  Namespace,
-  RedisCacheStore,
-  UnkeyCache,
-} from "@internal/cache";
 import type { RedisOptions } from "@internal/redis";
+import type { BillingCache } from "../billingCache.js";
 import { startSpan } from "@internal/tracing";
 import { assertExhaustive } from "@trigger.dev/core";
 import { DequeuedMessage, RetryOptions } from "@trigger.dev/core/v3";
@@ -20,66 +13,25 @@ import { RunEngineOptions } from "../types.js";
 import { ExecutionSnapshotSystem, getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
 import { RunAttemptSystem } from "./runAttemptSystem.js";
 import { SystemResources } from "./systems.js";
-import { ServiceValidationError } from "../errors.js";
 
 export type DequeueSystemOptions = {
   resources: SystemResources;
   machines: RunEngineOptions["machines"];
   executionSnapshotSystem: ExecutionSnapshotSystem;
   runAttemptSystem: RunAttemptSystem;
-  billing?: RunEngineOptions["billing"];
+  billingCache: BillingCache;
   redisOptions: RedisOptions;
 };
-
-// Cache TTLs for billing information - shorter than other caches since billing can change
-const BILLING_FRESH_TTL = 60000 * 5; // 5 minutes
-const BILLING_STALE_TTL = 60000 * 10; // 10 minutes
 
 export class DequeueSystem {
   private readonly $: SystemResources;
   private readonly executionSnapshotSystem: ExecutionSnapshotSystem;
   private readonly runAttemptSystem: RunAttemptSystem;
-  private readonly billingCache: UnkeyCache<{
-    billing: { isPaying: boolean };
-  }>;
 
   constructor(private readonly options: DequeueSystemOptions) {
     this.$ = options.resources;
     this.executionSnapshotSystem = options.executionSnapshotSystem;
     this.runAttemptSystem = options.runAttemptSystem;
-
-    // Initialize billing cache
-    const ctx = new DefaultStatefulContext();
-    const memory = new MemoryStore({ persistentMap: new Map() });
-    const redisCacheStore = new RedisCacheStore({
-      name: "dequeue-system",
-      connection: {
-        ...options.redisOptions,
-        keyPrefix: "engine:dequeue-system:cache:",
-      },
-      useModernCacheKeyBuilder: true,
-    });
-
-    this.billingCache = createCache({
-      billing: new Namespace<{ isPaying: boolean }>(ctx, {
-        stores: [memory, redisCacheStore],
-        fresh: BILLING_FRESH_TTL,
-        stale: BILLING_STALE_TTL,
-      }),
-    });
-  }
-
-  /**
-   * Invalidates the billing cache for an organization when their plan changes
-   * Runs in background and handles all errors internally
-   */
-  invalidateBillingCache(orgId: string): void {
-    this.billingCache.billing.remove(orgId).catch((error) => {
-      this.$.logger.warn("Failed to invalidate billing cache", {
-        orgId,
-        error: error.message,
-      });
-    });
   }
 
   /**
@@ -432,8 +384,29 @@ export class DequeueSystem {
               const currentAttemptNumber = lockedTaskRun.attemptNumber ?? 0;
               const nextAttemptNumber = currentAttemptNumber + 1;
 
-              // Get billing information if available
-              const billing = await this.#getBillingInfo({ orgId, runId });
+              // Get billing information if available, with fallback to TaskRun.planType
+              const billingResult = await this.options.billingCache.getCurrentPlan(orgId);
+
+              let isPaying: boolean;
+              if (billingResult.err || !billingResult.val) {
+                // Fallback to stored planType on TaskRun if billing cache fails or returns no value
+                this.$.logger.warn(
+                  "Billing cache failed or returned no value, falling back to TaskRun.planType",
+                  {
+                    orgId,
+                    runId,
+                    error:
+                      billingResult.err instanceof Error
+                        ? billingResult.err.message
+                        : String(billingResult.err),
+                    currentPlan: billingResult.val,
+                  }
+                );
+
+                isPaying = lockedTaskRun.planType !== null && lockedTaskRun.planType !== "free";
+              } else {
+                isPaying = billingResult.val.isPaying;
+              }
 
               const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(
                 prisma,
@@ -503,7 +476,11 @@ export class DequeueSystem {
                 project: {
                   id: lockedTaskRun.projectId,
                 },
-                billing,
+                billing: {
+                  currentPlan: {
+                    isPaying,
+                  },
+                },
               } satisfies DequeuedMessage;
             }
           );
@@ -667,38 +644,5 @@ export class DequeueSystem {
         },
       });
     });
-  }
-
-  async #getBillingInfo({
-    orgId,
-    runId,
-  }: {
-    orgId: string;
-    runId: string;
-  }): Promise<{ currentPlan: { isPaying: boolean } }> {
-    if (!this.options.billing?.getCurrentPlan) {
-      return { currentPlan: { isPaying: false } };
-    }
-
-    const result = await this.billingCache.billing.swr(orgId, async () => {
-      // This is safe because options can't change at runtime
-      const planResult = await this.options.billing!.getCurrentPlan(orgId);
-
-      return { isPaying: planResult.isPaying };
-    });
-
-    if (result.err) {
-      throw result.err;
-    }
-
-    if (!result.val) {
-      throw new ServiceValidationError(
-        `Could not resolve billing information for organization ${orgId}`,
-        undefined,
-        { orgId, runId }
-      );
-    }
-
-    return { currentPlan: { isPaying: result.val.isPaying } };
   }
 }
