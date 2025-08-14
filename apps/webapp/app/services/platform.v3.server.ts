@@ -10,6 +10,8 @@ import {
   type MachineCode,
   type UpdateBillingAlertsRequest,
   type BillingAlertsResult,
+  type ReportUsageResult,
+  type ReportUsagePlan,
 } from "@trigger.dev/platform";
 import { createCache, DefaultStatefulContext, Namespace } from "@unkey/cache";
 import { MemoryStore } from "@unkey/cache/stores";
@@ -432,7 +434,9 @@ export async function reportComputeUsage(request: Request) {
   });
 }
 
-export async function getEntitlement(organizationId: string) {
+export async function getEntitlement(
+  organizationId: string
+): Promise<ReportUsageResult | undefined> {
   if (!client) return undefined;
 
   try {
