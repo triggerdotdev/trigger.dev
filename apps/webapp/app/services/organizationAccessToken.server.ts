@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { logger } from "./logger.server";
 import { decryptToken, encryptToken, hashToken } from "~/utils/tokens";
+import { env } from "~/env.server";
 
 const tokenValueLength = 40;
 //lowercase only, removed 0 and l to avoid confusion
@@ -147,7 +148,7 @@ export async function createOrganizationAccessToken({
   expiresAt,
 }: CreateOrganizationAccessTokenOptions) {
   const token = createToken();
-  const encryptedToken = encryptToken(token);
+  const encryptedToken = encryptToken(token, env.ENCRYPTION_KEY);
 
   const organizationAccessToken = await prisma.organizationAccessToken.create({
     data: {
@@ -199,7 +200,8 @@ function decryptOrganizationAccessToken(organizationAccessToken: OrganizationAcc
   const decryptedToken = decryptToken(
     encryptedData.data.nonce,
     encryptedData.data.ciphertext,
-    encryptedData.data.tag
+    encryptedData.data.tag,
+    env.ENCRYPTION_KEY
   );
   return decryptedToken;
 }
