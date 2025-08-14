@@ -364,6 +364,7 @@ export class RunEngine {
       scheduleInstanceId,
       createdAt,
       bulkActionId,
+      planType,
     }: TriggerParams,
     tx?: PrismaClientOrTransaction
   ): Promise<TaskRun> {
@@ -374,37 +375,13 @@ export class RunEngine {
       "trigger",
       async (span) => {
         const status = delayUntil ? "DELAYED" : "PENDING";
-        const runId = RunId.fromFriendlyId(friendlyId);
-
-        // Get billing information to store with the run
-        let planType: string | undefined;
-        const currentPlan = await this.billingCache.getCurrentPlan(environment.organization.id);
-
-        if (currentPlan.err || !currentPlan.val) {
-          // If billing lookup fails, don't block the trigger - planType will be undefined
-          this.logger.warn(
-            "Failed to get billing info during trigger, proceeding without planType",
-            {
-              orgId: environment.organization.id,
-              runId,
-              error:
-                currentPlan.err instanceof Error
-                  ? currentPlan.err.message
-                  : String(currentPlan.err),
-              hasValue: !!currentPlan.val,
-            }
-          );
-          planType = undefined;
-        } else {
-          planType = currentPlan.val.type;
-        }
 
         //create run
         let taskRun: TaskRun;
         try {
           taskRun = await prisma.taskRun.create({
             data: {
-              id: runId,
+              id: RunId.fromFriendlyId(friendlyId),
               engine: "V2",
               status,
               number,
