@@ -401,7 +401,7 @@ export class DequeueSystem {
                   }
                 );
 
-                isPaying = lockedTaskRun.planType !== null && lockedTaskRun.planType !== "free";
+                isPaying = (lockedTaskRun.planType ?? "free") !== "free";
               } else {
                 isPaying = billingResult.val.isPaying;
               }
