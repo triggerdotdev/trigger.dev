@@ -1,10 +1,8 @@
-import { type OrganizationAccessToken } from "@trigger.dev/database";
 import { customAlphabet } from "nanoid";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { logger } from "./logger.server";
-import { decryptToken, encryptToken, hashToken } from "~/utils/tokens.server";
-import { env } from "~/env.server";
+import { hashToken } from "~/utils/tokens.server";
 
 const tokenValueLength = 40;
 //lowercase only, removed 0 and l to avoid confusion
@@ -21,7 +19,6 @@ export async function getValidOrganizationAccessTokens(organizationId: string) {
     select: {
       id: true,
       name: true,
-      obfuscatedToken: true,
       createdAt: true,
       lastAccessedAt: true,
       expiresAt: true,
@@ -36,7 +33,6 @@ export async function getValidOrganizationAccessTokens(organizationId: string) {
   return organizationAccessTokens.map((oat) => ({
     id: oat.id,
     name: oat.name,
-    obfuscatedToken: oat.obfuscatedToken,
     createdAt: oat.createdAt,
     lastAccessedAt: oat.lastAccessedAt,
     expiresAt: oat.expiresAt,
@@ -62,12 +58,6 @@ export async function revokeOrganizationAccessToken(tokenId: string) {
 export type OrganizationAccessTokenAuthenticationResult = {
   organizationId: string;
 };
-
-const EncryptedSecretValueSchema = z.object({
-  nonce: z.string(),
-  ciphertext: z.string(),
-  tag: z.string(),
-});
 
 const AuthorizationHeaderSchema = z.string().regex(/^Bearer .+$/);
 
@@ -125,15 +115,6 @@ export async function authenticateOrganizationAccessToken(
     },
   });
 
-  const decryptedToken = decryptOrganizationAccessToken(organizationAccessToken);
-
-  if (decryptedToken !== token) {
-    logger.error(
-      `OrganizationAccessToken with id: ${organizationAccessToken.id} was found in the database with hash ${hashedToken}, but the decrypted token did not match the provided token.`
-    );
-    return;
-  }
-
   return {
     organizationId: organizationAccessToken.organizationId,
   };
@@ -149,14 +130,11 @@ export async function createOrganizationAccessToken({
   expiresAt,
 }: CreateOrganizationAccessTokenOptions) {
   const token = createToken();
-  const encryptedToken = encryptToken(token, env.ENCRYPTION_KEY);
 
   const organizationAccessToken = await prisma.organizationAccessToken.create({
     data: {
       name,
       organizationId,
-      encryptedToken,
-      obfuscatedToken: obfuscateToken(token),
       hashedToken: hashToken(token),
       expiresAt,
     },
@@ -167,7 +145,6 @@ export async function createOrganizationAccessToken({
     name,
     organizationId,
     token,
-    obfuscatedToken: organizationAccessToken.obfuscatedToken,
     expiresAt: organizationAccessToken.expiresAt,
   };
 }
@@ -180,29 +157,4 @@ const tokenPrefix = "tr_oat_";
 
 function createToken() {
   return `${tokenPrefix}${tokenGenerator()}`;
-}
-
-function obfuscateToken(token: string) {
-  const withoutPrefix = token.replace(tokenPrefix, "");
-  const obfuscated = `${withoutPrefix.slice(0, 4)}${"•".repeat(18)}${withoutPrefix.slice(-4)}`;
-  return `${tokenPrefix}${obfuscated}`;
-}
-
-function decryptOrganizationAccessToken(organizationAccessToken: OrganizationAccessToken) {
-  const encryptedData = EncryptedSecretValueSchema.safeParse(
-    organizationAccessToken.encryptedToken
-  );
-  if (!encryptedData.success) {
-    throw new Error(
-      `Unable to parse encrypted OrganizationAccessToken with id: ${organizationAccessToken.id}: ${encryptedData.error.message}`
-    );
-  }
-
-  const decryptedToken = decryptToken(
-    encryptedData.data.nonce,
-    encryptedData.data.ciphertext,
-    encryptedData.data.tag,
-    env.ENCRYPTION_KEY
-  );
-  return decryptedToken;
 }

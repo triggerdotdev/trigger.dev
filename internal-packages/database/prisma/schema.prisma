@@ -147,12 +147,6 @@ model OrganizationAccessToken {
   /// Used to differentiate between user-generated and system-generated tokens
   type OrganizationAccessTokenType @default(USER)
 
-  /// This is the token encrypted using the ENCRYPTION_KEY
-  encryptedToken Json
-
-  /// This is shown in the UI, with ********
-  obfuscatedToken String
-
   /// This is used to find the token in the database
   hashedToken String @unique
 
