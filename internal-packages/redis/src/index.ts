@@ -9,6 +9,7 @@ const defaultOptions: Partial<RedisOptions> = {
     return delay;
   },
   maxRetriesPerRequest: process.env.GITHUB_ACTIONS ? 50 : process.env.VITEST ? 5 : 20,
+  family: 0, // Support both IPv4 and IPv6 (Railway internal DNS)
 };
 
 const logger = new Logger("Redis", "debug");
