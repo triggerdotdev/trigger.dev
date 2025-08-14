@@ -5,7 +5,7 @@
     "buildCommand": "cp .env.example .env && pnpm install --frozen-lockfile && pnpm run generate && pnpm run build --filter=webapp"
   },
   "deploy": {
-    "startCommand": "pnpm exec turbo run db:push --filter=@trigger.dev/database && cd apps/webapp && pnpm start",
+    "startCommand": "pnpm run db:migrate && cd apps/webapp && pnpm start",
     "healthcheckPath": "/healthcheck",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
