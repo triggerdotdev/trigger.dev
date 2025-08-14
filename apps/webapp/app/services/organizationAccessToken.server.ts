@@ -47,7 +47,6 @@ export async function revokeOrganizationAccessToken(tokenId: string) {
   await prisma.organizationAccessToken.update({
     where: {
       id: tokenId,
-      revokedAt: null,
     },
     data: {
       revokedAt: new Date(),
