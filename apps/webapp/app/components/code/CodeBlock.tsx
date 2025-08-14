@@ -86,9 +86,15 @@ const defaultTheme: PrismTheme = {
       },
     },
     {
-      types: ["property", "tag", "boolean", "number", "constant", "symbol", "deleted"],
+      types: ["property", "tag", "constant", "symbol", "deleted"],
       style: {
         color: "#9B99FF",
+      },
+    },
+    {
+      types: ["boolean", "number"],
+      style: {
+        color: "#E5C07B",
       },
     },
     {
@@ -149,12 +155,6 @@ const defaultTheme: PrismTheme = {
       types: ["deleted"],
       style: {
         color: "#F85149",
-      },
-    },
-    {
-      types: ["boolean"],
-      style: {
-        color: "#9B99FF",
       },
     },
     {
