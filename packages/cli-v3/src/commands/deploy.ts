@@ -308,7 +308,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
   const deploymentResponse = await projectClient.client.initializeDeployment({
     contentHash: buildManifest.contentHash,
-    userId: authorization.userId,
+    userId: authorization.auth.tokenType === "personal" ? authorization.userId : undefined,
     gitMeta,
     type: features.run_engine_v2 ? "MANAGED" : "V1",
     runtime: buildManifest.runtime,

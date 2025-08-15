@@ -8,7 +8,7 @@ describe("getRegistryConfig", () => {
     DIRECT_URL: "postgresql://test:test@localhost:5432/test",
     SESSION_SECRET: "test-session-secret",
     MAGIC_LINK_SECRET: "test-magic-link-secret",
-    ENCRYPTION_KEY: "test-encryption-key",
+    ENCRYPTION_KEY: "test-encryption-keeeeey-32-bytes",
     CLICKHOUSE_URL: "http://localhost:8123",
   };
 
