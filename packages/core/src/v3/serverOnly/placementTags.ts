@@ -1,5 +1,5 @@
 import { type PlacementTag } from "../schemas/index.js";
-import { SimpleStructuredLogger } from "./structuredLogger.js";
+import { SimpleStructuredLogger } from "../utils/structuredLogger.js";
 
 export interface PlacementConfig {
   enabled: boolean;
@@ -41,16 +41,10 @@ export class PlacementTagProcessor {
   private printTagWarnings(tag: PlacementTag) {
     if (!tag.values || tag.values.length === 0) {
       // No values provided
-      this.logger.warn(
-        "Placement tag has no values, using empty string",
-        tag
-      );
+      this.logger.warn("Placement tag has no values, using empty string", tag);
     } else if (tag.values.length > 1) {
       // Multiple values provided
-      this.logger.warn(
-        "Placement tag has multiple values, only using first one",
-        tag
-      );
+      this.logger.warn("Placement tag has multiple values, only using first one", tag);
     }
   }
 }

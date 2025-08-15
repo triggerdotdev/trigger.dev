@@ -1,7 +1,8 @@
 import type { BillingCache } from "../billingCache.js";
 import { startSpan } from "@internal/tracing";
 import { assertExhaustive } from "@trigger.dev/core";
-import { DequeuedMessage, RetryOptions, placementTag } from "@trigger.dev/core/v3";
+import { DequeuedMessage, RetryOptions } from "@trigger.dev/core/v3";
+import { placementTag } from "@trigger.dev/core/v3/serverOnly";
 import { getMaxDuration } from "@trigger.dev/core/v3/isomorphic";
 import { PrismaClientOrTransaction } from "@trigger.dev/database";
 import { getRunWithBackgroundWorkerTasks } from "../db/worker.js";

@@ -5,7 +5,7 @@ import {
   type WorkloadManagerOptions,
 } from "./types.js";
 import type { EnvironmentType, MachinePreset, PlacementTag } from "@trigger.dev/core/v3";
-import { PlacementTagProcessor } from "@trigger.dev/core/v3";
+import { PlacementTagProcessor } from "@trigger.dev/core/v3/serverOnly";
 import { env } from "../env.js";
 import { type K8sApi, createK8sApi, type k8s } from "../clients/kubernetes.js";
 import { getRunnerId } from "../util.js";

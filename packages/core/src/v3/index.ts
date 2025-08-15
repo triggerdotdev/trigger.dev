@@ -69,7 +69,6 @@ export {
 
 export * from "./utils/imageRef.js";
 export * from "./utils/interval.js";
-export * from "./utils/placementTags.js";
 
 export * from "./config.js";
 export {
