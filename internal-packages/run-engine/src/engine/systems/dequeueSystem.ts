@@ -1,6 +1,7 @@
+import type { BillingCache } from "../billingCache.js";
 import { startSpan } from "@internal/tracing";
 import { assertExhaustive } from "@trigger.dev/core";
-import { DequeuedMessage, RetryOptions } from "@trigger.dev/core/v3";
+import { DequeuedMessage, RetryOptions, placementTag } from "@trigger.dev/core/v3";
 import { getMaxDuration } from "@trigger.dev/core/v3/isomorphic";
 import { PrismaClientOrTransaction } from "@trigger.dev/database";
 import { getRunWithBackgroundWorkerTasks } from "../db/worker.js";
@@ -17,6 +18,7 @@ export type DequeueSystemOptions = {
   machines: RunEngineOptions["machines"];
   executionSnapshotSystem: ExecutionSnapshotSystem;
   runAttemptSystem: RunAttemptSystem;
+  billingCache: BillingCache;
 };
 
 export class DequeueSystem {
@@ -380,6 +382,30 @@ export class DequeueSystem {
               const currentAttemptNumber = lockedTaskRun.attemptNumber ?? 0;
               const nextAttemptNumber = currentAttemptNumber + 1;
 
+              // Get billing information if available, with fallback to TaskRun.planType
+              const billingResult = await this.options.billingCache.getCurrentPlan(orgId);
+
+              let isPaying: boolean;
+              if (billingResult.err || !billingResult.val) {
+                // Fallback to stored planType on TaskRun if billing cache fails or returns no value
+                this.$.logger.warn(
+                  "Billing cache failed or returned no value, falling back to TaskRun.planType",
+                  {
+                    orgId,
+                    runId,
+                    error:
+                      billingResult.err instanceof Error
+                        ? billingResult.err.message
+                        : String(billingResult.err),
+                    currentPlan: billingResult.val,
+                  }
+                );
+
+                isPaying = (lockedTaskRun.planType ?? "free") !== "free";
+              } else {
+                isPaying = billingResult.val.isPaying;
+              }
+
               const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(
                 prisma,
                 {
@@ -448,6 +474,7 @@ export class DequeueSystem {
                 project: {
                   id: lockedTaskRun.projectId,
                 },
+                placementTags: [placementTag("paid", isPaying ? "true" : "false")],
               } satisfies DequeuedMessage;
             }
           );

@@ -4,7 +4,7 @@ import {
   type WorkloadManagerCreateOptions,
   type WorkloadManagerOptions,
 } from "./types.js";
-import type { EnvironmentType, MachinePreset } from "@trigger.dev/core/v3";
+import type { EnvironmentType, MachinePreset, PlacementTag } from "@trigger.dev/core/v3";
 import { env } from "../env.js";
 import { type K8sApi, createK8sApi, type k8s } from "../clients/kubernetes.js";
 import { getRunnerId } from "../util.js";
@@ -12,6 +12,11 @@ import { getRunnerId } from "../util.js";
 type ResourceQuantities = {
   [K in "cpu" | "memory" | "ephemeral-storage"]?: string;
 };
+
+interface PlacementConfig {
+  enabled: boolean;
+  prefix: string;
+}
 
 export class KubernetesWorkloadManager implements WorkloadManager {
   private readonly logger = new SimpleStructuredLogger("kubernetes-workload-provider");
@@ -25,6 +30,56 @@ export class KubernetesWorkloadManager implements WorkloadManager {
       this.logger.warn("[KubernetesWorkloadManager] ⚠️ Custom workload API domain", {
         domain: opts.workloadApiDomain,
       });
+    }
+  }
+
+  private get placementConfig(): PlacementConfig {
+    return {
+      enabled: env.PLACEMENT_TAGS_ENABLED,
+      prefix: env.PLACEMENT_TAGS_PREFIX,
+    };
+  }
+
+  private addPlacementTags(
+    podSpec: Omit<k8s.V1PodSpec, "containers">,
+    placementTags?: PlacementTag[]
+  ): Omit<k8s.V1PodSpec, "containers"> {
+    if (!this.placementConfig.enabled || !placementTags || placementTags.length === 0) {
+      return podSpec;
+    }
+
+    const nodeSelector: Record<string, string> = { ...podSpec.nodeSelector };
+
+    // Convert placement tags to nodeSelector labels
+    for (const tag of placementTags) {
+      const labelKey = `${this.placementConfig.prefix}/${tag.key}`;
+
+      // Print warnings (if any)
+      this.printTagWarnings(tag);
+
+      // For now we only support single values via nodeSelector
+      nodeSelector[labelKey] = tag.values?.[0] ?? "";
+    }
+
+    return {
+      ...podSpec,
+      nodeSelector,
+    };
+  }
+
+  private printTagWarnings(tag: PlacementTag) {
+    if (!tag.values || tag.values.length === 0) {
+      // No values provided
+      this.logger.warn(
+        "[KubernetesWorkloadManager] Placement tag has no values, using empty string",
+        tag
+      );
+    } else if (tag.values.length > 1) {
+      // Multiple values provided
+      this.logger.warn(
+        "[KubernetesWorkloadManager] Placement tag has multiple values, only using first one",
+        tag
+      );
     }
   }
 
@@ -48,7 +103,7 @@ export class KubernetesWorkloadManager implements WorkloadManager {
             },
           },
           spec: {
-            ...this.#defaultPodSpec,
+            ...this.addPlacementTags(this.#defaultPodSpec, opts.placementTags),
             terminationGracePeriodSeconds: 60 * 60,
             containers: [
               {

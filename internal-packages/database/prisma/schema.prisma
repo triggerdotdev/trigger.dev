@@ -707,6 +707,9 @@ model TaskRun {
   /// Run error
   error Json?
 
+  /// Organization's billing plan type (cached for fallback when billing API fails)
+  planType String?
+
   maxDurationInSeconds Int?
 
   @@unique([oneTimeUseToken])
