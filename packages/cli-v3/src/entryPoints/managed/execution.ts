@@ -77,6 +77,7 @@ export class RunExecution {
   private shutdownReason?: string;
 
   private isCompletingRun = false;
+  private ignoreSnapshotChanges = false;
 
   private supervisorSocket: SupervisorSocket;
   private notifier?: RunNotifier;
@@ -236,6 +237,16 @@ export class RunExecution {
       incomingSnapshotId: snapshot.friendlyId,
       completedWaitpoints: completedWaitpoints.length,
     };
+
+    if (this.ignoreSnapshotChanges) {
+      this.sendDebugLog("processSnapshotChange: ignoring snapshot change", {
+        incomingSnapshotId: snapshot.friendlyId,
+        completedWaitpoints: completedWaitpoints.length,
+        currentAttemptNumber: this.currentAttemptNumber,
+        newAttemptNumber: run.attemptNumber,
+      });
+      return;
+    }
 
     if (!this.snapshotManager) {
       this.sendDebugLog("handleSnapshotChange: missing snapshot manager", snapshotMetadata);
@@ -808,7 +819,9 @@ export class RunExecution {
     }
 
     // Start and execute next attempt
-    const [startError, start] = await tryCatch(this.startAttempt({ isWarmStart: true }));
+    const [startError, start] = await tryCatch(
+      this.enableIgnoreSnapshotChanges(() => this.startAttempt({ isWarmStart: true }))
+    );
 
     if (startError) {
       this.sendDebugLog("failed to start attempt for retry", { error: startError.message });
@@ -826,6 +839,15 @@ export class RunExecution {
 
       this.shutdownExecution("retryImmediately: failed to execute run");
       return;
+    }
+  }
+
+  private async enableIgnoreSnapshotChanges<T>(fn: () => Promise<T>): Promise<T> {
+    this.ignoreSnapshotChanges = true;
+    try {
+      return await fn();
+    } finally {
+      this.ignoreSnapshotChanges = false;
     }
   }
 
