@@ -68,7 +68,7 @@
     "@types/slug": "^5.0.3",
     "@types/uuid": "^9.0.0",
     "@types/ws": "^8.5.3",
-    "ai": "^4.2.0",
+    "ai": "^5.0.0",
     "encoding": "^0.1.13",
     "rimraf": "^3.0.2",
     "tshy": "^3.0.2",
@@ -78,7 +78,7 @@
   },
   "peerDependencies": {
     "zod": "^3.0.0 || ^4.0.0",
-    "ai": "^4.2.0"
+    "ai": "^4.2.0 || ^5.0.0"
   },
   "peerDependenciesMeta": {
     "ai": {
