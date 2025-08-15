@@ -161,6 +161,7 @@ export function createTask<
   const task: Task<TIdentifier, TInput, TOutput> = {
     id: params.id,
     description: params.description,
+    jsonSchema: params.jsonSchema,
     trigger: async (payload, options) => {
       return await trigger_internal<RunTypes<TIdentifier, TInput, TOutput>>(
         "trigger()",
