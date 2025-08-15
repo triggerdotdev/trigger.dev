@@ -338,12 +338,7 @@ class ExternalSpanExporterWrapper {
         traceState: this.externalTraceContext.tracestate
           ? new TraceState(this.externalTraceContext.tracestate)
           : undefined,
-        traceFlags:
-          typeof this.externalTraceContext.traceFlags === "string"
-            ? this.externalTraceContext.traceFlags === "01"
-              ? 1
-              : 0
-            : parentSpanContext?.traceFlags ?? 0,
+        traceFlags: this.externalTraceContext.traceFlags,
       };
     } else if (isAttemptSpan) {
       parentSpanContext = undefined;
