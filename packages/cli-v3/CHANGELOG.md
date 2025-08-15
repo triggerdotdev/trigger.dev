@@ -1,5 +1,20 @@
 # trigger.dev
 
+## 4.0.0-v4-beta.28
+
+### Patch Changes
+
+- Make the default of legacyDevProcessCwdBehaviour true instead of false (prevents breaking prismaExtension) ([#2387](https://github.com/triggerdotdev/trigger.dev/pull/2387))
+- fix: prevent circular reference errors on task indexing when using schemaTask ([#2383](https://github.com/triggerdotdev/trigger.dev/pull/2383))
+- fix: waitUntil now correctly waits for metadata.streams to finish ([#2399](https://github.com/triggerdotdev/trigger.dev/pull/2399))
+- fix(runner): prevent retry immediately race condition which can cause stuck runs that end up being system failures ([#2402](https://github.com/triggerdotdev/trigger.dev/pull/2402))
+- Upgrade to bun v1.2.20 ([#2398](https://github.com/triggerdotdev/trigger.dev/pull/2398))
+- fix: external traces now respect parent sampling, and prevent broken traces when there is no external trace context ([#2395](https://github.com/triggerdotdev/trigger.dev/pull/2395))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.28`
+  - `@trigger.dev/build@4.0.0-v4-beta.28`
+  - `@trigger.dev/schema-to-json@4.0.0-v4-beta.28`
+
 ## 4.0.0-v4-beta.27
 
 ### Patch Changes

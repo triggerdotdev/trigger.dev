@@ -1,5 +1,11 @@
 # internal-platform
 
+## 4.0.0-v4-beta.28
+
+### Patch Changes
+
+- Add optional placement tags to dequeued messages for targeted scheduling ([#2390](https://github.com/triggerdotdev/trigger.dev/pull/2390))
+
 ## 4.0.0-v4-beta.27
 
 ### Patch Changes

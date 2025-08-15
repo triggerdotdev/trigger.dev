@@ -1,5 +1,13 @@
 # @trigger.dev/sdk
 
+## 4.0.0-v4-beta.28
+
+### Patch Changes
+
+- feat: Support AI SDK 5.0. `ai.tool` now accepts either a schemaTask or a task with a provided jsonSchema ([#2396](https://github.com/triggerdotdev/trigger.dev/pull/2396))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.28`
+
 ## 4.0.0-v4-beta.27
 
 ### Patch Changes
