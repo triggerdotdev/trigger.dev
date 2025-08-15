@@ -1840,6 +1840,26 @@ describe("TaskExecutor", () => {
       },
     });
   });
+
+  test("should pass concurrencyKey through to task context", async () => {
+    let receivedConcurrencyKey: string | undefined;
+    
+    const task = {
+      id: "test-task",
+      fns: {
+        run: async (payload: any, params: RunFnParams<any>) => {
+          receivedConcurrencyKey = params.ctx.concurrencyKey;
+          return { success: true };
+        },
+      },
+    };
+  
+    const result = await executeTask(task, { test: "data" }, undefined, undefined);
+
+    // Verify that concurrencyKey is passed through to task context
+    expect(receivedConcurrencyKey).toBe("user-123");
+    expect(result.result.ok).toBe(true);
+  });
 });
 
 function executeTask(
@@ -1915,6 +1935,7 @@ function executeTask(
       name: "test-queue",
       id: "test-queue-id",
     },
+    concurrencyKey: "user-123",
     environment: {
       type: "PRODUCTION",
       id: "test-environment-id",

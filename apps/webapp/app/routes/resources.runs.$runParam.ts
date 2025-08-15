@@ -193,6 +193,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     queue: {
       name: run.queue,
     },
+    concurrencyKey: run.concurrencyKey,
     environment: {
       id: run.runtimeEnvironment.id,
       slug: run.runtimeEnvironment.slug,

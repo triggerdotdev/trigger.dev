@@ -1639,6 +1639,7 @@ export const AttemptForExecutionGetPayload = {
         baseCostInCents: true,
         maxDurationInSeconds: true,
         tags: true,
+        concurrencyKey: true,
       },
     },
     queue: {
@@ -1727,6 +1728,7 @@ class SharedQueueTasks {
         id: queue.friendlyId,
         name: queue.name,
       },
+      concurrencyKey: taskRun.concurrencyKey ?? undefined,
       environment: {
         id: attempt.runtimeEnvironment.id,
         slug: attempt.runtimeEnvironment.slug,

@@ -341,6 +341,7 @@ export const TaskRunExecution = z.object({
       traceContext: z.record(z.unknown()).optional(),
     })
   ),
+  concurrencyKey: z.string().optional(),
   ...StaticTaskRunExecutionShape,
 });
 
@@ -395,6 +396,7 @@ export const V3TaskRunExecution = z.object({
     })
   ),
   queue: TaskRunExecutionQueue,
+  concurrencyKey: z.string().optional(),
   environment: TaskRunExecutionEnvironment,
   organization: TaskRunExecutionOrganization,
   project: TaskRunExecutionProject,
@@ -413,6 +415,7 @@ export const TaskRunContext = z.object({
     durationMs: true,
     costInCents: true,
   }),
+  concurrencyKey: z.string().optional(),
   ...StaticTaskRunExecutionShape,
 });
 
@@ -438,6 +441,7 @@ export const V3TaskRunContext = z.object({
   }),
   task: V3TaskRunExecutionTask,
   queue: TaskRunExecutionQueue,
+  concurrencyKey: z.string().optional(),
   environment: V3TaskRunExecutionEnvironment,
   organization: TaskRunExecutionOrganization,
   project: TaskRunExecutionProject,

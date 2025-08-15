@@ -571,6 +571,7 @@ export class SpanPresenter extends BasePresenter {
         name: run.queue,
         id: run.queue,
       },
+      concurrencyKey: run.concurrencyKey ?? undefined,
       environment: {
         id: run.runtimeEnvironment.id,
         slug: run.runtimeEnvironment.slug,
