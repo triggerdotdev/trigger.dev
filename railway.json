@@ -5,7 +5,7 @@
     "buildCommand": "cp .env.example .env && pnpm install --frozen-lockfile && pnpm run generate && pnpm run build --filter=webapp"
   },
   "deploy": {
-    "startCommand": "pnpm run db:migrate && cd apps/webapp && pnpm start",
+    "startCommand": "bash .railway/migrate.sh && cd apps/webapp && pnpm start",
     "healthcheckPath": "/healthcheck",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10

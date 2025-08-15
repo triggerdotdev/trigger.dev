@@ -1,0 +1,8 @@
+{
+  "description": "Railway migration optimization configuration",
+  "baseline_location": ".railway/baseline.sql",
+  "generation_date": "2025-08-15",
+  "total_migrations_included": 691,
+  "strategy": "Apply baseline directly, mark all historical migrations as applied",
+  "regenerate_command": ".railway/generate-baseline.sh"
+}
