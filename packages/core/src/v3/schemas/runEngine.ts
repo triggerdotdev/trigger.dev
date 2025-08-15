@@ -230,9 +230,9 @@ export const PlacementTag = z.object({
 });
 export type PlacementTag = z.infer<typeof PlacementTag>;
 
-/** Helper functions for placement tags. Accepts a single value or an array of values. */
-export function placementTag(key: string, valueOrValues: string | string[]): PlacementTag {
-  return { key, values: Array.isArray(valueOrValues) ? valueOrValues : [valueOrValues] };
+/** Helper functions for placement tags. In the future this will be able to support multiple values and operators. For now it's just a single value. */
+export function placementTag(key: string, value: string): PlacementTag {
+  return { key, values: [value] };
 }
 
 /** This is sent to a Worker when a run is dequeued (a new run or continuing run) */
