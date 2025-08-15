@@ -37,6 +37,16 @@ export class ReplayTaskRunService extends BaseService {
       taskRunFriendlyId: existingTaskRun.friendlyId,
     });
 
+    const existingEnvironment = await this._prisma.runtimeEnvironment.findFirstOrThrow({
+      where: {
+        id: existingTaskRun.runtimeEnvironmentId,
+      },
+      select: {
+        id: true,
+        type: true,
+      },
+    });
+
     const payloadPacket = await this.overrideExistingPayloadPacket(
       existingTaskRun,
       overrideOptions.payload
@@ -48,6 +58,11 @@ export class ReplayTaskRunService extends BaseService {
     const payloadType = payloadPacket.dataType;
     const metadata = overrideOptions.metadata ?? (await this.getExistingMetadata(existingTaskRun));
     const tags = overrideOptions.tags ?? existingTaskRun.runTags;
+    // Only use the region from the existing task if neither environment is a development environment
+    const region =
+      existingEnvironment.type === "DEVELOPMENT" || authenticatedEnvironment.type === "DEVELOPMENT"
+        ? undefined
+        : existingTaskRun.workerQueue;
 
     try {
       const taskQueue = await this._prisma.taskQueue.findFirst({
@@ -92,7 +107,7 @@ export class ReplayTaskRunService extends BaseService {
             lockToVersion:
               overrideOptions.version === "latest" ? undefined : overrideOptions.version,
             bulkActionId: overrideOptions?.bulkActionId,
-            region: existingTaskRun.workerQueue,
+            region,
           },
         },
         {
