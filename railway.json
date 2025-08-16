@@ -15,7 +15,7 @@
       "build": {
         "NODE_ENV": "production"
       },
-      "deploy": {
+      "variables": {
         "PORT": "${{PORT}}",
         "NODE_ENV": "production",
         "APP_ORIGIN": "https://${{RAILWAY_PUBLIC_DOMAIN}}",
@@ -39,6 +39,9 @@
         "TRIGGER_BOOTSTRAP_WORKER_GROUP_NAME": "railway",
         "APP_LOG_LEVEL": "info",
         "REDIS_TLS_DISABLED": "true"
+      },
+      "deploy": {
+        "startCommand": "bash .railway/migrate.sh && cd apps/webapp && pnpm start"
       }
     }
   }
