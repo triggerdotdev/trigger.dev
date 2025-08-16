@@ -1,13 +1,18 @@
 import { intro, isCancel, log, outro, select, text } from "@clack/prompts";
 import { context, trace } from "@opentelemetry/api";
-import { GetProjectResponseBody, flattenAttributes } from "@trigger.dev/core/v3";
+import {
+  GetProjectResponseBody,
+  LogLevel,
+  flattenAttributes,
+  tryCatch,
+} from "@trigger.dev/core/v3";
 import { recordSpanException } from "@trigger.dev/core/v3/workers";
 import chalk from "chalk";
 import { Command, Option as CommandOption } from "commander";
 import { applyEdits, findNodeAtLocation, getNodeValue, modify, parseTree } from "jsonc-parser";
 import { writeFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
-import { addDependency, addDevDependency, detectPackageManager } from "nypm";
+import { addDependency, addDevDependency } from "nypm";
 import { resolveTSConfig } from "pkg-types";
 import { z } from "zod";
 import { CliApiClient } from "../apiClient.js";
@@ -31,8 +36,13 @@ import { createFile, pathExists, readFile } from "../utilities/fileSystem.js";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
 import { spinner } from "../utilities/windows.js";
-import { login } from "./login.js";
 import { VERSION } from "../version.js";
+import { login } from "./login.js";
+import {
+  readConfigHasSeenMCPInstallPrompt,
+  writeConfigHasSeenMCPInstallPrompt,
+} from "../utilities/configFiles.js";
+import { installMcpServer } from "./install-mcp.js";
 
 const cliVersion = VERSION as string;
 const cliTag = cliVersion.includes("v4-beta") ? "v4-beta" : "latest";
@@ -46,6 +56,7 @@ const InitCommandOptions = CommonCommandOptions.extend({
   pkgArgs: z.string().optional(),
   gitRef: z.string().default("main"),
   javascript: z.boolean().default(false),
+  yes: z.boolean().default(false),
 });
 
 type InitCommandOptions = z.infer<typeof InitCommandOptions>;
@@ -77,6 +88,7 @@ export function configureInitCommand(program: Command) {
         "--pkg-args <args>",
         "Additional arguments to pass to the package manager, accepts CSV for multiple args"
       )
+      .option("-y, --yes", "Skip all prompts and use defaults (requires --project-ref)")
   )
     .addOption(
       new CommandOption(
@@ -100,6 +112,50 @@ export async function initCommand(dir: string, options: unknown) {
 
 async function _initCommand(dir: string, options: InitCommandOptions) {
   const span = trace.getSpan(context.active());
+
+  // Validate --yes flag requirements
+  if (options.yes && !options.projectRef) {
+    throw new Error("--project-ref is required when using --yes flag");
+  }
+
+  const hasSeenMCPInstallPrompt = readConfigHasSeenMCPInstallPrompt();
+
+  if (!hasSeenMCPInstallPrompt) {
+    const installChoice = await select({
+      message: "Choose how you want to initialize your project:",
+      options: [
+        {
+          value: "mcp",
+          label: "Trigger.dev MCP",
+          hint: "Automatically install the Trigger.dev MCP server and then vibe your way to a new project.",
+        },
+        { value: "cli", label: "CLI", hint: "Continue with the CLI" },
+      ],
+    });
+
+    writeConfigHasSeenMCPInstallPrompt(true);
+
+    const continueWithCLI = isCancel(installChoice) || installChoice === "cli";
+
+    if (!continueWithCLI) {
+      log.step("Welcome to the Trigger.dev MCP server install wizard 🧙");
+
+      const [installError] = await tryCatch(
+        installMcpServer({
+          yolo: false,
+          tag: options.tag,
+          logLevel: options.logLevel,
+        })
+      );
+
+      if (installError) {
+        outro(`Failed to install MCP server: ${installError.message}`);
+        return;
+      }
+
+      return;
+    }
+  }
 
   intro("Initializing project");
 
@@ -167,7 +223,11 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
 
   // Install @trigger.dev/sdk package
   if (!options.skipPackageInstall) {
-    await installPackages(dir, options);
+    await installPackages(
+      cwd,
+      options.tag,
+      new CLIInstallPackagesOutputter(options.logLevel, options.tag)
+    );
   } else {
     log.info("Skipping package installation");
   }
@@ -193,7 +253,7 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
     `${authorization.dashboardUrl}/projects/v3/${selectedProject.externalRef}`
   );
 
-  log.success("Successfully initialized project for Trigger.dev v3 🫡");
+  log.success("Successfully initialized your Trigger.dev project 🫡");
   log.info("Next steps:");
   log.info(
     `   1. To start developing, run ${chalk.green(
@@ -223,14 +283,44 @@ async function createTriggerDir(
     try {
       const defaultValue = join(dir, "src", "trigger");
 
-      const location = await text({
-        message: "Where would you like to create the Trigger.dev directory?",
-        defaultValue: defaultValue,
-        placeholder: defaultValue,
-      });
+      let location: string;
+      let example: string;
 
-      if (isCancel(location)) {
-        throw new OutroCommandError();
+      if (options.yes) {
+        // Use defaults when --yes flag is set
+        location = defaultValue;
+        example = "simple";
+      } else {
+        const locationPrompt = await text({
+          message: "Where would you like to create the Trigger.dev directory?",
+          defaultValue: defaultValue,
+          placeholder: defaultValue,
+        });
+
+        if (isCancel(locationPrompt)) {
+          throw new OutroCommandError();
+        }
+
+        location = locationPrompt;
+
+        const exampleSelection = await select({
+          message: `Choose an example to create in the ${location} directory`,
+          options: [
+            { value: "simple", label: "Simple (Hello World)" },
+            { value: "schedule", label: "Scheduled Task" },
+            {
+              value: "none",
+              label: "None",
+              hint: "skip creating an example",
+            },
+          ],
+        });
+
+        if (isCancel(exampleSelection)) {
+          throw new OutroCommandError();
+        }
+
+        example = exampleSelection as string;
       }
 
       // Ensure that the path is always relative by stripping leading '/' if present
@@ -247,25 +337,6 @@ async function createTriggerDir(
       if (await pathExists(triggerDir)) {
         throw new Error(`Directory already exists at ${triggerDir}`);
       }
-
-      const exampleSelection = await select({
-        message: `Choose an example to create in the ${location} directory`,
-        options: [
-          { value: "simple", label: "Simple (Hello World)" },
-          { value: "schedule", label: "Scheduled Task" },
-          {
-            value: "none",
-            label: "None",
-            hint: "skip creating an example",
-          },
-        ],
-      });
-
-      if (isCancel(exampleSelection)) {
-        throw new OutroCommandError();
-      }
-
-      const example = exampleSelection as string;
 
       span.setAttributes({
         "cli.example": example,
@@ -424,54 +495,84 @@ async function addConfigFileToTsConfig(tsconfigPath: string, options: InitComman
   });
 }
 
-async function installPackages(dir: string, options: InitCommandOptions) {
-  return await tracer.startActiveSpan("installPackages", async (span) => {
-    const projectDir = resolve(process.cwd(), dir);
+export interface InstallPackagesOutputter {
+  startSDK: () => void;
+  installedSDK: () => void;
+  startBuild: () => void;
+  installedBuild: () => void;
+  stoppedWithError: () => void;
+}
 
-    const installSpinner = spinner();
-    const packageManager = await detectPackageManager(projectDir);
+class CLIInstallPackagesOutputter implements InstallPackagesOutputter {
+  private installSpinner: ReturnType<typeof spinner>;
 
-    try {
-      span.setAttributes({
-        "cli.projectDir": projectDir,
-        "cli.packageManager": packageManager?.name,
-        "cli.tag": options.tag,
-      });
+  constructor(
+    private readonly logLevel: LogLevel,
+    private readonly tag: string
+  ) {
+    this.installSpinner = spinner();
+  }
 
-      installSpinner.start(`Adding @trigger.dev/sdk@${options.tag}`);
+  startSDK() {
+    this.installSpinner.start(`Adding @trigger.dev/sdk@${this.tag}`);
+  }
 
-      await addDependency(`@trigger.dev/sdk@${options.tag}`, { cwd: projectDir, silent: true });
+  installedSDK() {
+    this.installSpinner.stop(`@trigger.dev/sdk@${this.tag} installed`);
+  }
 
-      installSpinner.stop(`@trigger.dev/sdk@${options.tag} installed`);
+  startBuild() {
+    this.installSpinner.start(`Adding @trigger.dev/build@${this.tag} to devDependencies`);
+  }
 
-      installSpinner.start(`Adding @trigger.dev/build@${options.tag} to devDependencies`);
+  installedBuild() {
+    this.installSpinner.stop(`@trigger.dev/build@${this.tag} installed`);
+  }
 
-      await addDevDependency(`@trigger.dev/build@${options.tag}`, {
-        cwd: projectDir,
-        silent: true,
-      });
-
-      installSpinner.stop(`@trigger.dev/build@${options.tag} installed`);
-
-      span.end();
-    } catch (e) {
-      if (options.logLevel === "debug") {
-        installSpinner.stop(`Failed to install @trigger.dev/sdk@${options.tag}.`);
-      } else {
-        installSpinner.stop(
-          `Failed to install @trigger.dev/sdk@${options.tag}. Rerun command with --log-level debug for more details.`
-        );
-      }
-
-      if (!(e instanceof SkipCommandError)) {
-        recordSpanException(span, e);
-      }
-
-      span.end();
-
-      throw e;
+  stoppedWithError() {
+    if (this.logLevel === "debug") {
+      this.installSpinner.stop(`Failed to install @trigger.dev/sdk@${this.tag}.`);
+    } else {
+      this.installSpinner.stop(
+        `Failed to install @trigger.dev/sdk@${this.tag}. Rerun command with --log-level debug for more details.`
+      );
     }
-  });
+  }
+}
+
+class SilentInstallPackagesOutputter implements InstallPackagesOutputter {
+  startSDK() {}
+  installedSDK() {}
+  startBuild() {}
+  installedBuild() {}
+  stoppedWithError() {}
+}
+
+export async function installPackages(
+  projectDir: string,
+  tag: string,
+  outputter: InstallPackagesOutputter = new SilentInstallPackagesOutputter()
+) {
+  try {
+    outputter.startSDK();
+
+    await addDependency(`@trigger.dev/sdk@${tag}`, { cwd: projectDir, silent: true });
+
+    outputter.installedSDK();
+
+    outputter.startBuild();
+
+    await addDevDependency(`@trigger.dev/build@${tag}`, {
+      cwd: projectDir,
+      silent: true,
+    });
+
+    outputter.installedBuild();
+  } catch (e) {
+    outputter.stoppedWithError();
+
+    throw e;
+  }
 }
 
 async function writeConfigFile(

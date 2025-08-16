@@ -68,7 +68,7 @@ export function configureDeployCommand(program: Command) {
     commonOptions(
       program
         .command("deploy")
-        .description("Deploy your Trigger.dev v3 project to the cloud.")
+        .description("Deploy your Trigger.dev project to the cloud.")
         .argument("[path]", "The path to the project", ".")
         .option(
           "-e, --env <env>",

@@ -1,4 +1,4 @@
-import { json, type ActionFunctionArgs } from "@remix-run/server-runtime";
+import { json, LoaderFunctionArgs, type ActionFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch, UpsertBranchRequestBody } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { prisma } from "~/db.server";
@@ -92,4 +92,83 @@ export async function action({ request, params }: ActionFunctionArgs) {
   }
 
   return json(result.branch);
+}
+
+export async function loader({ request, params }: LoaderFunctionArgs) {
+  const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
+  if (!authenticationResult) {
+    return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
+  }
+
+  const parsedParams = ParamsSchema.safeParse(params);
+
+  if (!parsedParams.success) {
+    return json({ error: "Invalid Params" }, { status: 400 });
+  }
+
+  const { projectRef } = parsedParams.data;
+
+  const project = await prisma.project.findFirst({
+    select: {
+      id: true,
+    },
+    where: {
+      externalRef: projectRef,
+      organization: {
+        members: {
+          some: {
+            userId: authenticationResult.userId,
+          },
+        },
+      },
+    },
+  });
+
+  if (!project) {
+    return json({ error: "Project not found" }, { status: 404 });
+  }
+
+  const previewEnvironment = await prisma.runtimeEnvironment.findFirst({
+    select: {
+      id: true,
+    },
+    where: {
+      projectId: project.id,
+      slug: "preview",
+    },
+  });
+
+  if (!previewEnvironment) {
+    return json(
+      { error: "You don't have preview branches setup. Go to the dashboard to enable them." },
+      { status: 400 }
+    );
+  }
+
+  const branches = await prisma.runtimeEnvironment.findMany({
+    where: {
+      projectId: project.id,
+      parentEnvironmentId: previewEnvironment.id,
+      archivedAt: null,
+    },
+    select: {
+      id: true,
+      branchName: true,
+      createdAt: true,
+      updatedAt: true,
+      git: true,
+      paused: true,
+    },
+  });
+
+  return json({
+    branches: branches.map((branch) => ({
+      id: branch.id,
+      name: branch.branchName ?? "main",
+      createdAt: branch.createdAt,
+      updatedAt: branch.updatedAt,
+      git: branch.git ?? undefined,
+      isPaused: branch.paused,
+    })),
+  });
 }
