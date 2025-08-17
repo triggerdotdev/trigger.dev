@@ -8,19 +8,19 @@ import MigrateV4UsingAi from "/snippets/migrate-v4-using-ai.mdx";
 
 ## What's new in v4?
 
-| Feature | Description |
-|:--------|:------------|
-| [Wait for token](/wait-for-token) | Create and wait for tokens to be completed, enabling approval workflows and waiting for arbitrary external conditions. |
-| Wait idempotency | Skip waits if the same idempotency key is used again when using [wait for](/wait-for#wait-idempotency), [wait until](/wait-until#wait-idempotency), or [wait for token](/wait-for-token#wait-idempotency). |
-| [Priority](/runs/priority) | Specify a priority when triggering a task. |
-| [Global lifecycle hooks](/tasks/overview#global-lifecycle-hooks) | Register global lifecycle hooks that are executed for all runs, regardless of the task. |
-| [onWait and onResume](/tasks/overview#onwait-and-onresume-functions) | Run code when a run is paused or resumed because of a wait. |
-| [onComplete](/tasks/overview#oncomplete-function) | Run code when a run completes, regardless of whether it succeeded or failed. |
-| [onCancel](/tasks/overview#oncancel-function) | Run code when a run is cancelled. |
-| [Hidden tasks](/hidden-tasks) | Create tasks that are not exported from your trigger files but can still be executed. |
-| [Middleware & locals](#middleware-and-locals) | The middleware system runs at the top level, executing before and after all lifecycle hooks. The locals API allows sharing data between middleware and hooks. |
-| [useWaitToken](/frontend/react-hooks/use-wait-token) | Use the useWaitToken hook to complete a wait token from a React component. |
-| [ai.tool](/tasks/schemaTask#ai-tool) | Create an AI tool from an existing `schemaTask` to use with the Vercel [AI SDK](https://vercel.com/docs/ai-sdk). |
+| Feature                                                              | Description                                                                                                                                                                                                |
+| :------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Wait for token](/wait-for-token)                                    | Create and wait for tokens to be completed, enabling approval workflows and waiting for arbitrary external conditions.                                                                                     |
+| Wait idempotency                                                     | Skip waits if the same idempotency key is used again when using [wait for](/wait-for#wait-idempotency), [wait until](/wait-until#wait-idempotency), or [wait for token](/wait-for-token#wait-idempotency). |
+| [Priority](/runs/priority)                                           | Specify a priority when triggering a task.                                                                                                                                                                 |
+| [Global lifecycle hooks](/tasks/overview#global-lifecycle-hooks)     | Register global lifecycle hooks that are executed for all runs, regardless of the task.                                                                                                                    |
+| [onWait and onResume](/tasks/overview#onwait-and-onresume-functions) | Run code when a run is paused or resumed because of a wait.                                                                                                                                                |
+| [onComplete](/tasks/overview#oncomplete-function)                    | Run code when a run completes, regardless of whether it succeeded or failed.                                                                                                                               |
+| [onCancel](/tasks/overview#oncancel-function)                        | Run code when a run is cancelled.                                                                                                                                                                          |
+| [Hidden tasks](/hidden-tasks)                                        | Create tasks that are not exported from your trigger files but can still be executed.                                                                                                                      |
+| [Middleware & locals](#middleware-and-locals)                        | The middleware system runs at the top level, executing before and after all lifecycle hooks. The locals API allows sharing data between middleware and hooks.                                              |
+| [useWaitToken](/frontend/react-hooks/use-wait-token)                 | Use the useWaitToken hook to complete a wait token from a React component.                                                                                                                                 |
+| [ai.tool](/tasks/schemaTask#ai-tool)                                 | Create an AI tool from an existing `schemaTask` to use with the Vercel [AI SDK](https://vercel.com/docs/ai-sdk).                                                                                           |
 
 ## Node.js support
 
@@ -209,41 +209,6 @@ Now you can trigger these tasks without having to specify the queue name in the 
 await myTask.trigger({ foo: "bar" }); // Will use the queue defined on the task
 await myTask2.trigger({ foo: "bar" }); // Will use the queue defined on the task
 ```
-
-### Releasing concurrency on waits
-
-We've changed the default behavior on how concurrency is released when a run is paused or resumed because of a wait. Previously, the concurrency would be released immediately when the run was first paused, no matter the settings on the queue.
-
-Now we will no longer release concurrency on a queue that has a specified `concurrencyLimit` when a run is paused. You can go back to the previous behavior by setting the `releaseConcurrencyOnWaitpoint` option to `true` on the queue:
-
-```ts
-const myQueue = queue({
-  name: "my-queue",
-  concurrencyLimit: 10,
-  releaseConcurrencyOnWaitpoint: true,
-});
-```
-
-You can also now control whether concurrency is released when performing a wait:
-
-```ts
-// This will prevent the run from being released back into the queue when the wait starts
-await wait.for({ seconds: 10, releaseConcurrency: false });
-```
-
-The new default behavior allows you to ensure that you can control the number of executing & waiting runs on a queue, and guarantee runs will resume once they are meant to be resumed.
-
-<Note>
-  If you do choose to release concurrency on waits, be aware that it's possible a resume is delayed
-  if the concurrency that was released is not available at the time the wait completes. In this
-  case, the run will go back into the queue and will resume once concurrency becomes available.
-</Note>
-
-This new behavior effects all the wait functions:
-
-- Wait for duration (e.g. `wait.for({ seconds: 10 })`)
-- Wait for a child task to complete (e.g. `myTask.triggerAndWait()`, `myTask.batchTriggerAndWait([...])`)
-- Wait for a token to complete (e.g. `wait.forToken(tokenId)`)
 
 ### Lifecycle hooks
 
