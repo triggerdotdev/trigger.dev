@@ -111,6 +111,7 @@ export function readConfigHasSeenMCPInstallPrompt(): boolean {
 export function writeConfigHasSeenMCPInstallPrompt(hasSeenMCPInstallPrompt: boolean) {
   const config = getConfig();
   config.settings = {
+    ...config.settings,
     hasSeenMCPInstallPrompt,
   };
   writeAuthConfigFile(config);
