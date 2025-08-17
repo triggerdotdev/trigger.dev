@@ -1,5 +1,47 @@
 # trigger.dev
 
+## 4.0.0-v4-beta.27
+
+### Patch Changes
+
+- improve contrast for chalkWorker in light mode ([#2239](https://github.com/triggerdotdev/trigger.dev/pull/2239))
+- All experimental flags have been promoted to non-experimental, but the experimental ones still work (for now). keepNames and autoDetectExternal now default to true. ([#2371](https://github.com/triggerdotdev/trigger.dev/pull/2371))
+- - Improve playwright non-headless chrome installation ([#2347](https://github.com/triggerdotdev/trigger.dev/pull/2347))
+  - Prevent spinner message duplication in narrow terminals
+- Upgrade to zod 3.25.76 ([#2352](https://github.com/triggerdotdev/trigger.dev/pull/2352))
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.0-v4-beta.27`
+  - `@trigger.dev/core@4.0.0-v4-beta.27`
+  - `@trigger.dev/schema-to-json@4.0.0-v4-beta.27`
+
+## 4.0.0-v4-beta.26
+
+### Patch Changes
+
+- Allow any runs to finish after SIGTERM but disable warm starts ([#2316](https://github.com/triggerdotdev/trigger.dev/pull/2316))
+- Switch to profile after successful login ([#2192](https://github.com/triggerdotdev/trigger.dev/pull/2192))
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.0-v4-beta.26`
+  - `@trigger.dev/core@4.0.0-v4-beta.26`
+
+## 4.0.0-v4-beta.25
+
+### Patch Changes
+
+- Gracefully shutdown task run processes using SIGTERM followed by SIGKILL after a 1s timeout. This also prevents cancelled or completed runs from leaving orphaned Ttask run processes behind ([#2299](https://github.com/triggerdotdev/trigger.dev/pull/2299))
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.0-v4-beta.25`
+  - `@trigger.dev/core@4.0.0-v4-beta.25`
+
+## 4.0.0-v4-beta.24
+
+### Patch Changes
+
+- Added experimental_devProcessCwdInBuildDir config option to opt-in to new process.cwd behavior when executing tasks in the dev CLI. Currently process.cwd maps to the "root" of your trigger.dev project (the directory that contains your trigger.config.ts file). Setting experimental_devProcessCwdInBuildDir to true changes process.cwd to instead be the temporary build directory inside of the .trigger directory. ([#2269](https://github.com/triggerdotdev/trigger.dev/pull/2269))
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.0-v4-beta.24`
+  - `@trigger.dev/core@4.0.0-v4-beta.24`
+
 ## 4.0.0-v4-beta.23
 
 ### Patch Changes

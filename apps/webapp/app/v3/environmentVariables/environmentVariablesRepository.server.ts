@@ -17,6 +17,7 @@ import {
 } from "./repository";
 import { removeBlacklistedVariables } from "../environmentVariableRules.server";
 import { deduplicateVariableArray } from "../deduplicateVariableArray.server";
+import { logger } from "~/services/logger.server";
 
 function secretKeyProjectPrefix(projectId: string) {
   return `environmentvariable:${projectId}:`;
@@ -837,11 +838,19 @@ export async function resolveVariablesForEnvironment(
       ? await resolveBuiltInDevVariables(runtimeEnvironment)
       : await resolveBuiltInProdVariables(runtimeEnvironment, parentEnvironment);
 
-  return deduplicateVariableArray([
+  const overridableOtelVariables =
+    runtimeEnvironment.type === "DEVELOPMENT"
+      ? await resolveOverridableOtelDevVariables(runtimeEnvironment)
+      : [];
+
+  const result = deduplicateVariableArray([
     ...overridableTriggerVariables,
+    ...overridableOtelVariables,
     ...projectSecrets,
     ...builtInVariables,
   ]);
+
+  return result;
 }
 
 async function resolveOverridableTriggerVariables(
@@ -860,7 +869,7 @@ async function resolveOverridableTriggerVariables(
 async function resolveBuiltInDevVariables(runtimeEnvironment: RuntimeEnvironmentForEnvRepo) {
   let result: Array<EnvironmentVariable> = [
     {
-      key: "OTEL_EXPORTER_OTLP_ENDPOINT",
+      key: "TRIGGER_OTEL_EXPORTER_OTLP_ENDPOINT",
       value: env.DEV_OTEL_EXPORTER_OTLP_ENDPOINT ?? `${env.APP_ORIGIN.replace(/\/$/, "")}/otel`,
     },
     {
@@ -875,6 +884,42 @@ async function resolveBuiltInDevVariables(runtimeEnvironment: RuntimeEnvironment
 
   if (env.DEV_OTEL_BATCH_PROCESSING_ENABLED === "1") {
     result = result.concat([
+      {
+        key: "TRIGGER_OTEL_BATCH_PROCESSING_ENABLED",
+        value: "1",
+      },
+      {
+        key: "TRIGGER_OTEL_SPAN_MAX_EXPORT_BATCH_SIZE",
+        value: env.DEV_OTEL_SPAN_MAX_EXPORT_BATCH_SIZE,
+      },
+      {
+        key: "TRIGGER_OTEL_SPAN_SCHEDULED_DELAY_MILLIS",
+        value: env.DEV_OTEL_SPAN_SCHEDULED_DELAY_MILLIS,
+      },
+      {
+        key: "TRIGGER_OTEL_SPAN_EXPORT_TIMEOUT_MILLIS",
+        value: env.DEV_OTEL_SPAN_EXPORT_TIMEOUT_MILLIS,
+      },
+      {
+        key: "TRIGGER_OTEL_SPAN_MAX_QUEUE_SIZE",
+        value: env.DEV_OTEL_SPAN_MAX_QUEUE_SIZE,
+      },
+      {
+        key: "TRIGGER_OTEL_LOG_MAX_EXPORT_BATCH_SIZE",
+        value: env.DEV_OTEL_LOG_MAX_EXPORT_BATCH_SIZE,
+      },
+      {
+        key: "TRIGGER_OTEL_LOG_SCHEDULED_DELAY_MILLIS",
+        value: env.DEV_OTEL_LOG_SCHEDULED_DELAY_MILLIS,
+      },
+      {
+        key: "TRIGGER_OTEL_LOG_EXPORT_TIMEOUT_MILLIS",
+        value: env.DEV_OTEL_LOG_EXPORT_TIMEOUT_MILLIS,
+      },
+      {
+        key: "TRIGGER_OTEL_LOG_MAX_QUEUE_SIZE",
+        value: env.DEV_OTEL_LOG_MAX_QUEUE_SIZE,
+      },
       {
         key: "OTEL_BATCH_PROCESSING_ENABLED",
         value: "1",
@@ -919,6 +964,19 @@ async function resolveBuiltInDevVariables(runtimeEnvironment: RuntimeEnvironment
   return [...result, ...commonVariables];
 }
 
+async function resolveOverridableOtelDevVariables(
+  runtimeEnvironment: RuntimeEnvironmentForEnvRepo
+) {
+  let result: Array<EnvironmentVariable> = [
+    {
+      key: "OTEL_EXPORTER_OTLP_ENDPOINT",
+      value: env.DEV_OTEL_EXPORTER_OTLP_ENDPOINT ?? `${env.APP_ORIGIN.replace(/\/$/, "")}/otel`,
+    },
+  ];
+
+  return result;
+}
+
 async function resolveBuiltInProdVariables(
   runtimeEnvironment: RuntimeEnvironmentForEnvRepo,
   parentEnvironment?: RuntimeEnvironmentForEnvRepo
@@ -957,6 +1015,42 @@ async function resolveBuiltInProdVariables(
 
   if (env.PROD_OTEL_BATCH_PROCESSING_ENABLED === "1") {
     result = result.concat([
+      {
+        key: "TRIGGER_OTEL_BATCH_PROCESSING_ENABLED",
+        value: "1",
+      },
+      {
+        key: "TRIGGER_OTEL_SPAN_MAX_EXPORT_BATCH_SIZE",
+        value: env.PROD_OTEL_SPAN_MAX_EXPORT_BATCH_SIZE,
+      },
+      {
+        key: "TRIGGER_OTEL_SPAN_SCHEDULED_DELAY_MILLIS",
+        value: env.PROD_OTEL_SPAN_SCHEDULED_DELAY_MILLIS,
+      },
+      {
+        key: "TRIGGER_OTEL_SPAN_EXPORT_TIMEOUT_MILLIS",
+        value: env.PROD_OTEL_SPAN_EXPORT_TIMEOUT_MILLIS,
+      },
+      {
+        key: "TRIGGER_OTEL_SPAN_MAX_QUEUE_SIZE",
+        value: env.PROD_OTEL_SPAN_MAX_QUEUE_SIZE,
+      },
+      {
+        key: "TRIGGER_OTEL_LOG_MAX_EXPORT_BATCH_SIZE",
+        value: env.PROD_OTEL_LOG_MAX_EXPORT_BATCH_SIZE,
+      },
+      {
+        key: "TRIGGER_OTEL_LOG_SCHEDULED_DELAY_MILLIS",
+        value: env.PROD_OTEL_LOG_SCHEDULED_DELAY_MILLIS,
+      },
+      {
+        key: "TRIGGER_OTEL_LOG_EXPORT_TIMEOUT_MILLIS",
+        value: env.PROD_OTEL_LOG_EXPORT_TIMEOUT_MILLIS,
+      },
+      {
+        key: "TRIGGER_OTEL_LOG_MAX_QUEUE_SIZE",
+        value: env.PROD_OTEL_LOG_MAX_QUEUE_SIZE,
+      },
       {
         key: "OTEL_BATCH_PROCESSING_ENABLED",
         value: "1",

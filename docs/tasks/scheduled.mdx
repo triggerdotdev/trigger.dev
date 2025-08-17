@@ -3,7 +3,10 @@ title: "Scheduled tasks (cron)"
 description: "A task that is triggered on a recurring schedule using cron syntax."
 ---
 
-<Note>Scheduled tasks are only for recurring tasks. If you want to trigger a one-off task at a future time, you should [use the delay option](/triggering#delay).</Note>
+<Note>
+  Scheduled tasks are only for recurring tasks. If you want to trigger a one-off task at a future
+  time, you should [use the delay option](/triggering#delay).
+</Note>
 
 ## Defining a scheduled task
 
@@ -104,6 +107,9 @@ export const secondScheduledTask = schedules.task({
     //5am every day Tokyo time
     pattern: "0 5 * * *",
     timezone: "Asia/Tokyo",
+    //optional, defaults to all environments
+    //possible values are "PRODUCTION", "STAGING", "PREVIEW" and "DEVELOPMENT"
+    environments: ["PRODUCTION", "STAGING"],
   },
   run: async (payload) => {},
 });

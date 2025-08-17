@@ -264,12 +264,14 @@ class Worker<TCatalog extends WorkerCatalog> {
     payload,
     visibilityTimeoutMs,
     availableAt,
+    cancellationKey,
   }: {
     id?: string;
     job: K;
     payload: z.infer<TCatalog[K]["schema"]>;
     visibilityTimeoutMs?: number;
     availableAt?: Date;
+    cancellationKey?: string;
   }) {
     return startSpan(
       this.tracer,
@@ -291,6 +293,7 @@ class Worker<TCatalog extends WorkerCatalog> {
             item: payload,
             visibilityTimeoutMs: timeout,
             availableAt,
+            cancellationKey,
           }),
           {
             job_type: String(job),
@@ -389,6 +392,17 @@ class Worker<TCatalog extends WorkerCatalog> {
         },
       }
     );
+  }
+
+  /**
+   * Cancels a job before it's enqueued.
+   * @param cancellationKey - The cancellation key to cancel.
+   * @returns A promise that resolves when the job is cancelled.
+   *
+   * Any jobs enqueued with the same cancellation key will be not be enqueued.
+   */
+  cancel(cancellationKey: string) {
+    return startSpan(this.tracer, "cancel", () => this.queue.cancel(cancellationKey));
   }
 
   ack(id: string) {

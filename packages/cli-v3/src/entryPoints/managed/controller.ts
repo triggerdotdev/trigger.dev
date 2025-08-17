@@ -30,7 +30,9 @@ export class ManagedRunController {
   private readonly logger: RunLogger;
   private readonly taskRunProcessProvider: TaskRunProcessProvider;
 
+  private warmStartEnabled = true;
   private warmStartCount = 0;
+
   private restoreCount = 0;
 
   private notificationCount = 0;
@@ -103,7 +105,12 @@ export class ManagedRunController {
         runId: this.runFriendlyId,
         message: "Received SIGTERM, stopping worker",
       });
-      await this.stop();
+
+      // Disable warm starts
+      this.warmStartEnabled = false;
+
+      // ..now we wait for any active runs to finish
+      // SIGKILL will handle the rest, nothing to do here
     });
   }
 
@@ -276,6 +283,14 @@ export class ManagedRunController {
    *  the process on any errors or when no runs are available after the configured duration.
    */
   private async waitForNextRun() {
+    if (!this.warmStartEnabled) {
+      this.sendDebugLog({
+        runId: this.runFriendlyId,
+        message: "waitForNextRun: warm starts disabled, shutting down",
+      });
+      this.exitProcess(this.successExitCode);
+    }
+
     this.sendDebugLog({
       runId: this.runFriendlyId,
       message: "waitForNextRun()",
@@ -548,7 +563,7 @@ export class ManagedRunController {
     return;
   }
 
-  async stop() {
+  async cancelRunsAndExitProcess() {
     this.sendDebugLog({
       runId: this.runFriendlyId,
       message: "Shutting down",
@@ -578,6 +593,9 @@ export class ManagedRunController {
 
     // Close the socket
     this.socket.close();
+
+    // Exit the process
+    this.exitProcess(this.successExitCode);
   }
 
   sendDebugLog(opts: SendDebugLogOptions) {

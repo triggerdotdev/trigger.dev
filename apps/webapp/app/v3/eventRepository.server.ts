@@ -2,9 +2,14 @@ import { Attributes, AttributeValue, Link, trace, TraceFlags, Tracer } from "@op
 import { RandomIdGenerator } from "@opentelemetry/sdk-trace-base";
 import { SemanticResourceAttributes } from "@opentelemetry/semantic-conventions";
 import {
+  correctErrorStackTrace,
+  createPacketAttributesAsJson,
   ExceptionEventProperties,
   ExceptionSpanEvent,
+  flattenAttributes,
+  isExceptionSpanEvent,
   NULL_SENTINEL,
+  omit,
   PRIMARY_VARIANT,
   SemanticInternalAttributes,
   SpanEvent,
@@ -13,28 +18,24 @@ import {
   TaskEventEnvironment,
   TaskEventStyle,
   TaskRunError,
-  correctErrorStackTrace,
-  createPacketAttributesAsJson,
-  flattenAttributes,
-  isExceptionSpanEvent,
-  omit,
   unflattenAttributes,
 } from "@trigger.dev/core/v3";
+import { parseTraceparent, serializeTraceparent } from "@trigger.dev/core/v3/isomorphic";
 import { Prisma, TaskEvent, TaskEventKind, TaskEventStatus } from "@trigger.dev/database";
+import { nanoid } from "nanoid";
 import { createHash } from "node:crypto";
 import { EventEmitter } from "node:stream";
 import { Gauge } from "prom-client";
-import { $replica, PrismaClient, PrismaReplicaClient, prisma } from "~/db.server";
+import { $replica, prisma, PrismaClient, PrismaReplicaClient } from "~/db.server";
 import { env } from "~/env.server";
 import { metricsRegister } from "~/metrics.server";
+import { createRedisClient, RedisClient, RedisWithClusterOptions } from "~/redis.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 import { DynamicFlushScheduler } from "./dynamicFlushScheduler.server";
-import { startActiveSpan } from "./tracer.server";
-import { createRedisClient, RedisClient, RedisWithClusterOptions } from "~/redis.server";
-import { startSpan } from "./tracing.server";
-import { nanoid } from "nanoid";
 import { TaskEventStore, TaskEventStoreTable } from "./taskEventStore.server";
+import { startActiveSpan } from "./tracer.server";
+import { startSpan } from "./tracing.server";
 
 const MAX_FLUSH_DEPTH = 5;
 
@@ -80,7 +81,7 @@ export type SetAttribute<T extends TraceAttributes> = (key: keyof T, value: T[ke
 
 export type TraceEventOptions = {
   kind?: CreatableEventKind;
-  context?: Record<string, string | undefined>;
+  context?: Record<string, unknown>;
   spanParentAsLink?: boolean;
   parentAsLinkType?: "trigger" | "replay";
   spanIdSeed?: string;
@@ -107,6 +108,12 @@ export type EventRepoConfig = {
   retentionInDays: number;
   partitioningEnabled: boolean;
   tracer?: Tracer;
+  minConcurrency?: number;
+  maxConcurrency?: number;
+  maxBatchSize?: number;
+  memoryPressureThreshold?: number;
+  loadSheddingThreshold?: number;
+  loadSheddingEnabled?: boolean;
 };
 
 export type QueryOptions = Prisma.TaskEventWhereInput;
@@ -199,6 +206,10 @@ export class EventRepository {
     return this._subscriberCount;
   }
 
+  get flushSchedulerStatus() {
+    return this._flushScheduler.getStatus();
+  }
+
   constructor(
     db: PrismaClient = prisma,
     readReplica: PrismaReplicaClient = $replica,
@@ -208,6 +219,16 @@ export class EventRepository {
       batchSize: _config.batchSize,
       flushInterval: _config.batchInterval,
       callback: this.#flushBatch.bind(this),
+      minConcurrency: _config.minConcurrency,
+      maxConcurrency: _config.maxConcurrency,
+      maxBatchSize: _config.maxBatchSize,
+      memoryPressureThreshold: _config.memoryPressureThreshold,
+      loadSheddingThreshold: _config.loadSheddingThreshold,
+      loadSheddingEnabled: _config.loadSheddingEnabled,
+      isDroppableEvent: (event: CreatableEvent) => {
+        // Only drop LOG events during load shedding
+        return event.kind === TaskEventKind.LOG;
+      },
     });
 
     this._redisPublishClient = createRedisClient("trigger:eventRepoPublisher", this._config.redis);
@@ -912,7 +933,7 @@ export class EventRepository {
       traceId,
       spanId,
       parentId,
-      tracestate,
+      tracestate: typeof tracestate === "string" ? tracestate : undefined,
       message: message,
       serviceName: "api server",
       serviceNamespace: "trigger.dev",
@@ -969,6 +990,11 @@ export class EventRepository {
   ): Promise<TResult> {
     const propagatedContext = extractContextFromCarrier(options.context ?? {});
 
+    logger.debug("[otelContext]", {
+      propagatedContext,
+      options,
+    });
+
     const start = process.hrtime.bigint();
     const startTime = options.startTime ?? getNowInNanoseconds();
 
@@ -982,7 +1008,8 @@ export class EventRepository {
       : this.generateSpanId();
 
     const traceContext = {
-      traceparent: `00-${traceId}-${spanId}-01`,
+      ...options.context,
+      traceparent: serializeTraceparent(traceId, spanId),
     };
 
     const links: Link[] =
@@ -1067,10 +1094,10 @@ export class EventRepository {
       traceId,
       spanId,
       parentId,
-      tracestate,
+      tracestate: typeof tracestate === "string" ? tracestate : undefined,
       duration: options.incomplete ? 0 : duration,
       isPartial: failedWithError ? false : options.incomplete,
-      isError: !!failedWithError,
+      isError: options.isError === true || !!failedWithError,
       message: message,
       serviceName: "api server",
       serviceNamespace: "trigger.dev",
@@ -1210,25 +1237,23 @@ export class EventRepository {
 
         return events;
       } catch (error) {
-        if (error instanceof Prisma.PrismaClientUnknownRequestError) {
-          logger.error("Failed to insert events, most likely because of null characters", {
-            error: {
-              name: error.name,
-              message: error.message,
-              stack: error.stack,
-              clientVersion: error.clientVersion,
-            },
+        if (isRetriablePrismaError(error)) {
+          const isKnownError = error instanceof Prisma.PrismaClientKnownRequestError;
+          span.setAttribute("prisma_error_type", isKnownError ? "known" : "unknown");
+
+          const errorDetails = getPrismaErrorDetails(error);
+          if (errorDetails.code) {
+            span.setAttribute("prisma_error_code", errorDetails.code);
+          }
+
+          logger.error("Failed to insert events, will attempt bisection", {
+            error: errorDetails,
           });
 
           if (events.length === 1) {
             logger.debug("Attempting to insert event individually and it failed", {
               event: events[0],
-              error: {
-                name: error.name,
-                message: error.message,
-                stack: error.stack,
-                clientVersion: error.clientVersion,
-              },
+              error: errorDetails,
             });
 
             span.setAttribute("failed_event_count", 1);
@@ -1238,12 +1263,7 @@ export class EventRepository {
 
           if (depth > MAX_FLUSH_DEPTH) {
             logger.error("Failed to insert events, reached maximum depth", {
-              error: {
-                name: error.name,
-                message: error.message,
-                stack: error.stack,
-                clientVersion: error.clientVersion,
-              },
+              error: errorDetails,
               depth,
               eventsCount: events.length,
             });
@@ -1324,6 +1344,12 @@ function initializeEventRepo() {
     batchInterval: env.EVENTS_BATCH_INTERVAL,
     retentionInDays: env.EVENTS_DEFAULT_LOG_RETENTION,
     partitioningEnabled: env.TASK_EVENT_PARTITIONING_ENABLED === "1",
+    minConcurrency: env.EVENTS_MIN_CONCURRENCY,
+    maxConcurrency: env.EVENTS_MAX_CONCURRENCY,
+    maxBatchSize: env.EVENTS_MAX_BATCH_SIZE,
+    memoryPressureThreshold: env.EVENTS_MEMORY_PRESSURE_THRESHOLD,
+    loadSheddingThreshold: env.EVENTS_LOAD_SHEDDING_THRESHOLD,
+    loadSheddingEnabled: env.EVENTS_LOAD_SHEDDING_ENABLED === "1",
     redis: {
       port: env.PUBSUB_REDIS_PORT,
       host: env.PUBSUB_REDIS_HOST,
@@ -1339,6 +1365,67 @@ function initializeEventRepo() {
     help: "Number of event repository subscribers",
     collect() {
       this.set(repo.subscriberCount);
+    },
+    registers: [metricsRegister],
+  });
+
+  // Add metrics for flush scheduler
+  new Gauge({
+    name: "event_flush_scheduler_queued_items",
+    help: "Total number of items queued in the flush scheduler",
+    collect() {
+      const status = repo.flushSchedulerStatus;
+      this.set(status.queuedItems);
+    },
+    registers: [metricsRegister],
+  });
+
+  new Gauge({
+    name: "event_flush_scheduler_batch_queue_length",
+    help: "Number of batches waiting to be flushed",
+    collect() {
+      const status = repo.flushSchedulerStatus;
+      this.set(status.batchQueueLength);
+    },
+    registers: [metricsRegister],
+  });
+
+  new Gauge({
+    name: "event_flush_scheduler_concurrency",
+    help: "Current concurrency level of the flush scheduler",
+    collect() {
+      const status = repo.flushSchedulerStatus;
+      this.set(status.concurrency);
+    },
+    registers: [metricsRegister],
+  });
+
+  new Gauge({
+    name: "event_flush_scheduler_active_flushes",
+    help: "Number of active flush operations",
+    collect() {
+      const status = repo.flushSchedulerStatus;
+      this.set(status.activeFlushes);
+    },
+    registers: [metricsRegister],
+  });
+
+  new Gauge({
+    name: "event_flush_scheduler_dropped_events",
+    help: "Total number of events dropped due to load shedding",
+    collect() {
+      const status = repo.flushSchedulerStatus;
+      this.set(status.metrics.droppedEvents);
+    },
+    registers: [metricsRegister],
+  });
+
+  new Gauge({
+    name: "event_flush_scheduler_is_load_shedding",
+    help: "Whether load shedding is currently active (1 = active, 0 = inactive)",
+    collect() {
+      const status = repo.flushSchedulerStatus;
+      this.set(status.isLoadShedding ? 1 : 0);
     },
     registers: [metricsRegister],
   });
@@ -1406,34 +1493,19 @@ function excludePartialEventsWithCorrespondingFullEvent(batch: CreatableEvent[])
   );
 }
 
-export function extractContextFromCarrier(carrier: Record<string, string | undefined>) {
+export function extractContextFromCarrier(carrier: Record<string, unknown>) {
   const traceparent = carrier["traceparent"];
   const tracestate = carrier["tracestate"];
 
+  if (typeof traceparent !== "string") {
+    return undefined;
+  }
+
   return {
+    ...carrier,
     traceparent: parseTraceparent(traceparent),
     tracestate,
   };
-}
-
-function parseTraceparent(traceparent?: string): { traceId: string; spanId: string } | undefined {
-  if (!traceparent) {
-    return undefined;
-  }
-
-  const parts = traceparent.split("-");
-
-  if (parts.length !== 4) {
-    return undefined;
-  }
-
-  const [version, traceId, spanId, flags] = parts;
-
-  if (version !== "00") {
-    return undefined;
-  }
-
-  return { traceId, spanId };
 }
 
 function prepareEvent(event: QueriedEvent): PreparedEvent {
@@ -1829,4 +1901,63 @@ export async function recordRunDebugLog(
       isDebug: true,
     },
   });
+}
+
+/**
+ * Extracts error details from Prisma errors in a type-safe way.
+ * Only includes 'code' property for PrismaClientKnownRequestError.
+ */
+function getPrismaErrorDetails(
+  error: Prisma.PrismaClientUnknownRequestError | Prisma.PrismaClientKnownRequestError
+): {
+  name: string;
+  message: string;
+  stack: string | undefined;
+  clientVersion: string;
+  code?: string;
+} {
+  const base = {
+    name: error.name,
+    message: error.message,
+    stack: error.stack,
+    clientVersion: error.clientVersion,
+  };
+
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    return { ...base, code: error.code };
+  }
+
+  return base;
+}
+
+/**
+ * Checks if a PrismaClientKnownRequestError is a Unicode/hex escape error.
+ */
+function isUnicodeError(error: Prisma.PrismaClientKnownRequestError): boolean {
+  return (
+    error.message.includes("lone leading surrogate in hex escape") ||
+    error.message.includes("unexpected end of hex escape") ||
+    error.message.includes("invalid Unicode") ||
+    error.message.includes("invalid escape sequence")
+  );
+}
+
+/**
+ * Determines if a Prisma error should be retried with bisection logic.
+ * Returns true for errors that might be resolved by splitting the batch.
+ */
+function isRetriablePrismaError(
+  error: unknown
+): error is Prisma.PrismaClientUnknownRequestError | Prisma.PrismaClientKnownRequestError {
+  if (error instanceof Prisma.PrismaClientUnknownRequestError) {
+    // Always retry unknown errors with bisection
+    return true;
+  }
+
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    // Only retry known errors if they're Unicode/hex escape related
+    return isUnicodeError(error);
+  }
+
+  return false;
 }

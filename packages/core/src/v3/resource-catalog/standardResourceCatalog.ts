@@ -5,10 +5,11 @@ import {
   WorkerManifest,
   QueueManifest,
 } from "../schemas/index.js";
-import { TaskMetadataWithFunctions } from "../types/index.js";
+import { TaskMetadataWithFunctions, TaskSchema } from "../types/index.js";
 import { ResourceCatalog } from "./catalog.js";
 
 export class StandardResourceCatalog implements ResourceCatalog {
+  private _taskSchemas: Map<string, TaskSchema> = new Map();
   private _taskMetadata: Map<string, TaskMetadata> = new Map();
   private _taskFunctions: Map<string, TaskMetadataWithFunctions["fns"]> = new Map();
   private _taskFileMetadata: Map<string, TaskFileMetadata> = new Map();
@@ -26,24 +27,18 @@ export class StandardResourceCatalog implements ResourceCatalog {
   registerQueueMetadata(queue: QueueManifest): void {
     const existingQueue = this._queueMetadata.get(queue.name);
 
-    //if it exists already AND concurrencyLimit or releaseConcurrencyOnWaitpoint is different, log a warning
+    //if it exists already AND concurrencyLimit is different, log a warning
     if (existingQueue) {
       const isConcurrencyLimitDifferent = existingQueue.concurrencyLimit !== queue.concurrencyLimit;
-      const isReleaseConcurrencyOnWaitpointDifferent =
-        existingQueue.releaseConcurrencyOnWaitpoint !== queue.releaseConcurrencyOnWaitpoint;
 
-      if (isConcurrencyLimitDifferent || isReleaseConcurrencyOnWaitpointDifferent) {
+      if (isConcurrencyLimitDifferent) {
         let message = `Queue "${queue.name}" is defined twice, with different settings.`;
         if (isConcurrencyLimitDifferent) {
           message += `\n        - concurrencyLimit: ${existingQueue.concurrencyLimit} vs ${queue.concurrencyLimit}`;
         }
-        if (isReleaseConcurrencyOnWaitpointDifferent) {
-          message += `\n        - releaseConcurrencyOnWaitpoint: ${existingQueue.releaseConcurrencyOnWaitpoint} vs ${queue.releaseConcurrencyOnWaitpoint}`;
-        }
 
         message += "\n       Keeping the first definition:";
         message += `\n        - concurrencyLimit: ${existingQueue.concurrencyLimit}`;
-        message += `\n        - releaseConcurrencyOnWaitpoint: ${existingQueue.releaseConcurrencyOnWaitpoint}`;
         console.warn(message);
         return;
       }
@@ -66,7 +61,7 @@ export class StandardResourceCatalog implements ResourceCatalog {
       return;
     }
 
-    const { fns, ...metadata } = task;
+    const { fns, schema, ...metadata } = task;
 
     if (!task.id) {
       return;
@@ -78,6 +73,10 @@ export class StandardResourceCatalog implements ResourceCatalog {
 
     this._taskMetadata.set(task.id, metadata);
     this._taskFunctions.set(task.id, fns);
+
+    if (schema) {
+      this._taskSchemas.set(task.id, schema);
+    }
   }
 
   updateTaskMetadata(id: string, updates: Partial<TaskMetadataWithFunctions>): void {
@@ -113,13 +112,19 @@ export class StandardResourceCatalog implements ResourceCatalog {
         continue;
       }
 
-      result.push({
+      const taskManifest = {
         ...metadata,
         ...fileMetadata,
-      });
+      };
+
+      result.push(taskManifest);
     }
 
     return result;
+  }
+
+  getTaskSchema(id: string): TaskSchema | undefined {
+    return this._taskSchemas.get(id);
   }
 
   listQueueManifests(): Array<QueueManifest> {

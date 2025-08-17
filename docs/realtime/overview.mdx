@@ -1,290 +1,39 @@
 ---
 title: Realtime overview
 sidebarTitle: Overview
-description: Using the Trigger.dev v3 realtime API
+description: Using the Trigger.dev Realtime API to trigger and/or subscribe to runs in real-time.
 ---
 
-import RealtimeExamplesCards from "/snippets/realtime-examples-cards.mdx";
-import RunBooleanHelpers from "/snippets/run-boolean-helpers.mdx";
+Trigger.dev Realtime allows you to trigger, subscribe to, and get real-time updates for runs. This is useful for monitoring runs, updating UIs, and building real-time dashboards.
 
-Trigger.dev Realtime is a set of APIs that allow you to subscribe to runs and get real-time updates on the run status. This is useful for monitoring runs, updating UIs, and building realtime dashboards.
+You can subscribe to real-time updates for different scopes of runs:
 
-## How it works
+- **Specific runs** - Monitor individual run progress by run ID
+- **Runs with specific tags** - Track all runs that have certain [tags](/tags) (e.g., all runs tagged with `user:123`)
+- **Batch runs** - All runs within a specific batch
+- **Trigger + subscribe combos** - Trigger a task and immediately subscribe to its run (frontend only)
 
-The Realtime API is built on top of [Electric SQL](https://electric-sql.com/), an open-source PostgreSQL syncing engine. The Trigger.dev API wraps Electric SQL and provides a simple API to subscribe to [runs](/runs) and get real-time updates.
+Once subscribed, you'll receive the complete [run object](/realtime/run-object) with automatic real-time updates whenever the [run changes](/realtime/how-it-works#run-changes), including:
 
-## Walkthrough
+- **Status changes** - queued → executing → completed, etc.
+- **Metadata updates** - Custom progress tracking, status updates, user data, etc. ([React hooks](/realtime/react-hooks/subscribe#using-metadata-to-show-progress-in-your-ui) | [backend](/realtime/backend/subscribe#subscribe-to-metadata-updates-from-your-tasks))
+- **Tag changes** - When [tags](/tags) are added or removed from the run
+- **Stream data** - Real-time data chunks from your tasks, perfect for AI/LLM streaming ([React hooks](/realtime/react-hooks/streams) | [backend](/realtime/backend/streams))
 
-<iframe
-  width="100%"
-  height="315"
-  src="https://www.youtube.com/embed/RhJAbSGkS88?si=4Z72SfygeklNI3As"
-  title="YouTube video player"
-  allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-  referrerPolicy="strict-origin-when-cross-origin"
-  allowFullScreen
-/>
+## Using Realtime in your applications
 
-## Usage
+### Authentication
 
-After you trigger a task, you can subscribe to the run using the `runs.subscribeToRun` function. This function returns an async iterator that you can use to get updates on the run status.
+All Realtime subscriptions require authentication so you can securely trigger and subscribe to runs. See our [authentication guide](/realtime/auth) for more details.
 
-```ts
-import { runs, tasks } from "@trigger.dev/sdk";
+### Frontend implementation
 
-// Somewhere in your backend code
-async function myBackend() {
-  const handle = await tasks.trigger("my-task", { some: "data" });
+Use our React hooks to build real-time UIs that update as runs execute. Ideal for progress bars, status indicators, and live dashboards.
 
-  for await (const run of runs.subscribeToRun(handle.id)) {
-    // This will log the run every time it changes
-    console.log(run);
-  }
-}
-```
+→ **[See our React hooks guide](/realtime/react-hooks/)**
 
-Every time the run changes, the async iterator will yield the updated run. You can use this to update your UI, log the run status, or take any other action.
+### Backend implementation
 
-Alternatively, you can subscribe to changes to any run that includes a specific tag (or tags) using the `runs.subscribeToRunsWithTag` function.
+Use our server-side SDK to subscribe to runs from your backend code, other tasks, or serverless functions. Perfect for triggering workflows, sending notifications, or updating databases based on run status changes.
 
-```ts
-import { runs } from "@trigger.dev/sdk";
-
-// Somewhere in your backend code
-for await (const run of runs.subscribeToRunsWithTag("user:1234")) {
-  // This will log the run every time it changes, for all runs with the tag "user:1234"
-  console.log(run);
-}
-```
-
-If you've used `batchTrigger` to trigger multiple runs, you can also subscribe to changes to all the runs triggered in the batch using the `runs.subscribeToBatch` function.
-
-```ts
-import { runs } from "@trigger.dev/sdk";
-
-// Somewhere in your backend code
-for await (const run of runs.subscribeToBatch("batch-id")) {
-  // This will log the run every time it changes, for all runs in the batch with the ID "batch-id"
-  console.log(run);
-}
-```
-
-### React hooks
-
-We also provide a set of React hooks that make it easy to use the Realtime API in your React components. See the [React hooks doc](/frontend/react-hooks) for more information.
-
-## Run changes
-
-You will receive updates whenever a run changes for the following reasons:
-
-- The run moves to a new state. See our [run lifecycle docs](/runs#the-run-lifecycle) for more information.
-- [Run tags](/tags) are added or removed.
-- [Run metadata](/runs/metadata) is updated.
-
-## Run object
-
-The run object returned by the async iterator is NOT the same as the run object returned by the `runs.retrieve` function. This is because Electric SQL streams changes from a single PostgreSQL table, and the run object returned by `runs.retrieve` is a combination of multiple tables.
-
-The run object returned by the async iterator has the following fields:
-
-<ParamField path="id" type="string" required>
-  The run ID.
-</ParamField>
-
-<ParamField path="taskIdentifier" type="string" required>
-  The task identifier.
-</ParamField>
-
-<ParamField path="payload" type="object" required>
-  The input payload for the run.
-</ParamField>
-
-<ParamField path="output" type="object">
-  The output result of the run.
-</ParamField>
-
-<ParamField path="createdAt" type="Date" required>
-  Timestamp when the run was created.
-</ParamField>
-
-<ParamField path="updatedAt" type="Date" required>
-  Timestamp when the run was last updated.
-</ParamField>
-
-<ParamField path="number" type="number" required>
-  Sequential number assigned to the run.
-</ParamField>
-
-<ParamField path="status" type="RunStatus" required>
-  Current status of the run.
-
-  <Accordion title="RunStatus enum">
-
-| Status               | Description                                                                                               |
-| -------------------- | --------------------------------------------------------------------------------------------------------- |
-| `WAITING_FOR_DEPLOY` | Task hasn't been deployed yet but is waiting to be executed                                               |
-| `QUEUED`             | Run is waiting to be executed by a worker                                                                 |
-| `EXECUTING`          | Run is currently being executed by a worker                                                               |
-| `REATTEMPTING`       | Run has failed and is waiting to be retried                                                               |
-| `FROZEN`             | Run has been paused by the system, and will be resumed by the system                                      |
-| `COMPLETED`          | Run has been completed successfully                                                                       |
-| `CANCELED`           | Run has been canceled by the user                                                                         |
-| `FAILED`             | Run has been completed with errors                                                                        |
-| `CRASHED`            | Run has crashed and won't be retried, most likely the worker ran out of resources, e.g. memory or storage |
-| `INTERRUPTED`        | Run was interrupted during execution, mostly this happens in development environments                     |
-| `SYSTEM_FAILURE`     | Run has failed to complete, due to an error in the system                                                 |
-| `DELAYED`            | Run has been scheduled to run at a specific time                                                          |
-| `EXPIRED`            | Run has expired and won't be executed                                                                     |
-| `TIMED_OUT`          | Run has reached it's maxDuration and has been stopped                                                     |
-
-</Accordion>
-</ParamField>
-
-<ParamField path="durationMs" type="number" required>
-  Duration of the run in milliseconds.
-</ParamField>
-
-<ParamField path="costInCents" type="number" required>
-  Total cost of the run in cents.
-</ParamField>
-
-<ParamField path="baseCostInCents" type="number" required>
-  Base cost of the run in cents before any additional charges.
-</ParamField>
-
-<ParamField path="tags" type="string[]" required>
-  Array of tags associated with the run.
-</ParamField>
-
-<ParamField path="idempotencyKey" type="string">
-  Key used to ensure idempotent execution.
-</ParamField>
-
-<ParamField path="expiredAt" type="Date">
-  Timestamp when the run expired.
-</ParamField>
-
-<ParamField path="ttl" type="string">
-  Time-to-live duration for the run.
-</ParamField>
-
-<ParamField path="finishedAt" type="Date">
-  Timestamp when the run finished.
-</ParamField>
-
-<ParamField path="startedAt" type="Date">
-  Timestamp when the run started.
-</ParamField>
-
-<ParamField path="delayedUntil" type="Date">
-  Timestamp until which the run is delayed.
-</ParamField>
-
-<ParamField path="queuedAt" type="Date">
-  Timestamp when the run was queued.
-</ParamField>
-
-<ParamField path="metadata" type="Record<string, DeserializedJson>">
-  Additional metadata associated with the run.
-</ParamField>
-
-<ParamField path="error" type="SerializedError">
-  Error information if the run failed.
-</ParamField>
-
-<ParamField path="isTest" type="boolean" required>
-  Indicates whether this is a test run.
-</ParamField>
-
-## Boolean helpers
-
-Run objects returned from Realtime subscriptions include convenient boolean helper methods to check the run's status:
-
-```ts
-import { runs } from "@trigger.dev/sdk";
-
-for await (const run of runs.subscribeToRun("run_1234")) {
-  if (run.isCompleted) {
-    console.log("Run completed successfully!");
-    break;
-  }
-}
-```
-
-<RunBooleanHelpers />
-
-## Type-safety
-
-You can infer the types of the run's payload and output by passing the type of the task to the `subscribeToRun` function. This will give you type-safe access to the run's payload and output.
-
-```ts
-import { runs, tasks } from "@trigger.dev/sdk";
-import type { myTask } from "./trigger/my-task";
-
-// Somewhere in your backend code
-async function myBackend() {
-  const handle = await tasks.trigger("my-task", { some: "data" });
-
-  for await (const run of runs.subscribeToRun<typeof myTask>(handle.id)) {
-    // This will log the run every time it changes
-    console.log(run.payload.some);
-
-    if (run.output) {
-      // This will log the output if it exists
-      console.log(run.output.some);
-    }
-  }
-}
-```
-
-When using `subscribeToRunsWithTag`, you can pass a union of task types for all the possible tasks that can have the tag.
-
-```ts
-import { runs } from "@trigger.dev/sdk";
-import type { myTask, myOtherTask } from "./trigger/my-task";
-
-// Somewhere in your backend code
-for await (const run of runs.subscribeToRunsWithTag<typeof myTask | typeof myOtherTask>("my-tag")) {
-  // You can narrow down the type based on the taskIdentifier
-  switch (run.taskIdentifier) {
-    case "my-task": {
-      console.log("Run output:", run.output.foo); // This will be type-safe
-      break;
-    }
-    case "my-other-task": {
-      console.log("Run output:", run.output.bar); // This will be type-safe
-      break;
-    }
-  }
-}
-```
-
-## Run metadata
-
-The run metadata API gives you the ability to add or update custom metadata on a run, which will cause the run to be updated. This allows you to extend the realtime API with custom data attached to a run that can be used for various purposes. Some common use cases include:
-
-- Adding a link to a related resource
-- Adding a reference to a user or organization
-- Adding a custom status with progress information
-
-See our [run metadata docs](/runs/metadata) for more on how to use this feature.
-
-### Using w/Realtime & React hooks
-
-We suggest combining run metadata with the realtime API and our [React hooks](/frontend/react-hooks) to bridge the gap between your trigger.dev tasks and your UI. This allows you to update your UI in real-time based on changes to the run metadata. As a simple example, you could add a custom status to a run with a progress value, and update your UI based on that progress.
-
-We have a full demo app repo available [here](https://github.com/triggerdotdev/nextjs-realtime-simple-demo)
-
-## Realtime streams
-
-See our dedicated [Realtime streams](/realtime/streams) documentation for more information on how to use the Realtime streams API.
-
-## Limits
-
-The Realtime API in the Trigger.dev Cloud limits the number of concurrent subscriptions, depending on your plan. If you exceed the limit, you will receive an error when trying to subscribe to a run. For more information, see our [pricing page](https://trigger.dev/pricing).
-
-## Known issues
-
-There is currently a known issue where the realtime API does not work if subscribing to a run that has a large payload or large output and are stored in object store instead of the database. We are working on a fix for this issue: https://github.com/triggerdotdev/trigger.dev/issues/1451. As a workaround you'll need to keep payloads and outputs below 128KB when using the realtime API.
-
-<RealtimeExamplesCards />
+→ **[See our Backend guide](/realtime/backend)**

@@ -14,10 +14,6 @@ export const sdkUsage = task({
       run: $firstRun,
     });
 
-    await tasks.triggerAndPoll<typeof sdkChild>("sdk-child", {
-      handle,
-    });
-
     const replayedRun = await runs.replay($firstRun.id);
 
     await runs.cancel(replayedRun.id);

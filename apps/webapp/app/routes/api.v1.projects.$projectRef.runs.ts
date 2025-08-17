@@ -17,7 +17,7 @@ export const loader = createLoaderPATApiRoute(
     searchParams: ApiRunListSearchParams,
     corsStrategy: "all",
   },
-  async ({ searchParams, params, authentication }) => {
+  async ({ searchParams, params, authentication, apiVersion }) => {
     const project = await findProjectByRef(params.projectRef, authentication.userId);
 
     if (!project) {
@@ -25,7 +25,7 @@ export const loader = createLoaderPATApiRoute(
     }
 
     const presenter = new ApiRunListPresenter();
-    const result = await presenter.call(project, searchParams);
+    const result = await presenter.call(project, searchParams, apiVersion);
 
     if (!result) {
       return json({ data: [] });

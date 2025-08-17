@@ -44,6 +44,7 @@ export const TaskRunV2 = z.object({
   is_test: z.boolean().default(false),
   concurrency_key: z.string().default(""),
   bulk_action_group_ids: z.array(z.string()).default([]),
+  worker_queue: z.string().default(""),
   _version: z.string(),
   _is_deleted: z.number().int().default(0),
 });
@@ -56,10 +57,6 @@ export function insertTaskRuns(ch: ClickhouseWriter, settings?: ClickHouseSettin
     table: "trigger_dev.task_runs_v2",
     schema: TaskRunV2,
     settings: {
-      async_insert: 1,
-      wait_for_async_insert: 0,
-      async_insert_max_data_size: "1000000",
-      async_insert_busy_timeout_ms: 1000,
       enable_json_type: 1,
       type_json_skip_duplicated_paths: 1,
       ...settings,

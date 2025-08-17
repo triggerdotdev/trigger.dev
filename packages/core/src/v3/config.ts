@@ -19,6 +19,25 @@ export type CompatibilityFlagFeatures = {
   [key in CompatibilityFlag]: boolean;
 };
 
+type ProcessKeepAlive =
+  | boolean
+  | {
+      enabled: boolean;
+      /**
+       * The maximum number of executions per process. If the process has run more than this number of times, it will be killed.
+       *
+       * @default 50
+       */
+      maxExecutionsPerProcess?: number;
+
+      /**
+       * The maximum number of processes to keep alive in dev.
+       *
+       * @default 25
+       */
+      devMaxPoolSize?: number;
+    };
+
 export type TriggerConfig = {
   /**
    * @default "node"
@@ -171,30 +190,43 @@ export type TriggerConfig = {
     external?: string[];
 
     /**
-     * **WARNING: This is an experimental feature and might be removed in a future version.**
+     * This still works but use `autoDetectExternal` instead.
      *
-     * Automatically detect dependencies that shouldn't be bundled and mark them as external. For example, native modules.
-     *
-     * Turning this on will not affect dependencies that were manually added to the `external` array.
-     *
-     * @default false
-     *
-     * @deprecated (experimental)
+     * @deprecated (use autoDetectExternal instead)
      */
     experimental_autoDetectExternal?: boolean;
 
     /**
-     * **WARNING: This is an experimental feature and might be removed in a future version.**
+     * Automatically detect dependencies that shouldn't be bundled and mark them as external. For example, native modules.
      *
-     * Preserve the original names of functions and classes in the bundle. This can fix issues with frameworks that rely on the original names for registration and binding, for example MikroORM.
+     * Turn this off if you are having issues and want to manually specify all `external` dependencies.
+     *
+     * @default true
+     */
+    autoDetectExternal?: boolean;
+
+    /**
+     * This still works but use `keepNames` instead.
+     *
+     * @deprecated (use keepNames instead)
+     */
+    experimental_keepNames?: boolean;
+
+    /* Set to false to minify the original names of functions and classes in the bundle.
+     * This can make bundles smaller at the cost of compatibility with frameworks that rely on function/class/variable names.
      *
      * @link https://esbuild.github.io/api/#keep-names
      *
-     * @default false
-     *
-     * @deprecated (experimental)
+     * @default true
      */
-    experimental_keepNames?: boolean;
+    keepNames?: boolean;
+
+    /**
+     * This still works but use `minify` instead.
+     *
+     * @deprecated (use minify instead)
+     */
+    experimental_minify?: boolean;
 
     /**
      * **WARNING: This is an experimental feature and might be removed in a future version.**
@@ -206,10 +238,8 @@ export type TriggerConfig = {
      * @link https://esbuild.github.io/api/#minify
      *
      * @default false
-     *
-     * @deprecated (experimental)
      */
-    experimental_minify?: boolean;
+    minify?: boolean;
 
     jsx?: {
       /**
@@ -235,29 +265,30 @@ export type TriggerConfig = {
   };
 
   /**
+   * This still works but use `processKeepAlive` instead.
+   *
+   * @deprecated (use processKeepAlive instead)
+   */
+  experimental_processKeepAlive?: ProcessKeepAlive;
+
+  /**
    * @default false
    * @description Keep the process alive after the task has finished running so the next task doesn't have to wait for the process to start up again.
    *
    * Note that the process could be killed at any time, and we don't make any guarantees about the process being alive for a certain amount of time
    */
-  experimental_processKeepAlive?:
-    | boolean
-    | {
-        enabled: boolean;
-        /**
-         * The maximum number of executions per process. If the process has run more than this number of times, it will be killed.
-         *
-         * @default 50
-         */
-        maxExecutionsPerProcess?: number;
+  processKeepAlive?: ProcessKeepAlive;
 
-        /**
-         * The maximum number of processes to keep alive in dev.
-         *
-         * @default 25
-         */
-        devMaxPoolSize?: number;
-      };
+  /**
+   * @default true
+   * @description If set to true when running the dev CLI, the current working directory will be set to where the command is run from.
+   *
+   * Setting this to `false` will set the current working directory to the build directory.
+   * This more closely matches the behavior of the CLI when running in production and is highly recommended.
+   *
+   * This impacts the value of process.cwd() in your task code.
+   */
+  legacyDevProcessCwdBehaviour?: boolean;
 
   /**
    * @deprecated Use `dirs` instead

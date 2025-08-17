@@ -1,6 +1,8 @@
+import type { BillingCache } from "../billingCache.js";
 import { startSpan } from "@internal/tracing";
 import { assertExhaustive } from "@trigger.dev/core";
 import { DequeuedMessage, RetryOptions } from "@trigger.dev/core/v3";
+import { placementTag } from "@trigger.dev/core/v3/serverOnly";
 import { getMaxDuration } from "@trigger.dev/core/v3/isomorphic";
 import { PrismaClientOrTransaction } from "@trigger.dev/database";
 import { getRunWithBackgroundWorkerTasks } from "../db/worker.js";
@@ -9,7 +11,6 @@ import { getMachinePreset } from "../machinePresets.js";
 import { isDequeueableExecutionStatus } from "../statuses.js";
 import { RunEngineOptions } from "../types.js";
 import { ExecutionSnapshotSystem, getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
-import { ReleaseConcurrencySystem } from "./releaseConcurrencySystem.js";
 import { RunAttemptSystem } from "./runAttemptSystem.js";
 import { SystemResources } from "./systems.js";
 
@@ -18,20 +19,18 @@ export type DequeueSystemOptions = {
   machines: RunEngineOptions["machines"];
   executionSnapshotSystem: ExecutionSnapshotSystem;
   runAttemptSystem: RunAttemptSystem;
-  releaseConcurrencySystem: ReleaseConcurrencySystem;
+  billingCache: BillingCache;
 };
 
 export class DequeueSystem {
   private readonly $: SystemResources;
   private readonly executionSnapshotSystem: ExecutionSnapshotSystem;
   private readonly runAttemptSystem: RunAttemptSystem;
-  private readonly releaseConcurrencySystem: ReleaseConcurrencySystem;
 
   constructor(private readonly options: DequeueSystemOptions) {
     this.$ = options.resources;
     this.executionSnapshotSystem = options.executionSnapshotSystem;
     this.runAttemptSystem = options.runAttemptSystem;
-    this.releaseConcurrencySystem = options.releaseConcurrencySystem;
   }
 
   /**
@@ -165,12 +164,6 @@ export class DequeueSystem {
                     })),
                   }
                 );
-
-                if (snapshot.previousSnapshotId) {
-                  await this.releaseConcurrencySystem.refillTokensForSnapshot(
-                    snapshot.previousSnapshotId
-                  );
-                }
 
                 await sendNotificationToWorker({
                   runId,
@@ -325,6 +318,7 @@ export class DequeueSystem {
                   lockedById: result.task.id,
                   lockedToVersionId: result.worker.id,
                   lockedQueueId: result.queue.id,
+                  status: "DEQUEUED",
                   startedAt,
                   baseCostInCents: this.options.machines.baseCostInCents,
                   machinePreset: machinePreset.name,
@@ -389,12 +383,36 @@ export class DequeueSystem {
               const currentAttemptNumber = lockedTaskRun.attemptNumber ?? 0;
               const nextAttemptNumber = currentAttemptNumber + 1;
 
+              // Get billing information if available, with fallback to TaskRun.planType
+              const billingResult = await this.options.billingCache.getCurrentPlan(orgId);
+
+              let isPaying: boolean;
+              if (billingResult.err || !billingResult.val) {
+                // Fallback to stored planType on TaskRun if billing cache fails or returns no value
+                this.$.logger.warn(
+                  "Billing cache failed or returned no value, falling back to TaskRun.planType",
+                  {
+                    orgId,
+                    runId,
+                    error:
+                      billingResult.err instanceof Error
+                        ? billingResult.err.message
+                        : String(billingResult.err),
+                    currentPlan: billingResult.val,
+                  }
+                );
+
+                isPaying = (lockedTaskRun.planType ?? "free") !== "free";
+              } else {
+                isPaying = billingResult.val.isPaying;
+              }
+
               const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(
                 prisma,
                 {
                   run: {
                     id: runId,
-                    status: snapshot.runStatus,
+                    status: lockedTaskRun.status,
                     attemptNumber: lockedTaskRun.attemptNumber,
                   },
                   snapshot: {
@@ -457,6 +475,7 @@ export class DequeueSystem {
                 project: {
                   id: lockedTaskRun.projectId,
                 },
+                placementTags: [placementTag("paid", isPaying ? "true" : "false")],
               } satisfies DequeuedMessage;
             }
           );

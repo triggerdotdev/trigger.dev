@@ -453,10 +453,22 @@ export function branchesPath(
   return `${v3EnvironmentPath(organization, project, environment)}/branches`;
 }
 
+export function regionsPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/regions`;
+}
+
 export function v3BillingPath(organization: OrgForPath, message?: string) {
   return `${organizationPath(organization)}/settings/billing${
     message ? `?message=${encodeURIComponent(message)}` : ""
   }`;
+}
+
+export function v3BillingAlertsPath(organization: OrgForPath) {
+  return `${organizationPath(organization)}/settings/billing-alerts`;
 }
 
 export function v3StripePortalPath(organization: OrgForPath) {

@@ -1,5 +1,17 @@
 # internal-platform
 
+## 4.0.0-v4-beta.27
+
+### Patch Changes
+
+- Upgrade to zod 3.25.76 ([#2352](https://github.com/triggerdotdev/trigger.dev/pull/2352))
+
+## 4.0.0-v4-beta.26
+
+## 4.0.0-v4-beta.25
+
+## 4.0.0-v4-beta.24
+
 ## 4.0.0-v4-beta.23
 
 ### Patch Changes

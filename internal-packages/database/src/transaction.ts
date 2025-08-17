@@ -9,6 +9,8 @@ export type PrismaClientOrTransaction = PrismaClient | PrismaTransactionClient;
 
 export type PrismaReplicaClient = Omit<PrismaClient, "$transaction">;
 
+export const Decimal = Prisma.Decimal;
+
 function isTransactionClient(prisma: PrismaClientOrTransaction): prisma is PrismaTransactionClient {
   return !("$transaction" in prisma);
 }

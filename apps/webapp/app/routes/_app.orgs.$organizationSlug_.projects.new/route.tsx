@@ -7,7 +7,8 @@ import { Form, useActionData, useNavigation } from "@remix-run/react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { z } from "zod";
-import { MainCenteredContainer } from "~/components/layout/AppLayout";
+import { BackgroundWrapper } from "~/components/BackgroundWrapper";
+import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { Fieldset } from "~/components/primitives/Fieldset";
@@ -20,15 +21,14 @@ import { Label } from "~/components/primitives/Label";
 import { ButtonSpinner } from "~/components/primitives/Spinner";
 import { prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
-import { useFeatures } from "~/hooks/useFeatures";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { createProject } from "~/models/project.server";
 import { requireUserId } from "~/services/session.server";
 import {
   OrganizationParamsSchema,
   organizationPath,
-  v3ProjectPath,
   selectPlanPath,
+  v3ProjectPath,
 } from "~/utils/pathBuilder";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
@@ -138,57 +138,61 @@ export default function Page() {
   const isLoading = navigation.state === "submitting" || navigation.state === "loading";
 
   return (
-    <MainCenteredContainer>
-      <div>
-        <FormTitle
-          LeadingIcon={<FolderIcon className="size-7 text-indigo-500" />}
-          title="Create a new project"
-          description={`This will create a new project in your "${organization.title}" organization.`}
-        />
-        <Form method="post" {...form.props}>
-          {message && (
-            <Callout variant="success" className="mb-4">
-              {message}
-            </Callout>
-          )}
-          <Fieldset>
-            <InputGroup>
-              <Label htmlFor={projectName.id}>Project name</Label>
-              <Input
-                {...conform.input(projectName, { type: "text" })}
-                placeholder="Your project name"
-                icon={FolderIcon}
-                autoFocus
-              />
-              <FormError id={projectName.errorId}>{projectName.error}</FormError>
-            </InputGroup>
-            {canCreateV3Projects ? (
-              <input {...conform.input(projectVersion, { type: "hidden" })} value={"v3"} />
-            ) : (
-              <input {...conform.input(projectVersion, { type: "hidden" })} value={"v2"} />
-            )}
-            <FormButtons
-              confirmButton={
-                <Button
-                  type="submit"
-                  variant={"primary/small"}
-                  disabled={isLoading}
-                  TrailingIcon={isLoading ? ButtonSpinner : undefined}
-                >
-                  {isLoading ? "Creating…" : "Create"}
-                </Button>
-              }
-              cancelButton={
-                organization.projectsCount > 0 ? (
-                  <LinkButton to={organizationPath(organization)} variant={"tertiary/small"}>
-                    Cancel
-                  </LinkButton>
-                ) : undefined
-              }
+    <AppContainer className="bg-charcoal-900">
+      <BackgroundWrapper>
+        <MainCenteredContainer className="max-w-[26rem] rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg">
+          <div>
+            <FormTitle
+              LeadingIcon={<FolderIcon className="size-7 text-indigo-500" />}
+              title="Create a new project"
+              description={`This will create a new project in your "${organization.title}" organization.`}
             />
-          </Fieldset>
-        </Form>
-      </div>
-    </MainCenteredContainer>
+            <Form method="post" {...form.props}>
+              {message && (
+                <Callout variant="success" className="mb-4">
+                  {message}
+                </Callout>
+              )}
+              <Fieldset>
+                <InputGroup>
+                  <Label htmlFor={projectName.id}>Project name</Label>
+                  <Input
+                    {...conform.input(projectName, { type: "text" })}
+                    placeholder="Your project name"
+                    icon={FolderIcon}
+                    autoFocus
+                  />
+                  <FormError id={projectName.errorId}>{projectName.error}</FormError>
+                </InputGroup>
+                {canCreateV3Projects ? (
+                  <input {...conform.input(projectVersion, { type: "hidden" })} value={"v3"} />
+                ) : (
+                  <input {...conform.input(projectVersion, { type: "hidden" })} value={"v2"} />
+                )}
+                <FormButtons
+                  confirmButton={
+                    <Button
+                      type="submit"
+                      variant={"primary/small"}
+                      disabled={isLoading}
+                      TrailingIcon={isLoading ? ButtonSpinner : undefined}
+                    >
+                      {isLoading ? "Creating…" : "Create"}
+                    </Button>
+                  }
+                  cancelButton={
+                    organization.projectsCount > 0 ? (
+                      <LinkButton to={organizationPath(organization)} variant={"secondary/small"}>
+                        Cancel
+                      </LinkButton>
+                    ) : undefined
+                  }
+                />
+              </Fieldset>
+            </Form>
+          </div>
+        </MainCenteredContainer>
+      </BackgroundWrapper>
+    </AppContainer>
   );
 }

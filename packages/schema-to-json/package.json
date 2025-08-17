@@ -1,0 +1,107 @@
+{
+  "name": "@trigger.dev/schema-to-json",
+  "version": "4.0.0-v4-beta.27",
+  "description": "Convert various schema validation libraries to JSON Schema",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/triggerdotdev/trigger.dev",
+    "directory": "packages/schema-to-json"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=18.20.0"
+  },
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "types": "./dist/commonjs/index.d.ts",
+        "default": "./dist/commonjs/index.js"
+      }
+    }
+  },
+  "scripts": {
+    "clean": "rimraf dist",
+    "build": "pnpm run clean && pnpm run build:tshy && pnpm run update-version",
+    "build:tshy": "tshy",
+    "dev": "tshy --watch",
+    "typecheck": "tsc -p tsconfig.src.json --noEmit",
+    "test": "vitest",
+    "update-version": "tsx ../../scripts/updateVersion.ts",
+    "check-exports": "attw --pack ."
+  },
+  "dependencies": {
+    "@trigger.dev/core": "workspace:*",
+    "zod-to-json-schema": "^3.24.5",
+    "@sodaru/yup-to-json-schema": "^2.0.1"
+  },
+  "devDependencies": {
+    "arktype": "^2.0.0",
+    "effect": "^3.11.11",
+    "runtypes": "^6.7.0",
+    "superstruct": "^2.0.2",
+    "tshy": "^3.0.2",
+    "@sinclair/typebox": "^0.34.3",
+    "valibot": "^1.1.0",
+    "yup": "^1.7.0",
+    "zod": "^3.24.1 || ^4.0.0",
+    "rimraf": "6.0.1",
+    "@arethetypeswrong/cli": "^0.15.4"
+  },
+  "peerDependencies": {
+    "arktype": ">=2.0.0",
+    "effect": ">=3.0.0",
+    "runtypes": ">=5.0.0",
+    "superstruct": ">=0.14.2",
+    "@sinclair/typebox": ">=0.34.30",
+    "valibot": ">=0.41.0",
+    "yup": ">=1.0.0",
+    "zod": "^3.24.1 || ^4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "arktype": {
+      "optional": true
+    },
+    "effect": {
+      "optional": true
+    },
+    "runtypes": {
+      "optional": true
+    },
+    "superstruct": {
+      "optional": true
+    },
+    "@sinclair/typebox": {
+      "optional": true
+    },
+    "valibot": {
+      "optional": true
+    },
+    "yup": {
+      "optional": true
+    },
+    "zod": {
+      "optional": true
+    }
+  },
+  "tshy": {
+    "selfLink": false,
+    "exports": {
+      ".": "./src/index.ts"
+    },
+    "project": "./tsconfig.src.json"
+  },
+  "main": "./dist/commonjs/index.js",
+  "types": "./dist/commonjs/index.d.ts",
+  "module": "./dist/esm/index.js"
+}

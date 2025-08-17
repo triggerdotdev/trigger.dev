@@ -24,12 +24,13 @@ export const allTaskRunStatuses = [
   "WAITING_FOR_DEPLOY",
   "PENDING_VERSION",
   "PENDING",
+  "DEQUEUED",
   "EXECUTING",
   "RETRYING_AFTER_FAILURE",
   "WAITING_TO_RESUME",
   "COMPLETED_SUCCESSFULLY",
-  "CANCELED",
   "COMPLETED_WITH_ERRORS",
+  "CANCELED",
   "TIMED_OUT",
   "CRASHED",
   "PAUSED",
@@ -42,16 +43,15 @@ export const filterableTaskRunStatuses = [
   "PENDING_VERSION",
   "DELAYED",
   "PENDING",
-  "WAITING_TO_RESUME",
+  "DEQUEUED",
   "EXECUTING",
-  "RETRYING_AFTER_FAILURE",
+  "WAITING_TO_RESUME",
   "COMPLETED_SUCCESSFULLY",
-  "CANCELED",
   "COMPLETED_WITH_ERRORS",
   "TIMED_OUT",
   "CRASHED",
-  "INTERRUPTED",
   "SYSTEM_FAILURE",
+  "CANCELED",
   "EXPIRED",
 ] as const satisfies Readonly<Array<TaskRunStatus>>;
 
@@ -60,6 +60,7 @@ const taskRunStatusDescriptions: Record<TaskRunStatus, string> = {
   PENDING: "Task is waiting to be executed.",
   PENDING_VERSION: "Run cannot execute until a version includes the task and queue.",
   WAITING_FOR_DEPLOY: "Run cannot execute until a version includes the task and queue.",
+  DEQUEUED: "Task has been dequeued from the queue but is not yet executing.",
   EXECUTING: "Task is currently being executed.",
   RETRYING_AFTER_FAILURE: "Task is being reattempted after a failure.",
   WAITING_TO_RESUME: `You have used a "wait" function. When the wait is complete, the task will resume execution.`,
@@ -82,6 +83,7 @@ export const QUEUED_STATUSES = [
 ] satisfies TaskRunStatus[];
 
 export const RUNNING_STATUSES = [
+  "DEQUEUED",
   "EXECUTING",
   "RETRYING_AFTER_FAILURE",
   "WAITING_TO_RESUME",
@@ -164,6 +166,8 @@ export function TaskRunStatusIcon({
     case "PENDING_VERSION":
     case "WAITING_FOR_DEPLOY":
       return <RectangleStackIcon className={cn(runStatusClassNameColor(status), className)} />;
+    case "DEQUEUED":
+      return <RectangleStackIcon className={cn(runStatusClassNameColor(status), className)} />;
     case "EXECUTING":
       return <Spinner className={cn(runStatusClassNameColor(status), className)} />;
     case "WAITING_TO_RESUME":
@@ -205,6 +209,7 @@ export function runStatusClassNameColor(status: TaskRunStatus): string {
       return "text-amber-500";
     case "EXECUTING":
     case "RETRYING_AFTER_FAILURE":
+    case "DEQUEUED":
       return "text-pending";
     case "WAITING_TO_RESUME":
       return "text-charcoal-500";
@@ -240,6 +245,8 @@ export function runStatusTitle(status: TaskRunStatus): string {
     case "PENDING_VERSION":
     case "WAITING_FOR_DEPLOY":
       return "Pending version";
+    case "DEQUEUED":
+      return "Dequeued";
     case "EXECUTING":
       return "Executing";
     case "WAITING_TO_RESUME":

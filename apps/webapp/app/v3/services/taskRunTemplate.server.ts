@@ -24,7 +24,11 @@ export class TaskRunTemplateService extends BaseService {
         }
 
         const metadataPacket = data.metadata
-          ? handleMetadataPacket(data.metadata, "application/json")
+          ? handleMetadataPacket(
+              data.metadata,
+              "application/json",
+              env.TASK_RUN_METADATA_MAXIMUM_SIZE
+            )
           : undefined;
 
         const taskRunTemplate = await this._prisma.taskRunTemplate.create({

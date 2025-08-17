@@ -351,19 +351,6 @@ export type CommonWaitOptions = {
    * This means after that time if you pass the same idempotency key again, you will get a new waitpoint.
    */
   idempotencyKeyTTL?: string;
-
-  /**
-   * If set to true, this will cause the waitpoint to release the current run from the queue's concurrency.
-   *
-   * This is useful if you want to allow other runs to execute while this waitpoint is pending
-   *
-   * Note: It's possible that this run will not be able to resume when the waitpoint is complete if this is set to true.
-   * It will go back in the queue and will resume once concurrency becomes available.
-   *
-   *
-   * @default false
-   */
-  releaseConcurrency?: boolean;
 };
 
 export type WaitForOptions = WaitPeriod & CommonWaitOptions;
@@ -475,7 +462,6 @@ export const wait = {
       date: date,
       idempotencyKey: options.idempotencyKey,
       idempotencyKeyTTL: options.idempotencyKeyTTL,
-      releaseConcurrency: options.releaseConcurrency,
     });
 
     return tracer.startActiveSpan(
@@ -553,7 +539,6 @@ export const wait = {
       date: options.date,
       idempotencyKey: options.idempotencyKey,
       idempotencyKeyTTL: options.idempotencyKeyTTL,
-      releaseConcurrency: options.releaseConcurrency,
     });
 
     return tracer.startActiveSpan(
@@ -613,20 +598,7 @@ export const wait = {
      * The token to wait for.
      * This can be a string token ID or an object with an `id` property.
      */
-    token: string | { id: string },
-    /**
-     * The options for the waitpoint token.
-     */
-    options?: {
-      /**
-       * If set to true, this will cause the waitpoint to release the current run from the queue's concurrency.
-       *
-       * This is useful if you want to allow other runs to execute while waiting
-       *
-       * @default false
-       */
-      releaseConcurrency?: boolean;
-    }
+    token: string | { id: string }
   ): ManualWaitpointPromise<T> => {
     return new ManualWaitpointPromise<T>(async (resolve, reject) => {
       try {
@@ -646,7 +618,6 @@ export const wait = {
             const response = await apiClient.waitForWaitpointToken({
               runFriendlyId: ctx.run.id,
               waitpointFriendlyId: tokenId,
-              releaseConcurrency: options?.releaseConcurrency,
             });
 
             if (!response.success) {

@@ -1,12 +1,29 @@
+import {
+  createCache,
+  DefaultStatefulContext,
+  MemoryStore,
+  Namespace,
+  RedisCacheStore,
+  UnkeyCache,
+} from "@internal/cache";
+import { RedisOptions } from "@internal/redis";
 import { startSpan } from "@internal/tracing";
+import { tryCatch } from "@trigger.dev/core/utils";
 import {
   CompleteRunAttemptResult,
   ExecutionResult,
   FlushedRunMetadata,
   GitMeta,
+  MachinePreset,
+  MachinePresetName,
   StartRunAttemptResult,
+  TaskRunContext,
   TaskRunError,
   TaskRunExecution,
+  TaskRunExecutionDeployment,
+  TaskRunExecutionOrganization,
+  TaskRunExecutionProject,
+  TaskRunExecutionQueue,
   TaskRunExecutionResult,
   TaskRunFailedExecutionResult,
   TaskRunInternalError,
@@ -22,9 +39,14 @@ import {
 import { MAX_TASK_RUN_ATTEMPTS } from "../consts.js";
 import { runStatusFromError, ServiceValidationError } from "../errors.js";
 import { sendNotificationToWorker } from "../eventBus.js";
-import { getMachinePreset } from "../machinePresets.js";
+import { getMachinePreset, machinePresetFromName } from "../machinePresets.js";
 import { retryOutcomeFromCompletion } from "../retrying.js";
-import { isExecuting, isInitialState } from "../statuses.js";
+import {
+  isExecuting,
+  isFinishedOrPendingFinished,
+  isInitialState,
+  isPendingExecuting,
+} from "../statuses.js";
 import { RunEngineOptions } from "../types.js";
 import { BatchSystem } from "./batchSystem.js";
 import { DelayedRunSystem } from "./delayedRunSystem.js";
@@ -33,10 +55,9 @@ import {
   ExecutionSnapshotSystem,
   getLatestExecutionSnapshot,
 } from "./executionSnapshotSystem.js";
-import { ReleaseConcurrencySystem } from "./releaseConcurrencySystem.js";
 import { SystemResources } from "./systems.js";
 import { WaitpointSystem } from "./waitpointSystem.js";
-import { tryCatch } from "@trigger.dev/core/utils";
+import { BatchId, RunId } from "@trigger.dev/core/v3/isomorphic";
 
 export type RunAttemptSystemOptions = {
   resources: SystemResources;
@@ -44,10 +65,41 @@ export type RunAttemptSystemOptions = {
   batchSystem: BatchSystem;
   waitpointSystem: WaitpointSystem;
   delayedRunSystem: DelayedRunSystem;
-  releaseConcurrencySystem: ReleaseConcurrencySystem;
   retryWarmStartThresholdMs?: number;
   machines: RunEngineOptions["machines"];
+  redisOptions: RedisOptions;
 };
+
+type BackwardsCompatibleTaskRunExecution = Omit<TaskRunExecution, "task" | "attempt" | "run"> & {
+  task: TaskRunExecution["task"] & {
+    exportName: string | undefined;
+  };
+  attempt: TaskRunExecution["attempt"] & {
+    id: string;
+    backgroundWorkerId: string;
+    backgroundWorkerTaskId: string;
+    status: string;
+  };
+  run: TaskRunExecution["run"] & {
+    context: undefined;
+    durationMs: number;
+    costInCents: number;
+    baseCostInCents: number;
+  };
+};
+
+const ORG_FRESH_TTL = 60000 * 60 * 24; // 1 day
+const ORG_STALE_TTL = 60000 * 60 * 24 * 2; // 2 days
+const PROJECT_FRESH_TTL = 60000 * 60 * 24; // 1 day
+const PROJECT_STALE_TTL = 60000 * 60 * 24 * 2; // 2 days
+const TASK_FRESH_TTL = 60000 * 60 * 24; // 1 day
+const TASK_STALE_TTL = 60000 * 60 * 24 * 2; // 2 days
+const MACHINE_PRESET_FRESH_TTL = 60000 * 60 * 24; // 1 day
+const MACHINE_PRESET_STALE_TTL = 60000 * 60 * 24 * 2; // 2 days
+const DEPLOYMENT_FRESH_TTL = 60000 * 60 * 24; // 1 day
+const DEPLOYMENT_STALE_TTL = 60000 * 60 * 24 * 2; // 2 days
+const QUEUE_FRESH_TTL = 60000 * 60; // 1 hour
+const QUEUE_STALE_TTL = 60000 * 60 * 2; // 2 hours
 
 export class RunAttemptSystem {
   private readonly $: SystemResources;
@@ -55,7 +107,14 @@ export class RunAttemptSystem {
   private readonly batchSystem: BatchSystem;
   private readonly waitpointSystem: WaitpointSystem;
   private readonly delayedRunSystem: DelayedRunSystem;
-  private readonly releaseConcurrencySystem: ReleaseConcurrencySystem;
+  private readonly cache: UnkeyCache<{
+    tasks: BackwardsCompatibleTaskRunExecution["task"];
+    machinePresets: MachinePreset;
+    deployments: TaskRunExecutionDeployment;
+    queues: TaskRunExecutionQueue;
+    projects: TaskRunExecutionProject;
+    orgs: TaskRunExecutionOrganization;
+  }>;
 
   constructor(private readonly options: RunAttemptSystemOptions) {
     this.$ = options.resources;
@@ -63,7 +122,172 @@ export class RunAttemptSystem {
     this.batchSystem = options.batchSystem;
     this.waitpointSystem = options.waitpointSystem;
     this.delayedRunSystem = options.delayedRunSystem;
-    this.releaseConcurrencySystem = options.releaseConcurrencySystem;
+
+    const ctx = new DefaultStatefulContext();
+    // TODO: use an LRU cache for memory store
+    const memory = new MemoryStore({ persistentMap: new Map() });
+    const redisCacheStore = new RedisCacheStore({
+      name: "run-attempt-system",
+      connection: {
+        ...options.redisOptions,
+        keyPrefix: "engine:run-attempt-system:cache:",
+      },
+      useModernCacheKeyBuilder: true,
+    });
+
+    this.cache = createCache({
+      orgs: new Namespace<TaskRunExecutionOrganization>(ctx, {
+        stores: [memory, redisCacheStore],
+        fresh: ORG_FRESH_TTL,
+        stale: ORG_STALE_TTL,
+      }),
+      projects: new Namespace<TaskRunExecutionProject>(ctx, {
+        stores: [memory, redisCacheStore],
+        fresh: PROJECT_FRESH_TTL,
+        stale: PROJECT_STALE_TTL,
+      }),
+      tasks: new Namespace<BackwardsCompatibleTaskRunExecution["task"]>(ctx, {
+        stores: [memory, redisCacheStore],
+        fresh: TASK_FRESH_TTL,
+        stale: TASK_STALE_TTL,
+      }),
+      machinePresets: new Namespace<MachinePreset>(ctx, {
+        stores: [memory, redisCacheStore],
+        fresh: MACHINE_PRESET_FRESH_TTL,
+        stale: MACHINE_PRESET_STALE_TTL,
+      }),
+      deployments: new Namespace<TaskRunExecutionDeployment>(ctx, {
+        stores: [memory, redisCacheStore],
+        fresh: DEPLOYMENT_FRESH_TTL,
+        stale: DEPLOYMENT_STALE_TTL,
+      }),
+      queues: new Namespace<TaskRunExecutionQueue>(ctx, {
+        stores: [memory, redisCacheStore],
+        fresh: QUEUE_FRESH_TTL,
+        stale: QUEUE_STALE_TTL,
+      }),
+    });
+  }
+
+  public async resolveTaskRunContext(runId: string): Promise<TaskRunContext> {
+    const run = await this.$.prisma.taskRun.findFirst({
+      where: {
+        id: runId,
+      },
+      select: {
+        id: true,
+        createdAt: true,
+        updatedAt: true,
+        executedAt: true,
+        baseCostInCents: true,
+        projectId: true,
+        organizationId: true,
+        friendlyId: true,
+        lockedById: true,
+        lockedQueueId: true,
+        queue: true,
+        attemptNumber: true,
+        status: true,
+        ttl: true,
+        machinePreset: true,
+        runTags: true,
+        isTest: true,
+        idempotencyKey: true,
+        startedAt: true,
+        maxAttempts: true,
+        taskVersion: true,
+        maxDurationInSeconds: true,
+        usageDurationMs: true,
+        costInCents: true,
+        traceContext: true,
+        priorityMs: true,
+        taskIdentifier: true,
+        runtimeEnvironment: {
+          select: {
+            id: true,
+            slug: true,
+            type: true,
+            branchName: true,
+            git: true,
+            organizationId: true,
+          },
+        },
+        parentTaskRunId: true,
+        rootTaskRunId: true,
+        batchId: true,
+        workerQueue: true,
+      },
+    });
+
+    if (!run) {
+      throw new ServiceValidationError("Task run not found", 404);
+    }
+
+    const [task, queue, organization, project, machinePreset, deployment] = await Promise.all([
+      run.lockedById
+        ? this.#resolveTaskRunExecutionTask(run.lockedById)
+        : Promise.resolve({
+            id: run.taskIdentifier,
+            filePath: "unknown",
+          }),
+      this.#resolveTaskRunExecutionQueue({
+        runId,
+        lockedQueueId: run.lockedQueueId ?? undefined,
+        queueName: run.queue,
+        runtimeEnvironmentId: run.runtimeEnvironment.id,
+      }),
+      this.#resolveTaskRunExecutionOrganization(run.runtimeEnvironment.organizationId),
+      this.#resolveTaskRunExecutionProjectByRuntimeEnvironmentId(run.runtimeEnvironment.id),
+      run.lockedById
+        ? this.#resolveTaskRunExecutionMachinePreset(run.lockedById, run.machinePreset)
+        : Promise.resolve(
+            getMachinePreset({
+              defaultMachine: this.options.machines.defaultMachine,
+              machines: this.options.machines.machines,
+              config: undefined,
+              run,
+            })
+          ),
+      run.lockedById
+        ? this.#resolveTaskRunExecutionDeployment(run.lockedById)
+        : Promise.resolve(undefined),
+    ]);
+
+    return {
+      run: {
+        id: run.friendlyId,
+        tags: run.runTags,
+        isTest: run.isTest,
+        createdAt: run.createdAt,
+        startedAt: run.startedAt ?? run.createdAt,
+        idempotencyKey: run.idempotencyKey ?? undefined,
+        maxAttempts: run.maxAttempts ?? undefined,
+        version: run.taskVersion ?? "unknown",
+        maxDuration: run.maxDurationInSeconds ?? undefined,
+        priority: run.priorityMs === 0 ? undefined : run.priorityMs / 1_000,
+        parentTaskRunId: run.parentTaskRunId ? RunId.toFriendlyId(run.parentTaskRunId) : undefined,
+        rootTaskRunId: run.rootTaskRunId ? RunId.toFriendlyId(run.rootTaskRunId) : undefined,
+        region: run.runtimeEnvironment.type !== "DEVELOPMENT" ? run.workerQueue : undefined,
+      },
+      attempt: {
+        number: run.attemptNumber ?? 1,
+        startedAt: run.startedAt ?? new Date(),
+      },
+      task,
+      queue,
+      organization,
+      project,
+      machine: machinePreset,
+      deployment,
+      environment: {
+        id: run.runtimeEnvironment.id,
+        slug: run.runtimeEnvironment.slug,
+        type: run.runtimeEnvironment.type,
+        branchName: run.runtimeEnvironment.branchName ?? undefined,
+        git: safeParseGitMeta(run.runtimeEnvironment.git),
+      },
+      batch: run.batchId ? { id: BatchId.toFriendlyId(run.batchId) } : undefined,
+    };
   }
 
   public async startRunAttempt({
@@ -94,40 +318,31 @@ export class RunAttemptSystem {
             //if there is a big delay between the snapshot and the attempt, the snapshot might have changed
             //we just want to log because elsewhere it should have been put back into a state where it can be attempted
             this.$.logger.warn(
-              "RunEngine.createRunAttempt(): snapshot has changed since the attempt was created, ignoring."
+              "RunEngine.createRunAttempt(): snapshot has changed since the attempt was created, ignoring.",
+              {
+                snapshotId,
+                latestSnapshotId: latestSnapshot.id,
+              }
             );
-            throw new ServiceValidationError("Snapshot changed", 409);
-          }
-
-          const environment = await this.#getAuthenticatedEnvironmentFromRun(runId, prisma);
-          if (!environment) {
-            throw new ServiceValidationError("Environment not found", 404);
+            throw new ServiceValidationError("Snapshot changed inside startRunAttempt", 409, {
+              snapshotId,
+              latestSnapshotId: latestSnapshot.id,
+            });
           }
 
           const taskRun = await prisma.taskRun.findFirst({
             where: {
               id: runId,
             },
-            include: {
-              tags: true,
-              lockedBy: {
-                include: {
-                  worker: {
-                    select: {
-                      id: true,
-                      version: true,
-                      sdkVersion: true,
-                      cliVersion: true,
-                      supportsLazyAttempts: true,
-                    },
-                  },
-                },
-              },
-              batchItems: {
-                include: {
-                  batchTaskRun: true,
-                },
-              },
+            select: {
+              id: true,
+              friendlyId: true,
+              attemptNumber: true,
+              projectId: true,
+              runtimeEnvironmentId: true,
+              status: true,
+              lockedById: true,
+              ttl: true,
             },
           });
 
@@ -142,23 +357,12 @@ export class RunAttemptSystem {
           span.setAttribute("taskRunId", taskRun.id);
           span.setAttribute("taskRunFriendlyId", taskRun.friendlyId);
 
-          if (taskRun.status === "CANCELED") {
-            throw new ServiceValidationError("Task run is cancelled", 400);
+          if (isFinishedOrPendingFinished(latestSnapshot.executionStatus)) {
+            throw new ServiceValidationError("Task run is already finished", 400);
           }
 
-          if (!taskRun.lockedBy) {
+          if (!taskRun.lockedById) {
             throw new ServiceValidationError("Task run is not locked", 400);
-          }
-
-          const queue = await prisma.taskQueue.findFirst({
-            where: {
-              runtimeEnvironmentId: environment.id,
-              name: taskRun.queue,
-            },
-          });
-
-          if (!queue) {
-            throw new ServiceValidationError("Queue not found", 404);
           }
 
           //increment the attempt number (start at 1)
@@ -194,11 +398,51 @@ export class RunAttemptSystem {
                   attemptNumber: nextAttemptNumber,
                   executedAt: taskRun.attemptNumber === null ? new Date() : undefined,
                 },
-                include: {
-                  tags: true,
-                  lockedBy: {
-                    include: { worker: true },
+                select: {
+                  id: true,
+                  createdAt: true,
+                  updatedAt: true,
+                  executedAt: true,
+                  baseCostInCents: true,
+                  projectId: true,
+                  organizationId: true,
+                  friendlyId: true,
+                  lockedById: true,
+                  lockedQueueId: true,
+                  queue: true,
+                  attemptNumber: true,
+                  status: true,
+                  ttl: true,
+                  metadata: true,
+                  metadataType: true,
+                  machinePreset: true,
+                  payload: true,
+                  payloadType: true,
+                  runTags: true,
+                  isTest: true,
+                  idempotencyKey: true,
+                  startedAt: true,
+                  maxAttempts: true,
+                  taskVersion: true,
+                  maxDurationInSeconds: true,
+                  usageDurationMs: true,
+                  costInCents: true,
+                  traceContext: true,
+                  priorityMs: true,
+                  batchId: true,
+                  runtimeEnvironment: {
+                    select: {
+                      id: true,
+                      slug: true,
+                      type: true,
+                      branchName: true,
+                      git: true,
+                      organizationId: true,
+                    },
                   },
+                  parentTaskRunId: true,
+                  rootTaskRunId: true,
+                  workerQueue: true,
                 },
               });
 
@@ -226,7 +470,7 @@ export class RunAttemptSystem {
                 await this.$.worker.ack(`expireRun:${taskRun.id}`);
               }
 
-              return { run, snapshot: newSnapshot };
+              return { updatedRun: run, snapshot: newSnapshot };
             },
             (error) => {
               this.$.logger.error("RunEngine.createRunAttempt(): prisma.$transaction error", {
@@ -251,56 +495,59 @@ export class RunAttemptSystem {
             throw new ServiceValidationError("Failed to create task run attempt", 500);
           }
 
-          const { run, snapshot } = result;
+          const { updatedRun, snapshot } = result;
 
           this.$.eventBus.emit("runAttemptStarted", {
             time: new Date(),
             run: {
-              id: run.id,
-              status: run.status,
-              createdAt: run.createdAt,
-              updatedAt: run.updatedAt,
+              id: updatedRun.id,
+              status: updatedRun.status,
+              createdAt: updatedRun.createdAt,
+              updatedAt: updatedRun.updatedAt,
               attemptNumber: nextAttemptNumber,
-              baseCostInCents: run.baseCostInCents,
-              executedAt: run.executedAt ?? undefined,
+              baseCostInCents: updatedRun.baseCostInCents,
+              executedAt: updatedRun.executedAt ?? undefined,
             },
             organization: {
-              id: environment.organization.id,
+              id: updatedRun.runtimeEnvironment.organizationId,
             },
             project: {
-              id: environment.project.id,
+              id: updatedRun.projectId,
             },
             environment: {
-              id: environment.id,
+              id: updatedRun.runtimeEnvironment.id,
             },
           });
 
-          const machinePreset = getMachinePreset({
-            machines: this.options.machines.machines,
-            defaultMachine: this.options.machines.defaultMachine,
-            config: taskRun.lockedBy.machineConfig ?? {},
-            run: taskRun,
-          });
+          const environmentGit = safeParseGitMeta(updatedRun.runtimeEnvironment.git);
 
-          const metadata = await parsePacket({
-            data: taskRun.metadata ?? undefined,
-            dataType: taskRun.metadataType,
-          });
+          const [metadata, task, queue, organization, project, machinePreset, deployment] =
+            await Promise.all([
+              parsePacket({
+                data: updatedRun.metadata ?? undefined,
+                dataType: updatedRun.metadataType,
+              }),
+              this.#resolveTaskRunExecutionTask(taskRun.lockedById),
+              this.#resolveTaskRunExecutionQueue({
+                runId,
+                lockedQueueId: updatedRun.lockedQueueId ?? undefined,
+                queueName: updatedRun.queue,
+                runtimeEnvironmentId: updatedRun.runtimeEnvironment.id,
+              }),
+              this.#resolveTaskRunExecutionOrganization(
+                updatedRun.runtimeEnvironment.organizationId
+              ),
+              this.#resolveTaskRunExecutionProjectByRuntimeEnvironmentId(
+                updatedRun.runtimeEnvironment.id
+              ),
+              this.#resolveTaskRunExecutionMachinePreset(
+                taskRun.lockedById,
+                updatedRun.machinePreset
+              ),
+              this.#resolveTaskRunExecutionDeployment(taskRun.lockedById),
+            ]);
 
-          let git: GitMeta | undefined = undefined;
-          if (environment.git) {
-            const parsed = GitMeta.safeParse(environment.git);
-            if (parsed.success) {
-              git = parsed.data;
-            }
-          }
-
-          const execution: TaskRunExecution = {
-            task: {
-              id: run.lockedBy!.slug,
-              filePath: run.lockedBy!.filePath,
-              exportName: run.lockedBy!.exportName ?? undefined,
-            },
+          const execution: BackwardsCompatibleTaskRunExecution = {
             attempt: {
               number: nextAttemptNumber,
               startedAt: latestSnapshot.updatedAt,
@@ -314,59 +561,60 @@ export class RunAttemptSystem {
               status: "deprecated",
             },
             run: {
-              id: run.friendlyId,
-              payload: run.payload,
-              payloadType: run.payloadType,
-              createdAt: run.createdAt,
-              tags: run.tags.map((tag) => tag.name),
-              isTest: run.isTest,
-              idempotencyKey: run.idempotencyKey ?? undefined,
-              startedAt: run.startedAt ?? run.createdAt,
-              maxAttempts: run.maxAttempts ?? undefined,
-              version: run.lockedBy!.worker.version,
+              id: updatedRun.friendlyId,
+              payload: updatedRun.payload,
+              payloadType: updatedRun.payloadType,
+              createdAt: updatedRun.createdAt,
+              tags: updatedRun.runTags,
+              isTest: updatedRun.isTest,
+              idempotencyKey: updatedRun.idempotencyKey ?? undefined,
+              startedAt: updatedRun.startedAt ?? updatedRun.createdAt,
+              maxAttempts: updatedRun.maxAttempts ?? undefined,
+              version: updatedRun.taskVersion ?? "unknown",
               metadata,
-              maxDuration: run.maxDurationInSeconds ?? undefined,
+              maxDuration: updatedRun.maxDurationInSeconds ?? undefined,
               /** @deprecated */
               context: undefined,
               /** @deprecated */
-              durationMs: run.usageDurationMs,
+              durationMs: updatedRun.usageDurationMs,
               /** @deprecated */
-              costInCents: run.costInCents,
+              costInCents: updatedRun.costInCents,
               /** @deprecated */
-              baseCostInCents: run.baseCostInCents,
-              traceContext: run.traceContext as Record<string, string | undefined>,
-              priority: run.priorityMs === 0 ? undefined : run.priorityMs / 1_000,
-            },
-            queue: {
-              id: queue.friendlyId,
-              name: queue.name,
-            },
-            environment: {
-              id: environment.id,
-              slug: environment.slug,
-              type: environment.type,
-              branchName: environment.branchName ?? undefined,
-              git,
-            },
-            organization: {
-              id: environment.organization.id,
-              slug: environment.organization.slug,
-              name: environment.organization.title,
-            },
-            project: {
-              id: environment.project.id,
-              ref: environment.project.externalRef,
-              slug: environment.project.slug,
-              name: environment.project.name,
-            },
-            batch:
-              taskRun.batchItems[0] && taskRun.batchItems[0].batchTaskRun
-                ? { id: taskRun.batchItems[0].batchTaskRun.friendlyId }
+              baseCostInCents: updatedRun.baseCostInCents,
+              traceContext: updatedRun.traceContext as Record<string, string | undefined>,
+              priority: updatedRun.priorityMs === 0 ? undefined : updatedRun.priorityMs / 1_000,
+              parentTaskRunId: updatedRun.parentTaskRunId
+                ? RunId.toFriendlyId(updatedRun.parentTaskRunId)
                 : undefined,
+              rootTaskRunId: updatedRun.rootTaskRunId
+                ? RunId.toFriendlyId(updatedRun.rootTaskRunId)
+                : undefined,
+              region:
+                updatedRun.runtimeEnvironment.type !== "DEVELOPMENT"
+                  ? updatedRun.workerQueue
+                  : undefined,
+            },
+            task,
+            queue,
+            environment: {
+              id: updatedRun.runtimeEnvironment.id,
+              slug: updatedRun.runtimeEnvironment.slug,
+              type: updatedRun.runtimeEnvironment.type,
+              branchName: updatedRun.runtimeEnvironment.branchName ?? undefined,
+              git: environmentGit,
+            },
+            organization,
+            project,
             machine: machinePreset,
+            deployment,
+            batch: updatedRun.batchId
+              ? {
+                  id: BatchId.toFriendlyId(updatedRun.batchId),
+                }
+              : undefined,
           };
 
-          return { run, snapshot, execution };
+          return { run: updatedRun, snapshot, execution };
         });
       },
       {
@@ -690,7 +938,6 @@ export class RunAttemptSystem {
                   id: runId,
                 },
                 data: {
-                  status: "RETRYING_AFTER_FAILURE",
                   machinePreset: retryResult.machine,
                 },
                 include: {
@@ -900,7 +1147,7 @@ export class RunAttemptSystem {
     const prisma = tx ?? this.$.prisma;
 
     return await this.$.runLock.lock("tryNackAndRequeue", [run.id], async () => {
-      //we nack the message, this allows another work to pick up the run
+      //we nack the message, this allows another worker to pick up the run
       const gotRequeued = await this.$.runQueue.nackMessage({
         orgId,
         messageId: run.id,
@@ -916,8 +1163,22 @@ export class RunAttemptSystem {
         return { wasRequeued: false, ...result };
       }
 
+      const requeuedRun = await prisma.taskRun.update({
+        where: {
+          id: run.id,
+        },
+        data: {
+          status: "PENDING",
+        },
+        select: {
+          id: true,
+          status: true,
+          attemptNumber: true,
+        },
+      });
+
       const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(prisma, {
-        run: run,
+        run: requeuedRun,
         snapshot: {
           executionStatus: "QUEUED",
           description: "Requeued the run after a failure",
@@ -1071,10 +1332,11 @@ export class RunAttemptSystem {
           removeFromWorkerQueue: true,
         });
 
-        await this.releaseConcurrencySystem.refillTokensForSnapshot(latestSnapshot);
-
         //if executing, we need to message the worker to cancel the run and put it into `PENDING_CANCEL` status
-        if (isExecuting(latestSnapshot.executionStatus)) {
+        if (
+          isExecuting(latestSnapshot.executionStatus) ||
+          isPendingExecuting(latestSnapshot.executionStatus)
+        ) {
           const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(prisma, {
             run,
             snapshot: {
@@ -1317,27 +1579,248 @@ export class RunAttemptSystem {
     await this.$.worker.ack(`heartbeatSnapshot.${id}`);
   }
 
-  async #getAuthenticatedEnvironmentFromRun(runId: string, tx?: PrismaClientOrTransaction) {
-    const prisma = tx ?? this.$.prisma;
-    const taskRun = await prisma.taskRun.findFirst({
-      where: {
-        id: runId,
-      },
-      include: {
-        runtimeEnvironment: {
-          include: {
-            organization: true,
-            project: true,
-          },
+  async #resolveTaskRunExecutionTask(
+    backgroundWorkerTaskId: string
+  ): Promise<BackwardsCompatibleTaskRunExecution["task"]> {
+    const result = await this.cache.tasks.swr(backgroundWorkerTaskId, async () => {
+      const task = await this.$.prisma.backgroundWorkerTask.findFirstOrThrow({
+        where: {
+          id: backgroundWorkerTaskId,
         },
-      },
+        select: {
+          id: true,
+          slug: true,
+          filePath: true,
+          exportName: true,
+        },
+      });
+
+      return {
+        id: task.slug,
+        filePath: task.filePath,
+        exportName: task.exportName ?? undefined,
+      };
     });
 
-    if (!taskRun) {
-      return;
+    if (result.err) {
+      throw result.err;
     }
 
-    return taskRun?.runtimeEnvironment;
+    if (!result.val) {
+      throw new ServiceValidationError(
+        `Could not resolve task execution data for task ${backgroundWorkerTaskId}`
+      );
+    }
+
+    return result.val;
+  }
+
+  async #resolveTaskRunExecutionOrganization(
+    organizationId: string
+  ): Promise<TaskRunExecutionOrganization> {
+    const result = await this.cache.orgs.swr(organizationId, async () => {
+      const organization = await this.$.prisma.organization.findFirstOrThrow({
+        where: { id: organizationId },
+        select: {
+          id: true,
+          title: true,
+          slug: true,
+        },
+      });
+
+      return {
+        id: organization.id,
+        name: organization.title,
+        slug: organization.slug,
+      };
+    });
+
+    if (result.err) {
+      throw result.err;
+    }
+
+    if (!result.val) {
+      throw new ServiceValidationError(
+        `Could not resolve organization data for organization ${organizationId}`
+      );
+    }
+
+    return result.val;
+  }
+
+  async #resolveTaskRunExecutionProjectByRuntimeEnvironmentId(
+    runtimeEnvironmentId: string
+  ): Promise<TaskRunExecutionProject> {
+    const result = await this.cache.projects.swr(runtimeEnvironmentId, async () => {
+      const { project } = await this.$.prisma.runtimeEnvironment.findFirstOrThrow({
+        where: { id: runtimeEnvironmentId },
+        select: {
+          id: true,
+          project: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              externalRef: true,
+            },
+          },
+        },
+      });
+
+      return {
+        id: project.id,
+        name: project.name,
+        slug: project.slug,
+        ref: project.externalRef,
+      };
+    });
+
+    if (result.err) {
+      throw result.err;
+    }
+
+    if (!result.val) {
+      throw new ServiceValidationError(
+        `Could not resolve project data for project ${runtimeEnvironmentId}`
+      );
+    }
+
+    return result.val;
+  }
+
+  async #resolveTaskRunExecutionMachinePreset(
+    backgroundWorkerTaskId: string,
+    runMachinePreset: string | null
+  ): Promise<MachinePreset> {
+    if (runMachinePreset) {
+      return machinePresetFromName(
+        this.options.machines.machines,
+        runMachinePreset as MachinePresetName
+      );
+    }
+
+    const result = await this.cache.machinePresets.swr(backgroundWorkerTaskId, async () => {
+      const { machineConfig } = await this.$.prisma.backgroundWorkerTask.findFirstOrThrow({
+        where: {
+          id: backgroundWorkerTaskId,
+        },
+        select: {
+          machineConfig: true,
+        },
+      });
+
+      return getMachinePreset({
+        machines: this.options.machines.machines,
+        defaultMachine: this.options.machines.defaultMachine,
+        config: machineConfig,
+        run: { machinePreset: null },
+      });
+    });
+
+    if (result.err) {
+      throw result.err;
+    }
+
+    if (!result.val) {
+      throw new ServiceValidationError(
+        `Could not resolve machine preset for task ${backgroundWorkerTaskId}`
+      );
+    }
+
+    return result.val;
+  }
+
+  async #resolveTaskRunExecutionQueue(params: {
+    runId: string;
+    lockedQueueId?: string;
+    queueName: string;
+    runtimeEnvironmentId: string;
+  }): Promise<TaskRunExecutionQueue> {
+    const result = await this.cache.queues.swr(params.runId, async () => {
+      const queue = params.lockedQueueId
+        ? await this.$.prisma.taskQueue.findFirst({
+            where: {
+              id: params.lockedQueueId,
+            },
+            select: {
+              id: true,
+              friendlyId: true,
+              name: true,
+            },
+          })
+        : await this.$.prisma.taskQueue.findFirst({
+            where: {
+              runtimeEnvironmentId: params.runtimeEnvironmentId,
+              name: params.queueName,
+            },
+            select: {
+              id: true,
+              friendlyId: true,
+              name: true,
+            },
+          });
+
+      if (!queue) {
+        throw new ServiceValidationError(
+          `Could not resolve queue data for queue ${params.queueName}`,
+          404
+        );
+      }
+
+      return {
+        id: queue.friendlyId,
+        name: queue.name,
+      };
+    });
+
+    if (result.err) {
+      throw result.err;
+    }
+
+    if (!result.val) {
+      throw new ServiceValidationError(
+        `Could not resolve queue data for queue ${params.queueName}`,
+        404
+      );
+    }
+
+    return result.val;
+  }
+
+  async #resolveTaskRunExecutionDeployment(
+    backgroundWorkerTaskId: string
+  ): Promise<TaskRunExecutionDeployment | undefined> {
+    const result = await this.cache.deployments.swr(backgroundWorkerTaskId, async () => {
+      const { worker } = await this.$.prisma.backgroundWorkerTask.findFirstOrThrow({
+        where: { id: backgroundWorkerTaskId },
+        select: {
+          worker: {
+            select: {
+              deployment: true,
+            },
+          },
+        },
+      });
+
+      if (!worker.deployment) {
+        return undefined;
+      }
+
+      return {
+        id: worker.deployment.friendlyId,
+        shortCode: worker.deployment.shortCode,
+        version: worker.deployment.version,
+        runtime: worker.deployment.runtime ?? "unknown",
+        runtimeVersion: worker.deployment.runtimeVersion ?? "unknown",
+        git: safeParseGitMeta(worker.deployment.git),
+      };
+    });
+
+    if (result.err) {
+      throw result.err;
+    }
+
+    return result.val;
   }
 
   async #notifyMetadataUpdated(runId: string, completion: TaskRunExecutionResult) {
@@ -1391,4 +1874,12 @@ export class RunAttemptSystem {
       });
     }
   }
+}
+
+export function safeParseGitMeta(git: unknown): GitMeta | undefined {
+  const parsed = GitMeta.safeParse(git);
+  if (parsed.success) {
+    return parsed.data;
+  }
+  return undefined;
 }

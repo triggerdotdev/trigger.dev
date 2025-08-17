@@ -3,7 +3,7 @@ import { type Prisma, type TaskRun } from "@trigger.dev/database";
 import { findQueueInEnvironment } from "~/models/taskQueue.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { updateMetadataService } from "~/services/metadata/updateMetadata.server";
+import { updateMetadataService } from "~/services/metadata/updateMetadataInstance.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { socketIo } from "../handleSocketIo.server";

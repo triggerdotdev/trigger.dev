@@ -15,7 +15,7 @@ const Env = z.object({
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url(), // set on the runners
 
   // Workload API settings (coordinator mode) - the workload API is what the run controller connects to
-  TRIGGER_WORKLOAD_API_ENABLED: BoolEnv.default("true"),
+  TRIGGER_WORKLOAD_API_ENABLED: BoolEnv.default(true),
   TRIGGER_WORKLOAD_API_PROTOCOL: z
     .string()
     .transform((s) => z.enum(["http", "https"]).parse(s.toLowerCase()))
@@ -32,7 +32,7 @@ const Env = z.object({
   RUNNER_PRETTY_LOGS: BoolEnv.default(false),
 
   // Dequeue settings (provider mode)
-  TRIGGER_DEQUEUE_ENABLED: BoolEnv.default("true"),
+  TRIGGER_DEQUEUE_ENABLED: BoolEnv.default(true),
   TRIGGER_DEQUEUE_INTERVAL_MS: z.coerce.number().int().default(250),
   TRIGGER_DEQUEUE_IDLE_INTERVAL_MS: z.coerce.number().int().default(1000),
   TRIGGER_DEQUEUE_MAX_RUN_COUNT: z.coerce.number().int().default(10),
@@ -76,6 +76,10 @@ const Env = z.object({
   KUBERNETES_IMAGE_PULL_SECRETS: z.string().optional(), // csv
   KUBERNETES_EPHEMERAL_STORAGE_SIZE_LIMIT: z.string().default("10Gi"),
   KUBERNETES_EPHEMERAL_STORAGE_SIZE_REQUEST: z.string().default("2Gi"),
+
+  // Placement tags settings
+  PLACEMENT_TAGS_ENABLED: BoolEnv.default(false),
+  PLACEMENT_TAGS_PREFIX: z.string().default("node.cluster.x-k8s.io"),
 
   // Metrics
   METRICS_ENABLED: BoolEnv.default(true),

@@ -7,6 +7,7 @@ import { calculateNextScheduledTimestampFromNow } from "../utils/calculateNextSc
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { CheckScheduleService } from "./checkSchedule.server";
 import { scheduleEngine } from "../scheduleEngine.server";
+import { scheduleWhereClause } from "~/models/schedules.server";
 
 export type UpsertTaskScheduleServiceOptions = UpsertSchedule;
 
@@ -37,9 +38,7 @@ export class UpsertTaskScheduleService extends BaseService {
 
     const existingSchedule = schedule.friendlyId
       ? await this._prisma.taskSchedule.findFirst({
-          where: {
-            friendlyId: schedule.friendlyId,
-          },
+          where: scheduleWhereClause(projectId, schedule.friendlyId),
         })
       : await this._prisma.taskSchedule.findFirst({
           where: {

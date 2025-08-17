@@ -28,6 +28,7 @@ import { QueueOptions } from "./queues.js";
 import { AnySchemaParseFn, inferSchemaIn, inferSchemaOut, Schema } from "./schemas.js";
 import { inferToolParameters, ToolTaskParameters } from "./tools.js";
 import { Prettify } from "./utils.js";
+import { JSONSchema } from "./jsonSchema.js";
 
 export type Queue = QueueOptions;
 export type TaskSchema = Schema;
@@ -215,7 +216,6 @@ type CommonTaskOptions<
   queue?: {
     name?: string;
     concurrencyLimit?: number;
-    releaseConcurrencyOnWaitpoint?: boolean;
   };
   /** Configure the spec of the [machine](https://trigger.dev/docs/machines) you want your task to run on.
    *
@@ -340,6 +340,12 @@ type CommonTaskOptions<
    * onFailure is called after a task run has failed (meaning the run function threw an error and won't be retried anymore)
    */
   onFailure?: OnFailureHookFunction<TPayload, TInitOutput>;
+
+  /**
+   * JSON Schema for the task payload. This will be synced to the server during indexing.
+   * Should be a valid JSON Schema Draft 7 object.
+   */
+  jsonSchema?: JSONSchema;
 };
 
 export type TaskOptions<
@@ -348,6 +354,15 @@ export type TaskOptions<
   TOutput = unknown,
   TInitOutput extends InitOutput = any,
 > = CommonTaskOptions<TIdentifier, TPayload, TOutput, TInitOutput>;
+
+// Task options when payloadSchema is provided - payload should be any
+export type TaskOptionsWithSchema<
+  TIdentifier extends string,
+  TOutput = unknown,
+  TInitOutput extends InitOutput = any,
+> = CommonTaskOptions<TIdentifier, any, TOutput, TInitOutput> & {
+  jsonSchema: JSONSchema;
+};
 
 export type TaskWithSchemaOptions<
   TIdentifier extends string,
@@ -531,6 +546,8 @@ export interface Task<TIdentifier extends string, TInput = void, TOutput = any> 
   id: TIdentifier;
 
   description?: string;
+
+  jsonSchema?: JSONSchema;
 
   /**
    * Trigger a task with the given payload, and continue without waiting for the result. If you want to wait for the result, use `triggerAndWait`. Returns the id of the triggered task run.
@@ -840,18 +857,24 @@ export type TriggerOptions = {
    * to the same version as the parent task that is triggering the child tasks.
    */
   version?: string;
+
+  /**
+   * Specify the region to run the task in. This overrides the default region set for your project in the dashboard.
+   *
+   * Check the Regions page in the dashboard for regions that are available to you.
+   *
+   * In DEV this won't do anything, so it's fine to set it in your code.
+   *
+   * @example
+   *
+   * ```ts
+   * await myTask.trigger({ foo: "bar" }, { region: "us-east-1" });
+   * ```
+   */
+  region?: string;
 };
 
-export type TriggerAndWaitOptions = Omit<TriggerOptions, "version"> & {
-  /**
-   * If set to true, this will cause the waitpoint to release the current run from the queue's concurrency.
-   *
-   * This is useful if you want to allow other runs to execute while the child task is executing
-   *
-   * @default false
-   */
-  releaseConcurrency?: boolean;
-};
+export type TriggerAndWaitOptions = Omit<TriggerOptions, "version">;
 export type BatchTriggerOptions = {
   /**
    * If no idempotencyKey is set on an individual item in the batch, it will use this key on each item + the array index.
@@ -891,6 +914,7 @@ export type TaskMetadataWithFunctions = TaskMetadata & {
     onStart?: (payload: any, params: StartFnParams) => Promise<void>;
     parsePayload?: AnySchemaParseFn;
   };
+  schema?: TaskSchema;
 };
 
 export type RunTypes<TTaskIdentifier extends string, TPayload, TOutput> = {

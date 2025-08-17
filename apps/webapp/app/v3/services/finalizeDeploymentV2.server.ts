@@ -1,5 +1,8 @@
-import { ExternalBuildData, FinalizeDeploymentRequestBody } from "@trigger.dev/core/v3/schemas";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import {
+  ExternalBuildData,
+  type FinalizeDeploymentRequestBody,
+} from "@trigger.dev/core/v3/schemas";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { join } from "node:path";
@@ -11,6 +14,7 @@ import { FinalizeDeploymentService } from "./finalizeDeployment.server";
 import { remoteBuildsEnabled } from "../remoteImageBuilder.server";
 import { getEcrAuthToken, isEcrRegistry } from "../getDeploymentImageRef.server";
 import { tryCatch } from "@trigger.dev/core";
+import { getRegistryConfig, type RegistryConfig } from "../registryConfig.server";
 
 export class FinalizeDeploymentV2Service extends BaseService {
   public async call(
@@ -37,6 +41,7 @@ export class FinalizeDeploymentV2Service extends BaseService {
         externalBuildData: true,
         environment: true,
         imageReference: true,
+        type: true,
         worker: {
           select: {
             project: true,
@@ -78,10 +83,13 @@ export class FinalizeDeploymentV2Service extends BaseService {
       throw new ServiceValidationError("External build data is invalid");
     }
 
+    const isV4Deployment = deployment.type === "MANAGED";
+    const registryConfig = getRegistryConfig(isV4Deployment);
+
+    // For non-ECR registries, username and password are required upfront
     if (
-      !env.DEPLOY_REGISTRY_HOST ||
-      !env.DEPLOY_REGISTRY_USERNAME ||
-      !env.DEPLOY_REGISTRY_PASSWORD
+      !isEcrRegistry(registryConfig.host) &&
+      (!registryConfig.username || !registryConfig.password)
     ) {
       throw new ServiceValidationError("Missing deployment registry credentials");
     }
@@ -104,12 +112,7 @@ export class FinalizeDeploymentV2Service extends BaseService {
           orgToken: env.DEPOT_TOKEN,
           projectId: externalBuildData.data.projectId,
         },
-        registry: {
-          host: env.DEPLOY_REGISTRY_HOST,
-          namespace: env.DEPLOY_REGISTRY_NAMESPACE,
-          username: env.DEPLOY_REGISTRY_USERNAME,
-          password: env.DEPLOY_REGISTRY_PASSWORD,
-        },
+        registry: registryConfig,
         deployment: {
           version: deployment.version,
           environmentSlug: deployment.environment.slug,
@@ -144,12 +147,7 @@ type ExecutePushToRegistryOptions = {
     orgToken: string;
     projectId: string;
   };
-  registry: {
-    host: string;
-    namespace: string;
-    username: string;
-    password: string;
-  };
+  registry: RegistryConfig;
   deployment: {
     version: string;
     environmentSlug: string;
@@ -175,12 +173,7 @@ async function executePushToRegistry(
   writer?: WritableStreamDefaultWriter
 ): Promise<ExecutePushResult> {
   // Step 1: We need to "login" to the registry
-  const [loginError, configDir] = await tryCatch(
-    ensureLoggedIntoDockerRegistry(registry.host, {
-      username: registry.username,
-      password: registry.password,
-    })
-  );
+  const [loginError, configDir] = await tryCatch(ensureLoggedIntoDockerRegistry(registry));
 
   if (loginError) {
     logger.error("Failed to login to registry", {
@@ -260,29 +253,35 @@ async function executePushToRegistry(
   }
 }
 
-async function ensureLoggedIntoDockerRegistry(
-  registryHost: string,
-  auth: { username: string; password: string } | undefined = undefined
-) {
+async function ensureLoggedIntoDockerRegistry(registryConfig: RegistryConfig) {
   const tmpDir = await createTempDir();
   const dockerConfigPath = join(tmpDir, "config.json");
 
+  let auth: { username: string; password: string };
+
   // If this is an ECR registry, get fresh credentials
-  if (isEcrRegistry(registryHost)) {
+  if (isEcrRegistry(registryConfig.host)) {
     auth = await getEcrAuthToken({
-      registryHost,
-      assumeRole: {
-        roleArn: env.DEPLOY_REGISTRY_ECR_ASSUME_ROLE_ARN,
-        externalId: env.DEPLOY_REGISTRY_ECR_ASSUME_ROLE_EXTERNAL_ID,
-      },
+      registryHost: registryConfig.host,
+      assumeRole: registryConfig.ecrAssumeRoleArn
+        ? {
+            roleArn: registryConfig.ecrAssumeRoleArn,
+            externalId: registryConfig.ecrAssumeRoleExternalId,
+          }
+        : undefined,
     });
-  } else if (!auth) {
+  } else if (!registryConfig.username || !registryConfig.password) {
     throw new Error("Authentication required for non-ECR registry");
+  } else {
+    auth = {
+      username: registryConfig.username,
+      password: registryConfig.password,
+    };
   }
 
   await writeJSONFile(dockerConfigPath, {
     auths: {
-      [registryHost]: {
+      [registryConfig.host]: {
         auth: Buffer.from(`${auth.username}:${auth.password}`).toString("base64"),
       },
     },

@@ -8,7 +8,7 @@ There are two methods of authenticating with the management API: using a secret 
 
 <Note>
   There is a separate authentication strategy when making requests from your frontend application.
-  See the [Frontend guide](/frontend/overview) for more information. This guide is for backend usage
+  See the [Realtime guide](/realtime/overview) for more information. This guide is for backend usage
   only.
 </Note>
 
@@ -131,12 +131,15 @@ curl --request PUT \
     "value": "your_preview_database_url"
   }'
 ```
+
   </Tab>
 </Tabs>
 This will set the `DATABASE_URL` environment variable specifically for the `feature-xyz` preview branch.
 
 <Note>
-  The `x-trigger-branch` header is only relevant when working with the `preview` environment (`{env}` parameter set to `preview`). It has no effect when working with `dev`, `staging`, or `prod` environments.
+  The `x-trigger-branch` header is only relevant when working with the `preview` environment (`{env}
+  ` parameter set to `preview`). It has no effect when working with `dev`, `staging`, or `prod`
+  environments.
 </Note>
 
 #### SDK usage with preview branches

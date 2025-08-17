@@ -1,7 +1,11 @@
 import { CloudArrowDownIcon } from "@heroicons/react/20/solid";
 import { CodeBlock } from "~/components/code/CodeBlock";
+import { InlineCode } from "~/components/code/InlineCode";
 import { LinkButton } from "~/components/primitives/Buttons";
+import { Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { TextLink } from "~/components/primitives/TextLink";
+import { docsPath } from "~/utils/pathBuilder";
 
 export function PacketDisplay({
   data,
@@ -15,13 +19,26 @@ export function PacketDisplay({
   switch (dataType) {
     case "application/store": {
       return (
-        <div className="flex flex-col">
-          <Paragraph variant="base/bright" className="w-full py-2.5 text-sm">
-            {title}
+        <div className="mt-2 flex flex-col">
+          <Header3>{title}</Header3>
+          <Paragraph variant="small" className="mb-2">
+            This {title.toLowerCase()} exceeded the size limit and was automatically offloaded to
+            object storage. You can retrieve it using{" "}
+            <InlineCode variant="extra-small">runs.retrieve</InlineCode> or download it directly
+            below. <TextLink to={docsPath("limits#task-payloads-and-outputs")}>Learn more</TextLink>
+            .
           </Paragraph>
-          <LinkButton LeadingIcon={CloudArrowDownIcon} to={data} variant="tertiary/medium" download>
-            Download
-          </LinkButton>
+          <div>
+            <LinkButton
+              LeadingIcon={CloudArrowDownIcon}
+              to={data}
+              variant="secondary/small"
+              download
+              className="inline-flex text-text-bright"
+            >
+              Download {title.toLowerCase()}
+            </LinkButton>
+          </div>
         </div>
       );
     }
@@ -33,6 +50,7 @@ export function PacketDisplay({
           code={data}
           maxLines={20}
           showLineNumbers={false}
+          showTextWrapping
         />
       );
     }

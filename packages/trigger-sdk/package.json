@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/sdk",
-  "version": "4.0.0-v4-beta.23",
+  "version": "4.0.0-v4-beta.27",
   "description": "trigger.dev Node.JS SDK",
   "license": "MIT",
   "publishConfig": {
@@ -50,9 +50,8 @@
   },
   "dependencies": {
     "@opentelemetry/api": "1.9.0",
-    "@opentelemetry/api-logs": "0.52.1",
-    "@opentelemetry/semantic-conventions": "1.25.1",
-    "@trigger.dev/core": "workspace:4.0.0-v4-beta.23",
+    "@opentelemetry/semantic-conventions": "1.36.0",
+    "@trigger.dev/core": "workspace:4.0.0-v4-beta.27",
     "chalk": "^5.2.0",
     "cronstrue": "^2.21.0",
     "debug": "^4.3.4",
@@ -69,17 +68,17 @@
     "@types/slug": "^5.0.3",
     "@types/uuid": "^9.0.0",
     "@types/ws": "^8.5.3",
-    "ai": "^4.2.0",
+    "ai": "^5.0.0",
     "encoding": "^0.1.13",
     "rimraf": "^3.0.2",
     "tshy": "^3.0.2",
     "tsx": "4.17.0",
     "typed-emitter": "^2.1.0",
-    "zod": "3.23.8"
+    "zod": "3.25.76"
   },
   "peerDependencies": {
-    "zod": "^3.0.0",
-    "ai": "^4.2.0"
+    "zod": "^3.0.0 || ^4.0.0",
+    "ai": "^4.2.0 || ^5.0.0"
   },
   "peerDependenciesMeta": {
     "ai": {

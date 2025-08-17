@@ -76,6 +76,54 @@ describe("FairDequeuingStrategy", () => {
     expect(result).toHaveLength(0);
   });
 
+  redisTest(
+    "should respect env concurrency limits with burst factor",
+    async ({ redisOptions: redis }) => {
+      const keyProducer = new RunQueueFullKeyProducer();
+      const strategy = new FairQueueSelectionStrategy({
+        redis,
+        keys: keyProducer,
+        defaultEnvConcurrencyLimit: 2,
+        parentQueueLimit: 100,
+        seed: "test-seed-3",
+      });
+
+      await setupQueue({
+        redis,
+        keyProducer,
+        parentQueue: "parent-queue",
+        score: Date.now() - 1000,
+        queueId: "queue-1",
+        orgId: "org-1",
+        projectId: "proj-1",
+        envId: "env-1",
+      });
+
+      await setupConcurrency({
+        redis,
+        keyProducer,
+        env: {
+          envId: "env-1",
+          projectId: "proj-1",
+          orgId: "org-1",
+          currentConcurrency: 3,
+          limit: 2,
+          limitBurstFactor: 2,
+        },
+      });
+
+      const result = await strategy.distributeFairQueuesFromParentQueue(
+        "parent-queue",
+        "consumer-1"
+      );
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({
+        envId: "env-1",
+        queues: [keyProducer.queueKey("org-1", "proj-1", "env-1", "queue-1")],
+      });
+    }
+  );
+
   redisTest("should respect parentQueueLimit", async ({ redisOptions: redis }) => {
     const keyProducer = new RunQueueFullKeyProducer();
     const strategy = new FairQueueSelectionStrategy({
@@ -1021,143 +1069,140 @@ describe("FairDequeuingStrategy", () => {
       expect(selectionPercentages["env-2"]).toBeGreaterThan(40);
 
       // Verify that env-4 (lowest average age) gets selected in less than 20% of iterations
-    expect(selectionPercentages["env-4"] || 0).toBeLessThan(20);
+      expect(selectionPercentages["env-4"] || 0).toBeLessThan(20);
     }
   );
 
-  redisTest(
-    "#selectTopEnvs groups queues by environment",
-    async ({ redisOptions: redis }) => {
-      const keyProducer = new RunQueueFullKeyProducer();
-      const strategy = new FairQueueSelectionStrategy({
-        redis,
-        keys: keyProducer,
-        defaultEnvConcurrencyLimit: 5,
-        parentQueueLimit: 100,
-        seed: "group-test",
-        maximumEnvCount: 2,
-      });
+  redisTest("#selectTopEnvs groups queues by environment", async ({ redisOptions: redis }) => {
+    const keyProducer = new RunQueueFullKeyProducer();
+    const strategy = new FairQueueSelectionStrategy({
+      redis,
+      keys: keyProducer,
+      defaultEnvConcurrencyLimit: 5,
+      parentQueueLimit: 100,
+      seed: "group-test",
+      maximumEnvCount: 2,
+    });
 
-      const now = Date.now();
+    const now = Date.now();
 
-      // env-1 with two queues from different orgs/projects
-      await setupQueue({
-        redis,
-        keyProducer,
-        parentQueue: "parent-queue",
-        score: now - 1000,
-        queueId: "queue-1-old",
-        orgId: "org-a",
+    // env-1 with two queues from different orgs/projects
+    await setupQueue({
+      redis,
+      keyProducer,
+      parentQueue: "parent-queue",
+      score: now - 1000,
+      queueId: "queue-1-old",
+      orgId: "org-a",
+      projectId: "proj-a",
+      envId: "env-1",
+    });
+
+    await setupQueue({
+      redis,
+      keyProducer,
+      parentQueue: "parent-queue",
+      score: now - 10,
+      queueId: "queue-1-new",
+      orgId: "org-b",
+      projectId: "proj-b",
+      envId: "env-1",
+    });
+
+    await setupQueue({
+      redis,
+      keyProducer,
+      parentQueue: "parent-queue",
+      score: now - 400,
+      queueId: "queue-2",
+      orgId: "org-2",
+      projectId: "proj-2",
+      envId: "env-2",
+    });
+
+    await setupQueue({
+      redis,
+      keyProducer,
+      parentQueue: "parent-queue",
+      score: now - 300,
+      queueId: "queue-3",
+      orgId: "org-3",
+      projectId: "proj-3",
+      envId: "env-3",
+    });
+
+    // Setup concurrency limits
+    await setupConcurrency({
+      redis,
+      keyProducer,
+      env: {
+        envId: "env-1",
         projectId: "proj-a",
-        envId: "env-1",
-      });
+        orgId: "org-a",
+        currentConcurrency: 0,
+        limit: 5,
+      },
+    });
 
-      await setupQueue({
-        redis,
-        keyProducer,
-        parentQueue: "parent-queue",
-        score: now - 10,
-        queueId: "queue-1-new",
-        orgId: "org-b",
+    await setupConcurrency({
+      redis,
+      keyProducer,
+      env: {
+        envId: "env-1",
         projectId: "proj-b",
-        envId: "env-1",
-      });
+        orgId: "org-b",
+        currentConcurrency: 0,
+        limit: 5,
+      },
+    });
 
-      await setupQueue({
-        redis,
-        keyProducer,
-        parentQueue: "parent-queue",
-        score: now - 400,
-        queueId: "queue-2",
-        orgId: "org-2",
-        projectId: "proj-2",
+    await setupConcurrency({
+      redis,
+      keyProducer,
+      env: {
         envId: "env-2",
-      });
+        projectId: "proj-2",
+        orgId: "org-2",
+        currentConcurrency: 0,
+        limit: 5,
+      },
+    });
 
-      await setupQueue({
-        redis,
-        keyProducer,
-        parentQueue: "parent-queue",
-        score: now - 300,
-        queueId: "queue-3",
-        orgId: "org-3",
-        projectId: "proj-3",
+    await setupConcurrency({
+      redis,
+      keyProducer,
+      env: {
         envId: "env-3",
-      });
+        projectId: "proj-3",
+        orgId: "org-3",
+        currentConcurrency: 0,
+        limit: 5,
+      },
+    });
 
-      // Setup concurrency limits
-      await setupConcurrency({
-        redis,
-        keyProducer,
-        env: {
-          envId: "env-1",
-          projectId: "proj-a",
-          orgId: "org-a",
-          currentConcurrency: 0,
-          limit: 5,
-        },
-      });
+    const envResult = await strategy.distributeFairQueuesFromParentQueue(
+      "parent-queue",
+      "consumer-1"
+    );
 
-      await setupConcurrency({
-        redis,
-        keyProducer,
-        env: {
-          envId: "env-1",
-          projectId: "proj-b",
-          orgId: "org-b",
-          currentConcurrency: 0,
-          limit: 5,
-        },
-      });
+    const result = flattenResults(envResult);
 
-      await setupConcurrency({
-        redis,
-        keyProducer,
-        env: {
-          envId: "env-2",
-          projectId: "proj-2",
-          orgId: "org-2",
-          currentConcurrency: 0,
-          limit: 5,
-        },
-      });
+    const queuesByEnv = result.reduce(
+      (acc, queueId) => {
+        const envId = keyProducer.envIdFromQueue(queueId);
+        if (!acc[envId]) {
+          acc[envId] = [];
+        }
+        acc[envId].push(queueId);
+        return acc;
+      },
+      {} as Record<string, string[]>
+    );
 
-      await setupConcurrency({
-        redis,
-        keyProducer,
-        env: {
-          envId: "env-3",
-          projectId: "proj-3",
-          orgId: "org-3",
-          currentConcurrency: 0,
-          limit: 5,
-        },
-      });
-
-      const envResult = await strategy.distributeFairQueuesFromParentQueue(
-        "parent-queue",
-        "consumer-1"
-      );
-
-      const result = flattenResults(envResult);
-
-      const queuesByEnv = result.reduce(
-        (acc, queueId) => {
-          const envId = keyProducer.envIdFromQueue(queueId);
-          if (!acc[envId]) {
-            acc[envId] = [];
-          }
-          acc[envId].push(queueId);
-          return acc;
-        },
-        {} as Record<string, string[]>
-      );
-
-      expect(Object.keys(queuesByEnv).length).toBe(2);
-      expect(queuesByEnv["env-1"]).toBeDefined();
-      expect(queuesByEnv["env-1"].length).toBe(2);
-    }
-  );
+    expect(Object.keys(queuesByEnv).length).toBe(2);
+    expect(queuesByEnv["env-1"]).toBeDefined();
+    expect(queuesByEnv["env-1"].length).toBe(2);
+  });
 });
 
 // Helper function to flatten results for counting
@@ -1205,6 +1250,7 @@ type SetupConcurrencyOptions = {
     orgId: string;
     currentConcurrency: number;
     limit?: number;
+    limitBurstFactor?: number;
   };
 };
 
@@ -1216,6 +1262,13 @@ async function setupConcurrency({ redis, keyProducer, env }: SetupConcurrencyOpt
   // Set env concurrency limit
   if (typeof env.limit === "number") {
     await $redis.set(keyProducer.envConcurrencyLimitKey(env), env.limit.toString());
+  }
+
+  if (typeof env.limitBurstFactor === "number") {
+    await $redis.set(
+      keyProducer.envConcurrencyLimitBurstFactorKey(env),
+      String(env.limitBurstFactor)
+    );
   }
 
   if (env.currentConcurrency > 0) {

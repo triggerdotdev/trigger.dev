@@ -8,11 +8,14 @@ import {
   defaultMachine as defaultMachineFromPlatform,
   machines as machinesFromPlatform,
   type MachineCode,
-} from "@trigger.dev/platform/v3";
+  type UpdateBillingAlertsRequest,
+  type BillingAlertsResult,
+  type ReportUsageResult,
+  type ReportUsagePlan,
+} from "@trigger.dev/platform";
 import { createCache, DefaultStatefulContext, Namespace } from "@unkey/cache";
 import { MemoryStore } from "@unkey/cache/stores";
 import { redirect } from "remix-typedjson";
-import { $replica } from "~/db.server";
 import { env } from "~/env.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { createEnvironment } from "~/models/organization.server";
@@ -284,7 +287,8 @@ export async function setPlan(
   organization: { id: string; slug: string },
   request: Request,
   callerPath: string,
-  plan: SetPlanBody
+  plan: SetPlanBody,
+  opts?: { invalidateBillingCache?: (orgId: string) => void }
 ) {
   if (!client) {
     throw redirectWithErrorMessage(callerPath, request, "Error setting plan");
@@ -307,6 +311,8 @@ export async function setPlan(
       }
       case "free_connected": {
         if (result.accepted) {
+          // Invalidate billing cache since plan changed
+          opts?.invalidateBillingCache?.(organization.id);
           return redirect(newProjectPath(organization, "You're on the Free plan."));
         } else {
           return redirectWithErrorMessage(
@@ -320,6 +326,8 @@ export async function setPlan(
         return redirect(result.checkoutUrl);
       }
       case "updated_subscription": {
+        // Invalidate billing cache since subscription changed
+        opts?.invalidateBillingCache?.(organization.id);
         return redirectWithSuccessMessage(
           callerPath,
           request,
@@ -327,6 +335,8 @@ export async function setPlan(
         );
       }
       case "canceled_subscription": {
+        // Invalidate billing cache since subscription was canceled
+        opts?.invalidateBillingCache?.(organization.id);
         return redirectWithSuccessMessage(callerPath, request, "Subscription canceled.");
       }
     }
@@ -424,7 +434,9 @@ export async function reportComputeUsage(request: Request) {
   });
 }
 
-export async function getEntitlement(organizationId: string) {
+export async function getEntitlement(
+  organizationId: string
+): Promise<ReportUsageResult | undefined> {
   if (!client) return undefined;
 
   try {
@@ -466,6 +478,31 @@ export async function projectCreated(organization: Organization, project: Projec
       });
     }
   }
+}
+
+export async function getBillingAlerts(
+  organizationId: string
+): Promise<BillingAlertsResult | undefined> {
+  if (!client) return undefined;
+  const result = await client.getBillingAlerts(organizationId);
+  if (!result.success) {
+    logger.error("Error getting billing alert", { error: result.error, organizationId });
+    throw new Error("Error getting billing alert");
+  }
+  return result;
+}
+
+export async function setBillingAlert(
+  organizationId: string,
+  alert: UpdateBillingAlertsRequest
+): Promise<BillingAlertsResult | undefined> {
+  if (!client) return undefined;
+  const result = await client.updateBillingAlerts(organizationId, alert);
+  if (!result.success) {
+    logger.error("Error setting billing alert", { error: result.error, organizationId });
+    throw new Error("Error setting billing alert");
+  }
+  return result;
 }
 
 function isCloud(): boolean {

@@ -1,7 +1,7 @@
 import { RunEngine } from "@internal/run-engine";
 import { $replica, prisma } from "~/db.server";
 import { env } from "~/env.server";
-import { defaultMachine } from "~/services/platform.v3.server";
+import { defaultMachine, getCurrentPlan } from "~/services/platform.v3.server";
 import { singleton } from "~/utils/singleton";
 import { allMachines } from "./machinePresets.server";
 import { meter, tracer } from "./tracer.server";
@@ -40,6 +40,7 @@ function createRunEngine() {
     },
     queue: {
       defaultEnvConcurrency: env.DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT,
+      defaultEnvConcurrencyBurstFactor: env.DEFAULT_ENV_EXECUTION_CONCURRENCY_BURST_FACTOR,
       logLevel: env.RUN_ENGINE_RUN_QUEUE_LOG_LEVEL,
       redis: {
         keyPrefix: "engine:",
@@ -103,27 +104,31 @@ function createRunEngine() {
       EXECUTING_WITH_WAITPOINTS: env.RUN_ENGINE_TIMEOUT_EXECUTING_WITH_WAITPOINTS,
       SUSPENDED: env.RUN_ENGINE_TIMEOUT_SUSPENDED,
     },
-    releaseConcurrency: {
-      disabled: env.RUN_ENGINE_RELEASE_CONCURRENCY_ENABLED === "0",
-      disableConsumers: env.RUN_ENGINE_RELEASE_CONCURRENCY_DISABLE_CONSUMERS === "1",
-      maxTokensRatio: env.RUN_ENGINE_RELEASE_CONCURRENCY_MAX_TOKENS_RATIO,
-      releasingsMaxAge: env.RUN_ENGINE_RELEASE_CONCURRENCY_RELEASINGS_MAX_AGE,
-      releasingsPollInterval: env.RUN_ENGINE_RELEASE_CONCURRENCY_RELEASINGS_POLL_INTERVAL,
-      maxRetries: env.RUN_ENGINE_RELEASE_CONCURRENCY_MAX_RETRIES,
-      consumersCount: env.RUN_ENGINE_RELEASE_CONCURRENCY_CONSUMERS_COUNT,
-      pollInterval: env.RUN_ENGINE_RELEASE_CONCURRENCY_POLL_INTERVAL,
-      batchSize: env.RUN_ENGINE_RELEASE_CONCURRENCY_BATCH_SIZE,
-      redis: {
-        keyPrefix: "engine:",
-        port: env.RUN_ENGINE_RUN_QUEUE_REDIS_PORT ?? undefined,
-        host: env.RUN_ENGINE_RUN_QUEUE_REDIS_HOST ?? undefined,
-        username: env.RUN_ENGINE_RUN_QUEUE_REDIS_USERNAME ?? undefined,
-        password: env.RUN_ENGINE_RUN_QUEUE_REDIS_PASSWORD ?? undefined,
-        enableAutoPipelining: true,
-        ...(env.RUN_ENGINE_RUN_QUEUE_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
+    retryWarmStartThresholdMs: env.RUN_ENGINE_RETRY_WARM_START_THRESHOLD_MS,
+    billing: {
+      getCurrentPlan: async (orgId: string) => {
+        const plan = await getCurrentPlan(orgId);
+
+        if (!plan) {
+          return {
+            isPaying: false,
+            type: "free",
+          };
+        }
+
+        if (!plan.v3Subscription) {
+          return {
+            isPaying: false,
+            type: "free",
+          };
+        }
+
+        return {
+          isPaying: plan.v3Subscription.isPaying,
+          type: plan.v3Subscription.plan?.type ?? "free",
+        };
       },
     },
-    retryWarmStartThresholdMs: env.RUN_ENGINE_RETRY_WARM_START_THRESHOLD_MS,
   });
 
   return engine;

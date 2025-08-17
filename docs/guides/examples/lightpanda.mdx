@@ -1,0 +1,227 @@
+---
+title: "Lightpanda"
+sidebarTitle: "Lightpanda"
+description: "These examples demonstrate how to use Lightpanda with Trigger.dev."
+tag: "v4"
+---
+
+import ScrapingWarning from "/snippets/web-scraping-warning.mdx";
+import UpgradeToV4Note from "/snippets/upgrade-to-v4-note.mdx";
+
+<UpgradeToV4Note />
+
+## Overview
+
+Lightpanda is a purpose-built browser for AI and automation workflows. It is 10x faster, uses 10x less RAM than Chrome headless.
+
+Here are a few examples of how to use Lightpanda with Trigger.dev.
+
+<ScrapingWarning />
+
+## Limitations
+
+- Lightpanda does not support the `puppeteer` screenshot feature.
+
+## Using Lightpanda Cloud
+
+### Prerequisites
+
+- A [Lightpanda](https://lightpanda.io/) cloud token
+
+### Get links from a website
+In this task we use Lightpanda browser to get links from a provided URL. You will have to pass the URL as a payload when triggering the task.
+
+Make sure to add `LIGHTPANDA_TOKEN` to your Trigger.dev dashboard on the Environment Variables page:
+```bash
+LIGHTPANDA_TOKEN="<your-token>"
+```
+
+```ts trigger/lightpanda-cloud-puppeteer.ts
+import { logger, task } from "@trigger.dev/sdk";
+import puppeteer from "puppeteer-core";
+
+export const lightpandaCloudPuppeteer = task({
+  id: "lightpanda-cloud-puppeteer",
+  machine: {
+    preset: "micro",
+  },
+  run: async (payload: { url: string }, { ctx }) => {
+    logger.log("Lets get a page's links with Lightpanda!", { payload, ctx });
+
+    if (!payload.url) {
+      logger.warn("Please define the payload url");
+      throw new Error("payload.url is undefined");
+    }
+
+    const token = process.env.LIGHTPANDA_TOKEN;
+    if (!token) {
+      logger.warn("Please define the env variable LIGHTPANDA_TOKEN");
+      throw new Error("LIGHTPANDA_TOKEN is undefined");
+    }
+
+    // Connect to Lightpanda's cloud
+    const browser = await puppeteer.connect({
+      browserWSEndpoint: `wss://cloud.lightpanda.io/ws?browser=lightpanda&token=${token}`,
+    });
+    const context = await browser.createBrowserContext();
+    const page = await context.newPage();
+
+    // Dump all the links from the page.
+    await page.goto(payload.url);
+
+    const links = await page.evaluate(() => {
+      return Array.from(document.querySelectorAll("a")).map((row) => {
+        return row.getAttribute("href");
+      });
+    });
+
+    logger.info("Processing done, shutting down…");
+
+    await page.close();
+    await context.close();
+    await browser.disconnect();
+
+    logger.info("✅ Completed");
+
+    return {
+      links,
+    };
+  },
+});
+```
+
+### Proxies
+
+Proxies can be used with your browser via the proxy query string parameter. By default, the proxy used is "datacenter" which is a pool of shared datacenter IPs.
+`datacenter` accepts an optional `country` query string parameter which is an [ISO 3166-1 alpha-2](https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2) country code.
+
+```bash
+# This example will use a German IP
+wss://cloud.lightpanda.io/ws?proxy=datacenter&country=de&token=${token}
+```
+
+### Session
+
+A session is alive until you close it or the connection is closed. The max duration of a session is 15 minutes.
+
+## Using Lightpanda browser directly
+
+### Prerequisites
+
+- Setup the [Lightpanda build extension](/config/extensions/lightpanda)
+
+### Get the HTML of a webpage
+
+This task will dump the HTML of a provided URL using the Lightpanda browser binary. You will have to pass the URL as a payload when triggering the task.
+
+```ts trigger/lightpanda-fetch.ts
+import { logger, task } from "@trigger.dev/sdk";
+import { execSync } from "node:child_process";
+
+export const lightpandaFetch = task({
+  id: "lightpanda-fetch",
+  machine: {
+    preset: "micro",
+  },
+  run: async (payload: { url: string }, { ctx }) => {
+    logger.log("Lets get a page's content with Lightpanda!", { payload, ctx });
+
+    if (!payload.url) {
+      logger.warn("Please define the payload url");
+      throw new Error("payload.url is undefined");
+    }
+
+    const buffer = execSync(`lightpanda fetch --dump ${payload.url}`);
+
+    logger.info("✅ Completed");
+
+    return {
+      message: buffer.toString(),
+    };
+  },
+});
+```
+
+### Lightpanda CDP with Puppeteer
+
+This task initializes a Lightpanda CDP server and uses it with `puppeteer-core` to scrape a provided URL.
+
+```ts trigger/lightpanda-cdp.ts
+import { logger, task } from "@trigger.dev/sdk";
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import puppeteer from "puppeteer-core";
+
+const spawnLightpanda = async (host: string, port: string) =>
+  new Promise<ChildProcessWithoutNullStreams>((resolve, reject) => {
+    const child = spawn("lightpanda", [
+      "serve",
+      "--host",
+      host,
+      "--port",
+      port,
+      "--log_level",
+      "info",
+    ]);
+
+    child.on("spawn", async () => {
+      logger.info("Running Lightpanda's CDP server…", {
+        pid: child.pid,
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      resolve(child);
+    });
+    child.on("error", (e) => reject(e));
+  });
+
+export const lightpandaCDP = task({
+  id: "lightpanda-cdp",
+  machine: {
+    preset: "micro",
+  },
+  run: async (payload: { url: string }, { ctx }) => {
+    logger.log("Lets get a page's links with Lightpanda!", { payload, ctx });
+
+    if (!payload.url) {
+      logger.warn("Please define the payload url");
+      throw new Error("payload.url is undefined");
+    }
+
+    const host = process.env.LIGHTPANDA_CDP_HOST ?? "127.0.0.1";
+    const port = process.env.LIGHTPANDA_CDP_PORT ?? "9222";
+
+    // Launch Lightpanda's CDP server
+    const lpProcess = await spawnLightpanda(host, port);
+
+    const browser = await puppeteer.connect({
+      browserWSEndpoint: `ws://${host}:${port}`,
+    });
+    const context = await browser.createBrowserContext();
+    const page = await context.newPage();
+
+    // Dump all the links from the page.
+    await page.goto(payload.url);
+
+    const links = await page.evaluate(() => {
+      return Array.from(document.querySelectorAll("a")).map((row) => {
+        return row.getAttribute("href");
+      });
+    });
+
+    logger.info("Processing done");
+    logger.info("Shutting down…");
+
+    // Close Puppeteer instance
+    await browser.close();
+
+    // Stop Lightpanda's CDP Server
+    lpProcess.kill();
+
+    logger.info("✅ Completed");
+
+    return {
+      links,
+    };
+  },
+});
+```
