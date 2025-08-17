@@ -14,6 +14,7 @@ Should the burden ever get too much, we'd be happy to see you on [Trigger.dev cl
 ## What's new?
 
 Goodbye v3, hello v4! We made quite a few changes:
+
 - **Much simpler setup.** The provider and coordinator are now combined into a single supervisor. No more startup scripts, just `docker compose up`.
 - **Automatic container cleanup.** The supervisor will automatically clean up containers that are no longer needed.
 - **Support for multiple worker machines.** This is a big one, and we're very excited about it! You can now scale your workers horizontally as needed.
@@ -105,13 +106,9 @@ docker compose logs -f webapp
 npx trigger.dev@latest init -p <project-ref> -a http://localhost:8030
 ```
 
-<Warning>
-The commands displayed in the webapp are incorrect while v4 is in beta. You should always use the `v4-beta` tag and not `latest`.
-</Warning>
+{/\* 7. Bonus: Add traefik as a reverse proxy
 
-{/* 7. Bonus: Add traefik as a reverse proxy
-
-```bash
+````bash
 docker compose -f docker-compose.yml -f ../docker-compose.traefik.yml up -d
 ``` */}
 
@@ -122,7 +119,7 @@ docker compose -f docker-compose.yml -f ../docker-compose.traefik.yml up -d
 ```bash
 git clone --depth=1 https://github.com/triggerdotdev/trigger.dev
 cd trigger.dev/hosting/docker
-```
+````
 
 2. Create a `.env` file
 
@@ -156,9 +153,9 @@ If you want to run the webapp and worker on the same machine, just replace the `
 docker compose -f webapp/docker-compose.yml -f worker/docker-compose.yml up -d
 ```
 
-{/* And optionally add traefik as a reverse proxy:
+{/\* And optionally add traefik as a reverse proxy:
 
-```bash
+````bash
 # Run this from the /hosting/docker directory
 docker compose -f webapp/docker-compose.yml -f worker/docker-compose.yml -f docker-compose.traefik.yml up -d
 ``` */}
@@ -188,7 +185,7 @@ Or, if using a file:
 TRIGGER_WORKER_TOKEN=file:///home/node/shared/worker_token
 
 ==========================
-```
+````
 
 You can then uncomment and set the `TRIGGER_WORKER_TOKEN` environment variable in your `.env` file.
 
@@ -245,7 +242,7 @@ You should change these before deploying to production, especially the password.
 ### Setup
 
 <Note>
-The `packets` bucket is created by default. In case this doesn't work, you can create it manually.
+  The `packets` bucket is created by default. In case this doesn't work, you can create it manually.
 </Note>
 
 1. Login to the dashboard: `http://localhost:9001`
@@ -323,13 +320,14 @@ This will apply to all auth methods including magic link and GitHub OAuth.
 ## Version locking
 
 There are several reasons to lock the version of your Docker images:
+
 - **Backwards compatibility.** We try our best to maintain compatibility with older CLI versions, but it's not always possible. If you don't want to update your CLI, you can lock your Docker images to that specific version.
 - **Ensuring full feature support.** Sometimes, new CLI releases will also require new or updated platform features. Running unlocked images can make any issues difficult to debug. Using a specific tag can help here as well.
 
-By default, the images will point at the latest versioned release via the `v4-beta` tag. You can override this by specifying a different tag in your `.env` file. For example:
+By default, the images will point at the latest versioned release via the `latest` tag. You can override this by specifying a different tag in your `.env` file. For example:
 
 ```bash
-TRIGGER_IMAGE_TAG=v4.0.0-v4-beta.21
+TRIGGER_IMAGE_TAG=v4.0.0
 ```
 
 ## Troubleshooting
@@ -408,7 +406,7 @@ npx trigger.dev@latest whoami
 
 ## CI / GitHub Actions
 
-When running the CLI in a CI environment, your login profiles won't be available. Instead, you can use the `TRIGGER_API_URL` and `TRIGGER_ACCESS_TOKEN` environment 
+When running the CLI in a CI environment, your login profiles won't be available. Instead, you can use the `TRIGGER_API_URL` and `TRIGGER_ACCESS_TOKEN` environment
 variables to point at your self-hosted instance and authenticate.
 
 For more detailed instructions, see the [GitHub Actions guide](/github-actions).
