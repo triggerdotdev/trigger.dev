@@ -9,24 +9,11 @@ import { CommonCommandOptions, commonOptions, wrapCommandAction } from "../cli/c
 import { CLOUD_API_URL } from "../consts.js";
 import { McpContext } from "../mcp/context.js";
 import { FileLogger } from "../mcp/logger.js";
-import {
-  registerCancelRunTool,
-  registerCreateProjectTool,
-  registerDeployTool,
-  registerGetRunDetailsTool,
-  registerGetTasksTool,
-  registerInitializeProjectTool,
-  registerListDeploymentsTool,
-  registerListOrgsTool,
-  registerListProjectsTool,
-  registerListRunsTool,
-  registerSearchDocsTool,
-  registerTriggerTaskTool,
-  registerListPreviewBranchesTool,
-} from "../mcp/tools.js";
+import { registerTools } from "../mcp/tools.js";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
 import { installMcpServer } from "./install-mcp.js";
+import { serverMetadata } from "../mcp/config.js";
 
 const McpCommandOptions = CommonCommandOptions.extend({
   projectRef: z.string().optional(),
@@ -79,10 +66,9 @@ export async function mcpCommand(options: McpCommandOptions) {
   logger.loggerLevel = "none";
 
   const server = new McpServer({
-    name: "triggerdev",
-    version: "1.0.0",
-    description:
-      "Trigger.dev MCP server to automate your Trigger.dev projects and answer questions about Trigger.dev by searching the docs. If you need help setting up Trigger.dev in your project please refer to https://trigger.dev/docs/manual-setup. If the user asks for help with adding Trigger.dev to their project, please refer to https://trigger.dev/docs/manual-setup.",
+    name: serverMetadata.name,
+    version: serverMetadata.version,
+    description: serverMetadata.instructions,
   });
 
   server.server.oninitialized = async () => {
@@ -103,19 +89,7 @@ export async function mcpCommand(options: McpCommandOptions) {
     profile: options.profile,
   });
 
-  registerSearchDocsTool(context);
-  registerInitializeProjectTool(context);
-  registerGetTasksTool(context);
-  registerTriggerTaskTool(context);
-  registerGetRunDetailsTool(context);
-  registerCancelRunTool(context);
-  registerListRunsTool(context);
-  registerListProjectsTool(context);
-  registerListOrgsTool(context);
-  registerCreateProjectTool(context);
-  registerDeployTool(context);
-  registerListDeploymentsTool(context);
-  registerListPreviewBranchesTool(context);
+  registerTools(context);
 
   await server.connect(transport);
 }

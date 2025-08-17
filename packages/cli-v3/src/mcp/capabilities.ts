@@ -1,7 +1,7 @@
-import { McpContext } from "./context.js";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
-export function hasRootsCapability(context: McpContext) {
-  const capabilities = context.server.server.getClientCapabilities();
+export function hasRootsCapability(server: McpServer) {
+  const capabilities = server.server.getClientCapabilities();
 
   if (!capabilities) {
     return false;
@@ -10,8 +10,8 @@ export function hasRootsCapability(context: McpContext) {
   return "roots" in capabilities && typeof capabilities.roots === "object";
 }
 
-export function hasSamplingCapability(context: McpContext) {
-  const capabilities = context.server.server.getClientCapabilities();
+export function hasSamplingCapability(server: McpServer) {
+  const capabilities = server.server.getClientCapabilities();
 
   if (!capabilities) {
     return false;
@@ -20,8 +20,8 @@ export function hasSamplingCapability(context: McpContext) {
   return "sampling" in capabilities && typeof capabilities.sampling === "object";
 }
 
-export function hasElicitationCapability(context: McpContext) {
-  const capabilities = context.server.server.getClientCapabilities();
+export function hasElicitationCapability(server: McpServer) {
+  const capabilities = server.server.getClientCapabilities();
 
   if (!capabilities) {
     return false;

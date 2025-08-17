@@ -330,7 +330,7 @@ async function getTriggerDependencies(
 
 export async function tryResolveTriggerPackageVersion(
   name: string,
-  basedir: string
+  basedir?: string
 ): Promise<string | undefined> {
   try {
     const resolvedPath = nodeResolve.sync(name, {
