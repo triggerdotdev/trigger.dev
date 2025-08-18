@@ -7,6 +7,7 @@ import { x } from "tinyexec";
 import { getPackageJson, tryResolveTriggerPackageVersion } from "../../commands/update.js";
 import { VERSION } from "../../version.js";
 import { resolveSync as esmResolve } from "mlly";
+import { fileURLToPath } from "node:url";
 
 export const deployTool = {
   name: toolsMetadata.deploy.name,
@@ -171,7 +172,7 @@ async function tryResolveTriggerCLIPath(
       url: basedir,
     });
 
-    const resolvedPath = fileUriToPath(resolvedPathFileURI);
+    const resolvedPath = fileURLToPath(resolvedPathFileURI);
 
     context.logger?.log("resolve_cli_exec resolvedPathFileURI", { resolvedPathFileURI });
 
@@ -201,8 +202,4 @@ async function tryResolveTriggerCLIPath(
     context.logger?.log("resolve_cli_exec error", { error });
     return undefined;
   }
-}
-
-function fileUriToPath(uri: string) {
-  return uri.replace("file://", "");
 }

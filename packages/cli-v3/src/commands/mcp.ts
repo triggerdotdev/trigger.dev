@@ -72,7 +72,7 @@ export async function mcpCommand(options: McpCommandOptions) {
   });
 
   server.server.oninitialized = async () => {
-    fileLogger?.log("initialized mcp command", { options, argv: process.argv, env: process.env });
+    fileLogger?.log("initialized mcp command", { options, argv: process.argv });
   };
 
   // Start receiving messages on stdin and sending messages on stdout

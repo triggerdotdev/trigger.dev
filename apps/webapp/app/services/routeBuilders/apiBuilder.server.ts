@@ -703,6 +703,14 @@ export function createActionApiRoute<
         ? await options.findResource(parsedParams, authenticationResult, parsedSearchParams)
         : undefined;
 
+      if (options.findResource && !resource) {
+        return await wrapResponse(
+          request,
+          json({ error: "Resource not found" }, { status: 404 }),
+          corsStrategy !== "none"
+        );
+      }
+
       const result = await handler({
         params: parsedParams,
         searchParams: parsedSearchParams,

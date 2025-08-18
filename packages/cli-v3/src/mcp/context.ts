@@ -1,16 +1,17 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { FileLogger } from "./logger.js";
-import { createApiClientWithPublicJWT, mcpAuth } from "./auth.js";
+import { tryCatch } from "@trigger.dev/core/utils";
+import { ApiClient } from "@trigger.dev/core/v3";
+import path from "node:path";
 import { CliApiClient } from "../apiClient.js";
+import { loadConfig } from "../config.js";
+import { mcpAuth } from "./auth.js";
 import {
   hasElicitationCapability,
   hasRootsCapability,
   hasSamplingCapability,
 } from "./capabilities.js";
-import path from "node:path";
-import { tryCatch } from "@trigger.dev/core/utils";
-import { loadConfig } from "../config.js";
-import { ApiClient } from "@trigger.dev/core/v3";
+import { FileLogger } from "./logger.js";
+import { fileURLToPath } from "node:url";
 
 export type McpContextOptions = {
   projectRef?: string;
@@ -85,7 +86,7 @@ export class McpContext {
     const response = await this.server.server.listRoots();
 
     if (response.roots.length >= 1) {
-      return response.roots[0]?.uri ? fileUriToPath(response.roots[0].uri) : undefined;
+      return response.roots[0]?.uri ? fileURLToPath(response.roots[0].uri) : undefined;
     }
 
     return undefined;
@@ -183,8 +184,4 @@ export class McpContext {
   public get hasElicitationCapability() {
     return hasElicitationCapability(this.server);
   }
-}
-
-function fileUriToPath(uri: string) {
-  return uri.replace("file://", "");
 }

@@ -10,6 +10,7 @@ import { prisma } from "~/db.server";
 import { createProject } from "~/models/project.server";
 import { logger } from "~/services/logger.server";
 import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
+import { isCuid } from "cuid";
 
 const ParamsSchema = z.object({
   orgParam: z.string(),
@@ -134,8 +135,4 @@ function orgParamWhereClause(orgParam: string) {
   return {
     slug: orgParam,
   };
-}
-
-function isCuid(orgParam: string): boolean {
-  return /^[0-9A-HJ-NP-TV-Z]{25}$/.test(orgParam);
 }

@@ -1,4 +1,4 @@
-import { json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { ActionFunctionArgs, json } from "@remix-run/node";
 import { generateJWT as internal_generateJWT } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { prisma } from "~/db.server";
@@ -10,8 +10,6 @@ const ParamsSchema = z.object({
   env: z.enum(["dev", "staging", "prod", "preview"]),
 });
 
-type ParamsSchema = z.infer<typeof ParamsSchema>;
-
 const RequestBodySchema = z.object({
   claims: z
     .object({
@@ -21,7 +19,7 @@ const RequestBodySchema = z.object({
   expirationTime: z.union([z.number(), z.string()]).optional(),
 });
 
-export async function action({ request, params }: LoaderFunctionArgs) {
+export async function action({ request, params }: ActionFunctionArgs) {
   const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
 
   if (!authenticationResult) {
