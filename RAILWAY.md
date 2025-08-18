@@ -24,7 +24,7 @@
 ### Manual GitHub Deployment
 1. Go to Railway Dashboard → New Project → Deploy from GitHub repo
 2. Select: `nick0lay/trigger.dev`
-3. Branch: `feature/DEV-0000-setup-deployment-to-railway`
+3. Branch: `main`
 4. Railway auto-applies `railway.json` configuration
 
 ### Railway CLI
@@ -103,7 +103,7 @@ railway variables
 railway run env | grep DATABASE_URL
 
 # Check service names
-railway service list
+railway service
 ```
 
 ### Get Help
@@ -124,7 +124,7 @@ railway service list
 ## 🔧 Template Configuration (For Maintainers)
 
 ### Railway Template System
-- **Config file**: Only `railway.json` (Railway doesn't use `railway-template.json`)
+- **Config file**: Only `railway.json`
 - **Template setup**: Done through Railway web interface, not config files
 - **Variable management**: Use Railway template functions and service references
 
@@ -215,7 +215,6 @@ API_ORIGIN="https://${{RAILWAY_PUBLIC_DOMAIN}}"
 ✅ railway.json          # Railway deployment configuration
 ✅ .railway/migrate.sh   # Migration optimization script
 ✅ .env.example          # Environment variable template
-❌ railway-template.json # NOT used by Railway
 ```
 
 ---
