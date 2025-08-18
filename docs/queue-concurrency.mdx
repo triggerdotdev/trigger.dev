@@ -17,7 +17,11 @@ concurrency limit of your environment.
 Each individual queue has a maximum concurrency limit equal to your environment's base concurrency limit. If you don't explicitly set a queue's concurrency limit, it will default to your environment's base concurrency limit.
 
 <Note>
-  Your environment has a base concurrency limit and a burstable limit (default burst factor of 2.0x the base limit). Individual queues are limited by the base concurrency limit, not the burstable limit. For example, if your base limit is 10, your environment can burst up to 20 concurrent runs, but any single queue can have at most 10 concurrent runs. If you're a paying customer you can request higher limits by [contacting us](https://www.trigger.dev/contact).
+  Your environment has a base concurrency limit and a burstable limit (default burst factor of 2.0x
+  the base limit). Individual queues are limited by the base concurrency limit, not the burstable
+  limit. For example, if your base limit is 10, your environment can burst up to 20 concurrent runs,
+  but any single queue can have at most 10 concurrent runs. If you're a paying customer you can
+  request higher limits by [contacting us](https://www.trigger.dev/contact).
 </Note>
 
 ## Setting task concurrency
@@ -75,6 +79,11 @@ When you trigger a task you can override the concurrency limit. This is really u
 The task:
 
 ```ts /trigger/override-concurrency.ts
+const paidQueue = queue({
+  name: "paid-users",
+  concurrencyLimit: 10,
+});
+
 export const generatePullRequest = task({
   id: "generate-pull-request",
   queue: {
@@ -98,12 +107,8 @@ export async function POST(request: Request) {
   if (data.branch === "main") {
     //trigger the task, with a different queue
     const handle = await generatePullRequest.trigger(data, {
-      queue: {
-        //the "main-branch" queue will have a concurrency limit of 10
-        //this triggered run will use that queue
-        name: "main-branch", // Make sure to change the queue name or the task concurrency limit will be updated
-        concurrencyLimit: 10,
-      },
+      // Set the paid users queue
+      queue: "paid-users",
     });
 
     return Response.json(handle);
@@ -132,11 +137,7 @@ export async function POST(request: Request) {
   if (data.isFreeUser) {
     //free users can only have 1 PR generated at a time
     const handle = await generatePullRequest.trigger(data, {
-      queue: {
-        //every free user gets a queue with a concurrency limit of 1
-        name: "free-users",
-        concurrencyLimit: 1,
-      },
+      queue: "free-users",
       concurrencyKey: data.userId,
     });
 
@@ -145,11 +146,7 @@ export async function POST(request: Request) {
   } else {
     //trigger the task, with a different queue
     const handle = await generatePullRequest.trigger(data, {
-      queue: {
-        //every paid user gets a queue with a concurrency limit of 10
-        name: "paid-users",
-        concurrencyLimit: 10,
-      },
+      queue: "paid-users",
       concurrencyKey: data.userId,
     });
 
@@ -188,12 +185,14 @@ With our [task checkpoint system](/how-it-works#the-checkpoint-resume-system), t
 Concurrency is only released when a run reaches a waitpoint and is checkpointed. When a run is checkpointed, it transitions to the `WAITING` state and releases its concurrency slot back to both the queue and the environment, allowing other runs to execute or resume.
 
 This means that:
+
 - Only actively executing runs count towards concurrency limits
 - Runs in the `WAITING` state (checkpointed at waitpoints) do not consume concurrency slots
 - You can have more runs in the `WAITING` state than your queue's concurrency limit
 - When a waiting run resumes (e.g., when a subtask completes), it must re-acquire a concurrency slot
 
 For example, if you have a queue with a `concurrencyLimit` of 1:
+
 - You can only have exactly 1 run executing at a time
 - You may have multiple runs in the `WAITING` state that belong to that queue
 - When the executing run reaches a waitpoint and checkpoints, it releases its slot
