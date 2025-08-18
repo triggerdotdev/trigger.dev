@@ -74,7 +74,7 @@ export const toolsMetadata = {
     name: "deploy",
     title: "Deploy",
     description:
-      "Deploy a project. Use this tool when you need to deploy a project. This will trigger a deployment for the project.",
+      "Deploy a project. Use this tool when you need to deploy a project. This will trigger a deployment for the project. This is a long running operation and including a progress token will allow you to display the progress to the user.",
   },
   list_deploys: {
     name: "list_deploys",

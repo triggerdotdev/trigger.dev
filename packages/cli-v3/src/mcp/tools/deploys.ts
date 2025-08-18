@@ -8,13 +8,14 @@ import { getPackageJson, tryResolveTriggerPackageVersion } from "../../commands/
 import { VERSION } from "../../version.js";
 import { resolveSync as esmResolve } from "mlly";
 import { fileURLToPath } from "node:url";
+import stripAnsi from "strip-ansi";
 
 export const deployTool = {
   name: toolsMetadata.deploy.name,
   title: toolsMetadata.deploy.title,
   description: toolsMetadata.deploy.description,
   inputSchema: DeployInput.shape,
-  handler: toolHandler(DeployInput.shape, async (input, { ctx }) => {
+  handler: toolHandler(DeployInput.shape, async (input, { ctx, createProgressTracker, _meta }) => {
     ctx.logger?.log("calling deploy", { input });
 
     if (ctx.options.devOnly) {
@@ -59,13 +60,21 @@ export const deployTool = {
       nodePath,
       cliPath,
       args,
+      meta: _meta,
     });
+
+    const progressTracker = createProgressTracker(100);
+    await progressTracker.updateProgress(
+      5,
+      `Starting deploy to ${input.environment}${input.branch ? ` on branch ${input.branch}` : ""}`
+    );
 
     const deployProcess = x(nodePath, [cliPath, ...args], {
       nodeOptions: {
         cwd: cwd.cwd,
         env: {
           TRIGGER_MCP_SERVER: "1",
+          CI: "true",
         },
       },
     });
@@ -73,8 +82,20 @@ export const deployTool = {
     const logs = [];
 
     for await (const line of deployProcess) {
-      logs.push(line);
+      const lineWithoutAnsi = stripAnsi(line);
+
+      const buildingVersion = lineWithoutAnsi.match(/Building version (\d+\.\d+)/);
+
+      if (buildingVersion) {
+        await progressTracker.incrementProgress(1, `Building version ${buildingVersion[1]}`);
+      } else {
+        await progressTracker.incrementProgress(1);
+      }
+
+      logs.push(stripAnsi(line));
     }
+
+    await progressTracker.complete("Deploy complete");
 
     ctx.logger?.log("deploy deployProcess", {
       logs,
