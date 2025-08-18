@@ -45,7 +45,7 @@ There are two ways to get started:
 1. Create an account in our [web app](https://cloud.trigger.dev), create a new project and follow the instructions in the onboarding. Build and deploy your first task in minutes.
 2. [Manual setup](https://trigger.dev/docs/manual-setup) in your existing project.
 
-## SDK usage
+## SDK documentation
 
 For more information on our SDK, refer to our [docs](https://trigger.dev/docs/introduction).
 

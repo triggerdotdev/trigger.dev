@@ -42,7 +42,7 @@ Trigger.dev is an open source platform for building and deploying fully-managed 
 | [switch](https://trigger.dev/docs/cli-switch)                        | Switch between CLI profiles.                                       |
 | [update](https://trigger.dev/docs/cli-update-commands)               | Updates all `@trigger.dev/*` packages to match the CLI version.    |
 
-## Documentation
+## CLI documentation
 
 For more information on the CLI, please refer to our [docs](https://trigger.dev/docs/cli-introduction).
 
