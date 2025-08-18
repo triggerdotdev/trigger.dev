@@ -106,12 +106,6 @@ docker compose logs -f webapp
 npx trigger.dev@latest init -p <project-ref> -a http://localhost:8030
 ```
 
-{/\* 7. Bonus: Add traefik as a reverse proxy
-
-````bash
-docker compose -f docker-compose.yml -f ../docker-compose.traefik.yml up -d
-``` */}
-
 ### Worker
 
 1. Clone the repository
@@ -119,7 +113,7 @@ docker compose -f docker-compose.yml -f ../docker-compose.traefik.yml up -d
 ```bash
 git clone --depth=1 https://github.com/triggerdotdev/trigger.dev
 cd trigger.dev/hosting/docker
-````
+```
 
 2. Create a `.env` file
 
@@ -153,13 +147,6 @@ If you want to run the webapp and worker on the same machine, just replace the `
 docker compose -f webapp/docker-compose.yml -f worker/docker-compose.yml up -d
 ```
 
-{/\* And optionally add traefik as a reverse proxy:
-
-````bash
-# Run this from the /hosting/docker directory
-docker compose -f webapp/docker-compose.yml -f worker/docker-compose.yml -f docker-compose.traefik.yml up -d
-``` */}
-
 ## Worker token
 
 When running the combined stack, worker bootstrap is handled automatically. When running the webapp and worker separately, you will need to manually set the worker token.
@@ -185,7 +172,7 @@ Or, if using a file:
 TRIGGER_WORKER_TOKEN=file:///home/node/shared/worker_token
 
 ==========================
-````
+```
 
 You can then uncomment and set the `TRIGGER_WORKER_TOKEN` environment variable in your `.env` file.
 
