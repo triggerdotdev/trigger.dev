@@ -305,9 +305,10 @@ export class FinalizeTaskRunService extends BaseService {
     });
 
     if (!run.lockedById) {
-      logger.error(
+      // This happens when a run is expired or was cancelled before an attempt, it's not a problem
+      logger.info(
         "FinalizeTaskRunService: No lockedById, so can't get the BackgroundWorkerTask. Not creating an attempt.",
-        { runId: run.id }
+        { runId: run.id, status: run.status }
       );
       return;
     }
