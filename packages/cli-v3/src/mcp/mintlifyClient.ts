@@ -1,5 +1,5 @@
-export async function performSearch(query: string) {
-  const body = callToolBody("search", { query });
+export async function performSearch(query: string, signal: AbortSignal) {
+  const body = callToolBody("Search", { query });
 
   const response = await fetch("https://trigger.dev/docs/mcp", {
     method: "POST",
@@ -8,6 +8,7 @@ export async function performSearch(query: string) {
       Accept: "application/json, text/event-stream",
       "MCP-Protocol-Version": "2025-06-18",
     },
+    signal,
     body: JSON.stringify(body),
   });
 

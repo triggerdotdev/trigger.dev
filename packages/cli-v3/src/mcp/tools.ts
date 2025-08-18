@@ -9,7 +9,7 @@ import {
 } from "./tools/orgs.js";
 import { listPreviewBranchesTool } from "./tools/previewBranches.js";
 import { cancelRunTool, getRunDetailsTool, listRunsTool } from "./tools/runs.js";
-import { getTasksTool, triggerTaskTool } from "./tools/tasks.js";
+import { getCurrentWorker, triggerTaskTool } from "./tools/tasks.js";
 import { respondWithError } from "./utils.js";
 
 export function registerTools(context: McpContext) {
@@ -19,7 +19,7 @@ export function registerTools(context: McpContext) {
     listProjectsTool,
     createProjectInOrgTool,
     initializeProjectTool,
-    getTasksTool,
+    getCurrentWorker,
     triggerTaskTool,
     listRunsTool,
     getRunDetailsTool,

@@ -5,11 +5,17 @@ import { authenticateApiRequestWithPersonalAccessToken } from "~/services/person
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
 import { getEnvironmentFromEnv } from "./api.v1.projects.$projectRef.$env";
 import { GetWorkerByTagResponse } from "@trigger.dev/core/v3/schemas";
+import { env as $env } from "~/env.server";
+import { v3RunsPath } from "~/utils/pathBuilder";
 
 const ParamsSchema = z.object({
   projectRef: z.string(),
   tagName: z.string(),
   env: z.enum(["dev", "staging", "prod", "preview"]),
+});
+
+const HeadersSchema = z.object({
+  "x-trigger-branch": z.string().optional(),
 });
 
 type ParamsSchema = z.infer<typeof ParamsSchema>;
@@ -27,6 +33,10 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     return json({ error: "Invalid Params" }, { status: 400 });
   }
 
+  const parsedHeaders = HeadersSchema.safeParse(Object.fromEntries(request.headers));
+
+  const branch = parsedHeaders.success ? parsedHeaders.data["x-trigger-branch"] : undefined;
+
   const { projectRef, env } = parsedParams.data;
 
   const project = await prisma.project.findFirst({
@@ -40,6 +50,15 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
         },
       },
     },
+    select: {
+      id: true,
+      slug: true,
+      organization: {
+        select: {
+          slug: true,
+        },
+      },
+    },
   });
 
   if (!project) {
@@ -50,6 +69,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     projectId: project.id,
     userId: authenticationResult.userId,
     env,
+    branch,
   });
 
   if (!envResult.success) {
@@ -88,6 +108,15 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     },
   });
 
+  const urls = {
+    runs: `${$env.APP_ORIGIN}${v3RunsPath(
+      { slug: project.organization.slug },
+      { slug: project.slug },
+      { slug: env },
+      { versions: [currentWorker.version] }
+    )}`,
+  };
+
   // Prepare the response object
   const response: GetWorkerByTagResponse = {
     worker: {
@@ -105,10 +134,8 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
         payloadSchema: task.payloadSchema,
       })),
     },
+    urls,
   };
-
-  // Optionally validate the response before returning (for type safety)
-  // WorkerResponseSchema.parse(response);
 
   return json(response);
 }

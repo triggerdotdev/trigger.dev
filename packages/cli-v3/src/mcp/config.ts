@@ -46,6 +46,12 @@ export const toolsMetadata = {
     description:
       "Get all tasks in the project. Useful when searching for a task and for looking up a task identifier/slug",
   },
+  get_current_worker: {
+    name: "get_current_worker",
+    title: "Get Current Worker",
+    description:
+      "Get the current worker for the project. Useful when searching for a task and for looking up a task identifier/slug and payload schema, or looking for the latest version in a specific environment.",
+  },
   trigger_task: {
     name: "trigger_task",
     title: "Trigger Task",

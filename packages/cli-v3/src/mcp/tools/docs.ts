@@ -10,13 +10,11 @@ export const searchDocsTool = {
   inputSchema: {
     query: z.string(),
   },
-  handler: toolHandler({ query: z.string() }, async (input, { ctx }) => {
+  handler: toolHandler({ query: z.string() }, async (input, { ctx, signal }) => {
     ctx.logger?.log("calling search_docs", { input });
 
-    const results = await performSearch(input.query);
+    const results = await performSearch(input.query, signal);
 
-    return {
-      content: [{ type: "text", text: results.result }],
-    };
+    return results.result;
   }),
 };

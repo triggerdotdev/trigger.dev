@@ -100,6 +100,9 @@ export const GetWorkerByTagResponse = z.object({
     cliVersion: z.string().nullish(),
     tasks: z.array(GetWorkerTaskResponse),
   }),
+  urls: z.object({
+    runs: z.string(),
+  }),
 });
 
 export type GetWorkerByTagResponse = z.infer<typeof GetWorkerByTagResponse>;

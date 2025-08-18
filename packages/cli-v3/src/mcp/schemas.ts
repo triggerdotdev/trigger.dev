@@ -67,19 +67,10 @@ export const TriggerTaskInput = CommonProjectsInput.extend({
       "The ID/slug of the task to trigger. Use the get_tasks tool to get a list of tasks and ask the user to select one if it's not clear which one to use."
     ),
   payload: z
-    .string()
-    .transform((val, ctx) => {
-      try {
-        return JSON.parse(val);
-      } catch {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "The payload must be a valid JSON string",
-        });
-        return z.NEVER;
-      }
-    })
-    .describe("The payload to trigger the task with, must be a valid JSON string"),
+    .any()
+    .describe(
+      "The payload to trigger the task with. Should match the task's payload schema. Not a JSON string, but the actual payload object"
+    ),
   options: z
     .object({
       queue: z

@@ -3,13 +3,13 @@ import { CommonProjectsInput, TriggerTaskInput } from "../schemas.js";
 import { ToolMeta } from "../types.js";
 import { respondWithError, toolHandler } from "../utils.js";
 
-export const getTasksTool = {
-  name: toolsMetadata.get_tasks.name,
-  title: toolsMetadata.get_tasks.title,
-  description: toolsMetadata.get_tasks.description,
+export const getCurrentWorker = {
+  name: toolsMetadata.get_current_worker.name,
+  title: toolsMetadata.get_current_worker.title,
+  description: toolsMetadata.get_current_worker.description,
   inputSchema: CommonProjectsInput.shape,
   handler: toolHandler(CommonProjectsInput.shape, async (input, { ctx }) => {
-    ctx.logger?.log("calling get_tasks", { input });
+    ctx.logger?.log("calling get_current_worker", { input });
 
     if (ctx.options.devOnly && input.environment !== "dev") {
       return respondWithError(
@@ -24,14 +24,60 @@ export const getTasksTool = {
 
     const cliApiClient = await ctx.getCliApiClient(input.branch);
 
-    const worker = await cliApiClient.getWorkerByTag(projectRef, input.environment, "current");
+    const workerResult = await cliApiClient.getWorkerByTag(
+      projectRef,
+      input.environment,
+      "current"
+    );
 
-    if (!worker.success) {
-      return respondWithError(worker.error);
+    if (!workerResult.success) {
+      return respondWithError(workerResult.error);
+    }
+
+    const { worker, urls } = workerResult.data;
+
+    const contents = [
+      `Current worker for ${input.environment} is ${worker.version} using ${worker.sdkVersion} of the SDK.`,
+    ];
+
+    if (worker.tasks.length > 0) {
+      contents.push(`The worker has ${worker.tasks.length} tasks registered:`);
+
+      for (const task of worker.tasks) {
+        if (task.payloadSchema) {
+          contents.push(
+            `- ${task.slug} in ${task.filePath} (payload schema: ${JSON.stringify(
+              task.payloadSchema
+            )})`
+          );
+        } else {
+          contents.push(`- ${task.slug} in ${task.filePath}`);
+        }
+      }
+    } else {
+      contents.push(`The worker has no tasks registered.`);
+    }
+
+    contents.push(`\n`);
+    contents.push(`URLs:`);
+    contents.push(`- Runs: ${urls.runs}`);
+    contents.push(`\n`);
+    contents.push(
+      `You can use the list_runs tool with the version ${worker.version} to get the list of runs for this worker.`
+    );
+
+    if (
+      typeof worker.sdkVersion === "string" &&
+      typeof worker.cliVersion === "string" &&
+      worker.sdkVersion !== worker.cliVersion
+    ) {
+      contents.push(
+        `WARNING: The SDK version (${worker.sdkVersion}) is different from the CLI version (${worker.cliVersion}). This might cause issues with the task execution. Make sure to pin the CLI and the SDK versions to ${worker.sdkVersion}.`
+      );
     }
 
     return {
-      content: [{ type: "text", text: JSON.stringify(worker.data, null, 2) }],
+      content: [{ type: "text", text: contents.join("\n") }],
     };
   }),
 };
@@ -62,8 +108,20 @@ export const triggerTaskTool = {
       branch: input.branch,
     });
 
+    ctx.logger?.log("triggering task", { input });
+
+    let payload = input.payload;
+
+    if (typeof payload === "string") {
+      try {
+        payload = JSON.parse(payload);
+      } catch {
+        ctx.logger?.log("payload is not a valid JSON string, using as is", { payload });
+      }
+    }
+
     const result = await apiClient.triggerTask(input.taskId, {
-      payload: input.payload,
+      payload,
       options: input.options,
     });
 
