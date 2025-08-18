@@ -292,3 +292,14 @@ const batchHandle = await tasks.batchTrigger([
 const runs = await batchHandle.runs.list();
 console.log(runs);
 ```
+
+### OpenTelemetry
+
+We are now using newer versions of the OpenTelemetry packages. This means that if you're using custom exporters you may need to update the packages:
+
+| Package                                   | Previous Version | New Version | Change Type  |
+| ----------------------------------------- | ---------------- | ----------- | ------------ |
+| `@opentelemetry/api-logs`                 | 0.52.1           | 0.203.0     | Major update |
+| `@opentelemetry/exporter-logs-otlp-http`  | 0.52.1           | 0.203.0     | Major update |
+| `@opentelemetry/exporter-trace-otlp-http` | 0.52.1           | 0.203.0     | Major update |
+| `@opentelemetry/instrumentation`          | 0.52.1           | 0.203.0     | Major update |

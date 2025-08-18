@@ -1,22 +1,21 @@
 <Accordion title="Copy paste this prompt in full" icon="sparkles">
 
+```md
+
 I would like you to help me migrate my v3 task code to v4. Here are the important differences:
 
 We've deprecated the `@trigger.dev/sdk/v3` import path and moved to a new path:
 
-```ts
 // This is the old path
 import { task } from "@trigger.dev/sdk/v3";
 
 // This is the new path, use this instead
 import { task } from "@trigger.dev/sdk";
-```
 
 We've renamed the `handleError` hook to `catchError`. Use this instead of `handleError`.
 
 `init` was previously used to initialize data used in the run function. This is the old version:
 
-```ts
 import { task } from "@trigger.dev/sdk";
 
 const myTask = task({
@@ -30,11 +29,9 @@ const myTask = task({
     await client.doSomething();
   },
 });
-```
 
 This is the new version using middleware and locals:
 
-```ts
 import { task, locals, tasks } from "@trigger.dev/sdk";
 
 // Create a local for your client
@@ -58,11 +55,9 @@ const myTask = task({
     await client.doSomething();
   },
 });
-```
 
 We’ve deprecated the `toolTask` function and replaced it with the `ai.tool` function, which creates an AI tool from an existing `schemaTask`. This is the old version:
 
-```ts
 import { toolTask, schemaTask } from "@trigger.dev/sdk";
 import { z } from "zod";
 import { generateText } from "ai";
@@ -87,11 +82,9 @@ export const myAiTask = schemaTask({
     });
   },
 });
-```
 
 This is the new version:
 
-```ts
 import { schemaTask, ai } from "@trigger.dev/sdk";
 import { z } from "zod";
 import { generateText } from "ai";
@@ -124,20 +117,19 @@ export const myAiTask = schemaTask({
     });
   },
 });
-```
 
 We've made several breaking changes that require code updates:
 
 **Queue changes**: Queues must now be defined ahead of time using the `queue` function. You can no longer create queues "on-demand" when triggering tasks. This is the old version:
 
-```ts
+
 // Old v3 way - creating queue on-demand
 await myTask.trigger({ foo: "bar" }, { queue: { name: "my-queue", concurrencyLimit: 10 } });
-```
+
 
 This is the new version:
 
-```ts
+
 // New v4 way - define queue first
 import { queue, task } from "@trigger.dev/sdk";
 
@@ -157,11 +149,11 @@ await myTask.trigger({ foo: "bar" });
 
 // Or specify queue by name
 await myTask.trigger({ foo: "bar" }, { queue: "my-queue" });
-```
+
 
 **Lifecycle hooks**: Function signatures have changed to use a single object parameter instead of separate parameters. This is the old version:
 
-```ts
+
 // Old v3 way
 export const myTask = task({
   id: "my-task",
@@ -171,11 +163,11 @@ export const myTask = task({
   catchError: (payload, { ctx, error, retry }) => {},
   run: async (payload, { ctx }) => {},
 });
-```
+
 
 This is the new version:
 
-```ts
+
 // New v4 way - single object parameter for hooks
 export const myTask = task({
   id: "my-task",
@@ -185,11 +177,11 @@ export const myTask = task({
   catchError: ({ payload, ctx, error, retry }) => {},
   run: async (payload, { ctx }) => {}, // run function unchanged
 });
-```
+
 
 **BatchTrigger changes**: The `batchTrigger` function no longer returns runs directly. This is the old version:
 
-```ts
+
 // Old v3 way
 const batchHandle = await tasks.batchTrigger([
   [myTask, { foo: "bar" }],
@@ -197,11 +189,11 @@ const batchHandle = await tasks.batchTrigger([
 ]);
 
 console.log(batchHandle.runs); // Direct access
-```
+
 
 This is the new version:
 
-```ts
+
 // New v4 way
 const batchHandle = await tasks.batchTrigger([
   [myTask, { foo: "bar" }],
@@ -210,8 +202,11 @@ const batchHandle = await tasks.batchTrigger([
 
 const runs = await batchHandle.runs.list(); // Use runs.list()
 console.log(runs);
-```
+
 
 Can you help me convert the following code from v3 to v4? Please include the full converted code in the answer, do not truncate it anywhere.
 
+```
+
 </Accordion>
+
