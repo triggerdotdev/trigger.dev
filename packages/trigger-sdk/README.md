@@ -22,7 +22,7 @@ The Trigger.dev SDK is a TypeScript/JavaScript library that allows you to define
 
 ## About Trigger.dev
 
-Trigger.dev is an open source platform for building and deploying fully-managed AI agents and workflows. Write workflows in normal async TypeScript for everything from simple tasks to long-running AI agents, heavy media processing, complex real-time systems and more. Complete with trace visibility, managed queues, and elastic infrastructure which handles the horizontal scaling.
+Trigger.dev is an open source platform for building and deploying fully-managed AI agents and workflows. Write workflows in normal async TypeScript for everything from simple tasks to long-running AI agents, heavy media processing, complex real-time systems and more. Complete with full observability, managed queues, and elastic infrastructure which handles the horizontal scaling.
 
 ## Core features
 
