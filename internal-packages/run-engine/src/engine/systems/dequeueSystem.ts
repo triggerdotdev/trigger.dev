@@ -8,7 +8,7 @@ import { PrismaClientOrTransaction } from "@trigger.dev/database";
 import { getRunWithBackgroundWorkerTasks } from "../db/worker.js";
 import { sendNotificationToWorker } from "../eventBus.js";
 import { getMachinePreset } from "../machinePresets.js";
-import { isDequeueableExecutionStatus } from "../statuses.js";
+import { isDequeueableExecutionStatus, isExecuting } from "../statuses.js";
 import { RunEngineOptions } from "../types.js";
 import { ExecutionSnapshotSystem, getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
 import { RunAttemptSystem } from "./runAttemptSystem.js";
@@ -132,9 +132,16 @@ export class DequeueSystem {
                   },
                   tx: prisma,
                 });
-                this.$.logger.error(
-                  `RunEngine.dequeueFromWorkerQueue(): Run is not in a valid state to be dequeued: ${runId}\n ${snapshot.id}:${snapshot.executionStatus}`
-                );
+
+                if (isExecuting(snapshot.executionStatus)) {
+                  this.$.logger.error(
+                    `RunEngine.dequeueFromWorkerQueue(): Run is not in a valid state to be dequeued: ${runId}\n ${snapshot.id}:${snapshot.executionStatus}`
+                  );
+                } else {
+                  this.$.logger.warn(
+                    `RunEngine.dequeueFromWorkerQueue(): Run is in an expected not valid state to be dequeued: ${runId}\n ${snapshot.id}:${snapshot.executionStatus}`
+                  );
+                }
 
                 return;
               }
