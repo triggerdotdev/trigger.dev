@@ -126,6 +126,7 @@ export const loader = createLoaderApiRoute(
 );
 
 import parseDuration from "parse-duration";
+import { parseDate } from "@trigger.dev/core/v3/isomorphic";
 
 function getCreatedAtFilter(searchParams: ApiDeploymentListSearchParams) {
   if (searchParams.period) {
@@ -171,8 +172,9 @@ function getCreatedAtFilter(searchParams: ApiDeploymentListSearchParams) {
 }
 
 function safeDateFromString(value: string, paramName: string) {
-  const date = new Date(value);
-  if (isNaN(date.getTime())) {
+  const date = parseDate(value);
+
+  if (!date) {
     throw new ServiceValidationError(`Invalid search query parameter: ${paramName}=${value}`, 400);
   }
   return date;
