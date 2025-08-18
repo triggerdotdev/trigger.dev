@@ -23,6 +23,32 @@ export type TraceEvent = Pick<
   | "kind"
 >;
 
+export type DetailedTraceEvent = Pick<
+  TaskEvent,
+  | "spanId"
+  | "parentId"
+  | "runId"
+  | "idempotencyKey"
+  | "message"
+  | "style"
+  | "startTime"
+  | "duration"
+  | "isError"
+  | "isPartial"
+  | "isCancelled"
+  | "level"
+  | "events"
+  | "environmentType"
+  | "kind"
+  | "taskSlug"
+  | "taskPath"
+  | "workerVersion"
+  | "queueName"
+  | "machinePreset"
+  | "properties"
+  | "output"
+>;
+
 export type TaskEventStoreTable = "taskEvent" | "taskEventPartitioned";
 
 export function getTaskEventStoreTableForRun(run: {
@@ -195,6 +221,97 @@ export class TaskEventStore {
           events,
           "environmentType",
           "kind"
+        FROM "TaskEvent"
+        WHERE "traceId" = ${traceId}
+          ${
+            filterDebug
+              ? Prisma.sql`AND \"kind\" <> CAST('LOG'::text AS "public"."TaskEventKind")`
+              : Prisma.empty
+          }
+        ORDER BY "startTime" ASC
+        LIMIT ${env.MAXIMUM_TRACE_SUMMARY_VIEW_COUNT}
+      `;
+    }
+  }
+
+  async findDetailedTraceEvents(
+    table: TaskEventStoreTable,
+    traceId: string,
+    startCreatedAt: Date,
+    endCreatedAt?: Date,
+    options?: { includeDebugLogs?: boolean }
+  ) {
+    const filterDebug =
+      options?.includeDebugLogs === false || options?.includeDebugLogs === undefined;
+
+    if (table === "taskEventPartitioned") {
+      const createdAtBufferInMillis = env.TASK_EVENT_PARTITIONED_WINDOW_IN_SECONDS * 1000;
+      const startCreatedAtWithBuffer = new Date(startCreatedAt.getTime() - createdAtBufferInMillis);
+      const $endCreatedAt = endCreatedAt ?? new Date();
+      const endCreatedAtWithBuffer = new Date($endCreatedAt.getTime() + createdAtBufferInMillis);
+
+      return await this.readReplica.$queryRaw<DetailedTraceEvent[]>`
+        SELECT
+          "spanId",
+          "parentId",
+          "runId",
+          "idempotencyKey",
+          message,
+          style,
+          "startTime",
+          duration,
+          "isError",
+          "isPartial",
+          "isCancelled",
+          level,
+          events,
+          "environmentType",
+          "kind",
+          "taskSlug",
+          "taskPath",
+          "workerVersion",
+          "queueName",
+          "machinePreset",
+          properties,
+          output
+        FROM "TaskEventPartitioned"
+        WHERE
+          "traceId" = ${traceId}
+          AND "createdAt" >= ${startCreatedAtWithBuffer.toISOString()}::timestamp
+          AND "createdAt" < ${endCreatedAtWithBuffer.toISOString()}::timestamp
+          ${
+            filterDebug
+              ? Prisma.sql`AND \"kind\" <> CAST('LOG'::text AS "public"."TaskEventKind")`
+              : Prisma.empty
+          }
+        ORDER BY "startTime" ASC
+        LIMIT ${env.MAXIMUM_TRACE_SUMMARY_VIEW_COUNT}
+      `;
+    } else {
+      return await this.readReplica.$queryRaw<DetailedTraceEvent[]>`
+        SELECT
+          "spanId",
+          "parentId",
+          "runId",
+          "idempotencyKey",
+          message,
+          style,
+          "startTime",
+          duration,
+          "isError",
+          "isPartial",
+          "isCancelled",
+          level,
+          events,
+          "environmentType",
+          "kind",
+          "taskSlug",
+          "taskPath",
+          "workerVersion",
+          "queueName",
+          "machinePreset",
+          properties,
+          output
         FROM "TaskEvent"
         WHERE "traceId" = ${traceId}
           ${

@@ -36,7 +36,7 @@ export const loader = createLoaderApiRoute(
     },
   },
   async ({ resource: run }) => {
-    const traceSummary = await eventRepository.getTraceSummary(
+    const traceSummary = await eventRepository.getTraceDetailedSummary(
       getTaskEventStoreTableForRun(run),
       run.traceId,
       run.createdAt,

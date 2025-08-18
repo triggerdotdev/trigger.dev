@@ -123,14 +123,7 @@ export const CommonRunsInput = CommonProjectsInput.extend({
 
 export type CommonRunsInput = z.output<typeof CommonRunsInput>;
 
-export const GetRunDetailsInput = CommonRunsInput.extend({
-  debugMode: z
-    .boolean()
-    .describe(
-      "Enable debug mode to get more detailed information about the run, including the entire trace (all logs and spans for the run and any child run). Set this to true if prompted to debug a run."
-    )
-    .optional(),
-});
+export const GetRunDetailsInput = CommonRunsInput.extend({});
 
 export type GetRunDetailsInput = z.output<typeof GetRunDetailsInput>;
 

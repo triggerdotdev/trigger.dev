@@ -30,6 +30,7 @@ import {
   RetrieveBatchV2Response,
   RetrieveQueueParam,
   RetrieveRunResponse,
+  RetrieveRunTraceResponseBody,
   ScheduleObject,
   TaskRunExecutionResult,
   TriggerTaskRequestBody,
@@ -344,7 +345,7 @@ export class ApiClient {
 
   retrieveRunTrace(runId: string, requestOptions?: ZodFetchOptions) {
     return zodfetch(
-      z.any(), // TODO: define a proper schema for this
+      RetrieveRunTraceResponseBody,
       `${this.baseUrl}/api/v1/runs/${runId}/trace`,
       {
         method: "GET",

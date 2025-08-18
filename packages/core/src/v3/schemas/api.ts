@@ -1224,3 +1224,69 @@ export const ApiBranchListResponseBody = z.object({
 });
 
 export type ApiBranchListResponseBody = z.infer<typeof ApiBranchListResponseBody>;
+
+// export type SpanDetailedSummary = {
+//   id: string;
+//   parentId: string | undefined;
+//   message: string;
+//   data: {
+//     runId: string;
+//     taskSlug?: string;
+//     taskPath?: string;
+//     events: SpanEvents;
+//     startTime: Date;
+//     duration: number;
+//     isError: boolean;
+//     isPartial: boolean;
+//     isCancelled: boolean;
+//     level: NonNullable<CreatableEvent["level"]>;
+//     environmentType: CreatableEventEnvironmentType;
+//     workerVersion?: string;
+//     queueName?: string;
+//     machinePreset?: string;
+//     properties?: Attributes;
+//     output?: Attributes;
+//   };
+//   children: Array<SpanDetailedSummary>;
+// };
+export const RetrieveRunTraceSpanSchema = z.object({
+  id: z.string(),
+  parentId: z.string().optional(),
+  message: z.string(),
+  data: z.object({
+    runId: z.string(),
+    taskSlug: z.string().optional(),
+    taskPath: z.string().optional(),
+    events: z.array(z.any()),
+    startTime: z.coerce.date(),
+    duration: z.number(),
+    isError: z.boolean(),
+    isPartial: z.boolean(),
+    isCancelled: z.boolean(),
+    level: z.string(),
+    environmentType: z.string(),
+    workerVersion: z.string().optional(),
+    queueName: z.string().optional(),
+    machinePreset: z.string().optional(),
+    properties: z.record(z.any()).optional(),
+    output: z.record(z.any()).optional(),
+  }),
+});
+
+export type RetrieveRunTraceSpan = z.infer<typeof RetrieveRunTraceSpanSchema> & {
+  children: Array<RetrieveRunTraceSpan>;
+};
+
+export const RetrieveRunTraceSpan: z.ZodType<RetrieveRunTraceSpan> =
+  RetrieveRunTraceSpanSchema.extend({
+    children: z.lazy(() => RetrieveRunTraceSpan.array()),
+  });
+
+export const RetrieveRunTraceResponseBody = z.object({
+  trace: z.object({
+    traceId: z.string(),
+    rootSpan: RetrieveRunTraceSpan,
+  }),
+});
+
+export type RetrieveRunTraceResponseBody = z.infer<typeof RetrieveRunTraceResponseBody>;

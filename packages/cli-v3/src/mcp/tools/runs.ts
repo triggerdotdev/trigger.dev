@@ -1,12 +1,6 @@
 import { toolsMetadata } from "../config.js";
-import {
-  CommonProjectsInput,
-  CommonRunsInput,
-  GetRunDetailsInput,
-  ListRunsInput,
-  TriggerTaskInput,
-} from "../schemas.js";
-import { ToolMeta } from "../types.js";
+import { formatRun, formatRunTrace } from "../formatters.js";
+import { CommonRunsInput, GetRunDetailsInput, ListRunsInput } from "../schemas.js";
 import { respondWithError, toolHandler } from "../utils.js";
 
 export const getRunDetailsTool = {
@@ -35,31 +29,34 @@ export const getRunDetailsTool = {
       branch: input.branch,
     });
 
-    if (input.debugMode) {
-      const [runResult, traceResult] = await Promise.all([
-        apiClient.retrieveRun(input.runId),
-        apiClient.retrieveRunTrace(input.runId),
-      ]);
+    const [runResult, traceResult] = await Promise.all([
+      apiClient.retrieveRun(input.runId),
+      apiClient.retrieveRunTrace(input.runId),
+    ]);
 
-      const runUrl = await ctx.getDashboardUrl(`/projects/v3/${projectRef}/runs/${runResult.id}`);
+    const formattedRun = formatRun(runResult);
+    const formattedTrace = formatRunTrace(traceResult.trace);
 
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({ ...runResult, runUrl, trace: traceResult }, null, 2),
-          },
-        ],
-      };
-    } else {
-      const runResult = await apiClient.retrieveRun(input.runId);
+    const runUrl = await ctx.getDashboardUrl(`/projects/v3/${projectRef}/runs/${runResult.id}`);
 
-      const runUrl = await ctx.getDashboardUrl(`/projects/v3/${projectRef}/runs/${runResult.id}`);
+    const content = [
+      "## Run Details",
+      formattedRun,
+      "",
+      "## Run Trace",
+      formattedTrace,
+      "",
+      `[View in dashboard](${runUrl})`,
+    ];
 
-      return {
-        content: [{ type: "text", text: JSON.stringify({ ...runResult, runUrl }, null, 2) }],
-      };
-    }
+    return {
+      content: [
+        {
+          type: "text",
+          text: content.join("\n"),
+        },
+      ],
+    };
   }),
 };
 
