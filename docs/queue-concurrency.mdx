@@ -14,9 +14,10 @@ It's important to note that only actively executing runs count towards concurren
 By default, all tasks have an unbounded concurrency limit, limited only by the overall concurrency limits of your environment. This means that each task could possibly "fill up" the entire
 concurrency limit of your environment.
 
+Each individual queue has a maximum concurrency limit equal to your environment's base concurrency limit. If you don't explicitly set a queue's concurrency limit, it will default to your environment's base concurrency limit.
+
 <Note>
-  Your environment has a maximum concurrency limit which depends on your plan. If you're a paying
-  customer you can request a higher limit by [contacting us](https://www.trigger.dev/contact).
+  Your environment has a base concurrency limit and a burstable limit (default burst factor of 2.0x the base limit). Individual queues are limited by the base concurrency limit, not the burstable limit. For example, if your base limit is 10, your environment can burst up to 20 concurrent runs, but any single queue can have at most 10 concurrent runs. If you're a paying customer you can request higher limits by [contacting us](https://www.trigger.dev/contact).
 </Note>
 
 ## Setting task concurrency
@@ -182,12 +183,21 @@ export const subtask = task({
 
 ## Waits and concurrency
 
-With our [task checkpoint system](/how-it-works#the-checkpoint-resume-system), a parent task can trigger and wait for a subtask to complete. The way this system interacts with the concurrency system is a little complicated but important to understand. There are two main scenarios that we handle slightly differently:
+With our [task checkpoint system](/how-it-works#the-checkpoint-resume-system), tasks can wait at various waitpoints (like waiting for subtasks to complete, delays, or external events). The way this system interacts with the concurrency system is important to understand.
 
-- When a parent task waits for a subtask on a different queue.
-- When a parent task waits for a subtask on the same queue.
+Concurrency is only released when a run reaches a waitpoint and is checkpointed. When a run is checkpointed, it transitions to the `WAITING` state and releases its concurrency slot back to both the queue and the environment, allowing other runs to execute or resume.
 
-These scenarios are discussed in more detail below:
+This means that:
+- Only actively executing runs count towards concurrency limits
+- Runs in the `WAITING` state (checkpointed at waitpoints) do not consume concurrency slots
+- You can have more runs in the `WAITING` state than your queue's concurrency limit
+- When a waiting run resumes (e.g., when a subtask completes), it must re-acquire a concurrency slot
+
+For example, if you have a queue with a `concurrencyLimit` of 1:
+- You can only have exactly 1 run executing at a time
+- You may have multiple runs in the `WAITING` state that belong to that queue
+- When the executing run reaches a waitpoint and checkpoints, it releases its slot
+- The next queued run can then begin execution
 
 <Note>
   We sometimes refer to the parent task as the "parent" and the subtask as the "child". Subtask and
@@ -196,7 +206,7 @@ These scenarios are discussed in more detail below:
 
 ### Waiting for a subtask on a different queue
 
-During the time when a parent task is waiting on a subtask, the "concurrency" slot of the parent task is still considered occupied on the parent task queue, but is temporarily "released" to the environment. An example will help illustrate this:
+When a parent task triggers and waits for a subtask on a different queue, the parent task will checkpoint and release its concurrency slot once it reaches the wait point. This prevents environment deadlocks where all concurrency slots would be occupied by waiting tasks.
 
 ```ts /trigger/waiting.ts
 export const parentTask = task({
@@ -205,8 +215,10 @@ export const parentTask = task({
     concurrencyLimit: 1,
   },
   run: async (payload) => {
-    //trigger a subtask
+    //trigger a subtask and wait for it to complete
     await subtask.triggerAndWait(payload);
+    // The parent task checkpoints here and releases its concurrency slot
+    // allowing other tasks to execute while waiting
   },
 });
 
@@ -218,17 +230,11 @@ export const subtask = task({
 });
 ```
 
-For example purposes, let's say the environment concurrency limit is 1. When the parent task is triggered, it will occupy the only slot in the environment. When the parent task triggers the subtask, the subtask will be placed in the queue for the subtask. The parent task will then wait for the subtask to complete. During this time, the parent task slot is temporarily released to the environment, allowing another task to run. Once the subtask completes, the parent task slot is reoccupied.
-
-This system prevents "stuck" tasks. If the parent task were to wait on the subtask and not release the slot, the environment would be stuck with only one task running.
-
-And because only the environment slot is released, the parent task queue slot is still occupied. This means that if another task is triggered on the parent task queue, it will be placed in the queue and wait for the parent task to complete, respecting the concurrency limit.
+When the parent task reaches the `triggerAndWait` call, it checkpoints and transitions to the `WAITING` state, releasing its concurrency slot back to both its queue and the environment. Once the subtask completes, the parent task will resume and re-acquire a concurrency slot.
 
 ### Waiting for a subtask on the same queue
 
-Because tasks can trigger and wait recursively, or share the same queue, we've added special handling for when a parent task waits for a subtask on the same queue.
-
-Recall above that when waiting for a subtask on a different queue, the parent task slot is temporarily released to the environment. When the parent task and the subtask share a queue, we also release the parent task slot to the queue. Again, an example will help illustrate this:
+When a parent task and subtask share the same queue, the checkpointing behavior ensures that recursive task execution can proceed without deadlocks, up to the queue's concurrency limit.
 
 ```ts /trigger/waiting-same-queue.ts
 export const myQueue = queue({
@@ -240,7 +246,7 @@ export const parentTask = task({
   id: "parent-task",
   queue: myQueue,
   run: async (payload) => {
-    //trigger a subtask
+    //trigger a subtask and wait for it to complete
     await subtask.triggerAndWait(payload);
   },
 });
@@ -254,9 +260,9 @@ export const subtask = task({
 });
 ```
 
-In this example, the parent task and the subtask share the same queue with a concurrency limit of 1. When the parent task triggers the subtask, the parent task slot is released to the queue, giving the subtask the opportunity to run. Once the subtask completes, the parent task slot is reoccupied.
+When the parent task checkpoints at the `triggerAndWait` call, it releases its concurrency slot back to the queue, allowing the subtask to execute. Once the subtask completes, the parent task will resume.
 
-It's very important to note that we only release at-most X slots to the queue, where X is the concurrency limit of the queue. This means that you can only trigger and wait for X subtasks on the same queue. If you try to trigger and wait for more than X subtasks, you will receive a `RECURSIVE_WAIT_DEADLOCK` error. The following example will result in a deadlock:
+However, you can only have recursive waits up to your queue's concurrency limit. If you exceed this limit, you will receive a `RECURSIVE_WAIT_DEADLOCK` error:
 
 ```ts /trigger/deadlock.ts
 export const myQueue = queue({
@@ -268,7 +274,6 @@ export const parentTask = task({
   id: "parent-task",
   queue: myQueue,
   run: async (payload) => {
-    //trigger a subtask
     await subtask.triggerAndWait(payload);
   },
 });
@@ -277,8 +282,7 @@ export const subtask = task({
   id: "subtask",
   queue: myQueue,
   run: async (payload) => {
-    //trigger a subtask
-    await subsubtask.triggerAndWait(payload);
+    await subsubtask.triggerAndWait(payload); // This will cause a deadlock
   },
 });
 
@@ -291,12 +295,16 @@ export const subsubtask = task({
 });
 ```
 
-Now this will result in a `RECURSIVE_WAIT_DEADLOCK` error because the parent task is waiting for the subtask, and the subtask is waiting for the subsubtask, but there is no more concurrency available in the queue. It will look a bit like this in the logs:
+This results in a `RECURSIVE_WAIT_DEADLOCK` error because the queue can only support one level of recursive waiting with a concurrency limit of 1:
 
 ![Recursive task deadlock](/images/recursive-task-deadlock-min.png)
 
 ### Mitigating recursive wait deadlocks
 
-If you are recursively triggering and waiting for tasks on the same queue, you can mitigate the risk of a deadlock by increasing the concurrency limit of the queue. This will allow you to trigger and wait for more subtasks.
+To avoid recursive wait deadlocks when using shared queues:
 
-You can also use different queues for the parent task and the subtask. This will allow you to trigger and wait for more subtasks without the risk of a deadlock.
+1. **Increase the queue's concurrency limit** to allow more levels of recursive waiting
+2. **Use different queues** for parent and child tasks to eliminate the possibility of deadlock
+3. **Design task hierarchies** to minimize deep recursive waiting patterns
+
+Remember that the number of recursive waits you can have on a shared queue is limited by that queue's concurrency limit.

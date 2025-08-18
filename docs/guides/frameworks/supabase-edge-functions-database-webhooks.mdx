@@ -147,7 +147,7 @@ These dependencies will allow you to interact with the Deepgram and Supabase API
 // Install any missing dependencies below
 import { createClient as createDeepgramClient } from "@deepgram/sdk";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
-import { logger, task } from "@trigger.dev/sdk/v3";
+import { logger, task } from "@trigger.dev/sdk";
 import ffmpeg from "fluent-ffmpeg";
 import fs from "fs";
 import { Readable } from "node:stream";
@@ -255,7 +255,7 @@ Before you can deploy the task, you'll need to add the FFmpeg build extension to
 ```ts trigger.config.ts
 // Add this import
 import { ffmpeg } from "@trigger.dev/build/extensions/core";
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   project: "<project ref>", // Replace with your project ref

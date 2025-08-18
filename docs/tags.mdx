@@ -60,7 +60,7 @@ This will create a run with the tags `user_123456` and `org_abcdefg`. They look 
 Use the `tags.add()` function to add tags to a run from inside the `run` function. This will add the tag `product_1234567` to the run:
 
 ```ts
-import { task, tags } from "@trigger.dev/sdk/v3";
+import { task, tags } from "@trigger.dev/sdk";
 
 export const myTask = task({
   id: "my-task",
@@ -111,7 +111,7 @@ On the Runs page open the filter menu, choose "Tags" and then start typing in th
 You can provide filters to the `runs.list` SDK function, including an array of tags.
 
 ```ts
-import { runs } from "@trigger.dev/sdk/v3";
+import { runs } from "@trigger.dev/sdk";
 
 // Loop through all runs with the tag "user_123456" that have completed
 for await (const run of runs.list({ tag: "user_123456", status: ["COMPLETED"] })) {

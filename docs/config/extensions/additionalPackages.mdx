@@ -7,7 +7,7 @@ description: "Use the additionalPackages build extension to include additional p
 Import the `additionalPackages` build extension and use it in your `trigger.config.ts` file:
 
 ```ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 import { additionalPackages } from "@trigger.dev/build/extensions/core";
 
 export default defineConfig({
@@ -22,7 +22,7 @@ export default defineConfig({
 This allows you to include additional packages in the build that are not automatically included via imports. This is useful if you want to install a package that includes a CLI tool that you want to invoke in your tasks via `exec`. We will try to automatically resolve the version of the package but you can specify the version by using the `@` symbol:
 
 ```ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   project: "<project ref>",

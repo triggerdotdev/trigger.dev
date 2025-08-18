@@ -63,7 +63,7 @@ export const heavyTask = task({
 You can use [runs.retrieve()](/management/runs/retrieve) to get a single run or [runs.list()](/management/runs/list) to get a list of runs. The response will include `costInCents` `baseCostInCents` and `durationMs` fields.
 
 ```ts single run
-import { runs } from "@trigger.dev/sdk/v3";
+import { runs } from "@trigger.dev/sdk";
 
 const run = await runs.retrieve("run-id");
 console.log(run.costInCents, run.baseCostInCents, run.durationMs);
@@ -71,7 +71,7 @@ const totalCost = run.costInCents + run.baseCostInCents;
 ```
 
 ```ts multiple runs
-import { runs } from "@trigger.dev/sdk/v3";
+import { runs } from "@trigger.dev/sdk";
 
 let totalCost = 0;
 for await (const run of runs.list({ tag: "user_123456" })) {

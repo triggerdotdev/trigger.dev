@@ -60,7 +60,7 @@ Once you have a proxy service, set the following environment variables in your T
 After you've initialized your project with Trigger.dev, add these build settings to your `trigger.config.ts` file:
 
 ```ts trigger.config.ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 import { pythonExtension } from "@trigger.dev/python/extension";
 import type { BuildContext, BuildExtension } from "@trigger.dev/core/v3/build";
 
@@ -123,7 +123,7 @@ export function installPlaywrightChromium(): BuildExtension {
 This task uses the `python.runScript` method to run the `crawl-url.py` script with the given URL as an argument. You can see the original task in our examples repository [here](https://github.com/triggerdotdev/examples/blob/main/python-crawl4ai/src/trigger/pythonTasks.ts).
 
 ```ts src/trigger/pythonTasks.ts
-import { logger, schemaTask, task } from "@trigger.dev/sdk/v3";
+import { logger, schemaTask, task } from "@trigger.dev/sdk";
 import { python } from "@trigger.dev/python";
 import { z } from "zod";
 

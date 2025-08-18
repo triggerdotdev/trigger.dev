@@ -3,16 +3,10 @@ title: "Bulk actions"
 description: "Perform actions like replay and cancel on multiple runs at once."
 ---
 
-Bulk actions allow you to perform operations like replaying or canceling on multiple runs at once. This is especially useful when you need to retry a batch of failed runs with a new version of your code, or when you need to cancel multiple in-progress runs.
-
-## Bulk replaying
-
-You can replay multiple runs at once by selecting them from the table on the Runs page using the checkbox on the left hand side of the row. Then click the "Replay runs" button from the bulk action bar that appears at the bottom of the screen.
-
-This is especially useful if you have lots of failed runs and want to run them all again. To do this, first filter the runs by the status you want, then select all the runs you want to replay and click the "Replay runs" button from the bulk action bar at the bottom of the page.
+Bulk actions allow you to perform replaying and canceling on multiple runs at once. This is especially useful when you need to retry a batch of failed runs with a new version of your code, or when you need to cancel multiple in-progress runs.
 
 <video
-  src="https://content.trigger.dev/bulk-replaying-runs.mp4"
+  src="https://content.trigger.dev/bulk-actions.mp4"
   preload="auto"
   controls={true}
   loop
@@ -22,19 +16,34 @@ This is especially useful if you have lots of failed runs and want to run them a
   height="100%"
 />
 
-## Bulk canceling
+## How to create a new bulk action
 
-Similar to replaying multiple runs, you can cancel multiple runs at once. This is particularly useful when you have a batch of runs that you want to stop, perhaps because they were triggered with incorrect parameters or are no longer needed.
+<Icon icon="circle-1" iconType="solid" color="#FF2D6B" size="20" /> Open the bulk action panel from the top right of the runs page
 
-To cancel multiple runs:
+![Access bulk actions](/images/bulk-action-open-panel.png)
 
-1. Filter the runs table to show the runs you want to cancel (e.g., all runs with status "QUEUED" or "EXECUTING")
-2. Use the checkboxes on the left side of the runs table to select the runs you want to cancel 
-3. Click the "Cancel runs" button in the bulk action bar that appears at the bottom of the screen
 
-After confirming, all selected runs that can be canceled (those in appropriate states like QUEUED or EXECUTING) will be canceled. The status of these runs will change to "CANCELED" and they will not be resumed.
+<Icon icon="circle-2" iconType="solid" color="#FF2D6B" size="20" /> Filter the runs table to show the runs you want to bulk action
+
+<Icon icon="circle-3" iconType="solid" color="#FF2D6B" size="20" /> Alternatively, you can select individual runs
+
+<Icon icon="circle-4" iconType="solid" color="#FF2D6B" size="20" /> Choose the runs you want to bulk action
+
+<Icon icon="circle-5" iconType="solid" color="#FF2D6B" size="20" /> Name your bulk action (optional)
+
+<Icon icon="circle-6" iconType="solid" color="#FF2D6B" size="20" /> Choose the action you want to perform, replay or cancel
+
+<Icon icon="circle-7" iconType="solid" color="#FF2D6B" size="20" /> Click the "Replay" or "Cancel" button and confirm in the dialog
+
+![Access bulk actions](/images/bulk-action-create.png)
+
+<Icon icon="circle-8" iconType="solid" color="#FF2D6B" size="20" /> You'll now view the bulk action processing from the bulk action page
+
+<Icon icon="circle-9" iconType="solid" color="#FF2D6B" size="20" /> You can replay or view the runs from this page
+
+![Access bulk actions](/images/bulk-action-page.png)
 
 <Note>
   You can only cancel runs that are in states that allow cancellation (like QUEUED or EXECUTING).
-  Runs that are already completed, failed, or in other final states cannot be canceled.
+  Runs that are already completed, failed, or in other final states by the time the bulk action process gets to them, cannot be canceled.
 </Note>

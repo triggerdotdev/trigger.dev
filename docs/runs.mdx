@@ -3,6 +3,8 @@ title: "Runs"
 description: "Understanding the lifecycle of task run execution in Trigger.dev"
 ---
 
+import RunBooleanHelpers from "/snippets/run-boolean-helpers.mdx";
+
 In Trigger.dev, the concepts of runs and attempts are fundamental to understanding how tasks are executed and managed. This article explains these concepts in detail and provides insights into the various states a run can go through during its lifecycle.
 
 ## What are runs?
@@ -22,11 +24,10 @@ A run can go through **various** states during its lifecycle. The following diag
 
 Runs can also find themselves in lots of other states depending on what's happening at any given time. The following sections describe all the possible states in more detail.
 
-### Initial States
+### Initial states
 
-<Icon icon="rectangle-history" iconType="solid" color="#FBBF24" size={17} /> **Waiting for deploy**:
-If a task is triggered before it has been deployed, the run enters this state and waits for the task
-to be deployed.
+<Icon icon="rectangle-history" iconType="solid" color="#FBBF24" size={17} /> **Pending version**:
+The task is waiting for a version update because it cannot execute without additional information (task, queue, etc.).
 
 <Icon icon="clock" iconType="solid" color="#878C99" size={17} /> **Delayed**: When a run is triggered
 with a delay, it enters this state until the specified delay period has passed.
@@ -34,18 +35,17 @@ with a delay, it enters this state until the specified delay period has passed.
 <Icon icon="rectangle-history" iconType="solid" color="#878C99" size={17} /> **Queued**: The run is ready
 to be executed and is waiting in the queue.
 
-### Execution States
+<Icon icon="rectangle-history" iconType="solid" color="#878C99" size={17} /> **Dequeued**: The task has been dequeued and is being sent to a worker to start executing.
+
+### Execution states
 
 <Icon icon="spinner-third" iconType="duotone" color="#3B82F6" size={17} /> **Executing**: The task is
-currently running.
-
-<Icon icon="arrows-rotate" iconType="solid" color="#3B82F6" size={17} /> **Reattempting**: The task has
-failed and is being retried.
+currently being executed by a worker.
 
 <Icon icon="hourglass" iconType="solid" color="#878C99" size={17} /> **Waiting**: You have used a
 [triggerAndWait()](/triggering#yourtask-triggerandwait), [batchTriggerAndWait()](/triggering#yourtask-batchtriggerandwait) or a [wait function](/wait). When the wait is complete, the task will resume execution.
 
-### Final States
+### Final states
 
 <Icon icon="circle-check" iconType="solid" color="#28BF5C" size={17} /> **Completed**: The task has successfully
 finished execution.
@@ -54,21 +54,18 @@ finished execution.
 by the user.
 
 <Icon icon="circle-xmark" iconType="solid" color="#E11D48" size={17} /> **Failed**: The task has failed
-to complete successfully.
+to complete successfully due to an error in the task code.
 
 <Icon icon="alarm-exclamation" iconType="solid" color="#E11D48" size={17} /> **Timed out**: Task has
 failed because it exceeded its `maxDuration`.
 
 <Icon icon="fire" iconType="solid" color="#E11D48" size={17} /> **Crashed**: The worker process crashed
-during execution (likely due to an Out of Memory error).
-
-<Icon icon="bolt-slash" iconType="solid" color="#E11D48" size={17} /> **Interrupted**: In development
-mode, when the CLI is disconnected.
+during execution (likely due to an Out of Memory error) and won’t be retried.
 
 <Icon icon="bug" iconType="solid" color="#E11D48" size={17} /> **System failure**: An unrecoverable system
 error has occurred.
 
-<Icon icon="trash-can" iconType="solid" color="#878C99" size={17} /> **Expired**: The run's Time-to-Live
+<Icon icon="trash-can" iconType="solid" color="#878C99" size={17} /> **Expired**: The run's [Time-to-Live](#time-to-live-ttl)
 (TTL) has passed before it could start executing.
 
 ## Attempts
@@ -91,6 +88,35 @@ A run is considered finished when:
 2. The task has reached its retry limit and all attempts have failed
 
 At this point, the run will have either an output (if successful) or an error (if failed).
+
+## Boolean helpers
+
+Run objects returned from the API and Realtime include convenient boolean helper methods to check the run's status:
+
+```ts
+import { runs } from "@trigger.dev/sdk";
+
+const run = await runs.retrieve("run_1234");
+
+if (run.isCompleted) {
+  console.log("Run completed successfully");
+}
+```
+
+<RunBooleanHelpers />
+
+These helpers are also available when subscribing to Realtime run updates:
+
+```ts
+import { runs } from "@trigger.dev/sdk";
+
+for await (const run of runs.subscribeToRun("run_1234")) {
+  if (run.isCompleted) {
+    console.log("Run completed successfully!");
+    break;
+  }
+}
+```
 
 ## Advanced run features
 
@@ -184,7 +210,7 @@ Similar to `triggerAndWait()`, the `batchTriggerAndWait()` function lets you bat
 List runs in a specific environment. You can filter the runs by status, created at, task identifier, version, and more:
 
 ```ts
-import { runs } from "@trigger.dev/sdk/v3";
+import { runs } from "@trigger.dev/sdk";
 
 // Get the first page of runs, returning up to 20 runs
 let page = await runs.list({ limit: 20 });
@@ -203,7 +229,7 @@ while (page.hasNextPage()) {
 You can also use an Async Iterator to get all runs:
 
 ```ts
-import { runs } from "@trigger.dev/sdk/v3";
+import { runs } from "@trigger.dev/sdk";
 
 for await (const run of runs.list({ limit: 20 })) {
   console.log(run);
@@ -213,7 +239,7 @@ for await (const run of runs.list({ limit: 20 })) {
 You can provide multiple filters to the `list()` function to narrow down the results:
 
 ```ts
-import { runs } from "@trigger.dev/sdk/v3";
+import { runs } from "@trigger.dev/sdk";
 
 const response = await runs.list({
   status: ["QUEUED", "EXECUTING"], // Filter by status
@@ -232,7 +258,7 @@ const response = await runs.list({
 Fetch a single run by it's ID:
 
 ```ts
-import { runs } from "@trigger.dev/sdk/v3";
+import { runs } from "@trigger.dev/sdk";
 
 const run = await runs.retrieve(runId);
 ```
@@ -240,7 +266,7 @@ const run = await runs.retrieve(runId);
 You can provide the type of the task to correctly type the `run.payload` and `run.output`:
 
 ```ts
-import { runs } from "@trigger.dev/sdk/v3";
+import { runs } from "@trigger.dev/sdk";
 import type { myTask } from "./trigger/myTask";
 
 const run = await runs.retrieve<typeof myTask>(runId);
@@ -252,7 +278,7 @@ console.log(run.output.bar); // string
 If you have just triggered a run, you can pass the entire response object to `retrieve()` and the response will already be typed:
 
 ```ts
-import { runs, tasks } from "@trigger.dev/sdk/v3";
+import { runs, tasks } from "@trigger.dev/sdk";
 import type { myTask } from "./trigger/myTask";
 
 const response = await tasks.trigger<typeof myTask>({ foo: "bar" });
@@ -267,7 +293,7 @@ console.log(run.output.bar); // string
 Cancel a run:
 
 ```ts
-import { runs } from "@trigger.dev/sdk/v3";
+import { runs } from "@trigger.dev/sdk";
 
 await runs.cancel(runId);
 ```
@@ -277,7 +303,7 @@ await runs.cancel(runId);
 Replay a run:
 
 ```ts
-import { runs } from "@trigger.dev/sdk/v3";
+import { runs } from "@trigger.dev/sdk";
 
 await runs.replay(runId);
 ```
@@ -287,7 +313,7 @@ await runs.replay(runId);
 Updates a delayed run with a new delay. Only valid when the run is in the DELAYED state.
 
 ```ts
-import { runs } from "@trigger.dev/sdk/v3";
+import { runs } from "@trigger.dev/sdk";
 
 await runs.reschedule(runId, { delay: "1h" });
 ```
@@ -297,7 +323,7 @@ await runs.reschedule(runId, { delay: "1h" });
 Subscribe to changes to a specific run in real-time:
 
 ```ts
-import { runs } from "@trigger.dev/sdk/v3";
+import { runs } from "@trigger.dev/sdk";
 
 for await (const run of runs.subscribeToRun(runId)) {
   console.log(run);
@@ -307,7 +333,7 @@ for await (const run of runs.subscribeToRun(runId)) {
 Similar to `runs.retrieve()`, you can provide the type of the task to correctly type the `run.payload` and `run.output`:
 
 ```ts
-import { runs } from "@trigger.dev/sdk/v3";
+import { runs } from "@trigger.dev/sdk";
 import type { myTask } from "./trigger/myTask";
 
 for await (const run of runs.subscribeToRun<typeof myTask>(runId)) {

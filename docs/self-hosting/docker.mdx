@@ -14,6 +14,7 @@ Should the burden ever get too much, we'd be happy to see you on [Trigger.dev cl
 ## What's new?
 
 Goodbye v3, hello v4! We made quite a few changes:
+
 - **Much simpler setup.** The provider and coordinator are now combined into a single supervisor. No more startup scripts, just `docker compose up`.
 - **Automatic container cleanup.** The supervisor will automatically clean up containers that are no longer needed.
 - **Support for multiple worker machines.** This is a big one, and we're very excited about it! You can now scale your workers horizontally as needed.
@@ -102,18 +103,8 @@ docker compose logs -f webapp
 6. (optional) To initialize a new project, run the following command:
 
 ```bash
-npx trigger.dev@v4-beta init -p <project-ref> -a http://localhost:8030
+npx trigger.dev@latest init -p <project-ref> -a http://localhost:8030
 ```
-
-<Warning>
-The commands displayed in the webapp are incorrect while v4 is in beta. You should always use the `v4-beta` tag and not `latest`.
-</Warning>
-
-{/* 7. Bonus: Add traefik as a reverse proxy
-
-```bash
-docker compose -f docker-compose.yml -f ../docker-compose.traefik.yml up -d
-``` */}
 
 ### Worker
 
@@ -155,13 +146,6 @@ If you want to run the webapp and worker on the same machine, just replace the `
 # Run this from the /hosting/docker directory
 docker compose -f webapp/docker-compose.yml -f worker/docker-compose.yml up -d
 ```
-
-{/* And optionally add traefik as a reverse proxy:
-
-```bash
-# Run this from the /hosting/docker directory
-docker compose -f webapp/docker-compose.yml -f worker/docker-compose.yml -f docker-compose.traefik.yml up -d
-``` */}
 
 ## Worker token
 
@@ -245,7 +229,7 @@ You should change these before deploying to production, especially the password.
 ### Setup
 
 <Note>
-The `packets` bucket is created by default. In case this doesn't work, you can create it manually.
+  The `packets` bucket is created by default. In case this doesn't work, you can create it manually.
 </Note>
 
 1. Login to the dashboard: `http://localhost:9001`
@@ -323,13 +307,14 @@ This will apply to all auth methods including magic link and GitHub OAuth.
 ## Version locking
 
 There are several reasons to lock the version of your Docker images:
+
 - **Backwards compatibility.** We try our best to maintain compatibility with older CLI versions, but it's not always possible. If you don't want to update your CLI, you can lock your Docker images to that specific version.
 - **Ensuring full feature support.** Sometimes, new CLI releases will also require new or updated platform features. Running unlocked images can make any issues difficult to debug. Using a specific tag can help here as well.
 
-By default, the images will point at the latest versioned release via the `v4-beta` tag. You can override this by specifying a different tag in your `.env` file. For example:
+By default, the images will point at the latest versioned release via the `latest` tag. You can override this by specifying a different tag in your `.env` file. For example:
 
 ```bash
-TRIGGER_IMAGE_TAG=v4.0.0-v4-beta.21
+TRIGGER_IMAGE_TAG=v4.0.0
 ```
 
 ## Troubleshooting
@@ -349,16 +334,12 @@ TRIGGER_IMAGE_TAG=v4.0.0-v4-beta.21
 
 This section highlights some of the CLI commands and options that are useful when self-hosting. Please check the [CLI reference](/cli-introduction) for more in-depth documentation.
 
-<Warning>
-While v4 is in beta, always use `@v4-beta` instead of `@latest`. For example: `npx trigger.dev@v4-beta dev`
-</Warning>
-
 ### Login
 
 To avoid being redirected to [Trigger.dev Cloud](https://cloud.trigger.dev) when using the CLI, you need to specify the URL of your self-hosted instance with the `--api-url` or `-a` flag. For example:
 
 ```bash
-npx trigger.dev@v4-beta login -a http://trigger.example.com
+npx trigger.dev@latest login -a http://trigger.example.com
 ```
 
 Once you've logged in, you shouldn't have to specify the URL again with other commands.
@@ -368,7 +349,7 @@ Once you've logged in, you shouldn't have to specify the URL again with other co
 You can specify a profile when logging in. This allows you to easily use the CLI with multiple instances of Trigger.dev. For example:
 
 ```bash
-npx trigger.dev@v4-beta login -a http://trigger.example.com \
+npx trigger.dev@latest login -a http://trigger.example.com \
     --profile self-hosted
 ```
 
@@ -377,29 +358,29 @@ Logging in with a new profile will also make it the new default profile.
 To use a specific profile, you can use the `--profile` flag with other commands:
 
 ```bash
-npx trigger.dev@v4-beta dev --profile self-hosted
+npx trigger.dev@latest dev --profile self-hosted
 ```
 
 To list all your profiles, use the `list-profiles` command:
 
 ```bash
-npx trigger.dev@v4-beta list-profiles
+npx trigger.dev@latest list-profiles
 ```
 
 To remove a profile, use the `logout` command:
 
 ```bash
-npx trigger.dev@v4-beta logout --profile self-hosted
+npx trigger.dev@latest logout --profile self-hosted
 ```
 
 To switch to a different profile, use the `switch` command:
 
 ```bash
 # To run interactively
-npx trigger.dev@v4-beta switch
+npx trigger.dev@latest switch
 
 # To switch to a specific profile
-npx trigger.dev@v4-beta switch self-hosted
+npx trigger.dev@latest switch self-hosted
 ```
 
 ### Whoami
@@ -407,12 +388,12 @@ npx trigger.dev@v4-beta switch self-hosted
 It can be useful to check you are logged into the correct instance. Running this will also show the API URL:
 
 ```bash
-npx trigger.dev@v4-beta whoami
+npx trigger.dev@latest whoami
 ```
 
 ## CI / GitHub Actions
 
-When running the CLI in a CI environment, your login profiles won't be available. Instead, you can use the `TRIGGER_API_URL` and `TRIGGER_ACCESS_TOKEN` environment 
+When running the CLI in a CI environment, your login profiles won't be available. Instead, you can use the `TRIGGER_API_URL` and `TRIGGER_ACCESS_TOKEN` environment
 variables to point at your self-hosted instance and authenticate.
 
 For more detailed instructions, see the [GitHub Actions guide](/github-actions).
