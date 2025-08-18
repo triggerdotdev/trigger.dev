@@ -1,4 +1,9 @@
-import { RetrieveRunResponse, RetrieveRunTraceResponseBody } from "@trigger.dev/core/v3/schemas";
+import {
+  ListRunResponseItem,
+  RetrieveRunResponse,
+  RetrieveRunTraceResponseBody,
+} from "@trigger.dev/core/v3/schemas";
+import { CursorPageResponse } from "@trigger.dev/core/v3/zodfetch";
 
 export function formatRun(run: RetrieveRunResponse): string {
   const lines: string[] = [];
@@ -275,4 +280,101 @@ function getStatusIndicator(
   if (spanData.isError) return "[ERROR]";
   if (spanData.isPartial) return "[PARTIAL]";
   return "[COMPLETED]";
+}
+
+export function formatRunList(runsPage: CursorPageResponse<ListRunResponseItem>): string {
+  const lines: string[] = [];
+
+  // Header with count info
+  const totalRuns = runsPage.data.length;
+  lines.push(`Found ${totalRuns} run${totalRuns === 1 ? "" : "s"}`);
+  lines.push("");
+
+  if (totalRuns === 0) {
+    lines.push("No runs found.");
+    return lines.join("\n");
+  }
+
+  // Format each run in a compact table-like format
+  runsPage.data.forEach((run, index) => {
+    lines.push(`${index + 1}. ${formatRunSummary(run)}`);
+  });
+
+  // Pagination info
+  lines.push("");
+  const paginationInfo = [];
+  if (runsPage.pagination.previous) {
+    paginationInfo.push("← Previous page available");
+  }
+  if (runsPage.pagination.next) {
+    paginationInfo.push("Next page available →");
+  }
+
+  if (paginationInfo.length > 0) {
+    lines.push(`Pagination: ${paginationInfo.join(" | ")}`);
+    if (runsPage.pagination.next) {
+      lines.push(`Next cursor: ${runsPage.pagination.next}`);
+    }
+    if (runsPage.pagination.previous) {
+      lines.push(`Previous cursor: ${runsPage.pagination.previous}`);
+    }
+  }
+
+  return lines.join("\n");
+}
+
+function formatRunSummary(run: ListRunResponseItem): string {
+  const parts: string[] = [];
+
+  // Basic info: ID, task, status
+  parts.push(`${run.id}`);
+  parts.push(`${run.taskIdentifier}`);
+  parts.push(`${formatStatus(run.status)}`);
+
+  // Environment
+  parts.push(`env:${run.env.name}`);
+
+  // Timing - show the most relevant time
+  let timeInfo = "";
+  if (run.finishedAt) {
+    timeInfo = `finished ${formatDateTime(run.finishedAt)}`;
+  } else if (run.startedAt) {
+    timeInfo = `started ${formatDateTime(run.startedAt)}`;
+  } else if (run.delayedUntil) {
+    timeInfo = `delayed until ${formatDateTime(run.delayedUntil)}`;
+  } else {
+    timeInfo = `created ${formatDateTime(run.createdAt)}`;
+  }
+  parts.push(timeInfo);
+
+  // Duration if available
+  if (run.durationMs > 0) {
+    parts.push(`took ${formatDuration(run.durationMs)}`);
+  }
+
+  // Cost if significant
+  if (run.costInCents > 0) {
+    parts.push(`$${(run.costInCents / 100).toFixed(4)}`);
+  }
+
+  // Tags if present
+  if (run.tags && run.tags.length > 0) {
+    const tagStr =
+      run.tags.length > 2
+        ? `${run.tags.slice(0, 2).join(", ")}+${run.tags.length - 2}`
+        : run.tags.join(", ");
+    parts.push(`tags:[${tagStr}]`);
+  }
+
+  // Test flag
+  if (run.isTest) {
+    parts.push("[TEST]");
+  }
+
+  // Version if available
+  if (run.version) {
+    parts.push(`v${run.version}`);
+  }
+
+  return parts.join(" | ");
 }

@@ -1,5 +1,5 @@
 import { toolsMetadata } from "../config.js";
-import { formatRun, formatRunTrace } from "../formatters.js";
+import { formatRun, formatRunList, formatRunTrace } from "../formatters.js";
 import { CommonRunsInput, GetRunDetailsInput, ListRunsInput } from "../schemas.js";
 import { respondWithError, toolHandler } from "../utils.js";
 
@@ -142,8 +142,10 @@ export const listRunsTool = {
       machine: input.machine,
     });
 
+    const formattedRuns = formatRunList(result);
+
     return {
-      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+      content: [{ type: "text", text: formattedRuns }],
     };
   }),
 };
