@@ -129,7 +129,8 @@
                   "realtime/react-hooks/triggering",
                   "realtime/react-hooks/subscribe",
                   "realtime/react-hooks/streams",
-                  "realtime/react-hooks/swr"
+                  "realtime/react-hooks/swr",
+                  "realtime/react-hooks/use-wait-token"
                 ]
               },
               {
