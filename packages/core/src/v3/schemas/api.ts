@@ -63,7 +63,11 @@ export const GetOrgsResponseBody = z.array(
 export type GetOrgsResponseBody = z.infer<typeof GetOrgsResponseBody>;
 
 export const CreateProjectRequestBody = z.object({
-  name: z.string(),
+  name: z
+    .string()
+    .trim()
+    .min(1, "Name is required")
+    .max(255, "Name must be less than 255 characters"),
 });
 
 export type CreateProjectRequestBody = z.infer<typeof CreateProjectRequestBody>;
@@ -1158,6 +1162,8 @@ const ApiDeploymentListPaginationCursor = z
 const ApiDeploymentListPaginationLimit = z.coerce
   .number()
   .describe("The number of deployments to return, defaults to 20 (max 100)")
+  .min(1, "Limit must be at least 1")
+  .max(100, "Limit must be less than 100")
   .optional();
 
 export const ApiDeploymentListParams = {

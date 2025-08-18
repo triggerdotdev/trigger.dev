@@ -119,8 +119,8 @@ export class McpContext {
     // If cwd is a path to the actual trigger.config.ts file, then we should set the cwd to the directory of the file
     let $cwd = cwd ? (path.extname(cwd) !== "" ? path.dirname(cwd) : cwd) : undefined;
 
-    function isRelativePath(path: string) {
-      return !path.startsWith("/");
+    function isRelativePath(filePath: string) {
+      return !path.isAbsolute(filePath);
     }
 
     if (!cwd) {

@@ -1,4 +1,4 @@
-import { json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { json, type LoaderFunctionArgs } from "@remix-run/node";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { devPresence } from "~/presenters/v3/DevPresence.server";
@@ -8,8 +8,6 @@ import { getEnvironmentFromEnv } from "./api.v1.projects.$projectRef.$env";
 const ParamsSchema = z.object({
   projectRef: z.string(),
 });
-
-type ParamsSchema = z.infer<typeof ParamsSchema>;
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);

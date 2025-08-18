@@ -146,7 +146,11 @@ async function resolveCLIExec(context: McpContext, cwd?: string): Promise<[strin
       sdkVersion,
     });
 
-    return [process.argv[0] ?? "npx", process.argv[1] ?? "trigger.dev@latest"];
+    if (typeof process.argv[0] === "string" && typeof process.argv[1] === "string") {
+      return [process.argv[0], process.argv[1]];
+    }
+
+    return ["npx", "trigger.dev@latest"];
   }
 
   return ["npx", `trigger.dev@${sdkVersion}`];

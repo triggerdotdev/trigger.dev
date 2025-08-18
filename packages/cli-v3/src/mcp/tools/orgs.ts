@@ -141,62 +141,70 @@ export const initializeProjectTool = {
   handler: toolHandler(InitializeProjectInput.shape, async (input, { ctx }) => {
     ctx.logger?.log("calling initialize_project", { input });
 
-    const cwd = input.cwd ?? (await ctx.getCwd());
+    let projectRef: string | undefined = input.projectRef;
 
-    if (!cwd) {
-      return respondWithError(
-        "No current working directory found. Please provide a projectRef or a cwd."
-      );
-    }
+    if (!projectRef) {
+      const cwd = input.cwd ?? (await ctx.getCwd());
 
-    // Try to load the config file
-    const [_, config] = await tryCatch(loadConfig({ cwd }));
-
-    if (config?.configFile) {
-      if (typeof config.project === "string" && config.project.startsWith("proj_")) {
-        ctx.logger?.log("initialize_project existing project", {
-          config,
-          projectRef: config.project,
-        });
-
-        return {
-          content: [
-            {
-              type: "text",
-              text: `We found an existing trigger.config.ts file in the current working directory. Skipping initialization.`,
-            },
-          ],
-        };
-      } else {
+      if (!cwd) {
         return respondWithError(
-          "Could not find the project ref in the config file. Please provide a projectRef."
+          "No current working directory found. Please provide a projectRef or a cwd."
         );
       }
+
+      // Try to load the config file
+      const [_, config] = await tryCatch(loadConfig({ cwd }));
+
+      if (config?.configFile) {
+        if (typeof config.project === "string" && config.project.startsWith("proj_")) {
+          ctx.logger?.log("initialize_project existing project", {
+            config,
+            projectRef: config.project,
+          });
+
+          return {
+            content: [
+              {
+                type: "text",
+                text: `We found an existing trigger.config.ts file in the current working directory. Skipping initialization.`,
+              },
+            ],
+          };
+        } else {
+          return respondWithError(
+            "Could not find the project ref in the config file. Please provide a projectRef."
+          );
+        }
+      }
+
+      const cliApiClient = await ctx.getCliApiClient();
+
+      const project = await cliApiClient.createProject(input.orgParam, {
+        name: input.projectName,
+      });
+
+      if (!project.success) {
+        return respondWithError(
+          `Failed to create project ${input.projectName} in organization ${input.orgParam}: ${project.error}`
+        );
+      }
+
+      ctx.logger?.log("initialize_project new project", {
+        project: project.data,
+      });
+
+      projectRef = project.data.externalRef;
     }
 
     const cliApiClient = await ctx.getCliApiClient();
 
-    const project = await cliApiClient.createProject(input.orgParam, {
-      name: input.projectName,
-    });
-
-    if (!project.success) {
-      return respondWithError(
-        `Failed to create project ${input.projectName} in organization ${input.orgParam}: ${project.error}`
-      );
-    }
-
-    ctx.logger?.log("initialize_project new project", {
-      project: project.data,
-    });
-
     const projectEnv = await cliApiClient.getProjectEnv({
-      projectRef: project.data.externalRef,
+      projectRef: projectRef,
       env: "dev",
     });
 
     const manualSetupGuide = await getManualSetupGuide(
-      project.data.externalRef,
+      projectRef,
       projectEnv.success ? projectEnv.data.apiKey : undefined,
       projectEnv.success ? projectEnv.data.apiUrl : undefined
     );
