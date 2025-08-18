@@ -17,6 +17,9 @@ Trigger.dev is an open source platform that makes it easy to create event-driven
 | [whoami](https://trigger.dev/docs/cli-whoami-commands)               | Display the current logged in user and project details.            |
 | [logout](https://trigger.dev/docs/cli-logout-commands)               | Logout of Trigger.dev.                                             |
 | [list-profiles](https://trigger.dev/docs/cli-list-profiles-commands) | List all of your CLI profiles.                                     |
+| [preview archive](https://trigger.dev/docs/cli-preview-archive)      | Archive a preview branch.                                          |
+| [promote](https://trigger.dev/docs/cli-promote-commands)             | Promote a previously deployed version to the current version.      |
+| [switch](https://trigger.dev/docs/cli-switch)                        | Switch between CLI profiles.                                       |
 | [update](https://trigger.dev/docs/cli-update-commands)               | Updates all `@trigger.dev/*` packages to match the CLI version.    |
 
 ## MCP Server
