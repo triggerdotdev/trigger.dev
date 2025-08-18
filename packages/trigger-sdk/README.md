@@ -18,15 +18,32 @@
 
 # Official TypeScript SDK for Trigger.dev
 
-The Trigger.dev SDK is a TypeScript/JavaScript library that allows you to define and trigger tasks in your project.
+The Trigger.dev SDK is a TypeScript/JavaScript library that allows you to define and trigger tasks in your projects.
 
 ## About Trigger.dev
 
-Trigger.dev is a platform for building and deploying fully-managed AI agents and workflows. Write workflows in normal async TypeScript for everything from simple tasks to long-running AI agents, heavy media processing, complex real-time systems and more. Complete with trace visibility, managed queues, and elastic infrastructure which handles the horizontal scaling.
+Trigger.dev is an open source platform for building and deploying fully-managed AI agents and workflows. Write workflows in normal async TypeScript for everything from simple tasks to long-running AI agents, heavy media processing, complex real-time systems and more. Complete with trace visibility, managed queues, and elastic infrastructure which handles the horizontal scaling.
+
+## Core features
+
+- Task creation and execution
+- CLI for development and deployment
+- Build system with extensions
+- Management API for runs, schedules, and environment variables
+
+## Key Components:
+
+- Tasks: Background jobs written in TypeScript/JavaScript
+- CLI: Commands for login, init, dev, deploy
+- Build Extensions: Customize builds (Prisma, Python, FFmpeg, etc.)
+- Management API: Programmatic control over runs and resources
 
 ## Getting started
 
-The quickest way to get started is to create an account in our [web app](https://cloud.trigger.dev), create a new project and follow the instructions in the onboarding. Build and deploy your first task in minutes.
+There are two ways to get started:
+
+1. Create an account in our [web app](https://cloud.trigger.dev), create a new project and follow the instructions in the onboarding. Build and deploy your first task in minutes.
+2. [Manual setup](https://trigger.dev/docs/manual-setup) in your existing project.
 
 ## SDK usage
 
