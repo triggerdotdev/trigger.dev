@@ -131,28 +131,30 @@
             ]
           },
           {
-            "group": "Frontend usage",
-            "pages": [
-              "frontend/overview",
-              {
-                "group": "React hooks",
-                "pages": [
-                  "frontend/react-hooks/overview",
-                  "frontend/react-hooks/realtime",
-                  "frontend/react-hooks/triggering"
-                ]
-              }
-            ]
-          },
-          {
-            "group": "Realtime API",
+            "group": "Realtime",
             "pages": [
               "realtime/overview",
-              "realtime/streams",
-              "realtime/react-hooks",
-              "realtime/subscribe-to-run",
-              "realtime/subscribe-to-runs-with-tag",
-              "realtime/subscribe-to-batch"
+              "realtime/how-it-works",
+              "realtime/run-object",
+              "realtime/auth",
+              {
+                "group": "React hooks (frontend)",
+                "pages": [
+                  "realtime/react-hooks/overview",
+                  "realtime/react-hooks/triggering",
+                  "realtime/react-hooks/subscribe",
+                  "realtime/react-hooks/streams",
+                  "realtime/react-hooks/swr"
+                ]
+              },
+              {
+                "group": "Backend",
+                "pages": [
+                  "realtime/backend/overview",
+                  "realtime/backend/subscribe",
+                  "realtime/backend/streams"
+                ]
+              }
             ]
           },
           {
@@ -621,7 +623,47 @@
     },
     {
       "source": "/frontend/react-hooks",
-      "destination": "/frontend/react-hooks/overview"
+      "destination": "/realtime/react-hooks/overview"
+    },
+    {
+      "source": "/frontend/overview",
+      "destination": "/realtime/auth"
+    },
+    {
+      "source": "/frontend/react-hooks/overview",
+      "destination": "/realtime/react-hooks/overview"
+    },
+    {
+      "source": "/frontend/react-hooks/realtime",
+      "destination": "/realtime/react-hooks/realtime"
+    },
+    {
+      "source": "/frontend/react-hooks/triggering",
+      "destination": "/realtime/react-hooks/triggering"
+    },
+    {
+      "source": "/realtime/backend",
+      "destination": "/realtime/backend/overview"
+    },
+    {
+      "source": "/realtime/streams",
+      "destination": "/realtime/backend/streams"
+    },
+    {
+      "source": "/realtime/react-hooks",
+      "destination": "/realtime/react-hooks/overview"
+    },
+    {
+      "source": "/realtime/subscribe-to-run",
+      "destination": "/realtime/backend/subscribe"
+    },
+    {
+      "source": "/realtime/subscribe-to-runs-with-tag",
+      "destination": "/realtime/backend/subscribe"
+    },
+    {
+      "source": "/realtime/subscribe-to-batch",
+      "destination": "/realtime/backend/subscribe"
     },
     {
       "source": "/management/projects/runs",

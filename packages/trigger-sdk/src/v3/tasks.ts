@@ -18,7 +18,6 @@ import {
   createToolTask,
   SubtaskUnwrapError,
   trigger,
-  triggerAndPoll,
   triggerAndWait,
 } from "./shared.js";
 
@@ -86,7 +85,6 @@ export const toolTask = createToolTask;
 
 export const tasks = {
   trigger,
-  triggerAndPoll,
   batchTrigger,
   triggerAndWait,
   batchTriggerAndWait,

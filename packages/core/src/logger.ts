@@ -147,6 +147,7 @@ function extractStructuredErrorFromArgs(...args: Array<Record<string, unknown> |
       message: error.message,
       stack: error.stack,
       name: error.name,
+      metadata: "metadata" in error ? error.metadata : undefined,
     };
   }
 
@@ -157,6 +158,7 @@ function extractStructuredErrorFromArgs(...args: Array<Record<string, unknown> |
       message: structuredError.error.message,
       stack: structuredError.error.stack,
       name: structuredError.error.name,
+      metadata: "metadata" in structuredError.error ? structuredError.error.metadata : undefined,
     };
   }
 

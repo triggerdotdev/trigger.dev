@@ -224,6 +224,12 @@ export const DequeueMessageCheckpoint = z.object({
 });
 export type DequeueMessageCheckpoint = z.infer<typeof DequeueMessageCheckpoint>;
 
+export const PlacementTag = z.object({
+  key: z.string(),
+  values: z.array(z.string()).optional(),
+});
+export type PlacementTag = z.infer<typeof PlacementTag>;
+
 /** This is sent to a Worker when a run is dequeued (a new run or continuing run) */
 export const DequeuedMessage = z.object({
   version: z.literal("1"),
@@ -261,5 +267,6 @@ export const DequeuedMessage = z.object({
   project: z.object({
     id: z.string(),
   }),
+  placementTags: z.array(PlacementTag).optional(),
 });
 export type DequeuedMessage = z.infer<typeof DequeuedMessage>;

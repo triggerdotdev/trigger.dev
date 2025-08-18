@@ -1,5 +1,21 @@
 # @trigger.dev/build
 
+## 4.0.0-v4-beta.28
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.28`
+
+## 4.0.0-v4-beta.27
+
+### Patch Changes
+
+- - Improve playwright non-headless chrome installation ([#2347](https://github.com/triggerdotdev/trigger.dev/pull/2347))
+  - Prevent spinner message duplication in narrow terminals
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.27`
+
 ## 4.0.0-v4-beta.26
 
 ### Patch Changes

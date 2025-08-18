@@ -1,7 +1,7 @@
 import { RunEngine } from "@internal/run-engine";
 import { $replica, prisma } from "~/db.server";
 import { env } from "~/env.server";
-import { defaultMachine } from "~/services/platform.v3.server";
+import { defaultMachine, getCurrentPlan } from "~/services/platform.v3.server";
 import { singleton } from "~/utils/singleton";
 import { allMachines } from "./machinePresets.server";
 import { meter, tracer } from "./tracer.server";
@@ -105,6 +105,30 @@ function createRunEngine() {
       SUSPENDED: env.RUN_ENGINE_TIMEOUT_SUSPENDED,
     },
     retryWarmStartThresholdMs: env.RUN_ENGINE_RETRY_WARM_START_THRESHOLD_MS,
+    billing: {
+      getCurrentPlan: async (orgId: string) => {
+        const plan = await getCurrentPlan(orgId);
+
+        if (!plan) {
+          return {
+            isPaying: false,
+            type: "free",
+          };
+        }
+
+        if (!plan.v3Subscription) {
+          return {
+            isPaying: false,
+            type: "free",
+          };
+        }
+
+        return {
+          isPaying: plan.v3Subscription.isPaying,
+          type: plan.v3Subscription.plan?.type ?? "free",
+        };
+      },
+    },
   });
 
   return engine;

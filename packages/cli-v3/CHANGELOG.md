@@ -1,5 +1,34 @@
 # trigger.dev
 
+## 4.0.0-v4-beta.28
+
+### Patch Changes
+
+- Make the default of legacyDevProcessCwdBehaviour true instead of false (prevents breaking prismaExtension) ([#2387](https://github.com/triggerdotdev/trigger.dev/pull/2387))
+- fix: prevent circular reference errors on task indexing when using schemaTask ([#2383](https://github.com/triggerdotdev/trigger.dev/pull/2383))
+- fix: waitUntil now correctly waits for metadata.streams to finish ([#2399](https://github.com/triggerdotdev/trigger.dev/pull/2399))
+- fix(runner): prevent retry immediately race condition which can cause stuck runs that end up being system failures ([#2402](https://github.com/triggerdotdev/trigger.dev/pull/2402))
+- Upgrade to bun v1.2.20 ([#2398](https://github.com/triggerdotdev/trigger.dev/pull/2398))
+- fix: external traces now respect parent sampling, and prevent broken traces when there is no external trace context ([#2395](https://github.com/triggerdotdev/trigger.dev/pull/2395))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.28`
+  - `@trigger.dev/build@4.0.0-v4-beta.28`
+  - `@trigger.dev/schema-to-json@4.0.0-v4-beta.28`
+
+## 4.0.0-v4-beta.27
+
+### Patch Changes
+
+- improve contrast for chalkWorker in light mode ([#2239](https://github.com/triggerdotdev/trigger.dev/pull/2239))
+- All experimental flags have been promoted to non-experimental, but the experimental ones still work (for now). keepNames and autoDetectExternal now default to true. ([#2371](https://github.com/triggerdotdev/trigger.dev/pull/2371))
+- - Improve playwright non-headless chrome installation ([#2347](https://github.com/triggerdotdev/trigger.dev/pull/2347))
+  - Prevent spinner message duplication in narrow terminals
+- Upgrade to zod 3.25.76 ([#2352](https://github.com/triggerdotdev/trigger.dev/pull/2352))
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.0-v4-beta.27`
+  - `@trigger.dev/core@4.0.0-v4-beta.27`
+  - `@trigger.dev/schema-to-json@4.0.0-v4-beta.27`
+
 ## 4.0.0-v4-beta.26
 
 ### Patch Changes

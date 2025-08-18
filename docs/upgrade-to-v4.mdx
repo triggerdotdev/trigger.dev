@@ -1198,3 +1198,17 @@ We recommend enabling this option and testing in a staging or preview environmen
   - Updated `metadata.root` and `metadata.parent` to work even when the run is a "root" run (meaning it doesn't have a parent or a root associated run)
 
 </Update>
+
+<Update label="August 11, 2025" description="v4.0.0-beta.27">
+  [Release
+  v4.0.0-beta.27](https://github.com/triggerdotdev/trigger.dev/releases/tag/trigger.dev%404.0.0-v4-beta.27).
+
+- All experimental flags have been promoted to non-experimental, but the experimental ones still work (for now). `keepNames` and `autoDetectExternal` now default to true. ([#2371](https://github.com/triggerdotdev/trigger.dev/pull/2371))
+- Improve playwright non-headless chrome installation ([#2347](https://github.com/triggerdotdev/trigger.dev/pull/2347))
+- Upgrade to zod 3.25.76 ([#2352](https://github.com/triggerdotdev/trigger.dev/pull/2352))
+- External Trace Correlation & OpenTelemetry Package Updates. ([#2334](https://github.com/triggerdotdev/trigger.dev/pull/2334))
+- Add jsonSchema support when indexing tasks ([#2353](https://github.com/triggerdotdev/trigger.dev/pull/2353))
+- Removed triggerAndPoll. It was never recommended so it's been removed. ([#2379](https://github.com/triggerdotdev/trigger.dev/pull/2379))
+- Specify a region override when triggering a run ([#2366](https://github.com/triggerdotdev/trigger.dev/pull/2366))
+
+</Update>

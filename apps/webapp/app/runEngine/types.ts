@@ -1,12 +1,7 @@
-import { BackgroundWorker, TaskRun } from "@trigger.dev/database";
-
-import {
-  IOPacket,
-  RunChainState,
-  TaskRunError,
-  TriggerTaskRequestBody,
-} from "@trigger.dev/core/v3";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import type { BackgroundWorker, TaskRun } from "@trigger.dev/database";
+import type { IOPacket, TaskRunError, TriggerTaskRequestBody } from "@trigger.dev/core/v3";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import type { ReportUsagePlan } from "@trigger.dev/platform";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -22,6 +17,7 @@ export type TriggerTaskServiceOptions = {
   skipChecks?: boolean;
   oneTimeUseToken?: string;
   overrideCreatedAt?: Date;
+  planType?: string;
 };
 
 // domain/triggerTask.ts
@@ -66,7 +62,10 @@ export interface QueueManager {
     lockedBackgroundWorker?: LockedBackgroundWorker
   ): Promise<QueueProperties>;
   getQueueName(request: TriggerTaskRequest): Promise<string>;
-  validateQueueLimits(env: AuthenticatedEnvironment): Promise<QueueValidationResult>;
+  validateQueueLimits(
+    env: AuthenticatedEnvironment,
+    itemsToAdd?: number
+  ): Promise<QueueValidationResult>;
   getWorkerQueue(
     env: AuthenticatedEnvironment,
     regionOverride?: string
@@ -112,9 +111,19 @@ export type ValidationResult =
       error: Error;
     };
 
+export type EntitlementValidationResult =
+  | {
+      ok: true;
+      plan?: ReportUsagePlan;
+    }
+  | {
+      ok: false;
+      error: Error;
+    };
+
 export interface TriggerTaskValidator {
   validateTags(params: TagValidationParams): ValidationResult;
-  validateEntitlement(params: EntitlementValidationParams): Promise<ValidationResult>;
+  validateEntitlement(params: EntitlementValidationParams): Promise<EntitlementValidationResult>;
   validateMaxAttempts(params: MaxAttemptsValidationParams): ValidationResult;
   validateParentRun(params: ParentRunValidationParams): ValidationResult;
 }

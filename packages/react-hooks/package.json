@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/react-hooks",
-  "version": "4.0.0-v4-beta.26",
+  "version": "4.0.0-v4-beta.28",
   "description": "trigger.dev react hooks",
   "license": "MIT",
   "publishConfig": {
@@ -37,7 +37,7 @@
     "check-exports": "attw --pack ."
   },
   "dependencies": {
-    "@trigger.dev/core": "workspace:^4.0.0-v4-beta.26",
+    "@trigger.dev/core": "workspace:^4.0.0-v4-beta.28",
     "swr": "^2.2.5"
   },
   "devDependencies": {

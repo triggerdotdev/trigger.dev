@@ -547,6 +547,8 @@ export interface Task<TIdentifier extends string, TInput = void, TOutput = any> 
 
   description?: string;
 
+  jsonSchema?: JSONSchema;
+
   /**
    * Trigger a task with the given payload, and continue without waiting for the result. If you want to wait for the result, use `triggerAndWait`. Returns the id of the triggered task run.
    * @param payload

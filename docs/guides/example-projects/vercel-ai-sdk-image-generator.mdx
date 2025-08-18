@@ -11,7 +11,7 @@ import RealtimeLearnMore from "/snippets/realtime-learn-more.mdx";
 This demo is a full stack example that uses the following:
 
 - A [Next.js](https://nextjs.org/) app using [shadcn](https://ui.shadcn.com/) for the UI
-- Our 'useRealtimeRun' [React hook](https://trigger.dev/docs/frontend/react-hooks/realtime) to subscribe to the run and show updates on the frontend
+- Our 'useRealtimeRun' [React hook](/realtime/react-hooks/subscribe#userealtimerun) to subscribe to the run and show updates on the frontend
 - The [Vercel AI SDK](https://sdk.vercel.ai/docs/introduction) to [generate images](https://sdk.vercel.ai/docs/ai-sdk-core/image-generation) using OpenAI's DALL-E models
 
 ## GitHub repo
@@ -36,6 +36,6 @@ This demo is a full stack example that uses the following:
 ## Relevant code
 
 - View the Trigger.dev task code which generates the image using the Vercel AI SDK in [src/trigger/realtime-generate-image.ts](https://github.com/triggerdotdev/examples/tree/main/vercel-ai-sdk-image-generator/src/trigger/realtime-generate-image.ts).
-- We use a [useRealtimeRun](https://trigger.dev/docs/frontend/react-hooks/realtime#userealtimerun) hook to subscribe to the run in [src/app/processing/[id]/ProcessingContent.tsx](https://github.com/triggerdotdev/examples/tree/main/vercel-ai-sdk-image-generator/src/app/processing/[id]/ProcessingContent.tsx).
+- We use a [useRealtimeRun](/realtime/react-hooks/subscribe#userealtimerun) hook to subscribe to the run in [src/app/processing/[id]/ProcessingContent.tsx](https://github.com/triggerdotdev/examples/tree/main/vercel-ai-sdk-image-generator/src/app/processing/[id]/ProcessingContent.tsx).
 
 <RealtimeLearnMore />

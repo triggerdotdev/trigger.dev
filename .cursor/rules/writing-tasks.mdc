@@ -431,28 +431,6 @@ export async function POST(request: Request) {
 }
 ```
 
-### tasks.triggerAndPoll()
-
-Triggers a task and polls until completion. Not recommended for web requests as it blocks until the run completes. Consider using Realtime docs for better alternatives.
-
-```ts
-import { tasks } from "@trigger.dev/sdk/v3";
-import type { emailSequence } from "~/trigger/emails";
-
-export async function POST(request: Request) {
-  const data = await request.json();
-  const result = await tasks.triggerAndPoll<typeof emailSequence>(
-    "email-sequence",
-    {
-      to: data.email,
-      name: data.name,
-    },
-    { pollIntervalMs: 5000 }
-  );
-  return Response.json(result);
-}
-```
-
 ### batch.trigger()
 
 Triggers multiple runs of different tasks at once, useful when you need to execute multiple tasks simultaneously.

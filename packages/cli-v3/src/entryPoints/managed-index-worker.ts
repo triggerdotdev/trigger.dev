@@ -147,6 +147,8 @@ if (typeof config.machine === "string") {
   });
 }
 
+const processKeepAlive = config.processKeepAlive ?? config.experimental_processKeepAlive;
+
 await sendMessageInCatalog(
   indexerToWorkerMessages,
   "INDEX_COMPLETE",
@@ -163,10 +165,10 @@ await sendMessageInCatalog(
       customConditions: buildManifest.customConditions,
       initEntryPoint: buildManifest.initEntryPoint,
       processKeepAlive:
-        typeof config.experimental_processKeepAlive === "object"
-          ? config.experimental_processKeepAlive
-          : typeof config.experimental_processKeepAlive === "boolean"
-          ? { enabled: config.experimental_processKeepAlive }
+        typeof processKeepAlive === "object"
+          ? processKeepAlive
+          : typeof processKeepAlive === "boolean"
+          ? { enabled: processKeepAlive }
           : undefined,
       timings,
     },

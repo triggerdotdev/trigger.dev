@@ -230,7 +230,7 @@ const EnvironmentSchema = z.object({
   DEPOT_ORG_ID: z.string().optional(),
   DEPOT_REGION: z.string().default("us-east-1"),
 
-  // Deployment registry
+  // Deployment registry (v3)
   DEPLOY_REGISTRY_HOST: z.string().min(1),
   DEPLOY_REGISTRY_USERNAME: z.string().optional(),
   DEPLOY_REGISTRY_PASSWORD: z.string().optional(),
@@ -238,6 +238,39 @@ const EnvironmentSchema = z.object({
   DEPLOY_REGISTRY_ECR_TAGS: z.string().optional(), // csv, for example: "key1=value1,key2=value2"
   DEPLOY_REGISTRY_ECR_ASSUME_ROLE_ARN: z.string().optional(),
   DEPLOY_REGISTRY_ECR_ASSUME_ROLE_EXTERNAL_ID: z.string().optional(),
+
+  // Deployment registry (v4) - falls back to v3 registry if not specified
+  V4_DEPLOY_REGISTRY_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.DEPLOY_REGISTRY_HOST)
+    .pipe(z.string().min(1)), // Ensure final type is required string
+  V4_DEPLOY_REGISTRY_USERNAME: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.DEPLOY_REGISTRY_USERNAME),
+  V4_DEPLOY_REGISTRY_PASSWORD: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.DEPLOY_REGISTRY_PASSWORD),
+  V4_DEPLOY_REGISTRY_NAMESPACE: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.DEPLOY_REGISTRY_NAMESPACE)
+    .pipe(z.string().min(1).default("trigger")), // Ensure final type is required string
+  V4_DEPLOY_REGISTRY_ECR_TAGS: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.DEPLOY_REGISTRY_ECR_TAGS),
+  V4_DEPLOY_REGISTRY_ECR_ASSUME_ROLE_ARN: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.DEPLOY_REGISTRY_ECR_ASSUME_ROLE_ARN),
+  V4_DEPLOY_REGISTRY_ECR_ASSUME_ROLE_EXTERNAL_ID: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.DEPLOY_REGISTRY_ECR_ASSUME_ROLE_EXTERNAL_ID),
+
   DEPLOY_IMAGE_PLATFORM: z.string().default("linux/amd64"),
   DEPLOY_TIMEOUT_MS: z.coerce
     .number()
@@ -727,6 +760,8 @@ const EnvironmentSchema = z.object({
     .number()
     .int()
     .default(60_000 * 5), // 5 minutes
+
+  BATCH_TRIGGER_CACHED_RUNS_CHECK_ENABLED: BoolEnv.default(false),
 
   BATCH_TRIGGER_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
   BATCH_TRIGGER_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),

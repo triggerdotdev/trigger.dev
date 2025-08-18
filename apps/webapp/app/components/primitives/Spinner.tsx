@@ -66,8 +66,8 @@ export function ButtonSpinner() {
     <Spinner
       className="size-3"
       color={{
-        foreground: "rgba(0, 0, 0, 1)",
-        background: "rgba(0, 0, 0, 0.25)",
+        background: "rgba(255, 255, 255, 0.4)",
+        foreground: "rgba(255, 255, 255)",
       }}
     />
   );

@@ -61,7 +61,7 @@ export class StandardResourceCatalog implements ResourceCatalog {
       return;
     }
 
-    const { fns, ...metadata } = task;
+    const { fns, schema, ...metadata } = task;
 
     if (!task.id) {
       return;
@@ -74,8 +74,8 @@ export class StandardResourceCatalog implements ResourceCatalog {
     this._taskMetadata.set(task.id, metadata);
     this._taskFunctions.set(task.id, fns);
 
-    if (task.schema) {
-      this._taskSchemas.set(task.id, task.schema);
+    if (schema) {
+      this._taskSchemas.set(task.id, schema);
     }
   }
 

@@ -10,6 +10,7 @@ import { BaseService, ServiceValidationError } from "./baseService.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
 import { getDeploymentImageRef } from "../getDeploymentImageRef.server";
 import { tryCatch } from "@trigger.dev/core";
+import { getRegistryConfig } from "../registryConfig.server";
 
 const nanoid = customAlphabet("1234567890abcdefghijklmnopqrstuvwxyz", 8);
 
@@ -69,20 +70,15 @@ export class InitializeDeploymentService extends BaseService {
           })
         : undefined;
 
+      const isV4Deployment = payload.type === "MANAGED";
+      const registryConfig = getRegistryConfig(isV4Deployment);
+
       const [imageRefError, imageRefResult] = await tryCatch(
         getDeploymentImageRef({
-          host: env.DEPLOY_REGISTRY_HOST,
-          namespace: env.DEPLOY_REGISTRY_NAMESPACE,
+          registry: registryConfig,
           projectRef: environment.project.externalRef,
           nextVersion,
           environmentSlug: environment.slug,
-          registryTags: env.DEPLOY_REGISTRY_ECR_TAGS,
-          assumeRole: env.DEPLOY_REGISTRY_ECR_ASSUME_ROLE_ARN
-            ? {
-                roleArn: env.DEPLOY_REGISTRY_ECR_ASSUME_ROLE_ARN,
-                externalId: env.DEPLOY_REGISTRY_ECR_ASSUME_ROLE_EXTERNAL_ID,
-              }
-            : undefined,
         })
       );
 

@@ -1,4 +1,10 @@
-import { DiagConsoleLogger, DiagLogLevel, TracerProvider, diag } from "@opentelemetry/api";
+import {
+  DiagConsoleLogger,
+  DiagLogLevel,
+  TraceFlags,
+  TracerProvider,
+  diag,
+} from "@opentelemetry/api";
 import { logs } from "@opentelemetry/api-logs";
 import { TraceState } from "@opentelemetry/core";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
@@ -21,7 +27,7 @@ import {
   SimpleSpanProcessor,
   SpanExporter,
 } from "@opentelemetry/sdk-trace-node";
-import { SemanticResourceAttributes } from "@opentelemetry/semantic-conventions";
+import { SemanticResourceAttributes, SEMATTRS_HTTP_URL } from "@opentelemetry/semantic-conventions";
 import { VERSION } from "../../version.js";
 import {
   OTEL_ATTRIBUTE_PER_EVENT_COUNT_LIMIT,
@@ -287,17 +293,24 @@ function setLogLevel(level: TracingDiagnosticLogLevel) {
 }
 
 class ExternalSpanExporterWrapper {
+  private readonly _isExternallySampled: boolean;
+
   constructor(
     private underlyingExporter: SpanExporter,
     private externalTraceId: string,
     private externalTraceContext:
-      | { traceId: string; spanId: string; tracestate?: string }
+      | { traceId: string; spanId: string; traceFlags: number; tracestate?: string }
       | undefined
-  ) {}
+  ) {
+    this._isExternallySampled = isTraceFlagSampled(externalTraceContext?.traceFlags);
+  }
 
   private transformSpan(span: ReadableSpan): ReadableSpan | undefined {
-    if (span.attributes[SemanticInternalAttributes.SPAN_PARTIAL]) {
-      // Skip partial spans
+    if (!this._isExternallySampled) {
+      return;
+    }
+
+    if (isSpanInternalOnly(span)) {
       return;
     }
 
@@ -325,8 +338,10 @@ class ExternalSpanExporterWrapper {
         traceState: this.externalTraceContext.tracestate
           ? new TraceState(this.externalTraceContext.tracestate)
           : undefined,
-        traceFlags: parentSpanContext?.traceFlags ?? 0,
+        traceFlags: this.externalTraceContext.traceFlags,
       };
+    } else if (isAttemptSpan) {
+      parentSpanContext = undefined;
     }
 
     return {
@@ -360,15 +375,25 @@ class ExternalSpanExporterWrapper {
 }
 
 class ExternalLogRecordExporterWrapper {
+  private readonly _isExternallySampled: boolean;
+
   constructor(
     private underlyingExporter: LogRecordExporter,
     private externalTraceId: string,
     private externalTraceContext:
-      | { traceId: string; spanId: string; tracestate?: string }
+      | { traceId: string; spanId: string; tracestate?: string; traceFlags: number }
       | undefined
-  ) {}
+  ) {
+    this._isExternallySampled = isTraceFlagSampled(externalTraceContext?.traceFlags);
+  }
 
   export(logs: any[], resultCallback: (result: any) => void): void {
+    if (!this._isExternallySampled) {
+      this.underlyingExporter.export([], resultCallback);
+
+      return;
+    }
+
     const modifiedLogs = logs.map(this.transformLogRecord.bind(this));
 
     this.underlyingExporter.export(modifiedLogs, resultCallback);
@@ -409,4 +434,58 @@ class ExternalLogRecordExporterWrapper {
       },
     });
   }
+}
+
+function isSpanInternalOnly(span: ReadableSpan): boolean {
+  if (span.attributes[SemanticInternalAttributes.SPAN_PARTIAL]) {
+    // Skip partial spans
+    return true;
+  }
+
+  const urlPath = span.attributes["url.path"];
+
+  if (typeof urlPath === "string" && urlPath === "/api/v1/usage/ingest") {
+    return true;
+  }
+
+  const httpUrl = span.attributes[SEMATTRS_HTTP_URL] ?? span.attributes["url.full"];
+
+  const url = safeParseUrl(httpUrl);
+
+  if (!url) {
+    return false;
+  }
+
+  const internalHosts = [
+    "api.trigger.dev",
+    "billing.trigger.dev",
+    "cloud.trigger.dev",
+    "engine.trigger.dev",
+    "platform.trigger.dev",
+  ];
+
+  return (
+    internalHosts.some((host) => url.hostname.includes(host)) ||
+    url.pathname.includes("/api/v1/usage/ingest")
+  );
+}
+
+function safeParseUrl(url: unknown): URL | undefined {
+  if (typeof url !== "string") {
+    return undefined;
+  }
+
+  try {
+    return new URL(url);
+  } catch (e) {
+    return undefined;
+  }
+}
+
+function isTraceFlagSampled(traceFlags?: number): boolean {
+  if (typeof traceFlags !== "number") {
+    return true;
+  }
+
+  return (traceFlags & TraceFlags.SAMPLED) === TraceFlags.SAMPLED;
 }

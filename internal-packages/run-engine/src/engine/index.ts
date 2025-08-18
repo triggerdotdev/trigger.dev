@@ -1,3 +1,4 @@
+import { BillingCache } from "./billingCache.js";
 import { createRedisClient, Redis } from "@internal/redis";
 import { getMeter, Meter, startSpan, trace, Tracer } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
@@ -77,6 +78,8 @@ export class RunEngine {
   ttlSystem: TtlSystem;
   pendingVersionSystem: PendingVersionSystem;
   raceSimulationSystem: RaceSimulationSystem = new RaceSimulationSystem();
+
+  private readonly billingCache: BillingCache;
 
   constructor(private readonly options: RunEngineOptions) {
     this.logger = options.logger ?? new Logger("RunEngine", this.options.logLevel ?? "info");
@@ -292,11 +295,18 @@ export class RunEngine {
       redisOptions: this.options.cache?.redis ?? this.options.runLock.redis,
     });
 
+    this.billingCache = new BillingCache({
+      billingOptions: this.options.billing,
+      redisOptions: this.options.cache?.redis ?? this.options.runLock.redis,
+      logger: this.logger,
+    });
+
     this.dequeueSystem = new DequeueSystem({
       resources,
       executionSnapshotSystem: this.executionSnapshotSystem,
       runAttemptSystem: this.runAttemptSystem,
       machines: this.options.machines,
+      billingCache: this.billingCache,
     });
   }
 
@@ -354,6 +364,7 @@ export class RunEngine {
       scheduleInstanceId,
       createdAt,
       bulkActionId,
+      planType,
     }: TriggerParams,
     tx?: PrismaClientOrTransaction
   ): Promise<TaskRun> {
@@ -429,6 +440,7 @@ export class RunEngine {
               scheduleInstanceId,
               createdAt,
               bulkActionGroupIds: bulkActionId ? [bulkActionId] : undefined,
+              planType,
               executionSnapshots: {
                 create: {
                   engine: "V2",
@@ -1155,7 +1167,6 @@ export class RunEngine {
           }
         );
 
-        await this.worker.ack(`heartbeatSnapshot.${runId}`);
         return;
       }
 
@@ -1347,5 +1358,13 @@ export class RunEngine {
         id: run.id,
         orgId: run.organizationId!,
       }));
+  }
+
+  /**
+   * Invalidates the billing cache for an organization when their plan changes
+   * Runs in background and handles all errors internally
+   */
+  invalidateBillingCache(orgId: string): void {
+    this.billingCache.invalidate(orgId);
   }
 }

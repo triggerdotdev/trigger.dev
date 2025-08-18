@@ -850,10 +850,6 @@ export async function resolveVariablesForEnvironment(
     ...builtInVariables,
   ]);
 
-  logger.debug("Resolved variables", {
-    result,
-  });
-
   return result;
 }
 

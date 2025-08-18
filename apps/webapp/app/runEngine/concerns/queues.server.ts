@@ -177,8 +177,11 @@ export class DefaultQueueManager implements QueueManager {
     return task.queue.name ?? defaultQueueName;
   }
 
-  async validateQueueLimits(environment: AuthenticatedEnvironment): Promise<QueueValidationResult> {
-    const queueSizeGuard = await guardQueueSizeLimitsForEnv(this.engine, environment);
+  async validateQueueLimits(
+    environment: AuthenticatedEnvironment,
+    itemsToAdd?: number
+  ): Promise<QueueValidationResult> {
+    const queueSizeGuard = await guardQueueSizeLimitsForEnv(this.engine, environment, itemsToAdd);
 
     logger.debug("Queue size guard result", {
       queueSizeGuard,

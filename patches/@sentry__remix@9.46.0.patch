@@ -1,0 +1,39 @@
+diff --git a/build/cjs/vendor/instrumentation.js b/build/cjs/vendor/instrumentation.js
+index 84e18d1051f57d5807e65c8b8ce858ceee7d4557..640a5253d565650338fe33e0ea52c8dffc63e4e7 100644
+--- a/build/cjs/vendor/instrumentation.js
++++ b/build/cjs/vendor/instrumentation.js
+@@ -238,7 +238,7 @@ class RemixInstrumentation extends instrumentation.InstrumentationBase {
+     return function callRouteAction(original) {
+       return async function patchCallRouteAction( ...args) {
+         const [params] = args;
+-        const clonedRequest = params.request.clone();
++        const clonedRequest = params.request;
+         const span = plugin.tracer.startSpan(
+           `ACTION ${params.routeId}`,
+           { attributes: { [semanticConventions.SemanticAttributes.CODE_FUNCTION]: 'action' } },
+@@ -257,25 +257,6 @@ class RemixInstrumentation extends instrumentation.InstrumentationBase {
+               .then(async response => {
+                 addResponseAttributesToSpan(span, response);
+ 
+-                try {
+-                  const formData = await clonedRequest.formData();
+-                  const { actionFormDataAttributes: actionFormAttributes } = plugin.getConfig();
+-
+-                  formData.forEach((value, key) => {
+-                    if (
+-                      actionFormAttributes?.[key] &&
+-                      actionFormAttributes[key] !== false &&
+-                      typeof value === 'string'
+-                    ) {
+-                      const keyName = actionFormAttributes[key] === true ? key : actionFormAttributes[key];
+-                      span.setAttribute(`formData.${keyName}`, value.toString());
+-                    }
+-                  });
+-                } catch {
+-                  // Silently continue on any error. Typically happens because the action body cannot be processed
+-                  // into FormData, in which case we should just continue.
+-                }
+-
+                 return response;
+               })
+               .catch(async error => {
