@@ -75,6 +75,20 @@ export default defineConfig({
 });
 ```
 
+## Custom tsconfig path
+
+You can specify a custom path to your tsconfig file. This is useful if you have a custom tsconfig file that you want to use.
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk";
+
+export default defineConfig({
+  project: "<project ref>",
+  dirs: ["./trigger"],
+  tsconfig: "./custom-tsconfig.json", // Custom tsconfig path
+});
+```
+
 ## Lifecycle functions
 
 You can add lifecycle functions to get notified when any task starts, succeeds, or fails using `onStart`, `onSuccess` and `onFailure`:
@@ -277,6 +291,21 @@ export default defineConfig({
 
 The `logLevel` only determines which logs are sent to the Trigger.dev instance when using the `logger` API. All `console` based logs are always sent.
 
+## Console logging
+
+You can control console logging behavior in development:
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  enableConsoleLogging: true, // Enable console logging while running dev CLI
+  disableConsoleInterceptor: false, // Disable console interceptor (prevents logs from being sent to the trigger.dev dashboard)
+});
+```
+
 ## Max duration
 
 You can set the default `maxDuration` for all tasks in your project:
@@ -293,6 +322,71 @@ export default defineConfig({
 
 See our [maxDuration guide](/runs/max-duration) for more information.
 
+## Process keep alive
+
+Keep the process alive after the task has finished running so the next task doesn't have to wait for the process to start up again.
+
+Note that the process could be killed at any time, and we don't make any guarantees about the process being alive for a certain amount of time
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  processKeepAlive: true,
+});
+```
+
+You can pass an object to the `processKeepAlive` option to configure the behavior:
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  processKeepAlive: {
+    enabled: true,
+    // The maximum number of executions per process. If the process has run more than this number of times, it will be killed.
+    maxExecutionsPerProcess: 50, // Default: 50
+    // The maximum number of concurrent processes to keep alive in dev.
+    devMaxPoolSize: 25, // Default: 25
+  },
+});
+```
+
+## Development behavior
+
+You can control the working directory behavior in development:
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  legacyDevProcessCwdBehaviour: false, // Default: true
+});
+```
+
+When set to `false`, the current working directory will be set to the build directory, which more closely matches production behavior.
+
+## CA certificates
+
+CA Cert file to be added to NODE_EXTRA_CA_CERT environment variable, useful in use with self signed cert in the trigger.dev environment.
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  // Must start with "./" and be relative to project root
+  extraCACerts: "./certs/ca.crt",
+});
+```
+
 ## Build configuration
 
 You can customize the build process using the `build` option:
@@ -306,6 +400,12 @@ export default defineConfig({
   build: {
     // Don't bundle these packages
     external: ["header-generator"],
+    // Automatically detect external dependencies (default: true)
+    autoDetectExternal: true,
+    // Keep function/class names in bundle (default: true)
+    keepNames: true,
+    // Minify generated code (default: false, experimental)
+    minify: false,
   },
 });
 ```
