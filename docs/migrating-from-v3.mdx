@@ -210,6 +210,17 @@ await myTask.trigger({ foo: "bar" }); // Will use the queue defined on the task
 await myTask2.trigger({ foo: "bar" }); // Will use the queue defined on the task
 ```
 
+If you're using `concurrencyKey` you can specify the `queue` and `concurrencyKey` like this:
+
+```ts
+const handle = await generatePullRequest.trigger(data, {
+  queue: "paid-users",
+  concurrencyKey: data.userId,
+});
+```
+
+For each unique value of `concurrencyKey`, a new queue will be created using the `concurrencyLimit` from the queue. This allows you to have a queue per user.
+
 ### Lifecycle hooks
 
 We've changed the function signatures of the lifecycle hooks to be more consistent and easier to use, by unifying all the parameters into a single object that can be destructured.
