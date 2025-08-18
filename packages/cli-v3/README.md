@@ -1,3 +1,21 @@
+<div align="center">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/a45d1fa2-0ae8-4a39-4409-f4f934bfae00/public">
+  <source media="(prefers-color-scheme: light)" srcset="https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/3f5ad4c1-c4c8-4277-b622-290e7f37bd00/public">
+  <img alt="Trigger.dev logo" src="https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/a45d1fa2-0ae8-4a39-4409-f4f934bfae00/public">
+</picture>
+
+[![npm version](https://img.shields.io/npm/v/trigger.dev.svg)](https://www.npmjs.com/package/trigger.dev)
+[![npm downloads](https://img.shields.io/npm/dm/trigger.dev.svg)](https://www.npmjs.com/package/trigger.dev)
+[![GitHub stars](https://img.shields.io/github/stars/triggerdotdev/trigger.dev?style=social)](https://github.com/triggerdotdev/trigger.dev)
+[![TypeScript](https://img.shields.io/badge/%3C%2F%3E-TypeScript-%230074c1.svg)](https://www.typescriptlang.org/)
+[![License: ](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Open Source](https://img.shields.io/badge/Open%20Source-%E2%9D%A4-red)](https://github.com/triggerdotdev/trigger.dev)
+
+[Discord](https://trigger.dev/discord) | [Website](https://trigger.dev) | [Issues](https://github.com/triggerdotdev/trigger.dev/issues) | [Docs](https://trigger.dev/docs) | [Examples](https://trigger.dev/docs/examples)
+
+</div>
+
 # Trigger.dev CLI
 
 A CLI that allows you to create, run locally and deploy Trigger.dev background tasks.
