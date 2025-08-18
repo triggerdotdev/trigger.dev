@@ -991,6 +991,15 @@ export class DeliverAlertService extends BaseService {
           throw new SkipRetryError("Slack invalid blocks");
         }
 
+        if (error.data.error === "account_inactive") {
+          logger.info("[DeliverAlert] Slack account inactive, skipping retry", {
+            error,
+            message,
+          });
+
+          throw new SkipRetryError("Slack account inactive");
+        }
+
         throw new Error("Slack platform error");
       }
 
