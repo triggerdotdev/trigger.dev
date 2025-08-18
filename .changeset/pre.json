@@ -1,5 +1,5 @@
 {
-  "mode": "pre",
+  "mode": "exit",
   "tag": "v4-beta",
   "initialVersions": {
     "coordinator": "0.0.1",
@@ -18,6 +18,7 @@
     "@trigger.dev/schema-to-json": "4.0.0-v4-beta.26"
   },
   "changesets": [
+    "afraid-waves-divide",
     "beige-horses-juggle",
     "big-carrots-fail",
     "big-garlics-own",
@@ -26,6 +27,7 @@
     "chatty-snakes-hope",
     "chilled-weeks-switch",
     "clean-beans-compete",
+    "clean-beans-run",
     "cuddly-boats-press",
     "curvy-dogs-share",
     "cyan-news-design",
@@ -33,6 +35,7 @@
     "eight-ligers-help",
     "eighty-rings-divide",
     "empty-dolls-judge",
+    "famous-clocks-thank",
     "fifty-beers-bake",
     "five-nails-whisper",
     "flat-pianos-live",
@@ -46,6 +49,7 @@
     "green-lions-relate",
     "grumpy-wasps-fold",
     "healthy-apricots-drop",
+    "healthy-oranges-refuse",
     "hip-cups-wave",
     "honest-files-decide",
     "itchy-frogs-care",
@@ -57,6 +61,8 @@
     "light-peas-melt",
     "little-birds-appear",
     "little-lemons-grab",
+    "loud-rules-dream",
+    "mean-wolves-stare",
     "moody-squids-count",
     "nasty-cobras-wonder",
     "nice-colts-boil",
@@ -67,6 +73,7 @@
     "polite-badgers-suffer",
     "polite-impalas-care",
     "polite-lies-fix",
+    "proud-nails-grin",
     "rare-beds-accept",
     "rare-mails-fail",
     "real-rats-drop",
@@ -99,6 +106,7 @@
     "twelve-actors-hide",
     "two-eagles-report",
     "two-tigers-dream",
+    "violet-llamas-roll",
     "weak-jobs-hide",
     "weak-parents-sip",
     "wet-deers-think",
