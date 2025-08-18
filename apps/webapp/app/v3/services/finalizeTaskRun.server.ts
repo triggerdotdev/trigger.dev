@@ -150,7 +150,7 @@ export class FinalizeTaskRunService extends BaseService {
     }
 
     if (isFatalRunStatus(run.status)) {
-      logger.error("FinalizeTaskRunService: Fatal status", { runId: run.id, status: run.status });
+      logger.warn("FinalizeTaskRunService: Fatal status", { runId: run.id, status: run.status });
 
       const extendedRun = await this._prisma.taskRun.findFirst({
         where: { id: run.id },
@@ -170,7 +170,7 @@ export class FinalizeTaskRunService extends BaseService {
       });
 
       if (extendedRun && extendedRun.runtimeEnvironment.type !== "DEVELOPMENT") {
-        logger.error("FinalizeTaskRunService: Fatal status, requesting worker exit", {
+        logger.warn("FinalizeTaskRunService: Fatal status, requesting worker exit", {
           runId: run.id,
           status: run.status,
         });
