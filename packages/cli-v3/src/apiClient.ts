@@ -199,7 +199,7 @@ export class CliApiClient {
 
   async getDevStatus(projectRef: string) {
     if (!this.accessToken) {
-      throw new Error("getJWT: No access token");
+      throw new Error("getDevStatus: No access token");
     }
 
     return wrapZodFetch(
