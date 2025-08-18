@@ -14,6 +14,7 @@ Should the burden ever get too much, we'd be happy to see you on [Trigger.dev cl
 ## Requirements
 
 ### Prerequisites
+
 - Kubernetes cluster 1.19+
 - Helm 3.8+
 - Kubectl with cluster access
@@ -23,11 +24,13 @@ Should the burden ever get too much, we'd be happy to see you on [Trigger.dev cl
 The following are minimum requirements for running the entire stack on Kubernetes:
 
 **Cluster resources:**
+
 - 6+ vCPU total
 - 12+ GB RAM total
 - Persistent volume support
 
 **Individual components:**
+
 - **Webapp**: 1 vCPU, 2 GB RAM
 - **Supervisor**: 1 vCPU, 1 GB RAM
 - **PostgreSQL**: 1 vCPU, 2 GB RAM
@@ -77,19 +80,17 @@ kubectl port-forward svc/trigger-webapp 3040:3030 -n trigger
 kubectl logs -n trigger deployment/trigger-webapp | grep -A1 "magic link"
 ```
 
-<Warning>
-While v4 is in beta, always use `@v4-beta` instead of `@latest`. For example: `npx trigger.dev@v4-beta dev`
-</Warning>
-
 ## Configuration
 
 Most values map directly to the environment variables documented in the [webapp](/self-hosting/env/webapp) and [supervisor](/self-hosting/env/supervisor) environment variable overview.
 
 **Naming convention:**
+
 - Environment variables use `UPPER_SNAKE_CASE`
 - Helm values use `camelCase`
 
 **Example mapping:**
+
 ```bash
 # Environment variable
 APP_ORIGIN=https://trigger.example.com
@@ -115,7 +116,7 @@ helm show values oci://ghcr.io/triggerdotdev/charts/trigger \
 
 ### Custom values
 
-The default values are insecure and are only suitable for testing. You will need to configure your own secrets as a bare minimum. 
+The default values are insecure and are only suitable for testing. You will need to configure your own secrets as a bare minimum.
 
 Create a `values-custom.yaml` file to override the defaults. For example:
 
@@ -203,6 +204,7 @@ You can disable the built-in services and use external services instead. The cha
 #### PostgreSQL
 
 **Direct configuration:**
+
 ```yaml
 postgres:
   deploy: false
@@ -212,6 +214,7 @@ postgres:
 ```
 
 **Using existing secrets (recommended):**
+
 ```yaml
 postgres:
   deploy: false
@@ -226,6 +229,7 @@ postgres:
 #### Redis
 
 **Direct configuration:**
+
 ```yaml
 redis:
   deploy: false
@@ -238,6 +242,7 @@ redis:
 ```
 
 **Using existing secrets (recommended):**
+
 ```yaml
 redis:
   deploy: false
@@ -253,6 +258,7 @@ redis:
 #### ClickHouse
 
 **Direct configuration:**
+
 ```yaml
 clickhouse:
   deploy: false
@@ -264,6 +270,7 @@ clickhouse:
 ```
 
 **Using existing secrets (recommended):**
+
 ```yaml
 clickhouse:
   deploy: false
@@ -278,6 +285,7 @@ clickhouse:
 #### S3 Object Storage
 
 **Direct configuration:**
+
 ```yaml
 minio:
   deploy: false
@@ -289,6 +297,7 @@ s3:
 ```
 
 **Using existing secrets (recommended):**
+
 ```yaml
 minio:
   deploy: false
@@ -323,7 +332,7 @@ webapp:
   extraEnvVars:
     - name: NODE_EXTRA_CA_CERTS
       value: "/etc/ssl/certs/postgres-ca.crt"
-  
+
   extraVolumes:
     - name: postgres-ca-cert
       secret:
@@ -331,7 +340,7 @@ webapp:
         items:
           - key: ca.crt
             path: postgres-ca.crt
-  
+
   extraVolumeMounts:
     - name: postgres-ca-cert
       mountPath: /etc/ssl/certs
@@ -339,6 +348,7 @@ webapp:
 ```
 
 **Benefits:**
+
 - No plaintext credentials in `values.yaml` or Helm releases
 - Complete `DATABASE_URL` stored securely in Kubernetes secrets
 - Compatible with secret management tools (External Secrets Operator, etc.)
@@ -407,7 +417,8 @@ registry:
 ```
 
 <Note>
-The internal registry (`registry.external: false`) is experimental and requires proper TLS setup and additional cluster configuration. Use an external registry for production.
+  The internal registry (`registry.external: false`) is experimental and requires proper TLS setup
+  and additional cluster configuration. Use an external registry for production.
 </Note>
 
 ## Object storage
@@ -434,6 +445,7 @@ secrets:
 Authentication options are identical to the [Docker-based installation](/self-hosting/docker#authentication). The configuration is specified in your `values.yaml`:
 
 **GitHub OAuth:**
+
 ```yaml
 webapp:
   extraEnvVars:
@@ -444,6 +456,7 @@ webapp:
 ```
 
 **Email authentication (Resend):**
+
 ```yaml
 webapp:
   extraEnvVars:
@@ -458,6 +471,7 @@ webapp:
 ```
 
 **Restricting access:**
+
 ```yaml
 webapp:
   extraEnvVars:
@@ -470,6 +484,7 @@ webapp:
 You can lock versions in two ways:
 
 **Helm chart version (recommended):**
+
 ```bash
 # Pin to a specific version for production
 helm upgrade -n trigger --install trigger \
@@ -485,14 +500,15 @@ helm show chart \
 ```
 
 **Specific image tags:**
+
 ```yaml
 webapp:
   image:
-    tag: "v4.0.0-v4-beta.21"
+    tag: "v4.0.0"
 
 supervisor:
   image:
-    tag: "v4.0.0-v4-beta.21"
+    tag: "v4.0.0"
 ```
 
 The chart version's `appVersion` field determines the default image tags. Newer image tags may be incompatible with older chart versions and vice versa.
@@ -500,24 +516,27 @@ The chart version's `appVersion` field determines the default image tags. Newer 
 ## Troubleshooting
 
 **Check logs:**
+
 ```bash
 # Webapp logs
-kubectl logs deployment/trigger-webapp -n trigger -f 
+kubectl logs deployment/trigger-webapp -n trigger -f
 
 # Supervisor logs
-kubectl logs deployment/trigger-supervisor -n trigger -f 
+kubectl logs deployment/trigger-supervisor -n trigger -f
 
 # All pods
-kubectl logs -l app.kubernetes.io/instance=trigger -n trigger -f 
+kubectl logs -l app.kubernetes.io/instance=trigger -n trigger -f
 ```
 
 **Check pod status:**
+
 ```bash
 kubectl get pods -n trigger
 kubectl describe pod <pod-name> -n trigger
 ```
 
 **Start from scratch:**
+
 ```bash
 # Delete the release
 helm uninstall trigger -n trigger
@@ -531,6 +550,7 @@ kubectl delete namespace trigger
 ```
 
 **Common issues:**
+
 - **Magic links not working**: Check webapp logs for email delivery errors
 - **Deploy fails**: Verify registry access and authentication
 - **Pods stuck pending**: Describe the pod and check the events
@@ -542,13 +562,9 @@ See the [Docker troubleshooting](/self-hosting/docker#troubleshooting) section f
 
 See the [Docker CLI usage](/self-hosting/docker#cli-usage) section, the commands are identical regardless of deployment method.
 
-<Warning>
-While v4 is in beta, always use `@v4-beta` instead of `@latest`. For example: `npx trigger.dev@v4-beta dev`
-</Warning>
-
 ## CI / GitHub Actions
 
-When running the CLI in a CI environment, your login profiles won't be available. Instead, you can use the `TRIGGER_API_URL` and `TRIGGER_ACCESS_TOKEN` environment 
+When running the CLI in a CI environment, your login profiles won't be available. Instead, you can use the `TRIGGER_API_URL` and `TRIGGER_ACCESS_TOKEN` environment
 variables to point at your self-hosted instance and authenticate.
 
 For more detailed instructions, see the [GitHub Actions guide](/github-actions).

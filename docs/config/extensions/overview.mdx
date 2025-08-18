@@ -11,7 +11,7 @@ You can use pre-built extensions by installing the `@trigger.dev/build` package 
 Build extensions are added to your `trigger.config.ts` file under the `build.extensions` property:
 
 ```ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   project: "my-project",
@@ -31,7 +31,7 @@ export default defineConfig({
 If you are using a pre-built extension, you can import it from the `@trigger.dev/build` package:
 
 ```ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 import { ffmpeg } from "@trigger.dev/build/extensions/core";
 
 export default defineConfig({

@@ -19,7 +19,7 @@ This task shows how to use the Vercel AI SDK to generate text from a prompt with
 ### Task code
 
 ```ts trigger/vercel-ai-sdk-openai.ts
-import { logger, task } from "@trigger.dev/sdk/v3";
+import { logger, task } from "@trigger.dev/sdk";
 import { generateText } from "ai";
 // Install the package of the AI model you want to use, in this case OpenAI
 import { openai } from "@ai-sdk/openai"; // Ensure OPENAI_API_KEY environment variable is set

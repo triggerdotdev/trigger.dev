@@ -1,0 +1,212 @@
+<Accordion title="Copy paste this prompt in full" icon="sparkles">
+
+```md
+
+I would like you to help me migrate my v3 task code to v4. Here are the important differences:
+
+We've deprecated the `@trigger.dev/sdk/v3` import path and moved to a new path:
+
+// This is the old path
+import { task } from "@trigger.dev/sdk/v3";
+
+// This is the new path, use this instead
+import { task } from "@trigger.dev/sdk";
+
+We've renamed the `handleError` hook to `catchError`. Use this instead of `handleError`.
+
+`init` was previously used to initialize data used in the run function. This is the old version:
+
+import { task } from "@trigger.dev/sdk";
+
+const myTask = task({
+  init: async () => {
+    return {
+      myClient: new MyClient(),
+    };
+  },
+  run: async (payload: any, { ctx, init }) => {
+    const client = init.myClient;
+    await client.doSomething();
+  },
+});
+
+This is the new version using middleware and locals:
+
+import { task, locals, tasks } from "@trigger.dev/sdk";
+
+// Create a local for your client
+const MyClientLocal = locals.create<MyClient>("myClient");
+
+// Set up middleware to initialize the client
+tasks.middleware("my-client", async ({ next }) => {
+  const client = new MyClient();
+  locals.set(MyClientLocal, client);
+  await next();
+});
+
+// Helper function to get the client
+function getMyClient() {
+  return locals.getOrThrow(MyClientLocal);
+}
+
+const myTask = task({
+  run: async (payload: any, { ctx }) => {
+    const client = getMyClient();
+    await client.doSomething();
+  },
+});
+
+We’ve deprecated the `toolTask` function and replaced it with the `ai.tool` function, which creates an AI tool from an existing `schemaTask`. This is the old version:
+
+import { toolTask, schemaTask } from "@trigger.dev/sdk";
+import { z } from "zod";
+import { generateText } from "ai";
+
+const myToolTask = toolTask({
+  id: "my-tool-task",
+  run: async (payload: any, { ctx }) => {},
+});
+
+export const myAiTask = schemaTask({
+  id: "my-ai-task",
+  schema: z.object({
+    text: z.string(),
+  }),
+  run: async (payload, { ctx }) => {
+    const { text } = await generateText({
+      prompt: payload.text,
+      model: openai("gpt-4o"),
+      tools: {
+        myToolTask,
+      },
+    });
+  },
+});
+
+This is the new version:
+
+import { schemaTask, ai } from "@trigger.dev/sdk";
+import { z } from "zod";
+import { generateText } from "ai";
+
+// Convert toolTask to schemaTask with a schema
+const myToolTask = schemaTask({
+  id: "my-tool-task",
+  schema: z.object({
+    // Add appropriate schema for your tool's payload
+    input: z.string(),
+  }),
+  run: async (payload, { ctx }) => {},
+});
+
+// Create an AI tool from the schemaTask
+const myTool = ai.tool(myToolTask);
+
+export const myAiTask = schemaTask({
+  id: "my-ai-task",
+  schema: z.object({
+    text: z.string(),
+  }),
+  run: async (payload, { ctx }) => {
+    const { text } = await generateText({
+      prompt: payload.text,
+      model: openai("gpt-4o"),
+      tools: {
+        myTool, // Use the ai.tool created from schemaTask
+      },
+    });
+  },
+});
+
+We've made several breaking changes that require code updates:
+
+**Queue changes**: Queues must now be defined ahead of time using the `queue` function. You can no longer create queues "on-demand" when triggering tasks. This is the old version:
+
+
+// Old v3 way - creating queue on-demand
+await myTask.trigger({ foo: "bar" }, { queue: { name: "my-queue", concurrencyLimit: 10 } });
+
+
+This is the new version:
+
+
+// New v4 way - define queue first
+import { queue, task } from "@trigger.dev/sdk";
+
+const myQueue = queue({
+  name: "my-queue",
+  concurrencyLimit: 10,
+});
+
+export const myTask = task({
+  id: "my-task",
+  queue: myQueue, // Set queue on task
+  run: async (payload: any, { ctx }) => {},
+});
+
+// Now trigger without queue options
+await myTask.trigger({ foo: "bar" });
+
+// Or specify queue by name
+await myTask.trigger({ foo: "bar" }, { queue: "my-queue" });
+
+
+**Lifecycle hooks**: Function signatures have changed to use a single object parameter instead of separate parameters. This is the old version:
+
+
+// Old v3 way
+export const myTask = task({
+  id: "my-task",
+  onStart: (payload, { ctx }) => {},
+  onSuccess: (payload, output, { ctx }) => {},
+  onFailure: (payload, error, { ctx }) => {},
+  catchError: (payload, { ctx, error, retry }) => {},
+  run: async (payload, { ctx }) => {},
+});
+
+
+This is the new version:
+
+
+// New v4 way - single object parameter for hooks
+export const myTask = task({
+  id: "my-task",
+  onStart: ({ payload, ctx }) => {},
+  onSuccess: ({ payload, output, ctx }) => {},
+  onFailure: ({ payload, error, ctx }) => {},
+  catchError: ({ payload, ctx, error, retry }) => {},
+  run: async (payload, { ctx }) => {}, // run function unchanged
+});
+
+
+**BatchTrigger changes**: The `batchTrigger` function no longer returns runs directly. This is the old version:
+
+
+// Old v3 way
+const batchHandle = await tasks.batchTrigger([
+  [myTask, { foo: "bar" }],
+  [myOtherTask, { baz: "qux" }],
+]);
+
+console.log(batchHandle.runs); // Direct access
+
+
+This is the new version:
+
+
+// New v4 way
+const batchHandle = await tasks.batchTrigger([
+  [myTask, { foo: "bar" }],
+  [myOtherTask, { baz: "qux" }],
+]);
+
+const runs = await batchHandle.runs.list(); // Use runs.list()
+console.log(runs);
+
+
+Can you help me convert the following code from v3 to v4? Please include the full converted code in the answer, do not truncate it anywhere.
+
+```
+
+</Accordion>
+

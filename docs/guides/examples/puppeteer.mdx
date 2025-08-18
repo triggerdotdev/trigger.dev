@@ -27,7 +27,7 @@ There are 3 example tasks to follow on this page:
 To use all examples on this page, you'll first need to add these build settings to your `trigger.config.ts` file:
 
 ```ts trigger.config.ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 import { puppeteer } from "@trigger.dev/build/extensions/puppeteer";
 
 export default defineConfig({
@@ -59,7 +59,7 @@ In this example we use [Puppeteer](https://pptr.dev/) to log out the title of a 
 ### Task code
 
 ```ts trigger/puppeteer-basic-example.ts
-import { logger, task } from "@trigger.dev/sdk/v3";
+import { logger, task } from "@trigger.dev/sdk";
 import puppeteer from "puppeteer";
 
 export const puppeteerTask = task({
@@ -91,7 +91,7 @@ In this example we use [Puppeteer](https://pptr.dev/) to generate a PDF from the
 ### Task code
 
 ```ts trigger/puppeteer-generate-pdf.ts
-import { logger, task } from "@trigger.dev/sdk/v3";
+import { logger, task } from "@trigger.dev/sdk";
 import puppeteer from "puppeteer";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 
@@ -158,7 +158,7 @@ In this example we use [Puppeteer](https://pptr.dev/) with a [BrowserBase](https
 ### Task code
 
 ```ts trigger/scrape-website.ts
-import { logger, task } from "@trigger.dev/sdk/v3";
+import { logger, task } from "@trigger.dev/sdk";
 import puppeteer from "puppeteer-core";
 
 export const puppeteerScrapeWithProxy = task({
