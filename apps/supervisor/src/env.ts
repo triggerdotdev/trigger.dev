@@ -76,6 +76,7 @@ const Env = z.object({
   KUBERNETES_IMAGE_PULL_SECRETS: z.string().optional(), // csv
   KUBERNETES_EPHEMERAL_STORAGE_SIZE_LIMIT: z.string().default("10Gi"),
   KUBERNETES_EPHEMERAL_STORAGE_SIZE_REQUEST: z.string().default("2Gi"),
+  KUBERNETES_STRIP_IMAGE_DIGEST: BoolEnv.default(false),
 
   // Placement tags settings
   PLACEMENT_TAGS_ENABLED: BoolEnv.default(false),
