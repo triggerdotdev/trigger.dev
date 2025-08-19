@@ -320,7 +320,7 @@ export function CreateBulkActionInspector({
                   label={simplur`${selectedItems.size} individually selected run[|s]`}
                   value={"selected"}
                   variant="button/small"
-                  className="grow"
+                  className="grow tabular-nums"
                 />
               </RadioGroup>
             </InputGroup>
