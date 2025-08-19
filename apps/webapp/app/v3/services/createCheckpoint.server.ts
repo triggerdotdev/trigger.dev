@@ -168,7 +168,7 @@ export class CreateCheckpointService extends BaseService {
         }
 
         if (batchRun.resumedAt) {
-          logger.error("CreateCheckpointService: Batch already resumed", {
+          logger.info("CreateCheckpointService: Batch already resumed", {
             batchRun,
             params,
           });
