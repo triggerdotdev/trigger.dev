@@ -158,7 +158,7 @@ export class DeliverAlertService extends BaseService {
       }
     } catch (error) {
       if (error instanceof SkipRetryError) {
-        logger.error("[DeliverAlert] Skipping retry", {
+        logger.warn("[DeliverAlert] Skipping retry", {
           reason: error.message,
         });
 
@@ -951,7 +951,7 @@ export class DeliverAlertService extends BaseService {
       return await client.chat.postMessage(message);
     } catch (error) {
       if (isWebAPIRateLimitedError(error)) {
-        logger.error("[DeliverAlert] Slack rate limited", {
+        logger.warn("[DeliverAlert] Slack rate limited", {
           error,
           message,
         });
@@ -960,7 +960,7 @@ export class DeliverAlertService extends BaseService {
       }
 
       if (isWebAPIHTTPError(error)) {
-        logger.error("[DeliverAlert] Slack HTTP error", {
+        logger.warn("[DeliverAlert] Slack HTTP error", {
           error,
           message,
         });
@@ -969,7 +969,7 @@ export class DeliverAlertService extends BaseService {
       }
 
       if (isWebAPIRequestError(error)) {
-        logger.error("[DeliverAlert] Slack request error", {
+        logger.warn("[DeliverAlert] Slack request error", {
           error,
           message,
         });
@@ -978,7 +978,7 @@ export class DeliverAlertService extends BaseService {
       }
 
       if (isWebAPIPlatformError(error)) {
-        logger.error("[DeliverAlert] Slack platform error", {
+        logger.warn("[DeliverAlert] Slack platform error", {
           error,
           message,
         });
@@ -991,10 +991,19 @@ export class DeliverAlertService extends BaseService {
           throw new SkipRetryError("Slack invalid blocks");
         }
 
+        if (error.data.error === "account_inactive") {
+          logger.info("[DeliverAlert] Slack account inactive, skipping retry", {
+            error,
+            message,
+          });
+
+          throw new SkipRetryError("Slack account inactive");
+        }
+
         throw new Error("Slack platform error");
       }
 
-      logger.error("[DeliverAlert] Failed to send slack message", {
+      logger.warn("[DeliverAlert] Failed to send slack message", {
         error,
         message,
       });
