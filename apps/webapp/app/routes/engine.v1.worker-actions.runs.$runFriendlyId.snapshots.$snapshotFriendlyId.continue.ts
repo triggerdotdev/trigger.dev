@@ -27,8 +27,12 @@ export const loader = createLoaderWorkerApiRoute(
 
       return json(continuationResult);
     } catch (error) {
-      logger.error("Failed to suspend run", { runFriendlyId, snapshotFriendlyId, error });
-      throw error;
+      logger.warn("Failed to suspend run", { runFriendlyId, snapshotFriendlyId, error });
+      if (error instanceof Error) {
+        throw json({ error: error.message }, { status: 422 });
+      }
+
+      throw json({ error: "Failed to continue run execution" }, { status: 422 });
     }
   }
 );
