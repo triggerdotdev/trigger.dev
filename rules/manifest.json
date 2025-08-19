@@ -1,0 +1,55 @@
+{
+  "name": "trigger.dev",
+  "description": "Trigger.dev Agent rules",
+  "currentVersion": "4.0.0",
+  "versions": {
+    "4.0.0": {
+      "options": [
+        {
+          "name": "basic",
+          "title": "Basic tasks",
+          "label": "Only the most important rules for writing basic Trigger.dev tasks",
+          "path": "4.0.0/basic-tasks.md",
+          "tokens": 500
+        },
+        {
+          "name": "advanced-tasks",
+          "title": "Advanced",
+          "label": "Comprehensive rules to help you write advanced Trigger.dev tasks",
+          "path": "4.0.0/advanced-tasks.md",
+          "tokens": 5000
+        },
+        {
+          "name": "config",
+          "title": "Config",
+          "label": "How to configure Trigger.dev",
+          "path": "4.0.0/config.md",
+          "tokens": 1000
+        },
+        {
+          "name": "scheduled-tasks",
+          "title": "Scheduled Tasks",
+          "label": "How to write and use scheduled Trigger.dev tasks",
+          "path": "4.0.0/scheduled-tasks.md",
+          "tokens": 1000
+        },
+        {
+          "name": "realtime",
+          "title": "Realtime",
+          "label": "How to use realtime in your Trigger.dev tasks and your frontend",
+          "path": "4.0.0/realtime.md",
+          "tokens": 2000
+        },
+        {
+          "name": "claude-code-agent",
+          "title": "Claude Code Agent",
+          "label": "A Trigger.dev claude code agent file to help you write code with Claude Code",
+          "path": "4.0.0/claude-code-agent.md",
+          "tokens": 740,
+          "client": "claude-code",
+          "installStrategy": "claude-code-subagent"
+        }
+      ]
+    }
+  }
+}

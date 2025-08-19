@@ -31,7 +31,9 @@ const CliConfigFile = z.object({
   profiles: z.record(CliConfigProfileSettings),
   settings: z
     .object({
-      hasSeenMCPInstallPrompt: z.boolean().default(false),
+      hasSeenMCPInstallPrompt: z.boolean().optional(),
+      hasSeenRulesInstallPrompt: z.boolean().optional(),
+      lastRulesInstallPromptVersion: z.string().optional(),
     })
     .optional(),
 });
@@ -57,6 +59,7 @@ function getBlankConfig(): CliConfigFile {
     profiles: {},
     settings: {
       hasSeenMCPInstallPrompt: false,
+      hasSeenRulesInstallPrompt: false,
     },
   };
 }
@@ -113,6 +116,36 @@ export function writeConfigHasSeenMCPInstallPrompt(hasSeenMCPInstallPrompt: bool
   config.settings = {
     ...config.settings,
     hasSeenMCPInstallPrompt,
+  };
+  writeAuthConfigFile(config);
+}
+
+export function readConfigHasSeenRulesInstallPrompt(): boolean {
+  const config = getConfig();
+  return typeof config.settings?.hasSeenRulesInstallPrompt === "boolean"
+    ? config.settings.hasSeenRulesInstallPrompt
+    : false;
+}
+
+export function writeConfigHasSeenRulesInstallPrompt(hasSeenRulesInstallPrompt: boolean) {
+  const config = getConfig();
+  config.settings = {
+    ...config.settings,
+    hasSeenRulesInstallPrompt,
+  };
+  writeAuthConfigFile(config);
+}
+
+export function readConfigLastRulesInstallPromptVersion(): string | undefined {
+  const config = getConfig();
+  return config.settings?.lastRulesInstallPromptVersion;
+}
+
+export function writeConfigLastRulesInstallPromptVersion(version: string) {
+  const config = getConfig();
+  config.settings = {
+    ...config.settings,
+    lastRulesInstallPromptVersion: version,
   };
   writeAuthConfigFile(config);
 }

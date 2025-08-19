@@ -16,6 +16,7 @@ import { COMMAND_NAME } from "../consts.js";
 import { VERSION } from "../version.js";
 import { installExitHandler } from "./common.js";
 import { configureInstallMcpCommand } from "../commands/install-mcp.js";
+import { configureInstallRulesCommand } from "../commands/install-rules.js";
 
 export const program = new Command();
 
@@ -38,5 +39,6 @@ configurePreviewCommand(program);
 configureAnalyzeCommand(program);
 configureMcpCommand(program);
 configureInstallMcpCommand(program);
+configureInstallRulesCommand(program);
 
 installExitHandler();

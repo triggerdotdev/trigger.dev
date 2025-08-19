@@ -103,6 +103,33 @@ export function readJSONFileSync(path: string) {
   return JSON.parse(fileContents);
 }
 
+export async function writeToFile(
+  path: string,
+  contents: string,
+  mergeStrategy: "overwrite" | "append" = "overwrite"
+) {
+  const exists = await pathExists(path);
+
+  if (exists) {
+    switch (mergeStrategy) {
+      case "overwrite": {
+        await safeWriteFile(path, contents);
+        break;
+      }
+      case "append": {
+        const existingContents = await readFile(path);
+        await safeWriteFile(path, existingContents + "\n\n" + contents);
+        break;
+      }
+      default: {
+        throw new Error(`Unknown merge strategy: ${mergeStrategy}`);
+      }
+    }
+  } else {
+    await safeWriteFile(path, contents);
+  }
+}
+
 export function safeDeleteFileSync(path: string) {
   try {
     fs.unlinkSync(path);

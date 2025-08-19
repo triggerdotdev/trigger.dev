@@ -31,6 +31,7 @@ const clients = [
   "openai-codex",
   "opencode",
   "amp",
+  "ruler",
 ] as const;
 const scopes = ["user", "project", "local"] as const;
 
@@ -86,6 +87,9 @@ const clientScopes: ClientScopes = {
     user: "~/.config/opencode/opencode.json",
     project: "./opencode.json",
   },
+  ruler: {
+    project: "./.ruler/mcp.json",
+  },
 };
 
 const clientLabels: ClientLabels = {
@@ -100,6 +104,7 @@ const clientLabels: ClientLabels = {
   "openai-codex": "OpenAI Codex CLI",
   amp: "Sourcegraph AMP",
   opencode: "opencode",
+  ruler: "Ruler",
 };
 
 type SupportedClients = (typeof clients)[number];
@@ -455,6 +460,9 @@ function resolveMcpServerConfigJsonPath(
     case "opencode": {
       return ["mcp", "trigger"];
     }
+    case "ruler": {
+      return ["mcpServers", "trigger"];
+    }
   }
 }
 
@@ -548,6 +556,13 @@ function resolveMcpServerConfig(
         type: "local",
         command: ["npx", ...args],
         enabled: true,
+      };
+    }
+    case "ruler": {
+      return {
+        type: "stdio",
+        command: "npx",
+        args,
       };
     }
   }

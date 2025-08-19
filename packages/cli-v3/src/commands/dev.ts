@@ -21,6 +21,7 @@ import { confirm, isCancel, log } from "@clack/prompts";
 import { installMcpServer } from "./install-mcp.js";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { VERSION } from "@trigger.dev/core";
+import { initiateRulesInstallWizard } from "./install-rules.js";
 
 const DevCommandOptions = CommonCommandOptions.extend({
   debugOtel: z.boolean().default(false),
@@ -34,6 +35,10 @@ const DevCommandOptions = CommonCommandOptions.extend({
   mcpPort: z.coerce.number().optional().default(3333),
   analyze: z.boolean().default(false),
   disableWarnings: z.boolean().default(false),
+  skipMCPInstall: z.boolean().default(false),
+  skipRulesInstall: z.boolean().default(false),
+  rulesInstallManifestPath: z.string().optional(),
+  rulesInstallBranch: z.string().optional(),
 });
 
 export type DevCommandOptions = z.infer<typeof DevCommandOptions>;
@@ -67,6 +72,30 @@ export function configureDevCommand(program: Command) {
       .addOption(
         new CommandOption("--analyze", "Analyze the build output and import timings").hideHelp()
       )
+      .addOption(
+        new CommandOption(
+          "--skip-mcp-install",
+          "Skip the Trigger.dev MCP server install wizard"
+        ).hideHelp()
+      )
+      .addOption(
+        new CommandOption(
+          "--skip-rules-install",
+          "Skip the Trigger.dev Agent rules install wizard"
+        ).hideHelp()
+      )
+      .addOption(
+        new CommandOption(
+          "--rules-install-manifest-path <path>",
+          "The path to the rules install manifest"
+        ).hideHelp()
+      )
+      .addOption(
+        new CommandOption(
+          "--rules-install-branch <branch>",
+          "The branch to install the rules from"
+        ).hideHelp()
+      )
       .addOption(new CommandOption("--disable-warnings", "Suppress warnings output").hideHelp())
   ).action(async (options) => {
     wrapCommandAction("dev", DevCommandOptions, options, async (opts) => {
@@ -78,33 +107,47 @@ export function configureDevCommand(program: Command) {
 export async function devCommand(options: DevCommandOptions) {
   runtimeChecks();
 
-  const hasSeenMCPInstallPrompt = readConfigHasSeenMCPInstallPrompt();
+  const skipMCPInstall = typeof options.skipMCPInstall === "boolean" && options.skipMCPInstall;
 
-  if (!hasSeenMCPInstallPrompt) {
-    const installChoice = await confirm({
-      message: "Would you like to install the Trigger.dev MCP server?",
-      initialValue: true,
-    });
+  if (!skipMCPInstall) {
+    const hasSeenMCPInstallPrompt = readConfigHasSeenMCPInstallPrompt();
 
-    writeConfigHasSeenMCPInstallPrompt(true);
+    if (!hasSeenMCPInstallPrompt) {
+      const installChoice = await confirm({
+        message: "Would you like to install the Trigger.dev MCP server?",
+        initialValue: true,
+      });
 
-    const skipInstall = isCancel(installChoice) || !installChoice;
+      writeConfigHasSeenMCPInstallPrompt(true);
 
-    if (!skipInstall) {
-      log.step("Welcome to the Trigger.dev MCP server install wizard 🧙");
+      const skipInstall = isCancel(installChoice) || !installChoice;
 
-      const [installError] = await tryCatch(
-        installMcpServer({
-          yolo: false,
-          tag: VERSION as string,
-          logLevel: options.logLevel,
-        })
-      );
+      if (!skipInstall) {
+        log.step("Welcome to the Trigger.dev MCP server install wizard 🧙");
 
-      if (installError) {
-        log.error(`Failed to install MCP server: ${installError.message}`);
+        const [installError] = await tryCatch(
+          installMcpServer({
+            yolo: false,
+            tag: VERSION as string,
+            logLevel: options.logLevel,
+          })
+        );
+
+        if (installError) {
+          log.error(`Failed to install MCP server: ${installError.message}`);
+        }
       }
     }
+  }
+
+  const skipRulesInstall =
+    typeof options.skipRulesInstall === "boolean" && options.skipRulesInstall;
+
+  if (!skipRulesInstall) {
+    await initiateRulesInstallWizard({
+      manifestPath: options.rulesInstallManifestPath,
+      branch: options.rulesInstallBranch,
+    });
   }
 
   const authorization = await login({
