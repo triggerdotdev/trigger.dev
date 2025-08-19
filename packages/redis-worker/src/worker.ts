@@ -621,15 +621,17 @@ class Worker<TCatalog extends WorkerCatalog> {
         const retryDelay = calculateNextRetryDelay(retrySettings, newAttempt);
 
         if (!retryDelay) {
-          this.logger.error(`Worker item reached max attempts. Moving to DLQ.`, {
-            name: this.options.name,
-            id,
-            job,
-            item,
-            visibilityTimeoutMs,
-            attempt: newAttempt,
-            errorMessage,
-          });
+          if (shouldLogError) {
+            this.logger.error(`Worker item reached max attempts. Moving to DLQ.`, {
+              ...logAttributes,
+              attempt: newAttempt,
+            });
+          } else {
+            this.logger.info(`Worker item reached max attempts. Moving to DLQ.`, {
+              ...logAttributes,
+              attempt: newAttempt,
+            });
+          }
 
           await this.queue.moveToDeadLetterQueue(id, errorMessage);
 
