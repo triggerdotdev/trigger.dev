@@ -184,6 +184,15 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
 
       return new Response(null, { status: 200 });
     } catch (error) {
+      if (error instanceof Error) {
+        if ("code" in error && error.code === "ECONNRESET") {
+          logger.info("[RealtimeStreams][ingestData] Connection reset during ingestData:", {
+            error,
+          });
+          return new Response(null, { status: 500 });
+        }
+      }
+
       logger.error("[RealtimeStreams][ingestData] Error in ingestData:", { error });
 
       return new Response(null, { status: 500 });
