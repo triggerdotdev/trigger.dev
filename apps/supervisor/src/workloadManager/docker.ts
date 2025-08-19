@@ -8,13 +8,13 @@ import { env } from "../env.js";
 import { getDockerHostDomain, getRunnerId, normalizeDockerHostUrl } from "../util.js";
 import Docker from "dockerode";
 import { tryCatch } from "@trigger.dev/core";
+import { readFileSync } from "fs";
 
 export class DockerWorkloadManager implements WorkloadManager {
   private readonly logger = new SimpleStructuredLogger("docker-workload-manager");
   private readonly docker: Docker;
 
   private readonly runnerNetworks: string[];
-  private readonly auth?: Docker.AuthConfig;
   private readonly platformOverride?: string;
 
   constructor(private opts: WorkloadManagerOptions) {
@@ -43,15 +43,21 @@ export class DockerWorkloadManager implements WorkloadManager {
         username: env.DOCKER_REGISTRY_USERNAME,
         url: env.DOCKER_REGISTRY_URL,
       });
-
-      this.auth = {
-        username: env.DOCKER_REGISTRY_USERNAME,
-        password: env.DOCKER_REGISTRY_PASSWORD,
-        serveraddress: env.DOCKER_REGISTRY_URL,
-      };
     } else {
       this.logger.warn("🐋 No Docker registry credentials provided, skipping auth");
     }
+  }
+
+  private auth(): Docker.AuthConfig | undefined {
+    if (env.DOCKER_REGISTRY_USERNAME && env.DOCKER_REGISTRY_PASSWORD && env.DOCKER_REGISTRY_URL) {
+      return {
+        username: env.DOCKER_REGISTRY_USERNAME,
+        password: getDockerPassword(),
+        serveraddress: env.DOCKER_REGISTRY_URL,
+      };
+    }
+
+    return undefined;
   }
 
   async create(opts: WorkloadManagerCreateOptions) {
@@ -162,7 +168,7 @@ export class DockerWorkloadManager implements WorkloadManager {
 
       // Ensure the image is present
       const [createImageError, imageResponseReader] = await tryCatch(
-        this.docker.createImage(this.auth, {
+        this.docker.createImage(this.auth(), {
           fromImage: imageRef,
           ...(this.platformOverride ? { platform: this.platformOverride } : {}),
         })
@@ -269,4 +275,33 @@ async function readAllChunks(reader: NodeJS.ReadableStream) {
     chunks.push(chunk.toString());
   }
   return chunks;
+}
+
+function getDockerPassword(): string | undefined {
+  if (!env.DOCKER_REGISTRY_PASSWORD) {
+    return undefined
+  }
+  if (!env.DOCKER_REGISTRY_PASSWORD.startsWith("file://")) {
+    return env.DOCKER_REGISTRY_PASSWORD;
+  }
+
+  const passwordPath = env.DOCKER_REGISTRY_PASSWORD.replace("file://", "");
+
+  console.debug(
+    JSON.stringify({
+      message: "🔑 Reading docker password from file",
+      passwordPath,
+    })
+  );
+
+  try {
+    const password = readFileSync(passwordPath, "utf8").trim();
+    return password;
+  } catch (error) {
+    console.error(`Failed to read docker password from file: ${passwordPath}`, error);
+    throw new Error(
+      `Unable to read docker password from file: ${error instanceof Error ? error.message : "Unknown error"
+      }`
+    );
+  }
 }
