@@ -621,7 +621,8 @@ export class SharedQueueConsumer {
     const worker = deployment?.worker;
 
     if (!deployment || !worker) {
-      logger.error("No matching deployment found for task run", {
+      // This happens when a run is "WAITING_FOR_DEPLOY" and is expected
+      logger.info("No matching deployment found for task run", {
         queueMessage: message.data,
         messageId: message.messageId,
       });
