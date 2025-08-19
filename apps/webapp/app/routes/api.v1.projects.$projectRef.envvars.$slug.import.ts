@@ -44,6 +44,7 @@ export async function action({ params, request }: ActionFunctionArgs) {
     variables: Object.entries(body.variables).map(([key, value]) => ({
       key,
       value,
+      isSecret: body.secrets?.[key] ?? false,
     })),
   });
 
@@ -55,6 +56,7 @@ export async function action({ params, request }: ActionFunctionArgs) {
       variables: Object.entries(body.parentVariables).map(([key, value]) => ({
         key,
         value,
+        isSecret: body.parentSecrets?.[key] ?? false,
       })),
     });
 
