@@ -155,14 +155,14 @@ async function callSyncEnvVarsFn(
   env: Record<string, string>;
   secrets?: Record<string, boolean>;
   parentEnv?: Record<string, string>;
-  parentEnvSecrets?: Record<string, boolean>;
+  parentSecrets?: Record<string, boolean>;
 } | undefined> {
   if (syncEnvVarsFn && typeof syncEnvVarsFn === "function") {
     let resolvedEnvVars: {
       env: Record<string, string>;
       secrets?: Record<string, boolean>;
       parentEnv?: Record<string, string>;
-      parentEnvSecrets?: Record<string, boolean>;
+      parentSecrets?: Record<string, boolean>;
     } = {
       env: {},
     };
@@ -196,11 +196,11 @@ async function callSyncEnvVarsFn(
           if (item.isParentEnv) {
             if (!resolvedEnvVars.parentEnv) {
               resolvedEnvVars.parentEnv = {};
-              resolvedEnvVars.parentEnvSecrets = {};
+              resolvedEnvVars.parentSecrets = {};
             }
             resolvedEnvVars.parentEnv[item.name] = item.value;
-            if (item.isSecret && resolvedEnvVars.parentEnvSecrets) {
-              resolvedEnvVars.parentEnvSecrets[item.name] = true;
+            if (item.isSecret && resolvedEnvVars.parentSecrets) {
+              resolvedEnvVars.parentSecrets[item.name] = true;
             }
           } else {
             resolvedEnvVars.env[item.name] = item.value;

@@ -606,13 +606,13 @@ export async function syncEnvVarsWithServer(
   envVars: Record<string, string>,
   parentEnvVars?: Record<string, string>,
   secrets?: Record<string, boolean>,
-  parentEnvSecrets?: Record<string, boolean>
+  parentSecrets?: Record<string, boolean>
 ) {
   return await apiClient.importEnvVars(projectRef, environmentSlug, {
     variables: envVars,
     parentVariables: parentEnvVars,
     secrets,
-    parentSecrets: parentEnvSecrets,
+    parentSecrets,
     override: true,
   });
 }
