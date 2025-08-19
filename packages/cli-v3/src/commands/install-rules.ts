@@ -1,15 +1,12 @@
-import { confirm, intro, isCancel, log, multiselect, outro, select, spinner } from "@clack/prompts";
+import { confirm, intro, isCancel, log, multiselect, outro } from "@clack/prompts";
+import { ResolvedConfig } from "@trigger.dev/core/v3/build";
 import chalk from "chalk";
 import { Command, Option as CommandOption } from "commander";
+import { join } from "node:path";
+import * as semver from "semver";
 import { z } from "zod";
 import { OutroCommandError, wrapCommandAction } from "../cli/common.js";
-import {
-  readConfigHasSeenRulesInstallPrompt,
-  readConfigLastRulesInstallPromptVersion,
-  writeConfigHasSeenRulesInstallPrompt,
-  writeConfigLastRulesInstallPromptVersion,
-} from "../utilities/configFiles.js";
-import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
+import { loadConfig } from "../config.js";
 import {
   GithubRulesManifestLoader,
   loadRulesManifest,
@@ -18,13 +15,16 @@ import {
   RulesManifest,
   RulesManifestVersionOption,
 } from "../rules/manifest.js";
-import { logger } from "../utilities/logger.js";
-import { join } from "node:path";
-import { writeToFile } from "../utilities/fileSystem.js";
-import * as semver from "semver";
-import { loadConfig } from "../config.js";
-import { ResolvedConfig } from "@trigger.dev/core/v3/build";
 import { cliLink } from "../utilities/cliOutput.js";
+import {
+  readConfigHasSeenRulesInstallPrompt,
+  readConfigLastRulesInstallPromptVersion,
+  writeConfigHasSeenRulesInstallPrompt,
+  writeConfigLastRulesInstallPromptVersion,
+} from "../utilities/configFiles.js";
+import { pathExists, readFile, safeWriteFile } from "../utilities/fileSystem.js";
+import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
+import { logger } from "../utilities/logger.js";
 
 const clients = [
   "claude-code",
@@ -372,16 +372,58 @@ async function performInstallDefaultOptionForClient(
 
   // Try and read the existing rules file
   const rulesFileAbsolutePath = join(process.cwd(), rulesFilePath);
-  await writeToFile(rulesFileAbsolutePath, rulesFileContents, mergeStrategy);
+  await writeToFile(rulesFileAbsolutePath, rulesFileContents, mergeStrategy, option.name);
 
   return { option, location: rulesFilePath };
 }
 
+async function writeToFile(
+  path: string,
+  contents: string,
+  mergeStrategy: "overwrite" | "replace" = "overwrite",
+  sectionName: string
+) {
+  const exists = await pathExists(path);
+
+  if (exists) {
+    switch (mergeStrategy) {
+      case "overwrite": {
+        await safeWriteFile(path, contents);
+        break;
+      }
+      case "replace": {
+        const existingContents = await readFile(path);
+
+        const pattern = new RegExp(
+          `<!-- TRIGGER.DEV ${sectionName} START -->.*?<!-- TRIGGER.DEV ${sectionName} END -->`,
+          "gs"
+        );
+
+        // If the section name is not found, just append the new content
+        if (!pattern.test(existingContents)) {
+          await safeWriteFile(path, existingContents + "\n\n" + contents);
+          break;
+        }
+
+        const updatedContent = existingContents.replace(pattern, contents);
+
+        await safeWriteFile(path, updatedContent);
+        break;
+      }
+      default: {
+        throw new Error(`Unknown merge strategy: ${mergeStrategy}`);
+      }
+    }
+  } else {
+    await safeWriteFile(path, contents);
+  }
+}
+
 async function performInstallClaudeCodeSubagentOptionForClient(option: RulesManifestVersionOption) {
   const rulesFilePath = ".claude/agents/trigger-dev-task-writer.md";
-  const rulesFileContents = `# ${option.title}\n\n${option.contents}`;
+  const rulesFileContents = option.contents;
 
-  await writeToFile(rulesFilePath, rulesFileContents, "overwrite");
+  await writeToFile(rulesFilePath, rulesFileContents, "overwrite", option.name);
 
   return { option, location: rulesFilePath };
 }
@@ -437,7 +479,7 @@ async function resolveRulesFileMergeStrategyForClient(clientName: (typeof client
     case "agents.md":
     case "gemini-cli":
     case "claude-code": {
-      return "append";
+      return "replace";
     }
     default: {
       return "overwrite";
@@ -478,7 +520,11 @@ async function resolveRulesFileContentsForClient(
       );
     }
     default: {
-      return option.contents;
+      return $output(
+        `<!-- TRIGGER.DEV ${option.name} START -->`,
+        option.contents,
+        `<!-- TRIGGER.DEV ${option.name} END -->`
+      );
     }
   }
 }
