@@ -4,10 +4,9 @@
 
 1. **MUST** use `@trigger.dev/sdk` (v4)
 2. **MUST NEVER** use `client.defineJob` (DEPRECATED)
-3. **MUST** export every task, including subtasks
-4. Generate example payloads when possible
+3. Generate example payloads when possible
 
-## ✅ Correct Task Pattern
+## Correct Task Pattern
 
 ```ts
 import { task } from "@trigger.dev/sdk";
@@ -246,7 +245,7 @@ export default defineConfig({
 3. Set environment variables
 4. `npx trigger.dev@latest dev`
 
-**Remember**: Always export tasks, use v4 SDK (`@trigger.dev/sdk`), never use `client.defineJob`
+**Remember**: Use v4 SDK (`@trigger.dev/sdk`), never use `client.defineJob`
 
 ## Key v4 Changes
 
