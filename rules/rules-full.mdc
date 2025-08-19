@@ -1,0 +1,258 @@
+# Trigger.dev Task Development Guide (v4)
+
+## Essential Requirements
+
+1. **MUST** use `@trigger.dev/sdk` (v4)
+2. **MUST NEVER** use `client.defineJob` (DEPRECATED)
+3. **MUST** export every task, including subtasks
+4. Generate example payloads when possible
+
+## ✅ Correct Task Pattern
+
+```ts
+import { task } from "@trigger.dev/sdk";
+
+export const helloWorld = task({
+  id: "hello-world",
+  run: async (payload: { message: string }) => {
+    // Task logic here - runs for long time, no timeouts
+  },
+});
+```
+
+## Task Configuration
+
+### Retry Options
+```ts
+retry: {
+  maxAttempts: 10,
+  factor: 1.8,
+  minTimeoutInMs: 500,
+  maxTimeoutInMs: 30_000,
+}
+```
+
+### Queue & Machine
+```ts
+import { queue, task } from "@trigger.dev/sdk";
+
+// Define queue first
+const myQueue = queue({
+  name: "my-queue",
+  concurrencyLimit: 1,
+});
+
+// Use in task
+export const myTask = task({
+  id: "my-task",
+  queue: myQueue,
+  machine: { preset: "large-1x" }, // 4 vCPU, 8 GB RAM
+  maxDuration: 300, // seconds
+  run: async (payload) => {},
+});
+```
+
+Machine presets: `micro`, `small-1x` (default), `small-2x`, `medium-1x`, `medium-2x`, `large-1x`, `large-2x`
+
+## Lifecycle Functions & Middleware
+
+```ts
+import { task, locals, tasks } from "@trigger.dev/sdk";
+
+// Define locals for shared data
+const MyDataLocal = locals.create<{ data: string }>("myData");
+
+// Global middleware
+tasks.middleware("my-data", async ({ next }) => {
+  locals.set(MyDataLocal, { data: "value" });
+  await next();
+});
+
+export const taskWithLifecycle = task({
+  id: "task-lifecycle",
+  cleanup: async ({ payload, ctx }) => { /* cleanup */ },
+  onStart: async ({ payload, ctx }) => { /* on start */ },
+  onSuccess: async ({ payload, output, ctx }) => { /* on success */ },
+  onFailure: async ({ payload, error, ctx }) => { /* on failure */ },
+  catchError: async ({ error, ctx }) => { /* custom error handling */ },
+  run: async (payload, { ctx }) => {
+    const myData = locals.get(MyDataLocal);
+    console.log(myData.data); // "value"
+  },
+});
+```
+
+## Scheduled Tasks
+
+```ts
+import { schedules } from "@trigger.dev/sdk";
+
+export const scheduledTask = schedules.task({
+  id: "scheduled-task",
+  cron: "0 */2 * * *", // every 2 hours
+  // or: cron: { pattern: "0 5 * * *", timezone: "Asia/Tokyo" },
+  run: async (payload) => {
+    console.log(payload.timestamp, payload.scheduleId);
+  },
+});
+```
+
+## Schema Tasks
+
+```ts
+import { schemaTask } from "@trigger.dev/sdk";
+import { z } from "zod";
+
+export const validatedTask = schemaTask({
+  id: "validated-task",
+  schema: z.object({ name: z.string(), age: z.number() }),
+  run: async (payload) => {
+    // payload is typed and validated
+  },
+});
+```
+
+## Triggering Tasks
+
+### From Backend
+```ts
+import { tasks } from "@trigger.dev/sdk";
+import type { emailTask } from "~/trigger/emails";
+
+// Single trigger
+const handle = await tasks.trigger<typeof emailTask>("email-task", { to: "user@email.com" });
+
+// Batch trigger
+const batchHandle = await tasks.batchTrigger<typeof emailTask>("email-task", [
+  { payload: { to: "user1@email.com" } },
+  { payload: { to: "user2@email.com" } }
+]);
+
+// Get runs from batch (v4 change)
+const runs = await batchHandle.runs.list();
+```
+
+### From Inside Tasks
+```ts
+// Trigger and continue
+const handle = await myOtherTask.trigger({ data: "value" });
+
+// Trigger and wait for result
+const result = await childTask.triggerAndWait("data");
+
+// Batch operations
+const results = await childTask.batchTriggerAndWait([
+  { payload: "item1" },
+  { payload: "item2" }
+]);
+
+// Multiple different tasks
+const results = await batch.triggerAndWait([
+  { id: "task-1", payload: { foo: "bar" } },
+  { id: "task-2", payload: { baz: 42 } }
+]);
+```
+
+## Metadata & Realtime
+
+### Metadata
+```ts
+import { task, metadata } from "@trigger.dev/sdk";
+
+export const metadataTask = task({
+  id: "metadata-task",
+  run: async (payload) => {
+    const current = metadata.current();
+    const user = metadata.get("user");
+    
+    metadata.set("progress", 0.5)
+      .append("logs", "Step complete")
+      .increment("count", 1);
+  },
+});
+
+// Trigger with metadata
+const handle = await myTask.trigger(
+  { message: "hello" },
+  { metadata: { user: { name: "Eric", id: "user_1234" } } }
+);
+```
+
+### Realtime Subscription
+```ts
+import { runs } from "@trigger.dev/sdk";
+
+for await (const run of runs.subscribeToRun(handle.id)) {
+  console.log(run.status, run.output);
+}
+```
+
+## Idempotency
+
+```ts
+import { idempotencyKeys } from "@trigger.dev/sdk";
+
+const idempotencyKey = await idempotencyKeys.create("unique-key");
+await childTask.trigger({ data: "value" }, { 
+  idempotencyKey,
+  idempotencyKeyTTL: "60s" 
+});
+```
+
+## Logging
+
+```ts
+import { logger } from "@trigger.dev/sdk";
+
+logger.debug("Debug message", { data: payload });
+logger.info("Info message", { userId: user.id });
+logger.warn("Warning", { issue: "something" });
+logger.error("Error occurred", { error: error.message });
+```
+
+## trigger.config.ts
+
+```ts
+import { defineConfig } from "@trigger.dev/sdk";
+
+export default defineConfig({
+  project: "<project-ref>",
+  dirs: ["./trigger"],
+  runtime: "node", // "bun" or "node" (v22+ supported)
+  defaultMachine: "small-1x",
+  maxDuration: 300,
+  retries: {
+    enabledInDev: false,
+    default: {
+      maxAttempts: 3,
+      minTimeoutInMs: 1000,
+      maxTimeoutInMs: 10000,
+      factor: 2,
+    },
+  },
+  build: {
+    external: ["package-name"],
+    extensions: [
+      // additionalFiles, additionalPackages, aptGet, etc.
+    ],
+  },
+});
+```
+
+## Quick Setup
+
+1. `npx trigger.dev@latest init`
+2. Create tasks in `./trigger/` directory
+3. Set environment variables
+4. `npx trigger.dev@latest dev`
+
+**Remember**: Always export tasks, use v4 SDK (`@trigger.dev/sdk`), never use `client.defineJob`
+
+## Key v4 Changes
+
+- Import from `@trigger.dev/sdk` (not `/v3`)
+- Lifecycle hooks use object parameters: `({ payload, ctx }) => {}`
+- Replace `handleError` with `catchError`
+- Replace `init` with middleware and locals
+- Queues must be defined with `queue()` function
+- `batchTrigger` returns handle, use `.runs.list()` to get runs
