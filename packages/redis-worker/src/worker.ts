@@ -36,6 +36,8 @@ export type WorkerCatalog = {
     retry?: RetryOptions;
     cron?: string;
     jitterInMs?: number;
+    /** Defaults to true. If false, errors will not be logged. */
+    logErrors?: boolean;
   };
 };
 
@@ -541,12 +543,12 @@ class Worker<TCatalog extends WorkerCatalog> {
     const catalogItem = this.options.catalog[job as any];
     const handler = this.jobs[job as any];
     if (!handler) {
-      this.logger.error(`No handler found for job type: ${job}`);
+      this.logger.error(`Worker no handler found for job type: ${job}`);
       return;
     }
 
     if (!catalogItem) {
-      this.logger.error(`No catalog item found for job type: ${job}`);
+      this.logger.error(`Worker no catalog item found for job type: ${job}`);
       return;
     }
 
@@ -590,7 +592,10 @@ class Worker<TCatalog extends WorkerCatalog> {
       }
     ).catch(async (error) => {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Error processing item:`, {
+
+      const shouldLogError = catalogItem.logErrors ?? true;
+
+      const logAttributes = {
         name: this.options.name,
         id,
         job,
@@ -598,7 +603,14 @@ class Worker<TCatalog extends WorkerCatalog> {
         visibilityTimeoutMs,
         error,
         errorMessage,
-      });
+      };
+
+      if (shouldLogError) {
+        this.logger.error(`Worker error processing item`, logAttributes);
+      } else {
+        this.logger.info(`Worker failed to process item`, logAttributes);
+      }
+
       // Attempt requeue logic.
       try {
         const newAttempt = attempt + 1;
@@ -609,7 +621,7 @@ class Worker<TCatalog extends WorkerCatalog> {
         const retryDelay = calculateNextRetryDelay(retrySettings, newAttempt);
 
         if (!retryDelay) {
-          this.logger.error(`Item ${id} reached max attempts. Moving to DLQ.`, {
+          this.logger.error(`Worker item reached max attempts. Moving to DLQ.`, {
             name: this.options.name,
             id,
             job,
@@ -629,7 +641,7 @@ class Worker<TCatalog extends WorkerCatalog> {
         }
 
         const retryDate = new Date(Date.now() + retryDelay);
-        this.logger.info(`Requeuing failed item ${id} with delay`, {
+        this.logger.info(`Worker requeuing failed item with delay`, {
           name: this.options.name,
           id,
           job,
@@ -649,7 +661,7 @@ class Worker<TCatalog extends WorkerCatalog> {
         });
       } catch (requeueError) {
         this.logger.error(
-          `Failed to requeue item ${id}. It will be retried after the visibility timeout.`,
+          `Worker failed to requeue item. It will be retried after the visibility timeout.`,
           {
             name: this.options.name,
             id,
