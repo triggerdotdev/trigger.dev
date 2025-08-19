@@ -111,7 +111,7 @@ services:
       CLICKHOUSE_URL: http://default:password@clickhouse:8123
       SESSION_SECRET: secret123
       MAGIC_LINK_SECRET: secret123
-      ENCRYPTION_KEY: secret123
+      ENCRYPTION_KEY: dummy-encryption-keeeey-32-bytes
       REMIX_APP_PORT: 3030
       PORT: 3030
     networks:

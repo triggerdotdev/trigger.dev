@@ -13,6 +13,7 @@ export type LoginResultOk = {
   auth: {
     apiUrl: string;
     accessToken: string;
+    tokenType: "personal" | "organization";
   };
 };
 
@@ -24,6 +25,7 @@ export type LoginResult =
       auth?: {
         apiUrl: string;
         accessToken: string;
+        tokenType: "personal" | "organization";
       };
     };
 
@@ -45,6 +47,7 @@ export async function isLoggedIn(profile: string = "default"): Promise<LoginResu
         auth: {
           apiUrl: config.apiUrl,
           accessToken: config.accessToken,
+          tokenType: "personal",
         },
       };
     }
@@ -58,6 +61,7 @@ export async function isLoggedIn(profile: string = "default"): Promise<LoginResu
       auth: {
         apiUrl: config.apiUrl,
         accessToken: config.accessToken,
+        tokenType: "personal",
       },
     };
   } catch (e) {

@@ -1,10 +1,10 @@
-import { PersonalAccessToken } from "@trigger.dev/database";
+import { type PersonalAccessToken } from "@trigger.dev/database";
 import { customAlphabet, nanoid } from "nanoid";
-import nodeCrypto from "node:crypto";
 import { z } from "zod";
 import { prisma } from "~/db.server";
-import { env } from "~/env.server";
 import { logger } from "./logger.server";
+import { decryptToken, encryptToken, hashToken } from "~/utils/tokens.server";
+import { env } from "~/env.server";
 
 const tokenValueLength = 40;
 //lowercase only, removed 0 and l to avoid confusion
@@ -266,7 +266,7 @@ export async function createPersonalAccessToken({
   userId,
 }: CreatePersonalAccessTokenOptions) {
   const token = createToken();
-  const encryptedToken = encryptToken(token);
+  const encryptedToken = encryptToken(token, env.ENCRYPTION_KEY);
 
   const personalAccessToken = await prisma.personalAccessToken.create({
     data: {
@@ -303,22 +303,6 @@ function obfuscateToken(token: string) {
   return `${tokenPrefix}${obfuscated}`;
 }
 
-function encryptToken(value: string) {
-  const nonce = nodeCrypto.randomBytes(12);
-  const cipher = nodeCrypto.createCipheriv("aes-256-gcm", env.ENCRYPTION_KEY, nonce);
-
-  let encrypted = cipher.update(value, "utf8", "hex");
-  encrypted += cipher.final("hex");
-
-  const tag = cipher.getAuthTag().toString("hex");
-
-  return {
-    nonce: nonce.toString("hex"),
-    ciphertext: encrypted,
-    tag,
-  };
-}
-
 function decryptPersonalAccessToken(personalAccessToken: PersonalAccessToken) {
   const encryptedData = EncryptedSecretValueSchema.safeParse(personalAccessToken.encryptedToken);
   if (!encryptedData.success) {
@@ -330,28 +314,8 @@ function decryptPersonalAccessToken(personalAccessToken: PersonalAccessToken) {
   const decryptedToken = decryptToken(
     encryptedData.data.nonce,
     encryptedData.data.ciphertext,
-    encryptedData.data.tag
+    encryptedData.data.tag,
+    env.ENCRYPTION_KEY
   );
   return decryptedToken;
-}
-
-function decryptToken(nonce: string, ciphertext: string, tag: string): string {
-  const decipher = nodeCrypto.createDecipheriv(
-    "aes-256-gcm",
-    env.ENCRYPTION_KEY,
-    Buffer.from(nonce, "hex")
-  );
-
-  decipher.setAuthTag(Buffer.from(tag, "hex"));
-
-  let decrypted = decipher.update(ciphertext, "hex", "utf8");
-  decrypted += decipher.final("utf8");
-
-  return decrypted;
-}
-
-function hashToken(token: string): string {
-  const hash = nodeCrypto.createHash("sha256");
-  hash.update(token);
-  return hash.digest("hex");
 }
