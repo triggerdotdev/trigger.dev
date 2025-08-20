@@ -9,13 +9,11 @@
 
 [Website](https://trigger.dev) | [Docs](https://trigger.dev/docs) | [Issues](https://github.com/triggerdotdev/trigger.dev/issues) | [Feature requests](https://trigger.dev/feature-requests) | [Roadmap](https://trigger.dev/roadmap) | [Self-hosting](https://trigger.dev/docs/v3/open-source-self-hosting#overview)
 
-[![GitHub stars](https://img.shields.io/github/stars/triggerdotdev/trigger.dev?style=social)](https://github.com/triggerdotdev/trigger.dev)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/triggerdotdev/trigger.dev/blob/main/LICENSE)
 [![Open Source](https://img.shields.io/badge/Open%20Source-%E2%9D%A4-red.svg)](https://github.com/triggerdotdev/trigger.dev)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/triggerdotdev/trigger.dev/blob/main/LICENSE)
 [![npm](https://img.shields.io/npm/v/@trigger.dev/sdk.svg?label=npm)](https://www.npmjs.com/package/@trigger.dev/sdk)
 [![SDK downloads](https://img.shields.io/npm/dm/@trigger.dev/sdk.svg?label=SDK%20downloads)](https://www.npmjs.com/package/@trigger.dev/sdk)
-[![CLI downloads](https://img.shields.io/npm/dm/trigger.dev.svg?label=CLI%20downloads)](https://www.npmjs.com/package/trigger.dev)
-[![GitHub commit activity](https://img.shields.io/github/commit-activity/m/triggerdotdev/trigger.dev)](https://github.com/triggerdotdev/trigger.dev/graphs/contributors)
+[![GitHub stars](https://img.shields.io/github/stars/triggerdotdev/trigger.dev?style=social)](https://github.com/triggerdotdev/trigger.dev)
 
 [![Twitter Follow](https://img.shields.io/twitter/follow/triggerdotdev?style=social)](https://twitter.com/triggerdotdev)
 [![Discord](https://img.shields.io/discord/1066956501299777596?logo=discord&logoColor=white&color=7289da)](https://discord.gg/nkqV9xBYWy)
@@ -28,19 +26,33 @@ Trigger.dev is the open-source platform for building AI workflows in TypeScript.
 
 ### Key features:
 
-- JavaScript and TypeScript SDK
-- Long-running tasks with retries, queues, observability, and elastic scaling
-- Retries (with exponential backoff)
-- Queues and concurrency controls
-- Schedules and crons
-- Full Observability; logs, live trace views, advanced filtering
-- React hooks to interact with the Trigger API from your React app
-- Pipe LLM streams straight to your users through the Realtime API
-- Trigger tasks and display the run status and metadata anywhere in your app
-- Custom alerts, get notified by email, Slack or webhooks
-- No infrastructure to manage
-- Elastic (scaling)
-- Works with your existing tech stack
+- **[Perfect for building AI agents](https://trigger.dev/product/ai-agents)** - Build AI agents using all the services and LLMs you already use, like the AI SDK, OpenAI, Anthropic, LangChain, etc.
+- **[Write tasks in regular code](https://trigger.dev/docs/guides/introduction)** - Build background tasks using familiar programming models in native Javascript / Typescript and Python
+- **[Long-running tasks](https://trigger.dev/product)** - Handle resource-heavy tasks without timeouts
+- **[Durable cron schedules](https://trigger.dev/product/scheduled-tasks)** - Create and attach recurring schedules of up to a year, which never hit a function timeout
+- **[Trigger.dev Realtime](https://trigger.dev/product/realtime)** - Real-time bridge between your background tasks and frontend applications with streaming support
+- **[React hooks](https://trigger.dev/docs/frontend/react-hooks#react-hooks)** - Interact with the Trigger.dev API using our React hooks package
+- **[Max duration](https://trigger.dev/docs/runs/max-duration#max-duration)** - Set maximum execution time for tasks to prevent runaway processes
+- **[Batch triggering](https://trigger.dev/docs/triggering#tasks-batchtrigger)** - Use batchTrigger() to initiate multiple runs of a task with custom payloads and options
+- **[Structured inputs / outputs](https://trigger.dev/docs/tasks/schemaTask#schematask)** - Define precise data schemas for your tasks with runtime payload validation using SchemaTask
+- **[Waits](https://trigger.dev/docs/wait)** - Add waits to your tasks to pause execution for a specified duration
+- **[Preview branches](https://trigger.dev/docs/deployment/preview-branches)** - Create isolated environments for testing and development. Integrates with Vercel and git workflows
+- **[Waitpoints](https://trigger.dev/docs/upgrade-to-v4#wait-tokens)** - Add human judgment at critical decision points without disrupting workflow
+- **[Concurrency & queues](https://trigger.dev/product/concurrency-and-queues)** - Set concurrency rules to manage how multiple tasks execute
+- **[Multiple environments](https://trigger.dev/docs/how-it-works#dev-mode)** - Support for DEV, PREVIEW, STAGING, and PROD environments
+- **[No infrastructure to manage](https://trigger.dev/docs/how-it-works#trigger-dev-architecture)** - Auto-scaling infrastructure that eliminates timeouts and server management
+- **[Automatic retries](https://trigger.dev/docs/errors-retrying)** - If your task encounters an uncaught error, we automatically attempt to run it again
+- **[Build extensions](https://trigger.dev/docs/config/extensions/overview#build-extensions)** - Hook directly into the build system and customize the build process
+- **[Checkpointing](https://trigger.dev/docs/how-it-works#the-checkpoint-resume-system)** - Tasks are inherently durable, thanks to our checkpointing feature
+- **[Versioning](https://trigger.dev/docs/versioning)** - Atomic versioning allows you to deploy new versions without affecting running tasks
+- **[Machines](https://trigger.dev/docs/machines)** - Configure the number of vCPUs and GBs of RAM you want the task to use
+- **[Observability & monitoring](https://trigger.dev/product/observability-and-monitoring)** - Monitor every aspect of your tasks' performance with comprehensive logging and visualization tools
+- **[Logging & tracing](https://trigger.dev/docs/logging)** - Comprehensive logging and tracing for all your tasks
+- **[Tags](https://trigger.dev/docs/tags#tags)** - Attach up to five tags to each run as powerful identifiers
+- **[Advanced run filters](/product/observability-and-monitoring#advanced-filters)** - Easily sort and find tasks based on status, environment, tags, and creation date
+- **[Run metadata](https://trigger.dev/docs/runs/metadata#run-metadata)** - Attach metadata to runs which updates as the run progresses
+- **[Bulk actions](https://trigger.dev/docs/bulk-actions)** - Perform actions on multiple runs simultaneously, including replaying and cancelling
+- **[Real-time alerts](https://trigger.dev/product/observability-and-monitoring#alerts)** - Choose your preferred notification method for run failures and deployments
 
 ## In your codebase
 
