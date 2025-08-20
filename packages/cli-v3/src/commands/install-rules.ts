@@ -171,7 +171,7 @@ export async function initiateRulesInstallWizard(options: InstallRulesWizardOpti
     writeConfigLastRulesInstallPromptVersion(manifest.currentVersion);
 
     const installChoice = await confirm({
-      message: "Would you like to install the Trigger.dev Agent rules?",
+      message: "Would you like to install the Trigger.dev code agent rules?",
       initialValue: true,
     });
 

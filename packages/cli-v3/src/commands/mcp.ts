@@ -3,7 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { VERSION } from "@trigger.dev/core";
 import { tryCatch } from "@trigger.dev/core/utils";
-import { Command } from "commander";
+import { Command, Option as CommandOption } from "commander";
 import { z } from "zod";
 import { CommonCommandOptions, commonOptions, wrapCommandAction } from "../cli/common.js";
 import { CLOUD_API_URL } from "../consts.js";
@@ -14,11 +14,14 @@ import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
 import { installMcpServer } from "./install-mcp.js";
 import { serverMetadata } from "../mcp/config.js";
+import { initiateRulesInstallWizard } from "./install-rules.js";
 
 const McpCommandOptions = CommonCommandOptions.extend({
   projectRef: z.string().optional(),
   logFile: z.string().optional(),
   devOnly: z.boolean().default(false),
+  rulesInstallManifestPath: z.string().optional(),
+  rulesInstallBranch: z.string().optional(),
 });
 
 export type McpCommandOptions = z.infer<typeof McpCommandOptions>;
@@ -34,6 +37,18 @@ export function configureMcpCommand(program: Command) {
         "Only run the MCP server for the dev environment. Attempts to access other environments will fail."
       )
       .option("--log-file <log file>", "The file to log to")
+      .addOption(
+        new CommandOption(
+          "--rules-install-manifest-path <path>",
+          "The path to the rules install manifest"
+        ).hideHelp()
+      )
+      .addOption(
+        new CommandOption(
+          "--rules-install-branch <branch>",
+          "The branch to install the rules from"
+        ).hideHelp()
+      )
   ).action(async (options) => {
     wrapCommandAction("mcp", McpCommandOptions, options, async (opts) => {
       await mcpCommand(opts);
@@ -59,6 +74,11 @@ export async function mcpCommand(options: McpCommandOptions) {
       outro(`Failed to install MCP server: ${installError.message}`);
       return;
     }
+
+    await initiateRulesInstallWizard({
+      manifestPath: options.rulesInstallManifestPath,
+      branch: options.rulesInstallBranch,
+    });
 
     return;
   }
