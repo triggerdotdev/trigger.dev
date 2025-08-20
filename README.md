@@ -7,16 +7,16 @@
   
 ### Build and deploy fully‑managed AI agents and workflows
 
-[Website](https://trigger.dev) | [Docs](https://trigger.dev/docs) | [Issues](https://github.com/triggerdotdev/trigger.dev/issues) | [Feature requests](https://trigger.dev/feature-requests) | [Roadmap](https://trigger.dev/roadmap) | [Self-hosting](https://trigger.dev/docs/v3/open-source-self-hosting#overview)
+[Website](https://trigger.dev) | [Docs](https://trigger.dev/docs) | [Issues](https://github.com/triggerdotdev/trigger.dev/issues) | [Feature requests](https://triggerdev.featurebase.app/) | [Public roadmap](https://triggerdev.featurebase.app/roadmap) | [Self-hosting](https://trigger.dev/docs/self-hosting/overview)
 
 [![Open Source](https://img.shields.io/badge/Open%20Source-%E2%9D%A4-red.svg)](https://github.com/triggerdotdev/trigger.dev)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/triggerdotdev/trigger.dev/blob/main/LICENSE)
 [![npm](https://img.shields.io/npm/v/@trigger.dev/sdk.svg?label=npm)](https://www.npmjs.com/package/@trigger.dev/sdk)
 [![SDK downloads](https://img.shields.io/npm/dm/@trigger.dev/sdk.svg?label=SDK%20downloads)](https://www.npmjs.com/package/@trigger.dev/sdk)
-[![GitHub stars](https://img.shields.io/github/stars/triggerdotdev/trigger.dev?style=social)](https://github.com/triggerdotdev/trigger.dev)
 
 [![Twitter Follow](https://img.shields.io/twitter/follow/triggerdotdev?style=social)](https://twitter.com/triggerdotdev)
 [![Discord](https://img.shields.io/discord/1066956501299777596?logo=discord&logoColor=white&color=7289da)](https://discord.gg/nkqV9xBYWy)
+[![GitHub stars](https://img.shields.io/github/stars/triggerdotdev/trigger.dev?style=social)](https://github.com/triggerdotdev/trigger.dev)
 
 </div>
 
@@ -24,9 +24,9 @@
 
 Trigger.dev is the open-source platform for building AI workflows in TypeScript. Long-running tasks with retries, queues, observability, and elastic scaling.
 
-## The perfect platform for building AI agents
+## The platform designed for building AI agents
 
-Build AI agents in familiar programming models using all the services and LLMs you already use, deploy them to Trigger.dev and get durable, long-running tasks with retries, queues, observability, and elastic scaling out of the box.
+Build [AI agents](https://trigger.dev/product/ai-agents) using all the frameworks, services and LLMs you're used to, deploy them to Trigger.dev and get durable, long-running tasks with retries, queues, observability, and elastic scaling out of the box.
 
 - **Long-running without timeouts**: Execute your tasks with absolutely no timeouts, unlike AWS Lambda, Vercel, and other serverless platforms.
 
@@ -42,10 +42,11 @@ Build AI agents in familiar programming models using all the services and LLMs y
 
 ## Key features:
 
-- **[Write tasks in regular code](https://trigger.dev/docs/guides/introduction)** - Build background tasks using familiar programming models in native Javascript / Typescript and Python
+- **[JavaScript and TypeScript SDK](https://trigger.dev/docs/tasks/overview)** - Build background tasks using familiar programming models
 - **[Long-running tasks](https://trigger.dev/docs/runs/max-duration)** - Handle resource-heavy tasks without timeouts
 - **[Durable cron schedules](https://trigger.dev/product/scheduled-tasks)** - Create and attach recurring schedules of up to a year
 - **[Trigger.dev Realtime](https://trigger.dev/product/realtime)** - Real-time bridge between your background tasks and frontend applications with LLM streaming support
+- **[Build extensions](https://trigger.dev/docs/config/extensions/overview#build-extensions)** - Hook directly into the build system and customize the build process. Run Python scripts, FFmpeg, browsers, and more.
 - **[React hooks](https://trigger.dev/docs/frontend/react-hooks#react-hooks)** - Interact with the Trigger.dev API on your frontend using our React hooks package
 - **[Batch triggering](https://trigger.dev/docs/triggering#tasks-batchtrigger)** - Use batchTrigger() to initiate multiple runs of a task with custom payloads and options
 - **[Structured inputs / outputs](https://trigger.dev/docs/tasks/schemaTask#schematask)** - Define precise data schemas for your tasks with runtime payload validation
@@ -56,7 +57,6 @@ Build AI agents in familiar programming models using all the services and LLMs y
 - **[Multiple environments](https://trigger.dev/docs/how-it-works#dev-mode)** - Support for DEV, PREVIEW, STAGING, and PROD environments
 - **[No infrastructure to manage](https://trigger.dev/docs/how-it-works#trigger-dev-architecture)** - Auto-scaling infrastructure that eliminates timeouts and server management
 - **[Automatic retries](https://trigger.dev/docs/errors-retrying)** - If your task encounters an uncaught error, we automatically attempt to run it again
-- **[Build extensions](https://trigger.dev/docs/config/extensions/overview#build-extensions)** - Hook directly into the build system and customize the build process
 - **[Checkpointing](https://trigger.dev/docs/how-it-works#the-checkpoint-resume-system)** - Tasks are inherently durable, thanks to our checkpointing feature
 - **[Versioning](https://trigger.dev/docs/versioning)** - Atomic versioning allows you to deploy new versions without affecting running tasks
 - **[Machines](https://trigger.dev/docs/machines)** - Configure the number of vCPUs and GBs of RAM you want the task to use
