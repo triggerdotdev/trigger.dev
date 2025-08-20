@@ -129,13 +129,6 @@ export async function getEnvironmentFromEnv({
   }
 
   if (slug === "preview") {
-    if (!branch) {
-      return {
-        success: false,
-        error: "Preview environment requires a branch. Please set the x-trigger-branch header.",
-      };
-    }
-
     const previewEnvironment = await prisma.runtimeEnvironment.findFirst({
       where: {
         projectId,
@@ -147,6 +140,14 @@ export async function getEnvironmentFromEnv({
       return {
         success: false,
         error: "Preview environment not found",
+      };
+    }
+
+    // If no branch is provided, just return the parent preview environment
+    if (!branch) {
+      return {
+        success: true,
+        environment: previewEnvironment,
       };
     }
 

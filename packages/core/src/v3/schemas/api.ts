@@ -1225,30 +1225,6 @@ export const ApiBranchListResponseBody = z.object({
 
 export type ApiBranchListResponseBody = z.infer<typeof ApiBranchListResponseBody>;
 
-// export type SpanDetailedSummary = {
-//   id: string;
-//   parentId: string | undefined;
-//   message: string;
-//   data: {
-//     runId: string;
-//     taskSlug?: string;
-//     taskPath?: string;
-//     events: SpanEvents;
-//     startTime: Date;
-//     duration: number;
-//     isError: boolean;
-//     isPartial: boolean;
-//     isCancelled: boolean;
-//     level: NonNullable<CreatableEvent["level"]>;
-//     environmentType: CreatableEventEnvironmentType;
-//     workerVersion?: string;
-//     queueName?: string;
-//     machinePreset?: string;
-//     properties?: Attributes;
-//     output?: Attributes;
-//   };
-//   children: Array<SpanDetailedSummary>;
-// };
 export const RetrieveRunTraceSpanSchema = z.object({
   id: z.string(),
   parentId: z.string().optional(),
