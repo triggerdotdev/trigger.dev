@@ -19,6 +19,7 @@ const RulesManifestDataSchema = z.object({
           tokens: z.number(),
           client: z.string().optional(),
           installStrategy: z.string().optional(),
+          applyTo: z.string().optional(),
         })
       ),
     })
@@ -35,6 +36,7 @@ export type RulesManifestVersionOption = {
   tokens: number;
   client: string | undefined;
   installStrategy: RulesFileInstallStrategy;
+  applyTo: string | undefined;
 };
 
 export type ManifestVersion = {

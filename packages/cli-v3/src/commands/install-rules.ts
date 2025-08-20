@@ -497,8 +497,8 @@ async function resolveRulesFileContentsForTarget(
       return $output(
         frontmatter({
           description: option.label,
-          globs: "**/trigger/**/*.ts",
-          alwaysApply: true,
+          globs: option.applyTo ?? "**/trigger/**/*.ts",
+          alwaysApply: false,
         }),
         option.contents
       );
@@ -506,7 +506,7 @@ async function resolveRulesFileContentsForTarget(
     case "vscode": {
       return $output(
         frontmatter({
-          applyTo: "**/trigger/**/*.ts",
+          applyTo: option.applyTo ?? "**/trigger/**/*.ts",
         }),
         option.contents
       );
@@ -514,7 +514,8 @@ async function resolveRulesFileContentsForTarget(
     case "windsurf": {
       return $output(
         frontmatter({
-          trigger: "manual",
+          trigger: "glob",
+          globs: option.applyTo ?? "**/trigger/**/*.ts",
         }),
         option.contents
       );

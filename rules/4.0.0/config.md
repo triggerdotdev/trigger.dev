@@ -27,7 +27,6 @@ export default defineConfig({
 
   // Build configuration
   build: {
-    external: ["header-generator"], // Exclude from bundling
     autoDetectExternal: true,
     keepNames: true,
     minify: false,
@@ -177,12 +176,14 @@ extensions: [
 
 #### Additional NPM Packages
 
+Only use this for installing CLI tools, NOT packages you import in your code.
+
 ```ts
 import { additionalPackages } from "@trigger.dev/build/extensions/core";
 
 extensions: [
   additionalPackages({
-    packages: ["wrangler", "[email protected]"], // CLI tools and specific versions
+    packages: ["wrangler"], // CLI tools and specific versions
   }),
 ];
 ```
@@ -337,7 +338,7 @@ extensions: [
 ## Best Practices
 
 - **Use specific versions**: Pin extension versions for reproducible builds
-- **External packages**: Add native modules to `external` array
+- **External packages**: Add modules with native addons to the `build.external` array
 - **Environment sync**: Use `syncEnvVars` for dynamic secrets
 - **File paths**: Use glob patterns for flexible file inclusion
 - **Debug builds**: Use `--log-level debug --dry-run` for troubleshooting

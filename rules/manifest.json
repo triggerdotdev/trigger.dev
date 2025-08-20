@@ -22,9 +22,10 @@
         {
           "name": "config",
           "title": "Configuring Trigger.dev",
-          "label": "How to configure Trigger.dev",
+          "label": "Configure your Trigger.dev project with a trigger.config.ts file",
           "path": "4.0.0/config.md",
-          "tokens": 1900
+          "tokens": 1900,
+          "applyTo": "**/trigger.config.ts"
         },
         {
           "name": "scheduled-tasks",

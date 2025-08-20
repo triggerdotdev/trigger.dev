@@ -129,6 +129,8 @@ export const childTask = task({
 });
 ```
 
+> Never wrap triggerAndWait or batchTriggerAndWait calls in a Promise.all or Promise.allSettled as this is not supported in Trigger.dev tasks.
+
 ## Waits
 
 ```ts
@@ -159,6 +161,8 @@ export const taskWithWaits = task({
   },
 });
 ```
+
+> Never wrap wait calls in a Promise.all or Promise.allSettled as this is not supported in Trigger.dev tasks.
 
 ## Key Points
 
