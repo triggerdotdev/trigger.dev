@@ -1,7 +1,6 @@
 import type { CallToolResult, ServerNotification } from "@modelcontextprotocol/sdk/types.js";
-import z from "zod";
+import { z } from "zod";
 import { ToolMeta } from "./types.js";
-import { loadConfig } from "../config.js";
 
 export function respondWithError(error: unknown): CallToolResult {
   return {

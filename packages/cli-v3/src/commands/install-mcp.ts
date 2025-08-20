@@ -1,4 +1,4 @@
-import { confirm, intro, isCancel, log, multiselect, select, spinner } from "@clack/prompts";
+import { confirm, intro, isCancel, log, multiselect, select } from "@clack/prompts";
 import chalk from "chalk";
 import { Command } from "commander";
 import { extname } from "node:path";
@@ -15,6 +15,7 @@ import {
 } from "../utilities/fileSystem.js";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { VERSION } from "../version.js";
+import { spinner } from "../utilities/windows.js";
 
 const cliVersion = VERSION as string;
 const cliTag = cliVersion.includes("v4-beta") ? "v4-beta" : "latest";
@@ -317,7 +318,7 @@ async function installMcpServerForClient(
     return;
   }
 
-  const clientSpinner = spinner({ indicator: "dots" });
+  const clientSpinner = spinner();
 
   clientSpinner.start(`Installing in ${clientName}`);
 

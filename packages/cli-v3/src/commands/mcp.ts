@@ -85,11 +85,15 @@ export async function mcpCommand(options: McpCommandOptions) {
 
   logger.loggerLevel = "none";
 
-  const server = new McpServer({
-    name: serverMetadata.name,
-    version: serverMetadata.version,
-    description: serverMetadata.instructions,
-  });
+  const server = new McpServer(
+    {
+      name: serverMetadata.name,
+      version: serverMetadata.version,
+    },
+    {
+      instructions: serverMetadata.instructions,
+    }
+  );
 
   server.server.oninitialized = async () => {
     fileLogger?.log("initialized mcp command", { options, argv: process.argv });

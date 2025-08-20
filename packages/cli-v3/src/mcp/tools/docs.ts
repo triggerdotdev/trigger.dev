@@ -1,4 +1,4 @@
-import z from "zod";
+import { z } from "zod";
 import { toolsMetadata } from "../config.js";
 import { toolHandler } from "../utils.js";
 import { performSearch } from "../mintlifyClient.js";

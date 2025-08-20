@@ -342,11 +342,11 @@ export async function tryResolveTriggerPackageVersion(
     const { packageJson } = await getPackageJson(dirname(resolvedPath), {
       test: (filePath) => {
         // We need to skip any type-marker files
-        if (filePath.includes("dist/commonjs")) {
+        if (filePath.includes(join("dist", "commonjs"))) {
           return false;
         }
 
-        if (filePath.includes("dist/esm")) {
+        if (filePath.includes(join("dist", "esm"))) {
           return false;
         }
 

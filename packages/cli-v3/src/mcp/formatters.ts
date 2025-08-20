@@ -3,7 +3,7 @@ import {
   RetrieveRunResponse,
   RetrieveRunTraceResponseBody,
 } from "@trigger.dev/core/v3/schemas";
-import { CursorPageResponse } from "@trigger.dev/core/v3/zodfetch";
+import type { CursorPageResponse } from "@trigger.dev/core/v3/zodfetch";
 
 export function formatRun(run: RetrieveRunResponse): string {
   const lines: string[] = [];

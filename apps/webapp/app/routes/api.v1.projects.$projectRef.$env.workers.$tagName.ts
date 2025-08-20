@@ -112,7 +112,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     runs: `${$env.APP_ORIGIN}${v3RunsPath(
       { slug: project.organization.slug },
       { slug: project.slug },
-      { slug: env },
+      { slug: runtimeEnv.slug },
       { versions: [currentWorker.version] }
     )}`,
   };

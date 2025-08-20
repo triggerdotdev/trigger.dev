@@ -92,7 +92,7 @@ export function configureInstallRulesCommand(program: Command) {
     .addOption(
       new CommandOption(
         "--branch <branch>",
-        "The branch to install the rules from. This is useful if you want to install the rules from a local file."
+        "The branch to install the rules from, the default is main"
       ).hideHelp()
     )
     .addOption(
@@ -152,7 +152,7 @@ type InstallRulesResult = {
 };
 
 export type InstallRulesWizardOptions = {
-  targets?: Array<(typeof targets)[number]>;
+  target?: Array<(typeof targets)[number]>;
   manifestPath?: string;
   branch?: string;
 };
