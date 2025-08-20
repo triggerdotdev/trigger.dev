@@ -346,7 +346,7 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
   });
 }
 
-async function getPersonalAccessToken(apiClient: CliApiClient, authorizationCode: string) {
+export async function getPersonalAccessToken(apiClient: CliApiClient, authorizationCode: string) {
   return await tracer.startActiveSpan("getPersonalAccessToken", async (span) => {
     try {
       const token = await apiClient.getPersonalAccessToken(authorizationCode);
