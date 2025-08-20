@@ -37,7 +37,7 @@ export async function findEnvironmentByApiKey(
 
   if (environment.type === "PREVIEW") {
     if (!branchName) {
-      logger.error("findEnvironmentByApiKey(): Preview env with no branch name provided", {
+      logger.warn("findEnvironmentByApiKey(): Preview env with no branch name provided", {
         environmentId: environment.id,
       });
       return null;

@@ -1246,7 +1246,7 @@ export class EventRepository {
             span.setAttribute("prisma_error_code", errorDetails.code);
           }
 
-          logger.error("Failed to insert events, will attempt bisection", {
+          logger.info("Failed to insert events, will attempt bisection", {
             error: errorDetails,
           });
 

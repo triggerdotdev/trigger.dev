@@ -135,11 +135,21 @@ export class DequeueSystem {
 
                 if (isExecuting(snapshot.executionStatus)) {
                   this.$.logger.error(
-                    `RunEngine.dequeueFromWorkerQueue(): Run is not in a valid state to be dequeued: ${runId}\n ${snapshot.id}:${snapshot.executionStatus}`
+                    `RunEngine.dequeueFromWorkerQueue(): Run is not in a valid state to be dequeued`,
+                    {
+                      runId,
+                      snapshotId: snapshot.id,
+                      executionStatus: snapshot.executionStatus,
+                    }
                   );
                 } else {
                   this.$.logger.warn(
-                    `RunEngine.dequeueFromWorkerQueue(): Run is in an expected not valid state to be dequeued: ${runId}\n ${snapshot.id}:${snapshot.executionStatus}`
+                    `RunEngine.dequeueFromWorkerQueue(): Run is in an expected not valid state to be dequeued`,
+                    {
+                      runId,
+                      snapshotId: snapshot.id,
+                      executionStatus: snapshot.executionStatus,
+                    }
                   );
                 }
 

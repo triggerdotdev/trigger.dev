@@ -71,7 +71,9 @@ export class Logger {
 
     this.#structuredLog(console.error, message, "error", ...args);
 
-    if (Logger.onError) {
+    const ignoreError = args.some((arg) => arg?.ignoreError);
+
+    if (Logger.onError && !ignoreError) {
       Logger.onError(message, ...args);
     }
   }

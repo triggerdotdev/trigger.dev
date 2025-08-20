@@ -926,7 +926,7 @@ export class DeliverAlertService extends BaseService {
     });
 
     if (!response.ok) {
-      logger.error("[DeliverAlert] Failed to send alert webhook", {
+      logger.info("[DeliverAlert] Failed to send alert webhook", {
         status: response.status,
         statusText: response.statusText,
         url: webhook.url,
