@@ -230,7 +230,7 @@ function formatSpan(
   }
 
   // Show output if it exists
-  if (span.data.output && Object.keys(span.data.output).length > 0) {
+  if (span.data.output) {
     lines.push(
       `${indent}   Output: ${JSON.stringify(span.data.output, null, 2).replace(
         /\n/g,
