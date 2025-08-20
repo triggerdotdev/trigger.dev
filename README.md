@@ -5,22 +5,31 @@
   <img alt="Trigger.dev logo" src="https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/a45d1fa2-0ae8-4a39-4409-f4f934bfae00/public">
 </picture>
   
-### Open source background jobs and AI infrastructure
+### Build and deploy fully‑managed AI agents and workflows
 
-[Discord](https://trigger.dev/discord) | [Website](https://trigger.dev) | [Issues](https://github.com/triggerdotdev/trigger.dev/issues) | [Docs](https://trigger.dev/docs)
+[Website](https://trigger.dev) | [Docs](https://trigger.dev/docs) | [Issues](https://github.com/triggerdotdev/trigger.dev/issues) | [Feature requests](https://trigger.dev/feature-requests) | [Roadmap](https://trigger.dev/roadmap) | [Self-hosting](https://trigger.dev/docs/v3/open-source-self-hosting#overview)
 
-[![Twitter](https://img.shields.io/twitter/url/https/twitter.com/triggerdotdev.svg?style=social&label=Follow%20%40trigger.dev)](https://twitter.com/triggerdotdev)
+[![GitHub stars](https://img.shields.io/github/stars/triggerdotdev/trigger.dev?style=social)](https://github.com/triggerdotdev/trigger.dev)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/triggerdotdev/trigger.dev/blob/main/LICENSE)
+[![Open Source](https://img.shields.io/badge/Open%20Source-%E2%9D%A4-red.svg)](https://github.com/triggerdotdev/trigger.dev)
+[![npm](https://img.shields.io/npm/v/@trigger.dev/sdk.svg?label=npm)](https://www.npmjs.com/package/@trigger.dev/sdk)
+[![SDK downloads](https://img.shields.io/npm/dm/@trigger.dev/sdk.svg?label=SDK%20downloads)](https://www.npmjs.com/package/@trigger.dev/sdk)
+[![CLI downloads](https://img.shields.io/npm/dm/trigger.dev.svg?label=CLI%20downloads)](https://www.npmjs.com/package/trigger.dev)
+[![GitHub commit activity](https://img.shields.io/github/commit-activity/m/triggerdotdev/trigger.dev)](https://github.com/triggerdotdev/trigger.dev/graphs/contributors)
+
+[![Twitter Follow](https://img.shields.io/twitter/follow/triggerdotdev?style=social)](https://twitter.com/triggerdotdev)
+[![Discord](https://img.shields.io/discord/1066956501299777596?logo=discord&logoColor=white&color=7289da)](https://discord.gg/nkqV9xBYWy)
 
 </div>
 
 ## About Trigger.dev
 
-Trigger.dev is an open source platform and SDK which allows you to create long-running background jobs. Write normal async code, deploy, and never hit a timeout.
+Trigger.dev is the open-source platform for building AI workflows in TypeScript. Long-running tasks with retries, queues, observability, and elastic scaling.
 
 ### Key features:
 
 - JavaScript and TypeScript SDK
-- No timeouts
+- Long-running tasks with retries, queues, observability, and elastic scaling
 - Retries (with exponential backoff)
 - Queues and concurrency controls
 - Schedules and crons
@@ -38,7 +47,7 @@ Trigger.dev is an open source platform and SDK which allows you to create long-r
 Create tasks where they belong: in your codebase. Version control, localhost, test and review like you're already used to.
 
 ```ts
-import { task } from "@trigger.dev/sdk/v3";
+import { task } from "@trigger.dev/sdk";
 
 //1. You need to export each task
 export const helloWorld = task({
@@ -58,7 +67,7 @@ Use our SDK to write tasks in your codebase. There's no infrastructure to manage
 
 ## Environments
 
-We support `Development`, `Staging`, and `Production` environments, allowing you to test your tasks before deploying them to production.
+We support `Development`, `Staging`, `Preview`, and `Production` environments, allowing you to test your tasks before deploying them to production.
 
 ## Full visibility of every job run
 
