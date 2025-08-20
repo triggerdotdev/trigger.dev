@@ -38,7 +38,7 @@ Build [AI agents](https://trigger.dev/product/ai-agents) using all the framework
 
 - **Realtime apps & streaming**: Move your background jobs to the foreground by subscribing to runs or streaming AI responses to your app.
 
-- **Observability & monitoring**: Each run has full tracing and logs. Configure error alerts to catch bugs fast. Monitor performance with metrics.
+- **Observability & monitoring**: Each run has full tracing and logs. Configure error alerts to catch bugs fast.
 
 ## Key features:
 
@@ -62,7 +62,7 @@ Build [AI agents](https://trigger.dev/product/ai-agents) using all the framework
 - **[Machines](https://trigger.dev/docs/machines)** - Configure the number of vCPUs and GBs of RAM you want the task to use
 - **[Observability & monitoring](https://trigger.dev/product/observability-and-monitoring)** - Monitor every aspect of your tasks' performance with comprehensive logging and visualization tools
 - **[Logging & tracing](https://trigger.dev/docs/logging)** - Comprehensive logging and tracing for all your tasks
-- **[Tags](https://trigger.dev/docs/tags#tags)** - Attach up to five tags to each run as powerful identifiers
+- **[Tags](https://trigger.dev/docs/tags#tags)** - Attach up to ten tags to each run, allowing you to filter via the dashboard, realtime, and the SDK
 - **[Run metadata](https://trigger.dev/docs/runs/metadata#run-metadata)** - Attach metadata to runs which updates as the run progresses and is available to use in your frontend for live updates
 - **[Bulk actions](https://trigger.dev/docs/bulk-actions)** - Perform actions on multiple runs simultaneously, including replaying and cancelling
 - **[Real-time alerts](https://trigger.dev/docs/troubleshooting-alerts#alerts)** - Choose your preferred notification method for run failures and deployments
