@@ -187,7 +187,6 @@
     "execa": "^8.0.1",
     "humanize-duration": "^3.27.3",
     "jose": "^5.4.0",
-    "lodash.get": "^4.4.2",
     "nanoid": "3.3.8",
     "prom-client": "^15.1.0",
     "socket.io": "4.7.4",
