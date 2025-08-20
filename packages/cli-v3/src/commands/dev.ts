@@ -107,47 +107,50 @@ export function configureDevCommand(program: Command) {
 export async function devCommand(options: DevCommandOptions) {
   runtimeChecks();
 
-  const skipMCPInstall = typeof options.skipMCPInstall === "boolean" && options.skipMCPInstall;
+  // Only show these install prompts if the user is in a terminal (not in a Coding Agent)
+  if (process.stdout.isTTY) {
+    const skipMCPInstall = typeof options.skipMCPInstall === "boolean" && options.skipMCPInstall;
 
-  if (!skipMCPInstall) {
-    const hasSeenMCPInstallPrompt = readConfigHasSeenMCPInstallPrompt();
+    if (!skipMCPInstall) {
+      const hasSeenMCPInstallPrompt = readConfigHasSeenMCPInstallPrompt();
 
-    if (!hasSeenMCPInstallPrompt) {
-      const installChoice = await confirm({
-        message: "Would you like to install the Trigger.dev MCP server?",
-        initialValue: true,
-      });
+      if (!hasSeenMCPInstallPrompt) {
+        const installChoice = await confirm({
+          message: "Would you like to install the Trigger.dev MCP server?",
+          initialValue: true,
+        });
 
-      writeConfigHasSeenMCPInstallPrompt(true);
+        writeConfigHasSeenMCPInstallPrompt(true);
 
-      const skipInstall = isCancel(installChoice) || !installChoice;
+        const skipInstall = isCancel(installChoice) || !installChoice;
 
-      if (!skipInstall) {
-        log.step("Welcome to the Trigger.dev MCP server install wizard 🧙");
+        if (!skipInstall) {
+          log.step("Welcome to the Trigger.dev MCP server install wizard 🧙");
 
-        const [installError] = await tryCatch(
-          installMcpServer({
-            yolo: false,
-            tag: VERSION as string,
-            logLevel: options.logLevel,
-          })
-        );
+          const [installError] = await tryCatch(
+            installMcpServer({
+              yolo: false,
+              tag: VERSION as string,
+              logLevel: options.logLevel,
+            })
+          );
 
-        if (installError) {
-          log.error(`Failed to install MCP server: ${installError.message}`);
+          if (installError) {
+            log.error(`Failed to install MCP server: ${installError.message}`);
+          }
         }
       }
     }
-  }
 
-  const skipRulesInstall =
-    typeof options.skipRulesInstall === "boolean" && options.skipRulesInstall;
+    const skipRulesInstall =
+      typeof options.skipRulesInstall === "boolean" && options.skipRulesInstall;
 
-  if (!skipRulesInstall) {
-    await initiateRulesInstallWizard({
-      manifestPath: options.rulesInstallManifestPath,
-      branch: options.rulesInstallBranch,
-    });
+    if (!skipRulesInstall) {
+      await initiateRulesInstallWizard({
+        manifestPath: options.rulesInstallManifestPath,
+        branch: options.rulesInstallBranch,
+      });
+    }
   }
 
   const authorization = await login({
