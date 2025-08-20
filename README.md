@@ -44,16 +44,16 @@ Build [AI agents](https://trigger.dev/product/ai-agents) using all the framework
 
 - **[JavaScript and TypeScript SDK](https://trigger.dev/docs/tasks/overview)** - Build background tasks using familiar programming models
 - **[Long-running tasks](https://trigger.dev/docs/runs/max-duration)** - Handle resource-heavy tasks without timeouts
-- **[Durable cron schedules](https://trigger.dev/product/scheduled-tasks)** - Create and attach recurring schedules of up to a year
-- **[Trigger.dev Realtime](https://trigger.dev/product/realtime)** - Real-time bridge between your background tasks and frontend applications with LLM streaming support
+- **[Durable cron schedules](https://trigger.dev/docs/tasks/scheduled#scheduled-tasks-cron)** - Create and attach recurring schedules of up to a year
+- **[Trigger.dev Realtime](https://trigger.dev/docs/realtime/overview)** - Trigger, subscribe to, and get real-time updates for runs, with LLM streaming support
 - **[Build extensions](https://trigger.dev/docs/config/extensions/overview#build-extensions)** - Hook directly into the build system and customize the build process. Run Python scripts, FFmpeg, browsers, and more.
 - **[React hooks](https://trigger.dev/docs/frontend/react-hooks#react-hooks)** - Interact with the Trigger.dev API on your frontend using our React hooks package
 - **[Batch triggering](https://trigger.dev/docs/triggering#tasks-batchtrigger)** - Use batchTrigger() to initiate multiple runs of a task with custom payloads and options
 - **[Structured inputs / outputs](https://trigger.dev/docs/tasks/schemaTask#schematask)** - Define precise data schemas for your tasks with runtime payload validation
 - **[Waits](https://trigger.dev/docs/wait)** - Add waits to your tasks to pause execution for a specified duration
 - **[Preview branches](https://trigger.dev/docs/deployment/preview-branches)** - Create isolated environments for testing and development. Integrates with Vercel and git workflows
-- **[Waitpoints](https://trigger.dev/docs/upgrade-to-v4#wait-tokens)** - Add human-in-the-loop judgment at critical decision points without disrupting workflow
-- **[Concurrency & queues](https://trigger.dev/product/concurrency-and-queues)** - Set concurrency rules to manage how multiple tasks execute
+- **[Waitpoints](https://trigger.dev/docs/wait-for-token#wait-for-token)** - Add human-in-the-loop judgment at critical decision points without disrupting workflow
+- **[Concurrency & queues](https://trigger.dev/docs/queue-concurrency#concurrency-and-queues)** - Set concurrency rules to manage how multiple tasks execute
 - **[Multiple environments](https://trigger.dev/docs/how-it-works#dev-mode)** - Support for DEV, PREVIEW, STAGING, and PROD environments
 - **[No infrastructure to manage](https://trigger.dev/docs/how-it-works#trigger-dev-architecture)** - Auto-scaling infrastructure that eliminates timeouts and server management
 - **[Automatic retries](https://trigger.dev/docs/errors-retrying)** - If your task encounters an uncaught error, we automatically attempt to run it again
@@ -63,10 +63,9 @@ Build [AI agents](https://trigger.dev/product/ai-agents) using all the framework
 - **[Observability & monitoring](https://trigger.dev/product/observability-and-monitoring)** - Monitor every aspect of your tasks' performance with comprehensive logging and visualization tools
 - **[Logging & tracing](https://trigger.dev/docs/logging)** - Comprehensive logging and tracing for all your tasks
 - **[Tags](https://trigger.dev/docs/tags#tags)** - Attach up to five tags to each run as powerful identifiers
-- **[Advanced run filters](/product/observability-and-monitoring#advanced-filters)** - Easily sort and find tasks based on status, environment, tags, and creation date
 - **[Run metadata](https://trigger.dev/docs/runs/metadata#run-metadata)** - Attach metadata to runs which updates as the run progresses and is available to use in your frontend for live updates
 - **[Bulk actions](https://trigger.dev/docs/bulk-actions)** - Perform actions on multiple runs simultaneously, including replaying and cancelling
-- **[Real-time alerts](https://trigger.dev/product/observability-and-monitoring#alerts)** - Choose your preferred notification method for run failures and deployments
+- **[Real-time alerts](https://trigger.dev/docs/troubleshooting-alerts#alerts)** - Choose your preferred notification method for run failures and deployments
 
 ## Write tasks in your codebase
 
@@ -99,7 +98,7 @@ We support `Development`, `Staging`, `Preview`, and `Production` environments, a
 
 View every task in every run so you can tell exactly what happened. We provide a full trace view of every task run so you can see what happened at every step.
 
-![Trace view image](https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/7c1b347f-004c-4482-38a7-3f6fa9c00d00/public)
+![Trace view image](https://content.trigger.dev/trace-view.png)
 
 # Getting started
 
@@ -113,9 +112,14 @@ The quickest way to get started is to create an account and project in our [web 
 
 ## Self-hosting
 
-If you prefer to self-host Trigger.dev, you can follow our [self-hosting guide](https://trigger.dev/docs/v3/open-source-self-hosting#overview).
+If you prefer to self-host Trigger.dev, you can follow our [self-hosting guides](https://trigger.dev/docs/self-hosting/overview):
 
-We also have a dedicated self-hosting channel in our [Discord server](https://trigger.dev/discord) for support.
+- [Docker self-hosting guide](https://trigger.dev/docs/self-hosting/docker) - use Docker Compose to spin up a Trigger.dev instance
+- [Kubernetes self-hosting guide](https://trigger.dev/docs/self-hosting/kubernetes) - use our official Helm chart to deploy Trigger.dev to your Kubernetes cluster
+
+## Support and community
+
+We have a large active community in our official [Discord server](https://trigger.dev/discord) for support, including a dedicated channel for self-hosting.
 
 ## Development
 
