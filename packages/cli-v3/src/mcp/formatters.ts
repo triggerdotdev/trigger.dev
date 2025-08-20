@@ -5,7 +5,7 @@ import {
 } from "@trigger.dev/core/v3/schemas";
 import type { CursorPageResponse } from "@trigger.dev/core/v3/zodfetch";
 
-const MAX_TRACE_LINES = 1000;
+const DEFAULT_MAX_TRACE_LINES = 500;
 
 export function formatRun(run: RetrieveRunResponse): string {
   const lines: string[] = [];
@@ -172,17 +172,20 @@ function formatRelatedRuns(relatedRuns: RetrieveRunResponse["relatedRuns"]): str
   return parts.length > 0 ? `Related: ${parts.join("; ")}` : null;
 }
 
-export function formatRunTrace(trace: RetrieveRunTraceResponseBody["trace"]): string {
+export function formatRunTrace(
+  trace: RetrieveRunTraceResponseBody["trace"],
+  maxTraceLines: number = DEFAULT_MAX_TRACE_LINES
+): string {
   const lines: string[] = [];
 
   lines.push(`Trace ID: ${trace.traceId}`);
   lines.push("");
 
   // Format the root span and its children recursively
-  const reachedMaxLines = formatSpan(trace.rootSpan, lines, 0, MAX_TRACE_LINES);
+  const reachedMaxLines = formatSpan(trace.rootSpan, lines, 0, maxTraceLines);
 
   if (reachedMaxLines) {
-    lines.push(`(truncated logs to ${MAX_TRACE_LINES} lines)`);
+    lines.push(`(truncated logs to ${maxTraceLines} lines)`);
   }
 
   return lines.join("\n");
