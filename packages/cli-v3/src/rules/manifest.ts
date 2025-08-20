@@ -126,7 +126,7 @@ export class GithubRulesManifestLoader implements RulesManifestLoader {
 
   async loadRulesFile(relativePath: string): Promise<string> {
     const response = await fetch(
-      `https://raw.githubusercontent.com/triggerdotdev/trigger.dev/refs/heads/${this.branch}/${relativePath}`
+      `https://raw.githubusercontent.com/triggerdotdev/trigger.dev/refs/heads/${this.branch}/rules/${relativePath}`
     );
 
     if (!response.ok) {
