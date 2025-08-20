@@ -26,7 +26,7 @@ import { pathExists, readFile, safeWriteFile } from "../utilities/fileSystem.js"
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
 
-const clients = [
+const targets = [
   "claude-code",
   "cursor",
   "vscode",
@@ -39,11 +39,11 @@ const clients = [
   "ruler",
 ] as const;
 
-type ClientLabels = {
-  [key in (typeof clients)[number]]: string;
+type TargetLabels = {
+  [key in (typeof targets)[number]]: string;
 };
 
-const clientLabels: ClientLabels = {
+const targetLabels: TargetLabels = {
   "claude-code": "Claude Code",
   cursor: "Cursor",
   vscode: "VSCode",
@@ -56,11 +56,11 @@ const clientLabels: ClientLabels = {
   ruler: "Ruler",
 };
 
-type SupportedClients = (typeof clients)[number];
-type ResolvedClients = SupportedClients | "unsupported";
+type SupportedTargets = (typeof targets)[number];
+type ResolvedTargets = SupportedTargets | "unsupported";
 
 const InstallRulesCommandOptions = z.object({
-  client: z.enum(clients).array().optional(),
+  target: z.enum(targets).array().optional(),
   manifestPath: z.string().optional(),
   branch: z.string().optional(),
   logLevel: z.enum(["debug", "info", "log", "warn", "error", "none"]).optional(),
@@ -74,9 +74,9 @@ export function configureInstallRulesCommand(program: Command) {
     .command("install-rules")
     .description("Install the Trigger.dev Agent rules files")
     .option(
-      "--client <clients...>",
-      "Choose the client (or clients) to install the MCP server into. We currently support: " +
-        clients.join(", ")
+      "--target <targets...>",
+      "Choose the target (or targets) to install the Trigger.dev rules into. We currently support: " +
+        targets.join(", ")
     )
     .option(
       "-l, --log-level <level>",
@@ -128,7 +128,7 @@ async function _installRulesCommand(options: InstallRulesCommandOptions) {
     return;
   }
 
-  intro("Welcome to the Trigger.dev Agent rules install wizard 🧙");
+  intro("Welcome to the Trigger.dev Agent rules install wizard ");
 
   const manifestLoader = options.manifestPath
     ? new LocalRulesManifestLoader(options.manifestPath)
@@ -141,18 +141,18 @@ async function _installRulesCommand(options: InstallRulesCommandOptions) {
 
   await installRules(manifest, options);
 
-  outro("You're all set! 🎉");
+  outro("You're all set! ");
 }
 
 type InstallRulesResults = Array<InstallRulesResult>;
 
 type InstallRulesResult = {
   configPath: string;
-  clientName: (typeof clients)[number];
+  targetName: (typeof targets)[number];
 };
 
 export type InstallRulesWizardOptions = {
-  clients?: Array<(typeof clients)[number]>;
+  targets?: Array<(typeof targets)[number]>;
   manifestPath?: string;
   branch?: string;
 };
@@ -234,17 +234,17 @@ async function installRules(manifest: RulesManifest, opts: InstallRulesWizardOpt
 
   const currentVersion = await manifest.getCurrentVersion();
 
-  const clientNames = await resolveClients(opts);
+  const targetNames = await resolveTargets(opts);
 
-  if (clientNames.length === 1 && clientNames.includes("unsupported")) {
-    handleUnsupportedClientOnly(opts);
+  if (targetNames.length === 1 && targetNames.includes("unsupported")) {
+    handleUnsupportedTargetOnly(opts);
     return;
   }
 
   const results = [];
 
-  for (const clientName of clientNames) {
-    const result = await installRulesForClient(clientName, currentVersion, config, opts);
+  for (const targetName of targetNames) {
+    const result = await installRulesForTarget(targetName, currentVersion, config, opts);
 
     if (result) {
       results.push(result);
@@ -283,7 +283,7 @@ async function installRules(manifest: RulesManifest, opts: InstallRulesWizardOpt
   }
 }
 
-function handleUnsupportedClientOnly(options: InstallRulesCommandOptions): InstallRulesResults {
+function handleUnsupportedTargetOnly(options: InstallRulesCommandOptions): InstallRulesResults {
   log.info(
     `${cliLink("Install the rules manually", "https://trigger.dev/docs/agents/rules/overview")}`
   );
@@ -291,68 +291,68 @@ function handleUnsupportedClientOnly(options: InstallRulesCommandOptions): Insta
   return [];
 }
 
-async function installRulesForClient(
-  clientName: ResolvedClients,
+async function installRulesForTarget(
+  targetName: ResolvedTargets,
   currentVersion: ManifestVersion,
   config: ResolvedConfig,
   options: InstallRulesCommandOptions
 ) {
-  if (clientName === "unsupported") {
-    // This should not happen as unsupported clients are handled separately
+  if (targetName === "unsupported") {
+    // This should not happen as unsupported targets are handled separately
     // but if it does, provide helpful output
     log.message(
-      `${chalk.yellow("⚠")} Skipping unsupported client - see manual configuration above`
+      `${chalk.yellow("⚠")} Skipping unsupported target - see manual configuration above`
     );
     return;
   }
 
-  const result = await performInstallForClient(clientName, currentVersion, config, options);
+  const result = await performInstallForTarget(targetName, currentVersion, config, options);
 
   return result;
 }
 
-async function performInstallForClient(
-  clientName: (typeof clients)[number],
+async function performInstallForTarget(
+  targetName: (typeof targets)[number],
   currentVersion: ManifestVersion,
   config: ResolvedConfig,
   cmdOptions: InstallRulesCommandOptions
 ) {
-  const options = await resolveOptionsForClient(clientName, currentVersion, cmdOptions);
+  const options = await resolveOptionsForTarget(targetName, currentVersion, cmdOptions);
 
-  const installations = await performInstallOptionsForClient(clientName, options, config);
+  const installations = await performInstallOptionsForTarget(targetName, options, config);
 
   return {
-    clientName,
+    targetName,
     installations,
   };
 }
 
-async function performInstallOptionsForClient(
-  clientName: (typeof clients)[number],
+async function performInstallOptionsForTarget(
+  targetName: (typeof targets)[number],
   options: Array<RulesManifestVersionOption>,
   config: ResolvedConfig
 ) {
   const results = [];
 
   for (const option of options) {
-    const result = await performInstallOptionForClient(clientName, option, config);
+    const result = await performInstallOptionForTarget(targetName, option, config);
     results.push(result);
   }
 
   return results;
 }
 
-async function performInstallOptionForClient(
-  clientName: (typeof clients)[number],
+async function performInstallOptionForTarget(
+  targetName: (typeof targets)[number],
   option: RulesManifestVersionOption,
   config: ResolvedConfig
 ) {
   switch (option.installStrategy) {
     case "default": {
-      return performInstallDefaultOptionForClient(clientName, option, config);
+      return performInstallDefaultOptionForTarget(targetName, option, config);
     }
     case "claude-code-subagent": {
-      return performInstallClaudeCodeSubagentOptionForClient(option);
+      return performInstallClaudeCodeSubagentOptionForTarget(option);
     }
     default: {
       throw new Error(`Unknown install strategy: ${option.installStrategy}`);
@@ -360,15 +360,15 @@ async function performInstallOptionForClient(
   }
 }
 
-async function performInstallDefaultOptionForClient(
-  clientName: (typeof clients)[number],
+async function performInstallDefaultOptionForTarget(
+  targetName: (typeof targets)[number],
   option: RulesManifestVersionOption,
   config: ResolvedConfig
 ) {
   // Get the path to the rules file
-  const rulesFilePath = resolveRulesFilePathForClientOption(clientName, option);
-  const rulesFileContents = await resolveRulesFileContentsForClient(clientName, option, config);
-  const mergeStrategy = await resolveRulesFileMergeStrategyForClient(clientName);
+  const rulesFilePath = resolveRulesFilePathForTargetOption(targetName, option);
+  const rulesFileContents = await resolveRulesFileContentsForTarget(targetName, option, config);
+  const mergeStrategy = await resolveRulesFileMergeStrategyForTarget(targetName);
 
   // Try and read the existing rules file
   const rulesFileAbsolutePath = join(process.cwd(), rulesFilePath);
@@ -419,7 +419,7 @@ async function writeToFile(
   }
 }
 
-async function performInstallClaudeCodeSubagentOptionForClient(option: RulesManifestVersionOption) {
+async function performInstallClaudeCodeSubagentOptionForTarget(option: RulesManifestVersionOption) {
   const rulesFilePath = ".claude/agents/trigger-dev-task-writer.md";
   const rulesFileContents = option.contents;
 
@@ -428,15 +428,15 @@ async function performInstallClaudeCodeSubagentOptionForClient(option: RulesMani
   return { option, location: rulesFilePath };
 }
 
-function resolveRulesFilePathForClientOption(
-  clientName: (typeof clients)[number],
+function resolveRulesFilePathForTargetOption(
+  targetName: (typeof targets)[number],
   option: RulesManifestVersionOption
 ): string {
   if (option.installStrategy === "claude-code-subagent") {
     return ".claude/agents/trigger-dev-task-writer.md";
   }
 
-  switch (clientName) {
+  switch (targetName) {
     case "claude-code": {
       return "CLAUDE.md";
     }
@@ -468,13 +468,13 @@ function resolveRulesFilePathForClientOption(
       return `.ruler/trigger-${option.name}.md`;
     }
     default: {
-      throw new Error(`Unknown client: ${clientName}`);
+      throw new Error(`Unknown target: ${targetName}`);
     }
   }
 }
 
-async function resolveRulesFileMergeStrategyForClient(clientName: (typeof clients)[number]) {
-  switch (clientName) {
+async function resolveRulesFileMergeStrategyForTarget(targetName: (typeof targets)[number]) {
+  switch (targetName) {
     case "amp":
     case "agents.md":
     case "gemini-cli":
@@ -487,12 +487,12 @@ async function resolveRulesFileMergeStrategyForClient(clientName: (typeof client
   }
 }
 
-async function resolveRulesFileContentsForClient(
-  clientName: (typeof clients)[number],
+async function resolveRulesFileContentsForTarget(
+  targetName: (typeof targets)[number],
   option: RulesManifestVersionOption,
   config: ResolvedConfig
 ) {
-  switch (clientName) {
+  switch (targetName) {
     case "cursor": {
       return $output(
         frontmatter({
@@ -537,17 +537,17 @@ function $output(...strings: string[]) {
   return strings.map((s) => s).join("\n");
 }
 
-async function resolveOptionsForClient(
-  clientName: (typeof clients)[number],
+async function resolveOptionsForTarget(
+  targetName: (typeof targets)[number],
   currentVersion: ManifestVersion,
   cmdOptions: InstallRulesCommandOptions
 ) {
   const possibleOptions = currentVersion.options.filter(
-    (option) => !option.client || option.client === clientName
+    (option) => !option.client || option.client === targetName
   );
 
   const selectedOptions = await multiselect({
-    message: `Choose the rules you want to install for ${clientLabels[clientName]}`,
+    message: `Choose the rules you want to install for ${targetLabels[targetName]}`,
     options: possibleOptions.map((option) => ({
       value: option,
       label: option.title,
@@ -563,41 +563,41 @@ async function resolveOptionsForClient(
   return selectedOptions;
 }
 
-async function resolveClients(options: InstallRulesCommandOptions): Promise<ResolvedClients[]> {
-  if (options.client) {
-    return options.client;
+async function resolveTargets(options: InstallRulesCommandOptions): Promise<ResolvedTargets[]> {
+  if (options.target) {
+    return options.target;
   }
 
   const selectOptions: Array<{
     value: string;
     label: string;
     hint?: string;
-  }> = clients.map((client) => ({
-    value: client,
-    label: clientLabels[client],
+  }> = targets.map((target) => ({
+    value: target,
+    label: targetLabels[target],
   }));
 
   selectOptions.push({
     value: "unsupported",
-    label: "Unsupported client",
-    hint: "We don't support this client yet, but you can still install the rules manually.",
+    label: "Unsupported target",
+    hint: "We don't support this target yet, but you can still install the rules manually.",
   });
 
   const $selectOptions = selectOptions as Array<{
-    value: ResolvedClients;
+    value: ResolvedTargets;
     label: string;
     hint?: string;
   }>;
 
-  const selectedClients = await multiselect({
-    message: "Select one or more clients to install the rules into",
+  const selectedTargets = await multiselect({
+    message: "Select one or more targets to install the rules into",
     options: $selectOptions,
     required: true,
   });
 
-  if (isCancel(selectedClients)) {
-    throw new OutroCommandError("No clients selected");
+  if (isCancel(selectedTargets)) {
+    throw new OutroCommandError("No targets selected");
   }
 
-  return selectedClients;
+  return selectedTargets;
 }
