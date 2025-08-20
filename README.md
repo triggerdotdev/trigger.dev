@@ -24,20 +24,34 @@
 
 Trigger.dev is the open-source platform for building AI workflows in TypeScript. Long-running tasks with retries, queues, observability, and elastic scaling.
 
-### Key features:
+## The perfect platform for building AI agents
 
-- **[Perfect for building AI agents](https://trigger.dev/product/ai-agents)** - Build AI agents using all the services and LLMs you already use, like the AI SDK, OpenAI, Anthropic, LangChain, etc.
+Build AI agents in familiar programming models using all the services and LLMs you already use, deploy them to Trigger.dev and get durable, long-running tasks with retries, queues, observability, and elastic scaling out of the box.
+
+- **Long-running without timeouts**: Execute your tasks with absolutely no timeouts, unlike AWS Lambda, Vercel, and other serverless platforms.
+
+- **Durability, retries & queues**: Build rock solid agents and AI applications using our durable tasks, retries, queues and idempotency.
+
+- **True runtime freedom**: Customize your deployed tasks with system packages – run browsers, Python scripts, FFmpeg and more.
+
+- **Human-in-the-loop**: Programmatically pause your tasks until a human can approve, reject or give feedback.
+
+- **Realtime apps & streaming**: Move your background jobs to the foreground by subscribing to runs or streaming AI responses to your app.
+
+- **Observability & monitoring**: Each run has full tracing and logs. Configure error alerts to catch bugs fast. Monitor performance with metrics.
+
+## Key features:
+
 - **[Write tasks in regular code](https://trigger.dev/docs/guides/introduction)** - Build background tasks using familiar programming models in native Javascript / Typescript and Python
-- **[Long-running tasks](https://trigger.dev/product)** - Handle resource-heavy tasks without timeouts
-- **[Durable cron schedules](https://trigger.dev/product/scheduled-tasks)** - Create and attach recurring schedules of up to a year, which never hit a function timeout
-- **[Trigger.dev Realtime](https://trigger.dev/product/realtime)** - Real-time bridge between your background tasks and frontend applications with streaming support
-- **[React hooks](https://trigger.dev/docs/frontend/react-hooks#react-hooks)** - Interact with the Trigger.dev API using our React hooks package
-- **[Max duration](https://trigger.dev/docs/runs/max-duration#max-duration)** - Set maximum execution time for tasks to prevent runaway processes
+- **[Long-running tasks](https://trigger.dev/docs/runs/max-duration)** - Handle resource-heavy tasks without timeouts
+- **[Durable cron schedules](https://trigger.dev/product/scheduled-tasks)** - Create and attach recurring schedules of up to a year
+- **[Trigger.dev Realtime](https://trigger.dev/product/realtime)** - Real-time bridge between your background tasks and frontend applications with LLM streaming support
+- **[React hooks](https://trigger.dev/docs/frontend/react-hooks#react-hooks)** - Interact with the Trigger.dev API on your frontend using our React hooks package
 - **[Batch triggering](https://trigger.dev/docs/triggering#tasks-batchtrigger)** - Use batchTrigger() to initiate multiple runs of a task with custom payloads and options
-- **[Structured inputs / outputs](https://trigger.dev/docs/tasks/schemaTask#schematask)** - Define precise data schemas for your tasks with runtime payload validation using SchemaTask
+- **[Structured inputs / outputs](https://trigger.dev/docs/tasks/schemaTask#schematask)** - Define precise data schemas for your tasks with runtime payload validation
 - **[Waits](https://trigger.dev/docs/wait)** - Add waits to your tasks to pause execution for a specified duration
 - **[Preview branches](https://trigger.dev/docs/deployment/preview-branches)** - Create isolated environments for testing and development. Integrates with Vercel and git workflows
-- **[Waitpoints](https://trigger.dev/docs/upgrade-to-v4#wait-tokens)** - Add human judgment at critical decision points without disrupting workflow
+- **[Waitpoints](https://trigger.dev/docs/upgrade-to-v4#wait-tokens)** - Add human-in-the-loop judgment at critical decision points without disrupting workflow
 - **[Concurrency & queues](https://trigger.dev/product/concurrency-and-queues)** - Set concurrency rules to manage how multiple tasks execute
 - **[Multiple environments](https://trigger.dev/docs/how-it-works#dev-mode)** - Support for DEV, PREVIEW, STAGING, and PROD environments
 - **[No infrastructure to manage](https://trigger.dev/docs/how-it-works#trigger-dev-architecture)** - Auto-scaling infrastructure that eliminates timeouts and server management
@@ -50,11 +64,11 @@ Trigger.dev is the open-source platform for building AI workflows in TypeScript.
 - **[Logging & tracing](https://trigger.dev/docs/logging)** - Comprehensive logging and tracing for all your tasks
 - **[Tags](https://trigger.dev/docs/tags#tags)** - Attach up to five tags to each run as powerful identifiers
 - **[Advanced run filters](/product/observability-and-monitoring#advanced-filters)** - Easily sort and find tasks based on status, environment, tags, and creation date
-- **[Run metadata](https://trigger.dev/docs/runs/metadata#run-metadata)** - Attach metadata to runs which updates as the run progresses
+- **[Run metadata](https://trigger.dev/docs/runs/metadata#run-metadata)** - Attach metadata to runs which updates as the run progresses and is available to use in your frontend for live updates
 - **[Bulk actions](https://trigger.dev/docs/bulk-actions)** - Perform actions on multiple runs simultaneously, including replaying and cancelling
 - **[Real-time alerts](https://trigger.dev/product/observability-and-monitoring#alerts)** - Choose your preferred notification method for run failures and deployments
 
-## In your codebase
+## Write tasks in your codebase
 
 Create tasks where they belong: in your codebase. Version control, localhost, test and review like you're already used to.
 
