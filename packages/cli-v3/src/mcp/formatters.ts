@@ -5,6 +5,8 @@ import {
 } from "@trigger.dev/core/v3/schemas";
 import type { CursorPageResponse } from "@trigger.dev/core/v3/zodfetch";
 
+const MAX_TRACE_LINES = 1000;
+
 export function formatRun(run: RetrieveRunResponse): string {
   const lines: string[] = [];
 
@@ -177,7 +179,11 @@ export function formatRunTrace(trace: RetrieveRunTraceResponseBody["trace"]): st
   lines.push("");
 
   // Format the root span and its children recursively
-  formatSpan(trace.rootSpan, lines, 0);
+  const reachedMaxLines = formatSpan(trace.rootSpan, lines, 0, MAX_TRACE_LINES);
+
+  if (reachedMaxLines) {
+    lines.push(`(truncated logs to ${MAX_TRACE_LINES} lines)`);
+  }
 
   return lines.join("\n");
 }
@@ -185,8 +191,13 @@ export function formatRunTrace(trace: RetrieveRunTraceResponseBody["trace"]): st
 function formatSpan(
   span: RetrieveRunTraceResponseBody["trace"]["rootSpan"],
   lines: string[],
-  depth: number
-): void {
+  depth: number,
+  maxLines: number
+): boolean {
+  if (lines.length >= maxLines) {
+    return true;
+  }
+
   const indent = "  ".repeat(depth);
   const prefix = depth === 0 ? "└─" : "├─";
 
@@ -263,14 +274,20 @@ function formatSpan(
 
   // Recursively format children
   if (span.children) {
-    span.children.forEach((child, index) => {
-      formatSpan(child, lines, depth + 1);
+    const reachedMaxLines = span.children.some((child, index) => {
+      const reachedMaxLines = formatSpan(child, lines, depth + 1, maxLines);
       // Add spacing between sibling spans (except for the last one)
-      if (index < span.children.length - 1) {
+      if (index < span.children.length - 1 && !reachedMaxLines) {
         lines.push("");
       }
+
+      return reachedMaxLines;
     });
+
+    return reachedMaxLines;
   }
+
+  return false;
 }
 
 function getStatusIndicator(
