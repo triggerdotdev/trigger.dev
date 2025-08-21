@@ -565,6 +565,7 @@ export class RunEngine {
     workerId,
     runnerId,
     tx,
+    skipObserving,
   }: {
     consumerId: string;
     workerQueue: string;
@@ -572,9 +573,12 @@ export class RunEngine {
     workerId?: string;
     runnerId?: string;
     tx?: PrismaClientOrTransaction;
+    skipObserving?: boolean;
   }): Promise<DequeuedMessage[]> {
-    // We only do this with "prod" worker queues because we don't want to observe dev (e.g. environment) worker queues
-    this.runQueue.registerObservableWorkerQueue(workerQueue);
+    if (!skipObserving) {
+      // We only do this with "prod" worker queues because we don't want to observe dev (e.g. environment) worker queues
+      this.runQueue.registerObservableWorkerQueue(workerQueue);
+    }
 
     const dequeuedMessage = await this.dequeueSystem.dequeueFromWorkerQueue({
       consumerId,
@@ -614,6 +618,7 @@ export class RunEngine {
       workerId,
       runnerId,
       tx,
+      skipObserving: true,
     });
   }
 
