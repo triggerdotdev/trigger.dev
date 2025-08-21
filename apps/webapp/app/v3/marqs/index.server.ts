@@ -614,7 +614,7 @@ export class MarQS {
                     {
                       kind: SpanKind.CONSUMER,
                       attributes: {
-                        [SEMATTRS_MESSAGING_OPERATION]: "dequeue",
+                        [SEMATTRS_MESSAGING_OPERATION]: "receive",
                         [SEMATTRS_MESSAGING_SYSTEM]: "marqs",
                       },
                     }
@@ -660,7 +660,7 @@ export class MarQS {
                       {
                         kind: SpanKind.INTERNAL,
                         attributes: {
-                          [SEMATTRS_MESSAGING_OPERATION]: "notify",
+                          [SEMATTRS_MESSAGING_OPERATION]: "receive",
                           [SEMATTRS_MESSAGING_SYSTEM]: "marqs",
                         },
                       }
@@ -682,7 +682,7 @@ export class MarQS {
                       {
                         kind: SpanKind.INTERNAL,
                         attributes: {
-                          [SEMATTRS_MESSAGING_OPERATION]: "heartbeat",
+                          [SEMATTRS_MESSAGING_OPERATION]: "receive",
                           [SEMATTRS_MESSAGING_SYSTEM]: "marqs",
                         },
                       }
@@ -701,7 +701,7 @@ export class MarQS {
               {
                 kind: SpanKind.CONSUMER,
                 attributes: {
-                  [SEMATTRS_MESSAGING_OPERATION]: "dequeue",
+                  [SEMATTRS_MESSAGING_OPERATION]: "receive",
                   [SEMATTRS_MESSAGING_SYSTEM]: "marqs",
                 },
               }
