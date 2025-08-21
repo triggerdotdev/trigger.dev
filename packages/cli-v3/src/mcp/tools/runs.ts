@@ -35,7 +35,7 @@ export const getRunDetailsTool = {
     ]);
 
     const formattedRun = formatRun(runResult);
-    const formattedTrace = formatRunTrace(traceResult.trace);
+    const formattedTrace = formatRunTrace(traceResult.trace, input.maxTraceLines);
 
     const runUrl = await ctx.getDashboardUrl(`/projects/v3/${projectRef}/runs/${runResult.id}`);
 

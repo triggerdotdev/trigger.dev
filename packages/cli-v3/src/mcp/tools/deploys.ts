@@ -74,7 +74,6 @@ export const deployTool = {
         cwd: cwd.cwd,
         env: {
           TRIGGER_MCP_SERVER: "1",
-          CI: "true",
         },
       },
     });

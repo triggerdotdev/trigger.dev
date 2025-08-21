@@ -1233,7 +1233,7 @@ export const RetrieveRunTraceSpanSchema = z.object({
     runId: z.string(),
     taskSlug: z.string().optional(),
     taskPath: z.string().optional(),
-    events: z.array(z.any()),
+    events: z.array(z.any()).optional(),
     startTime: z.coerce.date(),
     duration: z.number(),
     isError: z.boolean(),
@@ -1245,7 +1245,7 @@ export const RetrieveRunTraceSpanSchema = z.object({
     queueName: z.string().optional(),
     machinePreset: z.string().optional(),
     properties: z.record(z.any()).optional(),
-    output: z.record(z.any()).optional(),
+    output: z.unknown().optional(),
   }),
 });
 

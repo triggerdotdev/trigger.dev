@@ -123,7 +123,13 @@ export const CommonRunsInput = CommonProjectsInput.extend({
 
 export type CommonRunsInput = z.output<typeof CommonRunsInput>;
 
-export const GetRunDetailsInput = CommonRunsInput.extend({});
+export const GetRunDetailsInput = CommonRunsInput.extend({
+  maxTraceLines: z
+    .number()
+    .int()
+    .describe("The maximum number of lines to show in the trace. Defaults to 500")
+    .optional(),
+});
 
 export type GetRunDetailsInput = z.output<typeof GetRunDetailsInput>;
 

@@ -285,7 +285,7 @@ export class TaskEventStore {
               : Prisma.empty
           }
         ORDER BY "startTime" ASC
-        LIMIT ${env.MAXIMUM_TRACE_SUMMARY_VIEW_COUNT}
+        LIMIT ${env.MAXIMUM_TRACE_DETAILED_SUMMARY_VIEW_COUNT}
       `;
     } else {
       return await this.readReplica.$queryRaw<DetailedTraceEvent[]>`
@@ -320,7 +320,7 @@ export class TaskEventStore {
               : Prisma.empty
           }
         ORDER BY "startTime" ASC
-        LIMIT ${env.MAXIMUM_TRACE_SUMMARY_VIEW_COUNT}
+        LIMIT ${env.MAXIMUM_TRACE_DETAILED_SUMMARY_VIEW_COUNT}
       `;
     }
   }

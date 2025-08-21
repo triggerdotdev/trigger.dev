@@ -5,6 +5,8 @@ import {
 } from "@trigger.dev/core/v3/schemas";
 import type { CursorPageResponse } from "@trigger.dev/core/v3/zodfetch";
 
+const DEFAULT_MAX_TRACE_LINES = 500;
+
 export function formatRun(run: RetrieveRunResponse): string {
   const lines: string[] = [];
 
@@ -170,14 +172,21 @@ function formatRelatedRuns(relatedRuns: RetrieveRunResponse["relatedRuns"]): str
   return parts.length > 0 ? `Related: ${parts.join("; ")}` : null;
 }
 
-export function formatRunTrace(trace: RetrieveRunTraceResponseBody["trace"]): string {
+export function formatRunTrace(
+  trace: RetrieveRunTraceResponseBody["trace"],
+  maxTraceLines: number = DEFAULT_MAX_TRACE_LINES
+): string {
   const lines: string[] = [];
 
   lines.push(`Trace ID: ${trace.traceId}`);
   lines.push("");
 
   // Format the root span and its children recursively
-  formatSpan(trace.rootSpan, lines, 0);
+  const reachedMaxLines = formatSpan(trace.rootSpan, lines, 0, maxTraceLines);
+
+  if (reachedMaxLines) {
+    lines.push(`(truncated logs to ${maxTraceLines} lines)`);
+  }
 
   return lines.join("\n");
 }
@@ -185,8 +194,13 @@ export function formatRunTrace(trace: RetrieveRunTraceResponseBody["trace"]): st
 function formatSpan(
   span: RetrieveRunTraceResponseBody["trace"]["rootSpan"],
   lines: string[],
-  depth: number
-): void {
+  depth: number,
+  maxLines: number
+): boolean {
+  if (lines.length >= maxLines) {
+    return true;
+  }
+
   const indent = "  ".repeat(depth);
   const prefix = depth === 0 ? "└─" : "├─";
 
@@ -230,7 +244,7 @@ function formatSpan(
   }
 
   // Show output if it exists
-  if (span.data.output && Object.keys(span.data.output).length > 0) {
+  if (span.data.output) {
     lines.push(
       `${indent}   Output: ${JSON.stringify(span.data.output, null, 2).replace(
         /\n/g,
@@ -263,14 +277,20 @@ function formatSpan(
 
   // Recursively format children
   if (span.children) {
-    span.children.forEach((child, index) => {
-      formatSpan(child, lines, depth + 1);
+    const reachedMaxLines = span.children.some((child, index) => {
+      const reachedMaxLines = formatSpan(child, lines, depth + 1, maxLines);
       // Add spacing between sibling spans (except for the last one)
-      if (index < span.children.length - 1) {
+      if (index < span.children.length - 1 && !reachedMaxLines) {
         lines.push("");
       }
+
+      return reachedMaxLines;
     });
+
+    return reachedMaxLines;
   }
+
+  return false;
 }
 
 function getStatusIndicator(

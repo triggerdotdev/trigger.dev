@@ -233,12 +233,12 @@ export async function installMcpServer(
   );
 
   log.info("More examples:");
-  log.message(`  • ${chalk.green('"List my Trigger.dev projects"')}`);
-  log.message(`  • ${chalk.green('"Create a new Trigger.dev project called MyApp"')}`);
-  log.message(`  • ${chalk.green('"Show me all tasks in my project"')}`);
-  log.message(`  • ${chalk.green('"Trigger the email-notification task"')}`);
+  log.message(`  • ${chalk.green('"Trigger the hello-world task"')}`);
+  log.message(`  • ${chalk.green('"Can you help me debug the prod run run_1234"')}`);
+  log.message(`  • ${chalk.green('"Deploy my trigger project to staging"')}`);
+  log.message(`  • ${chalk.green('"What trigger task handles uploading files to S3?"')}`);
   log.message(`  • ${chalk.green('"How do I create a scheduled task in Trigger.dev?"')}`);
-  log.message(`  • ${chalk.green('"Search Trigger.dev docs for webhook examples"')}`);
+  log.message(`  • ${chalk.green('"Search Trigger.dev docs for ffmpeg examples"')}`);
 
   log.info("Helpful links:");
   log.message(`  • ${cliLink("Trigger.dev docs", "https://trigger.dev/docs")}`);
@@ -318,17 +318,13 @@ async function installMcpServerForClient(
     return;
   }
 
-  const clientSpinner = spinner();
-
-  clientSpinner.start(`Installing in ${clientName}`);
-
   const scope = await resolveScopeForClient(clientName, options);
 
-  clientSpinner.message(`Installing in ${scope.scope} scope at ${scope.location}`);
+  // clientSpinner.message(`Installing in ${scope.scope} scope at ${scope.location}`);
 
   const configPath = await performInstallForClient(clientName, scope, options);
 
-  clientSpinner.stop(`Successfully installed in ${clientName} (${configPath})`);
+  // clientSpinner.stop(`Successfully installed in ${clientName} (${configPath})`);
 
   return { configPath, clientName, scope };
 }
