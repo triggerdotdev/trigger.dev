@@ -3,6 +3,7 @@ import {
   ArrowUpCircleIcon,
   BookOpenIcon,
   ChatBubbleLeftEllipsisIcon,
+  InformationCircleIcon,
   MapPinIcon,
 } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
@@ -31,6 +32,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "~/components/primitives/Dialog";
+import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
@@ -50,7 +52,7 @@ import { useHasAdminAccess } from "~/hooks/useUser";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { type Region, RegionsPresenter } from "~/presenters/v3/RegionsPresenter.server";
-import { requireUser, requireUserId } from "~/services/session.server";
+import { requireUser } from "~/services/session.server";
 import {
   docsPath,
   EnvironmentParamSchema,
@@ -158,7 +160,7 @@ export default function Page() {
             </MainCenteredContainer>
           ) : (
             <>
-              <div className="grid max-h-full min-h-full grid-rows-[1fr] overflow-x-auto">
+              <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -293,6 +295,14 @@ export default function Page() {
                     </TableRow>
                   </TableBody>
                 </Table>
+                <InfoPanel
+                  icon={InformationCircleIcon}
+                  variant="minimal"
+                  panelClassName="max-w-full"
+                >
+                  Runs execute in your default region, but operational and log data remains in
+                  us-east-1.
+                </InfoPanel>
               </div>
             </>
           )}
