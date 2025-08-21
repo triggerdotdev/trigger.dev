@@ -104,7 +104,7 @@ The quickest way to get started is to create an account and project in our [web 
 ### Useful links:
 
 - [Quick start](https://trigger.dev/docs/quick-start) - get up and running in minutes
-- [How it works](https://trigger.dev/docs/v3/how-it-works) - understand how Trigger.dev works under the hood
+- [How it works](https://trigger.dev/docs/how-it-works) - understand how Trigger.dev works under the hood
 - [Guides and examples](https://trigger.dev/docs/guides/introduction) - walk-through guides and code examples for popular frameworks and use cases
 
 ## Self-hosting
