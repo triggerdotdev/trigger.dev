@@ -17,10 +17,10 @@ Before setting up your project, you need to authenticate the CLI with Trigger.de
 
 ```bash
 # Login to Trigger.dev
-npx trigger.dev@v4-beta login
+npx trigger.dev@latest login
 
 # Or with a specific API URL (for self-hosted instances)
-npx trigger.dev@v4-beta login --api-url https://your-trigger-instance.com
+npx trigger.dev@latest login --api-url https://your-trigger-instance.com
 ```
 
 This will open your browser to authenticate. Once authenticated, you'll need to select or create a project in the Trigger.dev dashboard to get your project reference (e.g., `proj_abc123`).
@@ -32,23 +32,23 @@ Install the required packages based on your package manager:
 <CodeGroup>
 
 ```bash npm
-npm add @trigger.dev/sdk@v4-beta
-npm add --save-dev @trigger.dev/build@v4-beta
+npm add @trigger.dev/sdk@latest
+npm add --save-dev @trigger.dev/build@latest
 ```
 
 ```bash pnpm
-pnpm add @trigger.dev/sdk@v4-beta
-pnpm add -D @trigger.dev/build@v4-beta
+pnpm add @trigger.dev/sdk@latest
+pnpm add -D @trigger.dev/build@latest
 ```
 
 ```bash yarn
-yarn add @trigger.dev/sdk@v4-beta
-yarn add -D @trigger.dev/build@v4-beta
+yarn add @trigger.dev/sdk@latest
+yarn add -D @trigger.dev/build@latest
 ```
 
 ```bash bun
-bun add @trigger.dev/sdk@v4-beta
-bun add -D @trigger.dev/build@v4-beta
+bun add @trigger.dev/sdk@latest
+bun add -D @trigger.dev/build@latest
 ```
 
 </CodeGroup>
@@ -82,13 +82,13 @@ You can run the Trigger.dev CLI in two ways:
 
 ```bash
 # npm
-npx trigger.dev@v4-beta dev
+npx trigger.dev@latest dev
 
 # pnpm
-pnpm dlx trigger.dev@v4-beta dev
+pnpm dlx trigger.dev@latest dev
 
 # yarn
-yarn dlx trigger.dev@v4-beta dev
+yarn dlx trigger.dev@latest dev
 ```
 
 ### Option 2: Add as dev dependency
@@ -98,7 +98,7 @@ Add the CLI to your `package.json`:
 ```json
 {
   "devDependencies": {
-    "trigger.dev": "4.0.0-v4-beta.26"
+    "trigger.dev": "^4.0.0"
   }
 }
 ```
@@ -120,11 +120,11 @@ Make sure to pin the version of the CLI to the same version as the SDK that you 
 
 ```json
 "devDependencies": {
-  "trigger.dev": "4.0.0-v4-beta.26",
-  "@trigger.dev/build": "4.0.0-v4-beta.26"
+  "trigger.dev": "^4.0.0",
+  "@trigger.dev/build": "^4.0.0"
 },
 "dependencies": {
-  "@trigger.dev/sdk": "4.0.0-v4-beta.26"
+  "@trigger.dev/sdk": "^4.0.0"
 }
 ```
 
@@ -239,16 +239,16 @@ If you're building a React frontend application and want to display task status 
 
 ```bash
 # npm
-npm install @trigger.dev/react-hooks@v4-beta
+npm install @trigger.dev/react-hooks@latest
 
 # pnpm
-pnpm add @trigger.dev/react-hooks@v4-beta
+pnpm add @trigger.dev/react-hooks@latest
 
 # yarn
-yarn add @trigger.dev/react-hooks@v4-beta
+yarn add @trigger.dev/react-hooks@latest
 
 # bun
-bun add @trigger.dev/react-hooks@v4-beta
+bun add @trigger.dev/react-hooks@latest
 ```
 
 ### Basic usage
@@ -396,10 +396,10 @@ packages:
   "name": "@repo/tasks",
   "version": "0.0.0",
   "dependencies": {
-    "@trigger.dev/sdk": "4.0.0-v4-beta.26"
+    "@trigger.dev/sdk": "^4.0.0"
   },
   "devDependencies": {
-    "@trigger.dev/build": "4.0.0-v4-beta.26"
+    "@trigger.dev/build": "^4.0.0"
   },
   "exports": {
     ".": "./src/trigger/index.ts",
@@ -509,7 +509,7 @@ Run the development server for the tasks package:
 ```bash
 # From the root of your monorepo
 cd packages/tasks
-npx trigger.dev@v4-beta dev
+npx trigger.dev@latest dev
 
 # Or using turbo (if you add dev:trigger script to tasks package.json)
 turbo run dev:trigger --filter=@repo/tasks
@@ -527,13 +527,13 @@ This approach installs Trigger.dev directly in individual apps that need backgro
 {
   "name": "web",
   "dependencies": {
-    "@trigger.dev/sdk": "4.0.0-v4-beta.26",
+    "@trigger.dev/sdk": "^4.0.0",
     "next": "^15.2.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "@trigger.dev/build": "4.0.0-v4-beta.26"
+    "@trigger.dev/build": "^4.0.0"
   }
 }
 ```
@@ -612,7 +612,7 @@ export async function triggerHelloWorld(name: string) {
 ```bash
 # From the app directory
 cd apps/web
-npx trigger.dev@v4-beta dev
+npx trigger.dev@latest dev
 
 # Or from the root using turbo
 turbo run dev:trigger --filter=web

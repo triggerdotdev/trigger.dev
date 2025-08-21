@@ -49,6 +49,20 @@ export class KubernetesWorkloadManager implements WorkloadManager {
     };
   }
 
+  private stripImageDigest(imageRef: string): string {
+    if (!env.KUBERNETES_STRIP_IMAGE_DIGEST) {
+      return imageRef;
+    }
+
+    const atIndex = imageRef.lastIndexOf("@");
+
+    if (atIndex === -1) {
+      return imageRef;
+    }
+
+    return imageRef.substring(0, atIndex);
+  }
+
   async create(opts: WorkloadManagerCreateOptions) {
     this.logger.log("[KubernetesWorkloadManager] Creating container", { opts });
 
@@ -74,7 +88,7 @@ export class KubernetesWorkloadManager implements WorkloadManager {
             containers: [
               {
                 name: "run-controller",
-                image: opts.image,
+                image: this.stripImageDigest(opts.image),
                 ports: [
                   {
                     containerPort: 8000,

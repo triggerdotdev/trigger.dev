@@ -9,7 +9,7 @@ The `schemaTask` function allows you to define a task with a runtime payload sch
 ## Usage
 
 ```ts
-import { schemaTask } from "@trigger.dev/sdk/v3";
+import { schemaTask } from "@trigger.dev/sdk";
 import { z } from "zod";
 
 const myTask = schemaTask({
@@ -34,7 +34,7 @@ const myTask = schemaTask({
 When you trigger the task directly, the payload will be validated against the schema before the [run](/runs) is created:
 
 ```ts
-import { tasks } from "@trigger.dev/sdk/v3";
+import { tasks } from "@trigger.dev/sdk";
 import { myTask } from "./trigger/myTasks";
 
 // This will call the schema parser function and validate the payload
@@ -53,7 +53,7 @@ We will also validate the payload every time before the task is run, so you can 
 Certain schema libraries, like Zod, split their type inference into "schema in" and "schema out". This means that you can define a single schema that will produce different types when triggering the task and when running the task. For example, you can define a schema that has a default value for a field, or a string coerced into a date:
 
 ```ts
-import { schemaTask } from "@trigger.dev/sdk/v3";
+import { schemaTask } from "@trigger.dev/sdk";
 import { z } from "zod";
 
 const myTask = schemaTask({
@@ -76,6 +76,138 @@ await myTask.trigger({ age: 30, dob: "2020-01-01" }); // this is valid
 await myTask.trigger({ name: "Alice", age: 30, dob: "2020-01-01" }); // this is also valid
 ```
 
+## `ai.tool`
+
+The `ai.tool` function allows you to create an AI tool from an existing `schemaTask` to use with the Vercel [AI SDK](https://vercel.com/docs/ai-sdk):
+
+```ts
+import { ai } from "@trigger.dev/sdk/ai";
+import { schemaTask } from "@trigger.dev/sdk";
+import { z } from "zod";
+import { generateText } from "ai";
+
+const myToolTask = schemaTask({
+  id: "my-tool-task",
+  schema: z.object({
+    foo: z.string(),
+  }),
+  run: async (payload: any, { ctx }) => {},
+});
+
+const myTool = ai.tool(myToolTask);
+
+export const myAiTask = schemaTask({
+  id: "my-ai-task",
+  schema: z.object({
+    text: z.string(),
+  }),
+  run: async (payload, { ctx }) => {
+    const { text } = await generateText({
+      prompt: payload.text,
+      model: openai("gpt-4o"),
+      tools: {
+        myTool,
+      },
+    });
+  },
+});
+```
+
+You can also pass the `experimental_toToolResultContent` option to the `ai.tool` function to customize the content of the tool result:
+
+```ts
+import { openai } from "@ai-sdk/openai";
+import { Sandbox } from "@e2b/code-interpreter";
+import { ai } from "@trigger.dev/sdk/ai";
+import { schemaTask } from "@trigger.dev/sdk";
+import { generateObject } from "ai";
+import { z } from "zod";
+
+const chartTask = schemaTask({
+  id: "chart",
+  description: "Generate a chart using natural language",
+  schema: z.object({
+    input: z.string().describe("The chart to generate"),
+  }),
+  run: async ({ input }) => {
+    const code = await generateObject({
+      model: openai("gpt-4o"),
+      schema: z.object({
+        code: z.string().describe("The Python code to execute"),
+      }),
+      system: `
+        You are a helpful assistant that can generate Python code to be executed in a sandbox, using matplotlib.pyplot.
+
+        For example: 
+        
+        import matplotlib.pyplot as plt
+        plt.plot([1, 2, 3, 4])
+        plt.ylabel('some numbers')
+        plt.show()
+        
+        Make sure the code ends with plt.show()
+      `,
+      prompt: input,
+    });
+
+    const sandbox = await Sandbox.create();
+
+    const execution = await sandbox.runCode(code.object.code);
+
+    const firstResult = execution.results[0];
+
+    if (firstResult.png) {
+      return {
+        chart: firstResult.png,
+      };
+    } else {
+      throw new Error("No chart generated");
+    }
+  },
+});
+
+// This is useful if you want to return an image from the tool
+export const chartTool = ai.tool(chartTask, {
+  experimental_toToolResultContent: (result) => {
+    return [
+      {
+        type: "image",
+        data: result.chart,
+        mimeType: "image/png",
+      },
+    ];
+  },
+});
+```
+
+You can access the current tool execution options inside the task run function using the `ai.currentToolOptions()` function:
+
+```ts
+import { ai } from "@trigger.dev/sdk/ai";
+import { schemaTask } from "@trigger.dev/sdk";
+import { z } from "zod";
+
+const myToolTask = schemaTask({
+  id: "my-tool-task",
+  schema: z.object({
+    foo: z.string(),
+  }),
+  run: async (payload, { ctx }) => {
+    const toolOptions = ai.currentToolOptions();
+    console.log(toolOptions);
+  },
+});
+
+export const myAiTask = ai.tool(myToolTask);
+```
+
+See the [AI SDK tool execution options docs](https://sdk.vercel.ai/docs/ai-sdk-core/tools-and-tool-calling#tool-execution-options) for more details on the tool execution options.
+
+<Note>
+  `ai.tool` is compatible with `schemaTask`'s defined with Zod and ArkType schemas, or any schemas
+  that implement a `.toJsonSchema()` function.
+</Note>
+
 ## Supported schema types
 
 ### Zod
@@ -83,7 +215,7 @@ await myTask.trigger({ name: "Alice", age: 30, dob: "2020-01-01" }); // this is 
 You can use the [Zod](https://zod.dev) schema library to define your schema. The schema will be validated using Zod's `parse` function.
 
 ```ts
-import { schemaTask } from "@trigger.dev/sdk/v3";
+import { schemaTask } from "@trigger.dev/sdk";
 import { z } from "zod";
 
 export const zodTask = schemaTask({
@@ -101,7 +233,7 @@ export const zodTask = schemaTask({
 ### Yup
 
 ```ts
-import { schemaTask } from "@trigger.dev/sdk/v3";
+import { schemaTask } from "@trigger.dev/sdk";
 import * as yup from "yup";
 
 export const yupTask = schemaTask({
@@ -119,7 +251,7 @@ export const yupTask = schemaTask({
 ### Superstruct
 
 ```ts
-import { schemaTask } from "@trigger.dev/sdk/v3";
+import { schemaTask } from "@trigger.dev/sdk";
 import { object, string } from "superstruct";
 
 export const superstructTask = schemaTask({
@@ -137,7 +269,7 @@ export const superstructTask = schemaTask({
 ### ArkType
 
 ```ts
-import { schemaTask } from "@trigger.dev/sdk/v3";
+import { schemaTask } from "@trigger.dev/sdk";
 import { type } from "arktype";
 
 export const arktypeTask = schemaTask({
@@ -155,7 +287,7 @@ export const arktypeTask = schemaTask({
 ### @effect/schema
 
 ```ts
-import { schemaTask } from "@trigger.dev/sdk/v3";
+import { schemaTask } from "@trigger.dev/sdk";
 import * as Schema from "@effect/schema/Schema";
 
 // For some funny typescript reason, you cannot pass the Schema.decodeUnknownSync directly to schemaTask
@@ -175,7 +307,7 @@ export const effectTask = schemaTask({
 ### runtypes
 
 ```ts
-import { schemaTask } from "@trigger.dev/sdk/v3";
+import { schemaTask } from "@trigger.dev/sdk";
 import * as T from "runtypes";
 
 export const runtypesTask = schemaTask({
@@ -193,7 +325,7 @@ export const runtypesTask = schemaTask({
 ### valibot
 
 ```ts
-import { schemaTask } from "@trigger.dev/sdk/v3";
+import { schemaTask } from "@trigger.dev/sdk";
 
 import * as v from "valibot";
 
@@ -217,7 +349,7 @@ export const valibotTask = schemaTask({
 ### typebox
 
 ```ts
-import { schemaTask } from "@trigger.dev/sdk/v3";
+import { schemaTask } from "@trigger.dev/sdk";
 import { Type } from "@sinclair/typebox";
 import { wrap } from "@typeschema/typebox";
 
@@ -240,7 +372,7 @@ export const typeboxTask = schemaTask({
 You can also define a custom parser function that will be called with the payload before the task is run. The parser function should return the parsed payload or throw an error if the payload is invalid.
 
 ```ts
-import { schemaTask } from "@trigger.dev/sdk/v3";
+import { schemaTask } from "@trigger.dev/sdk";
 
 export const customParserTask = schemaTask({
   id: "types/custom-parser",

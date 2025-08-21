@@ -6,11 +6,6 @@ description: "Learn how to use Trigger.dev with Python to convert documents to m
 
 import PythonLearnMore from "/snippets/python-learn-more.mdx";
 
-<Note>
-  This project uses Trigger.dev v4 (which is currently in beta as of 28 April 2025). If you want to
-  run this project you will need to [upgrade to v4](/upgrade-to-v4).
-</Note>
-
 ## Overview
 
 Convert documents to markdown using Microsoft's [MarkItDown](https://github.com/microsoft/markitdown) library. This can be especially useful for preparing documents in a structured format for AI applications.
@@ -45,7 +40,7 @@ After you've initialized your project with Trigger.dev, add these build settings
 
 ```ts trigger.config.ts
 import { pythonExtension } from "@trigger.dev/python/extension";
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   runtime: "node",
@@ -76,7 +71,7 @@ export default defineConfig({
 This task uses the `python.runScript` method to run the `markdown-converter.py` script with the given document URL as an argument.
 
 ```ts src/trigger/convertToMarkdown.ts
-import { task } from "@trigger.dev/sdk/v3";
+import { task } from "@trigger.dev/sdk";
 import { python } from "@trigger.dev/python";
 import * as fs from "fs";
 import * as path from "path";

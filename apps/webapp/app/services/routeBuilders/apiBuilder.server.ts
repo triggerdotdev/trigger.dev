@@ -430,7 +430,8 @@ type ApiKeyActionRouteBuilderOptions<
   TParamsSchema extends AnyZodSchema | undefined = undefined,
   TSearchParamsSchema extends AnyZodSchema | undefined = undefined,
   THeadersSchema extends AnyZodSchema | undefined = undefined,
-  TBodySchema extends AnyZodSchema | undefined = undefined
+  TBodySchema extends AnyZodSchema | undefined = undefined,
+  TResource = never
 > = {
   params?: TParamsSchema;
   searchParams?: TSearchParamsSchema;
@@ -438,6 +439,17 @@ type ApiKeyActionRouteBuilderOptions<
   allowJWT?: boolean;
   corsStrategy?: "all" | "none";
   method?: "POST" | "PUT" | "DELETE" | "PATCH";
+  findResource?: (
+    params: TParamsSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+      ? z.infer<TParamsSchema>
+      : undefined,
+    authentication: ApiAuthenticationResultSuccess,
+    searchParams: TSearchParamsSchema extends
+      | z.ZodFirstPartySchemaTypes
+      | z.ZodDiscriminatedUnion<any, any>
+      ? z.infer<TSearchParamsSchema>
+      : undefined
+  ) => Promise<TResource | undefined>;
   authorization?: {
     action: AuthorizationAction;
     resource: (
@@ -466,7 +478,8 @@ type ApiKeyActionHandlerFunction<
   TParamsSchema extends AnyZodSchema | undefined,
   TSearchParamsSchema extends AnyZodSchema | undefined,
   THeadersSchema extends AnyZodSchema | undefined = undefined,
-  TBodySchema extends AnyZodSchema | undefined = undefined
+  TBodySchema extends AnyZodSchema | undefined = undefined,
+  TResource = never
 > = (args: {
   params: TParamsSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
     ? z.infer<TParamsSchema>
@@ -484,25 +497,29 @@ type ApiKeyActionHandlerFunction<
     : undefined;
   authentication: ApiAuthenticationResultSuccess;
   request: Request;
+  resource?: TResource;
 }) => Promise<Response>;
 
 export function createActionApiRoute<
   TParamsSchema extends AnyZodSchema | undefined = undefined,
   TSearchParamsSchema extends AnyZodSchema | undefined = undefined,
   THeadersSchema extends AnyZodSchema | undefined = undefined,
-  TBodySchema extends AnyZodSchema | undefined = undefined
+  TBodySchema extends AnyZodSchema | undefined = undefined,
+  TResource = never
 >(
   options: ApiKeyActionRouteBuilderOptions<
     TParamsSchema,
     TSearchParamsSchema,
     THeadersSchema,
-    TBodySchema
+    TBodySchema,
+    TResource
   >,
   handler: ApiKeyActionHandlerFunction<
     TParamsSchema,
     TSearchParamsSchema,
     THeadersSchema,
-    TBodySchema
+    TBodySchema,
+    TResource
   >
 ) {
   const {
@@ -682,6 +699,18 @@ export function createActionApiRoute<
         }
       }
 
+      const resource = options.findResource
+        ? await options.findResource(parsedParams, authenticationResult, parsedSearchParams)
+        : undefined;
+
+      if (options.findResource && !resource) {
+        return await wrapResponse(
+          request,
+          json({ error: "Resource not found" }, { status: 404 }),
+          corsStrategy !== "none"
+        );
+      }
+
       const result = await handler({
         params: parsedParams,
         searchParams: parsedSearchParams,
@@ -689,6 +718,7 @@ export function createActionApiRoute<
         body: parsedBody,
         authentication: authenticationResult,
         request,
+        resource,
       });
       return await wrapResponse(request, result, corsStrategy !== "none");
     } catch (error) {

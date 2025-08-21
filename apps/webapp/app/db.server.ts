@@ -201,6 +201,7 @@ function getClient() {
           message: log.message,
           target: log.target,
         },
+        ignoreError: true,
       });
     });
   }
