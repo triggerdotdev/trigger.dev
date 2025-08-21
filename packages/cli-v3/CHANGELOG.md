@@ -1,5 +1,15 @@
 # trigger.dev
 
+## 4.0.1
+
+### Patch Changes
+
+- feat: Add official MCP server, install MCP and rules CLI commands and wizards ([#2384](https://github.com/triggerdotdev/trigger.dev/pull/2384))
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.1`
+  - `@trigger.dev/core@4.0.1`
+  - `@trigger.dev/schema-to-json@4.0.1`
+
 ## 4.0.0
 
 ### Major Changes
