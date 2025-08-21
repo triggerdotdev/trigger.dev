@@ -598,10 +598,27 @@ export class MarQS {
                     [SemanticAttributes.PARENT_QUEUE]: parentQueue,
                   });
 
-                  const messageData = await this.#callDequeueMessage({
-                    messageQueue,
-                    parentQueue,
-                  });
+                  const messageData = await this.#trace(
+                    "callDequeueMessage",
+                    async (dequeueSpan) => {
+                      dequeueSpan.setAttributes({
+                        [SemanticAttributes.QUEUE]: messageQueue,
+                        [SemanticAttributes.PARENT_QUEUE]: parentQueue,
+                      });
+
+                      return await this.#callDequeueMessage({
+                        messageQueue,
+                        parentQueue,
+                      });
+                    },
+                    {
+                      kind: SpanKind.CONSUMER,
+                      attributes: {
+                        [SEMATTRS_MESSAGING_OPERATION]: "dequeue",
+                        [SEMATTRS_MESSAGING_SYSTEM]: "marqs",
+                      },
+                    }
+                  );
 
                   if (!messageData) {
                     return null; // Try next queue if no message was dequeued
@@ -629,11 +646,46 @@ export class MarQS {
                     span.setAttributes(attributes);
                     innerSpan.setAttributes(attributes);
 
-                    await this.options.subscriber?.messageDequeued(message);
+                    await this.#trace(
+                      "messageDequeued",
+                      async (subscriberSpan) => {
+                        subscriberSpan.setAttributes({
+                          [SemanticAttributes.MESSAGE_ID]: message.messageId,
+                          [SemanticAttributes.QUEUE]: message.queue,
+                          [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
+                        });
 
-                    await this.options.visibilityTimeoutStrategy.startHeartbeat(
-                      messageData.messageId,
-                      this.visibilityTimeoutInMs
+                        return await this.options.subscriber?.messageDequeued(message);
+                      },
+                      {
+                        kind: SpanKind.INTERNAL,
+                        attributes: {
+                          [SEMATTRS_MESSAGING_OPERATION]: "notify",
+                          [SEMATTRS_MESSAGING_SYSTEM]: "marqs",
+                        },
+                      }
+                    );
+
+                    await this.#trace(
+                      "startHeartbeat",
+                      async (heartbeatSpan) => {
+                        heartbeatSpan.setAttributes({
+                          [SemanticAttributes.MESSAGE_ID]: messageData.messageId,
+                          visibility_timeout_ms: this.visibilityTimeoutInMs,
+                        });
+
+                        return await this.options.visibilityTimeoutStrategy.startHeartbeat(
+                          messageData.messageId,
+                          this.visibilityTimeoutInMs
+                        );
+                      },
+                      {
+                        kind: SpanKind.INTERNAL,
+                        attributes: {
+                          [SEMATTRS_MESSAGING_OPERATION]: "heartbeat",
+                          [SEMATTRS_MESSAGING_SYSTEM]: "marqs",
+                        },
+                      }
                     );
 
                     return message;
