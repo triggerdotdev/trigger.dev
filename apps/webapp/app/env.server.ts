@@ -410,6 +410,8 @@ const EnvironmentSchema = z.object({
   MARQS_QUEUE_AGE_RANDOMIZATION_BIAS: z.coerce.number().default(0.25),
   MARQS_REUSE_SNAPSHOT_COUNT: z.coerce.number().int().default(0),
   MARQS_MAXIMUM_ENV_COUNT: z.coerce.number().int().optional(),
+  MARQS_SHARED_WORKER_QUEUE_CONSUMER_INTERVAL_MS: z.coerce.number().int().default(250),
+  MARQS_SHARED_WORKER_QUEUE_MAX_MESSAGE_COUNT: z.coerce.number().int().default(10),
 
   PROD_TASK_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().optional(),
 
