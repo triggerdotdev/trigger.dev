@@ -1060,6 +1060,8 @@ const EnvironmentSchema = z.object({
 
   // AI Run Filter
   AI_RUN_FILTER_MODEL: z.string().optional(),
+
+  EVENT_LOOP_MONITOR_THRESHOLD_MS: z.coerce.number().int().default(100),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;
