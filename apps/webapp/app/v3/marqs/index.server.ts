@@ -8,6 +8,7 @@ import {
   trace,
   Tracer,
 } from "@opentelemetry/api";
+import { type RedisOptions } from "@internal/redis";
 import {
   SEMATTRS_MESSAGE_ID,
   SEMATTRS_MESSAGING_SYSTEM,
@@ -84,6 +85,7 @@ export type MarQSOptions = {
     shutdownTimeoutMs?: number;
     concurrency?: WorkerConcurrencyOptions;
     enabled?: boolean;
+    redisOptions: RedisOptions;
   };
 };
 
@@ -116,10 +118,7 @@ export class MarQS {
 
     this.worker = new Worker({
       name: "marqs-worker",
-      redisOptions: {
-        ...options.redis.options,
-        keyPrefix: `${options.redis.options.keyPrefix}:worker`,
-      },
+      redisOptions: options.workerOptions.redisOptions,
       catalog: workerCatalog,
       concurrency: options.workerOptions?.concurrency,
       pollIntervalMs: options.workerOptions?.pollIntervalMs ?? 1000,
@@ -2621,9 +2620,18 @@ function getMarQSClient() {
       immediatePollIntervalMs: env.MARQS_WORKER_IMMEDIATE_POLL_INTERVAL_MS,
       shutdownTimeoutMs: env.MARQS_WORKER_SHUTDOWN_TIMEOUT_MS,
       concurrency: {
-        workers: env.MARQS_WORKER_CONCURRENCY_LIMIT,
+        workers: env.MARQS_WORKER_COUNT,
         tasksPerWorker: env.MARQS_WORKER_CONCURRENCY_TASKS_PER_WORKER,
         limit: env.MARQS_WORKER_CONCURRENCY_LIMIT,
+      },
+      redisOptions: {
+        keyPrefix: KEY_PREFIX,
+        port: env.REDIS_PORT ?? undefined,
+        host: env.REDIS_HOST ?? undefined,
+        username: env.REDIS_USERNAME ?? undefined,
+        password: env.REDIS_PASSWORD ?? undefined,
+        enableAutoPipelining: true,
+        ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
       },
     },
   });
