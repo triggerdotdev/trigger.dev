@@ -166,6 +166,10 @@
             ]
           },
           {
+            "group": "MCP Server",
+            "pages": ["mcp-introduction", "mcp-tools", "mcp-agent-rules"]
+          },
+          {
             "group": "Using the Dashboard",
             "pages": ["run-tests", "troubleshooting-alerts", "replaying", "bulk-actions"]
           },
@@ -298,7 +302,6 @@
                   "guides/ai-agents/verify-news-article"
                 ]
               },
-              "guides/cursor-rules",
               "guides/frameworks/drizzle",
               "guides/frameworks/prisma",
               "guides/frameworks/sequin",
@@ -619,6 +622,14 @@
     {
       "source": "/management/projects/runs",
       "destination": "/management/overview"
+    },
+    {
+      "source": "/guides/cursor-rules",
+      "destination": "/mcp-agent-rules"
+    },
+    {
+      "source": "/agents/rules/overview",
+      "destination": "/mcp-agent-rules"
     },
     {
       "source": "/upgrade-to-v4",
