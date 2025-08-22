@@ -11,7 +11,7 @@ import NodeVersions from "/snippets/node-versions.mdx";
 The `trigger.config.ts` file is used to configure your Trigger.dev project. It is a TypeScript file at the root of your project that exports a default configuration object. Here's an example:
 
 ```ts trigger.config.ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   // Your project ref (you can see it on the Project settings page in the dashboard)
@@ -53,7 +53,7 @@ The config file handles a lot of things, like:
 You can specify the directories where your tasks are located using the `dirs` option:
 
 ```ts trigger.config.ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   project: "<project ref>",
@@ -66,7 +66,7 @@ If you omit the `dirs` option, we will automatically detect directories that are
 We will search for TypeScript and JavaScript files in the specified directories and include them in the build process. We automatically exclude files that have `.test` or `.spec` in the name, but you can customize this by specifying glob patterns in the `ignorePatterns` option:
 
 ```ts trigger.config.ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   project: "<project ref>",
@@ -75,12 +75,26 @@ export default defineConfig({
 });
 ```
 
+## Custom tsconfig path
+
+You can specify a custom path to your tsconfig file. This is useful if you have a custom tsconfig file that you want to use.
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk";
+
+export default defineConfig({
+  project: "<project ref>",
+  dirs: ["./trigger"],
+  tsconfig: "./custom-tsconfig.json", // Custom tsconfig path
+});
+```
+
 ## Lifecycle functions
 
 You can add lifecycle functions to get notified when any task starts, succeeds, or fails using `onStart`, `onSuccess` and `onFailure`:
 
 ```ts trigger.config.ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   project: "<project ref>",
@@ -111,7 +125,7 @@ We use OpenTelemetry (OTEL) for our run logs. This means you get a lot of inform
 Here we add Prisma and OpenAI instrumentations to your `trigger.config.ts` file.
 
 ```ts trigger.config.ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 import { PrismaInstrumentation } from "@prisma/instrumentation";
 import { OpenAIInstrumentation } from "@traceloop/instrumentation-openai";
 
@@ -152,7 +166,7 @@ You can also configure custom telemetry exporters to send your traces and logs t
 Then, configure the exporters in your `trigger.config.ts` file:
 
 ```ts trigger.config.ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
 
@@ -188,15 +202,10 @@ export default defineConfig({
 
 Make sure to set the `AXIOM_API_TOKEN` and `AXIOM_DATASET` environment variables in your project.
 
-<Note>
-  The `logExporters` option is available in the v4 beta SDK. See our [v4 upgrade
-  guide](/upgrade-to-v4) for more information.
-</Note>
-
 It's important to note that you cannot configure exporters using `OTEL_*` environment variables, as they would conflict with our internal telemetry. Instead you should configure the exporters via passing in arguments to the `OTLPTraceExporter` and `OTLPLogExporter` constructors. For example, here is how you can configure exporting to Honeycomb:
 
 ```ts trigger.config.ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
 
@@ -235,7 +244,7 @@ export default defineConfig({
 We currently only officially support the `node` runtime, but you can try our experimental `bun` runtime by setting the `runtime` option in your config file:
 
 ```ts trigger.config.ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   project: "<project ref>",
@@ -255,7 +264,7 @@ See our [Bun guide](/guides/frameworks/bun) for more information.
 You can specify the default machine for all tasks in your project:
 
 ```ts trigger.config.ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   project: "<project ref>",
@@ -271,7 +280,7 @@ See our [machines documentation](/machines) for more information.
 You can set the log level for your project:
 
 ```ts trigger.config.ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   project: "<project ref>",
@@ -282,12 +291,27 @@ export default defineConfig({
 
 The `logLevel` only determines which logs are sent to the Trigger.dev instance when using the `logger` API. All `console` based logs are always sent.
 
+## Console logging
+
+You can control console logging behavior in development:
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  enableConsoleLogging: true, // Enable console logging while running dev CLI
+  disableConsoleInterceptor: false, // Disable console interceptor (prevents logs from being sent to the trigger.dev dashboard)
+});
+```
+
 ## Max duration
 
 You can set the default `maxDuration` for all tasks in your project:
 
 ```ts trigger.config.ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   project: "<project ref>",
@@ -298,12 +322,77 @@ export default defineConfig({
 
 See our [maxDuration guide](/runs/max-duration) for more information.
 
+## Process keep alive
+
+Keep the process alive after the task has finished running so the next task doesn't have to wait for the process to start up again.
+
+Note that the process could be killed at any time, and we don't make any guarantees about the process being alive for a certain amount of time
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  processKeepAlive: true,
+});
+```
+
+You can pass an object to the `processKeepAlive` option to configure the behavior:
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  processKeepAlive: {
+    enabled: true,
+    // The maximum number of executions per process. If the process has run more than this number of times, it will be killed.
+    maxExecutionsPerProcess: 50, // Default: 50
+    // The maximum number of concurrent processes to keep alive in dev.
+    devMaxPoolSize: 25, // Default: 25
+  },
+});
+```
+
+## Development behavior
+
+You can control the working directory behavior in development:
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  legacyDevProcessCwdBehaviour: false, // Default: true
+});
+```
+
+When set to `false`, the current working directory will be set to the build directory, which more closely matches production behavior.
+
+## CA certificates
+
+CA Cert file to be added to NODE_EXTRA_CA_CERT environment variable, useful in use with self signed cert in the trigger.dev environment.
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  // Must start with "./" and be relative to project root
+  extraCACerts: "./certs/ca.crt",
+});
+```
+
 ## Build configuration
 
 You can customize the build process using the `build` option:
 
 ```ts trigger.config.ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   project: "<project ref>",
@@ -311,6 +400,12 @@ export default defineConfig({
   build: {
     // Don't bundle these packages
     external: ["header-generator"],
+    // Automatically detect external dependencies (default: true)
+    autoDetectExternal: true,
+    // Keep function/class names in bundle (default: true)
+    keepNames: true,
+    // Minify generated code (default: false, experimental)
+    minify: false,
   },
 });
 ```
@@ -326,7 +421,7 @@ export default defineConfig({
 All code is bundled by default, but you can exclude some packages from the bundle using the `external` option:
 
 ```ts trigger.config.ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   project: "<project ref>",
@@ -342,7 +437,7 @@ When a package is excluded from the bundle, it will be added to a dynamically ge
 Each entry in the external should be a package name, not necessarily the import path. For example, if you want to exclude the `ai` package, but you are importing `ai/rsc`, you should just include `ai` in the `external` array:
 
 ```ts trigger.config.ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   project: "<project ref>",
@@ -363,7 +458,7 @@ export default defineConfig({
 You can customize the `jsx` options that are passed to `esbuild` using the `jsx` option:
 
 ```ts trigger.config.ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   project: "<project ref>",
@@ -390,7 +485,7 @@ See the [esbuild JSX documentation](https://esbuild.github.io/content-types/#jsx
 You can add custom [import conditions](https://esbuild.github.io/api/#conditions) to your build using the `conditions` option:
 
 ```ts trigger.config.ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   project: "<project ref>",

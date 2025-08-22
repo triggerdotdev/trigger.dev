@@ -58,11 +58,12 @@ export class ReplayTaskRunService extends BaseService {
     const payloadType = payloadPacket.dataType;
     const metadata = overrideOptions.metadata ?? (await this.getExistingMetadata(existingTaskRun));
     const tags = overrideOptions.tags ?? existingTaskRun.runTags;
-    // Only use the region from the existing task if neither environment is a development environment
-    const region =
-      existingEnvironment.type === "DEVELOPMENT" || authenticatedEnvironment.type === "DEVELOPMENT"
-        ? undefined
-        : existingTaskRun.workerQueue;
+    // Only use the region from the existing run if V2 engine and neither environment is dev
+    const ignoreRegion =
+      existingTaskRun.engine === "V1" ||
+      existingEnvironment.type === "DEVELOPMENT" ||
+      authenticatedEnvironment.type === "DEVELOPMENT";
+    const region = ignoreRegion ? undefined : existingTaskRun.workerQueue;
 
     try {
       const taskQueue = await this._prisma.taskQueue.findFirst({

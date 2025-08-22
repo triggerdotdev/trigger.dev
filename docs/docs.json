@@ -28,7 +28,7 @@
               "video-walkthrough",
               "how-it-works",
               "limits",
-              "upgrade-to-v4"
+              "migrating-from-v3"
             ]
           },
           {
@@ -61,7 +61,9 @@
               "tags",
               "runs/metadata",
               "run-usage",
-              "context"
+              "context",
+              "runs/priority",
+              "hidden-tasks"
             ]
           },
           {
@@ -127,7 +129,8 @@
                   "realtime/react-hooks/triggering",
                   "realtime/react-hooks/subscribe",
                   "realtime/react-hooks/streams",
-                  "realtime/react-hooks/swr"
+                  "realtime/react-hooks/swr",
+                  "realtime/react-hooks/use-wait-token"
                 ]
               },
               {
@@ -191,15 +194,11 @@
               {
                 "group": "Environment variables",
                 "pages": ["self-hosting/env/webapp", "self-hosting/env/supervisor"]
-              }
-            ],
-            "tags": ["v4"],
-            "tag": "v4"
+              },
+              "open-source-self-hosting"
+            ]
           },
-          {
-            "group": "Self-hosting",
-            "pages": ["open-source-self-hosting"]
-          },
+
           {
             "group": "Open source",
             "pages": ["open-source-contributing", "github-repo", "changelog", "roadmap"]
@@ -631,6 +630,10 @@
     {
       "source": "/agents/rules/overview",
       "destination": "/mcp-agent-rules"
+    },
+    {
+      "source": "/upgrade-to-v4",
+      "destination": "/migrating-from-v3"
     }
   ]
 }

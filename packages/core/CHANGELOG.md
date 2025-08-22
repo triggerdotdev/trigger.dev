@@ -1,5 +1,54 @@
 # internal-platform
 
+## 4.0.1
+
+## 4.0.0
+
+### Major Changes
+
+- Trigger.dev v4 release. Please see our upgrade to v4 docs to view the full changelog: https://trigger.dev/docs/upgrade-to-v4 ([#1869](https://github.com/triggerdotdev/trigger.dev/pull/1869))
+
+### Patch Changes
+
+- The dev command will now use the platform-provided engine URL ([#1949](https://github.com/triggerdotdev/trigger.dev/pull/1949))
+- Run Engine 2.0 (alpha) ([#1575](https://github.com/triggerdotdev/trigger.dev/pull/1575))
+- Configurable queue consumer count in supervisor session ([#1949](https://github.com/triggerdotdev/trigger.dev/pull/1949))
+- Runtime agnostic SDK config via env vars ([#2132](https://github.com/triggerdotdev/trigger.dev/pull/2132))
+- Add supervisor http client option to disable debug logs ([#2116](https://github.com/triggerdotdev/trigger.dev/pull/2116))
+- Expose esbuild `keepNames` option (experimental) ([#2091](https://github.com/triggerdotdev/trigger.dev/pull/2091))
+- Add `experimental_autoDetectExternal` trigger config option ([#2083](https://github.com/triggerdotdev/trigger.dev/pull/2083))
+- Add project details to the whoami command ([#2231](https://github.com/triggerdotdev/trigger.dev/pull/2231))
+- Add import timings and bundle size analysis, the dev command will now warn about slow imports ([#2114](https://github.com/triggerdotdev/trigger.dev/pull/2114))
+- Improve structured logs ([#2062](https://github.com/triggerdotdev/trigger.dev/pull/2062))
+- - Resolve issue where CLI could get stuck during deploy finalization ([#2138](https://github.com/triggerdotdev/trigger.dev/pull/2138))
+  - Unify local and remote build logic, with multi-platform build support
+  - Improve switch command; now accepts profile name as an argument
+  - Registry configuration is now fully managed by the webapp
+  - The deploy `--self-hosted` flag is no longer required
+  - Enhance deployment error reporting and image digest retrieval
+- - Correctly resolve waitpoints that come in early ([#2006](https://github.com/triggerdotdev/trigger.dev/pull/2006))
+  - Ensure correct state before requesting suspension
+  - Fix race conditions in snapshot processing
+- Add optional placement tags to dequeued messages for targeted scheduling ([#2390](https://github.com/triggerdotdev/trigger.dev/pull/2390))
+- Add verbose structured log level ([#2062](https://github.com/triggerdotdev/trigger.dev/pull/2062))
+- Suppress external instrumentation for fetch calls from ApiClient ([#1788](https://github.com/triggerdotdev/trigger.dev/pull/1788))
+- Add runtime version detection for display in the dashboard ([#2254](https://github.com/triggerdotdev/trigger.dev/pull/2254))
+- Improve metadata flushing efficiency by collapsing operations ([#2106](https://github.com/triggerdotdev/trigger.dev/pull/2106))
+- fix: Realtime streams: prevent enqueuing into closed ReadableStream ([#1781](https://github.com/triggerdotdev/trigger.dev/pull/1781))
+- Improve usage flushing ([#1931](https://github.com/triggerdotdev/trigger.dev/pull/1931))
+- Prevent large outputs from overwriting each other ([#1971](https://github.com/triggerdotdev/trigger.dev/pull/1971))
+- Fail fast in CI when running deploy with missing `TRIGGER_ACCESS_TOKEN` and add useful error message with link to docs ([#2258](https://github.com/triggerdotdev/trigger.dev/pull/2258))
+- Upgrade to zod 3.25.76 ([#2352](https://github.com/triggerdotdev/trigger.dev/pull/2352))
+- - Fix polling interval reset bug that could create duplicate intervals ([#1987](https://github.com/triggerdotdev/trigger.dev/pull/1987))
+  - Protect against unexpected attempt number changes
+  - Prevent run execution zombies after warm starts
+- Managed run controller performance and reliability improvements ([#1927](https://github.com/triggerdotdev/trigger.dev/pull/1927))
+- v4: New lifecycle hooks ([#1817](https://github.com/triggerdotdev/trigger.dev/pull/1817))
+- Fix QUEUED status snapshot handler ([#1963](https://github.com/triggerdotdev/trigger.dev/pull/1963))
+- Fixes an issue with realtime when re-subscribing to a run, that would temporarily display stale data and the changes. Now when re-subscribing to a run only the latest changes will be vended ([#2162](https://github.com/triggerdotdev/trigger.dev/pull/2162))
+- Expose esbuild `minify` option (experimental) ([#2091](https://github.com/triggerdotdev/trigger.dev/pull/2091))
+- Fix Bun runtime path resolution fallback ([#2254](https://github.com/triggerdotdev/trigger.dev/pull/2254))
+
 ## 4.0.0-v4-beta.28
 
 ### Patch Changes

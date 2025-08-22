@@ -20,7 +20,7 @@ const handle = await myTask.trigger(
 You can get the current metadata at any time by calling `metadata.get()` or `metadata.current()` (only inside a run):
 
 ```ts
-import { task, metadata } from "@trigger.dev/sdk/v3";
+import { task, metadata } from "@trigger.dev/sdk";
 
 export const myTask = task({
   id: "my-task",
@@ -39,7 +39,7 @@ export const myTask = task({
 Any of these methods can be called anywhere "inside" the run function, or a function called from the run function:
 
 ```ts
-import { task, metadata } from "@trigger.dev/sdk/v3";
+import { task, metadata } from "@trigger.dev/sdk";
 
 export const myTask = task({
   id: "my-task",
@@ -57,7 +57,7 @@ async function doSomeWork() {
 If you call any of the metadata methods outside of the run function, they will have no effect:
 
 ```ts
-import { metadata } from "@trigger.dev/sdk/v3";
+import { metadata } from "@trigger.dev/sdk";
 
 // Somewhere outside of the run function
 function doSomeWork() {
@@ -77,7 +77,7 @@ These methods also work inside any task lifecycle hook, either attached to the s
 <CodeGroup>
 
 ```ts myTasks.ts
-import { task, metadata } from "@trigger.dev/sdk/v3";
+import { task, metadata } from "@trigger.dev/sdk";
 
 export const myTask = task({
   id: "my-task",
@@ -94,7 +94,7 @@ export const myTask = task({
 ```
 
 ```ts trigger.config.ts
-import { defineConfig, metadata } from "@trigger.dev/sdk/v3";
+import { defineConfig, metadata } from "@trigger.dev/sdk";
 
 export default defineConfig({
   project: "proj_1234",
@@ -117,7 +117,7 @@ All metadata update methods (accept for `flush` and `stream`) are synchronous an
 Set the value of a key in the metadata object:
 
 ```ts
-import { task, metadata } from "@trigger.dev/sdk/v3";
+import { task, metadata } from "@trigger.dev/sdk";
 
 export const myTask = task({
   id: "my-task",
@@ -139,7 +139,7 @@ export const myTask = task({
 Delete a key from the metadata object:
 
 ```ts
-import { task, metadata } from "@trigger.dev/sdk/v3";
+import { task, metadata } from "@trigger.dev/sdk";
 
 export const myTask = task({
   id: "my-task",
@@ -161,7 +161,7 @@ export const myTask = task({
 Replace the entire metadata object with a new object:
 
 ```ts
-import { task, metadata } from "@trigger.dev/sdk/v3";
+import { task, metadata } from "@trigger.dev/sdk";
 
 export const myTask = task({
   id: "my-task",
@@ -180,7 +180,7 @@ export const myTask = task({
 Append a value to an array in the metadata object:
 
 ```ts
-import { task, metadata } from "@trigger.dev/sdk/v3";
+import { task, metadata } from "@trigger.dev/sdk";
 
 export const myTask = task({
   id: "my-task",
@@ -201,7 +201,7 @@ export const myTask = task({
 Remove a value from an array in the metadata object:
 
 ```ts
-import { task, metadata } from "@trigger.dev/sdk/v3";
+import { task, metadata } from "@trigger.dev/sdk";
 
 export const myTask = task({
   id: "my-task",
@@ -225,7 +225,7 @@ export const myTask = task({
 Increment a numeric value in the metadata object:
 
 ```ts
-import { task, metadata } from "@trigger.dev/sdk/v3";
+import { task, metadata } from "@trigger.dev/sdk";
 
 export const myTask = task({
   id: "my-task",
@@ -246,7 +246,7 @@ export const myTask = task({
 Decrement a numeric value in the metadata object:
 
 ```ts
-import { task, metadata } from "@trigger.dev/sdk/v3";
+import { task, metadata } from "@trigger.dev/sdk";
 
 export const myTask = task({
   id: "my-task",
@@ -267,7 +267,7 @@ export const myTask = task({
 Capture a stream of values and make the stream available when using Realtime. See our [Realtime streams](/realtime/react-hooks/streams) documentation for more information.
 
 ```ts
-import { task, metadata } from "@trigger.dev/sdk/v3";
+import { task, metadata } from "@trigger.dev/sdk";
 
 export const myTask = task({
   id: "my-task",
@@ -295,7 +295,7 @@ export const myTask = task({
 `metadata.stream` accepts any `AsyncIterable` or `ReadableStream` object. The stream will be captured and made available in the Realtime API. So for example, you could pass the body of a fetch response to `metadata.stream` to capture the response body and make it available in Realtime:
 
 ```ts
-import { task, metadata } from "@trigger.dev/sdk/v3";
+import { task, metadata } from "@trigger.dev/sdk";
 
 export const myTask = task({
   id: "my-task",
@@ -329,7 +329,7 @@ export const myTask = task({
 Or the results of a streaming call to the OpenAI SDK:
 
 ```ts
-import { task, metadata } from "@trigger.dev/sdk/v3";
+import { task, metadata } from "@trigger.dev/sdk";
 import OpenAI from "openai";
 
 const openai = new OpenAI({
@@ -365,7 +365,7 @@ export const myTask = task({
 Flush the metadata to the database. The SDK will automatically flush the metadata periodically, so you don't need to call this method unless you need to ensure that the metadata is persisted immediately.
 
 ```ts
-import { task, metadata } from "@trigger.dev/sdk/v3";
+import { task, metadata } from "@trigger.dev/sdk";
 
 export const myTask = task({
   id: "my-task",
@@ -384,7 +384,7 @@ export const myTask = task({
 All of the update methods can be chained together in a fluent API:
 
 ```ts
-import { task, metadata } from "@trigger.dev/sdk/v3";
+import { task, metadata } from "@trigger.dev/sdk";
 
 export const myTask = task({
   id: "my-task",
@@ -405,7 +405,7 @@ Tasks that have been triggered by a parent task (a.k.a. a "child task") can upda
 To update the parent task's metadata, use the `metadata.parent` accessor:
 
 ```ts
-import { task, metadata } from "@trigger.dev/sdk/v3";
+import { task, metadata } from "@trigger.dev/sdk";
 
 export const myParentTask = task({
   id: "my-parent-task",
@@ -461,7 +461,7 @@ An example of where you might use parent and root updates is in a task that trig
 
 ```ts
 import { CSVRow, UploadedFileData, parseCSVFromUrl } from "@/utils";
-import { batch, logger, metadata, schemaTask } from "@trigger.dev/sdk/v3";
+import { batch, logger, metadata, schemaTask } from "@trigger.dev/sdk";
 
 export const handleCSVRow = schemaTask({
   id: "handle-csv-row",
@@ -617,7 +617,7 @@ export const userTask = task({
 Metadata is NOT propagated to child tasks. If you want to pass metadata to a child task, you must do so explicitly:
 
 ```ts
-import { task, metadata } from "@trigger.dev/sdk/v3";
+import { task, metadata } from "@trigger.dev/sdk";
 
 export const myTask = task({
   id: "my-task",
@@ -668,7 +668,7 @@ const handle = await myTask.trigger(
 We recommend wrapping the metadata API in a [Zod](https://zod.dev) schema (or your validator library of choice) to provide type safety:
 
 ```ts
-import { task, metadata } from "@trigger.dev/sdk/v3";
+import { task, metadata } from "@trigger.dev/sdk";
 import { z } from "zod";
 
 const Metadata = z.object({
@@ -711,7 +711,7 @@ You can view the metadata for a run in the Trigger.dev dashboard. The metadata w
 You can use the `runs.retrieve()` SDK function to get the metadata for a run:
 
 ```ts
-import { runs } from "@trigger.dev/sdk/v3";
+import { runs } from "@trigger.dev/sdk";
 
 const run = await runs.retrieve("run_1234");
 

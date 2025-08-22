@@ -70,14 +70,16 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   return json(result);
 }
 
-async function getEnvironmentFromEnv({
+export async function getEnvironmentFromEnv({
   projectId,
   userId,
   env,
+  branch,
 }: {
   projectId: string;
   userId: string;
   env: ParamsSchema["env"];
+  branch?: string;
 }): Promise<
   | {
       success: true;
@@ -124,6 +126,49 @@ async function getEnvironmentFromEnv({
       break;
     default:
       break;
+  }
+
+  if (slug === "preview") {
+    const previewEnvironment = await prisma.runtimeEnvironment.findFirst({
+      where: {
+        projectId,
+        slug: "preview",
+      },
+    });
+
+    if (!previewEnvironment) {
+      return {
+        success: false,
+        error: "Preview environment not found",
+      };
+    }
+
+    // If no branch is provided, just return the parent preview environment
+    if (!branch) {
+      return {
+        success: true,
+        environment: previewEnvironment,
+      };
+    }
+
+    const branchEnvironment = await prisma.runtimeEnvironment.findFirst({
+      where: {
+        parentEnvironmentId: previewEnvironment.id,
+        branchName: branch,
+      },
+    });
+
+    if (!branchEnvironment) {
+      return {
+        success: false,
+        error: `Preview branch ${branch} not found`,
+      };
+    }
+
+    return {
+      success: true,
+      environment: branchEnvironment,
+    };
   }
 
   const environment = await prisma.runtimeEnvironment.findFirst({

@@ -410,6 +410,19 @@ const EnvironmentSchema = z.object({
   MARQS_QUEUE_AGE_RANDOMIZATION_BIAS: z.coerce.number().default(0.25),
   MARQS_REUSE_SNAPSHOT_COUNT: z.coerce.number().int().default(0),
   MARQS_MAXIMUM_ENV_COUNT: z.coerce.number().int().optional(),
+  MARQS_SHARED_WORKER_QUEUE_CONSUMER_INTERVAL_MS: z.coerce.number().int().default(250),
+  MARQS_SHARED_WORKER_QUEUE_MAX_MESSAGE_COUNT: z.coerce.number().int().default(10),
+
+  MARQS_SHARED_WORKER_QUEUE_EAGER_DEQUEUE_ENABLED: z.string().default("0"),
+  MARQS_WORKER_ENABLED: z.string().default("0"),
+  MARQS_WORKER_COUNT: z.coerce.number().int().default(2),
+  MARQS_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(50),
+  MARQS_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(5),
+  MARQS_WORKER_POLL_INTERVAL_MS: z.coerce.number().int().default(100),
+  MARQS_WORKER_IMMEDIATE_POLL_INTERVAL_MS: z.coerce.number().int().default(100),
+  MARQS_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(60_000),
+  MARQS_SHARED_WORKER_QUEUE_COOLOFF_COUNT_THRESHOLD: z.coerce.number().int().default(10),
+  MARQS_SHARED_WORKER_QUEUE_COOLOFF_PERIOD_MS: z.coerce.number().int().default(5_000),
 
   PROD_TASK_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().optional(),
 
@@ -436,6 +449,7 @@ const EnvironmentSchema = z.object({
   EVENT_LOOP_MONITOR_ENABLED: z.string().default("1"),
   MAXIMUM_LIVE_RELOADING_EVENTS: z.coerce.number().int().default(1000),
   MAXIMUM_TRACE_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(25_000),
+  MAXIMUM_TRACE_DETAILED_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(10_000),
   TASK_PAYLOAD_OFFLOAD_THRESHOLD: z.coerce.number().int().default(524_288), // 512KB
   TASK_PAYLOAD_MAXIMUM_SIZE: z.coerce.number().int().default(3_145_728), // 3MB
   BATCH_TASK_PAYLOAD_MAXIMUM_SIZE: z.coerce.number().int().default(1_000_000), // 1MB
@@ -1059,6 +1073,8 @@ const EnvironmentSchema = z.object({
 
   // AI Run Filter
   AI_RUN_FILTER_MODEL: z.string().optional(),
+
+  EVENT_LOOP_MONITOR_THRESHOLD_MS: z.coerce.number().int().default(100),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

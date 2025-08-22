@@ -1,0 +1,7 @@
+- **`isQueued`**: Returns `true` when the status is `QUEUED`, `PENDING_VERSION`, or `DELAYED`
+- **`isExecuting`**: Returns `true` when the status is `EXECUTING` or `DEQUEUED`. These count against your concurrency limits.
+- **`isWaiting`**: Returns `true` when the status is `WAITING`. These do not count against your concurrency limits.
+- **`isCompleted`**: Returns `true` when the status is any of the completed statuses
+- **`isCanceled`**: Returns `true` when the status is `CANCELED`
+- **`isFailed`**: Returns `true` when the status is any of the failed statuses
+- **`isSuccess`**: Returns `true` when the status is `COMPLETED` 

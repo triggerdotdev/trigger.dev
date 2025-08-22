@@ -62,7 +62,7 @@ export class CheckpointSystem {
           snapshot.executionStatus === "QUEUED_EXECUTING");
 
       if (!isValidSnapshot) {
-        this.$.logger.error("Tried to createCheckpoint on an invalid snapshot", {
+        this.$.logger.info("Tried to createCheckpoint on an invalid snapshot", {
           snapshot,
           snapshotId,
         });

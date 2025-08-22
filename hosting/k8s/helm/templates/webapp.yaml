@@ -229,8 +229,6 @@ spec:
               value: {{ include "trigger-v4.s3.url" . | quote }}
             - name: GRACEFUL_SHUTDOWN_TIMEOUT
               value: {{ .Values.webapp.gracefulShutdownTimeout | quote }}
-            - name: TRIGGER_CLI_TAG
-              value: "v4-beta"
             {{- if .Values.webapp.bootstrap.enabled }}
             - name: TRIGGER_BOOTSTRAP_ENABLED
               value: "1"
