@@ -421,6 +421,8 @@ const EnvironmentSchema = z.object({
   MARQS_WORKER_POLL_INTERVAL_MS: z.coerce.number().int().default(100),
   MARQS_WORKER_IMMEDIATE_POLL_INTERVAL_MS: z.coerce.number().int().default(100),
   MARQS_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(60_000),
+  MARQS_SHARED_WORKER_QUEUE_COOLOFF_COUNT_THRESHOLD: z.coerce.number().int().default(10),
+  MARQS_SHARED_WORKER_QUEUE_COOLOFF_PERIOD_MS: z.coerce.number().int().default(5_000),
 
   PROD_TASK_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().optional(),
 

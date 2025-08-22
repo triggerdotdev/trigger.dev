@@ -1,3 +1,4 @@
+import { type RedisOptions } from "@internal/redis";
 import {
   context,
   propagation,
@@ -8,21 +9,32 @@ import {
   trace,
   Tracer,
 } from "@opentelemetry/api";
-import { type RedisOptions } from "@internal/redis";
 import {
   SEMATTRS_MESSAGE_ID,
-  SEMATTRS_MESSAGING_SYSTEM,
   SEMATTRS_MESSAGING_OPERATION,
+  SEMATTRS_MESSAGING_SYSTEM,
 } from "@opentelemetry/semantic-conventions";
+import { Logger } from "@trigger.dev/core/logger";
+import { tryCatch } from "@trigger.dev/core/utils";
 import { flattenAttributes } from "@trigger.dev/core/v3";
+import { Worker, type WorkerConcurrencyOptions } from "@trigger.dev/redis-worker";
 import Redis, { type Callback, type Result } from "ioredis";
+import { setInterval as setIntervalAsync } from "node:timers/promises";
+import z from "zod";
 import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
+import { legacyRunEngineWorker } from "../legacyRunEngineWorker.server";
 import { concurrencyTracker } from "../services/taskRunConcurrencyTracker.server";
 import { attributesFromAuthenticatedEnv, tracer } from "../tracer.server";
 import { AsyncWorker } from "./asyncWorker.server";
+import {
+  MARQS_DELAYED_REQUEUE_THRESHOLD_IN_MS,
+  MARQS_RESUME_PRIORITY_TIMESTAMP_OFFSET,
+  MARQS_RETRY_PRIORITY_TIMESTAMP_OFFSET,
+  MARQS_SCHEDULED_REQUEUE_AVAILABLE_AT_THRESHOLD_IN_MS,
+} from "./constants.server";
 import { FairDequeuingStrategy } from "./fairDequeuingStrategy.server";
 import { MarQSShortKeyProducer } from "./marqsKeyProducer";
 import {
@@ -36,18 +48,6 @@ import {
   VisibilityTimeoutStrategy,
 } from "./types";
 import { V3LegacyRunEngineWorkerVisibilityTimeout } from "./v3VisibilityTimeout.server";
-import { legacyRunEngineWorker } from "../legacyRunEngineWorker.server";
-import {
-  MARQS_DELAYED_REQUEUE_THRESHOLD_IN_MS,
-  MARQS_RESUME_PRIORITY_TIMESTAMP_OFFSET,
-  MARQS_RETRY_PRIORITY_TIMESTAMP_OFFSET,
-  MARQS_SCHEDULED_REQUEUE_AVAILABLE_AT_THRESHOLD_IN_MS,
-} from "./constants.server";
-import { setInterval as setIntervalAsync } from "node:timers/promises";
-import { tryCatch } from "@trigger.dev/core/utils";
-import { Worker, type WorkerConcurrencyOptions } from "@trigger.dev/redis-worker";
-import z from "zod";
-import { Logger } from "@trigger.dev/core/logger";
 
 const KEY_PREFIX = "marqs:";
 
@@ -146,6 +146,19 @@ export class MarQS {
     if (options.workerOptions?.enabled) {
       this.worker.start();
     }
+
+    this.#setupShutdownHandlers();
+  }
+
+  #setupShutdownHandlers() {
+    process.on("SIGTERM", () => this.shutdown("SIGTERM"));
+    process.on("SIGINT", () => this.shutdown("SIGINT"));
+  }
+
+  async shutdown(signal: NodeJS.Signals) {
+    console.log("👇 Shutting down marqs", this.name, signal);
+    clearInterval(this.clearCooloffPeriodInterval);
+    this.#rebalanceWorkers.forEach((worker) => worker.stop());
   }
 
   get name() {
@@ -2663,6 +2676,8 @@ function getMarQSClient() {
     sharedWorkerQueueConsumerIntervalMs: env.MARQS_SHARED_WORKER_QUEUE_CONSUMER_INTERVAL_MS,
     sharedWorkerQueueMaxMessageCount: env.MARQS_SHARED_WORKER_QUEUE_MAX_MESSAGE_COUNT,
     eagerDequeuingEnabled: env.MARQS_SHARED_WORKER_QUEUE_EAGER_DEQUEUE_ENABLED === "1",
+    sharedWorkerQueueCooloffCountThreshold: env.MARQS_SHARED_WORKER_QUEUE_COOLOFF_COUNT_THRESHOLD,
+    sharedWorkerQueueCooloffPeriodMs: env.MARQS_SHARED_WORKER_QUEUE_COOLOFF_PERIOD_MS,
     workerOptions: {
       enabled: env.MARQS_WORKER_ENABLED === "1",
       pollIntervalMs: env.MARQS_WORKER_POLL_INTERVAL_MS,
