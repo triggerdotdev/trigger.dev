@@ -200,8 +200,8 @@ const batchHandle = await tasks.batchTrigger([
   [myOtherTask, { baz: "qux" }],
 ]);
 
-const runs = await batchHandle.runs.list(); // Use runs.list()
-console.log(runs);
+const batch = await batch.retrieve(batchHandle.batchId); // Use batch.retrieve()
+console.log(batch.runs);
 
 
 Can you help me convert the following code from v3 to v4? Please include the full converted code in the answer, do not truncate it anywhere.
