@@ -627,6 +627,10 @@
     {
       "source": "/guides/cursor-rules",
       "destination": "/mcp-agent-rules"
+    },
+    {
+      "source": "/agents/rules/overview",
+      "destination": "/mcp-agent-rules"
     }
   ]
 }
