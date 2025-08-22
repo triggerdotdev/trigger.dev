@@ -413,6 +413,15 @@ const EnvironmentSchema = z.object({
   MARQS_SHARED_WORKER_QUEUE_CONSUMER_INTERVAL_MS: z.coerce.number().int().default(250),
   MARQS_SHARED_WORKER_QUEUE_MAX_MESSAGE_COUNT: z.coerce.number().int().default(10),
 
+  MARQS_SHARED_WORKER_QUEUE_EAGER_DEQUEUE_ENABLED: z.string().default("0"),
+  MARQS_WORKER_ENABLED: z.string().default("0"),
+  MARQS_WORKER_COUNT: z.coerce.number().int().default(2),
+  MARQS_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(50),
+  MARQS_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(5),
+  MARQS_WORKER_POLL_INTERVAL_MS: z.coerce.number().int().default(100),
+  MARQS_WORKER_IMMEDIATE_POLL_INTERVAL_MS: z.coerce.number().int().default(100),
+  MARQS_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(60_000),
+
   PROD_TASK_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().optional(),
 
   VERBOSE_GRAPHILE_LOGGING: z.string().default("false"),
