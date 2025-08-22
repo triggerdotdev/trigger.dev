@@ -11,6 +11,7 @@ import { appliedSummary, dateFromString, timeFilterRenderValues } from "./runs/v
 import { formatNumber } from "~/utils/numberFormatter";
 import { SpinnerWhite } from "./primitives/Spinner";
 import { ArrowPathIcon, CheckIcon, XCircleIcon } from "@heroicons/react/20/solid";
+import { XCircleIcon as XCircleIconOutline } from "@heroicons/react/24/outline";
 import assertNever from "assert-never";
 import { AppliedFilter } from "./primitives/AppliedFilter";
 import { runStatusTitle } from "./runs/v3/TaskRunStatus";
@@ -244,7 +245,7 @@ function Action({ action }: { action: BulkActionAction }) {
     case "cancel":
       return (
         <span>
-          <XCircleIcon className="mb-0.5 inline-block size-4 text-error" />
+          <XCircleIconOutline className="mb-0.5 inline-block size-4 text-error" />
           <span className="ml-0.5 text-text-bright">Canceled</span>
         </span>
       );
