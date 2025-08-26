@@ -6,6 +6,7 @@ import {
   type ListRunsOptions,
   type RunListInputOptions,
   type RunsRepositoryOptions,
+  TagListOptions,
   convertRunListInputOptionsToFilterRunsOptions,
 } from "./runsRepository.server";
 
@@ -161,6 +162,36 @@ export class ClickHouseRunsRepository implements IRunsRepository {
     }
 
     return result[0].count;
+  }
+
+  async listTags(options: TagListOptions) {
+    const queryBuilder = this.options.clickhouse.taskRuns
+      .tagQueryBuilder()
+      .where("organization_id = {organizationId: String}", {
+        organizationId: options.organizationId,
+      })
+      .where("project_id = {projectId: String}", {
+        projectId: options.projectId,
+      })
+      .where("environment_id = {environmentId: String}", {
+        environmentId: options.environmentId,
+      });
+
+    const [queryError, result] = await queryBuilder.execute();
+
+    if (queryError) {
+      throw queryError;
+    }
+
+    if (result.length === 0) {
+      throw new Error("No count rows returned");
+    }
+
+    //todo process them
+
+    return {
+      tags: result[0].tags,
+    };
   }
 }
 

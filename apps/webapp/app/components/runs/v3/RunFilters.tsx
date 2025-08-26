@@ -58,7 +58,7 @@ import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { type loader as queuesLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.queues";
 import { type loader as versionsLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.versions";
-import { type loader as tagsLoader } from "~/routes/resources.projects.$projectParam.runs.tags";
+import { type loader as tagsLoader } from "~/routes/resources.environments.$envId.runs.tags";
 import { Button } from "../../primitives/Buttons";
 import { BulkActionTypeCombo } from "./BulkAction";
 import { appliedSummary, FilterMenuProvider, TimeFilter } from "./SharedFilters";
@@ -71,6 +71,7 @@ import {
   TaskRunStatusCombo,
 } from "./TaskRunStatus";
 import { TaskTriggerSourceIcon } from "./TaskTriggerSource";
+import { environment } from "effect/Differ";
 
 export const RunStatus = z.enum(allTaskRunStatuses);
 
@@ -810,7 +811,7 @@ function TagsDropdown({
   searchValue: string;
   onClose?: () => void;
 }) {
-  const project = useProject();
+  const environment = useEnvironment();
   const { values, replace } = useSearchParams();
 
   const handleChange = (values: string[]) => {
@@ -832,7 +833,7 @@ function TagsDropdown({
     if (searchValue) {
       searchParams.set("name", encodeURIComponent(searchValue));
     }
-    fetcher.load(`/resources/projects/${project.slug}/runs/tags?${searchParams}`);
+    fetcher.load(`/resources/environments/${environment.id}/runs/tags?${searchParams}`);
   }, [searchValue]);
 
   const filtered = useMemo(() => {
@@ -845,7 +846,7 @@ function TagsDropdown({
       return matchSorter(items, searchValue);
     }
 
-    items.push(...fetcher.data.tags.map((t) => t.name));
+    items.push(...fetcher.data.tags);
 
     return matchSorter(Array.from(new Set(items)), searchValue);
   }, [searchValue, fetcher.data]);
