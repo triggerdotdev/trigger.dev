@@ -1,10 +1,11 @@
 import {
   Prisma,
   PrismaClient,
-  PrismaClientOrTransaction,
-  PrismaReplicaClient,
-  PrismaTransactionClient,
-  PrismaTransactionOptions,
+  $transaction as transac,
+  type PrismaClientOrTransaction,
+  type PrismaReplicaClient,
+  type PrismaTransactionClient,
+  type PrismaTransactionOptions,
 } from "@trigger.dev/database";
 import invariant from "tiny-invariant";
 import { z } from "zod";
@@ -12,7 +13,6 @@ import { env } from "./env.server";
 import { logger } from "./services/logger.server";
 import { isValidDatabaseUrl } from "./utils/db";
 import { singleton } from "./utils/singleton";
-import { $transaction as transac } from "@trigger.dev/database";
 import { startActiveSpan } from "./v3/tracer.server";
 import { Span } from "@opentelemetry/api";
 

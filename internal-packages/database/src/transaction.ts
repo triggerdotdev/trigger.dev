@@ -1,4 +1,13 @@
-import { Prisma, PrismaClient } from "@prisma/client";
+import { PrismaClient } from "../generated/prisma";
+import { Decimal } from "decimal.js";
+import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
+
+// Define the isolation levels manually
+type TransactionIsolationLevel =
+  | "ReadUncommitted"
+  | "ReadCommitted"
+  | "RepeatableRead"
+  | "Serializable";
 
 export type PrismaTransactionClient = Omit<
   PrismaClient,
@@ -9,13 +18,13 @@ export type PrismaClientOrTransaction = PrismaClient | PrismaTransactionClient;
 
 export type PrismaReplicaClient = Omit<PrismaClient, "$transaction">;
 
-export const Decimal = Prisma.Decimal;
+export { Decimal };
 
 function isTransactionClient(prisma: PrismaClientOrTransaction): prisma is PrismaTransactionClient {
   return !("$transaction" in prisma);
 }
 
-export function isPrismaKnownError(error: unknown): error is Prisma.PrismaClientKnownRequestError {
+export function isPrismaKnownError(error: unknown): error is PrismaClientKnownRequestError {
   return (
     typeof error === "object" && error !== null && "code" in error && typeof error.code === "string"
   );
@@ -55,7 +64,7 @@ export type PrismaTransactionOptions = {
   timeout?: number;
 
   /**  Sets the transaction isolation level. By default this is set to the value currently configured in your database. */
-  isolationLevel?: Prisma.TransactionIsolationLevel;
+  isolationLevel?: TransactionIsolationLevel;
 
   swallowPrismaErrors?: boolean;
 
@@ -70,7 +79,7 @@ export type PrismaTransactionOptions = {
 export async function $transaction<R>(
   prisma: PrismaClientOrTransaction,
   fn: (prisma: PrismaTransactionClient) => Promise<R>,
-  prismaError: (error: Prisma.PrismaClientKnownRequestError) => void,
+  prismaError: (error: PrismaClientKnownRequestError) => void,
   options?: PrismaTransactionOptions,
   attempt = 0
 ): Promise<R | undefined> {

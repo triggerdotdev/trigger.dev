@@ -1,3 +1,5 @@
 node_modules
 # Ensure the .env symlink is not removed by accident
 !.env
+
+generated/prisma

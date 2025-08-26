@@ -82,9 +82,9 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   });
 }
 
-function decompressContent(compressedBuffer: Buffer): string {
-  // First, we need to decode the base64 Buffer to get the actual compressed data
-  const decodedBuffer = Buffer.from(compressedBuffer.toString("utf-8"), "base64");
+function decompressContent(compressedBuffer: Uint8Array): string {
+  // Convert Uint8Array to Buffer and decode base64 in one step
+  const decodedBuffer = Buffer.from(Buffer.from(compressedBuffer).toString("utf-8"), "base64");
 
   // Decompress the data
   const decompressedData = zlib.inflateSync(decodedBuffer);
