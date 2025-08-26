@@ -6,7 +6,7 @@ alwaysApply: false
 
 The main trigger.dev webapp, which powers it's API and dashboard and makes up the docker image that is produced as an OSS image, is a Remix 2.1.0 app that uses an express server, written in TypeScript. The following subsystems are either included in the webapp or are used by the webapp in another part of the monorepo:
 
-- `@trigger.dev/database` exports a Prisma 5.4.1 client that is used extensively in the webapp to access a PostgreSQL instance. The schema file is [schema.prisma](mdc:internal-packages/database/prisma/schema.prisma)
+- `@trigger.dev/database` exports a Prisma 6.14.0 client that is used extensively in the webapp to access a PostgreSQL instance. The schema file is [schema.prisma](mdc:internal-packages/database/prisma/schema.prisma)
 - `@trigger.dev/core` is a published package and is used to share code between the `@trigger.dev/sdk` and the webapp. It includes functionality but also a load of Zod schemas for data validation. When importing from `@trigger.dev/core` in the webapp, we never import the root `@trigger.dev/core` path, instead we favor one of the subpath exports that you can find in [package.json](mdc:packages/core/package.json)
 - `@internal/run-engine` has all the code needed to trigger a run and take it through it's lifecycle to completion.
 - `@trigger.dev/redis-worker` is a custom redis based background job/worker system that's used in the webapp and also used inside the run engine.
@@ -31,7 +31,10 @@ We originally the Trigger.dev "Run Engine" not as a single system, but just spre
 - The batch trigger API endpoint is [api.v1.tasks.batch.ts](mdc:apps/webapp/app/routes/api.v1.tasks.batch.ts)
 - Setup code for the prisma client is in [db.server.ts](mdc:apps/webapp/app/db.server.ts)
 - The run engine is configured in [runEngine.server.ts](mdc:apps/webapp/app/v3/runEngine.server.ts)
-- All the "services" that are found in app/v3/services/**/*.server.ts
+- All the "services" that are found in app/v3/services/\*_/_.server.ts
 - The code for the TaskEvent data, which is the otel data sent from tasks to our servers, is in both the [eventRepository.server.ts](mdc:apps/webapp/app/v3/eventRepository.server.ts) and also the [otlpExporter.server.ts](mdc:apps/webapp/app/v3/otlpExporter.server.ts). The otel endpoints which are hit from production and development otel exporters is [otel.v1.logs.ts](mdc:apps/webapp/app/routes/otel.v1.logs.ts) and [otel.v1.traces.ts](mdc:apps/webapp/app/routes/otel.v1.traces.ts)
-- We use "presenters" to move more complex loader code into a class, and you can find those are app/v3/presenters/**/*.server.ts
+- We use "presenters" to move more complex loader code into a class, and you can find those are app/v3/presenters/\*_/_.server.ts
 
+- All the "services" that are found in app/v3/services/\*_/_.server.ts
+- The code for the TaskEvent data, which is the otel data sent from tasks to our servers, is in both the [eventRepository.server.ts](mdc:apps/webapp/app/v3/eventRepository.server.ts) and also the [otlpExporter.server.ts](mdc:apps/webapp/app/v3/otlpExporter.server.ts). The otel endpoints which are hit from production and development otel exporters is [otel.v1.logs.ts](mdc:apps/webapp/app/routes/otel.v1.logs.ts) and [otel.v1.traces.ts](mdc:apps/webapp/app/routes/otel.v1.traces.ts)
+- We use "presenters" to move more complex loader code into a class, and you can find those are app/v3/presenters/\*_/_.server.ts

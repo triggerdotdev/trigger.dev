@@ -38,7 +38,7 @@ RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpm install
 COPY --from=pruner --chown=node:node /triggerdotdev/internal-packages/database/prisma/schema.prisma /triggerdotdev/internal-packages/database/prisma/schema.prisma
 # RUN pnpm add @prisma/client@5.1.1 -w
 ENV NPM_CONFIG_IGNORE_WORKSPACE_ROOT_CHECK true
-RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpx prisma@5.4.1 generate --schema /triggerdotdev/internal-packages/database/prisma/schema.prisma
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpx prisma@6.14.0 generate --schema /triggerdotdev/internal-packages/database/prisma/schema.prisma
 
 ## Builder (builds the webapp)
 FROM base AS builder
