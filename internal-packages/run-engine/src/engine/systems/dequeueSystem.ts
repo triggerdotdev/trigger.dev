@@ -46,6 +46,8 @@ export class DequeueSystem {
     workerId,
     runnerId,
     tx,
+    blockingPop,
+    blockingPopTimeoutSeconds,
   }: {
     consumerId: string;
     workerQueue: string;
@@ -53,6 +55,8 @@ export class DequeueSystem {
     workerId?: string;
     runnerId?: string;
     tx?: PrismaClientOrTransaction;
+    blockingPop?: boolean;
+    blockingPopTimeoutSeconds?: number;
   }): Promise<DequeuedMessage | undefined> {
     const prisma = tx ?? this.$.prisma;
 
@@ -63,7 +67,11 @@ export class DequeueSystem {
         //gets multiple runs from the queue
         const message = await this.$.runQueue.dequeueMessageFromWorkerQueue(
           consumerId,
-          workerQueue
+          workerQueue,
+          {
+            blockingPop,
+            blockingPopTimeoutSeconds,
+          }
         );
         if (!message) {
           return;
@@ -452,6 +460,7 @@ export class DequeueSystem {
               return {
                 version: "1" as const,
                 dequeuedAt: new Date(),
+                workerQueueLength: message.workerQueueLength,
                 snapshot: {
                   id: newSnapshot.id,
                   friendlyId: newSnapshot.friendlyId,
