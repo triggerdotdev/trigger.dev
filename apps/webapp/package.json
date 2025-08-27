@@ -54,6 +54,7 @@
     "@headlessui/react": "^1.7.8",
     "@heroicons/react": "^2.0.12",
     "@internal/redis": "workspace:*",
+    "@internal/cache": "workspace:*",
     "@internal/run-engine": "workspace:*",
     "@internal/schedule-engine": "workspace:*",
     "@internal/tracing": "workspace:*",

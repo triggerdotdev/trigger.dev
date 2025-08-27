@@ -1,35 +1,50 @@
-import { customAlphabet } from "nanoid";
-import { ServiceValidationError, WithRunEngine, WithRunEngineOptions } from "../baseService.server";
-import { createHash, timingSafeEqual } from "crypto";
-import { logger } from "~/services/logger.server";
+import { createCache, DefaultStatefulContext, MemoryStore, Namespace } from "@internal/cache";
+import {
+  CheckpointInput,
+  CompleteRunAttemptResult,
+  DequeuedMessage,
+  ExecutionResult,
+  MachinePreset,
+  StartRunAttemptResult,
+  TaskRunExecutionResult,
+} from "@trigger.dev/core/v3";
+import { fromFriendlyId } from "@trigger.dev/core/v3/isomorphic";
+import { WORKER_HEADERS } from "@trigger.dev/core/v3/workers";
 import {
   Prisma,
   RuntimeEnvironment,
   WorkerInstanceGroup,
   WorkerInstanceGroupType,
 } from "@trigger.dev/database";
+import { createHash, timingSafeEqual } from "crypto";
+import { customAlphabet } from "nanoid";
 import { z } from "zod";
-import { WORKER_HEADERS } from "@trigger.dev/core/v3/workers";
-import {
-  TaskRunExecutionResult,
-  DequeuedMessage,
-  CompleteRunAttemptResult,
-  StartRunAttemptResult,
-  ExecutionResult,
-  MachinePreset,
-  MachineResources,
-  CheckpointInput,
-} from "@trigger.dev/core/v3";
 import { env } from "~/env.server";
-import { $transaction } from "~/db.server";
-import { resolveVariablesForEnvironment } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { generateJWTTokenForEnvironment } from "~/services/apiAuth.server";
-import {
-  CURRENT_UNMANAGED_DEPLOYMENT_LABEL,
-  fromFriendlyId,
-} from "@trigger.dev/core/v3/isomorphic";
-import { machinePresetFromName } from "~/v3/machinePresets.server";
+import { logger } from "~/services/logger.server";
 import { defaultMachine } from "~/services/platform.v3.server";
+import { singleton } from "~/utils/singleton";
+import { resolveVariablesForEnvironment } from "~/v3/environmentVariables/environmentVariablesRepository.server";
+import { machinePresetFromName } from "~/v3/machinePresets.server";
+import { WithRunEngine, WithRunEngineOptions } from "../baseService.server";
+
+const authenticatedWorkerInstanceCache = singleton(
+  "authenticatedWorkerInstanceCache",
+  createAuthenticatedWorkerInstanceCache
+);
+
+function createAuthenticatedWorkerInstanceCache() {
+  return createCache({
+    authenticatedWorkerInstance: new Namespace<AuthenticatedWorkerInstance>(
+      new DefaultStatefulContext(),
+      {
+        stores: [new MemoryStore({ persistentMap: new Map() })],
+        fresh: 60_000 * 10, // 10 minutes
+        stale: 60_000 * 11, // 11 minutes
+      }
+    ),
+  });
+}
 
 export class WorkerGroupTokenService extends WithRunEngine {
   private readonly tokenPrefix = "tr_wgt_";
@@ -148,321 +163,148 @@ export class WorkerGroupTokenService extends WithRunEngine {
       return;
     }
 
-    const workerGroup = await this.findWorkerGroup({ token });
+    const managedWorkerSecret = request.headers.get(WORKER_HEADERS.MANAGED_SECRET);
 
-    if (!workerGroup) {
-      logger.warn("[WorkerGroupTokenService] Worker group not found", { token });
-      return;
-    }
-
-    if (workerGroup.type === WorkerInstanceGroupType.MANAGED) {
-      const managedWorkerSecret = request.headers.get(WORKER_HEADERS.MANAGED_SECRET);
-
-      if (!managedWorkerSecret) {
-        logger.error("[WorkerGroupTokenService] Managed secret not found in request", {
-          headers: this.sanitizeHeaders(request),
-        });
-        return;
-      }
-
-      const encoder = new TextEncoder();
-
-      const a = encoder.encode(managedWorkerSecret);
-      const b = encoder.encode(env.MANAGED_WORKER_SECRET);
-
-      if (a.byteLength !== b.byteLength) {
-        logger.error("[WorkerGroupTokenService] Managed secret length mismatch", {
-          managedWorkerSecret,
-          headers: this.sanitizeHeaders(request),
-        });
-        return;
-      }
-
-      if (!timingSafeEqual(a, b)) {
-        logger.error("[WorkerGroupTokenService] Managed secret mismatch", {
-          managedWorkerSecret,
-          headers: this.sanitizeHeaders(request),
-        });
-        return;
-      }
-    }
-
-    const workerInstance = await this.getOrCreateWorkerInstance({
-      workerGroup,
-      instanceName,
-      deploymentId: request.headers.get(WORKER_HEADERS.DEPLOYMENT_ID) ?? undefined,
-    });
-
-    if (!workerInstance) {
-      logger.error("[WorkerGroupTokenService] Unable to get or create worker instance", {
-        workerGroup,
-        instanceName,
+    if (!managedWorkerSecret) {
+      logger.error("[WorkerGroupTokenService] Managed secret not found in request", {
+        headers: this.sanitizeHeaders(request),
       });
       return;
     }
 
-    if (workerGroup.type === WorkerInstanceGroupType.MANAGED) {
-      return new AuthenticatedWorkerInstance({
-        prisma: this._prisma,
-        engine: this._engine,
-        type: WorkerInstanceGroupType.MANAGED,
-        name: workerGroup.name,
-        workerGroupId: workerGroup.id,
-        workerInstanceId: workerInstance.id,
-        masterQueue: workerGroup.masterQueue,
-        environment: null,
-        runnerId: request.headers.get(WORKER_HEADERS.RUNNER_ID) ?? undefined,
-      });
-    }
+    const encoder = new TextEncoder();
 
-    if (!workerInstance.environment) {
-      logger.error(
-        "[WorkerGroupTokenService] Unmanaged worker instance not linked to environment",
-        { workerGroup, workerInstance }
-      );
-      return;
-    }
+    const a = encoder.encode(managedWorkerSecret);
+    const b = encoder.encode(env.MANAGED_WORKER_SECRET);
 
-    if (!workerInstance.deployment) {
-      logger.error("[WorkerGroupTokenService] Unmanaged worker instance not linked to deployment", {
-        workerGroup,
-        workerInstance,
+    if (a.byteLength !== b.byteLength) {
+      logger.error("[WorkerGroupTokenService] Managed secret length mismatch", {
+        managedWorkerSecret,
+        headers: this.sanitizeHeaders(request),
       });
       return;
     }
 
-    if (!workerInstance.deployment.workerId) {
-      logger.error(
-        "[WorkerGroupTokenService] Unmanaged worker instance deployment not linked to background worker",
-        { workerGroup, workerInstance }
-      );
+    if (!timingSafeEqual(a, b)) {
+      logger.error("[WorkerGroupTokenService] Managed secret mismatch", {
+        managedWorkerSecret,
+        headers: this.sanitizeHeaders(request),
+      });
       return;
     }
 
-    return new AuthenticatedWorkerInstance({
-      prisma: this._prisma,
-      engine: this._engine,
-      type: WorkerInstanceGroupType.UNMANAGED,
-      name: workerGroup.name,
-      workerGroupId: workerGroup.id,
-      workerInstanceId: workerInstance.id,
-      masterQueue: workerGroup.masterQueue,
-      environmentId: workerInstance.environment.id,
-      deploymentId: workerInstance.deployment.id,
-      backgroundWorkerId: workerInstance.deployment.workerId,
-      environment: workerInstance.environment,
-    });
+    const result = await authenticatedWorkerInstanceCache.authenticatedWorkerInstance.swr(
+      `worker-group-token-${token}`,
+      async () => {
+        const workerGroup = await this.findWorkerGroup({ token });
+
+        if (!workerGroup) {
+          logger.warn("[WorkerGroupTokenService] Worker group not found", { token });
+          return;
+        }
+
+        const workerInstance = await this.getOrCreateWorkerInstance({
+          workerGroup,
+          instanceName,
+        });
+
+        if (!workerInstance) {
+          logger.error("[WorkerGroupTokenService] Unable to get or create worker instance", {
+            workerGroup,
+            instanceName,
+          });
+          return;
+        }
+
+        return new AuthenticatedWorkerInstance({
+          prisma: this._prisma,
+          engine: this._engine,
+          type: WorkerInstanceGroupType.MANAGED,
+          name: workerGroup.name,
+          workerGroupId: workerGroup.id,
+          workerInstanceId: workerInstance.id,
+          masterQueue: workerGroup.masterQueue,
+        });
+      }
+    );
+
+    if (result.err) {
+      logger.error("[WorkerGroupTokenService] Failed to authenticate worker instance", {
+        error: result.err,
+      });
+      return;
+    }
+
+    return result.val;
   }
 
   private async getOrCreateWorkerInstance({
     workerGroup,
     instanceName,
-    deploymentId,
   }: {
     workerGroup: WorkerInstanceGroup;
     instanceName: string;
-    deploymentId?: string;
   }) {
-    return await $transaction(this._prisma, async (tx) => {
-      const resourceIdentifier = deploymentId ? `${deploymentId}:${instanceName}` : instanceName;
+    const resourceIdentifier = instanceName;
 
-      const workerInstance = await tx.workerInstance.findFirst({
-        where: {
+    const workerInstance = await this._prisma.workerInstance.findFirst({
+      where: {
+        workerGroupId: workerGroup.id,
+        resourceIdentifier,
+      },
+      include: {
+        deployment: true,
+        environment: true,
+      },
+    });
+
+    if (workerInstance) {
+      return workerInstance;
+    }
+
+    try {
+      const newWorkerInstance = await this._prisma.workerInstance.create({
+        data: {
           workerGroupId: workerGroup.id,
+          name: instanceName,
           resourceIdentifier,
         },
         include: {
+          // This will always be empty for shared worker instances, but required for types
           deployment: true,
           environment: true,
         },
       });
 
-      if (workerInstance) {
-        return workerInstance;
-      }
+      return newWorkerInstance;
+    } catch (error) {
+      // Gracefully handle race conditions when connecting for the first time
+      if (error instanceof Prisma.PrismaClientKnownRequestError) {
+        // Unique constraint violation
+        if (error.code === "P2002") {
+          try {
+            const existingWorkerInstance = await this._prisma.workerInstance.findFirst({
+              where: {
+                workerGroupId: workerGroup.id,
+                resourceIdentifier,
+              },
+              include: {
+                deployment: true,
+                environment: true,
+              },
+            });
 
-      if (workerGroup.type === WorkerInstanceGroupType.MANAGED) {
-        if (deploymentId) {
-          logger.warn(
-            "[WorkerGroupTokenService] Shared worker group instances should not authenticate with a deployment ID",
-            {
+            return existingWorkerInstance;
+          } catch (error) {
+            logger.error("[WorkerGroupTokenService] Failed to find worker instance", {
               workerGroup,
               workerInstance,
-              deploymentId,
-            }
-          );
-        }
-
-        try {
-          const newWorkerInstance = await tx.workerInstance.create({
-            data: {
-              workerGroupId: workerGroup.id,
-              name: instanceName,
-              resourceIdentifier,
-            },
-            include: {
-              // This will always be empty for shared worker instances, but required for types
-              deployment: true,
-              environment: true,
-            },
-          });
-          return newWorkerInstance;
-        } catch (error) {
-          // Gracefully handle race conditions when connecting for the first time
-          if (error instanceof Prisma.PrismaClientKnownRequestError) {
-            // Unique constraint violation
-            if (error.code === "P2002") {
-              try {
-                const existingWorkerInstance = await tx.workerInstance.findFirst({
-                  where: {
-                    workerGroupId: workerGroup.id,
-                    resourceIdentifier,
-                  },
-                  include: {
-                    deployment: true,
-                    environment: true,
-                  },
-                });
-                return existingWorkerInstance;
-              } catch (error) {
-                logger.error("[WorkerGroupTokenService] Failed to find worker instance", {
-                  workerGroup,
-                  workerInstance,
-                  deploymentId,
-                });
-                return;
-              }
-            }
+            });
+            return;
           }
         }
       }
-
-      if (!workerGroup.projectId || !workerGroup.organizationId) {
-        logger.error(
-          "[WorkerGroupTokenService] Unmanaged worker group missing project or organization",
-          {
-            workerGroup,
-            workerInstance,
-            deploymentId,
-          }
-        );
-        return;
-      }
-
-      if (!deploymentId) {
-        logger.error("[WorkerGroupTokenService] Unmanaged worker group required deployment ID", {
-          workerGroup,
-          workerInstance,
-        });
-        return;
-      }
-
-      // Unmanaged workers instances are locked to a specific deployment version
-
-      const deployment = await tx.workerDeployment.findFirst({
-        where: {
-          ...(deploymentId.startsWith("deployment_")
-            ? {
-                friendlyId: deploymentId,
-              }
-            : {
-                id: deploymentId,
-              }),
-        },
-      });
-
-      if (!deployment) {
-        logger.error("[WorkerGroupTokenService] Deployment not found", {
-          workerGroup,
-          workerInstance,
-          deploymentId,
-        });
-        return;
-      }
-
-      if (deployment.projectId !== workerGroup.projectId) {
-        logger.error("[WorkerGroupTokenService] Deployment does not match worker group project", {
-          deployment,
-          workerGroup,
-          workerInstance,
-        });
-        return;
-      }
-
-      if (deployment.status === "DEPLOYING") {
-        // This is the first instance to be created for this deployment, so mark it as deployed
-        await tx.workerDeployment.update({
-          where: {
-            id: deployment.id,
-          },
-          data: {
-            status: "DEPLOYED",
-            deployedAt: new Date(),
-          },
-        });
-
-        // Check if the deployment should be promoted
-        const workerPromotion = await tx.workerDeploymentPromotion.findFirst({
-          where: {
-            label: CURRENT_UNMANAGED_DEPLOYMENT_LABEL,
-            environmentId: deployment.environmentId,
-          },
-          include: {
-            deployment: true,
-          },
-        });
-
-        const shouldPromote =
-          !workerPromotion || deployment.createdAt > workerPromotion.deployment.createdAt;
-
-        if (shouldPromote) {
-          // Promote the deployment
-          await tx.workerDeploymentPromotion.upsert({
-            where: {
-              environmentId_label: {
-                environmentId: deployment.environmentId,
-                label: CURRENT_UNMANAGED_DEPLOYMENT_LABEL,
-              },
-            },
-            create: {
-              deploymentId: deployment.id,
-              environmentId: deployment.environmentId,
-              label: CURRENT_UNMANAGED_DEPLOYMENT_LABEL,
-            },
-            update: {
-              deploymentId: deployment.id,
-            },
-          });
-        }
-      } else if (deployment.status !== "DEPLOYED") {
-        logger.error("[WorkerGroupTokenService] Deployment not deploying or deployed", {
-          deployment,
-          workerGroup,
-          workerInstance,
-        });
-        return;
-      }
-
-      const nonSharedWorkerInstance = tx.workerInstance.create({
-        data: {
-          workerGroupId: workerGroup.id,
-          name: instanceName,
-          resourceIdentifier,
-          environmentId: deployment.environmentId,
-          deploymentId: deployment.id,
-        },
-        include: {
-          deployment: true,
-          environment: {
-            include: {
-              parentEnvironment: true,
-            },
-          },
-        },
-      });
-
-      return nonSharedWorkerInstance;
-    });
+    }
   }
 
   private sanitizeHeaders(request: Request, skipHeaders = ["authorization"]) {
@@ -491,11 +333,6 @@ export type AuthenticatedWorkerInstanceOptions = WithRunEngineOptions<{
   workerGroupId: string;
   workerInstanceId: string;
   masterQueue: string;
-  environmentId?: string;
-  deploymentId?: string;
-  backgroundWorkerId?: string;
-  runnerId?: string;
-  environment: EnvironmentWithParent | null;
 }>;
 
 export class AuthenticatedWorkerInstance extends WithRunEngine {
@@ -503,11 +340,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
   readonly name: string;
   readonly workerGroupId: string;
   readonly workerInstanceId: string;
-  readonly runnerId?: string;
   readonly masterQueue: string;
-  readonly environment: EnvironmentWithParent | null;
-  readonly deploymentId?: string;
-  readonly backgroundWorkerId?: string;
 
   // FIXME: Required for unmanaged workers
   readonly isLatestDeployment = true;
@@ -520,10 +353,6 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     this.workerGroupId = opts.workerGroupId;
     this.workerInstanceId = opts.workerInstanceId;
     this.masterQueue = opts.masterQueue;
-    this.environment = opts.environment;
-    this.deploymentId = opts.deploymentId;
-    this.backgroundWorkerId = opts.backgroundWorkerId;
-    this.runnerId = opts.runnerId;
   }
 
   async connect(metadata: Record<string, any>): Promise<void> {
@@ -537,62 +366,12 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     });
   }
 
-  async dequeue(): Promise<DequeuedMessage[]> {
-    if (this.type === WorkerInstanceGroupType.MANAGED) {
-      return await this._engine.dequeueFromWorkerQueue({
-        consumerId: this.workerInstanceId,
-        workerQueue: this.masterQueue,
-        workerId: this.workerInstanceId,
-        runnerId: this.runnerId,
-      });
-    }
-
-    if (!this.environment || !this.deploymentId || !this.backgroundWorkerId) {
-      logger.error("[AuthenticatedWorkerInstance] Missing environment or deployment", {
-        ...this.toJSON(),
-      });
-      return [];
-    }
-
-    await this._prisma.workerInstance.update({
-      where: {
-        id: this.workerInstanceId,
-      },
-      data: {
-        lastDequeueAt: new Date(),
-      },
-    });
-
-    if (this.isLatestDeployment) {
-      return await this._engine.dequeueFromEnvironmentWorkerQueue({
-        consumerId: this.workerInstanceId,
-        environmentId: this.environment.id,
-        workerId: this.workerInstanceId,
-        runnerId: this.runnerId,
-      });
-    }
-
-    throw new ServiceValidationError("Unmanaged workers cannot dequeue from a specific version");
-  }
-
-  /** Allows managed workers to dequeue from a specific environment */
-  async dequeueFromEnvironment(
-    backgroundWorkerId: string,
-    environmentId: string
-  ): Promise<DequeuedMessage[]> {
-    if (this.type !== WorkerInstanceGroupType.MANAGED) {
-      logger.error("[AuthenticatedWorkerInstance] Worker instance is not managed", {
-        ...this.toJSON(),
-      });
-      return [];
-    }
-
-    return await this._engine.dequeueFromEnvironmentWorkerQueue({
+  async dequeue({ runnerId }: { runnerId?: string }): Promise<DequeuedMessage[]> {
+    return await this._engine.dequeueFromWorkerQueue({
       consumerId: this.workerInstanceId,
-      backgroundWorkerId,
-      environmentId,
+      workerQueue: this.masterQueue,
       workerId: this.workerInstanceId,
-      runnerId: this.runnerId,
+      runnerId,
     });
   }
 
@@ -610,15 +389,17 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
   async heartbeatRun({
     runFriendlyId,
     snapshotFriendlyId,
+    runnerId,
   }: {
     runFriendlyId: string;
     snapshotFriendlyId: string;
+    runnerId?: string;
   }): Promise<ExecutionResult> {
     return await this._engine.heartbeatRun({
       runId: fromFriendlyId(runFriendlyId),
       snapshotId: fromFriendlyId(snapshotFriendlyId),
       workerId: this.workerInstanceId,
-      runnerId: this.runnerId,
+      runnerId,
     });
   }
 
@@ -626,10 +407,12 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     runFriendlyId,
     snapshotFriendlyId,
     isWarmStart,
+    runnerId,
   }: {
     runFriendlyId: string;
     snapshotFriendlyId: string;
     isWarmStart?: boolean;
+    runnerId?: string;
   }): Promise<
     StartRunAttemptResult & {
       envVars: Record<string, string>;
@@ -640,21 +423,19 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       snapshotId: fromFriendlyId(snapshotFriendlyId),
       isWarmStart,
       workerId: this.workerInstanceId,
-      runnerId: this.runnerId,
+      runnerId,
     });
 
     const defaultMachinePreset = machinePresetFromName(defaultMachine);
 
-    const environment =
-      this.environment ??
-      (await this._prisma.runtimeEnvironment.findFirst({
-        where: {
-          id: engineResult.execution.environment.id,
-        },
-        include: {
-          parentEnvironment: true,
-        },
-      }));
+    const environment = await this._prisma.runtimeEnvironment.findFirst({
+      where: {
+        id: engineResult.execution.environment.id,
+      },
+      include: {
+        parentEnvironment: true,
+      },
+    });
 
     const envVars = environment
       ? await this.getEnvVars(
@@ -675,17 +456,19 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     runFriendlyId,
     snapshotFriendlyId,
     completion,
+    runnerId,
   }: {
     runFriendlyId: string;
     snapshotFriendlyId: string;
     completion: TaskRunExecutionResult;
+    runnerId?: string;
   }): Promise<CompleteRunAttemptResult> {
     return await this._engine.completeRunAttempt({
       runId: fromFriendlyId(runFriendlyId),
       snapshotId: fromFriendlyId(snapshotFriendlyId),
       completion,
       workerId: this.workerInstanceId,
-      runnerId: this.runnerId,
+      runnerId,
     });
   }
 
@@ -699,32 +482,36 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     runFriendlyId,
     snapshotFriendlyId,
     checkpoint,
+    runnerId,
   }: {
     runFriendlyId: string;
     snapshotFriendlyId: string;
     checkpoint: CheckpointInput;
+    runnerId?: string;
   }) {
     return await this._engine.createCheckpoint({
       runId: fromFriendlyId(runFriendlyId),
       snapshotId: fromFriendlyId(snapshotFriendlyId),
       checkpoint,
       workerId: this.workerInstanceId,
-      runnerId: this.runnerId,
+      runnerId,
     });
   }
 
   async continueRunExecution({
     runFriendlyId,
     snapshotFriendlyId,
+    runnerId,
   }: {
     runFriendlyId: string;
     snapshotFriendlyId: string;
+    runnerId?: string;
   }) {
     return await this._engine.continueRunExecution({
       runId: fromFriendlyId(runFriendlyId),
       snapshotId: fromFriendlyId(snapshotFriendlyId),
       workerId: this.workerInstanceId,
-      runnerId: this.runnerId,
+      runnerId,
     });
   }
 
@@ -742,24 +529,12 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
   }
 
   toJSON(): WorkerGroupTokenAuthenticationResponse {
-    if (this.type === WorkerInstanceGroupType.MANAGED) {
-      return {
-        type: WorkerInstanceGroupType.MANAGED,
-        name: this.name,
-        workerGroupId: this.workerGroupId,
-        workerInstanceId: this.workerInstanceId,
-        masterQueue: this.masterQueue,
-      };
-    }
-
     return {
-      type: WorkerInstanceGroupType.UNMANAGED,
+      type: WorkerInstanceGroupType.MANAGED,
       name: this.name,
       workerGroupId: this.workerGroupId,
       workerInstanceId: this.workerInstanceId,
       masterQueue: this.masterQueue,
-      environmentId: this.environment?.id!,
-      deploymentId: this.deploymentId!,
     };
   }
 
