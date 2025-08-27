@@ -17,6 +17,6 @@ CREATE TABLE "OrganizationAccessToken" (
 
 CREATE UNIQUE INDEX "OrganizationAccessToken_hashedToken_key" ON "OrganizationAccessToken"("hashedToken");
 
-CREATE INDEX "OrganizationAccessToken_organizationId_createdAt_idx" ON "OrganizationAccessToken"("organizationId", "createdAt" DESC);
+CREATE INDEX "OrganizationAccessToken_organizationId_type_createdAt_idx" ON "OrganizationAccessToken"("organizationId", "type", "createdAt" DESC);
 
 ALTER TABLE "OrganizationAccessToken" ADD CONSTRAINT "OrganizationAccessToken_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

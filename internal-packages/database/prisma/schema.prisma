@@ -161,7 +161,7 @@ model OrganizationAccessToken {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([organizationId, createdAt(sort: Desc)])
+  @@index([organizationId, type, createdAt(sort: Desc)])
 }
 
 model Organization {
