@@ -15,6 +15,7 @@ import { isValidDatabaseUrl } from "./utils/db";
 import { singleton } from "./utils/singleton";
 import { startActiveSpan } from "./v3/tracer.server";
 import { Span } from "@opentelemetry/api";
+import { queryPerformanceMonitor } from "./utils/queryPerformanceMonitor.server";
 
 export type {
   PrismaTransactionClient,
@@ -153,13 +154,19 @@ function getClient() {
             },
           ]
         : []) satisfies Prisma.LogDefinition[]),
-      // verbose
-      ...((process.env.VERBOSE_PRISMA_LOGS === "1"
+      // Query performance monitoring
+      ...((process.env.VERBOSE_PRISMA_LOGS === "1" ||
+      process.env.VERY_SLOW_QUERY_THRESHOLD_MS !== undefined
         ? [
             {
               emit: "event",
               level: "query",
             },
+          ]
+        : []) satisfies Prisma.LogDefinition[]),
+      // verbose
+      ...((process.env.VERBOSE_PRISMA_LOGS === "1"
+        ? [
             {
               emit: "stdout",
               level: "query",
@@ -205,6 +212,11 @@ function getClient() {
       });
     });
   }
+
+  // Add query performance monitoring
+  client.$on("query", (log) => {
+    queryPerformanceMonitor.onQuery("writer", log);
+  });
 
   // connect eagerly
   client.$connect();
@@ -265,13 +277,19 @@ function getReplicaClient() {
             },
           ]
         : []) satisfies Prisma.LogDefinition[]),
-      // verbose
-      ...((process.env.VERBOSE_PRISMA_LOGS === "1"
+      // Query performance monitoring
+      ...((process.env.VERBOSE_PRISMA_LOGS === "1" ||
+      process.env.VERY_SLOW_QUERY_THRESHOLD_MS !== undefined
         ? [
             {
               emit: "event",
               level: "query",
             },
+          ]
+        : []) satisfies Prisma.LogDefinition[]),
+      // verbose
+      ...((process.env.VERBOSE_PRISMA_LOGS === "1"
+        ? [
             {
               emit: "stdout",
               level: "query",
@@ -316,6 +334,11 @@ function getReplicaClient() {
       });
     });
   }
+
+  // Add query performance monitoring for replica client
+  replicaClient.$on("query", (log) => {
+    queryPerformanceMonitor.onQuery("replica", log);
+  });
 
   // connect eagerly
   replicaClient.$connect();
