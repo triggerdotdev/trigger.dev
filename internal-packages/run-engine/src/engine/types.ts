@@ -39,6 +39,9 @@ export type RunEngineOptions = {
     masterQueueConsumersDisabled?: boolean;
     processWorkerQueueDebounceMs?: number;
     masterQueueConsumersIntervalMs?: number;
+    masterQueueCooloffPeriodMs?: number;
+    masterQueueCooloffCountThreshold?: number;
+    masterQueueConsumerDequeueCount?: number;
     workerOptions?: WorkerConcurrencyOptions;
     retryOptions?: RetryOptions;
     defaultEnvConcurrency?: number;

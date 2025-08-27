@@ -566,6 +566,8 @@ export class RunEngine {
     runnerId,
     tx,
     skipObserving,
+    blockingPop,
+    blockingPopTimeoutSeconds,
   }: {
     consumerId: string;
     workerQueue: string;
@@ -574,6 +576,8 @@ export class RunEngine {
     runnerId?: string;
     tx?: PrismaClientOrTransaction;
     skipObserving?: boolean;
+    blockingPop?: boolean;
+    blockingPopTimeoutSeconds?: number;
   }): Promise<DequeuedMessage[]> {
     if (!skipObserving) {
       // We only do this with "prod" worker queues because we don't want to observe dev (e.g. environment) worker queues
@@ -587,6 +591,8 @@ export class RunEngine {
       workerId,
       runnerId,
       tx,
+      blockingPop,
+      blockingPopTimeoutSeconds,
     });
 
     if (!dequeuedMessage) {
@@ -619,6 +625,8 @@ export class RunEngine {
       runnerId,
       tx,
       skipObserving: true,
+      blockingPop: true,
+      blockingPopTimeoutSeconds: 10,
     });
   }
 
