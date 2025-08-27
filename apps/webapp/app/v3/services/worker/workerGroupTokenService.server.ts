@@ -193,8 +193,10 @@ export class WorkerGroupTokenService extends WithRunEngine {
       return;
     }
 
+    const cacheKey = ["worker-group-token", token, instanceName];
+
     const result = await authenticatedWorkerInstanceCache.authenticatedWorkerInstance.swr(
-      `worker-group-token-${token}`,
+      cacheKey.join("-"),
       async () => {
         const workerGroup = await this.findWorkerGroup({ token });
 

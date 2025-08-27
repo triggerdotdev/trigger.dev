@@ -217,7 +217,16 @@ export class RunLocker {
     let lastError: Error | undefined;
 
     for (let attempt = 0; attempt <= maxAttempts; attempt++) {
-      const [error, acquiredLock] = await tryCatch(this.redlock.acquire(sortedResources, duration));
+      const [error, acquiredLock] = await tryCatch(
+        startSpan(this.tracer, "RunLocker.acquireLock", async (span) => {
+          span.setAttributes({
+            resources: joinedResources,
+            attempt,
+            totalWaitTime,
+          });
+          return await this.redlock.acquire(sortedResources, duration);
+        })
+      );
 
       if (!error && acquiredLock) {
         lock = acquiredLock;
@@ -390,7 +399,15 @@ export class RunLocker {
       this.#cleanupExtension(manualContext);
 
       // Release the lock using tryCatch
-      const [releaseError] = await tryCatch(lock.release());
+      const [releaseError] = await tryCatch(
+        startSpan(this.tracer, "RunLocker.releaseLock", async (span) => {
+          span.setAttributes({
+            resources: joinedResources,
+            lockValue: lock.value,
+          });
+          return await lock.release();
+        })
+      );
       if (releaseError) {
         this.logger.warn("[RunLocker] Error releasing lock", {
           error: releaseError,
