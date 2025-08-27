@@ -56,13 +56,19 @@ export const toolsMetadata = {
     name: "trigger_task",
     title: "Trigger Task",
     description:
-      "Trigger a task in the project. Use the get_tasks tool to get a list of tasks and ask the user to select one if it's not clear which one to use.",
+      "Trigger a task in the project. Use the get_tasks tool to get a list of tasks and ask the user to select one if it's not clear which one to use. Use the wait_for_run_to_complete tool to wait for the run to complete.",
   },
   get_run_details: {
     name: "get_run_details",
     title: "Get Run Details",
     description:
       "Get the details of a run. The run ID is the ID of the run that was triggered. It starts with run_",
+  },
+  wait_for_run_to_complete: {
+    name: "wait_for_run_to_complete",
+    title: "Wait for Run to Complete",
+    description:
+      "Wait for a run to complete. The run ID is the ID of the run that was triggered. It starts with run_",
   },
   cancel_run: {
     name: "cancel_run",

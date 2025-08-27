@@ -8,7 +8,12 @@ import {
   listProjectsTool,
 } from "./tools/orgs.js";
 import { listPreviewBranchesTool } from "./tools/previewBranches.js";
-import { cancelRunTool, getRunDetailsTool, listRunsTool } from "./tools/runs.js";
+import {
+  cancelRunTool,
+  getRunDetailsTool,
+  listRunsTool,
+  waitForRunToCompleteTool,
+} from "./tools/runs.js";
 import { getCurrentWorker, triggerTaskTool } from "./tools/tasks.js";
 import { respondWithError } from "./utils.js";
 
@@ -23,6 +28,7 @@ export function registerTools(context: McpContext) {
     triggerTaskTool,
     listRunsTool,
     getRunDetailsTool,
+    waitForRunToCompleteTool,
     cancelRunTool,
     deployTool,
     listDeploysTool,
