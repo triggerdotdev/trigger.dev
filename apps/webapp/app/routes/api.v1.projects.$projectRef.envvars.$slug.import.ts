@@ -3,7 +3,7 @@ import { ImportEnvironmentVariablesRequestBody } from "@trigger.dev/core/v3";
 import { parse } from "dotenv";
 import { z } from "zod";
 import {
-  authenticateProjectApiKeyOrPersonalAccessToken,
+  authenticateRequest,
   authenticatedEnvironmentForAuthentication,
   branchNameFromRequest,
 } from "~/services/apiAuth.server";
@@ -21,7 +21,7 @@ export async function action({ params, request }: ActionFunctionArgs) {
     return json({ error: "Invalid params" }, { status: 400 });
   }
 
-  const authenticationResult = await authenticateProjectApiKeyOrPersonalAccessToken(request);
+  const authenticationResult = await authenticateRequest(request);
 
   if (!authenticationResult) {
     return json({ error: "Invalid or Missing API key" }, { status: 401 });

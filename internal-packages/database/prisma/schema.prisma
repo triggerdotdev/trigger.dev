@@ -133,6 +133,37 @@ model PersonalAccessToken {
   authorizationCodes AuthorizationCode[]
 }
 
+enum OrganizationAccessTokenType {
+  USER
+  SYSTEM
+}
+
+model OrganizationAccessToken {
+  id String @id @default(cuid())
+
+  /// User-provided name for the token
+  name String
+
+  /// Used to differentiate between user-generated and system-generated tokens
+  type OrganizationAccessTokenType @default(USER)
+
+  /// This is used to find the token in the database
+  hashedToken String @unique
+
+  organization   Organization   @relation(fields: [organizationId], references: [id])
+  organizationId String
+
+  /// Optional expiration date for the token
+  expiresAt      DateTime?
+  revokedAt      DateTime?
+  lastAccessedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId, type, createdAt(sort: Desc)])
+}
+
 model Organization {
   id    String @id @default(cuid())
   slug  String @unique
@@ -174,6 +205,7 @@ model Organization {
   members                  OrgMember[]
   invites                  OrgMemberInvite[]
   organizationIntegrations OrganizationIntegration[]
+  organizationAccessTokens OrganizationAccessToken[]
   workerGroups             WorkerInstanceGroup[]
   workerInstances          WorkerInstance[]
   executionSnapshots       TaskRunExecutionSnapshot[]

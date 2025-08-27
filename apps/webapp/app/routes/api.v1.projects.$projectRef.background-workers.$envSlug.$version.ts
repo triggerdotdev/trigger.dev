@@ -2,7 +2,7 @@ import { LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import {
-  authenticateProjectApiKeyOrPersonalAccessToken,
+  authenticateRequest,
   authenticatedEnvironmentForAuthentication,
 } from "~/services/apiAuth.server";
 import zlib from "node:zlib";
@@ -20,7 +20,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     return json({ error: "Invalid params" }, { status: 400 });
   }
 
-  const authenticationResult = await authenticateProjectApiKeyOrPersonalAccessToken(request);
+  const authenticationResult = await authenticateRequest(request);
 
   if (!authenticationResult) {
     return json({ error: "Invalid or Missing API key" }, { status: 401 });
