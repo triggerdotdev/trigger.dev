@@ -1,12 +1,14 @@
 import { json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { $replica, prisma } from "~/db.server";
-import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
-import { getEnvironmentFromEnv } from "./api.v1.projects.$projectRef.$env";
-import { GetWorkerByTagResponse } from "@trigger.dev/core/v3/schemas";
+import { type GetWorkerByTagResponse } from "@trigger.dev/core/v3/schemas";
 import { env as $env } from "~/env.server";
 import { v3RunsPath } from "~/utils/pathBuilder";
+import {
+  authenticatedEnvironmentForAuthentication,
+  authenticateRequest,
+} from "~/services/apiAuth.server";
 
 const ParamsSchema = z.object({
   projectRef: z.string(),
@@ -21,7 +23,11 @@ const HeadersSchema = z.object({
 type ParamsSchema = z.infer<typeof ParamsSchema>;
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
-  const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
+  const authenticationResult = await authenticateRequest(request, {
+    personalAccessToken: true,
+    organizationAccessToken: true,
+    apiKey: false,
+  });
 
   if (!authenticationResult) {
     return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
@@ -32,51 +38,17 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   if (!parsedParams.success) {
     return json({ error: "Invalid Params" }, { status: 400 });
   }
-
-  const parsedHeaders = HeadersSchema.safeParse(Object.fromEntries(request.headers));
-
-  const branch = parsedHeaders.success ? parsedHeaders.data["x-trigger-branch"] : undefined;
-
   const { projectRef, env } = parsedParams.data;
 
-  const project = await prisma.project.findFirst({
-    where: {
-      externalRef: projectRef,
-      organization: {
-        members: {
-          some: {
-            userId: authenticationResult.userId,
-          },
-        },
-      },
-    },
-    select: {
-      id: true,
-      slug: true,
-      organization: {
-        select: {
-          slug: true,
-        },
-      },
-    },
-  });
+  const parsedHeaders = HeadersSchema.safeParse(Object.fromEntries(request.headers));
+  const triggerBranch = parsedHeaders.success ? parsedHeaders.data["x-trigger-branch"] : undefined;
 
-  if (!project) {
-    return json({ error: "Project not found" }, { status: 404 });
-  }
-
-  const envResult = await getEnvironmentFromEnv({
-    projectId: project.id,
-    userId: authenticationResult.userId,
+  const runtimeEnv = await authenticatedEnvironmentForAuthentication(
+    authenticationResult,
+    projectRef,
     env,
-    branch,
-  });
-
-  if (!envResult.success) {
-    return json({ error: envResult.error }, { status: 404 });
-  }
-
-  const runtimeEnv = envResult.environment;
+    triggerBranch
+  );
 
   const currentWorker = await findCurrentWorkerFromEnvironment(
     {
@@ -110,8 +82,8 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
   const urls = {
     runs: `${$env.APP_ORIGIN}${v3RunsPath(
-      { slug: project.organization.slug },
-      { slug: project.slug },
+      { slug: runtimeEnv.organization.slug },
+      { slug: runtimeEnv.project.slug },
       { slug: runtimeEnv.slug },
       { versions: [currentWorker.version] }
     )}`,
