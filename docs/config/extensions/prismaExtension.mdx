@@ -10,8 +10,7 @@ If you are using Prisma, you should use the prisma build extension.
 - Generates the Prisma client during the deploy process
 - Optionally will migrate the database during the deploy process
 - Support for TypedSQL and multiple schema files
-- You can use `prismaSchemaFolder` to specify just the directory containing your schema file, instead of the full path
-- You can add the extension twice if you have multiple separate schemas in the same project (example below)
+- You can set the schema to be a folder to use Prisma's multi-file schema feature (example [below](#multiple-schemas))
 
 You can use it for a simple Prisma setup like this:
 
@@ -141,17 +140,32 @@ These environment variables are only used during the build process and are not e
 
 ### Multiple schemas
 
-If you have multiple separate schemas in the same project you can add the extension multiple times:
+Prisma supports splitting your schema into multiple files. To use this, set `schema` to be the folder that contains your root schema (e.g. `schema.prisma`).
 
-```ts
+For example, if your root schema is located at `./prisma/schema.prisma`, you would set the `schema` option to `prisma`:
+
+<CodeGroup>
+
+```ts trigger.config.ts
 prismaExtension({
-  schema: 'prisma/schema/main.prisma',
-  version: '6.2.0',
-  migrate: false,
-}),
-prismaExtension({
-  schema: 'prisma/schema/secondary.prisma',
-  version: '6.2.0',
+  schema: 'prisma',
+  version: '6.7.0',
   migrate: false,
 }),
 ```
+
+```shell Example structure
+./prisma
+├── migrations
+├── models
+│   ├── posts.prisma
+│   ├── users.prisma
+│   └── ... other `.prisma` files
+└── schema.prisma
+```
+
+</CodeGroup>
+
+<Note>
+    To use this feature you must be using `prisma@6.7.0` or higher. Their official documentation can be found [here](https://www.prisma.io/docs/orm/prisma-schema/overview/location#multi-file-prisma-schema).
+</Note>

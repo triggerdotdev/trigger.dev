@@ -1,6 +1,7 @@
 import { BuildManifest, BuildTarget } from "@trigger.dev/core/v3";
 import { binaryForRuntime, BuildContext, BuildExtension } from "@trigger.dev/core/v3/build";
 import assert from "node:assert";
+import { glob } from 'tinyglobby';
 import { existsSync } from "node:fs";
 import { cp, readdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
@@ -112,11 +113,18 @@ export class PrismaExtension implements BuildExtension {
 
     context.logger.debug(`PrismaExtension is generating the Prisma client for version ${version}`);
 
-    const usingSchemaFolder = dirname(this._resolvedSchemaPath).endsWith("schema");
+    // Multi-file schemas can be used by specifying a directory instead of a file. https://www.prisma.io/docs/orm/prisma-schema/overview/location#multi-file-prisma-schema
+    const usingSchemaFolder = !this._resolvedSchemaPath.endsWith(".prisma");
+
+    context.logger.debug(`Using schema folder: ${usingSchemaFolder}`);
 
     const commands: string[] = [];
 
-    let prismaDir: string | undefined;
+    const prismaSourceDir = usingSchemaFolder
+      ? this._resolvedSchemaPath
+      : dirname(this._resolvedSchemaPath);
+
+    const prismaDestinationDir = join(manifest.outputPath, "prisma");
 
     const generatorFlags: string[] = [];
 
@@ -127,14 +135,10 @@ export class PrismaExtension implements BuildExtension {
     if (this.options.typedSql) {
       generatorFlags.push(`--sql`);
 
-      const prismaDir = usingSchemaFolder
-        ? dirname(dirname(this._resolvedSchemaPath))
-        : dirname(this._resolvedSchemaPath);
-
       context.logger.debug(`Using typedSql`);
 
       // Find all the files prisma/sql/*.sql
-      const sqlFiles = await readdir(join(prismaDir, "sql")).then((files) =>
+      const sqlFiles = await readdir(join(prismaSourceDir, "sql")).then((files) =>
         files.filter((file) => file.endsWith(".sql"))
       );
 
@@ -142,11 +146,11 @@ export class PrismaExtension implements BuildExtension {
         sqlFiles,
       });
 
-      const sqlDestinationPath = join(manifest.outputPath, "prisma", "sql");
+      const sqlDestinationPath = join(prismaDestinationDir, "sql");
 
       for (const file of sqlFiles) {
         const destination = join(sqlDestinationPath, file);
-        const source = join(prismaDir, "sql", file);
+        const source = join(prismaSourceDir, "sql", file);
 
         context.logger.debug(`Copying the sql from ${source} to ${destination}`);
 
@@ -155,28 +159,20 @@ export class PrismaExtension implements BuildExtension {
     }
 
     if (usingSchemaFolder) {
-      const schemaDir = dirname(this._resolvedSchemaPath);
-
-      prismaDir = dirname(schemaDir);
-
-      context.logger.debug(`Using the schema folder: ${schemaDir}`);
+      context.logger.debug(`Using the schema folder: ${this._resolvedSchemaPath}`);
 
       // Find all the files in schemaDir that end with .prisma (excluding the schema.prisma file)
-      const prismaFiles = await readdir(schemaDir).then((files) =>
-        files.filter((file) => file.endsWith(".prisma"))
-      );
+      const prismaFiles = await glob(["**/*.prisma"], {
+        cwd: this._resolvedSchemaPath
+      })
 
       context.logger.debug(`Found prisma files in the schema folder`, {
         prismaFiles,
       });
 
-      const schemaDestinationPath = join(manifest.outputPath, "prisma", "schema");
-
-      const allPrismaFiles = [...prismaFiles];
-
-      for (const file of allPrismaFiles) {
-        const destination = join(schemaDestinationPath, file);
-        const source = join(schemaDir, file);
+      for (const file of prismaFiles) {
+        const destination = join(prismaDestinationDir, file);
+        const source = join(this._resolvedSchemaPath, file);
 
         context.logger.debug(`Copying the prisma schema from ${source} to ${destination}`);
 
@@ -186,15 +182,14 @@ export class PrismaExtension implements BuildExtension {
       commands.push(
         `${binaryForRuntime(
           manifest.runtime
-        )} node_modules/prisma/build/index.js generate ${generatorFlags.join(" ")}` // Don't add the --schema flag or this will fail
+        )} node_modules/prisma/build/index.js generate --schema ./prisma ${generatorFlags.join(" ")}`
       );
     } else {
-      prismaDir = dirname(this._resolvedSchemaPath);
       // Now we need to add a layer that:
       // Copies the prisma schema to the build outputPath
       // Adds the `prisma` CLI dependency to the dependencies
       // Adds the `prisma generate` command, which generates the Prisma client
-      const schemaDestinationPath = join(manifest.outputPath, "prisma", "schema.prisma");
+      const schemaDestinationPath = join(prismaDestinationDir, "schema.prisma");
       // Copy the prisma schema to the build output path
       context.logger.debug(
         `Copying the prisma schema from ${this._resolvedSchemaPath} to ${schemaDestinationPath}`
@@ -215,8 +210,8 @@ export class PrismaExtension implements BuildExtension {
 
     if (this.options.migrate) {
       // Copy the migrations directory to the build output path
-      const migrationsDir = join(prismaDir, "migrations");
-      const migrationsDestinationPath = join(manifest.outputPath, "prisma", "migrations");
+      const migrationsDir = join(prismaSourceDir, "migrations");
+      const migrationsDestinationPath = join(prismaDestinationDir, "migrations");
 
       context.logger.debug(
         `Copying the prisma migrations from ${migrationsDir} to ${migrationsDestinationPath}`
