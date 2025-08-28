@@ -21,6 +21,22 @@ export type WaitpointSystemOptions = {
   enqueueSystem: EnqueueSystem;
 };
 
+type WaitpointContinuationWaitpoint = Pick<Waitpoint, "id" | "type" | "completedAfter" | "status">;
+
+export type WaitpointContinuationResult =
+  | {
+      status: "unblocked";
+      waitpoints: Array<WaitpointContinuationWaitpoint>;
+    }
+  | {
+      status: "skipped";
+      reason: string;
+    }
+  | {
+      status: "blocked";
+      waitpoints: Array<WaitpointContinuationWaitpoint>;
+    };
+
 export class WaitpointSystem {
   private readonly $: SystemResources;
   private readonly executionSnapshotSystem: ExecutionSnapshotSystem;
@@ -480,7 +496,7 @@ export class WaitpointSystem {
     runId,
   }: {
     runId: string;
-  }): Promise<"blocked" | "unblocked" | "skipped"> {
+  }): Promise<WaitpointContinuationResult> {
     this.$.logger.debug(`continueRunIfUnblocked: start`, {
       runId,
     });
@@ -496,7 +512,7 @@ export class WaitpointSystem {
           batchId: true,
           batchIndex: true,
           waitpoint: {
-            select: { id: true, status: true },
+            select: { id: true, status: true, type: true, completedAfter: true },
           },
         },
       });
@@ -507,7 +523,11 @@ export class WaitpointSystem {
           runId,
           blockingWaitpoints,
         });
-        return "blocked";
+
+        return {
+          status: "blocked",
+          waitpoints: blockingWaitpoints.map((w) => w.waitpoint),
+        };
       }
 
       // 3. Get the run with environment
@@ -547,7 +567,10 @@ export class WaitpointSystem {
             executionStatus: snapshot.executionStatus,
           });
 
-          return "skipped";
+          return {
+            status: "skipped",
+            reason: "run is already executing",
+          };
         }
         case "QUEUED": {
           this.$.logger.info(`continueRunIfUnblocked: run is queued, skipping`, {
@@ -556,7 +579,10 @@ export class WaitpointSystem {
             executionStatus: snapshot.executionStatus,
           });
 
-          return "skipped";
+          return {
+            status: "skipped",
+            reason: "run is already queued",
+          };
         }
         case "PENDING_EXECUTING": {
           this.$.logger.info(`continueRunIfUnblocked: run is pending executing, skipping`, {
@@ -565,7 +591,10 @@ export class WaitpointSystem {
             executionStatus: snapshot.executionStatus,
           });
 
-          return "skipped";
+          return {
+            status: "skipped",
+            reason: "run is already pending executing",
+          };
         }
         case "QUEUED_EXECUTING": {
           this.$.logger.info(`continueRunIfUnblocked: run is already queued executing, skipping`, {
@@ -574,7 +603,10 @@ export class WaitpointSystem {
             executionStatus: snapshot.executionStatus,
           });
 
-          return "skipped";
+          return {
+            status: "skipped",
+            reason: "run is already queued executing",
+          };
         }
         case "EXECUTING": {
           this.$.logger.info(`continueRunIfUnblocked: run is already executing, skipping`, {
@@ -583,7 +615,10 @@ export class WaitpointSystem {
             executionStatus: snapshot.executionStatus,
           });
 
-          return "skipped";
+          return {
+            status: "skipped",
+            reason: "run is already executing",
+          };
         }
         case "PENDING_CANCEL":
         case "FINISHED": {
@@ -592,7 +627,10 @@ export class WaitpointSystem {
             snapshot,
             executionStatus: snapshot.executionStatus,
           });
-          return "skipped";
+          return {
+            status: "skipped",
+            reason: "run is finished",
+          };
         }
         case "EXECUTING_WITH_WAITPOINTS": {
           const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(
@@ -693,7 +731,10 @@ export class WaitpointSystem {
         });
       }
 
-      return "unblocked";
+      return {
+        status: "unblocked",
+        waitpoints: blockingWaitpoints.map((w) => w.waitpoint),
+      };
     }); // end of runlock
   }
 

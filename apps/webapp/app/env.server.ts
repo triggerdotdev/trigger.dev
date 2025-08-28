@@ -519,6 +519,14 @@ const EnvironmentSchema = z.object({
   RUN_ENGINE_RUN_LOCK_JITTER_FACTOR: z.coerce.number().default(0.15),
   RUN_ENGINE_RUN_LOCK_MAX_TOTAL_WAIT_TIME: z.coerce.number().int().default(15000),
 
+  RUN_ENGINE_SUSPENDED_HEARTBEAT_RETRIES_MAX_COUNT: z.coerce.number().int().default(12),
+  RUN_ENGINE_SUSPENDED_HEARTBEAT_RETRIES_MAX_DELAY_MS: z.coerce
+    .number()
+    .int()
+    .default(60_000 * 60 * 6),
+  RUN_ENGINE_SUSPENDED_HEARTBEAT_RETRIES_INITIAL_DELAY_MS: z.coerce.number().int().default(60_000),
+  RUN_ENGINE_SUSPENDED_HEARTBEAT_RETRIES_FACTOR: z.coerce.number().default(2),
+
   RUN_ENGINE_WORKER_REDIS_HOST: z
     .string()
     .optional()
