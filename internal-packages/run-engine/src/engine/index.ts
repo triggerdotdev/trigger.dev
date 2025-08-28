@@ -1161,10 +1161,12 @@ export class RunEngine {
   async #handleStalledSnapshot({
     runId,
     snapshotId,
+    restartAttempt,
     tx,
   }: {
     runId: string;
     snapshotId: string;
+    restartAttempt?: number;
     tx?: PrismaClientOrTransaction;
   }) {
     const prisma = tx ?? this.prisma;
@@ -1297,11 +1299,86 @@ export class RunEngine {
             snapshotId: latestSnapshot.id,
           });
 
-          switch (result) {
+          switch (result.status) {
             case "blocked": {
+              if (!this.options.suspendedHeartbeatRetriesConfig) {
+                break;
+              }
+
+              if (result.waitpoints.length === 0) {
+                this.logger.info("handleStalledSnapshot SUSPENDED blocked but no waitpoints", {
+                  runId,
+                  result,
+                  snapshotId: latestSnapshot.id,
+                });
+                // If the run is blocked but there are no waitpoints, we don't restart the heartbeat
+                break;
+              }
+
+              const hasRunOrBatchWaitpoints = result.waitpoints.some(
+                (w) => w.type === "RUN" || w.type === "BATCH"
+              );
+
+              if (!hasRunOrBatchWaitpoints) {
+                this.logger.info(
+                  "handleStalledSnapshot SUSPENDED blocked but no run or batch waitpoints",
+                  {
+                    runId,
+                    result,
+                    snapshotId: latestSnapshot.id,
+                  }
+                );
+                // If the run is blocked by waitpoints that are not RUN or BATCH, we don't restart the heartbeat
+                break;
+              }
+
+              const initialDelayMs =
+                this.options.suspendedHeartbeatRetriesConfig.initialDelayMs ?? 60_000;
+              const $restartAttempt = (restartAttempt ?? 0) + 1; // Start at 1
+              const maxDelayMs =
+                this.options.suspendedHeartbeatRetriesConfig.maxDelayMs ?? 60_000 * 60 * 6; // 6 hours
+              const factor = this.options.suspendedHeartbeatRetriesConfig.factor ?? 2;
+              const maxCount = this.options.suspendedHeartbeatRetriesConfig.maxCount ?? 12;
+
+              if ($restartAttempt >= maxCount) {
+                this.logger.info(
+                  "handleStalledSnapshot SUSPENDED blocked with waitpoints, max retries reached",
+                  {
+                    runId,
+                    result,
+                    snapshotId: latestSnapshot.id,
+                    restartAttempt: $restartAttempt,
+                    maxCount,
+                    config: this.options.suspendedHeartbeatRetriesConfig,
+                  }
+                );
+
+                break;
+              }
+
+              // Calculate the delay based on the retry attempt
+              const delayMs = Math.min(
+                initialDelayMs * Math.pow(factor, $restartAttempt - 1),
+                maxDelayMs
+              );
+
+              this.logger.info(
+                "handleStalledSnapshot SUSPENDED blocked with waitpoints, restarting heartbeat",
+                {
+                  runId,
+                  result,
+                  snapshotId: latestSnapshot.id,
+                  delayMs,
+                  restartAttempt: $restartAttempt,
+                }
+              );
+
               // Reschedule the heartbeat
               await this.executionSnapshotSystem.restartHeartbeatForRun({
                 runId,
+                delayMs,
+                restartAttempt: $restartAttempt,
+                tx,
               });
               break;
             }

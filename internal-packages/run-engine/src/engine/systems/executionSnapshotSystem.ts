@@ -396,32 +396,31 @@ export class ExecutionSnapshotSystem {
 
   public async restartHeartbeatForRun({
     runId,
+    delayMs,
+    restartAttempt,
     tx,
   }: {
     runId: string;
+    delayMs: number;
+    restartAttempt: number;
     tx?: PrismaClientOrTransaction;
   }): Promise<ExecutionResult> {
     const prisma = tx ?? this.$.prisma;
 
     const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId);
 
-    //extending the heartbeat
-    const intervalMs = this.#getHeartbeatIntervalMs(latestSnapshot.executionStatus);
+    this.$.logger.debug("restartHeartbeatForRun: enqueuing heartbeat", {
+      runId,
+      snapshotId: latestSnapshot.id,
+      delayMs,
+    });
 
-    if (intervalMs !== null) {
-      this.$.logger.debug("restartHeartbeatForRun: enqueuing heartbeat", {
-        runId,
-        snapshotId: latestSnapshot.id,
-        intervalMs,
-      });
-
-      await this.$.worker.enqueue({
-        id: `heartbeatSnapshot.${runId}`,
-        job: "heartbeatSnapshot",
-        payload: { snapshotId: latestSnapshot.id, runId },
-        availableAt: new Date(Date.now() + intervalMs),
-      });
-    }
+    await this.$.worker.enqueue({
+      id: `heartbeatSnapshot.${runId}`,
+      job: "heartbeatSnapshot",
+      payload: { snapshotId: latestSnapshot.id, runId, restartAttempt },
+      availableAt: new Date(Date.now() + delayMs),
+    });
 
     return executionResultFromSnapshot(latestSnapshot);
   }

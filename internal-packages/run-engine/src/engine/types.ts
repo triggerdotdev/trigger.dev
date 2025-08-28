@@ -71,6 +71,12 @@ export type RunEngineOptions = {
   /** If not set then checkpoints won't ever be used */
   retryWarmStartThresholdMs?: number;
   heartbeatTimeoutsMs?: Partial<HeartbeatTimeouts>;
+  suspendedHeartbeatRetriesConfig?: {
+    maxCount?: number;
+    maxDelayMs?: number;
+    initialDelayMs?: number;
+    factor?: number;
+  };
   queueRunsWaitingForWorkerBatchSize?: number;
   tracer: Tracer;
   meter?: Meter;
