@@ -500,6 +500,13 @@ export async function authenticatedEnvironmentForAuthentication(
           where: {
             projectId: project.id,
             slug: slug,
+            ...(slug === "dev"
+              ? {
+                  orgMember: {
+                    userId: user.id,
+                  },
+                }
+              : {}),
           },
           include: {
             project: true,
