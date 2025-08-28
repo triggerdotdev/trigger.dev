@@ -144,7 +144,12 @@ export class RunLocker {
   }
 
   /** Locks resources using RedLock. It won't lock again if we're already inside a lock with the same resources. */
-  async lock<T>(name: string, resources: string[], routine: () => Promise<T>): Promise<T> {
+  async lock<T>(
+    name: string,
+    resources: string[],
+    routine: () => Promise<T>,
+    attributes?: Attributes
+  ): Promise<T> {
     const currentContext = this.asyncLocalStorage.getStore();
     const joinedResources = [...resources].sort().join(",");
 
@@ -187,7 +192,7 @@ export class RunLocker {
         return result;
       },
       {
-        attributes: { name, resources, timeout: this.duration },
+        attributes: { name, resources, timeout: this.duration, ...attributes },
       }
     );
   }
