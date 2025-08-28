@@ -1,5 +1,6 @@
+import { AnyRunShape } from "@trigger.dev/core/v3";
 import { toolsMetadata } from "../config.js";
-import { formatRun, formatRunList, formatRunTrace } from "../formatters.js";
+import { formatRun, formatRunList, formatRunShape, formatRunTrace } from "../formatters.js";
 import { CommonRunsInput, GetRunDetailsInput, ListRunsInput } from "../schemas.js";
 import { respondWithError, toolHandler } from "../utils.js";
 
@@ -56,6 +57,59 @@ export const getRunDetailsTool = {
           text: content.join("\n"),
         },
       ],
+    };
+  }),
+};
+
+export const waitForRunToCompleteTool = {
+  name: toolsMetadata.wait_for_run_to_complete.name,
+  title: toolsMetadata.wait_for_run_to_complete.title,
+  description: toolsMetadata.wait_for_run_to_complete.description,
+  inputSchema: CommonRunsInput.shape,
+  handler: toolHandler(CommonRunsInput.shape, async (input, { ctx, signal }) => {
+    ctx.logger?.log("calling wait_for_run_to_complete", { input });
+
+    if (ctx.options.devOnly && input.environment !== "dev") {
+      return respondWithError(
+        `This MCP server is only available for the dev environment. You tried to access the ${input.environment} environment. Remove the --dev-only flag to access other environments.`
+      );
+    }
+
+    const projectRef = await ctx.getProjectRef({
+      projectRef: input.projectRef,
+      cwd: input.configPath,
+    });
+
+    const apiClient = await ctx.getApiClient({
+      projectRef,
+      environment: input.environment,
+      scopes: [`read:runs:${input.runId}`],
+      branch: input.branch,
+    });
+
+    const runSubscription = apiClient.subscribeToRun(input.runId, { signal });
+    const readableStream = runSubscription.getReader();
+
+    let run: AnyRunShape | null = null;
+
+    while (true) {
+      const { done, value } = await readableStream.read();
+      if (done) {
+        break;
+      }
+      run = value;
+
+      if (value.isCompleted) {
+        break;
+      }
+    }
+
+    if (!run) {
+      return respondWithError("Run not found");
+    }
+
+    return {
+      content: [{ type: "text", text: formatRunShape(run) }],
     };
   }),
 };

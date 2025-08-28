@@ -130,7 +130,7 @@ export const triggerTaskTool = {
     const contents = [
       `Task ${input.taskId} triggered and run with ID created: ${result.id}.`,
       `View the run in the dashboard: ${taskRunUrl}`,
-      `You can also use the get_run_details tool to get the details of the run.`,
+      `Use the ${toolsMetadata.wait_for_run_to_complete.name} tool to wait for the run to complete and the ${toolsMetadata.get_run_details.name} tool to get the details of the run.`,
     ];
 
     if (input.environment === "dev") {

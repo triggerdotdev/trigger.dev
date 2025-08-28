@@ -1,3 +1,4 @@
+import { AnyRunShape } from "@trigger.dev/core/v3";
 import {
   ListRunResponseItem,
   RetrieveRunResponse,
@@ -95,6 +96,34 @@ export function formatRun(run: RetrieveRunResponse): string {
   // Metadata
   if (run.metadata && Object.keys(run.metadata).length > 0) {
     lines.push(`Metadata: ${Object.keys(run.metadata).length} fields`);
+  }
+
+  return lines.join("\n");
+}
+
+export function formatRunShape(run: AnyRunShape): string {
+  const lines: string[] = [];
+
+  lines.push(`Run ${run.id}`);
+  lines.push(`Task: ${run.taskIdentifier}`);
+  lines.push(`Status: ${formatStatus(run.status)}`);
+
+  if (run.output) {
+    lines.push(`Output: ${JSON.stringify(run.output, null, 2)}`);
+  }
+
+  if (run.error) {
+    lines.push(`Error: ${run.error.name || "Error"}: ${run.error.message}`);
+  }
+
+  if (run.metadata) {
+    lines.push(`Metadata: ${JSON.stringify(run.metadata, null, 2)}`);
+  }
+
+  lines.push(`Created at: ${formatDateTime(run.createdAt)}`);
+
+  if (run.finishedAt) {
+    lines.push(`Finished at: ${formatDateTime(run.finishedAt)}`);
   }
 
   return lines.join("\n");
