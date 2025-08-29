@@ -22,6 +22,10 @@ export async function createGitHubAppInstallSession(
   organizationId: string,
   redirectTo: string
 ): Promise<{ url: string; cookieHeader: string }> {
+  if (env.GITHUB_APP_ENABLED !== "1") {
+    throw new Error("GitHub App is not enabled");
+  }
+
   const state = randomBytes(32).toString("hex");
 
   const session = await sessionStorage.getSession();

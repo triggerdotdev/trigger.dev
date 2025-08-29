@@ -2,13 +2,16 @@ import { App, type Octokit } from "octokit";
 import { env } from "../env.server";
 import { prisma } from "~/db.server";
 
-export const githubApp = new App({
-  appId: env.GITHUB_APP_ID,
-  privateKey: env.GITHUB_APP_PRIVATE_KEY,
-  webhooks: {
-    secret: env.GITHUB_APP_WEBHOOK_SECRET,
-  },
-});
+export const githubApp =
+  env.GITHUB_APP_ENABLED === "1"
+    ? new App({
+        appId: env.GITHUB_APP_ID,
+        privateKey: env.GITHUB_APP_PRIVATE_KEY,
+        webhooks: {
+          secret: env.GITHUB_APP_WEBHOOK_SECRET,
+        },
+      })
+    : null;
 
 /**
  * Links a GitHub App installation to a Trigger organization
@@ -17,6 +20,10 @@ export async function linkGitHubAppInstallation(
   installationId: number,
   organizationId: string
 ): Promise<void> {
+  if (!githubApp) {
+    throw new Error("GitHub App is not enabled");
+  }
+
   const octokit = await githubApp.getInstallationOctokit(installationId);
   const { data: installation } = await octokit.rest.apps.getInstallation({
     installation_id: installationId,
