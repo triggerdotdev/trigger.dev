@@ -213,90 +213,90 @@ export default function Page() {
 
       <PageBody>
         <MainHorizontallyCenteredContainer>
-          <div className="mb-3 border-b border-grid-dimmed pb-3">
-            <Header2>Project settings</Header2>
-          </div>
           <div className="flex flex-col gap-6">
-            <Fieldset>
-              <InputGroup fullWidth>
-                <Label>Project ref</Label>
-                <ClipboardField value={project.externalRef} variant={"secondary/medium"} />
-                <Hint>
-                  This goes in your{" "}
-                  <InlineCode variant="extra-extra-small">trigger.config</InlineCode> file.
-                </Hint>
-              </InputGroup>
-            </Fieldset>
-
-            <Form method="post" {...renameForm.props}>
-              <input type="hidden" name="action" value="rename" />
-              <Fieldset className="gap-y-0">
-                <InputGroup fullWidth>
-                  <Label htmlFor={projectName.id}>Rename your project</Label>
-                  <Input
-                    {...conform.input(projectName, { type: "text" })}
-                    defaultValue={project.name}
-                    placeholder="Your project name"
-                    icon={FolderIcon}
-                    autoFocus
-                  />
-                  <FormError id={projectName.errorId}>{projectName.error}</FormError>
-                </InputGroup>
-                <FormButtons
-                  confirmButton={
-                    <Button
-                      type="submit"
-                      variant={"secondary/small"}
-                      disabled={isRenameLoading}
-                      LeadingIcon={isRenameLoading ? SpinnerWhite : undefined}
-                    >
-                      Rename project
-                    </Button>
-                  }
-                  className="border-t-0"
-                />
-              </Fieldset>
-            </Form>
+            <div>
+              <Header2 spacing>General</Header2>
+              <div className="w-full rounded-sm border border-grid-dimmed p-4">
+                <Fieldset className="mb-5">
+                  <InputGroup fullWidth>
+                    <Label>Project ref</Label>
+                    <ClipboardField value={project.externalRef} variant={"secondary/medium"} />
+                    <Hint>
+                      This goes in your{" "}
+                      <InlineCode variant="extra-extra-small">trigger.config</InlineCode> file.
+                    </Hint>
+                  </InputGroup>
+                </Fieldset>
+                <Form method="post" {...renameForm.props}>
+                  <Fieldset>
+                    <InputGroup fullWidth>
+                      <Label htmlFor={projectName.id}>Project name</Label>
+                      <Input
+                        {...conform.input(projectName, { type: "text" })}
+                        defaultValue={project.name}
+                        placeholder="Project name"
+                        icon={FolderIcon}
+                        autoFocus
+                      />
+                      <FormError id={projectName.errorId}>{projectName.error}</FormError>
+                    </InputGroup>
+                    <FormButtons
+                      confirmButton={
+                        <Button
+                          type="submit"
+                          name="action"
+                          value="rename"
+                          variant={"secondary/small"}
+                          disabled={isRenameLoading}
+                          LeadingIcon={isRenameLoading ? SpinnerWhite : undefined}
+                        >
+                          Save
+                        </Button>
+                      }
+                    />
+                  </Fieldset>
+                </Form>
+              </div>
+            </div>
 
             <div>
               <Header2 spacing>Danger zone</Header2>
-              <Form
-                method="post"
-                {...deleteForm.props}
-                className="w-full rounded-sm border border-rose-500/40"
-              >
-                <input type="hidden" name="action" value="delete" />
-                <Fieldset className="p-4">
-                  <InputGroup fullWidth>
-                    <Label htmlFor={projectSlug.id}>Delete project</Label>
-                    <Input
-                      {...conform.input(projectSlug, { type: "text" })}
-                      placeholder="Your project slug"
-                      icon={ExclamationTriangleIcon}
+              <div className="w-full rounded-sm border border-rose-500/40 p-4">
+                <Form method="post" {...deleteForm.props}>
+                  <Fieldset>
+                    <InputGroup fullWidth>
+                      <Label htmlFor={projectSlug.id}>Delete project</Label>
+                      <Input
+                        {...conform.input(projectSlug, { type: "text" })}
+                        placeholder="Your project slug"
+                        icon={ExclamationTriangleIcon}
+                      />
+                      <FormError id={projectSlug.errorId}>{projectSlug.error}</FormError>
+                      <FormError>{deleteForm.error}</FormError>
+                      <Hint>
+                        This change is irreversible, so please be certain. Type in the Project slug
+                        <InlineCode variant="extra-small">{project.slug}</InlineCode> and then press
+                        Delete.
+                      </Hint>
+                    </InputGroup>
+                    <FormButtons
+                      confirmButton={
+                        <Button
+                          type="submit"
+                          name="action"
+                          value="delete"
+                          variant={"danger/small"}
+                          LeadingIcon={isDeleteLoading ? SpinnerWhite : TrashIcon}
+                          leadingIconClassName="text-white"
+                          disabled={isDeleteLoading}
+                        >
+                          Delete
+                        </Button>
+                      }
                     />
-                    <FormError id={projectSlug.errorId}>{projectSlug.error}</FormError>
-                    <FormError>{deleteForm.error}</FormError>
-                    <Hint>
-                      This change is irreversible, so please be certain. Type in the Project slug
-                      <InlineCode variant="extra-small">{project.slug}</InlineCode> and then press
-                      Delete.
-                    </Hint>
-                  </InputGroup>
-                  <FormButtons
-                    confirmButton={
-                      <Button
-                        type="submit"
-                        variant={"danger/small"}
-                        LeadingIcon={isDeleteLoading ? SpinnerWhite : TrashIcon}
-                        leadingIconClassName="text-white"
-                        disabled={isDeleteLoading}
-                      >
-                        Delete project
-                      </Button>
-                    }
-                  />
-                </Fieldset>
-              </Form>
+                  </Fieldset>
+                </Form>
+              </div>
             </div>
           </div>
         </MainHorizontallyCenteredContainer>
