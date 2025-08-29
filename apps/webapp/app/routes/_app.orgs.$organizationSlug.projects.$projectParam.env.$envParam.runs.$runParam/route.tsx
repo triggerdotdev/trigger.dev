@@ -601,7 +601,7 @@ function TasksTreeView({
           min={resizableSettings.tree.tree.min}
         >
           <div className="grid h-full grid-rows-[2rem_1fr] overflow-hidden">
-            <div className="flex items-center pl-1 pr-2">
+            <div className="flex items-center pl-1 pr-2 justify-between">
               {rootRun || parentRun ? (
                 <ShowParentOrRootLinks
                   relationships={{
