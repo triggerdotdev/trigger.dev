@@ -573,6 +573,16 @@ export class DequeueSystem {
                 },
                 placementTags: [placementTag("paid", isPaying ? "true" : "false")],
               } satisfies DequeuedMessage;
+            },
+            {
+              run_id: runId,
+              org_id: orgId,
+              environment_id: message.message.environmentId,
+              environment_type: message.message.environmentType,
+              worker_queue_length: message.workerQueueLength ?? 0,
+              consumer_id: consumerId,
+              worker_queue: workerQueue,
+              blocking_pop: blockingPop ?? true,
             }
           );
 
