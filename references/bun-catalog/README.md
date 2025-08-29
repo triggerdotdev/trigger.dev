@@ -8,7 +8,7 @@ You can test v3 tasks from inside the app in this project. It's designed to be u
 
 2. In Postgres go to the "Projects" table and for the project you create change the `externalRef` to `yubjwjsfkxnylobaqvqz`.
 
-This is so the `trigger.config.ts` file inside the v3-catalog doesn't keep getting changed by people accidentally pushing this.
+This is so the `trigger.config.ts` file inside the hello-world doesn't keep getting changed by people accidentally pushing this.
 
 ## How to use
 
@@ -24,10 +24,10 @@ pnpm run dev --filter webapp
 pnpm run build --filter trigger.dev
 ```
 
-3. CD into the v3-catalog directory
+3. CD into the hello-world directory
 
 ```bash
-cd references/v3-catalog
+cd references/hello-world
 ```
 
 4. If you've never logged in to the CLI you'll see an error telling you to login. Do this:
@@ -54,4 +54,4 @@ pnpm exec trigger dev
 
 7. Go to the webapp now and inside your project you should see some tasks on the "Tasks" page.
 
-8. Go to the "Test" page in the sidebar and select a task. Then enter a payload and click "Run test". You can tell what the payloads should be by looking at the relevant task file inside the `/references/v3-catalog/src/trigger` folder. Many of them accept an empty payload.
+8. Go to the "Test" page in the sidebar and select a task. Then enter a payload and click "Run test". You can tell what the payloads should be by looking at the relevant task file inside the `/references/hello-world/src/trigger` folder. Many of them accept an empty payload.

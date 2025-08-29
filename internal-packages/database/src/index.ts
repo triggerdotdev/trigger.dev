@@ -1,2 +1,2 @@
-export * from "@prisma/client";
+export * from "../generated/prisma";
 export * from "./transaction";

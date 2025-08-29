@@ -23,7 +23,12 @@ const EnvironmentSchema = z.object({
   DATABASE_READ_REPLICA_URL: z.string().optional(),
   SESSION_SECRET: z.string(),
   MAGIC_LINK_SECRET: z.string(),
-  ENCRYPTION_KEY: z.string(),
+  ENCRYPTION_KEY: z
+    .string()
+    .refine(
+      (val) => Buffer.from(val, "utf8").length === 32,
+      "ENCRYPTION_KEY must be exactly 32 bytes"
+    ),
   WHITELISTED_EMAILS: z
     .string()
     .refine(isValidRegex, "WHITELISTED_EMAILS must be a valid regex.")
@@ -413,6 +418,17 @@ const EnvironmentSchema = z.object({
   MARQS_SHARED_WORKER_QUEUE_CONSUMER_INTERVAL_MS: z.coerce.number().int().default(250),
   MARQS_SHARED_WORKER_QUEUE_MAX_MESSAGE_COUNT: z.coerce.number().int().default(10),
 
+  MARQS_SHARED_WORKER_QUEUE_EAGER_DEQUEUE_ENABLED: z.string().default("0"),
+  MARQS_WORKER_ENABLED: z.string().default("0"),
+  MARQS_WORKER_COUNT: z.coerce.number().int().default(2),
+  MARQS_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(50),
+  MARQS_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(5),
+  MARQS_WORKER_POLL_INTERVAL_MS: z.coerce.number().int().default(100),
+  MARQS_WORKER_IMMEDIATE_POLL_INTERVAL_MS: z.coerce.number().int().default(100),
+  MARQS_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(60_000),
+  MARQS_SHARED_WORKER_QUEUE_COOLOFF_COUNT_THRESHOLD: z.coerce.number().int().default(10),
+  MARQS_SHARED_WORKER_QUEUE_COOLOFF_PERIOD_MS: z.coerce.number().int().default(5_000),
+
   PROD_TASK_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().optional(),
 
   VERBOSE_GRAPHILE_LOGGING: z.string().default("false"),
@@ -485,7 +501,10 @@ const EnvironmentSchema = z.object({
   RUN_ENGINE_RETRY_WARM_START_THRESHOLD_MS: z.coerce.number().int().default(30_000),
   RUN_ENGINE_PROCESS_WORKER_QUEUE_DEBOUNCE_MS: z.coerce.number().int().default(200),
   RUN_ENGINE_DEQUEUE_BLOCKING_TIMEOUT_SECONDS: z.coerce.number().int().default(10),
-  RUN_ENGINE_MASTER_QUEUE_CONSUMERS_INTERVAL_MS: z.coerce.number().int().default(500),
+  RUN_ENGINE_MASTER_QUEUE_CONSUMERS_INTERVAL_MS: z.coerce.number().int().default(1000),
+  RUN_ENGINE_MASTER_QUEUE_COOLOFF_PERIOD_MS: z.coerce.number().int().default(10_000),
+  RUN_ENGINE_MASTER_QUEUE_COOLOFF_COUNT_THRESHOLD: z.coerce.number().int().default(10),
+  RUN_ENGINE_MASTER_QUEUE_CONSUMER_DEQUEUE_COUNT: z.coerce.number().int().default(10),
   RUN_ENGINE_CONCURRENCY_SWEEPER_SCAN_SCHEDULE: z.string().optional(),
   RUN_ENGINE_CONCURRENCY_SWEEPER_PROCESS_MARKED_SCHEDULE: z.string().optional(),
   RUN_ENGINE_CONCURRENCY_SWEEPER_SCAN_JITTER_IN_MS: z.coerce.number().int().optional(),
@@ -499,6 +518,14 @@ const EnvironmentSchema = z.object({
   RUN_ENGINE_RUN_LOCK_BACKOFF_MULTIPLIER: z.coerce.number().default(1.8),
   RUN_ENGINE_RUN_LOCK_JITTER_FACTOR: z.coerce.number().default(0.15),
   RUN_ENGINE_RUN_LOCK_MAX_TOTAL_WAIT_TIME: z.coerce.number().int().default(15000),
+
+  RUN_ENGINE_SUSPENDED_HEARTBEAT_RETRIES_MAX_COUNT: z.coerce.number().int().default(12),
+  RUN_ENGINE_SUSPENDED_HEARTBEAT_RETRIES_MAX_DELAY_MS: z.coerce
+    .number()
+    .int()
+    .default(60_000 * 60 * 6),
+  RUN_ENGINE_SUSPENDED_HEARTBEAT_RETRIES_INITIAL_DELAY_MS: z.coerce.number().int().default(60_000),
+  RUN_ENGINE_SUSPENDED_HEARTBEAT_RETRIES_FACTOR: z.coerce.number().default(2),
 
   RUN_ENGINE_WORKER_REDIS_HOST: z
     .string()
@@ -1064,6 +1091,8 @@ const EnvironmentSchema = z.object({
   AI_RUN_FILTER_MODEL: z.string().optional(),
 
   EVENT_LOOP_MONITOR_THRESHOLD_MS: z.coerce.number().int().default(100),
+
+  VERY_SLOW_QUERY_THRESHOLD_MS: z.coerce.number().int().optional(),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

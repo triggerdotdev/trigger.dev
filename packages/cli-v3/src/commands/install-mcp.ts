@@ -15,7 +15,6 @@ import {
 } from "../utilities/fileSystem.js";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { VERSION } from "../version.js";
-import { spinner } from "../utilities/windows.js";
 
 const cliVersion = VERSION as string;
 const cliTag = cliVersion.includes("v4-beta") ? "v4-beta" : "latest";
@@ -113,7 +112,7 @@ type ResolvedClients = SupportedClients | "unsupported";
 
 const InstallMcpCommandOptions = z.object({
   projectRef: z.string().optional(),
-  tag: z.string().default(cliVersion),
+  tag: z.string().default(cliTag),
   devOnly: z.boolean().optional(),
   yolo: z.boolean().default(false),
   scope: z.enum(scopes).optional(),

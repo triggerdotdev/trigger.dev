@@ -41,6 +41,7 @@ import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node";
 import {
   SEMRESATTRS_SERVICE_INSTANCE_ID,
   SEMRESATTRS_SERVICE_NAME,
+  SEMRESATTRS_HOST_NAME,
 } from "@opentelemetry/semantic-conventions";
 import { PrismaInstrumentation } from "@prisma/instrumentation";
 import { env } from "~/env.server";
@@ -51,6 +52,8 @@ import { logger } from "~/services/logger.server";
 import { flattenAttributes } from "@trigger.dev/core/v3";
 import { randomUUID } from "node:crypto";
 import { prisma } from "~/db.server";
+import { hostname } from "node:os";
+import { getAsyncResourceAttributes } from "./telemetry/asyncResourceAttributes.server";
 
 export const SEMINTATTRS_FORCE_RECORDING = "forceRecording";
 
@@ -168,6 +171,17 @@ export async function emitWarnLog(message: string, params: Record<string, unknow
   });
 }
 
+function getResource() {
+  return new Resource(
+    {
+      [SEMRESATTRS_SERVICE_NAME]: env.SERVICE_NAME,
+      [SEMRESATTRS_SERVICE_INSTANCE_ID]: SERVICE_INSTANCE_ID,
+      [SEMRESATTRS_HOST_NAME]: hostname(),
+    },
+    getAsyncResourceAttributes()
+  );
+}
+
 function setupTelemetry() {
   if (env.INTERNAL_OTEL_TRACE_DISABLED === "1") {
     console.log(`🔦 Tracer disabled, returning a noop tracer`);
@@ -186,10 +200,7 @@ function setupTelemetry() {
 
   const provider = new NodeTracerProvider({
     forceFlushTimeoutMillis: 15_000,
-    resource: new Resource({
-      [SEMRESATTRS_SERVICE_NAME]: env.SERVICE_NAME,
-      [SEMRESATTRS_SERVICE_INSTANCE_ID]: SERVICE_INSTANCE_ID,
-    }),
+    resource: getResource(),
     sampler: new ParentBasedSampler({
       root: new CustomWebappSampler(new TraceIdRatioBasedSampler(samplingRate)),
     }),
@@ -239,9 +250,7 @@ function setupTelemetry() {
     });
 
     const loggerProvider = new LoggerProvider({
-      resource: new Resource({
-        [SEMRESATTRS_SERVICE_NAME]: env.SERVICE_NAME,
-      }),
+      resource: getResource(),
       logRecordLimits: {
         attributeCountLimit: 1000,
       },
@@ -296,10 +305,7 @@ function setupMetrics() {
   const exporter = createMetricsExporter();
 
   const meterProvider = new MeterProvider({
-    resource: new Resource({
-      [SEMRESATTRS_SERVICE_NAME]: env.SERVICE_NAME,
-      [SEMRESATTRS_SERVICE_INSTANCE_ID]: SERVICE_INSTANCE_ID,
-    }),
+    resource: getResource(),
     readers: [
       new PeriodicExportingMetricReader({
         exporter,

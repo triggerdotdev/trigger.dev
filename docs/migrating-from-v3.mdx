@@ -290,7 +290,7 @@ const batchHandle = await tasks.batchTrigger([
 console.log(batchHandle.runs);
 ```
 
-In v4, you now need to use the `runs.list()` method to get the list of runs:
+In v4, you now need to use the `batch.retrieve()` method to get the batch with its runs:
 
 ```ts
 // In v4
@@ -299,9 +299,9 @@ const batchHandle = await tasks.batchTrigger([
   [myOtherTask, { baz: "qux" }],
 ]);
 
-// Now you need to call runs.list()
-const runs = await batchHandle.runs.list();
-console.log(runs);
+// Now you need to retrieve the batch to get the runs
+const batch = await batch.retrieve(batchHandle.batchId);
+console.log(batch.runs);
 ```
 
 ### OpenTelemetry

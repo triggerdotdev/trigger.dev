@@ -22,6 +22,7 @@ import {
   WorkerGroupTokenService,
 } from "~/v3/services/worker/workerGroupTokenService.server";
 import { API_VERSIONS, getApiVersion } from "~/api/versions";
+import { WORKER_HEADERS } from "@trigger.dev/core/v3/runEngineWorker";
 
 type AnyZodSchema = z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
 
@@ -795,6 +796,7 @@ type WorkerLoaderHandlerFunction<
   headers: THeadersSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
     ? z.infer<THeadersSchema>
     : undefined;
+  runnerId?: string;
 }) => Promise<Response>;
 
 export function createLoaderWorkerApiRoute<
@@ -858,12 +860,15 @@ export function createLoaderWorkerApiRoute<
         parsedHeaders = headers.data;
       }
 
+      const runnerId = request.headers.get(WORKER_HEADERS.RUNNER_ID) ?? undefined;
+
       const result = await handler({
         params: parsedParams,
         searchParams: parsedSearchParams,
         authenticatedWorker: authenticationResult,
         request,
         headers: parsedHeaders,
+        runnerId,
       });
       return result;
     } catch (error) {
@@ -924,6 +929,7 @@ type WorkerActionHandlerFunction<
   body: TBodySchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
     ? z.infer<TBodySchema>
     : undefined;
+  runnerId?: string;
 }) => Promise<Response>;
 
 export function createActionWorkerApiRoute<
@@ -1021,6 +1027,8 @@ export function createActionWorkerApiRoute<
         parsedBody = parsed.data;
       }
 
+      const runnerId = request.headers.get(WORKER_HEADERS.RUNNER_ID) ?? undefined;
+
       const result = await handler({
         params: parsedParams,
         searchParams: parsedSearchParams,
@@ -1028,6 +1036,7 @@ export function createActionWorkerApiRoute<
         request,
         body: parsedBody,
         headers: parsedHeaders,
+        runnerId,
       });
       return result;
     } catch (error) {

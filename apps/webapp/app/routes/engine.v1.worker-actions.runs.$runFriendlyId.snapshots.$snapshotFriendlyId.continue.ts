@@ -14,6 +14,7 @@ export const loader = createLoaderWorkerApiRoute(
   async ({
     authenticatedWorker,
     params,
+    runnerId,
   }): Promise<TypedResponse<WorkerApiContinueRunExecutionRequestBody>> => {
     const { runFriendlyId, snapshotFriendlyId } = params;
 
@@ -23,6 +24,7 @@ export const loader = createLoaderWorkerApiRoute(
       const continuationResult = await authenticatedWorker.continueRunExecution({
         runFriendlyId,
         snapshotFriendlyId,
+        runnerId,
       });
 
       return json(continuationResult);

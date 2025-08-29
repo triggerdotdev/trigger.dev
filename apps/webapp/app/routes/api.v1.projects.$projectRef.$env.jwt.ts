@@ -1,9 +1,10 @@
-import { ActionFunctionArgs, json } from "@remix-run/node";
+import { type ActionFunctionArgs, json } from "@remix-run/node";
 import { generateJWT as internal_generateJWT } from "@trigger.dev/core/v3";
 import { z } from "zod";
-import { prisma } from "~/db.server";
-import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
-import { getEnvironmentFromEnv } from "./api.v1.projects.$projectRef.$env";
+import {
+  authenticatedEnvironmentForAuthentication,
+  authenticateRequest,
+} from "~/services/apiAuth.server";
 
 const ParamsSchema = z.object({
   projectRef: z.string(),
@@ -20,7 +21,11 @@ const RequestBodySchema = z.object({
 });
 
 export async function action({ request, params }: ActionFunctionArgs) {
-  const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
+  const authenticationResult = await authenticateRequest(request, {
+    personalAccessToken: true,
+    organizationAccessToken: true,
+    apiKey: false,
+  });
 
   if (!authenticationResult) {
     return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
@@ -33,35 +38,14 @@ export async function action({ request, params }: ActionFunctionArgs) {
   }
 
   const { projectRef, env } = parsedParams.data;
+  const triggerBranch = request.headers.get("x-trigger-branch") ?? undefined;
 
-  const project = await prisma.project.findFirst({
-    where: {
-      externalRef: projectRef,
-      organization: {
-        members: {
-          some: {
-            userId: authenticationResult.userId,
-          },
-        },
-      },
-    },
-  });
-
-  if (!project) {
-    return json({ error: "Project not found" }, { status: 404 });
-  }
-
-  const envResult = await getEnvironmentFromEnv({
-    projectId: project.id,
-    userId: authenticationResult.userId,
+  const runtimeEnv = await authenticatedEnvironmentForAuthentication(
+    authenticationResult,
+    projectRef,
     env,
-  });
-
-  if (!envResult.success) {
-    return json({ error: envResult.error }, { status: 404 });
-  }
-
-  const runtimeEnv = envResult.environment;
+    triggerBranch
+  );
 
   const parsedBody = RequestBodySchema.safeParse(await request.json());
 
@@ -72,29 +56,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
     );
   }
 
-  const triggerBranch = request.headers.get("x-trigger-branch") ?? undefined;
-
-  let previewBranchEnvironmentId: string | undefined;
-
-  if (triggerBranch) {
-    const previewBranch = await prisma.runtimeEnvironment.findFirst({
-      where: {
-        projectId: project.id,
-        branchName: triggerBranch,
-        parentEnvironmentId: runtimeEnv.id,
-        archivedAt: null,
-      },
-    });
-
-    if (previewBranch) {
-      previewBranchEnvironmentId = previewBranch.id;
-    } else {
-      return json({ error: `Preview branch ${triggerBranch} not found` }, { status: 404 });
-    }
-  }
-
   const claims = {
-    sub: previewBranchEnvironmentId ?? runtimeEnv.id,
+    sub: runtimeEnv.id,
     pub: true,
     ...parsedBody.data.claims,
   };

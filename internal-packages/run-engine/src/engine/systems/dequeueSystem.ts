@@ -4,8 +4,16 @@ import { assertExhaustive } from "@trigger.dev/core";
 import { DequeuedMessage, RetryOptions } from "@trigger.dev/core/v3";
 import { placementTag } from "@trigger.dev/core/v3/serverOnly";
 import { getMaxDuration } from "@trigger.dev/core/v3/isomorphic";
-import { PrismaClientOrTransaction } from "@trigger.dev/database";
-import { getRunWithBackgroundWorkerTasks } from "../db/worker.js";
+import {
+  BackgroundWorker,
+  BackgroundWorkerTask,
+  Prisma,
+  PrismaClientOrTransaction,
+  TaskQueue,
+  WorkerDeployment,
+} from "@trigger.dev/database";
+import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/isomorphic";
+
 import { sendNotificationToWorker } from "../eventBus.js";
 import { getMachinePreset } from "../machinePresets.js";
 import { isDequeueableExecutionStatus, isExecuting } from "../statuses.js";
@@ -20,6 +28,61 @@ export type DequeueSystemOptions = {
   executionSnapshotSystem: ExecutionSnapshotSystem;
   runAttemptSystem: RunAttemptSystem;
   billingCache: BillingCache;
+};
+
+type RunWithMininimalEnvironment = Prisma.TaskRunGetPayload<{
+  include: {
+    runtimeEnvironment: {
+      select: {
+        id: true;
+        type: true;
+      };
+    };
+  };
+}>;
+
+type RunWithBackgroundWorkerTasksResult =
+  | {
+      success: false;
+      code: "NO_RUN";
+      message: string;
+    }
+  | {
+      success: false;
+      code:
+        | "NO_WORKER"
+        | "TASK_NOT_IN_LATEST"
+        | "TASK_NEVER_REGISTERED"
+        | "BACKGROUND_WORKER_MISMATCH"
+        | "QUEUE_NOT_FOUND"
+        | "RUN_ENVIRONMENT_ARCHIVED";
+      message: string;
+      run: RunWithMininimalEnvironment;
+    }
+  | {
+      success: false;
+      code: "BACKGROUND_WORKER_MISMATCH";
+      message: string;
+      backgroundWorker: {
+        expected: string;
+        received: string;
+      };
+      run: RunWithMininimalEnvironment;
+    }
+  | {
+      success: true;
+      run: RunWithMininimalEnvironment;
+      worker: BackgroundWorker;
+      task: BackgroundWorkerTask;
+      queue: TaskQueue;
+      deployment: WorkerDeployment | null;
+    };
+
+type WorkerDeploymentWithWorkerTasks = {
+  worker: BackgroundWorker;
+  tasks: BackgroundWorkerTask[];
+  queues: TaskQueue[];
+  deployment: WorkerDeployment | null;
 };
 
 export class DequeueSystem {
@@ -46,6 +109,8 @@ export class DequeueSystem {
     workerId,
     runnerId,
     tx,
+    blockingPop,
+    blockingPopTimeoutSeconds,
   }: {
     consumerId: string;
     workerQueue: string;
@@ -53,6 +118,8 @@ export class DequeueSystem {
     workerId?: string;
     runnerId?: string;
     tx?: PrismaClientOrTransaction;
+    blockingPop?: boolean;
+    blockingPopTimeoutSeconds?: number;
   }): Promise<DequeuedMessage | undefined> {
     const prisma = tx ?? this.$.prisma;
 
@@ -63,7 +130,11 @@ export class DequeueSystem {
         //gets multiple runs from the queue
         const message = await this.$.runQueue.dequeueMessageFromWorkerQueue(
           consumerId,
-          workerQueue
+          workerQueue,
+          {
+            blockingPop,
+            blockingPopTimeoutSeconds,
+          }
         );
         if (!message) {
           return;
@@ -72,7 +143,14 @@ export class DequeueSystem {
         const orgId = message.message.orgId;
         const runId = message.messageId;
 
-        span.setAttribute("runId", runId);
+        span.setAttribute("run_id", runId);
+        span.setAttribute("org_id", orgId);
+        span.setAttribute("environment_id", message.message.environmentId);
+        span.setAttribute("environment_type", message.message.environmentType);
+        span.setAttribute("worker_queue_length", message.workerQueueLength ?? 0);
+        span.setAttribute("consumer_id", consumerId);
+        span.setAttribute("worker_queue", workerQueue);
+        span.setAttribute("blocking_pop", blockingPop ?? true);
 
         //lock the run so nothing else can modify it
         try {
@@ -191,7 +269,7 @@ export class DequeueSystem {
                 return;
               }
 
-              const result = await getRunWithBackgroundWorkerTasks(
+              const result = await this.#getRunWithBackgroundWorkerTasks(
                 prisma,
                 runId,
                 backgroundWorkerId
@@ -452,6 +530,7 @@ export class DequeueSystem {
               return {
                 version: "1" as const,
                 dequeuedAt: new Date(),
+                workerQueueLength: message.workerQueueLength,
                 snapshot: {
                   id: newSnapshot.id,
                   friendlyId: newSnapshot.friendlyId,
@@ -494,6 +573,16 @@ export class DequeueSystem {
                 },
                 placementTags: [placementTag("paid", isPaying ? "true" : "false")],
               } satisfies DequeuedMessage;
+            },
+            {
+              run_id: runId,
+              org_id: orgId,
+              environment_id: message.message.environmentId,
+              environment_type: message.message.environmentType,
+              worker_queue_length: message.workerQueueLength ?? 0,
+              consumer_id: consumerId,
+              worker_queue: workerQueue,
+              blocking_pop: blockingPop ?? true,
             }
           );
 
@@ -656,5 +745,338 @@ export class DequeueSystem {
         },
       });
     });
+  }
+
+  async #getRunWithBackgroundWorkerTasks(
+    prisma: PrismaClientOrTransaction,
+    runId: string,
+    backgroundWorkerId?: string
+  ): Promise<RunWithBackgroundWorkerTasksResult> {
+    return startSpan(this.$.tracer, "getRunWithBackgroundWorkerTasks", async (span) => {
+      span.setAttribute("run_id", runId);
+
+      const run = await prisma.taskRun.findFirst({
+        where: {
+          id: runId,
+        },
+        include: {
+          runtimeEnvironment: {
+            select: {
+              id: true,
+              type: true,
+              archivedAt: true,
+            },
+          },
+          lockedToVersion: {
+            include: {
+              deployment: true,
+              tasks: true,
+            },
+          },
+        },
+      });
+
+      if (!run) {
+        span.setAttribute("result", "NO_RUN");
+        return {
+          success: false as const,
+          code: "NO_RUN",
+          message: `No run found with id: ${runId}`,
+        };
+      }
+
+      span.setAttribute("environment_type", run.runtimeEnvironment.type);
+
+      if (run.runtimeEnvironment.archivedAt) {
+        span.setAttribute("result", "RUN_ENVIRONMENT_ARCHIVED");
+        return {
+          success: false as const,
+          code: "RUN_ENVIRONMENT_ARCHIVED",
+          message: `Run is on an archived environment: ${run.id}`,
+          run,
+        };
+      }
+
+      const workerId = run.lockedToVersionId ?? backgroundWorkerId;
+
+      //get the relevant BackgroundWorker with tasks and deployment (if not DEV)
+      let workerWithTasks: WorkerDeploymentWithWorkerTasks | null = null;
+
+      if (run.runtimeEnvironment.type === "DEVELOPMENT") {
+        workerWithTasks = workerId
+          ? await this.#getWorkerById(prisma, workerId)
+          : await this.#getMostRecentWorker(prisma, run.runtimeEnvironmentId);
+      } else {
+        workerWithTasks = workerId
+          ? await this.#getWorkerDeploymentFromWorker(prisma, workerId)
+          : await this.#getManagedWorkerFromCurrentlyPromotedDeployment(
+              prisma,
+              run.runtimeEnvironmentId
+            );
+      }
+
+      if (!workerWithTasks) {
+        span.setAttribute("result", "NO_WORKER");
+        return {
+          success: false as const,
+          code: "NO_WORKER",
+          message: `No worker found for run: ${run.id}`,
+          run,
+        };
+      }
+
+      if (backgroundWorkerId) {
+        if (backgroundWorkerId !== workerWithTasks.worker.id) {
+          span.setAttribute("result", "BACKGROUND_WORKER_MISMATCH");
+          return {
+            success: false as const,
+            code: "BACKGROUND_WORKER_MISMATCH",
+            message: `Background worker mismatch for run: ${run.id}`,
+            backgroundWorker: {
+              expected: backgroundWorkerId,
+              received: workerWithTasks.worker.id,
+            },
+            run,
+          };
+        }
+      }
+
+      const backgroundTask = workerWithTasks.tasks.find((task) => task.slug === run.taskIdentifier);
+
+      if (!backgroundTask) {
+        const nonCurrentTask = await prisma.backgroundWorkerTask.findFirst({
+          where: {
+            slug: run.taskIdentifier,
+            projectId: run.projectId,
+            runtimeEnvironmentId: run.runtimeEnvironmentId,
+          },
+          include: {
+            worker: true,
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+        });
+
+        if (nonCurrentTask) {
+          span.setAttribute("result", "TASK_NOT_IN_LATEST");
+          return {
+            success: false as const,
+            code: "TASK_NOT_IN_LATEST",
+            message: `Task not found in latest version: ${run.taskIdentifier}. Found in ${nonCurrentTask.worker.version}`,
+            run,
+          };
+        } else {
+          span.setAttribute("result", "TASK_NEVER_REGISTERED");
+          return {
+            success: false as const,
+            code: "TASK_NEVER_REGISTERED",
+            message: `Task has never been registered (in dev or deployed): ${run.taskIdentifier}`,
+            run,
+          };
+        }
+      }
+
+      const queue = workerWithTasks.queues.find((queue) =>
+        run.lockedQueueId ? queue.id === run.lockedQueueId : queue.name === run.queue
+      );
+
+      if (!queue) {
+        span.setAttribute("result", "QUEUE_NOT_FOUND");
+        return {
+          success: false as const,
+          code: "QUEUE_NOT_FOUND",
+          message: `Queue not found for run: ${run.id}`,
+          run,
+        };
+      }
+
+      span.setAttribute("result", "SUCCESS");
+
+      return {
+        success: true as const,
+        run,
+        worker: workerWithTasks.worker,
+        task: backgroundTask,
+        queue,
+        deployment: workerWithTasks.deployment,
+      };
+    });
+  }
+
+  async #getWorkerDeploymentFromWorker(
+    prisma: PrismaClientOrTransaction,
+    workerId: string
+  ): Promise<WorkerDeploymentWithWorkerTasks | null> {
+    return startSpan(this.$.tracer, "getWorkerDeploymentFromWorker", async (span) => {
+      const worker = await prisma.backgroundWorker.findFirst({
+        where: {
+          id: workerId,
+        },
+        include: {
+          deployment: true,
+          tasks: true,
+          queues: true,
+        },
+      });
+
+      if (!worker) {
+        span.setAttribute("result", "NOT_FOUND");
+        return null;
+      }
+
+      span.setAttribute("result", "SUCCESS");
+
+      return {
+        worker,
+        tasks: worker.tasks,
+        queues: worker.queues,
+        deployment: worker.deployment,
+      };
+    });
+  }
+
+  async #getMostRecentWorker(
+    prisma: PrismaClientOrTransaction,
+    environmentId: string
+  ): Promise<WorkerDeploymentWithWorkerTasks | null> {
+    return startSpan(this.$.tracer, "getMostRecentWorker", async (span) => {
+      const worker = await prisma.backgroundWorker.findFirst({
+        where: {
+          runtimeEnvironmentId: environmentId,
+        },
+        include: {
+          tasks: true,
+          queues: true,
+        },
+        orderBy: {
+          id: "desc",
+        },
+      });
+
+      if (!worker) {
+        span.setAttribute("result", "NOT_FOUND");
+        return null;
+      }
+
+      span.setAttribute("result", "SUCCESS");
+
+      return { worker, tasks: worker.tasks, queues: worker.queues, deployment: null };
+    });
+  }
+
+  async #getWorkerById(
+    prisma: PrismaClientOrTransaction,
+    workerId: string
+  ): Promise<WorkerDeploymentWithWorkerTasks | null> {
+    return startSpan(this.$.tracer, "getWorkerById", async (span) => {
+      const worker = await prisma.backgroundWorker.findFirst({
+        where: {
+          id: workerId,
+        },
+        include: {
+          deployment: true,
+          tasks: true,
+          queues: true,
+        },
+        orderBy: {
+          id: "desc",
+        },
+      });
+
+      if (!worker) {
+        span.setAttribute("result", "NOT_FOUND");
+        return null;
+      }
+
+      span.setAttribute("result", "SUCCESS");
+
+      return {
+        worker,
+        tasks: worker.tasks,
+        queues: worker.queues,
+        deployment: worker.deployment,
+      };
+    });
+  }
+
+  async #getManagedWorkerFromCurrentlyPromotedDeployment(
+    prisma: PrismaClientOrTransaction,
+    environmentId: string
+  ): Promise<WorkerDeploymentWithWorkerTasks | null> {
+    return startSpan(
+      this.$.tracer,
+      "getManagedWorkerFromCurrentlyPromotedDeployment",
+      async (span) => {
+        const promotion = await prisma.workerDeploymentPromotion.findFirst({
+          where: {
+            environmentId,
+            label: CURRENT_DEPLOYMENT_LABEL,
+          },
+          include: {
+            deployment: {
+              include: {
+                worker: {
+                  include: {
+                    tasks: true,
+                    queues: true,
+                  },
+                },
+              },
+            },
+          },
+        });
+
+        if (!promotion || !promotion.deployment.worker) {
+          span.setAttribute("result", "NO_PROMOTION_OR_WORKER");
+          return null;
+        }
+
+        if (promotion.deployment.type === "MANAGED") {
+          // This is a run engine v2 deployment, so return it
+          span.setAttribute("result", "SUCCESS_CURRENT_MANAGED");
+
+          return {
+            worker: promotion.deployment.worker,
+            tasks: promotion.deployment.worker.tasks,
+            queues: promotion.deployment.worker.queues,
+            deployment: promotion.deployment,
+          };
+        }
+
+        // We need to get the latest run engine v2 deployment
+        const latestV2Deployment = await prisma.workerDeployment.findFirst({
+          where: {
+            environmentId,
+            type: "MANAGED",
+          },
+          orderBy: {
+            id: "desc",
+          },
+          include: {
+            worker: {
+              include: {
+                tasks: true,
+                queues: true,
+              },
+            },
+          },
+        });
+
+        if (!latestV2Deployment?.worker) {
+          span.setAttribute("result", "NO_V2_DEPLOYMENT");
+          return null;
+        }
+
+        span.setAttribute("result", "SUCCESS_LATEST_V2");
+
+        return {
+          worker: latestV2Deployment.worker,
+          tasks: latestV2Deployment.worker.tasks,
+          queues: latestV2Deployment.worker.queues,
+          deployment: latestV2Deployment,
+        };
+      }
+    );
   }
 }
