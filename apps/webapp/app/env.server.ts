@@ -59,6 +59,12 @@ const EnvironmentSchema = z.object({
   SMTP_USER: z.string().optional(),
   SMTP_PASSWORD: z.string().optional(),
 
+  // GitHub App
+  GITHUB_APP_ID: z.string(),
+  GITHUB_APP_PRIVATE_KEY: z.string(),
+  GITHUB_APP_WEBHOOK_SECRET: z.string(),
+  GITHUB_APP_SLUG: z.string(),
+
   PLAIN_API_KEY: z.string().optional(),
   WORKER_SCHEMA: z.string().default("graphile_worker"),
   WORKER_CONCURRENCY: z.coerce.number().int().default(10),
