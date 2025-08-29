@@ -338,7 +338,7 @@ export function TierFree({
                 <div className="my-6">
                   <Button
                     type="button"
-                    variant="tertiary/large"
+                    variant="secondary/large"
                     fullWidth
                     className="text-md font-medium"
                     disabled={isLoading}
@@ -384,7 +384,7 @@ export function TierFree({
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen} key="cancel">
               <DialogTrigger asChild>
                 <div className="my-6">
-                  <Button variant="tertiary/large" fullWidth className="text-md font-medium">
+                  <Button variant="secondary/large" fullWidth className="text-md font-medium">
                     {`Downgrade to ${plan.title}`}
                   </Button>
                 </div>
@@ -445,7 +445,7 @@ export function TierFree({
                     </div>
                   </div>
                   <DialogFooter className="mt-2">
-                    <Button variant="tertiary/medium" onClick={() => setIsDialogOpen(false)}>
+                    <Button variant="secondary/medium" onClick={() => setIsDialogOpen(false)}>
                       Dismiss
                     </Button>
                     <Button
@@ -465,7 +465,7 @@ export function TierFree({
               <input type="hidden" name="type" value="free" />
               <input type="hidden" name="callerPath" value={location.pathname} />
               <Button
-                variant="tertiary/large"
+                variant="secondary/large"
                 type="submit"
                 form="subscribe-verified"
                 fullWidth
@@ -552,7 +552,7 @@ export function TierHobby({
         subscription.plan.code !== plan.code ? (
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen} key="downgrade">
             <DialogTrigger asChild>
-              <Button variant="tertiary/large" fullWidth className="text-md font-medium">
+              <Button variant="secondary/large" fullWidth className="text-md font-medium">
                 {`Downgrade to ${plan.title}`}
               </Button>
             </DialogTrigger>
@@ -568,11 +568,11 @@ export function TierHobby({
                 </Paragraph>
               </div>
               <DialogFooter>
-                <Button variant="tertiary/medium" onClick={() => setIsDialogOpen(false)}>
+                <Button variant="secondary/medium" onClick={() => setIsDialogOpen(false)}>
                   Dismiss
                 </Button>
                 <Button
-                  variant="tertiary/medium"
+                  variant="secondary/medium"
                   disabled={isLoading}
                   LeadingIcon={isLoading ? () => <Spinner color="white" /> : undefined}
                   form="subscribe-hobby"
@@ -584,7 +584,7 @@ export function TierHobby({
           </Dialog>
         ) : (
           <Button
-            variant={isHighlighted ? "primary/large" : "tertiary/large"}
+            variant={isHighlighted ? "primary/large" : "secondary/large"}
             fullWidth
             className="text-md font-medium"
             form="subscribe-hobby"
@@ -666,7 +666,7 @@ export function TierPro({
           subscription.canceledAt === undefined ? (
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen} key="upgrade">
               <DialogTrigger asChild>
-                <Button variant="tertiary/large" fullWidth className="text-md font-medium">
+                <Button variant="secondary/large" fullWidth className="text-md font-medium">
                   {`Upgrade to ${plan.title}`}
                 </Button>
               </DialogTrigger>
@@ -682,7 +682,7 @@ export function TierPro({
                   </Paragraph>
                 </div>
                 <DialogFooter>
-                  <Button variant="tertiary/medium" onClick={() => setIsDialogOpen(false)}>
+                  <Button variant="secondary/medium" onClick={() => setIsDialogOpen(false)}>
                     Dismiss
                   </Button>
                   <Button
@@ -698,7 +698,7 @@ export function TierPro({
             </Dialog>
           ) : (
             <Button
-              variant="tertiary/large"
+              variant="secondary/large"
               fullWidth
               form="subscribe-pro"
               className="text-md font-medium"
@@ -788,11 +788,11 @@ export function TierEnterprise() {
           <Feedback
             defaultValue="enterprise"
             button={
-              <div className="flex h-10 w-full cursor-pointer items-center justify-center rounded bg-tertiary px-8 text-base font-medium transition hover:bg-charcoal-600">
+              <div className="flex h-10 w-full cursor-pointer items-center justify-center rounded border border-charcoal-600 bg-tertiary px-8 text-base font-medium transition hover:border-charcoal-550 hover:bg-charcoal-600">
                 <span className="text-center text-text-bright">Contact us</span>
               </div>
             }
-          ></Feedback>
+          />
         </div>
       </div>
     </TierContainer>
@@ -812,7 +812,7 @@ function TierContainer({
     <div
       className={cn(
         "flex w-full min-w-[16rem] flex-col p-6",
-        isHighlighted ? "border border-primary" : "border border-grid-dimmed",
+        isHighlighted ? "border border-indigo-500" : "border border-grid-dimmed",
         className
       )}
     >
@@ -843,7 +843,10 @@ function PricingHeader({
   return (
     <div className="flex flex-col gap-2">
       <h2
-        className={cn("text-xl font-medium", isHighlighted ? "text-primary" : "text-text-dimmed")}
+        className={cn(
+          "text-xl font-medium",
+          isHighlighted ? "text-indigo-500" : "text-text-dimmed"
+        )}
       >
         {title}
       </h2>
