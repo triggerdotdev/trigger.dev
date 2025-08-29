@@ -1,6 +1,6 @@
 ---
 title: "Wait for token"
-description: "Wait until a token is completed."
+description: "Wait until a token is completed using waitpoint tokens."
 ---
 
 Waitpoint tokens pause task runs until you complete the token. They're commonly used for approval workflows and other scenarios where you need to wait for external confirmation, such as human-in-the-loop processes.
@@ -50,7 +50,7 @@ await wait.completeToken<ApprovalToken>(tokenId, {
 });
 ```
 
-Or you can make an HTTP POST request to the `url` it returns:
+Or you can make an HTTP POST request to the `url` it returns. This is an HTTP callback:
 
 ```ts
 import { wait } from "@trigger.dev/sdk";
