@@ -1,6 +1,5 @@
 import { MagnifyingGlassIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { useNavigate } from "@remix-run/react";
-import { type RuntimeEnvironment } from "@trigger.dev/database";
 import { useCallback } from "react";
 import { z } from "zod";
 import { Input } from "~/components/primitives/Input";

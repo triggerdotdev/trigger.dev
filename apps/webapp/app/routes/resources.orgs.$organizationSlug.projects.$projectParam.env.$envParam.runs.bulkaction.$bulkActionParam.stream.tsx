@@ -1,11 +1,9 @@
-import { BulkActionStatus } from "@trigger.dev/database";
 import { z } from "zod";
 import { $replica } from "~/db.server";
 import { env } from "~/env.server";
-import { devPresence } from "~/presenters/v3/DevPresence.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
-import { EnvironmentParamSchema, ProjectParamSchema } from "~/utils/pathBuilder";
+import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { createSSELoader, type SendFunction } from "~/utils/sse";
 
 const Params = EnvironmentParamSchema.extend({
@@ -82,7 +80,7 @@ export const loader = createSSELoader({
 
         send({ event: "time", data: new Date().toISOString() });
 
-        if (bulkAction?.status !== BulkActionStatus.PENDING) {
+        if (bulkAction?.status !== "PENDING") {
           return false;
         }
 
@@ -91,7 +89,7 @@ export const loader = createSSELoader({
       iterator: async ({ send, date }) => {
         const bulkAction = await getBulkActionProgress(send);
 
-        if (bulkAction?.status !== BulkActionStatus.PENDING) {
+        if (bulkAction?.status !== "PENDING") {
           return false;
         }
 
