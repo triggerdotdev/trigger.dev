@@ -324,25 +324,25 @@ export function CreateBulkActionInspector({
                 }}
               >
                 <RadioGroupItem
-                  id="action-replay"
-                  label={
-                    <span className="inline-flex items-center gap-1">
-                      <ArrowPathIcon className="mb-0.5 size-4 text-blue-400" /> Replay runs
-                    </span>
-                  }
-                  description="Replays all selected runs, regardless of current status."
-                  value={"replay"}
-                  variant="description"
-                />
-                <RadioGroupItem
                   id="action-cancel"
                   label={
                     <span className="inline-flex items-center gap-1">
-                      <XCircleIcon className="mb-0.5 size-4 text-error" /> Cancel runs
+                      <XCircleIcon className="size-4 text-error" /> Cancel runs
                     </span>
                   }
                   description="Cancels all runs still in progress. Any finished runs won’t be canceled."
                   value={"cancel"}
+                  variant="description"
+                />
+                <RadioGroupItem
+                  id="action-replay"
+                  label={
+                    <span className="inline-flex items-center gap-1">
+                      <ArrowPathIcon className="size-4 text-blue-400" /> Replay runs
+                    </span>
+                  }
+                  description="Replays all selected runs, regardless of current status."
+                  value={"replay"}
                   variant="description"
                 />
               </RadioGroup>
@@ -450,8 +450,8 @@ function bulkActionModeFromString(value: string | undefined): BulkActionMode {
 }
 
 function bulkActionActionFromString(value: string | undefined): BulkActionAction {
-  if (!value) return "replay";
+  if (!value) return "cancel";
   const parsed = BulkActionAction.safeParse(value);
-  if (!parsed.success) return "replay";
+  if (!parsed.success) return "cancel";
   return parsed.data;
 }
