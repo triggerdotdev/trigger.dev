@@ -47,6 +47,7 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { TextLink } from "~/components/primitives/TextLink";
+import { useFeatures } from "~/hooks/useFeatures";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useHasAdminAccess } from "~/hooks/useUser";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
@@ -132,6 +133,7 @@ export default function Page() {
   const { regions, isPaying } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const isAdmin = useHasAdminAccess();
+  const { isManagedCloud } = useFeatures();
 
   return (
     <PageContainer>
@@ -295,14 +297,31 @@ export default function Page() {
                     </TableRow>
                   </TableBody>
                 </Table>
-                <InfoPanel
-                  icon={InformationCircleIcon}
-                  variant="minimal"
-                  panelClassName="max-w-full"
-                >
-                  Runs execute in your default region, but operational and log data remains in
-                  us-east-1.
-                </InfoPanel>
+                {isManagedCloud && (
+                  <InfoPanel
+                    icon={InformationCircleIcon}
+                    iconClassName="size-4"
+                    variant="minimal"
+                    panelClassName="max-w-full gap-1"
+                  >
+                    <Paragraph variant="extra-small" className="flex items-baseline gap-x-0.5">
+                      Trigger.dev is fully GDPR compliant. Learn more in our{" "}
+                      <TextLink to="https://security.trigger.dev">security portal</TextLink> or{" "}
+                      <Feedback
+                        button={
+                          <Paragraph
+                            variant="extra-small"
+                            className="cursor-pointer text-indigo-500 transition hover:text-indigo-400"
+                          >
+                            get in touch
+                          </Paragraph>
+                        }
+                        defaultValue="help"
+                      />
+                      .
+                    </Paragraph>
+                  </InfoPanel>
+                )}
               </div>
             </>
           )}
