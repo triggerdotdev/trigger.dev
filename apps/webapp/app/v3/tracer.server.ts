@@ -36,7 +36,7 @@ import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node";
 import { ATTR_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
 import { PrismaInstrumentation } from "@prisma/instrumentation";
 import { HostMetrics } from "@opentelemetry/host-metrics";
-import { AwsInstrumentation } from "@opentelemetry/instrumentation-aws-sdk";
+import { AwsInstrumentation as AwsSdkInstrumentation } from "@opentelemetry/instrumentation-aws-sdk";
 import { awsEcsDetector, awsEc2Detector } from "@opentelemetry/resource-detector-aws";
 import {
   detectResources,
@@ -45,6 +45,7 @@ import {
   osDetector,
   hostDetector,
   processDetector,
+  type ResourceDetector,
 } from "@opentelemetry/resources";
 import { env } from "~/env.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
@@ -171,16 +172,13 @@ export async function emitWarnLog(message: string, params: Record<string, unknow
 }
 
 function getResource() {
-  const detectedResource = detectResources({
-    detectors: [
-      serviceInstanceIdDetector,
-      osDetector,
-      hostDetector,
-      processDetector,
-      awsEcsDetector,
-      awsEc2Detector,
-    ],
-  });
+  const detectors: ResourceDetector[] = [serviceInstanceIdDetector];
+
+  if (env.INTERNAL_OTEL_ADDITIONAL_DETECTORS_ENABLED) {
+    detectors.push(osDetector, hostDetector, processDetector, awsEcsDetector, awsEc2Detector);
+  }
+
+  const detectedResource = detectResources({ detectors });
 
   const baseResource = resourceFromAttributes({
     [ATTR_SERVICE_NAME]: env.SERVICE_NAME,
@@ -285,7 +283,7 @@ function setupTelemetry() {
   let instrumentations: Instrumentation[] = [
     new HttpInstrumentation(),
     new ExpressInstrumentation(),
-    new AwsInstrumentation({
+    new AwsSdkInstrumentation({
       suppressInternalInstrumentation: true,
     }),
   ];

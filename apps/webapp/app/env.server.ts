@@ -354,6 +354,7 @@ const EnvironmentSchema = z.object({
   INTERNAL_OTEL_METRIC_EXPORTER_INTERVAL_MS: z.coerce.number().int().default(30_000),
   INTERNAL_OTEL_HOST_METRICS_ENABLED: BoolEnv.default(true),
   INTERNAL_OTEL_NODEJS_METRICS_ENABLED: BoolEnv.default(true),
+  INTERNAL_OTEL_ADDITIONAL_DETECTORS_ENABLED: BoolEnv.default(true),
 
   ORG_SLACK_INTEGRATION_CLIENT_ID: z.string().optional(),
   ORG_SLACK_INTEGRATION_CLIENT_SECRET: z.string().optional(),
