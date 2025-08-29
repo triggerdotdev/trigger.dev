@@ -137,6 +137,8 @@ export default defineConfig({
 
 These environment variables are only used during the build process and are not embedded in the final container image.
 
+If you're experiencing database connection issues during deployment, you may need to add `?connection_limit=1` to your `DATABASE_URL` to limit the number of concurrent connections during the build process.
+
 </Note>
 
 ### Multiple schemas
