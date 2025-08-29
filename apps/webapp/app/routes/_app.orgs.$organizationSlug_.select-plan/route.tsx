@@ -1,4 +1,4 @@
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { BackgroundWrapper } from "~/components/BackgroundWrapper";
 import { AppContainer } from "~/components/layout/AppLayout";
