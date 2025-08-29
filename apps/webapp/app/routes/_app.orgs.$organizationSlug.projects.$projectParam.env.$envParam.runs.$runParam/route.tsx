@@ -485,12 +485,10 @@ type TasksTreeViewProps = {
   maximumLiveReloadingSetting: number;
   rootRun: {
     friendlyId: string;
-    taskIdentifier: string;
     spanId: string;
   } | null;
   parentRun: {
     friendlyId: string;
-    taskIdentifier: string;
     spanId: string;
   } | null;
   isCompleted: boolean;

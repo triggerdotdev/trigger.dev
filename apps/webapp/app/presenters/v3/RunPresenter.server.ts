@@ -1,6 +1,6 @@
 import { millisecondsToNanoseconds } from "@trigger.dev/core/v3";
 import { createTreeFromFlatItems, flattenTree } from "~/components/primitives/TreeView/TreeView";
-import { prisma, PrismaClient } from "~/db.server";
+import { prisma, type PrismaClient } from "~/db.server";
 import { createTimelineSpanEventsFromSpanEvents } from "~/utils/timelineSpanEvents";
 import { getUsername } from "~/utils/username";
 import { eventRepository } from "~/v3/eventRepository.server";
@@ -58,7 +58,6 @@ export class RunPresenter {
         rootTaskRun: {
           select: {
             friendlyId: true,
-            taskIdentifier: true,
             spanId: true,
             createdAt: true,
           },
@@ -66,7 +65,6 @@ export class RunPresenter {
         parentTaskRun: {
           select: {
             friendlyId: true,
-            taskIdentifier: true,
             spanId: true,
             createdAt: true,
           },
