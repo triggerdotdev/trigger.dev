@@ -5,6 +5,8 @@ import { linkGitHubAppInstallation } from "~/services/gitHub.server";
 import { logger } from "~/services/logger.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { tryCatch } from "@trigger.dev/core";
+import { $replica } from "~/db.server";
+import { requireUser } from "~/services/session.server";
 
 const QuerySchema = z.object({
   installation_id: z.coerce.number(),
@@ -41,6 +43,25 @@ export async function loader({ request }: LoaderFunctionArgs) {
   }
 
   const { organizationId, redirectTo } = sessionResult;
+
+  const user = await requireUser(request);
+  const org = await $replica.organization.findFirst({
+    where: { id: organizationId, members: { some: { userId: user.id } }, deletedAt: null },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!org) {
+    // the secure cookie approach should already protect against this
+    // just an additional check
+    logger.error("GitHub app installation attempt on unauthenticated org", {
+      userId: user.id,
+      organizationId,
+    });
+    return redirectWithErrorMessage(redirectTo, request, "Failed to install GitHub App");
+  }
 
   switch (setup_action) {
     case "install":
