@@ -1,18 +1,13 @@
-import { BackgroundWorker, TaskRun } from "@trigger.dev/database";
-
-import {
-  IOPacket,
-  RunChainState,
-  TaskRunError,
-  TriggerTaskRequestBody,
-} from "@trigger.dev/core/v3";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import type { BackgroundWorker, TaskRun } from "@trigger.dev/database";
+import type { IOPacket, TaskRunError, TriggerTaskRequestBody } from "@trigger.dev/core/v3";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import type { ReportUsagePlan } from "@trigger.dev/platform";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
   idempotencyKeyExpiresAt?: Date;
   triggerVersion?: string;
-  traceContext?: Record<string, string | undefined>;
+  traceContext?: Record<string, unknown>;
   spanParentAsLink?: boolean;
   parentAsLinkType?: "replay" | "trigger";
   batchId?: string;
@@ -22,6 +17,7 @@ export type TriggerTaskServiceOptions = {
   skipChecks?: boolean;
   oneTimeUseToken?: string;
   overrideCreatedAt?: Date;
+  planType?: string;
 };
 
 // domain/triggerTask.ts
@@ -66,8 +62,14 @@ export interface QueueManager {
     lockedBackgroundWorker?: LockedBackgroundWorker
   ): Promise<QueueProperties>;
   getQueueName(request: TriggerTaskRequest): Promise<string>;
-  validateQueueLimits(env: AuthenticatedEnvironment): Promise<QueueValidationResult>;
-  getWorkerQueue(env: AuthenticatedEnvironment): Promise<string | undefined>;
+  validateQueueLimits(
+    env: AuthenticatedEnvironment,
+    itemsToAdd?: number
+  ): Promise<QueueValidationResult>;
+  getWorkerQueue(
+    env: AuthenticatedEnvironment,
+    regionOverride?: string
+  ): Promise<string | undefined>;
 }
 
 export interface PayloadProcessor {
@@ -109,9 +111,19 @@ export type ValidationResult =
       error: Error;
     };
 
+export type EntitlementValidationResult =
+  | {
+      ok: true;
+      plan?: ReportUsagePlan;
+    }
+  | {
+      ok: false;
+      error: Error;
+    };
+
 export interface TriggerTaskValidator {
   validateTags(params: TagValidationParams): ValidationResult;
-  validateEntitlement(params: EntitlementValidationParams): Promise<ValidationResult>;
+  validateEntitlement(params: EntitlementValidationParams): Promise<EntitlementValidationResult>;
   validateMaxAttempts(params: MaxAttemptsValidationParams): ValidationResult;
   validateParentRun(params: ParentRunValidationParams): ValidationResult;
 }
@@ -119,7 +131,7 @@ export interface TriggerTaskValidator {
 export type TracedEventSpan = {
   traceId: string;
   spanId: string;
-  traceContext: Record<string, string | undefined>;
+  traceContext: Record<string, unknown>;
   traceparent?: {
     traceId: string;
     spanId: string;
@@ -143,11 +155,4 @@ export interface TraceEventConcern {
     },
     callback: (span: TracedEventSpan) => Promise<T>
   ): Promise<T>;
-}
-
-export interface RunChainStateManager {
-  validateRunChain(
-    request: TriggerTaskRequest,
-    options: { parentRun?: TaskRun; queueName: string; lockedQueueId?: string }
-  ): Promise<RunChainState>;
 }

@@ -209,6 +209,10 @@ class AttributeFlattener {
       return;
     }
 
+    if (value === undefined) {
+      return;
+    }
+
     // Handle primitive values directly
     if (value === null) {
       this.addAttribute(prefix, NULL_SENTINEL);

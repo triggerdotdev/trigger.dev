@@ -18,6 +18,8 @@ import { AdminDebugRun } from "~/components/admin/debugRun";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { Feedback } from "~/components/Feedback";
+import { MachineLabelCombo } from "~/components/MachineLabelCombo";
+import { MachineTooltipInfo } from "~/components/MachineTooltipInfo";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { DateTime, DateTimeAccurate } from "~/components/primitives/DateTime";
@@ -36,7 +38,6 @@ import {
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { TextLink } from "~/components/primitives/TextLink";
 import { InfoIconTooltip, SimpleTooltip } from "~/components/primitives/Tooltip";
-import { RuntimeIcon } from "~/components/RuntimeIcon";
 import { RunTimeline, RunTimelineEvent, SpanTimeline } from "~/components/run/RunTimeline";
 import { PacketDisplay } from "~/components/runs/v3/PacketDisplay";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
@@ -44,8 +45,12 @@ import { RunTag } from "~/components/runs/v3/RunTag";
 import { SpanEvents } from "~/components/runs/v3/SpanEvents";
 import { SpanTitle } from "~/components/runs/v3/SpanTitle";
 import { TaskRunAttemptStatusCombo } from "~/components/runs/v3/TaskRunAttemptStatus";
-import { TaskRunStatusCombo, TaskRunStatusReason } from "~/components/runs/v3/TaskRunStatus";
+import {
+  descriptionForTaskRunStatus,
+  TaskRunStatusCombo,
+} from "~/components/runs/v3/TaskRunStatus";
 import { WaitpointDetailTable } from "~/components/runs/v3/WaitpointDetails";
+import { RuntimeIcon } from "~/components/RuntimeIcon";
 import { WarmStartCombo } from "~/components/WarmStarts";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -71,6 +76,7 @@ import {
 } from "~/utils/pathBuilder";
 import { createTimelineSpanEventsFromSpanEvents } from "~/utils/timelineSpanEvents";
 import { CompleteWaitpointForm } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.waitpoints.$waitpointFriendlyId.complete/route";
+import { FlagIcon } from "~/assets/icons/RegionIcons";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { projectParam, organizationSlug, envParam, runParam, spanParam } =
@@ -375,7 +381,7 @@ function RunBody({
             onClick={() => {
               replace({ tab: "context" });
             }}
-            shortcut={{ key: "c" }}
+            shortcut={{ key: "x" }}
           >
             Context
           </TabButton>
@@ -400,7 +406,10 @@ function RunBody({
                 <Property.Item>
                   <Property.Label>Status</Property.Label>
                   <Property.Value>
-                    <TaskRunStatusCombo status={run.status} />
+                    <SimpleTooltip
+                      button={<TaskRunStatusCombo status={run.status} />}
+                      content={descriptionForTaskRunStatus(run.status)}
+                    />
                   </Property.Value>
                 </Property.Item>
                 <Property.Item>
@@ -615,6 +624,7 @@ function RunBody({
                     </Property.Value>
                   </Property.Item>
                 )}
+
                 {run.schedule && (
                   <Property.Item>
                     <Property.Label>Schedule</Property.Label>
@@ -682,6 +692,30 @@ function RunBody({
                   </Property.Value>
                 </Property.Item>
                 <Property.Item>
+                  <Property.Label>
+                    <span className="flex items-center gap-1">
+                      Machine
+                      <InfoIconTooltip content={<MachineTooltipInfo />} />
+                    </span>
+                  </Property.Label>
+                  <Property.Value className="-ml-0.5">
+                    <MachineLabelCombo preset={run.machinePreset} />
+                  </Property.Value>
+                </Property.Item>
+                {run.region && (
+                  <Property.Item>
+                    <Property.Label>Region</Property.Label>
+                    <Property.Value>
+                      <span className="flex items-center gap-1">
+                        {run.region.location ? (
+                          <FlagIcon region={run.region.location} className="size-5" />
+                        ) : null}
+                        {run.region.name}
+                      </span>
+                    </Property.Value>
+                  </Property.Item>
+                )}
+                <Property.Item>
                   <Property.Label>Run invocation cost</Property.Label>
                   <Property.Value>
                     {run.baseCostInCents > 0
@@ -723,24 +757,33 @@ function RunBody({
                   <Property.Label>Run Engine</Property.Label>
                   <Property.Value>{run.engine}</Property.Value>
                 </Property.Item>
+                {run.externalTraceId && (
+                  <Property.Item>
+                    <Property.Label>External Trace ID</Property.Label>
+                    <Property.Value>{run.externalTraceId}</Property.Value>
+                  </Property.Item>
+                )}
                 {isAdmin && (
-                  <>
+                  <div className="border-t border-yellow-500/50 pt-2">
+                    <Paragraph spacing variant="small" className="text-yellow-500">
+                      Admin only
+                    </Paragraph>
                     <Property.Item>
                       <Property.Label>Worker queue</Property.Label>
                       <Property.Value>{run.workerQueue}</Property.Value>
                     </Property.Item>
-                  </>
+                  </div>
                 )}
               </Property.Table>
             </div>
           ) : tab === "context" ? (
             <div className="flex flex-col gap-4 py-3">
-              <CodeBlock code={run.context} showLineNumbers={false} />
+              <CodeBlock code={run.context} showLineNumbers={false} showTextWrapping />
             </div>
           ) : tab === "metadata" ? (
             <div className="flex flex-col gap-4 py-3">
               {run.metadata ? (
-                <CodeBlock code={run.metadata} showLineNumbers={false} />
+                <CodeBlock code={run.metadata} showLineNumbers={false} showTextWrapping />
               ) : (
                 <Callout to="https://trigger.dev/docs/runs/metadata" variant="docs">
                   No metadata set for this run. View our metadata documentation to learn more.
@@ -749,9 +792,11 @@ function RunBody({
             </div>
           ) : (
             <div className="flex flex-col gap-4 pt-3">
-              <div className="space-y-2 border-b border-grid-bright pb-3">
-                <TaskRunStatusCombo status={run.status} className="text-sm" />
-                <TaskRunStatusReason status={run.status} statusReason={run.statusReason} />
+              <div className="border-b border-grid-bright pb-3">
+                <SimpleTooltip
+                  button={<TaskRunStatusCombo status={run.status} className="text-sm" />}
+                  content={descriptionForTaskRunStatus(run.status)}
+                />
               </div>
               <RunTimeline run={run} />
 
@@ -786,14 +831,15 @@ function RunBody({
               {run.isCached ? "Jump to original run" : "Focus on run"}
             </LinkButton>
           )}
+          <AdminDebugRun friendlyId={run.friendlyId} />
         </div>
-        <AdminDebugRun friendlyId={run.friendlyId} />
         <div className="flex items-center gap-4">
           {run.logsDeletedAt === null ? (
             <LinkButton
               to={v3RunDownloadLogsPath({ friendlyId: runParam })}
               LeadingIcon={CloudArrowDownIcon}
-              variant="tertiary/medium"
+              leadingIconClassName="text-indigo-400"
+              variant="secondary/medium"
               target="_blank"
               download
             >
@@ -837,7 +883,7 @@ function RunError({ error }: { error: TaskRunError }) {
           <Header3 className="text-rose-500">{name}</Header3>
           {enhancedError.message && (
             <Callout variant="error">
-              <pre className="text-wrap font-sans text-sm font-normal text-rose-200">
+              <pre className="text-wrap font-sans text-sm font-normal text-rose-200 [word-break:break-word]">
                 {enhancedError.message}
               </pre>
             </Callout>

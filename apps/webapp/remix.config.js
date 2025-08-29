@@ -14,6 +14,7 @@ module.exports = {
     "marked",
     "axios",
     "p-limit",
+    "p-map",
     "yocto-queue",
     "@unkey/cache",
     "@unkey/cache/stores",

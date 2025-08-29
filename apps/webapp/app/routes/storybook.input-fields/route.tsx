@@ -1,6 +1,7 @@
 import { MagnifyingGlassIcon } from "@heroicons/react/20/solid";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { Input } from "~/components/primitives/Input";
+import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 
 export default function Story() {
   return (
@@ -26,28 +27,28 @@ function InputFieldSet({ disabled }: { disabled?: boolean }) {
           variant="large"
           placeholder="Search"
           icon={MagnifyingGlassIcon}
-          shortcut="⌘K"
+          accessory={<ShortcutKey shortcut={{ key: "k", modifiers: ["meta"] }} variant="medium" />}
         />
         <Input
           disabled={disabled}
           variant="medium"
           placeholder="Search"
           icon={MagnifyingGlassIcon}
-          shortcut="⌘K"
+          accessory={<ShortcutKey shortcut={{ key: "k", modifiers: ["meta"] }} variant="small" />}
         />
         <Input
           disabled={disabled}
           variant="small"
           placeholder="Search"
           icon={MagnifyingGlassIcon}
-          shortcut="⌘K"
+          accessory={<ShortcutKey shortcut={{ key: "k", modifiers: ["meta"] }} variant="small" />}
         />
         <Input
           disabled={disabled}
           variant="tertiary"
           placeholder="Search"
           icon={MagnifyingGlassIcon}
-          shortcut="⌘K"
+          accessory={<ShortcutKey shortcut={{ key: "k", modifiers: ["meta"] }} variant="small" />}
         />
       </div>
       <div className="m-8 flex w-64 flex-col gap-4">
@@ -56,42 +57,42 @@ function InputFieldSet({ disabled }: { disabled?: boolean }) {
           variant="large"
           placeholder="Search"
           icon={<EnvironmentLabel environment={{ type: "DEVELOPMENT" }} />}
-          shortcut="⌘K"
+          accessory={<ShortcutKey shortcut={{ key: "k", modifiers: ["meta"] }} variant="medium" />}
         />
         <Input
           disabled={disabled}
           variant="medium"
           placeholder="Search"
           icon={<EnvironmentLabel environment={{ type: "DEVELOPMENT" }} />}
-          shortcut="⌘K"
+          accessory={<ShortcutKey shortcut={{ key: "k", modifiers: ["meta"] }} variant="medium" />}
         />
         <Input
           disabled={disabled}
           variant="small"
           placeholder="Search"
           icon={<EnvironmentLabel environment={{ type: "DEVELOPMENT" }} />}
-          shortcut="⌘K"
+          accessory={<ShortcutKey shortcut={{ key: "k", modifiers: ["meta"] }} variant="small" />}
         />
         <Input
           disabled={disabled}
           variant="tertiary"
           placeholder="Search"
           icon={<EnvironmentLabel environment={{ type: "DEVELOPMENT" }} />}
-          shortcut="⌘K"
+          accessory={<ShortcutKey shortcut={{ key: "k", modifiers: ["meta"] }} variant="small" />}
         />
         <Input
           disabled={disabled}
           variant="tertiary"
           placeholder="Search"
           icon={<EnvironmentLabel environment={{ type: "STAGING" }} />}
-          shortcut="⌘K"
+          accessory={<ShortcutKey shortcut={{ key: "k", modifiers: ["meta"] }} variant="small" />}
         />
         <Input
           disabled={disabled}
           variant="tertiary"
           placeholder="Search"
           icon={<EnvironmentLabel environment={{ type: "PRODUCTION" }} />}
-          shortcut="⌘K"
+          accessory={<ShortcutKey shortcut={{ key: "k", modifiers: ["meta"] }} variant="small" />}
         />
       </div>
     </div>

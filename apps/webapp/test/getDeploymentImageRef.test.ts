@@ -56,13 +56,18 @@ describe.skipIf(process.env.RUN_REGISTRY_TESTS !== "1")("getDeploymentImageRef",
 
   it("should return the correct image ref for non-ECR registry", async () => {
     const imageRef = await getDeploymentImageRef({
-      host: "registry.digitalocean.com",
-      namespace: testNamespace,
+      registry: {
+        host: "registry.digitalocean.com",
+        namespace: testNamespace,
+        username: "test-user",
+        password: "test-pass",
+        ecrTags: registryTags,
+        ecrAssumeRoleArn: roleArn,
+        ecrAssumeRoleExternalId: externalId,
+      },
       projectRef: testProjectRef,
       nextVersion: "20250630.1",
       environmentSlug: "test",
-      registryTags,
-      assumeRole,
     });
 
     expect(imageRef.imageRef).toBe(
@@ -73,13 +78,18 @@ describe.skipIf(process.env.RUN_REGISTRY_TESTS !== "1")("getDeploymentImageRef",
 
   it("should create ECR repository and return correct image ref", async () => {
     const imageRef1 = await getDeploymentImageRef({
-      host: testHost,
-      namespace: testNamespace,
+      registry: {
+        host: testHost,
+        namespace: testNamespace,
+        username: "test-user",
+        password: "test-pass",
+        ecrTags: registryTags,
+        ecrAssumeRoleArn: roleArn,
+        ecrAssumeRoleExternalId: externalId,
+      },
       projectRef: testProjectRef2,
       nextVersion: "20250630.1",
       environmentSlug: "test",
-      registryTags,
-      assumeRole,
     });
 
     expect(imageRef1.imageRef).toBe(
@@ -89,13 +99,18 @@ describe.skipIf(process.env.RUN_REGISTRY_TESTS !== "1")("getDeploymentImageRef",
     expect(imageRef1.repoCreated).toBe(true);
 
     const imageRef2 = await getDeploymentImageRef({
-      host: testHost,
-      namespace: testNamespace,
+      registry: {
+        host: testHost,
+        namespace: testNamespace,
+        username: "test-user",
+        password: "test-pass",
+        ecrTags: registryTags,
+        ecrAssumeRoleArn: roleArn,
+        ecrAssumeRoleExternalId: externalId,
+      },
       projectRef: testProjectRef2,
       nextVersion: "20250630.2",
       environmentSlug: "test",
-      registryTags,
-      assumeRole,
     });
 
     expect(imageRef2.imageRef).toBe(
@@ -108,13 +123,18 @@ describe.skipIf(process.env.RUN_REGISTRY_TESTS !== "1")("getDeploymentImageRef",
   it("should reuse existing ECR repository", async () => {
     // This should use the repository created in the previous test
     const imageRef = await getDeploymentImageRef({
-      host: testHost,
-      namespace: testNamespace,
+      registry: {
+        host: testHost,
+        namespace: testNamespace,
+        username: "test-user",
+        password: "test-pass",
+        ecrTags: registryTags,
+        ecrAssumeRoleArn: roleArn,
+        ecrAssumeRoleExternalId: externalId,
+      },
       projectRef: testProjectRef,
       nextVersion: "20250630.2",
       environmentSlug: "prod",
-      registryTags,
-      assumeRole,
     });
 
     expect(imageRef.imageRef).toBe(
@@ -126,13 +146,18 @@ describe.skipIf(process.env.RUN_REGISTRY_TESTS !== "1")("getDeploymentImageRef",
   it("should throw error for invalid ECR host", async () => {
     await expect(
       getDeploymentImageRef({
-        host: "invalid.ecr.amazonaws.com",
-        namespace: testNamespace,
+        registry: {
+          host: "invalid.ecr.amazonaws.com",
+          namespace: testNamespace,
+          username: "test-user",
+          password: "test-pass",
+          ecrTags: registryTags,
+          ecrAssumeRoleArn: roleArn,
+          ecrAssumeRoleExternalId: externalId,
+        },
         projectRef: testProjectRef,
         nextVersion: "20250630.1",
         environmentSlug: "test",
-        registryTags,
-        assumeRole,
       })
     ).rejects.toThrow("Invalid ECR registry host: invalid.ecr.amazonaws.com");
   });

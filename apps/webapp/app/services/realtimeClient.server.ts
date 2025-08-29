@@ -11,6 +11,7 @@ import { Cache, createCache, DefaultStatefulContext, Namespace } from "@unkey/ca
 import { MemoryStore } from "@unkey/cache/stores";
 import { RedisCacheStore } from "./unkey/redisCacheStore.server";
 import { env } from "~/env.server";
+import { API_VERSIONS, CURRENT_API_VERSION } from "~/api/versions";
 
 export interface CachedLimitProvider {
   getCachedLimit: (organizationId: string, defaultValue: number) => Promise<number | undefined>;
@@ -107,37 +108,29 @@ export class RealtimeClient {
     this.cache = cache;
   }
 
-  async streamChunks(
-    url: URL | string,
-    environment: RealtimeEnvironment,
-    runId: string,
-    streamId: string,
-    signal?: AbortSignal,
-    clientVersion?: string
-  ) {
-    return this.#streamChunksWhere(
-      url,
-      environment,
-      `"runId"='${runId}' AND "key"='${streamId}'`,
-      signal,
-      clientVersion
-    );
-  }
-
   async streamRun(
     url: URL | string,
     environment: RealtimeEnvironment,
     runId: string,
+    apiVersion: API_VERSIONS,
     requestOptions?: RealtimeRequestOptions,
     clientVersion?: string
   ) {
-    return this.#streamRunsWhere(url, environment, `id='${runId}'`, requestOptions, clientVersion);
+    return this.#streamRunsWhere(
+      url,
+      environment,
+      `id='${runId}'`,
+      apiVersion,
+      requestOptions,
+      clientVersion
+    );
   }
 
   async streamBatch(
     url: URL | string,
     environment: RealtimeEnvironment,
     batchId: string,
+    apiVersion: API_VERSIONS,
     requestOptions?: RealtimeRequestOptions,
     clientVersion?: string
   ) {
@@ -148,13 +141,21 @@ export class RealtimeClient {
 
     const whereClause = whereClauses.join(" AND ");
 
-    return this.#streamRunsWhere(url, environment, whereClause, requestOptions, clientVersion);
+    return this.#streamRunsWhere(
+      url,
+      environment,
+      whereClause,
+      apiVersion,
+      requestOptions,
+      clientVersion
+    );
   }
 
   async streamRuns(
     url: URL | string,
     environment: RealtimeEnvironment,
     params: RealtimeRunsParams,
+    apiVersion: API_VERSIONS,
     requestOptions?: RealtimeRequestOptions,
     clientVersion?: string
   ) {
@@ -176,6 +177,7 @@ export class RealtimeClient {
       url,
       environment,
       whereClause,
+      apiVersion,
       requestOptions,
       clientVersion
     );
@@ -269,6 +271,7 @@ export class RealtimeClient {
     url: URL | string,
     environment: RealtimeEnvironment,
     whereClause: string,
+    apiVersion: API_VERSIONS,
     requestOptions?: RealtimeRequestOptions,
     clientVersion?: string
   ) {
@@ -280,7 +283,13 @@ export class RealtimeClient {
       clientVersion
     );
 
-    return this.#performElectricRequest(electricUrl, environment, undefined, clientVersion);
+    return this.#performElectricRequest(
+      electricUrl,
+      environment,
+      apiVersion,
+      undefined,
+      clientVersion
+    );
   }
 
   #constructRunsElectricUrl(
@@ -334,43 +343,10 @@ export class RealtimeClient {
     return electricUrl;
   }
 
-  async #streamChunksWhere(
-    url: URL | string,
-    environment: RealtimeEnvironment,
-    whereClause: string,
-    signal?: AbortSignal,
-    clientVersion?: string
-  ) {
-    const electricUrl = this.#constructChunksElectricUrl(url, whereClause, clientVersion);
-
-    return this.#performElectricRequest(electricUrl, environment, signal, clientVersion);
-  }
-
-  #constructChunksElectricUrl(url: URL | string, whereClause: string, clientVersion?: string): URL {
-    const $url = new URL(url.toString());
-
-    const electricUrl = new URL(`${this.options.electricOrigin}/v1/shape`);
-
-    // Copy over all the url search params to the electric url
-    $url.searchParams.forEach((value, key) => {
-      electricUrl.searchParams.set(key, value);
-    });
-
-    electricUrl.searchParams.set("where", whereClause);
-    electricUrl.searchParams.set("table", `public."RealtimeStreamChunk"`);
-
-    if (!clientVersion) {
-      // If the client version is not provided, that means we're using an older client
-      // This means the client will be sending shape_id instead of handle
-      electricUrl.searchParams.set("handle", electricUrl.searchParams.get("shape_id") ?? "");
-    }
-
-    return electricUrl;
-  }
-
   async #performElectricRequest(
     url: URL,
     environment: RealtimeEnvironment,
+    apiVersion: API_VERSIONS,
     signal?: AbortSignal,
     clientVersion?: string
   ) {
@@ -386,13 +362,13 @@ export class RealtimeClient {
 
     if (!shapeId) {
       // If the shapeId is not present, we're just getting the initial value
-      return longPollingFetch(url.toString(), { signal }, rewriteResponseHeaders);
+      return this.#doLongPollingFetch(url, apiVersion, signal, rewriteResponseHeaders);
     }
 
     const isLive = isLiveRequestUrl(url);
 
     if (!isLive) {
-      return longPollingFetch(url.toString(), { signal }, rewriteResponseHeaders);
+      return this.#doLongPollingFetch(url, apiVersion, signal, rewriteResponseHeaders);
     }
 
     const requestId = randomUUID();
@@ -434,7 +410,12 @@ export class RealtimeClient {
 
     try {
       // ... (rest of your existing code for the long polling request)
-      const response = await longPollingFetch(url.toString(), { signal }, rewriteResponseHeaders);
+      const response = await this.#doLongPollingFetch(
+        url,
+        apiVersion,
+        signal,
+        rewriteResponseHeaders
+      );
 
       // If this is the initial request, the response.headers['electric-handle'] will be the shapeId
       // And we may need to set the "createdAt" filter timestamp keyed by the shapeId
@@ -450,6 +431,40 @@ export class RealtimeClient {
 
       throw error;
     }
+  }
+
+  async #doLongPollingFetch(
+    url: URL,
+    apiVersion: API_VERSIONS,
+    signal?: AbortSignal,
+    rewriteResponseHeaders?: Record<string, string>
+  ) {
+    if (apiVersion === CURRENT_API_VERSION) {
+      return longPollingFetch(url.toString(), { signal }, rewriteResponseHeaders);
+    }
+
+    const response = await longPollingFetch(url.toString(), { signal }, rewriteResponseHeaders);
+
+    return this.#rewriteResponseForNoneApiVersion(response);
+  }
+
+  async #rewriteResponseForNoneApiVersion(response: Response) {
+    // Get the raw response body
+    const responseBody = await response.text();
+
+    // Rewrite the response body
+    const rewrittenResponseBody = this.#rewriteResponseBodyForNoneApiVersion(responseBody);
+
+    // Return the rewritten response
+    return new Response(rewrittenResponseBody, {
+      status: response.status,
+      headers: response.headers,
+    });
+  }
+
+  // Rewrites "status":"DEQUEUED" to "status":"EXECUTING"
+  #rewriteResponseBodyForNoneApiVersion(responseBody: string) {
+    return responseBody.replace(/"status":"DEQUEUED"/g, '"status":"EXECUTING"');
   }
 
   async #incrementAndCheck(environmentId: string, requestId: string, limit: number) {

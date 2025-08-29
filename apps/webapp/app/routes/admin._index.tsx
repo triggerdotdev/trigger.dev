@@ -5,6 +5,7 @@ import { redirect } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { CopyableText } from "~/components/primitives/CopyableText";
 import { Header1 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
 import { PaginationControls } from "~/components/primitives/Pagination";
@@ -69,13 +70,14 @@ export default function AdminDashboardRoute() {
         <Form className="flex items-center gap-2">
           <Input
             placeholder="Search users or orgs"
-            variant="small"
+            variant="medium"
             icon={MagnifyingGlassIcon}
             fullWidth={true}
             name="search"
             defaultValue={filters.search}
+            autoFocus
           />
-          <Button type="submit" variant="tertiary/small">
+          <Button type="submit" variant="secondary/medium">
             Search
           </Button>
         </Form>
@@ -101,7 +103,9 @@ export default function AdminDashboardRoute() {
               users.map((user) => {
                 return (
                   <TableRow key={user.id}>
-                    <TableCell>{user.email}</TableCell>
+                    <TableCell>
+                      <CopyableText value={user.email} />
+                    </TableCell>
                     <TableCell>
                       {user.orgMemberships.map((org) => (
                         <LinkButton
@@ -124,8 +128,12 @@ export default function AdminDashboardRoute() {
                         {user.displayName}
                       </a>
                     </TableCell>
-                    <TableCell>{user.id}</TableCell>
-                    <TableCell>{user.createdAt.toISOString()}</TableCell>
+                    <TableCell>
+                      <CopyableText value={user.id} />
+                    </TableCell>
+                    <TableCell>
+                      <CopyableText value={user.createdAt.toISOString()} />
+                    </TableCell>
                     <TableCell>{user.admin ? "✅" : ""}</TableCell>
                     <TableCell isSticky={true}>
                       <Form method="post" reloadDocument>

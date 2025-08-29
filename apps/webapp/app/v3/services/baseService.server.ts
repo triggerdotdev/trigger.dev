@@ -3,6 +3,9 @@ import { $replica, PrismaClientOrTransaction, prisma } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { attributesFromAuthenticatedEnv, tracer } from "../tracer.server";
 import { engine, RunEngine } from "../runEngine.server";
+import { ServiceValidationError } from "./common.server";
+
+export { ServiceValidationError };
 
 export abstract class BaseService {
   constructor(
@@ -52,12 +55,5 @@ export class WithRunEngine extends BaseService {
   constructor(opts: { prisma?: PrismaClientOrTransaction; engine?: RunEngine } = {}) {
     super(opts.prisma);
     this._engine = opts.engine ?? engine;
-  }
-}
-
-export class ServiceValidationError extends Error {
-  constructor(message: string, public status?: number) {
-    super(message);
-    this.name = "ServiceValidationError";
   }
 }

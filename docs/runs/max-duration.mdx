@@ -9,7 +9,7 @@ The `maxDuration` parameter sets a maximum compute time limit for tasks. When a 
 You must set a default maxDuration in your `trigger.config.ts` file, which will apply to all tasks unless overridden:
 
 ```ts /config/trigger.config.ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   project: "proj_gtcwttqhhtlasxgfuhxs",
@@ -38,7 +38,7 @@ The `maxDuration` is set in seconds, and is compared to the CPU time elapsed sin
 You can inspect the CPU time of a task inside the run function with our `usage` utility:
 
 ```ts /trigger/max-duration.ts
-import { task, usage } from "@trigger.dev/sdk/v3";
+import { task, usage } from "@trigger.dev/sdk";
 
 export const maxDurationTask = task({
   id: "max-duration-task",
@@ -60,7 +60,7 @@ The above value will be compared to the `maxDuration` you set. If the task excee
 You can set a `maxDuration` on a specific task:
 
 ```ts /trigger/max-duration-task.ts
-import { task } from "@trigger.dev/sdk/v3";
+import { task } from "@trigger.dev/sdk";
 
 export const maxDurationTask = task({
   id: "max-duration-task",
@@ -76,7 +76,7 @@ This will override the default `maxDuration` set in the config file. If you have
 You can "turn off" the Max duration set in your config file for a specific task like so:
 
 ```ts /trigger/max-duration-task.ts
-import { task, timeout } from "@trigger.dev/sdk/v3";
+import { task, timeout } from "@trigger.dev/sdk";
 
 export const maxDurationTask = task({
   id: "max-duration-task",
@@ -107,7 +107,7 @@ You can also set the `maxDuration` to `timeout.None` to turn off the max duratio
 
 ```ts /trigger/max-duration.ts
 import { maxDurationTask } from "./trigger/max-duration-task";
-import { timeout } from "@trigger.dev/sdk/v3";
+import { timeout } from "@trigger.dev/sdk";
 
 // Trigger the task with no maxDuration
 const run = await maxDurationTask.trigger(
@@ -123,7 +123,7 @@ const run = await maxDurationTask.trigger(
 You can access the `maxDuration` set for a run in the run context:
 
 ```ts /trigger/max-duration-task.ts
-import { task } from "@trigger.dev/sdk/v3";
+import { task } from "@trigger.dev/sdk";
 
 export const maxDurationTask = task({
   id: "max-duration-task",

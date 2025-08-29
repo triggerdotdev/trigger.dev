@@ -52,7 +52,7 @@ Dashboard: http://localhost:3040/
 
 ```bash
 # The --push arg is required when testing locally
-npx trigger.dev@v4-beta deploy --push
+npx trigger.dev@latest deploy --push
 ```
 
 ## ⚠️ Security Requirements
@@ -537,7 +537,7 @@ kubectl port-forward svc/trigger.dev-webapp 3040:3030 --address 0.0.0.0
 2. **Database connection**: Check PostgreSQL is ready before webapp starts
 3. **Resource limits**: Increase limits for ClickHouse in constrained environments
 4. **Config not applying**: Use the pod restart technique above to force config reload
-5. **Image pull errors**: When testing locally, deploy with `npx trigger.dev@v4-beta deploy --push`
+5. **Image pull errors**: When testing locally, deploy with `npx trigger.dev@latest deploy --push`
 
 ## Examples
 

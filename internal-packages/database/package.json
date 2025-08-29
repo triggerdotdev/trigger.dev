@@ -5,10 +5,12 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "dependencies": {
-    "@prisma/client": "5.4.1"
+    "@prisma/client": "6.14.0",
+    "decimal.js": "^10.6.0"
   },
   "devDependencies": {
-    "prisma": "5.4.1",
+    "@types/decimal.js": "^7.4.3",
+    "prisma": "6.14.0",
     "rimraf": "6.0.1"
   },
   "scripts": {

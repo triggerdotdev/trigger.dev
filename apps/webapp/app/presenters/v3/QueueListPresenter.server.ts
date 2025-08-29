@@ -1,9 +1,9 @@
+import { TaskQueueType } from "@trigger.dev/database";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { determineEngineVersion } from "~/v3/engineVersion.server";
 import { engine } from "~/v3/runEngine.server";
 import { BasePresenter } from "./basePresenter.server";
 import { toQueueItem } from "./QueueRetrievePresenter.server";
-import { TaskQueueType } from "@trigger.dev/database";
 
 const DEFAULT_ITEMS_PER_PAGE = 25;
 const MAX_ITEMS_PER_PAGE = 100;
@@ -116,7 +116,6 @@ export class QueueListPresenter extends BasePresenter {
         concurrencyLimit: true,
         type: true,
         paused: true,
-        releaseConcurrencyOnWaitpoint: true,
       },
       orderBy: {
         orderableName: "asc",
@@ -146,7 +145,6 @@ export class QueueListPresenter extends BasePresenter {
         queued: results[0][queue.name] ?? 0,
         concurrencyLimit: queue.concurrencyLimit ?? null,
         paused: queue.paused,
-        releaseConcurrencyOnWaitpoint: queue.releaseConcurrencyOnWaitpoint,
       })
     );
   }

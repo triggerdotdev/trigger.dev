@@ -107,7 +107,7 @@ describe("RunEngine attempt failures", () => {
       });
       expect(result.attemptStatus).toBe("RETRY_IMMEDIATELY");
       expect(result.snapshot.executionStatus).toBe("EXECUTING");
-      expect(result.run.status).toBe("RETRYING_AFTER_FAILURE");
+      expect(result.run.status).toBe("EXECUTING");
 
       //state should be pending
       const executionData3 = await engine.getRunExecutionData({ runId: run.id });
@@ -115,7 +115,7 @@ describe("RunEngine attempt failures", () => {
       expect(executionData3.snapshot.executionStatus).toBe("EXECUTING");
       //only when the new attempt is created, should the attempt be increased
       expect(executionData3.run.attemptNumber).toBe(1);
-      expect(executionData3.run.status).toBe("RETRYING_AFTER_FAILURE");
+      expect(executionData3.run.status).toBe("EXECUTING");
 
       //create a second attempt
       const attemptResult2 = await engine.startRunAttempt({
@@ -600,14 +600,14 @@ describe("RunEngine attempt failures", () => {
       // The run should be retried with a larger machine
       expect(result.attemptStatus).toBe("RETRY_QUEUED");
       expect(result.snapshot.executionStatus).toBe("QUEUED");
-      expect(result.run.status).toBe("RETRYING_AFTER_FAILURE");
+      expect(result.run.status).toBe("PENDING");
 
       //state should be pending
       const executionData = await engine.getRunExecutionData({ runId: run.id });
       assertNonNullable(executionData);
       expect(executionData.snapshot.executionStatus).toBe("QUEUED");
       expect(executionData.run.attemptNumber).toBe(1);
-      expect(executionData.run.status).toBe("RETRYING_AFTER_FAILURE");
+      expect(executionData.run.status).toBe("PENDING");
 
       //create a second attempt
       const attemptResult2 = await engine.startRunAttempt({
@@ -761,14 +761,14 @@ describe("RunEngine attempt failures", () => {
       // The run should be retried with a larger machine
       expect(result.attemptStatus).toBe("RETRY_QUEUED");
       expect(result.snapshot.executionStatus).toBe("QUEUED");
-      expect(result.run.status).toBe("RETRYING_AFTER_FAILURE");
+      expect(result.run.status).toBe("PENDING");
 
       //state should be queued
       const executionData = await engine.getRunExecutionData({ runId: run.id });
       assertNonNullable(executionData);
       expect(executionData.snapshot.executionStatus).toBe("QUEUED");
       expect(executionData.run.attemptNumber).toBe(1);
-      expect(executionData.run.status).toBe("RETRYING_AFTER_FAILURE");
+      expect(executionData.run.status).toBe("PENDING");
 
       await engine.runQueue.processMasterQueueForEnvironment(authenticatedEnvironment.id);
 

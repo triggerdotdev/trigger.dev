@@ -1,4 +1,5 @@
 import { type ClickHouse } from "@internal/clickhouse";
+import { MachinePresetName } from "@trigger.dev/core/v3";
 import {
   type PrismaClient,
   type PrismaClientOrTransaction,
@@ -8,7 +9,8 @@ import { type Direction } from "~/components/ListPagination";
 import { timeFilters } from "~/components/runs/v3/SharedFilters";
 import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { getAllTaskIdentifiers } from "~/models/task.server";
-import { RunsRepository } from "~/services/runsRepository.server";
+import { RunsRepository } from "~/services/runsRepository/runsRepository.server";
+import { machinePresetFromRun } from "~/v3/machinePresets.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { isCancellableRunStatus, isFinalRunStatus, isPendingRunStatus } from "~/v3/taskStatus";
 
@@ -29,6 +31,8 @@ export type RunListOptions = {
   rootOnly?: boolean;
   batchId?: string;
   runId?: string[];
+  queues?: string[];
+  machines?: MachinePresetName[];
   //pagination
   direction?: Direction;
   cursor?: string;
@@ -64,6 +68,8 @@ export class NextRunListPresenter {
       rootOnly,
       batchId,
       runId,
+      queues,
+      machines,
       from,
       to,
       direction = "forward",
@@ -89,6 +95,8 @@ export class NextRunListPresenter {
       (tags !== undefined && tags.length > 0) ||
       batchId !== undefined ||
       (runId !== undefined && runId.length > 0) ||
+      (queues !== undefined && queues.length > 0) ||
+      (machines !== undefined && machines.length > 0) ||
       typeof isTest === "boolean" ||
       rootOnly === true ||
       !time.isDefault;
@@ -172,6 +180,8 @@ export class NextRunListPresenter {
       batchId,
       runId,
       bulkId,
+      queues,
+      machines,
       page: {
         size: pageSize,
         cursor,
@@ -231,6 +241,11 @@ export class NextRunListPresenter {
           rootTaskRunId: run.rootTaskRunId,
           metadata: run.metadata,
           metadataType: run.metadataType,
+          machinePreset: run.machinePreset ? machinePresetFromRun(run)?.name : undefined,
+          queue: {
+            name: run.queue.replace("task/", ""),
+            type: run.queue.startsWith("task/") ? "task" : "custom",
+          },
         };
       }),
       pagination: {

@@ -36,7 +36,7 @@ In your new file, add the following code:
 
 ```ts /pages/api/webhook-handler.ts
 import { helloWorldTask } from "@/trigger/example";
-import { tasks } from "@trigger.dev/sdk/v3";
+import { tasks } from "@trigger.dev/sdk";
 import type { NextApiRequest, NextApiResponse } from "next";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -60,7 +60,7 @@ In your new file, add the following code:
 
 ```ts /app/api/webhook-handler/route.ts
 import type { helloWorldTask } from "@/trigger/example";
-import { tasks } from "@trigger.dev/sdk/v3";
+import { tasks } from "@trigger.dev/sdk";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {

@@ -13,13 +13,10 @@ const { action } = createActionApiRoute(
       runFriendlyId: z.string(),
       waitpointFriendlyId: z.string(),
     }),
-    body: z.object({
-      releaseConcurrency: z.boolean().optional(),
-    }),
     maxContentLength: 1024 * 10, // 10KB
     method: "POST",
   },
-  async ({ authentication, body, params }) => {
+  async ({ authentication, params }) => {
     // Resume tokens are actually just waitpoints
     const waitpointId = WaitpointId.toId(params.waitpointFriendlyId);
     const runId = RunId.toId(params.runFriendlyId);
@@ -42,7 +39,6 @@ const { action } = createActionApiRoute(
         waitpoints: [waitpointId],
         projectId: authentication.environment.project.id,
         organizationId: authentication.environment.organization.id,
-        releaseConcurrency: body.releaseConcurrency,
       });
 
       return json<WaitForWaitpointTokenResponseBody>(

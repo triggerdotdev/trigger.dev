@@ -4,7 +4,8 @@ import {
   type WorkloadManagerCreateOptions,
   type WorkloadManagerOptions,
 } from "./types.js";
-import type { EnvironmentType, MachinePreset } from "@trigger.dev/core/v3";
+import type { EnvironmentType, MachinePreset, PlacementTag } from "@trigger.dev/core/v3";
+import { PlacementTagProcessor } from "@trigger.dev/core/v3/serverOnly";
 import { env } from "../env.js";
 import { type K8sApi, createK8sApi, type k8s } from "../clients/kubernetes.js";
 import { getRunnerId } from "../util.js";
@@ -17,15 +18,49 @@ export class KubernetesWorkloadManager implements WorkloadManager {
   private readonly logger = new SimpleStructuredLogger("kubernetes-workload-provider");
   private k8s: K8sApi;
   private namespace = env.KUBERNETES_NAMESPACE;
+  private placementTagProcessor: PlacementTagProcessor;
 
   constructor(private opts: WorkloadManagerOptions) {
     this.k8s = createK8sApi();
+    this.placementTagProcessor = new PlacementTagProcessor({
+      enabled: env.PLACEMENT_TAGS_ENABLED,
+      prefix: env.PLACEMENT_TAGS_PREFIX,
+    });
 
     if (opts.workloadApiDomain) {
       this.logger.warn("[KubernetesWorkloadManager] ⚠️ Custom workload API domain", {
         domain: opts.workloadApiDomain,
       });
     }
+  }
+
+  private addPlacementTags(
+    podSpec: Omit<k8s.V1PodSpec, "containers">,
+    placementTags?: PlacementTag[]
+  ): Omit<k8s.V1PodSpec, "containers"> {
+    const nodeSelector = this.placementTagProcessor.convertToNodeSelector(
+      placementTags,
+      podSpec.nodeSelector
+    );
+
+    return {
+      ...podSpec,
+      nodeSelector,
+    };
+  }
+
+  private stripImageDigest(imageRef: string): string {
+    if (!env.KUBERNETES_STRIP_IMAGE_DIGEST) {
+      return imageRef;
+    }
+
+    const atIndex = imageRef.lastIndexOf("@");
+
+    if (atIndex === -1) {
+      return imageRef;
+    }
+
+    return imageRef.substring(0, atIndex);
   }
 
   async create(opts: WorkloadManagerCreateOptions) {
@@ -48,12 +83,12 @@ export class KubernetesWorkloadManager implements WorkloadManager {
             },
           },
           spec: {
-            ...this.#defaultPodSpec,
+            ...this.addPlacementTags(this.#defaultPodSpec, opts.placementTags),
             terminationGracePeriodSeconds: 60 * 60,
             containers: [
               {
                 name: "run-controller",
-                image: opts.image,
+                image: this.stripImageDigest(opts.image),
                 ports: [
                   {
                     containerPort: 8000,

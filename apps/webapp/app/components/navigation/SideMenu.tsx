@@ -10,6 +10,7 @@ import {
   CogIcon,
   FolderIcon,
   FolderOpenIcon,
+  GlobeAmericasIcon,
   IdentificationIcon,
   KeyIcon,
   PlusIcon,
@@ -22,6 +23,7 @@ import { useNavigation } from "@remix-run/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import simplur from "simplur";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
+import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 import { RunsIconExtraSmall } from "~/assets/icons/RunsIcon";
 import { TaskIconSmall } from "~/assets/icons/TaskIcon";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
@@ -46,6 +48,7 @@ import {
   organizationPath,
   organizationSettingsPath,
   organizationTeamPath,
+  regionsPath,
   v3ApiKeysPath,
   v3BatchesPath,
   v3BillingPath,
@@ -87,8 +90,6 @@ import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
-import { ListChecks } from "lucide-react";
-import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 export type SideMenuProject = Pick<
@@ -143,16 +144,18 @@ export function SideMenu({
     >
       <div
         className={cn(
-          "flex items-center justify-between overflow-hidden border-b px-1 py-1 transition duration-300",
+          "flex items-center overflow-hidden border-b px-1 py-1 transition duration-300",
           showHeaderDivider ? "border-grid-bright" : "border-transparent"
         )}
       >
-        <ProjectSelector
-          organizations={organizations}
-          organization={organization}
-          project={project}
-          user={user}
-        />
+        <div className="min-w-0 flex-1">
+          <ProjectSelector
+            organizations={organizations}
+            organization={organization}
+            project={project}
+            user={user}
+          />
+        </div>
         {isAdmin && !user.isImpersonating ? (
           <TooltipProvider disableHoverableContent={true}>
             <Tooltip>
@@ -307,6 +310,14 @@ export function SideMenu({
               activeIconColor="text-preview"
               to={branchesPath(organization, project, environment)}
               data-action="preview-branches"
+              badge={<V4Badge />}
+            />
+            <SideMenuItem
+              name="Regions"
+              icon={GlobeAmericasIcon}
+              activeIconColor="text-green-500"
+              to={regionsPath(organization, project, environment)}
+              data-action="regions"
               badge={<V4Badge />}
             />
             <SideMenuItem

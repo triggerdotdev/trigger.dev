@@ -14,6 +14,7 @@ import { WorkerGroupService } from "~/v3/services/worker/workerGroupService.serv
 import type { RunEngine } from "~/v3/runEngine.server";
 import { env } from "~/env.server";
 import { EngineServiceValidationError } from "./errors";
+import { tryCatch } from "@trigger.dev/core/v3";
 
 export class DefaultQueueManager implements QueueManager {
   constructor(
@@ -176,8 +177,11 @@ export class DefaultQueueManager implements QueueManager {
     return task.queue.name ?? defaultQueueName;
   }
 
-  async validateQueueLimits(environment: AuthenticatedEnvironment): Promise<QueueValidationResult> {
-    const queueSizeGuard = await guardQueueSizeLimitsForEnv(this.engine, environment);
+  async validateQueueLimits(
+    environment: AuthenticatedEnvironment,
+    itemsToAdd?: number
+  ): Promise<QueueValidationResult> {
+    const queueSizeGuard = await guardQueueSizeLimitsForEnv(this.engine, environment, itemsToAdd);
 
     logger.debug("Queue size guard result", {
       queueSizeGuard,
@@ -196,7 +200,10 @@ export class DefaultQueueManager implements QueueManager {
     };
   }
 
-  async getWorkerQueue(environment: AuthenticatedEnvironment): Promise<string | undefined> {
+  async getWorkerQueue(
+    environment: AuthenticatedEnvironment,
+    regionOverride?: string
+  ): Promise<string | undefined> {
     if (environment.type === "DEVELOPMENT") {
       return environment.id;
     }
@@ -206,9 +213,16 @@ export class DefaultQueueManager implements QueueManager {
       engine: this.engine,
     });
 
-    const workerGroup = await workerGroupService.getDefaultWorkerGroupForProject({
-      projectId: environment.projectId,
-    });
+    const [error, workerGroup] = await tryCatch(
+      workerGroupService.getDefaultWorkerGroupForProject({
+        projectId: environment.projectId,
+        regionOverride,
+      })
+    );
+
+    if (error) {
+      throw new EngineServiceValidationError(error.message);
+    }
 
     if (!workerGroup) {
       throw new EngineServiceValidationError("No worker group found");

@@ -4,8 +4,9 @@ import { getEntitlement } from "~/services/platform.v3.server";
 import { MAX_ATTEMPTS, OutOfEntitlementError } from "~/v3/services/triggerTask.server";
 import { isFinalRunStatus } from "~/v3/taskStatus";
 import { EngineServiceValidationError } from "../concerns/errors";
-import {
+import type {
   EntitlementValidationParams,
+  EntitlementValidationResult,
   MaxAttemptsValidationParams,
   ParentRunValidationParams,
   TagValidationParams,
@@ -37,7 +38,9 @@ export class DefaultTriggerTaskValidator implements TriggerTaskValidator {
     return { ok: true };
   }
 
-  async validateEntitlement(params: EntitlementValidationParams): Promise<ValidationResult> {
+  async validateEntitlement(
+    params: EntitlementValidationParams
+  ): Promise<EntitlementValidationResult> {
     const { environment } = params;
 
     if (environment.type === "DEVELOPMENT") {
@@ -53,7 +56,7 @@ export class DefaultTriggerTaskValidator implements TriggerTaskValidator {
       };
     }
 
-    return { ok: true };
+    return { ok: true, plan: result?.plan };
   }
 
   validateMaxAttempts(params: MaxAttemptsValidationParams): ValidationResult {

@@ -1,5 +1,5 @@
 import type { ClickHouse, RawTaskRunPayloadV1, TaskRunV2 } from "@internal/clickhouse";
-import { RedisOptions } from "@internal/redis";
+import { type RedisOptions } from "@internal/redis";
 import {
   LogicalReplicationClient,
   type MessageDelete,
@@ -8,14 +8,13 @@ import {
   type PgoutputMessage,
 } from "@internal/replication";
 import { recordSpanError, startSpan, trace, type Tracer } from "@internal/tracing";
-import { Logger, LogLevel } from "@trigger.dev/core/logger";
+import { Logger, type LogLevel } from "@trigger.dev/core/logger";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { parsePacketAsJson } from "@trigger.dev/core/v3/utils/ioSerialization";
-import { TaskRun } from "@trigger.dev/database";
+import { type TaskRun } from "@trigger.dev/database";
 import { nanoid } from "nanoid";
 import EventEmitter from "node:events";
 import pLimit from "p-limit";
-import { logger } from "./logger.server";
 import { detectBadJsonStrings } from "~/utils/detectBadJsonStrings";
 
 interface TransactionEvent<T = any> {
@@ -53,16 +52,26 @@ export type RunsReplicationServiceOptions = {
   logLevel?: LogLevel;
   tracer?: Tracer;
   waitForAsyncInsert?: boolean;
+  insertStrategy?: "insert" | "insert_async";
   // Retry configuration for insert operations
   insertMaxRetries?: number;
   insertBaseDelayMs?: number;
   insertMaxDelayMs?: number;
 };
 
-type TaskRunInsert = { _version: bigint; run: TaskRun; event: "insert" | "update" | "delete" };
+type PostgresTaskRun = TaskRun & { masterQueue: string };
+
+type TaskRunInsert = {
+  _version: bigint;
+  run: PostgresTaskRun;
+  event: "insert" | "update" | "delete";
+};
 
 export type RunsReplicationServiceEvents = {
   message: [{ lsn: string; message: PgoutputMessage; service: RunsReplicationService }];
+  batchFlushed: [
+    { flushId: string; taskRunInserts: TaskRunV2[]; payloadInserts: RawTaskRunPayloadV1[] }
+  ];
 };
 
 export class RunsReplicationService {
@@ -90,6 +99,7 @@ export class RunsReplicationService {
   private _insertMaxRetries: number;
   private _insertBaseDelayMs: number;
   private _insertMaxDelayMs: number;
+  private _insertStrategy: "insert" | "insert_async";
 
   public readonly events: EventEmitter<RunsReplicationServiceEvents>;
 
@@ -100,6 +110,8 @@ export class RunsReplicationService {
     this._tracer = options.tracer ?? trace.getTracer("runs-replication-service");
 
     this._acknowledgeTimeoutMs = options.acknowledgeTimeoutMs ?? 1_000;
+
+    this._insertStrategy = options.insertStrategy ?? "insert";
 
     this._replicationClient = new LogicalReplicationClient({
       pgConfig: {
@@ -126,6 +138,29 @@ export class RunsReplicationService {
       flushInterval: options.flushIntervalMs ?? 100,
       maxConcurrency: options.maxFlushConcurrency ?? 100,
       callback: this.#flushBatch.bind(this),
+      // we can do some pre-merging to reduce the amount of data we need to send to clickhouse
+      mergeBatch: (existingBatch: TaskRunInsert[], newBatch: TaskRunInsert[]) => {
+        const merged = new Map<string, TaskRunInsert>();
+
+        for (const item of existingBatch) {
+          const key = `${item.event}_${item.run.id}`;
+          merged.set(key, item);
+        }
+
+        for (const item of newBatch) {
+          const key = `${item.event}_${item.run.id}`;
+          const existingItem = merged.get(key);
+
+          // Keep the run with the higher version (latest)
+          // and take the last occurrence for that version.
+          // Items originating from the same DB transaction have the same version.
+          if (!existingItem || item._version >= existingItem._version) {
+            merged.set(key, item);
+          }
+        }
+
+        return Array.from(merged.values());
+      },
       logger: new Logger("ConcurrentFlushScheduler", options.logLevel ?? "info"),
       tracer: options.tracer,
     });
@@ -214,7 +249,7 @@ export class RunsReplicationService {
     }
   }
 
-  async backfill(runs: TaskRun[]) {
+  async backfill(runs: PostgresTaskRun[]) {
     // divide into batches of 50 to get data from Postgres
     const flushId = nanoid();
     // Use current timestamp as LSN (high enough to be above existing data)
@@ -323,7 +358,7 @@ export class RunsReplicationService {
         const replicationLagMs = Date.now() - Number(message.commitTime / 1000n);
         this._currentTransaction.commitEndLsn = message.commitEndLsn;
         this._currentTransaction.replicationLagMs = replicationLagMs;
-        const transaction = this._currentTransaction as Transaction<TaskRun>;
+        const transaction = this._currentTransaction as Transaction<PostgresTaskRun>;
         this._currentTransaction = null;
 
         if (transaction.commitEndLsn) {
@@ -341,7 +376,7 @@ export class RunsReplicationService {
     }
   }
 
-  #handleTransaction(transaction: Transaction<TaskRun>) {
+  #handleTransaction(transaction: Transaction<PostgresTaskRun>) {
     if (this._isShutDownComplete) return;
 
     if (this._isShuttingDown) {
@@ -463,11 +498,33 @@ export class RunsReplicationService {
 
       const taskRunInserts = preparedInserts
         .map(({ taskRunInsert }) => taskRunInsert)
-        .filter(Boolean);
+        .filter(Boolean)
+        // batch inserts in clickhouse are more performant if the items
+        // are pre-sorted by the primary key
+        .sort((a, b) => {
+          if (a.organization_id !== b.organization_id) {
+            return a.organization_id < b.organization_id ? -1 : 1;
+          }
+          if (a.project_id !== b.project_id) {
+            return a.project_id < b.project_id ? -1 : 1;
+          }
+          if (a.environment_id !== b.environment_id) {
+            return a.environment_id < b.environment_id ? -1 : 1;
+          }
+          if (a.created_at !== b.created_at) {
+            return a.created_at - b.created_at;
+          }
+          return a.run_id < b.run_id ? -1 : 1;
+        });
 
       const payloadInserts = preparedInserts
         .map(({ payloadInsert }) => payloadInsert)
-        .filter(Boolean);
+        .filter(Boolean)
+        // batch inserts in clickhouse are more performant if the items
+        // are pre-sorted by the primary key
+        .sort((a, b) => {
+          return a.run_id < b.run_id ? -1 : 1;
+        });
 
       span.setAttribute("task_run_inserts", taskRunInserts.length);
       span.setAttribute("payload_inserts", payloadInserts.length);
@@ -515,6 +572,8 @@ export class RunsReplicationService {
         taskRunInserts: taskRunInserts.length,
         payloadInserts: payloadInserts.length,
       });
+
+      this.events.emit("batchFlushed", { flushId, taskRunInserts, payloadInserts });
     });
   }
 
@@ -598,15 +657,26 @@ export class RunsReplicationService {
     return delay + jitter;
   }
 
+  #getClickhouseInsertSettings() {
+    if (this._insertStrategy === "insert") {
+      return {};
+    } else if (this._insertStrategy === "insert_async") {
+      return {
+        async_insert: 1 as const,
+        async_insert_max_data_size: "1000000",
+        async_insert_busy_timeout_ms: 1000,
+        wait_for_async_insert: this.options.waitForAsyncInsert ? (1 as const) : (0 as const),
+      };
+    }
+  }
+
   async #insertTaskRunInserts(taskRunInserts: TaskRunV2[], attempt: number) {
     return await startSpan(this._tracer, "insertTaskRunsInserts", async (span) => {
       const [insertError, insertResult] = await this.options.clickhouse.taskRuns.insert(
         taskRunInserts,
         {
           params: {
-            clickhouse_settings: {
-              wait_for_async_insert: this.options.waitForAsyncInsert ? 1 : 0,
-            },
+            clickhouse_settings: this.#getClickhouseInsertSettings(),
           },
         }
       );
@@ -631,9 +701,7 @@ export class RunsReplicationService {
         payloadInserts,
         {
           params: {
-            clickhouse_settings: {
-              wait_for_async_insert: this.options.waitForAsyncInsert ? 1 : 0,
-            },
+            clickhouse_settings: this.#getClickhouseInsertSettings(),
           },
         }
       );
@@ -702,7 +770,7 @@ export class RunsReplicationService {
   }
 
   async #prepareTaskRunInsert(
-    run: TaskRun,
+    run: PostgresTaskRun,
     organizationId: string,
     environmentType: string,
     event: "insert" | "update" | "delete",
@@ -752,6 +820,7 @@ export class RunsReplicationService {
       output,
       concurrency_key: run.concurrencyKey ?? "",
       bulk_action_group_ids: run.bulkActionGroupIds ?? [],
+      worker_queue: run.masterQueue,
       _version: _version.toString(),
       _is_deleted: event === "delete" ? 1 : 0,
     };
@@ -812,12 +881,13 @@ export type ConcurrentFlushSchedulerConfig<T> = {
   flushInterval: number;
   maxConcurrency?: number;
   callback: (flushId: string, batch: T[]) => Promise<void>;
+  mergeBatch?: (existingBatch: T[], newBatch: T[]) => T[];
   tracer?: Tracer;
   logger?: Logger;
 };
 
 export class ConcurrentFlushScheduler<T> {
-  private currentBatch: T[]; // Adjust the type according to your data structure
+  private currentBatch: T[];
   private readonly BATCH_SIZE: number;
   private readonly flushInterval: number;
   private readonly MAX_CONCURRENCY: number;
@@ -842,7 +912,10 @@ export class ConcurrentFlushScheduler<T> {
   }
 
   addToBatch(items: T[]): void {
-    this.currentBatch = this.currentBatch.concat(items);
+    this.currentBatch = this.config.mergeBatch
+      ? this.config.mergeBatch(this.currentBatch, items)
+      : this.currentBatch.concat(items);
+
     this.#flushNextBatchIfNeeded();
   }
 

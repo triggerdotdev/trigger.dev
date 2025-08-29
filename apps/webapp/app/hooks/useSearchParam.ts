@@ -11,7 +11,6 @@ export function useSearchParams() {
   const replace = useCallback(
     (values: Values) => {
       const s = set(new URLSearchParams(location.search), values);
-
       navigate(`${location.pathname}?${s.toString()}`, { replace: true });
     },
     [location, navigate]

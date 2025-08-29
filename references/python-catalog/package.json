@@ -10,7 +10,7 @@
   "dependencies": {
     "@trigger.dev/sdk": "workspace:*",
     "@trigger.dev/python": "workspace:*",
-    "zod": "3.23.8"
+    "zod": "3.25.76"
   },
   "devDependencies": {
     "@trigger.dev/build": "workspace:*",

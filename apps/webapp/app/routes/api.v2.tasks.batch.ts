@@ -103,10 +103,9 @@ const { action, loader } = createActionApiRoute(
       return cachedResponse;
     }
 
-    const traceContext =
-      traceparent && isFromWorker // If the request is from a worker, we should pass the trace context
-        ? { traceparent, tracestate }
-        : undefined;
+    const traceContext = isFromWorker
+      ? { traceparent, tracestate }
+      : { external: { traceparent, tracestate } };
 
     const service = new RunEngineBatchTriggerService(batchProcessingStrategy ?? undefined);
 

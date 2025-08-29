@@ -3,6 +3,9 @@ import { VERSION } from "../../version.js";
 import { generateJWT } from "../jwt.js";
 import {
   AddTagsRequestBody,
+  ApiDeploymentListOptions,
+  ApiDeploymentListResponseItem,
+  ApiDeploymentListSearchParams,
   BatchTaskRunExecutionResult,
   BatchTriggerTaskV3RequestBody,
   BatchTriggerTaskV3Response,
@@ -21,11 +24,13 @@ import {
   ListRunResponseItem,
   ListScheduleOptions,
   QueueItem,
+  QueueTypeName,
   ReplayRunResponse,
   RescheduleRunRequestBody,
   RetrieveBatchV2Response,
   RetrieveQueueParam,
   RetrieveRunResponse,
+  RetrieveRunTraceResponseBody,
   ScheduleObject,
   TaskRunExecutionResult,
   TriggerTaskRequestBody,
@@ -77,6 +82,7 @@ import {
   SubscribeToRunsQueryParams,
   UpdateEnvironmentVariableParams,
 } from "./types.js";
+import { API_VERSION, API_VERSION_HEADER_NAME } from "./version.js";
 
 export type CreateWaitpointTokenResponse = Prettify<
   CreateWaitpointTokenResponseBody & {
@@ -329,6 +335,18 @@ export class ApiClient {
     return zodfetch(
       RetrieveRunResponse,
       `${this.baseUrl}/api/v3/runs/${runId}`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  retrieveRunTrace(runId: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      RetrieveRunTraceResponseBody,
+      `${this.baseUrl}/api/v1/runs/${runId}/trace`,
       {
         method: "GET",
         headers: this.#getHeaders(false),
@@ -777,11 +795,9 @@ export class ApiClient {
     {
       runFriendlyId,
       waitpointFriendlyId,
-      releaseConcurrency,
     }: {
       runFriendlyId: string;
       waitpointFriendlyId: string;
-      releaseConcurrency?: boolean;
     },
     requestOptions?: ZodFetchOptions
   ) {
@@ -791,9 +807,6 @@ export class ApiClient {
       {
         method: "POST",
         headers: this.#getHeaders(false),
-        body: JSON.stringify({
-          releaseConcurrency,
-        }),
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );
@@ -963,6 +976,41 @@ export class ApiClient {
     );
   }
 
+  listDeployments(options?: ApiDeploymentListOptions, requestOptions?: ZodFetchOptions) {
+    const searchParams = new URLSearchParams();
+
+    if (options?.status) {
+      searchParams.append("status", options.status);
+    }
+
+    if (options?.period) {
+      searchParams.append("period", options.period);
+    }
+
+    if (options?.from) {
+      searchParams.append("from", options.from);
+    }
+
+    if (options?.to) {
+      searchParams.append("to", options.to);
+    }
+
+    return zodfetchCursorPage(
+      ApiDeploymentListResponseItem,
+      `${this.baseUrl}/api/v1/deployments`,
+      {
+        query: searchParams,
+        after: options?.cursor,
+        limit: options?.limit,
+      },
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
   async fetchStream<T>(
     runId: string,
     streamKey: string,
@@ -1039,6 +1087,8 @@ export class ApiClient {
     if (typeof window !== "undefined" && typeof window.document !== "undefined") {
       headers["x-trigger-client"] = "browser";
     }
+
+    headers[API_VERSION_HEADER_NAME] = API_VERSION;
 
     return headers;
   }
@@ -1149,9 +1199,33 @@ function createSearchQueryForListRuns(query?: ListRunsQueryParams): URLSearchPar
     if (query.batch) {
       searchParams.append("filter[batch]", query.batch);
     }
+
+    if (query.queue) {
+      searchParams.append(
+        "filter[queue]",
+        Array.isArray(query.queue)
+          ? query.queue.map((q) => queueNameFromQueueTypeName(q)).join(",")
+          : queueNameFromQueueTypeName(query.queue)
+      );
+    }
+
+    if (query.machine) {
+      searchParams.append(
+        "filter[machine]",
+        Array.isArray(query.machine) ? query.machine.join(",") : query.machine
+      );
+    }
   }
 
   return searchParams;
+}
+
+function queueNameFromQueueTypeName(queue: QueueTypeName): string {
+  if (queue.type === "task") {
+    return `task/${queue.name}`;
+  }
+
+  return queue.name;
 }
 
 function createSearchQueryForListWaitpointTokens(

@@ -14,12 +14,12 @@ export const helloWorldTask = task({
     logger.info("Hello, world from the onStart hook", { payload, init });
   },
   run: async (payload: any, { ctx }) => {
-    logger.info("Hello, world from the init", { ctx, payload });
+    logger.info("Hello, world froms the init", { ctx, payload });
     logger.info("env vars", {
       env: process.env,
     });
 
-    logger.debug("debug: Hello, world!", { payload });
+    logger.debug("debug: Hello, worlds!", { payload });
     logger.info("info: Hello, world!", { payload });
     logger.log("log: Hello, world!", { payload });
     logger.warn("warn: Hello, world!", { payload });
@@ -57,13 +57,8 @@ export const parentTask = task({
   id: "parent",
   machine: "medium-1x",
   run: async (payload: any, { ctx }) => {
-    logger.log("Hello, world from the parent", { payload });
-    await childTask.triggerAndWait(
-      { message: "Hello, world!" },
-      {
-        releaseConcurrency: true,
-      }
-    );
+    logger.log("Hello, world from the parent", { payload, ctx });
+    await childTask.triggerAndWait({ message: "Hello, world!", aReallyBigInt: BigInt(10000) });
   },
 });
 
@@ -108,10 +103,11 @@ export const childTask = task({
       message,
       failureChance = 0.3,
       duration = 3_000,
-    }: { message?: string; failureChance?: number; duration?: number },
+      aReallyBigInt,
+    }: { message?: string; failureChance?: number; duration?: number; aReallyBigInt?: bigint },
     { ctx }
   ) => {
-    logger.info("Hello, world from the child", { message, failureChance });
+    logger.info("Hello, world from the child", { ctx, failureChance, aReallyBigInt });
 
     if (Math.random() < failureChance) {
       throw new Error("Random error at start");
@@ -375,5 +371,70 @@ export const largeAttributesTask = task({
       promiseRejected: Promise.reject(new Error("This is a rejected promise")),
       promisePending: Promise.resolve("Hello, world!"),
     });
+  },
+});
+
+export const lotsOfLogsParentTask = task({
+  id: "lots-of-logs-parent",
+  run: async (payload: { count: number }, { ctx }) => {
+    logger.info("Hello, world from the lots of logs parent task", { count: payload.count });
+    await lotsOfLogsTask.batchTriggerAndWait(
+      Array.from({ length: 20 }, (_, i) => ({
+        payload: { count: payload.count },
+      }))
+    );
+  },
+});
+
+export const lotsOfLogsTask = task({
+  id: "lots-of-logs",
+  run: async (payload: { count: number }, { ctx }) => {
+    logger.info("Hello, world from the lots of logs task", { count: payload.count });
+
+    for (let i = 0; i < payload.count; i++) {
+      logger.info("Hello, world from the lots of logs task", { count: i });
+    }
+
+    await setTimeout(1000);
+
+    for (let i = 0; i < payload.count; i++) {
+      logger.info("Hello, world from the lots of logs task", { count: i });
+    }
+
+    await setTimeout(1000);
+
+    for (let i = 0; i < payload.count; i++) {
+      logger.info("Hello, world from the lots of logs task", { count: i });
+    }
+
+    await setTimeout(1000);
+
+    for (let i = 0; i < payload.count; i++) {
+      logger.info("Hello, world from the lots of logs task", { count: i });
+    }
+
+    await setTimeout(1000);
+
+    for (let i = 0; i < payload.count; i++) {
+      logger.info("Hello, world from the lots of logs task", { count: i });
+    }
+
+    await setTimeout(1000);
+
+    for (let i = 0; i < payload.count; i++) {
+      logger.info("Hello, world from the lots of logs task", { count: i });
+    }
+
+    await setTimeout(1000);
+
+    for (let i = 0; i < payload.count; i++) {
+      logger.info("Hello, world from the lots of logs task", { count: i });
+    }
+
+    await setTimeout(1000);
+
+    for (let i = 0; i < payload.count; i++) {
+      logger.info("Hello, world from the lots of logs task", { count: i });
+    }
   },
 });

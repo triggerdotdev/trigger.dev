@@ -163,7 +163,8 @@ export class TriggerTaskServiceV1 extends BaseService {
       const metadataPacket = body.options?.metadata
         ? handleMetadataPacket(
             body.options?.metadata,
-            body.options?.metadataType ?? "application/json"
+            body.options?.metadataType ?? "application/json",
+            env.TASK_RUN_METADATA_MAXIMUM_SIZE
           )
         : undefined;
 

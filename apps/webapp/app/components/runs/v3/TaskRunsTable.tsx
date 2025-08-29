@@ -10,6 +10,9 @@ import { BeakerIcon, BookOpenIcon, CheckIcon } from "@heroicons/react/24/solid";
 import { useLocation } from "@remix-run/react";
 import { formatDuration, formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import { useCallback, useRef } from "react";
+import { TaskIconSmall } from "~/assets/icons/TaskIcon";
+import { MachineLabelCombo } from "~/components/MachineLabelCombo";
+import { MachineTooltipInfo } from "~/components/MachineTooltipInfo";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Checkbox } from "~/components/primitives/Checkbox";
@@ -75,9 +78,8 @@ export function TaskRunsTable({
 }: RunsTableProps) {
   const organization = useOrganization();
   const project = useProject();
-  const environment = useEnvironment();
   const checkboxes = useRef<(HTMLInputElement | null)[]>([]);
-  const { selectedItems, has, hasAll, select, deselect, toggle } = useSelectedItems(allowSelection);
+  const { has, hasAll, select, deselect, toggle } = useSelectedItems(allowSelection);
   const { isManagedCloud } = useFeatures();
 
   const showCompute = isManagedCloud;
@@ -201,6 +203,10 @@ export function TaskRunsTable({
               <TableHeaderCell>Compute</TableHeaderCell>
             </>
           )}
+          <TableHeaderCell className="pl-4" tooltip={<MachineTooltipInfo />}>
+            Machine
+          </TableHeaderCell>
+          <TableHeaderCell>Queue</TableHeaderCell>
           <TableHeaderCell>Test</TableHeaderCell>
           <TableHeaderCell>Created at</TableHeaderCell>
           <TableHeaderCell
@@ -375,6 +381,25 @@ export function TaskRunsTable({
                       : "–"}
                   </TableCell>
                 )}
+                <TableCell to={path}>
+                  <MachineLabelCombo preset={run.machinePreset} />
+                </TableCell>
+                <TableCell to={path}>
+                  <span className="flex items-center gap-1">
+                    {run.queue.type === "task" ? (
+                      <SimpleTooltip
+                        button={<TaskIconSmall className="size-[1.125rem] text-blue-500" />}
+                        content={`This queue was automatically created from your "${run.queue.name}" task`}
+                      />
+                    ) : (
+                      <SimpleTooltip
+                        button={<RectangleStackIcon className="size-[1.125rem] text-purple-500" />}
+                        content={`This is a custom queue you added in your code.`}
+                      />
+                    )}
+                    <span>{run.queue.name}</span>
+                  </span>
+                </TableCell>
                 <TableCell to={path}>
                   {run.isTest ? <CheckIcon className="size-4 text-charcoal-400" /> : "–"}
                 </TableCell>

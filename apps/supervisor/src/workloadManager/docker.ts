@@ -8,14 +8,16 @@ import { env } from "../env.js";
 import { getDockerHostDomain, getRunnerId, normalizeDockerHostUrl } from "../util.js";
 import Docker from "dockerode";
 import { tryCatch } from "@trigger.dev/core";
+import { ECRAuthService } from "./ecrAuth.js";
 
 export class DockerWorkloadManager implements WorkloadManager {
   private readonly logger = new SimpleStructuredLogger("docker-workload-manager");
   private readonly docker: Docker;
 
   private readonly runnerNetworks: string[];
-  private readonly auth?: Docker.AuthConfig;
+  private readonly staticAuth?: Docker.AuthConfig;
   private readonly platformOverride?: string;
+  private readonly ecrAuthService?: ECRAuthService;
 
   constructor(private opts: WorkloadManagerOptions) {
     this.docker = new Docker({
@@ -44,13 +46,18 @@ export class DockerWorkloadManager implements WorkloadManager {
         url: env.DOCKER_REGISTRY_URL,
       });
 
-      this.auth = {
+      this.staticAuth = {
         username: env.DOCKER_REGISTRY_USERNAME,
         password: env.DOCKER_REGISTRY_PASSWORD,
         serveraddress: env.DOCKER_REGISTRY_URL,
       };
+    } else if (ECRAuthService.hasAWSCredentials()) {
+      this.logger.info("🐋 AWS credentials found, initializing ECR auth service");
+      this.ecrAuthService = new ECRAuthService();
     } else {
-      this.logger.warn("🐋 No Docker registry credentials provided, skipping auth");
+      this.logger.warn(
+        "🐋 No Docker registry credentials or AWS credentials provided, skipping auth"
+      );
     }
   }
 
@@ -160,9 +167,12 @@ export class DockerWorkloadManager implements WorkloadManager {
         imageArchitecture: inspectResult?.Architecture,
       });
 
+      // Get auth config (static or ECR)
+      const authConfig = await this.getAuthConfig();
+
       // Ensure the image is present
       const [createImageError, imageResponseReader] = await tryCatch(
-        this.docker.createImage(this.auth, {
+        this.docker.createImage(authConfig, {
           fromImage: imageRef,
           ...(this.platformOverride ? { platform: this.platformOverride } : {}),
         })
@@ -214,6 +224,26 @@ export class DockerWorkloadManager implements WorkloadManager {
     }
 
     logger.debug("create succeeded", { startResult, containerId: container.id });
+  }
+
+  /**
+   * Get authentication config for Docker operations
+   * Uses static credentials if available, otherwise attempts ECR auth
+   */
+  private async getAuthConfig(): Promise<Docker.AuthConfig | undefined> {
+    // Use static credentials if available
+    if (this.staticAuth) {
+      return this.staticAuth;
+    }
+
+    // Use ECR auth if service is available
+    if (this.ecrAuthService) {
+      const ecrAuth = await this.ecrAuthService.getAuthConfig();
+      return ecrAuth || undefined;
+    }
+
+    // No auth available
+    return undefined;
   }
 
   private async attachContainerToNetworks({

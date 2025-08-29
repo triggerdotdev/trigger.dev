@@ -68,7 +68,7 @@ export function configureDeployCommand(program: Command) {
     commonOptions(
       program
         .command("deploy")
-        .description("Deploy your Trigger.dev v3 project to the cloud.")
+        .description("Deploy your Trigger.dev project to the cloud.")
         .argument("[path]", "The path to the project", ".")
         .option(
           "-e, --env <env>",
@@ -308,7 +308,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
   const deploymentResponse = await projectClient.client.initializeDeployment({
     contentHash: buildManifest.contentHash,
-    userId: authorization.userId,
+    userId: authorization.auth.tokenType === "personal" ? authorization.userId : undefined,
     gitMeta,
     type: features.run_engine_v2 ? "MANAGED" : "V1",
     runtime: buildManifest.runtime,

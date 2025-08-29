@@ -3,20 +3,30 @@ import {
   CalendarIcon,
   ClockIcon,
   FingerPrintIcon,
+  RectangleStackIcon,
   Squares2X2Icon,
   TagIcon,
   XMarkIcon,
 } from "@heroicons/react/20/solid";
 import { Form, useFetcher } from "@remix-run/react";
-import { IconToggleLeft } from "@tabler/icons-react";
+import { IconRotateClockwise2, IconToggleLeft } from "@tabler/icons-react";
+import { MachinePresetName } from "@trigger.dev/core/v3";
 import type { BulkActionType, TaskRunStatus, TaskTriggerSource } from "@trigger.dev/database";
-import { ListChecks, ListFilterIcon } from "lucide-react";
+import { ListFilterIcon } from "lucide-react";
 import { matchSorter } from "match-sorter";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { z } from "zod";
+import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
+import { MachineDefaultIcon } from "~/assets/icons/MachineIcon";
 import { StatusIcon } from "~/assets/icons/StatusIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
+import {
+  formatMachinePresetName,
+  MachineLabelCombo,
+  machines,
+} from "~/components/MachineLabelCombo";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
+import { Badge } from "~/components/primitives/Badge";
 import { DateTime } from "~/components/primitives/DateTime";
 import { FormError } from "~/components/primitives/FormError";
 import { Input } from "~/components/primitives/Input";
@@ -40,13 +50,19 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "~/components/primitives/Tooltip";
+import { useDebounceEffect } from "~/hooks/useDebounce";
+import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
+import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
+import { type loader as queuesLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.queues";
+import { type loader as versionsLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.versions";
 import { type loader as tagsLoader } from "~/routes/resources.projects.$projectParam.runs.tags";
 import { Button } from "../../primitives/Buttons";
 import { BulkActionTypeCombo } from "./BulkAction";
 import { appliedSummary, FilterMenuProvider, TimeFilter } from "./SharedFilters";
+import { AIFilterInput } from "./AIFilterInput";
 import {
   allTaskRunStatuses,
   descriptionForTaskRunStatus,
@@ -55,8 +71,6 @@ import {
   TaskRunStatusCombo,
 } from "./TaskRunStatus";
 import { TaskTriggerSourceIcon } from "./TaskTriggerSource";
-import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
-import { cn } from "~/utils/cn";
 
 export const RunStatus = z.enum(allTaskRunStatuses);
 
@@ -76,36 +90,96 @@ const StringOrStringArray = z.preprocess((value) => {
   return undefined;
 }, z.string().array().optional());
 
-export const TaskRunListSearchFilters = z.object({
-  cursor: z.string().optional(),
-  direction: z.enum(["forward", "backward"]).optional(),
-  environments: StringOrStringArray,
-  tasks: StringOrStringArray,
-  versions: StringOrStringArray,
-  statuses: z.preprocess((value) => {
-    if (typeof value === "string") {
-      if (value.length > 0) {
-        return [value];
-      }
-
-      return undefined;
-    }
-
-    if (Array.isArray(value)) {
-      return value.filter((v) => typeof v === "string" && v.length > 0);
+export const MachinePresetOrMachinePresetArray = z.preprocess((value) => {
+  if (typeof value === "string") {
+    if (value.length > 0) {
+      const parsed = MachinePresetName.safeParse(value);
+      return parsed.success ? [parsed.data] : undefined;
     }
 
     return undefined;
-  }, RunStatus.array().optional()),
-  tags: StringOrStringArray,
-  bulkId: z.string().optional(),
-  period: z.preprocess((value) => (value === "all" ? undefined : value), z.string().optional()),
-  from: z.coerce.number().optional(),
-  to: z.coerce.number().optional(),
-  rootOnly: z.coerce.boolean().optional(),
-  batchId: z.string().optional(),
-  runId: StringOrStringArray,
-  scheduleId: z.string().optional(),
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .filter((v) => typeof v === "string" && v.length > 0)
+      .map((v) => MachinePresetName.safeParse(v))
+      .filter((result) => result.success)
+      .map((result) => result.data);
+  }
+
+  return undefined;
+}, MachinePresetName.array().optional());
+
+export const TaskRunListSearchFilters = z.object({
+  cursor: z.string().optional().describe("Cursor for pagination - used internally for navigation"),
+  direction: z
+    .enum(["forward", "backward"])
+    .optional()
+    .describe("Pagination direction - forward or backward. Used internally for navigation"),
+  environments: StringOrStringArray.describe(
+    "Environment names to filter by (DEVELOPMENT, STAGING, PREVIEW, PRODUCTION)"
+  ),
+  tasks: StringOrStringArray.describe(
+    "Task identifiers to filter by (these are user-defined names)"
+  ),
+  versions: StringOrStringArray.describe(
+    "Version identifiers to filter by (these are in this format 20250718.1). Needs to be looked up."
+  ),
+  statuses: z
+    .preprocess((value) => {
+      if (typeof value === "string") {
+        if (value.length > 0) {
+          return [value];
+        }
+
+        return undefined;
+      }
+
+      if (Array.isArray(value)) {
+        return value.filter((v) => typeof v === "string" && v.length > 0);
+      }
+
+      return undefined;
+    }, RunStatus.array().optional())
+    .describe(`Run statuses to filter by (${filterableTaskRunStatuses.join(", ")})`),
+  tags: StringOrStringArray.describe("Tag names to filter by (these are user-defined names)"),
+  bulkId: z
+    .string()
+    .optional()
+    .describe("Bulk action ID to filter by - shows runs from a specific bulk operation"),
+  period: z
+    .preprocess((value) => (value === "all" ? undefined : value), z.string().optional())
+    .describe("Time period string (e.g., '1h', '7d', '30d', '1y') for relative time filtering"),
+  from: z.coerce
+    .number()
+    .optional()
+    .describe("Unix timestamp for start of time range - absolute time filtering"),
+  to: z.coerce
+    .number()
+    .optional()
+    .describe("Unix timestamp for end of time range - absolute time filtering"),
+  rootOnly: z.coerce
+    .boolean()
+    .optional()
+    .describe("Show only root runs (not child runs) - set to true to exclude sub-runs"),
+  batchId: z
+    .string()
+    .optional()
+    .describe(
+      "Batch ID to filter by - shows runs from a specific batch operation. They start with batch_"
+    ),
+  runId: StringOrStringArray.describe("Specific run IDs to filter by. They start with run_"),
+  scheduleId: z
+    .string()
+    .optional()
+    .describe(
+      "Schedule ID to filter by - shows runs from a specific schedule. They start with sched_"
+    ),
+  queues: StringOrStringArray.describe("Queue names to filter by (these are user-defined names)"),
+  machines: MachinePresetOrMachinePresetArray.describe(
+    `Machine presets to filter by (${machines.join(", ")})`
+  ),
 });
 
 export type TaskRunListSearchFilters = z.infer<typeof TaskRunListSearchFilters>;
@@ -139,6 +213,12 @@ export function filterTitle(filterKey: string) {
       return "Run ID";
     case "scheduleId":
       return "Schedule ID";
+    case "queues":
+      return "Queues";
+    case "machines":
+      return "Machine";
+    case "versions":
+      return "Version";
     default:
       return filterKey;
   }
@@ -150,7 +230,7 @@ export function filterIcon(filterKey: string): ReactNode | undefined {
     case "direction":
       return undefined;
     case "statuses":
-      return <StatusIcon className="size-4" />;
+      return <StatusIcon className="size-4 border-text-bright" />;
     case "tasks":
       return <TaskIcon className="size-4" />;
     case "tags":
@@ -171,6 +251,12 @@ export function filterIcon(filterKey: string): ReactNode | undefined {
       return <FingerPrintIcon className="size-4" />;
     case "scheduleId":
       return <ClockIcon className="size-4" />;
+    case "queues":
+      return <RectangleStackIcon className="size-4" />;
+    case "machines":
+      return <MachineDefaultIcon className="size-4" />;
+    case "versions":
+      return <IconRotateClockwise2 className="size-4" />;
     default:
       return undefined;
   }
@@ -205,6 +291,18 @@ export function getRunFiltersFromSearchParams(
         : undefined,
     batchId: searchParams.get("batchId") ?? undefined,
     scheduleId: searchParams.get("scheduleId") ?? undefined,
+    queues:
+      searchParams.getAll("queues").filter((v) => v.length > 0).length > 0
+        ? searchParams.getAll("queues")
+        : undefined,
+    machines:
+      searchParams.getAll("machines").filter((v) => v.length > 0).length > 0
+        ? searchParams.getAll("machines")
+        : undefined,
+    versions:
+      searchParams.getAll("versions").filter((v) => v.length > 0).length > 0
+        ? searchParams.getAll("versions")
+        : undefined,
   };
 
   const parsed = TaskRunListSearchFilters.safeParse(params);
@@ -238,11 +336,15 @@ export function RunsFilters(props: RunFiltersProps) {
     searchParams.has("tags") ||
     searchParams.has("batchId") ||
     searchParams.has("runId") ||
-    searchParams.has("scheduleId");
+    searchParams.has("scheduleId") ||
+    searchParams.has("queues") ||
+    searchParams.has("machines") ||
+    searchParams.has("versions");
 
   return (
     <div className="flex flex-row flex-wrap items-center gap-1">
       <FilterMenu {...props} />
+      <AIFilterInput />
       <RootOnlyToggle defaultValue={props.rootOnlyDefault} />
       <TimeFilter />
       <AppliedFilters {...props} />
@@ -262,10 +364,13 @@ const filterTypes = [
   {
     name: "statuses",
     title: "Status",
-    icon: <StatusIcon className="size-4" />,
+    icon: <StatusIcon className="size-4 border-text-bright" />,
   },
   { name: "tasks", title: "Tasks", icon: <TaskIcon className="size-4" /> },
   { name: "tags", title: "Tags", icon: <TagIcon className="size-4" /> },
+  { name: "versions", title: "Versions", icon: <IconRotateClockwise2 className="size-4" /> },
+  { name: "queues", title: "Queues", icon: <RectangleStackIcon className="size-4" /> },
+  { name: "machines", title: "Machines", icon: <MachineDefaultIcon className="size-4" /> },
   { name: "run", title: "Run ID", icon: <FingerPrintIcon className="size-4" /> },
   { name: "batch", title: "Batch ID", icon: <Squares2X2Icon className="size-4" /> },
   { name: "schedule", title: "Schedule ID", icon: <ClockIcon className="size-4" /> },
@@ -289,8 +394,9 @@ function FilterMenu(props: RunFiltersProps) {
       variant={"secondary/small"}
       shortcut={shortcut}
       tooltipTitle={"Filter runs"}
+      className="pr-0.5"
     >
-      Filter
+      <></>
     </SelectTrigger>
   );
 
@@ -316,6 +422,9 @@ function AppliedFilters({ possibleTasks, bulkActions }: RunFiltersProps) {
       <AppliedStatusFilter />
       <AppliedTaskFilter possibleTasks={possibleTasks} />
       <AppliedTagsFilter />
+      <AppliedVersionsFilter />
+      <AppliedQueuesFilter />
+      <AppliedMachinesFilter />
       <AppliedRunIdFilter />
       <AppliedBatchIdFilter />
       <AppliedScheduleIdFilter />
@@ -344,12 +453,18 @@ function Menu(props: MenuProps) {
       return <BulkActionsDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "tags":
       return <TagsDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
+    case "queues":
+      return <QueuesDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
+    case "machines":
+      return <MachinesDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "run":
       return <RunIdDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "batch":
       return <BatchIdDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "schedule":
       return <ScheduleIdDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
+    case "versions":
+      return <VersionsDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
   }
 }
 
@@ -795,6 +910,418 @@ function AppliedTagsFilter() {
                 icon={filterIcon("tags")}
                 value={appliedSummary(values("tags"))}
                 onRemove={() => del(["tags", "cursor", "direction"])}
+                variant="secondary/small"
+              />
+            </Ariakit.Select>
+          }
+          searchValue={search}
+          clearSearchValue={() => setSearch("")}
+        />
+      )}
+    </FilterMenuProvider>
+  );
+}
+
+function QueuesDropdown({
+  trigger,
+  clearSearchValue,
+  searchValue,
+  onClose,
+}: {
+  trigger: ReactNode;
+  clearSearchValue: () => void;
+  searchValue: string;
+  onClose?: () => void;
+}) {
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+  const { values, replace } = useSearchParams();
+
+  const handleChange = (values: string[]) => {
+    clearSearchValue();
+    replace({
+      queues: values.length > 0 ? values : undefined,
+      cursor: undefined,
+      direction: undefined,
+    });
+  };
+
+  const queueValues = values("queues").filter((v) => v !== "");
+  const selected = queueValues.length > 0 ? queueValues : undefined;
+
+  const fetcher = useFetcher<typeof queuesLoader>();
+
+  useDebounceEffect(
+    searchValue,
+    (s) => {
+      const searchParams = new URLSearchParams();
+      searchParams.set("per_page", "25");
+      if (searchValue) {
+        searchParams.set("query", encodeURIComponent(s));
+      }
+      fetcher.load(
+        `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${
+          environment.slug
+        }/queues?${searchParams.toString()}`
+      );
+    },
+    250
+  );
+
+  const filtered = useMemo(() => {
+    let items: { name: string; type: "custom" | "task"; value: string }[] = [];
+
+    for (const queueName of selected ?? []) {
+      const queueItem = fetcher.data?.queues.find((q) => q.name === queueName);
+      if (!queueItem) {
+        if (queueName.startsWith("task/")) {
+          items.push({
+            name: queueName.replace("task/", ""),
+            type: "task",
+            value: queueName,
+          });
+        } else {
+          items.push({
+            name: queueName,
+            type: "custom",
+            value: queueName,
+          });
+        }
+      }
+    }
+
+    if (fetcher.data === undefined) {
+      return matchSorter(items, searchValue);
+    }
+
+    items.push(
+      ...fetcher.data.queues.map((q) => ({
+        name: q.name,
+        type: q.type,
+        value: q.type === "task" ? `task/${q.name}` : q.name,
+      }))
+    );
+
+    return matchSorter(Array.from(new Set(items)), searchValue, {
+      keys: ["name"],
+    });
+  }, [searchValue, fetcher.data]);
+
+  return (
+    <SelectProvider value={selected ?? []} setValue={handleChange} virtualFocus={true}>
+      {trigger}
+      <SelectPopover
+        className="min-w-0 max-w-[min(240px,var(--popover-available-width))]"
+        hideOnEscape={() => {
+          if (onClose) {
+            onClose();
+            return false;
+          }
+
+          return true;
+        }}
+      >
+        <ComboBox
+          value={searchValue}
+          render={(props) => (
+            <div className="flex items-center justify-stretch">
+              <input {...props} placeholder={"Filter by queues..."} />
+              {fetcher.state === "loading" && <Spinner color="muted" />}
+            </div>
+          )}
+        />
+        <SelectList>
+          {filtered.length > 0
+            ? filtered.map((queue) => (
+                <SelectItem
+                  key={queue.value}
+                  value={queue.value}
+                  icon={
+                    queue.type === "task" ? (
+                      <TaskIcon className="size-4 shrink-0 text-blue-500" />
+                    ) : (
+                      <RectangleStackIcon className="size-4 shrink-0 text-purple-500" />
+                    )
+                  }
+                >
+                  {queue.name}
+                </SelectItem>
+              ))
+            : null}
+          {filtered.length === 0 && fetcher.state !== "loading" && (
+            <SelectItem disabled>No queues found</SelectItem>
+          )}
+        </SelectList>
+      </SelectPopover>
+    </SelectProvider>
+  );
+}
+
+function AppliedQueuesFilter() {
+  const { values, del } = useSearchParams();
+
+  const queues = values("queues");
+
+  if (queues.length === 0 || queues.every((v) => v === "")) {
+    return null;
+  }
+
+  return (
+    <FilterMenuProvider>
+      {(search, setSearch) => (
+        <QueuesDropdown
+          trigger={
+            <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
+              <AppliedFilter
+                label="Queues"
+                icon={filterIcon("queues")}
+                value={appliedSummary(values("queues").map((v) => v.replace("task/", "")))}
+                onRemove={() => del(["queues", "cursor", "direction"])}
+                variant="secondary/small"
+              />
+            </Ariakit.Select>
+          }
+          searchValue={search}
+          clearSearchValue={() => setSearch("")}
+        />
+      )}
+    </FilterMenuProvider>
+  );
+}
+
+function MachinesDropdown({
+  trigger,
+  clearSearchValue,
+  searchValue,
+  onClose,
+}: {
+  trigger: ReactNode;
+  clearSearchValue: () => void;
+  searchValue: string;
+  onClose?: () => void;
+}) {
+  const { values, replace } = useSearchParams();
+
+  const handleChange = (values: string[]) => {
+    clearSearchValue();
+    replace({ machines: values, cursor: undefined, direction: undefined });
+  };
+
+  const filtered = useMemo(() => {
+    if (searchValue === "") {
+      return machines;
+    }
+    return matchSorter(machines, searchValue);
+  }, [searchValue]);
+
+  return (
+    <SelectProvider value={values("machines")} setValue={handleChange} virtualFocus={true}>
+      {trigger}
+      <SelectPopover
+        className="min-w-0 max-w-[min(240px,var(--popover-available-width))]"
+        hideOnEscape={() => {
+          if (onClose) {
+            onClose();
+            return false;
+          }
+
+          return true;
+        }}
+      >
+        <ComboBox placeholder={"Filter by machine..."} value={searchValue} />
+        <SelectList>
+          {filtered.map((item, index) => (
+            <SelectItem
+              key={item}
+              value={item}
+              shortcut={shortcutFromIndex(index, { shortcutsEnabled: true })}
+            >
+              <MachineLabelCombo preset={item} />
+            </SelectItem>
+          ))}
+        </SelectList>
+      </SelectPopover>
+    </SelectProvider>
+  );
+}
+
+function AppliedMachinesFilter() {
+  const { values, del } = useSearchParams();
+  const machines = values("machines");
+
+  if (machines.length === 0 || machines.every((v) => v === "")) {
+    return null;
+  }
+
+  return (
+    <FilterMenuProvider>
+      {(search, setSearch) => (
+        <MachinesDropdown
+          trigger={
+            <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
+              <AppliedFilter
+                label="Machines"
+                icon={filterIcon("machines")}
+                value={appliedSummary(
+                  machines.map((v) => {
+                    const parsed = MachinePresetName.safeParse(v);
+                    if (!parsed.success) {
+                      return v;
+                    }
+                    return formatMachinePresetName(parsed.data);
+                  })
+                )}
+                onRemove={() => del(["machines", "cursor", "direction"])}
+                variant="secondary/small"
+              />
+            </Ariakit.Select>
+          }
+          searchValue={search}
+          clearSearchValue={() => setSearch("")}
+        />
+      )}
+    </FilterMenuProvider>
+  );
+}
+
+function VersionsDropdown({
+  trigger,
+  clearSearchValue,
+  searchValue,
+  onClose,
+}: {
+  trigger: ReactNode;
+  clearSearchValue: () => void;
+  searchValue: string;
+  onClose?: () => void;
+}) {
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+  const { values, replace } = useSearchParams();
+
+  const handleChange = (values: string[]) => {
+    clearSearchValue();
+    replace({
+      versions: values.length > 0 ? values : undefined,
+      cursor: undefined,
+      direction: undefined,
+    });
+  };
+
+  const versionValues = values("versions").filter((v) => v !== "");
+  const selected = versionValues.length > 0 ? versionValues : undefined;
+
+  const fetcher = useFetcher<typeof versionsLoader>();
+
+  useDebounceEffect(
+    searchValue,
+    (s) => {
+      const searchParams = new URLSearchParams();
+      if (searchValue) {
+        searchParams.set("query", encodeURIComponent(s));
+      }
+      fetcher.load(
+        `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${
+          environment.slug
+        }/versions?${searchParams.toString()}`
+      );
+    },
+    250
+  );
+
+  const filtered = useMemo(() => {
+    let items: { version: string; isCurrent: boolean }[] = [];
+
+    for (const version of selected ?? []) {
+      const versionItem = fetcher.data?.versions.find((v) => v.version === version);
+      if (!versionItem) {
+        items.push({
+          version,
+          isCurrent: false,
+        });
+      }
+    }
+
+    if (fetcher.data === undefined) {
+      return matchSorter(items, searchValue);
+    }
+
+    items.push(...fetcher.data.versions);
+
+    if (searchValue === "") {
+      return items;
+    }
+
+    return matchSorter(Array.from(new Set(items)), searchValue, {
+      keys: ["version"],
+    });
+  }, [searchValue, fetcher.data]);
+
+  return (
+    <SelectProvider value={selected ?? []} setValue={handleChange} virtualFocus={true}>
+      {trigger}
+      <SelectPopover
+        className="min-w-0 max-w-[min(240px,var(--popover-available-width))]"
+        hideOnEscape={() => {
+          if (onClose) {
+            onClose();
+            return false;
+          }
+
+          return true;
+        }}
+      >
+        <ComboBox
+          value={searchValue}
+          render={(props) => (
+            <div className="flex items-center justify-stretch">
+              <input {...props} placeholder={"Filter by versions..."} />
+              {fetcher.state === "loading" && <Spinner color="muted" />}
+            </div>
+          )}
+        />
+        <SelectList>
+          {filtered.length > 0
+            ? filtered.map((version) => (
+                <SelectItem key={version.version} value={version.version}>
+                  <span className="flex items-center gap-2">
+                    <span className="grow truncate">{version.version}</span>
+                    {version.isCurrent ? <Badge variant="extra-small">Current</Badge> : null}
+                  </span>
+                </SelectItem>
+              ))
+            : null}
+          {filtered.length === 0 && fetcher.state !== "loading" && (
+            <SelectItem disabled>No versions found</SelectItem>
+          )}
+        </SelectList>
+      </SelectPopover>
+    </SelectProvider>
+  );
+}
+
+function AppliedVersionsFilter() {
+  const { values, del } = useSearchParams();
+
+  const versions = values("versions");
+
+  if (versions.length === 0 || versions.every((v) => v === "")) {
+    return null;
+  }
+
+  return (
+    <FilterMenuProvider>
+      {(search, setSearch) => (
+        <VersionsDropdown
+          trigger={
+            <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
+              <AppliedFilter
+                label="Versions"
+                icon={filterIcon("versions")}
+                value={appliedSummary(values("versions"))}
+                onRemove={() => del(["versions", "cursor", "direction"])}
                 variant="secondary/small"
               />
             </Ariakit.Select>

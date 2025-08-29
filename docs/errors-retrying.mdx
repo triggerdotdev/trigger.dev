@@ -31,7 +31,7 @@ This task will retry 10 times with exponential backoff.
 One way to gain reliability is to break your work into smaller tasks and [trigger](/triggering) them from each other. Each task can have its own retrying behavior:
 
 ```ts /trigger/multiple-tasks.ts
-import { task } from "@trigger.dev/sdk/v3";
+import { task } from "@trigger.dev/sdk";
 
 export const myTask = task({
   id: "my-task",
@@ -70,7 +70,7 @@ We provide some useful functions that you can use to retry smaller parts of a ta
 You can retry a block of code that can throw an error, with the same retry settings as a task.
 
 ```ts /trigger/retry-on-throw.ts
-import { task, logger, retry } from "@trigger.dev/sdk/v3";
+import { task, logger, retry } from "@trigger.dev/sdk";
 
 export const retryOnThrow = task({
   id: "retry-on-throw",
@@ -106,7 +106,7 @@ You can use `fetch`, `axios`, or any other library in your code.
 But we do provide a convenient function to perform HTTP requests with conditional retrying based on the response:
 
 ```ts /trigger/retry-fetch.ts
-import { task, logger, retry } from "@trigger.dev/sdk/v3";
+import { task, logger, retry } from "@trigger.dev/sdk";
 
 export const taskWithFetchRetries = task({
   id: "task-with-fetch-retries",
@@ -203,7 +203,7 @@ In this complicated example:
 <CodeGroup>
 
 ```ts tasks.ts
-import { task } from "@trigger.dev/sdk/v3";
+import { task } from "@trigger.dev/sdk";
 import { calculateISO8601DurationOpenAIVariantResetAt, openai } from "./openai.js";
 
 export const openaiTask = task({
@@ -309,7 +309,7 @@ export function calculateISO8601DurationOpenAIVariantResetAt(
 You can prevent retries by throwing an `AbortTaskRunError`. This will fail the task attempt and disable retrying.
 
 ```ts /trigger/myTasks.ts
-import { task, AbortTaskRunError } from "@trigger.dev/sdk/v3";
+import { task, AbortTaskRunError } from "@trigger.dev/sdk";
 
 export const openaiTask = task({
   id: "openai-task",
@@ -335,7 +335,7 @@ export const openaiTask = task({
 Sometimes you want to catch an error and don't want to retry the task. You can use try/catch as you normally would. In this example we fallback to using Replicate if OpenAI fails.
 
 ```ts /trigger/myTasks.ts
-import { task } from "@trigger.dev/sdk/v3";
+import { task } from "@trigger.dev/sdk";
 
 export const openaiTask = task({
   id: "openai-task",

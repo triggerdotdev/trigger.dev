@@ -1,3 +1,4 @@
+import { BillingCache } from "./billingCache.js";
 import { createRedisClient, Redis } from "@internal/redis";
 import { getMeter, Meter, startSpan, trace, Tracer } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
@@ -9,6 +10,7 @@ import {
   ExecutionResult,
   RunExecutionData,
   StartRunAttemptResult,
+  TaskRunContext,
   TaskRunExecutionResult,
 } from "@trigger.dev/core/v3";
 import { RunId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
@@ -31,6 +33,7 @@ import { MinimalAuthenticatedEnvironment } from "../shared/index.js";
 import { NotImplementedError, RunDuplicateIdempotencyKeyError } from "./errors.js";
 import { EventBus, EventBusEvents } from "./eventBus.js";
 import { RunLocker } from "./locking.js";
+import { getFinalRunStatuses } from "./statuses.js";
 import { BatchSystem } from "./systems/batchSystem.js";
 import { CheckpointSystem } from "./systems/checkpointSystem.js";
 import { DelayedRunSystem } from "./systems/delayedRunSystem.js";
@@ -44,14 +47,12 @@ import {
 } from "./systems/executionSnapshotSystem.js";
 import { PendingVersionSystem } from "./systems/pendingVersionSystem.js";
 import { RaceSimulationSystem } from "./systems/raceSimulationSystem.js";
-import { ReleaseConcurrencySystem } from "./systems/releaseConcurrencySystem.js";
 import { RunAttemptSystem } from "./systems/runAttemptSystem.js";
 import { SystemResources } from "./systems/systems.js";
 import { TtlSystem } from "./systems/ttlSystem.js";
 import { WaitpointSystem } from "./systems/waitpointSystem.js";
 import { EngineWorker, HeartbeatTimeouts, RunEngineOptions, TriggerParams } from "./types.js";
 import { workerCatalog } from "./workerCatalog.js";
-import { getFinalRunStatuses, isFinalRunStatus } from "./statuses.js";
 
 export class RunEngine {
   private runLockRedis: Redis;
@@ -76,8 +77,9 @@ export class RunEngine {
   delayedRunSystem: DelayedRunSystem;
   ttlSystem: TtlSystem;
   pendingVersionSystem: PendingVersionSystem;
-  releaseConcurrencySystem: ReleaseConcurrencySystem;
   raceSimulationSystem: RaceSimulationSystem = new RaceSimulationSystem();
+
+  private readonly billingCache: BillingCache;
 
   constructor(private readonly options: RunEngineOptions) {
     this.logger = options.logger ?? new Logger("RunEngine", this.options.logLevel ?? "info");
@@ -127,6 +129,7 @@ export class RunEngine {
         defaultEnvConcurrencyLimit: options.queue?.defaultEnvConcurrency ?? 10,
       }),
       defaultEnvConcurrency: options.queue?.defaultEnvConcurrency ?? 10,
+      defaultEnvConcurrencyBurstFactor: options.queue?.defaultEnvConcurrencyBurstFactor,
       logger: new Logger("RunQueue", options.queue?.logLevel ?? "info"),
       redis: { ...options.queue.redis, keyPrefix: `${options.queue.redis.keyPrefix}runqueue:` },
       retryOptions: options.queue?.retryOptions,
@@ -239,38 +242,6 @@ export class RunEngine {
       raceSimulationSystem: this.raceSimulationSystem,
     };
 
-    this.releaseConcurrencySystem = new ReleaseConcurrencySystem({
-      resources,
-      maxTokensRatio: options.releaseConcurrency?.maxTokensRatio,
-      releasingsMaxAge: options.releaseConcurrency?.releasingsMaxAge,
-      releasingsPollInterval: options.releaseConcurrency?.releasingsPollInterval,
-      queueOptions:
-        typeof options.releaseConcurrency?.disabled === "boolean" &&
-        options.releaseConcurrency.disabled
-          ? undefined
-          : {
-              disableConsumers: options.releaseConcurrency?.disableConsumers,
-              redis: {
-                ...options.queue.redis, // Use base queue redis options
-                ...options.releaseConcurrency?.redis, // Allow overrides
-                keyPrefix: `${options.queue.redis.keyPrefix ?? ""}release-concurrency:`,
-              },
-              retry: {
-                maxRetries: options.releaseConcurrency?.maxRetries ?? 5,
-                backoff: {
-                  minDelay: options.releaseConcurrency?.backoff?.minDelay ?? 1000,
-                  maxDelay: options.releaseConcurrency?.backoff?.maxDelay ?? 10000,
-                  factor: options.releaseConcurrency?.backoff?.factor ?? 2,
-                },
-              },
-              consumersCount: options.releaseConcurrency?.consumersCount ?? 1,
-              pollInterval: options.releaseConcurrency?.pollInterval ?? 1000,
-              batchSize: options.releaseConcurrency?.batchSize ?? 10,
-              tracer: this.tracer,
-              meter: this.meter,
-            },
-    });
-
     this.executionSnapshotSystem = new ExecutionSnapshotSystem({
       resources,
       heartbeatTimeouts: this.heartbeatTimeouts,
@@ -283,7 +254,6 @@ export class RunEngine {
 
     this.checkpointSystem = new CheckpointSystem({
       resources,
-      releaseConcurrencySystem: this.releaseConcurrencySystem,
       executionSnapshotSystem: this.executionSnapshotSystem,
       enqueueSystem: this.enqueueSystem,
     });
@@ -302,7 +272,6 @@ export class RunEngine {
       resources,
       executionSnapshotSystem: this.executionSnapshotSystem,
       enqueueSystem: this.enqueueSystem,
-      releaseConcurrencySystem: this.releaseConcurrencySystem,
     });
 
     this.ttlSystem = new TtlSystem({
@@ -323,7 +292,13 @@ export class RunEngine {
       delayedRunSystem: this.delayedRunSystem,
       machines: this.options.machines,
       retryWarmStartThresholdMs: this.options.retryWarmStartThresholdMs,
-      releaseConcurrencySystem: this.releaseConcurrencySystem,
+      redisOptions: this.options.cache?.redis ?? this.options.runLock.redis,
+    });
+
+    this.billingCache = new BillingCache({
+      billingOptions: this.options.billing,
+      redisOptions: this.options.cache?.redis ?? this.options.runLock.redis,
+      logger: this.logger,
     });
 
     this.dequeueSystem = new DequeueSystem({
@@ -331,7 +306,7 @@ export class RunEngine {
       executionSnapshotSystem: this.executionSnapshotSystem,
       runAttemptSystem: this.runAttemptSystem,
       machines: this.options.machines,
-      releaseConcurrencySystem: this.releaseConcurrencySystem,
+      billingCache: this.billingCache,
     });
   }
 
@@ -385,12 +360,11 @@ export class RunEngine {
       machine,
       workerId,
       runnerId,
-      releaseConcurrency,
-      runChainState,
       scheduleId,
       scheduleInstanceId,
       createdAt,
       bulkActionId,
+      planType,
     }: TriggerParams,
     tx?: PrismaClientOrTransaction
   ): Promise<TaskRun> {
@@ -462,11 +436,11 @@ export class RunEngine {
               seedMetadataType,
               maxDurationInSeconds,
               machinePreset: machine,
-              runChainState,
               scheduleId,
               scheduleInstanceId,
               createdAt,
               bulkActionGroupIds: bulkActionId ? [bulkActionId] : undefined,
+              planType,
               executionSnapshots: {
                 create: {
                   engine: "V2",
@@ -536,7 +510,6 @@ export class RunEngine {
             workerId,
             runnerId,
             tx: prisma,
-            releaseConcurrency,
           });
         }
 
@@ -592,6 +565,9 @@ export class RunEngine {
     workerId,
     runnerId,
     tx,
+    skipObserving,
+    blockingPop,
+    blockingPopTimeoutSeconds,
   }: {
     consumerId: string;
     workerQueue: string;
@@ -599,9 +575,14 @@ export class RunEngine {
     workerId?: string;
     runnerId?: string;
     tx?: PrismaClientOrTransaction;
+    skipObserving?: boolean;
+    blockingPop?: boolean;
+    blockingPopTimeoutSeconds?: number;
   }): Promise<DequeuedMessage[]> {
-    // We only do this with "prod" worker queues because we don't want to observe dev (e.g. environment) worker queues
-    this.runQueue.registerObservableWorkerQueue(workerQueue);
+    if (!skipObserving) {
+      // We only do this with "prod" worker queues because we don't want to observe dev (e.g. environment) worker queues
+      this.runQueue.registerObservableWorkerQueue(workerQueue);
+    }
 
     const dequeuedMessage = await this.dequeueSystem.dequeueFromWorkerQueue({
       consumerId,
@@ -610,6 +591,8 @@ export class RunEngine {
       workerId,
       runnerId,
       tx,
+      blockingPop,
+      blockingPopTimeoutSeconds,
     });
 
     if (!dequeuedMessage) {
@@ -641,6 +624,9 @@ export class RunEngine {
       workerId,
       runnerId,
       tx,
+      skipObserving: true,
+      blockingPop: true,
+      blockingPopTimeoutSeconds: 10,
     });
   }
 
@@ -945,7 +931,6 @@ export class RunEngine {
     waitpoints,
     projectId,
     organizationId,
-    releaseConcurrency,
     timeout,
     spanIdToComplete,
     batch,
@@ -957,7 +942,6 @@ export class RunEngine {
     waitpoints: string | string[];
     projectId: string;
     organizationId: string;
-    releaseConcurrency?: boolean;
     timeout?: Date;
     spanIdToComplete?: string;
     batch?: { id: string; index?: number };
@@ -970,7 +954,6 @@ export class RunEngine {
       waitpoints,
       projectId,
       organizationId,
-      releaseConcurrency,
       timeout,
       spanIdToComplete,
       batch,
@@ -1098,6 +1081,10 @@ export class RunEngine {
     }
   }
 
+  async resolveTaskRunContext(runId: string): Promise<TaskRunContext> {
+    return this.runAttemptSystem.resolveTaskRunContext(runId);
+  }
+
   async getSnapshotsSince({
     runId,
     snapshotId,
@@ -1160,7 +1147,6 @@ export class RunEngine {
   async quit() {
     try {
       //stop the run queue
-      await this.releaseConcurrencySystem.quit();
       await this.runQueue.quit();
       await this.worker.stop();
       await this.runLock.quit();
@@ -1175,10 +1161,12 @@ export class RunEngine {
   async #handleStalledSnapshot({
     runId,
     snapshotId,
+    restartAttempt,
     tx,
   }: {
     runId: string;
     snapshotId: string;
+    restartAttempt?: number;
     tx?: PrismaClientOrTransaction;
   }) {
     const prisma = tx ?? this.prisma;
@@ -1194,7 +1182,6 @@ export class RunEngine {
           }
         );
 
-        await this.worker.ack(`heartbeatSnapshot.${runId}`);
         return;
       }
 
@@ -1312,11 +1299,86 @@ export class RunEngine {
             snapshotId: latestSnapshot.id,
           });
 
-          switch (result) {
+          switch (result.status) {
             case "blocked": {
+              if (!this.options.suspendedHeartbeatRetriesConfig) {
+                break;
+              }
+
+              if (result.waitpoints.length === 0) {
+                this.logger.info("handleStalledSnapshot SUSPENDED blocked but no waitpoints", {
+                  runId,
+                  result,
+                  snapshotId: latestSnapshot.id,
+                });
+                // If the run is blocked but there are no waitpoints, we don't restart the heartbeat
+                break;
+              }
+
+              const hasRunOrBatchWaitpoints = result.waitpoints.some(
+                (w) => w.type === "RUN" || w.type === "BATCH"
+              );
+
+              if (!hasRunOrBatchWaitpoints) {
+                this.logger.info(
+                  "handleStalledSnapshot SUSPENDED blocked but no run or batch waitpoints",
+                  {
+                    runId,
+                    result,
+                    snapshotId: latestSnapshot.id,
+                  }
+                );
+                // If the run is blocked by waitpoints that are not RUN or BATCH, we don't restart the heartbeat
+                break;
+              }
+
+              const initialDelayMs =
+                this.options.suspendedHeartbeatRetriesConfig.initialDelayMs ?? 60_000;
+              const $restartAttempt = (restartAttempt ?? 0) + 1; // Start at 1
+              const maxDelayMs =
+                this.options.suspendedHeartbeatRetriesConfig.maxDelayMs ?? 60_000 * 60 * 6; // 6 hours
+              const factor = this.options.suspendedHeartbeatRetriesConfig.factor ?? 2;
+              const maxCount = this.options.suspendedHeartbeatRetriesConfig.maxCount ?? 12;
+
+              if ($restartAttempt >= maxCount) {
+                this.logger.info(
+                  "handleStalledSnapshot SUSPENDED blocked with waitpoints, max retries reached",
+                  {
+                    runId,
+                    result,
+                    snapshotId: latestSnapshot.id,
+                    restartAttempt: $restartAttempt,
+                    maxCount,
+                    config: this.options.suspendedHeartbeatRetriesConfig,
+                  }
+                );
+
+                break;
+              }
+
+              // Calculate the delay based on the retry attempt
+              const delayMs = Math.min(
+                initialDelayMs * Math.pow(factor, $restartAttempt - 1),
+                maxDelayMs
+              );
+
+              this.logger.info(
+                "handleStalledSnapshot SUSPENDED blocked with waitpoints, restarting heartbeat",
+                {
+                  runId,
+                  result,
+                  snapshotId: latestSnapshot.id,
+                  delayMs,
+                  restartAttempt: $restartAttempt,
+                }
+              );
+
               // Reschedule the heartbeat
               await this.executionSnapshotSystem.restartHeartbeatForRun({
                 runId,
+                delayMs,
+                restartAttempt: $restartAttempt,
+                tx,
               });
               break;
             }
@@ -1386,5 +1448,13 @@ export class RunEngine {
         id: run.id,
         orgId: run.organizationId!,
       }));
+  }
+
+  /**
+   * Invalidates the billing cache for an organization when their plan changes
+   * Runs in background and handles all errors internally
+   */
+  invalidateBillingCache(orgId: string): void {
+    this.billingCache.invalidate(orgId);
   }
 }

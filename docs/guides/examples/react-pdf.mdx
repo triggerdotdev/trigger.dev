@@ -13,7 +13,7 @@ This example demonstrates how to use Trigger.dev to generate a PDF using [react-
 <Info> This example must be a .tsx file to use React components.</Info>
 
 ```ts trigger/generateResumePDF.tsx
-import { logger, task } from "@trigger.dev/sdk/v3";
+import { logger, task } from "@trigger.dev/sdk";
 import { renderToBuffer, Document, Page, Text, View } from "@react-pdf/renderer";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 

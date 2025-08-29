@@ -23,7 +23,7 @@ export const links: LinksFunction = () => {
 export const meta: MetaFunction = ({ data }) => {
   const typedData = data as UseDataFunctionReturn<typeof loader>;
   return [
-    { title: `Trigger.dev${appEnvTitleTag(typedData.appEnv)}` },
+    { title: typedData?.appEnv ? `Trigger.dev${appEnvTitleTag(typedData.appEnv)}` : "Trigger.dev" },
     {
       name: "viewport",
       content: "width=1024, initial-scale=1",
@@ -84,11 +84,13 @@ export function ErrorBoundary() {
           <Links />
         </head>
         <body className="h-full overflow-hidden bg-background-dimmed">
-          <AppContainer>
-            <MainCenteredContainer>
-              <RouteErrorDisplay />
-            </MainCenteredContainer>
-          </AppContainer>
+          <ShortcutsProvider>
+            <AppContainer>
+              <MainCenteredContainer>
+                <RouteErrorDisplay />
+              </MainCenteredContainer>
+            </AppContainer>
+          </ShortcutsProvider>
           <Scripts />
         </body>
       </html>

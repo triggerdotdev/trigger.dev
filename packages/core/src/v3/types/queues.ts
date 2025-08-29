@@ -35,9 +35,4 @@ export type QueueOptions = {
    *
    * If this property is omitted, the task can potentially use up the full concurrency of an environment */
   concurrencyLimit?: number;
-  /** An optional property that specifies whether to release concurrency on waitpoint.
-   *
-   * If this property is omitted, the task will not release concurrency on waitpoint.
-   */
-  releaseConcurrencyOnWaitpoint?: boolean;
 };

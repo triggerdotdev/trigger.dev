@@ -11,25 +11,22 @@ import {
 import { SystemResources } from "./systems.js";
 import { ServiceValidationError } from "../errors.js";
 import { EnqueueSystem } from "./enqueueSystem.js";
-import { ReleaseConcurrencySystem } from "./releaseConcurrencySystem.js";
+
 export type CheckpointSystemOptions = {
   resources: SystemResources;
   executionSnapshotSystem: ExecutionSnapshotSystem;
   enqueueSystem: EnqueueSystem;
-  releaseConcurrencySystem: ReleaseConcurrencySystem;
 };
 
 export class CheckpointSystem {
   private readonly $: SystemResources;
   private readonly executionSnapshotSystem: ExecutionSnapshotSystem;
   private readonly enqueueSystem: EnqueueSystem;
-  private readonly releaseConcurrencySystem: ReleaseConcurrencySystem;
 
   constructor(private readonly options: CheckpointSystemOptions) {
     this.$ = options.resources;
     this.executionSnapshotSystem = options.executionSnapshotSystem;
     this.enqueueSystem = options.enqueueSystem;
-    this.releaseConcurrencySystem = options.releaseConcurrencySystem;
   }
 
   /**
@@ -65,7 +62,7 @@ export class CheckpointSystem {
           snapshot.executionStatus === "QUEUED_EXECUTING");
 
       if (!isValidSnapshot) {
-        this.$.logger.error("Tried to createCheckpoint on an invalid snapshot", {
+        this.$.logger.info("Tried to createCheckpoint on an invalid snapshot", {
           snapshot,
           snapshotId,
         });
@@ -195,14 +192,14 @@ export class CheckpointSystem {
           checkpointId: taskRunCheckpoint.id,
         });
 
-        this.$.logger.debug("Refilling token bucket for release concurrency queue", {
+        this.$.logger.debug("Releasing concurrency for run because it was checkpointed", {
           snapshot,
+          newSnapshot,
         });
 
-        // Refill the token bucket for the release concurrency queue
-        await this.releaseConcurrencySystem.refillTokensForSnapshot(
-          snapshot.previousSnapshotId ?? snapshot.id
-        );
+        if (run.organizationId) {
+          await this.$.runQueue.releaseAllConcurrency(run.organizationId, run.id);
+        }
 
         return {
           ok: true as const,
@@ -233,12 +230,14 @@ export class CheckpointSystem {
           runnerId,
         });
 
-        this.$.logger.debug("Refilling token bucket for release concurrency queue", {
+        this.$.logger.debug("Releasing concurrency for run because it was checkpointed", {
           snapshot,
+          newSnapshot,
         });
 
-        // Refill the token bucket for the release concurrency queue
-        await this.releaseConcurrencySystem.refillTokensForSnapshot(snapshot.id);
+        if (run.organizationId) {
+          await this.$.runQueue.releaseAllConcurrency(run.organizationId, run.id);
+        }
 
         return {
           ok: true as const,
@@ -271,11 +270,25 @@ export class CheckpointSystem {
       const snapshot = await getLatestExecutionSnapshot(prisma, runId);
 
       if (snapshot.id !== snapshotId) {
-        throw new ServiceValidationError("Snapshot ID doesn't match the latest snapshot", 400);
+        throw new ServiceValidationError(
+          "Snapshot ID doesn't match the latest snapshot in continueRunExecution",
+          400,
+          {
+            snapshotId,
+            latestSnapshotId: snapshot.id,
+          }
+        );
       }
 
       if (!isPendingExecuting(snapshot.executionStatus)) {
-        throw new ServiceValidationError("Snapshot is not in a valid state to continue", 400);
+        throw new ServiceValidationError(
+          "Snapshot is not in a valid state to continue in continueRunExecution",
+          400,
+          {
+            snapshotId,
+            snapshotStatus: snapshot.executionStatus,
+          }
+        );
       }
 
       // Get the run and update the status

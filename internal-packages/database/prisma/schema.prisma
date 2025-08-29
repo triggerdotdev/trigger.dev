@@ -6,8 +6,9 @@ datasource db {
 
 generator client {
   provider        = "prisma-client-js"
+  output          = "../generated/prisma"
   binaryTargets   = ["native", "debian-openssl-1.1.x"]
-  previewFeatures = ["tracing", "metrics"]
+  previewFeatures = ["metrics"]
 }
 
 model User {
@@ -133,6 +134,37 @@ model PersonalAccessToken {
   authorizationCodes AuthorizationCode[]
 }
 
+enum OrganizationAccessTokenType {
+  USER
+  SYSTEM
+}
+
+model OrganizationAccessToken {
+  id String @id @default(cuid())
+
+  /// User-provided name for the token
+  name String
+
+  /// Used to differentiate between user-generated and system-generated tokens
+  type OrganizationAccessTokenType @default(USER)
+
+  /// This is used to find the token in the database
+  hashedToken String @unique
+
+  organization   Organization   @relation(fields: [organizationId], references: [id])
+  organizationId String
+
+  /// Optional expiration date for the token
+  expiresAt      DateTime?
+  revokedAt      DateTime?
+  lastAccessedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId, type, createdAt(sort: Desc)])
+}
+
 model Organization {
   id    String @id @default(cuid())
   slug  String @unique
@@ -174,6 +206,7 @@ model Organization {
   members                  OrgMember[]
   invites                  OrgMemberInvite[]
   organizationIntegrations OrganizationIntegration[]
+  organizationAccessTokens OrganizationAccessToken[]
   workerGroups             WorkerInstanceGroup[]
   workerInstances          WorkerInstance[]
   executionSnapshots       TaskRunExecutionSnapshot[]
@@ -247,8 +280,9 @@ model RuntimeEnvironment {
   ///A memorable code for the environment
   shortcode String
 
-  maximumConcurrencyLimit Int     @default(5)
-  paused                  Boolean @default(false)
+  maximumConcurrencyLimit     Int     @default(5)
+  concurrencyLimitBurstFactor Decimal @default("2.00") @db.Decimal(4, 2)
+  paused                      Boolean @default(false)
 
   autoEnableInternalSources Boolean @default(true)
 
@@ -299,6 +333,7 @@ model RuntimeEnvironment {
   @@unique([projectId, shortcode])
   @@index([parentEnvironmentId])
   @@index([projectId])
+  @@index([organizationId])
 }
 
 enum RuntimeEnvironmentType {
@@ -332,6 +367,9 @@ model Project {
 
   defaultWorkerGroup   WorkerInstanceGroup? @relation("ProjectDefaultWorkerGroup", fields: [defaultWorkerGroupId], references: [id])
   defaultWorkerGroupId String?
+
+  /// The master queues they are allowed to use (impacts what they can set as default and trigger runs with)
+  allowedWorkerQueues String[] @default([]) @map("allowedMasterQueues")
 
   environments           RuntimeEnvironment[]
   backgroundWorkers      BackgroundWorker[]
@@ -507,6 +545,8 @@ model BackgroundWorkerTask {
   maxDurationInSeconds Int?
 
   triggerSource TaskTriggerSource @default(STANDARD)
+
+  payloadSchema Json?
 
   @@unique([workerId, slug])
   // Quick lookup of task identifiers
@@ -700,6 +740,9 @@ model TaskRun {
   /// Run error
   error Json?
 
+  /// Organization's billing plan type (cached for fallback when billing API fails)
+  planType String?
+
   maxDurationInSeconds Int?
 
   @@unique([oneTimeUseToken])
@@ -769,6 +812,9 @@ enum TaskRunStatus {
 
   /// Task hasn't been deployed yet but is waiting to be executed. Deprecated in favor of PENDING_VERSION
   WAITING_FOR_DEPLOY
+
+  /// Task has been dequeued from the queue but is not yet executing
+  DEQUEUED
 
   /// Task is currently being executed by a worker
   EXECUTING
@@ -1135,6 +1181,7 @@ model WorkerInstanceGroup {
   /// If unmanged, it will be prefixed with the project ID e.g. "project_1-us-east-1"
   masterQueue String @unique
 
+  /// "N. Virginia, USA", "Frankfurt, Germany", etc. Used for display purposes
   description String?
   hidden      Boolean @default(false)
 
@@ -1151,6 +1198,11 @@ model WorkerInstanceGroup {
 
   project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   projectId String?
+
+  cloudProvider String?
+  /// "usa", "europe", etc. Used like a pseudo enum for things like flags
+  location      String?
+  staticIPs     String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1438,9 +1490,6 @@ model TaskQueue {
   rateLimit        Json?
 
   paused Boolean @default(false)
-
-  /// If true, when a run is paused and waiting for waitpoints to be completed, the run will release the concurrency capacity.
-  releaseConcurrencyOnWaitpoint Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

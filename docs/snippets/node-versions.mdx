@@ -1,4 +1,23 @@
 Trigger.dev runs your tasks on specific Node.js versions:
 
-- **v3**: Uses Node.js `21.7.3`
-- **v4**: Uses Node.js `21.7.3` 
+### v3
+
+- Node.js `21.7.3`
+
+### v4
+
+- Node.js `21.7.3` (default)
+- Node.js `22.16.0` (`node-22`)
+- Bun `1.2.20` (`bun`)
+
+You can change the runtime by setting the `runtime` field in your `trigger.config.ts` file.
+
+```ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+
+export default defineConfig({
+  // "node", "node-22" or "bun"
+  runtime: "node-22",
+  project: "<your-project-ref>",
+});
+```

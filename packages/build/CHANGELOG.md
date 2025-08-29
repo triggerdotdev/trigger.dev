@@ -1,5 +1,82 @@
 # @trigger.dev/build
 
+## 4.0.2
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.2`
+
+## 4.0.1
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.1`
+
+## 4.0.0
+
+### Major Changes
+
+- Trigger.dev v4 release. Please see our upgrade to v4 docs to view the full changelog: https://trigger.dev/docs/upgrade-to-v4 ([#1869](https://github.com/triggerdotdev/trigger.dev/pull/1869))
+
+### Patch Changes
+
+- Run Engine 2.0 (alpha) ([#1575](https://github.com/triggerdotdev/trigger.dev/pull/1575))
+- syncVercelEnvVars() fix for syncing the wrong preview branch env vars ([#2141](https://github.com/triggerdotdev/trigger.dev/pull/2141))
+- Add Lightpanda extension ([#2192](https://github.com/triggerdotdev/trigger.dev/pull/2192))
+- - Improve playwright non-headless chrome installation ([#2347](https://github.com/triggerdotdev/trigger.dev/pull/2347))
+  - Prevent spinner message duplication in narrow terminals
+- Add ffmpeg v7 support to existing extension: `ffmpeg({ version: "7" })` ([#1777](https://github.com/triggerdotdev/trigger.dev/pull/1777))
+- Add playwright extension ([#1764](https://github.com/triggerdotdev/trigger.dev/pull/1764))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0`
+
+## 4.0.0-v4-beta.28
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.28`
+
+## 4.0.0-v4-beta.27
+
+### Patch Changes
+
+- - Improve playwright non-headless chrome installation ([#2347](https://github.com/triggerdotdev/trigger.dev/pull/2347))
+  - Prevent spinner message duplication in narrow terminals
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.27`
+
+## 4.0.0-v4-beta.26
+
+### Patch Changes
+
+- Add Lightpanda extension ([#2192](https://github.com/triggerdotdev/trigger.dev/pull/2192))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.26`
+
+## 4.0.0-v4-beta.25
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.25`
+
+## 4.0.0-v4-beta.24
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.24`
+
+## 4.0.0-v4-beta.23
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.0-v4-beta.23`
+
 ## 4.0.0-v4-beta.22
 
 ### Patch Changes

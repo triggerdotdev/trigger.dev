@@ -6,6 +6,7 @@ import {
 import { MachineConfig, RetryOptions } from "@trigger.dev/core/v3/schemas";
 import {
   BackgroundWorkerTask,
+  Decimal,
   Prisma,
   PrismaClient,
   RunEngineVersion,
@@ -64,6 +65,7 @@ export async function setupAuthenticatedEnvironment(
       pkApiKey: "pk_api_key",
       shortcode: "short_code",
       maximumConcurrencyLimit: 10,
+      concurrencyLimitBurstFactor: new Decimal(2.0),
     },
   });
 
@@ -87,10 +89,11 @@ export async function setupBackgroundWorker(
   retryOptions?: RetryOptions,
   queueOptions?: {
     customQueues?: string[];
-    releaseConcurrencyOnWaitpoint?: boolean;
     concurrencyLimit?: number | null;
   }
 ) {
+  await engine.runQueue.updateEnvConcurrencyLimits(environment);
+
   const latestWorkers = await engine.prisma.backgroundWorker.findMany({
     where: {
       runtimeEnvironmentId: environment.id,
@@ -166,10 +169,6 @@ export async function setupBackgroundWorker(
             id: worker.id,
           },
         },
-        releaseConcurrencyOnWaitpoint:
-          typeof queueOptions?.releaseConcurrencyOnWaitpoint === "boolean"
-            ? queueOptions.releaseConcurrencyOnWaitpoint
-            : undefined,
         tasks: {
           connect: {
             id: task.id,
@@ -228,10 +227,6 @@ export async function setupBackgroundWorker(
             id: worker.id,
           },
         },
-        releaseConcurrencyOnWaitpoint:
-          typeof queueOptions?.releaseConcurrencyOnWaitpoint === "boolean"
-            ? queueOptions.releaseConcurrencyOnWaitpoint
-            : undefined,
       },
       update: {
         concurrencyLimit:
