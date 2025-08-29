@@ -72,9 +72,9 @@ const supabase = createClient<Database>(
 // Your task
 ```
 
-## Using Prisma with Supabase PgBouncer
+## Using Prisma with Supabase Supavisor (connection pooler)
 
-When using Prisma with Supabase's PgBouncer connection pooler, you need separate pooled and direct connection URLs to avoid prepared statement conflicts.
+When using Prisma with Supabase's Supavisor pooler, use a pooled URL for Prisma Client and a session/direct URL for schema operations to avoid prepared statement conflicts. As of Feb 28, 2025, port 6543 runs Transaction Mode only; use port 5432 for Session Mode.
 
 ```ts
 // In trigger.config.ts
@@ -86,13 +86,15 @@ prismaExtension({
 
 ```bash
 # Environment variables
-DATABASE_URL=postgresql://postgres.creds@aws-0-region.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1
-DATABASE_URL_UNPOOLED=postgresql://postgres.creds@aws-0-region.pooler.supabase.com:5432/postgres
+# Pooled (Transaction Mode, port 6543)
+DATABASE_URL="postgresql://postgres.[PROJECT_REF]:<PASSWORD>@aws-0-[REGION].pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1"
+# Session/Direct (used by Prisma schema engine, port 5432)
+DATABASE_URL_UNPOOLED="postgresql://postgres.[PROJECT_REF]:<PASSWORD>@aws-0-[REGION].pooler.supabase.com:5432/postgres"
 ```
 
 <Note>
-  The pooled connection (port 6543) is used for regular queries, while the direct connection (port
-  5432) is used for migrations and schema operations that don't work with connection pooling.
+  Use the pooled connection (port 6543, Transaction Mode) for regular Prisma Client queries. Use the
+  session/direct connection (port 5432, Session Mode) for migrations and other schema operations.
 </Note>
 
 <SupabaseDocsCards />
