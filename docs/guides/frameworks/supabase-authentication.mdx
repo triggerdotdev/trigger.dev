@@ -72,4 +72,27 @@ const supabase = createClient<Database>(
 // Your task
 ```
 
+## Using Prisma with Supabase PgBouncer
+
+When using Prisma with Supabase's PgBouncer connection pooler, you need separate pooled and direct connection URLs to avoid prepared statement conflicts.
+
+```ts
+// In trigger.config.ts
+prismaExtension({
+  schema: "prisma/schema.prisma",
+  directUrlEnvVarName: "DATABASE_URL_UNPOOLED",
+}),
+```
+
+```bash
+# Environment variables
+DATABASE_URL=postgresql://postgres.creds@aws-0-region.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1
+DATABASE_URL_UNPOOLED=postgresql://postgres.creds@aws-0-region.pooler.supabase.com:5432/postgres
+```
+
+<Note>
+  The pooled connection (port 6543) is used for regular queries, while the direct connection (port
+  5432) is used for migrations and schema operations that don't work with connection pooling.
+</Note>
+
 <SupabaseDocsCards />
