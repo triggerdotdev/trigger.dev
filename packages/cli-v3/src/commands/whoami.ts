@@ -13,6 +13,9 @@ import {
 import { z } from "zod";
 import { CliApiClient } from "../apiClient.js";
 import { spinner } from "../utilities/windows.js";
+import { loadConfig } from "../config.js";
+import { resolveLocalEnvVars } from "../utilities/localEnvVars.js";
+import { tryCatch } from "@trigger.dev/core";
 
 type WhoAmIResult =
   | {
@@ -21,6 +24,7 @@ type WhoAmIResult =
         userId: string;
         email: string;
         dashboardUrl: string;
+        projectUrl?: string;
       };
     }
   | {
@@ -28,13 +32,28 @@ type WhoAmIResult =
       error: string;
     };
 
-const WhoamiCommandOptions = CommonCommandOptions;
+const WhoamiCommandOptions = CommonCommandOptions.extend({
+  config: z.string().optional(),
+  projectRef: z.string().optional(),
+  envFile: z.string().optional(),
+});
 
 type WhoamiCommandOptions = z.infer<typeof WhoamiCommandOptions>;
 
 export function configureWhoamiCommand(program: Command) {
   return commonOptions(
-    program.command("whoami").description("display the current logged in user and project details")
+    program
+      .command("whoami")
+      .description("display the current logged in user and project details")
+      .option("-c, --config <config file>", "The name of the config file")
+      .option(
+        "-p, --project-ref <project ref>",
+        "The project ref. This will override the project specified in the config file."
+      )
+      .option(
+        "--env-file <env file>",
+        "Path to the .env file to load into the CLI process. Defaults to .env in the project directory."
+      )
   ).action(async (options) => {
     await handleTelemetry(async () => {
       await printInitialBanner(false);
@@ -56,6 +75,24 @@ export async function whoAmI(
 ): Promise<WhoAmIResult> {
   if (!embedded) {
     intro(`Displaying your account details [${options?.profile ?? "default"}]`);
+  }
+
+  const envVars = resolveLocalEnvVars(options?.envFile);
+
+  if (envVars.TRIGGER_PROJECT_REF) {
+    logger.debug("Using project ref from env", { ref: envVars.TRIGGER_PROJECT_REF });
+  }
+
+  const [configError, resolvedConfig] = await tryCatch(
+    loadConfig({
+      overrides: { project: options?.projectRef ?? envVars.TRIGGER_PROJECT_REF },
+      configFile: options?.config,
+      warn: false,
+    })
+  );
+
+  if (configError) {
+    logger.debug("Error loading config", { error: configError });
   }
 
   const loadingSpinner = spinner();
@@ -94,7 +131,7 @@ export async function whoAmI(
   }
 
   const apiClient = new CliApiClient(authentication.auth.apiUrl, authentication.auth.accessToken);
-  const userData = await apiClient.whoAmI();
+  const userData = await apiClient.whoAmI(resolvedConfig?.project);
 
   if (!userData.success) {
     loadingSpinner.stop("Error getting your account details");
@@ -109,11 +146,21 @@ export async function whoAmI(
     loadingSpinner.stop("Retrieved your account details");
     note(
       `User ID: ${userData.data.userId}
-Email: ${userData.data.email}
-URL: ${chalkLink(authentication.auth.apiUrl)}
-`,
+Email:   ${userData.data.email}
+URL:     ${chalkLink(authentication.auth.apiUrl)}`,
       `Account details [${authentication.profile}]`
     );
+
+    const { project } = userData.data;
+
+    if (project) {
+      note(
+        `Name: ${project.name}
+Org:  ${project.orgTitle}
+URL:  ${chalkLink(project.url)}`,
+        `Project details [${resolvedConfig?.project}]`
+      );
+    }
   } else {
     !silent && loadingSpinner.stop(`Retrieved your account details for ${userData.data.email}`);
   }

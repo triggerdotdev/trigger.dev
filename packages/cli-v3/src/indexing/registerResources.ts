@@ -3,14 +3,18 @@ import { normalizeImportPath } from "../utilities/normalizeImportPath.js";
 
 export async function registerResources(
   buildManifest: BuildManifest
-): Promise<ImportTaskFileErrors> {
+): Promise<{ importErrors: ImportTaskFileErrors; timings: Record<string, number> }> {
   const importErrors: ImportTaskFileErrors = [];
+  const timings: Record<string, number> = {};
 
   for (const file of buildManifest.files) {
     // Set the context before importing
     resourceCatalog.setCurrentFileContext(file.entry, file.out);
 
+    const start = performance.now();
     const [error, _] = await tryImport(file.out);
+    const end = performance.now();
+    timings[file.entry] = end - start;
 
     // Clear the context after import, regardless of success/failure
     resourceCatalog.clearCurrentFileContext();
@@ -34,7 +38,7 @@ export async function registerResources(
     }
   }
 
-  return importErrors;
+  return { importErrors, timings };
 }
 
 type Result<T> = [Error | null, T | null];

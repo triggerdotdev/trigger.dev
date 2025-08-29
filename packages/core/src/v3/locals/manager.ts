@@ -33,5 +33,8 @@ export class StandardLocalsManager implements LocalsManager {
   setLocal<T>(key: LocalsKey<T>, value: T): void {
     this.store.set(key.__type, value);
   }
+
+  reset(): void {
+    this.store.clear();
+  }
 }
-0;

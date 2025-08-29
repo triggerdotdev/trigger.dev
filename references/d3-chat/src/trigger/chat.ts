@@ -1,15 +1,16 @@
 import { anthropic } from "@ai-sdk/anthropic";
 import { openai } from "@ai-sdk/openai";
 import { ai } from "@trigger.dev/sdk/ai";
-import { logger, metadata, runs, schemaTask, tasks, wait } from "@trigger.dev/sdk/v3";
+import { logger, metadata, runs, schemaTask, tasks, wait, otel, task } from "@trigger.dev/sdk/v3";
 import { sql } from "@vercel/postgres";
 import {
-  CoreMessage,
-  createDataStream,
-  DataStreamWriter,
+  ModelMessage,
   streamText,
   TextStreamPart,
   tool,
+  stepCountIs,
+  createUIMessageStream,
+  UIMessageStreamWriter,
 } from "ai";
 import { nanoid } from "nanoid";
 import { z } from "zod";
@@ -17,6 +18,25 @@ import { sendSQLApprovalMessage } from "../lib/slack";
 import { crawler } from "./crawler";
 import { chartTool } from "./sandbox";
 import { QueryApproval } from "./schemas";
+import { context, propagation } from "@opentelemetry/api";
+
+async function callNextjsApp() {
+  return await otel.withExternalTrace(async () => {
+    const headersObject = {};
+
+    propagation.inject(context.active(), headersObject);
+
+    const result = await fetch("http://localhost:3000/api/demo-call-from-trigger", {
+      headers: new Headers(headersObject),
+      method: "POST",
+      body: JSON.stringify({
+        message: "Hello from Trigger.dev",
+      }),
+    });
+
+    return result.json();
+  });
+}
 
 const queryApprovalTask = schemaTask({
   id: "query-approval",
@@ -28,6 +48,8 @@ const queryApprovalTask = schemaTask({
   }),
   run: async ({ userId, input, query }) => {
     logger.info("queryApproval: starting", { projectRef: process.env.TRIGGER_PROJECT_REF });
+
+    await callNextjsApp();
 
     const token = await wait.createToken({
       tags: [`user:${userId}`, "approval"],
@@ -59,9 +81,57 @@ const queryApprovalTask = schemaTask({
 
 const queryApproval = ai.tool(queryApprovalTask);
 
+// const queryApprovalTask = task({
+//   id: "query-approval",
+//   description: "Get approval for a SQL query from an admin",
+//   jsonSchema: {
+//     type: "object",
+//     properties: {
+//       userId: { type: "string", description: "The user_id to get approval for" },
+//       input: { type: "string", description: "The input to get approval for" },
+//       query: { type: "string", description: "The SQL query to execute" },
+//     },
+//     required: ["userId", "input", "query"],
+//     additionalProperties: false,
+//   },
+//   run: async ({ userId, input, query }: { userId: string; input: string; query: string }) => {
+//     logger.info("queryApproval: starting", { projectRef: process.env.TRIGGER_PROJECT_REF });
+
+//     await callNextjsApp();
+
+//     const token = await wait.createToken({
+//       tags: [`user:${userId}`, "approval"],
+//       timeout: "5m", // timeout in 5 minutes
+//     });
+
+//     await sendSQLApprovalMessage({
+//       query,
+//       userId,
+//       tokenId: token.id,
+//       publicAccessToken: token.publicAccessToken,
+//       input,
+//     });
+
+//     const result = await wait.forToken<QueryApproval>(token);
+
+//     // result.ok === false if the token timed out
+//     if (!result.ok) {
+//       logger.debug("queryApproval: token timed out");
+
+//       return {
+//         approved: false,
+//       };
+//     } else {
+//       return result.output;
+//     }
+//   },
+// });
+
+// const queryApproval = ai.tool(queryApprovalTask);
+
 const executeSql = tool({
   description: "Use this tool to execute a SQL query",
-  parameters: z.object({
+  inputSchema: z.object({
     query: z.string().describe("The SQL query to execute"),
   }),
   execute: async ({ query }) => {
@@ -74,7 +144,7 @@ const executeSql = tool({
 
 const generateId = tool({
   description: "Use this tool to generate a unique ID for a todo",
-  parameters: z.object({
+  inputSchema: z.object({
     prefix: z.string().describe("The prefix for the ID (defaults to 'todo')").default("todo"),
   }),
   execute: async ({ prefix }) => {
@@ -84,7 +154,7 @@ const generateId = tool({
 
 const getUserTodos = tool({
   description: "Use this tool to get all todos for a user",
-  parameters: z.object({
+  inputSchema: z.object({
     userId: z.string().describe("The user_id to get todos for"),
   }),
   execute: async ({ userId }) => {
@@ -96,7 +166,7 @@ const getUserTodos = tool({
 
 const getUserId = tool({
   description: "Use this tool to get the user_id for the current user",
-  parameters: z.object({}),
+  inputSchema: z.object({}),
   execute: async () => {
     const userId = metadata.get("user_id");
 
@@ -111,6 +181,13 @@ const getUserId = tool({
 export const todoChat = schemaTask({
   id: "todo-chat",
   description: "Chat with the todo app",
+  retry: {
+    maxAttempts: 3,
+    maxTimeoutInMs: 10000,
+  },
+  queue: {
+    concurrencyLimit: 1,
+  },
   schema: z.object({
     input: z
       .string()
@@ -121,6 +198,8 @@ export const todoChat = schemaTask({
   }),
   run: async ({ input, userId }, { signal }) => {
     metadata.set("user_id", userId);
+
+    logger.info("todoChat: starting", { input, userId });
 
     const system = `
       You are a SQL (postgres) expert who can turn natural language descriptions for a todo app 
@@ -172,7 +251,7 @@ export const todoChat = schemaTask({
       model: getModel(),
       system,
       prompt,
-      maxSteps: 10,
+      stopWhen: stepCountIs(10),
       tools: {
         queryApproval,
         executeSql,
@@ -197,7 +276,7 @@ export const todoChat = schemaTask({
 
     for await (const part of stream) {
       if (part.type === "text-delta") {
-        textParts.push(part.textDelta);
+        textParts.push(part.text);
       }
     }
 
@@ -279,7 +358,7 @@ export const interruptibleChat = schemaTask({
 
 async function createStreamWithProvider(params: {
   model: ReturnType<typeof anthropic> | ReturnType<typeof openai>;
-  messages: CoreMessage[];
+  messages: ModelMessage[];
   message_request_id: string;
   chat_id: string;
   userId?: string;
@@ -287,14 +366,13 @@ async function createStreamWithProvider(params: {
   const { model, messages, message_request_id, chat_id, userId } = params;
 
   return new Promise<string>((resolve, reject) => {
-    const dataStreamResponse = createDataStream({
+    const dataStreamResponse = createUIMessageStream({
       execute: async (dataStream) => {
         const result = streamText({
           model,
           system: "This is the system prompt, please be nice.",
           messages,
-          maxSteps: 20,
-          toolCallStreaming: true,
+          stopWhen: stepCountIs(20),
           onError: (error) => {
             logger.error("Error in chatStream task (streamText)", {
               error: error instanceof Error ? error.message : "Unknown error",
@@ -306,7 +384,7 @@ async function createStreamWithProvider(params: {
           onChunk: async (chunk) => {
             console.log("Chunk:", chunk);
           },
-          onFinish: async ({ response, reasoning }) => {
+          onFinish: async ({ response, reasoningText }) => {
             metadata.flush();
             logger.info("AI stream finished", {
               chat_id,
@@ -342,9 +420,7 @@ async function createStreamWithProvider(params: {
 
         result.consumeStream();
 
-        result.mergeIntoDataStream(dataStream, {
-          sendReasoning: true,
-        });
+        dataStream.writer.merge(result.toUIMessageStream());
       },
       onError: (error) => {
         logger.error("Error in chatStream task (createDataStream)", {
@@ -401,7 +477,7 @@ export const chatStream = schemaTask({
       // First try with Anthropic
       return await createStreamWithProvider({
         model: anthropic(model),
-        messages: messages as CoreMessage[],
+        messages: messages as ModelMessage[],
         message_request_id,
         chat_id,
         userId,
@@ -419,7 +495,7 @@ export const chatStream = schemaTask({
         // Fallback to OpenAI
         return await createStreamWithProvider({
           model: openai("gpt-4"),
-          messages: messages as CoreMessage[],
+          messages: messages as ModelMessage[],
           message_request_id,
           chat_id,
           userId,
@@ -504,12 +580,12 @@ export const chatStream2 = schemaTask({
       message_request_id,
     });
 
-    const dataStreamResponse = createDataStream({
-      execute: async (dataStream) => {
+    const dataStreamResponse = createUIMessageStream({
+      execute: async ({ writer }) => {
         streamTextWithModel(
-          dataStream,
+          writer,
           anthropic(model),
-          messages as CoreMessage[],
+          messages as ModelMessage[],
           chat_id,
           openai("gpt-4"),
           userId
@@ -526,9 +602,9 @@ export const chatStream2 = schemaTask({
 });
 
 function streamTextWithModel(
-  dataStream: DataStreamWriter,
+  writer: UIMessageStreamWriter,
   model: ReturnType<typeof anthropic> | ReturnType<typeof openai>,
-  messages: CoreMessage[],
+  messages: ModelMessage[],
   chat_id: string,
   fallbackModel?: ReturnType<typeof anthropic> | ReturnType<typeof openai>,
   userId?: string
@@ -537,8 +613,7 @@ function streamTextWithModel(
     model,
     system: "This is the system prompt, please be nice.",
     messages,
-    maxSteps: 20,
-    toolCallStreaming: true,
+    stopWhen: stepCountIs(20),
     onError: (error) => {
       logger.error("Error in chatStream task (streamText)", {
         error: error instanceof Error ? error.message : "Unknown error",
@@ -547,13 +622,13 @@ function streamTextWithModel(
       });
 
       if (fallbackModel) {
-        streamTextWithModel(dataStream, fallbackModel, messages, chat_id, undefined, userId);
+        streamTextWithModel(writer, fallbackModel, messages, chat_id, undefined, userId);
       }
     },
     onChunk: async (chunk) => {
       console.log("Chunk:", chunk);
     },
-    onFinish: async ({ response, reasoning }) => {
+    onFinish: async ({ response, reasoningText }) => {
       metadata.flush();
       logger.info("AI stream finished", {
         chat_id,
@@ -589,9 +664,7 @@ function streamTextWithModel(
 
   result.consumeStream();
 
-  result.mergeIntoDataStream(dataStream, {
-    sendReasoning: true,
-  });
+  writer.merge(result.toUIMessageStream());
 }
 
 export const chatStreamCaller2 = schemaTask({

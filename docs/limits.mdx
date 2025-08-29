@@ -9,11 +9,11 @@ import RateLimitHitUseBatchTrigger from "/snippets/rate-limit-hit-use-batchtrigg
 
 | Pricing tier | Limit                |
 | :----------- | :------------------- |
-| Free         | 5 concurrent runs    |
+| Free         | 10 concurrent runs   |
 | Hobby        | 25 concurrent runs   |
 | Pro          | 100+ concurrent runs |
 
-If you need more than 100 concurrent runs on the Pro tier, you can request more by contacting us via [email](https://trigger.dev/contact) or [Discord](https://trigger.dev/discord).
+Additional bundles above the Pro tier are available for $50/month per 50 concurrent runs. Contact us via [email](https://trigger.dev/contact) or [Discord](https://trigger.dev/discord) to request more.
 
 ## Rate limits
 
@@ -22,6 +22,8 @@ Generally speaking each SDK call is an API call.
 | Limit | Details                   |
 | :---- | :------------------------ |
 | API   | 1,500 requests per minute |
+
+You can request a higher rate limit from us if you're on a paid plan.
 
 <RateLimitHitUseBatchTrigger />
 
@@ -39,15 +41,37 @@ The number of queued tasks by environment.
 
 | Pricing tier | Limit              |
 | :----------- | :----------------- |
-| Free         | 10 per project      |
+| Free         | 10 per project     |
 | Hobby        | 100 per project    |
 | Pro          | 1,000+ per project |
+
+Additional bundles above the Pro tier are available for $10/month per 1,000 schedules. Contact us via [email](https://trigger.dev/contact) or [Discord](https://trigger.dev/discord) to request more.
 
 When attaching schedules to tasks we strongly recommend you add them [in our dashboard](/tasks/scheduled#attaching-schedules-in-the-dashboard) if they're "static". That way you can control them easily per environment.
 
 If you add them [dynamically using code](/management/schedules/create) make sure you add a `deduplicationKey` so you don't add the same schedule to a task multiple times. If you don't your task will get triggered multiple times, it will cost you more, and you will hit the limit.
 
 If you're creating schedules for your user you will definitely need to request more schedules from us.
+
+## Preview branches
+
+| Pricing tier | Limit                |
+| :----------- | :------------------- |
+| Free         | Not available        |
+| Hobby        | 5 preview branches   |
+| Pro          | 20+ preview branches |
+
+Additional bundles above the Pro tier are available for $10/month per preview branch. Contact us via [email](https://trigger.dev/contact) or [Discord](https://trigger.dev/discord) to request more.
+
+## Realtime connections
+
+| Pricing tier | Limit                       |
+| :----------- | :-------------------------- |
+| Free         | 10 concurrent connections   |
+| Hobby        | 50 concurrent connections   |
+| Pro          | 500+ concurrent connections |
+
+Additional bundles are available for $10/month per 100 concurrent connections. Contact us via [email](https://trigger.dev/contact) or [Discord](https://trigger.dev/discord) to request more.
 
 ## Task payloads and outputs
 
@@ -83,8 +107,8 @@ We limit the size of logs to prevent oversized data potentially causing issues.
 
 - Span Attribute Count Limit: 256
 - Log Attribute Count Limit: 256
-- Span Attribute Value Length Limit: 1028 characters
-- Log Attribute Value Length Limit: 1028 characters
+- Span Attribute Value Length Limit: 131072 characters
+- Log Attribute Value Length Limit: 131072 characters
 
 #### Event and Link Limits
 
@@ -114,13 +138,15 @@ We limit the size of logs to prevent oversized data potentially causing issues.
 
 ## Alerts
 
-An alert destination is a single email address, Slack channel, or webhook URL that you want to send alerts to. If you're on the Pro plan and need more than the plan limit, you can request more by contacting us via [email](https://trigger.dev/contact) or [Discord](https://trigger.dev/discord).
+An alert destination is a single email address, Slack channel, or webhook URL that you want to send alerts to.
 
 | Pricing tier | Limit                   |
 | :----------- | :---------------------- |
 | Free         | 1 alert destination     |
 | Hobby        | 3 alert destinations    |
 | Pro          | 100+ alert destinations |
+
+If you're on the Pro plan and need more than the plan limit, you can request more by contacting us via [email](https://trigger.dev/contact) or [Discord](https://trigger.dev/discord).
 
 ## Machines
 
@@ -135,3 +161,5 @@ See the [machine configurations](/machines#machine-configurations) for more deta
 | Free         | 5 team members   |
 | Hobby        | 5 team members   |
 | Pro          | 25+ team members |
+
+Additional seats are available for $20/month per seat. Contact us via [email](https://trigger.dev/contact) or [Discord](https://trigger.dev/discord) to request more.

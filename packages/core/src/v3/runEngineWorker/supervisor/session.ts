@@ -21,6 +21,7 @@ type SupervisorSessionOptions = SupervisorClientCommonOptions & {
   preSkip?: PreSkipFn;
   maxRunCount?: number;
   maxConsumerCount?: number;
+  sendRunDebugLogs?: boolean;
 };
 
 export class SupervisorSession extends EventEmitter<WorkerEvents> {
@@ -167,7 +168,7 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
 
     if (!connect.success) {
       this.logger.error("Failed to connect", { error: connect.error });
-      throw new Error("[SupervisorSession]Failed to connect");
+      throw new Error("[SupervisorSession] Failed to connect");
     }
 
     const { workerGroup } = connect.data;

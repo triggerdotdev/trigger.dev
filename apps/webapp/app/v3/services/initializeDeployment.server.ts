@@ -1,14 +1,16 @@
 import { type InitializeDeploymentRequestBody } from "@trigger.dev/core/v3";
-import { WorkerDeploymentType } from "@trigger.dev/database";
 import { customAlphabet } from "nanoid";
 import { env } from "~/env.server";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
-import { createRemoteImageBuild } from "../remoteImageBuilder.server";
+import { createRemoteImageBuild, remoteBuildsEnabled } from "../remoteImageBuilder.server";
 import { calculateNextBuildVersion } from "../utils/calculateNextBuildVersion";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
+import { getDeploymentImageRef } from "../getDeploymentImageRef.server";
+import { tryCatch } from "@trigger.dev/core";
+import { getRegistryConfig } from "../registryConfig.server";
 
 const nanoid = customAlphabet("1234567890abcdefghijklmnopqrstuvwxyz", 8);
 
@@ -46,13 +48,17 @@ export class InitializeDeploymentService extends BaseService {
 
       const nextVersion = calculateNextBuildVersion(latestDeployment?.version);
 
+      if (payload.selfHosted && remoteBuildsEnabled()) {
+        throw new ServiceValidationError(
+          "Self-hosted deployments are not supported on this instance"
+        );
+      }
+
       // Try and create a depot build and get back the external build data
-      const externalBuildData = payload.selfHosted
-        ? undefined
-        : await createRemoteImageBuild(environment.project);
+      const externalBuildData = await createRemoteImageBuild(environment.project);
 
       const triggeredBy = payload.userId
-        ? await this._prisma.user.findUnique({
+        ? await this._prisma.user.findFirst({
             where: {
               id: payload.userId,
               orgMemberships: {
@@ -64,25 +70,31 @@ export class InitializeDeploymentService extends BaseService {
           })
         : undefined;
 
-      const sharedImageTag = `${payload.namespace ?? env.DEPLOY_REGISTRY_NAMESPACE}/${
-        environment.project.externalRef
-      }:${nextVersion}.${environment.slug}`;
+      const isV4Deployment = payload.type === "MANAGED";
+      const registryConfig = getRegistryConfig(isV4Deployment);
 
-      const unmanagedImageParts = [];
-
-      if (payload.registryHost) {
-        unmanagedImageParts.push(payload.registryHost);
-      }
-      if (payload.namespace) {
-        unmanagedImageParts.push(payload.namespace);
-      }
-      unmanagedImageParts.push(
-        `${environment.project.externalRef}:${nextVersion}.${environment.slug}`
+      const [imageRefError, imageRefResult] = await tryCatch(
+        getDeploymentImageRef({
+          registry: registryConfig,
+          projectRef: environment.project.externalRef,
+          nextVersion,
+          environmentSlug: environment.slug,
+        })
       );
 
-      const unmanagedImageTag = unmanagedImageParts.join("/");
+      if (imageRefError) {
+        logger.error("Failed to get deployment image ref", {
+          environmentId: environment.id,
+          projectId: environment.projectId,
+          version: nextVersion,
+          triggeredById: triggeredBy?.id,
+          type: payload.type,
+          cause: imageRefError.message,
+        });
+        throw new ServiceValidationError("Failed to get deployment image ref");
+      }
 
-      const isManaged = payload.type === WorkerDeploymentType.MANAGED;
+      const { imageRef, isEcr, repoCreated } = imageRefResult;
 
       logger.debug("Creating deployment", {
         environmentId: environment.id,
@@ -90,8 +102,9 @@ export class InitializeDeploymentService extends BaseService {
         version: nextVersion,
         triggeredById: triggeredBy?.id,
         type: payload.type,
-        imageTag: isManaged ? sharedImageTag : unmanagedImageTag,
-        imageReference: isManaged ? undefined : unmanagedImageTag,
+        imageRef,
+        isEcr,
+        repoCreated,
       });
 
       const deployment = await this._prisma.workerDeployment.create({
@@ -106,8 +119,10 @@ export class InitializeDeploymentService extends BaseService {
           externalBuildData,
           triggeredById: triggeredBy?.id,
           type: payload.type,
-          imageReference: isManaged ? undefined : unmanagedImageTag,
+          imageReference: imageRef,
+          imagePlatform: env.DEPLOY_IMAGE_PLATFORM,
           git: payload.gitMeta ?? undefined,
+          runtime: payload.runtime ?? undefined,
         },
       });
 
@@ -120,7 +135,7 @@ export class InitializeDeploymentService extends BaseService {
 
       return {
         deployment,
-        imageTag: isManaged ? sharedImageTag : unmanagedImageTag,
+        imageRef,
       };
     });
   }

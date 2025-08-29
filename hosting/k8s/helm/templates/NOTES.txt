@@ -1,0 +1,96 @@
+Thank you for installing {{ .Chart.Name }}.
+
+Your release is named {{ .Release.Name }}.
+
+🔐 SECURITY WARNING:
+{{- if or (eq .Values.secrets.sessionSecret "2818143646516f6fffd707b36f334bbb") (eq .Values.secrets.magicLinkSecret "44da78b7bbb0dfe709cf38931d25dcdd") (eq .Values.secrets.encryptionKey "f686147ab967943ebbe9ed3b496e465a") (eq .Values.secrets.managedWorkerSecret "447c29678f9eaf289e9c4b70d3dd8a7f") }}
+   You are using DEFAULT SECRETS which are NOT SECURE for production!
+   
+   For production deployments, generate new secrets:
+   1. Run: openssl rand -hex 16  (repeat for each secret)
+   2. Override in your values.yaml:
+      secrets:
+        sessionSecret: "your-new-32-char-hex-secret"
+        magicLinkSecret: "your-new-32-char-hex-secret"
+        encryptionKey: "your-new-32-char-hex-secret"
+        managedWorkerSecret: "your-new-32-char-hex-secret"
+{{- else }}
+   Custom secrets detected - good for production deployment!
+{{- end }}
+
+To get started:
+
+1. Wait for all pods to be ready:
+   kubectl get pods --namespace {{ .Release.Namespace }} -w
+
+2. Access the webapp:
+{{- if .Values.webapp.ingress.enabled }}
+{{- range $host := .Values.webapp.ingress.hosts }}
+  {{- range .paths }}
+   http{{ if $.Values.webapp.ingress.tls }}s{{ end }}://{{ $host.host }}{{ .path }}
+  {{- end }}
+{{- end }}
+{{- else if contains "NodePort" .Values.webapp.service.type }}
+   export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "trigger-v4.fullname" . }}-webapp)
+   export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+   echo http://$NODE_IP:$NODE_PORT
+{{- else if contains "LoadBalancer" .Values.webapp.service.type }}
+     NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+           You can watch the status of by running 'kubectl get --namespace {{ .Release.Namespace }} svc -w {{ include "trigger-v4.fullname" . }}-webapp'
+   export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ include "trigger-v4.fullname" . }}-webapp --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}"}}")
+   echo http://$SERVICE_IP:{{ .Values.webapp.service.port }}
+{{- else if contains "ClusterIP" .Values.webapp.service.type }}
+   export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "{{ include "trigger-v4.selectorLabels" . }},app.kubernetes.io/component=webapp" -o jsonpath="{.items[0].metadata.name}")
+   export CONTAINER_PORT=$(kubectl get pod --namespace {{ .Release.Namespace }} $POD_NAME -o jsonpath="{.spec.containers[0].ports[0].containerPort}")
+   kubectl --namespace {{ .Release.Namespace }} port-forward $POD_NAME 8030:$CONTAINER_PORT
+
+   The application will be available at http://localhost:8030
+{{- end }}
+
+For more information about the deployment, run:
+   kubectl --namespace {{ .Release.Namespace }} get all -l "{{ include "trigger-v4.selectorLabels" . }}"
+
+{{- if .Values.webapp.bootstrap.enabled }}
+
+Bootstrap Mode is enabled:
+- Worker group "{{ .Values.webapp.bootstrap.workerGroupName }}" will be automatically created
+- Worker token will be available at {{ .Values.webapp.bootstrap.workerTokenPath }}
+{{- end }}
+
+Configuration:
+{{- if .Values.postgres.deploy }}
+- Using internal PostgreSQL
+{{- else }}
+- Using external PostgreSQL at {{ .Values.postgres.external.host }}:{{ .Values.postgres.external.port | default 5432 }}
+{{- end }}
+{{- if .Values.redis.deploy }}
+- Using internal Redis
+{{- else }}
+- Using external Redis at {{ .Values.redis.external.host }}:{{ .Values.redis.external.port | default 6379 }}
+{{- end }}
+{{- if .Values.electric.deploy }}
+- Using internal Electric sync service
+{{- else }}
+- Using external Electric sync service at {{ .Values.electric.external.url }}
+{{- end }}
+{{- if .Values.clickhouse.deploy }}
+- Using internal ClickHouse
+{{- else }}
+- Using external ClickHouse at {{ .Values.clickhouse.external.host }}:{{ .Values.clickhouse.external.httpPort | default 8123 }}
+{{- end }}
+{{- if .Values.s3.deploy }}
+- Using internal S3-compatible object storage (MinIO)
+{{- else }}
+- Using external S3-compatible object storage at {{ .Values.s3.external.endpoint }}
+{{- end }}
+{{- if .Values.registry.deploy }}
+- Using internal Docker registry
+{{- else }}
+- Using external Docker registry at {{ .Values.registry.external.host }}
+{{- if hasPrefix "localhost" .Values.registry.external.host }}
+
+⚠️  Registry Warning:
+   Using localhost for registry. Deployments will only work when testing locally in kind or minikube.
+   Please ensure registry.external is properly configured to point at an external registry.
+{{- end }}
+{{- end }}

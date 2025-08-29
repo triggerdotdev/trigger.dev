@@ -23,9 +23,9 @@ import { clampMaxDuration } from "../utils/maxDuration";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { CheckScheduleService } from "./checkSchedule.server";
 import { projectPubSub } from "./projectPubSub.server";
-import { RegisterNextTaskScheduleInstanceService } from "./registerNextTaskScheduleInstance.server";
 import { tryCatch } from "@trigger.dev/core/v3";
 import { engine } from "../runEngine.server";
+import { scheduleEngine } from "../scheduleEngine.server";
 
 export class CreateBackgroundWorkerService extends BaseService {
   public async call(
@@ -77,10 +77,13 @@ export class CreateBackgroundWorkerService extends BaseService {
           version: nextVersion,
           runtimeEnvironmentId: environment.id,
           projectId: project.id,
-          metadata: body.metadata,
+          // body.metadata has an index signature that Prisma doesn't like (from the JSONSchema type) so we are safe to just cast it
+          metadata: body.metadata as Prisma.InputJsonValue,
           contentHash: body.metadata.contentHash,
           cliVersion: body.metadata.cliPackageVersion,
           sdkVersion: body.metadata.packageVersion,
+          runtime: body.metadata.runtime,
+          runtimeVersion: body.metadata.runtimeVersion,
           supportsLazyAttempts: body.supportsLazyAttempts,
           engine: body.engine,
         },
@@ -146,6 +149,11 @@ export class CreateBackgroundWorkerService extends BaseService {
           backgroundWorker,
           environment,
         });
+
+        if (schedulesError instanceof ServiceValidationError) {
+          throw schedulesError;
+        }
+
         throw new ServiceValidationError("Error syncing declarative schedules");
       }
 
@@ -247,7 +255,6 @@ async function createWorkerTask(
         {
           name: task.queue?.name ?? `task/${task.id}`,
           concurrencyLimit: task.queue?.concurrencyLimit,
-          releaseConcurrencyOnWaitpoint: task.queue?.releaseConcurrencyOnWaitpoint,
         },
         task.id,
         task.queue?.name ? "NAMED" : "VIRTUAL",
@@ -274,6 +281,7 @@ async function createWorkerTask(
         fileId: tasksToBackgroundFiles?.get(task.id) ?? null,
         maxDurationInSeconds: task.maxDuration ? clampMaxDuration(task.maxDuration) : null,
         queueId: queue.id,
+        payloadSchema: task.payloadSchema as any,
       },
     });
   } catch (error) {
@@ -368,33 +376,40 @@ async function createWorkerQueue(
     concurrencyLimit ?? null,
     orderableName,
     queueType,
-    typeof queue.releaseConcurrencyOnWaitpoint === "boolean"
-      ? queue.releaseConcurrencyOnWaitpoint
-      : false,
     worker,
     prisma
   );
 
-  if (typeof concurrencyLimit === "number") {
-    logger.debug("createWorkerQueue: updating concurrency limit", {
-      workerId: worker.id,
-      taskQueue,
-      orgId: environment.organizationId,
-      projectId: environment.projectId,
-      environmentId: environment.id,
-      concurrencyLimit,
-    });
-    await updateQueueConcurrencyLimits(environment, taskQueue.name, concurrencyLimit);
+  if (!taskQueue.paused) {
+    if (typeof concurrencyLimit === "number") {
+      logger.debug("createWorkerQueue: updating concurrency limit", {
+        workerId: worker.id,
+        taskQueue,
+        orgId: environment.organizationId,
+        projectId: environment.projectId,
+        environmentId: environment.id,
+        concurrencyLimit,
+      });
+      await updateQueueConcurrencyLimits(environment, taskQueue.name, concurrencyLimit);
+    } else {
+      logger.debug("createWorkerQueue: removing concurrency limit", {
+        workerId: worker.id,
+        taskQueue,
+        orgId: environment.organizationId,
+        projectId: environment.projectId,
+        environmentId: environment.id,
+        concurrencyLimit,
+      });
+      await removeQueueConcurrencyLimits(environment, taskQueue.name);
+    }
   } else {
-    logger.debug("createWorkerQueue: removing concurrency limit", {
+    logger.debug("createWorkerQueue: queue is paused, not updating concurrency limit", {
       workerId: worker.id,
       taskQueue,
       orgId: environment.organizationId,
       projectId: environment.projectId,
       environmentId: environment.id,
-      concurrencyLimit,
     });
-    await removeQueueConcurrencyLimits(environment, taskQueue.name);
   }
 
   return taskQueue;
@@ -405,7 +420,6 @@ async function upsertWorkerQueueRecord(
   concurrencyLimit: number | null,
   orderableName: string,
   queueType: TaskQueueType,
-  releaseConcurrencyOnWaitpoint: boolean,
   worker: BackgroundWorker,
   prisma: PrismaClientOrTransaction,
   attempt: number = 0
@@ -430,7 +444,6 @@ async function upsertWorkerQueueRecord(
           name: queueName,
           orderableName,
           concurrencyLimit,
-          releaseConcurrencyOnWaitpoint,
           runtimeEnvironmentId: worker.runtimeEnvironmentId,
           projectId: worker.projectId,
           type: queueType,
@@ -451,7 +464,6 @@ async function upsertWorkerQueueRecord(
           version: "V2",
           orderableName,
           concurrencyLimit,
-          releaseConcurrencyOnWaitpoint,
         },
       });
     }
@@ -465,7 +477,6 @@ async function upsertWorkerQueueRecord(
         concurrencyLimit,
         orderableName,
         queueType,
-        releaseConcurrencyOnWaitpoint,
         worker,
         prisma,
         attempt + 1
@@ -505,7 +516,6 @@ export async function syncDeclarativeSchedules(
   });
 
   const checkSchedule = new CheckScheduleService(prisma);
-  const registerNextService = new RegisterNextTaskScheduleInstanceService(prisma);
 
   //start out by assuming they're all missing
   const missingSchedules = new Set<string>(
@@ -515,6 +525,18 @@ export async function syncDeclarativeSchedules(
   //create/update schedules (+ instances)
   for (const task of tasksWithDeclarativeSchedules) {
     if (task.schedule === undefined) continue;
+
+    // Check if this schedule should be created in the current environment
+    if (task.schedule.environments && task.schedule.environments.length > 0) {
+      if (!task.schedule.environments.includes(environment.type)) {
+        logger.debug("Skipping schedule creation due to environment filter", {
+          taskId: task.id,
+          environmentType: environment.type,
+          allowedEnvironments: task.schedule.environments,
+        });
+        continue;
+      }
+    }
 
     const existingSchedule = existingDeclarativeSchedules.find(
       (schedule) =>
@@ -552,7 +574,7 @@ export async function syncDeclarativeSchedules(
       missingSchedules.delete(existingSchedule.id);
       const instance = schedule.instances.at(0);
       if (instance) {
-        await registerNextService.call(instance.id);
+        await scheduleEngine.registerNextTaskScheduleInstance({ instanceId: instance.id });
       } else {
         throw new CreateDeclarativeScheduleError(
           `Missing instance for declarative schedule ${schedule.id}`
@@ -584,7 +606,7 @@ export async function syncDeclarativeSchedules(
       const instance = newSchedule.instances.at(0);
 
       if (instance) {
-        await registerNextService.call(instance.id);
+        await scheduleEngine.registerNextTaskScheduleInstance({ instanceId: instance.id });
       } else {
         throw new CreateDeclarativeScheduleError(
           `Missing instance for declarative schedule ${newSchedule.id}`

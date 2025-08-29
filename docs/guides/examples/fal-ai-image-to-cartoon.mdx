@@ -30,7 +30,7 @@ This video walks through the process of creating this task in a Next.js project.
 This task converts an image to a cartoon using Fal.ai, and uploads the result to Cloudflare R2.
 
 ```ts trigger/fal-ai-image-to-cartoon.ts
-import { logger, task } from "@trigger.dev/sdk/v3";
+import { logger, task } from "@trigger.dev/sdk";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import * as fal from "@fal-ai/serverless-client";
 import fetch from "node-fetch";

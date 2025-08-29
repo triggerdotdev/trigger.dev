@@ -1,19 +1,18 @@
-import { redisTest } from "@internal/testcontainers";
+import { assertNonNullable, redisTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
-import { Logger } from "@trigger.dev/core/logger";
 import { describe } from "node:test";
 import { FairQueueSelectionStrategy } from "../fairQueueSelectionStrategy.js";
 import { RunQueue } from "../index.js";
 import { RunQueueFullKeyProducer } from "../keyProducer.js";
 import { InputPayload } from "../types.js";
 import { setTimeout } from "node:timers/promises";
+import { Decimal } from "@trigger.dev/database";
 
 const testOptions = {
   name: "rq",
   tracer: trace.getTracer("rq"),
   workers: 1,
   defaultEnvConcurrency: 25,
-  logger: new Logger("RunQueue", "warn"),
   retryOptions: {
     maxAttempts: 5,
     factor: 1.1,
@@ -28,6 +27,7 @@ const authenticatedEnvDev = {
   id: "e1234",
   type: "DEVELOPMENT" as const,
   maximumConcurrencyLimit: 10,
+  concurrencyLimitBurstFactor: new Decimal(2.0),
   project: { id: "p1234" },
   organization: { id: "o1234" },
 };
@@ -66,18 +66,21 @@ describe("RunQueue.nackMessage", () => {
     });
 
     try {
-      const envMasterQueue = `env:${authenticatedEnvDev.id}`;
-
       // Enqueue message with reserve concurrency
       await queue.enqueueMessage({
         env: authenticatedEnvDev,
         message: messageDev,
-        masterQueues: ["main", envMasterQueue],
+        workerQueue: authenticatedEnvDev.id,
       });
 
+      await setTimeout(1000);
+
       // Dequeue message
-      const dequeued = await queue.dequeueMessageFromMasterQueue("test_12345", envMasterQueue, 10);
-      expect(dequeued.length).toBe(1);
+      const dequeued = await queue.dequeueMessageFromWorkerQueue(
+        "test_12345",
+        authenticatedEnvDev.id
+      );
+      assertNonNullable(dequeued);
 
       // Verify current concurrency is set and reserve is cleared
       const queueCurrentConcurrency = await queue.currentConcurrencyOfQueue(
@@ -116,11 +119,14 @@ describe("RunQueue.nackMessage", () => {
       expect(message?.attempt).toBe(1);
 
       //we need to wait because the default wait is 1 second
-      await setTimeout(300);
+      await setTimeout(1000);
 
       // Now we should be able to dequeue it again
-      const dequeued2 = await queue.dequeueMessageFromMasterQueue("test_12345", envMasterQueue, 10);
-      expect(dequeued2.length).toBe(1);
+      const dequeued2 = await queue.dequeueMessageFromWorkerQueue(
+        "test_12345",
+        authenticatedEnvDev.id
+      );
+      assertNonNullable(dequeued2);
     } finally {
       await queue.quit();
     }
@@ -131,6 +137,7 @@ describe("RunQueue.nackMessage", () => {
     async ({ redisContainer }) => {
       const queue = new RunQueue({
         ...testOptions,
+        logLevel: "debug",
         retryOptions: {
           ...testOptions.retryOptions,
           maxAttempts: 2, // Set lower for testing
@@ -151,28 +158,24 @@ describe("RunQueue.nackMessage", () => {
       });
 
       try {
-        const envMasterQueue = `env:${authenticatedEnvDev.id}`;
-
         await queue.enqueueMessage({
           env: authenticatedEnvDev,
           message: messageDev,
-          masterQueues: ["main", envMasterQueue],
+          workerQueue: authenticatedEnvDev.id,
         });
 
-        const dequeued = await queue.dequeueMessageFromMasterQueue(
+        await setTimeout(1000);
+
+        const dequeued = await queue.dequeueMessageFromWorkerQueue(
           "test_12345",
-          envMasterQueue,
-          10
+          authenticatedEnvDev.id
         );
-        expect(dequeued.length).toBe(1);
+        assertNonNullable(dequeued);
 
         await queue.nackMessage({
           orgId: messageDev.orgId,
           messageId: messageDev.runId,
         });
-
-        // Wait for any requeue delay
-        await setTimeout(300);
 
         // Message should not be requeued as max attempts reached
         const envQueueLength = await queue.lengthOfEnvQueue(authenticatedEnvDev);
@@ -181,13 +184,14 @@ describe("RunQueue.nackMessage", () => {
         const message = await queue.readMessage(messageDev.orgId, messageDev.runId);
         expect(message?.attempt).toBe(1);
 
+        await setTimeout(1000);
+
         // Now we dequeue and nack again, and it should be moved to dead letter queue
-        const dequeued3 = await queue.dequeueMessageFromMasterQueue(
+        const dequeued3 = await queue.dequeueMessageFromWorkerQueue(
           "test_12345",
-          envMasterQueue,
-          10
+          authenticatedEnvDev.id
         );
-        expect(dequeued3.length).toBe(1);
+        assertNonNullable(dequeued3);
 
         const envQueueLengthDequeue = await queue.lengthOfEnvQueue(authenticatedEnvDev);
         expect(envQueueLengthDequeue).toBe(0);
@@ -236,22 +240,21 @@ describe("RunQueue.nackMessage", () => {
       });
 
       try {
-        const envMasterQueue = `env:${authenticatedEnvDev.id}`;
-
         // Enqueue message
         await queue.enqueueMessage({
           env: authenticatedEnvDev,
           message: messageDev,
-          masterQueues: ["main", envMasterQueue],
+          workerQueue: authenticatedEnvDev.id,
         });
 
+        await setTimeout(1000);
+
         // Dequeue message
-        const dequeued = await queue.dequeueMessageFromMasterQueue(
+        const dequeued = await queue.dequeueMessageFromWorkerQueue(
           "test_12345",
-          envMasterQueue,
-          10
+          authenticatedEnvDev.id
         );
-        expect(dequeued.length).toBe(1);
+        assertNonNullable(dequeued);
 
         // Set retryAt to 5 seconds in the future
         const retryAt = Date.now() + 5000;

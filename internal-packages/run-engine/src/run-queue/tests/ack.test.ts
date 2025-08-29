@@ -1,11 +1,13 @@
-import { redisTest } from "@internal/testcontainers";
+import { assertNonNullable, redisTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
 import { describe } from "node:test";
+import { setTimeout } from "node:timers/promises";
 import { FairQueueSelectionStrategy } from "../fairQueueSelectionStrategy.js";
 import { RunQueue } from "../index.js";
 import { RunQueueFullKeyProducer } from "../keyProducer.js";
 import { InputPayload } from "../types.js";
+import { Decimal } from "@trigger.dev/database";
 
 const testOptions = {
   name: "rq",
@@ -27,6 +29,7 @@ const authenticatedEnvDev = {
   id: "e1234",
   type: "DEVELOPMENT" as const,
   maximumConcurrencyLimit: 10,
+  concurrencyLimitBurstFactor: new Decimal(2.0),
   project: { id: "p1234" },
   organization: { id: "o1234" },
 };
@@ -65,17 +68,20 @@ describe("RunQueue.acknowledgeMessage", () => {
     });
 
     try {
-      const envMasterQueue = `env:${authenticatedEnvDev.id}`;
-
       // Enqueue and dequeue a message to get it into processing
       await queue.enqueueMessage({
         env: authenticatedEnvDev,
         message: messageDev,
-        masterQueues: ["main", envMasterQueue],
+        workerQueue: authenticatedEnvDev.id,
       });
 
-      const dequeued = await queue.dequeueMessageFromMasterQueue("test_12345", envMasterQueue, 10);
-      expect(dequeued.length).toBe(1);
+      await setTimeout(1000);
+
+      const dequeued = await queue.dequeueMessageFromWorkerQueue(
+        "test_12345",
+        authenticatedEnvDev.id
+      );
+      assertNonNullable(dequeued);
 
       // Verify concurrency is set
       const queueConcurrency = await queue.currentConcurrencyOfQueue(
@@ -123,13 +129,11 @@ describe("RunQueue.acknowledgeMessage", () => {
     });
 
     try {
-      const envMasterQueue = `env:${authenticatedEnvDev.id}`;
-
       // Enqueue message
       await queue.enqueueMessage({
         env: authenticatedEnvDev,
         message: messageDev,
-        masterQueues: ["main", envMasterQueue],
+        workerQueue: authenticatedEnvDev.id,
       });
 
       // Verify queue lengths
@@ -139,9 +143,14 @@ describe("RunQueue.acknowledgeMessage", () => {
       const envQueueLength = await queue.lengthOfEnvQueue(authenticatedEnvDev);
       expect(envQueueLength).toBe(1);
 
+      await setTimeout(1000);
+
       // Dequeue the message
-      const dequeued = await queue.dequeueMessageFromMasterQueue("test_12345", envMasterQueue, 10);
-      expect(dequeued.length).toBe(1);
+      const dequeued = await queue.dequeueMessageFromWorkerQueue(
+        "test_12345",
+        authenticatedEnvDev.id
+      );
+      assertNonNullable(dequeued);
 
       // Verify queue is empty after dequeue
       const queueLengthAfterDequeue = await queue.lengthOfQueue(

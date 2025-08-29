@@ -7,6 +7,7 @@ import { MetadataStream } from "./metadataStream.js";
 import { applyMetadataOperations, collapseOperations } from "./operations.js";
 import { RunMetadataManager, RunMetadataUpdater } from "./types.js";
 import { AsyncIterableStream } from "../streams/asyncIterableStream.js";
+import { IOPacket, stringifyIO } from "../utils/ioSerialization.js";
 
 const MAXIMUM_ACTIVE_STREAMS = 5;
 const MAXIMUM_TOTAL_STREAMS = 10;
@@ -23,12 +24,30 @@ export class StandardMetadataManager implements RunMetadataManager {
   private queuedRootOperations: Set<RunMetadataChangeOperation> = new Set();
 
   public runId: string | undefined;
+  public runIdIsRoot: boolean = false;
 
   constructor(
     private apiClient: ApiClient,
     private streamsBaseUrl: string,
     private streamsVersion: "v1" | "v2" = "v1"
   ) {}
+
+  reset(): void {
+    this.queuedOperations.clear();
+    this.queuedParentOperations.clear();
+    this.queuedRootOperations.clear();
+    this.activeStreams.clear();
+    this.store = undefined;
+    this.runId = undefined;
+    this.runIdIsRoot = false;
+
+    if (this.flushTimeoutId) {
+      clearTimeout(this.flushTimeoutId);
+      this.flushTimeoutId = null;
+    }
+
+    this.isFlushing = false;
+  }
 
   get parent(): RunMetadataUpdater {
     // Store a reference to 'this' to ensure proper context
@@ -37,34 +56,76 @@ export class StandardMetadataManager implements RunMetadataManager {
     // Create the updater object and store it in a local variable
     const parentUpdater: RunMetadataUpdater = {
       set: (key, value) => {
+        // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
+        if (self.runIdIsRoot) {
+          return self.set(key, value);
+        }
+
         self.queuedParentOperations.add({ type: "set", key, value });
         return parentUpdater;
       },
       del: (key) => {
+        // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
+        if (self.runIdIsRoot) {
+          return self.del(key);
+        }
+
         self.queuedParentOperations.add({ type: "delete", key });
         return parentUpdater;
       },
       append: (key, value) => {
+        // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
+        if (self.runIdIsRoot) {
+          return self.append(key, value);
+        }
+
         self.queuedParentOperations.add({ type: "append", key, value });
         return parentUpdater;
       },
       remove: (key, value) => {
+        // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
+        if (self.runIdIsRoot) {
+          return self.remove(key, value);
+        }
+
         self.queuedParentOperations.add({ type: "remove", key, value });
         return parentUpdater;
       },
       increment: (key, value) => {
+        // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
+        if (self.runIdIsRoot) {
+          return self.increment(key, value);
+        }
+
         self.queuedParentOperations.add({ type: "increment", key, value });
         return parentUpdater;
       },
       decrement: (key, value) => {
+        // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
+        if (self.runIdIsRoot) {
+          return self.decrement(key, value);
+        }
+
         self.queuedParentOperations.add({ type: "increment", key, value: -Math.abs(value) });
         return parentUpdater;
       },
       update: (value) => {
+        // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
+        if (self.runIdIsRoot) {
+          return self.update(value);
+        }
+
         self.queuedParentOperations.add({ type: "update", value });
         return parentUpdater;
       },
-      stream: (key, value, signal) => self.doStream(key, value, "parent", parentUpdater, signal),
+      stream: (key, value, signal) => {
+        // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
+        if (self.runIdIsRoot) {
+          return self.doStream(key, value, "self", parentUpdater, signal);
+        }
+
+        return self.doStream(key, value, "parent", parentUpdater, signal);
+      },
     };
 
     return parentUpdater;
@@ -77,34 +138,76 @@ export class StandardMetadataManager implements RunMetadataManager {
     // Create the updater object and store it in a local variable
     const rootUpdater: RunMetadataUpdater = {
       set: (key, value) => {
+        // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
+        if (self.runIdIsRoot) {
+          return self.set(key, value);
+        }
+
         self.queuedRootOperations.add({ type: "set", key, value });
         return rootUpdater;
       },
       del: (key) => {
+        // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
+        if (self.runIdIsRoot) {
+          return self.del(key);
+        }
+
         self.queuedRootOperations.add({ type: "delete", key });
         return rootUpdater;
       },
       append: (key, value) => {
+        // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
+        if (self.runIdIsRoot) {
+          return self.append(key, value);
+        }
+
         self.queuedRootOperations.add({ type: "append", key, value });
         return rootUpdater;
       },
       remove: (key, value) => {
+        // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
+        if (self.runIdIsRoot) {
+          return self.remove(key, value);
+        }
+
         self.queuedRootOperations.add({ type: "remove", key, value });
         return rootUpdater;
       },
       increment: (key, value) => {
+        // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
+        if (self.runIdIsRoot) {
+          return self.increment(key, value);
+        }
+
         self.queuedRootOperations.add({ type: "increment", key, value });
         return rootUpdater;
       },
       decrement: (key, value) => {
+        // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
+        if (self.runIdIsRoot) {
+          return self.decrement(key, value);
+        }
+
         self.queuedRootOperations.add({ type: "increment", key, value: -Math.abs(value) });
         return rootUpdater;
       },
       update: (value) => {
+        // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
+        if (self.runIdIsRoot) {
+          return self.update(value);
+        }
+
         self.queuedRootOperations.add({ type: "update", value });
         return rootUpdater;
       },
-      stream: (key, value, signal) => self.doStream(key, value, "root", rootUpdater, signal),
+      stream: (key, value, signal) => {
+        // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
+        if (self.runIdIsRoot) {
+          return self.doStream(key, value, "self", rootUpdater, signal);
+        }
+
+        return self.doStream(key, value, "root", rootUpdater, signal);
+      },
     };
 
     return rootUpdater;
@@ -406,23 +509,27 @@ export class StandardMetadataManager implements RunMetadataManager {
     }
   }
 
-  stopAndReturnLastFlush(): FlushedRunMetadata | undefined {
+  async stopAndReturnLastFlush(): Promise<IOPacket> {
     this.stopPeriodicFlush();
     this.isFlushing = true;
 
     if (!this.#needsFlush()) {
-      return;
+      return { dataType: "application/json" };
     }
 
     const operations = Array.from(this.queuedOperations);
     const parentOperations = Array.from(this.queuedParentOperations);
     const rootOperations = Array.from(this.queuedRootOperations);
 
-    return {
+    const data = {
       operations: collapseOperations(operations),
       parentOperations: collapseOperations(parentOperations),
       rootOperations: collapseOperations(rootOperations),
     };
+
+    const packet = await stringifyIO(data);
+
+    return packet;
   }
 
   #needsFlush(): boolean {

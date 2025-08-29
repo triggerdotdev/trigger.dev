@@ -9,6 +9,9 @@
     "dark": "#A8FF53"
   },
   "favicon": "/images/favicon.png",
+  "contextual": {
+    "options": ["copy", "view", "claude"]
+  },
   "navigation": {
     "dropdowns": [
       {
@@ -21,10 +24,11 @@
             "pages": [
               "introduction",
               "quick-start",
+              "manual-setup",
               "video-walkthrough",
               "how-it-works",
               "limits",
-              "upgrade-to-v4"
+              "migrating-from-v3"
             ]
           },
           {
@@ -57,7 +61,9 @@
               "tags",
               "runs/metadata",
               "run-usage",
-              "context"
+              "context",
+              "runs/priority",
+              "hidden-tasks"
             ]
           },
           {
@@ -75,6 +81,7 @@
                       "config/extensions/pythonExtension",
                       "config/extensions/playwright",
                       "config/extensions/puppeteer",
+                      "config/extensions/lightpanda",
                       "config/extensions/ffmpeg",
                       "config/extensions/aptGet",
                       "config/extensions/additionalFiles",
@@ -100,6 +107,7 @@
               "deployment/overview",
               "deploy-environment-variables",
               "github-actions",
+              "deployment/preview-branches",
               "deployment/atomic-deployment",
               {
                 "group": "Deployment integrations",
@@ -108,28 +116,31 @@
             ]
           },
           {
-            "group": "Frontend usage",
-            "pages": [
-              "frontend/overview",
-              {
-                "group": "React hooks",
-                "pages": [
-                  "frontend/react-hooks/overview",
-                  "frontend/react-hooks/realtime",
-                  "frontend/react-hooks/triggering"
-                ]
-              }
-            ]
-          },
-          {
-            "group": "Realtime API",
+            "group": "Realtime",
             "pages": [
               "realtime/overview",
-              "realtime/streams",
-              "realtime/react-hooks",
-              "realtime/subscribe-to-run",
-              "realtime/subscribe-to-runs-with-tag",
-              "realtime/subscribe-to-batch"
+              "realtime/how-it-works",
+              "realtime/run-object",
+              "realtime/auth",
+              {
+                "group": "React hooks (frontend)",
+                "pages": [
+                  "realtime/react-hooks/overview",
+                  "realtime/react-hooks/triggering",
+                  "realtime/react-hooks/subscribe",
+                  "realtime/react-hooks/streams",
+                  "realtime/react-hooks/swr",
+                  "realtime/react-hooks/use-wait-token"
+                ]
+              },
+              {
+                "group": "Backend",
+                "pages": [
+                  "realtime/backend/overview",
+                  "realtime/backend/subscribe",
+                  "realtime/backend/streams"
+                ]
+              }
             ]
           },
           {
@@ -139,15 +150,17 @@
               {
                 "group": "Commands",
                 "pages": [
-                  "cli-login-commands",
-                  "cli-init-commands",
-                  "cli-dev-commands",
                   "cli-deploy-commands",
-                  "cli-promote-commands",
-                  "cli-whoami-commands",
-                  "cli-logout-commands",
+                  "cli-dev-commands",
+                  "cli-init-commands",
                   "cli-list-profiles-commands",
-                  "cli-update-commands"
+                  "cli-login-commands",
+                  "cli-logout-commands",
+                  "cli-preview-archive",
+                  "cli-promote-commands",
+                  "cli-switch",
+                  "cli-update-commands",
+                  "cli-whoami-commands"
                 ]
               }
             ]
@@ -160,23 +173,31 @@
             "group": "Troubleshooting",
             "pages": [
               "troubleshooting",
+              "how-to-reduce-your-spend",
               "troubleshooting-debugging-in-vscode",
               "upgrading-packages",
-
               "troubleshooting-uptime-status",
               "troubleshooting-github-issues",
               "request-feature"
             ]
           },
           {
-            "group": "Open source",
+            "group": "Self-hosting",
             "pages": [
-              "open-source-self-hosting",
-              "open-source-contributing",
-              "github-repo",
-              "changelog",
-              "roadmap"
+              "self-hosting/overview",
+              "self-hosting/docker",
+              "self-hosting/kubernetes",
+              {
+                "group": "Environment variables",
+                "pages": ["self-hosting/env/webapp", "self-hosting/env/supervisor"]
+              },
+              "open-source-self-hosting"
             ]
+          },
+
+          {
+            "group": "Open source",
+            "pages": ["open-source-contributing", "github-repo", "changelog", "roadmap"]
           },
           {
             "group": "Help",
@@ -310,26 +331,29 @@
             ]
           },
           {
+            "group": "Example projects",
+            "pages": [
+              "guides/example-projects/batch-llm-evaluator",
+              "guides/example-projects/claude-thinking-chatbot",
+              "guides/example-projects/human-in-the-loop-workflow",
+              "guides/example-projects/mastra-agents-with-memory",
+              "guides/example-projects/meme-generator-human-in-the-loop",
+              "guides/example-projects/openai-agent-sdk-guardrails",
+              "guides/example-projects/openai-agents-sdk-typescript-playground",
+              "guides/example-projects/realtime-csv-importer",
+              "guides/example-projects/realtime-fal-ai",
+              "guides/example-projects/turborepo-monorepo-prisma",
+              "guides/example-projects/vercel-ai-sdk-deep-research",
+              "guides/example-projects/vercel-ai-sdk-image-generator"
+            ]
+          },
+          {
             "group": "Python guides",
             "pages": [
               "guides/python/python-image-processing",
               "guides/python/python-doc-to-markdown",
               "guides/python/python-crawl4ai",
               "guides/python/python-pdf-form-extractor"
-            ]
-          },
-          {
-            "group": "Example projects",
-            "pages": [
-              "guides/example-projects/batch-llm-evaluator",
-              "guides/example-projects/claude-thinking-chatbot",
-              "guides/example-projects/human-in-the-loop-workflow",
-              "guides/example-projects/meme-generator-human-in-the-loop",
-              "guides/example-projects/openai-agent-sdk-guardrails",
-              "guides/example-projects/realtime-csv-importer",
-              "guides/example-projects/realtime-fal-ai",
-              "guides/example-projects/turborepo-monorepo-prisma",
-              "guides/example-projects/vercel-ai-sdk-image-generator"
             ]
           },
           {
@@ -341,6 +365,7 @@
               "guides/examples/fal-ai-realtime",
               "guides/examples/ffmpeg-video-processing",
               "guides/examples/firecrawl-url-crawl",
+              "guides/examples/lightpanda",
               "guides/examples/libreoffice-pdf-conversion",
               "guides/examples/open-ai-with-retrying",
               "guides/examples/pdf-to-image",
@@ -549,11 +574,55 @@
     },
     {
       "source": "/frontend/react-hooks",
-      "destination": "/frontend/react-hooks/overview"
+      "destination": "/realtime/react-hooks/overview"
+    },
+    {
+      "source": "/frontend/overview",
+      "destination": "/realtime/auth"
+    },
+    {
+      "source": "/frontend/react-hooks/overview",
+      "destination": "/realtime/react-hooks/overview"
+    },
+    {
+      "source": "/frontend/react-hooks/realtime",
+      "destination": "/realtime/react-hooks/realtime"
+    },
+    {
+      "source": "/frontend/react-hooks/triggering",
+      "destination": "/realtime/react-hooks/triggering"
+    },
+    {
+      "source": "/realtime/backend",
+      "destination": "/realtime/backend/overview"
+    },
+    {
+      "source": "/realtime/streams",
+      "destination": "/realtime/backend/streams"
+    },
+    {
+      "source": "/realtime/react-hooks",
+      "destination": "/realtime/react-hooks/overview"
+    },
+    {
+      "source": "/realtime/subscribe-to-run",
+      "destination": "/realtime/backend/subscribe"
+    },
+    {
+      "source": "/realtime/subscribe-to-runs-with-tag",
+      "destination": "/realtime/backend/subscribe"
+    },
+    {
+      "source": "/realtime/subscribe-to-batch",
+      "destination": "/realtime/backend/subscribe"
     },
     {
       "source": "/management/projects/runs",
       "destination": "/management/overview"
+    },
+    {
+      "source": "/upgrade-to-v4",
+      "destination": "/migrating-from-v3"
     }
   ]
 }

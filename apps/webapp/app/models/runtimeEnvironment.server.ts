@@ -37,7 +37,7 @@ export async function findEnvironmentByApiKey(
 
   if (environment.type === "PREVIEW") {
     if (!branchName) {
-      logger.error("findEnvironmentByApiKey(): Preview env with no branch name provided", {
+      logger.warn("findEnvironmentByApiKey(): Preview env with no branch name provided", {
         environmentId: environment.id,
       });
       return null;
@@ -274,4 +274,37 @@ export function displayableEnvironment(
     slug: environment.slug,
     userName,
   };
+}
+
+export async function findDisplayableEnvironment(
+  environmentId: string,
+  userId: string | undefined
+) {
+  const environment = await prisma.runtimeEnvironment.findFirst({
+    where: {
+      id: environmentId,
+    },
+    select: {
+      id: true,
+      type: true,
+      slug: true,
+      orgMember: {
+        select: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              displayName: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!environment) {
+    return;
+  }
+
+  return displayableEnvironment(environment, userId);
 }

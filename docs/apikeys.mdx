@@ -11,18 +11,25 @@ Each environment has its own secret key. You can find the value on the API keys 
 
 ![How to find your secret key](/images/api-keys.png)
 
+<Note>
+  For preview branches, you need to also set the `TRIGGER_PREVIEW_BRANCH` environment variable as
+  well. You can find the value on the API keys page when you're on the preview branch.
+</Note>
+
 ### Automatically Configuring the SDK
 
 To automatically configure the SDK with your secret key, you can set the `TRIGGER_SECRET_KEY` environment variable. The SDK will automatically use this value when calling API methods (like `trigger`).
 
 ```bash .env
 TRIGGER_SECRET_KEY="tr_dev_…"
+TRIGGER_PREVIEW_BRANCH="my-branch" # Only needed for preview branches
 ```
 
 You can do the same if you are self-hosting and need to change the default URL by using `TRIGGER_API_URL`.
 
 ```bash .env
 TRIGGER_API_URL="https://trigger.example.com"
+TRIGGER_PREVIEW_BRANCH="my-branch" # Only needed for preview branches
 ```
 
 The default URL is `https://api.trigger.dev`.
@@ -32,11 +39,12 @@ The default URL is `https://api.trigger.dev`.
 If you prefer to manually configure the SDK, you can call the `configure` method:
 
 ```ts
-import { configure } from "@trigger.dev/sdk/v3";
+import { configure } from "@trigger.dev/sdk";
 import { myTask } from "./trigger/myTasks";
 
 configure({
   secretKey: "tr_dev_1234", // WARNING: Never actually hardcode your secret key like this
+  previewBranch: "my-branch", // Only needed for preview branches
   baseURL: "https://mytrigger.example.com", // Optional
 });
 

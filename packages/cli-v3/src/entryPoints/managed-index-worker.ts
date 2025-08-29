@@ -17,6 +17,8 @@ import sourceMapSupport from "source-map-support";
 import { registerResources } from "../indexing/registerResources.js";
 import { env } from "std-env";
 import { normalizeImportPath } from "../utilities/normalizeImportPath.js";
+import { detectRuntimeVersion } from "@trigger.dev/core/v3/build";
+import { schemaToJsonSchema, initializeSchemaConverters } from "@trigger.dev/schema-to-json";
 
 sourceMapSupport.install({
   handleUncaughtExceptions: false,
@@ -86,19 +88,20 @@ async function bootstrap() {
     forceFlushTimeoutMillis: 30_000,
   });
 
-  const importErrors = await registerResources(buildManifest);
+  const { importErrors, timings } = await registerResources(buildManifest);
 
   return {
     tracingSDK,
     config,
     buildManifest,
     importErrors,
+    timings,
   };
 }
 
-const { buildManifest, importErrors, config } = await bootstrap();
+const { buildManifest, importErrors, config, timings } = await bootstrap();
 
-let tasks = resourceCatalog.listTaskManifests();
+let tasks = await convertSchemasToJsonSchemas(resourceCatalog.listTaskManifests());
 
 // If the config has retry defaults, we need to apply them to all tasks that don't have any retry settings
 if (config.retries?.default) {
@@ -144,6 +147,8 @@ if (typeof config.machine === "string") {
   });
 }
 
+const processKeepAlive = config.processKeepAlive ?? config.experimental_processKeepAlive;
+
 await sendMessageInCatalog(
   indexerToWorkerMessages,
   "INDEX_COMPLETE",
@@ -153,11 +158,19 @@ await sendMessageInCatalog(
       queues: resourceCatalog.listQueueManifests(),
       configPath: buildManifest.configPath,
       runtime: buildManifest.runtime,
+      runtimeVersion: detectRuntimeVersion(),
       workerEntryPoint: buildManifest.runWorkerEntryPoint,
       controllerEntryPoint: buildManifest.runControllerEntryPoint,
       loaderEntryPoint: buildManifest.loaderEntryPoint,
       customConditions: buildManifest.customConditions,
       initEntryPoint: buildManifest.initEntryPoint,
+      processKeepAlive:
+        typeof processKeepAlive === "object"
+          ? processKeepAlive
+          : typeof processKeepAlive === "boolean"
+          ? { enabled: processKeepAlive }
+          : undefined,
+      timings,
     },
     importErrors,
   },
@@ -186,3 +199,24 @@ await new Promise<void>((resolve) => {
     resolve();
   }, 10);
 });
+
+async function convertSchemasToJsonSchemas(tasks: TaskManifest[]): Promise<TaskManifest[]> {
+  await initializeSchemaConverters();
+
+  const convertedTasks = tasks.map((task) => {
+    const schema = resourceCatalog.getTaskSchema(task.id);
+
+    if (schema) {
+      try {
+        const result = schemaToJsonSchema(schema);
+        return { ...task, payloadSchema: result?.jsonSchema };
+      } catch {
+        return task;
+      }
+    }
+
+    return task;
+  });
+
+  return convertedTasks;
+}

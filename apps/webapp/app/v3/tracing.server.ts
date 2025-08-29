@@ -1,6 +1,8 @@
-import { Span, SpanOptions, SpanStatusCode, Tracer } from "@opentelemetry/api";
+import { Span, SpanKind, SpanOptions, SpanStatusCode, Tracer } from "@opentelemetry/api";
 import { Logger, SeverityNumber } from "@opentelemetry/api-logs";
 import { flattenAttributes } from "@trigger.dev/core/v3/utils/flattenAttributes";
+import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { attributesFromAuthenticatedEnv } from "./tracer.server";
 
 export async function startSpan<T>(
   tracer: Tracer,
@@ -30,6 +32,42 @@ export async function startSpan<T>(
       span.end();
     }
   });
+}
+
+export async function startSpanWithEnv<T>(
+  tracer: Tracer,
+  name: string,
+  env: AuthenticatedEnvironment,
+  fn: (span: Span) => Promise<T>,
+  options?: SpanOptions
+): Promise<T> {
+  return startSpan(
+    tracer,
+    name,
+    async (span) => {
+      try {
+        return await fn(span);
+      } catch (e) {
+        if (e instanceof Error) {
+          span.recordException(e);
+        } else {
+          span.recordException(new Error(String(e)));
+        }
+
+        throw e;
+      } finally {
+        span.end();
+      }
+    },
+    {
+      attributes: {
+        ...attributesFromAuthenticatedEnv(env),
+        ...options?.attributes,
+      },
+      kind: SpanKind.SERVER,
+      ...options,
+    }
+  );
 }
 
 export async function emitDebugLog(

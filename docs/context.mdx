@@ -3,21 +3,21 @@ title: "Context"
 description: "Get the context of a task run."
 ---
 
-Context (`ctx`) is a way to get information about a run. 
+Context (`ctx`) is a way to get information about a run.
 
 <Note>
-The context object does not change whilst your code is executing. This means values like `ctx.run.durationMs` will be fixed at the moment the `run()` function is called.
+  The context object does not change whilst your code is executing. This means values like
+  `ctx.run.durationMs` will be fixed at the moment the `run()` function is called.
 </Note>
 
 <RequestExample>
 
 ```typescript Context example
-import { task } from "@trigger.dev/sdk/v3";
+import { task } from "@trigger.dev/sdk";
 
 export const parentTask = task({
   id: "parent-task",
   run: async (payload: { message: string }, { ctx }) => {
-    
     if (ctx.environment.type === "DEVELOPMENT") {
       return;
     }
@@ -32,7 +32,8 @@ export const parentTask = task({
 <ResponseField name="task" type="object">
   <Expandable title="properties" defaultOpen={true}>
     <ResponseField name="exportName" type="string">
-      The exported function name of the task e.g. `myTask` if you defined it like this: `export const myTask = task(...)`.
+      The exported function name of the task e.g. `myTask` if you defined it like this: `export
+      const myTask = task(...)`.
     </ResponseField>
     <ResponseField name="id" type="string">
       The ID of the task.
@@ -93,13 +94,16 @@ export const parentTask = task({
       The [maximum number of attempts](/triggering#maxattempts) allowed for this task run.
     </ResponseField>
     <ResponseField name="durationMs" type="number">
-      The duration of the task run in milliseconds when the `run()` function is called. For live values use the [usage SDK functions](/run-usage).
+      The duration of the task run in milliseconds when the `run()` function is called. For live
+      values use the [usage SDK functions](/run-usage).
     </ResponseField>
     <ResponseField name="costInCents" type="number">
-      The cost of the task run in cents when the `run()` function is called. For live values use the [usage SDK functions](/run-usage).
+      The cost of the task run in cents when the `run()` function is called. For live values use the
+      [usage SDK functions](/run-usage).
     </ResponseField>
     <ResponseField name="baseCostInCents" type="number">
-      The base cost of the task run in cents when the `run()` function is called. For live values use the [usage SDK functions](/run-usage).
+      The base cost of the task run in cents when the `run()` function is called. For live values
+      use the [usage SDK functions](/run-usage).
     </ResponseField>
     <ResponseField name="version" type="string" optional>
       The [version](/versioning) of the task run.
@@ -131,6 +135,40 @@ export const parentTask = task({
     </ResponseField>
     <ResponseField name="type" type="string">
       The type of the environment (PRODUCTION, STAGING, DEVELOPMENT, or PREVIEW).
+    </ResponseField>
+    <ResponseField name="branchName" type="string" optional>
+      If the environment is `PREVIEW` then this will be the branch name.
+    </ResponseField>
+    <ResponseField name="git" type="object">
+      <Expandable title="properties">
+        <ResponseField name="commitAuthorName" type="string" optional>
+          The name of the commit author.
+        </ResponseField>
+        <ResponseField name="commitMessage" type="string" optional>
+          The message of the commit.
+        </ResponseField>
+        <ResponseField name="commitRef" type="string" optional>
+          The ref of the commit.
+        </ResponseField>
+        <ResponseField name="commitSha" type="string" optional>
+          The SHA of the commit.
+        </ResponseField>
+        <ResponseField name="dirty" type="boolean" optional>
+          Whether the commit is dirty, i.e. there are uncommitted changes.
+        </ResponseField>
+        <ResponseField name="remoteUrl" type="string" optional>
+          The remote URL of the repository.
+        </ResponseField>
+        <ResponseField name="pullRequestNumber" type="number" optional>
+          The number of the pull request.
+        </ResponseField>
+        <ResponseField name="pullRequestTitle" type="string" optional>
+          The title of the pull request.
+        </ResponseField>
+        <ResponseField name="pullRequestState" type="string" optional>
+          The state of the pull request (open, closed, or merged).
+        </ResponseField>
+      </Expandable>
     </ResponseField>
   </Expandable>
 </ResponseField>

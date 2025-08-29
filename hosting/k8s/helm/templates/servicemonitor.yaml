@@ -1,0 +1,55 @@
+{{- if .Values.webapp.serviceMonitor.enabled }}
+---
+# Webapp ServiceMonitor
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "trigger-v4.fullname" . }}-webapp
+  labels:
+    {{- include "trigger-v4.labels" . | nindent 4 }}
+    app.kubernetes.io/component: webapp
+    {{- with .Values.webapp.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "trigger-v4.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: webapp
+  endpoints:
+  - port: http
+    path: {{ .Values.webapp.serviceMonitor.path }}
+    interval: {{ .Values.webapp.serviceMonitor.interval }}
+    {{- with .Values.webapp.serviceMonitor.basicAuth }}
+    basicAuth:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+{{- end }}
+
+{{- if .Values.supervisor.serviceMonitor.enabled }}
+---
+# Supervisor ServiceMonitor
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "trigger-v4.fullname" . }}-supervisor
+  labels:
+    {{- include "trigger-v4.labels" . | nindent 4 }}
+    app.kubernetes.io/component: supervisor
+    {{- with .Values.supervisor.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "trigger-v4.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: supervisor
+  endpoints:
+  - port: metrics
+    path: {{ .Values.supervisor.serviceMonitor.path }}
+    interval: {{ .Values.supervisor.serviceMonitor.interval }}
+    {{- with .Values.supervisor.serviceMonitor.basicAuth }}
+    basicAuth:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+{{- end }}

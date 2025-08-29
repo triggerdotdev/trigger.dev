@@ -163,6 +163,8 @@ const allVariants = {
   variant: variant,
 };
 
+export type ButtonVariant = keyof typeof variant;
+
 export type ButtonContentPropsType = {
   children?: React.ReactNode;
   LeadingIcon?: RenderIcon;
@@ -173,7 +175,7 @@ export type ButtonContentPropsType = {
   textAlignLeft?: boolean;
   className?: string;
   shortcut?: ShortcutDefinition;
-  variant: keyof typeof variant;
+  variant: ButtonVariant;
   shortcutPosition?: "before-trailing-icon" | "after-trailing-icon";
   tooltip?: ReactNode;
   iconSpacing?: string;

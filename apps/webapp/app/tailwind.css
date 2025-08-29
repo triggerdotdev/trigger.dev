@@ -5,6 +5,12 @@
 @tailwind components;
 @tailwind utilities;
 
+@property --gradient-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
 @layer base {
   * {
     @apply border-grid-bright;
@@ -37,5 +43,66 @@
     --chart-3: 30 80% 55%;
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
+  }
+}
+
+@layer utilities {
+  .animated-gradient-glow {
+    position: relative;
+    overflow: visible;
+  }
+
+  .animated-gradient-glow::before {
+    content: "";
+    position: absolute;
+    inset: -8px;
+    z-index: -1;
+    background: conic-gradient(
+      from var(--gradient-angle),
+      rgb(99 102 241),
+      rgb(245 158 11),
+      rgb(236 72 153),
+      rgb(245 158 11),
+      rgb(99 102 241)
+    );
+    border-radius: inherit;
+    animation: gradient-rotation 3s linear infinite;
+    pointer-events: none;
+    filter: blur(0.5rem);
+    opacity: 0.1;
+  }
+
+  .animated-gradient-glow-small {
+    position: relative;
+    overflow: visible;
+  }
+
+  .animated-gradient-glow-small::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    z-index: -1;
+    background: conic-gradient(
+      from var(--gradient-angle),
+      rgb(99 102 241),
+      rgb(245 158 11),
+      rgb(236 72 153),
+      rgb(245 158 11),
+      rgb(99 102 241)
+    );
+    border-radius: inherit;
+    animation: gradient-rotation 3s linear infinite;
+    pointer-events: none;
+    filter: blur(0.2rem);
+    opacity: 0.3;
+  }
+}
+
+@keyframes gradient-rotation {
+  0% {
+    --gradient-angle: 0deg;
+  }
+  100% {
+    --gradient-angle: 360deg;
   }
 }

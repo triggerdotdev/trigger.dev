@@ -3,13 +3,9 @@ title: "Wait for token"
 description: "Wait until a token is completed."
 ---
 
-import UpgradeToV4Note from "/snippets/upgrade-to-v4-note.mdx";
-
 Waitpoint tokens pause task runs until you complete the token. They're commonly used for approval workflows and other scenarios where you need to wait for external confirmation, such as human-in-the-loop processes.
 
 You can complete a token using the SDK or by making a POST request to the token's URL.
-
-<UpgradeToV4Note />
 
 ## Usage
 
@@ -124,7 +120,7 @@ The JSON body of the POST request will be used as the output of the token. If th
 
 <ParamField query="publicAccessToken" type="string">
   A Public Access Token that can be used to complete the token from a client-side application (or
-  another backend). See our [frontend docs](/frontend/overview) for more details.
+  another backend). See our [Realtime docs](/realtime/auth) for more details.
 </ParamField>
 
 ### Example
@@ -494,4 +490,16 @@ import { wait } from "@trigger.dev/sdk";
 const token = await wait.retrieveToken(tokenId);
 
 console.log(token);
+```
+
+## Wait idempotency
+
+You can pass an idempotency key to any wait function, allowing you to skip waits if the same idempotency key is used again. This can be useful if you want to skip waits when retrying a task, for example:
+
+```ts
+// Specify the idempotency key and TTL when creating a wait token
+const token = await wait.createToken({
+  idempotencyKey: "my-idempotency-key",
+  idempotencyKeyTTL: "1h",
+});
 ```

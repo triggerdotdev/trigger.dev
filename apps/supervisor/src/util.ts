@@ -1,8 +1,17 @@
-export function getDockerHostDomain() {
-  const isMacOs = process.platform === "darwin";
-  const isWindows = process.platform === "win32";
+import { isMacOS, isWindows } from "std-env";
 
-  return isMacOs || isWindows ? "host.docker.internal" : "localhost";
+export function normalizeDockerHostUrl(url: string) {
+  const $url = new URL(url);
+
+  if ($url.hostname === "localhost") {
+    $url.hostname = getDockerHostDomain();
+  }
+
+  return $url.toString();
+}
+
+export function getDockerHostDomain() {
+  return isMacOS || isWindows ? "host.docker.internal" : "localhost";
 }
 
 export function getRunnerId(runId: string, attemptNumber?: number) {

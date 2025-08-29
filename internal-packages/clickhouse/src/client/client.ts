@@ -11,6 +11,7 @@ import { z } from "zod";
 import { InsertError, QueryError } from "./errors.js";
 import type {
   ClickhouseInsertFunction,
+  ClickhouseQueryBuilderFunction,
   ClickhouseQueryFunction,
   ClickhouseReader,
   ClickhouseWriter,
@@ -19,6 +20,8 @@ import { generateErrorMessage } from "zod-error";
 import { Logger, type LogLevel } from "@trigger.dev/core/logger";
 import type { Agent as HttpAgent } from "http";
 import type { Agent as HttpsAgent } from "https";
+import { ClickhouseQueryBuilder } from "./queryBuilder.js";
+import { randomUUID } from "node:crypto";
 
 export type ClickhouseConfig = {
   name: string;
@@ -59,6 +62,7 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
         ...config.clickhouseSettings,
         output_format_json_quote_64bit_integers: 0,
         output_format_json_quote_64bit_floats: 0,
+        cancel_http_readonly_queries_on_client_close: 1,
       },
       log: {
         level: convertLogLevelToClickhouseLogLevel(config.logLevel),
@@ -101,10 +105,22 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
     settings?: ClickHouseSettings;
   }): ClickhouseQueryFunction<z.input<TIn>, z.output<TOut>> {
     return async (params, options) => {
+      const queryId = randomUUID();
+
       return await startSpan(this.tracer, "query", async (span) => {
+        this.logger.debug("Querying clickhouse", {
+          name: req.name,
+          query: req.query.replace(/\s+/g, " "),
+          params,
+          settings: req.settings,
+          attributes: options?.attributes,
+          queryId,
+        });
+
         span.setAttributes({
           "clickhouse.clientName": this.name,
           "clickhouse.operationName": req.name,
+          "clickhouse.queryId": queryId,
           ...flattenAttributes(req.settings, "clickhouse.settings"),
           ...flattenAttributes(options?.attributes),
         });
@@ -119,6 +135,7 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
             error: validParams.error,
             query: req.query,
             params,
+            queryId,
           });
 
           return [
@@ -136,6 +153,7 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
             query: req.query,
             query_params: validParams?.data,
             format: "JSONEachRow",
+            query_id: queryId,
             ...options?.params,
             clickhouse_settings: {
               ...req.settings,
@@ -150,6 +168,7 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
             error: clickhouseError,
             query: req.query,
             params,
+            queryId,
           });
 
           recordClickhouseError(span, clickhouseError);
@@ -185,6 +204,7 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
             error: parsed.error,
             query: req.query,
             params,
+            queryId,
           });
 
           const queryError = new QueryError(generateErrorMessage(parsed.error.issues), {
@@ -205,6 +225,19 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
     };
   }
 
+  public queryBuilder<TOut extends z.ZodSchema<any>>(req: {
+    name: string;
+    baseQuery: string;
+    schema: TOut;
+    settings?: ClickHouseSettings;
+  }): ClickhouseQueryBuilderFunction<z.input<TOut>> {
+    return (chSettings) =>
+      new ClickhouseQueryBuilder(req.name, req.baseQuery, this, req.schema, {
+        ...req.settings,
+        ...chSettings?.settings,
+      });
+  }
+
   public insert<TSchema extends z.ZodSchema<any>>(req: {
     name: string;
     table: string;
@@ -212,11 +245,25 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
     settings?: ClickHouseSettings;
   }): ClickhouseInsertFunction<z.input<TSchema>> {
     return async (events, options) => {
+      const queryId = randomUUID();
+
       return await startSpan(this.tracer, "insert", async (span) => {
+        this.logger.debug("Inserting into clickhouse", {
+          clientName: this.name,
+          name: req.name,
+          table: req.table,
+          events: Array.isArray(events) ? events.length : 1,
+          settings: req.settings,
+          attributes: options?.attributes,
+          options,
+          queryId,
+        });
+
         span.setAttributes({
           "clickhouse.clientName": this.name,
           "clickhouse.tableName": req.table,
           "clickhouse.operationName": req.name,
+          "clickhouse.queryId": queryId,
           ...flattenAttributes(req.settings, "clickhouse.settings"),
           ...flattenAttributes(options?.attributes),
         });
@@ -248,6 +295,7 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
             table: req.table,
             format: "JSONEachRow",
             values: Array.isArray(validatedEvents) ? validatedEvents : [validatedEvents],
+            query_id: queryId,
             ...options?.params,
             clickhouse_settings: {
               ...req.settings,
@@ -267,6 +315,14 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
 
           return [new InsertError(clickhouseError.message), null];
         }
+
+        this.logger.debug("Inserted into clickhouse", {
+          clientName: this.name,
+          name: req.name,
+          table: req.table,
+          result,
+          queryId,
+        });
 
         span.setAttributes({
           "clickhouse.query_id": result.query_id,

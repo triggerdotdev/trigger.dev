@@ -5,27 +5,36 @@ import {
   ChatBubbleLeftRightIcon,
   ClockIcon,
   PlusIcon,
+  QuestionMarkCircleIcon,
   RectangleGroupIcon,
   RectangleStackIcon,
   ServerStackIcon,
   Squares2X2Icon,
 } from "@heroicons/react/20/solid";
 import { useLocation } from "react-use";
-import { TaskIcon } from "~/assets/icons/TaskIcon";
+import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
+import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
+import openBulkActionsPanel from "~/assets/images/open-bulk-actions-panel.png";
+import selectRunsIndividually from "~/assets/images/select-runs-individually.png";
+import selectRunsUsingFilters from "~/assets/images/select-runs-using-filters.png";
 import { useEnvironment } from "~/hooks/useEnvironment";
+import { useFeatures } from "~/hooks/useFeatures";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { type MinimumEnvironment } from "~/presenters/SelectBestEnvironmentPresenter.server";
+import { NewBranchPanel } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.branches/route";
 import {
   docsPath,
   v3BillingPath,
+  v3CreateBulkActionPath,
   v3EnvironmentPath,
   v3EnvironmentVariablesPath,
   v3NewProjectAlertPath,
   v3NewSchedulePath,
 } from "~/utils/pathBuilder";
+import { AskAI } from "./AskAI";
 import { InlineCode } from "./code/InlineCode";
-import { environmentFullTitle } from "./environments/EnvironmentLabel";
+import { environmentFullTitle, EnvironmentIcon } from "./environments/EnvironmentLabel";
 import { Feedback } from "./Feedback";
 import { EnvironmentSelector } from "./navigation/EnvironmentSelector";
 import { Button, LinkButton } from "./primitives/Buttons";
@@ -34,14 +43,15 @@ import { InfoPanel } from "./primitives/InfoPanel";
 import { Paragraph } from "./primitives/Paragraph";
 import { StepNumber } from "./primitives/StepNumber";
 import { TextLink } from "./primitives/TextLink";
-import { InitCommandV3, PackageManagerProvider, TriggerDevStepV3 } from "./SetupCommands";
+import { SimpleTooltip } from "./primitives/Tooltip";
+import {
+  InitCommandV3,
+  PackageManagerProvider,
+  TriggerDeployStep,
+  TriggerDevStepV3,
+} from "./SetupCommands";
 import { StepContentContainer } from "./StepContentContainer";
-import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
-import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
-import { useFeatures } from "~/hooks/useFeatures";
-import { DialogContent, DialogTrigger, Dialog } from "./primitives/Dialog";
 import { V4Badge } from "./V4Badge";
-import { NewBranchPanel } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.branches/route";
 
 export function HasNoTasksDev() {
   return (
@@ -84,26 +94,60 @@ export function HasNoTasksDev() {
 
 export function HasNoTasksDeployed({ environment }: { environment: MinimumEnvironment }) {
   return (
-    <InfoPanel
-      title={`You don't have any deployed tasks in ${environmentFullTitle(environment)}`}
-      icon={TaskIcon}
-      iconClassName="text-tasks"
-      panelClassName="max-w-full"
-      accessory={
-        <LinkButton
-          to={docsPath("deployment/overview")}
-          variant="docs/small"
-          LeadingIcon={BookOpenIcon}
-        >
-          How to deploy tasks
-        </LinkButton>
-      }
-    >
-      <Paragraph spacing variant="small">
-        Run the <TextLink to={docsPath("deployment/overview")}>CLI deploy command</TextLink> to
-        deploy your tasks to the {environmentFullTitle(environment)} environment.
-      </Paragraph>
-    </InfoPanel>
+    <PackageManagerProvider>
+      <div>
+        <div className="mb-6 flex items-center justify-between border-b">
+          <div className="mb-2 flex items-center gap-2">
+            <EnvironmentIcon environment={environment} className="-ml-1 size-8" />
+            <Header1>Deploy your tasks to {environmentFullTitle(environment)}</Header1>
+          </div>
+          <div className="flex items-center">
+            <SimpleTooltip
+              button={
+                <LinkButton
+                  variant="small-menu-item"
+                  LeadingIcon={BookOpenIcon}
+                  leadingIconClassName="text-blue-500"
+                  to={docsPath("deployment/overview")}
+                />
+              }
+              content="Deploy docs"
+            />
+            <SimpleTooltip
+              button={
+                <LinkButton
+                  variant="small-menu-item"
+                  LeadingIcon={QuestionMarkCircleIcon}
+                  leadingIconClassName="text-blue-500"
+                  to={docsPath("troubleshooting#deployment")}
+                />
+              }
+              content="Troubleshooting docs"
+            />
+            <AskAI />
+          </div>
+        </div>
+        <StepNumber stepNumber="1a" title="Run the CLI 'deploy' command" />
+        <StepContentContainer>
+          <Paragraph spacing>
+            This will deploy your tasks to the {environmentFullTitle(environment)} environment. Read
+            the <TextLink to={docsPath("deployment/overview")}>full guide</TextLink>.
+          </Paragraph>
+          <TriggerDeployStep environment={environment} />
+        </StepContentContainer>
+        <StepNumber stepNumber="1b" title="Or deploy using GitHub Actions" />
+        <StepContentContainer>
+          <Paragraph spacing>
+            Read the <TextLink to={docsPath("github-actions")}>GitHub Actions guide</TextLink> to
+            get started.
+          </Paragraph>
+        </StepContentContainer>
+        <StepNumber stepNumber="2" title="Waiting for tasks to deploy" displaySpinner />
+        <StepContentContainer>
+          <Paragraph>This page will automatically refresh when your tasks are deployed.</Paragraph>
+        </StepContentContainer>
+      </div>
+    </PackageManagerProvider>
   );
 }
 
@@ -474,6 +518,10 @@ export function BranchesNoBranchableEnvironment() {
         Preview branches in Trigger.dev create isolated environments for testing new features before
         production.
       </Paragraph>
+      <Paragraph variant="small">
+        You must be on <V4Badge inline /> to access preview branches. Read our{" "}
+        <TextLink to={docsPath("upgrade-to-v4")}>upgrade to v4 guide</TextLink> to learn more.
+      </Paragraph>
     </InfoPanel>
   );
 }
@@ -566,6 +614,59 @@ export function SwitcherPanel({ title = "Switch to a deployed environment" }: { 
         environment={environment}
         className="w-auto grow-0 rounded-sm bg-grid-bright"
       />
+    </div>
+  );
+}
+
+export function BulkActionsNone() {
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+
+  return (
+    <div>
+      <div className="mb-6 flex items-center justify-between border-b pb-0.5">
+        <Header1 spacing>Create a bulk action</Header1>
+        <div className="flex items-center gap-2">
+          <LinkButton
+            variant="primary/small"
+            LeadingIcon={PlusIcon}
+            to={v3CreateBulkActionPath(organization, project, environment)}
+          >
+            New bulk action
+          </LinkButton>
+        </div>
+      </div>
+      <StepNumber stepNumber="1" title="Select runs individually" />
+      <StepContentContainer className="mb-4 flex flex-col gap-4">
+        <Paragraph>Select runs from the runs page individually.</Paragraph>
+        <div>
+          <img src={selectRunsIndividually} alt="Select runs individually" />
+        </div>
+      </StepContentContainer>
+      <div className="mb-5 ml-9 flex items-center gap-2">
+        <div className="h-px w-full bg-grid-bright" />
+        <Paragraph variant="extra-small" className="text-text-dimmed">
+          OR
+        </Paragraph>
+        <div className="h-px w-full bg-grid-bright" />
+      </div>
+      <StepNumber stepNumber="2" title="Select runs using filters" />
+      <StepContentContainer className="flex flex-col gap-4">
+        <Paragraph>
+          Use the filter menu on the runs page to select just the runs you want to bulk action.
+        </Paragraph>
+        <div>
+          <img src={selectRunsUsingFilters} alt="Select runs using filters" />
+        </div>
+      </StepContentContainer>
+      <StepNumber stepNumber="3" title="Open the bulk action panel" />
+      <StepContentContainer className="flex flex-col gap-4">
+        <Paragraph>Click the “Bulk actions” button in the top right of the runs page.</Paragraph>
+        <div>
+          <img src={openBulkActionsPanel} alt="Open the bulk action panel" />
+        </div>
+      </StepContentContainer>
     </div>
   );
 }

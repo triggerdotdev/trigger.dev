@@ -61,17 +61,17 @@ function getMessagesFromRun(
         id: `tool-${part.toolCallId}`,
         role: "tool",
         name: part.toolName,
-        input: part.args,
+        input: part.input,
       };
       toolCalls.set(part.toolCallId, toolMessage);
       messages.push(toolMessage);
     } else if (part.type === "tool-result") {
       const toolMessage = toolCalls.get(part.toolCallId);
       if (toolMessage) {
-        toolMessage.output = part.result;
+        toolMessage.output = part.output;
       }
     } else if (part.type === "text-delta") {
-      currentAssistantContent += part.textDelta;
+      currentAssistantContent += part.text;
 
       // Find or create the assistant message
       const lastMessage = messages[messages.length - 1];
@@ -97,6 +97,7 @@ export function useTodoChat({ accessToken }: { accessToken: string }) {
   const triggerInstance = useRealtimeTaskTriggerWithStreams<typeof todoChat, STREAMS>("todo-chat", {
     accessToken,
     baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL,
+    skipColumns: ["isTest"],
   });
 
   const messages = triggerInstance.run

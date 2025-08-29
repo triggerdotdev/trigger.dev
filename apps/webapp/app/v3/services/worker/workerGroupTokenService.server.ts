@@ -1,5 +1,5 @@
 import { customAlphabet } from "nanoid";
-import { WithRunEngine, WithRunEngineOptions } from "../baseService.server";
+import { ServiceValidationError, WithRunEngine, WithRunEngineOptions } from "../baseService.server";
 import { createHash, timingSafeEqual } from "crypto";
 import { logger } from "~/services/logger.server";
 import {
@@ -29,7 +29,7 @@ import {
   fromFriendlyId,
 } from "@trigger.dev/core/v3/isomorphic";
 import { machinePresetFromName } from "~/v3/machinePresets.server";
-import { defaultMachine } from "@trigger.dev/platform/v3";
+import { defaultMachine } from "~/services/platform.v3.server";
 
 export class WorkerGroupTokenService extends WithRunEngine {
   private readonly tokenPrefix = "tr_wgt_";
@@ -537,19 +537,11 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     });
   }
 
-  async dequeue({
-    maxRunCount = 10,
-    maxResources,
-  }: {
-    maxRunCount?: number;
-    maxResources?: MachineResources;
-  } = {}): Promise<DequeuedMessage[]> {
+  async dequeue(): Promise<DequeuedMessage[]> {
     if (this.type === WorkerInstanceGroupType.MANAGED) {
-      return await this._engine.dequeueFromMasterQueue({
+      return await this._engine.dequeueFromWorkerQueue({
         consumerId: this.workerInstanceId,
-        masterQueue: this.masterQueue,
-        maxRunCount,
-        maxResources,
+        workerQueue: this.masterQueue,
         workerId: this.workerInstanceId,
         runnerId: this.runnerId,
       });
@@ -572,51 +564,21 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     });
 
     if (this.isLatestDeployment) {
-      return await this._engine.dequeueFromEnvironmentMasterQueue({
+      return await this._engine.dequeueFromEnvironmentWorkerQueue({
         consumerId: this.workerInstanceId,
         environmentId: this.environment.id,
-        maxRunCount,
-        backgroundWorkerId: this.backgroundWorkerId,
         workerId: this.workerInstanceId,
         runnerId: this.runnerId,
       });
     }
 
-    return await this._engine.dequeueFromBackgroundWorkerMasterQueue({
-      consumerId: this.workerInstanceId,
-      backgroundWorkerId: this.backgroundWorkerId,
-      maxRunCount,
-      workerId: this.workerInstanceId,
-      runnerId: this.runnerId,
-    });
-  }
-
-  /** Allows managed workers to dequeue from a specific version */
-  async dequeueFromVersion(
-    backgroundWorkerId: string,
-    maxRunCount = 1
-  ): Promise<DequeuedMessage[]> {
-    if (this.type !== WorkerInstanceGroupType.MANAGED) {
-      logger.error("[AuthenticatedWorkerInstance] Worker instance is not managed", {
-        ...this.toJSON(),
-      });
-      return [];
-    }
-
-    return await this._engine.dequeueFromBackgroundWorkerMasterQueue({
-      consumerId: this.workerInstanceId,
-      backgroundWorkerId,
-      maxRunCount,
-      workerId: this.workerInstanceId,
-      runnerId: this.runnerId,
-    });
+    throw new ServiceValidationError("Unmanaged workers cannot dequeue from a specific version");
   }
 
   /** Allows managed workers to dequeue from a specific environment */
   async dequeueFromEnvironment(
     backgroundWorkerId: string,
-    environmentId: string,
-    maxRunCount = 1
+    environmentId: string
   ): Promise<DequeuedMessage[]> {
     if (this.type !== WorkerInstanceGroupType.MANAGED) {
       logger.error("[AuthenticatedWorkerInstance] Worker instance is not managed", {
@@ -625,11 +587,10 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       return [];
     }
 
-    return await this._engine.dequeueFromEnvironmentMasterQueue({
+    return await this._engine.dequeueFromEnvironmentWorkerQueue({
       consumerId: this.workerInstanceId,
       backgroundWorkerId,
       environmentId,
-      maxRunCount,
       workerId: this.workerInstanceId,
       runnerId: this.runnerId,
     });

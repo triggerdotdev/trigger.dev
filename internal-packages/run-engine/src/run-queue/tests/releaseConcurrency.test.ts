@@ -1,10 +1,12 @@
-import { redisTest } from "@internal/testcontainers";
+import { assertNonNullable, redisTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
 import { FairQueueSelectionStrategy } from "../fairQueueSelectionStrategy.js";
 import { RunQueue } from "../index.js";
 import { RunQueueFullKeyProducer } from "../keyProducer.js";
 import { InputPayload } from "../types.js";
+import { setTimeout } from "node:timers/promises";
+import { Decimal } from "@trigger.dev/database";
 
 const testOptions = {
   name: "rq",
@@ -27,6 +29,7 @@ const authenticatedEnvProd = {
   id: "e1234",
   type: "PRODUCTION" as const,
   maximumConcurrencyLimit: 10,
+  concurrencyLimitBurstFactor: new Decimal(2.0),
   project: { id: "p1234" },
   organization: { id: "o1234" },
 };
@@ -68,11 +71,16 @@ describe("RunQueue.releaseConcurrency", () => {
         await queue.enqueueMessage({
           env: authenticatedEnvProd,
           message: messageProd,
-          masterQueues: "main",
+          workerQueue: authenticatedEnvProd.id,
         });
 
-        const messages = await queue.dequeueMessageFromMasterQueue("test_12345", "main", 10);
-        expect(messages.length).toBe(1);
+        await setTimeout(1000);
+
+        const message = await queue.dequeueMessageFromWorkerQueue(
+          "test_12345",
+          authenticatedEnvProd.id
+        );
+        assertNonNullable(message);
 
         //concurrencies
         expect(await queue.currentConcurrencyOfQueue(authenticatedEnvProd, messageProd.queue)).toBe(
@@ -99,6 +107,7 @@ describe("RunQueue.releaseConcurrency", () => {
     async ({ redisContainer }) => {
       const queue = new RunQueue({
         ...testOptions,
+        masterQueueConsumersDisabled: true,
         queueSelectionStrategy: new FairQueueSelectionStrategy({
           redis: {
             keyPrefix: "runqueue:test:",
@@ -118,17 +127,25 @@ describe("RunQueue.releaseConcurrency", () => {
         await queue.enqueueMessage({
           env: authenticatedEnvProd,
           message: messageProd,
-          masterQueues: "main",
+          workerQueue: authenticatedEnvProd.id,
+          skipDequeueProcessing: true,
         });
 
         await queue.enqueueMessage({
           env: authenticatedEnvProd,
           message: { ...messageProd, runId: "r1235" },
-          masterQueues: "main",
+          workerQueue: authenticatedEnvProd.id,
+          skipDequeueProcessing: true,
         });
 
-        const messages = await queue.dequeueMessageFromMasterQueue("test_12345", "main", 1);
-        expect(messages.length).toBe(1);
+        // Only process one message
+        await queue.processMasterQueueForEnvironment(authenticatedEnvProd.id, 1);
+
+        const message = await queue.dequeueMessageFromWorkerQueue(
+          "test_12345",
+          authenticatedEnvProd.id
+        );
+        assertNonNullable(message);
 
         //concurrencies
         expect(await queue.currentConcurrencyOfQueue(authenticatedEnvProd, messageProd.queue)).toBe(

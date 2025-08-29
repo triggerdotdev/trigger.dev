@@ -43,6 +43,11 @@ export async function action({ request, params }: ActionFunctionArgs) {
         environment: {
           select: {
             apiKey: true,
+            parentEnvironment: {
+              select: {
+                apiKey: true,
+              },
+            },
           },
         },
       },
@@ -52,7 +57,13 @@ export async function action({ request, params }: ActionFunctionArgs) {
       return json({ error: "Waitpoint not found" }, { status: 404 });
     }
 
-    if (!verifyHttpCallbackHash(waitpoint.id, hash, waitpoint.environment.apiKey)) {
+    if (
+      !verifyHttpCallbackHash(
+        waitpoint.id,
+        hash,
+        waitpoint.environment.parentEnvironment?.apiKey ?? waitpoint.environment.apiKey
+      )
+    ) {
       return json({ error: "Invalid URL, hash doesn't match" }, { status: 401 });
     }
 

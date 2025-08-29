@@ -1,5 +1,5 @@
-import { Context, context, SpanKind, trace } from "@opentelemetry/api";
-import { VERSION } from "../../version.js";
+import { Context, context, SpanKind } from "@opentelemetry/api";
+import { promiseWithResolvers } from "../../utils.js";
 import { ApiError, RateLimitError } from "../apiClient/errors.js";
 import { ConsoleInterceptor } from "../consoleInterceptor.js";
 import {
@@ -15,7 +15,9 @@ import {
   attemptKey,
   flattenAttributes,
   lifecycleHooks,
+  OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT,
   runMetadata,
+  traceContext,
   waitUntil,
 } from "../index.js";
 import {
@@ -30,7 +32,6 @@ import { runTimelineMetrics } from "../run-timeline-metrics-api.js";
 import {
   COLD_VARIANT,
   RetryOptions,
-  ServerBackgroundWorker,
   TaskRunContext,
   TaskRunErrorCodes,
   TaskRunExecution,
@@ -39,7 +40,6 @@ import {
   WARM_VARIANT,
 } from "../schemas/index.js";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
-import { taskContext } from "../task-context-api.js";
 import { TriggerTracer } from "../tracer.js";
 import { tryCatch } from "../tryCatch.js";
 import { HandleErrorModificationOptions, TaskMetadataWithFunctions } from "../types/index.js";
@@ -51,7 +51,6 @@ import {
   stringifyIO,
 } from "../utils/ioSerialization.js";
 import { calculateNextRetryDelay } from "../utils/retries.js";
-import { promiseWithResolvers } from "../../utils.js";
 
 export type TaskExecutorOptions = {
   tracingSDK: TracingSDK;
@@ -62,6 +61,7 @@ export type TaskExecutorOptions = {
     default?: RetryOptions;
   };
   isWarmStart?: boolean;
+  executionCount?: number;
 };
 
 export class TaskExecutor {
@@ -75,6 +75,7 @@ export class TaskExecutor {
       }
     | undefined;
   private _isWarmStart: boolean | undefined;
+  private _executionCount: number | undefined;
 
   constructor(
     public task: TaskMetadataWithFunctions,
@@ -85,16 +86,14 @@ export class TaskExecutor {
     this._consoleInterceptor = options.consoleInterceptor;
     this._retries = options.retries;
     this._isWarmStart = options.isWarmStart;
+    this._executionCount = options.executionCount;
   }
 
   async execute(
     execution: TaskRunExecution,
-    worker: ServerBackgroundWorker,
-    traceContext: Record<string, unknown>,
-    signal: AbortSignal,
-    isWarmStart?: boolean
+    ctx: TaskRunContext,
+    signal: AbortSignal
   ): Promise<{ result: TaskRunExecutionResult }> {
-    const ctx = TaskRunContext.parse(execution);
     const attemptMessage = `Attempt ${execution.attempt.number}`;
 
     const originalPacket = {
@@ -102,21 +101,9 @@ export class TaskExecutor {
       dataType: execution.run.payloadType,
     };
 
-    taskContext.setGlobalTaskContext({
-      ctx,
-      worker,
-      isWarmStart: isWarmStart ?? this._isWarmStart,
-    });
-
     if (execution.run.metadata) {
       runMetadata.enterWithMetadata(execution.run.metadata);
     }
-
-    this._tracingSDK.asyncResourceDetector.resolveWithAttributes({
-      ...taskContext.attributes,
-      [SemanticInternalAttributes.SDK_VERSION]: VERSION,
-      [SemanticInternalAttributes.SDK_LANGUAGE]: "typescript",
-    });
 
     const result = await this._tracer.startActiveSpan(
       attemptMessage,
@@ -351,11 +338,12 @@ export class TaskExecutor {
           ...(execution.attempt.number === 1
             ? runTimelineMetrics.convertMetricsToSpanAttributes()
             : {}),
-          ...(execution.environment.type !== "DEVELOPMENT"
+          [SemanticInternalAttributes.STYLE_VARIANT]: this._isWarmStart
+            ? WARM_VARIANT
+            : COLD_VARIANT,
+          ...(typeof this._executionCount === "number"
             ? {
-                [SemanticInternalAttributes.STYLE_VARIANT]: this._isWarmStart
-                  ? WARM_VARIANT
-                  : COLD_VARIANT,
+                [SemanticInternalAttributes.ATTEMPT_EXECUTION_COUNT]: this._executionCount,
               }
             : {}),
         },
@@ -364,7 +352,7 @@ export class TaskExecutor {
             ? runTimelineMetrics.convertMetricsToSpanEvents()
             : undefined,
       },
-      this._tracer.extractContext(traceContext),
+      traceContext.extractContext(),
       signal
     );
 
@@ -436,7 +424,6 @@ export class TaskExecutor {
     const abortPromise = new Promise((_, reject) => {
       signal.addEventListener("abort", () => {
         if (typeof signal.reason === "string" && signal.reason.includes("cancel")) {
-          console.log("abortPromise: cancel");
           return;
         }
 
@@ -712,7 +699,9 @@ export class TaskExecutor {
                 const result = await hook.fn({ payload, ctx, signal, task: this.task.id });
 
                 if (result && typeof result === "object" && !Array.isArray(result)) {
-                  span.setAttributes(flattenAttributes(result));
+                  span.setAttributes(
+                    flattenAttributes(result, undefined, OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT)
+                  );
                   return result;
                 }
 
@@ -748,7 +737,9 @@ export class TaskExecutor {
                 const result = await taskInitHook({ payload, ctx, signal, task: this.task.id });
 
                 if (result && typeof result === "object" && !Array.isArray(result)) {
-                  span.setAttributes(flattenAttributes(result));
+                  span.setAttributes(
+                    flattenAttributes(result, undefined, OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT)
+                  );
                   return result;
                 }
 

@@ -1,0 +1,109 @@
+{{- if .Values.electric.deploy }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "trigger-v4.fullname" . }}-electric
+  labels:
+    {{- $component := "electric" }}
+    {{- include "trigger-v4.componentLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "trigger-v4.componentSelectorLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.electric.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "trigger-v4.componentSelectorLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 8 }}
+    spec:
+      {{- with .Values.electric.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: electric
+          {{- with .Values.electric.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          image: "{{ .Values.electric.image.registry }}/{{ .Values.electric.image.repository }}:{{ .Values.electric.image.tag }}"
+          imagePullPolicy: {{ .Values.electric.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.electric.service.targetPort }}
+              protocol: TCP
+          env:
+            {{- if include "trigger-v4.postgres.useSecretUrl" . }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trigger-v4.postgres.external.secretName" . }}
+                  key: {{ include "trigger-v4.postgres.external.databaseUrlKey" . }}
+            {{- else }}
+            - name: DATABASE_URL
+              value: {{ include "trigger-v4.postgres.connectionString" . | quote }}
+            {{- end }}
+            - name: ELECTRIC_INSECURE
+              value: {{ .Values.electric.config.insecure | quote }}
+            - name: ELECTRIC_USAGE_REPORTING
+              value: {{ .Values.electric.config.usageReporting | quote }}
+            {{- with .Values.electric.extraEnvVars }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- if .Values.electric.livenessProbe.enabled }}
+          livenessProbe:
+            httpGet:
+              path: /v1/health
+              port: http
+            initialDelaySeconds: {{ .Values.electric.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.electric.livenessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.electric.livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.electric.livenessProbe.failureThreshold }}
+            successThreshold: {{ .Values.electric.livenessProbe.successThreshold }}
+          {{- end }}
+          {{- if .Values.electric.readinessProbe.enabled }}
+          readinessProbe:
+            httpGet:
+              path: /v1/health
+              port: http
+            initialDelaySeconds: {{ .Values.electric.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.electric.readinessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.electric.readinessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.electric.readinessProbe.failureThreshold }}
+            successThreshold: {{ .Values.electric.readinessProbe.successThreshold }}
+          {{- end }}
+          {{- if .Values.electric.startupProbe.enabled }}
+          startupProbe:
+            httpGet:
+              path: /v1/health
+              port: http
+            initialDelaySeconds: {{ .Values.electric.startupProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.electric.startupProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.electric.startupProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.electric.startupProbe.failureThreshold }}
+            successThreshold: {{ .Values.electric.startupProbe.successThreshold }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.electric.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "trigger-v4.fullname" . }}-electric
+  labels:
+    {{- $component := "electric" }}
+    {{- include "trigger-v4.componentLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 4 }}
+spec:
+  type: {{ .Values.electric.service.type }}
+  ports:
+    - port: {{ .Values.electric.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "trigger-v4.componentSelectorLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 4 }}
+{{- end }}

@@ -1,0 +1,461 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "trigger-v4.fullname" . }}-webapp
+  labels:
+    {{- $component := "webapp" }}
+    {{- include "trigger-v4.componentLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "trigger-v4.fullname" . }}-webapp-token-syncer
+  labels:
+    {{- $component := "webapp" }}
+    {{- include "trigger-v4.componentLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create", "get", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "trigger-v4.fullname" . }}-webapp-token-syncer
+  labels:
+    {{- $component := "webapp" }}
+    {{- include "trigger-v4.componentLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "trigger-v4.fullname" . }}-webapp
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: Role
+  name: {{ include "trigger-v4.fullname" . }}-webapp-token-syncer
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "trigger-v4.fullname" . }}-webapp
+  labels:
+    {{- $component := "webapp" }}
+    {{- include "trigger-v4.componentLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 4 }}
+spec:
+  replicas: {{ .Values.webapp.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "trigger-v4.componentSelectorLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: webapp
+        {{- with .Values.webapp.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "trigger-v4.componentSelectorLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "trigger-v4.fullname" . }}-webapp
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        fsGroup: 1000
+        {{- with .Values.webapp.podSecurityContext }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      initContainers:
+        - name: init-shared
+          image: busybox:1.35
+          command: ['sh', '-c', 'mkdir -p /home/node/shared']
+          securityContext:
+            runAsUser: 1000
+          volumeMounts:
+            - name: shared
+              mountPath: /home/node/shared
+      containers:
+        - name: token-syncer
+          image: bitnami/kubectl:1.28
+          securityContext:
+            runAsUser: 1000
+            runAsNonRoot: true
+          command:
+            - /bin/bash
+            - -c
+            - |
+              TOKEN_FILE="/home/node/shared/worker_token"
+              SECRET_NAME="{{ include "trigger-v4.fullname" . }}-worker-token"
+              NAMESPACE="{{ .Release.Namespace }}"
+              
+              echo "Token syncer starting..."
+              echo "Monitoring: $TOKEN_FILE"
+              echo "Target secret: $SECRET_NAME"
+              
+              while true; do
+                if [ -f "$TOKEN_FILE" ]; then
+                  TOKEN=$(cat "$TOKEN_FILE")
+                  if [ ! -z "$TOKEN" ]; then
+                    echo "Token file found, creating/updating secret..."
+                    
+                    # Create or update the secret
+                    kubectl create secret generic "$SECRET_NAME" \
+                      --from-literal=token="$TOKEN" \
+                      --namespace="$NAMESPACE" \
+                      --dry-run=client -o yaml | kubectl apply -f -
+                    
+                    if [ $? -eq 0 ]; then
+                      echo "Secret successfully created/updated"
+                      # Continue monitoring for updates
+                      sleep 30
+                    else
+                      echo "Failed to create/update secret, retrying in 5s..."
+                      sleep 5
+                    fi
+                  else
+                    echo "Token file exists but is empty, waiting..."
+                    sleep 2
+                  fi
+                else
+                  echo "Waiting for token file..."
+                  sleep 2
+                fi
+              done
+          volumeMounts:
+            - name: shared
+              mountPath: /home/node/shared
+        - name: webapp
+          securityContext:
+            {{- toYaml .Values.webapp.securityContext | nindent 12 }}
+          image: {{ include "trigger-v4.image" . }}
+          imagePullPolicy: {{ .Values.webapp.image.pullPolicy }}
+          command: 
+            - ./scripts/entrypoint.sh
+          ports:
+            - name: http
+              containerPort: {{ .Values.webapp.service.targetPort }}
+              protocol: TCP
+          {{- if .Values.webapp.livenessProbe.enabled }}
+          livenessProbe:
+            httpGet:
+              path: /healthcheck
+              port: http
+            initialDelaySeconds: {{ .Values.webapp.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.webapp.livenessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.webapp.livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.webapp.livenessProbe.failureThreshold }}
+            successThreshold: {{ .Values.webapp.livenessProbe.successThreshold }}
+          {{- end }}
+          {{- if .Values.webapp.readinessProbe.enabled }}
+          readinessProbe:
+            httpGet:
+              path: /healthcheck
+              port: http
+            initialDelaySeconds: {{ .Values.webapp.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.webapp.readinessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.webapp.readinessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.webapp.readinessProbe.failureThreshold }}
+            successThreshold: {{ .Values.webapp.readinessProbe.successThreshold }}
+          {{- end }}
+          {{- if .Values.webapp.startupProbe.enabled }}
+          startupProbe:
+            httpGet:
+              path: /healthcheck
+              port: http
+            initialDelaySeconds: {{ .Values.webapp.startupProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.webapp.startupProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.webapp.startupProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.webapp.startupProbe.failureThreshold }}
+            successThreshold: {{ .Values.webapp.startupProbe.successThreshold }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.webapp.resources | nindent 12 }}
+          env:
+            - name: APP_ORIGIN
+              value: {{ .Values.webapp.appOrigin | quote }}
+            - name: LOGIN_ORIGIN
+              value: {{ .Values.webapp.loginOrigin | quote }}
+            - name: API_ORIGIN
+              value: {{ .Values.webapp.apiOrigin | quote }}
+            - name: ELECTRIC_ORIGIN
+              value: {{ include "trigger-v4.electric.url" . | quote }}
+            {{- if include "trigger-v4.postgres.useSecretUrl" . }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trigger-v4.postgres.external.secretName" . }}
+                  key: {{ include "trigger-v4.postgres.external.databaseUrlKey" . }}
+            - name: DIRECT_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trigger-v4.postgres.external.secretName" . }}
+                  key: {{ include "trigger-v4.postgres.external.directUrlKey" . }}
+            {{- else }}
+            - name: DATABASE_URL
+              value: {{ include "trigger-v4.postgres.connectionString" . | quote }}
+            - name: DIRECT_URL
+              value: {{ include "trigger-v4.postgres.directUrl" . | quote }}
+            {{- end }}
+            {{- if and (include "trigger-v4.webapp.connectivityCheckEnabled" .) (include "trigger-v4.postgres.host" .) }}
+            - name: DATABASE_HOST
+              value: {{ include "trigger-v4.postgres.host" . | quote }}
+            {{- end }}
+            - name: REDIS_HOST
+              value: {{ include "trigger-v4.redis.host" . | quote }}
+            - name: REDIS_PORT
+              value: {{ include "trigger-v4.redis.port" . | quote }}
+            {{- if and .Values.redis.external.host .Values.redis.external.existingSecret }}
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trigger-v4.redis.external.secretName" . }}
+                  key: {{ include "trigger-v4.redis.external.passwordKey" . }}
+            {{- else if include "trigger-v4.redis.password" . }}
+            - name: REDIS_PASSWORD
+              value: {{ include "trigger-v4.redis.password" . | quote }}
+            {{- end }}
+            - name: REDIS_TLS_DISABLED
+              value: {{ include "trigger-v4.redis.tlsDisabled" . | quote }}
+            - name: APP_LOG_LEVEL
+              value: {{ .Values.webapp.logLevel | quote }}
+            - name: DEV_OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "{{ .Values.webapp.appOrigin }}/otel"
+            - name: DEPLOY_REGISTRY_HOST
+              value: {{ include "trigger-v4.registry.host" . | quote }}
+            - name: DEPLOY_REGISTRY_NAMESPACE
+              value: {{ .Values.registry.repositoryNamespace | quote }}
+            - name: OBJECT_STORE_BASE_URL
+              value: {{ include "trigger-v4.s3.url" . | quote }}
+            - name: GRACEFUL_SHUTDOWN_TIMEOUT
+              value: {{ .Values.webapp.gracefulShutdownTimeout | quote }}
+            {{- if .Values.webapp.bootstrap.enabled }}
+            - name: TRIGGER_BOOTSTRAP_ENABLED
+              value: "1"
+            - name: TRIGGER_BOOTSTRAP_WORKER_GROUP_NAME
+              value: {{ .Values.webapp.bootstrap.workerGroupName | quote }}
+            - name: TRIGGER_BOOTSTRAP_WORKER_TOKEN_PATH
+              value: {{ .Values.webapp.bootstrap.workerTokenPath | quote }}
+            {{- end }}
+            {{- if .Values.webapp.limits.taskPayloadOffloadThreshold }}
+            - name: TASK_PAYLOAD_OFFLOAD_THRESHOLD
+              value: {{ .Values.webapp.limits.taskPayloadOffloadThreshold | quote }}
+            {{- end }}
+            {{- if .Values.webapp.limits.taskPayloadMaximumSize }}
+            - name: TASK_PAYLOAD_MAXIMUM_SIZE
+              value: {{ .Values.webapp.limits.taskPayloadMaximumSize | quote }}
+            {{- end }}
+            {{- if .Values.webapp.limits.batchTaskPayloadMaximumSize }}
+            - name: BATCH_TASK_PAYLOAD_MAXIMUM_SIZE
+              value: {{ .Values.webapp.limits.batchTaskPayloadMaximumSize | quote }}
+            {{- end }}
+            {{- if .Values.webapp.limits.taskRunMetadataMaximumSize }}
+            - name: TASK_RUN_METADATA_MAXIMUM_SIZE
+              value: {{ .Values.webapp.limits.taskRunMetadataMaximumSize | quote }}
+            {{- end }}
+            {{- if .Values.webapp.limits.defaultEnvExecutionConcurrencyLimit }}
+            - name: DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT
+              value: {{ .Values.webapp.limits.defaultEnvExecutionConcurrencyLimit | quote }}
+            {{- end }}
+            {{- if .Values.webapp.limits.defaultOrgExecutionConcurrencyLimit }}
+            - name: DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT
+              value: {{ .Values.webapp.limits.defaultOrgExecutionConcurrencyLimit | quote }}
+            {{- end }}
+            {{- if .Values.secrets.enabled }}
+            - name: SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trigger-v4.secretsName" . }}
+                  key: SESSION_SECRET
+            - name: MAGIC_LINK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trigger-v4.secretsName" . }}
+                  key: MAGIC_LINK_SECRET
+            - name: ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trigger-v4.secretsName" . }}
+                  key: ENCRYPTION_KEY
+            - name: MANAGED_WORKER_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trigger-v4.secretsName" . }}
+                  key: MANAGED_WORKER_SECRET
+            {{- if .Values.s3.deploy }}
+            {{- if .Values.s3.auth.existingSecret }}
+            - name: OBJECT_STORE_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trigger-v4.s3.auth.secretName" . }}
+                  key: {{ include "trigger-v4.s3.auth.accessKeyIdKey" . }}
+            - name: OBJECT_STORE_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trigger-v4.s3.auth.secretName" . }}
+                  key: {{ include "trigger-v4.s3.auth.secretAccessKeyKey" . }}
+            {{- else }}
+            - name: OBJECT_STORE_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trigger-v4.secretsName" . }}
+                  key: s3-auth-access-key-id
+            - name: OBJECT_STORE_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trigger-v4.secretsName" . }}
+                  key: s3-auth-secret-access-key
+            {{- end }}
+            {{- else }}
+            {{- if .Values.s3.external.existingSecret }}
+            - name: OBJECT_STORE_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trigger-v4.s3.external.secretName" . }}
+                  key: {{ include "trigger-v4.s3.external.accessKeyIdKey" . }}
+            - name: OBJECT_STORE_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trigger-v4.s3.external.secretName" . }}
+                  key: {{ include "trigger-v4.s3.external.secretAccessKeyKey" . }}
+            {{- else if .Values.s3.external.accessKeyId }}
+            - name: OBJECT_STORE_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trigger-v4.secretsName" . }}
+                  key: s3-access-key-id
+            - name: OBJECT_STORE_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trigger-v4.secretsName" . }}
+                  key: s3-secret-access-key
+            {{- end }}
+            {{- end }}
+            {{- end }}
+            {{- if .Values.webapp.observability }}
+            {{- if .Values.webapp.observability.tracing.exporterUrl }}
+            - name: INTERNAL_OTEL_TRACE_EXPORTER_URL
+              value: {{ .Values.webapp.observability.tracing.exporterUrl | quote }}
+            {{- end }}
+            {{- if .Values.webapp.observability.tracing.exporterAuthHeaders }}
+            - name: INTERNAL_OTEL_TRACE_EXPORTER_AUTH_HEADERS
+              value: {{ .Values.webapp.observability.tracing.exporterAuthHeaders | quote }}
+            {{- end }}
+            - name: INTERNAL_OTEL_TRACE_LOGGING_ENABLED
+              value: {{ .Values.webapp.observability.tracing.loggingEnabled | quote }}
+            - name: INTERNAL_OTEL_TRACE_SAMPLING_RATE
+              value: {{ .Values.webapp.observability.tracing.samplingRate | quote }}
+            - name: INTERNAL_OTEL_TRACE_INSTRUMENT_PRISMA_ENABLED
+              value: {{ .Values.webapp.observability.tracing.instrumentPrismaEnabled | quote }}
+            - name: INTERNAL_OTEL_TRACE_DISABLED
+              value: {{ .Values.webapp.observability.tracing.disabled | quote }}
+            {{- if .Values.webapp.observability.logging.exporterUrl }}
+            - name: INTERNAL_OTEL_LOG_EXPORTER_URL
+              value: {{ .Values.webapp.observability.logging.exporterUrl | quote }}
+            {{- end }}
+            {{- if .Values.webapp.observability.metrics.exporterUrl }}
+            - name: INTERNAL_OTEL_METRIC_EXPORTER_URL
+              value: {{ .Values.webapp.observability.metrics.exporterUrl | quote }}
+            {{- end }}
+            {{- if .Values.webapp.observability.metrics.exporterAuthHeaders }}
+            - name: INTERNAL_OTEL_METRIC_EXPORTER_AUTH_HEADERS
+              value: {{ .Values.webapp.observability.metrics.exporterAuthHeaders | quote }}
+            {{- end }}
+            - name: INTERNAL_OTEL_METRIC_EXPORTER_ENABLED
+              value: {{ .Values.webapp.observability.metrics.exporterEnabled | quote }}
+            - name: INTERNAL_OTEL_METRIC_EXPORTER_INTERVAL_MS
+              value: {{ .Values.webapp.observability.metrics.exporterIntervalMs | quote }}
+            {{- end }}
+            {{- if and .Values.clickhouse.external.host .Values.clickhouse.external.existingSecret }}
+            - name: CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trigger-v4.clickhouse.external.secretName" . }}
+                  key: {{ include "trigger-v4.clickhouse.external.passwordKey" . }}
+            {{- end }}
+            - name: CLICKHOUSE_URL
+              value: {{ include "trigger-v4.clickhouse.url" . | quote }}
+            - name: CLICKHOUSE_LOG_LEVEL
+              value: {{ .Values.webapp.clickhouse.logLevel | quote }}
+            - name: RUN_REPLICATION_ENABLED
+              value: "1"
+            - name: RUN_REPLICATION_CLICKHOUSE_URL
+              value: {{ include "trigger-v4.clickhouse.replication.url" . | quote }}
+            - name: RUN_REPLICATION_LOG_LEVEL
+              value: {{ .Values.webapp.runReplication.logLevel | quote }}
+            {{- if not .Values.telemetry.enabled }}
+            - name: TRIGGER_TELEMETRY_DISABLED
+              value: "1"
+            {{- end }}
+            {{- with .Values.webapp.extraEnvVars }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          volumeMounts:
+            - name: shared
+              mountPath: /home/node/shared
+            {{- with .Values.webapp.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: shared
+          {{- if .Values.persistence.shared.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "trigger-v4.fullname" . }}-shared
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        {{- with .Values.webapp.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.webapp.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.webapp.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.webapp.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "trigger-v4.fullname" . }}-webapp
+  labels:
+    {{- $component := "webapp" }}
+    {{- include "trigger-v4.componentLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 4 }}
+spec:
+  type: {{ .Values.webapp.service.type }}
+  ports:
+    - port: {{ .Values.webapp.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "trigger-v4.componentSelectorLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 4 }}
+---
+{{- if .Values.persistence.shared.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "trigger-v4.fullname" . }}-shared
+  {{- if .Values.persistence.shared.retain }}
+  annotations:
+    "helm.sh/resource-policy": keep
+  {{- end }}
+  labels:
+    {{- include "trigger-v4.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.shared.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.shared.size }}
+  {{- $storageClass := .Values.persistence.shared.storageClass | default .Values.global.storageClass }}
+  {{- if $storageClass }}
+  storageClassName: {{ $storageClass | quote }}
+  {{- end }}
+{{- end }}

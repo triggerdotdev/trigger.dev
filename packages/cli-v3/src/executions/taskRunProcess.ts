@@ -51,6 +51,7 @@ export type TaskRunProcessOptions = {
   machineResources: MachinePresetResources;
   isWarmStart?: boolean;
   cwd?: string;
+  gracefulTerminationTimeoutInMs?: number;
 };
 
 export type TaskRunProcessExecuteParams = {
@@ -78,7 +79,6 @@ export class TaskRunProcess {
   public onTaskRunHeartbeat: Evt<string> = new Evt();
   public onExit: Evt<{ code: number | null; signal: NodeJS.Signals | null; pid?: number }> =
     new Evt();
-  public onIsBeingKilled: Evt<TaskRunProcess> = new Evt();
   public onSendDebugLog: Evt<OnSendDebugLogMessage> = new Evt();
   public onSetSuspendable: Evt<OnSetSuspendableMessage> = new Evt();
 
@@ -100,7 +100,6 @@ export class TaskRunProcess {
 
   unsafeDetachEvtHandlers() {
     this.onExit.detach();
-    this.onIsBeingKilled.detach();
     this.onSendDebugLog.detach();
     this.onSetSuspendable.detach();
     this.onTaskRunHeartbeat.detach();
@@ -116,7 +115,7 @@ export class TaskRunProcess {
       console.error("Error cancelling task run process", { err });
     }
 
-    await this.kill();
+    await this.#gracefullyTerminate(this.options.gracefulTerminationTimeoutInMs);
   }
 
   async cleanup(kill = true) {
@@ -133,7 +132,7 @@ export class TaskRunProcess {
     }
 
     if (kill) {
-      await this.kill("SIGKILL");
+      await this.#gracefullyTerminate(this.options.gracefulTerminationTimeoutInMs);
     }
   }
 
@@ -150,6 +149,7 @@ export class TaskRunProcess {
       PATH: process.env.PATH,
       TRIGGER_PROCESS_FORK_START_TIME: String(Date.now()),
       TRIGGER_WARM_START: this.options.isWarmStart ? "true" : "false",
+      TRIGGERDOTDEV: "1",
     };
 
     logger.debug(`initializing task run process`, {
@@ -168,6 +168,12 @@ export class TaskRunProcess {
     });
 
     this._childPid = this._child?.pid;
+
+    logger.debug("initialized task run process", {
+      path: workerManifest.workerEntryPoint,
+      cwd,
+      pid: this._childPid,
+    });
 
     this._ipc = new ZodIpcConnection({
       listenSchema: ExecutorToWorkerMessageCatalog,
@@ -286,6 +292,10 @@ export class TaskRunProcess {
     return result;
   }
 
+  isExecuting() {
+    return this._currentExecution !== undefined;
+  }
+
   waitpointCompleted(waitpoint: CompletedWaitpoint) {
     if (!this._child?.connected || this._isBeingKilled || this._child.killed) {
       console.error(
@@ -298,7 +308,7 @@ export class TaskRunProcess {
   }
 
   async #handleExit(code: number | null, signal: NodeJS.Signals | null) {
-    logger.debug("handling child exit", { code, signal });
+    logger.debug("handling child exit", { code, signal, pid: this.pid });
 
     // Go through all the attempts currently pending and reject them
     for (const [id, status] of this._attemptStatuses.entries()) {
@@ -386,6 +396,18 @@ export class TaskRunProcess {
     this._stderr.push(errorLine);
   }
 
+  async #gracefullyTerminate(timeoutInMs: number = 1_000) {
+    logger.debug("gracefully terminating task run process", { pid: this.pid, timeoutInMs });
+
+    await this.kill("SIGTERM", timeoutInMs);
+
+    if (this._child?.connected) {
+      logger.debug("child process is still connected, sending SIGKILL", { pid: this.pid });
+
+      await this.kill("SIGKILL");
+    }
+  }
+
   /** This will never throw. */
   async kill(signal?: number | NodeJS.Signals, timeoutInMs?: number) {
     logger.debug(`killing task run process`, {
@@ -397,8 +419,6 @@ export class TaskRunProcess {
     this._isBeingKilled = true;
 
     const killTimeout = this.onExit.waitFor(timeoutInMs);
-
-    this.onIsBeingKilled.post(this);
 
     try {
       this._child?.kill(signal);
@@ -413,7 +433,11 @@ export class TaskRunProcess {
     const [error] = await tryCatch(killTimeout);
 
     if (error) {
-      logger.debug("kill: failed to wait for child process to exit", { error });
+      logger.debug("kill: failed to wait for child process to exit", {
+        timeoutInMs,
+        signal,
+        pid: this.pid,
+      });
     }
   }
 
@@ -435,8 +459,24 @@ export class TaskRunProcess {
     return this._isBeingKilled || this._child?.killed;
   }
 
+  get isBeingSuspended() {
+    return this._isBeingSuspended;
+  }
+
   get pid() {
     return this._childPid;
+  }
+
+  get isHealthy() {
+    if (!this._child) {
+      return false;
+    }
+
+    if (this.isBeingKilled || this.isBeingSuspended) {
+      return false;
+    }
+
+    return this._child.connected;
   }
 
   static parseExecuteError(error: unknown, dockerMode = true): TaskRunInternalError {

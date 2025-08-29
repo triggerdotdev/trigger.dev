@@ -46,13 +46,34 @@ model User {
   orgMemberships OrgMember[]
   sentInvites    OrgMemberInvite[]
 
-  /// @deprecated
-  apiVotes ApiIntegrationVote[]
+  mfaEnabledAt         DateTime?
+  mfaSecretReference   SecretReference? @relation(fields: [mfaSecretReferenceId], references: [id])
+  mfaSecretReferenceId String?
+  /// Hash of the last used code to prevent replay attacks
+  mfaLastUsedCode      String?
 
   invitationCode       InvitationCode?       @relation(fields: [invitationCodeId], references: [id])
   invitationCodeId     String?
   personalAccessTokens PersonalAccessToken[]
   deployments          WorkerDeployment[]
+  backupCodes          MfaBackupCode[]
+  bulkActions          BulkActionGroup[]
+}
+
+model MfaBackupCode {
+  id   String @id @default(cuid())
+  /// Hash of the actual code
+  code String
+
+  user   User   @relation(fields: [userId], references: [id])
+  userId String
+
+  usedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, code])
 }
 
 // @deprecated This model is no longer used as the Cloud is out of private beta
@@ -145,12 +166,6 @@ model Organization {
   hasRequestedV3 Boolean @default(false)
 
   environments RuntimeEnvironment[]
-  connections  IntegrationConnection[]
-  endpoints    Endpoint[]
-  jobs         Job[]
-  jobVersions  JobVersion[]
-  events       EventRecord[]
-  jobRuns      JobRun[]
 
   apiRateLimiterConfig      Json?
   realtimeRateLimiterConfig Json?
@@ -158,177 +173,10 @@ model Organization {
   projects                 Project[]
   members                  OrgMember[]
   invites                  OrgMemberInvite[]
-  externalAccounts         ExternalAccount[]
-  integrations             Integration[]
-  sources                  TriggerSource[]
   organizationIntegrations OrganizationIntegration[]
   workerGroups             WorkerInstanceGroup[]
   workerInstances          WorkerInstance[]
   executionSnapshots       TaskRunExecutionSnapshot[]
-}
-
-model ExternalAccount {
-  id         String @id @default(cuid())
-  identifier String
-  metadata   Json?
-
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  organizationId String
-
-  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  environmentId String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  connections        IntegrationConnection[]
-  events             EventRecord[]
-  runs               JobRun[]
-  schedules          ScheduleSource[]
-  triggerSources     TriggerSource[]
-  missingConnections MissingConnection[]
-  EventDispatcher    EventDispatcher[]
-
-  @@unique([environmentId, identifier])
-}
-
-// This is a "global" table that store all the integration methods for all the integrations across all orgs
-model IntegrationAuthMethod {
-  id  String @id @default(cuid())
-  key String
-
-  name        String
-  description String
-  type        String
-
-  client Json?
-  config Json?
-  scopes Json?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  integrations Integration[]
-
-  definition   IntegrationDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  definitionId String
-
-  help Json?
-
-  @@unique([definitionId, key])
-}
-
-model IntegrationDefinition {
-  id           String  @id
-  name         String
-  instructions String?
-  description  String?
-  icon         String?
-  packageName  String  @default("")
-
-  authMethods IntegrationAuthMethod[]
-  Integration Integration[]
-}
-
-model Integration {
-  id String @id @default(cuid())
-
-  slug String
-
-  title       String?
-  description String?
-
-  setupStatus IntegrationSetupStatus @default(COMPLETE)
-  authSource  IntegrationAuthSource  @default(HOSTED)
-
-  definition   IntegrationDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  definitionId String
-
-  authMethod   IntegrationAuthMethod? @relation(fields: [authMethodId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  authMethodId String?
-
-  connectionType ConnectionType @default(DEVELOPER)
-
-  scopes String[]
-
-  customClientReference   SecretReference? @relation(fields: [customClientReferenceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  customClientReferenceId String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  organizationId String
-
-  attempts           ConnectionAttempt[]
-  connections        IntegrationConnection[]
-  jobIntegrations    JobIntegration[]
-  sources            TriggerSource[]
-  webhooks           Webhook[]
-  missingConnections MissingConnection[]
-  RunConnection      RunConnection[]
-
-  @@unique([organizationId, slug])
-}
-
-enum IntegrationAuthSource {
-  HOSTED
-  LOCAL
-  RESOLVER
-}
-
-enum IntegrationSetupStatus {
-  MISSING_FIELDS
-  COMPLETE
-}
-
-model IntegrationConnection {
-  id String @id @default(cuid())
-
-  connectionType ConnectionType @default(DEVELOPER)
-
-  expiresAt DateTime?
-  metadata  Json
-  scopes    String[]
-
-  dataReference   SecretReference @relation(fields: [dataReferenceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  dataReferenceId String
-
-  integration   Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  integrationId String
-
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  organizationId String
-
-  externalAccount   ExternalAccount? @relation(fields: [externalAccountId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  externalAccountId String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  /// If enabled is false, OAuth refreshing will not be attempted
-  enabled Boolean @default(true)
-
-  runConnections RunConnection[]
-}
-
-enum ConnectionType {
-  EXTERNAL
-  DEVELOPER
-}
-
-model ConnectionAttempt {
-  id String @id @default(cuid())
-
-  securityCode String?
-
-  redirectTo String @default("/")
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
-
-  integration   Integration @relation(fields: [integrationId], references: [id])
-  integrationId String
 }
 
 model OrgMember {
@@ -399,8 +247,9 @@ model RuntimeEnvironment {
   ///A memorable code for the environment
   shortcode String
 
-  maximumConcurrencyLimit Int     @default(5)
-  paused                  Boolean @default(false)
+  maximumConcurrencyLimit     Int     @default(5)
+  concurrencyLimitBurstFactor Decimal @default("2.00") @db.Decimal(4, 2)
+  paused                      Boolean @default(false)
 
   autoEnableInternalSources Boolean @default(true)
 
@@ -417,26 +266,11 @@ model RuntimeEnvironment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  /// @deprecated (v2)
-  tunnelId                 String?
-  endpoints                Endpoint[]
-  jobVersions              JobVersion[]
-  events                   EventRecord[]
-  jobRuns                  JobRun[]
-  requestDeliveries        HttpSourceRequestDelivery[]
-  jobAliases               JobAlias[]
-  JobQueue                 JobQueue[]
-  sources                  TriggerSource[]
-  eventDispatchers         EventDispatcher[]
-  scheduleSources          ScheduleSource[]
-  ExternalAccount          ExternalAccount[]
-  httpEndpointEnvironments TriggerHttpEndpointEnvironment[]
-  concurrencyLimitGroups   ConcurrencyLimitGroup[]
-  keyValueItems            KeyValueItem[]
-  webhookEnvironments      WebhookEnvironment[]
-  webhookRequestDeliveries WebhookRequestDelivery[]
+  /// Allows us to customize the built-in environment variables for a specific environment, like TRIGGER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT
+  builtInEnvironmentVariableOverrides Json?
 
-  /// v3
+  tunnelId String?
+
   backgroundWorkers          BackgroundWorker[]
   backgroundWorkerTasks      BackgroundWorkerTask[]
   taskRuns                   TaskRun[]
@@ -460,11 +294,13 @@ model RuntimeEnvironment {
   workerInstances      WorkerInstance[]
   executionSnapshots   TaskRunExecutionSnapshot[]
   waitpointTags        WaitpointTag[]
+  BulkActionGroup      BulkActionGroup[]
 
   @@unique([projectId, slug, orgMemberId])
   @@unique([projectId, shortcode])
   @@index([parentEnvironmentId])
   @@index([projectId])
+  @@index([organizationId])
 }
 
 enum RuntimeEnvironmentType {
@@ -499,15 +335,10 @@ model Project {
   defaultWorkerGroup   WorkerInstanceGroup? @relation("ProjectDefaultWorkerGroup", fields: [defaultWorkerGroupId], references: [id])
   defaultWorkerGroupId String?
 
+  /// The master queues they are allowed to use (impacts what they can set as default and trigger runs with)
+  allowedWorkerQueues String[] @default([]) @map("allowedMasterQueues")
+
   environments           RuntimeEnvironment[]
-  endpoints              Endpoint[]
-  jobs                   Job[]
-  jobVersion             JobVersion[]
-  events                 EventRecord[]
-  runs                   JobRun[]
-  sources                TriggerSource[]
-  httpEndpoints          TriggerHttpEndpoint[]
-  webhooks               Webhook[]
   backgroundWorkers      BackgroundWorker[]
   backgroundWorkerTasks  BackgroundWorkerTask[]
   taskRuns               TaskRun[]
@@ -535,683 +366,17 @@ enum ProjectVersion {
   V3
 }
 
-model Endpoint {
-  id   String  @id @default(cuid())
-  slug String
-  url  String?
-
-  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  environmentId String
-
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  organizationId String
-
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  projectId String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  indexingHookIdentifier String?
-  version                String  @default("unknown")
-  sdkVersion             String  @default("unknown")
-
-  runChunkExecutionLimit      Int @default(60000)
-  startTaskThreshold          Int @default(750)
-  beforeExecuteTaskThreshold  Int @default(1500)
-  beforeCompleteTaskThreshold Int @default(750)
-  afterCompleteTaskThreshold  Int @default(750)
-
-  jobVersions              JobVersion[]
-  jobRuns                  JobRun[]
-  httpRequestDeliveries    HttpSourceRequestDelivery[]
-  webhookRequestDeliveries WebhookRequestDelivery[]
-  dynamictriggers          DynamicTrigger[]
-  sources                  TriggerSource[]
-  indexings                EndpointIndex[]
-  httpEndpointEnvironments TriggerHttpEndpointEnvironment[]
-  webhookEnvironments      WebhookEnvironment[]
-
-  @@unique([environmentId, slug])
-}
-
-model EndpointIndex {
-  id String @id @default(cuid())
-
-  endpoint   Endpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  endpointId String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  source     EndpointIndexSource @default(MANUAL)
-  sourceData Json?
-  reason     String?
-  status     EndpointIndexStatus @default(PENDING)
-
-  data  Json?
-  stats Json?
-  error Json?
-}
-
-enum EndpointIndexSource {
-  MANUAL
-  API
-  INTERNAL
-  HOOK
-}
-
-enum EndpointIndexStatus {
-  PENDING
-  STARTED
-  SUCCESS
-  FAILURE
-}
-
-model Job {
-  id       String  @id @default(cuid())
-  slug     String
-  title    String
-  internal Boolean @default(false)
-
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  organizationId String
-
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  projectId String
-
-  versions        JobVersion[]
-  runs            JobRun[]
-  integrations    JobIntegration[]
-  aliases         JobAlias[]
-  dynamicTriggers DynamicTrigger[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
-
-  deletedAt DateTime?
-
-  @@unique([projectId, slug])
-}
-
-model JobVersion {
-  id                 String @id @default(cuid())
-  version            String
-  eventSpecification Json
-
-  properties  Json?
-  triggerLink String?
-  triggerHelp Json?
-
-  job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  jobId String
-
-  endpoint   Endpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  endpointId String
-
-  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  environmentId String
-
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  organizationId String
-
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  projectId String
-
-  queue   JobQueue? @relation(fields: [queueId], references: [id])
-  queueId String?
-
-  startPosition  JobStartPosition @default(INITIAL)
-  preprocessRuns Boolean          @default(false)
-
-  concurrencyLimit        Int?
-  concurrencyLimitGroup   ConcurrencyLimitGroup? @relation(fields: [concurrencyLimitGroupId], references: [id])
-  concurrencyLimitGroupId String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  runs            JobRun[]
-  integrations    JobIntegration[]
-  aliases         JobAlias[]
-  examples        EventExample[]
-  dynamicTriggers DynamicTrigger[]
-  triggerSources  TriggerSource[]
-
-  status JobVersionStatus @default(ACTIVE)
-
-  @@unique([jobId, version, environmentId])
-}
-
-enum JobVersionStatus {
-  ACTIVE
-  DISABLED
-}
-
-model EventExample {
-  id String @id @default(cuid())
-
-  slug String
-  name String
-  icon String?
-
-  payload Json?
-
-  jobVersion   JobVersion @relation(fields: [jobVersionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  jobVersionId String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([slug, jobVersionId])
-}
-
-model ConcurrencyLimitGroup {
-  id   String @id @default(cuid())
-  name String
-
-  concurrencyLimit Int
-
-  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  environmentId String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  jobVersion JobVersion[]
-
-  @@unique([environmentId, name])
-}
-
-model JobQueue {
-  id   String @id @default(cuid())
-  name String
-
-  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  environmentId String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  jobCount Int @default(0)
-  maxJobs  Int @default(100)
-
-  runs       JobRun[]
-  jobVersion JobVersion[]
-
-  @@unique([environmentId, name])
-}
-
-model JobAlias {
-  id    String @id @default(cuid())
-  name  String @default("latest")
-  value String
-
-  version   JobVersion @relation(fields: [versionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  versionId String
-
-  job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  jobId String
-
-  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  environmentId String
-
-  @@unique([jobId, environmentId, name])
-}
-
-model JobIntegration {
-  id  String @id @default(cuid())
-  key String
-
-  version   JobVersion @relation(fields: [versionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  versionId String
-
-  job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  jobId String
-
-  integration   Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  integrationId String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([versionId, key])
-}
-
-model RunConnection {
-  id  String @id @default(cuid())
-  key String
-
-  authSource IntegrationAuthSource @default(HOSTED)
-
-  run   JobRun @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  runId String
-
-  connection   IntegrationConnection? @relation(fields: [connectionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  connectionId String?
-
-  integration   Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  integrationId String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  tasks Task[]
-
-  @@unique([runId, key])
-}
-
-model DynamicTrigger {
-  id   String             @id @default(cuid())
-  type DynamicTriggerType @default(EVENT)
-  slug String
-
-  endpoint   Endpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  endpointId String
-
-  jobs            Job[]
-  sources         TriggerSource[]
-  scheduleSources ScheduleSource[]
-  registrations   DynamicTriggerRegistration[]
-
-  sourceRegistrationJob   JobVersion? @relation(fields: [sourceRegistrationJobId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  sourceRegistrationJobId String?
-
-  @@unique([endpointId, slug, type])
-}
-
-enum DynamicTriggerType {
-  EVENT
-  SCHEDULE
-}
-
-model EventDispatcher {
-  id            String   @id @default(cuid())
-  event         String[]
-  source        String
-  payloadFilter Json?
-  contextFilter Json?
-  manual        Boolean  @default(false)
-
-  dispatchableId String
-  dispatchable   Json
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  enabled Boolean @default(true)
-
-  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  environmentId String
-
-  registrations   DynamicTriggerRegistration[]
-  scheduleSources ScheduleSource[]
-
-  externalAccount   ExternalAccount? @relation(fields: [externalAccountId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  externalAccountId String?
-
-  @@unique([dispatchableId, environmentId])
-}
-
-enum JobStartPosition {
-  INITIAL
-  LATEST
-}
-
-model EventRecord {
-  id            String      @id @default(cuid())
-  eventId       String
-  name          String
-  timestamp     DateTime    @default(now())
-  payload       Json
-  payloadType   PayloadType @default(JSON)
-  context       Json?
-  sourceContext Json?
-
-  source String @default("trigger.dev")
-
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  organizationId String
-
-  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  environmentId String
-
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  projectId String
-
-  externalAccount   ExternalAccount? @relation(fields: [externalAccountId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  externalAccountId String?
-
-  httpEndpoint   TriggerHttpEndpoint? @relation(fields: [httpEndpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  httpEndpointId String?
-
-  httpEndpointEnvironment   TriggerHttpEndpointEnvironment? @relation(fields: [httpEndpointEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  httpEndpointEnvironmentId String?
-
-  deliverAt   DateTime  @default(now())
-  deliveredAt DateTime?
-
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  cancelledAt DateTime?
-
-  isTest   Boolean  @default(false)
-  internal Boolean  @default(false)
-  runs     JobRun[]
-
-  @@unique([eventId, environmentId])
-}
-
-enum PayloadType {
-  JSON
-  REQUEST
-}
-
-model JobRun {
-  id       String  @id @default(cuid())
-  number   Int?
-  internal Boolean @default(false)
-
-  job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  jobId String
-
-  version   JobVersion @relation(fields: [versionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  versionId String
-
-  event   EventRecord @relation(fields: [eventId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  eventId String
-
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  organizationId String
-
-  endpoint   Endpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  endpointId String
-
-  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  environmentId String
-
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  projectId String
-
-  queue   JobQueue? @relation(fields: [queueId], references: [id])
-  queueId String?
-
-  externalAccount   ExternalAccount? @relation(fields: [externalAccountId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  externalAccountId String?
-
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  queuedAt    DateTime?
-  startedAt   DateTime?
-  completedAt DateTime?
-
-  properties Json?
-
-  status JobRunStatus @default(PENDING)
-  output Json?
-
-  timedOutAt     DateTime?
-  timedOutReason String?
-
-  executionCount        Int @default(0)
-  executionFailureCount Int @default(0)
-  executionDuration     Int @default(0)
-
-  isTest     Boolean @default(false)
-  preprocess Boolean @default(false)
-
-  yieldedExecutions String[]
-
-  forceYieldImmediately Boolean @default(false)
-
-  tasks              Task[]
-  runConnections     RunConnection[]
-  missingConnections MissingConnection[]
-  executions         JobRunExecution[]
-  statuses           JobRunStatusRecord[]
-  autoYieldExecution JobRunAutoYieldExecution[]
-  subscriptions      JobRunSubscription[]
-
-  @@index([jobId, createdAt(sort: Desc)], map: "idx_jobrun_jobId_createdAt")
-  @@index([organizationId, createdAt], map: "idx_jobrun_organizationId_createdAt")
-  @@index([versionId], map: "idx_jobrun_versionId")
-  @@index([eventId], map: "JobRun_eventId_idx")
-}
-
-enum JobRunStatus {
-  PENDING
-  QUEUED
-  WAITING_ON_CONNECTIONS
-  PREPROCESSING
-  STARTED
-  EXECUTING
-  WAITING_TO_CONTINUE
-  WAITING_TO_EXECUTE
-  SUCCESS
-  FAILURE
-  TIMED_OUT
-  ABORTED
-  CANCELED
-  UNRESOLVED_AUTH
-  INVALID_PAYLOAD
-}
-
-model JobCounter {
-  jobId      String @id
-  lastNumber Int    @default(0)
-}
-
-model JobRunAutoYieldExecution {
-  id String @id @default(cuid())
-
-  run   JobRun @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  runId String
-
-  timeRemaining Int
-  timeElapsed   Int
-  limit         Int
-  location      String
-
-  createdAt DateTime @default(now())
-}
-
-model JobRunSubscription {
-  id String @id @default(cuid())
-
-  run   JobRun @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  runId String
-
-  recipient       String
-  recipientMethod JobRunSubscriptionRecipientMethod @default(WEBHOOK)
-
-  event  JobRunSubscriptionEvents
-  status JobRunSubscriptionStatus @default(ACTIVE)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  deliveredAt DateTime?
-
-  @@unique([runId, recipient, event])
-}
-
-enum JobRunSubscriptionRecipientMethod {
-  WEBHOOK
-  ENDPOINT
-}
-
-enum JobRunSubscriptionStatus {
-  ACTIVE
-  INACTIVE
-}
-
-enum JobRunSubscriptionEvents {
-  SUCCESS
-  FAILURE
-}
-
-model JobRunExecution {
-  id String @id @default(cuid())
-
-  run   JobRun @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  runId String
-
-  retryCount     Int @default(0)
-  retryLimit     Int @default(0)
-  retryDelayInMs Int @default(0)
-
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  startedAt   DateTime?
-  completedAt DateTime?
-
-  error String?
-
-  reason JobRunExecutionReason @default(EXECUTE_JOB)
-  status JobRunExecutionStatus @default(PENDING)
-
-  resumeTask   Task?   @relation(fields: [resumeTaskId], references: [id], onDelete: SetNull, onUpdate: Cascade)
-  resumeTaskId String?
-
-  graphileJobId String?
-
-  isRetry Boolean @default(false)
-}
-
-enum JobRunExecutionReason {
-  PREPROCESS
-  EXECUTE_JOB
-}
-
-enum JobRunExecutionStatus {
-  PENDING
-  STARTED
-  SUCCESS
-  FAILURE
-}
-
-model Task {
-  id             String  @id
-  idempotencyKey String
-  displayKey     String?
-  name           String
-  icon           String?
-
-  status     TaskStatus @default(PENDING)
-  delayUntil DateTime?
-  noop       Boolean    @default(false)
-
-  description       String?
-  properties        Json?
-  outputProperties  Json?
-  params            Json?
-  output            Json?
-  outputIsUndefined Boolean @default(false)
-  context           Json?
-  error             String?
-  redact            Json?
-  style             Json?
-  operation         String?
-  callbackUrl       String?
-
-  startedAt   DateTime?
-  completedAt DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  run   JobRun @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  runId String
-
-  parent   Task?   @relation("TaskParent", fields: [parentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  parentId String?
-
-  runConnection   RunConnection? @relation(fields: [runConnectionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  runConnectionId String?
-
-  children           Task[]                 @relation("TaskParent")
-  childExecutionMode TaskChildExecutionMode @default(SEQUENTIAL)
-  executions         JobRunExecution[]
-  attempts           TaskAttempt[]
-
-  @@unique([runId, idempotencyKey])
-  @@index([parentId], map: "idx_task_parentId")
-}
-
-enum TaskStatus {
-  PENDING
-  WAITING
-  RUNNING
-  COMPLETED
-  ERRORED
-  CANCELED
-}
-
-enum TaskChildExecutionMode {
-  SEQUENTIAL
-  PARALLEL
-}
-
-model TaskAttempt {
-  id String @id @default(cuid())
-
-  number Int
-
-  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  taskId String
-
-  status TaskAttemptStatus @default(PENDING)
-
-  error String?
-
-  runAt DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([taskId, number])
-}
-
-enum TaskAttemptStatus {
-  PENDING
-  STARTED
-  COMPLETED
-  ERRORED
-}
-
-model JobRunStatusRecord {
-  id  String @id @default(cuid())
-  key String
-
-  run   JobRun @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  runId String
-
-  label String
-  state String?
-  data  Json?
-
-  history Json?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([runId, key])
-}
-
 model SecretReference {
   id       String              @id @default(cuid())
   key      String              @unique
   provider SecretStoreProvider @default(DATABASE)
 
-  connections               IntegrationConnection[]
-  integrations              Integration[]
-  triggerSources            TriggerSource[]
-  httpEndpoints             TriggerHttpEndpoint[]
   environmentVariableValues EnvironmentVariableValue[]
 
   createdAt               DateTime                  @default(now())
   updatedAt               DateTime                  @updatedAt
   OrganizationIntegration OrganizationIntegration[]
+  User                    User[]
 }
 
 enum SecretStoreProvider {
@@ -1230,360 +395,6 @@ model SecretStore {
   @@index([key(ops: raw("text_pattern_ops"))], type: BTree)
 }
 
-model TriggerSource {
-  id String @id @default(cuid())
-
-  key    String
-  params Json?
-
-  channel     TriggerChannel @default(HTTP)
-  channelData Json?
-
-  version String @default("1")
-
-  options TriggerSourceOption[]
-
-  metadata Json?
-
-  secretReference   SecretReference @relation(fields: [secretReferenceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  secretReferenceId String
-
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  organizationId String
-
-  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  environmentId String
-
-  endpoint   Endpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  endpointId String
-
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  projectId String
-
-  integration   Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  integrationId String
-
-  dynamicTrigger   DynamicTrigger? @relation(fields: [dynamicTriggerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  dynamicTriggerId String?
-
-  externalAccount   ExternalAccount? @relation(fields: [externalAccountId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  externalAccountId String?
-
-  sourceRegistrationJob   JobVersion? @relation(fields: [sourceRegistrationJobId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  sourceRegistrationJobId String?
-
-  dynamicSourceId       String?
-  dynamicSourceMetadata Json?
-
-  active      Boolean @default(false)
-  interactive Boolean @default(false)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  httpDeliveries HttpSourceRequestDelivery[]
-  registrations  DynamicTriggerRegistration[]
-
-  @@unique([key, environmentId])
-}
-
-enum TriggerChannel {
-  HTTP
-  SQS
-  SMTP
-}
-
-model TriggerSourceOption {
-  id    String @id @default(cuid())
-  name  String
-  value String
-
-  source   TriggerSource @relation(fields: [sourceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  sourceId String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  registered Boolean @default(false)
-
-  @@unique([name, value, sourceId])
-}
-
-model Webhook {
-  id String @id @default(cuid())
-
-  active Boolean @default(false)
-
-  key    String
-  params Json?
-
-  webhookEnvironments WebhookEnvironment[]
-  requestDeliveries   WebhookRequestDelivery[]
-
-  httpEndpoint   TriggerHttpEndpoint @relation(fields: [httpEndpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  httpEndpointId String              @unique
-
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  projectId String
-
-  integration   Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  integrationId String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([key, projectId])
-}
-
-model WebhookEnvironment {
-  id String @id @default(cuid())
-
-  active Boolean @default(false)
-
-  config        Json?
-  desiredConfig Json?
-
-  requestDeliveries WebhookRequestDelivery[]
-
-  endpoint   Endpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  endpointId String
-
-  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  environmentId String
-
-  webhook   Webhook @relation(fields: [webhookId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  webhookId String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([environmentId, webhookId])
-}
-
-model WebhookRequestDelivery {
-  id     String @id @default(cuid())
-  number Int
-
-  url     String
-  method  String
-  headers Json
-
-  body Bytes?
-
-  verified Boolean @default(false)
-  error    String?
-
-  webhook   Webhook @relation(fields: [webhookId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  webhookId String
-
-  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  environmentId String
-
-  webhookEnvironment   WebhookEnvironment @relation(fields: [webhookEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  webhookEnvironmentId String
-
-  endpoint   Endpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  endpointId String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  deliveredAt DateTime?
-}
-
-model WebhookDeliveryCounter {
-  webhookId  String @id
-  lastNumber Int    @default(0)
-}
-
-model DynamicTriggerRegistration {
-  id String @id @default(cuid())
-
-  key String
-
-  dynamicTrigger   DynamicTrigger @relation(fields: [dynamicTriggerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  dynamicTriggerId String
-
-  eventDispatcher   EventDispatcher @relation(fields: [eventDispatcherId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  eventDispatcherId String
-
-  source   TriggerSource @relation(fields: [sourceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  sourceId String
-
-  metadata Json?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([key, dynamicTriggerId])
-}
-
-model HttpSourceRequestDelivery {
-  id      String @id @default(cuid())
-  url     String
-  method  String
-  headers Json
-  body    Bytes?
-
-  source   TriggerSource @relation(fields: [sourceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  sourceId String
-
-  endpoint   Endpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  endpointId String
-
-  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  environmentId String
-
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  deliveredAt DateTime?
-}
-
-model ScheduleSource {
-  id String @id @default(cuid())
-
-  key      String
-  schedule Json
-
-  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  environmentId String
-
-  dispatcher   EventDispatcher @relation(fields: [dispatcherId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  dispatcherId String
-
-  lastEventTimestamp DateTime?
-  nextEventTimestamp DateTime?
-
-  workerJobId String?
-
-  active Boolean @default(false)
-
-  metadata Json?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  dynamicTrigger   DynamicTrigger? @relation(fields: [dynamicTriggerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  dynamicTriggerId String?
-
-  externalAccount   ExternalAccount?               @relation(fields: [externalAccountId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  externalAccountId String?
-  deferredEvent     DeferredScheduledEventService?
-
-  @@unique([key, environmentId])
-}
-
-model TriggerHttpEndpoint {
-  id String @id @default(cuid())
-
-  key String
-
-  title      String?
-  icon       String?
-  properties Json?
-
-  webhook Webhook?
-
-  secretReference   SecretReference @relation(fields: [secretReferenceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  secretReferenceId String
-
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  projectId String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  httpEndpointEnvironments TriggerHttpEndpointEnvironment[]
-
-  eventRecords EventRecord[]
-
-  @@unique([key, projectId])
-}
-
-model TriggerHttpEndpointEnvironment {
-  id String @id @default(cuid())
-
-  active Boolean @default(false)
-
-  /// If this is set, requests will be tested against the filter and we'll call the user's server immediately
-  immediateResponseFilter Json?
-
-  skipTriggeringRuns Boolean @default(false)
-
-  source String
-
-  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  environmentId String
-
-  endpoint   Endpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  endpointId String
-
-  httpEndpoint   TriggerHttpEndpoint @relation(fields: [httpEndpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  httpEndpointId String
-
-  eventRecords EventRecord[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([environmentId, httpEndpointId])
-  @@unique([endpointId, httpEndpointId])
-}
-
-model KeyValueItem {
-  id String @id @default(cuid())
-
-  key   String
-  value Bytes
-
-  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  environmentId String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([environmentId, key])
-  @@index([key], type: Hash)
-}
-
-model MissingConnection {
-  id String @id @default(cuid())
-
-  resolved Boolean @default(false)
-
-  runs JobRun[]
-
-  integration   Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  integrationId String
-
-  connectionType ConnectionType @default(DEVELOPER)
-
-  externalAccount   ExternalAccount? @relation(fields: [externalAccountId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  externalAccountId String?
-
-  accountIdentifier String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([integrationId, connectionType, externalAccountId])
-  @@unique([integrationId, connectionType, accountIdentifier])
-}
-
-model ApiIntegrationVote {
-  id String @id @default(cuid())
-
-  apiIdentifier String
-
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  userId String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([apiIdentifier, userId])
-}
-
 model DataMigration {
   id   String @id @default(cuid())
   name String @unique
@@ -1591,19 +402,6 @@ model DataMigration {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   completedAt DateTime?
-}
-
-model DeferredScheduledEventService {
-  id String @id @default(cuid())
-
-  scheduleSource   ScheduleSource @relation(fields: [scheduleSourceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  scheduleSourceId String         @unique
-
-  runAt         DateTime
-  lastTimestamp DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
 }
 
 // ====================================================
@@ -1628,6 +426,9 @@ model BackgroundWorker {
 
   version  String
   metadata Json
+
+  runtime        String?
+  runtimeVersion String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1712,6 +513,8 @@ model BackgroundWorkerTask {
 
   triggerSource TaskTriggerSource @default(STANDARD)
 
+  payloadSchema Json?
+
   @@unique([workerId, slug])
   // Quick lookup of task identifiers
   @@index([projectId, slug])
@@ -1764,7 +567,9 @@ model TaskRun {
   lockedQueueId String?
 
   /// The main queue that this run is part of
-  masterQueue          String  @default("main")
+  workerQueue String @default("main") @map("masterQueue")
+
+  /// @deprecated
   secondaryMasterQueue String?
 
   /// From engine v2+ this will be defined after a run has been dequeued (starting at 1)
@@ -1846,7 +651,11 @@ model TaskRun {
   sourceBulkActionItems      BulkActionItem[] @relation("SourceActionItemRun")
   destinationBulkActionItems BulkActionItem[] @relation("DestinationActionItemRun")
 
+  bulkActionGroupIds String[] @default([])
+
   logsDeletedAt DateTime?
+
+  replayedFromTaskRunFriendlyId String?
 
   /// This represents the original task that that was triggered outside of a Trigger.dev task
   rootTaskRun   TaskRun? @relation("TaskRootRun", fields: [rootTaskRunId], references: [id], onDelete: SetNull, onUpdate: NoAction)
@@ -1898,6 +707,9 @@ model TaskRun {
   /// Run error
   error Json?
 
+  /// Organization's billing plan type (cached for fallback when billing API fails)
+  planType String?
+
   maxDurationInSeconds Int?
 
   @@unique([oneTimeUseToken])
@@ -1906,26 +718,50 @@ model TaskRun {
   @@index([parentTaskRunId])
   // Finding ancestor runs
   @@index([rootTaskRunId])
-  // Task activity graph
-  @@index([projectId, createdAt, taskIdentifier])
-  //Runs list
-  @@index([projectId])
-  @@index([projectId, id(sort: Desc)])
-  @@index([projectId, taskIdentifier])
-  @@index([projectId, status])
-  @@index([projectId, taskIdentifier, status])
   //Schedules
   @@index([scheduleId])
-  @@index([scheduleInstanceId])
   // Run page inspector
   @@index([spanId])
   @@index([parentSpanId])
-  // Finding completed runs
-  @@index([completedAt])
   // Schedule list page
   @@index([scheduleId, createdAt(sort: Desc)])
   // Finding runs in a batch
+  @@index([runTags(ops: ArrayOps)], type: Gin)
   @@index([runtimeEnvironmentId, batchId])
+  // This will include the createdAt index to help speed up the run list page
+  @@index([runtimeEnvironmentId, id(sort: Desc)])
+  @@index([runtimeEnvironmentId, createdAt(sort: Desc)])
+  @@index([createdAt], type: Brin)
+  @@index([status, runtimeEnvironmentId, createdAt, id(sort: Desc)])
+}
+
+model TaskRunTemplate {
+  id String @id @default(cuid())
+
+  taskSlug      String
+  triggerSource TaskTriggerSource
+
+  label String
+
+  payload            String?
+  payloadType        String   @default("application/json")
+  metadata           String?
+  metadataType       String   @default("application/json")
+  queue              String?
+  concurrencyKey     String?
+  ttlSeconds         Int?
+  maxAttempts        Int?
+  maxDurationSeconds Int?
+  tags               String[]
+  machinePreset      String?
+
+  projectId      String
+  organizationId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId, taskSlug, triggerSource, createdAt(sort: Desc)])
 }
 
 enum TaskRunStatus {
@@ -1943,6 +779,9 @@ enum TaskRunStatus {
 
   /// Task hasn't been deployed yet but is waiting to be executed. Deprecated in favor of PENDING_VERSION
   WAITING_FOR_DEPLOY
+
+  /// Task has been dequeued from the queue but is not yet executing
+  DEQUEUED
 
   /// Task is currently being executed by a worker
   EXECUTING
@@ -2309,6 +1148,7 @@ model WorkerInstanceGroup {
   /// If unmanged, it will be prefixed with the project ID e.g. "project_1-us-east-1"
   masterQueue String @unique
 
+  /// "N. Virginia, USA", "Frankfurt, Germany", etc. Used for display purposes
   description String?
   hidden      Boolean @default(false)
 
@@ -2325,6 +1165,11 @@ model WorkerInstanceGroup {
 
   project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   projectId String?
+
+  cloudProvider String?
+  /// "usa", "europe", etc. Used like a pseudo enum for things like flags
+  location      String?
+  staticIPs     String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2613,9 +1458,6 @@ model TaskQueue {
 
   paused Boolean @default(false)
 
-  /// If true, when a run is paused and waiting for waitpoints to be completed, the run will release the concurrency capacity.
-  releaseConcurrencyOnWaitpoint Boolean @default(false)
-
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -2857,7 +1699,11 @@ model WorkerDeployment {
   shortCode   String
   version     String
 
+  runtime        String?
+  runtimeVersion String?
+
   imageReference String?
+  imagePlatform  String  @default("linux/amd64")
 
   externalBuildData Json?
 
@@ -3153,14 +1999,45 @@ model BulkActionGroup {
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   projectId String
 
+  /// If this is set then it's a V2 Bulk Action that supports queries
+  environment   RuntimeEnvironment? @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String?
+
   type  BulkActionType
   items BulkActionItem[]
 
   /// When the group is created it's pending. After we've processed all the items it's completed. This does not mean the associated runs are completed.
   status BulkActionStatus @default(PENDING)
 
+  /// The query that will be executed to get the runs to process (if null, we are passing run ids directly)
+  queryName    String?
+  /// The params that will be passed to the query
+  params       Json?
+  /// The cursor that will be passed to the query (null for the first page)
+  cursor       Json?
+  /// The number of runs that have been processed successfully
+  successCount Int     @default(0)
+  /// The number of runs that have been failed
+  failureCount Int     @default(0)
+  /// The total number of runs that will be processed
+  totalCount   Int     @default(0)
+
+  completionNotification BulkActionNotificationType @default(NONE)
+
+  /// The userId who did the bulk action
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  userId String?
+
+  /// The name of the bulk action
+  name String?
+
+  /// The time the bulk action was completed
+  completedAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([environmentId, createdAt(sort: Desc)])
 }
 
 enum BulkActionType {
@@ -3173,12 +2050,19 @@ enum BulkActionType {
 enum BulkActionStatus {
   PENDING
   COMPLETED
+  ABORTED
+}
+
+enum BulkActionNotificationType {
+  NONE
+  EMAIL
 }
 
 model BulkActionItem {
   id String @id @default(cuid())
 
-  friendlyId String @unique
+  /// @deprecated not used in new BulkActions
+  friendlyId String?
 
   group   BulkActionGroup @relation(fields: [groupId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   groupId String

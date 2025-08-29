@@ -50,7 +50,7 @@ Add this code to your `api.hello-world.ts` file which imports your task:
 
 ```ts app/routes/api.hello-world.ts
 import type { helloWorldTask } from "../../src/trigger/example";
-import { tasks } from "@trigger.dev/sdk/v3";
+import { tasks } from "@trigger.dev/sdk";
 
 export async function loader() {
   const handle = await tasks.trigger<typeof helloWorldTask>("hello-world", "James");
@@ -80,7 +80,7 @@ export async function loader() {
 Before we start, it's important to note that:
 
 - We'll be using a type-only import for the task to ensure compatibility with the edge runtime.
-- The `@trigger.dev/sdk/v3` package supports the edge runtime out of the box.
+- The `@trigger.dev/sdk` package supports the edge runtime out of the box.
 
 There are a few extra steps to follow to deploy your `/api/hello-world` API endpoint to Vercel Edge Functions.
 
@@ -91,7 +91,7 @@ There are a few extra steps to follow to deploy your `/api/hello-world` API endp
 Update your API route to use the `runtime: "edge"` option and change it to an `action()` so we can trigger the task from a curl request later on.
 
 ```ts app/routes/api.hello-world.ts
-import { tasks } from "@trigger.dev/sdk/v3";
+import { tasks } from "@trigger.dev/sdk";
 import type { helloWorldTask } from "../../src/trigger/example";
 //      👆 **type-only** import
 

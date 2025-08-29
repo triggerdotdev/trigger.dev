@@ -1,10 +1,7 @@
 import { ProjectAlertChannel, ProjectAlertType, WorkerDeployment } from "@trigger.dev/database";
-import { $transaction, PrismaClientOrTransaction } from "~/db.server";
-import { workerQueue } from "~/services/worker.server";
-import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
+import { alertsWorker } from "~/v3/alertsWorker.server";
 import { BaseService } from "../baseService.server";
 import { DeliverAlertService } from "./deliverAlert.server";
-import { commonWorker } from "~/v3/commonWorker.server";
 
 export class PerformDeploymentAlertsService extends BaseService {
   public async call(deploymentId: string) {
@@ -60,7 +57,7 @@ export class PerformDeploymentAlertsService extends BaseService {
   }
 
   static async enqueue(deploymentId: string, runAt?: Date) {
-    return await commonWorker.enqueue({
+    return await alertsWorker.enqueue({
       id: `performDeploymentAlerts:${deploymentId}`,
       job: "v3.performDeploymentAlerts",
       payload: { deploymentId },

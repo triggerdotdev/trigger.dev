@@ -11,6 +11,7 @@ import { RunnerEnv } from "./env.js";
 import { ManagedRunLogger, RunLogger, SendDebugLogOptions } from "./logger.js";
 import { EnvObject } from "std-env";
 import { RunExecution } from "./execution.js";
+import { TaskRunProcessProvider } from "./taskRunProcessProvider.js";
 import { tryCatch } from "@trigger.dev/core/utils";
 
 type ManagedRunControllerOptions = {
@@ -27,8 +28,11 @@ export class ManagedRunController {
   private readonly warmStartClient: WarmStartClient | undefined;
   private socket: SupervisorSocket;
   private readonly logger: RunLogger;
+  private readonly taskRunProcessProvider: TaskRunProcessProvider;
 
+  private warmStartEnabled = true;
   private warmStartCount = 0;
+
   private restoreCount = 0;
 
   private notificationCount = 0;
@@ -36,11 +40,17 @@ export class ManagedRunController {
 
   private currentExecution: RunExecution | null = null;
 
+  private processKeepAliveEnabled: boolean;
+  private processKeepAliveMaxExecutionCount: number;
+
   constructor(opts: ManagedRunControllerOptions) {
     const env = new RunnerEnv(opts.env);
     this.env = env;
 
     this.workerManifest = opts.workerManifest;
+    this.processKeepAliveEnabled = opts.workerManifest.processKeepAlive?.enabled ?? false;
+    this.processKeepAliveMaxExecutionCount =
+      opts.workerManifest.processKeepAlive?.maxExecutionsPerProcess ?? 100;
 
     this.httpClient = new WorkloadHttpClient({
       workerApiUrl: this.workerApiUrl,
@@ -53,6 +63,15 @@ export class ManagedRunController {
     this.logger = new ManagedRunLogger({
       httpClient: this.httpClient,
       env,
+    });
+
+    // Create the TaskRunProcessProvider
+    this.taskRunProcessProvider = new TaskRunProcessProvider({
+      workerManifest: this.workerManifest,
+      env: this.env,
+      logger: this.logger,
+      processKeepAliveEnabled: this.processKeepAliveEnabled,
+      processKeepAliveMaxExecutionCount: this.processKeepAliveMaxExecutionCount,
     });
 
     const properties = {
@@ -86,7 +105,12 @@ export class ManagedRunController {
         runId: this.runFriendlyId,
         message: "Received SIGTERM, stopping worker",
       });
-      await this.stop();
+
+      // Disable warm starts
+      this.warmStartEnabled = false;
+
+      // ..now we wait for any active runs to finish
+      // SIGKILL will handle the rest, nothing to do here
     });
   }
 
@@ -96,6 +120,7 @@ export class ManagedRunController {
       restoreCount: this.restoreCount,
       notificationCount: this.notificationCount,
       lastNotificationAt: this.lastNotificationAt,
+      ...this.taskRunProcessProvider.metrics,
     };
   }
 
@@ -189,7 +214,15 @@ export class ManagedRunController {
           runId: runFriendlyId,
           message: "killing existing execution before starting new run",
         });
-        await this.currentExecution.kill().catch(() => {});
+
+        await this.currentExecution.shutdown().catch((error) => {
+          this.sendDebugLog({
+            runId: runFriendlyId,
+            message: "Error during execution shutdown",
+            properties: { error: error instanceof Error ? error.message : String(error) },
+          });
+        });
+
         this.currentExecution = null;
       }
 
@@ -203,6 +236,7 @@ export class ManagedRunController {
           httpClient: this.httpClient,
           logger: this.logger,
           supervisorSocket: this.socket,
+          taskRunProcessProvider: this.taskRunProcessProvider,
         });
       }
 
@@ -249,6 +283,14 @@ export class ManagedRunController {
    *  the process on any errors or when no runs are available after the configured duration.
    */
   private async waitForNextRun() {
+    if (!this.warmStartEnabled) {
+      this.sendDebugLog({
+        runId: this.runFriendlyId,
+        message: "waitForNextRun: warm starts disabled, shutting down",
+      });
+      this.exitProcess(this.successExitCode);
+    }
+
     this.sendDebugLog({
       runId: this.runFriendlyId,
       message: "waitForNextRun()",
@@ -298,7 +340,10 @@ export class ManagedRunController {
           httpClient: this.httpClient,
           logger: this.logger,
           supervisorSocket: this.socket,
-        }).prepareForExecution({
+          taskRunProcessProvider: this.taskRunProcessProvider,
+        });
+
+        await this.currentExecution.prepareForExecution({
           taskRunEnv: previousTaskRunEnv,
         });
       }
@@ -395,6 +440,7 @@ export class ManagedRunController {
     });
 
     this.currentExecution?.kill().catch(() => {});
+    this.taskRunProcessProvider.cleanup().catch(() => {});
 
     process.exit(code);
   }
@@ -517,7 +563,7 @@ export class ManagedRunController {
     return;
   }
 
-  async stop() {
+  async cancelRunsAndExitProcess() {
     this.sendDebugLog({
       runId: this.runFriendlyId,
       message: "Shutting down",
@@ -534,8 +580,22 @@ export class ManagedRunController {
       });
     }
 
+    // Cleanup the task run process provider
+    const [cleanupError] = await tryCatch(this.taskRunProcessProvider.cleanup());
+
+    if (cleanupError) {
+      this.sendDebugLog({
+        runId: this.runFriendlyId,
+        message: "Error during task run process provider cleanup",
+        properties: { error: String(cleanupError) },
+      });
+    }
+
     // Close the socket
     this.socket.close();
+
+    // Exit the process
+    this.exitProcess(this.successExitCode);
   }
 
   sendDebugLog(opts: SendDebugLogOptions) {

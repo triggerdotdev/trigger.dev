@@ -45,6 +45,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
+import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { ViewSchedulePresenter } from "~/presenters/v3/ViewSchedulePresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
@@ -59,7 +60,8 @@ import { SetActiveOnTaskScheduleService } from "~/v3/services/setActiveOnTaskSch
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
-  const { projectParam, organizationSlug, scheduleParam } = v3ScheduleParams.parse(params);
+  const { projectParam, organizationSlug, envParam, scheduleParam } =
+    v3ScheduleParams.parse(params);
 
   // Find the project scoped to the organization
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
@@ -68,11 +70,17 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     return redirectWithErrorMessage("/", request, "Project not found");
   }
 
+  const environment = await findEnvironmentBySlug(project.id, envParam, userId);
+  if (!environment) {
+    return redirectWithErrorMessage("/", request, "Environment not found");
+  }
+
   const presenter = new ViewSchedulePresenter();
   const result = await presenter.call({
     userId,
     projectId: project.id,
     friendlyId: scheduleParam,
+    environmentId: environment.id,
   });
 
   if (!result) {
@@ -304,7 +312,6 @@ export default function Page() {
                 tasks: [],
                 versions: [],
                 statuses: [],
-                environments: [],
                 from: undefined,
                 to: undefined,
               }}

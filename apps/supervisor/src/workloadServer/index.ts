@@ -24,6 +24,7 @@ import {
 import { HttpServer, type CheckpointClient } from "@trigger.dev/core/v3/serverOnly";
 import { type IncomingMessage } from "node:http";
 import { register } from "../metrics.js";
+import { env } from "../env.js";
 
 // Use the official export when upgrading to socket.io@4.8.0
 interface DefaultEventsMap {
@@ -373,6 +374,10 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         bodySchema: WorkloadDebugLogRequestBody,
         handler: async ({ req, reply, params, body }) => {
           reply.empty(204);
+
+          if (!env.SEND_RUN_DEBUG_LOGS) {
+            return;
+          }
 
           await this.workerClient.sendDebugLog(
             params.runFriendlyId,

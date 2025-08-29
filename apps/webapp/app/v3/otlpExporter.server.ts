@@ -39,7 +39,8 @@ class OTLPExporter {
 
   constructor(
     private readonly _eventRepository: EventRepository,
-    private readonly _verbose: boolean
+    private readonly _verbose: boolean,
+    private readonly _spanAttributeValueLengthLimit: number
   ) {
     this._tracer = trace.getTracer("otlp-exporter");
   }
@@ -52,7 +53,7 @@ class OTLPExporter {
       this.#logExportTracesVerbose(request);
 
       const events = this.#filterResourceSpans(request.resourceSpans).flatMap((resourceSpan) => {
-        return convertSpansToCreateableEvents(resourceSpan);
+        return convertSpansToCreateableEvents(resourceSpan, this._spanAttributeValueLengthLimit);
       });
 
       const enrichedEvents = enrichCreatableEvents(events);
@@ -79,7 +80,7 @@ class OTLPExporter {
       this.#logExportLogsVerbose(request);
 
       const events = this.#filterResourceLogs(request.resourceLogs).flatMap((resourceLog) => {
-        return convertLogsToCreateableEvents(resourceLog);
+        return convertLogsToCreateableEvents(resourceLog, this._spanAttributeValueLengthLimit);
       });
 
       const enrichedEvents = enrichCreatableEvents(events);
@@ -180,10 +181,13 @@ class OTLPExporter {
   }
 }
 
-function convertLogsToCreateableEvents(resourceLog: ResourceLogs): Array<CreatableEvent> {
+function convertLogsToCreateableEvents(
+  resourceLog: ResourceLogs,
+  spanAttributeValueLengthLimit: number
+): Array<CreatableEvent> {
   const resourceAttributes = resourceLog.resource?.attributes ?? [];
 
-  const resourceProperties = extractResourceProperties(resourceAttributes);
+  const resourceProperties = extractEventProperties(resourceAttributes);
 
   return resourceLog.scopeLogs.flatMap((scopeLog) => {
     return scopeLog.logRecords
@@ -193,6 +197,11 @@ function convertLogsToCreateableEvents(resourceLog: ResourceLogs): Array<Creatab
         if (!log.traceId || !log.spanId) {
           return;
         }
+
+        const logProperties = extractEventProperties(
+          log.attributes ?? [],
+          SemanticInternalAttributes.METADATA
+        );
 
         return {
           traceId: binaryToHex(log.traceId),
@@ -208,14 +217,9 @@ function convertLogsToCreateableEvents(resourceLog: ResourceLogs): Array<Creatab
           status: logLevelToEventStatus(log.severityNumber),
           startTime: log.timeUnixNano,
           properties: {
-            ...convertKeyValueItemsToMap(log.attributes ?? [], [
-              SemanticInternalAttributes.SPAN_ID,
-              SemanticInternalAttributes.SPAN_PARTIAL,
-            ]),
             ...convertKeyValueItemsToMap(
-              resourceAttributes,
-              [SemanticInternalAttributes.TRIGGER],
-              SemanticInternalAttributes.METADATA
+              truncateAttributes(log.attributes ?? [], spanAttributeValueLengthLimit),
+              [SemanticInternalAttributes.SPAN_ID, SemanticInternalAttributes.SPAN_PARTIAL]
             ),
           },
           style: convertKeyValueItemsToMap(
@@ -236,7 +240,35 @@ function convertLogsToCreateableEvents(resourceLog: ResourceLogs): Array<Creatab
             ),
             SemanticInternalAttributes.PAYLOAD
           ),
-          ...resourceProperties,
+          metadata: logProperties.metadata ?? resourceProperties.metadata,
+          serviceName: logProperties.serviceName ?? resourceProperties.serviceName ?? "unknown",
+          serviceNamespace:
+            logProperties.serviceNamespace ?? resourceProperties.serviceNamespace ?? "unknown",
+          environmentId:
+            logProperties.environmentId ?? resourceProperties.environmentId ?? "unknown",
+          environmentType:
+            logProperties.environmentType ?? resourceProperties.environmentType ?? "DEVELOPMENT",
+          organizationId:
+            logProperties.organizationId ?? resourceProperties.organizationId ?? "unknown",
+          projectId: logProperties.projectId ?? resourceProperties.projectId ?? "unknown",
+          projectRef: logProperties.projectRef ?? resourceProperties.projectRef ?? "unknown",
+          runId: logProperties.runId ?? resourceProperties.runId ?? "unknown",
+          runIsTest: logProperties.runIsTest ?? resourceProperties.runIsTest ?? false,
+          taskSlug: logProperties.taskSlug ?? resourceProperties.taskSlug ?? "unknown",
+          taskPath: logProperties.taskPath ?? resourceProperties.taskPath ?? "unknown",
+          workerId: logProperties.workerId ?? resourceProperties.workerId ?? "unknown",
+          workerVersion:
+            logProperties.workerVersion ?? resourceProperties.workerVersion ?? "unknown",
+          queueId: logProperties.queueId ?? resourceProperties.queueId ?? "unknown",
+          queueName: logProperties.queueName ?? resourceProperties.queueName ?? "unknown",
+          batchId: logProperties.batchId ?? resourceProperties.batchId,
+          idempotencyKey: logProperties.idempotencyKey ?? resourceProperties.idempotencyKey,
+          machinePreset: logProperties.machinePreset ?? resourceProperties.machinePreset,
+          machinePresetCpu: logProperties.machinePresetCpu ?? resourceProperties.machinePresetCpu,
+          machinePresetMemory:
+            logProperties.machinePresetMemory ?? resourceProperties.machinePresetMemory,
+          machinePresetCentsPerMs:
+            logProperties.machinePresetCentsPerMs ?? resourceProperties.machinePresetCentsPerMs,
           attemptId:
             extractStringAttribute(
               log.attributes ?? [],
@@ -255,10 +287,13 @@ function convertLogsToCreateableEvents(resourceLog: ResourceLogs): Array<Creatab
   });
 }
 
-function convertSpansToCreateableEvents(resourceSpan: ResourceSpans): Array<CreatableEvent> {
+function convertSpansToCreateableEvents(
+  resourceSpan: ResourceSpans,
+  spanAttributeValueLengthLimit: number
+): Array<CreatableEvent> {
   const resourceAttributes = resourceSpan.resource?.attributes ?? [];
 
-  const resourceProperties = extractResourceProperties(resourceAttributes);
+  const resourceProperties = extractEventProperties(resourceAttributes);
 
   return resourceSpan.scopeSpans.flatMap((scopeSpan) => {
     return scopeSpan.spans
@@ -268,6 +303,11 @@ function convertSpansToCreateableEvents(resourceSpan: ResourceSpans): Array<Crea
         if (!span.traceId || !span.spanId) {
           return;
         }
+
+        const spanProperties = extractEventProperties(
+          span.attributes ?? [],
+          SemanticInternalAttributes.METADATA
+        );
 
         return {
           traceId: binaryToHex(span.traceId),
@@ -290,14 +330,9 @@ function convertSpansToCreateableEvents(resourceSpan: ResourceSpans): Array<Crea
           events: spanEventsToEventEvents(span.events ?? []),
           duration: span.endTimeUnixNano - span.startTimeUnixNano,
           properties: {
-            ...convertKeyValueItemsToMap(span.attributes ?? [], [
-              SemanticInternalAttributes.SPAN_ID,
-              SemanticInternalAttributes.SPAN_PARTIAL,
-            ]),
             ...convertKeyValueItemsToMap(
-              resourceAttributes,
-              [SemanticInternalAttributes.TRIGGER],
-              SemanticInternalAttributes.METADATA
+              truncateAttributes(span.attributes ?? [], spanAttributeValueLengthLimit),
+              [SemanticInternalAttributes.SPAN_ID, SemanticInternalAttributes.SPAN_PARTIAL]
             ),
           },
           style: convertKeyValueItemsToMap(
@@ -327,7 +362,35 @@ function convertSpansToCreateableEvents(resourceSpan: ResourceSpans): Array<Crea
               span.attributes ?? [],
               SemanticInternalAttributes.PAYLOAD_TYPE
             ) ?? "application/json",
-          ...resourceProperties,
+          metadata: spanProperties.metadata ?? resourceProperties.metadata,
+          serviceName: spanProperties.serviceName ?? resourceProperties.serviceName ?? "unknown",
+          serviceNamespace:
+            spanProperties.serviceNamespace ?? resourceProperties.serviceNamespace ?? "unknown",
+          environmentId:
+            spanProperties.environmentId ?? resourceProperties.environmentId ?? "unknown",
+          environmentType:
+            spanProperties.environmentType ?? resourceProperties.environmentType ?? "DEVELOPMENT",
+          organizationId:
+            spanProperties.organizationId ?? resourceProperties.organizationId ?? "unknown",
+          projectId: spanProperties.projectId ?? resourceProperties.projectId ?? "unknown",
+          projectRef: spanProperties.projectRef ?? resourceProperties.projectRef ?? "unknown",
+          runId: spanProperties.runId ?? resourceProperties.runId ?? "unknown",
+          runIsTest: spanProperties.runIsTest ?? resourceProperties.runIsTest ?? false,
+          taskSlug: spanProperties.taskSlug ?? resourceProperties.taskSlug ?? "unknown",
+          taskPath: spanProperties.taskPath ?? resourceProperties.taskPath ?? "unknown",
+          workerId: spanProperties.workerId ?? resourceProperties.workerId ?? "unknown",
+          workerVersion:
+            spanProperties.workerVersion ?? resourceProperties.workerVersion ?? "unknown",
+          queueId: spanProperties.queueId ?? resourceProperties.queueId ?? "unknown",
+          queueName: spanProperties.queueName ?? resourceProperties.queueName ?? "unknown",
+          batchId: spanProperties.batchId ?? resourceProperties.batchId,
+          idempotencyKey: spanProperties.idempotencyKey ?? resourceProperties.idempotencyKey,
+          machinePreset: spanProperties.machinePreset ?? resourceProperties.machinePreset,
+          machinePresetCpu: spanProperties.machinePresetCpu ?? resourceProperties.machinePresetCpu,
+          machinePresetMemory:
+            spanProperties.machinePresetMemory ?? resourceProperties.machinePresetMemory,
+          machinePresetCentsPerMs:
+            spanProperties.machinePresetCentsPerMs ?? resourceProperties.machinePresetCentsPerMs,
           attemptId:
             extractStringAttribute(
               span.attributes ?? [],
@@ -359,67 +422,77 @@ function convertSpansToCreateableEvents(resourceSpan: ResourceSpans): Array<Crea
   });
 }
 
-function extractResourceProperties(attributes: KeyValue[]) {
+function extractEventProperties(attributes: KeyValue[], prefix?: string) {
   return {
     metadata: convertKeyValueItemsToMap(attributes, [SemanticInternalAttributes.TRIGGER]),
-    serviceName: extractStringAttribute(
-      attributes,
-      SemanticResourceAttributes.SERVICE_NAME,
-      "unknown"
-    ),
+    serviceName: extractStringAttribute(attributes, SemanticResourceAttributes.SERVICE_NAME),
     serviceNamespace: extractStringAttribute(
       attributes,
-      SemanticResourceAttributes.SERVICE_NAMESPACE,
-      "unknown"
+      SemanticResourceAttributes.SERVICE_NAMESPACE
     ),
-    environmentId: extractStringAttribute(
-      attributes,
+    environmentId: extractStringAttribute(attributes, [
+      prefix,
       SemanticInternalAttributes.ENVIRONMENT_ID,
-      "unknown"
-    ),
-    environmentType: extractStringAttribute(
-      attributes,
+    ]),
+    environmentType: extractStringAttribute(attributes, [
+      prefix,
       SemanticInternalAttributes.ENVIRONMENT_TYPE,
-      "unknown"
-    ) as CreatableEventEnvironmentType,
-    organizationId: extractStringAttribute(
-      attributes,
+    ]) as CreatableEventEnvironmentType,
+    organizationId: extractStringAttribute(attributes, [
+      prefix,
       SemanticInternalAttributes.ORGANIZATION_ID,
-      "unknown"
-    ),
-    projectId: extractStringAttribute(attributes, SemanticInternalAttributes.PROJECT_ID, "unknown"),
-    projectRef: extractStringAttribute(
-      attributes,
+    ]),
+    projectId: extractStringAttribute(attributes, [prefix, SemanticInternalAttributes.PROJECT_ID]),
+    projectRef: extractStringAttribute(attributes, [
+      prefix,
       SemanticInternalAttributes.PROJECT_REF,
-      "unknown"
+    ]),
+    runId: extractStringAttribute(attributes, [prefix, SemanticInternalAttributes.RUN_ID]),
+    runIsTest: extractBooleanAttribute(
+      attributes,
+      [prefix, SemanticInternalAttributes.RUN_IS_TEST],
+      false
     ),
-    runId: extractStringAttribute(attributes, SemanticInternalAttributes.RUN_ID, "unknown"),
-    runIsTest: extractBooleanAttribute(attributes, SemanticInternalAttributes.RUN_IS_TEST, false),
-    attemptId: extractStringAttribute(attributes, SemanticInternalAttributes.ATTEMPT_ID),
-    attemptNumber: extractNumberAttribute(attributes, SemanticInternalAttributes.ATTEMPT_NUMBER),
-    taskSlug: extractStringAttribute(attributes, SemanticInternalAttributes.TASK_SLUG, "unknown"),
-    taskPath: extractStringAttribute(attributes, SemanticInternalAttributes.TASK_PATH),
+    attemptId: extractStringAttribute(attributes, [prefix, SemanticInternalAttributes.ATTEMPT_ID]),
+    attemptNumber: extractNumberAttribute(attributes, [
+      prefix,
+      SemanticInternalAttributes.ATTEMPT_NUMBER,
+    ]),
+    taskSlug: extractStringAttribute(attributes, [prefix, SemanticInternalAttributes.TASK_SLUG]),
+    taskPath: extractStringAttribute(attributes, [prefix, SemanticInternalAttributes.TASK_PATH]),
     taskExportName: "@deprecated",
-    workerId: extractStringAttribute(attributes, SemanticInternalAttributes.WORKER_ID),
-    workerVersion: extractStringAttribute(attributes, SemanticInternalAttributes.WORKER_VERSION),
-    queueId: extractStringAttribute(attributes, SemanticInternalAttributes.QUEUE_ID),
-    queueName: extractStringAttribute(attributes, SemanticInternalAttributes.QUEUE_NAME),
-    batchId: extractStringAttribute(attributes, SemanticInternalAttributes.BATCH_ID),
-    idempotencyKey: extractStringAttribute(attributes, SemanticInternalAttributes.IDEMPOTENCY_KEY),
-    machinePreset: extractStringAttribute(
-      attributes,
-      SemanticInternalAttributes.MACHINE_PRESET_NAME
-    ),
+    workerId: extractStringAttribute(attributes, [prefix, SemanticInternalAttributes.WORKER_ID]),
+    workerVersion: extractStringAttribute(attributes, [
+      prefix,
+      SemanticInternalAttributes.WORKER_VERSION,
+    ]),
+    queueId: extractStringAttribute(attributes, [prefix, SemanticInternalAttributes.QUEUE_ID]),
+    queueName: extractStringAttribute(attributes, [prefix, SemanticInternalAttributes.QUEUE_NAME]),
+    batchId: extractStringAttribute(attributes, [prefix, SemanticInternalAttributes.BATCH_ID]),
+    idempotencyKey: extractStringAttribute(attributes, [
+      prefix,
+      SemanticInternalAttributes.IDEMPOTENCY_KEY,
+    ]),
+    machinePreset: extractStringAttribute(attributes, [
+      prefix,
+      SemanticInternalAttributes.MACHINE_PRESET_NAME,
+    ]),
     machinePresetCpu:
-      extractDoubleAttribute(attributes, SemanticInternalAttributes.MACHINE_PRESET_CPU) ??
-      extractNumberAttribute(attributes, SemanticInternalAttributes.MACHINE_PRESET_CPU),
+      extractDoubleAttribute(attributes, [prefix, SemanticInternalAttributes.MACHINE_PRESET_CPU]) ??
+      extractNumberAttribute(attributes, [prefix, SemanticInternalAttributes.MACHINE_PRESET_CPU]),
     machinePresetMemory:
-      extractDoubleAttribute(attributes, SemanticInternalAttributes.MACHINE_PRESET_MEMORY) ??
-      extractNumberAttribute(attributes, SemanticInternalAttributes.MACHINE_PRESET_MEMORY),
-    machinePresetCentsPerMs: extractDoubleAttribute(
-      attributes,
-      SemanticInternalAttributes.MACHINE_PRESET_CENTS_PER_MS
-    ),
+      extractDoubleAttribute(attributes, [
+        prefix,
+        SemanticInternalAttributes.MACHINE_PRESET_MEMORY,
+      ]) ??
+      extractNumberAttribute(attributes, [
+        prefix,
+        SemanticInternalAttributes.MACHINE_PRESET_MEMORY,
+      ]),
+    machinePresetCentsPerMs: extractDoubleAttribute(attributes, [
+      prefix,
+      SemanticInternalAttributes.MACHINE_PRESET_CENTS_PER_MS,
+    ]),
   };
 }
 
@@ -643,56 +716,92 @@ function convertUnixNanoToDate(unixNano: bigint | number): Date {
   return new Date(Number(BigInt(unixNano) / BigInt(1_000_000)));
 }
 
-function extractStringAttribute(attributes: KeyValue[], name: string): string | undefined;
-function extractStringAttribute(attributes: KeyValue[], name: string, fallback: string): string;
 function extractStringAttribute(
   attributes: KeyValue[],
-  name: string,
+  name: string | Array<string | undefined>
+): string | undefined;
+function extractStringAttribute(
+  attributes: KeyValue[],
+  name: string | Array<string | undefined>,
+  fallback: string
+): string;
+function extractStringAttribute(
+  attributes: KeyValue[],
+  name: string | Array<string | undefined>,
   fallback?: string
 ): string | undefined {
-  const attribute = attributes.find((attribute) => attribute.key === name);
+  const key = Array.isArray(name) ? name.filter(Boolean).join(".") : name;
+
+  const attribute = attributes.find((attribute) => attribute.key === key);
 
   if (!attribute) return fallback;
 
   return isStringValue(attribute?.value) ? attribute.value.stringValue : fallback;
 }
 
-function extractNumberAttribute(attributes: KeyValue[], name: string): number | undefined;
-function extractNumberAttribute(attributes: KeyValue[], name: string, fallback: number): number;
 function extractNumberAttribute(
   attributes: KeyValue[],
-  name: string,
+  name: string | Array<string | undefined>
+): number | undefined;
+function extractNumberAttribute(
+  attributes: KeyValue[],
+  name: string | Array<string | undefined>,
+  fallback: number
+): number;
+function extractNumberAttribute(
+  attributes: KeyValue[],
+  name: string | Array<string | undefined>,
   fallback?: number
 ): number | undefined {
-  const attribute = attributes.find((attribute) => attribute.key === name);
+  const key = Array.isArray(name) ? name.filter(Boolean).join(".") : name;
+
+  const attribute = attributes.find((attribute) => attribute.key === key);
 
   if (!attribute) return fallback;
 
   return isIntValue(attribute?.value) ? Number(attribute.value.intValue) : fallback;
 }
 
-function extractDoubleAttribute(attributes: KeyValue[], name: string): number | undefined;
-function extractDoubleAttribute(attributes: KeyValue[], name: string, fallback: number): number;
 function extractDoubleAttribute(
   attributes: KeyValue[],
-  name: string,
+  name: string | Array<string | undefined>
+): number | undefined;
+function extractDoubleAttribute(
+  attributes: KeyValue[],
+  name: string | Array<string | undefined>,
+  fallback: number
+): number;
+function extractDoubleAttribute(
+  attributes: KeyValue[],
+  name: string | Array<string | undefined>,
   fallback?: number
 ): number | undefined {
-  const attribute = attributes.find((attribute) => attribute.key === name);
+  const key = Array.isArray(name) ? name.filter(Boolean).join(".") : name;
+
+  const attribute = attributes.find((attribute) => attribute.key === key);
 
   if (!attribute) return fallback;
 
   return isDoubleValue(attribute?.value) ? Number(attribute.value.doubleValue) : fallback;
 }
 
-function extractBooleanAttribute(attributes: KeyValue[], name: string): boolean | undefined;
-function extractBooleanAttribute(attributes: KeyValue[], name: string, fallback: boolean): boolean;
 function extractBooleanAttribute(
   attributes: KeyValue[],
-  name: string,
+  name: string | Array<string | undefined>
+): boolean | undefined;
+function extractBooleanAttribute(
+  attributes: KeyValue[],
+  name: string | Array<string | undefined>,
+  fallback: boolean
+): boolean;
+function extractBooleanAttribute(
+  attributes: KeyValue[],
+  name: string | Array<string | undefined>,
   fallback?: boolean
 ): boolean | undefined {
-  const attribute = attributes.find((attribute) => attribute.key === name);
+  const key = Array.isArray(name) ? name.filter(Boolean).join(".") : name;
+
+  const attribute = attributes.find((attribute) => attribute.key === key);
 
   if (!attribute) return fallback;
 
@@ -750,7 +859,23 @@ function binaryToHex(buffer: Buffer | string | undefined): string | undefined {
   return Buffer.from(Array.from(buffer)).toString("hex");
 }
 
+function truncateAttributes(attributes: KeyValue[], maximumLength: number = 1024): KeyValue[] {
+  return attributes.map((attribute) => {
+    return isStringValue(attribute.value)
+      ? {
+          key: attribute.key,
+          value: {
+            stringValue: attribute.value.stringValue.slice(0, maximumLength),
+          },
+        }
+      : attribute;
+  });
+}
+
 export const otlpExporter = new OTLPExporter(
   eventRepository,
-  process.env.OTLP_EXPORTER_VERBOSE === "1"
+  process.env.OTLP_EXPORTER_VERBOSE === "1",
+  process.env.SERVER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT
+    ? parseInt(process.env.SERVER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT, 10)
+    : 8192
 );

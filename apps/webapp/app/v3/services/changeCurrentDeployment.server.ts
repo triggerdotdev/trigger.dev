@@ -84,6 +84,6 @@ export class ChangeCurrentDeploymentService extends BaseService {
       },
     });
 
-    await ExecuteTasksWaitingForDeployService.enqueue(deployment.workerId, this._prisma);
+    await ExecuteTasksWaitingForDeployService.enqueue(deployment.workerId);
   }
 }

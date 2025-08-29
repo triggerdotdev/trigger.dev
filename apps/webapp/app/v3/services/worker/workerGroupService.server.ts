@@ -195,10 +195,12 @@ export class WorkerGroupService extends WithRunEngine {
 
   async getDefaultWorkerGroupForProject({
     projectId,
+    regionOverride,
   }: {
     projectId: string;
+    regionOverride?: string;
   }): Promise<WorkerInstanceGroup | undefined> {
-    const project = await this._prisma.project.findUnique({
+    const project = await this._prisma.project.findFirst({
       where: {
         id: projectId,
       },
@@ -208,8 +210,39 @@ export class WorkerGroupService extends WithRunEngine {
     });
 
     if (!project) {
-      logger.error("[WorkerGroupService] Project not found", { projectId });
-      return;
+      throw new Error("Project not found.");
+    }
+
+    // If they've specified a region, we need to check they have access to it
+    if (regionOverride) {
+      const workerGroup = await this._prisma.workerInstanceGroup.findFirst({
+        where: {
+          masterQueue: regionOverride,
+        },
+      });
+
+      if (!workerGroup) {
+        throw new Error(`The region you specified doesn't exist ("${regionOverride}").`);
+      }
+
+      // If they're restricted, check they have access
+      if (project.allowedWorkerQueues.length > 0) {
+        if (project.allowedWorkerQueues.includes(workerGroup.masterQueue)) {
+          return workerGroup;
+        }
+
+        throw new Error(
+          `You don't have access to this region ("${regionOverride}"). You can use the following regions: ${project.allowedWorkerQueues.join(
+            ", "
+          )}.`
+        );
+      }
+
+      if (workerGroup.hidden) {
+        throw new Error(`The region you specified isn't available to you ("${regionOverride}").`);
+      }
+
+      return workerGroup;
     }
 
     if (project.defaultWorkerGroup) {

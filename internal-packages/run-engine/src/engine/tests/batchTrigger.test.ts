@@ -24,6 +24,8 @@ describe("RunEngine batchTrigger", () => {
       },
       queue: {
         redis: redisOptions,
+        masterQueueConsumersDisabled: true,
+        processWorkerQueueDebounceMs: 50,
       },
       runLock: {
         redis: redisOptions,
@@ -73,7 +75,7 @@ describe("RunEngine batchTrigger", () => {
           traceContext: {},
           traceId: "t12345",
           spanId: "s12345",
-          masterQueue: "main",
+          workerQueue: "main",
           queue: "task/test-task",
           isTest: false,
           tags: [],
@@ -94,7 +96,7 @@ describe("RunEngine batchTrigger", () => {
           traceContext: {},
           traceId: "t12345",
           spanId: "s12345",
-          masterQueue: "main",
+          workerQueue: "main",
           queue: "task/test-task",
           isTest: false,
           tags: [],
@@ -116,13 +118,13 @@ describe("RunEngine batchTrigger", () => {
       expect(queueLength).toBe(2);
 
       //dequeue
+      await setTimeout(500);
       const dequeued: DequeuedMessage[] = [];
       for (let i = 0; i < 2; i++) {
         dequeued.push(
-          ...(await engine.dequeueFromMasterQueue({
+          ...(await engine.dequeueFromWorkerQueue({
             consumerId: "test_12345",
-            masterQueue: "main",
-            maxRunCount: 1,
+            workerQueue: "main",
           }))
         );
       }

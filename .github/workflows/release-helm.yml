@@ -1,0 +1,143 @@
+name: 🧭 Helm Chart Release
+
+on:
+  push:
+    tags:
+      - 'helm-v*'
+  workflow_dispatch:
+    inputs:
+      chart_version:
+        description: 'Chart version to release'
+        required: true
+        type: string
+
+env:
+  REGISTRY: ghcr.io
+  CHART_NAME: trigger
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: "3.18.3"
+
+      - name: Build dependencies
+        run: helm dependency build ./hosting/k8s/helm/
+
+      - name: Extract dependency charts
+        run: |
+          cd ./hosting/k8s/helm/
+          for file in ./charts/*.tgz; do echo "Extracting $file"; tar -xzf "$file" -C ./charts; done
+
+      - name: Lint Helm Chart
+        run: |
+          helm lint ./hosting/k8s/helm/
+
+      - name: Render templates
+        run: |
+          helm template test-release ./hosting/k8s/helm/ \
+            --values ./hosting/k8s/helm/values.yaml \
+            --output-dir ./helm-output
+
+      - name: Validate manifests
+        uses: docker://ghcr.io/yannh/kubeconform:v0.7.0
+        with:
+          entrypoint: '/kubeconform'
+          args: "-summary -output json ./helm-output"
+
+  release:
+    needs: lint-and-test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # for gh-release
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: "3.18.3"
+
+      - name: Build dependencies
+        run: helm dependency build ./hosting/k8s/helm/
+
+      - name: Extract dependency charts
+        run: |
+          cd ./hosting/k8s/helm/
+          for file in ./charts/*.tgz; do echo "Extracting $file"; tar -xzf "$file" -C ./charts; done
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract version from tag or input
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.chart_version }}"
+          else
+            VERSION="${{ github.ref_name }}"
+            VERSION="${VERSION#helm-v}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Releasing version: $VERSION"
+
+      - name: Check Chart.yaml version matches release version
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          CHART_VERSION=$(grep '^version:' ./hosting/k8s/helm/Chart.yaml | awk '{print $2}')
+          echo "Chart.yaml version: $CHART_VERSION"
+          echo "Release version: $VERSION"
+          if [ "$CHART_VERSION" != "$VERSION" ]; then
+            echo "❌ Chart.yaml version does not match release version!"
+            exit 1
+          fi
+          echo "✅ Chart.yaml version matches release version."
+
+      - name: Package Helm Chart
+        run: |
+          helm package ./hosting/k8s/helm/ --destination /tmp/
+
+      - name: Push Helm Chart to GHCR
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          CHART_PACKAGE="/tmp/${{ env.CHART_NAME }}-${VERSION}.tgz"
+          
+          # Push to GHCR OCI registry
+          helm push "$CHART_PACKAGE" "oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts"
+
+      - name: Create GitHub Release
+        id: release
+        uses: softprops/action-gh-release@v1
+        if: github.event_name == 'push'
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "Helm Chart ${{ steps.version.outputs.version }}"
+          body: |
+            ### Installation
+            ```bash
+            helm upgrade --install trigger \
+              oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts/${{ env.CHART_NAME }} \
+              --version "${{ steps.version.outputs.version }}"
+            ```
+            
+            ### Changes
+            See commit history for detailed changes in this release.
+          files: |
+            /tmp/${{ env.CHART_NAME }}-${{ steps.version.outputs.version }}.tgz
+          token: ${{ secrets.GITHUB_TOKEN }}
+          draft: true
+          prerelease: true

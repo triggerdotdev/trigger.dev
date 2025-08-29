@@ -12,8 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        shardIndex: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-        shardTotal: [10]
+        shardIndex: [1, 2, 3, 4, 5, 6, 7, 8]
+        shardTotal: [8]
     env:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       SHARD_INDEX: ${{ matrix.shardIndex }}
@@ -86,6 +86,8 @@ jobs:
           SESSION_SECRET: "secret"
           MAGIC_LINK_SECRET: "secret"
           ENCRYPTION_KEY: "secret"
+          DEPLOY_REGISTRY_HOST: "docker.io"
+          CLICKHOUSE_URL: "http://default:password@localhost:8123"
 
       - name: Gather all reports
         if: ${{ !cancelled() }}
@@ -133,4 +135,4 @@ jobs:
           merge-multiple: true
 
       - name: Merge reports
-        run: pnpm dlx vitest run --merge-reports
+        run: pnpm dlx vitest@3.1.4 run --merge-reports --pass-with-no-tests

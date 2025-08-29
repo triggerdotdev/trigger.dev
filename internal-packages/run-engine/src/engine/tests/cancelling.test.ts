@@ -25,6 +25,8 @@ describe("RunEngine cancelling", () => {
         },
         queue: {
           redis: redisOptions,
+          masterQueueConsumersDisabled: true,
+          processWorkerQueueDebounceMs: 50,
         },
         runLock: {
           redis: redisOptions,
@@ -64,7 +66,7 @@ describe("RunEngine cancelling", () => {
             traceContext: {},
             traceId: "t12345",
             spanId: "s12345",
-            masterQueue: "main",
+            workerQueue: "main",
             queue: `task/${parentTask}`,
             isTest: false,
             tags: [],
@@ -73,10 +75,10 @@ describe("RunEngine cancelling", () => {
         );
 
         //dequeue the run
-        const dequeued = await engine.dequeueFromMasterQueue({
+        await setTimeout(500);
+        const dequeued = await engine.dequeueFromWorkerQueue({
           consumerId: "test_12345",
-          masterQueue: parentRun.masterQueue,
-          maxRunCount: 10,
+          workerQueue: "main",
         });
 
         //create an attempt
@@ -99,7 +101,7 @@ describe("RunEngine cancelling", () => {
             traceContext: {},
             traceId: "t12345",
             spanId: "s12345",
-            masterQueue: "main",
+            workerQueue: "main",
             queue: `task/${childTask}`,
             isTest: false,
             tags: [],
@@ -110,10 +112,10 @@ describe("RunEngine cancelling", () => {
         );
 
         //dequeue the child run
-        const dequeuedChild = await engine.dequeueFromMasterQueue({
+        await setTimeout(500);
+        const dequeuedChild = await engine.dequeueFromWorkerQueue({
           consumerId: "test_12345",
-          masterQueue: childRun.masterQueue,
-          maxRunCount: 10,
+          workerQueue: "main",
         });
 
         //start the child run
@@ -148,7 +150,7 @@ describe("RunEngine cancelling", () => {
           cancelledEventData.push(result);
         });
 
-        //todo call completeAttempt (this will happen from the worker)
+        // call completeAttempt manually (this will happen from the worker)
         const completeResult = await engine.completeRunAttempt({
           runId: parentRun.id,
           snapshotId: executionData!.snapshot.id,
@@ -239,6 +241,8 @@ describe("RunEngine cancelling", () => {
       },
       queue: {
         redis: redisOptions,
+        masterQueueConsumersDisabled: true,
+        processWorkerQueueDebounceMs: 50,
       },
       runLock: {
         redis: redisOptions,
@@ -277,20 +281,13 @@ describe("RunEngine cancelling", () => {
           traceContext: {},
           traceId: "t12345",
           spanId: "s12345",
-          masterQueue: "main",
+          workerQueue: "main",
           queue: `task/${parentTask}`,
           isTest: false,
           tags: [],
         },
         prisma
       );
-
-      //dequeue the run
-      const dequeued = await engine.dequeueFromMasterQueue({
-        consumerId: "test_12345",
-        masterQueue: parentRun.masterQueue,
-        maxRunCount: 10,
-      });
 
       let cancelledEventData: EventBusEventArgs<"runCancelled">[0][] = [];
       engine.eventBus.on("runCancelled", (result) => {

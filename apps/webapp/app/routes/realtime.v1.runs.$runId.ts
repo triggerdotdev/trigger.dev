@@ -39,11 +39,13 @@ export const loader = createLoaderApiRoute(
       superScopes: ["read:runs", "read:all", "admin"],
     },
   },
-  async ({ authentication, request, resource: run }) => {
+  async ({ authentication, request, resource: run, apiVersion }) => {
     return realtimeClient.streamRun(
       request.url,
       authentication.environment,
       run.id,
+      apiVersion,
+      authentication.realtime,
       request.headers.get("x-trigger-electric-version") ?? undefined
     );
   }

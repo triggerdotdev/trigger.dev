@@ -3,7 +3,7 @@ import { type Prisma, type TaskRun } from "@trigger.dev/database";
 import { findQueueInEnvironment } from "~/models/taskQueue.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { updateMetadataService } from "~/services/metadata/updateMetadata.server";
+import { updateMetadataService } from "~/services/metadata/updateMetadataInstance.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { socketIo } from "../handleSocketIo.server";
@@ -29,6 +29,7 @@ type BaseInput = {
   error?: TaskRunError;
   metadata?: FlushedRunMetadata;
   env?: AuthenticatedEnvironment;
+  bulkActionId?: string;
 };
 
 type InputWithInclude<T extends Prisma.TaskRunInclude> = BaseInput & {
@@ -49,6 +50,7 @@ export class FinalizeTaskRunService extends BaseService {
     status,
     expiredAt,
     completedAt,
+    bulkActionId,
     include,
     attemptStatus,
     error,
@@ -98,7 +100,17 @@ export class FinalizeTaskRunService extends BaseService {
 
     const run = await this._prisma.taskRun.update({
       where: { id },
-      data: { status, expiredAt, completedAt, error: taskRunError },
+      data: {
+        status,
+        expiredAt,
+        completedAt,
+        error: taskRunError,
+        bulkActionGroupIds: bulkActionId
+          ? {
+              push: bulkActionId,
+            }
+          : undefined,
+      },
       ...(include ? { include } : {}),
     });
 
@@ -138,7 +150,7 @@ export class FinalizeTaskRunService extends BaseService {
     }
 
     if (isFatalRunStatus(run.status)) {
-      logger.error("FinalizeTaskRunService: Fatal status", { runId: run.id, status: run.status });
+      logger.warn("FinalizeTaskRunService: Fatal status", { runId: run.id, status: run.status });
 
       const extendedRun = await this._prisma.taskRun.findFirst({
         where: { id: run.id },
@@ -158,7 +170,7 @@ export class FinalizeTaskRunService extends BaseService {
       });
 
       if (extendedRun && extendedRun.runtimeEnvironment.type !== "DEVELOPMENT") {
-        logger.error("FinalizeTaskRunService: Fatal status, requesting worker exit", {
+        logger.warn("FinalizeTaskRunService: Fatal status, requesting worker exit", {
           runId: run.id,
           status: run.status,
         });
@@ -244,7 +256,7 @@ export class FinalizeTaskRunService extends BaseService {
 
         // This won't resume because this batch does not have a dependent task attempt ID
         // or is in development, but this service will mark the batch as completed
-        await ResumeBatchRunService.enqueue(item.batchTaskRunId, false, this._prisma);
+        await ResumeBatchRunService.enqueue(item.batchTaskRunId, false);
       }
     }
   }
@@ -293,9 +305,10 @@ export class FinalizeTaskRunService extends BaseService {
     });
 
     if (!run.lockedById) {
-      logger.error(
+      // This happens when a run is expired or was cancelled before an attempt, it's not a problem
+      logger.info(
         "FinalizeTaskRunService: No lockedById, so can't get the BackgroundWorkerTask. Not creating an attempt.",
-        { runId: run.id }
+        { runId: run.id, status: run.status }
       );
       return;
     }

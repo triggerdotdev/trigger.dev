@@ -1,53 +1,47 @@
-import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
-import { prisma } from "~/db.server";
-import { authenticateApiRequest } from "~/services/apiAuth.server";
+import { $replica } from "~/db.server";
+import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { CancelTaskRunService } from "~/v3/services/cancelTaskRun.server";
 
 const ParamsSchema = z.object({
   runParam: z.string(),
 });
 
-export async function action({ request, params }: ActionFunctionArgs) {
-  // Ensure this is a POST request
-  if (request.method.toUpperCase() !== "POST") {
-    return { status: 405, body: "Method Not Allowed" };
-  }
-
-  // Authenticate the request
-  const authenticationResult = await authenticateApiRequest(request);
-
-  if (!authenticationResult) {
-    return json({ error: "Invalid or Missing API Key" }, { status: 401 });
-  }
-
-  const parsed = ParamsSchema.safeParse(params);
-
-  if (!parsed.success) {
-    return json({ error: "Invalid or Missing run id" }, { status: 400 });
-  }
-
-  const { runParam } = parsed.data;
-
-  const taskRun = await prisma.taskRun.findUnique({
-    where: {
-      friendlyId: runParam,
-      runtimeEnvironmentId: authenticationResult.environment.id,
+const { action } = createActionApiRoute(
+  {
+    params: ParamsSchema,
+    allowJWT: true,
+    corsStrategy: "none",
+    authorization: {
+      action: "write",
+      resource: (params) => ({ runs: params.runParam }),
+      superScopes: ["write:runs", "admin"],
     },
-  });
+    findResource: async (params, auth) => {
+      return $replica.taskRun.findFirst({
+        where: {
+          friendlyId: params.runParam,
+          runtimeEnvironmentId: auth.environment.id,
+        },
+      });
+    },
+  },
+  async ({ resource }) => {
+    if (!resource) {
+      return json({ error: "Run not found" }, { status: 404 });
+    }
 
-  if (!taskRun) {
-    return json({ error: "Run not found" }, { status: 404 });
+    const service = new CancelTaskRunService();
+
+    try {
+      await service.call(resource);
+    } catch (error) {
+      return json({ error: "Internal Server Error" }, { status: 500 });
+    }
+
+    return json({ id: resource.friendlyId }, { status: 200 });
   }
+);
 
-  const service = new CancelTaskRunService();
-
-  try {
-    await service.call(taskRun);
-  } catch (error) {
-    return json({ error: "Internal Server Error" }, { status: 500 });
-  }
-
-  return json({ id: runParam }, { status: 200 });
-}
+export { action };

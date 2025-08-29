@@ -1,5 +1,8 @@
-import { ExternalBuildData, FinalizeDeploymentRequestBody } from "@trigger.dev/core/v3/schemas";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import {
+  ExternalBuildData,
+  type FinalizeDeploymentRequestBody,
+} from "@trigger.dev/core/v3/schemas";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { join } from "node:path";
@@ -8,6 +11,10 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { env } from "~/env.server";
 import { depot as execDepot } from "@depot/cli";
 import { FinalizeDeploymentService } from "./finalizeDeployment.server";
+import { remoteBuildsEnabled } from "../remoteImageBuilder.server";
+import { getEcrAuthToken, isEcrRegistry } from "../getDeploymentImageRef.server";
+import { tryCatch } from "@trigger.dev/core";
+import { getRegistryConfig, type RegistryConfig } from "../registryConfig.server";
 
 export class FinalizeDeploymentV2Service extends BaseService {
   public async call(
@@ -16,10 +23,9 @@ export class FinalizeDeploymentV2Service extends BaseService {
     body: FinalizeDeploymentRequestBody,
     writer?: WritableStreamDefaultWriter
   ) {
-    // if it's self hosted, lets just use the v1 finalize deployment service
-    if (body.selfHosted) {
+    // If remote builds are not enabled, lets just use the v1 finalize deployment service
+    if (!remoteBuildsEnabled()) {
       const finalizeService = new FinalizeDeploymentService();
-
       return finalizeService.call(authenticatedEnv, id, body);
     }
 
@@ -34,6 +40,8 @@ export class FinalizeDeploymentV2Service extends BaseService {
         version: true,
         externalBuildData: true,
         environment: true,
+        imageReference: true,
+        type: true,
         worker: {
           select: {
             project: true,
@@ -75,10 +83,13 @@ export class FinalizeDeploymentV2Service extends BaseService {
       throw new ServiceValidationError("External build data is invalid");
     }
 
+    const isV4Deployment = deployment.type === "MANAGED";
+    const registryConfig = getRegistryConfig(isV4Deployment);
+
+    // For non-ECR registries, username and password are required upfront
     if (
-      !env.DEPLOY_REGISTRY_HOST ||
-      !env.DEPLOY_REGISTRY_USERNAME ||
-      !env.DEPLOY_REGISTRY_PASSWORD
+      !isEcrRegistry(registryConfig.host) &&
+      (!registryConfig.username || !registryConfig.password)
     ) {
       throw new ServiceValidationError("Missing deployment registry credentials");
     }
@@ -87,13 +98,12 @@ export class FinalizeDeploymentV2Service extends BaseService {
       throw new ServiceValidationError("Missing depot token");
     }
 
-    const digest = extractImageDigest(body.imageReference);
+    // All new deployments will set the image reference at creation time
+    if (!deployment.imageReference) {
+      throw new ServiceValidationError("Missing image reference");
+    }
 
-    logger.debug("Pushing image to registry", {
-      id,
-      deployment,
-      digest,
-    });
+    logger.debug("Pushing image to registry", { id, deployment, body });
 
     const pushResult = await executePushToRegistry(
       {
@@ -102,16 +112,12 @@ export class FinalizeDeploymentV2Service extends BaseService {
           orgToken: env.DEPOT_TOKEN,
           projectId: externalBuildData.data.projectId,
         },
-        registry: {
-          host: env.DEPLOY_REGISTRY_HOST,
-          namespace: env.DEPLOY_REGISTRY_NAMESPACE,
-          username: env.DEPLOY_REGISTRY_USERNAME,
-          password: env.DEPLOY_REGISTRY_PASSWORD,
-        },
+        registry: registryConfig,
         deployment: {
           version: deployment.version,
           environmentSlug: deployment.environment.slug,
           projectExternalRef: deployment.worker.project.externalRef,
+          imageReference: deployment.imageReference,
         },
       },
       writer
@@ -121,38 +127,18 @@ export class FinalizeDeploymentV2Service extends BaseService {
       throw new ServiceValidationError(pushResult.error);
     }
 
-    const fullImage = digest ? `${pushResult.image}@${digest}` : pushResult.image;
-
     logger.debug("Image pushed to registry", {
       id,
       deployment,
       body,
-      fullImage,
+      pushedImage: pushResult.image,
     });
 
     const finalizeService = new FinalizeDeploymentService();
-
-    const finalizedDeployment = await finalizeService.call(authenticatedEnv, id, {
-      imageReference: fullImage,
-      skipRegistryProxy: true,
-      skipPromotion: body.skipPromotion,
-    });
+    const finalizedDeployment = await finalizeService.call(authenticatedEnv, id, body);
 
     return finalizedDeployment;
   }
-}
-
-// Extracts the sha256 digest from an image reference
-// For example the image ref "registry.depot.dev/gn57tl6chn:8qfjm8w83w@sha256:aa6fd2bdcbbd611556747e72d0b57797f03aa9b39dc910befc83eea2b08a5b85"
-// would return "sha256:aa6fd2bdcbbd611556747e72d0b57797f03aa9b39dc910befc83eea2b08a5b85"
-function extractImageDigest(image: string) {
-  const digestIndex = image.lastIndexOf("@");
-
-  if (digestIndex === -1) {
-    return;
-  }
-
-  return image.substring(digestIndex + 1);
 }
 
 type ExecutePushToRegistryOptions = {
@@ -161,16 +147,12 @@ type ExecutePushToRegistryOptions = {
     orgToken: string;
     projectId: string;
   };
-  registry: {
-    host: string;
-    namespace: string;
-    username: string;
-    password: string;
-  };
+  registry: RegistryConfig;
   deployment: {
     version: string;
     environmentSlug: string;
     projectExternalRef: string;
+    imageReference: string;
   };
 };
 
@@ -190,17 +172,26 @@ async function executePushToRegistry(
   { depot, registry, deployment }: ExecutePushToRegistryOptions,
   writer?: WritableStreamDefaultWriter
 ): Promise<ExecutePushResult> {
-  // Step 1: We need to "login" to the digital ocean registry
-  const configDir = await ensureLoggedIntoDockerRegistry(registry.host, {
-    username: registry.username,
-    password: registry.password,
-  });
+  // Step 1: We need to "login" to the registry
+  const [loginError, configDir] = await tryCatch(ensureLoggedIntoDockerRegistry(registry));
 
-  const imageTag = `${registry.host}/${registry.namespace}/${deployment.projectExternalRef}:${deployment.version}.${deployment.environmentSlug}`;
+  if (loginError) {
+    logger.error("Failed to login to registry", {
+      deployment,
+      registryHost: registry.host,
+      error: loginError.message,
+    });
+
+    return {
+      ok: false as const,
+      error: "Failed to login to registry",
+      logs: "",
+    };
+  }
+
+  const imageTag = deployment.imageReference;
 
   // Step 2: We need to run the depot push command
-  // DEPOT_TOKEN="<org token>" DEPOT_PROJECT_ID="<project id>" depot push <build id> -t registry.digitalocean.com/trigger-failover/proj_bzhdaqhlymtuhlrcgbqy:20250124.54.prod
-  // Step 4: Build and push the image
   const childProcess = execDepot(["push", depot.buildId, "-t", imageTag, "--progress", "plain"], {
     env: {
       NODE_ENV: process.env.NODE_ENV,
@@ -224,10 +215,7 @@ async function executePushToRegistry(
         const lines = text.split("\n").filter(Boolean);
 
         errors.push(...lines);
-        logger.debug(text, {
-          imageTag,
-          deployment,
-        });
+        logger.debug(text, { deployment });
 
         // Now we can write strings directly
         if (writer) {
@@ -265,17 +253,35 @@ async function executePushToRegistry(
   }
 }
 
-async function ensureLoggedIntoDockerRegistry(
-  registryHost: string,
-  auth: { username: string; password: string }
-) {
+async function ensureLoggedIntoDockerRegistry(registryConfig: RegistryConfig) {
   const tmpDir = await createTempDir();
-  // Read the current docker config
   const dockerConfigPath = join(tmpDir, "config.json");
+
+  let auth: { username: string; password: string };
+
+  // If this is an ECR registry, get fresh credentials
+  if (isEcrRegistry(registryConfig.host)) {
+    auth = await getEcrAuthToken({
+      registryHost: registryConfig.host,
+      assumeRole: registryConfig.ecrAssumeRoleArn
+        ? {
+            roleArn: registryConfig.ecrAssumeRoleArn,
+            externalId: registryConfig.ecrAssumeRoleExternalId,
+          }
+        : undefined,
+    });
+  } else if (!registryConfig.username || !registryConfig.password) {
+    throw new Error("Authentication required for non-ECR registry");
+  } else {
+    auth = {
+      username: registryConfig.username,
+      password: registryConfig.password,
+    };
+  }
 
   await writeJSONFile(dockerConfigPath, {
     auths: {
-      [registryHost]: {
+      [registryConfig.host]: {
         auth: Buffer.from(`${auth.username}:${auth.password}`).toString("base64"),
       },
     },

@@ -1,0 +1,4 @@
+values-*.yaml
+!values-production-example.yaml
+*.tgz
+/charts

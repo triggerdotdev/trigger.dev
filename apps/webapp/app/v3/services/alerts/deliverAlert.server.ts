@@ -7,21 +7,23 @@ import {
   type WebAPIRequestError,
 } from "@slack/web-api";
 import {
-  Webhook,
-  TaskRunError,
   createJsonErrorObject,
-  type RunFailedWebhook,
   type DeploymentFailedWebhook,
   type DeploymentSuccessWebhook,
   isOOMRunError,
+  type RunFailedWebhook,
+  RunStatus,
+  TaskRunError,
 } from "@trigger.dev/core/v3";
+import { type ProjectAlertChannelType, type ProjectAlertType } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { subtle } from "crypto";
+import { environmentTitle } from "~/components/environments/EnvironmentLabel";
 import { type Prisma, type prisma, type PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
 import {
-  OrgIntegrationRepository,
   type OrganizationIntegrationForService,
+  OrgIntegrationRepository,
 } from "~/models/orgIntegration.server";
 import {
   ProjectAlertEmailProperties,
@@ -29,17 +31,17 @@ import {
   ProjectAlertSlackStorage,
   ProjectAlertWebhookProperties,
 } from "~/models/projectAlert.server";
+import { ApiRetrieveRunPresenter } from "~/presenters/v3/ApiRetrieveRunPresenter.server";
 import { DeploymentPresenter } from "~/presenters/v3/DeploymentPresenter.server";
 import { sendAlertEmail } from "~/services/email.server";
 import { logger } from "~/services/logger.server";
 import { decryptSecret } from "~/services/secrets/secretStore.server";
-import { commonWorker } from "~/v3/commonWorker.server";
-import { BaseService } from "../baseService.server";
-import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
-import { type ProjectAlertChannelType, type ProjectAlertType } from "@trigger.dev/database";
-import { alertsRateLimiter } from "~/v3/alertsRateLimiter.server";
 import { v3RunPath } from "~/utils/pathBuilder";
-import { ApiRetrieveRunPresenter } from "~/presenters/v3/ApiRetrieveRunPresenter.server";
+import { alertsRateLimiter } from "~/v3/alertsRateLimiter.server";
+import { alertsWorker } from "~/v3/alertsWorker.server";
+import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
+import { BaseService } from "../baseService.server";
+import { CURRENT_API_VERSION } from "~/api/versions";
 
 type FoundAlert = Prisma.Result<
   typeof prisma.projectAlert,
@@ -56,6 +58,12 @@ type FoundAlert = Prisma.Result<
         include: {
           lockedBy: true;
           lockedToVersion: true;
+          runtimeEnvironment: {
+            select: {
+              type: true;
+              branchName: true;
+            };
+          };
         };
       };
       workerDeployment: {
@@ -63,6 +71,12 @@ type FoundAlert = Prisma.Result<
           worker: {
             include: {
               tasks: true;
+            };
+          };
+          environment: {
+            select: {
+              type: true;
+              branchName: true;
             };
           };
         };
@@ -90,6 +104,12 @@ export class DeliverAlertService extends BaseService {
           include: {
             lockedBy: true,
             lockedToVersion: true,
+            runtimeEnvironment: {
+              select: {
+                type: true,
+                branchName: true,
+              },
+            },
           },
         },
         workerDeployment: {
@@ -97,6 +117,12 @@ export class DeliverAlertService extends BaseService {
             worker: {
               include: {
                 tasks: true,
+              },
+            },
+            environment: {
+              select: {
+                type: true,
+                branchName: true,
               },
             },
           },
@@ -132,7 +158,7 @@ export class DeliverAlertService extends BaseService {
       }
     } catch (error) {
       if (error instanceof SkipRetryError) {
-        logger.error("[DeliverAlert] Skipping retry", {
+        logger.warn("[DeliverAlert] Skipping retry", {
           reason: error.message,
         });
 
@@ -177,10 +203,9 @@ export class DeliverAlertService extends BaseService {
             runId: alert.taskRun.friendlyId,
             taskIdentifier: alert.taskRun.taskIdentifier,
             fileName: alert.taskRun.lockedBy?.filePath ?? "Unknown",
-            exportName: alert.taskRun.lockedBy?.exportName ?? "Unknown",
             version: alert.taskRun.lockedToVersion?.version ?? "Unknown",
             project: alert.project.name,
-            environment: alert.environment.slug,
+            environment: environmentTitle(alert.taskRun.runtimeEnvironment),
             error: createJsonErrorObject(taskRunError),
             runLink: `${env.APP_ORIGIN}/projects/v3/${alert.project.externalRef}/runs/${alert.taskRun.friendlyId}`,
             organization: alert.project.organization.title,
@@ -211,7 +236,7 @@ export class DeliverAlertService extends BaseService {
             email: "alert-deployment-failure",
             to: emailProperties.data.email,
             version: alert.workerDeployment.version,
-            environment: alert.environment.slug,
+            environment: environmentTitle(alert.workerDeployment.environment),
             shortCode: alert.workerDeployment.shortCode,
             failedAt: alert.workerDeployment.failedAt ?? new Date(),
             error: preparedError,
@@ -232,7 +257,7 @@ export class DeliverAlertService extends BaseService {
             email: "alert-deployment-success",
             to: emailProperties.data.email,
             version: alert.workerDeployment.version,
-            environment: alert.environment.slug,
+            environment: environmentTitle(alert.workerDeployment.environment),
             shortCode: alert.workerDeployment.shortCode,
             deployedAt: alert.workerDeployment.deployedAt ?? new Date(),
             deploymentLink: `${env.APP_ORIGIN}/projects/v3/${alert.project.externalRef}/deployments/${alert.workerDeployment.shortCode}`,
@@ -292,6 +317,7 @@ export class DeliverAlertService extends BaseService {
                   id: alert.environment.id,
                   type: alert.environment.type,
                   slug: alert.environment.slug,
+                  branchName: alert.environment.branchName ?? undefined,
                 },
                 organization: {
                   id: alert.project.organizationId,
@@ -328,7 +354,10 @@ export class DeliverAlertService extends BaseService {
                   run: {
                     id: alert.taskRun.friendlyId,
                     number: alert.taskRun.number,
-                    status: ApiRetrieveRunPresenter.apiStatusFromRunStatus(alert.taskRun.status),
+                    status: ApiRetrieveRunPresenter.apiStatusFromRunStatus(
+                      alert.taskRun.status,
+                      CURRENT_API_VERSION
+                    ) as RunStatus,
                     createdAt: alert.taskRun.createdAt,
                     startedAt: alert.taskRun.startedAt ?? undefined,
                     completedAt: alert.taskRun.completedAt ?? undefined,
@@ -349,6 +378,7 @@ export class DeliverAlertService extends BaseService {
                     id: alert.environment.id,
                     type: alert.environment.type,
                     slug: alert.environment.slug,
+                    branchName: alert.environment.branchName ?? undefined,
                   },
                   organization: {
                     id: alert.project.organizationId,
@@ -648,9 +678,8 @@ export class DeliverAlertService extends BaseService {
           const taskRunError = this.#getRunError(alert);
           const error = createJsonErrorObject(taskRunError);
 
-          const exportName = alert.taskRun.lockedBy?.exportName ?? "Unknown";
           const version = alert.taskRun.lockedToVersion?.version ?? "Unknown";
-          const environment = alert.environment.slug;
+          const environment = environmentTitle(alert.taskRun.runtimeEnvironment);
           const taskIdentifier = alert.taskRun.taskIdentifier;
           const timestamp = alert.taskRun.completedAt ?? new Date();
           const runId = alert.taskRun.friendlyId;
@@ -664,7 +693,7 @@ export class DeliverAlertService extends BaseService {
                 type: "section",
                 text: {
                   type: "mrkdwn",
-                  text: `:rotating_light: Error in *${exportName}* _<!date^${Math.round(
+                  text: `:rotating_light: Error in *${taskIdentifier}* _<!date^${Math.round(
                     timestamp.getTime() / 1000
                   )}^at {date_num} {time_secs}|${timestamp.toLocaleString()}>_`,
                 },
@@ -897,7 +926,7 @@ export class DeliverAlertService extends BaseService {
     });
 
     if (!response.ok) {
-      logger.error("[DeliverAlert] Failed to send alert webhook", {
+      logger.info("[DeliverAlert] Failed to send alert webhook", {
         status: response.status,
         statusText: response.statusText,
         url: webhook.url,
@@ -922,7 +951,7 @@ export class DeliverAlertService extends BaseService {
       return await client.chat.postMessage(message);
     } catch (error) {
       if (isWebAPIRateLimitedError(error)) {
-        logger.error("[DeliverAlert] Slack rate limited", {
+        logger.warn("[DeliverAlert] Slack rate limited", {
           error,
           message,
         });
@@ -931,7 +960,7 @@ export class DeliverAlertService extends BaseService {
       }
 
       if (isWebAPIHTTPError(error)) {
-        logger.error("[DeliverAlert] Slack HTTP error", {
+        logger.warn("[DeliverAlert] Slack HTTP error", {
           error,
           message,
         });
@@ -940,7 +969,7 @@ export class DeliverAlertService extends BaseService {
       }
 
       if (isWebAPIRequestError(error)) {
-        logger.error("[DeliverAlert] Slack request error", {
+        logger.warn("[DeliverAlert] Slack request error", {
           error,
           message,
         });
@@ -949,7 +978,7 @@ export class DeliverAlertService extends BaseService {
       }
 
       if (isWebAPIPlatformError(error)) {
-        logger.error("[DeliverAlert] Slack platform error", {
+        logger.warn("[DeliverAlert] Slack platform error", {
           error,
           message,
         });
@@ -962,10 +991,19 @@ export class DeliverAlertService extends BaseService {
           throw new SkipRetryError("Slack invalid blocks");
         }
 
+        if (error.data.error === "account_inactive") {
+          logger.info("[DeliverAlert] Slack account inactive, skipping retry", {
+            error,
+            message,
+          });
+
+          throw new SkipRetryError("Slack account inactive");
+        }
+
         throw new Error("Slack platform error");
       }
 
-      logger.error("[DeliverAlert] Failed to send slack message", {
+      logger.warn("[DeliverAlert] Failed to send slack message", {
         error,
         message,
       });
@@ -1019,7 +1057,7 @@ export class DeliverAlertService extends BaseService {
   }
 
   static async enqueue(alertId: string, runAt?: Date) {
-    return await commonWorker.enqueue({
+    return await alertsWorker.enqueue({
       id: `alert:${alertId}`,
       job: "v3.deliverAlert",
       payload: { alertId },

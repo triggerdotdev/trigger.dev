@@ -1,5 +1,5 @@
 import { ResolvedConfig } from "@trigger.dev/core/v3/build";
-import { Command } from "commander";
+import { Command, Option as CommandOption } from "commander";
 import { z } from "zod";
 import { CommonCommandOptions, commonOptions, wrapCommandAction } from "../cli/common.js";
 import { watchConfig } from "../config.js";
@@ -13,6 +13,15 @@ import { runtimeChecks } from "../utilities/runtimeCheck.js";
 import { getProjectClient, LoginResultOk } from "../utilities/session.js";
 import { login } from "./login.js";
 import { updateTriggerPackages } from "./update.js";
+import {
+  readConfigHasSeenMCPInstallPrompt,
+  writeConfigHasSeenMCPInstallPrompt,
+} from "../utilities/configFiles.js";
+import { confirm, isCancel, log } from "@clack/prompts";
+import { installMcpServer } from "./install-mcp.js";
+import { tryCatch } from "@trigger.dev/core/utils";
+import { VERSION } from "@trigger.dev/core";
+import { initiateRulesInstallWizard } from "./install-rules.js";
 
 const DevCommandOptions = CommonCommandOptions.extend({
   debugOtel: z.boolean().default(false),
@@ -24,6 +33,12 @@ const DevCommandOptions = CommonCommandOptions.extend({
   maxConcurrentRuns: z.coerce.number().optional(),
   mcp: z.boolean().default(false),
   mcpPort: z.coerce.number().optional().default(3333),
+  analyze: z.boolean().default(false),
+  disableWarnings: z.boolean().default(false),
+  skipMCPInstall: z.boolean().default(false),
+  skipRulesInstall: z.boolean().default(false),
+  rulesInstallManifestPath: z.string().optional(),
+  rulesInstallBranch: z.string().optional(),
 });
 
 export type DevCommandOptions = z.infer<typeof DevCommandOptions>;
@@ -54,6 +69,34 @@ export function configureDevCommand(program: Command) {
       )
       .option("--mcp", "Start the MCP server")
       .option("--mcp-port", "The port to run the MCP server on", "3333")
+      .addOption(
+        new CommandOption("--analyze", "Analyze the build output and import timings").hideHelp()
+      )
+      .addOption(
+        new CommandOption(
+          "--skip-mcp-install",
+          "Skip the Trigger.dev MCP server install wizard"
+        ).hideHelp()
+      )
+      .addOption(
+        new CommandOption(
+          "--skip-rules-install",
+          "Skip the Trigger.dev Agent rules install wizard"
+        ).hideHelp()
+      )
+      .addOption(
+        new CommandOption(
+          "--rules-install-manifest-path <path>",
+          "The path to the rules install manifest"
+        ).hideHelp()
+      )
+      .addOption(
+        new CommandOption(
+          "--rules-install-branch <branch>",
+          "The branch to install the rules from"
+        ).hideHelp()
+      )
+      .addOption(new CommandOption("--disable-warnings", "Suppress warnings output").hideHelp())
   ).action(async (options) => {
     wrapCommandAction("dev", DevCommandOptions, options, async (opts) => {
       await devCommand(opts);
@@ -63,6 +106,52 @@ export function configureDevCommand(program: Command) {
 
 export async function devCommand(options: DevCommandOptions) {
   runtimeChecks();
+
+  // Only show these install prompts if the user is in a terminal (not in a Coding Agent)
+  if (process.stdout.isTTY) {
+    const skipMCPInstall = typeof options.skipMCPInstall === "boolean" && options.skipMCPInstall;
+
+    if (!skipMCPInstall) {
+      const hasSeenMCPInstallPrompt = readConfigHasSeenMCPInstallPrompt();
+
+      if (!hasSeenMCPInstallPrompt) {
+        const installChoice = await confirm({
+          message: "Would you like to install the Trigger.dev MCP server?",
+          initialValue: true,
+        });
+
+        writeConfigHasSeenMCPInstallPrompt(true);
+
+        const skipInstall = isCancel(installChoice) || !installChoice;
+
+        if (!skipInstall) {
+          log.step("Welcome to the Trigger.dev MCP server install wizard 🧙");
+
+          const [installError] = await tryCatch(
+            installMcpServer({
+              yolo: false,
+              tag: VERSION as string,
+              logLevel: options.logLevel,
+            })
+          );
+
+          if (installError) {
+            log.error(`Failed to install MCP server: ${installError.message}`);
+          }
+        }
+      }
+    }
+
+    const skipRulesInstall =
+      typeof options.skipRulesInstall === "boolean" && options.skipRulesInstall;
+
+    if (!skipRulesInstall) {
+      await initiateRulesInstallWizard({
+        manifestPath: options.rulesInstallManifestPath,
+        branch: options.rulesInstallBranch,
+      });
+    }
+  }
 
   const authorization = await login({
     embedded: true,

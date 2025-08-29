@@ -548,4 +548,83 @@ describe("Worker", () => {
       await worker.stop();
     }
   );
+
+  redisTest(
+    "Should allow cancelling a job before it's enqueued, but only if the enqueue.cancellationKey is provided",
+    { timeout: 30_000 },
+    async ({ redisContainer }) => {
+      const processedPayloads: string[] = [];
+
+      const worker = new Worker({
+        name: "test-worker",
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        catalog: {
+          testJob: {
+            schema: z.object({ value: z.string() }),
+            visibilityTimeoutMs: 5000,
+            retry: { maxAttempts: 3 },
+          },
+        },
+        jobs: {
+          testJob: async ({ payload }) => {
+            processedPayloads.push(payload.value);
+          },
+        },
+        concurrency: {
+          workers: 1,
+          tasksPerWorker: 1,
+        },
+        pollIntervalMs: 10,
+        logger: new Logger("test", "debug"), // Use debug to see all logs
+      }).start();
+
+      // Enqueue a job to run immediately
+      await worker.enqueue({
+        id: "immediate-job",
+        job: "testJob",
+        payload: { value: "test" },
+        cancellationKey: "test-cancellation-key",
+      });
+
+      // Verify it's in the present queue
+      const initialSize = await worker.queue.size();
+      const initialSizeWithFuture = await worker.queue.size({ includeFuture: true });
+      expect(initialSize).toBe(1);
+      expect(initialSizeWithFuture).toBe(1);
+
+      // Wait for job to be processed
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      // Verify job was processed
+      expect(processedPayloads).toContain("test");
+
+      // Verify queue is completely empty
+      const finalSize = await worker.queue.size();
+      const finalSizeWithFuture = await worker.queue.size({ includeFuture: true });
+      expect(finalSize).toBe(0);
+      expect(finalSizeWithFuture).toBe(0);
+
+      // Now cancel a key
+      await worker.cancel("test-cancellation-key-2");
+
+      await worker.enqueue({
+        id: "immediate-job",
+        job: "testJob",
+        payload: { value: "test" },
+        cancellationKey: "test-cancellation-key-2",
+      });
+
+      // Verify it's not in the queue (since it's been cancelled)
+      const finalSize2 = await worker.queue.size();
+      expect(finalSize2).toBe(0);
+      const finalSize2WithFuture = await worker.queue.size({ includeFuture: true });
+      expect(finalSize2WithFuture).toBe(0);
+
+      await worker.stop();
+    }
+  );
 });

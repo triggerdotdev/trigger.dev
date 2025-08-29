@@ -3,6 +3,9 @@ import { VERSION } from "../../version.js";
 import { generateJWT } from "../jwt.js";
 import {
   AddTagsRequestBody,
+  ApiDeploymentListOptions,
+  ApiDeploymentListResponseItem,
+  ApiDeploymentListSearchParams,
   BatchTaskRunExecutionResult,
   BatchTriggerTaskV3RequestBody,
   BatchTriggerTaskV3Response,
@@ -21,11 +24,13 @@ import {
   ListRunResponseItem,
   ListScheduleOptions,
   QueueItem,
+  QueueTypeName,
   ReplayRunResponse,
   RescheduleRunRequestBody,
   RetrieveBatchV2Response,
   RetrieveQueueParam,
   RetrieveRunResponse,
+  RetrieveRunTraceResponseBody,
   ScheduleObject,
   TaskRunExecutionResult,
   TriggerTaskRequestBody,
@@ -66,6 +71,7 @@ import {
   SSEStreamSubscriptionFactory,
   TaskRunShape,
   runShapeStream,
+  RealtimeRunSkipColumns,
 } from "./runStream.js";
 import {
   CreateEnvironmentVariableParams,
@@ -76,6 +82,7 @@ import {
   SubscribeToRunsQueryParams,
   UpdateEnvironmentVariableParams,
 } from "./types.js";
+import { API_VERSION, API_VERSION_HEADER_NAME } from "./version.js";
 
 export type CreateWaitpointTokenResponse = Prettify<
   CreateWaitpointTokenResponseBody & {
@@ -88,6 +95,7 @@ export type {
   ImportEnvironmentVariablesParams,
   SubscribeToRunsQueryParams,
   UpdateEnvironmentVariableParams,
+  RealtimeRunSkipColumns,
 };
 
 export type ClientTriggerOptions = {
@@ -327,6 +335,18 @@ export class ApiClient {
     return zodfetch(
       RetrieveRunResponse,
       `${this.baseUrl}/api/v3/runs/${runId}`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  retrieveRunTrace(runId: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      RetrieveRunTraceResponseBody,
+      `${this.baseUrl}/api/v1/runs/${runId}/trace`,
       {
         method: "GET",
         headers: this.#getHeaders(false),
@@ -775,11 +795,9 @@ export class ApiClient {
     {
       runFriendlyId,
       waitpointFriendlyId,
-      releaseConcurrency,
     }: {
       runFriendlyId: string;
       waitpointFriendlyId: string;
-      releaseConcurrency?: boolean;
     },
     requestOptions?: ZodFetchOptions
   ) {
@@ -789,9 +807,6 @@ export class ApiClient {
       {
         method: "POST",
         headers: this.#getHeaders(false),
-        body: JSON.stringify({
-          releaseConcurrency,
-        }),
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );
@@ -890,24 +905,37 @@ export class ApiClient {
       signal?: AbortSignal;
       closeOnComplete?: boolean;
       onFetchError?: (error: Error) => void;
+      skipColumns?: string[];
     }
   ) {
-    return runShapeStream<TRunTypes>(`${this.baseUrl}/realtime/v1/runs/${runId}`, {
-      closeOnComplete:
-        typeof options?.closeOnComplete === "boolean" ? options.closeOnComplete : true,
-      headers: this.#getRealtimeHeaders(),
-      client: this,
-      signal: options?.signal,
-      onFetchError: options?.onFetchError,
-    });
+    const queryParams = new URLSearchParams();
+
+    if (options?.skipColumns) {
+      queryParams.append("skipColumns", options.skipColumns.join(","));
+    }
+
+    return runShapeStream<TRunTypes>(
+      `${this.baseUrl}/realtime/v1/runs/${runId}${queryParams ? `?${queryParams}` : ""}`,
+      {
+        closeOnComplete:
+          typeof options?.closeOnComplete === "boolean" ? options.closeOnComplete : true,
+        headers: this.#getRealtimeHeaders(),
+        client: this,
+        signal: options?.signal,
+        onFetchError: options?.onFetchError,
+      }
+    );
   }
 
   subscribeToRunsWithTag<TRunTypes extends AnyRunTypes>(
     tag: string | string[],
+    filters?: { createdAt?: string; skipColumns?: string[] },
     options?: { signal?: AbortSignal; onFetchError?: (error: Error) => void }
   ) {
     const searchParams = createSearchQueryForSubscribeToRuns({
       tags: tag,
+      ...(filters ? { createdAt: filters.createdAt } : {}),
+      ...(filters?.skipColumns ? { skipColumns: filters.skipColumns } : {}),
     });
 
     return runShapeStream<TRunTypes>(
@@ -924,15 +952,63 @@ export class ApiClient {
 
   subscribeToBatch<TRunTypes extends AnyRunTypes>(
     batchId: string,
-    options?: { signal?: AbortSignal; onFetchError?: (error: Error) => void }
+    options?: {
+      signal?: AbortSignal;
+      onFetchError?: (error: Error) => void;
+      skipColumns?: string[];
+    }
   ) {
-    return runShapeStream<TRunTypes>(`${this.baseUrl}/realtime/v1/batches/${batchId}`, {
-      closeOnComplete: false,
-      headers: this.#getRealtimeHeaders(),
-      client: this,
-      signal: options?.signal,
-      onFetchError: options?.onFetchError,
-    });
+    const queryParams = new URLSearchParams();
+
+    if (options?.skipColumns) {
+      queryParams.append("skipColumns", options.skipColumns.join(","));
+    }
+
+    return runShapeStream<TRunTypes>(
+      `${this.baseUrl}/realtime/v1/batches/${batchId}${queryParams ? `?${queryParams}` : ""}`,
+      {
+        closeOnComplete: false,
+        headers: this.#getRealtimeHeaders(),
+        client: this,
+        signal: options?.signal,
+        onFetchError: options?.onFetchError,
+      }
+    );
+  }
+
+  listDeployments(options?: ApiDeploymentListOptions, requestOptions?: ZodFetchOptions) {
+    const searchParams = new URLSearchParams();
+
+    if (options?.status) {
+      searchParams.append("status", options.status);
+    }
+
+    if (options?.period) {
+      searchParams.append("period", options.period);
+    }
+
+    if (options?.from) {
+      searchParams.append("from", options.from);
+    }
+
+    if (options?.to) {
+      searchParams.append("to", options.to);
+    }
+
+    return zodfetchCursorPage(
+      ApiDeploymentListResponseItem,
+      `${this.baseUrl}/api/v1/deployments`,
+      {
+        query: searchParams,
+        after: options?.cursor,
+        limit: options?.limit,
+      },
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
   }
 
   async fetchStream<T>(
@@ -1012,14 +1088,20 @@ export class ApiClient {
       headers["x-trigger-client"] = "browser";
     }
 
+    headers[API_VERSION_HEADER_NAME] = API_VERSION;
+
     return headers;
   }
 
   #getRealtimeHeaders() {
-    const headers: Record<string, string> = {
+    let headers: Record<string, string> = {
       Authorization: `Bearer ${this.accessToken}`,
       "trigger-version": VERSION,
     };
+
+    if (this.previewBranch) {
+      headers["x-trigger-branch"] = this.previewBranch;
+    }
 
     return headers;
   }
@@ -1038,6 +1120,14 @@ function createSearchQueryForSubscribeToRuns(query?: SubscribeToRunsQueryParams)
 
     if (query.tags) {
       searchParams.append("tags", Array.isArray(query.tags) ? query.tags.join(",") : query.tags);
+    }
+
+    if (query.createdAt) {
+      searchParams.append("createdAt", query.createdAt);
+    }
+
+    if (query.skipColumns) {
+      searchParams.append("skipColumns", query.skipColumns.join(","));
     }
   }
 
@@ -1109,9 +1199,33 @@ function createSearchQueryForListRuns(query?: ListRunsQueryParams): URLSearchPar
     if (query.batch) {
       searchParams.append("filter[batch]", query.batch);
     }
+
+    if (query.queue) {
+      searchParams.append(
+        "filter[queue]",
+        Array.isArray(query.queue)
+          ? query.queue.map((q) => queueNameFromQueueTypeName(q)).join(",")
+          : queueNameFromQueueTypeName(query.queue)
+      );
+    }
+
+    if (query.machine) {
+      searchParams.append(
+        "filter[machine]",
+        Array.isArray(query.machine) ? query.machine.join(",") : query.machine
+      );
+    }
   }
 
   return searchParams;
+}
+
+function queueNameFromQueueTypeName(queue: QueueTypeName): string {
+  if (queue.type === "task") {
+    return `task/${queue.name}`;
+  }
+
+  return queue.name;
 }
 
 function createSearchQueryForListWaitpointTokens(

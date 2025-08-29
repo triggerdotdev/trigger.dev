@@ -4,6 +4,7 @@ import ProjectRefOption from "/snippets/cli-options-project-ref.mdx";
 import EnvFileOption from "/snippets/cli-options-env-file.mdx";
 import ConfigFileOption from "/snippets/cli-options-config-file.mdx";
 import SkipUpdateCheckOption from "/snippets/cli-options-skip-update-check.mdx";
+import BranchOption from "/snippets/cli-options-branch.mdx";
 
 Run the command like this:
 
@@ -35,7 +36,9 @@ It performs a few steps to deploy:
 3. Deploys the code to the Trigger.dev instance.
 4. Registers the tasks as a new version in the environment (prod by default).
 
-You can also setup [GitHub Actions](/github-actions) to deploy your tasks automatically.
+## Deploying from CI
+
+When deploying from CI/CD environments such as GitHub Actions, GitLab CI, or Jenkins, you need to authenticate non-interactively by setting the `TRIGGER_ACCESS_TOKEN` environment variable. Please see the [CI / GitHub Actions guide](/github-actions) for more information.
 
 ## Arguments
 
@@ -56,8 +59,11 @@ npx trigger.dev@latest deploy [path]
 <SkipUpdateCheckOption />
 
 <ParamField body="Environment" type="--env | -e">
-  Defaults to `prod` but you can specify `staging`.
+  Defaults to `prod` but you can specify `staging` or `preview`. If you specify `preview` we will
+  try and automatically detect the branch name from git.
 </ParamField>
+
+<BranchOption />
 
 <ParamField body="Dry run" type="--dry-run">
   Create a deployable build but don't deploy it. Prints out the build path so you can inspect it.

@@ -63,3 +63,5 @@ apps/**/public/build
 /packages/core/src/package.json
 /packages/trigger-sdk/src/package.json
 /packages/python/src/package.json
+.claude
+.mcp.log

@@ -17,6 +17,7 @@ import { redirectWithSuccessMessage } from "~/models/message.server";
 import { requireUser, requireUserId } from "~/services/session.server";
 import { invitesPath, rootPath } from "~/utils/pathBuilder";
 import { EnvelopeIcon } from "@heroicons/react/20/solid";
+import { BackgroundWrapper } from "~/components/BackgroundWrapper";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
@@ -98,49 +99,51 @@ export default function Page() {
   });
 
   return (
-    <AppContainer>
-      <MainCenteredContainer>
-        <div>
-          <FormTitle
-            LeadingIcon={<EnvelopeIcon className="size-6 text-cyan-500" />}
-            className="mb-0 text-sky-500"
-            title={simplur`You have ${invites.length} new invitation[|s]`}
-          />
-          {invites.map((invite) => (
-            <Form key={invite.id} method="post" {...form.props}>
-              <Fieldset>
-                <InputGroup className="flex items-center justify-between border-b border-charcoal-800 py-4">
-                  <div className="flex flex-col gap-y-0.5 overflow-hidden">
-                    <Header2 className="truncate">{invite.organization.title}</Header2>
-                    <Paragraph variant="small" className="truncate">
-                      Invited by {invite.inviter.displayName ?? invite.inviter.email}
-                    </Paragraph>
-                    <input name="inviteId" type="hidden" value={invite.id} />
-                  </div>
-                  <div className="flex flex-col gap-y-1">
-                    <Button
-                      type="submit"
-                      name={conform.INTENT}
-                      value="accept"
-                      variant={"primary/small"}
-                    >
-                      Accept
-                    </Button>
-                    <Button
-                      type="submit"
-                      name={conform.INTENT}
-                      value="decline"
-                      variant={"secondary/small"}
-                    >
-                      Decline
-                    </Button>
-                  </div>
-                </InputGroup>
-              </Fieldset>
-            </Form>
-          ))}
-        </div>
-      </MainCenteredContainer>
+    <AppContainer className="bg-charcoal-900">
+      <BackgroundWrapper>
+        <MainCenteredContainer className="max-w-[26rem] rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg">
+          <div>
+            <FormTitle
+              LeadingIcon={<EnvelopeIcon className="size-6 text-cyan-500" />}
+              className="mb-0 text-sky-500"
+              title={simplur`You have ${invites.length} new invitation[|s]`}
+            />
+            {invites.map((invite) => (
+              <Form key={invite.id} method="post" {...form.props}>
+                <Fieldset>
+                  <InputGroup className="flex items-center justify-between border-b border-charcoal-800 py-4">
+                    <div className="flex flex-col gap-y-0.5 overflow-hidden">
+                      <Header2 className="truncate">{invite.organization.title}</Header2>
+                      <Paragraph variant="small" className="truncate">
+                        Invited by {invite.inviter.displayName ?? invite.inviter.email}
+                      </Paragraph>
+                      <input name="inviteId" type="hidden" value={invite.id} />
+                    </div>
+                    <div className="flex flex-col gap-y-1">
+                      <Button
+                        type="submit"
+                        name={conform.INTENT}
+                        value="accept"
+                        variant={"primary/small"}
+                      >
+                        Accept
+                      </Button>
+                      <Button
+                        type="submit"
+                        name={conform.INTENT}
+                        value="decline"
+                        variant={"secondary/small"}
+                      >
+                        Decline
+                      </Button>
+                    </div>
+                  </InputGroup>
+                </Fieldset>
+              </Form>
+            ))}
+          </div>
+        </MainCenteredContainer>
+      </BackgroundWrapper>
     </AppContainer>
   );
 }

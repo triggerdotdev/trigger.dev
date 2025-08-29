@@ -4,8 +4,6 @@ sidebarTitle: "Human-in-the-loop workflow"
 description: "This example project creates audio summaries of newspaper articles using a human-in-the-loop workflow built with ReactFlow and Trigger.dev waitpoint tokens."
 ---
 
-import UpgradeToV4Note from "/snippets/upgrade-to-v4-note.mdx";
-
 ## Overview
 
 This demo is a full stack example that uses the following:
@@ -76,9 +74,6 @@ await wait.completeToken<ReviewPayload>(
 );
 ```
 
-<UpgradeToV4Note />
-
-
 While the workflow in this example is static and does not allow changing the connections between nodes in the UI, it serves as a good baseline for understanding how to build completely custom workflow builders using Trigger.dev and ReactFlow.
 
 ## Learn more about Trigger.dev Realtime and waitpoint tokens
@@ -86,6 +81,6 @@ While the workflow in this example is static and does not allow changing the con
 To learn more, take a look at the following resources:
 
 - [Trigger.dev Realtime](/realtime) - learn more about how to subscribe to runs and get real-time updates
-- [Realtime streaming](/realtime/streams) - learn more about streaming data from your tasks
-- [React hooks](/frontend/react-hooks) - learn more about using React hooks to interact with the Trigger.dev API
+- [Realtime streaming](/realtime/react-hooks/streams) - learn more about streaming data from your tasks
+- [React hooks](/realtime/react-hooks) - learn more about using React hooks to interact with the Trigger.dev API
 - [Waitpoint tokens](/wait-for-token) - learn about waitpoint tokens in Trigger.dev and human-in-the-loop flows

@@ -12,9 +12,9 @@ import { env } from "node:process";
 import { Buffer } from "node:buffer";
 import { trace, context } from "@opentelemetry/api";
 
-export type LogLevel = "log" | "error" | "warn" | "info" | "debug";
+export type LogLevel = "log" | "error" | "warn" | "info" | "debug" | "verbose";
 
-const logLevels: Array<LogLevel> = ["log", "error", "warn", "info", "debug"];
+const logLevels: Array<LogLevel> = ["log", "error", "warn", "info", "debug", "verbose"];
 
 export class Logger {
   #name: string;
@@ -22,6 +22,9 @@ export class Logger {
   #filteredKeys: string[] = [];
   #jsonReplacer?: (key: string, value: unknown) => unknown;
   #additionalFields: () => Record<string, unknown>;
+
+  // Add a static "onError" method that will be called when an error is logged
+  static onError: (message: string, ...args: Array<Record<string, unknown> | undefined>) => void;
 
   constructor(
     name: string,
@@ -67,6 +70,12 @@ export class Logger {
     if (this.#level < 1) return;
 
     this.#structuredLog(console.error, message, "error", ...args);
+
+    const ignoreError = args.some((arg) => arg?.ignoreError);
+
+    if (Logger.onError && !ignoreError) {
+      Logger.onError(message, ...args);
+    }
   }
 
   warn(message: string, ...args: Array<Record<string, unknown> | undefined>) {
@@ -85,6 +94,12 @@ export class Logger {
     if (this.#level < 4) return;
 
     this.#structuredLog(console.debug, message, "debug", ...args);
+  }
+
+  verbose(message: string, ...args: Array<Record<string, unknown> | undefined>) {
+    if (this.#level < 5) return;
+
+    this.#structuredLog(console.log, message, "verbose", ...args);
   }
 
   #structuredLog(
@@ -134,6 +149,7 @@ function extractStructuredErrorFromArgs(...args: Array<Record<string, unknown> |
       message: error.message,
       stack: error.stack,
       name: error.name,
+      metadata: "metadata" in error ? error.metadata : undefined,
     };
   }
 
@@ -144,6 +160,7 @@ function extractStructuredErrorFromArgs(...args: Array<Record<string, unknown> |
       message: structuredError.error.message,
       stack: structuredError.error.stack,
       name: structuredError.error.name,
+      metadata: "metadata" in structuredError.error ? structuredError.error.metadata : undefined,
     };
   }
 

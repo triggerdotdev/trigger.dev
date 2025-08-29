@@ -28,3 +28,4 @@ export { WarmStartClient, type WarmStartClientOptions } from "../workers/warmSta
 export { StandardLifecycleHooksManager } from "../lifecycleHooks/manager.js";
 export { StandardLocalsManager } from "../locals/manager.js";
 export { populateEnv } from "./populateEnv.js";
+export { StandardTraceContextManager } from "../traceContext/manager.js";

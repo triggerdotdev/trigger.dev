@@ -41,7 +41,6 @@ services:
       REMIX_APP_PORT: 3030
       PORT: 3030
       WORKER_ENABLED: "false"
-      EXECUTION_WORKER_ENABLED: "false"
     networks:
       - app_network
   worker:

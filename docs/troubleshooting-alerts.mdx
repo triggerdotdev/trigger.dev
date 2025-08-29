@@ -42,7 +42,7 @@ For the alert webhooks you can use the SDK to parse them. Here is an example of 
 
 ```ts
 import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import { webhooks, WebhookError } from "@trigger.dev/sdk/v3";
+import { webhooks, WebhookError } from "@trigger.dev/sdk";
 
 export async function action({ request }: ActionFunctionArgs) {
   // Make sure this is a POST request

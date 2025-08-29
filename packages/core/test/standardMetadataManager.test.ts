@@ -395,34 +395,36 @@ describe("StandardMetadataManager", () => {
       const update = metadataUpdates[0]!;
       const operations = update.operations!;
 
-      // Should have: 1 collapsed increment, 1 collapsed set, 2 appends
-      // (delete operations on non-existent keys are not queued)
-      expect(operations).toHaveLength(4);
+      // With order-preserving collapse, expect 6 operations:
+      // increment(counter, 5), set(status, processing), append(logs, ...), increment(counter, 3), set(status, completed), append(logs, ...)
+      expect(operations).toHaveLength(6);
 
-      // Find each operation type
-      const incrementOp = operations.find((op) => op.type === "increment");
-      const setOp = operations.find((op) => op.type === "set");
-      const appendOps = operations.filter((op) => op.type === "append");
-
-      expect(incrementOp).toEqual({
+      expect(operations[0]).toEqual({
         type: "increment",
         key: "counter",
-        value: 8, // 5 + 3
+        value: 5,
       });
-
-      expect(setOp).toEqual({
+      expect(operations[1]).toEqual({
         type: "set",
         key: "status",
-        value: "completed", // Last set value
+        value: "processing",
       });
-
-      expect(appendOps).toHaveLength(2);
-      expect(appendOps[0]).toEqual({
+      expect(operations[2]).toEqual({
         type: "append",
         key: "logs",
         value: "Started processing",
       });
-      expect(appendOps[1]).toEqual({
+      expect(operations[3]).toEqual({
+        type: "increment",
+        key: "counter",
+        value: 3,
+      });
+      expect(operations[4]).toEqual({
+        type: "set",
+        key: "status",
+        value: "completed",
+      });
+      expect(operations[5]).toEqual({
         type: "append",
         key: "logs",
         value: "Processing completed",
@@ -454,42 +456,48 @@ describe("StandardMetadataManager", () => {
       const update = metadataUpdates[1]!;
       const operations = update.operations!;
 
-      // Should have: 1 collapsed increment, 1 collapsed set, 2 appends, 2 collapsed deletes
-      expect(operations).toHaveLength(6);
+      // With order-preserving collapse, expect 8 operations:
+      // increment(counter, 5), set(status, processing), append(logs, ...), increment(counter, 3), set(status, completed), append(logs, ...), delete(tempData1), delete(tempData2)
+      expect(operations).toHaveLength(8);
 
-      // Find each operation type
-      const incrementOp = operations.find((op) => op.type === "increment");
-      const setOp = operations.find((op) => op.type === "set");
-      const appendOps = operations.filter((op) => op.type === "append");
-      const deleteOps = operations.filter((op) => op.type === "delete");
-
-      expect(incrementOp).toEqual({
+      expect(operations[0]).toEqual({
         type: "increment",
         key: "counter",
-        value: 8, // 5 + 3
+        value: 5,
       });
-
-      expect(setOp).toEqual({
+      expect(operations[1]).toEqual({
         type: "set",
         key: "status",
-        value: "completed", // Last set value
+        value: "processing",
       });
-
-      expect(appendOps).toHaveLength(2);
-      expect(appendOps[0]).toEqual({
+      expect(operations[2]).toEqual({
         type: "append",
         key: "logs",
         value: "Started processing",
       });
-      expect(appendOps[1]).toEqual({
+      expect(operations[3]).toEqual({
+        type: "increment",
+        key: "counter",
+        value: 3,
+      });
+      expect(operations[4]).toEqual({
+        type: "set",
+        key: "status",
+        value: "completed",
+      });
+      expect(operations[5]).toEqual({
         type: "append",
         key: "logs",
         value: "Processing completed",
       });
-
-      expect(deleteOps).toHaveLength(2);
-      const deleteKeys = deleteOps.map((op) => (op as any).key).sort();
-      expect(deleteKeys).toEqual(["tempData1", "tempData2"]);
+      expect(operations[6]).toEqual({
+        type: "delete",
+        key: "tempData1",
+      });
+      expect(operations[7]).toEqual({
+        type: "delete",
+        key: "tempData2",
+      });
     });
 
     test("should collapse operations across different keys independently", async () => {
@@ -504,26 +512,30 @@ describe("StandardMetadataManager", () => {
       expect(metadataUpdates).toHaveLength(1);
 
       const update = metadataUpdates[0]!;
-      expect(update.operations).toHaveLength(2);
+      const operations = update.operations!;
 
-      // Should have separate collapsed increments for each key
-      const filesOp = update.operations!.find(
-        (op) => op.type === "increment" && (op as any).key === "filesProcessed"
-      );
-      const errorsOp = update.operations!.find(
-        (op) => op.type === "increment" && (op as any).key === "errorsCount"
-      );
-
-      expect(filesOp).toEqual({
+      // With order-preserving collapse, expect 4 operations:
+      // increment(filesProcessed, 10), increment(errorsCount, 1), increment(filesProcessed, 5), increment(errorsCount, 2)
+      expect(operations).toHaveLength(4);
+      expect(operations[0]).toEqual({
         type: "increment",
         key: "filesProcessed",
-        value: 15, // 10 + 5
+        value: 10,
       });
-
-      expect(errorsOp).toEqual({
+      expect(operations[1]).toEqual({
         type: "increment",
         key: "errorsCount",
-        value: 3, // 1 + 2
+        value: 1,
+      });
+      expect(operations[2]).toEqual({
+        type: "increment",
+        key: "filesProcessed",
+        value: 5,
+      });
+      expect(operations[3]).toEqual({
+        type: "increment",
+        key: "errorsCount",
+        value: 2,
       });
     });
 

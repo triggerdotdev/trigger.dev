@@ -4,7 +4,7 @@ import { RetryOptions } from "../schemas/index.js";
 import { calculateNextRetryDelay } from "../utils/retries.js";
 import { ApiConnectionError, ApiError, ApiSchemaValidationError } from "./errors.js";
 
-import { Attributes, context, propagation, Span } from "@opentelemetry/api";
+import { Attributes, context, propagation, Span, trace } from "@opentelemetry/api";
 import { suppressTracing } from "@opentelemetry/core";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
 import type { TriggerTracer } from "../tracer.js";
@@ -17,7 +17,8 @@ import {
   OffsetLimitPageParams,
   OffsetLimitPageResponse,
 } from "./pagination.js";
-import { EventSource } from "eventsource";
+import { EventSource, type ErrorEvent } from "eventsource";
+import { randomUUID } from "../utils/crypto.js";
 
 export const defaultRetryOptions = {
   maxAttempts: 3,
@@ -200,7 +201,10 @@ async function _doZodFetch<TResponseBodySchema extends z.ZodTypeAny>(
   let $requestInit = await requestInit;
 
   return traceZodFetch({ url, requestInit: $requestInit, options }, async (span) => {
+    const requestIdempotencyKey = await randomUUID();
+
     $requestInit = injectPropagationHeadersIfInWorker($requestInit);
+    $requestInit = injectRequestIdempotencyKey(requestIdempotencyKey, $requestInit);
 
     const result = await _doZodFetchWithRetries(schema, url, $requestInit, options);
 
@@ -613,10 +617,6 @@ export function hasOwn(obj: Object, key: string): boolean {
 function injectPropagationHeadersIfInWorker(requestInit?: RequestInit): RequestInit | undefined {
   const headers = new Headers(requestInit?.headers);
 
-  if (headers.get("x-trigger-worker") !== "true") {
-    return requestInit;
-  }
-
   const headersObject = Object.fromEntries(headers.entries());
 
   propagation.inject(context.active(), headersObject);
@@ -624,6 +624,20 @@ function injectPropagationHeadersIfInWorker(requestInit?: RequestInit): RequestI
   return {
     ...requestInit,
     headers: new Headers(headersObject),
+  };
+}
+
+function injectRequestIdempotencyKey(
+  requestIdempotencyKey: string,
+  requestInit?: RequestInit
+): RequestInit | undefined {
+  const headers = new Headers(requestInit?.headers);
+
+  headers.set("x-trigger-request-idempotency-key", requestIdempotencyKey);
+
+  return {
+    ...requestInit,
+    headers,
   };
 }
 
@@ -665,7 +679,7 @@ export class ZodFetchSSEResult<TMessageCatalog extends ZodFetchSSEMessageCatalog
     });
   }
 
-  public onConnectionError(handler: (error: Event) => void) {
+  public onConnectionError(handler: (error: ErrorEvent) => void) {
     this._eventSource.onerror = handler;
   }
 

@@ -1,13 +1,16 @@
 import { ScheduleObject } from "@trigger.dev/core/v3";
 import { PrismaClient, prisma } from "~/db.server";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
+import { clickhouseClient } from "~/services/clickhouseInstance.server";
 import { nextScheduledTimestamps } from "~/v3/utils/calculateNextSchedule.server";
-import { RunListPresenter } from "./RunListPresenter.server";
+import { NextRunListPresenter } from "./NextRunListPresenter.server";
+import { scheduleWhereClause } from "~/models/schedules.server";
 
 type ViewScheduleOptions = {
   userId?: string;
   projectId: string;
   friendlyId: string;
+  environmentId: string;
 };
 
 export class ViewSchedulePresenter {
@@ -17,7 +20,7 @@ export class ViewSchedulePresenter {
     this.#prismaClient = prismaClient;
   }
 
-  public async call({ userId, projectId, friendlyId }: ViewScheduleOptions) {
+  public async call({ userId, projectId, friendlyId, environmentId }: ViewScheduleOptions) {
     const schedule = await this.#prismaClient.taskSchedule.findFirst({
       select: {
         id: true,
@@ -33,6 +36,7 @@ export class ViewSchedulePresenter {
         project: {
           select: {
             id: true,
+            organizationId: true,
           },
         },
         instances: {
@@ -60,10 +64,7 @@ export class ViewSchedulePresenter {
         },
         active: true,
       },
-      where: {
-        friendlyId,
-        projectId,
-      },
+      where: scheduleWhereClause(projectId, friendlyId),
     });
 
     if (!schedule) {
@@ -74,12 +75,12 @@ export class ViewSchedulePresenter {
       ? nextScheduledTimestamps(schedule.generatorExpression, schedule.timezone, new Date(), 5)
       : [];
 
-    const runPresenter = new RunListPresenter(this.#prismaClient);
-
-    const { runs } = await runPresenter.call({
+    const runPresenter = new NextRunListPresenter(this.#prismaClient, clickhouseClient);
+    const { runs } = await runPresenter.call(schedule.project.organizationId, environmentId, {
       projectId: schedule.project.id,
       scheduleId: schedule.id,
       pageSize: 5,
+      period: "31d",
     });
 
     return {

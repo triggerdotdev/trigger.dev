@@ -1,4 +1,4 @@
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   runtime: "bun",
@@ -17,10 +17,4 @@ export default defineConfig({
   },
   enableConsoleLogging: false,
   logLevel: "info",
-  onStart: async (payload, { ctx }) => {
-    console.log(`Task ${ctx.task.id} started ${ctx.run.id}`);
-  },
-  onFailure: async (payload, error, { ctx }) => {
-    console.log(`Task ${ctx.task.id} failed ${ctx.run.id}`);
-  },
 });

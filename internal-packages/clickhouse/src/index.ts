@@ -2,12 +2,22 @@ import { ClickHouseSettings } from "@clickhouse/client";
 import { ClickhouseClient } from "./client/client.js";
 import { ClickhouseReader, ClickhouseWriter } from "./client/types.js";
 import { NoopClient } from "./client/noop.js";
-import { insertTaskRuns, insertRawTaskRunPayloads } from "./taskRuns.js";
+import {
+  insertTaskRuns,
+  insertRawTaskRunPayloads,
+  getTaskRunsQueryBuilder,
+  getTaskActivityQueryBuilder,
+  getCurrentRunningStats,
+  getAverageDurations,
+  getTaskUsageByOrganization,
+  getTaskRunsCountQueryBuilder,
+} from "./taskRuns.js";
 import { Logger, type LogLevel } from "@trigger.dev/core/logger";
 import type { Agent as HttpAgent } from "http";
 import type { Agent as HttpsAgent } from "https";
 
 export type * from "./taskRuns.js";
+export type * from "./client/queryBuilder.js";
 
 export type ClickhouseCommonConfig = {
   keepAlive?: {
@@ -48,7 +58,7 @@ export class ClickHouse {
   private _splitClients: boolean;
 
   constructor(config: ClickHouseConfig) {
-    this.logger = config.logger ?? new Logger("ClickHouse", "debug");
+    this.logger = config.logger ?? new Logger("ClickHouse", config.logLevel ?? "debug");
 
     if (config.url) {
       const url = new URL(config.url);
@@ -135,6 +145,12 @@ export class ClickHouse {
     return {
       insert: insertTaskRuns(this.writer),
       insertPayloads: insertRawTaskRunPayloads(this.writer),
+      queryBuilder: getTaskRunsQueryBuilder(this.reader),
+      countQueryBuilder: getTaskRunsCountQueryBuilder(this.reader),
+      getTaskActivity: getTaskActivityQueryBuilder(this.reader),
+      getCurrentRunningStats: getCurrentRunningStats(this.reader),
+      getAverageDurations: getAverageDurations(this.reader),
+      getTaskUsageByOrganization: getTaskUsageByOrganization(this.reader),
     };
   }
 }

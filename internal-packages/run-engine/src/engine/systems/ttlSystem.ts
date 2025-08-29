@@ -23,7 +23,7 @@ export class TtlSystem {
 
   async expireRun({ runId, tx }: { runId: string; tx?: PrismaClientOrTransaction }) {
     const prisma = tx ?? this.$.prisma;
-    await this.$.runLock.lock("expireRun", [runId], 5_000, async () => {
+    await this.$.runLock.lock("expireRun", [runId], async () => {
       const snapshot = await getLatestExecutionSnapshot(prisma, runId);
 
       //if we're executing then we won't expire the run
@@ -106,7 +106,13 @@ export class TtlSystem {
         },
       });
 
-      await this.$.runQueue.acknowledgeMessage(updatedRun.runtimeEnvironment.organizationId, runId);
+      await this.$.runQueue.acknowledgeMessage(
+        updatedRun.runtimeEnvironment.organizationId,
+        runId,
+        {
+          removeFromWorkerQueue: true,
+        }
+      );
 
       if (!updatedRun.associatedWaitpoint) {
         throw new ServiceValidationError("No associated waitpoint found", 400);

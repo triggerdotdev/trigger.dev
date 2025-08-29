@@ -1,8 +1,18 @@
 import { cn } from "~/utils/cn";
 
 /** This container is used to surround the entire app, it correctly places the nav bar */
-export function AppContainer({ children }: { children: React.ReactNode }) {
-  return <div className={cn("grid h-full w-full grid-rows-1 overflow-hidden")}>{children}</div>;
+export function AppContainer({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cn("grid h-full w-full grid-rows-1 overflow-hidden", className)}>
+      {children}
+    </div>
+  );
 }
 
 export function MainBody({ children }: { children: React.ReactNode }) {

@@ -32,8 +32,6 @@ export const QueueItem = z.object({
   concurrencyLimit: z.number().nullable(),
   /** Whether the queue is paused. If it's paused, no new runs will be started. */
   paused: z.boolean(),
-  /** Whether the queue releases concurrency on waitpoints. */
-  releaseConcurrencyOnWaitpoint: z.boolean(),
 });
 
 export type QueueItem = z.infer<typeof QueueItem>;
@@ -46,6 +44,17 @@ export const ListQueueOptions = z.object({
 });
 
 export type ListQueueOptions = z.infer<typeof ListQueueOptions>;
+
+export const QueueTypeName = z.object({
+  /** "task" or "custom" */
+  type: QueueType,
+  /** The name of your queue.
+   * For "task" type it will be the task id, for "custom" it will be the name you specified.
+   * */
+  name: z.string(),
+});
+
+export type QueueTypeName = z.infer<typeof QueueTypeName>;
 
 /**
  * When retrieving a queue you can either use the queue id,
@@ -65,16 +74,6 @@ export type ListQueueOptions = z.infer<typeof ListQueueOptions>;
  * const q3 = await queues.retrieve({ type: "custom", name: "my-custom-queue" });
  * ```
  */
-export const RetrieveQueueParam = z.union([
-  z.string(),
-  z.object({
-    /** "task" or "custom" */
-    type: QueueType,
-    /** The name of your queue.
-     * For "task" type it will be the task id, for "custom" it will be the name you specified.
-     * */
-    name: z.string(),
-  }),
-]);
+export const RetrieveQueueParam = z.union([z.string(), QueueTypeName]);
 
 export type RetrieveQueueParam = z.infer<typeof RetrieveQueueParam>;

@@ -1,4 +1,4 @@
-import { UsageManager, UsageMeasurement, UsageSample } from "./types.js";
+import { InitialUsageState, UsageManager, UsageMeasurement, UsageSample } from "./types.js";
 import { clock } from "../clock-api.js";
 import { ClockTime, calculateDurationInMs } from "../clock/clock.js";
 
@@ -45,10 +45,32 @@ export class DevUsageManager implements UsageManager {
   private _firstMeasurement?: DevUsageMeasurement;
   private _currentMeasurements: Map<string, DevUsageMeasurement> = new Map();
   private _pauses: Map<string, { start: ClockTime; end?: ClockTime }> = new Map();
+  private _initialState: InitialUsageState = {
+    cpuTime: 0,
+    costInCents: 0,
+  };
 
   disable(): void {}
 
   async flush(): Promise<void> {}
+
+  reset(): void {
+    this._firstMeasurement = undefined;
+    this._currentMeasurements.clear();
+    this._pauses.clear();
+    this._initialState = {
+      cpuTime: 0,
+      costInCents: 0,
+    };
+  }
+
+  setInitialState(state: InitialUsageState) {
+    this._initialState = state;
+  }
+
+  getInitialState(): InitialUsageState {
+    return this._initialState;
+  }
 
   sample(): UsageSample | undefined {
     return this._firstMeasurement?.sample();

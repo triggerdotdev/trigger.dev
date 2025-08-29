@@ -18,7 +18,7 @@ To deploy this task, you'll need to add LibreOffice to your project configuratio
 
 ```ts trigger.config.ts
 import { aptGet } from "@trigger.dev/build/extensions/core";
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   project: "<project ref>",
@@ -55,7 +55,7 @@ This task demonstrates how to use LibreOffice to convert a document (.doc or .do
 
 ```ts trigger/libreoffice-pdf-convert.ts
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { task } from "@trigger.dev/sdk/v3";
+import { task } from "@trigger.dev/sdk";
 import libreoffice from "libreoffice-convert";
 import { promisify } from "node:util";
 import path from "path";

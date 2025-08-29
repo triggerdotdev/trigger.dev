@@ -1,22 +1,30 @@
 import {
-  type MachinePresetName,
+  type MachinePreset,
   prettyPrintPacket,
   SemanticInternalAttributes,
+  type TaskRunContext,
   TaskRunError,
+  TriggerTraceContext,
+  type V3TaskRunContext,
 } from "@trigger.dev/core/v3";
-import { getMaxDuration } from "@trigger.dev/core/v3/isomorphic";
+import { AttemptId, getMaxDuration, parseTraceparent } from "@trigger.dev/core/v3/isomorphic";
 import { RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { logger } from "~/services/logger.server";
 import { eventRepository, rehydrateAttribute } from "~/v3/eventRepository.server";
-import { machinePresetFromName } from "~/v3/machinePresets.server";
+import { machinePresetFromRun } from "~/v3/machinePresets.server";
 import { getTaskEventStoreTableForRun, type TaskEventStoreTable } from "~/v3/taskEventStore.server";
 import { isFailedRunStatus, isFinalRunStatus } from "~/v3/taskStatus";
 import { BasePresenter } from "./basePresenter.server";
 import { WaitpointPresenter } from "./WaitpointPresenter.server";
+import { engine } from "~/v3/runEngine.server";
 
 type Result = Awaited<ReturnType<SpanPresenter["call"]>>;
 export type Span = NonNullable<NonNullable<Result>["span"]>;
 export type SpanRun = NonNullable<NonNullable<Result>["run"]>;
+type FindRunResult = NonNullable<
+  Awaited<ReturnType<InstanceType<typeof SpanPresenter>["findRun"]>>
+>;
+type GetSpanResult = NonNullable<Awaited<ReturnType<(typeof eventRepository)["getSpan"]>>>;
 
 export class SpanPresenter extends BasePresenter {
   public async call({
@@ -60,7 +68,7 @@ export class SpanPresenter extends BasePresenter {
 
     const eventStore = getTaskEventStoreTableForRun(parentRun);
 
-    const run = await this.#getRun({
+    const run = await this.getRun({
       eventStore,
       traceId,
       spanId,
@@ -95,7 +103,7 @@ export class SpanPresenter extends BasePresenter {
     };
   }
 
-  async #getRun({
+  async getRun({
     eventStore,
     traceId,
     spanId,
@@ -120,11 +128,172 @@ export class SpanPresenter extends BasePresenter {
       return;
     }
 
+    const run = await this.findRun({ span, spanId });
+
+    if (!run) {
+      return;
+    }
+
+    const isFinished = isFinalRunStatus(run.status);
+    const output = !isFinished
+      ? undefined
+      : run.outputType === "application/store"
+      ? `/resources/packets/${run.runtimeEnvironment.id}/${run.output}`
+      : typeof run.output !== "undefined" && run.output !== null
+      ? await prettyPrintPacket(run.output, run.outputType ?? undefined)
+      : undefined;
+
+    const payload =
+      run.payloadType === "application/store"
+        ? `/resources/packets/${run.runtimeEnvironment.id}/${run.payload}`
+        : typeof run.payload !== "undefined" && run.payload !== null
+        ? await prettyPrintPacket(run.payload, run.payloadType ?? undefined)
+        : undefined;
+
+    let error: TaskRunError | undefined = undefined;
+
+    if (run?.error) {
+      const result = TaskRunError.safeParse(run.error);
+      if (result.success) {
+        error = result.data;
+      } else {
+        error = {
+          type: "CUSTOM_ERROR",
+          raw: JSON.stringify(run.error),
+        };
+      }
+    }
+
+    const metadata = run.metadata
+      ? await prettyPrintPacket(run.metadata, run.metadataType, {
+          filteredKeys: ["$$streams", "$$streamsVersion", "$$streamsBaseUrl"],
+        })
+      : undefined;
+
+    const machine = run.machinePreset ? machinePresetFromRun(run) : undefined;
+
+    const context = await this.#getTaskRunContext({ run, machine: machine ?? undefined });
+
+    const externalTraceId = this.#getExternalTraceId(run.traceContext);
+
+    let region: { name: string; location: string | null } | null = null;
+
+    if (run.runtimeEnvironment.type !== "DEVELOPMENT" && run.engine !== "V1") {
+      const workerGroup = await this._replica.workerInstanceGroup.findFirst({
+        select: {
+          name: true,
+          location: true,
+        },
+        where: {
+          masterQueue: run.workerQueue,
+        },
+      });
+
+      region = workerGroup ?? null;
+    }
+
+    return {
+      id: run.id,
+      friendlyId: run.friendlyId,
+      status: run.status,
+      statusReason: run.statusReason ?? undefined,
+      createdAt: run.createdAt,
+      startedAt: run.startedAt,
+      executedAt: run.executedAt,
+      updatedAt: run.updatedAt,
+      delayUntil: run.delayUntil,
+      expiredAt: run.expiredAt,
+      completedAt: run.completedAt,
+      logsDeletedAt: run.logsDeletedAt,
+      ttl: run.ttl,
+      taskIdentifier: run.taskIdentifier,
+      version: run.lockedToVersion?.version,
+      sdkVersion: run.lockedToVersion?.sdkVersion,
+      runtime: run.lockedToVersion?.runtime,
+      runtimeVersion: run.lockedToVersion?.runtimeVersion,
+      isTest: run.isTest,
+      replayedFromTaskRunFriendlyId: run.replayedFromTaskRunFriendlyId,
+      environmentId: run.runtimeEnvironment.id,
+      idempotencyKey: run.idempotencyKey,
+      idempotencyKeyExpiresAt: run.idempotencyKeyExpiresAt,
+      schedule: await this.resolveSchedule(run.scheduleId ?? undefined),
+      queue: {
+        name: run.queue,
+        isCustomQueue: !run.queue.startsWith("task/"),
+        concurrencyKey: run.concurrencyKey,
+      },
+      tags: run.runTags,
+      baseCostInCents: run.baseCostInCents,
+      costInCents: run.costInCents,
+      totalCostInCents: run.costInCents + run.baseCostInCents,
+      usageDurationMs: run.usageDurationMs,
+      isFinished,
+      isRunning: RUNNING_STATUSES.includes(run.status),
+      isError: isFailedRunStatus(run.status),
+      payload,
+      payloadType: run.payloadType,
+      output,
+      outputType: run?.outputType ?? "application/json",
+      error,
+      relationships: {
+        root: run.rootTaskRun
+          ? {
+              ...run.rootTaskRun,
+              isParent: run.parentTaskRun?.friendlyId === run.rootTaskRun.friendlyId,
+            }
+          : undefined,
+        parent: run.parentTaskRun ?? undefined,
+      },
+      context: JSON.stringify(context, null, 2),
+      metadata,
+      maxDurationInSeconds: getMaxDuration(run.maxDurationInSeconds),
+      batch: run.batch ? { friendlyId: run.batch.friendlyId } : undefined,
+      engine: run.engine,
+      region,
+      workerQueue: run.workerQueue,
+      spanId: run.spanId,
+      isCached: !!span.originalRun,
+      machinePreset: machine?.name,
+      externalTraceId,
+    };
+  }
+
+  async resolveSchedule(scheduleId?: string) {
+    if (!scheduleId) {
+      return;
+    }
+
+    const schedule = await this._replica.taskSchedule.findFirst({
+      where: {
+        id: scheduleId,
+      },
+      select: {
+        friendlyId: true,
+        generatorExpression: true,
+        timezone: true,
+        generatorDescription: true,
+      },
+    });
+
+    if (!schedule) {
+      return;
+    }
+
+    return {
+      friendlyId: schedule.friendlyId,
+      generatorExpression: schedule.generatorExpression,
+      description: schedule.generatorDescription,
+      timezone: schedule.timezone,
+    };
+  }
+
+  async findRun({ span, spanId }: { span: GetSpanResult; spanId: string }) {
     const run = await this._replica.taskRun.findFirst({
       select: {
         id: true,
         spanId: true,
         traceId: true,
+        traceContext: true,
         //metadata
         number: true,
         taskIdentifier: true,
@@ -132,21 +301,18 @@ export class SpanPresenter extends BasePresenter {
         isTest: true,
         maxDurationInSeconds: true,
         taskEventStore: true,
-        tags: {
-          select: {
-            name: true,
-          },
-        },
+        runTags: true,
         machinePreset: true,
         lockedToVersion: {
           select: {
             version: true,
             sdkVersion: true,
+            runtime: true,
+            runtimeVersion: true,
           },
         },
         engine: true,
-        masterQueue: true,
-        secondaryMasterQueue: true,
+        workerQueue: true,
         error: true,
         output: true,
         outputType: true,
@@ -217,6 +383,19 @@ export class SpanPresenter extends BasePresenter {
             friendlyId: true,
           },
         },
+        replayedFromTaskRunFriendlyId: true,
+        attempts: {
+          take: 1,
+          orderBy: {
+            createdAt: "desc",
+          },
+          select: {
+            number: true,
+            status: true,
+            createdAt: true,
+            friendlyId: true,
+          },
+        },
       },
       where: span.originalRun
         ? {
@@ -227,177 +406,7 @@ export class SpanPresenter extends BasePresenter {
           },
     });
 
-    if (!run) {
-      return;
-    }
-
-    const isFinished = isFinalRunStatus(run.status);
-    const output = !isFinished
-      ? undefined
-      : run.outputType === "application/store"
-      ? `/resources/packets/${run.runtimeEnvironment.id}/${run.output}`
-      : typeof run.output !== "undefined" && run.output !== null
-      ? await prettyPrintPacket(run.output, run.outputType ?? undefined)
-      : undefined;
-
-    const payload =
-      run.payloadType === "application/store"
-        ? `/resources/packets/${run.runtimeEnvironment.id}/${run.payload}`
-        : typeof run.payload !== "undefined" && run.payload !== null
-        ? await prettyPrintPacket(run.payload, run.payloadType ?? undefined)
-        : undefined;
-
-    let error: TaskRunError | undefined = undefined;
-
-    if (run?.error) {
-      const result = TaskRunError.safeParse(run.error);
-      if (result.success) {
-        error = result.data;
-      } else {
-        error = {
-          type: "CUSTOM_ERROR",
-          raw: JSON.stringify(run.error),
-        };
-      }
-    }
-
-    const metadata = run.metadata
-      ? await prettyPrintPacket(run.metadata, run.metadataType, {
-          filteredKeys: ["$$streams", "$$streamsVersion", "$$streamsBaseUrl"],
-        })
-      : undefined;
-
-    const context = {
-      task: {
-        id: run.taskIdentifier,
-        filePath: run.lockedBy?.filePath,
-      },
-      run: {
-        id: run.friendlyId,
-        createdAt: run.createdAt,
-        tags: run.tags.map((tag) => tag.name),
-        isTest: run.isTest,
-        idempotencyKey: run.idempotencyKey ?? undefined,
-        startedAt: run.startedAt ?? run.createdAt,
-        durationMs: run.usageDurationMs,
-        costInCents: run.costInCents,
-        baseCostInCents: run.baseCostInCents,
-        maxAttempts: run.maxAttempts ?? undefined,
-        version: run.lockedToVersion?.version,
-        maxDuration: run.maxDurationInSeconds ?? undefined,
-      },
-      queue: {
-        name: run.queue,
-      },
-      environment: {
-        id: run.runtimeEnvironment.id,
-        slug: run.runtimeEnvironment.slug,
-        type: run.runtimeEnvironment.type,
-      },
-      organization: {
-        id: run.project.organization.id,
-        slug: run.project.organization.slug,
-        name: run.project.organization.title,
-      },
-      project: {
-        id: run.project.id,
-        ref: run.project.externalRef,
-        slug: run.project.slug,
-        name: run.project.name,
-      },
-      machine: run.machinePreset
-        ? machinePresetFromName(run.machinePreset as MachinePresetName)
-        : undefined,
-    };
-
-    return {
-      id: run.id,
-      friendlyId: run.friendlyId,
-      status: run.status,
-      statusReason: run.statusReason ?? undefined,
-      createdAt: run.createdAt,
-      startedAt: run.startedAt,
-      executedAt: run.executedAt,
-      updatedAt: run.updatedAt,
-      delayUntil: run.delayUntil,
-      expiredAt: run.expiredAt,
-      completedAt: run.completedAt,
-      logsDeletedAt: run.logsDeletedAt,
-      ttl: run.ttl,
-      taskIdentifier: run.taskIdentifier,
-      version: run.lockedToVersion?.version,
-      sdkVersion: run.lockedToVersion?.sdkVersion,
-      isTest: run.isTest,
-      environmentId: run.runtimeEnvironment.id,
-      idempotencyKey: run.idempotencyKey,
-      idempotencyKeyExpiresAt: run.idempotencyKeyExpiresAt,
-      schedule: await this.resolveSchedule(run.scheduleId ?? undefined),
-      queue: {
-        name: run.queue,
-        isCustomQueue: !run.queue.startsWith("task/"),
-        concurrencyKey: run.concurrencyKey,
-      },
-      tags: run.tags.map((tag) => tag.name),
-      baseCostInCents: run.baseCostInCents,
-      costInCents: run.costInCents,
-      totalCostInCents: run.costInCents + run.baseCostInCents,
-      usageDurationMs: run.usageDurationMs,
-      isFinished,
-      isRunning: RUNNING_STATUSES.includes(run.status),
-      isError: isFailedRunStatus(run.status),
-      payload,
-      payloadType: run.payloadType,
-      output,
-      outputType: run?.outputType ?? "application/json",
-      error,
-      relationships: {
-        root: run.rootTaskRun
-          ? {
-              ...run.rootTaskRun,
-              isParent: run.parentTaskRun?.friendlyId === run.rootTaskRun.friendlyId,
-            }
-          : undefined,
-        parent: run.parentTaskRun ?? undefined,
-      },
-      context: JSON.stringify(context, null, 2),
-      metadata,
-      maxDurationInSeconds: getMaxDuration(run.maxDurationInSeconds),
-      batch: run.batch ? { friendlyId: run.batch.friendlyId } : undefined,
-      engine: run.engine,
-      masterQueue: run.masterQueue,
-      secondaryMasterQueue: run.secondaryMasterQueue,
-      spanId: run.spanId,
-      isCached: !!span.originalRun,
-    };
-  }
-
-  async resolveSchedule(scheduleId?: string) {
-    if (!scheduleId) {
-      return;
-    }
-
-    const schedule = await this._replica.taskSchedule.findFirst({
-      where: {
-        id: scheduleId,
-      },
-      select: {
-        friendlyId: true,
-        generatorExpression: true,
-        timezone: true,
-        generatorDescription: true,
-      },
-    });
-
-    if (!schedule) {
-      return;
-    }
-
-    return {
-      friendlyId: schedule.friendlyId,
-      generatorExpression: schedule.generatorExpression,
-      description: schedule.generatorDescription,
-      timezone: schedule.timezone,
-    };
+    return run;
   }
 
   async #getSpan({
@@ -507,5 +516,106 @@ export class SpanPresenter extends BasePresenter {
       default:
         return { ...data, entity: null };
     }
+  }
+
+  async #getTaskRunContext({ run, machine }: { run: FindRunResult; machine?: MachinePreset }) {
+    if (run.engine === "V1") {
+      return this.#getV3TaskRunContext({ run, machine });
+    } else {
+      return this.#getV4TaskRunContext({ run });
+    }
+  }
+
+  async #getV3TaskRunContext({
+    run,
+    machine,
+  }: {
+    run: FindRunResult;
+    machine?: MachinePreset;
+  }): Promise<V3TaskRunContext> {
+    const attempt = run.attempts[0];
+
+    const context = {
+      attempt: attempt
+        ? {
+            id: attempt.friendlyId,
+            number: attempt.number,
+            status: attempt.status,
+            startedAt: attempt.createdAt,
+          }
+        : {
+            id: AttemptId.generate().friendlyId,
+            number: 1,
+            status: "PENDING" as const,
+            startedAt: run.updatedAt,
+          },
+      task: {
+        id: run.taskIdentifier,
+        filePath: run.lockedBy?.filePath ?? "",
+      },
+      run: {
+        id: run.friendlyId,
+        createdAt: run.createdAt,
+        tags: run.runTags,
+        isTest: run.isTest,
+        idempotencyKey: run.idempotencyKey ?? undefined,
+        startedAt: run.startedAt ?? run.createdAt,
+        durationMs: run.usageDurationMs,
+        costInCents: run.costInCents,
+        baseCostInCents: run.baseCostInCents,
+        maxAttempts: run.maxAttempts ?? undefined,
+        version: run.lockedToVersion?.version,
+        maxDuration: run.maxDurationInSeconds ?? undefined,
+      },
+      queue: {
+        name: run.queue,
+        id: run.queue,
+      },
+      environment: {
+        id: run.runtimeEnvironment.id,
+        slug: run.runtimeEnvironment.slug,
+        type: run.runtimeEnvironment.type,
+      },
+      organization: {
+        id: run.project.organization.id,
+        slug: run.project.organization.slug,
+        name: run.project.organization.title,
+      },
+      project: {
+        id: run.project.id,
+        ref: run.project.externalRef,
+        slug: run.project.slug,
+        name: run.project.name,
+      },
+      machine,
+    } satisfies V3TaskRunContext;
+
+    return context;
+  }
+
+  async #getV4TaskRunContext({ run }: { run: FindRunResult }): Promise<TaskRunContext> {
+    return engine.resolveTaskRunContext(run.id);
+  }
+
+  #getExternalTraceId(traceContext: unknown) {
+    if (!traceContext) {
+      return;
+    }
+
+    const parsedTraceContext = TriggerTraceContext.safeParse(traceContext);
+
+    if (!parsedTraceContext.success) {
+      return;
+    }
+
+    const externalTraceparent = parsedTraceContext.data.external?.traceparent;
+
+    if (!externalTraceparent) {
+      return;
+    }
+
+    const parsedTraceparent = parseTraceparent(externalTraceparent);
+
+    return parsedTraceparent?.traceId;
   }
 }

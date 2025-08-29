@@ -59,7 +59,8 @@ export function runStatusFromError(error: TaskRunError): TaskRunStatus {
 export class ServiceValidationError extends Error {
   constructor(
     message: string,
-    public status?: number
+    public status?: number,
+    public metadata?: Record<string, unknown>
   ) {
     super(message);
     this.name = "ServiceValidationError";

@@ -92,6 +92,9 @@ async function indexDeployment({
 
     const sourceFiles = resolveSourceFiles(buildManifest.sources, workerManifest.tasks);
 
+    const buildPlatform = process.env.BUILDPLATFORM;
+    const targetPlatform = process.env.TARGETPLATFORM;
+
     const backgroundWorkerBody: CreateBackgroundWorkerRequestBody = {
       localOnly: true,
       metadata: {
@@ -101,12 +104,41 @@ async function indexDeployment({
         tasks: workerManifest.tasks,
         queues: workerManifest.queues,
         sourceFiles,
+        runtime: workerManifest.runtime,
+        runtimeVersion: workerManifest.runtimeVersion,
       },
       engine: "V2",
       supportsLazyAttempts: true,
+      buildPlatform,
+      targetPlatform,
     };
 
-    await cliApiClient.createDeploymentBackgroundWorker(deploymentId, backgroundWorkerBody);
+    const createResponse = await cliApiClient.createDeploymentBackgroundWorker(
+      deploymentId,
+      backgroundWorkerBody
+    );
+
+    if (!createResponse.success) {
+      console.error(
+        JSON.stringify({
+          message: "Failed to create background worker",
+          buildPlatform,
+          targetPlatform,
+          error: createResponse.error,
+        })
+      );
+      // Do NOT fail the deployment, this may be a multi-platform deployment
+      return;
+    }
+
+    console.log(
+      JSON.stringify({
+        message: "Background worker created",
+        buildPlatform,
+        targetPlatform,
+        createResponse: createResponse.data,
+      })
+    );
   } catch (error) {
     const serialiedIndexError = serializeIndexingError(error, stderr.join("\n"));
 

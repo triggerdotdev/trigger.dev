@@ -6,12 +6,17 @@ import {
 } from "@trigger.dev/core/v3";
 import { TaskRun } from "@trigger.dev/database";
 import { z } from "zod";
+import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { EngineServiceValidationError } from "~/runEngine/concerns/errors";
-import { AuthenticatedEnvironment, getOneTimeUseToken } from "~/services/apiAuth.server";
+import { ApiAuthenticationResultSuccess, getOneTimeUseToken } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
+import {
+  handleRequestIdempotency,
+  saveRequestIdempotency,
+} from "~/utils/requestIdempotency.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { OutOfEntitlementError, TriggerTaskService } from "~/v3/services/triggerTask.server";
 
@@ -27,6 +32,7 @@ export const HeadersSchema = z.object({
   "x-trigger-worker": z.string().nullish(),
   "x-trigger-client": z.string().nullish(),
   "x-trigger-engine-version": RunEngineVersionSchema.nullish(),
+  "x-trigger-request-idempotency-key": z.string().nullish(),
   traceparent: z.string().optional(),
   tracestate: z.string().optional(),
 });
@@ -56,15 +62,40 @@ const { action, loader } = createActionApiRoute(
       "x-trigger-worker": isFromWorker,
       "x-trigger-client": triggerClient,
       "x-trigger-engine-version": engineVersion,
+      "x-trigger-request-idempotency-key": requestIdempotencyKey,
     } = headers;
+
+    const cachedResponse = await handleRequestIdempotency(requestIdempotencyKey, {
+      requestType: "trigger",
+      findCachedEntity: async (cachedRequestId) => {
+        return await prisma.taskRun.findFirst({
+          where: {
+            id: cachedRequestId,
+          },
+          select: {
+            friendlyId: true,
+          },
+        });
+      },
+      buildResponse: (cachedRun) => ({
+        id: cachedRun.friendlyId,
+        isCached: false,
+      }),
+      buildResponseHeaders: async (responseBody, cachedEntity) => {
+        return await responseHeaders(cachedEntity, authentication, triggerClient);
+      },
+    });
+
+    if (cachedResponse) {
+      return cachedResponse;
+    }
 
     const service = new TriggerTaskService();
 
     try {
-      const traceContext =
-        traceparent && isFromWorker /// If the request is from a worker, we should pass the trace context
-          ? { traceparent, tracestate }
-          : undefined;
+      const traceContext = isFromWorker
+        ? { traceparent, tracestate }
+        : { external: { traceparent, tracestate } };
 
       const oneTimeUseToken = await getOneTimeUseToken(authentication);
 
@@ -73,6 +104,14 @@ const { action, loader } = createActionApiRoute(
         idempotencyKey,
         idempotencyKeyTTL,
         triggerVersion,
+        headers,
+        options: body.options,
+        isFromWorker,
+        traceContext,
+      });
+
+      logger.debug("[otelContext]", {
+        taskId: params.taskId,
         headers,
         options: body.options,
         isFromWorker,
@@ -100,11 +139,9 @@ const { action, loader } = createActionApiRoute(
         return json({ error: "Task not found" }, { status: 404 });
       }
 
-      const $responseHeaders = await responseHeaders(
-        result.run,
-        authentication.environment,
-        triggerClient
-      );
+      await saveRequestIdempotency(requestIdempotencyKey, "trigger", result.run.id);
+
+      const $responseHeaders = await responseHeaders(result.run, authentication, triggerClient);
 
       return json(
         {
@@ -113,6 +150,7 @@ const { action, loader } = createActionApiRoute(
         },
         {
           headers: $responseHeaders,
+          status: 200,
         }
       );
     } catch (error) {
@@ -132,13 +170,16 @@ const { action, loader } = createActionApiRoute(
 );
 
 async function responseHeaders(
-  run: TaskRun,
-  environment: AuthenticatedEnvironment,
+  run: Pick<TaskRun, "friendlyId">,
+  authentication: ApiAuthenticationResultSuccess,
   triggerClient?: string | null
 ): Promise<Record<string, string>> {
+  const { environment, realtime } = authentication;
+
   const claimsHeader = JSON.stringify({
     sub: environment.id,
     pub: true,
+    realtime,
   });
 
   if (triggerClient === "browser") {
@@ -146,6 +187,7 @@ async function responseHeaders(
       sub: environment.id,
       pub: true,
       scopes: [`read:runs:${run.friendlyId}`],
+      realtime,
     };
 
     const jwt = await internal_generateJWT({

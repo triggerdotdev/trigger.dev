@@ -6,10 +6,12 @@ import { x } from "tinyexec";
 import { GitMeta } from "@trigger.dev/core/v3";
 
 export async function createGitMeta(directory: string): Promise<GitMeta | undefined> {
-  // First try to get metadata from GitHub Actions environment
-  const githubMeta = await getGitHubActionsMeta();
-  if (githubMeta) {
-    return githubMeta;
+  if (isGitHubApp()) {
+    return getGitHubAppMeta();
+  }
+
+  if (isGitHubActions()) {
+    return getGitHubActionsMeta();
   }
 
   // Fall back to git commands for local development
@@ -31,19 +33,14 @@ export async function createGitMeta(directory: string): Promise<GitMeta | undefi
   const dirty = dirtyResult.value;
   const commit = commitResult.value;
 
-  // Get the pull request number from process.env (GitHub Actions)
-  const pullRequestNumber: number | undefined = process.env.GITHUB_PULL_REQUEST_NUMBER
-    ? parseInt(process.env.GITHUB_PULL_REQUEST_NUMBER)
-    : undefined;
-
   return {
+    source: "local",
     remoteUrl: remoteUrl ?? undefined,
     commitAuthorName: commit.author.name,
     commitMessage: commit.subject,
     commitRef: commit.branch,
     commitSha: commit.hash,
     dirty,
-    pullRequestNumber,
   };
 }
 
@@ -86,27 +83,6 @@ async function parseGitConfig(configPath: string) {
   }
 }
 
-function pluckRemoteUrls(gitConfig: { [key: string]: any }): { [key: string]: string } | undefined {
-  const remoteUrls: { [key: string]: string } = {};
-
-  for (const key of Object.keys(gitConfig)) {
-    if (key.includes("remote")) {
-      // ex. remote "origin" — matches origin
-      const remoteName = key.match(/(?<=").*(?=")/g)?.[0];
-      const remoteUrl = gitConfig[key]?.url;
-      if (remoteName && remoteUrl) {
-        remoteUrls[remoteName] = remoteUrl;
-      }
-    }
-  }
-
-  if (Object.keys(remoteUrls).length === 0) {
-    return;
-  }
-
-  return remoteUrls;
-}
-
 function pluckOriginUrl(gitConfig: { [key: string]: any }): string | undefined {
   // Assuming "origin" is the remote url that the user would want to use
   return gitConfig['remote "origin"']?.url;
@@ -129,31 +105,32 @@ function errorToString(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-function isGitHubActions(): boolean {
-  return process.env.GITHUB_ACTIONS === "true";
+function isGitHubActions() {
+  // GH Actions CI sets these env variables
+  return (
+    process.env.GITHUB_ACTIONS === "true" &&
+    process.env.GITHUB_SHA !== undefined &&
+    process.env.GITHUB_REF !== undefined
+  );
 }
 
-async function getGitHubActionsMeta(): Promise<GitMeta | undefined> {
-  if (!isGitHubActions()) {
-    return undefined;
-  }
-
-  // Required fields that should always be present in GitHub Actions
-  if (!process.env.GITHUB_SHA || !process.env.GITHUB_REF) {
-    return undefined;
-  }
-
+async function getGitHubActionsMeta(): Promise<GitMeta> {
   const remoteUrl =
     process.env.GITHUB_SERVER_URL && process.env.GITHUB_REPOSITORY
       ? `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}.git`
       : undefined;
 
-  let commitRef = process.env.GITHUB_REF;
+  // GITHUB_SHA and GITHUB_REF are both set in GH Actions CI
+  const githubSha = process.env.GITHUB_SHA ?? "";
+  const githubRef = process.env.GITHUB_REF ?? "";
+
+  // For push events, GITHUB_REF is fully qualified, e.g., "refs/heads/main"
+  let commitRef = githubRef.replace(/^refs\/(heads|tags)\//, "");
   let commitMessage: string | undefined;
+  let commitSha = githubSha;
   let pullRequestNumber: number | undefined;
   let pullRequestTitle: string | undefined;
   let pullRequestState: "open" | "closed" | "merged" | undefined;
-  let commitSha = process.env.GITHUB_SHA;
 
   if (process.env.GITHUB_EVENT_PATH) {
     try {
@@ -161,8 +138,6 @@ async function getGitHubActionsMeta(): Promise<GitMeta | undefined> {
 
       if (process.env.GITHUB_EVENT_NAME === "push") {
         commitMessage = eventData.head_commit?.message;
-        // For push events, GITHUB_REF will be like "refs/heads/main"
-        commitRef = process.env.GITHUB_REF.replace(/^refs\/(heads|tags)\//, "");
       } else if (process.env.GITHUB_EVENT_NAME === "pull_request") {
         // For PRs, use the head commit info
         pullRequestTitle = eventData.pull_request?.title;
@@ -189,11 +164,11 @@ async function getGitHubActionsMeta(): Promise<GitMeta | undefined> {
     }
   } else {
     console.debug("No GITHUB_EVENT_PATH found");
-    // If we can't read the event payload, at least try to clean up the ref
-    commitRef = process.env.GITHUB_REF.replace(/^refs\/(heads|tags)\//, "");
   }
 
   return {
+    provider: "github",
+    source: "github_actions",
     remoteUrl,
     commitSha,
     commitRef,
@@ -209,6 +184,36 @@ async function getGitHubActionsMeta(): Promise<GitMeta | undefined> {
         : undefined),
     pullRequestTitle,
     pullRequestState,
+  };
+}
+
+function isGitHubApp() {
+  // we set this env variable in our build server
+  return process.env.TRIGGER_GITHUB_APP === "true";
+}
+
+function getGitHubAppMeta(): GitMeta {
+  return {
+    provider: "github",
+    source: "trigger_github_app",
+    remoteUrl: process.env.GITHUB_REPOSITORY_URL,
+    commitSha: process.env.GITHUB_HEAD_COMMIT_SHA,
+    commitRef: process.env.GITHUB_REF?.replace(/^refs\/(heads|tags)\//, ""),
+    commitMessage: process.env.GITHUB_HEAD_COMMIT_MESSAGE,
+    commitAuthorName: process.env.GITHUB_HEAD_COMMIT_AUTHOR_NAME,
+    pullRequestNumber: process.env.GITHUB_PULL_REQUEST_NUMBER
+      ? parseInt(process.env.GITHUB_PULL_REQUEST_NUMBER)
+      : undefined,
+    pullRequestTitle: process.env.GITHUB_PULL_REQUEST_TITLE,
+    pullRequestState: process.env.GITHUB_PULL_REQUEST_STATE as
+      | "open"
+      | "closed"
+      | "merged"
+      | undefined,
+    // the workspace is always clean as we clone the repo in the build server
+    dirty: false,
+    ghUsername: process.env.GITHUB_USERNAME,
+    ghUserAvatarUrl: process.env.GITHUB_USER_AVATAR_URL,
   };
 }
 

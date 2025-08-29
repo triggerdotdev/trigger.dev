@@ -13,10 +13,11 @@ import { roomFromFriendlyRunId, socketIo } from "./handleSocketIo.server";
 import { engine } from "./runEngine.server";
 import { PerformTaskRunAlertsService } from "./services/alerts/performTaskRunAlerts.server";
 import { RunId } from "@trigger.dev/core/v3/isomorphic";
-import { updateMetadataService } from "~/services/metadata/updateMetadata.server";
+import { updateMetadataService } from "~/services/metadata/updateMetadataInstance.server";
 import { findEnvironmentFromRun } from "~/models/runtimeEnvironment.server";
 import { env } from "~/env.server";
 import { getTaskEventStoreTableForRun } from "./taskEventStore.server";
+import { MetadataTooLargeError } from "~/utils/packets";
 
 export function registerRunEngineEventBusHandlers() {
   engine.eventBus.on("runSucceeded", async ({ time, run }) => {
@@ -381,17 +382,31 @@ export function registerRunEngineEventBusHandlers() {
     try {
       await updateMetadataService.call(run.id, run.metadata, env);
     } catch (e) {
-      logger.error("[runMetadataUpdated] Failed to update metadata", {
-        taskRun: run.id,
-        error:
-          e instanceof Error
-            ? {
-                name: e.name,
-                message: e.message,
-                stack: e.stack,
-              }
-            : e,
-      });
+      if (e instanceof MetadataTooLargeError) {
+        logger.warn("[runMetadataUpdated] Failed to update metadata, too large", {
+          taskRun: run.id,
+          error:
+            e instanceof Error
+              ? {
+                  name: e.name,
+                  message: e.message,
+                  stack: e.stack,
+                }
+              : e,
+        });
+      } else {
+        logger.error("[runMetadataUpdated] Failed to update metadata", {
+          taskRun: run.id,
+          error:
+            e instanceof Error
+              ? {
+                  name: e.name,
+                  message: e.message,
+                  stack: e.stack,
+                }
+              : e,
+        });
+      }
     }
   });
 

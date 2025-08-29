@@ -78,7 +78,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const s = {
     cursor: url.searchParams.get("cursor") ?? undefined,
     direction: url.searchParams.get("direction") ?? undefined,
-    environments: [environment.id],
     statuses: url.searchParams.getAll("statuses"),
     period: url.searchParams.get("period") ?? undefined,
     from: url.searchParams.get("from") ?? undefined,
@@ -93,6 +92,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     projectId: project.id,
     ...filters,
     friendlyId: filters.id,
+    environmentId: environment.id,
   });
 
   return typedjson(list);

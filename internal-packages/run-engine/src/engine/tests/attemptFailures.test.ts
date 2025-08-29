@@ -20,6 +20,8 @@ describe("RunEngine attempt failures", () => {
       },
       queue: {
         redis: redisOptions,
+        masterQueueConsumersDisabled: true,
+        processWorkerQueueDebounceMs: 50,
       },
       runLock: {
         redis: redisOptions,
@@ -62,7 +64,7 @@ describe("RunEngine attempt failures", () => {
           traceContext: {},
           traceId: "t12345",
           spanId: "s12345",
-          masterQueue: "main",
+          workerQueue: "main",
           queue: "task/test-task",
           isTest: false,
           tags: [],
@@ -71,10 +73,10 @@ describe("RunEngine attempt failures", () => {
       );
 
       //dequeue the run
-      const dequeued = await engine.dequeueFromMasterQueue({
+      await setTimeout(500);
+      const dequeued = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
-        masterQueue: run.masterQueue,
-        maxRunCount: 10,
+        workerQueue: "main",
       });
 
       //create an attempt
@@ -105,7 +107,7 @@ describe("RunEngine attempt failures", () => {
       });
       expect(result.attemptStatus).toBe("RETRY_IMMEDIATELY");
       expect(result.snapshot.executionStatus).toBe("EXECUTING");
-      expect(result.run.status).toBe("RETRYING_AFTER_FAILURE");
+      expect(result.run.status).toBe("EXECUTING");
 
       //state should be pending
       const executionData3 = await engine.getRunExecutionData({ runId: run.id });
@@ -113,7 +115,7 @@ describe("RunEngine attempt failures", () => {
       expect(executionData3.snapshot.executionStatus).toBe("EXECUTING");
       //only when the new attempt is created, should the attempt be increased
       expect(executionData3.run.attemptNumber).toBe(1);
-      expect(executionData3.run.status).toBe("RETRYING_AFTER_FAILURE");
+      expect(executionData3.run.status).toBe("EXECUTING");
 
       //create a second attempt
       const attemptResult2 = await engine.startRunAttempt({
@@ -173,6 +175,8 @@ describe("RunEngine attempt failures", () => {
       },
       queue: {
         redis: redisOptions,
+        masterQueueConsumersDisabled: true,
+        processWorkerQueueDebounceMs: 50,
       },
       runLock: {
         redis: redisOptions,
@@ -213,7 +217,7 @@ describe("RunEngine attempt failures", () => {
           traceContext: {},
           traceId: "t12345",
           spanId: "s12345",
-          masterQueue: "main",
+          workerQueue: "main",
           queue: "task/test-task",
           isTest: false,
           tags: [],
@@ -222,10 +226,10 @@ describe("RunEngine attempt failures", () => {
       );
 
       //dequeue the run
-      const dequeued = await engine.dequeueFromMasterQueue({
+      await setTimeout(500);
+      const dequeued = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
-        masterQueue: run.masterQueue,
-        maxRunCount: 10,
+        workerQueue: "main",
       });
 
       //create an attempt
@@ -284,6 +288,8 @@ describe("RunEngine attempt failures", () => {
       },
       queue: {
         redis: redisOptions,
+        masterQueueConsumersDisabled: true,
+        processWorkerQueueDebounceMs: 50,
       },
       runLock: {
         redis: redisOptions,
@@ -324,7 +330,7 @@ describe("RunEngine attempt failures", () => {
           traceContext: {},
           traceId: "t12345",
           spanId: "s12345",
-          masterQueue: "main",
+          workerQueue: "main",
           queue: "task/test-task",
           isTest: false,
           tags: [],
@@ -333,10 +339,10 @@ describe("RunEngine attempt failures", () => {
       );
 
       //dequeue the run
-      const dequeued = await engine.dequeueFromMasterQueue({
+      await setTimeout(500);
+      const dequeued = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
-        masterQueue: run.masterQueue,
-        maxRunCount: 10,
+        workerQueue: "main",
       });
 
       //create an attempt
@@ -393,6 +399,8 @@ describe("RunEngine attempt failures", () => {
       },
       queue: {
         redis: redisOptions,
+        masterQueueConsumersDisabled: true,
+        processWorkerQueueDebounceMs: 50,
       },
       runLock: {
         redis: redisOptions,
@@ -431,7 +439,7 @@ describe("RunEngine attempt failures", () => {
           traceContext: {},
           traceId: "t12345",
           spanId: "s12345",
-          masterQueue: "main",
+          workerQueue: "main",
           queue: "task/test-task",
           isTest: false,
           tags: [],
@@ -440,10 +448,10 @@ describe("RunEngine attempt failures", () => {
       );
 
       //dequeue the run
-      const dequeued = await engine.dequeueFromMasterQueue({
+      await setTimeout(500);
+      const dequeued = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
-        masterQueue: run.masterQueue,
-        maxRunCount: 10,
+        workerQueue: "main",
       });
 
       //create an attempt
@@ -500,6 +508,8 @@ describe("RunEngine attempt failures", () => {
       },
       queue: {
         redis: redisOptions,
+        masterQueueConsumersDisabled: true,
+        processWorkerQueueDebounceMs: 50,
       },
       runLock: {
         redis: redisOptions,
@@ -548,7 +558,7 @@ describe("RunEngine attempt failures", () => {
           traceContext: {},
           traceId: "t12345",
           spanId: "s12345",
-          masterQueue: "main",
+          workerQueue: "main",
           queue: "task/test-task",
           isTest: false,
           tags: [],
@@ -557,10 +567,10 @@ describe("RunEngine attempt failures", () => {
       );
 
       //dequeue the run
-      const dequeued = await engine.dequeueFromMasterQueue({
+      await setTimeout(500);
+      const dequeued = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
-        masterQueue: run.masterQueue,
-        maxRunCount: 10,
+        workerQueue: "main",
       });
 
       //create an attempt
@@ -590,14 +600,14 @@ describe("RunEngine attempt failures", () => {
       // The run should be retried with a larger machine
       expect(result.attemptStatus).toBe("RETRY_QUEUED");
       expect(result.snapshot.executionStatus).toBe("QUEUED");
-      expect(result.run.status).toBe("RETRYING_AFTER_FAILURE");
+      expect(result.run.status).toBe("PENDING");
 
       //state should be pending
       const executionData = await engine.getRunExecutionData({ runId: run.id });
       assertNonNullable(executionData);
       expect(executionData.snapshot.executionStatus).toBe("QUEUED");
       expect(executionData.run.attemptNumber).toBe(1);
-      expect(executionData.run.status).toBe("RETRYING_AFTER_FAILURE");
+      expect(executionData.run.status).toBe("PENDING");
 
       //create a second attempt
       const attemptResult2 = await engine.startRunAttempt({
@@ -657,6 +667,8 @@ describe("RunEngine attempt failures", () => {
       },
       queue: {
         redis: redisOptions,
+        masterQueueConsumersDisabled: true,
+        processWorkerQueueDebounceMs: 50,
       },
       runLock: {
         redis: redisOptions,
@@ -707,7 +719,7 @@ describe("RunEngine attempt failures", () => {
           traceContext: {},
           traceId: "t12345",
           spanId: "s12345",
-          masterQueue: "main",
+          workerQueue: "main",
           queue: "task/test-task",
           isTest: false,
           tags: [],
@@ -716,10 +728,10 @@ describe("RunEngine attempt failures", () => {
       );
 
       //dequeue the run
-      const dequeued = await engine.dequeueFromMasterQueue({
+      await setTimeout(500);
+      const dequeued = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
-        masterQueue: run.masterQueue,
-        maxRunCount: 10,
+        workerQueue: "main",
       });
 
       //create first attempt
@@ -749,23 +761,20 @@ describe("RunEngine attempt failures", () => {
       // The run should be retried with a larger machine
       expect(result.attemptStatus).toBe("RETRY_QUEUED");
       expect(result.snapshot.executionStatus).toBe("QUEUED");
-      expect(result.run.status).toBe("RETRYING_AFTER_FAILURE");
+      expect(result.run.status).toBe("PENDING");
 
       //state should be queued
       const executionData = await engine.getRunExecutionData({ runId: run.id });
       assertNonNullable(executionData);
       expect(executionData.snapshot.executionStatus).toBe("QUEUED");
       expect(executionData.run.attemptNumber).toBe(1);
-      expect(executionData.run.status).toBe("RETRYING_AFTER_FAILURE");
+      expect(executionData.run.status).toBe("PENDING");
 
-      //wait for 1s
-      await setTimeout(5_000);
+      await engine.runQueue.processMasterQueueForEnvironment(authenticatedEnvironment.id);
 
-      //dequeue again
-      const dequeued2 = await engine.dequeueFromMasterQueue({
+      const dequeued2 = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
-        masterQueue: run.masterQueue,
-        maxRunCount: 10,
+        workerQueue: "main",
       });
       expect(dequeued2.length).toBe(1);
 

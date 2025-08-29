@@ -40,7 +40,7 @@ Start by creating a new Trigger.dev task that takes in a Sequin change event as 
 
   <CodeGroup>
   ```ts trigger/create-embedding-for-post.ts
-  import { task } from "@trigger.dev/sdk/v3";
+  import { task } from "@trigger.dev/sdk";
   import { OpenAI } from "openai";
   import { upsertEmbedding } from "../util";
 
@@ -161,7 +161,7 @@ You'll now create an API endpoint that will receive posts from Sequin and then t
 
 ```ts app/api/create-embedding-for-post/route.ts
 import type { createEmbeddingForPost } from "@/trigger/create-embedding-for-post";
-import { tasks } from "@trigger.dev/sdk/v3";
+import { tasks } from "@trigger.dev/sdk";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {

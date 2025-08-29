@@ -163,7 +163,8 @@ export class TriggerTaskServiceV1 extends BaseService {
       const metadataPacket = body.options?.metadata
         ? handleMetadataPacket(
             body.options?.metadata,
-            body.options?.metadataType ?? "application/json"
+            body.options?.metadataType ?? "application/json",
+            env.TASK_RUN_METADATA_MAXIMUM_SIZE
           )
         : undefined;
 
@@ -312,6 +313,9 @@ export class TriggerTaskServiceV1 extends BaseService {
             },
             incomplete: true,
             immediate: true,
+            startTime: options.overrideCreatedAt
+              ? BigInt(options.overrideCreatedAt.getTime()) * BigInt(1000000)
+              : undefined,
           },
           async (event, traceContext, traceparent) => {
             const run = await autoIncrementCounter.incrementInTransaction(
@@ -364,6 +368,7 @@ export class TriggerTaskServiceV1 extends BaseService {
                   : 0;
 
                 const queueTimestamp =
+                  options.queueTimestamp ??
                   dependentAttempt?.taskRun.queueTimestamp ??
                   dependentBatchRun?.dependentTaskAttempt?.taskRun.queueTimestamp ??
                   delayUntil ??
@@ -423,6 +428,7 @@ export class TriggerTaskServiceV1 extends BaseService {
                       parentAttempt?.taskRun.id ??
                       dependentBatchRun?.dependentTaskAttempt?.taskRun.rootTaskRunId ??
                       dependentBatchRun?.dependentTaskAttempt?.taskRun.id,
+                    replayedFromTaskRunFriendlyId: options.replayedFromTaskRunFriendlyId,
                     batchId: dependentBatchRun?.id ?? parentBatchRun?.id,
                     resumeParentOnCompletion: !!(dependentAttempt ?? dependentBatchRun),
                     depth,
@@ -438,6 +444,10 @@ export class TriggerTaskServiceV1 extends BaseService {
                     machinePreset: body.options?.machine,
                     scheduleId: options.scheduleId,
                     scheduleInstanceId: options.scheduleInstanceId,
+                    createdAt: options.overrideCreatedAt,
+                    bulkActionGroupIds: body.options?.bulkActionId
+                      ? [body.options.bulkActionId]
+                      : undefined,
                   },
                 });
 

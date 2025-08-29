@@ -1,0 +1,21 @@
+{{- if .Values.redis.deploy }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "trigger-v4.fullname" . }}-test-redis"
+  labels:
+    {{- include "trigger-v4.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+spec:
+  restartPolicy: Never
+  containers:
+    - name: test-redis
+      image: {{ .Values.redis.image.registry }}/{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}
+      command: ['sh', '-c']
+      args:
+        - |
+          echo "Testing Redis connection..."
+          redis-cli -h {{ include "trigger-v4.fullname" . }}-redis-master -p {{ .Values.redis.master.service.ports.redis }} ping
+          echo "Redis test completed successfully"
+{{- end }}

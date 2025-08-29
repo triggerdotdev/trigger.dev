@@ -14,6 +14,16 @@ export class UsageTimeoutManager implements TimeoutManager {
     return this._abortSignal;
   }
 
+  reset(): void {
+    this._abortController = new AbortController();
+    this._abortSignal = undefined;
+
+    if (this._intervalId) {
+      clearInterval(this._intervalId);
+      this._intervalId = undefined;
+    }
+  }
+
   abortAfterTimeout(timeoutInSeconds?: number): AbortController {
     this._abortSignal = this._abortController.signal;
 

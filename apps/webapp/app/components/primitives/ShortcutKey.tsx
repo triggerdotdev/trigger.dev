@@ -13,8 +13,8 @@ const medium =
 
 export const variants = {
   small:
-    "text-[0.6rem] font-medium min-w-[17px] rounded-[2px] tabular-nums px-1 ml-1 -mr-0.5 flex items-center gap-x-1 border border-dimmed/40 text-text-dimmed group-hover:text-text-bright/80 group-hover:border-dimmed/60 transition uppercase",
-  medium,
+    "text-[0.6rem] font-medium min-w-[17px] rounded-[2px] tabular-nums px-1 ml-1 -mr-0.5 flex items-center gap-x-1 border border-text-dimmed/40 text-text-dimmed group-hover:text-text-bright/80 group-hover:border-text-dimmed/60 transition uppercase",
+  medium: cn(medium, "group-hover:border-charcoal-550"),
   "medium/bright": cn(medium, "bg-charcoal-750 text-text-bright border-charcoal-650"),
 };
 

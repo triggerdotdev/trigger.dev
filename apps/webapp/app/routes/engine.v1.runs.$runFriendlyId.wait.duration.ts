@@ -50,7 +50,6 @@ const { action } = createActionApiRoute(
         waitpoints: waitpoint.id,
         projectId: authentication.environment.project.id,
         organizationId: authentication.environment.organization.id,
-        releaseConcurrency: body.releaseConcurrency,
       });
 
       return json({

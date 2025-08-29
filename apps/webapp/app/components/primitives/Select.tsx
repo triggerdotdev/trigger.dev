@@ -28,9 +28,16 @@ const style = {
     button:
       "bg-transparent focus-custom hover:bg-tertiary disabled:bg-transparent disabled:pointer-events-none",
   },
+  secondary: {
+    button:
+      "bg-secondary focus-custom border border-charcoal-600 hover:text-text-bright hover:border-charcoal-550 text-text-bright hover:bg-charcoal-600",
+  },
 };
 
 const variants = {
+  "secondary/small": {
+    button: cn(sizes.small.button, style.secondary.button),
+  },
   "tertiary/small": {
     button: cn(sizes.small.button, style.tertiary.button),
   },
@@ -199,7 +206,6 @@ export function Select<TValue extends string | string[], TItem>({
         text={text}
         placeholder={placeholder}
         shortcut={shortcut}
-        tooltipTitle={heading}
         disabled={disabled}
         dropdownIcon={dropdownIcon}
         {...props}
@@ -327,6 +333,7 @@ export function SelectTrigger({
               className
             )}
             ref={ref}
+            disabled={disabled}
             {...props}
           />
         }
@@ -595,7 +602,7 @@ export interface SelectHeadingProps extends Ariakit.SelectHeadingProps {}
 export function SelectHeading({ render, ...props }: SelectHeadingProps) {
   return (
     <div className="flex h-[1.375rem] flex-none cursor-default items-center gap-2 border-b border-charcoal-700 bg-charcoal-750 px-2.5 text-xxs uppercase text-text-bright">
-      <Ariakit.SelectHeading render={<>{render}</>} />
+      <Ariakit.SelectHeading render={render} />
     </div>
   );
 }
@@ -615,7 +622,7 @@ export function SelectPopover({
       unmountOnHide={unmountOnHide}
       className={cn(
         "z-50 flex flex-col overflow-clip rounded border border-charcoal-700 bg-background-bright shadow-md outline-none animate-in fade-in-40",
-        "min-w-[max(180px,calc(var(--popover-anchor-width)+0.5rem))]",
+        "min-w-[max(180px,var(--popover-anchor-width))]",
         "max-w-[min(480px,var(--popover-available-width))]",
         "max-h-[min(600px,var(--popover-available-height))]",
         "origin-[var(--popover-transform-origin)]",

@@ -142,9 +142,6 @@ function getFriendlyNameForEvent(event: string, properties?: Record<string, any>
       return "Attempt created";
     }
     case "import": {
-      if (properties && typeof properties.file === "string") {
-        return `Importing ${properties.file}`;
-      }
       return "Importing task file";
     }
     case "lazy_payload": {

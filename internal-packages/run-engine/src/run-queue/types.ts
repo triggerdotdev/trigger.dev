@@ -16,10 +16,20 @@ export const InputPayload = z.object({
 });
 export type InputPayload = z.infer<typeof InputPayload>;
 
-export const OutputPayload = InputPayload.extend({
+export const OutputPayloadV1 = InputPayload.extend({
   version: z.literal("1"),
   masterQueues: z.string().array(),
 });
+export type OutputPayloadV1 = z.infer<typeof OutputPayloadV1>;
+
+export const OutputPayloadV2 = InputPayload.extend({
+  version: z.literal("2"),
+  workerQueue: z.string(),
+});
+export type OutputPayloadV2 = z.infer<typeof OutputPayloadV2>;
+
+export const OutputPayload = z.discriminatedUnion("version", [OutputPayloadV1, OutputPayloadV2]);
+
 export type OutputPayload = z.infer<typeof OutputPayload>;
 
 export type QueueDescriptor = {
@@ -36,6 +46,11 @@ export type EnvDescriptor = {
   envId: string;
 };
 
+export type RunQueueKeyProducerEnvironment = Omit<
+  MinimalAuthenticatedEnvironment,
+  "maximumConcurrencyLimit" | "concurrencyLimitBurstFactor"
+>;
+
 export interface RunQueueKeyProducer {
   //queue
   queueKey(
@@ -45,28 +60,50 @@ export interface RunQueueKeyProducer {
     queue: string,
     concurrencyKey?: string
   ): string;
-  queueKey(env: MinimalAuthenticatedEnvironment, queue: string, concurrencyKey?: string): string;
+  queueKey(env: RunQueueKeyProducerEnvironment, queue: string, concurrencyKey?: string): string;
 
-  envQueueKey(env: MinimalAuthenticatedEnvironment): string;
+  legacyMasterQueueKey(masterQueueName: string): string;
+
+  masterQueueKeyForEnvironment(envId: string, shardCount: number): string;
+  masterQueueKeyForShard(shard: number): string;
+  masterQueueShardForEnvironment(envId: string, shardCount: number): number;
+  workerQueueKey(workerQueue: string): string;
+
+  envQueueKey(env: RunQueueKeyProducerEnvironment): string;
   envQueueKeyFromQueue(queue: string): string;
-  queueConcurrencyLimitKey(env: MinimalAuthenticatedEnvironment, queue: string): string;
-  concurrencyLimitKeyFromQueue(queue: string): string;
-  currentConcurrencyKeyFromQueue(queue: string): string;
-  currentConcurrencyKey(
-    env: MinimalAuthenticatedEnvironment,
+  queueConcurrencyLimitKey(env: RunQueueKeyProducerEnvironment, queue: string): string;
+  queueConcurrencyLimitKeyFromQueue(queue: string): string;
+  queueCurrentConcurrencyKeyFromQueue(queue: string): string;
+  queueCurrentConcurrencyKey(
+    env: RunQueueKeyProducerEnvironment,
     queue: string,
     concurrencyKey?: string
   ): string;
-  disabledConcurrencyLimitKeyFromQueue(queue: string): string;
+  queueCurrentDequeuedKeyFromQueue(queue: string): string;
+  queueCurrentDequeuedKey(
+    env: RunQueueKeyProducerEnvironment,
+    queue: string,
+    concurrencyKey?: string
+  ): string;
+
   //env oncurrency
   envCurrentConcurrencyKey(env: EnvDescriptor): string;
-  envCurrentConcurrencyKey(env: MinimalAuthenticatedEnvironment): string;
+  envCurrentConcurrencyKey(env: RunQueueKeyProducerEnvironment): string;
 
   envConcurrencyLimitKey(env: EnvDescriptor): string;
-  envConcurrencyLimitKey(env: MinimalAuthenticatedEnvironment): string;
+  envConcurrencyLimitKey(env: RunQueueKeyProducerEnvironment): string;
+
+  envCurrentDequeuedKey(env: EnvDescriptor): string;
+  envCurrentDequeuedKey(env: RunQueueKeyProducerEnvironment): string;
+
+  envConcurrencyLimitBurstFactorKey(env: EnvDescriptor): string;
+  envConcurrencyLimitBurstFactorKey(env: RunQueueKeyProducerEnvironment): string;
+  envConcurrencyLimitBurstFactorKeyFromQueue(queue: string): string;
 
   envConcurrencyLimitKeyFromQueue(queue: string): string;
   envCurrentConcurrencyKeyFromQueue(queue: string): string;
+  envCurrentDequeuedKeyFromQueue(queue: string): string;
+
   //message payload
   messageKeyPrefixFromQueue(queue: string): string;
   messageKey(orgId: string, messageId: string): string;
@@ -76,9 +113,13 @@ export interface RunQueueKeyProducer {
   projectIdFromQueue(queue: string): string;
   descriptorFromQueue(queue: string): QueueDescriptor;
 
-  deadLetterQueueKey(env: MinimalAuthenticatedEnvironment): string;
+  deadLetterQueueKey(env: RunQueueKeyProducerEnvironment): string;
   deadLetterQueueKey(env: EnvDescriptor): string;
   deadLetterQueueKeyFromQueue(queue: string): string;
+
+  // Concurrency sweeper methods
+  markedForAckKey(): string;
+  currentConcurrencySetKeyScanPattern(): string;
 }
 
 export type EnvQueues = {

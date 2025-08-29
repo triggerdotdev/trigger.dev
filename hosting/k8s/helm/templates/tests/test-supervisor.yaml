@@ -1,0 +1,21 @@
+{{- if .Values.supervisor.deploy }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "trigger-v4.fullname" . }}-test-supervisor"
+  labels:
+    {{- include "trigger-v4.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+spec:
+  restartPolicy: Never
+  containers:
+    - name: test-supervisor
+      image: curlimages/curl:8.14.1
+      command: ['sh', '-c']
+      args:
+        - |
+          echo "Testing Supervisor metrics endpoint..."
+          curl -f http://{{ include "trigger-v4.fullname" . }}-supervisor:{{ .Values.supervisor.service.ports.metrics }}/metrics
+          echo "Supervisor test completed successfully"
+{{- end }}

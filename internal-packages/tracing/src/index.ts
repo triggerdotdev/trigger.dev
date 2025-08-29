@@ -1,16 +1,49 @@
-import { type Span, type SpanOptions, SpanStatusCode, type Tracer } from "@opentelemetry/api";
+import {
+  Meter,
+  type Span,
+  type SpanOptions,
+  SpanStatusCode,
+  type Tracer,
+} from "@opentelemetry/api";
 import { type Logger, SeverityNumber } from "@opentelemetry/api-logs";
 import { flattenAttributes } from "@trigger.dev/core/v3/utils/flattenAttributes";
 
 export * from "@opentelemetry/semantic-conventions";
 
-export type { Tracer, Attributes } from "@opentelemetry/api";
+export type {
+  Tracer,
+  Attributes,
+  Meter,
+  Counter,
+  UpDownCounter,
+  ObservableGauge,
+  ObservableCounter,
+  ObservableUpDownCounter,
+  MetricOptions,
+  Gauge,
+  Histogram,
+  ObservableResult,
+} from "@opentelemetry/api";
 
-import { trace, context, propagation, SpanKind } from "@opentelemetry/api";
-export { trace, context, propagation, type Span, SpanKind, type SpanOptions, SpanStatusCode };
+import { trace, context, propagation, SpanKind, metrics, ValueType } from "@opentelemetry/api";
+export {
+  trace,
+  context,
+  propagation,
+  type Span,
+  SpanKind,
+  type SpanOptions,
+  SpanStatusCode,
+  metrics,
+  ValueType,
+};
 
 export function getTracer(name: string): Tracer {
   return trace.getTracer(name);
+}
+
+export function getMeter(name: string): Meter {
+  return metrics.getMeter(name);
 }
 
 export async function startSpan<T>(

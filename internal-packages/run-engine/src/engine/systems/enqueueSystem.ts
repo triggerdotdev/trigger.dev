@@ -33,6 +33,7 @@ export class EnqueueSystem {
     completedWaitpoints,
     workerId,
     runnerId,
+    skipRunLock,
   }: {
     run: TaskRun;
     env: MinimalAuthenticatedEnvironment;
@@ -51,10 +52,11 @@ export class EnqueueSystem {
     }[];
     workerId?: string;
     runnerId?: string;
+    skipRunLock?: boolean;
   }) {
     const prisma = tx ?? this.$.prisma;
 
-    return await this.$.runLock.lock("enqueueRun", [run.id], 5000, async () => {
+    return await this.$.runLock.lockIf(!skipRunLock, "enqueueRun", [run.id], async () => {
       const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(prisma, {
         run: run,
         snapshot: {
@@ -74,16 +76,14 @@ export class EnqueueSystem {
         runnerId,
       });
 
-      const masterQueues = [run.masterQueue];
-      if (run.secondaryMasterQueue) {
-        masterQueues.push(run.secondaryMasterQueue);
-      }
+      // Force development runs to use the environment id as the worker queue.
+      const workerQueue = env.type === "DEVELOPMENT" ? env.id : run.workerQueue;
 
       const timestamp = (run.queueTimestamp ?? run.createdAt).getTime() - run.priorityMs;
 
       await this.$.runQueue.enqueueMessage({
         env,
-        masterQueues,
+        workerQueue,
         message: {
           runId: run.id,
           taskIdentifier: run.taskIdentifier,

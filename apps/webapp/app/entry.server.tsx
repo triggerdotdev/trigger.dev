@@ -15,6 +15,8 @@ import {
   OperatingSystemPlatform,
 } from "./components/primitives/OperatingSystemProvider";
 import { singleton } from "./utils/singleton";
+import { bootstrap } from "./bootstrap";
+import { wrapHandleErrorWithSentry } from "@sentry/remix";
 
 const ABORT_DELAY = 30000;
 
@@ -169,11 +171,27 @@ function handleBrowserRequest(
   });
 }
 
-export function handleError(error: unknown, { request, params, context }: DataFunctionArgs) {
-  logError(error, request);
-}
+export const handleError = wrapHandleErrorWithSentry((error, { request }) => {
+  if (request instanceof Request) {
+    logger.debug("Error in handleError", {
+      error,
+      request: {
+        url: request.url,
+        method: request.method,
+      },
+    });
+  } else {
+    logger.debug("Error in handleError", {
+      error,
+    });
+  }
+});
 
 Worker.init().catch((error) => {
+  logError(error);
+});
+
+bootstrap().catch((error) => {
   logError(error);
 });
 
@@ -215,14 +233,20 @@ export { apiRateLimiter } from "./services/apiRateLimit.server";
 export { engineRateLimiter } from "./services/engineRateLimit.server";
 export { socketIo } from "./v3/handleSocketIo.server";
 export { wss } from "./v3/handleWebsockets.server";
-export { registryProxy } from "./v3/registryProxy.server";
 export { runWithHttpContext } from "./services/httpAsyncStorage.server";
 import { eventLoopMonitor } from "./eventLoopMonitor.server";
 import { env } from "./env.server";
 import { logger } from "./services/logger.server";
 import { Prisma } from "./db.server";
 import { registerRunEngineEventBusHandlers } from "./v3/runEngineHandlers.server";
+import { remoteBuildsEnabled } from "./v3/remoteImageBuilder.server";
 
 if (env.EVENT_LOOP_MONITOR_ENABLED === "1") {
   eventLoopMonitor.enable();
+}
+
+if (remoteBuildsEnabled()) {
+  console.log("🏗️  Remote builds enabled");
+} else {
+  console.log("🏗️  Local builds enabled");
 }

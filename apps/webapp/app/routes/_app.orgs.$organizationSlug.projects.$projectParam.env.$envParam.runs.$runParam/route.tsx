@@ -96,6 +96,7 @@ import {
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { SpanView } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.spans.$spanParam/route";
 import { useSearchParams } from "~/hooks/useSearchParam";
+import { CopyableText } from "~/components/primitives/CopyableText";
 
 const resizableSettings = {
   parent: {
@@ -199,7 +200,7 @@ export default function Page() {
             to: v3RunsPath(organization, project, environment),
             text: "Runs",
           }}
-          title={`Run #${run.number}`}
+          title={<CopyableText value={run.friendlyId} />}
         />
         {environment.type === "DEVELOPMENT" && <DevDisconnectedBanner isConnected={isConnected} />}
         <PageAccessories>

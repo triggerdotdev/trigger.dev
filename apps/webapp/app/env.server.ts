@@ -1,8 +1,7 @@
 import { z } from "zod";
-import { SecretStoreOptionsSchema } from "./services/secrets/secretStoreOptionsSchema.server";
+import { BoolEnv } from "./utils/boolEnv";
 import { isValidDatabaseUrl } from "./utils/db";
 import { isValidRegex } from "./utils/regex";
-import { BoolEnv } from "./utils/boolEnv";
 
 const EnvironmentSchema = z.object({
   NODE_ENV: z.union([z.literal("development"), z.literal("production"), z.literal("test")]),
@@ -36,12 +35,12 @@ const EnvironmentSchema = z.object({
   API_ORIGIN: z.string().optional(),
   STREAM_ORIGIN: z.string().optional(),
   ELECTRIC_ORIGIN: z.string().default("http://localhost:3060"),
+  // A comma separated list of electric origins to shard into different electric instances by environmentId
+  // example: "http://localhost:3060,http://localhost:3061,http://localhost:3062"
+  ELECTRIC_ORIGIN_SHARDS: z.string().optional(),
   APP_ENV: z.string().default(process.env.NODE_ENV),
   SERVICE_NAME: z.string().default("trigger.dev webapp"),
-  SECRET_STORE: SecretStoreOptionsSchema.default("DATABASE"),
   POSTHOG_PROJECT_KEY: z.string().default("phc_LFH7kJiGhdIlnO22hTAKgHpaKhpM8gkzWAFvHmf5vfS"),
-  TELEMETRY_TRIGGER_API_KEY: z.string().optional(),
-  TELEMETRY_TRIGGER_API_URL: z.string().optional(),
   TRIGGER_TELEMETRY_DISABLED: z.string().optional(),
   AUTH_GITHUB_CLIENT_ID: z.string().optional(),
   AUTH_GITHUB_CLIENT_SECRET: z.string().optional(),
@@ -56,30 +55,11 @@ const EnvironmentSchema = z.object({
   SMTP_PASSWORD: z.string().optional(),
 
   PLAIN_API_KEY: z.string().optional(),
-  RUNTIME_PLATFORM: z.enum(["docker-compose", "ecs", "local"]).default("local"),
   WORKER_SCHEMA: z.string().default("graphile_worker"),
   WORKER_CONCURRENCY: z.coerce.number().int().default(10),
   WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
-  /** The number of days a failed Graphile task should stay before getting cleaned up */
-  WORKER_CLEANUP_TTL_DAYS: z.coerce.number().int().default(3),
-  EXECUTION_WORKER_CONCURRENCY: z.coerce.number().int().default(10),
-  EXECUTION_WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
   WORKER_ENABLED: z.string().default("true"),
-  EXECUTION_WORKER_ENABLED: z.string().default("true"),
-  TASK_OPERATION_WORKER_ENABLED: z.string().default("true"),
-  TASK_OPERATION_WORKER_CONCURRENCY: z.coerce.number().int().default(10),
-  TASK_OPERATION_WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
   GRACEFUL_SHUTDOWN_TIMEOUT: z.coerce.number().int().default(60000),
-  /** Optional. Only used if you use the apps/proxy */
-  AWS_SQS_REGION: z.string().optional(),
-  /** Optional. Only used if you use the apps/proxy */
-  AWS_SQS_ACCESS_KEY_ID: z.string().optional(),
-  /** Optional. Only used if you use the apps/proxy */
-  AWS_SQS_SECRET_ACCESS_KEY: z.string().optional(),
-  /** Optional. Only used if you use the apps/proxy */
-  AWS_SQS_QUEUE_URL: z.string().optional(),
-  AWS_SQS_BATCH_SIZE: z.coerce.number().int().optional().default(1),
-  AWS_SQS_WAIT_TIME_MS: z.coerce.number().int().optional().default(100),
   DISABLE_SSE: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
 
@@ -184,6 +164,11 @@ const EnvironmentSchema = z.object({
     .default(process.env.REDIS_TLS_DISABLED ?? "false"),
   REALTIME_STREAMS_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
 
+  REALTIME_MAXIMUM_CREATED_AT_FILTER_AGE_IN_MS: z.coerce
+    .number()
+    .int()
+    .default(24 * 60 * 60 * 1000), // 1 day in milliseconds
+
   PUBSUB_REDIS_HOST: z
     .string()
     .optional()
@@ -214,12 +199,10 @@ const EnvironmentSchema = z.object({
   PUBSUB_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
   PUBSUB_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
 
-  DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT: z.coerce.number().int().default(10),
-  DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT: z.coerce.number().int().default(10),
+  DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT: z.coerce.number().int().default(100),
+  DEFAULT_ENV_EXECUTION_CONCURRENCY_BURST_FACTOR: z.coerce.number().default(1.0),
+  DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT: z.coerce.number().int().default(300),
   DEFAULT_DEV_ENV_EXECUTION_ATTEMPTS: z.coerce.number().int().positive().default(1),
-
-  TUNNEL_HOST: z.string().optional(),
-  TUNNEL_SECRET_KEY: z.string().optional(),
 
   //API Rate limiting
   /**
@@ -240,51 +223,74 @@ const EnvironmentSchema = z.object({
   API_RATE_LIMIT_JWT_WINDOW: z.string().default("1m"),
   API_RATE_LIMIT_JWT_TOKENS: z.coerce.number().int().default(60),
 
-  //Realtime rate limiting
-  /**
-   * @example "60s"
-   * @example "1m"
-   * @example "1h"
-   * @example "1d"
-   * @example "1000ms"
-   * @example "1000s"
-   */
-  REALTIME_RATE_LIMIT_WINDOW: z.string().default("1m"),
-  REALTIME_RATE_LIMIT_TOKENS: z.coerce.number().int().default(100),
-  REALTIME_RATE_LIMIT_REQUEST_LOGS_ENABLED: z.string().default("0"),
-  REALTIME_RATE_LIMIT_REJECTION_LOGS_ENABLED: z.string().default("1"),
-  REALTIME_RATE_LIMIT_LIMITER_LOGS_ENABLED: z.string().default("0"),
-
-  //Ingesting event rate limit
-  INGEST_EVENT_RATE_LIMIT_WINDOW: z.string().default("60s"),
-  INGEST_EVENT_RATE_LIMIT_MAX: z.coerce.number().int().optional(),
-
   //v3
-  V3_ENABLED: z.string().default("false"),
   PROVIDER_SECRET: z.string().default("provider-secret"),
   COORDINATOR_SECRET: z.string().default("coordinator-secret"),
   DEPOT_TOKEN: z.string().optional(),
-  DEPOT_PROJECT_ID: z.string().optional(),
   DEPOT_ORG_ID: z.string().optional(),
   DEPOT_REGION: z.string().default("us-east-1"),
-  CONTAINER_REGISTRY_ORIGIN: z.string().optional(),
-  CONTAINER_REGISTRY_USERNAME: z.string().optional(),
-  CONTAINER_REGISTRY_PASSWORD: z.string().optional(),
-  ENABLE_REGISTRY_PROXY: z.string().optional(),
-  DEPLOY_REGISTRY_HOST: z.string().optional(),
+
+  // Deployment registry (v3)
+  DEPLOY_REGISTRY_HOST: z.string().min(1),
   DEPLOY_REGISTRY_USERNAME: z.string().optional(),
   DEPLOY_REGISTRY_PASSWORD: z.string().optional(),
-  DEPLOY_REGISTRY_NAMESPACE: z.string().default("trigger"),
+  DEPLOY_REGISTRY_NAMESPACE: z.string().min(1).default("trigger"),
+  DEPLOY_REGISTRY_ECR_TAGS: z.string().optional(), // csv, for example: "key1=value1,key2=value2"
+  DEPLOY_REGISTRY_ECR_ASSUME_ROLE_ARN: z.string().optional(),
+  DEPLOY_REGISTRY_ECR_ASSUME_ROLE_EXTERNAL_ID: z.string().optional(),
+
+  // Deployment registry (v4) - falls back to v3 registry if not specified
+  V4_DEPLOY_REGISTRY_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.DEPLOY_REGISTRY_HOST)
+    .pipe(z.string().min(1)), // Ensure final type is required string
+  V4_DEPLOY_REGISTRY_USERNAME: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.DEPLOY_REGISTRY_USERNAME),
+  V4_DEPLOY_REGISTRY_PASSWORD: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.DEPLOY_REGISTRY_PASSWORD),
+  V4_DEPLOY_REGISTRY_NAMESPACE: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.DEPLOY_REGISTRY_NAMESPACE)
+    .pipe(z.string().min(1).default("trigger")), // Ensure final type is required string
+  V4_DEPLOY_REGISTRY_ECR_TAGS: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.DEPLOY_REGISTRY_ECR_TAGS),
+  V4_DEPLOY_REGISTRY_ECR_ASSUME_ROLE_ARN: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.DEPLOY_REGISTRY_ECR_ASSUME_ROLE_ARN),
+  V4_DEPLOY_REGISTRY_ECR_ASSUME_ROLE_EXTERNAL_ID: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.DEPLOY_REGISTRY_ECR_ASSUME_ROLE_EXTERNAL_ID),
+
+  DEPLOY_IMAGE_PLATFORM: z.string().default("linux/amd64"),
   DEPLOY_TIMEOUT_MS: z.coerce
     .number()
     .int()
     .default(60 * 1000 * 8), // 8 minutes
+
   OBJECT_STORE_BASE_URL: z.string().optional(),
   OBJECT_STORE_ACCESS_KEY_ID: z.string().optional(),
   OBJECT_STORE_SECRET_ACCESS_KEY: z.string().optional(),
+  OBJECT_STORE_REGION: z.string().optional(),
+  OBJECT_STORE_SERVICE: z.string().default("s3"),
   EVENTS_BATCH_SIZE: z.coerce.number().int().default(100),
   EVENTS_BATCH_INTERVAL: z.coerce.number().int().default(1000),
   EVENTS_DEFAULT_LOG_RETENTION: z.coerce.number().int().default(7),
+  EVENTS_MIN_CONCURRENCY: z.coerce.number().int().default(1),
+  EVENTS_MAX_CONCURRENCY: z.coerce.number().int().default(10),
+  EVENTS_MAX_BATCH_SIZE: z.coerce.number().int().default(500),
+  EVENTS_MEMORY_PRESSURE_THRESHOLD: z.coerce.number().int().default(5000),
+  EVENTS_LOAD_SHEDDING_THRESHOLD: z.coerce.number().int().default(100000),
+  EVENTS_LOAD_SHEDDING_ENABLED: z.string().default("1"),
   SHARED_QUEUE_CONSUMER_POOL_SIZE: z.coerce.number().int().default(10),
   SHARED_QUEUE_CONSUMER_INTERVAL_MS: z.coerce.number().int().default(100),
   SHARED_QUEUE_CONSUMER_NEXT_TICK_INTERVAL_MS: z.coerce.number().int().default(100),
@@ -316,6 +322,15 @@ const EnvironmentSchema = z.object({
   PROD_OTEL_LOG_EXPORT_TIMEOUT_MILLIS: z.string().default("30000"),
   PROD_OTEL_LOG_MAX_QUEUE_SIZE: z.string().default("512"),
 
+  TRIGGER_OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT: z.string().default("1024"),
+  TRIGGER_OTEL_LOG_ATTRIBUTE_COUNT_LIMIT: z.string().default("1024"),
+  TRIGGER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT: z.string().default("131072"),
+  TRIGGER_OTEL_LOG_ATTRIBUTE_VALUE_LENGTH_LIMIT: z.string().default("131072"),
+  TRIGGER_OTEL_SPAN_EVENT_COUNT_LIMIT: z.string().default("10"),
+  TRIGGER_OTEL_LINK_COUNT_LIMIT: z.string().default("2"),
+  TRIGGER_OTEL_ATTRIBUTE_PER_LINK_COUNT_LIMIT: z.string().default("10"),
+  TRIGGER_OTEL_ATTRIBUTE_PER_EVENT_COUNT_LIMIT: z.string().default("10"),
+
   CHECKPOINT_THRESHOLD_IN_MS: z.coerce.number().int().default(30000),
 
   // Internal OTEL environment variables
@@ -328,6 +343,10 @@ const EnvironmentSchema = z.object({
   INTERNAL_OTEL_TRACE_DISABLED: z.string().default("0"),
 
   INTERNAL_OTEL_LOG_EXPORTER_URL: z.string().optional(),
+  INTERNAL_OTEL_METRIC_EXPORTER_URL: z.string().optional(),
+  INTERNAL_OTEL_METRIC_EXPORTER_AUTH_HEADERS: z.string().optional(),
+  INTERNAL_OTEL_METRIC_EXPORTER_ENABLED: z.string().default("0"),
+  INTERNAL_OTEL_METRIC_EXPORTER_INTERVAL_MS: z.coerce.number().int().default(30_000),
 
   ORG_SLACK_INTEGRATION_CLIENT_ID: z.string().optional(),
   ORG_SLACK_INTEGRATION_CLIENT_SECRET: z.string().optional(),
@@ -376,8 +395,6 @@ const EnvironmentSchema = z.object({
     .default(process.env.REDIS_TLS_DISABLED ?? "false"),
   ALERT_RATE_LIMITER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
 
-  MAX_SEQUENTIAL_INDEX_FAILURE_COUNT: z.coerce.number().default(96),
-
   LOOPS_API_KEY: z.string().optional(),
   MARQS_DISABLE_REBALANCING: BoolEnv.default(false),
   MARQS_VISIBILITY_TIMEOUT_MS: z.coerce
@@ -393,6 +410,8 @@ const EnvironmentSchema = z.object({
   MARQS_QUEUE_AGE_RANDOMIZATION_BIAS: z.coerce.number().default(0.25),
   MARQS_REUSE_SNAPSHOT_COUNT: z.coerce.number().int().default(0),
   MARQS_MAXIMUM_ENV_COUNT: z.coerce.number().int().optional(),
+  MARQS_SHARED_WORKER_QUEUE_CONSUMER_INTERVAL_MS: z.coerce.number().int().default(250),
+  MARQS_SHARED_WORKER_QUEUE_MAX_MESSAGE_COUNT: z.coerce.number().int().default(10),
 
   PROD_TASK_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().optional(),
 
@@ -414,15 +433,12 @@ const EnvironmentSchema = z.object({
   USAGE_EVENT_URL: z.string().optional(),
   PROD_USAGE_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().optional(),
 
-  CENTS_PER_VCPU_SECOND: z.coerce.number().default(0),
-  CENTS_PER_GB_RAM_SECOND: z.coerce.number().default(0),
   CENTS_PER_RUN: z.coerce.number().default(0),
 
-  USAGE_OPEN_METER_API_KEY: z.string().optional(),
-  USAGE_OPEN_METER_BASE_URL: z.string().optional(),
   EVENT_LOOP_MONITOR_ENABLED: z.string().default("1"),
   MAXIMUM_LIVE_RELOADING_EVENTS: z.coerce.number().int().default(1000),
   MAXIMUM_TRACE_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(25_000),
+  MAXIMUM_TRACE_DETAILED_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(10_000),
   TASK_PAYLOAD_OFFLOAD_THRESHOLD: z.coerce.number().int().default(524_288), // 512KB
   TASK_PAYLOAD_MAXIMUM_SIZE: z.coerce.number().int().default(3_145_728), // 3MB
   BATCH_TASK_PAYLOAD_MAXIMUM_SIZE: z.coerce.number().int().default(1_000_000), // 1MB
@@ -464,8 +480,25 @@ const EnvironmentSchema = z.object({
   RUN_ENGINE_QUEUE_AGE_RANDOMIZATION_BIAS: z.coerce.number().default(0.25),
   RUN_ENGINE_REUSE_SNAPSHOT_COUNT: z.coerce.number().int().default(0),
   RUN_ENGINE_MAXIMUM_ENV_COUNT: z.coerce.number().int().optional(),
+  RUN_ENGINE_RUN_QUEUE_SHARD_COUNT: z.coerce.number().int().default(4),
   RUN_ENGINE_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(60_000),
   RUN_ENGINE_RETRY_WARM_START_THRESHOLD_MS: z.coerce.number().int().default(30_000),
+  RUN_ENGINE_PROCESS_WORKER_QUEUE_DEBOUNCE_MS: z.coerce.number().int().default(200),
+  RUN_ENGINE_DEQUEUE_BLOCKING_TIMEOUT_SECONDS: z.coerce.number().int().default(10),
+  RUN_ENGINE_MASTER_QUEUE_CONSUMERS_INTERVAL_MS: z.coerce.number().int().default(500),
+  RUN_ENGINE_CONCURRENCY_SWEEPER_SCAN_SCHEDULE: z.string().optional(),
+  RUN_ENGINE_CONCURRENCY_SWEEPER_PROCESS_MARKED_SCHEDULE: z.string().optional(),
+  RUN_ENGINE_CONCURRENCY_SWEEPER_SCAN_JITTER_IN_MS: z.coerce.number().int().optional(),
+  RUN_ENGINE_CONCURRENCY_SWEEPER_PROCESS_MARKED_JITTER_IN_MS: z.coerce.number().int().optional(),
+
+  RUN_ENGINE_RUN_LOCK_DURATION: z.coerce.number().int().default(5000),
+  RUN_ENGINE_RUN_LOCK_AUTOMATIC_EXTENSION_THRESHOLD: z.coerce.number().int().default(1000),
+  RUN_ENGINE_RUN_LOCK_MAX_RETRIES: z.coerce.number().int().default(10),
+  RUN_ENGINE_RUN_LOCK_BASE_DELAY: z.coerce.number().int().default(100),
+  RUN_ENGINE_RUN_LOCK_MAX_DELAY: z.coerce.number().int().default(3000),
+  RUN_ENGINE_RUN_LOCK_BACKOFF_MULTIPLIER: z.coerce.number().default(1.8),
+  RUN_ENGINE_RUN_LOCK_JITTER_FACTOR: z.coerce.number().default(0.15),
+  RUN_ENGINE_RUN_LOCK_MAX_TOTAL_WAIT_TIME: z.coerce.number().int().default(15000),
 
   RUN_ENGINE_WORKER_REDIS_HOST: z
     .string()
@@ -621,6 +654,8 @@ const EnvironmentSchema = z.object({
   RUN_ENGINE_RELEASE_CONCURRENCY_BATCH_SIZE: z.coerce.number().int().default(10),
 
   RUN_ENGINE_WORKER_ENABLED: z.string().default("1"),
+  RUN_ENGINE_WORKER_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
+  RUN_ENGINE_RUN_QUEUE_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
 
   /** How long should the presence ttl last */
   DEV_PRESENCE_SSE_TIMEOUT: z.coerce.number().int().default(30_000),
@@ -644,8 +679,11 @@ const EnvironmentSchema = z.object({
   LEGACY_RUN_ENGINE_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(1),
   LEGACY_RUN_ENGINE_WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
   LEGACY_RUN_ENGINE_WORKER_IMMEDIATE_POLL_INTERVAL: z.coerce.number().int().default(50),
-  LEGACY_RUN_ENGINE_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(100),
+  LEGACY_RUN_ENGINE_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(50),
   LEGACY_RUN_ENGINE_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(60_000),
+  LEGACY_RUN_ENGINE_WORKER_LOG_LEVEL: z
+    .enum(["log", "error", "warn", "info", "debug"])
+    .default("info"),
 
   LEGACY_RUN_ENGINE_WORKER_REDIS_HOST: z
     .string()
@@ -687,8 +725,9 @@ const EnvironmentSchema = z.object({
   COMMON_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(10),
   COMMON_WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
   COMMON_WORKER_IMMEDIATE_POLL_INTERVAL: z.coerce.number().int().default(50),
-  COMMON_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(100),
+  COMMON_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(50),
   COMMON_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(60_000),
+  COMMON_WORKER_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
 
   COMMON_WORKER_REDIS_HOST: z
     .string()
@@ -719,6 +758,172 @@ const EnvironmentSchema = z.object({
     .transform((v) => v ?? process.env.REDIS_PASSWORD),
   COMMON_WORKER_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
   COMMON_WORKER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
+
+  BATCH_TRIGGER_PROCESS_JOB_VISIBILITY_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .default(60_000 * 5), // 5 minutes
+
+  BATCH_TRIGGER_CACHED_RUNS_CHECK_ENABLED: BoolEnv.default(false),
+
+  BATCH_TRIGGER_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
+  BATCH_TRIGGER_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),
+  BATCH_TRIGGER_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(10),
+  BATCH_TRIGGER_WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
+  BATCH_TRIGGER_WORKER_IMMEDIATE_POLL_INTERVAL: z.coerce.number().int().default(50),
+  BATCH_TRIGGER_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(20),
+  BATCH_TRIGGER_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(60_000),
+  BATCH_TRIGGER_WORKER_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
+
+  BATCH_TRIGGER_WORKER_REDIS_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_HOST),
+  BATCH_TRIGGER_WORKER_REDIS_READER_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_READER_HOST),
+  BATCH_TRIGGER_WORKER_REDIS_READER_PORT: z.coerce
+    .number()
+    .optional()
+    .transform(
+      (v) =>
+        v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
+    ),
+  BATCH_TRIGGER_WORKER_REDIS_PORT: z.coerce
+    .number()
+    .optional()
+    .transform((v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)),
+  BATCH_TRIGGER_WORKER_REDIS_USERNAME: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_USERNAME),
+  BATCH_TRIGGER_WORKER_REDIS_PASSWORD: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_PASSWORD),
+  BATCH_TRIGGER_WORKER_REDIS_TLS_DISABLED: z
+    .string()
+    .default(process.env.REDIS_TLS_DISABLED ?? "false"),
+  BATCH_TRIGGER_WORKER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
+
+  ADMIN_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
+  ADMIN_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),
+  ADMIN_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(10),
+  ADMIN_WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
+  ADMIN_WORKER_IMMEDIATE_POLL_INTERVAL: z.coerce.number().int().default(50),
+  ADMIN_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(20),
+  ADMIN_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(60_000),
+  ADMIN_WORKER_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
+
+  ADMIN_WORKER_REDIS_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_HOST),
+  ADMIN_WORKER_REDIS_READER_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_READER_HOST),
+  ADMIN_WORKER_REDIS_READER_PORT: z.coerce
+    .number()
+    .optional()
+    .transform(
+      (v) =>
+        v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
+    ),
+  ADMIN_WORKER_REDIS_PORT: z.coerce
+    .number()
+    .optional()
+    .transform((v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)),
+  ADMIN_WORKER_REDIS_USERNAME: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_USERNAME),
+  ADMIN_WORKER_REDIS_PASSWORD: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_PASSWORD),
+  ADMIN_WORKER_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
+  ADMIN_WORKER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
+
+  ALERTS_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
+  ALERTS_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),
+  ALERTS_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(10),
+  ALERTS_WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
+  ALERTS_WORKER_IMMEDIATE_POLL_INTERVAL: z.coerce.number().int().default(100),
+  ALERTS_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(50),
+  ALERTS_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(60_000),
+  ALERTS_WORKER_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
+
+  ALERTS_WORKER_REDIS_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_HOST),
+  ALERTS_WORKER_REDIS_READER_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_READER_HOST),
+  ALERTS_WORKER_REDIS_READER_PORT: z.coerce
+    .number()
+    .optional()
+    .transform(
+      (v) =>
+        v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
+    ),
+  ALERTS_WORKER_REDIS_PORT: z.coerce
+    .number()
+    .optional()
+    .transform((v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)),
+  ALERTS_WORKER_REDIS_USERNAME: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_USERNAME),
+  ALERTS_WORKER_REDIS_PASSWORD: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_PASSWORD),
+  ALERTS_WORKER_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
+  ALERTS_WORKER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
+
+  SCHEDULE_ENGINE_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
+  SCHEDULE_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
+  SCHEDULE_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),
+  SCHEDULE_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(10),
+  SCHEDULE_WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
+  SCHEDULE_WORKER_IMMEDIATE_POLL_INTERVAL: z.coerce.number().int().default(50),
+  SCHEDULE_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(50),
+  SCHEDULE_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(30_000),
+  SCHEDULE_WORKER_DISTRIBUTION_WINDOW_SECONDS: z.coerce.number().int().default(30),
+
+  SCHEDULE_WORKER_REDIS_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_HOST),
+  SCHEDULE_WORKER_REDIS_READER_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_READER_HOST),
+  SCHEDULE_WORKER_REDIS_READER_PORT: z.coerce
+    .number()
+    .optional()
+    .transform(
+      (v) =>
+        v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
+    ),
+  SCHEDULE_WORKER_REDIS_PORT: z.coerce
+    .number()
+    .optional()
+    .transform((v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)),
+  SCHEDULE_WORKER_REDIS_USERNAME: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_USERNAME),
+  SCHEDULE_WORKER_REDIS_PASSWORD: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_PASSWORD),
+  SCHEDULE_WORKER_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
+  SCHEDULE_WORKER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
 
   TASK_EVENT_PARTITIONING_ENABLED: z.string().default("0"),
   TASK_EVENT_PARTITIONED_WINDOW_IN_SECONDS: z.coerce.number().int().default(60), // 1 minute
@@ -769,19 +974,96 @@ const EnvironmentSchema = z.object({
   RUN_REPLICATION_ENABLED: z.string().default("0"),
   RUN_REPLICATION_SLOT_NAME: z.string().default("task_runs_to_clickhouse_v1"),
   RUN_REPLICATION_PUBLICATION_NAME: z.string().default("task_runs_to_clickhouse_v1_publication"),
-  RUN_REPLICATION_MAX_FLUSH_CONCURRENCY: z.coerce.number().int().default(100),
+  RUN_REPLICATION_MAX_FLUSH_CONCURRENCY: z.coerce.number().int().default(2),
   RUN_REPLICATION_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
   RUN_REPLICATION_FLUSH_BATCH_SIZE: z.coerce.number().int().default(100),
   RUN_REPLICATION_LEADER_LOCK_TIMEOUT_MS: z.coerce.number().int().default(30_000),
   RUN_REPLICATION_LEADER_LOCK_EXTEND_INTERVAL_MS: z.coerce.number().int().default(10_000),
   RUN_REPLICATION_ACK_INTERVAL_SECONDS: z.coerce.number().int().default(10),
   RUN_REPLICATION_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
+  RUN_REPLICATION_CLICKHOUSE_LOG_LEVEL: z
+    .enum(["log", "error", "warn", "info", "debug"])
+    .default("info"),
   RUN_REPLICATION_LEADER_LOCK_ADDITIONAL_TIME_MS: z.coerce.number().int().default(10_000),
   RUN_REPLICATION_LEADER_LOCK_RETRY_INTERVAL_MS: z.coerce.number().int().default(500),
   RUN_REPLICATION_WAIT_FOR_ASYNC_INSERT: z.string().default("0"),
-  RUN_REPLICATION_KEEP_ALIVE_ENABLED: z.string().default("1"),
+  RUN_REPLICATION_KEEP_ALIVE_ENABLED: z.string().default("0"),
   RUN_REPLICATION_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().optional(),
   RUN_REPLICATION_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(10),
+  // Retry configuration for insert operations
+  RUN_REPLICATION_INSERT_MAX_RETRIES: z.coerce.number().int().default(3),
+  RUN_REPLICATION_INSERT_BASE_DELAY_MS: z.coerce.number().int().default(100),
+  RUN_REPLICATION_INSERT_MAX_DELAY_MS: z.coerce.number().int().default(2000),
+  RUN_REPLICATION_INSERT_STRATEGY: z.enum(["insert", "insert_async"]).default("insert"),
+
+  // Clickhouse
+  CLICKHOUSE_URL: z.string(),
+  CLICKHOUSE_KEEP_ALIVE_ENABLED: z.string().default("1"),
+  CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().optional(),
+  CLICKHOUSE_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(10),
+  CLICKHOUSE_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
+  CLICKHOUSE_COMPRESSION_REQUEST: z.string().default("1"),
+
+  // Bootstrap
+  TRIGGER_BOOTSTRAP_ENABLED: z.string().default("0"),
+  TRIGGER_BOOTSTRAP_WORKER_GROUP_NAME: z.string().optional(),
+  TRIGGER_BOOTSTRAP_WORKER_TOKEN_PATH: z.string().optional(),
+
+  // Machine presets
+  MACHINE_PRESETS_OVERRIDE_PATH: z.string().optional(),
+
+  // CLI package tag (e.g. "latest", "v4-beta", "4.0.0") - used for setup commands
+  TRIGGER_CLI_TAG: z.string().default("latest"),
+
+  HEALTHCHECK_DATABASE_DISABLED: z.string().default("0"),
+
+  REQUEST_IDEMPOTENCY_REDIS_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_HOST),
+  REQUEST_IDEMPOTENCY_REDIS_READER_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_READER_HOST),
+  REQUEST_IDEMPOTENCY_REDIS_READER_PORT: z.coerce
+    .number()
+    .optional()
+    .transform(
+      (v) =>
+        v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
+    ),
+  REQUEST_IDEMPOTENCY_REDIS_PORT: z.coerce
+    .number()
+    .optional()
+    .transform((v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)),
+  REQUEST_IDEMPOTENCY_REDIS_USERNAME: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_USERNAME),
+  REQUEST_IDEMPOTENCY_REDIS_PASSWORD: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_PASSWORD),
+  REQUEST_IDEMPOTENCY_REDIS_TLS_DISABLED: z
+    .string()
+    .default(process.env.REDIS_TLS_DISABLED ?? "false"),
+
+  REQUEST_IDEMPOTENCY_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
+
+  REQUEST_IDEMPOTENCY_TTL_IN_MS: z.coerce
+    .number()
+    .int()
+    .default(60_000 * 60 * 24),
+
+  // Bulk action
+  BULK_ACTION_BATCH_SIZE: z.coerce.number().int().default(100),
+  BULK_ACTION_BATCH_DELAY_MS: z.coerce.number().int().default(200),
+  BULK_ACTION_SUBBATCH_CONCURRENCY: z.coerce.number().int().default(5),
+
+  // AI Run Filter
+  AI_RUN_FILTER_MODEL: z.string().optional(),
+
+  EVENT_LOOP_MONITOR_THRESHOLD_MS: z.coerce.number().int().default(100),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

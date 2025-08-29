@@ -7,7 +7,6 @@ import type {
   BatchTaskRunItemStatus as BatchTaskRunItemStatusType,
   TaskRunAttemptStatus as TaskRunAttemptStatusType,
   TaskRunStatus as TaskRunStatusType,
-  JobRunStatus as JobRunStatusType,
   RuntimeEnvironmentType as RuntimeEnvironmentTypeType,
 } from "@trigger.dev/database";
 
@@ -31,6 +30,7 @@ export const TaskRunStatus = {
   PENDING: "PENDING",
   PENDING_VERSION: "PENDING_VERSION",
   WAITING_FOR_DEPLOY: "WAITING_FOR_DEPLOY",
+  DEQUEUED: "DEQUEUED",
   EXECUTING: "EXECUTING",
   WAITING_TO_RESUME: "WAITING_TO_RESUME",
   RETRYING_AFTER_FAILURE: "RETRYING_AFTER_FAILURE",
@@ -45,24 +45,6 @@ export const TaskRunStatus = {
   EXPIRED: "EXPIRED",
   TIMED_OUT: "TIMED_OUT",
 } as const satisfies Record<TaskRunStatusType, TaskRunStatusType>;
-
-export const JobRunStatus = {
-  PENDING: "PENDING",
-  QUEUED: "QUEUED",
-  WAITING_ON_CONNECTIONS: "WAITING_ON_CONNECTIONS",
-  PREPROCESSING: "PREPROCESSING",
-  STARTED: "STARTED",
-  EXECUTING: "EXECUTING",
-  WAITING_TO_CONTINUE: "WAITING_TO_CONTINUE",
-  WAITING_TO_EXECUTE: "WAITING_TO_EXECUTE",
-  SUCCESS: "SUCCESS",
-  FAILURE: "FAILURE",
-  TIMED_OUT: "TIMED_OUT",
-  ABORTED: "ABORTED",
-  CANCELED: "CANCELED",
-  UNRESOLVED_AUTH: "UNRESOLVED_AUTH",
-  INVALID_PAYLOAD: "INVALID_PAYLOAD",
-} as const satisfies Record<JobRunStatusType, JobRunStatusType>;
 
 export const RuntimeEnvironmentType = {
   PRODUCTION: "PRODUCTION",

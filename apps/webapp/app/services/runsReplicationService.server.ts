@@ -1,5 +1,5 @@
 import type { ClickHouse, RawTaskRunPayloadV1, TaskRunV2 } from "@internal/clickhouse";
-import { RedisOptions } from "@internal/redis";
+import { type RedisOptions } from "@internal/redis";
 import {
   LogicalReplicationClient,
   type MessageDelete,
@@ -8,13 +8,14 @@ import {
   type PgoutputMessage,
 } from "@internal/replication";
 import { recordSpanError, startSpan, trace, type Tracer } from "@internal/tracing";
-import { Logger, LogLevel } from "@trigger.dev/core/logger";
+import { Logger, type LogLevel } from "@trigger.dev/core/logger";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { parsePacketAsJson } from "@trigger.dev/core/v3/utils/ioSerialization";
-import { TaskRun } from "@trigger.dev/database";
+import { type TaskRun } from "@trigger.dev/database";
 import { nanoid } from "nanoid";
 import EventEmitter from "node:events";
 import pLimit from "p-limit";
+import { detectBadJsonStrings } from "~/utils/detectBadJsonStrings";
 
 interface TransactionEvent<T = any> {
   tag: "insert" | "update" | "delete";
@@ -51,12 +52,26 @@ export type RunsReplicationServiceOptions = {
   logLevel?: LogLevel;
   tracer?: Tracer;
   waitForAsyncInsert?: boolean;
+  insertStrategy?: "insert" | "insert_async";
+  // Retry configuration for insert operations
+  insertMaxRetries?: number;
+  insertBaseDelayMs?: number;
+  insertMaxDelayMs?: number;
 };
 
-type TaskRunInsert = { _version: bigint; run: TaskRun; event: "insert" | "update" | "delete" };
+type PostgresTaskRun = TaskRun & { masterQueue: string };
+
+type TaskRunInsert = {
+  _version: bigint;
+  run: PostgresTaskRun;
+  event: "insert" | "update" | "delete";
+};
 
 export type RunsReplicationServiceEvents = {
   message: [{ lsn: string; message: PgoutputMessage; service: RunsReplicationService }];
+  batchFlushed: [
+    { flushId: string; taskRunInserts: TaskRunV2[]; payloadInserts: RawTaskRunPayloadV1[] }
+  ];
 };
 
 export class RunsReplicationService {
@@ -80,6 +95,11 @@ export class RunsReplicationService {
   private _latestCommitEndLsn: string | null = null;
   private _lastAcknowledgedLsn: string | null = null;
   private _acknowledgeInterval: NodeJS.Timeout | null = null;
+  // Retry configuration
+  private _insertMaxRetries: number;
+  private _insertBaseDelayMs: number;
+  private _insertMaxDelayMs: number;
+  private _insertStrategy: "insert" | "insert_async";
 
   public readonly events: EventEmitter<RunsReplicationServiceEvents>;
 
@@ -90,6 +110,8 @@ export class RunsReplicationService {
     this._tracer = options.tracer ?? trace.getTracer("runs-replication-service");
 
     this._acknowledgeTimeoutMs = options.acknowledgeTimeoutMs ?? 1_000;
+
+    this._insertStrategy = options.insertStrategy ?? "insert";
 
     this._replicationClient = new LogicalReplicationClient({
       pgConfig: {
@@ -116,6 +138,29 @@ export class RunsReplicationService {
       flushInterval: options.flushIntervalMs ?? 100,
       maxConcurrency: options.maxFlushConcurrency ?? 100,
       callback: this.#flushBatch.bind(this),
+      // we can do some pre-merging to reduce the amount of data we need to send to clickhouse
+      mergeBatch: (existingBatch: TaskRunInsert[], newBatch: TaskRunInsert[]) => {
+        const merged = new Map<string, TaskRunInsert>();
+
+        for (const item of existingBatch) {
+          const key = `${item.event}_${item.run.id}`;
+          merged.set(key, item);
+        }
+
+        for (const item of newBatch) {
+          const key = `${item.event}_${item.run.id}`;
+          const existingItem = merged.get(key);
+
+          // Keep the run with the higher version (latest)
+          // and take the last occurrence for that version.
+          // Items originating from the same DB transaction have the same version.
+          if (!existingItem || item._version >= existingItem._version) {
+            merged.set(key, item);
+          }
+        }
+
+        return Array.from(merged.values());
+      },
       logger: new Logger("ConcurrentFlushScheduler", options.logLevel ?? "info"),
       tracer: options.tracer,
     });
@@ -151,6 +196,11 @@ export class RunsReplicationService {
     this._replicationClient.events.on("leaderElection", (isLeader) => {
       this.logger.info("Leader election", { isLeader });
     });
+
+    // Initialize retry configuration
+    this._insertMaxRetries = options.insertMaxRetries ?? 3;
+    this._insertBaseDelayMs = options.insertBaseDelayMs ?? 100;
+    this._insertMaxDelayMs = options.insertMaxDelayMs ?? 2000;
   }
 
   public async shutdown() {
@@ -197,6 +247,24 @@ export class RunsReplicationService {
     if (this._acknowledgeInterval) {
       clearInterval(this._acknowledgeInterval);
     }
+  }
+
+  async backfill(runs: PostgresTaskRun[]) {
+    // divide into batches of 50 to get data from Postgres
+    const flushId = nanoid();
+    // Use current timestamp as LSN (high enough to be above existing data)
+    const now = Date.now();
+    const syntheticLsn = `${now.toString(16).padStart(8, "0").toUpperCase()}/00000000`;
+    const baseVersion = lsnToUInt64(syntheticLsn);
+
+    await this.#flushBatch(
+      flushId,
+      runs.map((run, index) => ({
+        _version: baseVersion + BigInt(index),
+        run,
+        event: "insert",
+      }))
+    );
   }
 
   #handleData(lsn: string, message: PgoutputMessage, parseDuration: bigint) {
@@ -290,7 +358,7 @@ export class RunsReplicationService {
         const replicationLagMs = Date.now() - Number(message.commitTime / 1000n);
         this._currentTransaction.commitEndLsn = message.commitEndLsn;
         this._currentTransaction.replicationLagMs = replicationLagMs;
-        const transaction = this._currentTransaction as Transaction<TaskRun>;
+        const transaction = this._currentTransaction as Transaction<PostgresTaskRun>;
         this._currentTransaction = null;
 
         if (transaction.commitEndLsn) {
@@ -308,7 +376,7 @@ export class RunsReplicationService {
     }
   }
 
-  #handleTransaction(transaction: Transaction<TaskRun>) {
+  #handleTransaction(transaction: Transaction<PostgresTaskRun>) {
     if (this._isShutDownComplete) return;
 
     if (this._isShuttingDown) {
@@ -430,11 +498,33 @@ export class RunsReplicationService {
 
       const taskRunInserts = preparedInserts
         .map(({ taskRunInsert }) => taskRunInsert)
-        .filter(Boolean);
+        .filter(Boolean)
+        // batch inserts in clickhouse are more performant if the items
+        // are pre-sorted by the primary key
+        .sort((a, b) => {
+          if (a.organization_id !== b.organization_id) {
+            return a.organization_id < b.organization_id ? -1 : 1;
+          }
+          if (a.project_id !== b.project_id) {
+            return a.project_id < b.project_id ? -1 : 1;
+          }
+          if (a.environment_id !== b.environment_id) {
+            return a.environment_id < b.environment_id ? -1 : 1;
+          }
+          if (a.created_at !== b.created_at) {
+            return a.created_at - b.created_at;
+          }
+          return a.run_id < b.run_id ? -1 : 1;
+        });
 
       const payloadInserts = preparedInserts
         .map(({ payloadInsert }) => payloadInsert)
-        .filter(Boolean);
+        .filter(Boolean)
+        // batch inserts in clickhouse are more performant if the items
+        // are pre-sorted by the primary key
+        .sort((a, b) => {
+          return a.run_id < b.run_id ? -1 : 1;
+        });
 
       span.setAttribute("task_run_inserts", taskRunInserts.length);
       span.setAttribute("payload_inserts", payloadInserts.length);
@@ -445,61 +535,185 @@ export class RunsReplicationService {
         payloadInserts: payloadInserts.length,
       });
 
-      await this.#insertTaskRunInserts(taskRunInserts);
-      await this.#insertPayloadInserts(payloadInserts);
+      // Insert task runs and payloads with retry logic for connection errors
+      const [taskRunError, taskRunResult] = await this.#insertWithRetry(
+        (attempt) => this.#insertTaskRunInserts(taskRunInserts, attempt),
+        "task run inserts",
+        flushId
+      );
+
+      const [payloadError, payloadResult] = await this.#insertWithRetry(
+        (attempt) => this.#insertPayloadInserts(payloadInserts, attempt),
+        "payload inserts",
+        flushId
+      );
+
+      // Log any errors that occurred
+      if (taskRunError) {
+        this.logger.error("Error inserting task run inserts", {
+          error: taskRunError,
+          flushId,
+          runIds: taskRunInserts.map((r) => r.run_id),
+        });
+        recordSpanError(span, taskRunError);
+      }
+
+      if (payloadError) {
+        this.logger.error("Error inserting payload inserts", {
+          error: payloadError,
+          flushId,
+          runIds: payloadInserts.map((r) => r.run_id),
+        });
+        recordSpanError(span, payloadError);
+      }
 
       this.logger.debug("Flushed inserts", {
         flushId,
         taskRunInserts: taskRunInserts.length,
         payloadInserts: payloadInserts.length,
       });
+
+      this.events.emit("batchFlushed", { flushId, taskRunInserts, payloadInserts });
     });
   }
 
-  async #insertTaskRunInserts(taskRunInserts: TaskRunV2[]) {
+  // New method to handle inserts with retry logic for connection errors
+  async #insertWithRetry<T>(
+    insertFn: (attempt: number) => Promise<T>,
+    operationName: string,
+    flushId: string
+  ): Promise<[Error | null, T | null]> {
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= this._insertMaxRetries; attempt++) {
+      try {
+        const result = await insertFn(attempt);
+        return [null, result];
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+
+        // Check if this is a retryable error
+        if (this.#isRetryableError(lastError)) {
+          const delay = this.#calculateRetryDelay(attempt);
+
+          this.logger.warn(`Retrying RunReplication insert due to error`, {
+            operationName,
+            flushId,
+            attempt,
+            maxRetries: this._insertMaxRetries,
+            error: lastError.message,
+            delay,
+          });
+
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          continue;
+        }
+        break;
+      }
+    }
+
+    return [lastError, null];
+  }
+
+  // Retry all errors except known permanent ones
+  #isRetryableError(error: Error): boolean {
+    const errorMessage = error.message.toLowerCase();
+
+    // Permanent errors that should NOT be retried
+    const permanentErrorPatterns = [
+      "authentication failed",
+      "permission denied",
+      "invalid credentials",
+      "table not found",
+      "database not found",
+      "column not found",
+      "schema mismatch",
+      "invalid query",
+      "syntax error",
+      "type error",
+      "constraint violation",
+      "duplicate key",
+      "foreign key violation",
+    ];
+
+    // If it's a known permanent error, don't retry
+    if (permanentErrorPatterns.some((pattern) => errorMessage.includes(pattern))) {
+      return false;
+    }
+
+    // Retry everything else
+    return true;
+  }
+
+  #calculateRetryDelay(attempt: number): number {
+    // Exponential backoff: baseDelay, baseDelay*2, baseDelay*4, etc.
+    const delay = Math.min(
+      this._insertBaseDelayMs * Math.pow(2, attempt - 1),
+      this._insertMaxDelayMs
+    );
+
+    // Add some jitter to prevent thundering herd
+    const jitter = Math.random() * 100;
+    return delay + jitter;
+  }
+
+  #getClickhouseInsertSettings() {
+    if (this._insertStrategy === "insert") {
+      return {};
+    } else if (this._insertStrategy === "insert_async") {
+      return {
+        async_insert: 1 as const,
+        async_insert_max_data_size: "1000000",
+        async_insert_busy_timeout_ms: 1000,
+        wait_for_async_insert: this.options.waitForAsyncInsert ? (1 as const) : (0 as const),
+      };
+    }
+  }
+
+  async #insertTaskRunInserts(taskRunInserts: TaskRunV2[], attempt: number) {
     return await startSpan(this._tracer, "insertTaskRunsInserts", async (span) => {
       const [insertError, insertResult] = await this.options.clickhouse.taskRuns.insert(
         taskRunInserts,
         {
           params: {
-            clickhouse_settings: {
-              wait_for_async_insert: this.options.waitForAsyncInsert ? 1 : 0,
-            },
+            clickhouse_settings: this.#getClickhouseInsertSettings(),
           },
         }
       );
 
       if (insertError) {
-        this.logger.error("Error inserting task run inserts", {
+        this.logger.error("Error inserting task run inserts attempt", {
           error: insertError,
+          attempt,
         });
 
         recordSpanError(span, insertError);
+        throw insertError;
       }
 
       return insertResult;
     });
   }
 
-  async #insertPayloadInserts(payloadInserts: RawTaskRunPayloadV1[]) {
+  async #insertPayloadInserts(payloadInserts: RawTaskRunPayloadV1[], attempt: number) {
     return await startSpan(this._tracer, "insertPayloadInserts", async (span) => {
       const [insertError, insertResult] = await this.options.clickhouse.taskRuns.insertPayloads(
         payloadInserts,
         {
           params: {
-            clickhouse_settings: {
-              wait_for_async_insert: this.options.waitForAsyncInsert ? 1 : 0,
-            },
+            clickhouse_settings: this.#getClickhouseInsertSettings(),
           },
         }
       );
 
       if (insertError) {
-        this.logger.error("Error inserting payload inserts", {
+        this.logger.error("Error inserting payload inserts attempt", {
           error: insertError,
+          attempt,
         });
 
         recordSpanError(span, insertError);
+        throw insertError;
       }
 
       return insertResult;
@@ -556,7 +770,7 @@ export class RunsReplicationService {
   }
 
   async #prepareTaskRunInsert(
-    run: TaskRun,
+    run: PostgresTaskRun,
     organizationId: string,
     environmentType: string,
     event: "insert" | "update" | "delete",
@@ -604,6 +818,9 @@ export class RunsReplicationService {
       idempotency_key: run.idempotencyKey ?? "",
       expiration_ttl: run.ttl ?? "",
       output,
+      concurrency_key: run.concurrencyKey ?? "",
+      bulk_action_group_ids: run.bulkActionGroupIds ?? [],
+      worker_queue: run.masterQueue,
       _version: _version.toString(),
       _is_deleted: event === "delete" ? 1 : 0,
     };
@@ -628,6 +845,14 @@ export class RunsReplicationService {
     }
 
     if (dataType !== "application/json" && dataType !== "application/super+json") {
+      return { data: undefined };
+    }
+
+    if (detectBadJsonStrings(data)) {
+      this.logger.warn("Detected bad JSON strings", {
+        data,
+        dataType,
+      });
       return { data: undefined };
     }
 
@@ -656,12 +881,13 @@ export type ConcurrentFlushSchedulerConfig<T> = {
   flushInterval: number;
   maxConcurrency?: number;
   callback: (flushId: string, batch: T[]) => Promise<void>;
+  mergeBatch?: (existingBatch: T[], newBatch: T[]) => T[];
   tracer?: Tracer;
   logger?: Logger;
 };
 
 export class ConcurrentFlushScheduler<T> {
-  private currentBatch: T[]; // Adjust the type according to your data structure
+  private currentBatch: T[];
   private readonly BATCH_SIZE: number;
   private readonly flushInterval: number;
   private readonly MAX_CONCURRENCY: number;
@@ -686,7 +912,10 @@ export class ConcurrentFlushScheduler<T> {
   }
 
   addToBatch(items: T[]): void {
-    this.currentBatch = this.currentBatch.concat(items);
+    this.currentBatch = this.config.mergeBatch
+      ? this.config.mergeBatch(this.currentBatch, items)
+      : this.currentBatch.concat(items);
+
     this.#flushNextBatchIfNeeded();
   }
 

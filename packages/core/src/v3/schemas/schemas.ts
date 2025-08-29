@@ -1,6 +1,12 @@
 import { z } from "zod";
 import { RequireKeys } from "../types/index.js";
-import { MachineConfig, MachinePreset, MachinePresetName, TaskRunExecution } from "./common.js";
+import {
+  MachineConfig,
+  MachinePreset,
+  MachinePresetName,
+  TaskRunExecution,
+  V3TaskRunExecution,
+} from "./common.js";
 
 /*
     WARNING: Never import anything from ./messages here. If it's needed in both, put it here instead.
@@ -36,7 +42,7 @@ export type TaskRunExecutionPayload = z.infer<typeof TaskRunExecutionPayload>;
 // Strategies for not breaking backwards compatibility:
 // 1. Add new fields as optional
 // 2. If a field is required, add a default value
-export const ProdTaskRunExecution = TaskRunExecution.extend({
+export const V3ProdTaskRunExecution = V3TaskRunExecution.extend({
   worker: z.object({
     id: z.string(),
     contentHash: z.string(),
@@ -46,16 +52,16 @@ export const ProdTaskRunExecution = TaskRunExecution.extend({
   machine: MachinePreset.default({ name: "small-1x", cpu: 1, memory: 1, centsPerMs: 0 }),
 });
 
-export type ProdTaskRunExecution = z.infer<typeof ProdTaskRunExecution>;
+export type V3ProdTaskRunExecution = z.infer<typeof V3ProdTaskRunExecution>;
 
-export const ProdTaskRunExecutionPayload = z.object({
-  execution: ProdTaskRunExecution,
+export const V3ProdTaskRunExecutionPayload = z.object({
+  execution: V3ProdTaskRunExecution,
   traceContext: z.record(z.unknown()),
   environment: z.record(z.string()).optional(),
   metrics: TaskRunExecutionMetrics.optional(),
 });
 
-export type ProdTaskRunExecutionPayload = z.infer<typeof ProdTaskRunExecutionPayload>;
+export type V3ProdTaskRunExecutionPayload = z.infer<typeof V3ProdTaskRunExecutionPayload>;
 
 export const FixedWindowRateLimit = z.object({
   type: z.literal("fixed-window"),
@@ -163,12 +169,7 @@ export const QueueManifest = z.object({
   /** An optional property that specifies the maximum number of concurrent run executions.
    *
    * If this property is omitted, the task can potentially use up the full concurrency of an environment */
-  concurrencyLimit: z.number().int().min(0).max(1000).optional().nullable(),
-  /** An optional property that specifies whether to release concurrency on waitpoint.
-   *
-   * If this property is omitted, the task will not release concurrency on waitpoint.
-   */
-  releaseConcurrencyOnWaitpoint: z.boolean().optional(),
+  concurrencyLimit: z.number().int().min(0).max(100000).optional().nullable(),
 });
 
 export type QueueManifest = z.infer<typeof QueueManifest>;
@@ -176,6 +177,7 @@ export type QueueManifest = z.infer<typeof QueueManifest>;
 export const ScheduleMetadata = z.object({
   cron: z.string(),
   timezone: z.string(),
+  environments: z.array(EnvironmentType).optional(),
 });
 
 const taskMetadata = {
@@ -187,6 +189,7 @@ const taskMetadata = {
   triggerSource: z.string().optional(),
   schedule: ScheduleMetadata.optional(),
   maxDuration: z.number().optional(),
+  payloadSchema: z.unknown().optional(),
 };
 
 export const TaskMetadata = z.object(taskMetadata);
@@ -294,3 +297,16 @@ export const RunChainState = z.object({
 });
 
 export type RunChainState = z.infer<typeof RunChainState>;
+
+export const TriggerTraceContext = z.object({
+  traceparent: z.string().optional(),
+  tracestate: z.string().optional(),
+  external: z
+    .object({
+      traceparent: z.string().optional(),
+      tracestate: z.string().optional(),
+    })
+    .optional(),
+});
+
+export type TriggerTraceContext = z.infer<typeof TriggerTraceContext>;

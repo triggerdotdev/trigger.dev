@@ -4,11 +4,9 @@ You can test v3 tasks from inside the app in this project. It's designed to be u
 
 ## One-time setup
 
-1. In Postgres go to the "Organizations" table and on your org set the `v3Enabled` column to `true`.
+1. Create a v3 project in the UI of the webapp, you should now be able to select it from the dropdown.
 
-2. Create a v3 project in the UI of the webapp, you should now be able to select it from the dropdown.
-
-3. In Postgres go to the "Projects" table and for the project you create change the `externalRef` to `yubjwjsfkxnylobaqvqz`.
+2. In Postgres go to the "Projects" table and for the project you create change the `externalRef` to `yubjwjsfkxnylobaqvqz`.
 
 This is so the `trigger.config.ts` file inside the v3-catalog doesn't keep getting changed by people accidentally pushing this.
 

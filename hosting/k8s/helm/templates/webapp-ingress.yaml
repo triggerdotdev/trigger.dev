@@ -1,0 +1,52 @@
+{{- if .Values.webapp.ingress.enabled -}}
+{{- $fullName := include "trigger-v4.fullname" . -}}
+{{- $svcPort := .Values.webapp.service.port -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $fullName }}-webapp
+  labels:
+    {{- $component := "webapp" }}
+    {{- include "trigger-v4.componentLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 4 }}
+  annotations:
+    {{- include "trigger-v4.webapp.ingress.annotations" . | nindent 4 }}
+spec:
+  {{- if .Values.webapp.ingress.className }}
+  ingressClassName: {{ .Values.webapp.ingress.className }}
+  {{- end }}
+  {{- if .Values.webapp.ingress.tls }}
+  tls:
+    {{- range .Values.webapp.ingress.tls }}
+    - hosts:
+        {{- range .hosts }}
+        - {{ . | quote }}
+        {{- end }}
+      secretName: {{ .secretName }}
+    {{- end }}
+  {{- end }}
+  rules:
+    {{- range .Values.webapp.ingress.hosts }}
+    - host: {{ .host | quote }}
+      http:
+        paths:
+          {{- if .paths }}
+          {{- range .paths }}
+          - path: {{ .path }}
+            pathType: {{ .pathType | default "Prefix" }}
+            backend:
+              service:
+                name: {{ $fullName }}-webapp
+                port:
+                  number: {{ $svcPort }}
+          {{- end }}
+          {{- else }}
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fullName }}-webapp
+                port:
+                  number: {{ $svcPort }}
+          {{- end }}
+    {{- end }}
+{{- end }}

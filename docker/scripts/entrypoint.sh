@@ -14,7 +14,19 @@ if [ -n "$CLICKHOUSE_URL" ]; then
   # Run ClickHouse migrations
   echo "Running ClickHouse migrations..."
   export GOOSE_DRIVER=clickhouse
-  export GOOSE_DBSTRING="$CLICKHOUSE_URL" # Use the full URL provided by the env var
+  
+  # Ensure secure=true is in the connection string
+  if echo "$CLICKHOUSE_URL" | grep -q "secure="; then
+    # secure parameter already exists, use as is
+    export GOOSE_DBSTRING="$CLICKHOUSE_URL"
+  elif echo "$CLICKHOUSE_URL" | grep -q "?"; then
+    # URL has query parameters, append secure=true
+    export GOOSE_DBSTRING="${CLICKHOUSE_URL}&secure=true"
+  else
+    # URL has no query parameters, add secure=true
+    export GOOSE_DBSTRING="${CLICKHOUSE_URL}?secure=true"
+  fi
+  
   export GOOSE_MIGRATION_DIR=/triggerdotdev/internal-packages/clickhouse/schema
   /usr/local/bin/goose up
   echo "ClickHouse migrations complete."

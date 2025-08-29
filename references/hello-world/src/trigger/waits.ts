@@ -80,7 +80,7 @@ export const waitToken = task({
     logger.log("Retrieved token", retrievedToken);
 
     //wait for the token
-    const result = await wait.forToken<{ foo: string }>(token, { releaseConcurrency: true });
+    const result = await wait.forToken<{ foo: string }>(token);
     if (!result.ok) {
       logger.log("Token timeout", result);
     } else {
@@ -124,7 +124,6 @@ export const waitForDuration = task({
       seconds: duration,
       idempotencyKey: idempotency,
       idempotencyKeyTTL,
-      releaseConcurrency: true,
     });
     await wait.until({ date: new Date(Date.now() + duration * 1000) });
 

@@ -1,4 +1,8 @@
-import { type ApiClientConfiguration, apiClientManager } from "@trigger.dev/core/v3";
+import {
+  type ApiClientConfiguration,
+  apiClientManager,
+  RealtimeRunSkipColumns,
+} from "@trigger.dev/core/v3";
 import { generateJWT as internal_generateJWT } from "@trigger.dev/core/v3";
 
 /**
@@ -106,6 +110,24 @@ export type CreatePublicTokenOptions = {
    * ```
    */
   expirationTime?: number | Date | string;
+
+  realtime?: {
+    /**
+     * Skip columns from the subscription.
+     *
+     * @default []
+     *
+     * @example
+     * ```ts
+     * auth.createPublicToken({
+     *  realtime: {
+     *    skipColumns: ["payload", "output"]
+     *  }
+     * });
+     * ```
+     */
+    skipColumns?: RealtimeRunSkipColumns;
+  };
 };
 
 /**
@@ -114,6 +136,8 @@ export type CreatePublicTokenOptions = {
  * @param options - Optional parameters for creating the public token.
  * @param options.scopes - An array of permission scopes to be included in the token.
  * @param options.expirationTime - The expiration time for the token.
+ * @param options.realtime - Options for realtime subscriptions.
+ * @param options.realtime.skipColumns - Skip columns from the subscription.
  * @returns A promise that resolves to a string representing the generated public token.
  *
  * @example
@@ -139,6 +163,7 @@ async function createPublicToken(options?: CreatePublicTokenOptions): Promise<st
     payload: {
       ...claims,
       scopes: options?.scopes ? flattenScopes(options.scopes) : undefined,
+      realtime: options?.realtime,
     },
     expirationTime: options?.expirationTime,
   });
@@ -173,6 +198,24 @@ export type CreateTriggerTokenOptions = {
    * @default false
    */
   multipleUse?: boolean;
+
+  realtime?: {
+    /**
+     * Skip columns from the subscription.
+     *
+     * @default []
+     *
+     * @example
+     * ```ts
+     * auth.createTriggerPublicToken("my-task", {
+     *  realtime: {
+     *    skipColumns: ["payload", "output"]
+     *  }
+     * });
+     * ```
+     */
+    skipColumns?: RealtimeRunSkipColumns;
+  };
 };
 
 /**
@@ -220,6 +263,7 @@ async function createTriggerPublicToken(
     payload: {
       ...claims,
       otu: typeof options?.multipleUse === "boolean" ? !options.multipleUse : true,
+      realtime: options?.realtime,
       scopes: flattenScopes({
         trigger: {
           tasks: task,
@@ -291,6 +335,7 @@ async function createBatchTriggerPublicToken(
     payload: {
       ...claims,
       otu: typeof options?.multipleUse === "boolean" ? !options.multipleUse : true,
+      realtime: options?.realtime,
       scopes: flattenScopes({
         batchTrigger: {
           tasks: task,

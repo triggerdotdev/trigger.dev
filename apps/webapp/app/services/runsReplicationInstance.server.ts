@@ -16,11 +16,11 @@ function initializeRunsReplicationInstance() {
   invariant(typeof DATABASE_URL === "string", "DATABASE_URL env var not set");
 
   if (!env.RUN_REPLICATION_CLICKHOUSE_URL) {
-    console.log("🗃️ Runs replication service not enabled");
+    console.log("🗃️  Runs replication service not enabled");
     return;
   }
 
-  console.log("🗃️ Runs replication service enabled");
+  console.log("🗃️  Runs replication service enabled");
 
   const clickhouse = new ClickHouse({
     url: env.RUN_REPLICATION_CLICKHOUSE_URL,
@@ -29,7 +29,7 @@ function initializeRunsReplicationInstance() {
       enabled: env.RUN_REPLICATION_KEEP_ALIVE_ENABLED === "1",
       idleSocketTtl: env.RUN_REPLICATION_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
     },
-    logLevel: env.RUN_REPLICATION_LOG_LEVEL,
+    logLevel: env.RUN_REPLICATION_CLICKHOUSE_LOG_LEVEL,
     compression: {
       request: true,
     },
@@ -62,6 +62,10 @@ function initializeRunsReplicationInstance() {
     logLevel: env.RUN_REPLICATION_LOG_LEVEL,
     waitForAsyncInsert: env.RUN_REPLICATION_WAIT_FOR_ASYNC_INSERT === "1",
     tracer: provider.getTracer("runs-replication-service"),
+    insertMaxRetries: env.RUN_REPLICATION_INSERT_MAX_RETRIES,
+    insertBaseDelayMs: env.RUN_REPLICATION_INSERT_BASE_DELAY_MS,
+    insertMaxDelayMs: env.RUN_REPLICATION_INSERT_MAX_DELAY_MS,
+    insertStrategy: env.RUN_REPLICATION_INSERT_STRATEGY,
   });
 
   if (env.RUN_REPLICATION_ENABLED === "1") {

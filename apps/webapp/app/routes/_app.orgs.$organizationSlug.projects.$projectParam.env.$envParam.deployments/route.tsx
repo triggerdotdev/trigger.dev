@@ -1,10 +1,13 @@
-import { ArrowPathIcon, ArrowUturnLeftIcon, BookOpenIcon } from "@heroicons/react/20/solid";
-import { type MetaFunction, Outlet, useLocation, useParams, useNavigate } from "@remix-run/react";
+import { ArrowUturnLeftIcon, BookOpenIcon } from "@heroicons/react/20/solid";
+import { type MetaFunction, Outlet, useLocation, useNavigate, useParams } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { useEffect } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { PromoteIcon } from "~/assets/icons/PromoteIcon";
 import { DeploymentsNone, DeploymentsNoneDev } from "~/components/BlankStatePanels";
+import { GitMetadata } from "~/components/GitMetadata";
+import { RuntimeIcon } from "~/components/RuntimeIcon";
 import { UserAvatar } from "~/components/UserProfilePhoto";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
@@ -34,7 +37,6 @@ import {
   deploymentStatusDescription,
   deploymentStatuses,
 } from "~/components/runs/v3/DeploymentStatus";
-import { RetryDeploymentIndexingDialog } from "~/components/runs/v3/RetryDeploymentIndexingDialog";
 import {
   PromoteDeploymentDialog,
   RollbackDeploymentDialog,
@@ -50,10 +52,7 @@ import { requireUserId } from "~/services/session.server";
 import { titleCase } from "~/utils";
 import { EnvironmentParamSchema, docsPath, v3DeploymentPath } from "~/utils/pathBuilder";
 import { createSearchParams } from "~/utils/searchParams";
-import { deploymentIndexingIsRetryable } from "~/v3/deploymentStatus";
 import { compareDeploymentVersions } from "~/v3/utils/deploymentVersions";
-import { useEffect } from "react";
-import { GitMetadata } from "~/components/GitMetadata";
 
 export const meta: MetaFunction = () => {
   return [
@@ -191,6 +190,7 @@ export default function Page() {
                       >
                         Status
                       </TableHeaderCell>
+                      <TableHeaderCell>Runtime</TableHeaderCell>
                       <TableHeaderCell>Tasks</TableHeaderCell>
                       <TableHeaderCell>Deployed at</TableHeaderCell>
                       <TableHeaderCell>Deployed by</TableHeaderCell>
@@ -229,6 +229,12 @@ export default function Page() {
                               />
                             </TableCell>
                             <TableCell to={path} isSelected={isSelected}>
+                              <RuntimeIcon
+                                runtime={deployment.runtime}
+                                runtimeVersion={deployment.runtimeVersion}
+                              />
+                            </TableCell>
+                            <TableCell to={path} isSelected={isSelected}>
                               {deployment.tasksCount !== null ? deployment.tasksCount : "–"}
                             </TableCell>
                             <TableCell to={path} isSelected={isSelected}>
@@ -239,21 +245,20 @@ export default function Page() {
                               )}
                             </TableCell>
                             <TableCell to={path} isSelected={isSelected}>
-                              {deployment.deployedBy ? (
-                                <div className="flex items-center gap-1">
-                                  <UserAvatar
-                                    avatarUrl={deployment.deployedBy.avatarUrl}
-                                    name={
-                                      deployment.deployedBy.name ??
-                                      deployment.deployedBy.displayName
-                                    }
-                                    className="h-4 w-4"
-                                  />
-                                  <Paragraph variant="extra-small">
-                                    {deployment.deployedBy.name ??
-                                      deployment.deployedBy.displayName}
-                                  </Paragraph>
-                                </div>
+                              {deployment.git?.source === "trigger_github_app" ? (
+                                <UserTag
+                                  name={deployment.git.ghUsername ?? "GitHub Integration"}
+                                  avatarUrl={deployment.git.ghUserAvatarUrl}
+                                />
+                              ) : deployment.deployedBy ? (
+                                <UserTag
+                                  name={
+                                    deployment.deployedBy.name ??
+                                    deployment.deployedBy.displayName ??
+                                    ""
+                                  }
+                                  avatarUrl={deployment.deployedBy.avatarUrl ?? undefined}
+                                />
                               ) : (
                                 "–"
                               )}
@@ -273,7 +278,7 @@ export default function Page() {
                         );
                       })
                     ) : (
-                      <TableBlankRow colSpan={7}>
+                      <TableBlankRow colSpan={8}>
                         <Paragraph className="flex items-center justify-center">
                           No deploys match your filters
                         </Paragraph>
@@ -312,6 +317,15 @@ export default function Page() {
   );
 }
 
+function UserTag({ name, avatarUrl }: { name: string; avatarUrl?: string }) {
+  return (
+    <div className="flex items-center gap-1">
+      <UserAvatar avatarUrl={avatarUrl} name={name} className="h-4 w-4" />
+      <Paragraph variant="extra-small">{name}</Paragraph>
+    </div>
+  );
+}
+
 function DeploymentActionsCell({
   deployment,
   path,
@@ -327,14 +341,13 @@ function DeploymentActionsCell({
   const project = useProject();
 
   const canBeMadeCurrent = !deployment.isCurrent && deployment.isDeployed;
-  const canRetryIndexing = deployment.isLatest && deploymentIndexingIsRetryable(deployment);
   const canBeRolledBack =
     canBeMadeCurrent &&
     currentDeployment?.version &&
     compareDeploymentVersions(deployment.version, currentDeployment.version) === -1;
   const canBePromoted = canBeMadeCurrent && !canBeRolledBack;
 
-  if (!canBeMadeCurrent && !canRetryIndexing) {
+  if (!canBeRolledBack && !canBePromoted) {
     return (
       <TableCell to={path} isSelected={isSelected}>
         {""}
@@ -382,26 +395,6 @@ function DeploymentActionsCell({
                 </Button>
               </DialogTrigger>
               <PromoteDeploymentDialog
-                projectId={project.id}
-                deploymentShortCode={deployment.shortCode}
-                redirectPath={`${location.pathname}${location.search}`}
-              />
-            </Dialog>
-          )}
-          {canRetryIndexing && (
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button
-                  variant="small-menu-item"
-                  LeadingIcon={ArrowPathIcon}
-                  leadingIconClassName="text-blue-500"
-                  fullWidth
-                  textAlignLeft
-                >
-                  Retry indexing…
-                </Button>
-              </DialogTrigger>
-              <RetryDeploymentIndexingDialog
                 projectId={project.id}
                 deploymentShortCode={deployment.shortCode}
                 redirectPath={`${location.pathname}${location.search}`}

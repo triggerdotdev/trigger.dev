@@ -9,6 +9,7 @@ const SearchParamsSchema = z.object({
     .transform((value) => {
       return value ? value.split(",") : undefined;
     }),
+  createdAt: z.string().optional(),
 });
 
 export const loader = createLoaderApiRoute(
@@ -23,11 +24,13 @@ export const loader = createLoaderApiRoute(
       superScopes: ["read:runs", "read:all", "admin"],
     },
   },
-  async ({ searchParams, authentication, request }) => {
+  async ({ searchParams, authentication, request, apiVersion }) => {
     return realtimeClient.streamRuns(
       request.url,
       authentication.environment,
       searchParams,
+      apiVersion,
+      authentication.realtime,
       request.headers.get("x-trigger-electric-version") ?? undefined
     );
   }

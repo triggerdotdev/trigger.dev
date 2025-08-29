@@ -18,6 +18,7 @@ const Env = z.object({
   TRIGGER_PROJECT_REF: z.string(),
   NODE_ENV: z.string().default("production"),
   NODE_EXTRA_CA_CERTS: z.string().optional(),
+  UV_USE_IO_URING: z.string().optional(),
 
   // Set at runtime
   TRIGGER_WORKLOAD_CONTROLLER_ID: z.string().default(`controller_${randomUUID()}`),
@@ -69,6 +70,9 @@ export class RunnerEnv {
   }
   get NODE_EXTRA_CA_CERTS() {
     return this.env.NODE_EXTRA_CA_CERTS;
+  }
+  get UV_USE_IO_URING() {
+    return this.env.UV_USE_IO_URING;
   }
   get OTEL_EXPORTER_OTLP_ENDPOINT() {
     return this.env.OTEL_EXPORTER_OTLP_ENDPOINT;
@@ -217,6 +221,8 @@ export class RunnerEnv {
       NODE_ENV: this.NODE_ENV,
       NODE_EXTRA_CA_CERTS: this.NODE_EXTRA_CA_CERTS,
       OTEL_EXPORTER_OTLP_ENDPOINT: this.OTEL_EXPORTER_OTLP_ENDPOINT,
+      TRIGGER_OTEL_EXPORTER_OTLP_ENDPOINT: this.OTEL_EXPORTER_OTLP_ENDPOINT,
+      UV_USE_IO_URING: this.UV_USE_IO_URING,
     };
 
     // Filter out undefined values

@@ -52,6 +52,7 @@ export const BuildManifest = z.object({
     sync: z
       .object({
         env: z.record(z.string()).optional(),
+        parentEnv: z.record(z.string()).optional(),
       })
       .optional(),
   }),
@@ -89,7 +90,16 @@ export const WorkerManifest = z.object({
   loaderEntryPoint: z.string().optional(),
   initEntryPoint: z.string().optional(), // Optional init.ts entry point
   runtime: BuildRuntime,
+  runtimeVersion: z.string().optional(),
   customConditions: z.array(z.string()).optional(),
+  timings: z.record(z.number()).optional(),
+  processKeepAlive: z
+    .object({
+      enabled: z.boolean(),
+      maxExecutionsPerProcess: z.number().int().positive().optional(),
+    })
+    .optional(),
+
   otelImportHook: z
     .object({
       include: z.array(z.string()).optional(),

@@ -31,6 +31,12 @@ import {
   WorkersCreateRequestBody,
   WorkersCreateResponseBody,
   WorkersListResponseBody,
+  CreateProjectRequestBody,
+  GetOrgsResponseBody,
+  GetWorkerByTagResponse,
+  GetJWTRequestBody,
+  GetJWTResponse,
+  ApiBranchListResponseBody,
 } from "@trigger.dev/core/v3";
 import {
   WorkloadDebugLogRequestBody,
@@ -79,12 +85,18 @@ export class CliApiClient {
     });
   }
 
-  async whoAmI() {
+  async whoAmI(projectRef?: string) {
     if (!this.accessToken) {
       throw new Error("whoAmI: No access token");
     }
 
-    return wrapZodFetch(WhoAmIResponseSchema, `${this.apiURL}/api/v2/whoami`, {
+    const url = new URL("/api/v2/whoami", this.apiURL);
+
+    if (projectRef) {
+      url.searchParams.append("projectRef", projectRef);
+    }
+
+    return wrapZodFetch(WhoAmIResponseSchema, url.href, {
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
         "Content-Type": "application/json",
@@ -128,6 +140,75 @@ export class CliApiClient {
         "Content-Type": "application/json",
       },
     });
+  }
+
+  async getOrgs() {
+    if (!this.accessToken) {
+      throw new Error("getOrgs: No access token");
+    }
+
+    return wrapZodFetch(GetOrgsResponseBody, `${this.apiURL}/api/v1/orgs`, {
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        "Content-Type": "application/json",
+      },
+    });
+  }
+
+  async createProject(orgParam: string, body: CreateProjectRequestBody) {
+    if (!this.accessToken) {
+      throw new Error("createProject: No access token");
+    }
+
+    return wrapZodFetch(GetProjectResponseBody, `${this.apiURL}/api/v1/orgs/${orgParam}/projects`, {
+      method: "POST",
+      headers: this.getHeaders(),
+      body: JSON.stringify(body),
+    });
+  }
+
+  async getWorkerByTag(projectRef: string, envName: string, tagName: string = "current") {
+    if (!this.accessToken) {
+      throw new Error("getWorkerByTag: No access token");
+    }
+
+    return wrapZodFetch(
+      GetWorkerByTagResponse,
+      `${this.apiURL}/api/v1/projects/${projectRef}/${envName}/workers/${tagName}`,
+      {
+        headers: this.getHeaders(),
+      }
+    );
+  }
+
+  async getJWT(projectRef: string, envName: string, body: GetJWTRequestBody) {
+    if (!this.accessToken) {
+      throw new Error("getJWT: No access token");
+    }
+
+    return wrapZodFetch(
+      GetJWTResponse,
+      `${this.apiURL}/api/v1/projects/${projectRef}/${envName}/jwt`,
+      {
+        method: "POST",
+        headers: this.getHeaders(),
+        body: JSON.stringify(body),
+      }
+    );
+  }
+
+  async getDevStatus(projectRef: string) {
+    if (!this.accessToken) {
+      throw new Error("getDevStatus: No access token");
+    }
+
+    return wrapZodFetch(
+      z.object({ isConnected: z.boolean() }),
+      `${this.apiURL}/api/v1/projects/${projectRef}/dev-status`,
+      {
+        headers: this.getHeaders(),
+      }
+    );
   }
 
   async createBackgroundWorker(projectRef: string, body: CreateBackgroundWorkerRequestBody) {
@@ -194,6 +275,20 @@ export class CliApiClient {
         method: "POST",
         headers: this.getHeaders(),
         body: JSON.stringify({ branch }),
+      }
+    );
+  }
+
+  async listBranches(projectRef: string) {
+    if (!this.accessToken) {
+      throw new Error("listBranches: No access token");
+    }
+
+    return wrapZodFetch(
+      ApiBranchListResponseBody,
+      `${this.apiURL}/api/v1/projects/${projectRef}/branches`,
+      {
+        headers: this.getHeaders(),
       }
     );
   }
@@ -289,11 +384,9 @@ export class CliApiClient {
     }
 
     let resolvePromise: (value: ApiResult<FailDeploymentResponseBody>) => void;
-    let rejectPromise: (reason: any) => void;
 
-    const promise = new Promise<ApiResult<FailDeploymentResponseBody>>((resolve, reject) => {
+    const promise = new Promise<ApiResult<FailDeploymentResponseBody>>((resolve) => {
       resolvePromise = resolve;
-      rejectPromise = reject;
     });
 
     const source = zodfetchSSE({
@@ -311,9 +404,15 @@ export class CliApiClient {
     });
 
     source.onConnectionError((error) => {
-      rejectPromise({
+      let message = error.message ?? "Unknown error";
+
+      if (error.status !== undefined) {
+        message = `HTTP ${error.status} ${message}`;
+      }
+
+      resolvePromise({
         success: false,
-        error,
+        error: message,
       });
     });
 
@@ -325,7 +424,7 @@ export class CliApiClient {
     });
 
     source.onMessage("error", ({ error }) => {
-      rejectPromise({
+      resolvePromise({
         success: false,
         error,
       });

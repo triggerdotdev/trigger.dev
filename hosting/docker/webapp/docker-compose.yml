@@ -1,0 +1,221 @@
+name: trigger
+
+x-logging: &logging-config
+  driver: ${LOGGING_DRIVER:-local}
+  options:
+    max-size: ${LOGGING_MAX_SIZE:-20m}
+    max-file: ${LOGGING_MAX_FILES:-5}
+    compress: ${LOGGING_COMPRESS:-true}
+
+services:
+  webapp:
+    image: ghcr.io/triggerdotdev/trigger.dev:${TRIGGER_IMAGE_TAG:-v4-beta}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    logging: *logging-config
+    ports:
+      - ${WEBAPP_PUBLISH_IP:-0.0.0.0}:8030:3000
+    depends_on:
+      - postgres
+      - redis
+      - clickhouse
+    networks:
+      - webapp
+      - supervisor
+    volumes:
+      - shared:/home/node/shared
+    # Only needed for bootstrap
+    user: root
+    # Only needed for bootstrap
+    command: sh -c "chown -R node:node /home/node/shared && exec ./scripts/entrypoint.sh"
+    healthcheck:
+      test: ["CMD", "node", "-e", "http.get('http://localhost:3000/healthcheck', res => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+    environment:
+      APP_ORIGIN: ${APP_ORIGIN:-http://localhost:8030}
+      LOGIN_ORIGIN: ${LOGIN_ORIGIN:-http://localhost:8030}
+      API_ORIGIN: ${API_ORIGIN:-http://localhost:8030}
+      ELECTRIC_ORIGIN: http://electric:3000
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/main?schema=public&sslmode=disable}
+      DIRECT_URL: ${DIRECT_URL:-postgresql://postgres:postgres@postgres:5432/main?schema=public&sslmode=disable}
+      SESSION_SECRET: ${SESSION_SECRET}
+      MAGIC_LINK_SECRET: ${MAGIC_LINK_SECRET}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      MANAGED_WORKER_SECRET: ${MANAGED_WORKER_SECRET}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_TLS_DISABLED: true
+      APP_LOG_LEVEL: info
+      DEV_OTEL_EXPORTER_OTLP_ENDPOINT: ${DEV_OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:8030/otel}
+      DEPLOY_REGISTRY_HOST: ${DOCKER_REGISTRY_URL:-localhost:5000}
+      DEPLOY_REGISTRY_NAMESPACE: ${DOCKER_REGISTRY_NAMESPACE:-trigger}
+      OBJECT_STORE_BASE_URL: ${OBJECT_STORE_BASE_URL:-http://minio:9000}
+      OBJECT_STORE_ACCESS_KEY_ID: ${OBJECT_STORE_ACCESS_KEY_ID}
+      OBJECT_STORE_SECRET_ACCESS_KEY: ${OBJECT_STORE_SECRET_ACCESS_KEY}
+      GRACEFUL_SHUTDOWN_TIMEOUT: 1000
+      NODE_MAX_OLD_SPACE_SIZE: ${NODE_MAX_OLD_SPACE_SIZE}
+      # Bootstrap - this will automatically set up a worker group for you
+      # This will NOT work for split deployments
+      TRIGGER_BOOTSTRAP_ENABLED: 1
+      TRIGGER_BOOTSTRAP_WORKER_GROUP_NAME: bootstrap
+      TRIGGER_BOOTSTRAP_WORKER_TOKEN_PATH: /home/node/shared/worker_token
+      # ClickHouse configuration
+      CLICKHOUSE_URL: ${CLICKHOUSE_URL:-http://default:password@clickhouse:8123?secure=false}
+      CLICKHOUSE_LOG_LEVEL: ${CLICKHOUSE_LOG_LEVEL:-info}
+      # Run replication
+      RUN_REPLICATION_ENABLED: ${RUN_REPLICATION_ENABLED:-1}
+      RUN_REPLICATION_CLICKHOUSE_URL: ${RUN_REPLICATION_CLICKHOUSE_URL:-http://default:password@clickhouse:8123}
+      RUN_REPLICATION_LOG_LEVEL: ${RUN_REPLICATION_LOG_LEVEL:-info}
+      # Limits
+      # TASK_PAYLOAD_OFFLOAD_THRESHOLD: 524288 # 512KB
+      # TASK_PAYLOAD_MAXIMUM_SIZE: 3145728 # 3MB
+      # BATCH_TASK_PAYLOAD_MAXIMUM_SIZE: 1000000 # 1MB
+      # TASK_RUN_METADATA_MAXIMUM_SIZE: 262144 # 256KB
+      # DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT: 100
+      # DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT: 100
+      # Internal OTEL configuration
+      INTERNAL_OTEL_TRACE_LOGGING_ENABLED: ${INTERNAL_OTEL_TRACE_LOGGING_ENABLED:-0}
+
+  postgres:
+    image: postgres:${POSTGRES_IMAGE_TAG:-14}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    logging: *logging-config
+    ports:
+      - ${POSTGRES_PUBLISH_IP:-127.0.0.1}:5433:5432
+    volumes:
+      - postgres:/var/lib/postgresql/data/
+    networks:
+      - webapp
+    command:
+      - -c
+      - wal_level=logical
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  redis:
+    image: redis:${REDIS_IMAGE_TAG:-7}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    logging: *logging-config
+    ports:
+      - ${REDIS_PUBLISH_IP:-127.0.0.1}:6389:6379
+    volumes:
+      - redis:/data
+    networks:
+      - webapp
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  electric:
+    image: electricsql/electric:${ELECTRIC_IMAGE_TAG:-1.0.24}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    logging: *logging-config
+    depends_on:
+      - postgres
+    networks:
+      - webapp
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/main?schema=public&sslmode=disable}
+      ELECTRIC_INSECURE: true
+      ELECTRIC_USAGE_REPORTING: false
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  clickhouse:
+    image: bitnami/clickhouse:${CLICKHOUSE_IMAGE_TAG:-latest}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    logging: *logging-config
+    ports:
+      - ${CLICKHOUSE_PUBLISH_IP:-127.0.0.1}:9123:8123
+      - ${CLICKHOUSE_PUBLISH_IP:-127.0.0.1}:9090:9000
+    environment:
+      CLICKHOUSE_ADMIN_USER: ${CLICKHOUSE_USER:-default}
+      CLICKHOUSE_ADMIN_PASSWORD: ${CLICKHOUSE_PASSWORD:-password}
+    volumes:
+      - clickhouse:/bitnami/clickhouse
+      - ../clickhouse/override.xml:/bitnami/clickhouse/etc/config.d/override.xml:ro
+    networks:
+      - webapp
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--host", "localhost", "--port", "9000", "--user", "default", "--password", "password", "--query", "SELECT 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  registry:
+    image: registry:${REGISTRY_IMAGE_TAG:-2}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    logging: *logging-config
+    ports:
+      - ${REGISTRY_PUBLISH_IP:-127.0.0.1}:5000:5000
+    networks:
+      - webapp
+    volumes:
+      # registry-user:very-secure-indeed
+      - ../registry/auth.htpasswd:/auth/htpasswd:ro
+    environment:
+      REGISTRY_AUTH: htpasswd
+      REGISTRY_AUTH_HTPASSWD_REALM: Registry Realm
+      REGISTRY_AUTH_HTPASSWD_PATH: /auth/htpasswd
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:5000/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  minio:
+    image: bitnami/minio:${MINIO_IMAGE_TAG:-latest}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    logging: *logging-config
+    ports:
+      - ${MINIO_PUBLISH_IP:-127.0.0.1}:9000:9000
+      - ${MINIO_PUBLISH_IP:-127.0.0.1}:9001:9001
+    networks:
+      - webapp
+    volumes:
+      - minio:/bitnami/minio/data
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-very-safe-password}
+      MINIO_DEFAULT_BUCKETS: packets
+      MINIO_BROWSER: "on"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  clickhouse:
+  postgres:
+  redis:
+  shared:
+  minio:
+
+networks:
+  docker-proxy:
+    name: docker-proxy
+  supervisor:
+    name: supervisor
+  webapp:
+    name: webapp

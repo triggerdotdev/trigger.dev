@@ -83,6 +83,10 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
     this.schema = schema;
   }
 
+  async cancel(cancellationKey: string): Promise<void> {
+    await this.redis.set(`cancellationKey:${cancellationKey}`, "1", "EX", 60 * 60 * 24); // 1 day
+  }
+
   async enqueue({
     id,
     job,
@@ -90,6 +94,7 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
     attempt,
     availableAt,
     visibilityTimeoutMs,
+    cancellationKey,
   }: {
     id?: string;
     job: MessageCatalogKey<TMessageCatalog>;
@@ -97,6 +102,7 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
     attempt?: number;
     availableAt?: Date;
     visibilityTimeoutMs: number;
+    cancellationKey?: string;
   }): Promise<void> {
     try {
       const score = availableAt ? availableAt.getTime() : Date.now();
@@ -109,19 +115,64 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
         deduplicationKey,
       });
 
-      const result = await this.redis.enqueueItem(
-        `queue`,
-        `items`,
-        id ?? nanoid(),
-        score,
-        serializedItem
-      );
+      const result = cancellationKey
+        ? await this.redis.enqueueItemWithCancellationKey(
+            `queue`,
+            `items`,
+            `cancellationKey:${cancellationKey}`,
+            id ?? nanoid(),
+            score,
+            serializedItem
+          )
+        : await this.redis.enqueueItem(`queue`, `items`, id ?? nanoid(), score, serializedItem);
 
       if (result !== 1) {
         throw new Error("Enqueue operation failed");
       }
     } catch (e) {
       this.logger.error(`SimpleQueue ${this.name}.enqueue(): error enqueuing`, {
+        queue: this.name,
+        error: e,
+        id,
+        item,
+      });
+      throw e;
+    }
+  }
+
+  async enqueueOnce({
+    id,
+    job,
+    item,
+    attempt,
+    availableAt,
+    visibilityTimeoutMs,
+  }: {
+    id: string;
+    job: MessageCatalogKey<TMessageCatalog>;
+    item: MessageCatalogValue<TMessageCatalog, MessageCatalogKey<TMessageCatalog>>;
+    attempt?: number;
+    availableAt?: Date;
+    visibilityTimeoutMs: number;
+  }): Promise<boolean> {
+    if (!id) {
+      throw new Error("enqueueOnce requires an id");
+    }
+    try {
+      const score = availableAt ? availableAt.getTime() : Date.now();
+      const deduplicationKey = nanoid();
+      const serializedItem = JSON.stringify({
+        job,
+        item,
+        visibilityTimeoutMs,
+        attempt,
+        deduplicationKey,
+      });
+      const result = await this.redis.enqueueItemOnce(`queue`, `items`, id, score, serializedItem);
+      // 1 if inserted, 0 if already exists
+      return result === 1;
+    } catch (e) {
+      this.logger.error(`SimpleQueue ${this.name}.enqueueOnce(): error enqueuing`, {
         queue: this.name,
         error: e,
         id,
@@ -161,6 +212,7 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
             item: parsedItem,
             job: parsedItem.job,
             timestamp,
+            availableJobs: Object.keys(this.schema),
           });
           continue;
         }
@@ -252,8 +304,35 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
     }
   }
 
+  async getJob(id: string): Promise<QueueItem<TMessageCatalog> | null> {
+    const result = await this.redis.getJob(`queue`, `items`, id);
+
+    if (!result) {
+      return null;
+    }
+
+    const [_, score, serializedItem] = result;
+    const item = JSON.parse(serializedItem) as QueueItem<TMessageCatalog>;
+
+    return {
+      id,
+      job: item.job,
+      item: item.item,
+      visibilityTimeoutMs: item.visibilityTimeoutMs,
+      attempt: item.attempt ?? 0,
+      timestamp: new Date(Number(score)),
+      deduplicationKey: item.deduplicationKey ?? undefined,
+    };
+  }
+
   async moveToDeadLetterQueue(id: string, errorMessage: string): Promise<void> {
     try {
+      this.logger.debug(`SimpleQueue ${this.name}.moveToDeadLetterQueue(): moving item to DLQ`, {
+        queue: this.name,
+        id,
+        errorMessage,
+      });
+
       const result = await this.redis.moveToDeadLetterQueue(
         `queue`,
         `items`,
@@ -339,6 +418,29 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
       `,
     });
 
+    this.redis.defineCommand("enqueueItemWithCancellationKey", {
+      numberOfKeys: 3,
+      lua: `
+        local queue = KEYS[1]
+        local items = KEYS[2]
+        local cancellationKey = KEYS[3]
+
+        local id = ARGV[1]
+        local score = ARGV[2]
+        local serializedItem = ARGV[3]
+
+        -- if the cancellation key exists, return 1
+        if redis.call('EXISTS', cancellationKey) == 1 then
+          return 1
+        end
+
+        redis.call('ZADD', queue, score, id)
+        redis.call('HSET', items, id, serializedItem)
+
+        return 1
+      `,
+    });
+
     this.redis.defineCommand("dequeueItems", {
       numberOfKeys: 2,
       lua: `
@@ -379,6 +481,26 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
         end
 
         return dequeued
+      `,
+    });
+
+    this.redis.defineCommand("getJob", {
+      numberOfKeys: 2,
+      lua: `
+        local queue = KEYS[1]
+        local items = KEYS[2]
+        local jobId = ARGV[1]
+
+        local serializedItem = redis.call('HGET', items, jobId)
+
+        if serializedItem == false then
+          return nil
+        end
+
+        -- get the score from the queue sorted set
+        local score = redis.call('ZSCORE', queue, jobId)
+
+        return { jobId, score, serializedItem }
       `,
     });
 
@@ -473,6 +595,26 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
         return 1
       `,
     });
+
+    this.redis.defineCommand("enqueueItemOnce", {
+      numberOfKeys: 2,
+      lua: `
+        local queue = KEYS[1]
+        local items = KEYS[2]
+        local id = ARGV[1]
+        local score = ARGV[2]
+        local serializedItem = ARGV[3]
+
+        -- Only add if not exists
+        local added = redis.call('HSETNX', items, id, serializedItem)
+        if added == 1 then
+          redis.call('ZADD', queue, 'NX', score, id)
+          return 1
+        else
+          return 0
+        end
+      `,
+    });
   }
 }
 
@@ -482,6 +624,18 @@ declare module "@internal/redis" {
       //keys
       queue: string,
       items: string,
+      //args
+      id: string,
+      score: number,
+      serializedItem: string,
+      callback?: Callback<number>
+    ): Result<number, Context>;
+
+    enqueueItemWithCancellationKey(
+      //keys
+      queue: string,
+      items: string,
+      cancellationKey: string,
       //args
       id: string,
       score: number,
@@ -525,5 +679,21 @@ declare module "@internal/redis" {
       errorMessage: string,
       callback?: Callback<number>
     ): Result<number, Context>;
+
+    enqueueItemOnce(
+      queue: string,
+      items: string,
+      id: string,
+      score: number,
+      serializedItem: string,
+      callback?: Callback<number>
+    ): Result<number, Context>;
+
+    getJob(
+      queue: string,
+      items: string,
+      id: string,
+      callback?: Callback<[string, string, string] | null>
+    ): Result<[string, string, string] | null, Context>;
   }
 }

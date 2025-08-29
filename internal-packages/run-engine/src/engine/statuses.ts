@@ -41,22 +41,21 @@ export function isInitialState(status: TaskRunExecutionStatus): boolean {
   return startedStatuses.includes(status);
 }
 
-export function isFinalRunStatus(status: TaskRunStatus): boolean {
-  const finalStatuses: TaskRunStatus[] = [
-    "CANCELED",
-    "INTERRUPTED",
-    "COMPLETED_SUCCESSFULLY",
-    "COMPLETED_WITH_ERRORS",
-    "SYSTEM_FAILURE",
-    "CRASHED",
-    "EXPIRED",
-    "TIMED_OUT",
-  ];
+const finalStatuses: TaskRunStatus[] = [
+  "CANCELED",
+  "INTERRUPTED",
+  "COMPLETED_SUCCESSFULLY",
+  "COMPLETED_WITH_ERRORS",
+  "SYSTEM_FAILURE",
+  "CRASHED",
+  "EXPIRED",
+  "TIMED_OUT",
+];
 
+export function isFinalRunStatus(status: TaskRunStatus): boolean {
   return finalStatuses.includes(status);
 }
 
-export function canReleaseConcurrency(status: TaskRunExecutionStatus): boolean {
-  const releaseableStatuses: TaskRunExecutionStatus[] = ["SUSPENDED", "EXECUTING_WITH_WAITPOINTS"];
-  return releaseableStatuses.includes(status);
+export function getFinalRunStatuses(): TaskRunStatus[] {
+  return finalStatuses;
 }

@@ -41,15 +41,9 @@ export class DeleteProjectService {
     }
 
     // Delete all queues from the RunEngine 2 prod master queues
-    const workerGroups = await this.#prismaClient.workerInstanceGroup.findMany({
-      select: {
-        masterQueue: true,
-      },
-    });
-    const engineMasterQueues = workerGroups.map((group) => group.masterQueue);
-    for (const masterQueue of engineMasterQueues) {
+    for (const environment of project.environments) {
       await engine.removeEnvironmentQueuesFromMasterQueue({
-        masterQueue,
+        runtimeEnvironmentId: environment.id,
         organizationId: project.organization.id,
         projectId: project.id,
       });

@@ -1,0 +1,141 @@
+import { json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { z } from "zod";
+import { $replica, prisma } from "~/db.server";
+import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
+import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
+import { getEnvironmentFromEnv } from "./api.v1.projects.$projectRef.$env";
+import { GetWorkerByTagResponse } from "@trigger.dev/core/v3/schemas";
+import { env as $env } from "~/env.server";
+import { v3RunsPath } from "~/utils/pathBuilder";
+
+const ParamsSchema = z.object({
+  projectRef: z.string(),
+  tagName: z.string(),
+  env: z.enum(["dev", "staging", "prod", "preview"]),
+});
+
+const HeadersSchema = z.object({
+  "x-trigger-branch": z.string().optional(),
+});
+
+type ParamsSchema = z.infer<typeof ParamsSchema>;
+
+export async function loader({ request, params }: LoaderFunctionArgs) {
+  const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
+
+  if (!authenticationResult) {
+    return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
+  }
+
+  const parsedParams = ParamsSchema.safeParse(params);
+
+  if (!parsedParams.success) {
+    return json({ error: "Invalid Params" }, { status: 400 });
+  }
+
+  const parsedHeaders = HeadersSchema.safeParse(Object.fromEntries(request.headers));
+
+  const branch = parsedHeaders.success ? parsedHeaders.data["x-trigger-branch"] : undefined;
+
+  const { projectRef, env } = parsedParams.data;
+
+  const project = await prisma.project.findFirst({
+    where: {
+      externalRef: projectRef,
+      organization: {
+        members: {
+          some: {
+            userId: authenticationResult.userId,
+          },
+        },
+      },
+    },
+    select: {
+      id: true,
+      slug: true,
+      organization: {
+        select: {
+          slug: true,
+        },
+      },
+    },
+  });
+
+  if (!project) {
+    return json({ error: "Project not found" }, { status: 404 });
+  }
+
+  const envResult = await getEnvironmentFromEnv({
+    projectId: project.id,
+    userId: authenticationResult.userId,
+    env,
+    branch,
+  });
+
+  if (!envResult.success) {
+    return json({ error: envResult.error }, { status: 404 });
+  }
+
+  const runtimeEnv = envResult.environment;
+
+  const currentWorker = await findCurrentWorkerFromEnvironment(
+    {
+      id: runtimeEnv.id,
+      type: runtimeEnv.type,
+    },
+    $replica,
+    params.tagName
+  );
+
+  if (!currentWorker) {
+    return json({ error: "Worker not found" }, { status: 404 });
+  }
+
+  const tasks = await $replica.backgroundWorkerTask.findMany({
+    where: {
+      workerId: currentWorker.id,
+    },
+    select: {
+      friendlyId: true,
+      slug: true,
+      filePath: true,
+      triggerSource: true,
+      createdAt: true,
+      payloadSchema: true,
+    },
+    orderBy: {
+      slug: "asc",
+    },
+  });
+
+  const urls = {
+    runs: `${$env.APP_ORIGIN}${v3RunsPath(
+      { slug: project.organization.slug },
+      { slug: project.slug },
+      { slug: runtimeEnv.slug },
+      { versions: [currentWorker.version] }
+    )}`,
+  };
+
+  // Prepare the response object
+  const response: GetWorkerByTagResponse = {
+    worker: {
+      id: currentWorker.friendlyId,
+      version: currentWorker.version,
+      engine: currentWorker.engine,
+      sdkVersion: currentWorker.sdkVersion,
+      cliVersion: currentWorker.cliVersion,
+      tasks: tasks.map((task) => ({
+        id: task.friendlyId,
+        slug: task.slug,
+        filePath: task.filePath,
+        triggerSource: task.triggerSource,
+        createdAt: task.createdAt,
+        payloadSchema: task.payloadSchema,
+      })),
+    },
+    urls,
+  };
+
+  return json(response);
+}

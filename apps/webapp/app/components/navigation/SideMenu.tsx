@@ -10,6 +10,7 @@ import {
   CogIcon,
   FolderIcon,
   FolderOpenIcon,
+  GlobeAmericasIcon,
   IdentificationIcon,
   KeyIcon,
   PlusIcon,
@@ -21,12 +22,14 @@ import {
 import { useNavigation } from "@remix-run/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import simplur from "simplur";
-import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
+import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
+import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 import { RunsIconExtraSmall } from "~/assets/icons/RunsIcon";
 import { TaskIconSmall } from "~/assets/icons/TaskIcon";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
 import { Avatar } from "~/components/primitives/Avatar";
 import { type MatchedEnvironment } from "~/hooks/useEnvironment";
+import { useFeatures } from "~/hooks/useFeatures";
 import { type MatchedOrganization } from "~/hooks/useOrganizations";
 import { type MatchedProject } from "~/hooks/useProject";
 import { useHasAdminAccess } from "~/hooks/useUser";
@@ -45,9 +48,11 @@ import {
   organizationPath,
   organizationSettingsPath,
   organizationTeamPath,
+  regionsPath,
   v3ApiKeysPath,
   v3BatchesPath,
   v3BillingPath,
+  v3BulkActionsPath,
   v3DeploymentsPath,
   v3EnvironmentPath,
   v3EnvironmentVariablesPath,
@@ -61,7 +66,7 @@ import {
   v3UsagePath,
   v3WaitpointTokensPath,
 } from "~/utils/pathBuilder";
-import { useKapaWidget } from "../../hooks/useKapaWidget";
+import { AskAI } from "../AskAI";
 import { FreePlanUsage } from "../billing/FreePlanUsage";
 import { ConnectionIcon, DevPresencePanel, useDevPresence } from "../DevPresence";
 import { ImpersonationBanner } from "../ImpersonationBanner";
@@ -75,18 +80,16 @@ import {
   PopoverMenuItem,
   PopoverTrigger,
 } from "../primitives/Popover";
-import { ShortcutKey } from "../primitives/ShortcutKey";
 import { TextLink } from "../primitives/TextLink";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
 import { ShortcutsAutoOpen } from "../Shortcuts";
 import { UserProfilePhoto } from "../UserProfilePhoto";
+import { V4Badge } from "../V4Badge";
 import { EnvironmentSelector } from "./EnvironmentSelector";
 import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
-import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
-import { V4Badge } from "../V4Badge";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 export type SideMenuProject = Pick<
@@ -141,16 +144,18 @@ export function SideMenu({
     >
       <div
         className={cn(
-          "flex items-center justify-between overflow-hidden border-b px-1 py-1 transition duration-300",
+          "flex items-center overflow-hidden border-b px-1 py-1 transition duration-300",
           showHeaderDivider ? "border-grid-bright" : "border-transparent"
         )}
       >
-        <ProjectSelector
-          organizations={organizations}
-          organization={organization}
-          project={project}
-          user={user}
-        />
+        <div className="min-w-0 flex-1">
+          <ProjectSelector
+            organizations={organizations}
+            organization={organization}
+            project={project}
+            user={user}
+          />
+        </div>
         {isAdmin && !user.isImpersonating ? (
           <TooltipProvider disableHoverableContent={true}>
             <Tooltip>
@@ -272,6 +277,13 @@ export function SideMenu({
 
           <SideMenuSection title="Manage">
             <SideMenuItem
+              name="Bulk actions"
+              icon={ListCheckedIcon}
+              activeIconColor="text-bulkActions"
+              to={v3BulkActionsPath(organization, project, environment)}
+              data-action="bulk actions"
+            />
+            <SideMenuItem
               name="API keys"
               icon={KeyIcon}
               activeIconColor="text-apiKeys"
@@ -298,6 +310,14 @@ export function SideMenu({
               activeIconColor="text-preview"
               to={branchesPath(organization, project, environment)}
               data-action="preview-branches"
+              badge={<V4Badge />}
+            />
+            <SideMenuItem
+              name="Regions"
+              icon={GlobeAmericasIcon}
+              activeIconColor="text-green-500"
+              to={regionsPath(organization, project, environment)}
+              data-action="regions"
               badge={<V4Badge />}
             />
             <SideMenuItem
@@ -342,6 +362,7 @@ function ProjectSelector({
   const currentPlan = useCurrentPlan();
   const [isOrgMenuOpen, setOrgMenuOpen] = useState(false);
   const navigation = useNavigation();
+  const { isManagedCloud } = useFeatures();
 
   let plan: string | undefined = undefined;
   if (currentPlan?.v3Subscription?.isPaying === false) {
@@ -410,16 +431,18 @@ function ProjectSelector({
               <CogIcon className="size-4 text-text-dimmed" />
               <span className="text-text-bright">Settings</span>
             </LinkButton>
-            <LinkButton
-              variant="secondary/small"
-              to={v3UsagePath(organization)}
-              fullWidth
-              iconSpacing="gap-1.5"
-              className="group-hover/button:border-charcoal-500"
-            >
-              <ChartBarIcon className="size-4 text-text-dimmed" />
-              <span className="text-text-bright">Usage</span>
-            </LinkButton>
+            {isManagedCloud && (
+              <LinkButton
+                variant="secondary/small"
+                to={v3UsagePath(organization)}
+                fullWidth
+                iconSpacing="gap-1.5"
+                className="group-hover/button:border-charcoal-500"
+              >
+                <ChartBarIcon className="size-4 text-text-dimmed" />
+                <span className="text-text-bright">Usage</span>
+              </LinkButton>
+            )}
           </div>
         </div>
         <div className="flex flex-col gap-1 p-1">
@@ -582,41 +605,11 @@ function SelectorDivider() {
 }
 
 function HelpAndAI() {
-  const { isKapaEnabled, isKapaOpen, openKapa } = useKapaWidget();
-
   return (
     <>
       <ShortcutsAutoOpen />
-      <HelpAndFeedback disableShortcut={isKapaOpen} />
-      {isKapaEnabled && (
-        <TooltipProvider disableHoverableContent>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div className="inline-flex">
-                <Button
-                  variant="small-menu-item"
-                  data-action="ask-ai"
-                  shortcut={{ modifiers: ["mod"], key: "/", enabledOnInputElements: true }}
-                  hideShortcutKey
-                  data-modal-override-open-class-ask-ai="true"
-                  onClick={() => {
-                    openKapa();
-                  }}
-                >
-                  <AISparkleIcon className="size-5" />
-                </Button>
-              </div>
-            </TooltipTrigger>
-            <TooltipContent
-              side="top"
-              className="flex items-center gap-1 py-1.5 pl-2.5 pr-2 text-xs"
-            >
-              Ask AI
-              <ShortcutKey shortcut={{ modifiers: ["mod"], key: "/" }} variant="medium/bright" />
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      )}
+      <HelpAndFeedback />
+      <AskAI />
     </>
   );
 }

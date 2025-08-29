@@ -1,10 +1,9 @@
-import { workerQueue } from "~/services/worker.server";
-import { BaseService } from "./baseService.server";
-import { PrismaClientOrTransaction } from "~/db.server";
 import { z } from "zod";
-import { logger } from "~/services/logger.server";
-import { CancelTaskRunService } from "./cancelTaskRun.server";
 import { findLatestSession } from "~/models/runtimeEnvironment.server";
+import { logger } from "~/services/logger.server";
+import { commonWorker } from "../commonWorker.server";
+import { BaseService } from "./baseService.server";
+import { CancelTaskRunService } from "./cancelTaskRun.server";
 
 export const CancelDevSessionRunsServiceOptions = z.object({
   runIds: z.array(z.string()),
@@ -90,14 +89,14 @@ export class CancelDevSessionRunsService extends BaseService {
     }
   }
 
-  static async enqueue(
-    options: CancelDevSessionRunsServiceOptions,
-    runAt?: Date,
-    tx?: PrismaClientOrTransaction
-  ) {
-    return await workerQueue.enqueue("v3.cancelDevSessionRuns", options, {
-      tx,
-      runAt: runAt,
+  static async enqueue(options: CancelDevSessionRunsServiceOptions, runAt?: Date) {
+    return await commonWorker.enqueue({
+      id: options.cancelledSessionId
+        ? `cancelDevSessionRuns:${options.cancelledSessionId}`
+        : undefined,
+      job: "v3.cancelDevSessionRuns",
+      payload: options,
+      availableAt: runAt,
     });
   }
 }

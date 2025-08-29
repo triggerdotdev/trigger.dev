@@ -1,5 +1,5 @@
 import { setInterval } from "node:timers/promises";
-import { UsageManager, UsageMeasurement, UsageSample } from "./types.js";
+import { InitialUsageState, UsageManager, UsageMeasurement, UsageSample } from "./types.js";
 import { UsageClient } from "./usageClient.js";
 
 export type ProdUsageManagerOptions = {
@@ -13,6 +13,10 @@ export class ProdUsageManager implements UsageManager {
   private _abortController: AbortController | undefined;
   private _lastSample: UsageSample | undefined;
   private _usageClient: UsageClient | undefined;
+  private _initialState: InitialUsageState = {
+    cpuTime: 0,
+    costInCents: 0,
+  };
 
   constructor(
     private readonly delegageUsageManager: UsageManager,
@@ -25,6 +29,27 @@ export class ProdUsageManager implements UsageManager {
 
   get isReportingEnabled() {
     return typeof this._usageClient !== "undefined";
+  }
+
+  setInitialState(state: InitialUsageState) {
+    this._initialState = state;
+  }
+
+  getInitialState(): InitialUsageState {
+    return this._initialState;
+  }
+
+  reset(): void {
+    this.delegageUsageManager.reset();
+    this._abortController?.abort();
+    this._abortController = new AbortController();
+    this._usageClient = undefined;
+    this._measurement = undefined;
+    this._lastSample = undefined;
+    this._initialState = {
+      cpuTime: 0,
+      costInCents: 0,
+    };
   }
 
   disable(): void {
@@ -67,12 +92,18 @@ export class ProdUsageManager implements UsageManager {
 
     this._abortController = new AbortController();
 
-    for await (const _ of setInterval(this.options.heartbeatIntervalMs)) {
-      if (this._abortController.signal.aborted) {
-        break;
+    try {
+      for await (const _ of setInterval(this.options.heartbeatIntervalMs, undefined, {
+        signal: this._abortController.signal,
+      })) {
+        await this.#reportUsage();
+      }
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        return;
       }
 
-      await this.#reportUsage();
+      throw error;
     }
   }
 

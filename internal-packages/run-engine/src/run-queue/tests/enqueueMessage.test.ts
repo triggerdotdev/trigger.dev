@@ -1,11 +1,13 @@
-import { redisTest } from "@internal/testcontainers";
+import { assertNonNullable, redisTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
 import { describe } from "node:test";
+import { setTimeout } from "node:timers/promises";
 import { FairQueueSelectionStrategy } from "../fairQueueSelectionStrategy.js";
 import { RunQueue } from "../index.js";
 import { RunQueueFullKeyProducer } from "../keyProducer.js";
 import { InputPayload } from "../types.js";
+import { Decimal } from "@trigger.dev/database";
 
 const testOptions = {
   name: "rq",
@@ -27,6 +29,7 @@ const authenticatedEnvDev = {
   id: "e1234",
   type: "DEVELOPMENT" as const,
   maximumConcurrencyLimit: 10,
+  concurrencyLimitBurstFactor: new Decimal(2.0),
   project: { id: "p1234" },
   organization: { id: "o1234" },
 };
@@ -75,13 +78,11 @@ describe("RunQueue.enqueueMessage", () => {
       const oldestScore = await queue.oldestMessageInQueue(authenticatedEnvDev, messageDev.queue);
       expect(oldestScore).toBe(undefined);
 
-      const envMasterQueue = `env:${authenticatedEnvDev.id}`;
-
       //enqueue message
       const enqueueResult = await queue.enqueueMessage({
         env: authenticatedEnvDev,
         message: messageDev,
-        masterQueues: ["main", envMasterQueue],
+        workerQueue: authenticatedEnvDev.id,
       });
 
       expect(enqueueResult).toBe(undefined);
@@ -106,6 +107,21 @@ describe("RunQueue.enqueueMessage", () => {
 
       const envConcurrency = await queue.currentConcurrencyOfEnvironment(authenticatedEnvDev);
       expect(envConcurrency).toBe(0);
+
+      await setTimeout(1000);
+
+      //dequeue message
+      const dequeued = await queue.dequeueMessageFromWorkerQueue(
+        "test_12345",
+        authenticatedEnvDev.id
+      );
+      assertNonNullable(dequeued);
+      expect(dequeued.messageId).toEqual(messageDev.runId);
+      expect(dequeued.message.orgId).toEqual(messageDev.orgId);
+      expect(dequeued.message.version).toEqual("2");
+      const workerQueue =
+        dequeued.message.version == "2" ? dequeued.message.workerQueue : undefined;
+      expect(workerQueue).toEqual(authenticatedEnvDev.id);
     } finally {
       await queue.quit();
     }

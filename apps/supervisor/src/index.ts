@@ -24,6 +24,7 @@ import { collectDefaultMetrics } from "prom-client";
 import { register } from "./metrics.js";
 import { PodCleaner } from "./services/podCleaner.js";
 import { FailedPodHandler } from "./services/failedPodHandler.js";
+import { getWorkerToken } from "./workerToken.js";
 
 if (env.METRICS_COLLECT_DEFAULTS) {
   collectDefaultMetrics({ register });
@@ -67,7 +68,7 @@ class ManagedSupervisor {
       heartbeatIntervalSeconds: env.RUNNER_HEARTBEAT_INTERVAL_SECONDS,
       snapshotPollIntervalSeconds: env.RUNNER_SNAPSHOT_POLL_INTERVAL_SECONDS,
       additionalEnvVars: env.RUNNER_ADDITIONAL_ENV_VARS,
-      dockerAutoremove: env.RUNNER_DOCKER_AUTOREMOVE,
+      dockerAutoremove: env.DOCKER_AUTOREMOVE_EXITED_CONTAINERS,
     } satisfies WorkloadManagerOptions;
 
     this.resourceMonitor = env.RESOURCE_MONITOR_ENABLED
@@ -119,7 +120,7 @@ class ManagedSupervisor {
     }
 
     this.workerSession = new SupervisorSession({
-      workerToken: env.TRIGGER_WORKER_TOKEN,
+      workerToken: getWorkerToken(),
       apiUrl: env.TRIGGER_API_URL,
       instanceName: env.TRIGGER_WORKER_INSTANCE_NAME,
       managedWorkerSecret: env.MANAGED_WORKER_SECRET,
@@ -130,6 +131,7 @@ class ManagedSupervisor {
       maxConsumerCount: env.TRIGGER_DEQUEUE_MAX_CONSUMER_COUNT,
       runNotificationsEnabled: env.TRIGGER_WORKLOAD_API_ENABLED,
       heartbeatIntervalSeconds: env.TRIGGER_WORKER_HEARTBEAT_INTERVAL_SECONDS,
+      sendRunDebugLogs: env.SEND_RUN_DEBUG_LOGS,
       preDequeue: async () => {
         if (!env.RESOURCE_MONITOR_ENABLED) {
           return {};
@@ -245,6 +247,7 @@ class ManagedSupervisor {
           nextAttemptNumber: message.run.attemptNumber,
           snapshotId: message.snapshot.id,
           snapshotFriendlyId: message.snapshot.friendlyId,
+          placementTags: message.placementTags,
         });
 
         // Disabled for now

@@ -16,6 +16,10 @@ function initializeR2() {
   return new AwsClient({
     accessKeyId: env.OBJECT_STORE_ACCESS_KEY_ID,
     secretAccessKey: env.OBJECT_STORE_SECRET_ACCESS_KEY,
+    region: env.OBJECT_STORE_REGION,
+    // We now set the default value to "s3" in the schema to enhance interoperability with various S3-compatible services.
+    // Setting this env var to an empty string will restore the previous behavior of not setting a service.
+    service: env.OBJECT_STORE_SERVICE ? env.OBJECT_STORE_SERVICE : undefined,
   });
 }
 
@@ -152,13 +156,28 @@ export async function generatePresignedRequest(
   envSlug: string,
   filename: string,
   method: "PUT" | "GET" = "PUT"
-) {
+): Promise<
+  | {
+      success: false;
+      error: string;
+    }
+  | {
+      success: true;
+      request: Request;
+    }
+> {
   if (!env.OBJECT_STORE_BASE_URL) {
-    return;
+    return {
+      success: false,
+      error: "Object store base URL is not set",
+    };
   }
 
   if (!r2) {
-    return;
+    return {
+      success: false,
+      error: "Object store client is not initialized",
+    };
   }
 
   const url = new URL(env.OBJECT_STORE_BASE_URL);
@@ -182,7 +201,10 @@ export async function generatePresignedRequest(
     filename,
   });
 
-  return signed;
+  return {
+    success: true,
+    request: signed,
+  };
 }
 
 export async function generatePresignedUrl(
@@ -190,8 +212,29 @@ export async function generatePresignedUrl(
   envSlug: string,
   filename: string,
   method: "PUT" | "GET" = "PUT"
-) {
+): Promise<
+  | {
+      success: false;
+      error: string;
+    }
+  | {
+      success: true;
+      url: string;
+    }
+> {
   const signed = await generatePresignedRequest(projectRef, envSlug, filename, method);
 
-  return signed?.url;
+  if (!signed.success) {
+    return {
+      success: false,
+      error: signed.error,
+    };
+  }
+
+  signed;
+
+  return {
+    success: true,
+    url: signed.request.url,
+  };
 }

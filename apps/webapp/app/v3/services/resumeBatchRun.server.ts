@@ -1,9 +1,10 @@
 import { PrismaClientOrTransaction } from "~/db.server";
-import { workerQueue } from "~/services/worker.server";
+import { commonWorker } from "../commonWorker.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { BaseService } from "./baseService.server";
 import { logger } from "~/services/logger.server";
 import { BatchTaskRun } from "@trigger.dev/database";
+import { workerQueue } from "~/services/worker.server";
 
 const finishedBatchRunStatuses = ["COMPLETED", "FAILED", "CANCELED"];
 
@@ -331,20 +332,43 @@ export class ResumeBatchRunService extends BaseService {
   static async enqueue(
     batchRunId: string,
     skipJobKey: boolean,
-    tx: PrismaClientOrTransaction,
+    tx?: PrismaClientOrTransaction,
     runAt?: Date
   ) {
-    return await workerQueue.enqueue(
-      "v3.resumeBatchRun",
-      {
+    if (tx) {
+      logger.debug("ResumeBatchRunService: Enqueuing resume batch run using workerQueue", {
         batchRunId,
-      },
-      {
-        tx,
+        skipJobKey,
         runAt,
-        jobKey: skipJobKey ? undefined : `resumeBatchRun-${batchRunId}`,
-      }
-    );
+      });
+
+      return await workerQueue.enqueue(
+        "v3.resumeBatchRun",
+        {
+          batchRunId,
+        },
+        {
+          jobKey: skipJobKey ? undefined : `resumeBatchRun-${batchRunId}`,
+          runAt,
+          tx,
+        }
+      );
+    } else {
+      logger.debug("ResumeBatchRunService: Enqueuing resume batch run using commonWorker", {
+        batchRunId,
+        skipJobKey,
+        runAt,
+      });
+
+      return await commonWorker.enqueue({
+        id: skipJobKey ? undefined : `resumeBatchRun-${batchRunId}`,
+        job: "v3.resumeBatchRun",
+        payload: {
+          batchRunId,
+        },
+        availableAt: runAt,
+      });
+    }
   }
 }
 

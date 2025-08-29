@@ -1,0 +1,411 @@
+---
+title: "Docker compose"
+description: "You can self-host Trigger.dev on your own infrastructure using Docker."
+---
+
+The following instructions will use docker compose to spin up a Trigger.dev instance. Make sure to read the self-hosting [overview](/self-hosting/overview) first.
+
+As self-hosted deployments tend to have unique requirements and configurations, we don't provide specific advice for securing your deployment, scaling up, or improving reliability.
+
+Should the burden ever get too much, we'd be happy to see you on [Trigger.dev cloud](https://trigger.dev/pricing) where we deal with these concerns for you.
+
+**Warning:** This guide alone is unlikely to result in a production-ready deployment. Security, scaling, and reliability concerns are not fully addressed here.
+
+## What's new?
+
+Goodbye v3, hello v4! We made quite a few changes:
+
+- **Much simpler setup.** The provider and coordinator are now combined into a single supervisor. No more startup scripts, just `docker compose up`.
+- **Automatic container cleanup.** The supervisor will automatically clean up containers that are no longer needed.
+- **Support for multiple worker machines.** This is a big one, and we're very excited about it! You can now scale your workers horizontally as needed.
+- **Resource limits enforced by default.** This means that tasks will be limited to the total CPU and RAM of the machine preset, preventing noisy neighbours.
+- **No direct Docker socket access.** The compose file now comes with [Docker Socket Proxy](https://github.com/Tecnativa/docker-socket-proxy) by default. Yes, you want this.
+- **No host networking.** All containers are now running with network isolation, using only the network access they need.
+- **No checkpoint support.** This was only ever experimental when self-hosting and not recommended. It caused a bunch of issues. We decided to focus on the core features instead.
+- **Built-in container registry and object storage.** You can now deploy and execute tasks without needing third party services for this.
+- **Improved CLI commands.** You don't need any additional flags to deploy anymore, and there's a new command to easily `switch` between profiles.
+- **Whitelisting for GitHub OAuth.** Any whitelisted email addresses will now also apply to sign ins via GitHub, unlike v3 where they only applied to magic links.
+
+## Requirements
+
+These are the minimum requirements for running the webapp and worker components. They can run on the same, or on separate machines.
+
+It's fine to run everything on the same machine for testing. To be able to scale your workers, you will want to run them separately.
+
+### Prerequisites
+
+To run the webapp and worker components, you will need:
+
+- [Docker](https://docs.docker.com/get-docker/) 20.10.0+
+- [Docker Compose](https://docs.docker.com/compose/install/) 2.20.0+
+
+### Webapp
+
+This machine will host the webapp, postgres, redis, and related services.
+
+- 3+ vCPU
+- 6+ GB RAM
+
+### Worker
+
+This machine will host the supervisor and all of the runs.
+
+- 4+ vCPU
+- 8+ GB RAM
+
+How many workers and resources you need will depend on your workloads and concurrency requirements.
+
+For example:
+
+- 10 concurrency x `small-1x` (0.5 vCPU, 0.5 GB RAM) = 5 vCPU and 5 GB RAM
+- 20 concurrency x `small-1x` (0.5 vCPU, 0.5 GB RAM) = 10 vCPU and 10 GB RAM
+- 100 concurrency x `small-1x` (0.5 vCPU, 0.5 GB RAM) = 50 vCPU and 50 GB RAM
+- 100 concurrency x `small-2x` (1 vCPU, 1 GB RAM) = 100 vCPU and 100 GB RAM
+
+You may need to spin up multiple workers to handle peak concurrency. The good news is you don't have to know the exact numbers upfront. You can start with a single worker and add more as needed.
+
+## Setup
+
+### Webapp
+
+1. Clone the repository
+
+```bash
+git clone --depth=1 https://github.com/triggerdotdev/trigger.dev
+cd trigger.dev/hosting/docker
+```
+
+2. Create a `.env` file
+
+```bash
+cp .env.example .env
+```
+
+3. Start the webapp
+
+```bash
+cd webapp
+docker compose up -d
+```
+
+4. Configure the webapp using the [environment variables](/self-hosting/env/webapp) in your `.env` file, then apply the changes:
+
+```bash
+docker compose up -d
+```
+
+5. You should now be able to access the webapp at `http://localhost:8030`. When logging in, check the container logs for the magic link:
+
+```bash
+docker compose logs -f webapp
+```
+
+6. (optional) To initialize a new project, run the following command:
+
+```bash
+npx trigger.dev@latest init -p <project-ref> -a http://localhost:8030
+```
+
+### Worker
+
+1. Clone the repository
+
+```bash
+git clone --depth=1 https://github.com/triggerdotdev/trigger.dev
+cd trigger.dev/hosting/docker
+```
+
+2. Create a `.env` file
+
+```bash
+cp .env.example .env
+```
+
+3. Start the worker
+
+```bash
+cd worker
+docker compose up -d
+```
+
+4. Configure the supervisor using the [environment variables](/self-hosting/env/supervisor) in your `.env` file, including the [worker token](#worker-token).
+
+5. Apply the changes:
+
+```bash
+docker compose up -d
+```
+
+6. Repeat as needed for additional workers.
+
+### Combined
+
+If you want to run the webapp and worker on the same machine, just replace the `up` command with the following:
+
+```bash
+# Run this from the /hosting/docker directory
+docker compose -f webapp/docker-compose.yml -f worker/docker-compose.yml up -d
+```
+
+## Worker token
+
+When running the combined stack, worker bootstrap is handled automatically. When running the webapp and worker separately, you will need to manually set the worker token.
+
+On the first run, the webapp will generate a worker token and store it in a shared volume. It will also print the token to the console. It should look something like this:
+
+```bash
+==========================
+Trigger.dev Bootstrap - Worker Token
+
+WARNING: This will only be shown once. Save it now!
+
+Worker group:
+bootstrap
+
+Token:
+tr_wgt_fgfAEjsTmvl4lowBLTbP7Xo563UlnVa206mr9uW6
+
+If using docker compose, set:
+TRIGGER_WORKER_TOKEN=tr_wgt_fgfAEjsTmvl4lowBLTbP7Xo563UlnVa206mr9uW6
+
+Or, if using a file:
+TRIGGER_WORKER_TOKEN=file:///home/node/shared/worker_token
+
+==========================
+```
+
+You can then uncomment and set the `TRIGGER_WORKER_TOKEN` environment variable in your `.env` file.
+
+Don't forget to restart the worker container for the changes to take effect:
+
+```bash
+# Run this from the /hosting/docker/worker directory
+docker compose down
+docker compose up -d
+```
+
+## Registry setup
+
+The registry is used to store and pull deployment images. When testing the stack locally, the defaults should work out of the box.
+
+When deploying to production, you will need to set the correct URL and generate secure credentials for the registry.
+
+### Default settings
+
+The default settings for the registry are:
+
+- Registry: `localhost:5000`
+- Username: `registry-user`
+- Password: `very-secure-indeed`
+
+You should change these before deploying to production, especially the password. You can find more information about how to do this in the official [registry docs](https://github.com/distribution/distribution/blob/735c161b53e7faf81a21ba94c55ac9edee081cd9/docs/deploying.md#native-basic-auth).
+
+**Note:** This will require modifying the default `.htpasswd` file located at `./hosting/docker/registry/auth.htpasswd` of the repo root.
+
+### Logging in
+
+When self-hosting, builds run locally. You will have to login to the registry on every machine that runs the `deploy` command. You should only have to do this once:
+
+```bash
+docker login -u <username> <registry>
+```
+
+This will prompt for the password. Afterwards, the deploy command should work as expected.
+
+## Object storage
+
+This is mainly used for large payloads and outputs. There are a few simple steps to follow to get started.
+
+### Default settings
+
+The default settings for the object storage are:
+
+- Endpoint: `http://localhost:9000`
+- Username: `admin`
+- Password: `very-safe-password`
+
+You should change these before deploying to production, especially the password.
+
+### Setup
+
+<Note>
+  The `packets` bucket is created by default. In case this doesn't work, you can create it manually.
+</Note>
+
+1. Login to the dashboard: `http://localhost:9001`
+
+2. Create a bucket named `packets`.
+
+3. For production, you will want to set up a dedicated user and not use the root credentials above.
+
+## Authentication
+
+The specific set of variables required will depend on your choice of email transport or alternative login methods like GitHub OAuth.
+
+### Magic link
+
+By default, magic link auth is the only login option. If the `EMAIL_TRANSPORT` env var is not set, the magic links will be logged by the webapp container and not sent via email.
+
+#### Resend
+
+```bash
+EMAIL_TRANSPORT=resend
+FROM_EMAIL=
+REPLY_TO_EMAIL=
+RESEND_API_KEY=<your_resend_api_key>
+```
+
+#### SMTP
+
+Note that setting `SMTP_SECURE=false` does _not_ mean the email is sent insecurely.
+This simply means that the connection is secured using the modern STARTTLS protocol command instead of implicit TLS.
+You should only set this to true when the SMTP server host directs you to do so (generally when using port 465)
+
+```bash
+EMAIL_TRANSPORT=smtp
+FROM_EMAIL=
+REPLY_TO_EMAIL=
+SMTP_HOST=<your_smtp_server>
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=<your_smtp_username>
+SMTP_PASSWORD=<your_smtp_password>
+```
+
+#### AWS SES
+
+Credentials are to be supplied as with any other program using the AWS SDK.
+
+In this scenario, you would likely either supply the additional environment variables `AWS_REGION`, `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` or, when running on AWS, use credentials supplied by the EC2 IMDS.
+
+```bash
+EMAIL_TRANSPORT=aws-ses
+FROM_EMAIL=
+REPLY_TO_EMAIL=
+```
+
+### GitHub OAuth
+
+To authenticate with GitHub, you will need to set up a GitHub OAuth app. It needs a callback URL `https://<your_webapp_domain>/auth/github/callback` and you will have to set the following env vars:
+
+```bash
+AUTH_GITHUB_CLIENT_ID=<your_client_id>
+AUTH_GITHUB_CLIENT_SECRET=<your_client_secret>
+```
+
+### Restricting access
+
+All email addresses can sign up and log in this way. If you would like to restrict this, you can use the `WHITELISTED_EMAILS` env var. For example:
+
+```bash
+# every email that does not match this regex will be rejected
+WHITELISTED_EMAILS="authorized@yahoo\.com|authorized@gmail\.com"
+```
+
+This will apply to all auth methods including magic link and GitHub OAuth.
+
+## Version locking
+
+There are several reasons to lock the version of your Docker images:
+
+- **Backwards compatibility.** We try our best to maintain compatibility with older CLI versions, but it's not always possible. If you don't want to update your CLI, you can lock your Docker images to that specific version.
+- **Ensuring full feature support.** Sometimes, new CLI releases will also require new or updated platform features. Running unlocked images can make any issues difficult to debug. Using a specific tag can help here as well.
+
+By default, the images will point at the latest versioned release via the `latest` tag. You can override this by specifying a different tag in your `.env` file. For example:
+
+```bash
+TRIGGER_IMAGE_TAG=v4.0.0
+```
+
+## Troubleshooting
+
+- **Deployment fails at the push step.** The machine running `deploy` needs registry access. See the [registry setup](#registry-setup) section for more details.
+
+- **Magic links don't arrive.** The webapp container needs to be able to send emails. You probably need to set up an email transport. See the [authentication](#authentication) section for more details.
+
+  You should check the logs of the webapp container to see the magic link:
+
+  ```bash
+  # Run this from the /hosting/docker/webapp directory
+  docker compose logs -f webapp
+  ```
+
+## CLI usage
+
+This section highlights some of the CLI commands and options that are useful when self-hosting. Please check the [CLI reference](/cli-introduction) for more in-depth documentation.
+
+### Login
+
+To avoid being redirected to [Trigger.dev Cloud](https://cloud.trigger.dev) when using the CLI, you need to specify the URL of your self-hosted instance with the `--api-url` or `-a` flag. For example:
+
+```bash
+npx trigger.dev@latest login -a http://trigger.example.com
+```
+
+Once you've logged in, you shouldn't have to specify the URL again with other commands.
+
+### Profiles
+
+You can specify a profile when logging in. This allows you to easily use the CLI with multiple instances of Trigger.dev. For example:
+
+```bash
+npx trigger.dev@latest login -a http://trigger.example.com \
+    --profile self-hosted
+```
+
+Logging in with a new profile will also make it the new default profile.
+
+To use a specific profile, you can use the `--profile` flag with other commands:
+
+```bash
+npx trigger.dev@latest dev --profile self-hosted
+```
+
+To list all your profiles, use the `list-profiles` command:
+
+```bash
+npx trigger.dev@latest list-profiles
+```
+
+To remove a profile, use the `logout` command:
+
+```bash
+npx trigger.dev@latest logout --profile self-hosted
+```
+
+To switch to a different profile, use the `switch` command:
+
+```bash
+# To run interactively
+npx trigger.dev@latest switch
+
+# To switch to a specific profile
+npx trigger.dev@latest switch self-hosted
+```
+
+### Whoami
+
+It can be useful to check you are logged into the correct instance. Running this will also show the API URL:
+
+```bash
+npx trigger.dev@latest whoami
+```
+
+## CI / GitHub Actions
+
+When running the CLI in a CI environment, your login profiles won't be available. Instead, you can use the `TRIGGER_API_URL` and `TRIGGER_ACCESS_TOKEN` environment
+variables to point at your self-hosted instance and authenticate.
+
+For more detailed instructions, see the [GitHub Actions guide](/github-actions).
+
+## Telemetry
+
+By default, the Trigger.dev webapp sends telemetry data to our servers. This data is used to improve the product and is not shared with third parties. If you would like to opt-out of this, you can set the `TRIGGER_TELEMETRY_DISABLED` environment variable on the webapp container. The value doesn't matter, it just can't be empty. For example:
+
+```yaml
+services:
+  webapp:
+    ...
+    environment:
+      TRIGGER_TELEMETRY_DISABLED: 1
+```

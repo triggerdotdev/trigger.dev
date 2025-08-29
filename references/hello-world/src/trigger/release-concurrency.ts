@@ -6,14 +6,12 @@ import { setTimeout } from "node:timers/promises";
 const releaseEnabledQueue = queue({
   name: "release-concurrency-test-queue-enabled",
   concurrencyLimit: 2,
-  releaseConcurrencyOnWaitpoint: true,
 });
 
 // Queue with concurrency limit but release disabled
 const releaseDisabledQueue = queue({
   name: "release-concurrency-test-queue-disabled",
   concurrencyLimit: 2,
-  releaseConcurrencyOnWaitpoint: false,
 });
 
 // Task that runs on the release-enabled queue
@@ -28,7 +26,7 @@ const releaseEnabledTask = task({
     logger.info(`Run ${payload.id} started at ${startedAt}`);
 
     // Wait and release concurrency
-    await wait.for({ seconds: payload.waitSeconds, releaseConcurrency: true });
+    await wait.for({ seconds: payload.waitSeconds });
 
     const resumedAt = Date.now();
     await setTimeout(2000); // Additional work after resuming

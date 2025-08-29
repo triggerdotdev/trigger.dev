@@ -1,4 +1,4 @@
-import { UsageManager, UsageMeasurement, UsageSample } from "./types.js";
+import { InitialUsageState, UsageManager, UsageMeasurement, UsageSample } from "./types.js";
 
 export class NoopUsageManager implements UsageManager {
   disable(): void {
@@ -25,5 +25,16 @@ export class NoopUsageManager implements UsageManager {
 
   sample(): UsageSample | undefined {
     return undefined;
+  }
+
+  reset(): void {
+    // Noop
+  }
+
+  getInitialState(): InitialUsageState {
+    return {
+      cpuTime: 0,
+      costInCents: 0,
+    };
   }
 }

@@ -1,5 +1,6 @@
+import { BillingCache } from "./billingCache.js";
 import { createRedisClient, Redis } from "@internal/redis";
-import { startSpan, trace, Tracer } from "@internal/tracing";
+import { getMeter, Meter, startSpan, trace, Tracer } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
 import {
   CheckpointInput,
@@ -7,16 +8,17 @@ import {
   CreateCheckpointResult,
   DequeuedMessage,
   ExecutionResult,
-  MachineResources,
   RunExecutionData,
   StartRunAttemptResult,
+  TaskRunContext,
   TaskRunExecutionResult,
 } from "@trigger.dev/core/v3";
-import { BatchId, RunId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
+import { RunId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import {
   Prisma,
   PrismaClient,
   PrismaClientOrTransaction,
+  PrismaReplicaClient,
   TaskRun,
   TaskRunExecutionSnapshot,
   Waitpoint,
@@ -31,36 +33,38 @@ import { MinimalAuthenticatedEnvironment } from "../shared/index.js";
 import { NotImplementedError, RunDuplicateIdempotencyKeyError } from "./errors.js";
 import { EventBus, EventBusEvents } from "./eventBus.js";
 import { RunLocker } from "./locking.js";
+import { getFinalRunStatuses } from "./statuses.js";
 import { BatchSystem } from "./systems/batchSystem.js";
 import { CheckpointSystem } from "./systems/checkpointSystem.js";
 import { DelayedRunSystem } from "./systems/delayedRunSystem.js";
 import { DequeueSystem } from "./systems/dequeueSystem.js";
 import { EnqueueSystem } from "./systems/enqueueSystem.js";
 import {
-  ExecutionSnapshotSystem,
-  getLatestExecutionSnapshot,
-  getExecutionSnapshotsSince,
   executionDataFromSnapshot,
+  ExecutionSnapshotSystem,
+  getExecutionSnapshotsSince,
+  getLatestExecutionSnapshot,
 } from "./systems/executionSnapshotSystem.js";
 import { PendingVersionSystem } from "./systems/pendingVersionSystem.js";
-import { ReleaseConcurrencySystem } from "./systems/releaseConcurrencySystem.js";
+import { RaceSimulationSystem } from "./systems/raceSimulationSystem.js";
 import { RunAttemptSystem } from "./systems/runAttemptSystem.js";
 import { SystemResources } from "./systems/systems.js";
 import { TtlSystem } from "./systems/ttlSystem.js";
 import { WaitpointSystem } from "./systems/waitpointSystem.js";
 import { EngineWorker, HeartbeatTimeouts, RunEngineOptions, TriggerParams } from "./types.js";
 import { workerCatalog } from "./workerCatalog.js";
-import { RaceSimulationSystem } from "./systems/raceSimulationSystem.js";
 
 export class RunEngine {
   private runLockRedis: Redis;
   private runLock: RunLocker;
   private worker: EngineWorker;
-  private logger = new Logger("RunEngine", "debug");
+  private logger: Logger;
   private tracer: Tracer;
+  private meter: Meter;
   private heartbeatTimeouts: HeartbeatTimeouts;
 
   prisma: PrismaClient;
+  readOnlyPrisma: PrismaReplicaClient;
   runQueue: RunQueue;
   eventBus: EventBus = new EventEmitter<EventBusEvents>();
   executionSnapshotSystem: ExecutionSnapshotSystem;
@@ -73,11 +77,14 @@ export class RunEngine {
   delayedRunSystem: DelayedRunSystem;
   ttlSystem: TtlSystem;
   pendingVersionSystem: PendingVersionSystem;
-  releaseConcurrencySystem: ReleaseConcurrencySystem;
   raceSimulationSystem: RaceSimulationSystem = new RaceSimulationSystem();
 
+  private readonly billingCache: BillingCache;
+
   constructor(private readonly options: RunEngineOptions) {
+    this.logger = options.logger ?? new Logger("RunEngine", this.options.logLevel ?? "info");
     this.prisma = options.prisma;
+    this.readOnlyPrisma = options.readOnlyPrisma ?? this.prisma;
     this.runLockRedis = createRedisClient(
       {
         ...options.runLock.redis,
@@ -96,6 +103,18 @@ export class RunEngine {
       redis: this.runLockRedis,
       logger: this.logger,
       tracer: trace.getTracer("RunLocker"),
+      meter: options.meter,
+      duration: options.runLock.duration ?? 5000,
+      automaticExtensionThreshold: options.runLock.automaticExtensionThreshold ?? 1000,
+      retryConfig: {
+        maxAttempts: 10,
+        baseDelay: 100,
+        maxDelay: 3000,
+        backoffMultiplier: 1.8,
+        jitterFactor: 0.15,
+        maxTotalWaitTime: 15000,
+        ...options.runLock.retryConfig,
+      },
     });
 
     const keys = new RunQueueFullKeyProducer();
@@ -110,13 +129,34 @@ export class RunEngine {
         defaultEnvConcurrencyLimit: options.queue?.defaultEnvConcurrency ?? 10,
       }),
       defaultEnvConcurrency: options.queue?.defaultEnvConcurrency ?? 10,
-      logger: new Logger("RunQueue", "debug"),
+      defaultEnvConcurrencyBurstFactor: options.queue?.defaultEnvConcurrencyBurstFactor,
+      logger: new Logger("RunQueue", options.queue?.logLevel ?? "info"),
       redis: { ...options.queue.redis, keyPrefix: `${options.queue.redis.keyPrefix}runqueue:` },
       retryOptions: options.queue?.retryOptions,
+      workerOptions: {
+        disabled: options.worker.disabled,
+        concurrency: options.worker,
+        pollIntervalMs: options.worker.pollIntervalMs,
+        immediatePollIntervalMs: options.worker.immediatePollIntervalMs,
+        shutdownTimeoutMs: options.worker.shutdownTimeoutMs,
+      },
+      concurrencySweeper: {
+        scanSchedule: options.queue?.concurrencySweeper?.scanSchedule,
+        processMarkedSchedule: options.queue?.concurrencySweeper?.processMarkedSchedule,
+        scanJitterInMs: options.queue?.concurrencySweeper?.scanJitterInMs,
+        processMarkedJitterInMs: options.queue?.concurrencySweeper?.processMarkedJitterInMs,
+        callback: this.#concurrencySweeperCallback.bind(this),
+      },
+      shardCount: options.queue?.shardCount,
+      masterQueueConsumersDisabled: options.queue?.masterQueueConsumersDisabled,
+      masterQueueConsumersIntervalMs: options.queue?.masterQueueConsumersIntervalMs,
+      processWorkerQueueDebounceMs: options.queue?.processWorkerQueueDebounceMs,
+      dequeueBlockingTimeoutSeconds: options.queue?.dequeueBlockingTimeoutSeconds,
+      meter: options.meter,
     });
 
     this.worker = new Worker({
-      name: "worker",
+      name: "run-engine-worker",
       redisOptions: {
         ...options.worker.redis,
         keyPrefix: `${options.worker.redis.keyPrefix}worker:`,
@@ -126,7 +166,7 @@ export class RunEngine {
       pollIntervalMs: options.worker.pollIntervalMs,
       immediatePollIntervalMs: options.worker.immediatePollIntervalMs,
       shutdownTimeoutMs: options.worker.shutdownTimeoutMs,
-      logger: new Logger("RunEngineWorker", "debug"),
+      logger: new Logger("RunEngineWorker", options.logLevel ?? "info"),
       jobs: {
         finishWaitpoint: async ({ payload }) => {
           await this.waitpointSystem.completeWaitpoint({
@@ -176,6 +216,7 @@ export class RunEngine {
     }
 
     this.tracer = options.tracer;
+    this.meter = options.meter ?? getMeter("run-engine");
 
     const defaultHeartbeatTimeouts: HeartbeatTimeouts = {
       PENDING_EXECUTING: 60_000,
@@ -195,41 +236,11 @@ export class RunEngine {
       eventBus: this.eventBus,
       logger: this.logger,
       tracer: this.tracer,
+      meter: this.meter,
       runLock: this.runLock,
       runQueue: this.runQueue,
       raceSimulationSystem: this.raceSimulationSystem,
     };
-
-    this.releaseConcurrencySystem = new ReleaseConcurrencySystem({
-      resources,
-      maxTokensRatio: options.releaseConcurrency?.maxTokensRatio,
-      releasingsMaxAge: options.releaseConcurrency?.releasingsMaxAge,
-      releasingsPollInterval: options.releaseConcurrency?.releasingsPollInterval,
-      queueOptions:
-        typeof options.releaseConcurrency?.disabled === "boolean" &&
-        options.releaseConcurrency.disabled
-          ? undefined
-          : {
-              disableConsumers: options.releaseConcurrency?.disableConsumers,
-              redis: {
-                ...options.queue.redis, // Use base queue redis options
-                ...options.releaseConcurrency?.redis, // Allow overrides
-                keyPrefix: `${options.queue.redis.keyPrefix ?? ""}release-concurrency:`,
-              },
-              retry: {
-                maxRetries: options.releaseConcurrency?.maxRetries ?? 5,
-                backoff: {
-                  minDelay: options.releaseConcurrency?.backoff?.minDelay ?? 1000,
-                  maxDelay: options.releaseConcurrency?.backoff?.maxDelay ?? 10000,
-                  factor: options.releaseConcurrency?.backoff?.factor ?? 2,
-                },
-              },
-              consumersCount: options.releaseConcurrency?.consumersCount ?? 1,
-              pollInterval: options.releaseConcurrency?.pollInterval ?? 1000,
-              batchSize: options.releaseConcurrency?.batchSize ?? 10,
-              tracer: this.tracer,
-            },
-    });
 
     this.executionSnapshotSystem = new ExecutionSnapshotSystem({
       resources,
@@ -243,7 +254,6 @@ export class RunEngine {
 
     this.checkpointSystem = new CheckpointSystem({
       resources,
-      releaseConcurrencySystem: this.releaseConcurrencySystem,
       executionSnapshotSystem: this.executionSnapshotSystem,
       enqueueSystem: this.enqueueSystem,
     });
@@ -262,7 +272,6 @@ export class RunEngine {
       resources,
       executionSnapshotSystem: this.executionSnapshotSystem,
       enqueueSystem: this.enqueueSystem,
-      releaseConcurrencySystem: this.releaseConcurrencySystem,
     });
 
     this.ttlSystem = new TtlSystem({
@@ -283,7 +292,13 @@ export class RunEngine {
       delayedRunSystem: this.delayedRunSystem,
       machines: this.options.machines,
       retryWarmStartThresholdMs: this.options.retryWarmStartThresholdMs,
-      releaseConcurrencySystem: this.releaseConcurrencySystem,
+      redisOptions: this.options.cache?.redis ?? this.options.runLock.redis,
+    });
+
+    this.billingCache = new BillingCache({
+      billingOptions: this.options.billing,
+      redisOptions: this.options.cache?.redis ?? this.options.runLock.redis,
+      logger: this.logger,
     });
 
     this.dequeueSystem = new DequeueSystem({
@@ -291,7 +306,7 @@ export class RunEngine {
       executionSnapshotSystem: this.executionSnapshotSystem,
       runAttemptSystem: this.runAttemptSystem,
       machines: this.options.machines,
-      releaseConcurrencySystem: this.releaseConcurrencySystem,
+      billingCache: this.billingCache,
     });
   }
 
@@ -318,7 +333,7 @@ export class RunEngine {
       sdkVersion,
       cliVersion,
       concurrencyKey,
-      masterQueue,
+      workerQueue,
       queue,
       lockedQueueId,
       isTest,
@@ -332,6 +347,7 @@ export class RunEngine {
       tags,
       parentTaskRunId,
       rootTaskRunId,
+      replayedFromTaskRunFriendlyId,
       batch,
       resumeParentOnCompletion,
       depth,
@@ -344,10 +360,11 @@ export class RunEngine {
       machine,
       workerId,
       runnerId,
-      releaseConcurrency,
-      runChainState,
       scheduleId,
       scheduleInstanceId,
+      createdAt,
+      bulkActionId,
+      planType,
     }: TriggerParams,
     tx?: PrismaClientOrTransaction
   ): Promise<TaskRun> {
@@ -358,22 +375,6 @@ export class RunEngine {
       "trigger",
       async (span) => {
         const status = delayUntil ? "DELAYED" : "PENDING";
-
-        let secondaryMasterQueue: string | undefined = undefined;
-
-        if (environment.type === "DEVELOPMENT") {
-          // In dev we use the environment id as the master queue, or the locked worker id
-          masterQueue = this.#environmentMasterQueueKey(environment.id);
-          if (lockedToVersionId) {
-            masterQueue = this.#backgroundWorkerQueueKey(lockedToVersionId);
-          }
-        } else {
-          // For deployed runs, we add the env/worker id as the secondary master queue
-          secondaryMasterQueue = this.#environmentMasterQueueKey(environment.id);
-          if (lockedToVersionId) {
-            secondaryMasterQueue = this.#backgroundWorkerQueueKey(lockedToVersionId);
-          }
-        }
 
         //create run
         let taskRun: TaskRun;
@@ -406,8 +407,7 @@ export class RunEngine {
               concurrencyKey,
               queue,
               lockedQueueId,
-              masterQueue,
-              secondaryMasterQueue,
+              workerQueue,
               isTest,
               delayUntil,
               queuedAt,
@@ -426,6 +426,7 @@ export class RunEngine {
               oneTimeUseToken,
               parentTaskRunId,
               rootTaskRunId,
+              replayedFromTaskRunFriendlyId,
               batchId: batch?.id,
               resumeParentOnCompletion,
               depth,
@@ -435,9 +436,11 @@ export class RunEngine {
               seedMetadataType,
               maxDurationInSeconds,
               machinePreset: machine,
-              runChainState,
               scheduleId,
               scheduleInstanceId,
+              createdAt,
+              bulkActionGroupIds: bulkActionId ? [bulkActionId] : undefined,
+              planType,
               executionSnapshots: {
                 create: {
                   engine: "V2",
@@ -485,56 +488,51 @@ export class RunEngine {
 
         span.setAttribute("runId", taskRun.id);
 
-        await this.runLock.lock("trigger", [taskRun.id], 5000, async (signal) => {
-          //create associated waitpoint (this completes when the run completes)
-          const associatedWaitpoint = await this.waitpointSystem.createRunAssociatedWaitpoint(
-            prisma,
-            {
-              projectId: environment.project.id,
-              environmentId: environment.id,
-              completedByTaskRunId: taskRun.id,
-            }
-          );
+        //create associated waitpoint (this completes when the run completes)
+        const associatedWaitpoint = await this.waitpointSystem.createRunAssociatedWaitpoint(
+          prisma,
+          {
+            projectId: environment.project.id,
+            environmentId: environment.id,
+            completedByTaskRunId: taskRun.id,
+          }
+        );
 
-          //triggerAndWait or batchTriggerAndWait
-          if (resumeParentOnCompletion && parentTaskRunId) {
-            //this will block the parent run from continuing until this waitpoint is completed (and removed)
-            await this.waitpointSystem.blockRunWithWaitpoint({
-              runId: parentTaskRunId,
-              waitpoints: associatedWaitpoint.id,
-              projectId: associatedWaitpoint.projectId,
-              organizationId: environment.organization.id,
-              batch,
-              workerId,
-              runnerId,
-              tx: prisma,
-              releaseConcurrency,
-            });
+        //triggerAndWait or batchTriggerAndWait
+        if (resumeParentOnCompletion && parentTaskRunId) {
+          //this will block the parent run from continuing until this waitpoint is completed (and removed)
+          await this.waitpointSystem.blockRunWithWaitpoint({
+            runId: parentTaskRunId,
+            waitpoints: associatedWaitpoint.id,
+            projectId: associatedWaitpoint.projectId,
+            organizationId: environment.organization.id,
+            batch,
+            workerId,
+            runnerId,
+            tx: prisma,
+          });
+        }
+
+        if (taskRun.delayUntil) {
+          // Schedule the run to be enqueued at the delayUntil time
+          await this.delayedRunSystem.scheduleDelayedRunEnqueuing({
+            runId: taskRun.id,
+            delayUntil: taskRun.delayUntil,
+          });
+        } else {
+          if (taskRun.ttl) {
+            await this.ttlSystem.scheduleExpireRun({ runId: taskRun.id, ttl: taskRun.ttl });
           }
 
-          //Make sure lock extension succeeded
-          signal.throwIfAborted();
-
-          if (taskRun.delayUntil) {
-            // Schedule the run to be enqueued at the delayUntil time
-            await this.delayedRunSystem.scheduleDelayedRunEnqueuing({
-              runId: taskRun.id,
-              delayUntil: taskRun.delayUntil,
-            });
-          } else {
-            await this.enqueueSystem.enqueueRun({
-              run: taskRun,
-              env: environment,
-              workerId,
-              runnerId,
-              tx: prisma,
-            });
-
-            if (taskRun.ttl) {
-              await this.ttlSystem.scheduleExpireRun({ runId: taskRun.id, ttl: taskRun.ttl });
-            }
-          }
-        });
+          await this.enqueueSystem.enqueueRun({
+            run: taskRun,
+            env: environment,
+            workerId,
+            runnerId,
+            tx: prisma,
+            skipRunLock: true,
+          });
+        }
 
         this.eventBus.emit("runCreated", {
           time: new Date(),
@@ -557,45 +555,50 @@ export class RunEngine {
   /**
    * Gets a fairly selected run from the specified master queue, returning the information required to run it.
    * @param consumerId: The consumer that is pulling, allows multiple consumers to pull from the same queue
-   * @param masterQueue: The shared queue to pull from, can be an individual environment (for dev)
+   * @param workerQueue: The worker queue to pull from, can be an individual environment (for dev)
    * @returns
    */
-  async dequeueFromMasterQueue({
+  async dequeueFromWorkerQueue({
     consumerId,
-    masterQueue,
-    maxRunCount,
-    maxResources,
+    workerQueue,
     backgroundWorkerId,
     workerId,
     runnerId,
     tx,
+    skipObserving,
   }: {
     consumerId: string;
-    masterQueue: string;
-    maxRunCount: number;
-    maxResources?: MachineResources;
+    workerQueue: string;
     backgroundWorkerId?: string;
     workerId?: string;
     runnerId?: string;
     tx?: PrismaClientOrTransaction;
+    skipObserving?: boolean;
   }): Promise<DequeuedMessage[]> {
-    return this.dequeueSystem.dequeueFromMasterQueue({
+    if (!skipObserving) {
+      // We only do this with "prod" worker queues because we don't want to observe dev (e.g. environment) worker queues
+      this.runQueue.registerObservableWorkerQueue(workerQueue);
+    }
+
+    const dequeuedMessage = await this.dequeueSystem.dequeueFromWorkerQueue({
       consumerId,
-      masterQueue,
-      maxRunCount,
-      maxResources,
+      workerQueue,
       backgroundWorkerId,
       workerId,
       runnerId,
       tx,
     });
+
+    if (!dequeuedMessage) {
+      return [];
+    }
+
+    return [dequeuedMessage];
   }
 
-  async dequeueFromEnvironmentMasterQueue({
+  async dequeueFromEnvironmentWorkerQueue({
     consumerId,
     environmentId,
-    maxRunCount,
-    maxResources,
     backgroundWorkerId,
     workerId,
     runnerId,
@@ -603,51 +606,19 @@ export class RunEngine {
   }: {
     consumerId: string;
     environmentId: string;
-    maxRunCount: number;
-    maxResources?: MachineResources;
     backgroundWorkerId?: string;
     workerId?: string;
     runnerId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<DequeuedMessage[]> {
-    return this.dequeueFromMasterQueue({
+    return this.dequeueFromWorkerQueue({
       consumerId,
-      masterQueue: this.#environmentMasterQueueKey(environmentId),
-      maxRunCount,
-      maxResources,
+      workerQueue: environmentId,
       backgroundWorkerId,
       workerId,
       runnerId,
       tx,
-    });
-  }
-
-  async dequeueFromBackgroundWorkerMasterQueue({
-    consumerId,
-    backgroundWorkerId,
-    maxRunCount,
-    maxResources,
-    workerId,
-    runnerId,
-    tx,
-  }: {
-    consumerId: string;
-    backgroundWorkerId: string;
-    maxRunCount: number;
-    maxResources?: MachineResources;
-    workerId?: string;
-    runnerId?: string;
-    tx?: PrismaClientOrTransaction;
-  }): Promise<DequeuedMessage[]> {
-    return this.dequeueFromMasterQueue({
-      consumerId,
-      masterQueue: this.#backgroundWorkerQueueKey(backgroundWorkerId),
-      maxRunCount,
-      maxResources,
-      backgroundWorkerId,
-      workerId,
-      runnerId,
-      tx,
+      skipObserving: true,
     });
   }
 
@@ -712,6 +683,7 @@ export class RunEngine {
     completedAt,
     reason,
     finalizeRun,
+    bulkActionId,
     tx,
   }: {
     runId: string;
@@ -720,8 +692,9 @@ export class RunEngine {
     completedAt?: Date;
     reason?: string;
     finalizeRun?: boolean;
+    bulkActionId?: string;
     tx?: PrismaClientOrTransaction;
-  }): Promise<ExecutionResult> {
+  }): Promise<ExecutionResult & { alreadyFinished: boolean }> {
     return this.runAttemptSystem.cancelRun({
       runId,
       workerId,
@@ -729,6 +702,7 @@ export class RunEngine {
       completedAt,
       reason,
       finalizeRun,
+      bulkActionId,
       tx,
     });
   }
@@ -779,16 +753,16 @@ export class RunEngine {
   }
 
   async removeEnvironmentQueuesFromMasterQueue({
-    masterQueue,
+    runtimeEnvironmentId,
     organizationId,
     projectId,
   }: {
-    masterQueue: string;
+    runtimeEnvironmentId: string;
     organizationId: string;
     projectId: string;
   }) {
     return this.runQueue.removeEnvironmentQueuesFromMasterQueue(
-      masterQueue,
+      runtimeEnvironmentId,
       organizationId,
       projectId
     );
@@ -949,7 +923,6 @@ export class RunEngine {
     waitpoints,
     projectId,
     organizationId,
-    releaseConcurrency,
     timeout,
     spanIdToComplete,
     batch,
@@ -961,7 +934,6 @@ export class RunEngine {
     waitpoints: string | string[];
     projectId: string;
     organizationId: string;
-    releaseConcurrency?: boolean;
     timeout?: Date;
     spanIdToComplete?: string;
     batch?: { id: string; index?: number };
@@ -974,7 +946,6 @@ export class RunEngine {
       waitpoints,
       projectId,
       organizationId,
-      releaseConcurrency,
       timeout,
       spanIdToComplete,
       batch,
@@ -1102,6 +1073,10 @@ export class RunEngine {
     }
   }
 
+  async resolveTaskRunContext(runId: string): Promise<TaskRunContext> {
+    return this.runAttemptSystem.resolveTaskRunContext(runId);
+  }
+
   async getSnapshotsSince({
     runId,
     snapshotId,
@@ -1128,10 +1103,42 @@ export class RunEngine {
     return this.raceSimulationSystem.registerRacepointForRun({ runId, waitInterval });
   }
 
+  async migrateLegacyMasterQueues() {
+    const workerGroups = await this.prisma.workerInstanceGroup.findMany({
+      where: {
+        type: "MANAGED",
+      },
+      select: {
+        id: true,
+        name: true,
+        masterQueue: true,
+      },
+    });
+
+    this.logger.info("Migrating legacy master queues", {
+      workerGroups,
+    });
+
+    for (const workerGroup of workerGroups) {
+      this.logger.info("Migrating legacy master queue", {
+        workerGroupId: workerGroup.id,
+        workerGroupName: workerGroup.name,
+        workerGroupMasterQueue: workerGroup.masterQueue,
+      });
+
+      await this.runQueue.migrateLegacyMasterQueue(workerGroup.masterQueue);
+
+      this.logger.info("Migrated legacy master queue", {
+        workerGroupId: workerGroup.id,
+        workerGroupName: workerGroup.name,
+        workerGroupMasterQueue: workerGroup.masterQueue,
+      });
+    }
+  }
+
   async quit() {
     try {
       //stop the run queue
-      await this.releaseConcurrencySystem.quit();
       await this.runQueue.quit();
       await this.worker.stop();
       await this.runLock.quit();
@@ -1153,7 +1160,7 @@ export class RunEngine {
     tx?: PrismaClientOrTransaction;
   }) {
     const prisma = tx ?? this.prisma;
-    return await this.runLock.lock("handleStalledSnapshot", [runId], 5_000, async () => {
+    return await this.runLock.lock("handleStalledSnapshot", [runId], async () => {
       const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId);
       if (latestSnapshot.id !== snapshotId) {
         this.logger.log(
@@ -1165,7 +1172,6 @@ export class RunEngine {
           }
         );
 
-        await this.worker.ack(`heartbeatSnapshot.${runId}`);
         return;
       }
 
@@ -1319,11 +1325,51 @@ export class RunEngine {
     });
   }
 
-  #environmentMasterQueueKey(environmentId: string) {
-    return `master-env:${environmentId}`;
+  async #concurrencySweeperCallback(
+    runIds: string[]
+  ): Promise<Array<{ id: string; orgId: string }>> {
+    const runs = await this.readOnlyPrisma.taskRun.findMany({
+      where: {
+        id: { in: runIds },
+        completedAt: {
+          lte: new Date(Date.now() - 1000 * 60 * 10), // This only finds runs that were completed more than 10 minutes ago
+        },
+        organizationId: {
+          not: null,
+        },
+        status: {
+          in: getFinalRunStatuses(),
+        },
+      },
+      select: {
+        id: true,
+        status: true,
+        organizationId: true,
+      },
+    });
+
+    // Log the finished runs
+    for (const run of runs) {
+      this.logger.info("Concurrency sweeper callback found finished run", {
+        runId: run.id,
+        orgId: run.organizationId,
+        status: run.status,
+      });
+    }
+
+    return runs
+      .filter((run) => !!run.organizationId)
+      .map((run) => ({
+        id: run.id,
+        orgId: run.organizationId!,
+      }));
   }
 
-  #backgroundWorkerQueueKey(backgroundWorkerId: string) {
-    return `master-background-worker:${backgroundWorkerId}`;
+  /**
+   * Invalidates the billing cache for an organization when their plan changes
+   * Runs in background and handles all errors internally
+   */
+  invalidateBillingCache(orgId: string): void {
+    this.billingCache.invalidate(orgId);
   }
 }

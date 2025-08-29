@@ -6,19 +6,20 @@ import {
   TaskRunExecutionResult,
   TaskRunFailedExecutionResult,
   TaskRunInternalError,
+  V3TaskRunExecution,
 } from "./common.js";
 import { TaskResource } from "./resources.js";
 import {
   EnvironmentType,
-  ProdTaskRunExecution,
-  ProdTaskRunExecutionPayload,
+  V3ProdTaskRunExecution,
+  V3ProdTaskRunExecutionPayload,
   RunEngineVersionSchema,
   TaskRunExecutionLazyAttemptPayload,
   TaskRunExecutionMetrics,
   WaitReason,
 } from "./schemas.js";
 import { CompletedWaitpoint } from "./runEngine.js";
-import { DebugLogPropertiesInput } from "../runEngineWorker/index.js";
+import { DebugLogPropertiesInput } from "../runEngineWorker/supervisor/schemas.js";
 
 export const AckCallbackResult = z.discriminatedUnion("success", [
   z.object({
@@ -83,7 +84,7 @@ export const BackgroundWorkerClientMessages = z.discriminatedUnion("type", [
     version: z.literal("v1").default("v1"),
     type: z.literal("TASK_RUN_COMPLETED"),
     completion: TaskRunExecutionResult,
-    execution: TaskRunExecution,
+    execution: V3TaskRunExecution,
   }),
   z.object({
     version: z.literal("v1").default("v1"),
@@ -368,7 +369,7 @@ export const CoordinatorToPlatformMessages = {
       }),
       z.object({
         success: z.literal(true),
-        executionPayload: ProdTaskRunExecutionPayload,
+        executionPayload: V3ProdTaskRunExecutionPayload,
       }),
     ]),
   },
@@ -385,7 +386,7 @@ export const CoordinatorToPlatformMessages = {
       }),
       z.object({
         success: z.literal(true),
-        payload: ProdTaskRunExecutionPayload,
+        payload: V3ProdTaskRunExecutionPayload,
       }),
     ]),
   },
@@ -417,7 +418,7 @@ export const CoordinatorToPlatformMessages = {
   TASK_RUN_COMPLETED: {
     message: z.object({
       version: z.enum(["v1", "v2"]).default("v1"),
-      execution: ProdTaskRunExecution,
+      execution: V3ProdTaskRunExecution,
       completion: TaskRunExecutionResult,
       checkpoint: z
         .object({
@@ -430,7 +431,7 @@ export const CoordinatorToPlatformMessages = {
   TASK_RUN_COMPLETED_WITH_ACK: {
     message: z.object({
       version: z.enum(["v1", "v2"]).default("v2"),
-      execution: ProdTaskRunExecution,
+      execution: V3ProdTaskRunExecution,
       completion: TaskRunExecutionResult,
       checkpoint: z
         .object({
@@ -720,7 +721,7 @@ export const ProdWorkerToCoordinatorMessages = {
   TASK_RUN_COMPLETED: {
     message: z.object({
       version: z.enum(["v1", "v2"]).default("v1"),
-      execution: ProdTaskRunExecution,
+      execution: V3ProdTaskRunExecution,
       completion: TaskRunExecutionResult,
     }),
     callback: z.object({
@@ -792,7 +793,7 @@ export const ProdWorkerToCoordinatorMessages = {
       }),
       z.object({
         success: z.literal(true),
-        executionPayload: ProdTaskRunExecutionPayload,
+        executionPayload: V3ProdTaskRunExecutionPayload,
       }),
     ]),
   },
@@ -835,7 +836,7 @@ export const CoordinatorToProdWorkerMessages = {
   EXECUTE_TASK_RUN: {
     message: z.object({
       version: z.literal("v1").default("v1"),
-      executionPayload: ProdTaskRunExecutionPayload,
+      executionPayload: V3ProdTaskRunExecutionPayload,
     }),
   },
   EXECUTE_TASK_RUN_LAZY_ATTEMPT: {

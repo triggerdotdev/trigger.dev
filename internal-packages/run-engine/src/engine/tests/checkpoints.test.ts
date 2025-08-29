@@ -24,6 +24,8 @@ describe("RunEngine checkpoints", () => {
       },
       queue: {
         redis: redisOptions,
+        masterQueueConsumersDisabled: true,
+        processWorkerQueueDebounceMs: 50,
       },
       runLock: {
         redis: redisOptions,
@@ -66,7 +68,7 @@ describe("RunEngine checkpoints", () => {
           traceContext: {},
           traceId: "t12345",
           spanId: "s12345",
-          masterQueue: "main",
+          workerQueue: "main",
           queue: "task/test-task",
           isTest: false,
           tags: [],
@@ -75,11 +77,13 @@ describe("RunEngine checkpoints", () => {
       );
 
       // Dequeue the run
-      const dequeued = await engine.dequeueFromMasterQueue({
+      await setTimeout(500);
+      const dequeued = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
-        masterQueue: run.masterQueue,
-        maxRunCount: 10,
+        workerQueue: "main",
       });
+      expect(dequeued.length).toBe(1);
+      assertNonNullable(dequeued[0]);
 
       // Create an attempt
       const attemptResult = await engine.startRunAttempt({
@@ -146,13 +150,12 @@ describe("RunEngine checkpoints", () => {
       await setTimeout(500);
 
       // Dequeue the run again
-      const dequeuedAgain = await engine.dequeueFromMasterQueue({
+      const dequeuedAgain = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
-        masterQueue: run.masterQueue,
-        maxRunCount: 10,
+        workerQueue: "main",
       });
-
       expect(dequeuedAgain.length).toBe(1);
+      assertNonNullable(dequeuedAgain[0]);
 
       // Continue execution from checkpoint
       const continueResult = await engine.continueRunExecution({
@@ -197,6 +200,8 @@ describe("RunEngine checkpoints", () => {
       },
       queue: {
         redis: redisOptions,
+        masterQueueConsumersDisabled: true,
+        processWorkerQueueDebounceMs: 50,
       },
       runLock: {
         redis: redisOptions,
@@ -239,7 +244,7 @@ describe("RunEngine checkpoints", () => {
           traceContext: {},
           traceId: "t12345",
           spanId: "s12345",
-          masterQueue: "main",
+          workerQueue: "main",
           queue: "task/test-task",
           isTest: false,
           tags: [],
@@ -285,6 +290,8 @@ describe("RunEngine checkpoints", () => {
       },
       queue: {
         redis: redisOptions,
+        masterQueueConsumersDisabled: true,
+        processWorkerQueueDebounceMs: 50,
       },
       runLock: {
         redis: redisOptions,
@@ -325,7 +332,7 @@ describe("RunEngine checkpoints", () => {
           traceContext: {},
           traceId: "t12345",
           spanId: "s12345",
-          masterQueue: "main",
+          workerQueue: "main",
           queue: "task/test-task",
           isTest: false,
           tags: [],
@@ -333,12 +340,15 @@ describe("RunEngine checkpoints", () => {
         prisma
       );
 
+      await setTimeout(500);
+
       // First checkpoint sequence
-      const dequeued1 = await engine.dequeueFromMasterQueue({
+      const dequeued1 = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
-        masterQueue: run.masterQueue,
-        maxRunCount: 10,
+        workerQueue: "main",
       });
+      expect(dequeued1.length).toBe(1);
+      assertNonNullable(dequeued1[0]);
 
       const attemptResult1 = await engine.startRunAttempt({
         runId: dequeued1[0].run.id,
@@ -382,11 +392,12 @@ describe("RunEngine checkpoints", () => {
       await setTimeout(500);
 
       // Dequeue again after waitpoint completion
-      const dequeued2 = await engine.dequeueFromMasterQueue({
+      const dequeued2 = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
-        masterQueue: run.masterQueue,
-        maxRunCount: 10,
+        workerQueue: "main",
       });
+      expect(dequeued2.length).toBe(1);
+      assertNonNullable(dequeued2[0]);
 
       // Continue execution from first checkpoint
       const continueResult1 = await engine.continueRunExecution({
@@ -429,18 +440,16 @@ describe("RunEngine checkpoints", () => {
         id: waitpoint2.waitpoint.id,
       });
 
-      await setTimeout(500);
+      await setTimeout(1000);
 
       // Dequeue again after second waitpoint completion
-      const dequeued3 = await engine.dequeueFromMasterQueue({
+      const dequeued3 = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
-        masterQueue: run.masterQueue,
-        maxRunCount: 10,
+        workerQueue: "main",
       });
-
       expect(dequeued3.length).toBe(1);
+      assertNonNullable(dequeued3[0]);
 
-      // Verify latest checkpoint
       expect(dequeued3[0].checkpoint?.reason).toBe("CHECKPOINT_2");
       expect(dequeued3[0].checkpoint?.location).toBe("location-2");
 
@@ -484,6 +493,8 @@ describe("RunEngine checkpoints", () => {
         },
         queue: {
           redis: redisOptions,
+          masterQueueConsumersDisabled: true,
+          processWorkerQueueDebounceMs: 50,
         },
         runLock: {
           redis: redisOptions,
@@ -526,7 +537,7 @@ describe("RunEngine checkpoints", () => {
             traceContext: {},
             traceId: "t12345",
             spanId: "s12345",
-            masterQueue: "main",
+            workerQueue: "main",
             queue: "task/test-task",
             isTest: false,
             tags: [],
@@ -534,12 +545,15 @@ describe("RunEngine checkpoints", () => {
           prisma
         );
 
+        await setTimeout(500);
+
         // Dequeue the run
-        const dequeued = await engine.dequeueFromMasterQueue({
+        const dequeued = await engine.dequeueFromWorkerQueue({
           consumerId: "test_12345",
-          masterQueue: run.masterQueue,
-          maxRunCount: 10,
+          workerQueue: "main",
         });
+        expect(dequeued.length).toBe(1);
+        assertNonNullable(dequeued[0]);
 
         // Create an attempt
         const attemptResult = await engine.startRunAttempt({
@@ -559,7 +573,6 @@ describe("RunEngine checkpoints", () => {
           waitpoints: waitpointResult.waitpoint.id,
           projectId: authenticatedEnvironment.projectId,
           organizationId: authenticatedEnvironment.organizationId,
-          releaseConcurrency: true, // Important: Release concurrency when blocking
         });
 
         // Verify run is blocked
@@ -630,6 +643,8 @@ describe("RunEngine checkpoints", () => {
         },
         queue: {
           redis: redisOptions,
+          masterQueueConsumersDisabled: true,
+          processWorkerQueueDebounceMs: 50,
         },
         runLock: {
           redis: redisOptions,
@@ -672,7 +687,7 @@ describe("RunEngine checkpoints", () => {
             traceContext: {},
             traceId: "t12345",
             spanId: "s12345",
-            masterQueue: "main",
+            workerQueue: "main",
             queue: "task/test-task",
             isTest: false,
             tags: [],
@@ -680,12 +695,15 @@ describe("RunEngine checkpoints", () => {
           prisma
         );
 
+        await setTimeout(500);
+
         // Dequeue the run
-        const dequeued = await engine.dequeueFromMasterQueue({
+        const dequeued = await engine.dequeueFromWorkerQueue({
           consumerId: "test_12345",
-          masterQueue: run.masterQueue,
-          maxRunCount: 10,
+          workerQueue: "main",
         });
+        expect(dequeued.length).toBe(1);
+        assertNonNullable(dequeued[0]);
 
         // Create an attempt
         const attemptResult = await engine.startRunAttempt({
@@ -757,233 +775,6 @@ describe("RunEngine checkpoints", () => {
     }
   );
 
-  containerTest(
-    "when a checkpoint is created while the run is in QUEUED_EXECUTING state, the run is QUEUED",
-    async ({ prisma, redisOptions }) => {
-      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
-
-      const engine = new RunEngine({
-        prisma,
-        worker: {
-          redis: redisOptions,
-          workers: 1,
-          tasksPerWorker: 10,
-          pollIntervalMs: 100,
-        },
-        queue: {
-          redis: redisOptions,
-        },
-        runLock: {
-          redis: redisOptions,
-        },
-        machines: {
-          defaultMachine: "small-1x",
-          machines: {
-            "small-1x": {
-              name: "small-1x" as const,
-              cpu: 0.5,
-              memory: 0.5,
-              centsPerMs: 0.0001,
-            },
-          },
-          baseCostInCents: 0.0001,
-        },
-        tracer: trace.getTracer("test", "0.0.0"),
-      });
-
-      try {
-        const taskIdentifier = "test-task";
-
-        // Create background worker
-        await setupBackgroundWorker(
-          engine,
-          authenticatedEnvironment,
-          taskIdentifier,
-          undefined,
-          undefined,
-          {
-            concurrencyLimit: 1,
-          }
-        );
-
-        // Create first run with queue concurrency limit of 1
-        const firstRun = await engine.trigger(
-          {
-            number: 1,
-            friendlyId: "run_first",
-            environment: authenticatedEnvironment,
-            taskIdentifier,
-            payload: "{}",
-            payloadType: "application/json",
-            context: {},
-            traceContext: {},
-            traceId: "t12345-first",
-            spanId: "s12345-first",
-            masterQueue: "main",
-            queue: "task/test-task",
-            isTest: false,
-            tags: [],
-          },
-          prisma
-        );
-
-        // Dequeue and start the first run
-        const dequeuedFirst = await engine.dequeueFromMasterQueue({
-          consumerId: "test_12345",
-          masterQueue: firstRun.masterQueue,
-          maxRunCount: 10,
-        });
-
-        const firstAttempt = await engine.startRunAttempt({
-          runId: dequeuedFirst[0].run.id,
-          snapshotId: dequeuedFirst[0].snapshot.id,
-        });
-        expect(firstAttempt.snapshot.executionStatus).toBe("EXECUTING");
-
-        // Create a manual waitpoint for the first run
-        const waitpoint = await engine.createManualWaitpoint({
-          environmentId: authenticatedEnvironment.id,
-          projectId: authenticatedEnvironment.projectId,
-        });
-        expect(waitpoint.waitpoint.status).toBe("PENDING");
-
-        // Block the first run with releaseConcurrency set to true
-        const blockedResult = await engine.blockRunWithWaitpoint({
-          runId: firstRun.id,
-          waitpoints: waitpoint.waitpoint.id,
-          projectId: authenticatedEnvironment.projectId,
-          organizationId: authenticatedEnvironment.organizationId,
-          releaseConcurrency: true,
-        });
-
-        // Verify first run is blocked
-        const firstRunData = await engine.getRunExecutionData({ runId: firstRun.id });
-        expect(firstRunData?.snapshot.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
-
-        // Create and start second run on the same queue
-        const secondRun = await engine.trigger(
-          {
-            number: 2,
-            friendlyId: "run_second",
-            environment: authenticatedEnvironment,
-            taskIdentifier,
-            payload: "{}",
-            payloadType: "application/json",
-            context: {},
-            traceContext: {},
-            traceId: "t12345-second",
-            spanId: "s12345-second",
-            masterQueue: "main",
-            queue: "task/test-task",
-            isTest: false,
-            tags: [],
-          },
-          prisma
-        );
-
-        // Dequeue and start the second run
-        const dequeuedSecond = await engine.dequeueFromMasterQueue({
-          consumerId: "test_12345",
-          masterQueue: secondRun.masterQueue,
-          maxRunCount: 10,
-        });
-
-        const secondAttempt = await engine.startRunAttempt({
-          runId: dequeuedSecond[0].run.id,
-          snapshotId: dequeuedSecond[0].snapshot.id,
-        });
-        expect(secondAttempt.snapshot.executionStatus).toBe("EXECUTING");
-
-        // Now complete the waitpoint for the first run
-        await engine.completeWaitpoint({
-          id: waitpoint.waitpoint.id,
-        });
-
-        // Wait for the continueRunIfUnblocked to process
-        await setTimeout(500);
-
-        // Verify the first run is now in QUEUED_EXECUTING state
-        const executionDataAfter = await engine.getRunExecutionData({ runId: firstRun.id });
-        expect(executionDataAfter?.snapshot.executionStatus).toBe("QUEUED_EXECUTING");
-        expect(executionDataAfter?.snapshot.description).toBe(
-          "Run can continue, but is waiting for concurrency"
-        );
-
-        // Verify the waitpoint is no longer blocking the first run
-        const runWaitpoint = await prisma.taskRunWaitpoint.findFirst({
-          where: {
-            taskRunId: firstRun.id,
-          },
-          include: {
-            waitpoint: true,
-          },
-        });
-        expect(runWaitpoint).toBeNull();
-
-        // Verify the waitpoint itself is completed
-        const completedWaitpoint = await prisma.waitpoint.findUnique({
-          where: {
-            id: waitpoint.waitpoint.id,
-          },
-        });
-        assertNonNullable(completedWaitpoint);
-        expect(completedWaitpoint.status).toBe("COMPLETED");
-
-        // Create checkpoint after waitpoint completion
-        const checkpointResult = await engine.createCheckpoint({
-          runId: firstRun.id,
-          snapshotId: firstRunData?.snapshot.id!,
-          checkpoint: {
-            type: "DOCKER",
-            reason: "TEST_CHECKPOINT",
-            location: "test-location",
-            imageRef: "test-image-ref",
-          },
-        });
-
-        expect(checkpointResult.ok).toBe(true);
-        const checkpoint = checkpointResult.ok ? checkpointResult.snapshot : null;
-        assertNonNullable(checkpoint);
-        expect(checkpoint.executionStatus).toBe("QUEUED");
-
-        // Complete the second run so the first run can be dequeued
-        const result = await engine.completeRunAttempt({
-          runId: dequeuedSecond[0].run.id,
-          snapshotId: secondAttempt.snapshot.id,
-          completion: {
-            ok: true,
-            id: dequeuedSecond[0].run.id,
-            output: `{"foo":"bar"}`,
-            outputType: "application/json",
-          },
-        });
-
-        await setTimeout(500);
-
-        // Verify the first run is back in the queue
-        const queuedRun = await engine.dequeueFromMasterQueue({
-          consumerId: "test_12345",
-          masterQueue: firstRun.masterQueue,
-          maxRunCount: 10,
-        });
-
-        expect(queuedRun.length).toBe(1);
-        expect(queuedRun[0].run.id).toBe(firstRun.id);
-        expect(queuedRun[0].snapshot.executionStatus).toBe("PENDING_EXECUTING");
-
-        // Now we can continue the run
-        const continueResult = await engine.continueRunExecution({
-          runId: firstRun.id,
-          snapshotId: queuedRun[0].snapshot.id,
-        });
-
-        expect(continueResult.snapshot.executionStatus).toBe("EXECUTING");
-      } finally {
-        await engine.quit();
-      }
-    }
-  );
-
   containerTest("batchTriggerAndWait resume after checkpoint", async ({ prisma, redisOptions }) => {
     //create environment
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
@@ -998,6 +789,8 @@ describe("RunEngine checkpoints", () => {
       },
       queue: {
         redis: redisOptions,
+        masterQueueConsumersDisabled: true,
+        processWorkerQueueDebounceMs: 50,
       },
       runLock: {
         redis: redisOptions,
@@ -1045,7 +838,7 @@ describe("RunEngine checkpoints", () => {
           traceContext: {},
           traceId: "t12345",
           spanId: "s12345",
-          masterQueue: "main",
+          workerQueue: "main",
           queue: `task/${parentTask}`,
           isTest: false,
           tags: [],
@@ -1053,12 +846,15 @@ describe("RunEngine checkpoints", () => {
         prisma
       );
 
+      await setTimeout(500);
+
       //dequeue parent
-      const dequeued = await engine.dequeueFromMasterQueue({
+      const dequeued = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
-        masterQueue: parentRun.masterQueue,
-        maxRunCount: 10,
+        workerQueue: "main",
       });
+      expect(dequeued.length).toBe(1);
+      assertNonNullable(dequeued[0]);
 
       //create an attempt
       const initialExecutionData = await engine.getRunExecutionData({ runId: parentRun.id });
@@ -1093,7 +889,7 @@ describe("RunEngine checkpoints", () => {
           traceContext: {},
           traceId: "t12345",
           spanId: "s12345",
-          masterQueue: "main",
+          workerQueue: "main",
           queue: `task/${childTask}`,
           isTest: false,
           tags: [],
@@ -1120,7 +916,7 @@ describe("RunEngine checkpoints", () => {
           traceContext: {},
           traceId: "t123456",
           spanId: "s123456",
-          masterQueue: "main",
+          workerQueue: "main",
           queue: `task/${childTask}`,
           isTest: false,
           tags: [],
@@ -1130,6 +926,8 @@ describe("RunEngine checkpoints", () => {
         },
         prisma
       );
+
+      await setTimeout(500);
 
       const parentAfterChild2 = await engine.getRunExecutionData({ runId: parentRun.id });
       assertNonNullable(parentAfterChild2);
@@ -1200,13 +998,12 @@ describe("RunEngine checkpoints", () => {
       expect(executionData.checkpoint?.reason).toBe("TEST_CHECKPOINT");
 
       //dequeue and start the 1st child
-      const dequeuedChild = await engine.dequeueFromMasterQueue({
+      const dequeuedChild = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
-        masterQueue: child1.masterQueue,
-        maxRunCount: 1,
+        workerQueue: "main",
       });
-
       expect(dequeuedChild.length).toBe(1);
+      assertNonNullable(dequeuedChild[0]);
 
       const childAttempt1 = await engine.startRunAttempt({
         runId: dequeuedChild[0].run.id,
@@ -1262,16 +1059,15 @@ describe("RunEngine checkpoints", () => {
       expect(parentExecutionDataAfterFirstChildComplete.batch?.id).toBe(batch.id);
       expect(parentExecutionDataAfterFirstChildComplete.completedWaitpoints.length).toBe(0);
 
-      expect(await engine.runQueue.lengthOfEnvQueue(authenticatedEnvironment)).toBe(1);
+      await setTimeout(1000);
 
       //dequeue and start the 2nd child
-      const dequeuedChild2 = await engine.dequeueFromMasterQueue({
+      const dequeuedChild2 = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
-        masterQueue: child2.masterQueue,
-        maxRunCount: 1,
+        workerQueue: "main",
       });
-
       expect(dequeuedChild2.length).toBe(1);
+      assertNonNullable(dequeuedChild2[0]);
 
       const childAttempt2 = await engine.startRunAttempt({
         runId: child2.id,
@@ -1323,16 +1119,15 @@ describe("RunEngine checkpoints", () => {
       expect(parentExecutionDataAfterSecondChildComplete.batch?.id).toBe(batch.id);
       expect(parentExecutionDataAfterSecondChildComplete.completedWaitpoints.length).toBe(3);
 
-      // Dequeue the run
-      const dequeuedParentAfterCheckpoint = await engine.dequeueFromMasterQueue({
-        consumerId: "test_12345",
-        masterQueue: parentRun.masterQueue,
-        maxRunCount: 10,
-      });
+      await setTimeout(500);
 
+      // Dequeue the run
+      const dequeuedParentAfterCheckpoint = await engine.dequeueFromWorkerQueue({
+        consumerId: "test_12345",
+        workerQueue: "main",
+      });
       expect(dequeuedParentAfterCheckpoint.length).toBe(1);
-      expect(dequeuedParentAfterCheckpoint[0].run.id).toBe(parentRun.id);
-      expect(dequeuedParentAfterCheckpoint[0].snapshot.executionStatus).toBe("PENDING_EXECUTING");
+      assertNonNullable(dequeuedParentAfterCheckpoint[0]);
 
       // Create an attempt
       const parentResumed = await engine.continueRunExecution({

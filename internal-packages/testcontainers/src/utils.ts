@@ -1,3 +1,4 @@
+import { createClient } from "@clickhouse/client";
 import { PostgreSqlContainer, StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { RedisContainer, StartedRedisContainer } from "@testcontainers/redis";
 import { tryCatch } from "@trigger.dev/core";
@@ -7,11 +8,8 @@ import { isDebug } from "std-env";
 import { GenericContainer, StartedNetwork, StartedTestContainer, Wait } from "testcontainers";
 import { x } from "tinyexec";
 import { expect, TaskContext } from "vitest";
-import { getContainerMetadata, getTaskMetadata, logCleanup } from "./logs";
-import { logSetup } from "./logs";
 import { ClickHouseContainer, runClickhouseMigrations } from "./clickhouse";
-import { createClient } from "@clickhouse/client";
-import { readdir, readFile } from "node:fs/promises";
+import { getContainerMetadata, getTaskMetadata, logCleanup, logSetup } from "./logs";
 
 export async function createPostgresContainer(network: StartedNetwork) {
   const container = await new PostgreSqlContainer("docker.io/postgres:14")

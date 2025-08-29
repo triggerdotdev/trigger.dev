@@ -1,5 +1,6 @@
 import { taskContext } from "./task-context-api.js";
 import { IdempotencyKey } from "./types/idempotencyKeys.js";
+import { digestSHA256 } from "./utils/crypto.js";
 
 export function isIdempotencyKey(
   value: string | string[] | IdempotencyKey
@@ -115,15 +116,7 @@ function injectScope(scope: "run" | "attempt" | "global"): string[] {
 }
 
 async function generateIdempotencyKey(keyMaterial: string[]) {
-  const hash = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(keyMaterial.join("-"))
-  );
-
-  // Return a hex string, using cross-runtime compatible methods
-  return Array.from(new Uint8Array(hash))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
+  return await digestSHA256(keyMaterial.join("-"));
 }
 
 type AttemptKeyMaterial = {

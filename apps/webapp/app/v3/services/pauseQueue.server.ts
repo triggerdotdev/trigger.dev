@@ -89,7 +89,6 @@ export class PauseQueueService extends BaseService {
           queued: results[0]?.[updatedQueue.name] ?? 0,
           concurrencyLimit: updatedQueue.concurrencyLimit ?? null,
           paused: updatedQueue.paused,
-          releaseConcurrencyOnWaitpoint: updatedQueue.releaseConcurrencyOnWaitpoint,
         }),
       };
     } catch (error) {
