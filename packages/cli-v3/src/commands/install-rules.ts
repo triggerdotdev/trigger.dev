@@ -25,6 +25,7 @@ import {
 import { pathExists, readFile, safeWriteFile } from "../utilities/fileSystem.js";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
+import { tryCatch } from "@trigger.dev/core/utils";
 
 const targets = [
   "claude-code",
@@ -228,9 +229,11 @@ export async function initiateRulesInstallWizard(options: InstallRulesWizardOpti
 }
 
 async function installRules(manifest: RulesManifest, opts: InstallRulesWizardOptions) {
-  const config = await loadConfig({
-    cwd: process.cwd(),
-  });
+  const [_, config] = await tryCatch(
+    loadConfig({
+      cwd: process.cwd(),
+    })
+  );
 
   const currentVersion = await manifest.getCurrentVersion();
 
@@ -244,7 +247,12 @@ async function installRules(manifest: RulesManifest, opts: InstallRulesWizardOpt
   const results = [];
 
   for (const targetName of targetNames) {
-    const result = await installRulesForTarget(targetName, currentVersion, config, opts);
+    const result = await installRulesForTarget(
+      targetName,
+      currentVersion,
+      opts,
+      config ?? undefined
+    );
 
     if (result) {
       results.push(result);
@@ -294,8 +302,8 @@ function handleUnsupportedTargetOnly(options: InstallRulesCommandOptions): Insta
 async function installRulesForTarget(
   targetName: ResolvedTargets,
   currentVersion: ManifestVersion,
-  config: ResolvedConfig,
-  options: InstallRulesCommandOptions
+  options: InstallRulesCommandOptions,
+  config?: ResolvedConfig
 ) {
   if (targetName === "unsupported") {
     // This should not happen as unsupported targets are handled separately
@@ -306,7 +314,7 @@ async function installRulesForTarget(
     return;
   }
 
-  const result = await performInstallForTarget(targetName, currentVersion, config, options);
+  const result = await performInstallForTarget(targetName, currentVersion, options, config);
 
   return result;
 }
@@ -314,8 +322,8 @@ async function installRulesForTarget(
 async function performInstallForTarget(
   targetName: (typeof targets)[number],
   currentVersion: ManifestVersion,
-  config: ResolvedConfig,
-  cmdOptions: InstallRulesCommandOptions
+  cmdOptions: InstallRulesCommandOptions,
+  config?: ResolvedConfig
 ) {
   const options = await resolveOptionsForTarget(targetName, currentVersion, cmdOptions);
 
@@ -330,7 +338,7 @@ async function performInstallForTarget(
 async function performInstallOptionsForTarget(
   targetName: (typeof targets)[number],
   options: Array<RulesManifestVersionOption>,
-  config: ResolvedConfig
+  config?: ResolvedConfig
 ) {
   const results = [];
 
@@ -345,7 +353,7 @@ async function performInstallOptionsForTarget(
 async function performInstallOptionForTarget(
   targetName: (typeof targets)[number],
   option: RulesManifestVersionOption,
-  config: ResolvedConfig
+  config?: ResolvedConfig
 ) {
   switch (option.installStrategy) {
     case "default": {
@@ -363,7 +371,7 @@ async function performInstallOptionForTarget(
 async function performInstallDefaultOptionForTarget(
   targetName: (typeof targets)[number],
   option: RulesManifestVersionOption,
-  config: ResolvedConfig
+  config?: ResolvedConfig
 ) {
   // Get the path to the rules file
   const rulesFilePath = resolveRulesFilePathForTargetOption(targetName, option);
@@ -490,7 +498,7 @@ async function resolveRulesFileMergeStrategyForTarget(targetName: (typeof target
 async function resolveRulesFileContentsForTarget(
   targetName: (typeof targets)[number],
   option: RulesManifestVersionOption,
-  config: ResolvedConfig
+  config?: ResolvedConfig
 ) {
   switch (targetName) {
     case "cursor": {
