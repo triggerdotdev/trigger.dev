@@ -297,11 +297,26 @@ export default function Page() {
                 </Table>
                 <InfoPanel
                   icon={InformationCircleIcon}
+                  iconClassName="size-4"
                   variant="minimal"
-                  panelClassName="max-w-full"
+                  panelClassName="max-w-full gap-1"
                 >
-                  Runs execute in your default region, but operational and log data remains in
-                  us-east-1.
+                  <Paragraph variant="extra-small" className="flex items-baseline gap-x-0.5">
+                    Trigger.dev is fully GDPR compliant. Learn more in our{" "}
+                    <TextLink to="https://security.trigger.dev">security portal</TextLink> or{" "}
+                    <Feedback
+                      button={
+                        <Paragraph
+                          variant="extra-small"
+                          className="cursor-pointer text-indigo-500 transition hover:text-indigo-400"
+                        >
+                          get in touch
+                        </Paragraph>
+                      }
+                      defaultValue="help"
+                    />
+                    .
+                  </Paragraph>
                 </InfoPanel>
               </div>
             </>
