@@ -17,7 +17,7 @@ import {
   type MetaFunction,
 } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { type RuntimeEnvironmentType } from "@trigger.dev/database";
+import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { useEffect, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";

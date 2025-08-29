@@ -14,7 +14,7 @@ import { ArrowPathIcon, CheckIcon, XCircleIcon } from "@heroicons/react/20/solid
 import assertNever from "assert-never";
 import { AppliedFilter } from "./primitives/AppliedFilter";
 import { runStatusTitle } from "./runs/v3/TaskRunStatus";
-import { type TaskRunStatus } from "@trigger.dev/database";
+import type { TaskRunStatus } from "@trigger.dev/database";
 
 export const BulkActionMode = z.union([z.literal("selected"), z.literal("filter")]);
 export type BulkActionMode = z.infer<typeof BulkActionMode>;

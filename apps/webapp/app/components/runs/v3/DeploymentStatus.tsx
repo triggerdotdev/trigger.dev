@@ -4,7 +4,7 @@ import {
   NoSymbolIcon,
   XCircleIcon,
 } from "@heroicons/react/20/solid";
-import { WorkerDeploymentStatus } from "@trigger.dev/database";
+import type { WorkerDeploymentStatus } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { Spinner } from "~/components/primitives/Spinner";
 import { cn } from "~/utils/cn";

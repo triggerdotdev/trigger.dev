@@ -11,7 +11,7 @@ import {
   TrashIcon,
   XCircleIcon,
 } from "@heroicons/react/20/solid";
-import { type TaskRunStatus } from "@trigger.dev/database";
+import type { TaskRunStatus } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { HourglassIcon } from "lucide-react";
 import { TimedOutIcon } from "~/assets/icons/TimedOutIcon";
