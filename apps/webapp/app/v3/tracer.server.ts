@@ -1,18 +1,17 @@
 import {
-  Attributes,
-  Context,
+  type Attributes,
+  type Context,
   DiagConsoleLogger,
   DiagLogLevel,
-  Link,
-  Span,
-  SpanKind,
-  SpanOptions,
+  type Link,
+  type Span,
+  type SpanKind,
+  type SpanOptions,
   SpanStatusCode,
-  Tracer,
   diag,
   trace,
   metrics,
-  Meter,
+  type Meter,
 } from "@opentelemetry/api";
 import { logs, SeverityNumber } from "@opentelemetry/api-logs";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
@@ -21,43 +20,43 @@ import { BatchLogRecordProcessor, LoggerProvider } from "@opentelemetry/sdk-logs
 import { type Instrumentation, registerInstrumentations } from "@opentelemetry/instrumentation";
 import { ExpressInstrumentation } from "@opentelemetry/instrumentation-express";
 import { HttpInstrumentation } from "@opentelemetry/instrumentation-http";
-import {
-  MeterProvider,
-  ConsoleMetricExporter,
-  PeriodicExportingMetricReader,
-} from "@opentelemetry/sdk-metrics";
+import { MeterProvider, PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
 import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-proto";
-import { Resource } from "@opentelemetry/resources";
 import {
   BatchSpanProcessor,
   ParentBasedSampler,
-  Sampler,
+  type Sampler,
   SamplingDecision,
-  SamplingResult,
+  type SamplingResult,
   SimpleSpanProcessor,
+  type SpanProcessor,
   TraceIdRatioBasedSampler,
 } from "@opentelemetry/sdk-trace-base";
 import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node";
-import {
-  SEMRESATTRS_SERVICE_INSTANCE_ID,
-  SEMRESATTRS_SERVICE_NAME,
-  SEMRESATTRS_HOST_NAME,
-} from "@opentelemetry/semantic-conventions";
+import { ATTR_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
 import { PrismaInstrumentation } from "@prisma/instrumentation";
+import { HostMetrics } from "@opentelemetry/host-metrics";
+import { AwsInstrumentation } from "@opentelemetry/instrumentation-aws-sdk";
+import { awsEcsDetector, awsEc2Detector } from "@opentelemetry/resource-detector-aws";
+import {
+  detectResources,
+  resourceFromAttributes,
+  serviceInstanceIdDetector,
+  osDetector,
+  hostDetector,
+  processDetector,
+} from "@opentelemetry/resources";
 import { env } from "~/env.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { singleton } from "~/utils/singleton";
 import { LoggerSpanExporter } from "./telemetry/loggerExporter.server";
+import { CompactMetricExporter } from "./telemetry/compactMetricExporter.server";
 import { logger } from "~/services/logger.server";
 import { flattenAttributes } from "@trigger.dev/core/v3";
-import { randomUUID } from "node:crypto";
 import { prisma } from "~/db.server";
-import { hostname } from "node:os";
-import { getAsyncResourceAttributes } from "./telemetry/asyncResourceAttributes.server";
+import { metricsRegister } from "~/metrics.server";
 
 export const SEMINTATTRS_FORCE_RECORDING = "forceRecording";
-
-const SERVICE_INSTANCE_ID = randomUUID();
 
 class CustomWebappSampler implements Sampler {
   constructor(private readonly _baseSampler: Sampler) {}
@@ -172,14 +171,22 @@ export async function emitWarnLog(message: string, params: Record<string, unknow
 }
 
 function getResource() {
-  return new Resource(
-    {
-      [SEMRESATTRS_SERVICE_NAME]: env.SERVICE_NAME,
-      [SEMRESATTRS_SERVICE_INSTANCE_ID]: SERVICE_INSTANCE_ID,
-      [SEMRESATTRS_HOST_NAME]: hostname(),
-    },
-    getAsyncResourceAttributes()
-  );
+  const detectedResource = detectResources({
+    detectors: [
+      serviceInstanceIdDetector,
+      osDetector,
+      hostDetector,
+      processDetector,
+      awsEcsDetector,
+      awsEc2Detector,
+    ],
+  });
+
+  const baseResource = resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: env.SERVICE_NAME,
+  });
+
+  return baseResource.merge(detectedResource);
 }
 
 function setupTelemetry() {
@@ -198,16 +205,7 @@ function setupTelemetry() {
 
   const samplingRate = 1.0 / Math.max(parseInt(env.INTERNAL_OTEL_TRACE_SAMPLING_RATE, 10), 1);
 
-  const provider = new NodeTracerProvider({
-    forceFlushTimeoutMillis: 15_000,
-    resource: getResource(),
-    sampler: new ParentBasedSampler({
-      root: new CustomWebappSampler(new TraceIdRatioBasedSampler(samplingRate)),
-    }),
-    spanLimits: {
-      attributeCountLimit: 1024,
-    },
-  });
+  const spanProcessors: SpanProcessor[] = [];
 
   if (env.INTERNAL_OTEL_TRACE_EXPORTER_URL) {
     const headers = parseInternalTraceHeaders() ?? {};
@@ -218,7 +216,7 @@ function setupTelemetry() {
       headers,
     });
 
-    provider.addSpanProcessor(
+    spanProcessors.push(
       new BatchSpanProcessor(exporter, {
         maxExportBatchSize: 512,
         scheduledDelayMillis: 1000,
@@ -235,10 +233,21 @@ function setupTelemetry() {
       console.log(`🔦 Tracer: Logger exporter enabled (sampling = ${samplingRate})`);
 
       const loggerExporter = new LoggerSpanExporter();
-
-      provider.addSpanProcessor(new SimpleSpanProcessor(loggerExporter));
+      spanProcessors.push(new SimpleSpanProcessor(loggerExporter));
     }
   }
+
+  const provider = new NodeTracerProvider({
+    forceFlushTimeoutMillis: 15_000,
+    resource: getResource(),
+    sampler: new ParentBasedSampler({
+      root: new CustomWebappSampler(new TraceIdRatioBasedSampler(samplingRate)),
+    }),
+    spanLimits: {
+      attributeCountLimit: 1024,
+    },
+    spanProcessors,
+  });
 
   if (env.INTERNAL_OTEL_LOG_EXPORTER_URL) {
     const headers = parseInternalTraceHeaders() ?? {};
@@ -249,21 +258,20 @@ function setupTelemetry() {
       headers,
     });
 
+    const batchLogExporter = new BatchLogRecordProcessor(logExporter, {
+      maxExportBatchSize: 64,
+      scheduledDelayMillis: 200,
+      exportTimeoutMillis: 30000,
+      maxQueueSize: 512,
+    });
+
     const loggerProvider = new LoggerProvider({
       resource: getResource(),
       logRecordLimits: {
         attributeCountLimit: 1000,
       },
+      processors: [batchLogExporter],
     });
-
-    loggerProvider.addLogRecordProcessor(
-      new BatchLogRecordProcessor(logExporter, {
-        maxExportBatchSize: 64,
-        scheduledDelayMillis: 200,
-        exportTimeoutMillis: 30000,
-        maxQueueSize: 512,
-      })
-    );
 
     logs.setGlobalLoggerProvider(loggerProvider);
 
@@ -277,6 +285,9 @@ function setupTelemetry() {
   let instrumentations: Instrumentation[] = [
     new HttpInstrumentation(),
     new ExpressInstrumentation(),
+    new AwsInstrumentation({
+      suppressInternalInstrumentation: true,
+    }),
   ];
 
   if (env.INTERNAL_OTEL_TRACE_INSTRUMENT_PRISMA_ENABLED === "1") {
@@ -319,12 +330,14 @@ function setupMetrics() {
 
   const meter = meterProvider.getMeter("trigger.dev", "3.3.12");
 
-  configurePrismaMetrics(meter);
+  configurePrismaMetrics({ meter });
+  configureNodejsMetrics({ meter });
+  configureHostMetrics({ meterProvider });
 
   return meter;
 }
 
-function configurePrismaMetrics(meter: Meter) {
+function configurePrismaMetrics({ meter }: { meter: Meter }) {
   const totalGauge = meter.createObservableGauge("db.pool.connections.total", {
     description: "Open Prisma-pool connections",
     unit: "connections",
@@ -359,6 +372,189 @@ function configurePrismaMetrics(meter: Meter) {
     },
     [totalGauge, busyGauge, freeGauge]
   );
+}
+
+function configureNodejsMetrics({ meter }: { meter: Meter }) {
+  if (!env.INTERNAL_OTEL_NODEJS_METRICS_ENABLED) {
+    return;
+  }
+
+  console.log("🔦 Metrics: Node.js runtime metrics enabled (handles, requests, event loop)");
+
+  // UV Threadpool size - based on UV_THREADPOOL_SIZE env var (default 4)
+  const uvThreadpoolSizeGauge = meter.createObservableGauge("nodejs.uv_threadpool.size", {
+    description: "Size of the libuv threadpool",
+    unit: "threads",
+  });
+
+  // Active handles - total and by type
+  const activeHandlesGauge = meter.createObservableGauge("nodejs.active_handles", {
+    description: "Number of active libuv handles grouped by handle type",
+    unit: "handles",
+  });
+  const activeHandlesTotalGauge = meter.createObservableGauge("nodejs.active_handles.total", {
+    description: "Total number of active handles",
+    unit: "handles",
+  });
+
+  // Active requests - total and by type
+  const activeRequestsGauge = meter.createObservableGauge("nodejs.active_requests", {
+    description: "Number of active libuv requests grouped by request type",
+    unit: "requests",
+  });
+  const activeRequestsTotalGauge = meter.createObservableGauge("nodejs.active_requests.total", {
+    description: "Total number of active requests",
+    unit: "requests",
+  });
+
+  // Event loop lag metrics
+  const eventLoopLagMinGauge = meter.createObservableGauge("nodejs.eventloop.lag.min", {
+    description: "Event loop minimum delay",
+    unit: "s",
+  });
+  const eventLoopLagMaxGauge = meter.createObservableGauge("nodejs.eventloop.lag.max", {
+    description: "Event loop maximum delay",
+    unit: "s",
+  });
+  const eventLoopLagMeanGauge = meter.createObservableGauge("nodejs.eventloop.lag.mean", {
+    description: "Event loop mean delay",
+    unit: "s",
+  });
+  const eventLoopLagP50Gauge = meter.createObservableGauge("nodejs.eventloop.lag.p50", {
+    description: "Event loop 50th percentile delay",
+    unit: "s",
+  });
+  const eventLoopLagP90Gauge = meter.createObservableGauge("nodejs.eventloop.lag.p90", {
+    description: "Event loop 90th percentile delay",
+    unit: "s",
+  });
+  const eventLoopLagP99Gauge = meter.createObservableGauge("nodejs.eventloop.lag.p99", {
+    description: "Event loop 99th percentile delay",
+    unit: "s",
+  });
+
+  // Get UV threadpool size (defaults to 4 if not set)
+  const uvThreadpoolSize = parseInt(process.env.UV_THREADPOOL_SIZE || "4", 10);
+
+  // Single helper to read metrics from prom-client
+  async function readNodeMetrics() {
+    const metrics = await metricsRegister.getMetricsAsJSON();
+
+    // Get handle metrics with types
+    const activeHandles = metrics.find((m) => m.name === "nodejs_active_handles");
+    const activeHandlesTotal = metrics.find((m) => m.name === "nodejs_active_handles_total");
+
+    // Get request metrics with types
+    const activeRequests = metrics.find((m) => m.name === "nodejs_active_requests");
+    const activeRequestsTotal = metrics.find((m) => m.name === "nodejs_active_requests_total");
+
+    // Event loop metrics
+    const eventLoopLagMin = metrics.find((m) => m.name === "nodejs_eventloop_lag_min_seconds");
+    const eventLoopLagMax = metrics.find((m) => m.name === "nodejs_eventloop_lag_max_seconds");
+    const eventLoopLagMean = metrics.find((m) => m.name === "nodejs_eventloop_lag_mean_seconds");
+    const eventLoopLagP50 = metrics.find((m) => m.name === "nodejs_eventloop_lag_p50_seconds");
+    const eventLoopLagP90 = metrics.find((m) => m.name === "nodejs_eventloop_lag_p90_seconds");
+    const eventLoopLagP99 = metrics.find((m) => m.name === "nodejs_eventloop_lag_p99_seconds");
+
+    // Extract handle types
+    const handlesByType: Record<string, number> = {};
+    if (activeHandles?.values) {
+      for (const value of activeHandles.values) {
+        const type = value.labels?.type;
+        if (type) {
+          handlesByType[type] = value.value;
+        }
+      }
+    }
+
+    // Extract request types
+    const requestsByType: Record<string, number> = {};
+    if (activeRequests?.values) {
+      for (const value of activeRequests.values) {
+        const type = value.labels?.type;
+        if (type) {
+          requestsByType[type] = value.value;
+        }
+      }
+    }
+
+    return {
+      threadpoolSize: uvThreadpoolSize,
+      handlesByType,
+      handlesTotal: activeHandlesTotal?.values?.[0]?.value ?? 0,
+      requestsByType,
+      requestsTotal: activeRequestsTotal?.values?.[0]?.value ?? 0,
+      eventLoop: {
+        min: eventLoopLagMin?.values?.[0]?.value ?? 0,
+        max: eventLoopLagMax?.values?.[0]?.value ?? 0,
+        mean: eventLoopLagMean?.values?.[0]?.value ?? 0,
+        p50: eventLoopLagP50?.values?.[0]?.value ?? 0,
+        p90: eventLoopLagP90?.values?.[0]?.value ?? 0,
+        p99: eventLoopLagP99?.values?.[0]?.value ?? 0,
+      },
+    };
+  }
+
+  meter.addBatchObservableCallback(
+    async (res) => {
+      const {
+        threadpoolSize,
+        handlesByType,
+        handlesTotal,
+        requestsByType,
+        requestsTotal,
+        eventLoop,
+      } = await readNodeMetrics();
+
+      // Observe UV threadpool size
+      res.observe(uvThreadpoolSizeGauge, threadpoolSize);
+
+      // Observe handle metrics by type
+      for (const [type, count] of Object.entries(handlesByType)) {
+        res.observe(activeHandlesGauge, count, { type });
+      }
+      res.observe(activeHandlesTotalGauge, handlesTotal);
+
+      // Observe request metrics by type
+      for (const [type, count] of Object.entries(requestsByType)) {
+        res.observe(activeRequestsGauge, count, { type });
+      }
+      res.observe(activeRequestsTotalGauge, requestsTotal);
+
+      // Observe event loop metrics
+      res.observe(eventLoopLagMinGauge, eventLoop.min);
+      res.observe(eventLoopLagMaxGauge, eventLoop.max);
+      res.observe(eventLoopLagMeanGauge, eventLoop.mean);
+      res.observe(eventLoopLagP50Gauge, eventLoop.p50);
+      res.observe(eventLoopLagP90Gauge, eventLoop.p90);
+      res.observe(eventLoopLagP99Gauge, eventLoop.p99);
+    },
+    [
+      uvThreadpoolSizeGauge,
+      activeHandlesGauge,
+      activeHandlesTotalGauge,
+      activeRequestsGauge,
+      activeRequestsTotalGauge,
+      eventLoopLagMinGauge,
+      eventLoopLagMaxGauge,
+      eventLoopLagMeanGauge,
+      eventLoopLagP50Gauge,
+      eventLoopLagP90Gauge,
+      eventLoopLagP99Gauge,
+    ]
+  );
+}
+
+function configureHostMetrics({ meterProvider }: { meterProvider: MeterProvider }) {
+  if (!env.INTERNAL_OTEL_HOST_METRICS_ENABLED) {
+    return;
+  }
+
+  console.log("🔦 Metrics: Host metrics enabled (CPU, memory, network)");
+
+  const hostMetrics = new HostMetrics({ meterProvider });
+
+  hostMetrics.start();
 }
 
 const SemanticEnvResources = {
@@ -423,6 +619,7 @@ function createMetricsExporter() {
       headers,
     });
   } else {
-    return new ConsoleMetricExporter();
+    console.log(`🔦 Tracer: Compact metric exporter enabled`);
+    return new CompactMetricExporter();
   }
 }
