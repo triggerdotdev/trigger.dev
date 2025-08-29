@@ -601,14 +601,13 @@ function TasksTreeView({
           min={resizableSettings.tree.tree.min}
         >
           <div className="grid h-full grid-rows-[2rem_1fr] overflow-hidden">
-            <div className="flex items-center pl-1 pr-2 justify-between">
+            <div className="flex items-center justify-between pl-1 pr-2">
               {rootRun || parentRun ? (
                 <ShowParentOrRootLinks
                   relationships={{
                     root: rootRun
                       ? {
                           friendlyId: rootRun.friendlyId,
-                          taskIdentifier: rootRun.taskIdentifier,
                           spanId: rootRun.spanId,
                           isParent: parentRun ? rootRun.friendlyId === parentRun.friendlyId : true,
                         }
@@ -617,7 +616,6 @@ function TasksTreeView({
                       parentRun && rootRun?.friendlyId !== parentRun.friendlyId
                         ? {
                             friendlyId: parentRun.friendlyId,
-                            taskIdentifier: "",
                             spanId: "",
                           }
                         : undefined,
@@ -1161,13 +1159,11 @@ function ShowParentOrRootLinks({
   relationships: {
     root?: {
       friendlyId: string;
-      taskIdentifier: string;
       spanId: string;
       isParent?: boolean;
     };
     parent?: {
       friendlyId: string;
-      taskIdentifier: string;
       spanId: string;
     };
   };
