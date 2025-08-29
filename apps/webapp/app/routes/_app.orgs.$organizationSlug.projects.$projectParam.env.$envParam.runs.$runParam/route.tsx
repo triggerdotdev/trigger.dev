@@ -20,7 +20,7 @@ import {
   nanosecondsToMilliseconds,
   tryCatch,
 } from "@trigger.dev/core/v3";
-import { type RuntimeEnvironmentType } from "@trigger.dev/database";
+import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
