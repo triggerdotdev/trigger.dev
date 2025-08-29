@@ -190,7 +190,7 @@ export default function Page() {
   return (
     <PageContainer>
       <NavBar>
-        <PageTitle title={`${project.name} project settings`} />
+        <PageTitle title="Project settings" />
 
         <PageAccessories>
           <AdminDebugTooltip>
@@ -267,7 +267,7 @@ export default function Page() {
               >
                 <input type="hidden" name="action" value="delete" />
                 <Fieldset className="p-4">
-                  <InputGroup>
+                  <InputGroup fullWidth>
                     <Label htmlFor={projectSlug.id}>Delete project</Label>
                     <Input
                       {...conform.input(projectSlug, { type: "text" })}
