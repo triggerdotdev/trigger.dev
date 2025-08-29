@@ -1,5 +1,16 @@
 # trigger.dev
 
+## 4.0.2
+
+### Patch Changes
+
+- add wait_for_run_to_complete tool so agents don't spam the get_run_details call after triggering ([#2445](https://github.com/triggerdotdev/trigger.dev/pull/2445))
+- fix(mcp): don't require a trigger.config.ts file to be present when installing rules ([#2453](https://github.com/triggerdotdev/trigger.dev/pull/2453))
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.2`
+  - `@trigger.dev/core@4.0.2`
+  - `@trigger.dev/schema-to-json@4.0.2`
+
 ## 4.0.1
 
 ### Patch Changes
