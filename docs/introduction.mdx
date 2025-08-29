@@ -74,7 +74,36 @@ We provide everything you need to build and manage background tasks: a CLI and S
   <Card title="Concurrency & Queues" icon="line-height" href="/queue-concurrency" color="#D946EF">
     Configure what you want to happen when there is more than one run at a time.
   </Card>
+  <Card
+    title="Wait for token (human-in-the-loop)"
+    icon="hand"
+    href="/wait-for-token"
+    color="#EAEA08"
+  >
+    Pause runs until a token is completed via an approval workflow.
+  </Card>
+  <Card title="Build extensions" icon="gear" href="/config/extensions/overview" color="#22C55E">
+    Customize the build process or the resulting bundle and container image.
+  </Card>
 </CardGroup>
+
+## Explore by build extension
+
+| Extension             | What it does                                                 | Docs                                                   |
+| :-------------------- | :----------------------------------------------------------- | :----------------------------------------------------- |
+| prismaExtension       | Use Prisma with Trigger.dev                                  | [Learn more](/config/extensions/prismaExtension)       |
+| pythonExtension       | Execute Python scripts in Trigger.dev                        | [Learn more](/config/extensions/pythonExtension)       |
+| playwright            | Use Playwright with Trigger.dev                              | [Learn more](/config/extensions/playwright)            |
+| puppeteer             | Use Puppeteer with Trigger.dev                               | [Learn more](/config/extensions/puppeteer)             |
+| lightpanda            | Use Lightpanda with Trigger.dev                              | [Learn more](/config/extensions/lightpanda)            |
+| ffmpeg                | Use FFmpeg with Trigger.dev                                  | [Learn more](/config/extensions/ffmpeg)                |
+| aptGet                | Install system packages with aptGet                          | [Learn more](/config/extensions/aptGet)                |
+| additionalFiles       | Copy additional files to the build directory                 | [Learn more](/config/extensions/additionalFiles)       |
+| additionalPackages    | Include additional packages in the build                     | [Learn more](/config/extensions/additionalPackages)    |
+| syncEnvVars           | Automatically sync environment variables to Trigger.dev      | [Learn more](/config/extensions/syncEnvVars)           |
+| esbuildPlugin         | Add existing or custom esbuild plugins to your build process | [Learn more](/config/extensions/esbuildPlugin)         |
+| emitDecoratorMetadata | Support for the emitDecoratorMetadata TypeScript compiler    | [Learn more](/config/extensions/emitDecoratorMetadata) |
+| audioWaveform         | Support for Audio Waveform in your project                   | [Learn more](/config/extensions/audioWaveform)         |
 
 ## Explore by example
 
@@ -147,22 +176,6 @@ We provide everything you need to build and manage background tasks: a CLI and S
   />
   <Card title="Lightpanda" img="/images/intro-lightpanda.jpg" href="/guides/examples/lightpanda" />
 </CardGroup>
-
-## Explore by build extension
-
-| Extension             | What it does                                                 | Docs                                                   |
-| :-------------------- | :----------------------------------------------------------- | :----------------------------------------------------- |
-| prismaExtension       | Use Prisma with Trigger.dev                                  | [Learn more](/config/extensions/prismaExtension)       |
-| pythonExtension       | Execute Python scripts in Trigger.dev                        | [Learn more](/config/extensions/pythonExtension)       |
-| puppeteer             | Use Puppeteer with Trigger.dev                               | [Learn more](/config/extensions/puppeteer)             |
-| ffmpeg                | Use FFmpeg with Trigger.dev                                  | [Learn more](/config/extensions/ffmpeg)                |
-| aptGet                | Install system packages with aptGet                          | [Learn more](/config/extensions/aptGet)                |
-| additionalFiles       | Copy additional files to the build directory                 | [Learn more](/config/extensions/additionalFiles)       |
-| additionalPackages    | Include additional packages in the build                     | [Learn more](/config/extensions/additionalPackages)    |
-| syncEnvVars           | Automatically sync environment variables to Trigger.dev      | [Learn more](/config/extensions/syncEnvVars)           |
-| esbuildPlugin         | Add existing or custom esbuild plugins to your build process | [Learn more](/config/extensions/esbuildPlugin)         |
-| emitDecoratorMetadata | Support for the emitDecoratorMetadata TypeScript compiler    | [Learn more](/config/extensions/emitDecoratorMetadata) |
-| audioWaveform         | Support for Audio Waveform in your project                   | [Learn more](/config/extensions/audioWaveform)         |
 
 ## Getting help
 
