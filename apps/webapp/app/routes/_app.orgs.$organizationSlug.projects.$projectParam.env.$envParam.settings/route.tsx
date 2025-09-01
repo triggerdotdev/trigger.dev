@@ -6,6 +6,7 @@ import {
   FolderIcon,
   TrashIcon,
   LockClosedIcon,
+  PlusIcon,
 } from "@heroicons/react/20/solid";
 import {
   Form,
@@ -13,6 +14,7 @@ import {
   useActionData,
   useLocation,
   useNavigation,
+  useNavigate,
 } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/router";
 import { type ActionFunction, json } from "@remix-run/server-runtime";
@@ -87,6 +89,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     },
     select: {
       id: true,
+      accountHandle: true,
       targetType: true,
       repositories: {
         select: {
@@ -429,6 +432,7 @@ type GitHubRepository = {
 type GitHubAppInstallation = {
   id: string;
   targetType: string;
+  accountHandle: string;
   repositories: GitHubRepository[];
 };
 
@@ -439,8 +443,11 @@ function ConnectGitHubRepoModal({
   gitHubAppInstallations: GitHubAppInstallation[];
   projectId: string;
 }) {
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(true);
   const lastSubmission = useActionData();
+  const organization = useOrganization();
+  const location = useLocation();
+  const navigate = useNavigate();
 
   const [selectedInstallation, setSelectedInstallation] = useState<
     GitHubAppInstallation | undefined
@@ -452,12 +459,11 @@ function ConnectGitHubRepoModal({
 
   const navigation = useNavigation();
   const isConnectRepositoryLoading =
-    navigation.formData?.get("action") === "connect-repository" &&
+    navigation.formData?.get("action") === "connect-repo" &&
     (navigation.state === "submitting" || navigation.state === "loading");
 
   const [form, { installationId, repositoryId, projectId }] = useForm({
-    id: "connect-repository",
-    // TODO: type this
+    id: "connect-repo",
     lastSubmission: lastSubmission as any,
     shouldRevalidate: "onSubmit",
     onValidate({ formData }) {
@@ -500,17 +506,29 @@ function ConnectGitHubRepoModal({
                   variant="tertiary/small"
                   placeholder="Select account"
                   dropdownIcon
-                  text={
-                    selectedInstallation
-                      ? `${selectedInstallation.targetType} ${selectedInstallation.id}`
-                      : undefined
-                  }
+                  text={selectedInstallation ? selectedInstallation.accountHandle : undefined}
                 >
-                  {gitHubAppInstallations.map((installation) => (
-                    <SelectItem key={installation.id} value={installation.id}>
-                      {installation.targetType} ({installation.id})
-                    </SelectItem>
-                  ))}
+                  {[
+                    ...gitHubAppInstallations.map((installation) => (
+                      <SelectItem
+                        key={installation.id}
+                        value={installation.id}
+                        icon={<OctoKitty className="size-3 text-text-dimmed" />}
+                      >
+                        {installation.accountHandle}
+                      </SelectItem>
+                    )),
+                    <SelectItem
+                      onClick={(e) => {
+                        e.preventDefault();
+                        navigate(githubAppInstallPath(organization.slug, location.pathname));
+                      }}
+                      key="new-account"
+                      icon={<PlusIcon className="size-3 text-text-dimmed" />}
+                    >
+                      Add account
+                    </SelectItem>,
+                  ]}
                 </Select>
                 <FormError id={installationId.errorId}>{installationId.error}</FormError>
               </InputGroup>
@@ -555,7 +573,7 @@ function ConnectGitHubRepoModal({
                   <Button
                     type="submit"
                     name="action"
-                    value="connect-repository"
+                    value="connect-repo"
                     variant="primary/medium"
                     LeadingIcon={isConnectRepositoryLoading ? SpinnerWhite : undefined}
                     leadingIconClassName="text-white"
