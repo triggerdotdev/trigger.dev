@@ -3,7 +3,6 @@ import { QueueConsumer, RunQueueConsumer, RunQueueConsumerOptions } from "./queu
 import { QueueMetricsProcessor } from "./queueMetricsProcessor.js";
 import {
   ScalingStrategy,
-  ScalingContext,
   ScalingStrategyKind,
   ScalingStrategyOptions,
 } from "./scalingStrategies.js";
@@ -65,11 +64,6 @@ export class RunQueueConsumerPool {
   private readonly scaleDownCooldownMs: number;
   private readonly batchWindowMs: number;
 
-  // Target ratio of queue items to consumers
-  // 1.0 = each consumer handles ~1 item (aggressive scaling)
-  // Higher values = fewer consumers needed (relaxed scaling)
-  private readonly targetRatio: number;
-
   constructor(opts: ConsumerPoolOptions) {
     this.consumerOptions = opts.consumer;
 
@@ -84,7 +78,6 @@ export class RunQueueConsumerPool {
     this.maxConsumerCount = Math.max(this.minConsumerCount, opts.scaling.maxConsumerCount ?? 10);
     this.scaleUpCooldownMs = opts.scaling.scaleUpCooldownMs ?? 10000; // 10 seconds default
     this.scaleDownCooldownMs = opts.scaling.scaleDownCooldownMs ?? 60000; // 60 seconds default
-    this.targetRatio = opts.scaling.targetRatio ?? 1.0;
     this.disableJitter = opts.scaling.disableJitter ?? false;
 
     // Configure EWMA parameters from options
@@ -105,10 +98,16 @@ export class RunQueueConsumerPool {
       batchWindowMs: this.batchWindowMs,
     });
 
+    const targetRatio = opts.scaling.targetRatio ?? 1.0;
+    const dampingFactor = opts.scaling.strategyOptions?.dampingFactor;
+
     // Create scaling strategy with metrics processor injected
     this.scalingStrategy = ScalingStrategy.create(opts.scaling.strategy ?? "none", {
-      ...opts.scaling.strategyOptions,
       metricsProcessor: this.metricsProcessor,
+      dampingFactor,
+      targetRatio,
+      minConsumerCount: this.minConsumerCount,
+      maxConsumerCount: this.maxConsumerCount,
     });
 
     // Use provided factory or default to RunQueueConsumer
@@ -318,16 +317,7 @@ export class RunQueueConsumerPool {
   }
 
   private calculateTargetConsumerCount(): number {
-    const context: ScalingContext = {
-      currentConsumerCount: this.consumers.size,
-      minConsumerCount: this.minConsumerCount,
-      maxConsumerCount: this.maxConsumerCount,
-      targetRatio: this.targetRatio,
-    };
-
-    const target = this.scalingStrategy.calculateTargetCount(context);
-
-    return target;
+    return this.scalingStrategy.calculateTargetCount(this.consumers.size);
   }
 
   private scaleToTarget(targetCount: number) {
