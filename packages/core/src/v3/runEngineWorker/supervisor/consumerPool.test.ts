@@ -72,9 +72,13 @@ describe("RunQueueConsumerPool", () => {
     }
   });
 
-  function advanceTimeAndTriggerBatch(ms: number) {
+  function advanceTimeAndProcessMetrics(ms: number) {
     vi.advanceTimersByTime(ms);
-    pool.updateQueueLength(0);
+
+    // Trigger batch processing if ready (without adding a sample)
+    if (pool["metricsProcessor"].shouldProcessBatch()) {
+      pool["processMetricsBatch"]();
+    }
   }
 
   describe("Static mode (strategy='none')", () => {
@@ -124,11 +128,11 @@ describe("RunQueueConsumerPool", () => {
       expect(pool.size).toBe(1);
 
       pool.updateQueueLength(5);
-      advanceTimeAndTriggerBatch(1100);
+      advanceTimeAndProcessMetrics(1100);
       expect(pool.size).toBe(4); // Damped scaling
 
       pool.updateQueueLength(5);
-      advanceTimeAndTriggerBatch(1100);
+      advanceTimeAndProcessMetrics(1100);
       expect(pool.size).toBe(5); // Gradually approaches target
     });
 
@@ -148,11 +152,11 @@ describe("RunQueueConsumerPool", () => {
       expect(pool.size).toBe(1);
 
       pool.updateQueueLength(100);
-      advanceTimeAndTriggerBatch(1100);
+      advanceTimeAndProcessMetrics(1100);
       expect(pool.size).toBe(5);
 
       pool.updateQueueLength(100);
-      advanceTimeAndTriggerBatch(1100);
+      advanceTimeAndProcessMetrics(1100);
       expect(pool.size).toBe(5);
     });
   });
@@ -174,11 +178,11 @@ describe("RunQueueConsumerPool", () => {
       expect(pool.size).toBe(2);
 
       pool.updateQueueLength(10);
-      advanceTimeAndTriggerBatch(1100);
+      advanceTimeAndProcessMetrics(1100);
       expect(pool.size).toBe(3);
 
       pool.updateQueueLength(20);
-      advanceTimeAndTriggerBatch(1100);
+      advanceTimeAndProcessMetrics(1100);
       expect(pool.size).toBe(4);
     });
 
@@ -199,15 +203,15 @@ describe("RunQueueConsumerPool", () => {
       expect(pool.size).toBe(1);
 
       pool.updateQueueLength(10);
-      advanceTimeAndTriggerBatch(1100);
+      advanceTimeAndProcessMetrics(1100);
       expect(pool.size).toBe(2);
 
       pool.updateQueueLength(0.5);
-      advanceTimeAndTriggerBatch(1100);
+      advanceTimeAndProcessMetrics(1100);
       expect(pool.size).toBe(3); // EWMA smoothing delays scale down
 
       pool.updateQueueLength(0.5);
-      advanceTimeAndTriggerBatch(1100);
+      advanceTimeAndProcessMetrics(1100);
       expect(pool.size).toBeGreaterThanOrEqual(3); // Stays in optimal zone
     });
 
@@ -227,11 +231,11 @@ describe("RunQueueConsumerPool", () => {
       expect(pool.size).toBe(3);
 
       pool.updateQueueLength(3);
-      advanceTimeAndTriggerBatch(1100);
+      advanceTimeAndProcessMetrics(1100);
       expect(pool.size).toBe(3);
 
       pool.updateQueueLength(4);
-      advanceTimeAndTriggerBatch(1100);
+      advanceTimeAndProcessMetrics(1100);
       expect(pool.size).toBe(3);
     });
   });
@@ -276,12 +280,12 @@ describe("RunQueueConsumerPool", () => {
       await pool.start();
 
       pool.updateQueueLength(2);
-      advanceTimeAndTriggerBatch(1100);
+      advanceTimeAndProcessMetrics(1100);
       const metrics1 = pool.getMetrics();
       expect(metrics1.smoothedQueueLength).toBe(2);
 
       pool.updateQueueLength(20);
-      advanceTimeAndTriggerBatch(1100);
+      advanceTimeAndProcessMetrics(1100);
       const metrics2 = pool.getMetrics();
 
       expect(metrics2.smoothedQueueLength).toBeGreaterThan(2);
@@ -312,7 +316,7 @@ describe("RunQueueConsumerPool", () => {
         setTimeout(() => pool.updateQueueLength(length), index * 10);
       });
 
-      advanceTimeAndTriggerBatch(1100);
+      advanceTimeAndProcessMetrics(1100);
 
       const metrics = pool.getMetrics();
       expect(metrics.queueLength).toBeDefined();
@@ -338,7 +342,7 @@ describe("RunQueueConsumerPool", () => {
       }
 
       expect(evaluateScalingSpy).not.toHaveBeenCalled();
-      advanceTimeAndTriggerBatch(1000);
+      advanceTimeAndProcessMetrics(1000);
       expect(evaluateScalingSpy).toHaveBeenCalledTimes(1);
     });
 
@@ -357,7 +361,7 @@ describe("RunQueueConsumerPool", () => {
 
       const updates = [10, 11, 9, 12, 10, 100, 11, 10, 9, 11, 1];
       updates.forEach((length) => pool.updateQueueLength(length));
-      advanceTimeAndTriggerBatch(1100);
+      advanceTimeAndProcessMetrics(1100);
 
       const metrics = pool.getMetrics();
       expect(metrics.queueLength).toBeGreaterThanOrEqual(9);
@@ -383,12 +387,12 @@ describe("RunQueueConsumerPool", () => {
       const scaleToTargetSpy = vi.spyOn(pool as any, "scaleToTarget");
 
       pool.updateQueueLength(10);
-      advanceTimeAndTriggerBatch(1100);
+      advanceTimeAndProcessMetrics(1100);
       expect(scaleToTargetSpy).not.toHaveBeenCalled();
 
       vi.advanceTimersByTime(10000);
       pool.updateQueueLength(20);
-      advanceTimeAndTriggerBatch(1100);
+      advanceTimeAndProcessMetrics(1100);
     });
 
     it("should respect scale-down cooldown (longer than scale-up)", async () => {
@@ -411,7 +415,7 @@ describe("RunQueueConsumerPool", () => {
       pool["metrics"].lastScaleTime = new Date(Date.now() - 70000);
 
       pool.updateQueueLength(1);
-      advanceTimeAndTriggerBatch(1100);
+      advanceTimeAndProcessMetrics(1100);
 
       const metrics = pool.getMetrics();
       expect(metrics.queueLength).toBe(1);
@@ -443,7 +447,7 @@ describe("RunQueueConsumerPool", () => {
       }
 
       pools.forEach((p) => p.updateQueueLength(20));
-      advanceTimeAndTriggerBatch(1100);
+      advanceTimeAndProcessMetrics(1100);
       vi.advanceTimersByTime(15000);
 
       await Promise.all(pools.map((p) => p.stop()));
@@ -496,7 +500,7 @@ describe("RunQueueConsumerPool", () => {
 
       expect(mockOnDequeue).toHaveBeenCalledWith(messages);
 
-      advanceTimeAndTriggerBatch(1100);
+      advanceTimeAndProcessMetrics(1100);
       const metrics = pool.getMetrics();
       expect(metrics.queueLength).toBe(15);
     });
@@ -553,7 +557,7 @@ describe("RunQueueConsumerPool", () => {
         pool.updateQueueLength(10 + i);
       }
 
-      advanceTimeAndTriggerBatch(1100);
+      advanceTimeAndProcessMetrics(1100);
       const metrics = pool.getMetrics();
       expect(metrics.queueLength).toBeDefined();
     });
@@ -626,7 +630,7 @@ describe("RunQueueConsumerPool", () => {
       expect(pool.size).toBe(2);
 
       pool.updateQueueLength(100);
-      advanceTimeAndTriggerBatch(1100);
+      advanceTimeAndProcessMetrics(1100);
       expect(pool.size).toBeLessThanOrEqual(5);
     });
 
@@ -647,14 +651,14 @@ describe("RunQueueConsumerPool", () => {
       expect(pool.size).toBe(1);
 
       pool.updateQueueLength(10);
-      advanceTimeAndTriggerBatch(1100);
+      advanceTimeAndProcessMetrics(1100);
 
       const firstSize = pool.size;
       expect(firstSize).toBeGreaterThanOrEqual(1);
       expect(firstSize).toBeLessThanOrEqual(2);
 
       pool.updateQueueLength(10);
-      advanceTimeAndTriggerBatch(1100);
+      advanceTimeAndProcessMetrics(1100);
       expect(pool.size).toBeLessThanOrEqual(2);
     });
 
@@ -675,13 +679,13 @@ describe("RunQueueConsumerPool", () => {
       expect(pool.size).toBe(1);
 
       pool.updateQueueLength(20);
-      advanceTimeAndTriggerBatch(1100);
+      advanceTimeAndProcessMetrics(1100);
 
       const sizeAfterFirstScale = pool.size;
       expect(sizeAfterFirstScale).toBeGreaterThanOrEqual(1);
 
       pool.updateQueueLength(20);
-      advanceTimeAndTriggerBatch(1100);
+      advanceTimeAndProcessMetrics(1100);
       expect(pool.size).toBeLessThanOrEqual(6);
     });
   });

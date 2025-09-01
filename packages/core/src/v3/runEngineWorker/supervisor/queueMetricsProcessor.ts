@@ -86,7 +86,7 @@ export class QueueMetricsProcessor {
   }
 
   private calculateMedian(samples: number[]): number | null {
-    const sortedSamples = [...this.samples].sort((a, b) => a - b);
+    const sortedSamples = [...samples].sort((a, b) => a - b);
     const mid = Math.floor(sortedSamples.length / 2);
 
     if (sortedSamples.length % 2 === 1) {
