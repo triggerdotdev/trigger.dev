@@ -154,7 +154,7 @@ services:
     networks:
       - webapp
     healthcheck:
-      test: ["CMD", "clickhouse-client", "--host", "localhost", "--port", "9000", "--user", "default", "--password", "password", "--query", "SELECT 1"]
+      test: ["CMD", "clickhouse-client", "--host", "localhost", "--port", "9000", "--user", "${CLICKHOUSE_USER:-default}", "--password", "${CLICKHOUSE_PASSWORD:-password}", "--query", "SELECT 1"]
       interval: 5s
       timeout: 5s
       retries: 5
