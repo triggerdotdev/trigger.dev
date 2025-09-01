@@ -39,6 +39,13 @@ export async function linkGitHubAppInstallation(
       organizationId,
       targetId: installation.target_id,
       targetType: installation.target_type,
+      accountHandle: installation.account
+        ? "login" in installation.account
+          ? installation.account.login
+          : "slug" in installation.account
+          ? installation.account.slug
+          : "-"
+        : "-",
       permissions: installation.permissions,
       repositorySelection,
       repositories: {
@@ -76,5 +83,6 @@ async function fetchInstallationRepositories(octokit: Octokit, installationId: n
     fullName: repo.full_name,
     htmlUrl: repo.html_url,
     private: repo.private,
+    defaultBranch: repo.default_branch,
   }));
 }

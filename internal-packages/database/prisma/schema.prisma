@@ -2251,6 +2251,7 @@ model GithubAppInstallation {
   appInstallationId   Int                       @unique
   targetId            Int
   targetType          String
+  accountHandle       String
   permissions         Json?
   repositorySelection GithubRepositorySelection
   installedBy         String?
@@ -2271,11 +2272,12 @@ model GithubAppInstallation {
 model GithubRepository {
   id String @id @default(cuid())
 
-  githubId Int
-  name     String
-  fullName String
-  htmlUrl  String
-  private  Boolean
+  githubId      Int
+  name          String
+  fullName      String
+  htmlUrl       String
+  private       Boolean
+  defaultBranch String
 
   removedAt DateTime?
 
