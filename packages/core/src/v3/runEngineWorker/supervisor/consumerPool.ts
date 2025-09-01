@@ -7,6 +7,8 @@ import {
   ScalingStrategyKind,
   ScalingStrategyOptions,
 } from "./scalingStrategies.js";
+import { ConsumerPoolMetrics } from "./consumerPoolMetrics.js";
+import type { Registry } from "prom-client";
 
 export type QueueConsumerFactory = (opts: RunQueueConsumerOptions) => QueueConsumer;
 
@@ -27,6 +29,7 @@ export type ConsumerPoolOptions = {
   consumer: RunQueueConsumerOptions;
   scaling: ScalingOptions;
   consumerFactory?: QueueConsumerFactory;
+  metricsRegistry?: Registry;
 };
 
 type ScalingMetrics = {
@@ -41,6 +44,7 @@ export class RunQueueConsumerPool {
   private readonly consumerOptions: RunQueueConsumerOptions;
 
   private readonly logger = new SimpleStructuredLogger("consumer-pool");
+  private readonly promMetrics?: ConsumerPoolMetrics;
 
   private readonly minConsumerCount: number;
   private readonly maxConsumerCount: number;
@@ -68,6 +72,13 @@ export class RunQueueConsumerPool {
 
   constructor(opts: ConsumerPoolOptions) {
     this.consumerOptions = opts.consumer;
+
+    // Initialize Prometheus metrics if registry provided
+    if (opts.metricsRegistry) {
+      this.promMetrics = new ConsumerPoolMetrics({
+        register: opts.metricsRegistry,
+      });
+    }
 
     this.minConsumerCount = Math.max(1, opts.scaling.minConsumerCount ?? 1);
     this.maxConsumerCount = Math.max(this.minConsumerCount, opts.scaling.maxConsumerCount ?? 10);
@@ -142,6 +153,15 @@ export class RunQueueConsumerPool {
     this.logger.log("Started dynamic consumer pool", {
       initialConsumerCount: this.consumers.size,
     });
+
+    // Initialize Prometheus metrics with initial state
+    this.promMetrics?.updateState({
+      consumerCount: this.consumers.size,
+      queueLength: this.metrics.queueLength,
+      smoothedQueueLength: this.metrics.smoothedQueueLength,
+      targetConsumerCount: initialCount,
+      strategy: this.scalingStrategy.name,
+    });
   }
 
   async stop() {
@@ -167,6 +187,9 @@ export class RunQueueConsumerPool {
     if (queueLength === undefined) {
       return;
     }
+
+    // Track queue length update in metrics
+    this.promMetrics?.recordQueueLengthUpdate();
 
     // Skip metrics tracking for static mode
     if (this.scalingStrategy.name === "none") {
@@ -250,6 +273,7 @@ export class RunQueueConsumerPool {
           jitterMs,
           remainingMs: effectiveCooldown - timeSinceLastScale,
         });
+        this.promMetrics?.recordCooldownApplied("up");
         return;
       }
     } else if (targetCount < this.consumers.size) {
@@ -262,6 +286,7 @@ export class RunQueueConsumerPool {
           jitterMs,
           remainingMs: effectiveCooldown - timeSinceLastScale,
         });
+        this.promMetrics?.recordCooldownApplied("down");
         return;
       }
     }
@@ -310,13 +335,26 @@ export class RunQueueConsumerPool {
 
     if (targetCount > actualCurrentCount) {
       // Scale up
-      this.addConsumers(targetCount - actualCurrentCount);
+      const count = targetCount - actualCurrentCount;
+      this.addConsumers(count);
+      this.promMetrics?.recordScalingOperation("up", this.scalingStrategy.name, count);
     } else if (targetCount < actualCurrentCount) {
       // Scale down
-      this.removeConsumers(actualCurrentCount - targetCount);
+      const count = actualCurrentCount - targetCount;
+      this.removeConsumers(count);
+      this.promMetrics?.recordScalingOperation("down", this.scalingStrategy.name, count);
     }
 
     this.metrics.lastScaleTime = new Date();
+
+    // Update Prometheus state metrics
+    this.promMetrics?.updateState({
+      consumerCount: this.consumers.size,
+      queueLength: this.metrics.queueLength,
+      smoothedQueueLength: this.metrics.smoothedQueueLength,
+      targetConsumerCount: targetCount,
+      strategy: this.scalingStrategy.name,
+    });
   }
 
   private addConsumers(count: number) {

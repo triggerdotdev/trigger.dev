@@ -1,3 +1,5 @@
+import { SimpleStructuredLogger } from "../../utils/structuredLogger.js";
+
 export interface QueueMetricsProcessorOptions {
   /**
    * EWMA smoothing factor (0-1)
@@ -37,6 +39,7 @@ export interface BatchProcessingResult {
 export class QueueMetricsProcessor {
   private readonly ewmaAlpha: number;
   private readonly batchWindowMs: number;
+  private readonly logger = new SimpleStructuredLogger("queue-metrics-processor");
 
   private samples: number[] = [];
   private smoothedValue: number = 0;
@@ -91,7 +94,7 @@ export class QueueMetricsProcessor {
       const median = sortedSamples[mid];
 
       if (median === undefined) {
-        console.error("Invalid median calculated from odd samples", {
+        this.logger.error("Invalid median calculated from odd samples", {
           sortedSamples,
           mid,
           median,
@@ -106,7 +109,7 @@ export class QueueMetricsProcessor {
       const highMid = sortedSamples[mid];
 
       if (lowMid === undefined || highMid === undefined) {
-        console.error("Invalid median calculated from even samples", {
+        this.logger.error("Invalid median calculated from even samples", {
           sortedSamples,
           mid,
           lowMid,

@@ -10,6 +10,7 @@ import { WorkerClientToServerEvents, WorkerServerToClientEvents } from "../types
 import { getDefaultWorkerHeaders } from "./util.js";
 import { IntervalService } from "../../utils/interval.js";
 import { SimpleStructuredLogger } from "../../utils/structuredLogger.js";
+import type { Registry } from "prom-client";
 
 type SupervisorSessionOptions = SupervisorClientCommonOptions & {
   queueConsumerEnabled?: boolean;
@@ -22,6 +23,7 @@ type SupervisorSessionOptions = SupervisorClientCommonOptions & {
   maxRunCount?: number;
   sendRunDebugLogs?: boolean;
   scaling: ScalingOptions;
+  metricsRegistry?: Registry;
 };
 
 export class SupervisorSession extends EventEmitter<WorkerEvents> {
@@ -56,6 +58,7 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
         maxRunCount: opts.maxRunCount,
       },
       scaling: opts.scaling,
+      metricsRegistry: opts.metricsRegistry,
     });
 
     this.heartbeat = new IntervalService({
