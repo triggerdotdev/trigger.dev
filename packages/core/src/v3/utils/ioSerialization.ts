@@ -391,7 +391,7 @@ export async function prettyPrintPacket(
     }
     const { deserialize } = await loadSuperJSON();
 
-    return await prettyPrintPacket(deserialize(rawData), "application/json");
+    return await prettyPrintPacket(deserialize(rawData), "application/json", options);
   }
 
   if (dataType === "application/json") {
@@ -410,6 +410,7 @@ export async function prettyPrintPacket(
 
 interface ReplacerOptions {
   filteredKeys?: string[];
+  cloneCircularReferences?: boolean;
 }
 
 function makeSafeReplacer(options?: ReplacerOptions) {
@@ -418,6 +419,10 @@ function makeSafeReplacer(options?: ReplacerOptions) {
   return function replacer(key: string, value: any) {
     if (typeof value === "object" && value !== null) {
       if (seen.has(value)) {
+        if (options?.cloneCircularReferences) {
+          return structuredClone(value);
+        }
+
         return "[Circular]";
       }
       seen.add(value);

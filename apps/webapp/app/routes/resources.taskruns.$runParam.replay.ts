@@ -108,6 +108,10 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   const disableVersionSelection = environment.type === "DEVELOPMENT";
   const allowArbitraryQueues = backgroundWorkers.at(0)?.engine === "V1";
 
+  const payload = await prettyPrintPacket(run.payload, run.payloadType, {
+    cloneCircularReferences: false,
+  });
+
   return typedjson({
     concurrencyKey: run.concurrencyKey,
     maxAttempts: run.maxAttempts,
@@ -116,7 +120,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     ttlSeconds: run.ttl ? parseDuration(run.ttl, "s") ?? undefined : undefined,
     idempotencyKey: run.idempotencyKey,
     runTags: run.runTags,
-    payload: await prettyPrintPacket(run.payload, run.payloadType),
+    payload,
     payloadType: run.payloadType,
     queue: run.queue,
     metadata: run.seedMetadata
