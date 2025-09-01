@@ -82,6 +82,44 @@ export class QueueMetricsProcessor {
     return currentTime - this.lastBatchTime >= this.batchWindowMs;
   }
 
+  private calculateMedian(samples: number[]): number | null {
+    const sortedSamples = [...this.samples].sort((a, b) => a - b);
+    const mid = Math.floor(sortedSamples.length / 2);
+
+    if (sortedSamples.length % 2 === 1) {
+      // Odd length: use middle value
+      const median = sortedSamples[mid];
+
+      if (median === undefined) {
+        console.error("Invalid median calculated from odd samples", {
+          sortedSamples,
+          mid,
+          median,
+        });
+        return null;
+      }
+
+      return median;
+    } else {
+      // Even length: average two middle values
+      const lowMid = sortedSamples[mid - 1];
+      const highMid = sortedSamples[mid];
+
+      if (lowMid === undefined || highMid === undefined) {
+        console.error("Invalid median calculated from even samples", {
+          sortedSamples,
+          mid,
+          lowMid,
+          highMid,
+        });
+        return null;
+      }
+
+      const median = (lowMid + highMid) / 2;
+      return median;
+    }
+  }
+
   /**
    * Processes the current batch of samples and returns the result.
    * Clears the samples array and updates the smoothed value.
@@ -90,16 +128,14 @@ export class QueueMetricsProcessor {
    */
   processBatch(currentTime: number = Date.now()): BatchProcessingResult | null {
     if (this.samples.length === 0) {
+      // No samples to process
       return null;
     }
 
     // Calculate median of samples to filter outliers
-    const sortedSamples = [...this.samples].sort((a, b) => a - b);
-    const medianIndex = Math.floor(sortedSamples.length / 2);
-    const median = sortedSamples[medianIndex];
-
-    if (!median) {
-      console.warn("Median should exist for n > 0 samples");
+    const median = this.calculateMedian(this.samples);
+    if (median === null) {
+      // We already logged a more specific error message
       return null;
     }
 

@@ -61,6 +61,53 @@ describe("QueueMetricsProcessor", () => {
       expect(() => processor.addSample(0)).not.toThrow();
       expect(processor.getCurrentSampleCount()).toBe(1);
     });
+
+    it("should handle empty queue with all zero samples", () => {
+      processor.addSample(0);
+      processor.addSample(0);
+      processor.addSample(0);
+
+      const result = processor.processBatch();
+      expect(result).not.toBeNull();
+      expect(result!.median).toBe(0);
+      expect(result!.smoothedValue).toBe(0);
+      expect(processor.getSmoothedValue()).toBe(0);
+    });
+
+    it("should properly transition from zero to non-zero queue", () => {
+      // Start with empty queue
+      processor.addSample(0);
+      processor.addSample(0);
+      let result = processor.processBatch();
+      expect(result!.median).toBe(0);
+      expect(result!.smoothedValue).toBe(0);
+
+      // Queue starts filling
+      processor.addSample(10);
+      processor.addSample(15);
+      result = processor.processBatch();
+      expect(result!.median).toBeGreaterThan(0);
+      // EWMA: 0.3 * median + 0.7 * 0
+      expect(result!.smoothedValue).toBeGreaterThan(0);
+    });
+
+    it("should properly transition from non-zero to zero queue", () => {
+      // Start with non-empty queue
+      processor.addSample(10);
+      processor.addSample(15);
+      let result = processor.processBatch();
+      const initialSmoothed = result!.smoothedValue;
+      expect(initialSmoothed).toBeGreaterThan(0);
+
+      // Queue becomes empty
+      processor.addSample(0);
+      processor.addSample(0);
+      processor.addSample(0);
+      result = processor.processBatch();
+      expect(result!.median).toBe(0);
+      // EWMA should gradually decrease: 0.3 * 0 + 0.7 * initialSmoothed
+      expect(result!.smoothedValue).toBe(0.7 * initialSmoothed);
+    });
   });
 
   describe("Batch processing timing", () => {
@@ -146,6 +193,15 @@ describe("QueueMetricsProcessor", () => {
       processor = new QueueMetricsProcessor({ ewmaAlpha: 0.3, batchWindowMs: 1000 });
     });
 
+    it("should calculate median of single sample", () => {
+      processor.addSample(42);
+
+      const result = processor.processBatch();
+      expect(result!.median).toBe(42);
+      expect(result!.sampleCount).toBe(1);
+      expect(result!.smoothedValue).toBe(42); // First batch initializes to median
+    });
+
     it("should calculate median of odd number of samples", () => {
       processor.addSample(1);
       processor.addSample(10);
@@ -162,9 +218,9 @@ describe("QueueMetricsProcessor", () => {
       processor.addSample(8);
 
       const result = processor.processBatch();
-      // With even count, we take the lower middle value (index 1)
-      // Sorted: [1, 5, 8, 10], median index = floor(4/2) = 2, so median = 8
-      expect(result!.median).toBe(8);
+      // With even count, we average the two middle values
+      // Sorted: [1, 5, 8, 10], median = (5 + 8) / 2 = 6.5
+      expect(result!.median).toBe(6.5);
     });
 
     it("should filter outliers using median", () => {
