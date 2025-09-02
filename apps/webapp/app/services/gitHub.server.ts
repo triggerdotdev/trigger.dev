@@ -56,6 +56,50 @@ export async function linkGitHubAppInstallation(
   });
 }
 
+/**
+ * Links a GitHub App installation to a Trigger organization
+ */
+export async function updateGitHubAppInstallation(installationId: number): Promise<void> {
+  if (!githubApp) {
+    throw new Error("GitHub App is not enabled");
+  }
+
+  const octokit = await githubApp.getInstallationOctokit(installationId);
+  const { data: installation } = await octokit.rest.apps.getInstallation({
+    installation_id: installationId,
+  });
+
+  const existingInstallation = await prisma.githubAppInstallation.findFirst({
+    where: { appInstallationId: installationId },
+  });
+
+  if (!existingInstallation) {
+    throw new Error("GitHub App installation not found");
+  }
+
+  const repositorySelection = installation.repository_selection === "all" ? "ALL" : "SELECTED";
+
+  // repos are updated asynchronously via webhook events
+  await prisma.githubAppInstallation.update({
+    where: { id: existingInstallation?.id },
+    data: {
+      appInstallationId: installationId,
+      targetId: installation.target_id,
+      targetType: installation.target_type,
+      accountHandle: installation.account
+        ? "login" in installation.account
+          ? installation.account.login
+          : "slug" in installation.account
+          ? installation.account.slug
+          : "-"
+        : "-",
+      permissions: installation.permissions,
+      suspendedAt: existingInstallation?.suspendedAt,
+      repositorySelection,
+    },
+  });
+}
+
 async function fetchInstallationRepositories(octokit: Octokit, installationId: number) {
   const iterator = octokit.paginate.iterator(octokit.rest.apps.listReposAccessibleToInstallation, {
     installation_id: installationId,

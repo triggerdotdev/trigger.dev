@@ -1,7 +1,7 @@
 import { type LoaderFunctionArgs } from "@remix-run/node";
 import { z } from "zod";
 import { validateGitHubAppInstallSession } from "~/services/gitHubSession.server";
-import { linkGitHubAppInstallation } from "~/services/gitHub.server";
+import { linkGitHubAppInstallation, updateGitHubAppInstallation } from "~/services/gitHub.server";
 import { logger } from "~/services/logger.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { tryCatch } from "@trigger.dev/core";
@@ -76,8 +76,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   }
 
   switch (callbackData.setup_action) {
-    case "install":
-    case "update": {
+    case "install": {
       const [error] = await tryCatch(
         linkGitHubAppInstallation(callbackData.installation_id, organizationId)
       );
@@ -90,6 +89,19 @@ export async function loader({ request }: LoaderFunctionArgs) {
       }
 
       return redirectWithSuccessMessage(redirectTo, request, "GitHub App installed successfully");
+    }
+
+    case "update": {
+      const [error] = await tryCatch(updateGitHubAppInstallation(callbackData.installation_id));
+
+      if (error) {
+        logger.error("Failed to update GitHub App installation", {
+          error,
+        });
+        return redirectWithErrorMessage(redirectTo, request, "Failed to update GitHub App");
+      }
+
+      return redirectWithSuccessMessage(redirectTo, request, "GitHub App updated successfully");
     }
 
     case "request": {
