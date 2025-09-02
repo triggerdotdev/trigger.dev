@@ -3,6 +3,7 @@ import {
   isOOMRunError,
   RetryOptions,
   sanitizeError,
+  shouldLookupRetrySettings,
   shouldRetryError,
   TaskRunError,
   taskRunErrorEnhancer,
@@ -72,13 +73,11 @@ export async function retryOutcomeFromCompletion(
     };
   }
 
-  // No retry settings
-  if (!retrySettings) {
-    return { outcome: "fail_run", sanitizedError };
-  }
+  const enhancedError = taskRunErrorEnhancer(error);
 
   // Not a retriable error: fail
-  const retriableError = shouldRetryError(taskRunErrorEnhancer(error));
+  const retriableError = shouldRetryError(enhancedError);
+
   if (!retriableError) {
     return { outcome: "fail_run", sanitizedError };
   }
@@ -95,6 +94,7 @@ export async function retryOutcomeFromCompletion(
     },
     select: {
       maxAttempts: true,
+      lockedRetryConfig: true,
     },
   });
 
@@ -110,6 +110,48 @@ export async function retryOutcomeFromCompletion(
   // No attempts left
   if (attemptNumber !== null && attemptNumber >= run.maxAttempts) {
     return { outcome: "fail_run", sanitizedError };
+  }
+
+  // No retry settings
+  if (!retrySettings) {
+    const shouldLookup = shouldLookupRetrySettings(enhancedError);
+
+    if (!shouldLookup) {
+      return { outcome: "fail_run", sanitizedError };
+    }
+
+    const retryConfig = run.lockedRetryConfig;
+
+    if (!retryConfig) {
+      return { outcome: "fail_run", sanitizedError };
+    }
+
+    const parsedRetryConfig = RetryOptions.nullish().safeParse(retryConfig);
+
+    if (!parsedRetryConfig.success) {
+      return { outcome: "fail_run", sanitizedError };
+    }
+
+    if (!parsedRetryConfig.data) {
+      return { outcome: "fail_run", sanitizedError };
+    }
+
+    const nextDelay = calculateNextRetryDelay(parsedRetryConfig.data, attemptNumber ?? 1);
+
+    if (!nextDelay) {
+      return { outcome: "fail_run", sanitizedError };
+    }
+
+    const retrySettings = {
+      timestamp: Date.now() + nextDelay,
+      delay: nextDelay,
+    };
+
+    return {
+      outcome: "retry",
+      method: "queue", // we'll always retry on the queue because usually having no settings means something bad happened
+      settings: retrySettings,
+    };
   }
 
   return {
@@ -130,19 +172,15 @@ async function retryOOMOnMachine(
       },
       select: {
         machinePreset: true,
-        lockedBy: {
-          select: {
-            retryConfig: true,
-          },
-        },
+        lockedRetryConfig: true,
       },
     });
 
-    if (!run || !run.lockedBy || !run.machinePreset) {
+    if (!run || !run.lockedRetryConfig || !run.machinePreset) {
       return;
     }
 
-    const retryConfig = run.lockedBy?.retryConfig;
+    const retryConfig = run.lockedRetryConfig;
     const parsedRetryConfig = RetryOptions.nullish().safeParse(retryConfig);
 
     if (!parsedRetryConfig.success) {
