@@ -73,6 +73,7 @@ import {
   environmentTextClassName,
 } from "~/components/environments/EnvironmentLabel";
 import { GitBranchIcon } from "lucide-react";
+import { env } from "~/env.server";
 
 export const meta: MetaFunction = () => {
   return [
@@ -83,6 +84,16 @@ export const meta: MetaFunction = () => {
 };
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
+  const githubAppEnabled = env.GITHUB_APP_ENABLED === "1";
+
+  if (!githubAppEnabled) {
+    return typedjson({
+      githubAppEnabled,
+      githubAppInstallations: undefined,
+      connectedGithubRepository: undefined,
+    });
+  }
+
   const userId = await requireUserId(request);
   const { projectParam, organizationSlug } = EnvironmentParamSchema.parse(params);
 
@@ -120,6 +131,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     );
 
     return typedjson({
+      githubAppEnabled,
       connectedGithubRepository: {
         ...connectedGithubRepository,
         branchTracking: branchTrackingOrFailure.success ? branchTrackingOrFailure.data : undefined,
@@ -158,7 +170,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     },
   });
 
-  return typedjson({ githubAppInstallations, connectedGithubRepository: undefined });
+  return typedjson({
+    githubAppEnabled,
+    githubAppInstallations,
+    connectedGithubRepository: undefined,
+  });
 };
 
 const ConnectGitHubRepoFormSchema = z.object({
@@ -256,8 +272,6 @@ export const action: ActionFunction = async ({ request, params }) => {
   if (!project) {
     return json({ errors: { body: "project not found" } }, { status: 404 });
   }
-
-  console.log(submission.value);
 
   try {
     switch (submission.value.action) {
@@ -400,7 +414,8 @@ export const action: ActionFunction = async ({ request, params }) => {
 };
 
 export default function Page() {
-  const { githubAppInstallations, connectedGithubRepository } = useTypedLoaderData<typeof loader>();
+  const { githubAppInstallations, connectedGithubRepository, githubAppEnabled } =
+    useTypedLoaderData<typeof loader>();
   const project = useProject();
   const organization = useOrganization();
   const lastSubmission = useActionData();
@@ -513,19 +528,21 @@ export default function Page() {
               </div>
             </div>
 
-            <div>
-              <Header2 spacing>Git settings</Header2>
-              <div className="w-full rounded-sm border border-grid-dimmed p-4">
-                {connectedGithubRepository ? (
-                  <ConnectedGitHubRepoForm connectedGitHubRepo={connectedGithubRepository} />
-                ) : (
-                  <GitHubConnectionPrompt
-                    gitHubAppInstallations={githubAppInstallations}
-                    organizationSlug={organization.slug}
-                  />
-                )}
+            {githubAppEnabled && (
+              <div>
+                <Header2 spacing>Git settings</Header2>
+                <div className="w-full rounded-sm border border-grid-dimmed p-4">
+                  {connectedGithubRepository ? (
+                    <ConnectedGitHubRepoForm connectedGitHubRepo={connectedGithubRepository} />
+                  ) : (
+                    <GitHubConnectionPrompt
+                      gitHubAppInstallations={githubAppInstallations}
+                      organizationSlug={organization.slug}
+                    />
+                  )}
+                </div>
               </div>
-            </div>
+            )}
 
             <div>
               <Header2 spacing>Danger zone</Header2>
