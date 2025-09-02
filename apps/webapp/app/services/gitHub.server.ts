@@ -1,6 +1,7 @@
 import { App, type Octokit } from "octokit";
 import { env } from "../env.server";
 import { prisma } from "~/db.server";
+import { logger } from "./logger.server";
 
 export const githubApp =
   env.GITHUB_APP_ENABLED === "1"
@@ -56,28 +57,30 @@ export async function linkGitHubAppInstallation(
 }
 
 async function fetchInstallationRepositories(octokit: Octokit, installationId: number) {
-  const all = [];
-  let page = 1;
-  const perPage = 100;
+  const iterator = octokit.paginate.iterator(octokit.rest.apps.listReposAccessibleToInstallation, {
+    installation_id: installationId,
+    per_page: 100,
+  });
+
+  const allRepos = [];
   const maxPages = 3;
+  let pageCount = 0;
 
-  while (page <= maxPages) {
-    const { data: repoData } = await octokit.rest.apps.listReposAccessibleToInstallation({
-      installation_id: installationId,
-      per_page: perPage,
-      page,
-    });
+  for await (const { data } of iterator) {
+    pageCount++;
+    allRepos.push(...data);
 
-    all.push(...repoData.repositories);
-
-    if (repoData.repositories.length < perPage) {
+    if (maxPages && pageCount >= maxPages) {
+      logger.warn("GitHub installation repository fetch truncated", {
+        installationId,
+        maxPages,
+        totalReposFetched: allRepos.length,
+      });
       break;
     }
-
-    page++;
   }
 
-  return all.map((repo) => ({
+  return allRepos.map((repo) => ({
     githubId: repo.id,
     name: repo.name,
     fullName: repo.full_name,
