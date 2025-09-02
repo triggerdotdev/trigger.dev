@@ -161,9 +161,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   return typedjson({ githubAppInstallations, connectedGithubRepository: undefined });
 };
 
+const ConnectGitHubRepoFormSchema = z.object({
+  action: z.literal("connect-repo"),
+  installationId: z.string(),
+  repositoryId: z.string(),
+});
+
 const UpdateGitSettingsFormSchema = z.object({
   action: z.literal("update-git-settings"),
-  projectId: z.string(),
   productionBranch: z.string().min(1, "Production branch is required"),
   stagingBranch: z.string().min(1, "Staging branch is required"),
   previewDeploymentsEnabled: z
@@ -203,13 +208,11 @@ export function createSchema(
         }
       }),
     }),
-    z.object({
-      action: z.literal("connect-repo"),
-      installationId: z.string().min(1, "Installation is required"),
-      repositoryId: z.string().min(1, "Repository is required"),
-      projectId: z.string().min(1, "Project ID is required"),
-    }),
+    ConnectGitHubRepoFormSchema,
     UpdateGitSettingsFormSchema,
+    z.object({
+      action: z.literal("disconnect-repo"),
+    }),
   ]);
 }
 
@@ -254,6 +257,8 @@ export const action: ActionFunction = async ({ request, params }) => {
     return json({ errors: { body: "project not found" } }, { status: 404 });
   }
 
+  console.log(submission.value);
+
   try {
     switch (submission.value.action) {
       case "rename": {
@@ -293,13 +298,24 @@ export const action: ActionFunction = async ({ request, params }) => {
           );
         }
       }
+      case "disconnect-repo": {
+        await prisma.connectedGithubRepository.delete({
+          where: {
+            projectId: project.id,
+          },
+        });
+
+        return redirectBackWithSuccessMessage(
+          request,
+          "GitHub repository disconnected successfully"
+        );
+      }
       case "update-git-settings": {
-        const { projectId, productionBranch, stagingBranch, previewDeploymentsEnabled } =
-          submission.value;
+        const { productionBranch, stagingBranch, previewDeploymentsEnabled } = submission.value;
 
         const existingConnection = await prisma.connectedGithubRepository.findFirst({
           where: {
-            projectId: projectId,
+            projectId: project.id,
           },
         });
 
@@ -309,7 +325,7 @@ export const action: ActionFunction = async ({ request, params }) => {
 
         await prisma.connectedGithubRepository.update({
           where: {
-            projectId: projectId,
+            projectId: project.id,
           },
           data: {
             branchTracking: {
@@ -323,7 +339,7 @@ export const action: ActionFunction = async ({ request, params }) => {
         return redirectBackWithSuccessMessage(request, "Git settings updated successfully");
       }
       case "connect-repo": {
-        const { repositoryId, projectId } = submission.value;
+        const { repositoryId } = submission.value;
 
         const [repository, existingConnection] = await Promise.all([
           prisma.githubRepository.findFirst({
@@ -341,7 +357,7 @@ export const action: ActionFunction = async ({ request, params }) => {
           }),
           prisma.connectedGithubRepository.findFirst({
             where: {
-              projectId: projectId,
+              projectId: project.id,
             },
           }),
         ]);
@@ -359,7 +375,7 @@ export const action: ActionFunction = async ({ request, params }) => {
 
         await prisma.connectedGithubRepository.create({
           data: {
-            projectId: projectId,
+            projectId: project.id,
             repositoryId: repositoryId,
             branchTracking: {
               production: { branch: repository.defaultBranch },
@@ -501,15 +517,11 @@ export default function Page() {
               <Header2 spacing>Git settings</Header2>
               <div className="w-full rounded-sm border border-grid-dimmed p-4">
                 {connectedGithubRepository ? (
-                  <ConnectedGitHubRepoForm
-                    connectedGitHubRepo={connectedGithubRepository}
-                    projectId={project.id}
-                  />
+                  <ConnectedGitHubRepoForm connectedGitHubRepo={connectedGithubRepository} />
                 ) : (
                   <GitHubConnectionPrompt
                     gitHubAppInstallations={githubAppInstallations}
                     organizationSlug={organization.slug}
-                    projectId={project.id}
                   />
                 )}
               </div>
@@ -561,12 +573,6 @@ export default function Page() {
   );
 }
 
-const ConnectGitHubRepoFormSchema = z.object({
-  installationId: z.string(),
-  repositoryId: z.string(),
-  projectId: z.string(),
-});
-
 type GitHubRepository = {
   id: string;
   name: string;
@@ -584,10 +590,8 @@ type GitHubAppInstallation = {
 
 function ConnectGitHubRepoModal({
   gitHubAppInstallations,
-  projectId: triggerProjectId,
 }: {
   gitHubAppInstallations: GitHubAppInstallation[];
-  projectId: string;
 }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const lastSubmission = useActionData() as any;
@@ -608,7 +612,7 @@ function ConnectGitHubRepoModal({
     navigation.formData?.get("action") === "connect-repo" &&
     (navigation.state === "submitting" || navigation.state === "loading");
 
-  const [form, { installationId, repositoryId, projectId }] = useForm({
+  const [form, { installationId, repositoryId }] = useForm({
     id: "connect-repo",
     lastSubmission: lastSubmission,
     shouldRevalidate: "onSubmit",
@@ -636,7 +640,6 @@ function ConnectGitHubRepoModal({
         <DialogHeader>Connect GitHub repository</DialogHeader>
         <div className="mt-2 flex flex-col gap-4">
           <Form method="post" {...form.props} className="w-full">
-            <input {...conform.input(projectId, { type: "hidden" })} value={triggerProjectId} />
             <Paragraph className="mb-3">
               Choose a GitHub repository to connect to your project.
             </Paragraph>
@@ -751,11 +754,9 @@ function ConnectGitHubRepoModal({
 function GitHubConnectionPrompt({
   gitHubAppInstallations,
   organizationSlug,
-  projectId,
 }: {
   gitHubAppInstallations: GitHubAppInstallation[];
   organizationSlug: string;
-  projectId: string;
 }) {
   return (
     <Fieldset>
@@ -771,10 +772,7 @@ function GitHubConnectionPrompt({
         )}
         {gitHubAppInstallations.length !== 0 && (
           <div className="flex items-center gap-3">
-            <ConnectGitHubRepoModal
-              gitHubAppInstallations={gitHubAppInstallations}
-              projectId={projectId}
-            />
+            <ConnectGitHubRepoModal gitHubAppInstallations={gitHubAppInstallations} />
             <span className="flex items-center gap-1 text-xs text-text-dimmed">
               <CheckCircleIcon className="size-4 text-success" /> GitHub app is installed
             </span>
@@ -796,10 +794,8 @@ type ConnectedGitHubRepo = {
 
 function ConnectedGitHubRepoForm({
   connectedGitHubRepo,
-  projectId,
 }: {
   connectedGitHubRepo: ConnectedGitHubRepo;
-  projectId: string;
 }) {
   const lastSubmission = useActionData() as any;
   const navigation = useNavigation();
@@ -835,11 +831,14 @@ function ConnectedGitHubRepoForm({
             <LockClosedIcon className="size-3 text-text-dimmed" />
           )}
         </div>
-        <Button variant="minimal/small">Disconnect</Button>
+        <Form method="post">
+          <Button type="submit" name="action" value="disconnect-repo" variant="minimal/small">
+            Disconnect
+          </Button>
+        </Form>
       </div>
 
       <Form method="post" {...gitSettingsForm.props}>
-        <input type="hidden" name="projectId" value={projectId} />
         <Fieldset>
           <InputGroup fullWidth>
             <Hint>
