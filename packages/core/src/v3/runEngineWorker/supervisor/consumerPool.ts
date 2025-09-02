@@ -182,11 +182,7 @@ export class RunQueueConsumerPool {
    * Updates the queue length metric and triggers scaling decisions
    * Uses QueueMetricsProcessor for batching and EWMA smoothing
    */
-  updateQueueLength(queueLength: number | undefined) {
-    if (queueLength === undefined) {
-      return;
-    }
-
+  updateQueueLength(queueLength: number) {
     // Track queue length update in metrics
     this.promMetrics?.recordQueueLengthUpdate();
 
@@ -356,10 +352,8 @@ export class RunQueueConsumerPool {
       const consumer = this.consumerFactory({
         ...this.consumerOptions,
         onDequeue: async (messages) => {
-          // Update queue length if provided
-          if (messages.length > 0 && messages[0]?.workerQueueLength !== undefined) {
-            this.updateQueueLength(messages[0]?.workerQueueLength);
-          }
+          // Always update queue length, default to 0 for empty dequeues or missing value
+          this.updateQueueLength(messages[0]?.workerQueueLength ?? 0);
 
           // Forward to the original handler
           await this.consumerOptions.onDequeue(messages);

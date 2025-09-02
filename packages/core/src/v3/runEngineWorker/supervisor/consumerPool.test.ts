@@ -589,20 +589,6 @@ describe("RunQueueConsumerPool", () => {
   });
 
   describe("Edge cases", () => {
-    it("should handle undefined queue lengths gracefully", async () => {
-      pool = new RunQueueConsumerPool({
-        ...defaultOptions,
-        scaling: { strategy: "smooth" },
-      });
-
-      await pool.start();
-
-      expect(() => pool.updateQueueLength(undefined)).not.toThrow();
-
-      const metrics = pool.getMetrics();
-      expect(metrics.queueLength).toBeUndefined();
-    });
-
     it("should handle empty recent queue lengths", async () => {
       pool = new RunQueueConsumerPool({
         ...defaultOptions,
@@ -687,6 +673,49 @@ describe("RunQueueConsumerPool", () => {
       pool.updateQueueLength(20);
       advanceTimeAndProcessMetrics(1100);
       expect(pool.size).toBeLessThanOrEqual(6);
+    });
+
+    it("should scale down when no items are dequeued (zero queue length)", async () => {
+      pool = new RunQueueConsumerPool({
+        ...defaultOptions,
+        scaling: {
+          strategy: "smooth",
+          minConsumerCount: 1,
+          maxConsumerCount: 10,
+          scaleUpCooldownMs: 0,
+          scaleDownCooldownMs: 0,
+          disableJitter: true,
+        },
+      });
+
+      await pool.start();
+      expect(pool.size).toBe(1);
+
+      // Scale up first
+      pool.updateQueueLength(20);
+      advanceTimeAndProcessMetrics(1100);
+      expect(pool.size).toBeGreaterThan(1);
+      const sizeAfterScaleUp = pool.size;
+
+      // Now send multiple zero queue lengths to converge EWMA to 0
+      // The EWMA needs time to converge due to exponential smoothing
+      for (let i = 0; i < 5; i++) {
+        pool.updateQueueLength(0);
+        advanceTimeAndProcessMetrics(1100);
+      }
+
+      // After multiple iterations with zero queue, should scale down but not to minimum yet
+      expect(pool.size).toBeLessThan(sizeAfterScaleUp);
+      expect(pool.size).toBeGreaterThan(1);
+
+      // Continue until we reach minimum
+      for (let i = 0; i < 5; i++) {
+        pool.updateQueueLength(0);
+        advanceTimeAndProcessMetrics(1100);
+      }
+
+      // Should eventually reach minimum
+      expect(pool.size).toBe(1);
     });
   });
 });
