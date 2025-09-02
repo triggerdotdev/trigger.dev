@@ -102,13 +102,16 @@ If you already have a GitHub action file, you can just add the final step "🚀 
 ## CLI Version pinning
 
 The CLI and `@trigger.dev/*` package versions need to be in sync with the `trigger.dev` CLI, otherwise there will be errors and unpredictable behavior. Hence, the `deploy` command will automatically fail during CI on any version mismatches.
-Tip: add the deploy command to your `package.json` file to keep versions managed in the same place. For example:
+Tip: add the `trigger.dev` CLI to your `devDependencies` and the deploy command to your `package.json` file to keep versions managed in the same place. For example:
 
 ```json
 {
   "scripts": {
-    "deploy:trigger-prod": "npx trigger.dev@3.0.0 deploy",
-    "deploy:trigger": "npx trigger.dev@3.0.0 deploy --env staging"
+    "deploy:trigger-prod": "trigger deploy",
+    "deploy:trigger": "trigger deploy --env staging"
+  },
+  "devDependencies": {
+    "trigger.dev": "4.0.2"
   }
 }
 ```
@@ -134,9 +137,7 @@ When self-hosting, you will have to take a few additional steps:
 - Add your registry credentials to the GitHub secrets.
 - Use the `--self-hosted` and `--push` flags when deploying.
 
-<Tip>
-  If you're self-hosting v4, the `--self-hosted` and `--push` flags are **NOT** needed.
-</Tip>
+<Tip>If you're self-hosting v4, the `--self-hosted` and `--push` flags are **NOT** needed.</Tip>
 
 Other than that, your GitHub action file will look very similar to the one above:
 
