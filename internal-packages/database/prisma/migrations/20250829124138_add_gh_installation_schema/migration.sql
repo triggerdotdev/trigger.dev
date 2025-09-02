@@ -26,7 +26,6 @@ CREATE TABLE "public"."GithubRepository" (
     "htmlUrl" TEXT NOT NULL,
     "private" BOOLEAN NOT NULL,
     "defaultBranch" TEXT NOT NULL,
-    "removedAt" TIMESTAMP(3),
     "installationId" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,

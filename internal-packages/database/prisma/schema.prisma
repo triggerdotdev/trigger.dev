@@ -2279,8 +2279,6 @@ model GithubRepository {
   private       Boolean
   defaultBranch String
 
-  removedAt DateTime?
-
   installation   GithubAppInstallation @relation(fields: [installationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   installationId String
 
