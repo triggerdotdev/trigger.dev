@@ -351,6 +351,7 @@ export function shouldLookupRetrySettings(error: TaskRunError): boolean {
     case "INTERNAL_ERROR": {
       switch (error.code) {
         case "TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE":
+        case "TASK_PROCESS_SIGTERM":
           return true;
 
         default:
