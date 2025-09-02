@@ -147,7 +147,7 @@ export class RunQueueConsumerPool {
     // Set initial metrics
     this.metrics.targetConsumerCount = initialCount;
 
-    this.scaleToTarget(initialCount);
+    this.addConsumers(initialCount);
 
     this.logger.log("Started dynamic consumer pool", {
       initialConsumerCount: this.consumers.size,
