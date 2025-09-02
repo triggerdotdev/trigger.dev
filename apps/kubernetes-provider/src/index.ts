@@ -545,8 +545,8 @@ class KubernetesTaskOperations implements TaskOperations {
 
   #getResourceRequestsForMachine(preset: MachinePreset): ResourceQuantities {
     return {
-      cpu: `${preset.cpu * 0.75}`,
-      memory: `${preset.memory}G`,
+      cpu: `${preset.cpuRequest ?? preset.cpu * 0.75}`,
+      memory: `${preset.memoryRequest ?? preset.memory}G`,
     };
   }
 

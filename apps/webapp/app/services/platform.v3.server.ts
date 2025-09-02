@@ -80,7 +80,9 @@ type Machines = typeof machinesFromPlatform;
 
 const MachineOverrideValues = z.object({
   cpu: z.number(),
+  cpuRequest: z.number().optional(), // Only used for k8s fallback to cpu
   memory: z.number(),
+  memoryRequest: z.number().optional(), // Only used for k8s fallback to memory
 });
 type MachineOverrideValues = z.infer<typeof MachineOverrideValues>;
 

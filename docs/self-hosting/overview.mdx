@@ -41,7 +41,6 @@ While [limits](#limits) are generally configurable when self-hosting, some featu
 | Community support | ✅    | ✅          | Access to our Discord community         |
 | ARM support       | ✅    | ✅          | ARM-based deployments                   |
 
-
 ## Limits
 
 Most of the [limits](/limits) are configurable when self-hosting, with some hardcoded exceptions. You can configure them via environment variables on the [webapp](/self-hosting/env/webapp) container.
@@ -88,6 +87,18 @@ All fields are optional. Partial overrides are supported:
   "defaultMachine": "small-2x",
   "machines": {
     "small-1x": { "memory": 2 }
+  }
+}
+```
+
+You can also set cpu/memory requests for each machine type. This is used in k8s environments to set the minimum resources required for each machine type.
+We do not recommend setting these values to zero, as it can cause the k8s scheduler to schedule an infinite number of pods in parallel and cause the pods to get killed due to resource exhaustion.
+
+```json
+{
+  "defaultMachine": "small-2x",
+  "machines": {
+    "small-1x": { "cpu": 0.5, "memory": 0.5, "cpuRequest": 0.25, "memoryRequest": 0.25 }
   }
 }
 ```
