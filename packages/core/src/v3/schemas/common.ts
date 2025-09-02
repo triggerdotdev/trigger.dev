@@ -118,8 +118,10 @@ export const MachinePreset = z.object({
   name: MachinePresetName,
   /** unit: vCPU */
   cpu: z.number(),
+  cpuRequest: z.number().optional(), // Only used for k8s fallback to cpu
   /** unit: GB */
   memory: z.number(),
+  memoryRequest: z.number().optional(), // Only used for k8s fallback to memory
   centsPerMs: z.number(),
 });
 
