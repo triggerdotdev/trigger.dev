@@ -23,7 +23,7 @@ import { z } from "zod";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { InlineCode } from "~/components/code/InlineCode";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
-import { DialogClose, DialogDescription } from "@radix-ui/react-dialog";
+import { DialogClose } from "@radix-ui/react-dialog";
 import { OctoKitty } from "~/components/GitHubLoginButton";
 import {
   MainHorizontallyCenteredContainer,
@@ -49,6 +49,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import {
   redirectBackWithErrorMessage,
+  redirectBackWithSuccessMessage,
   redirectWithErrorMessage,
   redirectWithSuccessMessage,
 } from "~/models/message.server";
@@ -62,9 +63,16 @@ import {
   githubAppInstallPath,
   EnvironmentParamSchema,
 } from "~/utils/pathBuilder";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Select, SelectItem } from "~/components/primitives/Select";
+import { Switch } from "~/components/primitives/Switch";
 import { BranchTrackingConfigSchema, type BranchTrackingConfig } from "~/v3/github";
+import {
+  EnvironmentIcon,
+  environmentFullTitle,
+  environmentTextClassName,
+} from "~/components/environments/EnvironmentLabel";
+import { GitBranchIcon } from "lucide-react";
 
 export const meta: MetaFunction = () => {
   return [
@@ -138,9 +146,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
           htmlUrl: true,
           private: true,
         },
-        where: {
-          removedAt: null,
-        },
         // Most installations will only have a couple of repos so loading them here should be fine.
         // However, there might be outlier organizations so it's best to expose the installation repos
         // via a resource endpoint and filter on user input.
@@ -155,6 +160,17 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   return typedjson({ githubAppInstallations, connectedGithubRepository: undefined });
 };
+
+const UpdateGitSettingsFormSchema = z.object({
+  action: z.literal("update-git-settings"),
+  projectId: z.string(),
+  productionBranch: z.string().min(1, "Production branch is required"),
+  stagingBranch: z.string().min(1, "Staging branch is required"),
+  previewDeploymentsEnabled: z
+    .string()
+    .optional()
+    .transform((val) => val === "on"),
+});
 
 export function createSchema(
   constraints: {
@@ -193,6 +209,7 @@ export function createSchema(
       repositoryId: z.string().min(1, "Repository is required"),
       projectId: z.string().min(1, "Project ID is required"),
     }),
+    UpdateGitSettingsFormSchema,
   ]);
 }
 
@@ -276,6 +293,35 @@ export const action: ActionFunction = async ({ request, params }) => {
           );
         }
       }
+      case "update-git-settings": {
+        const { projectId, productionBranch, stagingBranch, previewDeploymentsEnabled } =
+          submission.value;
+
+        const existingConnection = await prisma.connectedGithubRepository.findFirst({
+          where: {
+            projectId: projectId,
+          },
+        });
+
+        if (!existingConnection) {
+          return redirectBackWithErrorMessage(request, "No connected GitHub repository found");
+        }
+
+        await prisma.connectedGithubRepository.update({
+          where: {
+            projectId: projectId,
+          },
+          data: {
+            branchTracking: {
+              production: { branch: productionBranch },
+              staging: { branch: stagingBranch },
+            } satisfies BranchTrackingConfig,
+            previewDeploymentsEnabled: previewDeploymentsEnabled,
+          },
+        });
+
+        return redirectBackWithSuccessMessage(request, "Git settings updated successfully");
+      }
       case "connect-repo": {
         const { repositoryId, projectId } = submission.value;
 
@@ -343,7 +389,6 @@ export default function Page() {
   const organization = useOrganization();
   const lastSubmission = useActionData();
   const navigation = useNavigation();
-  const location = useLocation();
 
   const [renameForm, { projectName }] = useForm({
     id: "rename-project",
@@ -458,7 +503,6 @@ export default function Page() {
                 {connectedGithubRepository ? (
                   <ConnectedGitHubRepoForm
                     connectedGitHubRepo={connectedGithubRepository}
-                    organizationSlug={organization.slug}
                     projectId={project.id}
                   />
                 ) : (
@@ -752,34 +796,32 @@ type ConnectedGitHubRepo = {
 
 function ConnectedGitHubRepoForm({
   connectedGitHubRepo,
-  organizationSlug,
   projectId,
 }: {
   connectedGitHubRepo: ConnectedGitHubRepo;
-  organizationSlug: string;
   projectId: string;
 }) {
   const lastSubmission = useActionData() as any;
   const navigation = useNavigation();
 
-  const [renameForm, { projectName }] = useForm({
-    id: "rename-project",
+  const [gitSettingsForm, fields] = useForm({
+    id: "update-git-settings",
     lastSubmission: lastSubmission,
     shouldRevalidate: "onSubmit",
     onValidate({ formData }) {
       return parse(formData, {
-        schema: createSchema(),
+        schema: UpdateGitSettingsFormSchema,
       });
     },
   });
 
-  const isRenameLoading =
-    navigation.formData?.get("action") === "rename" &&
+  const isGitSettingsLoading =
+    navigation.formData?.get("action") === "update-git-settings" &&
     (navigation.state === "submitting" || navigation.state === "loading");
 
   return (
     <>
-      <div className="flex items-center justify-between rounded-sm border bg-grid-dimmed p-2">
+      <div className="mb-4 flex items-center justify-between rounded-sm border bg-grid-dimmed p-2">
         <div className="flex items-center gap-2">
           <OctoKitty className="size-4" />
           <a
@@ -789,31 +831,78 @@ function ConnectedGitHubRepoForm({
           >
             {connectedGitHubRepo.repository.fullName}
           </a>
+          {connectedGitHubRepo.repository.private && (
+            <LockClosedIcon className="size-3 text-text-dimmed" />
+          )}
         </div>
         <Button variant="minimal/small">Disconnect</Button>
       </div>
-      <Form method="post" {...renameForm.props} className="mt-4">
+
+      <Form method="post" {...gitSettingsForm.props}>
+        <input type="hidden" name="projectId" value={projectId} />
         <Fieldset>
           <InputGroup fullWidth>
-            <Label htmlFor={projectName.id}>Project name</Label>
-            <Input
-              {...conform.input(projectName, { type: "text" })}
-              defaultValue={"asdf"}
-              placeholder="Project name"
-              icon={FolderIcon}
-              autoFocus
-            />
-            <FormError id={projectName.errorId}>{projectName.error}</FormError>
+            <Hint>
+              Every commit on the selected tracking branch creates a deployment in the corresponding
+              environment.
+            </Hint>
+            <div className="grid grid-cols-[120px_1fr] gap-3">
+              <div className="flex items-center gap-1.5">
+                <EnvironmentIcon environment={{ type: "PRODUCTION" }} className="size-4" />
+                <span className={`text-sm ${environmentTextClassName({ type: "PRODUCTION" })}`}>
+                  {environmentFullTitle({ type: "PRODUCTION" })}
+                </span>
+              </div>
+              <Input
+                {...conform.input(fields.productionBranch, { type: "text" })}
+                defaultValue={connectedGitHubRepo.branchTracking?.production?.branch}
+                placeholder="Branch name"
+                variant="tertiary"
+                icon={GitBranchIcon}
+              />
+              <div className="flex items-center gap-1.5">
+                <EnvironmentIcon environment={{ type: "STAGING" }} className="size-4" />
+                <span className={`text-sm ${environmentTextClassName({ type: "STAGING" })}`}>
+                  {environmentFullTitle({ type: "STAGING" })}
+                </span>
+              </div>
+              <Input
+                {...conform.input(fields.stagingBranch, { type: "text" })}
+                defaultValue={connectedGitHubRepo.branchTracking?.staging?.branch}
+                placeholder="Branch name"
+                variant="tertiary"
+                icon={GitBranchIcon}
+              />
+
+              <div className="flex items-center gap-1.5">
+                <EnvironmentIcon environment={{ type: "PREVIEW" }} className="size-4" />
+                <span className={`text-sm ${environmentTextClassName({ type: "PREVIEW" })}`}>
+                  {environmentFullTitle({ type: "PREVIEW" })}
+                </span>
+              </div>
+              <Switch
+                name="previewDeploymentsEnabled"
+                defaultChecked={connectedGitHubRepo.previewDeploymentsEnabled}
+                variant="small"
+                label="create preview deployments for pull requests"
+                labelPosition="right"
+              />
+            </div>
+            <FormError>{fields.productionBranch?.error}</FormError>
+            <FormError>{fields.stagingBranch?.error}</FormError>
+            <FormError>{fields.previewDeploymentsEnabled?.error}</FormError>
+            <FormError>{gitSettingsForm.error}</FormError>
           </InputGroup>
+
           <FormButtons
             confirmButton={
               <Button
                 type="submit"
                 name="action"
-                value="rename"
-                variant={"secondary/small"}
-                disabled={isRenameLoading}
-                LeadingIcon={isRenameLoading ? SpinnerWhite : undefined}
+                value="update-git-settings"
+                variant="secondary/small"
+                disabled={isGitSettingsLoading}
+                LeadingIcon={isGitSettingsLoading ? SpinnerWhite : undefined}
               >
                 Save
               </Button>
