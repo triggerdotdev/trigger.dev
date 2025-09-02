@@ -403,6 +403,9 @@ export class DequeueSystem {
                 result.run.maxDurationInSeconds,
                 result.task.maxDurationInSeconds
               );
+              const lockedRetryConfig = result.run.lockedRetryConfig
+                ? undefined
+                : result.task.retryConfig;
 
               const lockedTaskRun = await prisma.taskRun.update({
                 where: {
@@ -413,6 +416,7 @@ export class DequeueSystem {
                   lockedById: result.task.id,
                   lockedToVersionId: result.worker.id,
                   lockedQueueId: result.queue.id,
+                  lockedRetryConfig: lockedRetryConfig ?? undefined,
                   status: "DEQUEUED",
                   startedAt,
                   baseCostInCents: this.options.machines.baseCostInCents,

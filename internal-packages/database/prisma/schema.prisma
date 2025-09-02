@@ -151,7 +151,7 @@ model OrganizationAccessToken {
   /// This is used to find the token in the database
   hashedToken String @unique
 
-  organization   Organization   @relation(fields: [organizationId], references: [id])
+  organization   Organization @relation(fields: [organizationId], references: [id])
   organizationId String
 
   /// Optional expiration date for the token
@@ -648,11 +648,12 @@ model TaskRun {
 
   concurrencyKey String?
 
-  delayUntil  DateTime?
-  queuedAt    DateTime?
-  ttl         String?
-  expiredAt   DateTime?
-  maxAttempts Int?
+  delayUntil        DateTime?
+  queuedAt          DateTime?
+  ttl               String?
+  expiredAt         DateTime?
+  maxAttempts       Int?
+  lockedRetryConfig Json?
 
   /// optional token that can be used to authenticate the task run
   oneTimeUseToken String?

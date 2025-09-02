@@ -346,6 +346,32 @@ export function shouldRetryError(error: TaskRunError): boolean {
   }
 }
 
+export function shouldLookupRetrySettings(error: TaskRunError): boolean {
+  switch (error.type) {
+    case "INTERNAL_ERROR": {
+      switch (error.code) {
+        case "TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE":
+          return true;
+
+        default:
+          return false;
+      }
+    }
+    case "STRING_ERROR": {
+      return false;
+    }
+    case "BUILT_IN_ERROR": {
+      return false;
+    }
+    case "CUSTOM_ERROR": {
+      return false;
+    }
+    default: {
+      assertExhaustive(error);
+    }
+  }
+}
+
 export function correctErrorStackTrace(
   stackTrace: string,
   projectDir?: string,
