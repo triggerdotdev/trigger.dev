@@ -13,7 +13,6 @@ export type QueueConsumerFactory = (opts: RunQueueConsumerOptions) => QueueConsu
 
 export type ScalingOptions = {
   strategy?: ScalingStrategyKind;
-  strategyOptions?: ScalingStrategyOptions;
   minConsumerCount?: number;
   maxConsumerCount?: number;
   scaleUpCooldownMs?: number;
@@ -22,6 +21,7 @@ export type ScalingOptions = {
   ewmaAlpha?: number;
   batchWindowMs?: number;
   disableJitter?: boolean;
+  dampingFactor?: number;
 };
 
 export type ConsumerPoolOptions = {
@@ -99,7 +99,7 @@ export class RunQueueConsumerPool {
     });
 
     const targetRatio = opts.scaling.targetRatio ?? 1.0;
-    const dampingFactor = opts.scaling.strategyOptions?.dampingFactor;
+    const dampingFactor = opts.scaling.dampingFactor;
 
     // Create scaling strategy with metrics processor injected
     this.scalingStrategy = ScalingStrategy.create(opts.scaling.strategy ?? "none", {

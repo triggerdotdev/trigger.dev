@@ -138,6 +138,7 @@ class ManagedSupervisor {
         targetRatio: env.TRIGGER_DEQUEUE_SCALING_TARGET_RATIO,
         ewmaAlpha: env.TRIGGER_DEQUEUE_SCALING_EWMA_ALPHA,
         batchWindowMs: env.TRIGGER_DEQUEUE_SCALING_BATCH_WINDOW_MS,
+        dampingFactor: env.TRIGGER_DEQUEUE_SCALING_DAMPING_FACTOR,
       },
       runNotificationsEnabled: env.TRIGGER_WORKLOAD_API_ENABLED,
       heartbeatIntervalSeconds: env.TRIGGER_WORKER_HEARTBEAT_INTERVAL_SECONDS,
