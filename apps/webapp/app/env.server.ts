@@ -3,28 +3,27 @@ import { BoolEnv } from "./utils/boolEnv";
 import { isValidDatabaseUrl } from "./utils/db";
 import { isValidRegex } from "./utils/regex";
 
-const GithubAppEnvSchema = z
-  .preprocess(
-    (val) => {
-      const obj = val as any;
-      if (!obj || !obj.GITHUB_APP_ENABLED) {
-        return { ...obj, GITHUB_APP_ENABLED: "0" };
-      }
-      return obj;
-    },
-    z.discriminatedUnion("GITHUB_APP_ENABLED", [
-      z.object({
-        GITHUB_APP_ENABLED: z.literal("1"),
-        GITHUB_APP_ID: z.string(),
-        GITHUB_APP_PRIVATE_KEY: z.string(),
-        GITHUB_APP_WEBHOOK_SECRET: z.string(),
-        GITHUB_APP_SLUG: z.string(),
-      }),
-      z.object({
-        GITHUB_APP_ENABLED: z.literal("0"),
-      }),
-    ])
-  );
+const GithubAppEnvSchema = z.preprocess(
+  (val) => {
+    const obj = val as any;
+    if (!obj || !obj.GITHUB_APP_ENABLED) {
+      return { ...obj, GITHUB_APP_ENABLED: "0" };
+    }
+    return obj;
+  },
+  z.discriminatedUnion("GITHUB_APP_ENABLED", [
+    z.object({
+      GITHUB_APP_ENABLED: z.literal("1"),
+      GITHUB_APP_ID: z.string(),
+      GITHUB_APP_PRIVATE_KEY: z.string(),
+      GITHUB_APP_WEBHOOK_SECRET: z.string(),
+      GITHUB_APP_SLUG: z.string(),
+    }),
+    z.object({
+      GITHUB_APP_ENABLED: z.literal("0"),
+    }),
+  ])
+);
 
 const EnvironmentSchema = z
   .object({
@@ -82,12 +81,6 @@ const EnvironmentSchema = z
     SMTP_SECURE: BoolEnv.optional(),
     SMTP_USER: z.string().optional(),
     SMTP_PASSWORD: z.string().optional(),
-
-    // GitHub App
-    GITHUB_APP_ID: z.string(),
-    GITHUB_APP_PRIVATE_KEY: z.string(),
-    GITHUB_APP_WEBHOOK_SECRET: z.string(),
-    GITHUB_APP_SLUG: z.string(),
 
     PLAIN_API_KEY: z.string().optional(),
     WORKER_SCHEMA: z.string().default("graphile_worker"),
