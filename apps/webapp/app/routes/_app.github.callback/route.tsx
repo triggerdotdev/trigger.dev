@@ -7,6 +7,7 @@ import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/m
 import { tryCatch } from "@trigger.dev/core";
 import { $replica } from "~/db.server";
 import { requireUser } from "~/services/session.server";
+import { sanitizeRedirectPath } from "~/utils";
 
 const QuerySchema = z.discriminatedUnion("setup_action", [
   z.object({
@@ -52,7 +53,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
     return redirectWithErrorMessage("/", request, "Failed to install GitHub App");
   }
 
-  const { organizationId, redirectTo } = sessionResult;
+  const { organizationId, redirectTo: unsafeRedirectTo } = sessionResult;
+  const redirectTo = sanitizeRedirectPath(unsafeRedirectTo);
 
   const user = await requireUser(request);
   const org = await $replica.organization.findFirst({

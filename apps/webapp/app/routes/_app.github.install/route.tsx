@@ -6,10 +6,13 @@ import { createGitHubAppInstallSession } from "~/services/gitHubSession.server";
 import { requireUser } from "~/services/session.server";
 import { newOrganizationPath } from "~/utils/pathBuilder";
 import { logger } from "~/services/logger.server";
+import { sanitizeRedirectPath } from "~/utils";
 
 const QuerySchema = z.object({
   org_slug: z.string(),
-  redirect_to: z.string(),
+  redirect_to: z.string().refine((value) => value === sanitizeRedirectPath(value), {
+    message: "Invalid redirect path",
+  }),
 });
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
