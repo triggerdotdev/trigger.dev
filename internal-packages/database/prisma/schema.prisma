@@ -2248,8 +2248,8 @@ enum GithubRepositorySelection {
 model GithubAppInstallation {
   id String @id @default(cuid())
 
-  appInstallationId   Int                       @unique
-  targetId            Int
+  appInstallationId   BigInt                    @unique
+  targetId            BigInt
   targetType          String
   accountHandle       String
   permissions         Json?
@@ -2272,7 +2272,7 @@ model GithubAppInstallation {
 model GithubRepository {
   id String @id @default(cuid())
 
-  githubId      Int
+  githubId      BigInt
   name          String
   fullName      String
   htmlUrl       String

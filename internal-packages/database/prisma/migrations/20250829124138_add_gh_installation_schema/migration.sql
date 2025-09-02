@@ -2,8 +2,8 @@ CREATE TYPE "public"."GithubRepositorySelection" AS ENUM ('ALL', 'SELECTED');
 
 CREATE TABLE "public"."GithubAppInstallation" (
     "id" TEXT NOT NULL,
-    "appInstallationId" INTEGER NOT NULL,
-    "targetId" INTEGER NOT NULL,
+    "appInstallationId" BIGINT NOT NULL,
+    "targetId" BIGINT NOT NULL,
     "targetType" TEXT NOT NULL,
     "accountHandle" TEXT NOT NULL,
     "permissions" JSONB,
@@ -20,7 +20,7 @@ CREATE TABLE "public"."GithubAppInstallation" (
 
 CREATE TABLE "public"."GithubRepository" (
     "id" TEXT NOT NULL,
-    "githubId" INTEGER NOT NULL,
+    "githubId" BIGINT NOT NULL,
     "name" TEXT NOT NULL,
     "fullName" TEXT NOT NULL,
     "htmlUrl" TEXT NOT NULL,
