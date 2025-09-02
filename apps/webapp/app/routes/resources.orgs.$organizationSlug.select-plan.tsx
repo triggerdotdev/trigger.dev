@@ -411,6 +411,7 @@ export function TierFree({
                       <Header2 className="mb-1">Why are you thinking of downgrading?</Header2>
                       <ul className="space-y-1">
                         {[
+                          "The Free plan is good enough",
                           "Subscription or usage costs too expensive",
                           "Bugs or technical issues",
                           "No longer need the service",
