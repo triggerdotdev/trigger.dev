@@ -235,6 +235,7 @@ export const DequeuedMessage = z.object({
   version: z.literal("1"),
   snapshot: ExecutionSnapshot,
   dequeuedAt: z.coerce.date(),
+  workerQueueLength: z.number().optional(),
   image: z.string().optional(),
   checkpoint: DequeueMessageCheckpoint.optional(),
   completedWaitpoints: z.array(CompletedWaitpoint),

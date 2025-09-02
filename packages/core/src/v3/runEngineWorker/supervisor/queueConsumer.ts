@@ -3,7 +3,12 @@ import { SupervisorHttpClient } from "./http.js";
 import { WorkerApiDequeueResponseBody } from "./schemas.js";
 import { PreDequeueFn, PreSkipFn } from "./types.js";
 
-type RunQueueConsumerOptions = {
+export interface QueueConsumer {
+  start(): void;
+  stop(): void;
+}
+
+export type RunQueueConsumerOptions = {
   client: SupervisorHttpClient;
   intervalMs: number;
   idleIntervalMs: number;
@@ -13,7 +18,7 @@ type RunQueueConsumerOptions = {
   onDequeue: (messages: WorkerApiDequeueResponseBody) => Promise<void>;
 };
 
-export class RunQueueConsumer {
+export class RunQueueConsumer implements QueueConsumer {
   private readonly client: SupervisorHttpClient;
   private readonly preDequeue?: PreDequeueFn;
   private readonly preSkip?: PreSkipFn;
@@ -131,7 +136,7 @@ export class RunQueueConsumer {
     this.scheduleNextDequeue(nextIntervalMs);
   }
 
-  scheduleNextDequeue(delayMs: number) {
+  private scheduleNextDequeue(delayMs: number) {
     if (delayMs === this.idleIntervalMs && this.idleIntervalMs !== this.intervalMs) {
       this.logger.verbose("scheduled dequeue with idle interval", { delayMs });
     }

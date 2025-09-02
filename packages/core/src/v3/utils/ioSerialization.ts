@@ -12,7 +12,7 @@ import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
 import { TriggerTracer } from "../tracer.js";
 import { zodfetch } from "../zodfetch.js";
 import { flattenAttributes } from "./flattenAttributes.js";
-import get from "lodash.get";
+import { JSONHeroPath } from "@jsonhero/path";
 
 export type IOPacket = {
   data?: string | undefined;
@@ -536,7 +536,7 @@ export async function replaceSuperJsonPayload(original: string, newPayload: stri
       .map(([key]) => key);
 
     const overridenUndefinedKeys = originalUndefinedKeys.filter(
-      (key) => get(newPayloadObject, key) !== undefined
+      (key) => getKeyFromObject(newPayloadObject, key) !== undefined
     );
 
     overridenUndefinedKeys.forEach((key) => {
@@ -550,4 +550,10 @@ export async function replaceSuperJsonPayload(original: string, newPayload: stri
   };
 
   return superjson.deserialize(newSuperJson);
+}
+
+function getKeyFromObject(object: unknown, key: string) {
+  const jsonHeroPath = new JSONHeroPath(key);
+
+  return jsonHeroPath.first(object);
 }

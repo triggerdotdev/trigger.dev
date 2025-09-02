@@ -59,7 +59,7 @@
       "request": "launch",
       "name": "Debug V3 Dev CLI",
       "command": "pnpm exec trigger dev",
-      "cwd": "${workspaceFolder}/references/v3-catalog",
+      "cwd": "${workspaceFolder}/references/hello-world",
       "sourceMaps": true
     },
     {
@@ -83,7 +83,7 @@
       "request": "launch",
       "name": "Debug V3 Deploy CLI",
       "command": "pnpm exec trigger deploy --self-hosted --load-image",
-      "cwd": "${workspaceFolder}/references/v3-catalog",
+      "cwd": "${workspaceFolder}/references/hello-world",
       "sourceMaps": true
     },
     {
@@ -91,7 +91,7 @@
       "request": "launch",
       "name": "Debug V3 list-profiles CLI",
       "command": "pnpm exec trigger list-profiles --log-level debug",
-      "cwd": "${workspaceFolder}/references/v3-catalog",
+      "cwd": "${workspaceFolder}/references/hello-world",
       "sourceMaps": true
     },
     {
@@ -99,7 +99,7 @@
       "request": "launch",
       "name": "Debug V3 update CLI",
       "command": "pnpm exec trigger update",
-      "cwd": "${workspaceFolder}/references/v3-catalog",
+      "cwd": "${workspaceFolder}/references/hello-world",
       "sourceMaps": true
     },
     {
@@ -107,7 +107,7 @@
       "request": "launch",
       "name": "Debug V3 Management",
       "command": "pnpm run management",
-      "cwd": "${workspaceFolder}/references/v3-catalog",
+      "cwd": "${workspaceFolder}/references/hello-world",
       "sourceMaps": true
     },
     {

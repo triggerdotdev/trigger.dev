@@ -123,7 +123,7 @@ function ShortcutContent() {
               <ShortcutKey shortcut={{ key: "d" }} variant="medium/bright" />
             </Shortcut>
             <Shortcut name="Context">
-              <ShortcutKey shortcut={{ key: "c" }} variant="medium/bright" />
+              <ShortcutKey shortcut={{ key: "x" }} variant="medium/bright" />
             </Shortcut>
             <Shortcut name="Metadata">
               <ShortcutKey shortcut={{ key: "m" }} variant="medium/bright" />

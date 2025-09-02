@@ -1,7 +1,7 @@
 ---
 title: "Bun guide"
 sidebarTitle: "Bun"
-description: "This guide will show you how to setup Trigger.dev with Bun"
+description: "This guide will show you how to setup Trigger.dev in your existing Bun project, test an example task, and view the run."
 icon: "js"
 ---
 
@@ -9,16 +9,16 @@ import Prerequisites from "/snippets/framework-prerequisites.mdx";
 import CliRunTestStep from "/snippets/step-run-test.mdx";
 import CliViewRunStep from "/snippets/step-view-run.mdx";
 
-<Warning>A specific Bun version is currently required for the dev command to work. This is due to a [bug](https://github.com/oven-sh/bun/issues/13799) with IPC. Please use Bun version 1.1.24 or lower: `curl -fsSL https://bun.sh/install | bash -s -- bun-v1.1.24`</Warning>
-
-We now have experimental support for Bun. This guide will show you have to setup Trigger.dev in your existing Bun project, test an example task, and view the run.
-
-<Warn>
-  The trigger.dev CLI does not yet support Bun. So you will need to run the CLI using Node.js. But
+<Warning>
+  The trigger.dev CLI does not yet support Bun. So you will need to run the CLI using Node.js.
   Bun will still be used to execute your tasks, even in the `dev` environment.
-</Warn>
+</Warning>
 
 <Prerequisites framework="Bun" />
+
+## Known issues
+
+- Certain OpenTelemetry instrumentation will not work with Bun, because Bun does not support Node's `register` hook. This means that some libraries that rely on this hook will not work with Bun.
 
 ## Initial setup
 
@@ -109,7 +109,3 @@ yarn dlx trigger.dev@latest dev
 <CliViewRunStep />
 
 </Steps>
-
-## Known issues
-
-- Certain OpenTelemetry instrumentation will not work with Bun, because Bun does not support Node's `register` hook. This means that some libraries that rely on this hook will not work with Bun.

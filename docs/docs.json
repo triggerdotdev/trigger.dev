@@ -166,6 +166,10 @@
             ]
           },
           {
+            "group": "MCP Server",
+            "pages": ["mcp-introduction", "mcp-tools", "mcp-agent-rules"]
+          },
+          {
             "group": "Using the Dashboard",
             "pages": ["run-tests", "troubleshooting-alerts", "replaying", "bulk-actions"]
           },
@@ -298,7 +302,6 @@
                   "guides/ai-agents/verify-news-article"
                 ]
               },
-              "guides/cursor-rules",
               "guides/frameworks/drizzle",
               "guides/frameworks/prisma",
               "guides/frameworks/sequin",
@@ -338,7 +341,6 @@
               "guides/example-projects/human-in-the-loop-workflow",
               "guides/example-projects/mastra-agents-with-memory",
               "guides/example-projects/meme-generator-human-in-the-loop",
-              "guides/example-projects/openai-agent-sdk-guardrails",
               "guides/example-projects/openai-agents-sdk-typescript-playground",
               "guides/example-projects/realtime-csv-importer",
               "guides/example-projects/realtime-fal-ai",
@@ -350,6 +352,7 @@
           {
             "group": "Python guides",
             "pages": [
+              "guides/example-projects/openai-agent-sdk-guardrails",
               "guides/python/python-image-processing",
               "guides/python/python-doc-to-markdown",
               "guides/python/python-crawl4ai",
@@ -619,6 +622,14 @@
     {
       "source": "/management/projects/runs",
       "destination": "/management/overview"
+    },
+    {
+      "source": "/guides/cursor-rules",
+      "destination": "/mcp-agent-rules"
+    },
+    {
+      "source": "/agents/rules/overview",
+      "destination": "/mcp-agent-rules"
     },
     {
       "source": "/upgrade-to-v4",

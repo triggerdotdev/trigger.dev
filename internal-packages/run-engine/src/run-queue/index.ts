@@ -35,7 +35,6 @@ import {
   attributesFromAuthenticatedEnv,
   MinimalAuthenticatedEnvironment,
 } from "../shared/index.js";
-import { MessageNotFoundError } from "./errors.js";
 import {
   InputPayload,
   OutputPayload,
@@ -71,6 +70,9 @@ export type RunQueueOptions = {
   shardCount?: number;
   masterQueueConsumersDisabled?: boolean;
   masterQueueConsumersIntervalMs?: number;
+  masterQueueCooloffPeriodMs?: number;
+  masterQueueCooloffCountThreshold?: number;
+  masterQueueConsumerDequeueCount?: number;
   processWorkerQueueDebounceMs?: number;
   workerOptions?: {
     pollIntervalMs?: number;
@@ -98,6 +100,7 @@ type DequeuedMessage = {
   messageId: string;
   messageScore: string;
   message: OutputPayload;
+  workerQueueLength?: number;
 };
 
 type MarkedRun = {
@@ -142,6 +145,16 @@ const workerCatalog = {
   },
 };
 
+type QueueCooloffState =
+  | {
+      _tag: "normal";
+      consecutiveFailures: number;
+    }
+  | {
+      _tag: "cooloff";
+      cooloffExpiresAt: number;
+    };
+
 /**
  * RunQueue – the queue that's used to process runs
  */
@@ -158,6 +171,7 @@ export class RunQueue {
   private worker: Worker<typeof workerCatalog>;
   private _observableWorkerQueues: Set<string> = new Set();
   private _meter: Meter;
+  private _queueCooloffStates: Map<string, QueueCooloffState> = new Map();
 
   constructor(public readonly options: RunQueueOptions) {
     this.shardCount = options.shardCount ?? 2;
@@ -602,13 +616,20 @@ export class RunQueue {
    */
   public async dequeueMessageFromWorkerQueue(
     consumerId: string,
-    workerQueue: string
+    workerQueue: string,
+    options?: {
+      blockingPop?: boolean;
+      blockingPopTimeoutSeconds?: number;
+    }
   ): Promise<DequeuedMessage | undefined> {
     return this.#trace(
       "dequeueMessageFromWorkerQueue",
       async (span) => {
         const dequeuedMessage = await this.#callDequeueMessageFromWorkerQueue({
           workerQueue,
+          blockingPop: options?.blockingPop ?? true,
+          blockingPopTimeoutSeconds:
+            options?.blockingPopTimeoutSeconds ?? this.options.dequeueBlockingTimeoutSeconds ?? 10,
         });
 
         if (!dequeuedMessage) {
@@ -1078,7 +1099,13 @@ export class RunQueue {
 
         const now = performance.now();
 
-        const [error, results] = await tryCatch(this.#processMasterQueueShard(shard, consumerId));
+        const [error, results] = await tryCatch(
+          this.#processMasterQueueShard(
+            shard,
+            consumerId,
+            this.options.masterQueueConsumerDequeueCount ?? 10
+          )
+        );
 
         if (error) {
           this.logger.error(`Failed to process master queue shard ${shard}`, {
@@ -1190,7 +1217,9 @@ export class RunQueue {
           consumerId
         );
 
+        span.setAttribute("master_queue_key", masterQueueKey);
         span.setAttribute("environment_count", envQueues.length);
+        span.setAttribute("max_count", maxCount);
 
         if (envQueues.length === 0) {
           return [];
@@ -1198,11 +1227,27 @@ export class RunQueue {
 
         let attemptedEnvs = 0;
         let attemptedQueues = 0;
+        let messagesDequeued = 0;
+        let cooloffPeriodCount = 0;
 
         for (const env of envQueues) {
           attemptedEnvs++;
 
           for (const queue of env.queues) {
+            const cooloffState = this._queueCooloffStates.get(queue) ?? {
+              _tag: "normal",
+              consecutiveFailures: 0,
+            };
+
+            if (cooloffState._tag === "cooloff") {
+              if (cooloffState.cooloffExpiresAt > Date.now()) {
+                cooloffPeriodCount++;
+                continue;
+              } else {
+                this._queueCooloffStates.delete(queue);
+              }
+            }
+
             attemptedQueues++;
 
             // Attempt to dequeue from this queue
@@ -1217,9 +1262,10 @@ export class RunQueue {
 
             if (error) {
               this.logger.error(
-                `[processMasterQueueShard][${this.name}] Failed to dequeue from queue ${queue}`,
+                `[processMasterQueueShard][${this.name}] Failed to dequeue from queue`,
                 {
                   error,
+                  queue,
                 }
               );
 
@@ -1227,12 +1273,55 @@ export class RunQueue {
             }
 
             if (messages.length === 0) {
+              if (cooloffState._tag === "normal") {
+                const cooloffCountThreshold = Math.max(
+                  1,
+                  this.options.masterQueueCooloffCountThreshold ?? 10
+                ); // Don't let the cooloff count be less than 1
+
+                this.logger.debug("Evaluating cooloff state", {
+                  queue,
+                  cooloffState,
+                  cooloffCountThreshold,
+                  consecutiveFailures: cooloffState.consecutiveFailures,
+                });
+
+                if (cooloffState.consecutiveFailures >= cooloffCountThreshold) {
+                  this.logger.debug("Setting cooloff state", {
+                    queue,
+                    cooloffState,
+                    cooloffCountThreshold,
+                    consecutiveFailures: cooloffState.consecutiveFailures,
+                    cooloffExpiresAt: new Date(
+                      Date.now() + (this.options.masterQueueCooloffPeriodMs ?? 10_000)
+                    ),
+                  });
+
+                  this._queueCooloffStates.set(queue, {
+                    _tag: "cooloff",
+                    cooloffExpiresAt:
+                      Date.now() + (this.options.masterQueueCooloffPeriodMs ?? 10_000),
+                  });
+                } else {
+                  this._queueCooloffStates.set(queue, {
+                    _tag: "normal",
+                    consecutiveFailures: cooloffState.consecutiveFailures + 1,
+                  });
+                }
+              }
+
               continue;
             }
+
+            messagesDequeued += messages.length;
 
             await this.#enqueueMessagesToWorkerQueues(messages);
           }
         }
+
+        span.setAttribute("attempted_envs", attemptedEnvs);
+        span.setAttribute("attempted_queues", attemptedQueues);
+        span.setAttribute("messages_dequeued", messagesDequeued);
       },
       {
         kind: SpanKind.CONSUMER,
@@ -1259,7 +1348,15 @@ export class RunQueue {
       maxCount: 10,
     });
 
+    if (messages.length === 0) {
+      return;
+    }
+
     await this.#enqueueMessagesToWorkerQueues(messages);
+
+    if (messages.length === 10) {
+      await this.#processQueueForWorkerQueue(queueKey, environmentId);
+    }
   }
 
   async #enqueueMessagesToWorkerQueues(messages: DequeuedMessage[]) {
@@ -1354,170 +1451,242 @@ export class RunQueue {
     shard: number;
     maxCount: number;
   }): Promise<DequeuedMessage[]> {
-    const queueConcurrencyLimitKey = this.keys.queueConcurrencyLimitKeyFromQueue(messageQueue);
-    const queueCurrentConcurrencyKey = this.keys.queueCurrentConcurrencyKeyFromQueue(messageQueue);
-    const envConcurrencyLimitKey = this.keys.envConcurrencyLimitKeyFromQueue(messageQueue);
-    const envConcurrencyLimitBurstFactorKey =
-      this.keys.envConcurrencyLimitBurstFactorKeyFromQueue(messageQueue);
-    const envCurrentConcurrencyKey = this.keys.envCurrentConcurrencyKeyFromQueue(messageQueue);
-    const messageKeyPrefix = this.keys.messageKeyPrefixFromQueue(messageQueue);
-    const envQueueKey = this.keys.envQueueKeyFromQueue(messageQueue);
-    const masterQueueKey = this.keys.masterQueueKeyForShard(shard);
+    return this.#trace("callDequeueMessagesFromQueue", async (span) => {
+      span.setAttributes({
+        messageQueue,
+        shard,
+        maxCount,
+      });
 
-    this.logger.debug("#callDequeueMessagesFromQueue", {
-      messageQueue,
-      queueConcurrencyLimitKey,
-      envConcurrencyLimitKey,
-      envConcurrencyLimitBurstFactorKey,
-      queueCurrentConcurrencyKey,
-      envCurrentConcurrencyKey,
-      messageKeyPrefix,
-      envQueueKey,
-      masterQueueKey,
-      shard,
-      maxCount,
-    });
+      const queueConcurrencyLimitKey = this.keys.queueConcurrencyLimitKeyFromQueue(messageQueue);
+      const queueCurrentConcurrencyKey =
+        this.keys.queueCurrentConcurrencyKeyFromQueue(messageQueue);
+      const envConcurrencyLimitKey = this.keys.envConcurrencyLimitKeyFromQueue(messageQueue);
+      const envConcurrencyLimitBurstFactorKey =
+        this.keys.envConcurrencyLimitBurstFactorKeyFromQueue(messageQueue);
+      const envCurrentConcurrencyKey = this.keys.envCurrentConcurrencyKeyFromQueue(messageQueue);
+      const messageKeyPrefix = this.keys.messageKeyPrefixFromQueue(messageQueue);
+      const envQueueKey = this.keys.envQueueKeyFromQueue(messageQueue);
+      const masterQueueKey = this.keys.masterQueueKeyForShard(shard);
 
-    const result = await this.redis.dequeueMessagesFromQueue(
-      //keys
-      messageQueue,
-      queueConcurrencyLimitKey,
-      envConcurrencyLimitKey,
-      envConcurrencyLimitBurstFactorKey,
-      queueCurrentConcurrencyKey,
-      envCurrentConcurrencyKey,
-      messageKeyPrefix,
-      envQueueKey,
-      masterQueueKey,
-      //args
-      messageQueue,
-      String(Date.now()),
-      String(this.options.defaultEnvConcurrency),
-      String(this.options.defaultEnvConcurrencyBurstFactor ?? 1),
-      this.options.redis.keyPrefix ?? "",
-      String(maxCount)
-    );
+      this.logger.debug("#callDequeueMessagesFromQueue", {
+        messageQueue,
+        queueConcurrencyLimitKey,
+        envConcurrencyLimitKey,
+        envConcurrencyLimitBurstFactorKey,
+        queueCurrentConcurrencyKey,
+        envCurrentConcurrencyKey,
+        messageKeyPrefix,
+        envQueueKey,
+        masterQueueKey,
+        shard,
+        maxCount,
+      });
 
-    if (!result) {
-      return [];
-    }
+      const result = await this.redis.dequeueMessagesFromQueue(
+        //keys
+        messageQueue,
+        queueConcurrencyLimitKey,
+        envConcurrencyLimitKey,
+        envConcurrencyLimitBurstFactorKey,
+        queueCurrentConcurrencyKey,
+        envCurrentConcurrencyKey,
+        messageKeyPrefix,
+        envQueueKey,
+        masterQueueKey,
+        //args
+        messageQueue,
+        String(Date.now()),
+        String(this.options.defaultEnvConcurrency),
+        String(this.options.defaultEnvConcurrencyBurstFactor ?? 1),
+        this.options.redis.keyPrefix ?? "",
+        String(maxCount)
+      );
 
-    this.logger.debug("dequeueMessagesFromQueue raw result", {
-      result,
-      service: this.name,
-    });
+      if (!result) {
+        span.setAttribute("message_count", 0);
 
-    const messages = [];
-    for (let i = 0; i < result.length; i += 3) {
-      const messageId = result[i];
-      const messageScore = result[i + 1];
-      const rawMessage = result[i + 2];
-
-      //read message
-      const parsedMessage = OutputPayload.safeParse(JSON.parse(rawMessage));
-      if (!parsedMessage.success) {
-        this.logger.error(`[${this.name}] Failed to parse message`, {
-          messageId,
-          error: parsedMessage.error,
-          service: this.name,
-        });
-
-        continue;
+        return [];
       }
 
-      const message = parsedMessage.data;
-
-      messages.push({
-        messageId,
-        messageScore,
-        message,
+      this.logger.debug("dequeueMessagesFromQueue raw result", {
+        result,
+        service: this.name,
       });
-    }
 
-    this.logger.debug("dequeueMessagesFromQueue parsed result", {
-      messages,
-      service: this.name,
+      const messages = [];
+      for (let i = 0; i < result.length; i += 3) {
+        const messageId = result[i];
+        const messageScore = result[i + 1];
+        const rawMessage = result[i + 2];
+
+        //read message
+        const parsedMessage = OutputPayload.safeParse(JSON.parse(rawMessage));
+        if (!parsedMessage.success) {
+          this.logger.error(`[${this.name}] Failed to parse message`, {
+            messageId,
+            error: parsedMessage.error,
+            service: this.name,
+          });
+
+          continue;
+        }
+
+        const message = parsedMessage.data;
+
+        messages.push({
+          messageId,
+          messageScore,
+          message,
+        });
+      }
+
+      this.logger.debug("dequeueMessagesFromQueue parsed result", {
+        messages,
+        service: this.name,
+      });
+
+      const filteredMessages = messages.filter(Boolean) as DequeuedMessage[];
+
+      span.setAttribute("message_count", filteredMessages.length);
+
+      return filteredMessages;
     });
-
-    return messages.filter(Boolean) as DequeuedMessage[];
   }
 
   async #callDequeueMessageFromWorkerQueue({
     workerQueue,
+    blockingPop,
+    blockingPopTimeoutSeconds,
   }: {
     workerQueue: string;
+    blockingPop: boolean;
+    blockingPopTimeoutSeconds: number;
   }): Promise<DequeuedMessage | undefined> {
     const workerQueueKey = this.keys.workerQueueKey(workerQueue);
 
-    this.logger.debug("#callDequeueMessageFromWorkerQueue", {
-      workerQueue,
-      workerQueueKey,
-    });
-
-    if (this.abortController.signal.aborted) {
-      return;
-    }
-
-    const blockingClient = this.#createBlockingDequeueClient();
-
-    async function cleanup() {
-      await blockingClient.quit();
-    }
-
-    this.abortController.signal.addEventListener("abort", cleanup);
-
-    const result = await blockingClient.blpop(
-      workerQueueKey,
-      this.options.dequeueBlockingTimeoutSeconds ?? 10
-    );
-
-    this.abortController.signal.removeEventListener("abort", cleanup);
-
-    cleanup().then(() => {
-      this.logger.debug("dequeueMessageFromWorkerQueue cleanup", {
-        service: this.name,
+    if (blockingPop) {
+      this.logger.debug("#callDequeueMessageFromWorkerQueue blocking pop", {
+        workerQueue,
+        workerQueueKey,
+        blockingPopTimeoutSeconds,
       });
-    });
 
-    if (!result) {
-      return;
-    }
+      if (this.abortController.signal.aborted) {
+        return;
+      }
 
-    this.logger.debug("dequeueMessageFromWorkerQueue raw result", {
-      result,
-      service: this.name,
-    });
+      const blockingClient = this.#createBlockingDequeueClient();
 
-    if (result.length !== 2) {
-      this.logger.error("Invalid dequeue message from worker queue result", {
+      async function cleanup() {
+        await blockingClient.quit();
+      }
+
+      this.abortController.signal.addEventListener("abort", cleanup);
+
+      const result = await this.#trace("popMessageFromWorkerQueue", async (span) => {
+        span.setAttributes({
+          workerQueue,
+          workerQueueKey,
+          blockingPopTimeoutSeconds,
+          blocking: true,
+        });
+
+        return await blockingClient.blpop(workerQueueKey, blockingPopTimeoutSeconds);
+      });
+
+      this.abortController.signal.removeEventListener("abort", cleanup);
+
+      cleanup().then(() => {
+        this.logger.debug("dequeueMessageFromWorkerQueue cleanup", {
+          service: this.name,
+        });
+      });
+
+      if (!result) {
+        return;
+      }
+
+      this.logger.debug("dequeueMessageFromWorkerQueue raw result", {
         result,
         service: this.name,
       });
-      return;
-    }
 
-    // Make sure they are both strings
-    if (typeof result[0] !== "string" || typeof result[1] !== "string") {
-      this.logger.error("Invalid dequeue message from worker queue result", {
-        result,
-        service: this.name,
+      if (result.length !== 2) {
+        this.logger.error("Invalid dequeue message from worker queue result", {
+          result,
+          service: this.name,
+        });
+        return;
+      }
+
+      // Make sure they are both strings
+      if (typeof result[0] !== "string" || typeof result[1] !== "string") {
+        this.logger.error("Invalid dequeue message from worker queue result", {
+          result,
+          service: this.name,
+        });
+        return;
+      }
+
+      const [, messageKey] = result;
+
+      const workerQueueLength = await this.#trace("getWorkerQueueLength", async (span) => {
+        span.setAttributes({
+          workerQueue,
+          workerQueueKey,
+        });
+
+        return await this.redis.llen(workerQueueKey);
       });
-      return;
+
+      const message = await this.#dequeueMessageFromKey(messageKey);
+
+      if (!message) {
+        return;
+      }
+
+      return {
+        messageId: message.runId,
+        messageScore: String(message.timestamp),
+        message,
+        workerQueueLength,
+      };
+    } else {
+      this.logger.debug("#callDequeueMessageFromWorkerQueue non-blocking pop", {
+        workerQueue,
+        workerQueueKey,
+      });
+
+      const result = await this.#trace("popMessageFromWorkerQueue", async (span) => {
+        span.setAttributes({
+          workerQueue,
+          workerQueueKey,
+          blocking: false,
+        });
+
+        return await this.redis.dequeueMessageFromWorkerQueueNonBlocking(workerQueueKey);
+      });
+
+      if (!result) {
+        return;
+      }
+
+      const [messageKey, workerQueueLength] = result;
+
+      const message = await this.#dequeueMessageFromKey(messageKey);
+
+      if (!message) {
+        return;
+      }
+
+      return {
+        messageId: message.runId,
+        messageScore: String(message.timestamp),
+        message,
+        workerQueueLength: Number(workerQueueLength),
+      };
     }
-
-    const [, messageKey] = result;
-
-    const message = await this.#dequeueMessageFromKey(messageKey);
-
-    if (!message) {
-      return;
-    }
-
-    return {
-      messageId: message.runId,
-      messageScore: String(message.timestamp),
-      message,
-    };
   }
 
   async #callAcknowledgeMessage({
@@ -1941,27 +2110,42 @@ export class RunQueue {
   }
 
   async #dequeueMessageFromKey(messageKey: string) {
-    const rawMessage = await this.redis.dequeueMessageFromKey(
-      messageKey,
-      this.options.redis.keyPrefix ?? ""
-    );
-
-    if (!rawMessage) {
-      return;
-    }
-
-    const [error, message] = parseRawMessage(rawMessage);
-
-    if (error) {
-      this.logger.error(`[${this.name}] Failed to parse message`, {
+    return this.#trace("dequeueMessageFromKey", async (span) => {
+      span.setAttributes({
         messageKey,
-        error,
-        service: this.name,
-        message: message ?? rawMessage,
       });
-    }
 
-    return message;
+      const rawMessage = await this.redis.dequeueMessageFromKey(
+        messageKey,
+        this.options.redis.keyPrefix ?? ""
+      );
+
+      if (!rawMessage) {
+        span.setAttribute("result", "NO_MESSAGE");
+
+        return;
+      }
+
+      const [error, message] = parseRawMessage(rawMessage);
+
+      if (error) {
+        this.logger.error(`[${this.name}] Failed to parse message`, {
+          messageKey,
+          error,
+          service: this.name,
+          message: message ?? rawMessage,
+        });
+      }
+
+      if (message) {
+        span.setAttribute("result", "SUCCESS");
+        span.setAttribute("messageId", message.runId);
+      } else {
+        span.setAttribute("result", "NO_MESSAGE");
+      }
+
+      return message;
+    });
   }
 
   #registerCommands() {
@@ -2126,6 +2310,26 @@ end
 
 -- Return results as a flat array: [messageId1, messageScore1, messagePayload1, messageId2, messageScore2, messagePayload2, ...]
 return results
+      `,
+    });
+
+    this.redis.defineCommand("dequeueMessageFromWorkerQueueNonBlocking", {
+      numberOfKeys: 1,
+      lua: `
+local workerQueueKey = KEYS[1]
+
+-- lpop the first message from the worker queue
+local messageId = redis.call('LPOP', workerQueueKey)
+
+-- if there is no messageId, return nil
+if not messageId then
+    return nil
+end
+
+-- get the length of the worker queue
+local queueLength = tonumber(redis.call('LLEN', workerQueueKey) or '0')
+
+return {messageId, queueLength} -- Return message details
       `,
     });
 
@@ -2441,6 +2645,11 @@ declare module "@internal/redis" {
       maxCount: string,
       callback?: Callback<string[]>
     ): Result<string[], Context>;
+
+    dequeueMessageFromWorkerQueueNonBlocking(
+      workerQueueKey: string,
+      callback?: Callback<[string, string] | undefined>
+    ): Result<[string, string] | undefined, Context>;
 
     dequeueMessageFromKey(
       // keys

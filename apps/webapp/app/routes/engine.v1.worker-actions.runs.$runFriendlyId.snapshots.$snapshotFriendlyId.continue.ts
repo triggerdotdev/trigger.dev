@@ -14,6 +14,7 @@ export const loader = createLoaderWorkerApiRoute(
   async ({
     authenticatedWorker,
     params,
+    runnerId,
   }): Promise<TypedResponse<WorkerApiContinueRunExecutionRequestBody>> => {
     const { runFriendlyId, snapshotFriendlyId } = params;
 
@@ -23,12 +24,17 @@ export const loader = createLoaderWorkerApiRoute(
       const continuationResult = await authenticatedWorker.continueRunExecution({
         runFriendlyId,
         snapshotFriendlyId,
+        runnerId,
       });
 
       return json(continuationResult);
     } catch (error) {
-      logger.error("Failed to suspend run", { runFriendlyId, snapshotFriendlyId, error });
-      throw error;
+      logger.warn("Failed to suspend run", { runFriendlyId, snapshotFriendlyId, error });
+      if (error instanceof Error) {
+        throw json({ error: error.message }, { status: 422 });
+      }
+
+      throw json({ error: "Failed to continue run execution" }, { status: 422 });
     }
   }
 );

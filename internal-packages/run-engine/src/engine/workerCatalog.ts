@@ -12,6 +12,7 @@ export const workerCatalog = {
     schema: z.object({
       runId: z.string(),
       snapshotId: z.string(),
+      restartAttempt: z.number().optional(),
     }),
     visibilityTimeoutMs: 30_000,
   },

@@ -84,17 +84,17 @@ branch are tagged into a release periodically.
 
 2. Once the app is running click the magic link button and enter your email. You will automatically be logged in, since you are running locally. Create an Org and your first project in the dashboard.
 
-## Manual testing using v3-catalog
+## Manual testing using hello-world
 
-We use the `<root>/references/v3-catalog` subdirectory as a staging ground for testing changes to the SDK (`@trigger.dev/sdk` at `<root>/packages/trigger-sdk`), the Core package (`@trigger.dev/core` at `<root>packages/core`), the CLI (`trigger.dev` at `<root>/packages/cli-v3`) and the platform (The remix app at `<root>/apps/webapp`). The instructions below will get you started on using the `v3-catalog` for local development of Trigger.dev (v3).
+We use the `<root>/references/hello-world` subdirectory as a staging ground for testing changes to the SDK (`@trigger.dev/sdk` at `<root>/packages/trigger-sdk`), the Core package (`@trigger.dev/core` at `<root>packages/core`), the CLI (`trigger.dev` at `<root>/packages/cli-v3`) and the platform (The remix app at `<root>/apps/webapp`). The instructions below will get you started on using the `hello-world` for local development of Trigger.dev.
 
 ### First-time setup
 
 First, make sure you are running the webapp according to the instructions above. Then:
 
-1. Visit http://localhost:3030 in your browser and create a new V3 project called "v3-catalog".
+1. Visit http://localhost:3030 in your browser and create a new V3 project called "hello-world".
 
-2. In Postgres go to the "Projects" table and for the project you create change the `externalRef` to `yubjwjsfkxnylobaqvqz`.
+2. In Postgres go to the "Projects" table and for the project you create change the `externalRef` to `proj_rrkpdguyagvsoktglnod`.
 
 3. Build the CLI
 
@@ -105,10 +105,10 @@ pnpm run build --filter trigger.dev
 pnpm i
 ```
 
-4. Change into the `<root>/references/v3-catalog` directory and authorize the CLI to the local server:
+4. Change into the `<root>/references/hello-world` directory and authorize the CLI to the local server:
 
 ```sh
-cd references/v3-catalog
+cd references/hello-world
 cp .env.example .env
 pnpm exec trigger login -a http://localhost:3030
 ```
@@ -118,7 +118,7 @@ This will open a new browser window and authorize the CLI against your local use
 You can optionally pass a `--profile` flag to the `login` command, which will allow you to use the CLI with separate accounts/servers. We suggest using a profile called `local` for your local development:
 
 ```sh
-cd references/v3-catalog
+cd references/hello-world
 pnpm exec trigger login -a http://localhost:3030 --profile local
 # later when you run the dev or deploy command:
 pnpm exec trigger dev --profile local
@@ -137,84 +137,29 @@ The following steps should be followed any time you start working on a new featu
 pnpm run dev --filter trigger.dev --filter "@trigger.dev/*"
 ```
 
-3. Open another terminal window, and change into the `<root>/references/v3-catalog` directory.
+3. Open another terminal window, and change into the `<root>/references/hello-world` directory.
 
-4. You'll need to run the following commands to setup prisma and migrate the database:
-
-```sh
-pnpm exec prisma migrate deploy
-pnpm run generate:prisma
-```
-
-5. Run the `dev` command, which will register all the local tasks with the platform and allow you to start testing task execution:
+4. Run the `dev` command, which will register all the local tasks with the platform and allow you to start testing task execution:
 
 ```sh
-# in <root>/references/v3-catalog
+# in <root>/references/hello-world
 pnpm exec trigger dev
 ```
 
 If you want additional debug logging, you can use the `--log-level debug` flag:
 
 ```sh
-# in <root>/references/v3-catalog
+# in <root>/references/hello-world
 pnpm exec trigger dev --log-level debug
 ```
 
-6. If you make any changes in the CLI/Core/SDK, you'll need to `CTRL+C` to exit the `dev` command and restart it to pickup changes. Any changes to the files inside of the `v3-catalog/src/trigger` dir will automatically be rebuilt by the `dev` command.
+6. If you make any changes in the CLI/Core/SDK, you'll need to `CTRL+C` to exit the `dev` command and restart it to pickup changes. Any changes to the files inside of the `hello-world/src/trigger` dir will automatically be rebuilt by the `dev` command.
 
-7. Navigate to the `v3-catalog` project in your local dashboard at localhost:3030 and you should see the list of tasks.
+7. Navigate to the `hello-world` project in your local dashboard at localhost:3030 and you should see the list of tasks.
 
-8. Go to the "Test" page in the sidebar and select a task. Then enter a payload and click "Run test". You can tell what the payloads should be by looking at the relevant task file inside the `/references/v3-catalog/src/trigger` folder. Many of them accept an empty payload.
+8. Go to the "Test" page in the sidebar and select a task. Then enter a payload and click "Run test". You can tell what the payloads should be by looking at the relevant task file inside the `/references/hello-world/src/trigger` folder. Many of them accept an empty payload.
 
-9. Feel free to add additional files in `v3-catalog/src/trigger` to test out specific aspects of the system, or add in edge cases.
-
-## Running end-to-end webapp tests (deprecated)
-
-To run the end-to-end tests, follow the steps below:
-
-1. Set up environment variables (copy example envs into the correct place)
-
-```sh
-cp ./.env.example ./.env
-cp ./references/nextjs-test/.env.example ./references/nextjs-test/.env.local
-```
-
-2. Set up dependencies
-
-```sh
-# Build packages
-pnpm run build --filter @references/nextjs-test^...
-pnpm --filter @trigger.dev/database generate
-
-# Move trigger-cli bin to correct place
-pnpm install --frozen-lockfile
-
-# Install playwrite browsers (ONE TIME ONLY)
-npx playwright install
-```
-
-3. Set up the database
-
-```sh
-pnpm run docker
-pnpm run db:migrate
-pnpm run db:seed
-```
-
-4. Run the end-to-end tests
-
-```sh
-pnpm run test:e2e
-```
-
-### Cleanup
-
-The end-to-end tests use a `setup` and `teardown` script to seed the database with test data. If the test runner doesn't exit cleanly, then the database can be left in a state where the tests can't run because the `setup` script will try to create data that already exists. If this happens, you can manually delete the `users` and `organizations` from the database using prisma studio:
-
-```sh
-# With the database running (i.e. pnpm run docker)
-pnpm run db:studio
-```
+9. Feel free to add additional files in `hello-world/src/trigger` to test out specific aspects of the system, or add in edge cases.
 
 ## Adding and running migrations
 

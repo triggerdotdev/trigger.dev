@@ -2,7 +2,7 @@ import { ArrowPathIcon } from "@heroicons/react/20/solid";
 import { Form, useRevalidator } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
-import { BulkActionStatus, BulkActionType } from "@trigger.dev/database";
+import type { BulkActionType } from "@trigger.dev/database";
 import { motion } from "framer-motion";
 import { useEffect } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -135,7 +135,7 @@ export default function Page() {
   const project = useProject();
   const environment = useEnvironment();
 
-  const disabled = bulkAction.status !== BulkActionStatus.PENDING;
+  const disabled = bulkAction.status !== "PENDING";
 
   const streamedEvents = useEventSource(
     `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.id}/runs/bulkaction/${bulkAction.friendlyId}/stream`,
@@ -239,7 +239,7 @@ export default function Page() {
                   <BulkActionFilterSummary
                     selected={bulkAction.totalCount}
                     mode={bulkAction.mode}
-                    action={bulkAction.type === BulkActionType.REPLAY ? "replay" : "cancel"}
+                    action={bulkAction.type === "REPLAY" ? "replay" : "cancel"}
                     filters={bulkAction.filters}
                     final={true}
                   />
@@ -327,7 +327,7 @@ function Meter({ type, successCount, failureCount, totalCount }: MeterProps) {
           <div className="h-2 w-2 rounded-[1px] bg-charcoal-550" />
           <Paragraph variant="extra-small">
             {formatNumber(failureCount)} {typeText(type)} failed{" "}
-            {type === BulkActionType.CANCEL ? " (already finished)" : ""}
+            {type === "CANCEL" ? " (already finished)" : ""}
           </Paragraph>
         </div>
       </div>
@@ -337,9 +337,9 @@ function Meter({ type, successCount, failureCount, totalCount }: MeterProps) {
 
 function typeText(type: BulkActionType) {
   switch (type) {
-    case BulkActionType.CANCEL:
+    case "CANCEL":
       return "canceled";
-    case BulkActionType.REPLAY:
+    case "REPLAY":
       return "replayed";
   }
 }
