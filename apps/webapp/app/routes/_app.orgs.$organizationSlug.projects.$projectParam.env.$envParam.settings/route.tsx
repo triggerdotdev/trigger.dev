@@ -963,11 +963,38 @@ function ConnectedGitHubRepoForm({
             />
           </span>
         </div>
-        <Form method="post">
-          <Button type="submit" name="action" value="disconnect-repo" variant="minimal/small">
-            Disconnect
-          </Button>
-        </Form>
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button variant="minimal/small">
+              Disconnect
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-md">
+            <DialogHeader>Disconnect GitHub repository</DialogHeader>
+            <div className="flex flex-col gap-3 pt-3">
+              <Paragraph className="mb-1">
+                Are you sure you want to disconnect{" "}
+                <span className="font-semibold">{connectedGitHubRepo.repository.fullName}</span>? 
+                This will stop automatic deployments from GitHub.
+              </Paragraph>
+              <FormButtons
+                confirmButton={
+                  <Form method="post">
+                    <input type="hidden" name="action" value="disconnect-repo" />
+                    <Button type="submit" variant="danger/medium">
+                      Disconnect repository
+                    </Button>
+                  </Form>
+                }
+                cancelButton={
+                  <DialogClose asChild>
+                    <Button variant="tertiary/medium">Cancel</Button>
+                  </DialogClose>
+                }
+              />
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
 
       <Form method="post" {...gitSettingsForm.props}>
