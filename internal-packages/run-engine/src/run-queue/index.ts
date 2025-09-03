@@ -42,6 +42,7 @@ import {
   RunQueueKeyProducer,
   RunQueueSelectionStrategy,
 } from "./types.js";
+import { WorkerQueueResolver } from "./workerQueueResolver.js";
 
 const SemanticAttributes = {
   QUEUE: "runqueue.queue",
@@ -169,6 +170,7 @@ export class RunQueue {
   private shardCount: number;
   private abortController: AbortController;
   private worker: Worker<typeof workerCatalog>;
+  private workerQueueResolver: WorkerQueueResolver;
   private _observableWorkerQueues: Set<string> = new Set();
   private _meter: Meter;
   private _queueCooloffStates: Map<string, QueueCooloffState> = new Map();
@@ -185,6 +187,8 @@ export class RunQueue {
       },
     });
     this.logger = options.logger ?? new Logger("RunQueue", options.logLevel ?? "info");
+
+    this.workerQueueResolver = new WorkerQueueResolver({ logger: this.logger });
     this._meter = options.meter ?? getMeter("run-queue");
 
     const workerQueueObservableGauge = this._meter.createObservableGauge(
@@ -1845,19 +1849,8 @@ export class RunQueue {
     );
   }
 
-  #getWorkerQueueFromMessage(message: OutputPayload) {
-    if (message.version === "2") {
-      return message.workerQueue;
-    }
-
-    // In v2, if the environment is development, the worker queue is the environment id.
-    if (message.environmentType === "DEVELOPMENT") {
-      return message.environmentId;
-    }
-
-    // In v1, the master queue is something like us-nyc-3,
-    // which in v2 is the worker queue.
-    return message.masterQueues[0];
+  #getWorkerQueueFromMessage(message: OutputPayload): string {
+    return this.workerQueueResolver.getWorkerQueueFromMessage(message);
   }
 
   #createBlockingDequeueClient() {
