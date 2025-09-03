@@ -8,8 +8,6 @@ import {
 } from "../app/v3/getDeploymentImageRef.server";
 import { DeleteRepositoryCommand } from "@aws-sdk/client-ecr";
 
-const escapeHostForRegex = (host: string) => host.replace(/\./g, "\\.");
-
 describe("getDeploymentImageRef", () => {
   const testHost =
     process.env.DEPLOY_REGISTRY_HOST || "123456789012.dkr.ecr.us-east-1.amazonaws.com";
@@ -74,12 +72,8 @@ describe("getDeploymentImageRef", () => {
     });
 
     // Check the image ref structure and that it contains expected parts
-    expect(imageRef.imageRef).toMatch(
-      new RegExp(
-        `^${escapeHostForRegex(
-          "registry.example.com"
-        )}/${testNamespace}/${testProjectRef}:20250630\\.1\\.development\\.test1234$`
-      )
+    expect(imageRef.imageRef).toBe(
+      `registry.example.com/${testNamespace}/${testProjectRef}:20250630.1.development.test1234`
     );
     expect(imageRef.isEcr).toBe(false);
   });
@@ -103,12 +97,8 @@ describe("getDeploymentImageRef", () => {
         deploymentShortCode: "test1234",
       });
 
-      expect(imageRef1.imageRef).toMatch(
-        new RegExp(
-          `^${escapeHostForRegex(
-            testHost
-          )}/${testNamespace}/${testProjectRef2}:20250630\\.1\\.development\\.test1234$`
-        )
+      expect(imageRef1.imageRef).toBe(
+        `${testHost}/${testNamespace}/${testProjectRef2}:20250630.1.development.test1234`
       );
       expect(imageRef1.isEcr).toBe(true);
       expect(imageRef1.repoCreated).toBe(true);
@@ -129,12 +119,8 @@ describe("getDeploymentImageRef", () => {
         deploymentShortCode: "test1234",
       });
 
-      expect(imageRef2.imageRef).toMatch(
-        new RegExp(
-          `^${escapeHostForRegex(
-            testHost
-          )}/${testNamespace}/${testProjectRef2}:20250630\\.2\\.development\\.test1234$`
-        )
+      expect(imageRef2.imageRef).toBe(
+        `${testHost}/${testNamespace}/${testProjectRef2}:20250630.2.development.test1234`
       );
       expect(imageRef2.isEcr).toBe(true);
       expect(imageRef2.repoCreated).toBe(false);
@@ -159,12 +145,8 @@ describe("getDeploymentImageRef", () => {
       deploymentShortCode: "test1234",
     });
 
-    expect(imageRef.imageRef).toMatch(
-      new RegExp(
-        `^${escapeHostForRegex(
-          testHost
-        )}/${testNamespace}/${testProjectRef}:20250630\\.2\\.production\\.test1234$`
-      )
+    expect(imageRef.imageRef).toBe(
+      `${testHost}/${testNamespace}/${testProjectRef}:20250630.2.production.test1234`
     );
     expect(imageRef.isEcr).toBe(true);
   });
@@ -206,20 +188,12 @@ describe("getDeploymentImageRef", () => {
       deploymentShortCode: "test4321",
     });
 
-    // Even with the same environment type and version, the image refs should be different due to random suffix
-    expect(firstImageRef.imageRef).toMatch(
-      new RegExp(
-        `^${escapeHostForRegex(
-          "registry.example.com"
-        )}/${testNamespace}/${testProjectRef}:${sameVersion}\\.preview\\.test1234$`
-      )
+    // Even with the same environment type and version, the image refs should be different due to deployment short codes
+    expect(firstImageRef.imageRef).toBe(
+      `registry.example.com/${testNamespace}/${testProjectRef}:${sameVersion}.preview.test1234`
     );
-    expect(secondImageRef.imageRef).toMatch(
-      new RegExp(
-        `^${escapeHostForRegex(
-          "registry.example.com"
-        )}/${testNamespace}/${testProjectRef}:${sameVersion}\\.preview\\.test4321$`
-      )
+    expect(secondImageRef.imageRef).toBe(
+      `registry.example.com/${testNamespace}/${testProjectRef}:${sameVersion}.preview.test4321`
     );
     expect(firstImageRef.imageRef).not.toBe(secondImageRef.imageRef);
   });
@@ -250,8 +224,7 @@ describe.skipIf(process.env.RUN_ECR_TESTS !== "1")("getEcrAuthToken", () => {
     expect(auth.password.length).toBeGreaterThan(0);
 
     // Verify the token format (should be a base64-encoded string)
-    const base64Regex = /^[A-Za-z0-9+/=]+$/;
-    expect(base64Regex.test(auth.password)).toBe(true);
+    expect(auth.password).toMatch(/^[A-Za-z0-9+/=]+$/);
   });
 
   it("should throw error for invalid region", async () => {
