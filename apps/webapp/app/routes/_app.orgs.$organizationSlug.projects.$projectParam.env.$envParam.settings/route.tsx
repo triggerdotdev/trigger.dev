@@ -75,6 +75,7 @@ import {
 import { GitBranchIcon } from "lucide-react";
 import { env } from "~/env.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
+import { DateTime, DateTimeShort } from "~/components/primitives/DateTime";
 
 export const meta: MetaFunction = () => {
   return [
@@ -898,13 +899,22 @@ function ConnectedGitHubRepoForm({
           <a
             href={connectedGitHubRepo.repository.htmlUrl}
             target="_blank"
-            className="text-sm text-text-bright hover:underline"
+            className="max-w-52 truncate text-sm text-text-bright hover:underline"
           >
             {connectedGitHubRepo.repository.fullName}
           </a>
           {connectedGitHubRepo.repository.private && (
             <LockClosedIcon className="size-3 text-text-dimmed" />
           )}
+          <span className="text-xs text-text-dimmed">
+            <DateTime
+              date={connectedGitHubRepo.createdAt}
+              includeTime={false}
+              includeSeconds={false}
+              showTimezone={false}
+              showTooltip={false}
+            />
+          </span>
         </div>
         <Form method="post">
           <Button type="submit" name="action" value="disconnect-repo" variant="minimal/small">
