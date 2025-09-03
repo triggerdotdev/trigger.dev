@@ -423,6 +423,8 @@ export default function Page() {
   const lastSubmission = useActionData();
   const navigation = useNavigation();
 
+  const [hasRenameFormChanges, setHasRenameFormChanges] = useState(false);
+
   const [renameForm, { projectName }] = useForm({
     id: "rename-project",
     // TODO: type this
@@ -508,6 +510,9 @@ export default function Page() {
                         placeholder="Project name"
                         icon={FolderIcon}
                         autoFocus
+                        onChange={(e) => {
+                          setHasRenameFormChanges(e.target.value !== project.name);
+                        }}
                       />
                       <FormError id={projectName.errorId}>{projectName.error}</FormError>
                     </InputGroup>
@@ -518,7 +523,7 @@ export default function Page() {
                           name="action"
                           value="rename"
                           variant={"secondary/small"}
-                          disabled={isRenameLoading}
+                          disabled={isRenameLoading || !hasRenameFormChanges}
                           LeadingIcon={isRenameLoading ? SpinnerWhite : undefined}
                         >
                           Save
@@ -812,7 +817,7 @@ function GitHubConnectionPrompt({
             variant={"secondary/medium"}
             LeadingIcon={OctoKitty}
           >
-            Install GitHub App
+            Install GitHub app
           </LinkButton>
         )}
         {gitHubAppInstallations.length !== 0 && (
@@ -849,6 +854,23 @@ function ConnectedGitHubRepoForm({
 }) {
   const lastSubmission = useActionData() as any;
   const navigation = useNavigation();
+
+  const [hasGitSettingsChanges, setHasGitSettingsChanges] = useState(false);
+  const [gitSettingsValues, setGitSettingsValues] = useState({
+    productionBranch: connectedGitHubRepo.branchTracking?.production?.branch || "",
+    stagingBranch: connectedGitHubRepo.branchTracking?.staging?.branch || "",
+    previewDeploymentsEnabled: connectedGitHubRepo.previewDeploymentsEnabled,
+  });
+
+  useEffect(() => {
+    const hasChanges =
+      gitSettingsValues.productionBranch !==
+        (connectedGitHubRepo.branchTracking?.production?.branch || "") ||
+      gitSettingsValues.stagingBranch !==
+        (connectedGitHubRepo.branchTracking?.staging?.branch || "") ||
+      gitSettingsValues.previewDeploymentsEnabled !== connectedGitHubRepo.previewDeploymentsEnabled;
+    setHasGitSettingsChanges(hasChanges);
+  }, [gitSettingsValues, connectedGitHubRepo]);
 
   const [gitSettingsForm, fields] = useForm({
     id: "update-git-settings",
@@ -908,6 +930,12 @@ function ConnectedGitHubRepoForm({
                 placeholder="none"
                 variant="tertiary"
                 icon={GitBranchIcon}
+                onChange={(e) => {
+                  setGitSettingsValues((prev) => ({
+                    ...prev,
+                    productionBranch: e.target.value,
+                  }));
+                }}
               />
               <div className="flex items-center gap-1.5">
                 <EnvironmentIcon environment={{ type: "STAGING" }} className="size-4" />
@@ -921,6 +949,12 @@ function ConnectedGitHubRepoForm({
                 placeholder="none"
                 variant="tertiary"
                 icon={GitBranchIcon}
+                onChange={(e) => {
+                  setGitSettingsValues((prev) => ({
+                    ...prev,
+                    stagingBranch: e.target.value,
+                  }));
+                }}
               />
 
               <div className="flex items-center gap-1.5">
@@ -935,6 +969,12 @@ function ConnectedGitHubRepoForm({
                 variant="small"
                 label="create preview deployments for pull requests"
                 labelPosition="right"
+                onCheckedChange={(checked) => {
+                  setGitSettingsValues((prev) => ({
+                    ...prev,
+                    previewDeploymentsEnabled: checked,
+                  }));
+                }}
               />
             </div>
             <FormError>{fields.productionBranch?.error}</FormError>
@@ -950,7 +990,7 @@ function ConnectedGitHubRepoForm({
                 name="action"
                 value="update-git-settings"
                 variant="secondary/small"
-                disabled={isGitSettingsLoading}
+                disabled={isGitSettingsLoading || !hasGitSettingsChanges}
                 LeadingIcon={isGitSettingsLoading ? SpinnerWhite : undefined}
               >
                 Save
