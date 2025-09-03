@@ -42,12 +42,12 @@ export async function startSpanWithEnv<T>(
   options?: SpanOptions
 ): Promise<T> {
   return startSpan(tracer, name, fn, {
+    ...options,
     attributes: {
       ...attributesFromAuthenticatedEnv(env),
       ...options?.attributes,
     },
     kind: SpanKind.SERVER,
-    ...options,
   });
 }
 

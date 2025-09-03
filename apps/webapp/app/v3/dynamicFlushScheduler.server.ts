@@ -142,8 +142,20 @@ export class DynamicFlushScheduler<T> {
   }
 
   private setupShutdownHandlers(): void {
-    signalsEmitter.on("SIGTERM", () => this.shutdown());
-    signalsEmitter.on("SIGINT", () => this.shutdown());
+    signalsEmitter.on("SIGTERM", () =>
+      this.shutdown().catch((error) => {
+        this.logger.error("Error shutting down dynamic flush scheduler", {
+          error,
+        });
+      })
+    );
+    signalsEmitter.on("SIGINT", () =>
+      this.shutdown().catch((error) => {
+        this.logger.error("Error shutting down dynamic flush scheduler", {
+          error,
+        });
+      })
+    );
   }
 
   private startFlushTimer(): void {

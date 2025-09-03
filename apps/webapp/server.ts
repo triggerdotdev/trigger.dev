@@ -27,6 +27,10 @@ function forkWorkers() {
 }
 
 function installPrimarySignalHandlers() {
+  let didHandleSigterm = false;
+  let didHandleSigint = false;
+  let didGracefulExit = false;
+
   const forward = (signal: NodeJS.Signals) => {
     for (const id in cluster.workers) {
       const w = cluster.workers[id];
@@ -39,21 +43,28 @@ function installPrimarySignalHandlers() {
   };
 
   const gracefulExit = () => {
-    const timeoutMs = Number(process.env.GRACEFUL_SHUTDOWN_TIMEOUT || 30_000) * 1000;
+    if (didGracefulExit) return;
+    didGracefulExit = true;
+
+    const timeoutMs = Number(process.env.GRACEFUL_SHUTDOWN_TIMEOUT || 30_000);
     // wait for workers to exit, then exit the primary too
     const maybeExit = () => {
       const alive = Object.values(cluster.workers || {}).some((w) => w && !w.isDead());
       if (!alive) process.exit(0);
     };
     setInterval(maybeExit, 1000);
-    setTimeout(() => process.exit(0), timeoutMs).unref();
+    setTimeout(() => process.exit(0), timeoutMs);
   };
 
   process.on("SIGTERM", () => {
+    if (didHandleSigterm) return;
+    didHandleSigterm = true;
     forward("SIGTERM");
     gracefulExit();
   });
   process.on("SIGINT", () => {
+    if (didHandleSigint) return;
+    didHandleSigint = true;
     forward("SIGINT");
     gracefulExit();
   });
@@ -193,7 +204,12 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
     // headers will instead be limited by the maxHeaderSize
     server.maxHeadersCount = 0;
 
-    process.on("SIGTERM", () => {
+    let didCloseServer = false;
+
+    function closeServer(signal: NodeJS.Signals) {
+      if (didCloseServer) return;
+      didCloseServer = true;
+
       server.close((err) => {
         if (err) {
           console.error("Error closing express server:", err);
@@ -201,17 +217,16 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
           console.log("Express server closed gracefully.");
         }
       });
-    });
+    }
+
+    process.on("SIGTERM", closeServer);
+    process.on("SIGINT", closeServer);
 
     socketIo?.io.attach(server);
     server.removeAllListeners("upgrade"); // prevent duplicate upgrades from listeners created by io.attach()
 
     server.on("upgrade", async (req, socket, head) => {
-      console.log(
-        `Attemping to upgrade connection at url ${req.url} with headers: ${JSON.stringify(
-          req.headers
-        )}`
-      );
+      console.log(`Attemping to upgrade connection at url ${req.url}`);
 
       socket.on("error", (err) => {
         console.error("Connection upgrade error:", err);
