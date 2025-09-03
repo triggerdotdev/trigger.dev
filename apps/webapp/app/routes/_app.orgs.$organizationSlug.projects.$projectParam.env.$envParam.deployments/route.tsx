@@ -1,7 +1,7 @@
 import { ArrowUturnLeftIcon, BookOpenIcon } from "@heroicons/react/20/solid";
 import { type MetaFunction, Outlet, useLocation, useNavigate, useParams } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { GitBranchIcon } from "lucide-react";
+import { CogIcon, GitBranchIcon } from "lucide-react";
 import { useEffect } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -53,7 +53,12 @@ import {
 import { requireUserId } from "~/services/session.server";
 import { titleCase } from "~/utils";
 import { cn } from "~/utils/cn";
-import { EnvironmentParamSchema, docsPath, v3DeploymentPath } from "~/utils/pathBuilder";
+import {
+  EnvironmentParamSchema,
+  docsPath,
+  v3DeploymentPath,
+  v3ProjectSettingsPath,
+} from "~/utils/pathBuilder";
 import { createSearchParams } from "~/utils/searchParams";
 import { BranchTrackingConfigSchema, getTrackedBranchForEnvironment } from "~/v3/github";
 import { compareDeploymentVersions } from "~/v3/utils/deploymentVersions";
@@ -319,6 +324,11 @@ export default function Page() {
                       >
                         {connectedGithubRepository.repository.fullName}
                       </a>
+                      <LinkButton
+                        variant="minimal/small"
+                        LeadingIcon={CogIcon}
+                        to={v3ProjectSettingsPath(organization, project, environment)}
+                      />
                     </div>
                   )}
                   <PaginationControls currentPage={currentPage} totalPages={totalPages} />
