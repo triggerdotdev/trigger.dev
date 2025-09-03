@@ -12,7 +12,6 @@ import {
   Form,
   type MetaFunction,
   useActionData,
-  useLocation,
   useNavigation,
   useNavigate,
 } from "@remix-run/react";
@@ -62,6 +61,7 @@ import {
   v3ProjectPath,
   githubAppInstallPath,
   EnvironmentParamSchema,
+  v3ProjectSettingsPath,
 } from "~/utils/pathBuilder";
 import React, { useEffect, useState } from "react";
 import { Select, SelectItem } from "~/components/primitives/Select";
@@ -74,6 +74,7 @@ import {
 } from "~/components/environments/EnvironmentLabel";
 import { GitBranchIcon } from "lucide-react";
 import { env } from "~/env.server";
+import { useEnvironment } from "~/hooks/useEnvironment";
 
 export const meta: MetaFunction = () => {
   return [
@@ -418,6 +419,7 @@ export default function Page() {
     useTypedLoaderData<typeof loader>();
   const project = useProject();
   const organization = useOrganization();
+  const environment = useEnvironment();
   const lastSubmission = useActionData();
   const navigation = useNavigation();
 
@@ -538,6 +540,8 @@ export default function Page() {
                     <GitHubConnectionPrompt
                       gitHubAppInstallations={githubAppInstallations}
                       organizationSlug={organization.slug}
+                      projectSlug={project.slug}
+                      environmentSlug={environment.slug}
                     />
                   )}
                 </div>
@@ -607,13 +611,17 @@ type GitHubAppInstallation = {
 
 function ConnectGitHubRepoModal({
   gitHubAppInstallations,
+  organizationSlug,
+  projectSlug,
+  environmentSlug,
 }: {
   gitHubAppInstallations: GitHubAppInstallation[];
+  organizationSlug: string;
+  projectSlug: string;
+  environmentSlug: string;
 }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const lastSubmission = useActionData() as any;
-  const organization = useOrganization();
-  const location = useLocation();
   const navigate = useNavigate();
 
   const [selectedInstallation, setSelectedInstallation] = useState<
@@ -693,7 +701,16 @@ function ConnectGitHubRepoModal({
                     <SelectItem
                       onClick={(e) => {
                         e.preventDefault();
-                        navigate(githubAppInstallPath(organization.slug, location.pathname));
+                        navigate(
+                          githubAppInstallPath(
+                            organizationSlug,
+                            v3ProjectSettingsPath(
+                              { slug: organizationSlug },
+                              { slug: projectSlug },
+                              { slug: environmentSlug }
+                            )
+                          )
+                        );
                       }}
                       key="new-account"
                       icon={<PlusIcon className="size-3 text-text-dimmed" />}
@@ -771,16 +788,27 @@ function ConnectGitHubRepoModal({
 function GitHubConnectionPrompt({
   gitHubAppInstallations,
   organizationSlug,
+  projectSlug,
+  environmentSlug,
 }: {
   gitHubAppInstallations: GitHubAppInstallation[];
   organizationSlug: string;
+  projectSlug: string;
+  environmentSlug: string;
 }) {
   return (
     <Fieldset>
       <InputGroup fullWidth>
         {gitHubAppInstallations.length === 0 && (
           <LinkButton
-            to={githubAppInstallPath(organizationSlug, location.pathname)}
+            to={githubAppInstallPath(
+              organizationSlug,
+              v3ProjectSettingsPath(
+                { slug: organizationSlug },
+                { slug: projectSlug },
+                { slug: environmentSlug }
+              )
+            )}
             variant={"secondary/medium"}
             LeadingIcon={OctoKitty}
           >
@@ -789,7 +817,12 @@ function GitHubConnectionPrompt({
         )}
         {gitHubAppInstallations.length !== 0 && (
           <div className="flex items-center gap-3">
-            <ConnectGitHubRepoModal gitHubAppInstallations={gitHubAppInstallations} />
+            <ConnectGitHubRepoModal
+              gitHubAppInstallations={gitHubAppInstallations}
+              organizationSlug={organizationSlug}
+              projectSlug={projectSlug}
+              environmentSlug={environmentSlug}
+            />
             <span className="flex items-center gap-1 text-xs text-text-dimmed">
               <CheckCircleIcon className="size-4 text-success" /> GitHub app is installed
             </span>
@@ -872,7 +905,7 @@ function ConnectedGitHubRepoForm({
               <Input
                 {...conform.input(fields.productionBranch, { type: "text" })}
                 defaultValue={connectedGitHubRepo.branchTracking?.production?.branch}
-                placeholder="Branch name"
+                placeholder="none"
                 variant="tertiary"
                 icon={GitBranchIcon}
               />
@@ -885,7 +918,7 @@ function ConnectedGitHubRepoForm({
               <Input
                 {...conform.input(fields.stagingBranch, { type: "text" })}
                 defaultValue={connectedGitHubRepo.branchTracking?.staging?.branch}
-                placeholder="Branch name"
+                placeholder="none"
                 variant="tertiary"
                 icon={GitBranchIcon}
               />
