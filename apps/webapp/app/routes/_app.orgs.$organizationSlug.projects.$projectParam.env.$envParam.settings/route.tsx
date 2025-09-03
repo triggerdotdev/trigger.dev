@@ -460,6 +460,8 @@ export default function Page() {
     navigation.formData?.get("action") === "delete" &&
     (navigation.state === "submitting" || navigation.state === "loading");
 
+  const [deleteInputValue, setDeleteInputValue] = useState("");
+
   return (
     <PageContainer>
       <NavBar>
@@ -564,6 +566,7 @@ export default function Page() {
                         {...conform.input(projectSlug, { type: "text" })}
                         placeholder="Your project slug"
                         icon={ExclamationTriangleIcon}
+                        onChange={(e) => setDeleteInputValue(e.target.value)}
                       />
                       <FormError id={projectSlug.errorId}>{projectSlug.error}</FormError>
                       <FormError>{deleteForm.error}</FormError>
@@ -582,7 +585,7 @@ export default function Page() {
                           variant={"danger/small"}
                           LeadingIcon={isDeleteLoading ? SpinnerWhite : TrashIcon}
                           leadingIconClassName="text-white"
-                          disabled={isDeleteLoading}
+                          disabled={isDeleteLoading || deleteInputValue !== project.slug}
                         >
                           Delete
                         </Button>
