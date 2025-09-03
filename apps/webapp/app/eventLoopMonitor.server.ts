@@ -3,6 +3,8 @@ import { singleton } from "./utils/singleton";
 import { tracer } from "./v3/tracer.server";
 import { env } from "./env.server";
 import { context, Context } from "@opentelemetry/api";
+import { performance } from "node:perf_hooks";
+import { logger } from "./services/logger.server";
 
 const THRESHOLD_NS = env.EVENT_LOOP_MONITOR_THRESHOLD_MS * 1e6;
 
@@ -69,16 +71,46 @@ function after(asyncId: number) {
 export const eventLoopMonitor = singleton("eventLoopMonitor", () => {
   const hook = createHook({ init, before, after, destroy });
 
+  let stopEventLoopUtilizationMonitoring: () => void;
+
   return {
     enable: () => {
       console.log("🥸  Initializing event loop monitor");
 
       hook.enable();
+
+      stopEventLoopUtilizationMonitoring = startEventLoopUtilizationMonitoring();
     },
     disable: () => {
       console.log("🥸  Disabling event loop monitor");
 
       hook.disable();
+
+      stopEventLoopUtilizationMonitoring?.();
     },
   };
 });
+
+function startEventLoopUtilizationMonitoring() {
+  let lastEventLoopUtilization = performance.eventLoopUtilization();
+
+  const interval = setInterval(() => {
+    const currentEventLoopUtilization = performance.eventLoopUtilization();
+
+    const diff = performance.eventLoopUtilization(
+      currentEventLoopUtilization,
+      lastEventLoopUtilization
+    );
+    const utilization = Number.isFinite(diff.utilization) ? diff.utilization : 0;
+
+    if (Math.random() < env.EVENT_LOOP_MONITOR_UTILIZATION_SAMPLE_RATE) {
+      logger.info("nodejs.event_loop.utilization", { utilization });
+    }
+
+    lastEventLoopUtilization = currentEventLoopUtilization;
+  }, env.EVENT_LOOP_MONITOR_UTILIZATION_INTERVAL_MS);
+
+  return () => {
+    clearInterval(interval);
+  };
+}

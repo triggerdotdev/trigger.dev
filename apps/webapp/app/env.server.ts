@@ -1167,6 +1167,8 @@ const EnvironmentSchema = z
     AI_RUN_FILTER_MODEL: z.string().optional(),
 
     EVENT_LOOP_MONITOR_THRESHOLD_MS: z.coerce.number().int().default(100),
+    EVENT_LOOP_MONITOR_UTILIZATION_INTERVAL_MS: z.coerce.number().int().default(1000),
+    EVENT_LOOP_MONITOR_UTILIZATION_SAMPLE_RATE: z.coerce.number().default(0.05),
 
     VERY_SLOW_QUERY_THRESHOLD_MS: z.coerce.number().int().optional(),
   })
