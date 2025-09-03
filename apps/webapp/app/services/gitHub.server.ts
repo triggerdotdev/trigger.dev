@@ -2,7 +2,7 @@ import { App, type Octokit } from "octokit";
 import { env } from "../env.server";
 import { prisma } from "~/db.server";
 import { logger } from "./logger.server";
-import { tryCatch } from "@trigger.dev/core";
+import { tryCatch } from "@trigger.dev/core/utils";
 
 export const githubApp =
   env.GITHUB_APP_ENABLED === "1"

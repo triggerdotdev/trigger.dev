@@ -19,17 +19,17 @@ export function getTrackedBranchForEnvironment(
     branchName?: string;
   }
 ): string | undefined {
-  if (!branchTracking) return undefined;
   switch (environment.type) {
     case "PRODUCTION":
-      return branchTracking.prod?.branch;
+      return branchTracking?.prod?.branch;
     case "STAGING":
-      return branchTracking.staging?.branch;
+      return branchTracking?.staging?.branch;
     case "PREVIEW":
       return previewDeploymentsEnabled ? environment.branchName : undefined;
     case "DEVELOPMENT":
       return undefined;
     default:
-      return environment.type satisfies never;
+      environment.type satisfies never;
+      return undefined;
   }
 }

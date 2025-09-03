@@ -15,8 +15,7 @@ import {
   useNavigation,
   useNavigate,
 } from "@remix-run/react";
-import { type LoaderFunctionArgs } from "@remix-run/router";
-import { type ActionFunction, json } from "@remix-run/server-runtime";
+import { type ActionFunction, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
@@ -78,7 +77,7 @@ import { env } from "~/env.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { DateTime } from "~/components/primitives/DateTime";
 import { checkGitHubBranchExists } from "~/services/gitHub.server";
-import { tryCatch } from "@trigger.dev/core";
+import { tryCatch } from "@trigger.dev/core/utils";
 import { TextLink } from "~/components/primitives/TextLink";
 import { cn } from "~/utils/cn";
 
@@ -412,12 +411,13 @@ export const action: ActionFunction = async ({ request, params }) => {
         return redirectBackWithSuccessMessage(request, "Git settings updated successfully");
       }
       case "connect-repo": {
-        const { repositoryId } = submission.value;
+        const { repositoryId, installationId } = submission.value;
 
         const [repository, existingConnection] = await Promise.all([
           prisma.githubRepository.findFirst({
             where: {
               id: repositoryId,
+              installationId,
               installation: {
                 organizationId: project.organizationId,
               },
