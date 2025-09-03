@@ -989,6 +989,7 @@ function ConnectedGitHubRepoForm({
                 defaultValue={connectedGitHubRepo.branchTracking?.prod?.branch}
                 placeholder="none"
                 variant="tertiary"
+                className="font-mono"
                 icon={GitBranchIcon}
                 onChange={(e) => {
                   setGitSettingsValues((prev) => ({
@@ -1008,6 +1009,7 @@ function ConnectedGitHubRepoForm({
                 defaultValue={connectedGitHubRepo.branchTracking?.staging?.branch}
                 placeholder="none"
                 variant="tertiary"
+                className="font-mono"
                 icon={GitBranchIcon}
                 onChange={(e) => {
                   setGitSettingsValues((prev) => ({
