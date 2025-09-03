@@ -41,33 +41,14 @@ export async function startSpanWithEnv<T>(
   fn: (span: Span) => Promise<T>,
   options?: SpanOptions
 ): Promise<T> {
-  return startSpan(
-    tracer,
-    name,
-    async (span) => {
-      try {
-        return await fn(span);
-      } catch (e) {
-        if (e instanceof Error) {
-          span.recordException(e);
-        } else {
-          span.recordException(new Error(String(e)));
-        }
-
-        throw e;
-      } finally {
-        span.end();
-      }
+  return startSpan(tracer, name, fn, {
+    attributes: {
+      ...attributesFromAuthenticatedEnv(env),
+      ...options?.attributes,
     },
-    {
-      attributes: {
-        ...attributesFromAuthenticatedEnv(env),
-        ...options?.attributes,
-      },
-      kind: SpanKind.SERVER,
-      ...options,
-    }
-  );
+    kind: SpanKind.SERVER,
+    ...options,
+  });
 }
 
 export async function emitDebugLog(

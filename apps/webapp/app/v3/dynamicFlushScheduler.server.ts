@@ -1,6 +1,7 @@
 import { Logger } from "@trigger.dev/core/logger";
 import { nanoid } from "nanoid";
 import pLimit from "p-limit";
+import { signalsEmitter } from "~/services/signals.server";
 
 export type DynamicFlushSchedulerConfig<T> = {
   batchSize: number;
@@ -22,6 +23,7 @@ export class DynamicFlushScheduler<T> {
   private readonly BATCH_SIZE: number;
   private readonly FLUSH_INTERVAL: number;
   private flushTimer: NodeJS.Timeout | null;
+  private metricsReporterTimer: NodeJS.Timeout | undefined;
   private readonly callback: (flushId: string, batch: T[]) => Promise<void>;
 
   // New properties for dynamic scaling
@@ -41,6 +43,7 @@ export class DynamicFlushScheduler<T> {
     droppedEvents: 0,
     droppedEventsByKind: new Map<string, number>(),
   };
+  private isShuttingDown: boolean = false;
 
   // New properties for load shedding
   private readonly loadSheddingThreshold: number;
@@ -75,6 +78,7 @@ export class DynamicFlushScheduler<T> {
 
     this.startFlushTimer();
     this.startMetricsReporter();
+    this.setupShutdownHandlers();
   }
 
   addToBatch(items: T[]): void {
@@ -119,8 +123,8 @@ export class DynamicFlushScheduler<T> {
     this.currentBatch.push(...itemsToAdd);
     this.totalQueuedItems += itemsToAdd.length;
 
-    // Check if we need to create a batch
-    if (this.currentBatch.length >= this.currentBatchSize) {
+    // Check if we need to create a batch (if we are shutting down, create a batch immediately because the flush timer is stopped)
+    if (this.currentBatch.length >= this.currentBatchSize || this.isShuttingDown) {
       this.createBatch();
     }
 
@@ -137,6 +141,11 @@ export class DynamicFlushScheduler<T> {
     this.resetFlushTimer();
   }
 
+  private setupShutdownHandlers(): void {
+    signalsEmitter.on("SIGTERM", () => this.shutdown());
+    signalsEmitter.on("SIGINT", () => this.shutdown());
+  }
+
   private startFlushTimer(): void {
     this.flushTimer = setInterval(() => this.checkAndFlush(), this.FLUSH_INTERVAL);
   }
@@ -145,6 +154,9 @@ export class DynamicFlushScheduler<T> {
     if (this.flushTimer) {
       clearInterval(this.flushTimer);
     }
+
+    if (this.isShuttingDown) return;
+
     this.startFlushTimer();
   }
 
@@ -226,7 +238,7 @@ export class DynamicFlushScheduler<T> {
   }
 
   private lastConcurrencyAdjustment: number = Date.now();
-  
+
   private adjustConcurrency(backOff: boolean = false): void {
     const currentConcurrency = this.limiter.concurrency;
     let newConcurrency = currentConcurrency;
@@ -281,7 +293,7 @@ export class DynamicFlushScheduler<T> {
 
   private startMetricsReporter(): void {
     // Report metrics every 30 seconds
-    setInterval(() => {
+    this.metricsReporterTimer = setInterval(() => {
       const droppedByKind: Record<string, number> = {};
       this.metrics.droppedEventsByKind.forEach((count, kind) => {
         droppedByKind[kind] = count;
@@ -356,8 +368,16 @@ export class DynamicFlushScheduler<T> {
 
   // Graceful shutdown
   async shutdown(): Promise<void> {
+    if (this.isShuttingDown) return;
+
+    this.isShuttingDown = true;
+
     if (this.flushTimer) {
       clearInterval(this.flushTimer);
+    }
+
+    if (this.metricsReporterTimer) {
+      clearInterval(this.metricsReporterTimer);
     }
 
     // Flush any remaining items
