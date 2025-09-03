@@ -75,7 +75,9 @@ import {
 import { GitBranchIcon } from "lucide-react";
 import { env } from "~/env.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
-import { DateTime, DateTimeShort } from "~/components/primitives/DateTime";
+import { DateTime } from "~/components/primitives/DateTime";
+import { checkGitHubBranchExists } from "~/services/gitHub.server";
+import { tryCatch } from "@trigger.dev/core";
 
 export const meta: MetaFunction = () => {
   return [
@@ -163,7 +165,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
         // Most installations will only have a couple of repos so loading them here should be fine.
         // However, there might be outlier organizations so it's best to expose the installation repos
         // via a resource endpoint and filter on user input.
-        take: 100,
+        take: 200,
       },
     },
     take: 20,
@@ -187,8 +189,8 @@ const ConnectGitHubRepoFormSchema = z.object({
 
 const UpdateGitSettingsFormSchema = z.object({
   action: z.literal("update-git-settings"),
-  productionBranch: z.string().optional(),
-  stagingBranch: z.string().optional(),
+  productionBranch: z.string().trim().optional(),
+  stagingBranch: z.string().trim().optional(),
   previewDeploymentsEnabled: z
     .string()
     .optional()
@@ -333,10 +335,55 @@ export const action: ActionFunction = async ({ request, params }) => {
           where: {
             projectId: project.id,
           },
+          include: {
+            repository: {
+              include: {
+                installation: true,
+              },
+            },
+          },
         });
 
         if (!existingConnection) {
           return redirectBackWithErrorMessage(request, "No connected GitHub repository found");
+        }
+
+        const [owner, repo] = existingConnection.repository.fullName.split("/");
+        const installationId = Number(existingConnection.repository.installation.appInstallationId);
+
+        const existingBranchTracking = BranchTrackingConfigSchema.safeParse(
+          existingConnection.branchTracking
+        );
+
+        const [error, branchValidationsOrFail] = await tryCatch(
+          Promise.all([
+            productionBranch && existingBranchTracking.data?.production?.branch !== productionBranch
+              ? checkGitHubBranchExists(installationId, owner, repo, productionBranch)
+              : Promise.resolve(true),
+            stagingBranch && existingBranchTracking.data?.staging?.branch !== stagingBranch
+              ? checkGitHubBranchExists(installationId, owner, repo, stagingBranch)
+              : Promise.resolve(true),
+          ])
+        );
+
+        if (error) {
+          return redirectBackWithErrorMessage(request, "Failed to validate tracking branches");
+        }
+
+        const [productionBranchExists, stagingBranchExists] = branchValidationsOrFail;
+
+        if (productionBranch && !productionBranchExists) {
+          return redirectBackWithErrorMessage(
+            request,
+            `Production tracking branch '${productionBranch}' does not exist in the repository`
+          );
+        }
+
+        if (stagingBranch && !stagingBranchExists) {
+          return redirectBackWithErrorMessage(
+            request,
+            `Staging tracking branch '${stagingBranch}' does not exist in the repository`
+          );
         }
 
         await prisma.connectedGithubRepository.update({

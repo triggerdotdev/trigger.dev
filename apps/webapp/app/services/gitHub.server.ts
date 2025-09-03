@@ -2,6 +2,7 @@ import { App, type Octokit } from "octokit";
 import { env } from "../env.server";
 import { prisma } from "~/db.server";
 import { logger } from "./logger.server";
+import { tryCatch } from "@trigger.dev/core";
 
 export const githubApp =
   env.GITHUB_APP_ENABLED === "1"
@@ -132,4 +133,48 @@ async function fetchInstallationRepositories(octokit: Octokit, installationId: n
     private: repo.private,
     defaultBranch: repo.default_branch,
   }));
+}
+
+/**
+ * Checks if a branch exists in a GitHub repository
+ */
+export async function checkGitHubBranchExists(
+  installationId: number,
+  owner: string,
+  repo: string,
+  branch: string
+): Promise<boolean> {
+  if (!githubApp) {
+    throw new Error("GitHub App is not enabled");
+  }
+
+  if (!branch || branch.trim() === "") {
+    return false;
+  }
+
+  const octokit = await githubApp.getInstallationOctokit(installationId);
+  const [error] = await tryCatch(
+    octokit.rest.repos.getBranch({
+      owner,
+      repo,
+      branch,
+    })
+  );
+
+  if (error && "status" in error && error.status === 404) {
+    return false;
+  }
+
+  if (error) {
+    logger.error("Error checking GitHub branch", {
+      installationId,
+      owner,
+      repo,
+      branch,
+      error: error.message,
+    });
+    throw error;
+  }
+
+  return true;
 }
