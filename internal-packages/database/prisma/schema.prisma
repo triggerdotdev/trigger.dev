@@ -393,7 +393,7 @@ model Project {
   taskRunCheckpoints        TaskRunCheckpoint[]
   executionSnapshots        TaskRunExecutionSnapshot[]
   waitpointTags             WaitpointTag[]
-  ConnectedGithubRepository ConnectedGithubRepository?
+  connectedGithubRepository ConnectedGithubRepository?
 }
 
 enum ProjectVersion {
@@ -2300,9 +2300,9 @@ model ConnectedGithubRepository {
   repository   GithubRepository @relation(fields: [repositoryId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   repositoryId String
 
-  // Branch configuration by environment, stored as JSON
+  // Branch configuration by environment slug, stored as JSON
   // Example: {
-  //   "production": { "branch": "main" },
+  //   "prod": { "branch": "main" },
   //   "staging": { "branch": "staging" },
   // }
   // We could alternatively store tracking branch configurations in a separate table and reference the runtime environments properly.

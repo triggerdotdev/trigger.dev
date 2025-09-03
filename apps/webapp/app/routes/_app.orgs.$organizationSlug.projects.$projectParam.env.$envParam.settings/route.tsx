@@ -357,7 +357,7 @@ export const action: ActionFunction = async ({ request, params }) => {
 
         const [error, branchValidationsOrFail] = await tryCatch(
           Promise.all([
-            productionBranch && existingBranchTracking.data?.production?.branch !== productionBranch
+            productionBranch && existingBranchTracking.data?.prod?.branch !== productionBranch
               ? checkGitHubBranchExists(installationId, owner, repo, productionBranch)
               : Promise.resolve(true),
             stagingBranch && existingBranchTracking.data?.staging?.branch !== stagingBranch
@@ -392,7 +392,7 @@ export const action: ActionFunction = async ({ request, params }) => {
           },
           data: {
             branchTracking: {
-              production: productionBranch ? { branch: productionBranch } : {},
+              prod: productionBranch ? { branch: productionBranch } : {},
               staging: stagingBranch ? { branch: stagingBranch } : {},
             } satisfies BranchTrackingConfig,
             previewDeploymentsEnabled: previewDeploymentsEnabled,
@@ -441,7 +441,7 @@ export const action: ActionFunction = async ({ request, params }) => {
             projectId: project.id,
             repositoryId: repositoryId,
             branchTracking: {
-              production: { branch: repository.defaultBranch },
+              prod: { branch: repository.defaultBranch },
               staging: { branch: repository.defaultBranch },
             } satisfies BranchTrackingConfig,
             previewDeploymentsEnabled: true,
@@ -908,7 +908,7 @@ function ConnectedGitHubRepoForm({
 
   const [hasGitSettingsChanges, setHasGitSettingsChanges] = useState(false);
   const [gitSettingsValues, setGitSettingsValues] = useState({
-    productionBranch: connectedGitHubRepo.branchTracking?.production?.branch || "",
+    productionBranch: connectedGitHubRepo.branchTracking?.prod?.branch || "",
     stagingBranch: connectedGitHubRepo.branchTracking?.staging?.branch || "",
     previewDeploymentsEnabled: connectedGitHubRepo.previewDeploymentsEnabled,
   });
@@ -916,7 +916,7 @@ function ConnectedGitHubRepoForm({
   useEffect(() => {
     const hasChanges =
       gitSettingsValues.productionBranch !==
-        (connectedGitHubRepo.branchTracking?.production?.branch || "") ||
+        (connectedGitHubRepo.branchTracking?.prod?.branch || "") ||
       gitSettingsValues.stagingBranch !==
         (connectedGitHubRepo.branchTracking?.staging?.branch || "") ||
       gitSettingsValues.previewDeploymentsEnabled !== connectedGitHubRepo.previewDeploymentsEnabled;
@@ -986,7 +986,7 @@ function ConnectedGitHubRepoForm({
               </div>
               <Input
                 {...conform.input(fields.productionBranch, { type: "text" })}
-                defaultValue={connectedGitHubRepo.branchTracking?.production?.branch}
+                defaultValue={connectedGitHubRepo.branchTracking?.prod?.branch}
                 placeholder="none"
                 variant="tertiary"
                 icon={GitBranchIcon}

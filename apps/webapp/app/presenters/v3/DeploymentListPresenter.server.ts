@@ -1,5 +1,5 @@
 import {
-  Prisma,
+  type Prisma,
   type WorkerDeploymentStatus,
   type WorkerInstanceGroupType,
 } from "@trigger.dev/database";
@@ -52,6 +52,17 @@ export class DeploymentListPresenter {
                     displayName: true,
                   },
                 },
+              },
+            },
+          },
+        },
+        connectedGithubRepository: {
+          select: {
+            branchTracking: true,
+            repository: {
+              select: {
+                htmlUrl: true,
+                fullName: true,
               },
             },
           },
@@ -143,6 +154,7 @@ LIMIT ${pageSize} OFFSET ${pageSize * (page - 1)};`;
     return {
       currentPage: page,
       totalPages: Math.ceil(totalCount / pageSize),
+      connectedGithubRepository: project.connectedGithubRepository ?? undefined,
       deployments: deployments.map((deployment, index) => {
         const label = labeledDeployments.find(
           (labeledDeployment) => labeledDeployment.deploymentId === deployment.id
