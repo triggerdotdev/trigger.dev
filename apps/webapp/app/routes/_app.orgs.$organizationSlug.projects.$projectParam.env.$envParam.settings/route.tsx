@@ -51,6 +51,7 @@ import {
   redirectBackWithSuccessMessage,
   redirectWithErrorMessage,
   redirectWithSuccessMessage,
+  getSession,
 } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { DeleteProjectService } from "~/services/deleteProject.server";
@@ -92,11 +93,15 @@ export const meta: MetaFunction = () => {
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const githubAppEnabled = env.GITHUB_APP_ENABLED === "1";
 
+  const session = await getSession(request.headers.get("Cookie"));
+  const openGitHubRepoConnectionModal = session.get("gitHubAppInstalled") === true;
+
   if (!githubAppEnabled) {
     return typedjson({
       githubAppEnabled,
       githubAppInstallations: undefined,
       connectedGithubRepository: undefined,
+      openGitHubRepoConnectionModal,
     });
   }
 
@@ -143,6 +148,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
         branchTracking: branchTrackingOrFailure.success ? branchTrackingOrFailure.data : undefined,
       },
       githubAppInstallations: undefined,
+      openGitHubRepoConnectionModal,
     });
   }
 
@@ -181,6 +187,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     githubAppEnabled,
     githubAppInstallations,
     connectedGithubRepository: undefined,
+    openGitHubRepoConnectionModal,
   });
 };
 
@@ -466,8 +473,12 @@ export const action: ActionFunction = async ({ request, params }) => {
 };
 
 export default function Page() {
-  const { githubAppInstallations, connectedGithubRepository, githubAppEnabled } =
-    useTypedLoaderData<typeof loader>();
+  const {
+    githubAppInstallations,
+    connectedGithubRepository,
+    githubAppEnabled,
+    openGitHubRepoConnectionModal,
+  } = useTypedLoaderData<typeof loader>();
   const project = useProject();
   const organization = useOrganization();
   const environment = useEnvironment();
@@ -600,6 +611,7 @@ export default function Page() {
                       organizationSlug={organization.slug}
                       projectSlug={project.slug}
                       environmentSlug={environment.slug}
+                      openGitHubRepoConnectionModal={openGitHubRepoConnectionModal}
                     />
                   )}
                 </div>
@@ -674,13 +686,15 @@ function ConnectGitHubRepoModal({
   organizationSlug,
   projectSlug,
   environmentSlug,
+  open = false,
 }: {
   gitHubAppInstallations: GitHubAppInstallation[];
   organizationSlug: string;
   projectSlug: string;
   environmentSlug: string;
+  open?: boolean;
 }) {
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(open);
   const lastSubmission = useActionData() as any;
   const navigate = useNavigate();
 
@@ -861,11 +875,13 @@ function GitHubConnectionPrompt({
   organizationSlug,
   projectSlug,
   environmentSlug,
+  openGitHubRepoConnectionModal = false,
 }: {
   gitHubAppInstallations: GitHubAppInstallation[];
   organizationSlug: string;
   projectSlug: string;
   environmentSlug: string;
+  openGitHubRepoConnectionModal?: boolean;
 }) {
   return (
     <Fieldset>
@@ -893,6 +909,7 @@ function GitHubConnectionPrompt({
               organizationSlug={organizationSlug}
               projectSlug={projectSlug}
               environmentSlug={environmentSlug}
+              open={openGitHubRepoConnectionModal}
             />
             <span className="flex items-center gap-1 text-xs text-text-dimmed">
               <CheckCircleIcon className="size-4 text-success" /> GitHub app is installed

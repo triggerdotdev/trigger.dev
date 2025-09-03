@@ -1,9 +1,13 @@
-import { type LoaderFunctionArgs } from "@remix-run/node";
+import { type LoaderFunctionArgs, redirect } from "@remix-run/node";
 import { z } from "zod";
 import { validateGitHubAppInstallSession } from "~/services/gitHubSession.server";
 import { linkGitHubAppInstallation, updateGitHubAppInstallation } from "~/services/gitHub.server";
 import { logger } from "~/services/logger.server";
-import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
+import {
+  redirectWithErrorMessage,
+  setRequestSuccessMessage,
+  commitSession,
+} from "~/models/message.server";
 import { tryCatch } from "@trigger.dev/core";
 import { $replica } from "~/db.server";
 import { requireUser } from "~/services/session.server";
@@ -88,7 +92,14 @@ export async function loader({ request }: LoaderFunctionArgs) {
         return redirectWithErrorMessage(redirectTo, request, "Failed to install GitHub App");
       }
 
-      return redirectWithSuccessMessage(redirectTo, request, "GitHub App installed successfully");
+      const session = await setRequestSuccessMessage(request, "GitHub App installed successfully");
+      session.flash("gitHubAppInstalled", true);
+
+      return redirect(redirectTo, {
+        headers: {
+          "Set-Cookie": await commitSession(session),
+        },
+      });
     }
 
     case "update": {
@@ -101,7 +112,14 @@ export async function loader({ request }: LoaderFunctionArgs) {
         return redirectWithErrorMessage(redirectTo, request, "Failed to update GitHub App");
       }
 
-      return redirectWithSuccessMessage(redirectTo, request, "GitHub App updated successfully");
+      const session = await setRequestSuccessMessage(request, "GitHub App updated successfully");
+      session.flash("gitHubAppInstalled", true);
+
+      return redirect(redirectTo, {
+        headers: {
+          "Set-Cookie": await commitSession(session),
+        },
+      });
     }
 
     case "request": {
@@ -111,7 +129,13 @@ export async function loader({ request }: LoaderFunctionArgs) {
         callbackData,
       });
 
-      return redirectWithSuccessMessage(redirectTo, request, "GitHub App installation requested");
+      const session = await setRequestSuccessMessage(request, "GitHub App installation requested");
+
+      return redirect(redirectTo, {
+        headers: {
+          "Set-Cookie": await commitSession(session),
+        },
+      });
     }
 
     default:
