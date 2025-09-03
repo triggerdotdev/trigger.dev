@@ -2,10 +2,10 @@ import { z } from "zod";
 
 export const BranchTrackingConfigSchema = z.object({
   production: z.object({
-    branch: z.string(),
+    branch: z.string().optional(),
   }),
   staging: z.object({
-    branch: z.string(),
+    branch: z.string().optional(),
   }),
 });
 

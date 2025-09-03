@@ -186,8 +186,8 @@ const ConnectGitHubRepoFormSchema = z.object({
 
 const UpdateGitSettingsFormSchema = z.object({
   action: z.literal("update-git-settings"),
-  productionBranch: z.string().min(1, "Production branch is required"),
-  stagingBranch: z.string().min(1, "Staging branch is required"),
+  productionBranch: z.string().optional(),
+  stagingBranch: z.string().optional(),
   previewDeploymentsEnabled: z
     .string()
     .optional()
@@ -344,8 +344,8 @@ export const action: ActionFunction = async ({ request, params }) => {
           },
           data: {
             branchTracking: {
-              production: { branch: productionBranch },
-              staging: { branch: stagingBranch },
+              production: productionBranch ? { branch: productionBranch } : {},
+              staging: stagingBranch ? { branch: stagingBranch } : {},
             } satisfies BranchTrackingConfig,
             previewDeploymentsEnabled: previewDeploymentsEnabled,
           },
