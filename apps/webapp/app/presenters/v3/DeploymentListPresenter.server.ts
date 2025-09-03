@@ -59,6 +59,7 @@ export class DeploymentListPresenter {
         connectedGithubRepository: {
           select: {
             branchTracking: true,
+            previewDeploymentsEnabled: true,
             repository: {
               select: {
                 htmlUrl: true,

@@ -13,15 +13,23 @@ export type BranchTrackingConfig = z.infer<typeof BranchTrackingConfigSchema>;
 
 export function getTrackedBranchForEnvironment(
   branchTracking: BranchTrackingConfig | undefined,
-  environmentType: "PRODUCTION" | "STAGING" | "DEVELOPMENT" | "PREVIEW"
+  previewDeploymentsEnabled: boolean,
+  environment: {
+    type: "PRODUCTION" | "STAGING" | "DEVELOPMENT" | "PREVIEW";
+    branchName?: string;
+  }
 ): string | undefined {
   if (!branchTracking) return undefined;
-  switch (environmentType) {
+  switch (environment.type) {
     case "PRODUCTION":
       return branchTracking.prod?.branch;
     case "STAGING":
       return branchTracking.staging?.branch;
-    default:
+    case "PREVIEW":
+      return previewDeploymentsEnabled ? environment.branchName : undefined;
+    case "DEVELOPMENT":
       return undefined;
+    default:
+      return environment.type satisfies never;
   }
 }

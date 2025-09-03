@@ -138,7 +138,14 @@ export default function Page() {
     BranchTrackingConfigSchema.safeParse(connectedGithubRepository.branchTracking);
   const environmentGitHubBranch =
     branchTrackingOrError && branchTrackingOrError.success
-      ? getTrackedBranchForEnvironment(branchTrackingOrError.data, environment.type)
+      ? getTrackedBranchForEnvironment(
+          branchTrackingOrError.data,
+          connectedGithubRepository.previewDeploymentsEnabled,
+          {
+            type: environment.type,
+            branchName: environment.branchName ?? undefined,
+          }
+        )
       : undefined;
   const hasDeployments = totalPages > 0;
 
@@ -309,7 +316,7 @@ export default function Page() {
                   )}
                 >
                   {connectedGithubRepository && environmentGitHubBranch && (
-                    <div className="flex flex-nowrap items-center gap-2 whitespace-nowrap py-0.5 text-sm">
+                    <div className="flex flex-nowrap items-center gap-2 whitespace-nowrap text-sm">
                       <OctoKitty className="size-4" />
                       Automatically triggered by pushes to{" "}
                       <div className="flex max-w-32 items-center gap-1 truncate rounded bg-grid-dimmed px-1 font-mono">
