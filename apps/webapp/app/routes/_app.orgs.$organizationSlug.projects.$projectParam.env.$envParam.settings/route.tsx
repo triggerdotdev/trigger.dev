@@ -78,6 +78,8 @@ import { useEnvironment } from "~/hooks/useEnvironment";
 import { DateTime } from "~/components/primitives/DateTime";
 import { checkGitHubBranchExists } from "~/services/gitHub.server";
 import { tryCatch } from "@trigger.dev/core";
+import { TextLink } from "~/components/primitives/TextLink";
+import { cn } from "~/utils/cn";
 
 export const meta: MetaFunction = () => {
   return [
@@ -154,6 +156,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       id: true,
       accountHandle: true,
       targetType: true,
+      appInstallationId: true,
       repositories: {
         select: {
           id: true,
@@ -660,6 +663,7 @@ type GitHubRepository = {
 
 type GitHubAppInstallation = {
   id: string;
+  appInstallationId: bigint;
   targetType: string;
   accountHandle: string;
   repositories: GitHubRepository[];
@@ -810,6 +814,16 @@ function ConnectGitHubRepoModal({
                     ))
                   }
                 </Select>
+                <Hint className={cn("invisible", selectedInstallation && "visible")}>
+                  Configure repository access in{" "}
+                  <TextLink
+                    target="_blank"
+                    to={`https://github.com/settings/installations/${selectedInstallation?.appInstallationId}`}
+                  >
+                    GitHub
+                  </TextLink>
+                  .
+                </Hint>
                 <FormError id={repositoryId.errorId}>{repositoryId.error}</FormError>
               </InputGroup>
               <FormError>{form.error}</FormError>
@@ -965,16 +979,14 @@ function ConnectedGitHubRepoForm({
         </div>
         <Dialog>
           <DialogTrigger asChild>
-            <Button variant="minimal/small">
-              Disconnect
-            </Button>
+            <Button variant="minimal/small">Disconnect</Button>
           </DialogTrigger>
           <DialogContent className="max-w-md">
             <DialogHeader>Disconnect GitHub repository</DialogHeader>
             <div className="flex flex-col gap-3 pt-3">
               <Paragraph className="mb-1">
                 Are you sure you want to disconnect{" "}
-                <span className="font-semibold">{connectedGitHubRepo.repository.fullName}</span>? 
+                <span className="font-semibold">{connectedGitHubRepo.repository.fullName}</span>?
                 This will stop automatic deployments from GitHub.
               </Paragraph>
               <FormButtons
