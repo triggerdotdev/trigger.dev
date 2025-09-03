@@ -12,9 +12,6 @@ import { tryCatch } from "@trigger.dev/core";
 import { logger } from "~/services/logger.server";
 import { type RegistryConfig } from "./registryConfig.server";
 import type { EnvironmentType } from "@trigger.dev/core/v3";
-import { customAlphabet } from "nanoid";
-
-const nanoid = customAlphabet("1234567890abcdefghijklmnopqrstuvwxyz", 8);
 
 // Optional configuration for cross-account access
 export type AssumeRoleConfig = {
@@ -106,11 +103,13 @@ export async function getDeploymentImageRef({
   projectRef,
   nextVersion,
   environmentType,
+  deploymentShortCode,
 }: {
   registry: RegistryConfig;
   projectRef: string;
   nextVersion: string;
   environmentType: EnvironmentType;
+  deploymentShortCode: string;
 }): Promise<{
   imageRef: string;
   isEcr: boolean;
@@ -118,8 +117,7 @@ export async function getDeploymentImageRef({
 }> {
   const repositoryName = `${registry.namespace}/${projectRef}`;
   const envType = environmentType.toLowerCase();
-  const randomSuffix = nanoid();
-  const imageRef = `${registry.host}/${repositoryName}:${nextVersion}.${envType}.${randomSuffix}`;
+  const imageRef = `${registry.host}/${repositoryName}:${nextVersion}.${envType}.${deploymentShortCode}`;
 
   if (!isEcrRegistry(registry.host)) {
     return {

@@ -70,6 +70,7 @@ describe("getDeploymentImageRef", () => {
       projectRef: testProjectRef,
       nextVersion: "20250630.1",
       environmentType: "DEVELOPMENT",
+      deploymentShortCode: "test1234",
     });
 
     // Check the image ref structure and that it contains expected parts
@@ -77,7 +78,7 @@ describe("getDeploymentImageRef", () => {
       new RegExp(
         `^${escapeHostForRegex(
           "registry.example.com"
-        )}/${testNamespace}/${testProjectRef}:20250630\\.1\\.development\\.[a-z0-9]{8}$`
+        )}/${testNamespace}/${testProjectRef}:20250630\\.1\\.development\\.test1234$`
       )
     );
     expect(imageRef.isEcr).toBe(false);
@@ -99,13 +100,14 @@ describe("getDeploymentImageRef", () => {
         projectRef: testProjectRef2,
         nextVersion: "20250630.1",
         environmentType: "DEVELOPMENT",
+        deploymentShortCode: "test1234",
       });
 
       expect(imageRef1.imageRef).toMatch(
         new RegExp(
           `^${escapeHostForRegex(
             testHost
-          )}/${testNamespace}/${testProjectRef2}:20250630\\.1\\.development\\.[a-z0-9]{8}$`
+          )}/${testNamespace}/${testProjectRef2}:20250630\\.1\\.development\\.test1234$`
         )
       );
       expect(imageRef1.isEcr).toBe(true);
@@ -124,13 +126,14 @@ describe("getDeploymentImageRef", () => {
         projectRef: testProjectRef2,
         nextVersion: "20250630.2",
         environmentType: "DEVELOPMENT",
+        deploymentShortCode: "test1234",
       });
 
       expect(imageRef2.imageRef).toMatch(
         new RegExp(
           `^${escapeHostForRegex(
             testHost
-          )}/${testNamespace}/${testProjectRef2}:20250630\\.2\\.development\\.[a-z0-9]{8}$`
+          )}/${testNamespace}/${testProjectRef2}:20250630\\.2\\.development\\.test1234$`
         )
       );
       expect(imageRef2.isEcr).toBe(true);
@@ -153,13 +156,14 @@ describe("getDeploymentImageRef", () => {
       projectRef: testProjectRef,
       nextVersion: "20250630.2",
       environmentType: "PRODUCTION",
+      deploymentShortCode: "test1234",
     });
 
     expect(imageRef.imageRef).toMatch(
       new RegExp(
         `^${escapeHostForRegex(
           testHost
-        )}/${testNamespace}/${testProjectRef}:20250630\\.2\\.production\\.[a-z0-9]{8}$`
+        )}/${testNamespace}/${testProjectRef}:20250630\\.2\\.production\\.test1234$`
       )
     );
     expect(imageRef.isEcr).toBe(true);
@@ -183,6 +187,7 @@ describe("getDeploymentImageRef", () => {
       projectRef: testProjectRef,
       nextVersion: sameVersion,
       environmentType: sameEnvironmentType,
+      deploymentShortCode: "test1234",
     });
 
     const secondImageRef = await getDeploymentImageRef({
@@ -198,6 +203,7 @@ describe("getDeploymentImageRef", () => {
       projectRef: testProjectRef,
       nextVersion: sameVersion,
       environmentType: sameEnvironmentType,
+      deploymentShortCode: "test4321",
     });
 
     // Even with the same environment type and version, the image refs should be different due to random suffix
@@ -205,14 +211,14 @@ describe("getDeploymentImageRef", () => {
       new RegExp(
         `^${escapeHostForRegex(
           "registry.example.com"
-        )}/${testNamespace}/${testProjectRef}:${sameVersion}\\.preview\\.[a-z0-9]{8}$`
+        )}/${testNamespace}/${testProjectRef}:${sameVersion}\\.preview\\.test1234$`
       )
     );
     expect(secondImageRef.imageRef).toMatch(
       new RegExp(
         `^${escapeHostForRegex(
           "registry.example.com"
-        )}/${testNamespace}/${testProjectRef}:${sameVersion}\\.preview\\.[a-z0-9]{8}$`
+        )}/${testNamespace}/${testProjectRef}:${sameVersion}\\.preview\\.test4321$`
       )
     );
     expect(firstImageRef.imageRef).not.toBe(secondImageRef.imageRef);
