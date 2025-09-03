@@ -51,6 +51,7 @@ import {
   redirectWithErrorMessage,
   redirectWithSuccessMessage,
   getSession,
+  commitSession,
 } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { DeleteProjectService } from "~/services/deleteProject.server";
@@ -94,14 +95,20 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const session = await getSession(request.headers.get("Cookie"));
   const openGitHubRepoConnectionModal = session.get("gitHubAppInstalled") === true;
+  const headers = new Headers({
+    "Set-Cookie": await commitSession(session),
+  });
 
   if (!githubAppEnabled) {
-    return typedjson({
-      githubAppEnabled,
-      githubAppInstallations: undefined,
-      connectedGithubRepository: undefined,
-      openGitHubRepoConnectionModal,
-    });
+    return typedjson(
+      {
+        githubAppEnabled,
+        githubAppInstallations: undefined,
+        connectedGithubRepository: undefined,
+        openGitHubRepoConnectionModal,
+      },
+      { headers }
+    );
   }
 
   const userId = await requireUserId(request);
@@ -140,15 +147,20 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       connectedGithubRepository.branchTracking
     );
 
-    return typedjson({
-      githubAppEnabled,
-      connectedGithubRepository: {
-        ...connectedGithubRepository,
-        branchTracking: branchTrackingOrFailure.success ? branchTrackingOrFailure.data : undefined,
+    return typedjson(
+      {
+        githubAppEnabled,
+        connectedGithubRepository: {
+          ...connectedGithubRepository,
+          branchTracking: branchTrackingOrFailure.success
+            ? branchTrackingOrFailure.data
+            : undefined,
+        },
+        githubAppInstallations: undefined,
+        openGitHubRepoConnectionModal,
       },
-      githubAppInstallations: undefined,
-      openGitHubRepoConnectionModal,
-    });
+      { headers }
+    );
   }
 
   const githubAppInstallations = await prisma.githubAppInstallation.findMany({
@@ -182,12 +194,15 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     },
   });
 
-  return typedjson({
-    githubAppEnabled,
-    githubAppInstallations,
-    connectedGithubRepository: undefined,
-    openGitHubRepoConnectionModal,
-  });
+  return typedjson(
+    {
+      githubAppEnabled,
+      githubAppInstallations,
+      connectedGithubRepository: undefined,
+      openGitHubRepoConnectionModal,
+    },
+    { headers }
+  );
 };
 
 const ConnectGitHubRepoFormSchema = z.object({

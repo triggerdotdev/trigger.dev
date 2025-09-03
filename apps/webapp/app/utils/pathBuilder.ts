@@ -142,7 +142,9 @@ export function v3ProjectPath(organization: OrgForPath, project: ProjectForPath)
 }
 
 export function githubAppInstallPath(organizationSlug: string, redirectTo: string) {
-  return `/github/install?org_slug=${organizationSlug}&redirect_to=${redirectTo}`;
+  return `/github/install?org_slug=${organizationSlug}&redirect_to=${encodeURIComponent(
+    redirectTo
+  )}`;
 }
 
 export function v3EnvironmentPath(
