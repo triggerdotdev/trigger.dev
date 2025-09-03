@@ -78,7 +78,7 @@ export class InitializeDeploymentService extends BaseService {
           registry: registryConfig,
           projectRef: environment.project.externalRef,
           nextVersion,
-          environmentSlug: environment.slug,
+          environmentType: environment.type,
         })
       );
 

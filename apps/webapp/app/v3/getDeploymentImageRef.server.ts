@@ -11,6 +11,10 @@ import { STSClient, AssumeRoleCommand } from "@aws-sdk/client-sts";
 import { tryCatch } from "@trigger.dev/core";
 import { logger } from "~/services/logger.server";
 import { type RegistryConfig } from "./registryConfig.server";
+import type { EnvironmentType } from "@trigger.dev/core/v3";
+import { customAlphabet } from "nanoid";
+
+const nanoid = customAlphabet("1234567890abcdefghijklmnopqrstuvwxyz", 8);
 
 // Optional configuration for cross-account access
 export type AssumeRoleConfig = {
@@ -101,19 +105,21 @@ export async function getDeploymentImageRef({
   registry,
   projectRef,
   nextVersion,
-  environmentSlug,
+  environmentType,
 }: {
   registry: RegistryConfig;
   projectRef: string;
   nextVersion: string;
-  environmentSlug: string;
+  environmentType: EnvironmentType;
 }): Promise<{
   imageRef: string;
   isEcr: boolean;
   repoCreated: boolean;
 }> {
   const repositoryName = `${registry.namespace}/${projectRef}`;
-  const imageRef = `${registry.host}/${repositoryName}:${nextVersion}.${environmentSlug}`;
+  const envType = environmentType.toLowerCase();
+  const randomSuffix = nanoid();
+  const imageRef = `${registry.host}/${repositoryName}:${nextVersion}.${envType}.${randomSuffix}`;
 
   if (!isEcrRegistry(registry.host)) {
     return {

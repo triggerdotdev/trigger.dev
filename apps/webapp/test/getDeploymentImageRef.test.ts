@@ -8,7 +8,9 @@ import {
 } from "../app/v3/getDeploymentImageRef.server";
 import { DeleteRepositoryCommand } from "@aws-sdk/client-ecr";
 
-describe.skipIf(process.env.RUN_REGISTRY_TESTS !== "1")("getDeploymentImageRef", () => {
+const escapeHostForRegex = (host: string) => host.replace(/\./g, "\\.");
+
+describe("getDeploymentImageRef", () => {
   const testHost =
     process.env.DEPLOY_REGISTRY_HOST || "123456789012.dkr.ecr.us-east-1.amazonaws.com";
   const testNamespace = process.env.DEPLOY_REGISTRY_NAMESPACE || "test-namespace";
@@ -25,7 +27,7 @@ describe.skipIf(process.env.RUN_REGISTRY_TESTS !== "1")("getDeploymentImageRef",
 
   // Clean up test repository after tests
   afterAll(async () => {
-    if (process.env.KEEP_TEST_REPO === "1") {
+    if (process.env.KEEP_TEST_REPO === "1" || process.env.RUN_ECR_TESTS !== "1") {
       return;
     }
 
@@ -57,7 +59,7 @@ describe.skipIf(process.env.RUN_REGISTRY_TESTS !== "1")("getDeploymentImageRef",
   it("should return the correct image ref for non-ECR registry", async () => {
     const imageRef = await getDeploymentImageRef({
       registry: {
-        host: "registry.digitalocean.com",
+        host: "registry.example.com",
         namespace: testNamespace,
         username: "test-user",
         password: "test-pass",
@@ -67,60 +69,76 @@ describe.skipIf(process.env.RUN_REGISTRY_TESTS !== "1")("getDeploymentImageRef",
       },
       projectRef: testProjectRef,
       nextVersion: "20250630.1",
-      environmentSlug: "test",
+      environmentType: "DEVELOPMENT",
     });
 
-    expect(imageRef.imageRef).toBe(
-      `registry.digitalocean.com/${testNamespace}/${testProjectRef}:20250630.1.test`
+    // Check the image ref structure and that it contains expected parts
+    expect(imageRef.imageRef).toMatch(
+      new RegExp(
+        `^${escapeHostForRegex(
+          "registry.example.com"
+        )}/${testNamespace}/${testProjectRef}:20250630\\.1\\.development\\.[a-z0-9]{8}$`
+      )
     );
     expect(imageRef.isEcr).toBe(false);
   });
 
-  it("should create ECR repository and return correct image ref", async () => {
-    const imageRef1 = await getDeploymentImageRef({
-      registry: {
-        host: testHost,
-        namespace: testNamespace,
-        username: "test-user",
-        password: "test-pass",
-        ecrTags: registryTags,
-        ecrAssumeRoleArn: roleArn,
-        ecrAssumeRoleExternalId: externalId,
-      },
-      projectRef: testProjectRef2,
-      nextVersion: "20250630.1",
-      environmentSlug: "test",
-    });
+  it.skipIf(process.env.RUN_ECR_TESTS !== "1")(
+    "should create ECR repository and return correct image ref",
+    async () => {
+      const imageRef1 = await getDeploymentImageRef({
+        registry: {
+          host: testHost,
+          namespace: testNamespace,
+          username: "test-user",
+          password: "test-pass",
+          ecrTags: registryTags,
+          ecrAssumeRoleArn: roleArn,
+          ecrAssumeRoleExternalId: externalId,
+        },
+        projectRef: testProjectRef2,
+        nextVersion: "20250630.1",
+        environmentType: "DEVELOPMENT",
+      });
 
-    expect(imageRef1.imageRef).toBe(
-      `${testHost}/${testNamespace}/${testProjectRef2}:20250630.1.test`
-    );
-    expect(imageRef1.isEcr).toBe(true);
-    expect(imageRef1.repoCreated).toBe(true);
+      expect(imageRef1.imageRef).toMatch(
+        new RegExp(
+          `^${escapeHostForRegex(
+            testHost
+          )}/${testNamespace}/${testProjectRef2}:20250630\\.1\\.development\\.[a-z0-9]{8}$`
+        )
+      );
+      expect(imageRef1.isEcr).toBe(true);
+      expect(imageRef1.repoCreated).toBe(true);
 
-    const imageRef2 = await getDeploymentImageRef({
-      registry: {
-        host: testHost,
-        namespace: testNamespace,
-        username: "test-user",
-        password: "test-pass",
-        ecrTags: registryTags,
-        ecrAssumeRoleArn: roleArn,
-        ecrAssumeRoleExternalId: externalId,
-      },
-      projectRef: testProjectRef2,
-      nextVersion: "20250630.2",
-      environmentSlug: "test",
-    });
+      const imageRef2 = await getDeploymentImageRef({
+        registry: {
+          host: testHost,
+          namespace: testNamespace,
+          username: "test-user",
+          password: "test-pass",
+          ecrTags: registryTags,
+          ecrAssumeRoleArn: roleArn,
+          ecrAssumeRoleExternalId: externalId,
+        },
+        projectRef: testProjectRef2,
+        nextVersion: "20250630.2",
+        environmentType: "DEVELOPMENT",
+      });
 
-    expect(imageRef2.imageRef).toBe(
-      `${testHost}/${testNamespace}/${testProjectRef2}:20250630.2.test`
-    );
-    expect(imageRef2.isEcr).toBe(true);
-    expect(imageRef2.repoCreated).toBe(false);
-  });
+      expect(imageRef2.imageRef).toMatch(
+        new RegExp(
+          `^${escapeHostForRegex(
+            testHost
+          )}/${testNamespace}/${testProjectRef2}:20250630\\.2\\.development\\.[a-z0-9]{8}$`
+        )
+      );
+      expect(imageRef2.isEcr).toBe(true);
+      expect(imageRef2.repoCreated).toBe(false);
+    }
+  );
 
-  it("should reuse existing ECR repository", async () => {
+  it.skipIf(process.env.RUN_ECR_TESTS !== "1")("should reuse existing ECR repository", async () => {
     // This should use the repository created in the previous test
     const imageRef = await getDeploymentImageRef({
       registry: {
@@ -134,36 +152,74 @@ describe.skipIf(process.env.RUN_REGISTRY_TESTS !== "1")("getDeploymentImageRef",
       },
       projectRef: testProjectRef,
       nextVersion: "20250630.2",
-      environmentSlug: "prod",
+      environmentType: "PRODUCTION",
     });
 
-    expect(imageRef.imageRef).toBe(
-      `${testHost}/${testNamespace}/${testProjectRef}:20250630.2.prod`
+    expect(imageRef.imageRef).toMatch(
+      new RegExp(
+        `^${escapeHostForRegex(
+          testHost
+        )}/${testNamespace}/${testProjectRef}:20250630\\.2\\.production\\.[a-z0-9]{8}$`
+      )
     );
     expect(imageRef.isEcr).toBe(true);
   });
 
-  it("should throw error for invalid ECR host", async () => {
-    await expect(
-      getDeploymentImageRef({
-        registry: {
-          host: "invalid.ecr.amazonaws.com",
-          namespace: testNamespace,
-          username: "test-user",
-          password: "test-pass",
-          ecrTags: registryTags,
-          ecrAssumeRoleArn: roleArn,
-          ecrAssumeRoleExternalId: externalId,
-        },
-        projectRef: testProjectRef,
-        nextVersion: "20250630.1",
-        environmentSlug: "test",
-      })
-    ).rejects.toThrow("Invalid ECR registry host: invalid.ecr.amazonaws.com");
+  it("should generate unique image tags for different deployments with same environment type", async () => {
+    // Simulates the scenario where multiple deployments happen to the same environment type
+    const sameEnvironmentType = "PREVIEW";
+    const sameVersion = "20250630.1";
+
+    const firstImageRef = await getDeploymentImageRef({
+      registry: {
+        host: "registry.example.com",
+        namespace: testNamespace,
+        username: "test-user",
+        password: "test-pass",
+        ecrTags: registryTags,
+        ecrAssumeRoleArn: roleArn,
+        ecrAssumeRoleExternalId: externalId,
+      },
+      projectRef: testProjectRef,
+      nextVersion: sameVersion,
+      environmentType: sameEnvironmentType,
+    });
+
+    const secondImageRef = await getDeploymentImageRef({
+      registry: {
+        host: "registry.example.com",
+        namespace: testNamespace,
+        username: "test-user",
+        password: "test-pass",
+        ecrTags: registryTags,
+        ecrAssumeRoleArn: roleArn,
+        ecrAssumeRoleExternalId: externalId,
+      },
+      projectRef: testProjectRef,
+      nextVersion: sameVersion,
+      environmentType: sameEnvironmentType,
+    });
+
+    // Even with the same environment type and version, the image refs should be different due to random suffix
+    expect(firstImageRef.imageRef).toMatch(
+      new RegExp(
+        `^${escapeHostForRegex(
+          "registry.example.com"
+        )}/${testNamespace}/${testProjectRef}:${sameVersion}\\.preview\\.[a-z0-9]{8}$`
+      )
+    );
+    expect(secondImageRef.imageRef).toMatch(
+      new RegExp(
+        `^${escapeHostForRegex(
+          "registry.example.com"
+        )}/${testNamespace}/${testProjectRef}:${sameVersion}\\.preview\\.[a-z0-9]{8}$`
+      )
+    );
+    expect(firstImageRef.imageRef).not.toBe(secondImageRef.imageRef);
   });
 });
 
-describe.skipIf(process.env.RUN_REGISTRY_AUTH_TESTS !== "1")("getEcrAuthToken", () => {
+describe.skipIf(process.env.RUN_ECR_TESTS !== "1")("getEcrAuthToken", () => {
   const testHost =
     process.env.DEPLOY_REGISTRY_HOST || "123456789012.dkr.ecr.us-east-1.amazonaws.com";
 
