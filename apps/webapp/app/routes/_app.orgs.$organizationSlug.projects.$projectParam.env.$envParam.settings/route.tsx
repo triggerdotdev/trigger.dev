@@ -818,6 +818,7 @@ function ConnectGitHubRepoModal({
                   Configure repository access in{" "}
                   <TextLink
                     target="_blank"
+                    rel="noreferrer noopener"
                     to={`https://github.com/settings/installations/${selectedInstallation?.appInstallationId}`}
                   >
                     GitHub
@@ -960,6 +961,7 @@ function ConnectedGitHubRepoForm({
           <a
             href={connectedGitHubRepo.repository.htmlUrl}
             target="_blank"
+            rel="noreferrer noopener"
             className="max-w-52 truncate text-sm text-text-bright hover:underline"
           >
             {connectedGitHubRepo.repository.fullName}

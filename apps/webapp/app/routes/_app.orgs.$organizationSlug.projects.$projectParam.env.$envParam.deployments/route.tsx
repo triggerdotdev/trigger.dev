@@ -327,6 +327,7 @@ export default function Page() {
                       <a
                         href={connectedGithubRepository.repository.htmlUrl}
                         target="_blank"
+                        rel="noreferrer noopener"
                         className="max-w-52 truncate text-sm text-text-dimmed underline transition-colors hover:text-text-bright"
                       >
                         {connectedGithubRepository.repository.fullName}
