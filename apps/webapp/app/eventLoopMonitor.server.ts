@@ -5,6 +5,7 @@ import { env } from "./env.server";
 import { context, Context } from "@opentelemetry/api";
 import { performance } from "node:perf_hooks";
 import { logger } from "./services/logger.server";
+import { signalsEmitter } from "./services/signals.server";
 
 const THRESHOLD_NS = env.EVENT_LOOP_MONITOR_THRESHOLD_MS * 1e6;
 
@@ -109,6 +110,13 @@ function startEventLoopUtilizationMonitoring() {
 
     lastEventLoopUtilization = currentEventLoopUtilization;
   }, env.EVENT_LOOP_MONITOR_UTILIZATION_INTERVAL_MS);
+
+  signalsEmitter.on("SIGTERM", () => {
+    clearInterval(interval);
+  });
+  signalsEmitter.on("SIGINT", () => {
+    clearInterval(interval);
+  });
 
   return () => {
     clearInterval(interval);

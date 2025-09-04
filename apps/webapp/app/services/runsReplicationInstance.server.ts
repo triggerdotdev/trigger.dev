@@ -3,8 +3,8 @@ import invariant from "tiny-invariant";
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
 import { provider } from "~/v3/tracer.server";
-import { logger } from "./logger.server";
 import { RunsReplicationService } from "./runsReplicationService.server";
+import { signalsEmitter } from "./signals.server";
 
 export const runsReplicationInstance = singleton(
   "runsReplicationInstance",
@@ -80,8 +80,8 @@ function initializeRunsReplicationInstance() {
         });
       });
 
-    process.on("SIGTERM", service.shutdown.bind(service));
-    process.on("SIGINT", service.shutdown.bind(service));
+    signalsEmitter.on("SIGTERM", service.shutdown.bind(service));
+    signalsEmitter.on("SIGINT", service.shutdown.bind(service));
   }
 
   return service;
