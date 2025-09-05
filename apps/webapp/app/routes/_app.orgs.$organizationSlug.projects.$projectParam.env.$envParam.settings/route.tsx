@@ -79,6 +79,7 @@ import { useEnvironment } from "~/hooks/useEnvironment";
 import { DateTime } from "~/components/primitives/DateTime";
 import { TextLink } from "~/components/primitives/TextLink";
 import { cn } from "~/utils/cn";
+import { ProjectSettingsPresenter } from "~/services/projectSettingsPresenter.server";
 
 export const meta: MetaFunction = () => {
   return [
@@ -89,7 +90,15 @@ export const meta: MetaFunction = () => {
 };
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const githubAppEnabled = env.GITHUB_APP_ENABLED === "1";
+  const userId = await requireUserId(request);
+  const { projectParam, organizationSlug } = EnvironmentParamSchema.parse(params);
+
+  const projectSettingsPresenter = new ProjectSettingsPresenter();
+  const { gitHubApp } = await projectSettingsPresenter.getProjectSettings(
+    organizationSlug,
+    projectParam,
+    userId
+  );
 
   const session = await getSession(request.headers.get("Cookie"));
   const openGitHubRepoConnectionModal = session.get("gitHubAppInstalled") === true;
@@ -97,106 +106,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     "Set-Cookie": await commitSession(session),
   });
 
-  if (!githubAppEnabled) {
-    return typedjson(
-      {
-        githubAppEnabled,
-        githubAppInstallations: undefined,
-        connectedGithubRepository: undefined,
-        openGitHubRepoConnectionModal,
-      },
-      { headers }
-    );
-  }
-
-  const userId = await requireUserId(request);
-  const { projectParam, organizationSlug } = EnvironmentParamSchema.parse(params);
-
-  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
-  if (!project) {
-    throw new Response(undefined, {
-      status: 404,
-      statusText: "Project not found",
-    });
-  }
-
-  const connectedGithubRepository = await prisma.connectedGithubRepository.findFirst({
-    where: {
-      projectId: project.id,
-    },
-    select: {
-      branchTracking: true,
-      previewDeploymentsEnabled: true,
-      createdAt: true,
-      repository: {
-        select: {
-          id: true,
-          name: true,
-          fullName: true,
-          htmlUrl: true,
-          private: true,
-        },
-      },
-    },
-  });
-
-  if (connectedGithubRepository) {
-    const branchTrackingOrFailure = BranchTrackingConfigSchema.safeParse(
-      connectedGithubRepository.branchTracking
-    );
-
-    return typedjson(
-      {
-        githubAppEnabled,
-        connectedGithubRepository: {
-          ...connectedGithubRepository,
-          branchTracking: branchTrackingOrFailure.success
-            ? branchTrackingOrFailure.data
-            : undefined,
-        },
-        githubAppInstallations: undefined,
-        openGitHubRepoConnectionModal,
-      },
-      { headers }
-    );
-  }
-
-  const githubAppInstallations = await prisma.githubAppInstallation.findMany({
-    where: {
-      organizationId: project.organizationId,
-      deletedAt: null,
-      suspendedAt: null,
-    },
-    select: {
-      id: true,
-      accountHandle: true,
-      targetType: true,
-      appInstallationId: true,
-      repositories: {
-        select: {
-          id: true,
-          name: true,
-          fullName: true,
-          htmlUrl: true,
-          private: true,
-        },
-        // Most installations will only have a couple of repos so loading them here should be fine.
-        // However, there might be outlier organizations so it's best to expose the installation repos
-        // via a resource endpoint and filter on user input.
-        take: 200,
-      },
-    },
-    take: 20,
-    orderBy: {
-      createdAt: "desc",
-    },
-  });
-
   return typedjson(
     {
-      githubAppEnabled,
-      githubAppInstallations,
-      connectedGithubRepository: undefined,
+      githubAppEnabled: gitHubApp.enabled,
+      githubAppInstallations: gitHubApp.installations,
+      connectedGithubRepository: gitHubApp.connectedRepository,
       openGitHubRepoConnectionModal,
     },
     { headers }
@@ -507,7 +421,7 @@ export default function Page() {
                     <ConnectedGitHubRepoForm connectedGitHubRepo={connectedGithubRepository} />
                   ) : (
                     <GitHubConnectionPrompt
-                      gitHubAppInstallations={githubAppInstallations}
+                      gitHubAppInstallations={githubAppInstallations ?? []}
                       organizationSlug={organization.slug}
                       projectSlug={project.slug}
                       environmentSlug={environment.slug}
