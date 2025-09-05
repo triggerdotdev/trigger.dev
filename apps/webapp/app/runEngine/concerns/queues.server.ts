@@ -13,8 +13,8 @@ import {
 import { WorkerGroupService } from "~/v3/services/worker/workerGroupService.server";
 import type { RunEngine } from "~/v3/runEngine.server";
 import { env } from "~/env.server";
-import { EngineServiceValidationError } from "./errors";
 import { tryCatch } from "@trigger.dev/core/v3";
+import { ServiceValidationError } from "~/v3/services/common.server";
 
 export class DefaultQueueManager implements QueueManager {
   constructor(
@@ -45,7 +45,7 @@ export class DefaultQueueManager implements QueueManager {
         });
 
         if (!specifiedQueue) {
-          throw new EngineServiceValidationError(
+          throw new ServiceValidationError(
             `Specified queue '${specifiedQueueName}' not found or not associated with locked version '${
               lockedBackgroundWorker.version ?? "<unknown>"
             }'.`
@@ -68,7 +68,7 @@ export class DefaultQueueManager implements QueueManager {
         });
 
         if (!lockedTask) {
-          throw new EngineServiceValidationError(
+          throw new ServiceValidationError(
             `Task '${request.taskId}' not found on locked version '${
               lockedBackgroundWorker.version ?? "<unknown>"
             }'.`
@@ -83,7 +83,7 @@ export class DefaultQueueManager implements QueueManager {
             workerId: lockedBackgroundWorker.id,
             version: lockedBackgroundWorker.version,
           });
-          throw new EngineServiceValidationError(
+          throw new ServiceValidationError(
             `Default queue configuration for task '${request.taskId}' missing on locked version '${
               lockedBackgroundWorker.version ?? "<unknown>"
             }'.`
@@ -97,7 +97,7 @@ export class DefaultQueueManager implements QueueManager {
       // Task is not locked to a specific version, use regular logic
       if (request.body.options?.lockToVersion) {
         // This should only happen if the findFirst failed, indicating the version doesn't exist
-        throw new EngineServiceValidationError(
+        throw new ServiceValidationError(
           `Task locked to version '${request.body.options.lockToVersion}', but no worker found with that version.`
         );
       }
@@ -221,11 +221,11 @@ export class DefaultQueueManager implements QueueManager {
     );
 
     if (error) {
-      throw new EngineServiceValidationError(error.message);
+      throw new ServiceValidationError(error.message);
     }
 
     if (!workerGroup) {
-      throw new EngineServiceValidationError("No worker group found");
+      throw new ServiceValidationError("No worker group found");
     }
 
     return workerGroup.masterQueue;

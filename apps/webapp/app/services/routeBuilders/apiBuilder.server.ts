@@ -23,6 +23,8 @@ import {
 } from "~/v3/services/worker/workerGroupTokenService.server";
 import { API_VERSIONS, getApiVersion } from "~/api/versions";
 import { WORKER_HEADERS } from "@trigger.dev/core/v3/runEngineWorker";
+import { ServiceValidationError } from "~/v3/services/common.server";
+import { EngineServiceValidationError } from "@internal/run-engine";
 
 type AnyZodSchema = z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
 
@@ -1040,9 +1042,16 @@ export function createActionWorkerApiRoute<
       });
       return result;
     } catch (error) {
-      console.error("Error in API route:", error);
       if (error instanceof Response) {
         return error;
+      }
+
+      if (error instanceof EngineServiceValidationError) {
+        return json({ error: error.message }, { status: error.status ?? 422 });
+      }
+
+      if (error instanceof ServiceValidationError) {
+        return json({ error: error.message }, { status: error.status ?? 422 });
       }
 
       logger.error("Error in action", {

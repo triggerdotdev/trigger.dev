@@ -15,6 +15,7 @@ import {
   Attributes,
   Histogram,
 } from "@internal/tracing";
+import { ServiceValidationError } from "./errors.js";
 
 const SemanticAttributes = {
   LOCK_TYPE: "run_engine.lock.type",
@@ -174,6 +175,10 @@ export class RunLocker {
         );
 
         if (error) {
+          if (error instanceof ServiceValidationError) {
+            throw error;
+          }
+
           // Record failed lock acquisition
           const lockDuration = performance.now() - lockStartTime;
           this.lockDurationHistogram.record(lockDuration, {
@@ -186,6 +191,7 @@ export class RunLocker {
             resources,
             duration: this.duration,
           });
+
           throw error;
         }
 

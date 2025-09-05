@@ -1,3 +1,4 @@
+import { EngineServiceValidationError } from "@internal/run-engine";
 import { json } from "@remix-run/server-runtime";
 import {
   generateJWT as internal_generateJWT,
@@ -8,7 +9,6 @@ import { TaskRun } from "@trigger.dev/database";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
-import { EngineServiceValidationError } from "~/runEngine/concerns/errors";
 import { ApiAuthenticationResultSuccess, getOneTimeUseToken } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
