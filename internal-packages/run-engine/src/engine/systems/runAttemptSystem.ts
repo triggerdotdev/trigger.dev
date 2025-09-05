@@ -1236,7 +1236,7 @@ export class RunAttemptSystem {
     tx?: PrismaClientOrTransaction;
   }): Promise<ExecutionResult & { alreadyFinished: boolean }> {
     const prisma = tx ?? this.$.prisma;
-    reason = reason ?? "Cancelled by user";
+    reason = reason ?? "Canceled by user";
 
     return startSpan(this.$.tracer, "cancelRun", async (span) => {
       return this.$.runLock.lock("cancelRun", [runId], async () => {
