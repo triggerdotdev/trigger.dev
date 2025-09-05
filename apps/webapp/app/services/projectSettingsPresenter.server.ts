@@ -1,11 +1,9 @@
 import { type PrismaClient } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
-import { DeleteProjectService } from "~/services/deleteProject.server";
-import { BranchTrackingConfigSchema, type BranchTrackingConfig } from "~/v3/github";
-import { checkGitHubBranchExists } from "~/services/gitHub.server";
-import { tryCatch } from "@trigger.dev/core/utils";
+import { BranchTrackingConfigSchema } from "~/v3/github";
 import { env } from "~/env.server";
 import { findProjectBySlug } from "~/models/project.server";
+import { err, fromPromise, ok, okAsync } from "neverthrow";
 
 export class ProjectSettingsPresenter {
   #prismaClient: PrismaClient;
@@ -14,101 +12,133 @@ export class ProjectSettingsPresenter {
     this.#prismaClient = prismaClient;
   }
 
-  async getProjectSettings(organizationSlug: string, projectSlug: string, userId: string) {
+  getProjectSettings(organizationSlug: string, projectSlug: string, userId: string) {
     const githubAppEnabled = env.GITHUB_APP_ENABLED === "1";
 
     if (!githubAppEnabled) {
-      return {
+      return okAsync({
         gitHubApp: {
           enabled: false,
           connectedRepository: undefined,
           installations: undefined,
         },
-      };
+      });
     }
 
-    const project = await findProjectBySlug(organizationSlug, projectSlug, userId);
-    if (!project) {
-      throw new Error("Project not found");
-    }
-    const connectedGithubRepository = await prisma.connectedGithubRepository.findFirst({
-      where: {
-        projectId: project.id,
-      },
-      select: {
-        branchTracking: true,
-        previewDeploymentsEnabled: true,
-        createdAt: true,
-        repository: {
+    const getProject = () =>
+      fromPromise(findProjectBySlug(organizationSlug, projectSlug, userId), (error) => ({
+        type: "other" as const,
+        cause: error,
+      })).andThen((project) => {
+        if (!project) {
+          return err({ type: "project_not_found" as const });
+        }
+        return ok(project);
+      });
+
+    const findConnectedGithubRepository = (projectId: string) =>
+      fromPromise(
+        this.#prismaClient.connectedGithubRepository.findFirst({
+          where: {
+            projectId,
+          },
+          select: {
+            branchTracking: true,
+            previewDeploymentsEnabled: true,
+            createdAt: true,
+            repository: {
+              select: {
+                id: true,
+                name: true,
+                fullName: true,
+                htmlUrl: true,
+                private: true,
+              },
+            },
+          },
+        }),
+        (error) => ({
+          type: "other" as const,
+          cause: error,
+        })
+      ).map((connectedGithubRepository) => {
+        if (!connectedGithubRepository) {
+          return undefined;
+        }
+
+        const branchTrackingOrFailure = BranchTrackingConfigSchema.safeParse(
+          connectedGithubRepository.branchTracking
+        );
+        return {
+          ...connectedGithubRepository,
+          branchTracking: branchTrackingOrFailure.success
+            ? branchTrackingOrFailure.data
+            : undefined,
+        };
+      });
+
+    const listGithubAppInstallations = (organizationId: string) =>
+      fromPromise(
+        this.#prismaClient.githubAppInstallation.findMany({
+          where: {
+            organizationId,
+            deletedAt: null,
+            suspendedAt: null,
+          },
           select: {
             id: true,
-            name: true,
-            fullName: true,
-            htmlUrl: true,
-            private: true,
+            accountHandle: true,
+            targetType: true,
+            appInstallationId: true,
+            repositories: {
+              select: {
+                id: true,
+                name: true,
+                fullName: true,
+                htmlUrl: true,
+                private: true,
+              },
+              // Most installations will only have a couple of repos so loading them here should be fine.
+              // However, there might be outlier organizations so it's best to expose the installation repos
+              // via a resource endpoint and filter on user input.
+              take: 200,
+            },
           },
-        },
-      },
-    });
-
-    if (connectedGithubRepository) {
-      const branchTrackingOrFailure = BranchTrackingConfigSchema.safeParse(
-        connectedGithubRepository.branchTracking
+          take: 20,
+          orderBy: {
+            createdAt: "desc",
+          },
+        }),
+        (error) => ({
+          type: "other" as const,
+          cause: error,
+        })
       );
 
-      return {
-        gitHubApp: {
-          enabled: true,
-          connectedRepository: {
-            ...connectedGithubRepository,
-            branchTracking: branchTrackingOrFailure.success
-              ? branchTrackingOrFailure.data
-              : undefined,
-          },
-          // skip loading installations if there is a connected repository
-          // a project can have only a single connected repository
-          installations: undefined,
-        },
-      };
-    }
+    return getProject().andThen((project) =>
+      findConnectedGithubRepository(project.id).andThen((connectedGithubRepository) => {
+        if (connectedGithubRepository) {
+          return okAsync({
+            gitHubApp: {
+              enabled: true,
+              connectedRepository: connectedGithubRepository,
+              // skip loading installations if there is a connected repository
+              // a project can have only a single connected repository
+              installations: undefined,
+            },
+          });
+        }
 
-    const githubAppInstallations = await prisma.githubAppInstallation.findMany({
-      where: {
-        organizationId: project.organizationId,
-        deletedAt: null,
-        suspendedAt: null,
-      },
-      select: {
-        id: true,
-        accountHandle: true,
-        targetType: true,
-        appInstallationId: true,
-        repositories: {
-          select: {
-            id: true,
-            name: true,
-            fullName: true,
-            htmlUrl: true,
-            private: true,
-          },
-          // Most installations will only have a couple of repos so loading them here should be fine.
-          // However, there might be outlier organizations so it's best to expose the installation repos
-          // via a resource endpoint and filter on user input.
-          take: 200,
-        },
-      },
-      take: 20,
-      orderBy: {
-        createdAt: "desc",
-      },
-    });
-
-    return {
-      gitHubApp: {
-        enabled: true,
-        connectedRepository: undefined,
-        installations: githubAppInstallations,
-      },
-    };
+        return listGithubAppInstallations(project.organizationId).map((githubAppInstallations) => {
+          return {
+            gitHubApp: {
+              enabled: true,
+              connectedRepository: undefined,
+              installations: githubAppInstallations,
+            },
+          };
+        });
+      })
+    );
   }
 }

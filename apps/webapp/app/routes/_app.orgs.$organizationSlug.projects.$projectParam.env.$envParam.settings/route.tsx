@@ -42,7 +42,6 @@ import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/Page
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
 import { SpinnerWhite } from "~/components/primitives/Spinner";
-import { prisma } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import {
@@ -53,7 +52,6 @@ import {
   getSession,
   commitSession,
 } from "~/models/message.server";
-import { findProjectBySlug } from "~/models/project.server";
 import { ProjectSettingsService } from "~/services/projectSettings.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
@@ -64,17 +62,16 @@ import {
   EnvironmentParamSchema,
   v3ProjectSettingsPath,
 } from "~/utils/pathBuilder";
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { Switch } from "~/components/primitives/Switch";
-import { BranchTrackingConfigSchema, type BranchTrackingConfig } from "~/v3/github";
+import { type BranchTrackingConfig } from "~/v3/github";
 import {
   EnvironmentIcon,
   environmentFullTitle,
   environmentTextClassName,
 } from "~/components/environments/EnvironmentLabel";
 import { GitBranchIcon } from "lucide-react";
-import { env } from "~/env.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { DateTime } from "~/components/primitives/DateTime";
 import { TextLink } from "~/components/primitives/TextLink";
@@ -94,11 +91,36 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { projectParam, organizationSlug } = EnvironmentParamSchema.parse(params);
 
   const projectSettingsPresenter = new ProjectSettingsPresenter();
-  const { gitHubApp } = await projectSettingsPresenter.getProjectSettings(
+  const resultOrFail = await projectSettingsPresenter.getProjectSettings(
     organizationSlug,
     projectParam,
     userId
   );
+
+  if (resultOrFail.isErr()) {
+    switch (resultOrFail.error.type) {
+      case "project_not_found": {
+        throw new Response(undefined, {
+          status: 404,
+          statusText: "Project not found",
+        });
+      }
+      case "other":
+      default: {
+        resultOrFail.error.type satisfies "other";
+
+        logger.error("Failed loading project settings", {
+          error: resultOrFail.error,
+        });
+        throw new Response(undefined, {
+          status: 400,
+          statusText: "Something went wrong, please try again!",
+        });
+      }
+    }
+  }
+
+  const { gitHubApp } = resultOrFail.value;
 
   const session = await getSession(request.headers.get("Cookie"));
   const openGitHubRepoConnectionModal = session.get("gitHubAppInstalled") === true;
@@ -278,7 +300,8 @@ export const action: ActionFunction = async ({ request, params }) => {
         }
       }
       default: {
-        return submission.value satisfies never;
+        submission.value satisfies never;
+        return redirectBackWithErrorMessage(request, "Failed to process request");
       }
     }
   } catch (error: any) {
