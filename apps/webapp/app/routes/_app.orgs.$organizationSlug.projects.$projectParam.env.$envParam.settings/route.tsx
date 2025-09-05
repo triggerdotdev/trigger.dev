@@ -215,97 +215,171 @@ export const action: ActionFunction = async ({ request, params }) => {
   }
 
   const projectSettingsService = new ProjectSettingsService();
-  const project = await projectSettingsService.verifyProjectMembership(
-    projectParam,
+  const membershipResultOrFail = await projectSettingsService.verifyProjectMembership(
     organizationSlug,
+    projectParam,
     userId
   );
 
-  if (!project) {
-    return json({ errors: { body: "project not found" } }, { status: 404 });
+  if (membershipResultOrFail.isErr()) {
+    return json({ errors: { body: membershipResultOrFail.error.type } }, { status: 404 });
   }
 
-  try {
-    switch (submission.value.action) {
-      case "rename": {
-        await projectSettingsService.renameProject(project.id, submission.value.projectName);
+  const { projectId, organizationId } = membershipResultOrFail.value;
 
-        return redirectWithSuccessMessage(
-          v3ProjectPath({ slug: organizationSlug }, { slug: projectParam }),
-          request,
-          `Project renamed to ${submission.value.projectName}`
-        );
-      }
-      case "delete": {
-        try {
-          await projectSettingsService.deleteProject(projectParam, userId);
+  switch (submission.value.action) {
+    case "rename": {
+      const resultOrFail = await projectSettingsService.renameProject(
+        projectId,
+        submission.value.projectName
+      );
 
-          return redirectWithSuccessMessage(
-            organizationPath({ slug: organizationSlug }),
-            request,
-            "Project deleted"
-          );
-        } catch (error: unknown) {
-          logger.error("Project could not be deleted", {
-            error: error instanceof Error ? error.message : JSON.stringify(error),
-          });
-          return redirectWithErrorMessage(
-            v3ProjectPath({ slug: organizationSlug }, { slug: projectParam }),
-            request,
-            `Project ${projectParam} could not be deleted`
-          );
+      if (resultOrFail.isErr()) {
+        switch (resultOrFail.error.type) {
+          case "other":
+          default: {
+            resultOrFail.error.type satisfies "other";
+
+            logger.error("Failed to rename project", {
+              error: resultOrFail.error,
+            });
+            return json({ errors: { body: "Failed to rename project" } }, { status: 400 });
+          }
         }
       }
-      case "disconnect-repo": {
-        await projectSettingsService.disconnectGitHubRepo(project.id);
 
-        return redirectBackWithSuccessMessage(
-          request,
-          "GitHub repository disconnected successfully"
-        );
-      }
-      case "update-git-settings": {
-        const { productionBranch, stagingBranch, previewDeploymentsEnabled } = submission.value;
-
-        try {
-          await projectSettingsService.updateGitSettings(
-            project.id,
-            productionBranch,
-            stagingBranch,
-            previewDeploymentsEnabled
-          );
-
-          return redirectBackWithSuccessMessage(request, "Git settings updated successfully");
-        } catch (error: any) {
-          return redirectBackWithErrorMessage(request, error.message);
-        }
-      }
-      case "connect-repo": {
-        const { repositoryId, installationId } = submission.value;
-
-        try {
-          await projectSettingsService.connectGitHubRepo(
-            project.id,
-            project.organizationId,
-            repositoryId,
-            installationId
-          );
-
-          return json({
-            ...submission,
-            success: true,
-          });
-        } catch (error: any) {
-          return redirectBackWithErrorMessage(request, error.message);
-        }
-      }
-      default: {
-        submission.value satisfies never;
-        return redirectBackWithErrorMessage(request, "Failed to process request");
-      }
+      return redirectWithSuccessMessage(
+        v3ProjectPath({ slug: organizationSlug }, { slug: projectParam }),
+        request,
+        `Project renamed to ${submission.value.projectName}`
+      );
     }
-  } catch (error: any) {
-    return json({ errors: { body: error.message } }, { status: 400 });
+    case "delete": {
+      const resultOrFail = await projectSettingsService.deleteProject(projectParam, userId);
+
+      if (resultOrFail.isErr()) {
+        switch (resultOrFail.error.type) {
+          case "other":
+          default: {
+            resultOrFail.error.type satisfies "other";
+
+            logger.error("Failed to delete project", {
+              error: resultOrFail.error,
+            });
+            return redirectWithErrorMessage(
+              v3ProjectPath({ slug: organizationSlug }, { slug: projectParam }),
+              request,
+              `Project ${projectParam} could not be deleted`
+            );
+          }
+        }
+      }
+
+      return redirectWithSuccessMessage(
+        organizationPath({ slug: organizationSlug }),
+        request,
+        "Project deleted"
+      );
+    }
+    case "disconnect-repo": {
+      const resultOrFail = await projectSettingsService.disconnectGitHubRepo(projectId);
+
+      if (resultOrFail.isErr()) {
+        switch (resultOrFail.error.type) {
+          case "other":
+          default: {
+            resultOrFail.error.type satisfies "other";
+
+            logger.error("Failed to disconnect GitHub repository", {
+              error: resultOrFail.error,
+            });
+            return redirectBackWithErrorMessage(request, "Failed to disconnect GitHub repository");
+          }
+        }
+      }
+
+      return redirectBackWithSuccessMessage(request, "GitHub repository disconnected successfully");
+    }
+    case "update-git-settings": {
+      const { productionBranch, stagingBranch, previewDeploymentsEnabled } = submission.value;
+
+      const resultOrFail = await projectSettingsService.updateGitSettings(
+        projectId,
+        productionBranch,
+        stagingBranch,
+        previewDeploymentsEnabled
+      );
+
+      if (resultOrFail.isErr()) {
+        switch (resultOrFail.error.type) {
+          case "github_app_not_enabled": {
+            return redirectBackWithErrorMessage(request, "GitHub app is not enabled");
+          }
+          case "connected_gh_repository_not_found": {
+            return redirectBackWithErrorMessage(request, "Connected GitHub repository not found");
+          }
+          case "production_tracking_branch_not_found": {
+            return redirectBackWithErrorMessage(request, "Production tracking branch not found");
+          }
+          case "staging_tracking_branch_not_found": {
+            return redirectBackWithErrorMessage(request, "Staging tracking branch not found");
+          }
+          case "other":
+          default: {
+            resultOrFail.error.type satisfies "other";
+
+            logger.error("Failed to update Git settings", {
+              error: resultOrFail.error,
+            });
+            return redirectBackWithErrorMessage(request, "Failed to update Git settings");
+          }
+        }
+      }
+
+      return redirectBackWithSuccessMessage(request, "Git settings updated successfully");
+    }
+    case "connect-repo": {
+      const { repositoryId, installationId } = submission.value;
+
+      const resultOrFail = await projectSettingsService.connectGitHubRepo(
+        projectId,
+        organizationId,
+        repositoryId,
+        installationId
+      );
+
+      if (resultOrFail.isErr()) {
+        switch (resultOrFail.error.type) {
+          case "gh_repository_not_found": {
+            return redirectBackWithErrorMessage(request, "GitHub repository not found");
+          }
+          case "project_already_has_connected_repository": {
+            return redirectBackWithErrorMessage(
+              request,
+              "Project already has a connected repository"
+            );
+          }
+          case "other":
+          default: {
+            resultOrFail.error.type satisfies "other";
+
+            logger.error("Failed to connect GitHub repository", {
+              error: resultOrFail.error,
+            });
+            return redirectBackWithErrorMessage(request, "Failed to connect GitHub repository");
+          }
+        }
+      }
+
+      return json({
+        ...submission,
+        success: true,
+      });
+    }
+    default: {
+      submission.value satisfies never;
+      return redirectBackWithErrorMessage(request, "Failed to process request");
+    }
   }
 };
 

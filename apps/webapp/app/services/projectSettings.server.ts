@@ -3,7 +3,7 @@ import { prisma } from "~/db.server";
 import { DeleteProjectService } from "~/services/deleteProject.server";
 import { BranchTrackingConfigSchema, type BranchTrackingConfig } from "~/v3/github";
 import { checkGitHubBranchExists } from "~/services/gitHub.server";
-import { tryCatch } from "@trigger.dev/core/utils";
+import { errAsync, fromPromise, okAsync, ResultAsync } from "neverthrow";
 
 export class ProjectSettingsService {
   #prismaClient: PrismaClient;
@@ -12,181 +12,270 @@ export class ProjectSettingsService {
     this.#prismaClient = prismaClient;
   }
 
-  async renameProject(projectId: string, newName: string) {
-    const updatedProject = await this.#prismaClient.project.update({
-      where: {
-        id: projectId,
-      },
-      data: {
-        name: newName,
-      },
-    });
-
-    return updatedProject;
+  renameProject(projectId: string, newName: string) {
+    return fromPromise(
+      this.#prismaClient.project.update({
+        where: {
+          id: projectId,
+        },
+        data: {
+          name: newName,
+        },
+      }),
+      (error) => ({
+        type: "other" as const,
+        cause: error,
+      })
+    );
   }
 
-  async deleteProject(projectSlug: string, userId: string) {
+  deleteProject(projectSlug: string, userId: string) {
     const deleteProjectService = new DeleteProjectService(this.#prismaClient);
-    await deleteProjectService.call({ projectSlug, userId });
+
+    return fromPromise(deleteProjectService.call({ projectSlug, userId }), (error) => ({
+      type: "other" as const,
+      cause: error,
+    }));
   }
 
-  async connectGitHubRepo(
+  connectGitHubRepo(
     projectId: string,
     organizationId: string,
     repositoryId: string,
     installationId: string
   ) {
-    const [repository, existingConnection] = await Promise.all([
-      this.#prismaClient.githubRepository.findFirst({
-        where: {
-          id: repositoryId,
-          installationId,
-          installation: {
-            organizationId: organizationId,
+    const getRepository = () =>
+      fromPromise(
+        this.#prismaClient.githubRepository.findFirst({
+          where: {
+            id: repositoryId,
+            installationId,
+            installation: {
+              organizationId: organizationId,
+            },
           },
-        },
-        select: {
-          id: true,
-          name: true,
-          defaultBranch: true,
-        },
-      }),
-      this.#prismaClient.connectedGithubRepository.findFirst({
+          select: {
+            id: true,
+            name: true,
+            defaultBranch: true,
+          },
+        }),
+        (error) => ({
+          type: "other" as const,
+          cause: error,
+        })
+      ).andThen((repository) => {
+        if (!repository) {
+          return errAsync({ type: "gh_repository_not_found" as const });
+        }
+        return okAsync(repository);
+      });
+
+    const findExistingConnection = () =>
+      fromPromise(
+        this.#prismaClient.connectedGithubRepository.findFirst({
+          where: {
+            projectId: projectId,
+          },
+        }),
+        (error) => ({ type: "other" as const, cause: error })
+      );
+
+    const createConnectedRepo = (defaultBranch: string) =>
+      fromPromise(
+        this.#prismaClient.connectedGithubRepository.create({
+          data: {
+            projectId: projectId,
+            repositoryId: repositoryId,
+            branchTracking: {
+              prod: { branch: defaultBranch },
+              staging: { branch: defaultBranch },
+            } satisfies BranchTrackingConfig,
+            previewDeploymentsEnabled: true,
+          },
+        }),
+        (error) => ({ type: "other" as const, cause: error })
+      );
+
+    return ResultAsync.combine([getRepository(), findExistingConnection()]).andThen(
+      ([repository, existingConnection]) => {
+        if (existingConnection) {
+          return errAsync({ type: "project_already_has_connected_repository" as const });
+        }
+
+        return createConnectedRepo(repository.defaultBranch);
+      }
+    );
+  }
+
+  disconnectGitHubRepo(projectId: string) {
+    return fromPromise(
+      this.#prismaClient.connectedGithubRepository.delete({
         where: {
           projectId: projectId,
         },
       }),
-    ]);
-
-    if (!repository) {
-      throw new Error("Repository not found");
-    }
-
-    if (existingConnection) {
-      throw new Error("Project is already connected to a repository");
-    }
-
-    const connectedRepo = await this.#prismaClient.connectedGithubRepository.create({
-      data: {
-        projectId: projectId,
-        repositoryId: repositoryId,
-        branchTracking: {
-          prod: { branch: repository.defaultBranch },
-          staging: { branch: repository.defaultBranch },
-        } satisfies BranchTrackingConfig,
-        previewDeploymentsEnabled: true,
-      },
-    });
-
-    return connectedRepo;
+      (error) => ({ type: "other" as const, cause: error })
+    );
   }
 
-  async disconnectGitHubRepo(projectId: string) {
-    await this.#prismaClient.connectedGithubRepository.delete({
-      where: {
-        projectId: projectId,
-      },
-    });
-  }
-
-  async updateGitSettings(
+  updateGitSettings(
     projectId: string,
     productionBranch?: string,
     stagingBranch?: string,
     previewDeploymentsEnabled?: boolean
   ) {
-    const existingConnection = await this.#prismaClient.connectedGithubRepository.findFirst({
-      where: {
-        projectId: projectId,
-      },
-      include: {
-        repository: {
-          include: {
-            installation: true,
+    const getExistingConnectedRepo = () =>
+      fromPromise(
+        this.#prismaClient.connectedGithubRepository.findFirst({
+          where: {
+            projectId: projectId,
           },
-        },
-      },
-    });
-
-    if (!existingConnection) {
-      throw new Error("No connected GitHub repository found");
-    }
-
-    const [owner, repo] = existingConnection.repository.fullName.split("/");
-    const installationId = Number(existingConnection.repository.installation.appInstallationId);
-
-    const existingBranchTracking = BranchTrackingConfigSchema.safeParse(
-      existingConnection.branchTracking
-    );
-
-    const [error, branchValidationsOrFail] = await tryCatch(
-      Promise.all([
-        productionBranch && existingBranchTracking.data?.prod?.branch !== productionBranch
-          ? checkGitHubBranchExists(installationId, owner, repo, productionBranch)
-          : Promise.resolve(true),
-        stagingBranch && existingBranchTracking.data?.staging?.branch !== stagingBranch
-          ? checkGitHubBranchExists(installationId, owner, repo, stagingBranch)
-          : Promise.resolve(true),
-      ])
-    );
-
-    if (error) {
-      throw new Error("Failed to validate tracking branches");
-    }
-
-    const [productionBranchExists, stagingBranchExists] = branchValidationsOrFail;
-
-    if (productionBranch && !productionBranchExists) {
-      throw new Error(
-        `Production tracking branch '${productionBranch}' does not exist in the repository`
-      );
-    }
-
-    if (stagingBranch && !stagingBranchExists) {
-      throw new Error(
-        `Staging tracking branch '${stagingBranch}' does not exist in the repository`
-      );
-    }
-
-    const updatedConnection = await this.#prismaClient.connectedGithubRepository.update({
-      where: {
-        projectId: projectId,
-      },
-      data: {
-        branchTracking: {
-          prod: productionBranch ? { branch: productionBranch } : {},
-          staging: stagingBranch ? { branch: stagingBranch } : {},
-        } satisfies BranchTrackingConfig,
-        previewDeploymentsEnabled: previewDeploymentsEnabled,
-      },
-    });
-
-    return updatedConnection;
-  }
-
-  async verifyProjectMembership(projectSlug: string, organizationSlug: string, userId: string) {
-    const project = await this.#prismaClient.project.findFirst({
-      where: {
-        slug: projectSlug,
-        organization: {
-          slug: organizationSlug,
-          members: {
-            some: {
-              userId,
+          include: {
+            repository: {
+              include: {
+                installation: true,
+              },
             },
           },
-        },
-      },
-      select: {
-        id: true,
-        organizationId: true,
-      },
+        }),
+        (error) => ({ type: "other" as const, cause: error })
+      )
+        .andThen((connectedRepo) => {
+          if (!connectedRepo) {
+            return errAsync({ type: "connected_gh_repository_not_found" as const });
+          }
+          return okAsync(connectedRepo);
+        })
+        .map((connectedRepo) => {
+          const branchTrackingOrFailure = BranchTrackingConfigSchema.safeParse(
+            connectedRepo.branchTracking
+          );
+          const branchTracking = branchTrackingOrFailure.success
+            ? branchTrackingOrFailure.data
+            : undefined;
+
+          return {
+            ...connectedRepo,
+            branchTracking,
+          };
+        });
+
+    const validateProductionBranch = ({
+      installationId,
+      fullRepoName,
+      oldProductionBranch,
+    }: {
+      installationId: number;
+      fullRepoName: string;
+      oldProductionBranch?: string;
+    }) => {
+      if (productionBranch && oldProductionBranch !== productionBranch) {
+        return checkGitHubBranchExists(installationId, fullRepoName, productionBranch).andThen(
+          (exists) => {
+            if (!exists) {
+              return errAsync({ type: "production_tracking_branch_not_found" as const });
+            }
+            return okAsync(productionBranch);
+          }
+        );
+      }
+
+      return okAsync(productionBranch);
+    };
+
+    const validateStagingBranch = ({
+      installationId,
+      fullRepoName,
+      oldStagingBranch,
+    }: {
+      installationId: number;
+      fullRepoName: string;
+      oldStagingBranch?: string;
+    }) => {
+      if (stagingBranch && oldStagingBranch !== stagingBranch) {
+        return checkGitHubBranchExists(installationId, fullRepoName, stagingBranch).andThen(
+          (exists) => {
+            if (!exists) {
+              return errAsync({ type: "staging_tracking_branch_not_found" as const });
+            }
+            return okAsync(stagingBranch);
+          }
+        );
+      }
+
+      return okAsync(stagingBranch);
+    };
+
+    const updateConnectedRepo = () =>
+      fromPromise(
+        this.#prismaClient.connectedGithubRepository.update({
+          where: {
+            projectId: projectId,
+          },
+          data: {
+            branchTracking: {
+              prod: productionBranch ? { branch: productionBranch } : {},
+              staging: stagingBranch ? { branch: stagingBranch } : {},
+            } satisfies BranchTrackingConfig,
+            previewDeploymentsEnabled: previewDeploymentsEnabled,
+          },
+        }),
+        (error) => ({ type: "other" as const, cause: error })
+      );
+
+    return getExistingConnectedRepo()
+      .andThen((connectedRepo) => {
+        const installationId = Number(connectedRepo.repository.installation.appInstallationId);
+
+        return ResultAsync.combine([
+          validateProductionBranch({
+            installationId,
+            fullRepoName: connectedRepo.repository.fullName,
+            oldProductionBranch: connectedRepo.branchTracking?.prod?.branch,
+          }),
+          validateStagingBranch({
+            installationId,
+            fullRepoName: connectedRepo.repository.fullName,
+            oldStagingBranch: connectedRepo.branchTracking?.staging?.branch,
+          }),
+        ]);
+      })
+      .andThen(updateConnectedRepo);
+  }
+
+  verifyProjectMembership(organizationSlug: string, projectSlug: string, userId: string) {
+    const findProject = () =>
+      fromPromise(
+        this.#prismaClient.project.findFirst({
+          where: {
+            slug: projectSlug,
+            organization: {
+              slug: organizationSlug,
+              members: {
+                some: {
+                  userId,
+                },
+              },
+            },
+          },
+          select: {
+            id: true,
+            organizationId: true,
+          },
+        }),
+        (error) => ({ type: "other" as const, cause: error })
+      );
+
+    return findProject().andThen((project) => {
+      if (!project) {
+        return errAsync({ type: "user_not_in_project" as const });
+      }
+
+      return okAsync({
+        projectId: project.id,
+        organizationId: project.organizationId,
+      });
     });
-
-    if (!project) {
-      throw new Error("Project not found");
-    }
-
-    return project;
   }
 }

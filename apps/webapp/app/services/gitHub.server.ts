@@ -2,7 +2,7 @@ import { App, type Octokit } from "octokit";
 import { env } from "../env.server";
 import { prisma } from "~/db.server";
 import { logger } from "./logger.server";
-import { tryCatch } from "@trigger.dev/core/utils";
+import { errAsync, fromPromise, okAsync, type ResultAsync } from "neverthrow";
 
 export const githubApp =
   env.GITHUB_APP_ENABLED === "1"
@@ -138,43 +138,53 @@ async function fetchInstallationRepositories(octokit: Octokit, installationId: n
 /**
  * Checks if a branch exists in a GitHub repository
  */
-export async function checkGitHubBranchExists(
+export function checkGitHubBranchExists(
   installationId: number,
-  owner: string,
-  repo: string,
+  fullRepoName: string,
   branch: string
-): Promise<boolean> {
+): ResultAsync<boolean, { type: "other" | "github_app_not_enabled"; cause?: unknown }> {
   if (!githubApp) {
-    throw new Error("GitHub App is not enabled");
+    return errAsync({ type: "github_app_not_enabled" as const });
   }
 
   if (!branch || branch.trim() === "") {
-    return false;
+    return okAsync(false);
   }
 
-  const octokit = await githubApp.getInstallationOctokit(installationId);
-  const [error] = await tryCatch(
-    octokit.rest.repos.getBranch({
-      owner,
-      repo,
-      branch,
-    })
-  );
+  const [owner, repo] = fullRepoName.split("/");
 
-  if (error && "status" in error && error.status === 404) {
-    return false;
-  }
+  const getOctokit = () =>
+    fromPromise(githubApp.getInstallationOctokit(installationId), (error) => ({
+      type: "other" as const,
+      cause: error,
+    }));
 
-  if (error) {
-    logger.error("Error checking GitHub branch", {
-      installationId,
-      owner,
-      repo,
-      branch,
-      error: error.message,
+  const getBranch = (octokit: Octokit) =>
+    fromPromise(
+      octokit.rest.repos.getBranch({
+        owner,
+        repo,
+        branch,
+      }),
+      (error) => ({
+        type: "other" as const,
+        cause: error,
+      })
+    );
+
+  return getOctokit()
+    .andThen((octokit) => getBranch(octokit))
+    .map(() => true)
+    .orElse((error) => {
+      if (
+        error.cause &&
+        error.cause instanceof Error &&
+        "status" in error.cause &&
+        error.cause.status === 404
+      ) {
+        return okAsync(false);
+      }
+
+      return errAsync(error);
     });
-    throw error;
-  }
-
-  return true;
 }

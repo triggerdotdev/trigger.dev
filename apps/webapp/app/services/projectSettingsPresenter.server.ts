@@ -69,11 +69,13 @@ export class ProjectSettingsPresenter {
         const branchTrackingOrFailure = BranchTrackingConfigSchema.safeParse(
           connectedGithubRepository.branchTracking
         );
+        const branchTracking = branchTrackingOrFailure.success
+          ? branchTrackingOrFailure.data
+          : undefined;
+
         return {
           ...connectedGithubRepository,
-          branchTracking: branchTrackingOrFailure.success
-            ? branchTrackingOrFailure.data
-            : undefined,
+          branchTracking,
         };
       });
 
