@@ -54,7 +54,7 @@ import {
   commitSession,
 } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
-import { DeleteProjectService } from "~/services/deleteProject.server";
+import { ProjectSettingsService } from "~/services/projectSettings.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import {
@@ -77,8 +77,6 @@ import { GitBranchIcon } from "lucide-react";
 import { env } from "~/env.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { DateTime } from "~/components/primitives/DateTime";
-import { checkGitHubBranchExists } from "~/services/gitHub.server";
-import { tryCatch } from "@trigger.dev/core/utils";
 import { TextLink } from "~/components/primitives/TextLink";
 import { cn } from "~/utils/cn";
 
@@ -280,22 +278,12 @@ export const action: ActionFunction = async ({ request, params }) => {
     return json(submission);
   }
 
-  const project = await prisma.project.findFirst({
-    where: {
-      slug: projectParam,
-      organization: {
-        members: {
-          some: {
-            userId,
-          },
-        },
-      },
-    },
-    select: {
-      id: true,
-      organizationId: true,
-    },
-  });
+  const projectSettingsService = new ProjectSettingsService();
+  const project = await projectSettingsService.verifyProjectMembership(
+    projectParam,
+    organizationSlug,
+    userId
+  );
 
   if (!project) {
     return json({ errors: { body: "project not found" } }, { status: 404 });
@@ -304,14 +292,7 @@ export const action: ActionFunction = async ({ request, params }) => {
   try {
     switch (submission.value.action) {
       case "rename": {
-        await prisma.project.update({
-          where: {
-            id: project.id,
-          },
-          data: {
-            name: submission.value.projectName,
-          },
-        });
+        await projectSettingsService.renameProject(project.id, submission.value.projectName);
 
         return redirectWithSuccessMessage(
           v3ProjectPath({ slug: organizationSlug }, { slug: projectParam }),
@@ -320,9 +301,8 @@ export const action: ActionFunction = async ({ request, params }) => {
         );
       }
       case "delete": {
-        const deleteProjectService = new DeleteProjectService();
         try {
-          await deleteProjectService.call({ projectSlug: projectParam, userId });
+          await projectSettingsService.deleteProject(projectParam, userId);
 
           return redirectWithSuccessMessage(
             organizationPath({ slug: organizationSlug }),
@@ -341,11 +321,7 @@ export const action: ActionFunction = async ({ request, params }) => {
         }
       }
       case "disconnect-repo": {
-        await prisma.connectedGithubRepository.delete({
-          where: {
-            projectId: project.id,
-          },
-        });
+        await projectSettingsService.disconnectGitHubRepo(project.id);
 
         return redirectBackWithSuccessMessage(
           request,
@@ -355,128 +331,37 @@ export const action: ActionFunction = async ({ request, params }) => {
       case "update-git-settings": {
         const { productionBranch, stagingBranch, previewDeploymentsEnabled } = submission.value;
 
-        const existingConnection = await prisma.connectedGithubRepository.findFirst({
-          where: {
-            projectId: project.id,
-          },
-          include: {
-            repository: {
-              include: {
-                installation: true,
-              },
-            },
-          },
-        });
-
-        if (!existingConnection) {
-          return redirectBackWithErrorMessage(request, "No connected GitHub repository found");
-        }
-
-        const [owner, repo] = existingConnection.repository.fullName.split("/");
-        const installationId = Number(existingConnection.repository.installation.appInstallationId);
-
-        const existingBranchTracking = BranchTrackingConfigSchema.safeParse(
-          existingConnection.branchTracking
-        );
-
-        const [error, branchValidationsOrFail] = await tryCatch(
-          Promise.all([
-            productionBranch && existingBranchTracking.data?.prod?.branch !== productionBranch
-              ? checkGitHubBranchExists(installationId, owner, repo, productionBranch)
-              : Promise.resolve(true),
-            stagingBranch && existingBranchTracking.data?.staging?.branch !== stagingBranch
-              ? checkGitHubBranchExists(installationId, owner, repo, stagingBranch)
-              : Promise.resolve(true),
-          ])
-        );
-
-        if (error) {
-          return redirectBackWithErrorMessage(request, "Failed to validate tracking branches");
-        }
-
-        const [productionBranchExists, stagingBranchExists] = branchValidationsOrFail;
-
-        if (productionBranch && !productionBranchExists) {
-          return redirectBackWithErrorMessage(
-            request,
-            `Production tracking branch '${productionBranch}' does not exist in the repository`
+        try {
+          await projectSettingsService.updateGitSettings(
+            project.id,
+            productionBranch,
+            stagingBranch,
+            previewDeploymentsEnabled
           );
+
+          return redirectBackWithSuccessMessage(request, "Git settings updated successfully");
+        } catch (error: any) {
+          return redirectBackWithErrorMessage(request, error.message);
         }
-
-        if (stagingBranch && !stagingBranchExists) {
-          return redirectBackWithErrorMessage(
-            request,
-            `Staging tracking branch '${stagingBranch}' does not exist in the repository`
-          );
-        }
-
-        await prisma.connectedGithubRepository.update({
-          where: {
-            projectId: project.id,
-          },
-          data: {
-            branchTracking: {
-              prod: productionBranch ? { branch: productionBranch } : {},
-              staging: stagingBranch ? { branch: stagingBranch } : {},
-            } satisfies BranchTrackingConfig,
-            previewDeploymentsEnabled: previewDeploymentsEnabled,
-          },
-        });
-
-        return redirectBackWithSuccessMessage(request, "Git settings updated successfully");
       }
       case "connect-repo": {
         const { repositoryId, installationId } = submission.value;
 
-        const [repository, existingConnection] = await Promise.all([
-          prisma.githubRepository.findFirst({
-            where: {
-              id: repositoryId,
-              installationId,
-              installation: {
-                organizationId: project.organizationId,
-              },
-            },
-            select: {
-              id: true,
-              name: true,
-              defaultBranch: true,
-            },
-          }),
-          prisma.connectedGithubRepository.findFirst({
-            where: {
-              projectId: project.id,
-            },
-          }),
-        ]);
-
-        if (!repository) {
-          return redirectBackWithErrorMessage(request, "Repository not found");
-        }
-
-        if (existingConnection) {
-          return redirectBackWithErrorMessage(
-            request,
-            "Project is already connected to a repository"
+        try {
+          await projectSettingsService.connectGitHubRepo(
+            project.id,
+            project.organizationId,
+            repositoryId,
+            installationId
           );
+
+          return json({
+            ...submission,
+            success: true,
+          });
+        } catch (error: any) {
+          return redirectBackWithErrorMessage(request, error.message);
         }
-
-        await prisma.connectedGithubRepository.create({
-          data: {
-            projectId: project.id,
-            repositoryId: repositoryId,
-            branchTracking: {
-              prod: { branch: repository.defaultBranch },
-              staging: { branch: repository.defaultBranch },
-            } satisfies BranchTrackingConfig,
-            previewDeploymentsEnabled: true,
-          },
-        });
-
-        return json({
-          ...submission,
-          success: true,
-        });
       }
       default: {
         return submission.value satisfies never;
