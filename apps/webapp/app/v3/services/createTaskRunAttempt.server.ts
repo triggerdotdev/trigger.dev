@@ -212,6 +212,7 @@ export class CreateTaskRunAttemptService extends BaseService {
           tags: taskRun.tags.map((tag) => tag.name),
           isTest: taskRun.isTest,
           idempotencyKey: taskRun.idempotencyKey ?? undefined,
+          concurrencyKey: taskRun.concurrencyKey ?? undefined,
           startedAt: taskRun.startedAt ?? taskRun.createdAt,
           durationMs: taskRun.usageDurationMs,
           costInCents: taskRun.costInCents,
