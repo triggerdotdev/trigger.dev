@@ -584,6 +584,9 @@ importers:
       nanoid:
         specifier: 3.3.8
         version: 3.3.8
+      neverthrow:
+        specifier: ^8.2.0
+        version: 8.2.0
       non.geist:
         specifier: ^1.0.2
         version: 1.0.2
@@ -15671,7 +15674,6 @@ packages:
     cpu: [x64]
     os: [linux]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@rollup/rollup-linux-x64-musl@4.36.0:
@@ -27512,6 +27514,13 @@ packages:
   /netmask@2.0.2:
     resolution: {integrity: sha512-dBpDMdxv9Irdq66304OLfEmQ9tbNRFnFTuZiLo+bD+r332bBmMJ8GBLXklIXXgxd3+v9+KUnZaUR5PJMa75Gsg==}
     engines: {node: '>= 0.4.0'}
+    dev: false
+
+  /neverthrow@8.2.0:
+    resolution: {integrity: sha512-kOCT/1MCPAxY5iUV3wytNFUMUolzuwd/VF/1KCx7kf6CutrOsTie+84zTGTpgQycjvfLdBBdvBvFLqFD2c0wkQ==}
+    engines: {node: '>=18'}
+    optionalDependencies:
+      '@rollup/rollup-linux-x64-gnu': 4.36.0
     dev: false
 
   /next@14.1.0(react-dom@18.2.0)(react@18.3.1):

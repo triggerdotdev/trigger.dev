@@ -2,6 +2,7 @@ import { App, type Octokit } from "octokit";
 import { env } from "../env.server";
 import { prisma } from "~/db.server";
 import { logger } from "./logger.server";
+import { errAsync, fromPromise, okAsync, type ResultAsync } from "neverthrow";
 
 export const githubApp =
   env.GITHUB_APP_ENABLED === "1"
@@ -132,4 +133,58 @@ async function fetchInstallationRepositories(octokit: Octokit, installationId: n
     private: repo.private,
     defaultBranch: repo.default_branch,
   }));
+}
+
+/**
+ * Checks if a branch exists in a GitHub repository
+ */
+export function checkGitHubBranchExists(
+  installationId: number,
+  fullRepoName: string,
+  branch: string
+): ResultAsync<boolean, { type: "other" | "github_app_not_enabled"; cause?: unknown }> {
+  if (!githubApp) {
+    return errAsync({ type: "github_app_not_enabled" as const });
+  }
+
+  if (!branch || branch.trim() === "") {
+    return okAsync(false);
+  }
+
+  const [owner, repo] = fullRepoName.split("/");
+
+  const getOctokit = () =>
+    fromPromise(githubApp.getInstallationOctokit(installationId), (error) => ({
+      type: "other" as const,
+      cause: error,
+    }));
+
+  const getBranch = (octokit: Octokit) =>
+    fromPromise(
+      octokit.rest.repos.getBranch({
+        owner,
+        repo,
+        branch,
+      }),
+      (error) => ({
+        type: "other" as const,
+        cause: error,
+      })
+    );
+
+  return getOctokit()
+    .andThen((octokit) => getBranch(octokit))
+    .map(() => true)
+    .orElse((error) => {
+      if (
+        error.cause &&
+        error.cause instanceof Error &&
+        "status" in error.cause &&
+        error.cause.status === 404
+      ) {
+        return okAsync(false);
+      }
+
+      return errAsync(error);
+    });
 }

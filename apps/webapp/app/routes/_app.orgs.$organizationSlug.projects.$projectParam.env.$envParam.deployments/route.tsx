@@ -1,11 +1,13 @@
 import { ArrowUturnLeftIcon, BookOpenIcon } from "@heroicons/react/20/solid";
 import { type MetaFunction, Outlet, useLocation, useNavigate, useParams } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { CogIcon, GitBranchIcon } from "lucide-react";
 import { useEffect } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { PromoteIcon } from "~/assets/icons/PromoteIcon";
 import { DeploymentsNone, DeploymentsNoneDev } from "~/components/BlankStatePanels";
+import { OctoKitty } from "~/components/GitHubLoginButton";
 import { GitMetadata } from "~/components/GitMetadata";
 import { RuntimeIcon } from "~/components/RuntimeIcon";
 import { UserAvatar } from "~/components/UserProfilePhoto";
@@ -50,7 +52,13 @@ import {
 } from "~/presenters/v3/DeploymentListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { titleCase } from "~/utils";
-import { EnvironmentParamSchema, docsPath, v3DeploymentPath } from "~/utils/pathBuilder";
+import { cn } from "~/utils/cn";
+import {
+  EnvironmentParamSchema,
+  docsPath,
+  v3DeploymentPath,
+  v3ProjectSettingsPath,
+} from "~/utils/pathBuilder";
 import { createSearchParams } from "~/utils/searchParams";
 import { compareDeploymentVersions } from "~/v3/utils/deploymentVersions";
 
@@ -122,8 +130,14 @@ export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-  const { deployments, currentPage, totalPages, selectedDeployment } =
-    useTypedLoaderData<typeof loader>();
+  const {
+    deployments,
+    currentPage,
+    totalPages,
+    selectedDeployment,
+    connectedGithubRepository,
+    environmentGitHubBranch,
+  } = useTypedLoaderData<typeof loader>();
   const hasDeployments = totalPages > 0;
 
   const { deploymentParam } = useParams();
@@ -160,8 +174,8 @@ export default function Page() {
         <ResizablePanelGroup orientation="horizontal" className="h-full max-h-full">
           <ResizablePanel id="deployments-main" min="100px" className="max-h-full">
             {hasDeployments ? (
-              <div className="grid max-h-full grid-rows-[1fr_auto]">
-                <Table containerClassName="border-t-0">
+              <div className="flex h-full max-h-full flex-col">
+                <Table containerClassName="border-t-0 grow">
                   <TableHeader>
                     <TableRow>
                       <TableHeaderCell>Deploy</TableHeaderCell>
@@ -286,11 +300,38 @@ export default function Page() {
                     )}
                   </TableBody>
                 </Table>
-                {totalPages > 1 && (
-                  <div className="-mt-px flex justify-end border-t border-grid-dimmed py-2 pr-2">
-                    <PaginationControls currentPage={currentPage} totalPages={totalPages} />
-                  </div>
-                )}
+                <div
+                  className={cn(
+                    "-mt-px flex flex-wrap justify-end gap-2 border-t border-grid-dimmed px-3 pb-[7px] pt-[6px]",
+                    connectedGithubRepository && environmentGitHubBranch && "justify-between"
+                  )}
+                >
+                  {connectedGithubRepository && environmentGitHubBranch && (
+                    <div className="flex flex-nowrap items-center gap-2 whitespace-nowrap text-sm">
+                      <OctoKitty className="size-4" />
+                      Automatically triggered by pushes to{" "}
+                      <div className="flex max-w-32 items-center gap-1 truncate rounded bg-grid-dimmed px-1 font-mono">
+                        <GitBranchIcon className="size-3 shrink-0" />
+                        <span className="max-w-28 truncate">{environmentGitHubBranch}</span>
+                      </div>{" "}
+                      in
+                      <a
+                        href={connectedGithubRepository.repository.htmlUrl}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        className="max-w-52 truncate text-sm text-text-dimmed underline transition-colors hover:text-text-bright"
+                      >
+                        {connectedGithubRepository.repository.fullName}
+                      </a>
+                      <LinkButton
+                        variant="minimal/small"
+                        LeadingIcon={CogIcon}
+                        to={v3ProjectSettingsPath(organization, project, environment)}
+                      />
+                    </div>
+                  )}
+                  <PaginationControls currentPage={currentPage} totalPages={totalPages} />
+                </div>
               </div>
             ) : environment.type === "DEVELOPMENT" ? (
               <MainCenteredContainer className="max-w-md">
