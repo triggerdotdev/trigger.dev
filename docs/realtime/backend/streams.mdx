@@ -20,7 +20,7 @@ Streams use the metadata system to send data chunks in real-time. You register a
 Here's how to stream data from OpenAI in your task:
 
 ```ts
-import { task, metadata } from "@trigger.dev/sdk/v3";
+import { task, metadata } from "@trigger.dev/sdk";
 import OpenAI from "openai";
 
 const openai = new OpenAI({
@@ -64,7 +64,7 @@ export const myTask = task({
 You can subscribe to the stream using the `runs.subscribeToRun` method with `.withStreams()`:
 
 ```ts
-import { runs } from "@trigger.dev/sdk/v3";
+import { runs } from "@trigger.dev/sdk";
 import type { myTask, STREAMS } from "./trigger/my-task";
 
 // Somewhere in your backend
@@ -91,7 +91,7 @@ async function subscribeToStream(runId: string) {
 You can register and subscribe to multiple streams in the same task:
 
 ```ts
-import { task, metadata } from "@trigger.dev/sdk/v3";
+import { task, metadata } from "@trigger.dev/sdk";
 import OpenAI from "openai";
 
 const openai = new OpenAI({
@@ -138,7 +138,7 @@ export const myTask = task({
 Then subscribe to both streams:
 
 ```ts
-import { runs } from "@trigger.dev/sdk/v3";
+import { runs } from "@trigger.dev/sdk";
 import type { myTask, STREAMS } from "./trigger/my-task";
 
 // Somewhere in your backend
@@ -170,7 +170,7 @@ The [AI SDK](https://sdk.vercel.ai/docs/introduction) provides a higher-level AP
 
 ```ts
 import { openai } from "@ai-sdk/openai";
-import { logger, metadata, runs, schemaTask } from "@trigger.dev/sdk/v3";
+import { logger, metadata, runs, schemaTask } from "@trigger.dev/sdk";
 import { streamText } from "ai";
 import { z } from "zod";
 
@@ -215,7 +215,7 @@ When using tools with the AI SDK, you can access tool calls and results using th
 
 ```ts
 import { openai } from "@ai-sdk/openai";
-import { logger, metadata, runs, schemaTask } from "@trigger.dev/sdk/v3";
+import { logger, metadata, runs, schemaTask } from "@trigger.dev/sdk";
 import { streamText, tool, type TextStreamPart } from "ai";
 import { z } from "zod";
 
@@ -283,7 +283,7 @@ You can define a Trigger.dev task that can be used as a tool, and will automatic
 
 ```ts
 import { openai } from "@ai-sdk/openai";
-import { logger, metadata, runs, schemaTask, toolTask } from "@trigger.dev/sdk/v3";
+import { logger, metadata, runs, schemaTask, toolTask } from "@trigger.dev/sdk";
 import { streamText, tool, type TextStreamPart } from "ai";
 import { z } from "zod";
 

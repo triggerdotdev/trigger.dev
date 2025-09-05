@@ -330,7 +330,7 @@ supabase functions new video-processing-handler
 ```ts functions/video-processing-handler/index.ts
 // Setup type definitions for built-in Supabase Runtime APIs
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { tasks } from "npm:@trigger.dev/sdk@latest/v3";
+import { tasks } from "npm:@trigger.dev/sdk@latest";
 // Import the videoProcessAndUpdate task from the trigger folder
 import type { videoProcessAndUpdate } from "../../../src/trigger/videoProcessAndUpdate.ts";
 //     👆 type only import

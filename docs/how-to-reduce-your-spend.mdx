@@ -6,6 +6,7 @@ description: "Tips and best practices to reduce your costs on Trigger.dev"
 ## Check out your usage page regularly
 
 Monitor your usage dashboard to understand your spending patterns. You can see:
+
 - Your most expensive tasks
 - Your total duration by task
 - Number of runs by task
@@ -18,6 +19,7 @@ You can view your usage page by clicking the "Organization" menu in the top left
 ## Create billing alerts
 
 Configure billing alerts in your dashboard to get notified when you approach spending thresholds. This helps you:
+
 - Catch unexpected cost increases early
 - Identify runaway tasks before they become expensive
 
@@ -43,7 +45,7 @@ export const lightTask = task({
 
 // Only use larger machines when necessary
 export const heavyTask = task({
-  id: "heavy-task", 
+  id: "heavy-task",
   machine: "medium-1x", // 1 vCPU, 2 GB RAM
   run: async (payload) => {
     // CPU/memory intensive operations
@@ -64,11 +66,14 @@ export const expensiveApiCall = task({
   id: "expensive-api-call",
   run: async (payload: { userId: string }) => {
     // This expensive operation will only run once per user
-    await wait.for({ seconds: 30 }, { 
-      idempotencyKey: `user-processing-${payload.userId}`,
-      idempotencyKeyTTL: "1h" 
-    });
-    
+    await wait.for(
+      { seconds: 30 },
+      {
+        idempotencyKey: `user-processing-${payload.userId}`,
+        idempotencyKeyTTL: "1h",
+      }
+    );
+
     const result = await processUserData(payload.userId);
     return result;
   },
@@ -105,7 +110,7 @@ export const processItems = task({
   id: "process-items",
   run: async (payload: { items: string[] }) => {
     // Process all items in parallel
-    const promises = payload.items.map(item => processItem(item));
+    const promises = payload.items.map((item) => processItem(item));
     // This works very well for API calls
     await Promise.all(promises);
   },
@@ -133,7 +138,7 @@ export const apiTask = task({
 This is very useful for intermittent errors, but if there's a permanent error you don't want to retry because you will just keep failing and waste compute. Use [AbortTaskRunError](/errors-retrying#using-aborttaskrunerror) to prevent a retry:
 
 ```ts
-import { task, AbortTaskRunError } from "@trigger.dev/sdk/v3";
+import { task, AbortTaskRunError } from "@trigger.dev/sdk";
 
 export const someTask = task({
   id: "some-task",
@@ -145,12 +150,10 @@ export const someTask = task({
       throw new AbortTaskRunError(result.error);
     }
 
-    return result
+    return result;
   },
 });
 ```
-
-
 
 ## Use appropriate maxDuration settings
 

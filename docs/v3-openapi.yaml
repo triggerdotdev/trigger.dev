@@ -43,7 +43,7 @@ paths:
       x-codeSamples:
         - lang: typescript
           source: |-
-            import { schedules } from "@trigger.dev/sdk/v3";
+            import { schedules } from "@trigger.dev/sdk";
 
             const schedule = await schedules.create({
               task: 'my-task',
@@ -85,7 +85,7 @@ paths:
       x-codeSamples:
         - lang: typescript
           source: |-
-            import { schedules } from "@trigger.dev/sdk/v3";
+            import { schedules } from "@trigger.dev/sdk";
 
             const allSchedules = await schedules.list();
 
@@ -120,7 +120,7 @@ paths:
       x-codeSamples:
         - lang: typescript
           source: |-
-            import { schedules } from "@trigger.dev/sdk/v3";
+            import { schedules } from "@trigger.dev/sdk";
 
             const schedule = await schedules.retrieve(scheduleId);
 
@@ -163,7 +163,7 @@ paths:
       x-codeSamples:
         - lang: typescript
           source: |-
-            import { schedules } from "@trigger.dev/sdk/v3";
+            import { schedules } from "@trigger.dev/sdk";
 
             const updatedSchedule = await schedules.update(scheduleId, {
               task: 'my-updated-task',
@@ -195,7 +195,7 @@ paths:
       x-codeSamples:
         - lang: typescript
           source: |-
-            import { schedules } from "@trigger.dev/sdk/v3";
+            import { schedules } from "@trigger.dev/sdk";
 
             await schedules.del(scheduleId);
 
@@ -229,7 +229,7 @@ paths:
       x-codeSamples:
         - lang: typescript
           source: |-
-            import { schedules } from "@trigger.dev/sdk/v3";
+            import { schedules } from "@trigger.dev/sdk";
 
             const schedule = await schedules.deactivate(scheduleId);
 
@@ -263,7 +263,7 @@ paths:
       x-codeSamples:
         - lang: typescript
           source: |-
-            import { schedules } from "@trigger.dev/sdk/v3";
+            import { schedules } from "@trigger.dev/sdk";
 
             const schedule = await schedules.activate(scheduleId);
 
@@ -292,7 +292,7 @@ paths:
       x-codeSamples:
         - lang: typescript
           source: |-
-            import { schedules } from "@trigger.dev/sdk/v3";
+            import { schedules } from "@trigger.dev/sdk";
 
             const { timezones } = await schedules.timezones();
 
@@ -356,7 +356,7 @@ paths:
       x-codeSamples:
         - lang: typescript
           source: |-
-            import { runs } from "@trigger.dev/sdk/v3";
+            import { runs } from "@trigger.dev/sdk";
 
             const handle = await runs.replay("run_1234");
 
@@ -431,7 +431,7 @@ paths:
         - lang: typescript
           label: Save metadata
           source: |-
-            import { metadata, task } from "@trigger.dev/sdk/v3";
+            import { metadata, task } from "@trigger.dev/sdk";
 
             export const myTask = task({
               id: "my-task",
@@ -501,7 +501,7 @@ paths:
       x-codeSamples:
         - lang: typescript
           source: |-
-            import { runs } from "@trigger.dev/sdk/v3";
+            import { runs } from "@trigger.dev/sdk";
 
             await runs.cancel("run_1234");
 
@@ -566,11 +566,11 @@ paths:
       x-codeSamples:
         - lang: typescript
           source: |-
-            import { runs } from "@trigger.dev/sdk/v3";
+            import { runs } from "@trigger.dev/sdk";
 
             const handle = await runs.reschedule("run_1234", { delay: new Date("2024-06-29T20:45:56.340Z") });
 
-  "/api/v3/runs/{runId}":
+  "/api/runs/{runId}":
     parameters:
       - $ref: "#/components/parameters/runId"
     get:
@@ -625,7 +625,7 @@ paths:
       x-codeSamples:
         - lang: typescript
           source: |-
-            import { runs } from "@trigger.dev/sdk/v3";
+            import { runs } from "@trigger.dev/sdk";
 
             const result = await runs.retrieve("run_1234");
 
@@ -680,7 +680,7 @@ paths:
         - lang: typescript
           label: List runs
           source: |-
-            import { runs } from "@trigger.dev/sdk/v3";
+            import { runs } from "@trigger.dev/sdk";
 
             // Get the first page of runs
             let page = await runs.list({ limit: 20 });
@@ -704,7 +704,7 @@ paths:
         - lang: typescript
           label: Filter runs
           source: |-
-            import { runs } from "@trigger.dev/sdk/v3";
+            import { runs } from "@trigger.dev/sdk";
 
             const response = await runs.list({
               status: ["QUEUED", "EXECUTING"],
@@ -750,7 +750,7 @@ paths:
         - lang: typescript
           label: List runs
           source: |-
-            import { runs, configure } from "@trigger.dev/sdk/v3";
+            import { runs, configure } from "@trigger.dev/sdk";
 
             configure({
               accessToken: "tr_pat_1234" // always use an environment variable for this
@@ -778,7 +778,7 @@ paths:
         - lang: typescript
           label: Filter runs
           source: |-
-            import { runs, configure } from "@trigger.dev/sdk/v3";
+            import { runs, configure } from "@trigger.dev/sdk";
 
             configure({
               accessToken: "tr_pat_1234" // always use an environment variable for this
@@ -838,7 +838,7 @@ paths:
         - lang: typescript
           label: Outside of a task
           source: |-
-            import { envvars, configure } from "@trigger.dev/sdk/v3";
+            import { envvars, configure } from "@trigger.dev/sdk";
 
             const variables = await envvars.list("proj_yubjwjsfkxnylobaqvqz", "dev");
 
@@ -848,7 +848,7 @@ paths:
         - lang: typescript
           label: Inside a task
           source: |-
-            import { envvars, task } from "@trigger.dev/sdk/v3";
+            import { envvars, task } from "@trigger.dev/sdk";
 
             export const myTask = task({
               id: "my-task",
@@ -911,7 +911,7 @@ paths:
         - lang: typescript
           label: Outside of a task
           source: |-
-            import { envvars } from "@trigger.dev/sdk/v3";
+            import { envvars } from "@trigger.dev/sdk";
 
             await envvars.create("proj_yubjwjsfkxnylobaqvqz", "dev", {
               name: "SLACK_API_KEY",
@@ -920,7 +920,7 @@ paths:
         - lang: typescript
           label: Inside a task
           source: |-
-            import { envvars, task } from "@trigger.dev/sdk/v3";
+            import { envvars, task } from "@trigger.dev/sdk";
 
             export const myTask = task({
               id: "my-task",
@@ -998,7 +998,7 @@ paths:
         - lang: typescript
           label: Import variables from an array
           source: |-
-            import { envvars } from "@trigger.dev/sdk/v3";
+            import { envvars } from "@trigger.dev/sdk";
 
             await envvars.upload("proj_yubjwjsfkxnylobaqvqz", "dev", {
               variables: { SLACK_API_KEY: "slack_key_1234" },
@@ -1048,7 +1048,7 @@ paths:
         - lang: typescript
           label: Outside of a task
           source: |-
-            import { envvars } from "@trigger.dev/sdk/v3";
+            import { envvars } from "@trigger.dev/sdk";
 
             const variable = await envvars.retrieve("proj_yubjwjsfkxnylobaqvqz", "dev", "SLACK_API_KEY");
 
@@ -1056,7 +1056,7 @@ paths:
         - lang: typescript
           label: Inside a task
           source: |-
-            import { envvars, task } from "@trigger.dev/sdk/v3";
+            import { envvars, task } from "@trigger.dev/sdk";
 
             export const myTask = task({
               id: "my-task",
@@ -1106,13 +1106,13 @@ paths:
         - lang: typescript
           label: Outside of a task
           source: |-
-            import { envvars } from "@trigger.dev/sdk/v3";
+            import { envvars } from "@trigger.dev/sdk";
 
             await envvars.del("proj_yubjwjsfkxnylobaqvqz", "dev", "SLACK_API_KEY");
         - lang: typescript
           label: Inside a task
           source: |-
-            import { envvars, task } from "@trigger.dev/sdk/v3";
+            import { envvars, task } from "@trigger.dev/sdk";
 
             export const myTask = task({
               id: "my-task",
@@ -1165,7 +1165,7 @@ paths:
         - lang: typescript
           label: Outside of a task
           source: |-
-            import { envvars } from "@trigger.dev/sdk/v3";
+            import { envvars } from "@trigger.dev/sdk";
 
             await envvars.update("proj_yubjwjsfkxnylobaqvqz", "dev", "SLACK_API_KEY", {
               value: "slack_123456"
@@ -1173,7 +1173,7 @@ paths:
         - lang: typescript
           label: Inside a task
           source: |-
-            import { envvars, task } from "@trigger.dev/sdk/v3";
+            import { envvars, task } from "@trigger.dev/sdk";
 
             export const myTask = task({
               id: "my-task",
@@ -1229,7 +1229,7 @@ paths:
       x-codeSamples:
         - lang: typescript
           source: |-
-            import { task } from "@trigger.dev/sdk/v3";
+            import { task } from "@trigger.dev/sdk";
 
             export const myTask = await task({
               id: "my-task",
@@ -1340,7 +1340,7 @@ paths:
       x-codeSamples:
         - lang: typescript
           source: |-
-            import { task } from "@trigger.dev/sdk/v3";
+            import { task } from "@trigger.dev/sdk";
 
             export const myTask = await task({
               id: "my-task",
@@ -1498,7 +1498,7 @@ components:
         Our TypeScript SDK will default to using the value of the `TRIGGER_SECRET_KEY` environment variable if it is set. If you are using the SDK in a different environment, you can set the key using the `configure` function.
 
         ```typescript
-        import { configure } from "@trigger.dev/sdk/v3";
+        import { configure } from "@trigger.dev/sdk";
 
         configure({ accessToken: "tr_dev_1234" });
         ```
@@ -1512,7 +1512,7 @@ components:
         Our TypeScript SDK will default to using the value of the `TRIGGER_ACCESS_TOKEN` environment variable if it is set. If you are using the SDK in a different environment, you can set the key using the `configure` function.
 
         ```typescript
-        import { configure } from "@trigger.dev/sdk/v3";
+        import { configure } from "@trigger.dev/sdk";
 
         configure({ accessToken: "tr_pat_1234" });
         ```
