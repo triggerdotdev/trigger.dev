@@ -9,6 +9,7 @@ import { type Project } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { type User } from "~/models/user.server";
 import { processGitMetadata } from "./BranchesPresenter.server";
+import { BranchTrackingConfigSchema, getTrackedBranchForEnvironment } from "~/v3/github";
 
 const pageSize = 20;
 
@@ -152,10 +153,28 @@ ORDER BY
   string_to_array(wd."version", '.')::int[] DESC
 LIMIT ${pageSize} OFFSET ${pageSize * (page - 1)};`;
 
+    const { connectedGithubRepository } = project;
+
+    const branchTrackingOrError =
+      connectedGithubRepository &&
+      BranchTrackingConfigSchema.safeParse(connectedGithubRepository.branchTracking);
+    const environmentGitHubBranch =
+      branchTrackingOrError && branchTrackingOrError.success
+        ? getTrackedBranchForEnvironment(
+            branchTrackingOrError.data,
+            connectedGithubRepository.previewDeploymentsEnabled,
+            {
+              type: environment.type,
+              branchName: environment.branchName ?? undefined,
+            }
+          )
+        : undefined;
+
     return {
       currentPage: page,
       totalPages: Math.ceil(totalCount / pageSize),
       connectedGithubRepository: project.connectedGithubRepository ?? undefined,
+      environmentGitHubBranch,
       deployments: deployments.map((deployment, index) => {
         const label = labeledDeployments.find(
           (labeledDeployment) => labeledDeployment.deploymentId === deployment.id

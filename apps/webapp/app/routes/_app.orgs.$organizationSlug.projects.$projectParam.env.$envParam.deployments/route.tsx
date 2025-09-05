@@ -60,7 +60,6 @@ import {
   v3ProjectSettingsPath,
 } from "~/utils/pathBuilder";
 import { createSearchParams } from "~/utils/searchParams";
-import { BranchTrackingConfigSchema, getTrackedBranchForEnvironment } from "~/v3/github";
 import { compareDeploymentVersions } from "~/v3/utils/deploymentVersions";
 
 export const meta: MetaFunction = () => {
@@ -131,22 +130,14 @@ export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-  const { deployments, currentPage, totalPages, selectedDeployment, connectedGithubRepository } =
-    useTypedLoaderData<typeof loader>();
-  const branchTrackingOrError =
-    connectedGithubRepository &&
-    BranchTrackingConfigSchema.safeParse(connectedGithubRepository.branchTracking);
-  const environmentGitHubBranch =
-    branchTrackingOrError && branchTrackingOrError.success
-      ? getTrackedBranchForEnvironment(
-          branchTrackingOrError.data,
-          connectedGithubRepository.previewDeploymentsEnabled,
-          {
-            type: environment.type,
-            branchName: environment.branchName ?? undefined,
-          }
-        )
-      : undefined;
+  const {
+    deployments,
+    currentPage,
+    totalPages,
+    selectedDeployment,
+    connectedGithubRepository,
+    environmentGitHubBranch,
+  } = useTypedLoaderData<typeof loader>();
   const hasDeployments = totalPages > 0;
 
   const { deploymentParam } = useParams();
