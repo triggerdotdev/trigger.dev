@@ -1,5 +1,6 @@
 import { AuthenticatedEnvironment } from "../apiAuth.server";
 import { logger } from "../logger.server";
+import { signalsEmitter } from "../signals.server";
 import { StreamIngestor, StreamResponder } from "./types";
 import { LineTransformStream } from "./utils.server";
 import { v1RealtimeStreams } from "./v1StreamsGlobal.server";
@@ -243,12 +244,17 @@ export class RelayRealtimeStreams implements StreamIngestor, StreamResponder {
 }
 
 function initializeRelayRealtimeStreams() {
-  return new RelayRealtimeStreams({
+  const service = new RelayRealtimeStreams({
     ttl: 1000 * 60 * 5, // 5 minutes
     cleanupInterval: 1000 * 60, // 1 minute
     fallbackIngestor: v1RealtimeStreams,
     fallbackResponder: v1RealtimeStreams,
   });
+
+  signalsEmitter.on("SIGTERM", service.close.bind(service));
+  signalsEmitter.on("SIGINT", service.close.bind(service));
+
+  return service;
 }
 
 export const relayRealtimeStreams = singleton(

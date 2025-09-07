@@ -5,11 +5,12 @@ import { getSession, redirectWithErrorMessage } from "~/models/message.server";
 import { authenticator } from "~/services/auth.server";
 import { commitSession } from "~/services/sessionStorage.server";
 import { redirectCookie } from "./auth.github";
+import { sanitizeRedirectPath } from "~/utils";
 
 export let loader: LoaderFunction = async ({ request }) => {
   const cookie = request.headers.get("Cookie");
   const redirectValue = await redirectCookie.parse(cookie);
-  const redirectTo = redirectValue ?? "/";
+  const redirectTo = sanitizeRedirectPath(redirectValue);
 
   const auth = await authenticator.authenticate("github", request, {
     failureRedirect: "/login", // If auth fails, the failureRedirect will be thrown as a Response

@@ -151,7 +151,7 @@ model OrganizationAccessToken {
   /// This is used to find the token in the database
   hashedToken String @unique
 
-  organization   Organization   @relation(fields: [organizationId], references: [id])
+  organization   Organization @relation(fields: [organizationId], references: [id])
   organizationId String
 
   /// Optional expiration date for the token
@@ -210,6 +210,7 @@ model Organization {
   workerGroups             WorkerInstanceGroup[]
   workerInstances          WorkerInstance[]
   executionSnapshots       TaskRunExecutionSnapshot[]
+  githubAppInstallations   GithubAppInstallation[]
 }
 
 model OrgMember {
@@ -648,11 +649,12 @@ model TaskRun {
 
   concurrencyKey String?
 
-  delayUntil  DateTime?
-  queuedAt    DateTime?
-  ttl         String?
-  expiredAt   DateTime?
-  maxAttempts Int?
+  delayUntil        DateTime?
+  queuedAt          DateTime?
+  ttl               String?
+  expiredAt         DateTime?
+  maxAttempts       Int?
+  lockedRetryConfig Json?
 
   /// optional token that can be used to authenticate the task run
   oneTimeUseToken String?
@@ -2236,4 +2238,53 @@ model TaskEventPartitioned {
   @@index([spanId])
   // Used for getting all logs for a run
   @@index([runId])
+}
+
+enum GithubRepositorySelection {
+  ALL
+  SELECTED
+}
+
+model GithubAppInstallation {
+  id String @id @default(cuid())
+
+  appInstallationId   BigInt                    @unique
+  targetId            BigInt
+  targetType          String
+  accountHandle       String
+  permissions         Json?
+  repositorySelection GithubRepositorySelection
+  installedBy         String?
+
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  organizationId String
+
+  repositories GithubRepository[]
+
+  deletedAt   DateTime?
+  suspendedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([organizationId])
+}
+
+model GithubRepository {
+  id String @id @default(cuid())
+
+  githubId      BigInt
+  name          String
+  fullName      String
+  htmlUrl       String
+  private       Boolean
+  defaultBranch String
+
+  installation   GithubAppInstallation @relation(fields: [installationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  installationId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([installationId, githubId])
+  @@index([installationId])
 }
