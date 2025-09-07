@@ -1,12 +1,13 @@
 import {
-  MachinePreset,
+  type MachinePreset,
   prettyPrintPacket,
   SemanticInternalAttributes,
-  TaskRunContext,
+  type TaskRunContext,
   TaskRunError,
-  V3TaskRunContext,
+  TriggerTraceContext,
+  type V3TaskRunContext,
 } from "@trigger.dev/core/v3";
-import { AttemptId, getMaxDuration } from "@trigger.dev/core/v3/isomorphic";
+import { AttemptId, getMaxDuration, parseTraceparent } from "@trigger.dev/core/v3/isomorphic";
 import { RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { logger } from "~/services/logger.server";
 import { eventRepository, rehydrateAttribute } from "~/v3/eventRepository.server";
@@ -173,6 +174,24 @@ export class SpanPresenter extends BasePresenter {
 
     const context = await this.#getTaskRunContext({ run, machine: machine ?? undefined });
 
+    const externalTraceId = this.#getExternalTraceId(run.traceContext);
+
+    let region: { name: string; location: string | null } | null = null;
+
+    if (run.runtimeEnvironment.type !== "DEVELOPMENT" && run.engine !== "V1") {
+      const workerGroup = await this._replica.workerInstanceGroup.findFirst({
+        select: {
+          name: true,
+          location: true,
+        },
+        where: {
+          masterQueue: run.workerQueue,
+        },
+      });
+
+      region = workerGroup ?? null;
+    }
+
     return {
       id: run.id,
       friendlyId: run.friendlyId,
@@ -230,10 +249,12 @@ export class SpanPresenter extends BasePresenter {
       maxDurationInSeconds: getMaxDuration(run.maxDurationInSeconds),
       batch: run.batch ? { friendlyId: run.batch.friendlyId } : undefined,
       engine: run.engine,
+      region,
       workerQueue: run.workerQueue,
       spanId: run.spanId,
       isCached: !!span.originalRun,
       machinePreset: machine?.name,
+      externalTraceId,
     };
   }
 
@@ -272,6 +293,7 @@ export class SpanPresenter extends BasePresenter {
         id: true,
         spanId: true,
         traceId: true,
+        traceContext: true,
         //metadata
         number: true,
         taskIdentifier: true,
@@ -573,5 +595,27 @@ export class SpanPresenter extends BasePresenter {
 
   async #getV4TaskRunContext({ run }: { run: FindRunResult }): Promise<TaskRunContext> {
     return engine.resolveTaskRunContext(run.id);
+  }
+
+  #getExternalTraceId(traceContext: unknown) {
+    if (!traceContext) {
+      return;
+    }
+
+    const parsedTraceContext = TriggerTraceContext.safeParse(traceContext);
+
+    if (!parsedTraceContext.success) {
+      return;
+    }
+
+    const externalTraceparent = parsedTraceContext.data.external?.traceparent;
+
+    if (!externalTraceparent) {
+      return;
+    }
+
+    const parsedTraceparent = parseTraceparent(externalTraceparent);
+
+    return parsedTraceparent?.traceId;
   }
 }

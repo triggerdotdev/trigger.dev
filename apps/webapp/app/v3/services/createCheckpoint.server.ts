@@ -132,7 +132,7 @@ export class CreateCheckpointService extends BaseService {
         }
 
         if (childRun.dependency?.resumedAt) {
-          logger.error("CreateCheckpointService: Child run already resumed", {
+          logger.info("CreateCheckpointService: Child run already resumed", {
             childRun,
             params,
           });
@@ -168,7 +168,7 @@ export class CreateCheckpointService extends BaseService {
         }
 
         if (batchRun.resumedAt) {
-          logger.error("CreateCheckpointService: Batch already resumed", {
+          logger.info("CreateCheckpointService: Batch already resumed", {
             batchRun,
             params,
           });

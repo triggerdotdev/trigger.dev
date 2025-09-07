@@ -2,6 +2,7 @@ import { json } from "@remix-run/server-runtime";
 import { type Prettify } from "@trigger.dev/core";
 import { SignJWT, errors, jwtVerify } from "jose";
 import { z } from "zod";
+
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { findProjectByRef } from "~/models/project.server";
@@ -16,6 +17,11 @@ import {
   authenticateApiRequestWithPersonalAccessToken,
   isPersonalAccessToken,
 } from "./personalAccessToken.server";
+import {
+  type OrganizationAccessTokenAuthenticationResult,
+  authenticateApiRequestWithOrganizationAccessToken,
+  isOrganizationAccessToken,
+} from "./organizationAccessToken.server";
 import { isPublicJWT, validatePublicJwtKey } from "./realtime/jwtAuth.server";
 import { sanitizeBranchName } from "~/v3/gitBranch";
 
@@ -309,25 +315,81 @@ function getApiKeyResult(apiKey: string): {
   return { apiKey, type };
 }
 
-export type DualAuthenticationResult =
+export type AuthenticationResult =
   | {
       type: "personalAccessToken";
       result: PersonalAccessTokenAuthenticationResult;
+    }
+  | {
+      type: "organizationAccessToken";
+      result: OrganizationAccessTokenAuthenticationResult;
     }
   | {
       type: "apiKey";
       result: ApiAuthenticationResult;
     };
 
-export async function authenticateProjectApiKeyOrPersonalAccessToken(
-  request: Request
-): Promise<DualAuthenticationResult | undefined> {
+type AuthenticationMethod = "personalAccessToken" | "organizationAccessToken" | "apiKey";
+
+type AllowedAuthenticationMethods = Record<AuthenticationMethod, boolean> &
+  ({ personalAccessToken: true } | { organizationAccessToken: true } | { apiKey: true });
+
+const defaultAllowedAuthenticationMethods: AllowedAuthenticationMethods = {
+  personalAccessToken: true,
+  organizationAccessToken: true,
+  apiKey: true,
+};
+
+type FilteredAuthenticationResult<
+  T extends AllowedAuthenticationMethods = AllowedAuthenticationMethods
+> =
+  | (T["personalAccessToken"] extends true
+      ? Extract<AuthenticationResult, { type: "personalAccessToken" }>
+      : never)
+  | (T["organizationAccessToken"] extends true
+      ? Extract<AuthenticationResult, { type: "organizationAccessToken" }>
+      : never)
+  | (T["apiKey"] extends true ? Extract<AuthenticationResult, { type: "apiKey" }> : never);
+
+/**
+ * Authenticates an incoming request by checking for various token types.
+ *
+ * Supports personal access tokens, organization access tokens, and API keys.
+ * Returns the appropriate authentication result based on the token type found.
+ *
+ * This method currently only allows private keys for the `apiKey` authentication method.
+ *
+ * @template T - The allowed authentication methods configuration type
+ * @param request - The incoming HTTP request containing authentication headers
+ * @param allowedAuthenticationMethods - Configuration object specifying which authentication methods are allowed.
+ *   At least one method must be set to `true`. Defaults to allowing all methods.
+ * @returns Authentication result with only the enabled auth method types, or undefined if no valid token found
+ *
+ * @example
+ * ```typescript
+ * // Only allow personal access tokens
+ * const result = await authenticateRequest(request, {
+ *   personalAccessToken: true,
+ *   organizationAccessToken: false,
+ *   apiKey: false,
+ * });
+ * // result type: { type: "personalAccessToken"; result: PersonalAccessTokenAuthenticationResult } | undefined
+ * ```
+ */
+export async function authenticateRequest<
+  T extends AllowedAuthenticationMethods = AllowedAuthenticationMethods
+>(
+  request: Request,
+  allowedAuthenticationMethods?: T
+): Promise<FilteredAuthenticationResult<T> | undefined> {
+  const allowedMethods = allowedAuthenticationMethods ?? defaultAllowedAuthenticationMethods;
+
   const { apiKey, branchName } = getApiKeyFromRequest(request);
   if (!apiKey) {
     return;
   }
 
-  if (isPersonalAccessToken(apiKey)) {
+  if (allowedMethods.personalAccessToken && isPersonalAccessToken(apiKey)) {
     const result = await authenticateApiRequestWithPersonalAccessToken(request);
 
     if (!result) {
@@ -337,23 +399,49 @@ export async function authenticateProjectApiKeyOrPersonalAccessToken(
     return {
       type: "personalAccessToken",
       result,
-    };
+    } satisfies Extract<
+      AuthenticationResult,
+      { type: "personalAccessToken" }
+    > as FilteredAuthenticationResult<T>;
   }
 
-  const result = await authenticateApiKey(apiKey, { allowPublicKey: false, branchName });
+  if (allowedMethods.organizationAccessToken && isOrganizationAccessToken(apiKey)) {
+    const result = await authenticateApiRequestWithOrganizationAccessToken(request);
 
-  if (!result) {
-    return;
+    if (!result) {
+      return;
+    }
+
+    return {
+      type: "organizationAccessToken",
+      result,
+    } satisfies Extract<
+      AuthenticationResult,
+      { type: "organizationAccessToken" }
+    > as FilteredAuthenticationResult<T>;
   }
 
-  return {
-    type: "apiKey",
-    result,
-  };
+  if (allowedMethods.apiKey) {
+    const result = await authenticateApiKey(apiKey, { allowPublicKey: false, branchName });
+
+    if (!result) {
+      return;
+    }
+
+    return {
+      type: "apiKey",
+      result,
+    } satisfies Extract<
+      AuthenticationResult,
+      { type: "apiKey" }
+    > as FilteredAuthenticationResult<T>;
+  }
+
+  return;
 }
 
 export async function authenticatedEnvironmentForAuthentication(
-  auth: DualAuthenticationResult,
+  auth: AuthenticationResult,
   projectRef: string,
   slug: string,
   branch?: string
@@ -398,10 +486,87 @@ export async function authenticatedEnvironmentForAuthentication(
       });
 
       if (!user) {
-        throw json({ error: "Invalid or Missing API key" }, { status: 401 });
+        throw json({ error: "Invalid or missing personal access token" }, { status: 401 });
       }
 
       const project = await findProjectByRef(projectRef, user.id);
+
+      if (!project) {
+        throw json({ error: "Project not found" }, { status: 404 });
+      }
+
+      if (!branch) {
+        const environment = await prisma.runtimeEnvironment.findFirst({
+          where: {
+            projectId: project.id,
+            slug: slug,
+            ...(slug === "dev"
+              ? {
+                  orgMember: {
+                    userId: user.id,
+                  },
+                }
+              : {}),
+          },
+          include: {
+            project: true,
+            organization: true,
+          },
+        });
+
+        if (!environment) {
+          throw json({ error: "Environment not found" }, { status: 404 });
+        }
+
+        return environment;
+      }
+
+      const environment = await prisma.runtimeEnvironment.findFirst({
+        where: {
+          projectId: project.id,
+          slug: slug,
+          branchName: sanitizeBranchName(branch),
+          archivedAt: null,
+        },
+        include: {
+          project: true,
+          organization: true,
+          parentEnvironment: true,
+        },
+      });
+
+      if (!environment) {
+        throw json({ error: "Branch not found" }, { status: 404 });
+      }
+
+      if (!environment.parentEnvironment) {
+        throw json({ error: "Branch not associated with a preview environment" }, { status: 400 });
+      }
+
+      return {
+        ...environment,
+        apiKey: environment.parentEnvironment.apiKey,
+        organization: environment.organization,
+        project: environment.project,
+      };
+    }
+    case "organizationAccessToken": {
+      const organization = await prisma.organization.findUnique({
+        where: {
+          id: auth.result.organizationId,
+        },
+      });
+
+      if (!organization) {
+        throw json({ error: "Invalid or missing organization access token" }, { status: 401 });
+      }
+
+      const project = await prisma.project.findFirst({
+        where: {
+          organizationId: organization.id,
+          externalRef: projectRef,
+        },
+      });
 
       if (!project) {
         throw json({ error: "Project not found" }, { status: 404 });
@@ -454,6 +619,10 @@ export async function authenticatedEnvironmentForAuthentication(
         organization: environment.organization,
         project: environment.project,
       };
+    }
+    default: {
+      auth satisfies never;
+      throw json({ error: "Invalid authentication result" }, { status: 401 });
     }
   }
 }

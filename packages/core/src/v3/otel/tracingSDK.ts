@@ -1,25 +1,25 @@
-import { DiagConsoleLogger, DiagLogLevel, TracerProvider, diag } from "@opentelemetry/api";
-import { RandomIdGenerator } from "@opentelemetry/sdk-trace-base";
+import {
+  DiagConsoleLogger,
+  DiagLogLevel,
+  TraceFlags,
+  TracerProvider,
+  diag,
+} from "@opentelemetry/api";
 import { logs } from "@opentelemetry/api-logs";
+import { TraceState } from "@opentelemetry/core";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { registerInstrumentations, type Instrumentation } from "@opentelemetry/instrumentation";
-import {
-  DetectorSync,
-  IResource,
-  Resource,
-  ResourceAttributes,
-  ResourceDetectionConfig,
-  detectResourcesSync,
-  processDetectorSync,
-} from "@opentelemetry/resources";
+import { detectResources, processDetector, resourceFromAttributes } from "@opentelemetry/resources";
 import {
   BatchLogRecordProcessor,
-  LoggerProvider,
   LogRecordExporter,
+  LogRecordProcessor,
+  LoggerProvider,
   ReadableLogRecord,
   SimpleLogRecordProcessor,
 } from "@opentelemetry/sdk-logs";
+import { RandomIdGenerator, SpanProcessor } from "@opentelemetry/sdk-trace-base";
 import {
   BatchSpanProcessor,
   NodeTracerProvider,
@@ -27,7 +27,7 @@ import {
   SimpleSpanProcessor,
   SpanExporter,
 } from "@opentelemetry/sdk-trace-node";
-import { SemanticResourceAttributes } from "@opentelemetry/semantic-conventions";
+import { SemanticResourceAttributes, SEMATTRS_HTTP_URL } from "@opentelemetry/semantic-conventions";
 import { VERSION } from "../../version.js";
 import {
   OTEL_ATTRIBUTE_PER_EVENT_COUNT_LIMIT,
@@ -40,44 +40,13 @@ import {
   OTEL_SPAN_EVENT_COUNT_LIMIT,
 } from "../limits.js";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
+import { taskContext } from "../task-context-api.js";
 import {
   TaskContextLogProcessor,
   TaskContextSpanProcessor,
 } from "../taskContext/otelProcessors.js";
+import { traceContext } from "../trace-context-api.js";
 import { getEnvVar } from "../utils/getEnv.js";
-
-class AsyncResourceDetector implements DetectorSync {
-  private _promise: Promise<ResourceAttributes>;
-  private _resolver?: (value: ResourceAttributes) => void;
-  private _resolved: boolean = false;
-
-  constructor() {
-    this._promise = new Promise((resolver) => {
-      this._resolver = resolver;
-    });
-  }
-
-  get isResolved() {
-    return this._resolved;
-  }
-
-  detect(_config?: ResourceDetectionConfig): Resource {
-    return new Resource({}, this._promise);
-  }
-
-  resolveWithAttributes(attributes: ResourceAttributes) {
-    if (!this._resolver) {
-      throw new Error("Resolver not available");
-    }
-
-    if (this._resolved) {
-      return;
-    }
-
-    this._resolved = true;
-    this._resolver(attributes);
-  }
-}
 
 export type TracingDiagnosticLogLevel =
   | "none"
@@ -91,7 +60,6 @@ export type TracingDiagnosticLogLevel =
 export type TracingSDKConfig = {
   url: string;
   forceFlushTimeoutMillis?: number;
-  resource?: IResource;
   instrumentations?: Instrumentation[];
   exporters?: SpanExporter[];
   logExporters?: LogRecordExporter[];
@@ -101,7 +69,6 @@ export type TracingSDKConfig = {
 const idGenerator = new RandomIdGenerator();
 
 export class TracingSDK {
-  public readonly asyncResourceDetector = new AsyncResourceDetector();
   private readonly _logProvider: LoggerProvider;
   private readonly _spanExporter: SpanExporter;
   private readonly _traceProvider: NodeTracerProvider;
@@ -112,27 +79,81 @@ export class TracingSDK {
   constructor(private readonly config: TracingSDKConfig) {
     setLogLevel(config.diagLogLevel ?? "none");
 
-    const envResourceAttributesSerialized = getEnvVar("OTEL_RESOURCE_ATTRIBUTES");
+    const envResourceAttributesSerialized = getEnvVar("TRIGGER_OTEL_RESOURCE_ATTRIBUTES");
     const envResourceAttributes = envResourceAttributesSerialized
       ? JSON.parse(envResourceAttributesSerialized)
       : {};
 
-    const commonResources = detectResourcesSync({
-      detectors: [this.asyncResourceDetector, processDetectorSync],
+    const commonResources = detectResources({
+      detectors: [processDetector],
     })
       .merge(
-        new Resource({
+        resourceFromAttributes({
           [SemanticResourceAttributes.CLOUD_PROVIDER]: "trigger.dev",
           [SemanticResourceAttributes.SERVICE_NAME]:
-            getEnvVar("OTEL_SERVICE_NAME") ?? "trigger.dev",
+            getEnvVar("TRIGGER_OTEL_SERVICE_NAME") ?? "trigger.dev",
           [SemanticInternalAttributes.TRIGGER]: true,
           [SemanticInternalAttributes.CLI_VERSION]: VERSION,
           [SemanticInternalAttributes.SDK_VERSION]: VERSION,
           [SemanticInternalAttributes.SDK_LANGUAGE]: "typescript",
         })
       )
-      .merge(config.resource ?? new Resource({}))
-      .merge(new Resource(envResourceAttributes));
+      .merge(resourceFromAttributes(envResourceAttributes))
+      .merge(resourceFromAttributes(taskContext.resourceAttributes));
+
+    const spanExporter = new OTLPTraceExporter({
+      url: `${config.url}/v1/traces`,
+      timeoutMillis: config.forceFlushTimeoutMillis,
+    });
+
+    const spanProcessors: Array<SpanProcessor> = [];
+
+    spanProcessors.push(
+      new TaskContextSpanProcessor(
+        VERSION,
+        getEnvVar("TRIGGER_OTEL_BATCH_PROCESSING_ENABLED") === "1"
+          ? new BatchSpanProcessor(spanExporter, {
+              maxExportBatchSize: parseInt(
+                getEnvVar("TRIGGER_OTEL_SPAN_MAX_EXPORT_BATCH_SIZE") ?? "64"
+              ),
+              scheduledDelayMillis: parseInt(
+                getEnvVar("TRIGGER_OTEL_SPAN_SCHEDULED_DELAY_MILLIS") ?? "200"
+              ),
+              exportTimeoutMillis: parseInt(
+                getEnvVar("TRIGGER_OTEL_SPAN_EXPORT_TIMEOUT_MILLIS") ?? "30000"
+              ),
+              maxQueueSize: parseInt(getEnvVar("TRIGGER_OTEL_SPAN_MAX_QUEUE_SIZE") ?? "512"),
+            })
+          : new SimpleSpanProcessor(spanExporter)
+      )
+    );
+
+    const externalTraceId = idGenerator.generateTraceId();
+    const externalTraceContext = traceContext.getExternalTraceContext();
+
+    for (const exporter of config.exporters ?? []) {
+      spanProcessors.push(
+        getEnvVar("TRIGGER_OTEL_BATCH_PROCESSING_ENABLED") === "1"
+          ? new BatchSpanProcessor(
+              new ExternalSpanExporterWrapper(exporter, externalTraceId, externalTraceContext),
+              {
+                maxExportBatchSize: parseInt(
+                  getEnvVar("TRIGGER_OTEL_SPAN_MAX_EXPORT_BATCH_SIZE") ?? "64"
+                ),
+                scheduledDelayMillis: parseInt(
+                  getEnvVar("TRIGGER_OTEL_SPAN_SCHEDULED_DELAY_MILLIS") ?? "200"
+                ),
+                exportTimeoutMillis: parseInt(
+                  getEnvVar("TRIGGER_OTEL_SPAN_EXPORT_TIMEOUT_MILLIS") ?? "30000"
+                ),
+                maxQueueSize: parseInt(getEnvVar("TRIGGER_OTEL_SPAN_MAX_QUEUE_SIZE") ?? "512"),
+              }
+            )
+          : new SimpleSpanProcessor(
+              new ExternalSpanExporterWrapper(exporter, externalTraceId, externalTraceContext)
+            )
+      );
+    }
 
     const traceProvider = new NodeTracerProvider({
       forceFlushTimeoutMillis: config.forceFlushTimeoutMillis,
@@ -145,49 +166,8 @@ export class TracingSDK {
         linkCountLimit: OTEL_LINK_COUNT_LIMIT,
         attributePerLinkCountLimit: OTEL_ATTRIBUTE_PER_LINK_COUNT_LIMIT,
       },
+      spanProcessors,
     });
-
-    const spanExporter = new OTLPTraceExporter({
-      url: `${config.url}/v1/traces`,
-      timeoutMillis: config.forceFlushTimeoutMillis,
-    });
-
-    traceProvider.addSpanProcessor(
-      new TaskContextSpanProcessor(
-        traceProvider.getTracer("trigger-dev-worker", VERSION),
-        getEnvVar("OTEL_BATCH_PROCESSING_ENABLED") === "1"
-          ? new BatchSpanProcessor(spanExporter, {
-              maxExportBatchSize: parseInt(getEnvVar("OTEL_SPAN_MAX_EXPORT_BATCH_SIZE") ?? "64"),
-              scheduledDelayMillis: parseInt(
-                getEnvVar("OTEL_SPAN_SCHEDULED_DELAY_MILLIS") ?? "200"
-              ),
-              exportTimeoutMillis: parseInt(
-                getEnvVar("OTEL_SPAN_EXPORT_TIMEOUT_MILLIS") ?? "30000"
-              ),
-              maxQueueSize: parseInt(getEnvVar("OTEL_SPAN_MAX_QUEUE_SIZE") ?? "512"),
-            })
-          : new SimpleSpanProcessor(spanExporter)
-      )
-    );
-
-    const externalTraceId = idGenerator.generateTraceId();
-
-    for (const exporter of config.exporters ?? []) {
-      traceProvider.addSpanProcessor(
-        getEnvVar("OTEL_BATCH_PROCESSING_ENABLED") === "1"
-          ? new BatchSpanProcessor(new ExternalSpanExporterWrapper(exporter, externalTraceId), {
-              maxExportBatchSize: parseInt(getEnvVar("OTEL_SPAN_MAX_EXPORT_BATCH_SIZE") ?? "64"),
-              scheduledDelayMillis: parseInt(
-                getEnvVar("OTEL_SPAN_SCHEDULED_DELAY_MILLIS") ?? "200"
-              ),
-              exportTimeoutMillis: parseInt(
-                getEnvVar("OTEL_SPAN_EXPORT_TIMEOUT_MILLIS") ?? "30000"
-              ),
-              maxQueueSize: parseInt(getEnvVar("OTEL_SPAN_MAX_QUEUE_SIZE") ?? "512"),
-            })
-          : new SimpleSpanProcessor(new ExternalSpanExporterWrapper(exporter, externalTraceId))
-      );
-    }
 
     traceProvider.register();
 
@@ -200,6 +180,57 @@ export class TracingSDK {
       url: `${config.url}/v1/logs`,
     });
 
+    const logProcessors: Array<LogRecordProcessor> = [
+      new TaskContextLogProcessor(
+        getEnvVar("TRIGGER_OTEL_BATCH_PROCESSING_ENABLED") === "1"
+          ? new BatchLogRecordProcessor(logExporter, {
+              maxExportBatchSize: parseInt(
+                getEnvVar("TRIGGER_OTEL_LOG_MAX_EXPORT_BATCH_SIZE") ?? "64"
+              ),
+              scheduledDelayMillis: parseInt(
+                getEnvVar("TRIGGER_OTEL_LOG_SCHEDULED_DELAY_MILLIS") ?? "200"
+              ),
+              exportTimeoutMillis: parseInt(
+                getEnvVar("TRIGGER_OTEL_LOG_EXPORT_TIMEOUT_MILLIS") ?? "30000"
+              ),
+              maxQueueSize: parseInt(getEnvVar("TRIGGER_OTEL_LOG_MAX_QUEUE_SIZE") ?? "512"),
+            })
+          : new SimpleLogRecordProcessor(logExporter)
+      ),
+    ];
+
+    for (const externalLogExporter of config.logExporters ?? []) {
+      logProcessors.push(
+        getEnvVar("TRIGGER_OTEL_BATCH_PROCESSING_ENABLED") === "1"
+          ? new BatchLogRecordProcessor(
+              new ExternalLogRecordExporterWrapper(
+                externalLogExporter,
+                externalTraceId,
+                externalTraceContext
+              ),
+              {
+                maxExportBatchSize: parseInt(
+                  getEnvVar("TRIGGER_OTEL_LOG_MAX_EXPORT_BATCH_SIZE") ?? "64"
+                ),
+                scheduledDelayMillis: parseInt(
+                  getEnvVar("TRIGGER_OTEL_LOG_SCHEDULED_DELAY_MILLIS") ?? "200"
+                ),
+                exportTimeoutMillis: parseInt(
+                  getEnvVar("TRIGGER_OTEL_LOG_EXPORT_TIMEOUT_MILLIS") ?? "30000"
+                ),
+                maxQueueSize: parseInt(getEnvVar("TRIGGER_OTEL_LOG_MAX_QUEUE_SIZE") ?? "512"),
+              }
+            )
+          : new SimpleLogRecordProcessor(
+              new ExternalLogRecordExporterWrapper(
+                externalLogExporter,
+                externalTraceId,
+                externalTraceContext
+              )
+            )
+      );
+    }
+
     // To start a logger, you first need to initialize the Logger provider.
     const loggerProvider = new LoggerProvider({
       resource: commonResources,
@@ -207,42 +238,8 @@ export class TracingSDK {
         attributeCountLimit: OTEL_LOG_ATTRIBUTE_COUNT_LIMIT,
         attributeValueLengthLimit: OTEL_LOG_ATTRIBUTE_VALUE_LENGTH_LIMIT,
       },
+      processors: logProcessors,
     });
-
-    loggerProvider.addLogRecordProcessor(
-      new TaskContextLogProcessor(
-        getEnvVar("OTEL_BATCH_PROCESSING_ENABLED") === "1"
-          ? new BatchLogRecordProcessor(logExporter, {
-              maxExportBatchSize: parseInt(getEnvVar("OTEL_LOG_MAX_EXPORT_BATCH_SIZE") ?? "64"),
-              scheduledDelayMillis: parseInt(getEnvVar("OTEL_LOG_SCHEDULED_DELAY_MILLIS") ?? "200"),
-              exportTimeoutMillis: parseInt(getEnvVar("OTEL_LOG_EXPORT_TIMEOUT_MILLIS") ?? "30000"),
-              maxQueueSize: parseInt(getEnvVar("OTEL_LOG_MAX_QUEUE_SIZE") ?? "512"),
-            })
-          : new SimpleLogRecordProcessor(logExporter)
-      )
-    );
-
-    for (const externalLogExporter of config.logExporters ?? []) {
-      loggerProvider.addLogRecordProcessor(
-        getEnvVar("OTEL_BATCH_PROCESSING_ENABLED") === "1"
-          ? new BatchLogRecordProcessor(
-              new ExternalLogRecordExporterWrapper(externalLogExporter, externalTraceId),
-              {
-                maxExportBatchSize: parseInt(getEnvVar("OTEL_LOG_MAX_EXPORT_BATCH_SIZE") ?? "64"),
-                scheduledDelayMillis: parseInt(
-                  getEnvVar("OTEL_LOG_SCHEDULED_DELAY_MILLIS") ?? "200"
-                ),
-                exportTimeoutMillis: parseInt(
-                  getEnvVar("OTEL_LOG_EXPORT_TIMEOUT_MILLIS") ?? "30000"
-                ),
-                maxQueueSize: parseInt(getEnvVar("OTEL_LOG_MAX_QUEUE_SIZE") ?? "512"),
-              }
-            )
-          : new SimpleLogRecordProcessor(
-              new ExternalLogRecordExporterWrapper(externalLogExporter, externalTraceId)
-            )
-      );
-    }
 
     this._logProvider = loggerProvider;
     this._spanExporter = spanExporter;
@@ -296,25 +293,61 @@ function setLogLevel(level: TracingDiagnosticLogLevel) {
 }
 
 class ExternalSpanExporterWrapper {
+  private readonly _isExternallySampled: boolean;
+
   constructor(
     private underlyingExporter: SpanExporter,
-    private externalTraceId: string
-  ) {}
+    private externalTraceId: string,
+    private externalTraceContext:
+      | { traceId: string; spanId: string; traceFlags: number; tracestate?: string }
+      | undefined
+  ) {
+    this._isExternallySampled = isTraceFlagSampled(externalTraceContext?.traceFlags);
+  }
 
   private transformSpan(span: ReadableSpan): ReadableSpan | undefined {
-    if (span.attributes[SemanticInternalAttributes.SPAN_PARTIAL]) {
-      // Skip partial spans
+    if (!this._isExternallySampled) {
       return;
     }
 
+    if (isSpanInternalOnly(span)) {
+      return;
+    }
+
+    const externalTraceId = this.externalTraceContext
+      ? this.externalTraceContext.traceId
+      : this.externalTraceId;
+
+    const isAttemptSpan = span.attributes[SemanticInternalAttributes.SPAN_ATTEMPT];
+
     const spanContext = span.spanContext();
+    let parentSpanContext = span.parentSpanContext;
+
+    if (parentSpanContext) {
+      parentSpanContext = {
+        ...parentSpanContext,
+        traceId: externalTraceId,
+      };
+    }
+
+    if (isAttemptSpan && this.externalTraceContext) {
+      parentSpanContext = {
+        ...parentSpanContext,
+        traceId: externalTraceId,
+        spanId: this.externalTraceContext.spanId,
+        traceState: this.externalTraceContext.tracestate
+          ? new TraceState(this.externalTraceContext.tracestate)
+          : undefined,
+        traceFlags: this.externalTraceContext.traceFlags,
+      };
+    } else if (isAttemptSpan) {
+      parentSpanContext = undefined;
+    }
 
     return {
       ...span,
-      spanContext: () => ({ ...spanContext, traceId: this.externalTraceId }),
-      parentSpanId: span.attributes[SemanticInternalAttributes.SPAN_ATTEMPT]
-        ? undefined
-        : span.parentSpanId,
+      spanContext: () => ({ ...spanContext, traceId: externalTraceId }),
+      parentSpanContext,
     };
   }
 
@@ -342,12 +375,25 @@ class ExternalSpanExporterWrapper {
 }
 
 class ExternalLogRecordExporterWrapper {
+  private readonly _isExternallySampled: boolean;
+
   constructor(
     private underlyingExporter: LogRecordExporter,
-    private externalTraceId: string
-  ) {}
+    private externalTraceId: string,
+    private externalTraceContext:
+      | { traceId: string; spanId: string; tracestate?: string; traceFlags: number }
+      | undefined
+  ) {
+    this._isExternallySampled = isTraceFlagSampled(externalTraceContext?.traceFlags);
+  }
 
   export(logs: any[], resultCallback: (result: any) => void): void {
+    if (!this._isExternallySampled) {
+      this.underlyingExporter.export([], resultCallback);
+
+      return;
+    }
+
     const modifiedLogs = logs.map(this.transformLogRecord.bind(this));
 
     this.underlyingExporter.export(modifiedLogs, resultCallback);
@@ -359,12 +405,14 @@ class ExternalLogRecordExporterWrapper {
 
   transformLogRecord(logRecord: ReadableLogRecord): ReadableLogRecord {
     // If there's no spanContext, or if the externalTraceId is not set, return the original logRecord.
-    if (!logRecord.spanContext || !this.externalTraceId) {
+    if (!logRecord.spanContext || !this.externalTraceId || !this.externalTraceContext) {
       return logRecord;
     }
 
     // Capture externalTraceId for use within the proxy's scope.
-    const { externalTraceId } = this;
+    const externalTraceId = this.externalTraceContext
+      ? this.externalTraceContext.traceId
+      : this.externalTraceId;
 
     return new Proxy(logRecord, {
       get(target, prop, receiver) {
@@ -386,4 +434,58 @@ class ExternalLogRecordExporterWrapper {
       },
     });
   }
+}
+
+function isSpanInternalOnly(span: ReadableSpan): boolean {
+  if (span.attributes[SemanticInternalAttributes.SPAN_PARTIAL]) {
+    // Skip partial spans
+    return true;
+  }
+
+  const urlPath = span.attributes["url.path"];
+
+  if (typeof urlPath === "string" && urlPath === "/api/v1/usage/ingest") {
+    return true;
+  }
+
+  const httpUrl = span.attributes[SEMATTRS_HTTP_URL] ?? span.attributes["url.full"];
+
+  const url = safeParseUrl(httpUrl);
+
+  if (!url) {
+    return false;
+  }
+
+  const internalHosts = [
+    "api.trigger.dev",
+    "billing.trigger.dev",
+    "cloud.trigger.dev",
+    "engine.trigger.dev",
+    "platform.trigger.dev",
+  ];
+
+  return (
+    internalHosts.some((host) => url.hostname.includes(host)) ||
+    url.pathname.includes("/api/v1/usage/ingest")
+  );
+}
+
+function safeParseUrl(url: unknown): URL | undefined {
+  if (typeof url !== "string") {
+    return undefined;
+  }
+
+  try {
+    return new URL(url);
+  } catch (e) {
+    return undefined;
+  }
+}
+
+function isTraceFlagSampled(traceFlags?: number): boolean {
+  if (typeof traceFlags !== "number") {
+    return true;
+  }
+
+  return (traceFlags & TraceFlags.SAMPLED) === TraceFlags.SAMPLED;
 }

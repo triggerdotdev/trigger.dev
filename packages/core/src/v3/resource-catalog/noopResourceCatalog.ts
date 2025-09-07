@@ -1,5 +1,5 @@
 import { QueueManifest, TaskManifest, WorkerManifest } from "../schemas/index.js";
-import { TaskMetadataWithFunctions } from "../types/index.js";
+import { TaskMetadataWithFunctions, TaskSchema } from "../types/index.js";
 import { ResourceCatalog } from "./catalog.js";
 
 export class NoopResourceCatalog implements ResourceCatalog {
@@ -28,6 +28,10 @@ export class NoopResourceCatalog implements ResourceCatalog {
   }
 
   getTask(id: string): TaskMetadataWithFunctions | undefined {
+    return undefined;
+  }
+
+  getTaskSchema(id: string): TaskSchema | undefined {
     return undefined;
   }
 

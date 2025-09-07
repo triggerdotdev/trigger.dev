@@ -9,6 +9,8 @@ import { ChangeCurrentDeploymentService } from "./changeCurrentDeployment.server
 import { projectPubSub } from "./projectPubSub.server";
 import { FailDeploymentService } from "./failDeployment.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
+import { engine } from "../runEngine.server";
+import { tryCatch } from "@trigger.dev/core";
 
 export class FinalizeDeploymentService extends BaseService {
   public async call(
@@ -114,6 +116,18 @@ export class FinalizeDeploymentService extends BaseService {
         orgId: authenticatedEnv.organizationId,
         projectId: finalizedDeployment.projectId,
       });
+    }
+
+    if (deployment.worker.engine === "V2") {
+      const [schedulePendingVersionsError] = await tryCatch(
+        engine.scheduleEnqueueRunsForBackgroundWorker(deployment.worker.id)
+      );
+
+      if (schedulePendingVersionsError) {
+        logger.error("Error scheduling pending versions", {
+          error: schedulePendingVersionsError,
+        });
+      }
     }
 
     await PerformDeploymentAlertsService.enqueue(deployment.id);

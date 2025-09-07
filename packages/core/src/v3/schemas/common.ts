@@ -229,11 +229,18 @@ export const TaskRun = z.object({
   // These are only used during execution, not in run.ctx
   durationMs: z.number().optional(),
   costInCents: z.number().optional(),
+
+  region: z.string().optional(),
 });
 
 export type TaskRun = z.infer<typeof TaskRun>;
 
+// newly added fields need to be optional for backwards compatibility
 export const GitMeta = z.object({
+  provider: z.string().optional(),
+  source: z.enum(["trigger_github_app", "github_actions", "local"]).optional(),
+  ghUsername: z.string().optional(),
+  ghUserAvatarUrl: z.string().optional(),
   commitAuthorName: z.string().optional(),
   commitMessage: z.string().optional(),
   commitRef: z.string().optional(),

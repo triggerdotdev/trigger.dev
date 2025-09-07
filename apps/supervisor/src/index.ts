@@ -247,6 +247,7 @@ class ManagedSupervisor {
           nextAttemptNumber: message.run.attemptNumber,
           snapshotId: message.snapshot.id,
           snapshotFriendlyId: message.snapshot.friendlyId,
+          placementTags: message.placementTags,
         });
 
         // Disabled for now

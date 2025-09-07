@@ -208,3 +208,64 @@ export function TriggerLoginStepV3({ title }: TabsProps) {
     </ClientTabs>
   );
 }
+
+export function TriggerDeployStep({ title, environment }: TabsProps & { environment: { type: string } }) {
+  const triggerCliTag = useTriggerCliTag();
+  const { activePackageManager, setActivePackageManager } = usePackageManager();
+
+  // Generate the environment flag based on environment type
+  const getEnvironmentFlag = () => {
+    switch (environment.type) {
+      case "STAGING":
+        return " --env staging";
+      case "PREVIEW":
+        return " --env preview";
+      case "PRODUCTION":
+      default:
+        return "";
+    }
+  };
+
+  const environmentFlag = getEnvironmentFlag();
+
+  return (
+    <ClientTabs
+      defaultValue="npm"
+      value={activePackageManager}
+      onValueChange={setActivePackageManager}
+    >
+      <div className="flex items-center gap-4">
+        {title && <Header3>{title}</Header3>}
+        <ClientTabsList className={title ? "ml-auto" : ""}>
+          <ClientTabsTrigger value={"npm"}>npm</ClientTabsTrigger>
+          <ClientTabsTrigger value={"pnpm"}>pnpm</ClientTabsTrigger>
+          <ClientTabsTrigger value={"yarn"}>yarn</ClientTabsTrigger>
+        </ClientTabsList>
+      </div>
+      <ClientTabsContent value={"npm"}>
+        <ClipboardField
+          variant="secondary/medium"
+          iconButton
+          className="mb-4"
+          value={`npx trigger.dev@${triggerCliTag} deploy${environmentFlag}`}
+        />
+      </ClientTabsContent>
+      <ClientTabsContent value={"pnpm"}>
+        <ClipboardField
+          variant="secondary/medium"
+          iconButton
+          className="mb-4"
+          value={`pnpm dlx trigger.dev@${triggerCliTag} deploy${environmentFlag}`}
+        />
+      </ClientTabsContent>
+      <ClientTabsContent value={"yarn"}>
+        <ClipboardField
+          variant="secondary/medium"
+          iconButton
+          className="mb-4"
+          value={`yarn dlx trigger.dev@${triggerCliTag} deploy${environmentFlag}`}
+        />
+      </ClientTabsContent>
+    </ClientTabs>
+  );
+}

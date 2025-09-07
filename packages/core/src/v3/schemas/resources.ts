@@ -13,6 +13,8 @@ export const TaskResource = z.object({
   triggerSource: z.string().optional(),
   schedule: ScheduleMetadata.optional(),
   maxDuration: z.number().optional(),
+  // JSONSchema type - using z.unknown() for runtime validation to accept JSONSchema7
+  payloadSchema: z.unknown().optional(),
 });
 
 export type TaskResource = z.infer<typeof TaskResource>;

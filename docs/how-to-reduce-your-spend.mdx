@@ -104,12 +104,10 @@ Sometimes it's more efficient to do more work in a single task than split across
 export const processItems = task({
   id: "process-items",
   run: async (payload: { items: string[] }) => {
-    // Process all items in one run
-    for (const item of payload.items) {
-      // Do async work in parallel
-      // This works very well for API calls
-      await processItem(item);
-    }
+    // Process all items in parallel
+    const promises = payload.items.map(item => processItem(item));
+    // This works very well for API calls
+    await Promise.all(promises);
   },
 });
 ```

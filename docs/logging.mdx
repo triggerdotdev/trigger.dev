@@ -16,7 +16,7 @@ You can use `console.log()`, `console.error()`, etc as normal and they will be s
 We recommend that you use our `logger` object which creates structured logs. Structured logs will make it easier for you to search the logs to quickly find runs.
 
 ```ts /trigger/logging.ts
-import { task, logger } from "@trigger.dev/sdk/v3";
+import { task, logger } from "@trigger.dev/sdk";
 
 export const loggingExample = task({
   id: "logging-example",
@@ -54,7 +54,7 @@ You can [add instrumentations](/config/config-file#instrumentations). The Prisma
 If you want to add custom traces to your code, you can use the `logger.trace` function. It will create a new OTEL trace and you can set attributes on it.
 
 ```ts
-import { logger, task } from "@trigger.dev/sdk/v3";
+import { logger, task } from "@trigger.dev/sdk";
 
 export const customTrace = task({
   id: "custom-trace",

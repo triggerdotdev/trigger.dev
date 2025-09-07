@@ -10,6 +10,8 @@ import {
   type MachineCode,
   type UpdateBillingAlertsRequest,
   type BillingAlertsResult,
+  type ReportUsageResult,
+  type ReportUsagePlan,
 } from "@trigger.dev/platform";
 import { createCache, DefaultStatefulContext, Namespace } from "@unkey/cache";
 import { MemoryStore } from "@unkey/cache/stores";
@@ -285,7 +287,8 @@ export async function setPlan(
   organization: { id: string; slug: string },
   request: Request,
   callerPath: string,
-  plan: SetPlanBody
+  plan: SetPlanBody,
+  opts?: { invalidateBillingCache?: (orgId: string) => void }
 ) {
   if (!client) {
     throw redirectWithErrorMessage(callerPath, request, "Error setting plan");
@@ -308,6 +311,8 @@ export async function setPlan(
       }
       case "free_connected": {
         if (result.accepted) {
+          // Invalidate billing cache since plan changed
+          opts?.invalidateBillingCache?.(organization.id);
           return redirect(newProjectPath(organization, "You're on the Free plan."));
         } else {
           return redirectWithErrorMessage(
@@ -321,6 +326,8 @@ export async function setPlan(
         return redirect(result.checkoutUrl);
       }
       case "updated_subscription": {
+        // Invalidate billing cache since subscription changed
+        opts?.invalidateBillingCache?.(organization.id);
         return redirectWithSuccessMessage(
           callerPath,
           request,
@@ -328,6 +335,8 @@ export async function setPlan(
         );
       }
       case "canceled_subscription": {
+        // Invalidate billing cache since subscription was canceled
+        opts?.invalidateBillingCache?.(organization.id);
         return redirectWithSuccessMessage(callerPath, request, "Subscription canceled.");
       }
     }
@@ -425,7 +434,9 @@ export async function reportComputeUsage(request: Request) {
   });
 }
 
-export async function getEntitlement(organizationId: string) {
+export async function getEntitlement(
+  organizationId: string
+): Promise<ReportUsageResult | undefined> {
   if (!client) return undefined;
 
   try {

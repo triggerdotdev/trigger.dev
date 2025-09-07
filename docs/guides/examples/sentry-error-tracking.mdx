@@ -26,7 +26,7 @@ To send errors to Sentry when there are errors in your tasks, you'll need to add
 </Note>
 
 ```ts trigger.config.ts
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 import { esbuildPlugin } from "@trigger.dev/build/extensions";
 import { sentryEsbuildPlugin } from "@sentry/esbuild-plugin";
 import * as Sentry from "@sentry/node";
@@ -80,7 +80,7 @@ To test that errors are being sent to Sentry, you need to create a task that wil
 This task takes no payload, and will throw an error.
 
 ```ts trigger/sentry-error-test.ts
-import { task } from "@trigger.dev/sdk/v3";
+import { task } from "@trigger.dev/sdk";
 
 export const sentryErrorTest = task({
   id: "sentry-error-test",

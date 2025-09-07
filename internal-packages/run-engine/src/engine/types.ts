@@ -5,7 +5,7 @@ import {
   MachinePreset,
   MachinePresetName,
   RetryOptions,
-  RunChainState,
+  TriggerTraceContext,
 } from "@trigger.dev/core/v3";
 import { PrismaClient, PrismaReplicaClient } from "@trigger.dev/database";
 import { Worker, type WorkerConcurrencyOptions } from "@trigger.dev/redis-worker";
@@ -13,6 +13,7 @@ import { FairQueueSelectionStrategyOptions } from "../run-queue/fairQueueSelecti
 import { MinimalAuthenticatedEnvironment } from "../shared/index.js";
 import { LockRetryConfig } from "./locking.js";
 import { workerCatalog } from "./workerCatalog.js";
+import { type BillingPlan } from "./billingCache.js";
 
 export type RunEngineOptions = {
   prisma: PrismaClient;
@@ -29,12 +30,18 @@ export type RunEngineOptions = {
     machines: Record<string, MachinePreset>;
     baseCostInCents: number;
   };
+  billing?: {
+    getCurrentPlan: (orgId: string) => Promise<BillingPlan>;
+  };
   queue: {
     redis: RedisOptions;
     shardCount?: number;
     masterQueueConsumersDisabled?: boolean;
     processWorkerQueueDebounceMs?: number;
     masterQueueConsumersIntervalMs?: number;
+    masterQueueCooloffPeriodMs?: number;
+    masterQueueCooloffCountThreshold?: number;
+    masterQueueConsumerDequeueCount?: number;
     workerOptions?: WorkerConcurrencyOptions;
     retryOptions?: RetryOptions;
     defaultEnvConcurrency?: number;
@@ -64,6 +71,12 @@ export type RunEngineOptions = {
   /** If not set then checkpoints won't ever be used */
   retryWarmStartThresholdMs?: number;
   heartbeatTimeoutsMs?: Partial<HeartbeatTimeouts>;
+  suspendedHeartbeatRetriesConfig?: {
+    maxCount?: number;
+    maxDelayMs?: number;
+    initialDelayMs?: number;
+    factor?: number;
+  };
   queueRunsWaitingForWorkerBatchSize?: number;
   tracer: Tracer;
   meter?: Meter;
@@ -89,7 +102,7 @@ export type TriggerParams = {
   payload: string;
   payloadType: string;
   context: any;
-  traceContext: Record<string, string | undefined>;
+  traceContext: TriggerTraceContext;
   traceId: string;
   spanId: string;
   parentSpanId?: string;
@@ -132,6 +145,7 @@ export type TriggerParams = {
   scheduleInstanceId?: string;
   createdAt?: Date;
   bulkActionId?: string;
+  planType?: string;
 };
 
 export type EngineWorker = Worker<typeof workerCatalog>;

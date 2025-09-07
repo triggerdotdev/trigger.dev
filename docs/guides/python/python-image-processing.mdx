@@ -42,7 +42,7 @@ After you've initialized your project with Trigger.dev, add these build settings
 
 ```ts trigger.config.ts
 import { pythonExtension } from "@trigger.dev/python/extension";
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   runtime: "node",
@@ -73,7 +73,7 @@ export default defineConfig({
 This task uses the `python.runScript` method to run the `image-processing.py` script with the given image URL as an argument. You can adjust the image processing parameters in the payload, with options such as height, width, quality, output format, etc.
 
 ```ts src/trigger/processImage.ts
-import { schemaTask } from "@trigger.dev/sdk/v3";
+import { schemaTask } from "@trigger.dev/sdk";
 import { z } from "zod";
 import { python } from "@trigger.dev/python";
 import { promises as fs } from "fs";

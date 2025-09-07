@@ -1,12 +1,7 @@
 ---
 title: "Preview branches"
 description: "Create isolated environments for each branch of your code, allowing you to test changes before merging to production. You can create preview branches manually or automatically from your git branches."
-tag: "v4"
 ---
-
-import UpgradeToV4Note from "/snippets/upgrade-to-v4-note.mdx";
-
-<UpgradeToV4Note />
 
 ## How to use preview branches
 
@@ -101,7 +96,7 @@ jobs:
         run: npm install
 
       - name: Deploy preview branch
-        run: npx trigger.dev@v4-beta deploy --env preview
+        run: npx trigger.dev@latest deploy --env preview
         env:
           TRIGGER_ACCESS_TOKEN: ${{ secrets.TRIGGER_ACCESS_TOKEN }}
 ```
@@ -121,13 +116,13 @@ You can manually specify the branch using `--branch <branch-name>` in the deploy
 Creating and deploying a preview branch manually is easy:
 
 ```bash
-npx trigger.dev@v4-beta deploy --env preview
+npx trigger.dev@latest deploy --env preview
 ```
 
 This will create and deploy a preview branch, automatically detecting the git branch. If for some reason the auto-detection doesn't work it will let you know and tell you do this:
 
 ```bash
-npx trigger.dev@v4-beta deploy --env preview --branch your-branch-name
+npx trigger.dev@latest deploy --env preview --branch your-branch-name
 ```
 
 ### Archiving a preview branch
@@ -135,7 +130,7 @@ npx trigger.dev@v4-beta deploy --env preview --branch your-branch-name
 You can manually archive a preview branch with the CLI:
 
 ```bash
-npx trigger.dev@v4-beta preview archive
+npx trigger.dev@latest preview archive
 ```
 
 Again we will try auto-detect the current branch. But you can specify the branch name with `--branch <branch-name>`.

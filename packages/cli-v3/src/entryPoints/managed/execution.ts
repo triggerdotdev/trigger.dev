@@ -76,6 +76,9 @@ export class RunExecution {
   private isShuttingDown = false;
   private shutdownReason?: string;
 
+  private isCompletingRun = false;
+  private ignoreSnapshotChanges = false;
+
   private supervisorSocket: SupervisorSocket;
   private notifier?: RunNotifier;
   private metadataClient?: MetadataClient;
@@ -235,6 +238,16 @@ export class RunExecution {
       completedWaitpoints: completedWaitpoints.length,
     };
 
+    if (this.ignoreSnapshotChanges) {
+      this.sendDebugLog("processSnapshotChange: ignoring snapshot change", {
+        incomingSnapshotId: snapshot.friendlyId,
+        completedWaitpoints: completedWaitpoints.length,
+        currentAttemptNumber: this.currentAttemptNumber,
+        newAttemptNumber: run.attemptNumber,
+      });
+      return;
+    }
+
     if (!this.snapshotManager) {
       this.sendDebugLog("handleSnapshotChange: missing snapshot manager", snapshotMetadata);
       return;
@@ -292,7 +305,13 @@ export class RunExecution {
       case "FINISHED": {
         this.sendDebugLog("run is finished", snapshotMetadata);
 
-        // This can sometimes be called before the handleCompletionResult, so we don't need to do anything here
+        // We are finishing the run in handleCompletionResult, so we don't need to do anything here
+        if (this.isCompletingRun) {
+          this.sendDebugLog("run is finished but we're completing it, skipping", snapshotMetadata);
+          return;
+        }
+
+        await this.exitTaskRunProcessWithoutFailingRun({ flush: true, reason: "already-finished" });
         return;
       }
       case "QUEUED_EXECUTING":
@@ -376,6 +395,9 @@ export class RunExecution {
     if (!this.runFriendlyId || !this.snapshotManager) {
       throw new Error("Cannot start attempt: missing run or snapshot manager");
     }
+
+    // Reset this for the new attempt
+    this.isCompletingRun = false;
 
     this.sendDebugLog("starting attempt", { isWarmStart: String(isWarmStart) });
 
@@ -655,6 +677,8 @@ export class RunExecution {
       throw new Error("cannot complete run: missing run or snapshot manager");
     }
 
+    this.isCompletingRun = true;
+
     const completionResult = await this.httpClient.completeRunAttempt(
       this.runFriendlyId,
       this.snapshotManager.snapshotId,
@@ -795,7 +819,9 @@ export class RunExecution {
     }
 
     // Start and execute next attempt
-    const [startError, start] = await tryCatch(this.startAttempt({ isWarmStart: true }));
+    const [startError, start] = await tryCatch(
+      this.enableIgnoreSnapshotChanges(() => this.startAttempt({ isWarmStart: true }))
+    );
 
     if (startError) {
       this.sendDebugLog("failed to start attempt for retry", { error: startError.message });
@@ -813,6 +839,15 @@ export class RunExecution {
 
       this.shutdownExecution("retryImmediately: failed to execute run");
       return;
+    }
+  }
+
+  private async enableIgnoreSnapshotChanges<T>(fn: () => Promise<T>): Promise<T> {
+    this.ignoreSnapshotChanges = true;
+    try {
+      return await fn();
+    } finally {
+      this.ignoreSnapshotChanges = false;
     }
   }
 

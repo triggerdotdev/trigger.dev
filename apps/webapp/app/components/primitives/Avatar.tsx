@@ -6,7 +6,7 @@ import {
   RocketLaunchIcon,
   StarIcon,
 } from "@heroicons/react/20/solid";
-import { type Prisma } from "@trigger.dev/database";
+import type { Prisma } from "@trigger.dev/database";
 import { z } from "zod";
 import { logger } from "~/services/logger.server";
 import { cn } from "~/utils/cn";

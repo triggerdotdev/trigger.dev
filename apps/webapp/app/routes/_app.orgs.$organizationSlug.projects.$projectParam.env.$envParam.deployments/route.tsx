@@ -245,21 +245,20 @@ export default function Page() {
                               )}
                             </TableCell>
                             <TableCell to={path} isSelected={isSelected}>
-                              {deployment.deployedBy ? (
-                                <div className="flex items-center gap-1">
-                                  <UserAvatar
-                                    avatarUrl={deployment.deployedBy.avatarUrl}
-                                    name={
-                                      deployment.deployedBy.name ??
-                                      deployment.deployedBy.displayName
-                                    }
-                                    className="h-4 w-4"
-                                  />
-                                  <Paragraph variant="extra-small">
-                                    {deployment.deployedBy.name ??
-                                      deployment.deployedBy.displayName}
-                                  </Paragraph>
-                                </div>
+                              {deployment.git?.source === "trigger_github_app" ? (
+                                <UserTag
+                                  name={deployment.git.ghUsername ?? "GitHub Integration"}
+                                  avatarUrl={deployment.git.ghUserAvatarUrl}
+                                />
+                              ) : deployment.deployedBy ? (
+                                <UserTag
+                                  name={
+                                    deployment.deployedBy.name ??
+                                    deployment.deployedBy.displayName ??
+                                    ""
+                                  }
+                                  avatarUrl={deployment.deployedBy.avatarUrl ?? undefined}
+                                />
                               ) : (
                                 "–"
                               )}
@@ -315,6 +314,15 @@ export default function Page() {
         </ResizablePanelGroup>
       </PageBody>
     </PageContainer>
+  );
+}
+
+function UserTag({ name, avatarUrl }: { name: string; avatarUrl?: string }) {
+  return (
+    <div className="flex items-center gap-1">
+      <UserAvatar avatarUrl={avatarUrl} name={name} className="h-4 w-4" />
+      <Paragraph variant="extra-small">{name}</Paragraph>
+    </div>
   );
 }
 

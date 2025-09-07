@@ -1,3 +1,4 @@
+import { BillingCache } from "./billingCache.js";
 import { createRedisClient, Redis } from "@internal/redis";
 import { getMeter, Meter, startSpan, trace, Tracer } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
@@ -77,6 +78,8 @@ export class RunEngine {
   ttlSystem: TtlSystem;
   pendingVersionSystem: PendingVersionSystem;
   raceSimulationSystem: RaceSimulationSystem = new RaceSimulationSystem();
+
+  private readonly billingCache: BillingCache;
 
   constructor(private readonly options: RunEngineOptions) {
     this.logger = options.logger ?? new Logger("RunEngine", this.options.logLevel ?? "info");
@@ -292,11 +295,18 @@ export class RunEngine {
       redisOptions: this.options.cache?.redis ?? this.options.runLock.redis,
     });
 
+    this.billingCache = new BillingCache({
+      billingOptions: this.options.billing,
+      redisOptions: this.options.cache?.redis ?? this.options.runLock.redis,
+      logger: this.logger,
+    });
+
     this.dequeueSystem = new DequeueSystem({
       resources,
       executionSnapshotSystem: this.executionSnapshotSystem,
       runAttemptSystem: this.runAttemptSystem,
       machines: this.options.machines,
+      billingCache: this.billingCache,
     });
   }
 
@@ -354,6 +364,7 @@ export class RunEngine {
       scheduleInstanceId,
       createdAt,
       bulkActionId,
+      planType,
     }: TriggerParams,
     tx?: PrismaClientOrTransaction
   ): Promise<TaskRun> {
@@ -429,6 +440,7 @@ export class RunEngine {
               scheduleInstanceId,
               createdAt,
               bulkActionGroupIds: bulkActionId ? [bulkActionId] : undefined,
+              planType,
               executionSnapshots: {
                 create: {
                   engine: "V2",
@@ -553,6 +565,9 @@ export class RunEngine {
     workerId,
     runnerId,
     tx,
+    skipObserving,
+    blockingPop,
+    blockingPopTimeoutSeconds,
   }: {
     consumerId: string;
     workerQueue: string;
@@ -560,9 +575,14 @@ export class RunEngine {
     workerId?: string;
     runnerId?: string;
     tx?: PrismaClientOrTransaction;
+    skipObserving?: boolean;
+    blockingPop?: boolean;
+    blockingPopTimeoutSeconds?: number;
   }): Promise<DequeuedMessage[]> {
-    // We only do this with "prod" worker queues because we don't want to observe dev (e.g. environment) worker queues
-    this.runQueue.registerObservableWorkerQueue(workerQueue);
+    if (!skipObserving) {
+      // We only do this with "prod" worker queues because we don't want to observe dev (e.g. environment) worker queues
+      this.runQueue.registerObservableWorkerQueue(workerQueue);
+    }
 
     const dequeuedMessage = await this.dequeueSystem.dequeueFromWorkerQueue({
       consumerId,
@@ -571,6 +591,8 @@ export class RunEngine {
       workerId,
       runnerId,
       tx,
+      blockingPop,
+      blockingPopTimeoutSeconds,
     });
 
     if (!dequeuedMessage) {
@@ -602,6 +624,9 @@ export class RunEngine {
       workerId,
       runnerId,
       tx,
+      skipObserving: true,
+      blockingPop: true,
+      blockingPopTimeoutSeconds: 10,
     });
   }
 
@@ -1136,10 +1161,12 @@ export class RunEngine {
   async #handleStalledSnapshot({
     runId,
     snapshotId,
+    restartAttempt,
     tx,
   }: {
     runId: string;
     snapshotId: string;
+    restartAttempt?: number;
     tx?: PrismaClientOrTransaction;
   }) {
     const prisma = tx ?? this.prisma;
@@ -1155,7 +1182,6 @@ export class RunEngine {
           }
         );
 
-        await this.worker.ack(`heartbeatSnapshot.${runId}`);
         return;
       }
 
@@ -1273,11 +1299,86 @@ export class RunEngine {
             snapshotId: latestSnapshot.id,
           });
 
-          switch (result) {
+          switch (result.status) {
             case "blocked": {
+              if (!this.options.suspendedHeartbeatRetriesConfig) {
+                break;
+              }
+
+              if (result.waitpoints.length === 0) {
+                this.logger.info("handleStalledSnapshot SUSPENDED blocked but no waitpoints", {
+                  runId,
+                  result,
+                  snapshotId: latestSnapshot.id,
+                });
+                // If the run is blocked but there are no waitpoints, we don't restart the heartbeat
+                break;
+              }
+
+              const hasRunOrBatchWaitpoints = result.waitpoints.some(
+                (w) => w.type === "RUN" || w.type === "BATCH"
+              );
+
+              if (!hasRunOrBatchWaitpoints) {
+                this.logger.info(
+                  "handleStalledSnapshot SUSPENDED blocked but no run or batch waitpoints",
+                  {
+                    runId,
+                    result,
+                    snapshotId: latestSnapshot.id,
+                  }
+                );
+                // If the run is blocked by waitpoints that are not RUN or BATCH, we don't restart the heartbeat
+                break;
+              }
+
+              const initialDelayMs =
+                this.options.suspendedHeartbeatRetriesConfig.initialDelayMs ?? 60_000;
+              const $restartAttempt = (restartAttempt ?? 0) + 1; // Start at 1
+              const maxDelayMs =
+                this.options.suspendedHeartbeatRetriesConfig.maxDelayMs ?? 60_000 * 60 * 6; // 6 hours
+              const factor = this.options.suspendedHeartbeatRetriesConfig.factor ?? 2;
+              const maxCount = this.options.suspendedHeartbeatRetriesConfig.maxCount ?? 12;
+
+              if ($restartAttempt >= maxCount) {
+                this.logger.info(
+                  "handleStalledSnapshot SUSPENDED blocked with waitpoints, max retries reached",
+                  {
+                    runId,
+                    result,
+                    snapshotId: latestSnapshot.id,
+                    restartAttempt: $restartAttempt,
+                    maxCount,
+                    config: this.options.suspendedHeartbeatRetriesConfig,
+                  }
+                );
+
+                break;
+              }
+
+              // Calculate the delay based on the retry attempt
+              const delayMs = Math.min(
+                initialDelayMs * Math.pow(factor, $restartAttempt - 1),
+                maxDelayMs
+              );
+
+              this.logger.info(
+                "handleStalledSnapshot SUSPENDED blocked with waitpoints, restarting heartbeat",
+                {
+                  runId,
+                  result,
+                  snapshotId: latestSnapshot.id,
+                  delayMs,
+                  restartAttempt: $restartAttempt,
+                }
+              );
+
               // Reschedule the heartbeat
               await this.executionSnapshotSystem.restartHeartbeatForRun({
                 runId,
+                delayMs,
+                restartAttempt: $restartAttempt,
+                tx,
               });
               break;
             }
@@ -1347,5 +1448,13 @@ export class RunEngine {
         id: run.id,
         orgId: run.organizationId!,
       }));
+  }
+
+  /**
+   * Invalidates the billing cache for an organization when their plan changes
+   * Runs in background and handles all errors internally
+   */
+  invalidateBillingCache(orgId: string): void {
+    this.billingCache.invalidate(orgId);
   }
 }

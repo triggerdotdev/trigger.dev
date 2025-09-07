@@ -10,8 +10,14 @@ import {
   taskRunErrorEnhancer,
   taskRunErrorToString,
   TriggerTaskRequestBody,
+  TriggerTraceContext,
 } from "@trigger.dev/core/v3";
-import { RunId, stringifyDuration } from "@trigger.dev/core/v3/isomorphic";
+import {
+  parseTraceparent,
+  RunId,
+  serializeTraceparent,
+  stringifyDuration,
+} from "@trigger.dev/core/v3/isomorphic";
 import type { PrismaClientOrTransaction } from "@trigger.dev/database";
 import { createTags } from "~/models/taskRunTag.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
@@ -117,13 +123,35 @@ export class RunEngineTriggerTaskService {
         throw tagValidation.error;
       }
 
-      // Validate entitlement
-      const entitlementValidation = await this.validator.validateEntitlement({
-        environment,
-      });
+      // Validate entitlement (unless skipChecks is enabled)
+      let planType: string | undefined;
 
-      if (!entitlementValidation.ok) {
-        throw entitlementValidation.error;
+      if (!options.skipChecks) {
+        const entitlementValidation = await this.validator.validateEntitlement({
+          environment,
+        });
+
+        if (!entitlementValidation.ok) {
+          throw entitlementValidation.error;
+        }
+
+        // Extract plan type from entitlement response
+        planType = entitlementValidation.plan?.type;
+      } else {
+        // When skipChecks is enabled, planType should be passed via options
+        planType = options.planType;
+
+        if (!planType) {
+          logger.warn("Plan type not set but skipChecks is enabled", {
+            taskId,
+            environment: {
+              id: environment.id,
+              type: environment.type,
+              projectId: environment.projectId,
+              organizationId: environment.organizationId,
+            },
+          });
+        }
       }
 
       const [parseDelayError, delayUntil] = await tryCatch(parseDelay(body.options?.delay));
@@ -228,7 +256,7 @@ export class RunEngineTriggerTaskService {
 
       const depth = parentRun ? parentRun.depth + 1 : 0;
 
-      const workerQueue = await this.queueConcern.getWorkerQueue(environment);
+      const workerQueue = await this.queueConcern.getWorkerQueue(environment, body.options?.region);
 
       try {
         return await this.traceEventConcern.traceRun(triggerRequest, async (event) => {
@@ -253,7 +281,11 @@ export class RunEngineTriggerTaskService {
                   payload: payloadPacket.data ?? "",
                   payloadType: payloadPacket.dataType,
                   context: body.context,
-                  traceContext: event.traceContext,
+                  traceContext: this.#propagateExternalTraceContext(
+                    event.traceContext,
+                    parentRun?.traceContext,
+                    event.traceparent?.spanId
+                  ),
                   traceId: event.traceId,
                   spanId: event.spanId,
                   parentSpanId:
@@ -303,6 +335,7 @@ export class RunEngineTriggerTaskService {
                   scheduleInstanceId: options.scheduleInstanceId,
                   createdAt: options.overrideCreatedAt,
                   bulkActionId: body.options?.bulkActionId,
+                  planType,
                 },
                 this.prisma
               );
@@ -340,5 +373,51 @@ export class RunEngineTriggerTaskService {
         throw error;
       }
     });
+  }
+
+  #propagateExternalTraceContext(
+    traceContext: Record<string, unknown>,
+    parentRunTraceContext: unknown,
+    parentSpanId: string | undefined
+  ): TriggerTraceContext {
+    if (!parentRunTraceContext) {
+      return traceContext;
+    }
+
+    const parsedParentRunTraceContext = TriggerTraceContext.safeParse(parentRunTraceContext);
+
+    if (!parsedParentRunTraceContext.success) {
+      return traceContext;
+    }
+
+    const { external } = parsedParentRunTraceContext.data;
+
+    if (!external) {
+      return traceContext;
+    }
+
+    if (!external.traceparent) {
+      return traceContext;
+    }
+
+    const parsedTraceparent = parseTraceparent(external.traceparent);
+
+    if (!parsedTraceparent) {
+      return traceContext;
+    }
+
+    const newExternalTraceparent = serializeTraceparent(
+      parsedTraceparent.traceId,
+      parentSpanId ?? parsedTraceparent.spanId,
+      parsedTraceparent.traceFlags
+    );
+
+    return {
+      ...traceContext,
+      external: {
+        ...external,
+        traceparent: newExternalTraceparent,
+      },
+    };
   }
 }

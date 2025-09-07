@@ -159,11 +159,16 @@ function createExternalsCollector(
           isExternalCache.clear();
         });
 
+        const autoDetectExternal =
+          resolvedConfig.build?.autoDetectExternal ??
+          resolvedConfig.build?.experimental_autoDetectExternal ??
+          true;
+
         build.onEnd(async () => {
           logger.debug("[externals][onEnd] Collected externals", {
             externals,
             maybeExternals,
-            autoDetectExternal: !!resolvedConfig.build?.experimental_autoDetectExternal,
+            autoDetectExternal,
             packageJsonCache: packageJsonCache.size,
             isExternalCache: isExternalCache.size,
           });
@@ -265,7 +270,7 @@ function createExternalsCollector(
           });
         });
 
-        if (resolvedConfig.build?.experimental_autoDetectExternal) {
+        if (autoDetectExternal) {
           build.onResolve(
             { filter: /.*/, namespace: "file" },
             async (args: esbuild.OnResolveArgs): Promise<esbuild.OnResolveResult | undefined> => {

@@ -14,7 +14,7 @@ import { Link, useRevalidator, useSubmit } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { DiscordIcon } from "@trigger.dev/companyicons";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
-import { type TaskRunStatus } from "@trigger.dev/database";
+import type { TaskRunStatus } from "@trigger.dev/database";
 import { Fragment, Suspense, useEffect, useState } from "react";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, type TooltipProps } from "recharts";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
@@ -77,7 +77,6 @@ import {
   type TaskActivity,
   type TaskListItem,
   taskListPresenter,
-  TaskListPresenter,
 } from "~/presenters/v3/TaskListPresenter.server";
 import {
   getUsefulLinksPreference,
@@ -372,12 +371,13 @@ export default function Page() {
                                         icon={RunsIcon}
                                         to={path}
                                         title="View runs"
-                                        leadingIconClassName="text-teal-500"
+                                        leadingIconClassName="text-runs"
                                       />
                                       <PopoverMenuItem
                                         icon={BeakerIcon}
                                         to={testPath}
                                         title="Test task"
+                                        leadingIconClassName="text-tests"
                                       />
                                     </>
                                   }
@@ -411,7 +411,7 @@ export default function Page() {
                   <HasNoTasksDev />
                 </MainCenteredContainer>
               ) : (
-                <MainCenteredContainer className="max-w-md">
+                <MainCenteredContainer className="max-w-prose">
                   <HasNoTasksDeployed environment={environment} />
                 </MainCenteredContainer>
               )}

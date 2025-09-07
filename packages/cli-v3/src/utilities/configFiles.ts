@@ -29,6 +29,13 @@ const CliConfigFile = z.object({
   version: z.literal(2),
   currentProfile: z.string().default(DEFFAULT_PROFILE),
   profiles: z.record(CliConfigProfileSettings),
+  settings: z
+    .object({
+      hasSeenMCPInstallPrompt: z.boolean().optional(),
+      hasSeenRulesInstallPrompt: z.boolean().optional(),
+      lastRulesInstallPromptVersion: z.string().optional(),
+    })
+    .optional(),
 });
 type CliConfigFile = z.infer<typeof CliConfigFile>;
 
@@ -50,6 +57,10 @@ function getBlankConfig(): CliConfigFile {
     version: 2,
     currentProfile: DEFFAULT_PROFILE,
     profiles: {},
+    settings: {
+      hasSeenMCPInstallPrompt: false,
+      hasSeenRulesInstallPrompt: false,
+    },
   };
 }
 
@@ -91,6 +102,52 @@ export function readAuthConfigProfile(
     logger.debug(`Error reading auth config file: ${error}`);
     return undefined;
   }
+}
+
+export function readConfigHasSeenMCPInstallPrompt(): boolean {
+  const config = getConfig();
+  return typeof config.settings?.hasSeenMCPInstallPrompt === "boolean"
+    ? config.settings.hasSeenMCPInstallPrompt
+    : false;
+}
+
+export function writeConfigHasSeenMCPInstallPrompt(hasSeenMCPInstallPrompt: boolean) {
+  const config = getConfig();
+  config.settings = {
+    ...config.settings,
+    hasSeenMCPInstallPrompt,
+  };
+  writeAuthConfigFile(config);
+}
+
+export function readConfigHasSeenRulesInstallPrompt(): boolean {
+  const config = getConfig();
+  return typeof config.settings?.hasSeenRulesInstallPrompt === "boolean"
+    ? config.settings.hasSeenRulesInstallPrompt
+    : false;
+}
+
+export function writeConfigHasSeenRulesInstallPrompt(hasSeenRulesInstallPrompt: boolean) {
+  const config = getConfig();
+  config.settings = {
+    ...config.settings,
+    hasSeenRulesInstallPrompt,
+  };
+  writeAuthConfigFile(config);
+}
+
+export function readConfigLastRulesInstallPromptVersion(): string | undefined {
+  const config = getConfig();
+  return config.settings?.lastRulesInstallPromptVersion;
+}
+
+export function writeConfigLastRulesInstallPromptVersion(version: string) {
+  const config = getConfig();
+  config.settings = {
+    ...config.settings,
+    lastRulesInstallPromptVersion: version,
+  };
+  writeAuthConfigFile(config);
 }
 
 export function deleteAuthConfigProfile(profile: string = DEFFAULT_PROFILE) {

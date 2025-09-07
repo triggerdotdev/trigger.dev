@@ -43,7 +43,7 @@ export class CancelTaskRunServiceV1 extends BaseService {
 
     // Make sure the task run is in a cancellable state
     if (!isCancellableRunStatus(taskRun.status)) {
-      logger.error("Task run is not in a cancellable state", {
+      logger.info("Task run is not in a cancellable state", {
         runId: taskRun.id,
         status: taskRun.status,
       });

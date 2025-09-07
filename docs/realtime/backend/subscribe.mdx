@@ -1,0 +1,225 @@
+---
+title: Subscribe functions
+sidebarTitle: Subscribe
+description: Subscribe to run updates using async iterators
+---
+
+These functions allow you to subscribe to run updates from your backend code. Each function returns an async iterator that yields run objects as they change.
+
+## runs.subscribeToRun
+
+Subscribes to all changes to a specific run.
+
+```ts Example
+import { runs } from "@trigger.dev/sdk/v3";
+
+for await (const run of runs.subscribeToRun("run_1234")) {
+  console.log(run);
+}
+```
+
+This function subscribes to all changes to a run. It returns an async iterator that yields the run object whenever the run is updated. The iterator will complete when the run is finished.
+
+**Authentication**: This function supports both server-side and client-side authentication. For server-side authentication, use your API key. For client-side authentication, you must generate a public access token with read access to the specific run. See our [authentication guide](/realtime/auth) for details.
+
+**Response**: The AsyncIterator yields the [run object](/realtime/run-object).
+
+## runs.subscribeToRunsWithTag
+
+Subscribes to all changes to runs with a specific tag.
+
+```ts Example
+import { runs } from "@trigger.dev/sdk/v3";
+
+for await (const run of runs.subscribeToRunsWithTag("user:1234")) {
+  console.log(run);
+}
+```
+
+This function subscribes to all changes to runs with a specific tag. It returns an async iterator that yields the run object whenever a run with the specified tag is updated. This iterator will never complete, so you must manually break out of the loop when you no longer want to receive updates.
+
+**Authentication**: This function supports both server-side and client-side authentication. For server-side authentication, use your API key. For client-side authentication, you must generate a public access token with read access to the specific tag. See our [authentication guide](/realtime/auth) for details.
+
+**Response**: The AsyncIterator yields the [run object](/realtime/run-object).
+
+## runs.subscribeToBatch
+
+Subscribes to all changes for runs in a batch.
+
+```ts Example
+import { runs } from "@trigger.dev/sdk/v3";
+
+for await (const run of runs.subscribeToBatch("batch_1234")) {
+  console.log(run);
+}
+```
+
+This function subscribes to all changes for runs in a batch. It returns an async iterator that yields a run object whenever a run in the batch is updated. The iterator does not complete on its own, you must manually `break` the loop when you want to stop listening for updates.
+
+**Authentication**: This function supports both server-side and client-side authentication. For server-side authentication, use your API key. For client-side authentication, you must generate a public access token with read access to the specific batch. See our [authentication guide](/realtime/auth) for details.
+
+**Response**: The AsyncIterator yields the [run object](/realtime/run-object).
+
+## Type safety
+
+You can infer the types of the run's payload and output by passing the type of the task to the subscribe functions:
+
+```ts
+import { runs, tasks } from "@trigger.dev/sdk/v3";
+import type { myTask } from "./trigger/my-task";
+
+async function myBackend() {
+  const handle = await tasks.trigger("my-task", { some: "data" });
+
+  for await (const run of runs.subscribeToRun<typeof myTask>(handle.id)) {
+    // run.payload and run.output are now typed
+    console.log(run.payload.some);
+
+    if (run.output) {
+      console.log(run.output.some);
+    }
+  }
+}
+```
+
+When using `subscribeToRunsWithTag`, you can pass a union of task types:
+
+```ts
+import { runs } from "@trigger.dev/sdk/v3";
+import type { myTask, myOtherTask } from "./trigger/my-task";
+
+for await (const run of runs.subscribeToRunsWithTag<typeof myTask | typeof myOtherTask>("my-tag")) {
+  // Narrow down the type based on the taskIdentifier
+  switch (run.taskIdentifier) {
+    case "my-task": {
+      console.log("Run output:", run.output.foo); // Type-safe
+      break;
+    }
+    case "my-other-task": {
+      console.log("Run output:", run.output.bar); // Type-safe
+      break;
+    }
+  }
+}
+```
+
+## Subscribe to metadata updates from your tasks
+
+The metadata API allows you to update custom metadata on runs and receive real-time updates when metadata changes. This is useful for tracking progress, storing intermediate results, or adding custom status information that can be monitored in real-time.
+
+<Note>
+  For frontend applications using React, see our [React hooks metadata
+  documentation](/realtime/react-hooks/subscribe#using-metadata-to-show-progress-in-your-ui) for
+  consuming metadata updates in your UI.
+</Note>
+
+When you update metadata from within a task using `metadata.set()`, `metadata.append()`, or other metadata methods, all subscribers to that run will automatically receive the updated run object containing the new metadata.
+
+This makes metadata perfect for:
+
+- Progress tracking
+- Status updates
+- Intermediate results
+- Custom notifications
+
+Use the metadata API within your task to update metadata in real-time. In this basic example task, we're updating the progress of a task as it processes items.
+
+### How to subscribe to metadata updates
+
+This example task updates the progress of a task as it processes items.
+
+```ts
+// Your task code
+import { task, metadata } from "@trigger.dev/sdk/v3";
+
+export const progressTask = task({
+  id: "progress-task",
+  run: async (payload: { items: string[] }) => {
+    const total = payload.items.length;
+
+    for (let i = 0; i < payload.items.length; i++) {
+      // Update progress metadata
+      metadata.set("progress", {
+        current: i + 1,
+        total: total,
+        percentage: Math.round(((i + 1) / total) * 100),
+        currentItem: payload.items[i],
+      });
+
+      // Process the item
+      await processItem(payload.items[i]);
+    }
+
+    metadata.set("status", "completed");
+    return { processed: total };
+  },
+});
+
+async function processItem(item: string) {
+  // Simulate work
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+}
+```
+
+We can now subscribe to the runs and receive real-time metadata updates.
+
+```ts
+// Somewhere in your backend code
+import { runs } from "@trigger.dev/sdk/v3";
+import type { progressTask } from "./trigger/progress-task";
+
+async function monitorProgress(runId: string) {
+  for await (const run of runs.subscribeToRun<typeof progressTask>(runId)) {
+    console.log(`Run ${run.id} status: ${run.status}`);
+
+    if (run.metadata?.progress) {
+      const progress = run.metadata.progress as {
+        current: number;
+        total: number;
+        percentage: number;
+        currentItem: string;
+      };
+
+      console.log(`Progress: ${progress.current}/${progress.total} (${progress.percentage}%)`);
+      console.log(`Processing: ${progress.currentItem}`);
+    }
+
+    if (run.metadata?.status === "completed") {
+      console.log("Task completed!");
+      break;
+    }
+  }
+}
+```
+
+For more information on how to write tasks that use the metadata API, as well as more examples, see our [run metadata docs](/runs/metadata#more-metadata-task-examples).
+
+### Type safety
+
+You can get type safety for your metadata by defining types:
+
+```ts
+import { runs } from "@trigger.dev/sdk/v3";
+import type { progressTask } from "./trigger/progress-task";
+
+interface ProgressMetadata {
+  progress?: {
+    current: number;
+    total: number;
+    percentage: number;
+    currentItem: string;
+  };
+  status?: "running" | "completed" | "failed";
+}
+
+async function monitorTypedProgress(runId: string) {
+  for await (const run of runs.subscribeToRun<typeof progressTask>(runId)) {
+    const metadata = run.metadata as ProgressMetadata;
+
+    if (metadata?.progress) {
+      // Now you have full type safety
+      console.log(`Progress: ${metadata.progress.percentage}%`);
+    }
+  }
+}
+```

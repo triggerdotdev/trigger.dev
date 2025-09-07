@@ -71,7 +71,9 @@ export class Logger {
 
     this.#structuredLog(console.error, message, "error", ...args);
 
-    if (Logger.onError) {
+    const ignoreError = args.some((arg) => arg?.ignoreError);
+
+    if (Logger.onError && !ignoreError) {
       Logger.onError(message, ...args);
     }
   }
@@ -147,6 +149,7 @@ function extractStructuredErrorFromArgs(...args: Array<Record<string, unknown> |
       message: error.message,
       stack: error.stack,
       name: error.name,
+      metadata: "metadata" in error ? error.metadata : undefined,
     };
   }
 
@@ -157,6 +160,7 @@ function extractStructuredErrorFromArgs(...args: Array<Record<string, unknown> |
       message: structuredError.error.message,
       stack: structuredError.error.stack,
       name: structuredError.error.name,
+      metadata: "metadata" in structuredError.error ? structuredError.error.metadata : undefined,
     };
   }
 
