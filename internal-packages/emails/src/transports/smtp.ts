@@ -29,7 +29,7 @@ export class SmtpMailTransport implements MailTransport {
         to,
         replyTo: replyTo,
         subject,
-        html: render(react),
+        html: await render(react),
       });
     } catch (error) {
       if (error instanceof Error) {
