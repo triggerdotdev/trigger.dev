@@ -1,13 +1,5 @@
-import {
-  Body,
-  Container,
-  Head,
-  Html,
-  Link,
-  Preview,
-  Tailwind,
-  Text,
-} from "@react-email/components";
+import { Body, Container, Head, Html, Link, Preview, Text } from "@react-email/components";
+import { Tailwind } from "@react-email/tailwind";
 import { Footer } from "./components/Footer";
 
 export default function Email({ name }: { name?: string }) {

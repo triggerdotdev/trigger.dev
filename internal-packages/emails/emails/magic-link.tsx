@@ -7,9 +7,9 @@ import {
   Link,
   Preview,
   Section,
-  Tailwind,
   Text,
 } from "@react-email/components";
+import { Tailwind } from "@react-email/tailwind";
 import { Footer } from "./components/Footer";
 import { Image } from "./components/Image";
 import { hr } from "./components/styles";

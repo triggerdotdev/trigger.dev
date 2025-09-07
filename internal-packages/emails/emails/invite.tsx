@@ -2,18 +2,17 @@ import {
   Body,
   Button,
   Container,
-  Head,
   Html,
   Link,
   Preview,
   Section,
-  Tailwind,
   Text,
 } from "@react-email/components";
+import { Tailwind } from "@react-email/tailwind";
 import { z } from "zod";
 import { Footer } from "./components/Footer";
 import { Image } from "./components/Image";
-import { anchor, container, h1, main, paragraphLight } from "./components/styles";
+import { paragraphLight } from "./components/styles";
 
 export const InviteEmailSchema = z.object({
   email: z.literal("invite"),
