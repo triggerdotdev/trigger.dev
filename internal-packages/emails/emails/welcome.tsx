@@ -1,51 +1,72 @@
-import { Body, Head, Html, Link, Preview, Section, Text } from "@react-email/components";
+import {
+  Body,
+  Container,
+  Head,
+  Html,
+  Link,
+  Preview,
+  Tailwind,
+  Text,
+} from "@react-email/components";
 import { Footer } from "./components/Footer";
-import { anchor, bullets, footerItalic, main, paragraphLight } from "./components/styles";
 
 export default function Email({ name }: { name?: string }) {
   return (
     <Html>
       <Head />
-      <Preview>Power up your workflows</Preview>
-      <Body style={main}>
-        <Text style={paragraphLight}>Hey {name ?? "there"},</Text>
-        <Text style={paragraphLight}>I’m Matt, CEO of Trigger.dev.</Text>
-        <Text style={paragraphLight}>
-          Our goal is to give developers like you the ability to effortlessly create powerful
-          workflows in code.
-        </Text>
-        <Text style={paragraphLight}>
-          We recommend{" "}
-          <Link style={anchor} href="https://app.trigger.dev/templates">
-            getting started with one of our templates
-          </Link>{" "}
-          to get familiar with how Trigger.dev works, and then moving on to create your own
-          workflows.
-        </Text>
+      <Preview>Welcome to Trigger.dev</Preview>
+      <Tailwind>
+        <Body className="bg-[#121317] my-auto mx-auto font-sans">
+          <Container className="mb-[40px] mx-auto p-[20px] max-w-[600px]">
+            <Text className="text-[16px] text-[#D7D9DD]">Hey {name ?? "there"},</Text>
+            <Text className="text-[16px] text-[#D7D9DD]">I’m Matt, CEO of Trigger.dev.</Text>
+            <Text className="text-[16px] text-[#D7D9DD]">
+              Our goal is to give developers like you the ability to effortlessly create powerful AI
+              agents and workflows in code.
+            </Text>
+            <Text className="text-[16px] text-[#D7D9DD]">
+              I recommend our{" "}
+              <Link
+                className="text-[#6366F1] text-[16px] no-underline"
+                href="https://trigger.dev/docs/quick-start"
+              >
+                quick start guide
+              </Link>{" "}
+              to get started, or{" "}
+              <Link
+                className="text-[#6366F1] text-[16px] no-underline"
+                href="https://trigger.dev/docs/guides/introduction"
+              >
+                one of our examples
+              </Link>{" "}
+              to get familiar with how Trigger.dev works, and then move on to create your own
+              workflow.
+            </Text>
 
-        <Text style={paragraphLight}>
-          Feel free to reply to me if you have any questions. You can also{" "}
-          <Link style={anchor} href="https://cal.com/team/triggerdotdev/call">
-            schedule a call
-          </Link>{" "}
-          , or join our{" "}
-          <Link style={anchor} href="https://discord.gg/JtBAxBr2m3">
-            Discord server
-          </Link>{" "}
-          to connect with the community and our team.
-        </Text>
+            <Text className="text-[16px] text-[#D7D9DD]">
+              Feel free to reply to this email if you have any questions or join our{" "}
+              <Link
+                className="text-[#6366F1] text-[16px] no-underline"
+                href="https://discord.gg/JtBAxBr2m3"
+              >
+                Discord
+              </Link>{" "}
+              to connect with the community and our team.
+            </Text>
 
-        <Text style={paragraphLight}>We hope you enjoy using Trigger.dev!</Text>
+            <Text className="text-[16px] text-[#D7D9DD]">We hope you enjoy using Trigger.dev!</Text>
 
-        <Text style={bullets}>Best,</Text>
-        <Text style={bullets}>Matt</Text>
-        <Text style={paragraphLight}>CEO, Trigger.dev</Text>
-        <Text style={footerItalic}>
-          If you don’t want me to contact you again, please just let me know and I’ll update your
-          preferences.
-        </Text>
-        <Footer />
-      </Body>
+            <Text className="text-[16px] text-[#D7D9DD]">Best,</Text>
+            <Text className="text-[16px] text-[#D7D9DD]">Matt</Text>
+            <Text className="text-[16px] text-[#D7D9DD]">CEO, Trigger.dev</Text>
+            <Text className="text-[16px] text-[#D7D9DD]">
+              If you don’t want me to contact you again, please just let me know and I’ll update
+              your preferences.
+            </Text>
+            <Footer />
+          </Container>
+        </Body>
+      </Tailwind>
     </Html>
   );
 }
