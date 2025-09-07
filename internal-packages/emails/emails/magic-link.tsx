@@ -40,13 +40,13 @@ export default function Email({ magicLink }: { magicLink: string }) {
               </Button>
             </Section>
             <Section className="mb-6">
-              <Text className="text-[16px] text-[#878C99] inline">
+              <Text className="text-[14px] text-[#878C99]">
                 Can&apos;t see the button? Copy and paste this link into your browser:{" "}
               </Text>
               <Link
                 href={magicLink}
                 target="_blank"
-                className="text-[#6366F1] text-[16px] block no-underline mt-1"
+                className="text-[#6366F1] text-[14px] no-underline"
               >
                 {magicLink}
               </Link>
