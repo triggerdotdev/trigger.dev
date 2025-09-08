@@ -25,7 +25,7 @@ The run object returned by Realtime subscriptions is optimized for streaming upd
 After you trigger a task, you can subscribe to the run using the `runs.subscribeToRun` function. This function returns an async iterator that you can use to get updates on the run status.
 
 ```ts
-import { runs, tasks } from "@trigger.dev/sdk/v3";
+import { runs, tasks } from "@trigger.dev/sdk";
 
 // Somewhere in your backend code
 async function myBackend() {
@@ -43,7 +43,7 @@ Every time the run changes, the async iterator will yield the updated run. You c
 Alternatively, you can subscribe to changes to any run that includes a specific tag (or tags) using the `runs.subscribeToRunsWithTag` function.
 
 ```ts
-import { runs } from "@trigger.dev/sdk/v3";
+import { runs } from "@trigger.dev/sdk";
 
 // Somewhere in your backend code
 for await (const run of runs.subscribeToRunsWithTag("user:1234")) {
@@ -55,7 +55,7 @@ for await (const run of runs.subscribeToRunsWithTag("user:1234")) {
 If you've used `batchTrigger` to trigger multiple runs, you can also subscribe to changes to all the runs triggered in the batch using the `runs.subscribeToBatch` function.
 
 ```ts
-import { runs } from "@trigger.dev/sdk/v3";
+import { runs } from "@trigger.dev/sdk";
 
 // Somewhere in your backend code
 for await (const run of runs.subscribeToBatch("batch-id")) {
