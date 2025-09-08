@@ -71,6 +71,22 @@ export function JSONEditor(opts: JSONEditorProps) {
     ...opts,
   };
 
+  console.log("JSONEditor opts", {
+    defaultValue,
+    language,
+    readOnly,
+    onChange,
+    onUpdate,
+    onBlur,
+    basicSetup,
+    autoFocus,
+    showCopyButton,
+    showClearButton,
+    linterEnabled,
+    allowEmpty,
+    additionalActions,
+  });
+
   const extensions = getEditorSetup();
 
   if (!language) throw new Error("language is required");

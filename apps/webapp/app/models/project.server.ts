@@ -130,3 +130,15 @@ export async function findProjectByRef(externalRef: string, userId: string) {
     },
   });
 }
+
+export async function findProjectById(orgId: string, id: string, userId: string) {
+  return await prisma.project.findFirst({
+    where: {
+      id,
+      organization: {
+        id: orgId,
+        members: { some: { userId } },
+      },
+    },
+  });
+}

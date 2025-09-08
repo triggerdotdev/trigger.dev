@@ -9,6 +9,7 @@ import { getTimezones } from "~/utils/timezones.server";
 import { findCurrentWorkerDeployment } from "~/v3/models/workerDeployment.server";
 import { queueTypeFromType } from "./QueueRetrievePresenter.server";
 import parse from "parse-duration";
+import { compile } from "json-schema-to-typescript";
 
 export type RunTemplate = TaskRunTemplate & {
   scheduledTaskPayload?: ScheduledRun["payload"];
@@ -29,6 +30,7 @@ type Task = {
   taskIdentifier: string;
   filePath: string;
   friendlyId: string;
+  payloadSchema?: string;
 };
 
 type Queue = {
@@ -237,6 +239,9 @@ export class TestTaskPresenter {
       taskIdentifier: task.slug,
       filePath: task.filePath,
       friendlyId: task.friendlyId,
+      payloadSchema: task.payloadSchema
+        ? await convertPayloadSchemaToTypescript(task.slug, task.payloadSchema)
+        : undefined,
     };
 
     switch (task.triggerSource) {
@@ -341,4 +346,22 @@ async function getScheduleTaskRunPayload(payload: string, payloadType: string) {
   }
   const parsed = ScheduledTaskPayload.safeParse(packet);
   return parsed;
+}
+
+async function convertPayloadSchemaToTypescript(taskIdentifier: string, payloadSchema: any) {
+  try {
+    return await compile(payloadSchema, "Payload", {
+      bannerComment: `
+/** 
+ * This is an auto-generated type
+ * from the payload schema 
+ * of task ${taskIdentifier} 
+ */`,
+      style: {
+        interfacePrefix: "Payload",
+      },
+    });
+  } catch (error) {
+    return undefined;
+  }
 }

@@ -144,6 +144,23 @@ export async function findEnvironmentBySlug(
   });
 }
 
+export async function findEnvironmentInProject(
+  projectId: string,
+  envId: string
+): Promise<AuthenticatedEnvironment | null> {
+  return prisma.runtimeEnvironment.findFirst({
+    where: {
+      projectId: projectId,
+      id: envId,
+    },
+    include: {
+      project: true,
+      organization: true,
+      orgMember: true,
+    },
+  });
+}
+
 export async function findEnvironmentFromRun(
   runId: string,
   tx?: PrismaClientOrTransaction
