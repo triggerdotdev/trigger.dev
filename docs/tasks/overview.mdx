@@ -181,7 +181,7 @@ This function is called before a run attempt:
 ```ts /trigger/init.ts
 export const taskWithInit = task({
   id: "task-with-init",
-  init: async (payload, { ctx }) => {
+  init: async ({ payload, ctx }) => {
     //...
   },
   run: async (payload: any, { ctx }) => {
@@ -195,7 +195,7 @@ You can also return data from the `init` function that will be available in the 
 ```ts /trigger/init-return.ts
 export const taskWithInitReturn = task({
   id: "task-with-init-return",
-  init: async (payload, { ctx }) => {
+  init: async ({ payload, ctx }) => {
     return { someData: "someValue" };
   },
   run: async (payload: any, { ctx, init }) => {
@@ -213,7 +213,7 @@ This function is called after the `run` function is executed, regardless of whet
 ```ts /trigger/cleanup.ts
 export const taskWithCleanup = task({
   id: "task-with-cleanup",
-  cleanup: async (payload, { ctx }) => {
+  cleanup: async ({ payload, ctx }) => {
     //...
   },
   run: async (payload: any, { ctx }) => {
@@ -230,7 +230,7 @@ Our task middleware system runs at the top level, executing before and after all
 
 <Info>
   An error thrown in `middleware` is just like an uncaught error in the run function: it will
-  propagate through to `handleError()` and then will fail the attempt (causing a retry).
+  propagate through to `catchError()` function and then will fail the attempt (causing a retry).
 </Info>
 
 The `locals` API allows you to share data between middleware and hooks.
@@ -303,7 +303,7 @@ When a task run starts, the `onStart` function is called. It's useful for sendin
 ```ts /trigger/on-start.ts
 export const taskWithOnStart = task({
   id: "task-with-on-start",
-  onStart: async (payload, { ctx }) => {
+  onStart: async ({ payload, ctx }) => {
     //...
   },
   run: async (payload: any, { ctx }) => {
@@ -319,7 +319,7 @@ import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   project: "proj_1234",
-  onStart: async (payload, { ctx }) => {
+  onStart: async ({ payload, ctx }) => {
     console.log("Task started", ctx.task.id);
   },
 });
@@ -357,7 +357,7 @@ When a task run succeeds, the `onSuccess` function is called. It's useful for se
 ```ts /trigger/on-success.ts
 export const taskWithOnSuccess = task({
   id: "task-with-on-success",
-  onSuccess: async (payload, output, { ctx }) => {
+  onSuccess: async ({ payload, output, ctx }) => {
     //...
   },
   run: async (payload: any, { ctx }) => {
@@ -373,7 +373,7 @@ import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   project: "proj_1234",
-  onSuccess: async (payload, output, { ctx }) => {
+  onSuccess: async ({ payload, output, ctx }) => {
     console.log("Task succeeded", ctx.task.id);
   },
 });
@@ -388,7 +388,7 @@ This hook is executed when a run completes, regardless of whether it succeeded o
 ```ts /trigger/on-complete.ts
 export const taskWithOnComplete = task({
   id: "task-with-on-complete",
-  onComplete: async (payload, output, { ctx }) => {
+  onComplete: async ({ payload, output, ctx }) => {
   if (result.ok) {
     console.log("Run succeeded", result.data);
   } else {
@@ -404,7 +404,7 @@ When a task run fails, the `onFailure` function is called. It's useful for sendi
 ```ts /trigger/on-failure.ts
 export const taskWithOnFailure = task({
   id: "task-with-on-failure",
-  onFailure: async (payload, error, { ctx }) => {
+  onFailure: async ({ payload, error, ctx }) => {
     //...
   },
   run: async (payload: any, { ctx }) => {
@@ -420,7 +420,7 @@ import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
   project: "proj_1234",
-  onFailure: async (payload, error, { ctx }) => {
+  onFailure: async ({ payload, error, ctx }) => {
     console.log("Task failed", ctx.task.id);
   },
 });
@@ -429,14 +429,15 @@ export default defineConfig({
 <Info>Errors thrown in the `onFailure` function are ignored.</Info>
 
 <Note>
-  `onFailure` doesn’t fire for some of the run statuses like `Crashed`, `System failures`, and `Canceled`.
+  `onFailure` doesn’t fire for some of the run statuses like `Crashed`, `System failures`, and
+  `Canceled`.
 </Note>
 
-### `handleError` functions
+### `catchError` functions
 
 You can define a function that will be called when an error is thrown in the `run` function, that allows you to control how the error is handled and whether the task should be retried.
 
-Read more about `handleError` in our [Errors and Retrying guide](/errors-retrying).
+Read more about `catchError` in our [Errors and Retrying guide](/errors-retrying).
 
 <Info>Uncaught errors will throw a special internal error of the type `HANDLE_ERROR_ERROR`.</Info>
 
