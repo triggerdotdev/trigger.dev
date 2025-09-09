@@ -569,7 +569,7 @@ const prettyInternalErrors: Partial<
   Record<
     TaskRunInternalError["code"],
     {
-      message: string;
+      message?: string;
       link?: ErrorLink;
     }
   >
@@ -630,6 +630,12 @@ const prettyInternalErrors: Partial<
     link: {
       name: "See docs for help",
       href: links.docs.concurrency.recursiveDeadlock,
+    },
+  },
+  TASK_RUN_STALLED_EXECUTING: {
+    link: {
+      name: "Read our troubleshooting guide",
+      href: links.docs.troubleshooting.stalledExecution,
     },
   },
 };

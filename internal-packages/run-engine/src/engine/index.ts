@@ -8,6 +8,7 @@ import {
   CreateCheckpointResult,
   DequeuedMessage,
   ExecutionResult,
+  formatDurationMilliseconds,
   RunExecutionData,
   StartRunAttemptResult,
   TaskRunContext,
@@ -212,6 +213,8 @@ export class RunEngine {
     });
 
     if (!options.worker.disabled) {
+      console.log("✅ Starting run engine worker");
+
       this.worker.start();
     }
 
@@ -1190,23 +1193,6 @@ export class RunEngine {
         snapshot: latestSnapshot,
       });
 
-      // For dev, we just cancel runs that are stuck
-      if (latestSnapshot.environmentType === "DEVELOPMENT") {
-        this.logger.log("RunEngine.#handleStalledSnapshot() cancelling DEV run", {
-          runId,
-          snapshot: latestSnapshot,
-        });
-
-        await this.cancelRun({
-          runId: latestSnapshot.runId,
-          finalizeRun: true,
-          reason:
-            "Run was disconnected, check you're running the CLI dev command and your network connection is healthy.",
-          tx,
-        });
-        return;
-      }
-
       switch (latestSnapshot.executionStatus) {
         case "RUN_CREATED": {
           throw new NotImplementedError("There shouldn't be a heartbeat for RUN_CREATED");
@@ -1265,7 +1251,19 @@ export class RunEngine {
         case "EXECUTING_WITH_WAITPOINTS": {
           const retryDelay = 250;
 
-          //todo call attemptFailed and force requeuing
+          const timeoutDuration =
+            latestSnapshot.executionStatus === "EXECUTING"
+              ? formatDurationMilliseconds(this.heartbeatTimeouts.EXECUTING)
+              : formatDurationMilliseconds(this.heartbeatTimeouts.EXECUTING_WITH_WAITPOINTS);
+
+          // Dev runs don't retry, because the vast majority of the time these snapshots stall because
+          // they have quit the CLI
+          const shouldRetry = latestSnapshot.environmentType !== "DEVELOPMENT";
+          const errorMessage =
+            latestSnapshot.environmentType === "DEVELOPMENT"
+              ? `Run timed out after ${timeoutDuration} due to missing heartbeats (sent every 30s). Check if your \`trigger.dev dev\` CLI is still running, or if CPU-heavy work is blocking the main thread.`
+              : `Run timed out after ${timeoutDuration} due to missing heartbeats (sent every 30s). This typically happens when CPU-heavy work blocks the main thread.`;
+
           await this.runAttemptSystem.attemptFailed({
             runId,
             snapshotId: latestSnapshot.id,
@@ -1278,13 +1276,15 @@ export class RunEngine {
                   latestSnapshot.executionStatus === "EXECUTING"
                     ? "TASK_RUN_STALLED_EXECUTING"
                     : "TASK_RUN_STALLED_EXECUTING_WITH_WAITPOINTS",
-                message: `Run stalled while executing. This can happen when the run becomes unresponsive, for example because the CPU is overloaded.`,
+                message: errorMessage,
               },
-              retry: {
-                //250ms in the future
-                timestamp: Date.now() + retryDelay,
-                delay: retryDelay,
-              },
+              retry: shouldRetry
+                ? {
+                    //250ms in the future
+                    timestamp: Date.now() + retryDelay,
+                    delay: retryDelay,
+                  }
+                : undefined,
             },
             forceRequeue: true,
             tx: prisma,

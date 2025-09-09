@@ -1,5 +1,6 @@
 import { ApiClientConfiguration } from "../apiClientManager/types.js";
 import { Clock } from "../clock/clock.js";
+import { HeartbeatsManager } from "../heartbeats/types.js";
 import { LifecycleHooksManager } from "../lifecycleHooks/types.js";
 import { LocalsManager } from "../locals/types.js";
 import { ResourceCatalog } from "../resource-catalog/catalog.js";
@@ -68,4 +69,5 @@ type TriggerDotDevGlobalAPI = {
   ["lifecycle-hooks"]?: LifecycleHooksManager;
   ["locals"]?: LocalsManager;
   ["trace-context"]?: TraceContextManager;
+  ["heartbeats"]?: HeartbeatsManager;
 };

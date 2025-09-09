@@ -519,8 +519,8 @@ const EnvironmentSchema = z
     RUN_ENGINE_WORKER_IMMEDIATE_POLL_INTERVAL: z.coerce.number().int().default(100),
     RUN_ENGINE_TIMEOUT_PENDING_EXECUTING: z.coerce.number().int().default(60_000),
     RUN_ENGINE_TIMEOUT_PENDING_CANCEL: z.coerce.number().int().default(60_000),
-    RUN_ENGINE_TIMEOUT_EXECUTING: z.coerce.number().int().default(60_000),
-    RUN_ENGINE_TIMEOUT_EXECUTING_WITH_WAITPOINTS: z.coerce.number().int().default(60_000),
+    RUN_ENGINE_TIMEOUT_EXECUTING: z.coerce.number().int().default(600_000), // 10 minutes
+    RUN_ENGINE_TIMEOUT_EXECUTING_WITH_WAITPOINTS: z.coerce.number().int().default(600_000), // 10 minutes
     RUN_ENGINE_TIMEOUT_SUSPENDED: z.coerce
       .number()
       .int()

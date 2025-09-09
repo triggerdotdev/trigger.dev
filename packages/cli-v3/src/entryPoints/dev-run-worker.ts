@@ -31,6 +31,7 @@ import {
   WorkerManifest,
   WorkerToExecutorMessageCatalog,
   traceContext,
+  heartbeats,
 } from "@trigger.dev/core/v3";
 import { TriggerTracer } from "@trigger.dev/core/v3/tracer";
 import {
@@ -55,6 +56,7 @@ import {
   usage,
   UsageTimeoutManager,
   StandardTraceContextManager,
+  StandardHeartbeatsManager,
 } from "@trigger.dev/core/v3/workers";
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { readFile } from "node:fs/promises";
@@ -144,6 +146,11 @@ waitUntil.setGlobalManager(waitUntilManager);
 
 const triggerLogLevel = getEnvVar("TRIGGER_LOG_LEVEL");
 const showInternalLogs = getEnvVar("RUN_WORKER_SHOW_LOGS") === "true";
+
+const standardHeartbeatsManager = new StandardHeartbeatsManager(
+  parseInt(heartbeatIntervalMs ?? "30000", 10)
+);
+heartbeats.setGlobalManager(standardHeartbeatsManager);
 
 async function importConfig(
   configPath: string
@@ -303,6 +310,7 @@ function resetExecutionEnvironment() {
   durableClock.reset();
   taskContext.disable();
   standardTraceContextManager.reset();
+  standardHeartbeatsManager.reset();
 
   // Wait for all streams to finish before completing the run
   waitUntil.register({
@@ -518,6 +526,8 @@ const zodIpc = new ZodIpcConnection({
           _execution = execution;
           _isRunning = true;
 
+          standardHeartbeatsManager.startHeartbeat(attemptKey(execution));
+
           runMetadataManager.startPeriodicFlush(
             getNumberEnvVar("TRIGGER_RUN_METADATA_FLUSH_INTERVAL", 1000)
           );
@@ -550,6 +560,8 @@ const zodIpc = new ZodIpcConnection({
             });
           }
         } finally {
+          standardHeartbeatsManager.stopHeartbeat();
+
           _execution = undefined;
           _isRunning = false;
           log(`[${new Date().toISOString()}] Task run completed`);
@@ -683,17 +695,9 @@ async function flushMetadata(timeoutInMs: number = 10_000) {
 _sharedWorkerRuntime = new SharedRuntimeManager(zodIpc, showInternalLogs);
 runtime.setGlobalRuntimeManager(_sharedWorkerRuntime);
 
-const heartbeatInterval = parseInt(heartbeatIntervalMs ?? "30000", 10);
-
-for await (const _ of setInterval(heartbeatInterval)) {
-  if (_isRunning && _execution) {
-    try {
-      await zodIpc.send("TASK_HEARTBEAT", { id: attemptKey(_execution) });
-    } catch (err) {
-      logError("Failed to send HEARTBEAT message", err);
-    }
-  }
-}
+standardHeartbeatsManager.registerListener(async (id) => {
+  await zodIpc.send("TASK_HEARTBEAT", { id });
+});
 
 function log(message: string, ...args: any[]) {
   if (!showInternalLogs) return;
