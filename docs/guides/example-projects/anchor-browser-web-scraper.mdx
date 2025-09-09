@@ -1,0 +1,124 @@
+---
+title: "Automated website monitoring with Anchor Browser"
+sidebarTitle: "Anchor Browser web scraper"
+description: "Automated web monitoring using Trigger.dev's task scheduling and Anchor Browser's AI-powered browser automation."
+---
+
+import WebScrapingWarning from "/snippets/web-scraping-warning.mdx";
+
+<WebScrapingWarning />
+
+## Overview
+
+This example demonstrates automated web monitoring using Trigger.dev's task scheduling and Anchor Browser's AI-powered browser automation tools.
+
+The task runs daily at 5pm ET to find the cheapest Broadway tickets available for same-day shows.
+
+**How it works:**
+
+- Trigger.dev schedules and executes the monitoring task
+- Anchor Browser spins up a remote browser session with an AI agent
+- The AI agent uses computer vision and natural language processing to analyze the TDF website
+- AI agent returns the lowest-priced show with specific details: name, price, and showtime
+
+## Tech stack
+
+- **[Node.js](https://nodejs.org)** runtime environment (version 16 or higher)
+- **[Trigger.dev](https://trigger.dev)** for task scheduling and task orchestration
+- **[Anchor Browser](https://anchorbrowser.io/)** for AI-powered browser automation
+- **[Playwright](https://playwright.dev/)** for browser automation libraries (handled via external dependencies)
+
+## GitHub repo
+
+<Card
+  title="View the Anchor Browser web scraper repo"
+  icon="GitHub"
+  href="https://github.com/triggerdotdev/examples/tree/main/anchor-browser-web-scraper"
+>
+  Click here to view the full code for this project in our examples repository on GitHub. You can
+  fork it and use it as a starting point for your own project.
+</Card>
+
+## Relevant code
+
+### Broadway ticket monitor task
+
+This task runs daily at 5pm ET, in [src/trigger/broadway-monitor.ts](https://github.com/triggerdotdev/examples/tree/main/anchor-browser-web-scraper/src/trigger/broadway-monitor.ts):
+
+```ts
+import { schedules } from "@trigger.dev/sdk";
+import Anchorbrowser from "anchorbrowser";
+
+export const broadwayMonitor = schedules.task({
+  id: "broadway-ticket-monitor",
+  cron: "0 21 * * *",
+  run: async (payload, { ctx }) => {
+    const client = new Anchorbrowser({
+      apiKey: process.env.ANCHOR_BROWSER_API_KEY!,
+    });
+
+    let session;
+    try {
+      // Create explicit session to get live view URL
+      session = await client.sessions.create();
+      console.log(`Session ID: ${session.data.id}`);
+      console.log(`Live View URL: https://live.anchorbrowser.io?sessionId=${session.data.id}`);
+
+      const response = await client.tools.performWebTask({
+        sessionId: session.data.id,
+        url: "https://www.tdf.org/discount-ticket-programs/tkts-by-tdf/tkts-live/",
+        prompt: `Look for the "Broadway Shows" section on this page. Find the show with the absolute lowest starting price available right now and return the show name, current lowest price, and show time. Be very specific about the current price you see. Format as: Show: [name], Price: [exact current price], Time: [time]`,
+      });
+
+      console.log("Raw response:", response);
+
+      const result = response.data.result?.result || response.data.result || response.data;
+
+      if (result && typeof result === "string" && result.includes("Show:")) {
+        console.log(`🎭 Best Broadway Deal Found!`);
+        console.log(result);
+
+        return {
+          success: true,
+          bestDeal: result,
+          liveViewUrl: `https://live.anchorbrowser.io?sessionId=${session.data.id}`,
+        };
+      } else {
+        console.log("No Broadway deals found today");
+        return { success: true, message: "No deals found" };
+      }
+    } finally {
+      if (session?.data?.id) {
+        try {
+          await client.sessions.delete(session.data.id);
+        } catch (cleanupError) {
+          console.warn("Failed to cleanup session:", cleanupError);
+        }
+      }
+    }
+  },
+});
+```
+
+### Build configuration
+
+Since Anchor Browser uses browser automation libraries (Playwright) under the hood, we need to configure Trigger.dev to handle these dependencies properly by excluding them from the build bundle in [trigger.config.ts](https://github.com/triggerdotdev/examples/tree/main/anchor-browser-web-scraper/trigger.config.ts):
+
+```ts
+import { defineConfig } from "@trigger.dev/sdk";
+
+export default defineConfig({
+  project: "proj_your_project_id_here", // Get from Trigger.dev dashboard
+  maxDuration: 3600, // 1 hour - plenty of time for web automation
+  dirs: ["./src/trigger"],
+  build: {
+    external: ["playwright-core", "playwright", "chromium-bidi"],
+  },
+});
+```
+
+## Learn more
+
+- View the [Anchor Browser docs](https://anchorbrowser.io/docs) to learn more about Anchor Browser's AI-powered browser automation tools.
+- Check out the source code for the [Anchor Browser web scraper repo](https://github.com/triggerdotdev/examples/tree/main/anchor-browser-web-scraper) on GitHub.
+- Browser our [example projects](/guides/introduction) to see how you can use Trigger.dev with other services.

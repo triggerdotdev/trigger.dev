@@ -336,6 +336,7 @@
           {
             "group": "Example projects",
             "pages": [
+              "guides/example-projects/anchor-browser-web-scraper",
               "guides/example-projects/batch-llm-evaluator",
               "guides/example-projects/claude-thinking-chatbot",
               "guides/example-projects/human-in-the-loop-workflow",
