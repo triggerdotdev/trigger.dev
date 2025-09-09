@@ -403,7 +403,9 @@ async function _envPullCommand(options: z.infer<typeof EnvPullOptions>) {
     }
   }
 
-  const envContent = userVariables.map(([key, value]) => `${key}=${value || ""}`).join("\n");
+  const envContent = userVariables
+    .map(([key, value]) => `${key}=${serializeDotenvValue(value)}`)
+    .join("\n");
 
   $spinner.start(`Writing to ${options.output}`);
   const [writeError] = await tryCatch(
@@ -428,3 +430,12 @@ async function _envPullCommand(options: z.infer<typeof EnvPullOptions>) {
   const envInfo = branch ? `${env} (${branch})` : env;
   outro(`Project: ${projectRef} | Environment: ${envInfo}`);
 }
+
+const serializeDotenvValue = (v: unknown): string => {
+  if (v == null || v === undefined) return "";
+
+  const s = String(v);
+  // Quote when unsafe chars present: whitespace, equals, newlines, comments, quotes, backslashes
+  const needsQuotes = /[\s#"'`\\=\n\r]/.test(s) || s === "";
+  return needsQuotes ? JSON.stringify(s) : s;
+};
