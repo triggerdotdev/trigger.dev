@@ -2,6 +2,7 @@ import { Command } from "commander";
 import { configureAnalyzeCommand } from "../commands/analyze.js";
 import { configureDeployCommand } from "../commands/deploy.js";
 import { configureDevCommand } from "../commands/dev.js";
+import { configureEnvCommand } from "../commands/env.js";
 import { configureInitCommand } from "../commands/init.js";
 import { configureListProfilesCommand } from "../commands/list-profiles.js";
 import { configureLoginCommand } from "../commands/login.js";
@@ -28,6 +29,7 @@ program
 configureLoginCommand(program);
 configureInitCommand(program);
 configureDevCommand(program);
+configureEnvCommand(program);
 configureDeployCommand(program);
 configurePromoteCommand(program);
 configureWhoamiCommand(program);
