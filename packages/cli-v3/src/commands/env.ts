@@ -385,7 +385,7 @@ async function _envPullCommand(options: z.infer<typeof EnvPullOptions>) {
 
   const outputPath = resolve(process.cwd(), options.output);
 
-  const [error] = await tryCatch(writeFile(outputPath, "", { flag: "wx" }));
+  const [error] = await tryCatch(writeFile(outputPath, "", { flag: "wx", mode: 0o600 }));
 
   if (error && "code" in error && error.code !== "EEXIST") {
     throw error;
@@ -407,7 +407,7 @@ async function _envPullCommand(options: z.infer<typeof EnvPullOptions>) {
 
   $spinner.start(`Writing to ${options.output}`);
   const [writeError] = await tryCatch(
-    writeFile(outputPath, envContent + "\n", { encoding: "utf-8" })
+    writeFile(outputPath, envContent + "\n", { encoding: "utf-8", mode: 0o600 })
   );
 
   if (writeError) {
