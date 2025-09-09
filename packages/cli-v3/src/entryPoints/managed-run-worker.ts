@@ -559,6 +559,8 @@ const zodIpc = new ZodIpcConnection({
             });
           }
         } finally {
+          standardHeartbeatsManager.stopHeartbeat();
+
           _execution = undefined;
           _isRunning = false;
 

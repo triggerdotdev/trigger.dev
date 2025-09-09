@@ -123,7 +123,7 @@ export class DevRunController {
       },
     });
 
-    process.on("SIGTERM", this.sigterm);
+    process.on("SIGTERM", this.sigterm.bind(this));
   }
 
   private async sigterm() {

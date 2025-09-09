@@ -29,6 +29,7 @@ export class StandardHeartbeatsManager implements HeartbeatsManager {
   }
 
   startHeartbeat(id: string) {
+    this.stopHeartbeat();
     this.currentAbortController = new AbortController();
     this.lastHeartbeatYieldTime = Date.now();
 

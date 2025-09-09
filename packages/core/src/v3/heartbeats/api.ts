@@ -4,11 +4,11 @@ import { HeartbeatsManager } from "./types.js";
 const API_NAME = "heartbeats";
 
 class NoopHeartbeatsManager implements HeartbeatsManager {
-  async startHeartbeat(id: string) {
+  startHeartbeat(id: string) {
     return;
   }
 
-  async stopHeartbeat() {
+  stopHeartbeat() {
     return;
   }
 
