@@ -372,27 +372,28 @@ model Project {
   /// The master queues they are allowed to use (impacts what they can set as default and trigger runs with)
   allowedWorkerQueues String[] @default([]) @map("allowedMasterQueues")
 
-  environments           RuntimeEnvironment[]
-  backgroundWorkers      BackgroundWorker[]
-  backgroundWorkerTasks  BackgroundWorkerTask[]
-  taskRuns               TaskRun[]
-  runTags                TaskRunTag[]
-  taskQueues             TaskQueue[]
-  environmentVariables   EnvironmentVariable[]
-  checkpoints            Checkpoint[]
-  WorkerDeployment       WorkerDeployment[]
-  CheckpointRestoreEvent CheckpointRestoreEvent[]
-  taskSchedules          TaskSchedule[]
-  alertChannels          ProjectAlertChannel[]
-  alerts                 ProjectAlert[]
-  alertStorages          ProjectAlertStorage[]
-  bulkActionGroups       BulkActionGroup[]
-  BackgroundWorkerFile   BackgroundWorkerFile[]
-  waitpoints             Waitpoint[]
-  taskRunWaitpoints      TaskRunWaitpoint[]
-  taskRunCheckpoints     TaskRunCheckpoint[]
-  executionSnapshots     TaskRunExecutionSnapshot[]
-  waitpointTags          WaitpointTag[]
+  environments              RuntimeEnvironment[]
+  backgroundWorkers         BackgroundWorker[]
+  backgroundWorkerTasks     BackgroundWorkerTask[]
+  taskRuns                  TaskRun[]
+  runTags                   TaskRunTag[]
+  taskQueues                TaskQueue[]
+  environmentVariables      EnvironmentVariable[]
+  checkpoints               Checkpoint[]
+  WorkerDeployment          WorkerDeployment[]
+  CheckpointRestoreEvent    CheckpointRestoreEvent[]
+  taskSchedules             TaskSchedule[]
+  alertChannels             ProjectAlertChannel[]
+  alerts                    ProjectAlert[]
+  alertStorages             ProjectAlertStorage[]
+  bulkActionGroups          BulkActionGroup[]
+  BackgroundWorkerFile      BackgroundWorkerFile[]
+  waitpoints                Waitpoint[]
+  taskRunWaitpoints         TaskRunWaitpoint[]
+  taskRunCheckpoints        TaskRunCheckpoint[]
+  executionSnapshots        TaskRunExecutionSnapshot[]
+  waitpointTags             WaitpointTag[]
+  connectedGithubRepository ConnectedGithubRepository?
 }
 
 enum ProjectVersion {
@@ -2282,9 +2283,39 @@ model GithubRepository {
   installation   GithubAppInstallation @relation(fields: [installationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   installationId String
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt                 DateTime                    @default(now())
+  updatedAt                 DateTime                    @updatedAt
+  ConnectedGithubRepository ConnectedGithubRepository[]
 
   @@unique([installationId, githubId])
   @@index([installationId])
+}
+
+model ConnectedGithubRepository {
+  id String @id @default(cuid())
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  repository   GithubRepository @relation(fields: [repositoryId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  repositoryId String
+
+  // Branch configuration by environment slug, stored as JSON
+  // Example: {
+  //   "prod": { "branch": "main" },
+  //   "staging": { "branch": "staging" },
+  // }
+  // We could alternatively store tracking branch configurations in a separate table and reference the runtime environments properly.
+  // We don't need that functionality currently so it's simpler to store it here.
+  // Should we need to introduce such functionality in the future, e.g., supporting custom environments, the migration should be straightforward.
+  branchTracking Json
+
+  previewDeploymentsEnabled Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // A project can only be connected to one repository
+  @@unique([projectId])
+  @@index([repositoryId])
 }
