@@ -1129,6 +1129,7 @@ export class RunAttemptSystem {
     error,
     workerId,
     runnerId,
+    checkpointId,
     tx,
   }: {
     run: TaskRun;
@@ -1142,6 +1143,7 @@ export class RunAttemptSystem {
     error: TaskRunInternalError;
     workerId?: string;
     runnerId?: string;
+    checkpointId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<{ wasRequeued: boolean } & ExecutionResult> {
     const prisma = tx ?? this.$.prisma;
@@ -1189,6 +1191,7 @@ export class RunAttemptSystem {
         organizationId: orgId,
         workerId,
         runnerId,
+        checkpointId,
       });
 
       return {
