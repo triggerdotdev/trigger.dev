@@ -570,7 +570,7 @@ paths:
 
             const handle = await runs.reschedule("run_1234", { delay: new Date("2024-06-29T20:45:56.340Z") });
 
-  "/api/runs/{runId}":
+  "/api/v3/runs/{runId}":
     parameters:
       - $ref: "#/components/parameters/runId"
     get:
