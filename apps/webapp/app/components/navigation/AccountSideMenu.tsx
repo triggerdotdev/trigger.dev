@@ -1,6 +1,6 @@
 import { LockClosedIcon, ShieldCheckIcon, UserCircleIcon } from "@heroicons/react/20/solid";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
-import { type User } from "@trigger.dev/database";
+import type { User } from "@trigger.dev/database";
 import { cn } from "~/utils/cn";
 import {
   accountPath,

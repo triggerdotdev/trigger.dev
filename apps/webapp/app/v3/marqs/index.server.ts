@@ -1,3 +1,4 @@
+import { type RedisOptions } from "@internal/redis";
 import {
   context,
   propagation,
@@ -10,18 +11,31 @@ import {
 } from "@opentelemetry/api";
 import {
   SEMATTRS_MESSAGE_ID,
-  SEMATTRS_MESSAGING_SYSTEM,
   SEMATTRS_MESSAGING_OPERATION,
+  SEMATTRS_MESSAGING_SYSTEM,
 } from "@opentelemetry/semantic-conventions";
+import { Logger } from "@trigger.dev/core/logger";
+import { tryCatch } from "@trigger.dev/core/utils";
 import { flattenAttributes } from "@trigger.dev/core/v3";
+import { Worker, type WorkerConcurrencyOptions } from "@trigger.dev/redis-worker";
 import Redis, { type Callback, type Result } from "ioredis";
+import { setInterval as setIntervalAsync } from "node:timers/promises";
+import z from "zod";
 import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { signalsEmitter } from "~/services/signals.server";
 import { singleton } from "~/utils/singleton";
+import { legacyRunEngineWorker } from "../legacyRunEngineWorker.server";
 import { concurrencyTracker } from "../services/taskRunConcurrencyTracker.server";
 import { attributesFromAuthenticatedEnv, tracer } from "../tracer.server";
 import { AsyncWorker } from "./asyncWorker.server";
+import {
+  MARQS_DELAYED_REQUEUE_THRESHOLD_IN_MS,
+  MARQS_RESUME_PRIORITY_TIMESTAMP_OFFSET,
+  MARQS_RETRY_PRIORITY_TIMESTAMP_OFFSET,
+  MARQS_SCHEDULED_REQUEUE_AVAILABLE_AT_THRESHOLD_IN_MS,
+} from "./constants.server";
 import { FairDequeuingStrategy } from "./fairDequeuingStrategy.server";
 import { MarQSShortKeyProducer } from "./marqsKeyProducer";
 import {
@@ -35,13 +49,6 @@ import {
   VisibilityTimeoutStrategy,
 } from "./types";
 import { V3LegacyRunEngineWorkerVisibilityTimeout } from "./v3VisibilityTimeout.server";
-import { legacyRunEngineWorker } from "../legacyRunEngineWorker.server";
-import {
-  MARQS_DELAYED_REQUEUE_THRESHOLD_IN_MS,
-  MARQS_RESUME_PRIORITY_TIMESTAMP_OFFSET,
-  MARQS_RETRY_PRIORITY_TIMESTAMP_OFFSET,
-  MARQS_SCHEDULED_REQUEUE_AVAILABLE_AT_THRESHOLD_IN_MS,
-} from "./constants.server";
 
 const KEY_PREFIX = "marqs:";
 
@@ -70,6 +77,29 @@ export type MarQSOptions = {
   enableRebalancing?: boolean;
   verbose?: boolean;
   subscriber?: MessageQueueSubscriber;
+  sharedWorkerQueueConsumerIntervalMs?: number;
+  sharedWorkerQueueMaxMessageCount?: number;
+  sharedWorkerQueueCooloffPeriodMs?: number;
+  sharedWorkerQueueCooloffCountThreshold?: number;
+  eagerDequeuingEnabled?: boolean;
+  workerOptions: {
+    pollIntervalMs?: number;
+    immediatePollIntervalMs?: number;
+    shutdownTimeoutMs?: number;
+    concurrency?: WorkerConcurrencyOptions;
+    enabled?: boolean;
+    redisOptions: RedisOptions;
+  };
+};
+
+const workerCatalog = {
+  processQueueForWorkerQueue: {
+    schema: z.object({
+      queueKey: z.string(),
+      parentQueueKey: z.string(),
+    }),
+    visibilityTimeoutMs: 30_000,
+  },
 };
 
 /**
@@ -79,6 +109,11 @@ export class MarQS {
   private redis: Redis;
   public keys: MarQSKeyProducer;
   #rebalanceWorkers: Array<AsyncWorker> = [];
+  private worker: Worker<typeof workerCatalog>;
+  private queueDequeueCooloffPeriod: Map<string, number> = new Map();
+  private queueDequeueCooloffCounts: Map<string, number> = new Map();
+  private clearCooloffPeriodInterval: NodeJS.Timeout;
+  isShuttingDown: boolean = false;
 
   constructor(private readonly options: MarQSOptions) {
     this.redis = options.redis;
@@ -87,6 +122,48 @@ export class MarQS {
 
     this.#startRebalanceWorkers();
     this.#registerCommands();
+
+    // This will prevent these cooloff maps from growing indefinitely
+    this.clearCooloffPeriodInterval = setInterval(() => {
+      this.queueDequeueCooloffCounts.clear();
+      this.queueDequeueCooloffPeriod.clear();
+    }, 60_000 * 10); // 10 minutes
+
+    this.worker = new Worker({
+      name: "marqs-worker",
+      redisOptions: options.workerOptions.redisOptions,
+      catalog: workerCatalog,
+      concurrency: options.workerOptions?.concurrency,
+      pollIntervalMs: options.workerOptions?.pollIntervalMs ?? 1000,
+      immediatePollIntervalMs: options.workerOptions?.immediatePollIntervalMs ?? 100,
+      shutdownTimeoutMs: options.workerOptions?.shutdownTimeoutMs ?? 10_000,
+      logger: new Logger("MarQSWorker", "info"),
+      jobs: {
+        processQueueForWorkerQueue: async (job) => {
+          await this.#processQueueForWorkerQueue(job.payload.queueKey, job.payload.parentQueueKey);
+        },
+      },
+    });
+
+    if (options.workerOptions?.enabled) {
+      this.worker.start();
+    }
+
+    this.#setupShutdownHandlers();
+  }
+
+  #setupShutdownHandlers() {
+    signalsEmitter.on("SIGTERM", () => this.shutdown("SIGTERM"));
+    signalsEmitter.on("SIGINT", () => this.shutdown("SIGINT"));
+  }
+
+  async shutdown(signal: NodeJS.Signals) {
+    if (this.isShuttingDown) return;
+    this.isShuttingDown = true;
+
+    console.log("👇 Shutting down marqs", this.name, signal);
+    clearInterval(this.clearCooloffPeriodInterval);
+    this.#rebalanceWorkers.forEach((worker) => worker.stop());
   }
 
   get name() {
@@ -274,6 +351,21 @@ export class MarQS {
         if (reserve) {
           span.setAttribute("reserve_message_id", reserve.messageId);
           span.setAttribute("reserve_recursive_queue", reserve.recursiveQueue);
+        }
+
+        if (env.type !== "DEVELOPMENT" && this.options.eagerDequeuingEnabled) {
+          // This will move the message to the worker queue so it can be dequeued
+          await this.worker.enqueueOnce({
+            id: messageQueue, // dedupe by environment, queue, and concurrency key
+            job: "processQueueForWorkerQueue",
+            payload: {
+              queueKey: messageQueue,
+              parentQueueKey: parentQueue,
+            },
+            // Add a small delay to dedupe messages so at most one of these will processed,
+            // every 500ms per queue, concurrency key, and environment
+            availableAt: new Date(Date.now() + 500), // 500ms from now
+          });
         }
 
         const result = await this.#callEnqueueMessage(messagePayload, reserve);
@@ -488,14 +580,17 @@ export class MarQS {
         span.setAttribute("queue_count", queues.length);
 
         for (const messageQueue of queues) {
-          const messageData = await this.#callDequeueMessage({
+          const messages = await this.#callDequeueMessages({
             messageQueue,
             parentQueue,
+            maxCount: 1,
           });
 
-          if (!messageData) {
+          if (!messages || messages.length === 0) {
             return;
           }
+
+          const messageData = messages[0];
 
           const message = await this.readMessage(messageData.messageId);
 
@@ -554,11 +649,184 @@ export class MarQS {
   }
 
   /**
-   * Dequeue a message from the shared queue (this should be used in production environments)
+   * Dequeue a message from the shared worker queue (this should be used in production environments)
    */
-  public async dequeueMessageInSharedQueue(consumerId: string) {
+  public async dequeueMessageFromSharedWorkerQueue(consumerId: string) {
     return this.#trace(
-      "dequeueMessageInSharedQueue",
+      "dequeueMessageFromSharedWorkerQueue",
+      async (span) => {
+        span.setAttribute(SemanticAttributes.CONSUMER_ID, consumerId);
+
+        const workerQueueKey = this.keys.sharedWorkerQueueKey();
+
+        span.setAttribute(SemanticAttributes.PARENT_QUEUE, workerQueueKey);
+
+        // Try and pop a message from the worker queue (redis list)
+        const messageId = await this.#trace("popMessageFromWorkerQueue", async (innerSpan) => {
+          innerSpan.setAttribute(SemanticAttributes.PARENT_QUEUE, workerQueueKey);
+          innerSpan.setAttribute(SemanticAttributes.CONSUMER_ID, consumerId);
+
+          const results = await this.redis.popMessageFromWorkerQueue(workerQueueKey);
+
+          if (!results) {
+            return null;
+          }
+
+          const [messageId, queueLength] = results;
+
+          innerSpan.setAttribute("queue_length", Number(queueLength));
+
+          return messageId;
+        });
+
+        if (!messageId) {
+          return;
+        }
+
+        const message = await this.readMessage(messageId);
+
+        if (!message) {
+          return;
+        }
+
+        if (this.options.subscriber) {
+          await this.#trace(
+            "postMessageDequeued",
+            async (subscriberSpan) => {
+              subscriberSpan.setAttributes({
+                [SemanticAttributes.MESSAGE_ID]: message.messageId,
+                [SemanticAttributes.QUEUE]: message.queue,
+                [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
+              });
+
+              return await this.options.subscriber?.messageDequeued(message);
+            },
+            {
+              kind: SpanKind.INTERNAL,
+              attributes: {
+                [SEMATTRS_MESSAGING_OPERATION]: "receive",
+                [SEMATTRS_MESSAGING_SYSTEM]: "marqs",
+              },
+            }
+          );
+        }
+
+        await this.#trace(
+          "startHeartbeat",
+          async (heartbeatSpan) => {
+            heartbeatSpan.setAttributes({
+              [SemanticAttributes.MESSAGE_ID]: message.messageId,
+              visibility_timeout_ms: this.visibilityTimeoutInMs,
+            });
+
+            return await this.options.visibilityTimeoutStrategy.startHeartbeat(
+              message.messageId,
+              this.visibilityTimeoutInMs
+            );
+          },
+          {
+            kind: SpanKind.INTERNAL,
+            attributes: {
+              [SEMATTRS_MESSAGING_OPERATION]: "receive",
+              [SEMATTRS_MESSAGING_SYSTEM]: "marqs",
+            },
+          }
+        );
+
+        return message;
+      },
+      {
+        kind: SpanKind.CONSUMER,
+        attributes: {
+          [SEMATTRS_MESSAGING_OPERATION]: "receive",
+          [SEMATTRS_MESSAGING_SYSTEM]: "marqs",
+        },
+      }
+    );
+  }
+
+  public startSharedWorkerQueueConsumer(consumerId: string) {
+    const abortController = new AbortController();
+
+    this.#startSharedWorkerQueueConsumer(consumerId, abortController).catch((error) => {
+      logger.error("Failed to start shared worker queue consumer", {
+        error,
+        service: this.name,
+        consumerId,
+      });
+    });
+
+    return () => {
+      abortController.abort();
+    };
+  }
+
+  async #startSharedWorkerQueueConsumer(consumerId: string, abortController: AbortController) {
+    let lastProcessedAt = Date.now();
+    let processedCount = 0;
+
+    try {
+      for await (const _ of setIntervalAsync(
+        this.options.sharedWorkerQueueConsumerIntervalMs ?? 500,
+        null,
+        {
+          signal: abortController.signal,
+        }
+      )) {
+        logger.debug(`Processing shared worker queue`, {
+          processedCount,
+          lastProcessedAt,
+          service: this.name,
+          consumerId,
+        });
+
+        const now = performance.now();
+
+        const [error, results] = await tryCatch(this.#processSharedWorkerQueue(consumerId));
+
+        if (error) {
+          logger.error(`Failed to process shared worker queue`, {
+            error,
+            service: this.name,
+            consumerId,
+          });
+
+          continue;
+        }
+
+        const duration = performance.now() - now;
+
+        logger.debug(`Processed shared worker queue`, {
+          processedCount,
+          lastProcessedAt,
+          service: this.name,
+          duration,
+          results,
+          consumerId,
+        });
+
+        processedCount++;
+        lastProcessedAt = Date.now();
+      }
+    } catch (error) {
+      if (error instanceof Error && error.name !== "AbortError") {
+        throw error;
+      }
+
+      logger.debug(`Shared worker queue consumer stopped`, {
+        service: this.name,
+        processedCount,
+        lastProcessedAt,
+      });
+    }
+  }
+
+  /**
+   * Dequeue as many messages as possible from queues into the shared worker queue list
+   */
+  async #processSharedWorkerQueue(consumerId: string) {
+    return this.#trace(
+      "processSharedWorkerQueue",
       async (span) => {
         span.setAttribute(SemanticAttributes.CONSUMER_ID, consumerId);
 
@@ -581,63 +849,140 @@ export class MarQS {
 
         let attemptedEnvs = 0;
         let attemptedQueues = 0;
+        let messageCount = 0;
+        let coolOffPeriodCount = 0;
 
-        // Try each queue in order until we successfully dequeue a message
+        // Try each queue in order, attempt to dequeue a message from each queue, keep going until we've tried all the queues
         for (const env of envQueues) {
           attemptedEnvs++;
 
           for (const messageQueue of env.queues) {
             attemptedQueues++;
 
-            try {
-              const messageData = await this.#callDequeueMessage({
-                messageQueue,
-                parentQueue,
-              });
+            const cooloffPeriod = this.queueDequeueCooloffPeriod.get(messageQueue);
 
-              if (!messageData) {
-                continue; // Try next queue if no message was dequeued
+            // If the queue is in a cooloff period, skip attempting to dequeue from it
+            if (cooloffPeriod) {
+              // If the cooloff period is still active, skip attempting to dequeue from it
+              if (cooloffPeriod > Date.now()) {
+                coolOffPeriodCount++;
+                continue;
+              } else {
+                // If the cooloff period is over, delete the cooloff period and attempt to dequeue from the queue
+                this.queueDequeueCooloffPeriod.delete(messageQueue);
               }
-
-              const message = await this.readMessage(messageData.messageId);
-
-              if (message) {
-                span.setAttributes({
-                  [SEMATTRS_MESSAGE_ID]: message.messageId,
-                  [SemanticAttributes.QUEUE]: message.queue,
-                  [SemanticAttributes.MESSAGE_ID]: message.messageId,
-                  [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
-                  [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
-                  attempted_queues: attemptedQueues, // How many queues we tried before success
-                  attempted_envs: attemptedEnvs, // How many environments we tried before success
-                  message_timestamp: message.timestamp,
-                  message_age: this.#calculateMessageAge(message),
-                  message_priority: message.priority,
-                  message_enqueue_method: message.enqueueMethod,
-                  message_available_at: message.availableAt,
-                  ...flattenAttributes(message.data, "message.data"),
-                });
-
-                await this.options.subscriber?.messageDequeued(message);
-
-                await this.options.visibilityTimeoutStrategy.startHeartbeat(
-                  messageData.messageId,
-                  this.visibilityTimeoutInMs
-                );
-
-                return message;
-              }
-            } catch (error) {
-              // Log error but continue trying other queues
-              logger.warn(`[${this.name}] Failed to dequeue from queue ${messageQueue}`, { error });
-              continue;
             }
+
+            await this.#trace(
+              "attemptDequeue",
+              async (attemptDequeueSpan) => {
+                try {
+                  attemptDequeueSpan.setAttributes({
+                    [SemanticAttributes.QUEUE]: messageQueue,
+                    [SemanticAttributes.PARENT_QUEUE]: parentQueue,
+                  });
+
+                  const messages = await this.#trace(
+                    "callDequeueMessages",
+                    async (dequeueSpan) => {
+                      dequeueSpan.setAttributes({
+                        [SemanticAttributes.QUEUE]: messageQueue,
+                        [SemanticAttributes.PARENT_QUEUE]: parentQueue,
+                      });
+
+                      return await this.#callDequeueMessages({
+                        messageQueue,
+                        parentQueue,
+                        maxCount: this.options.sharedWorkerQueueMaxMessageCount ?? 10,
+                      });
+                    },
+                    {
+                      kind: SpanKind.CONSUMER,
+                      attributes: {
+                        [SEMATTRS_MESSAGING_OPERATION]: "receive",
+                        [SEMATTRS_MESSAGING_SYSTEM]: "marqs",
+                      },
+                    }
+                  );
+
+                  if (!messages || messages.length === 0) {
+                    const cooloffCount = this.queueDequeueCooloffCounts.get(messageQueue) ?? 0;
+
+                    const cooloffCountThreshold = Math.max(
+                      10,
+                      this.options.sharedWorkerQueueCooloffCountThreshold ?? 10
+                    ); // minimum of 10
+
+                    if (cooloffCount >= cooloffCountThreshold) {
+                      // If no messages were dequeued, set a cooloff period for the queue
+                      // This is to prevent the queue from being dequeued too frequently
+                      // and to give other queues a chance to dequeue messages more frequently
+                      this.queueDequeueCooloffPeriod.set(
+                        messageQueue,
+                        Date.now() + (this.options.sharedWorkerQueueCooloffPeriodMs ?? 10_000) // defaults to 10 seconds
+                      );
+                      this.queueDequeueCooloffCounts.delete(messageQueue);
+                    } else {
+                      this.queueDequeueCooloffCounts.set(messageQueue, cooloffCount + 1);
+                    }
+
+                    attemptDequeueSpan.setAttribute("message_count", 0);
+                    return null; // Try next queue if no message was dequeued
+                  }
+
+                  this.queueDequeueCooloffCounts.delete(messageQueue);
+
+                  messageCount += messages.length;
+
+                  attemptDequeueSpan.setAttribute("message_count", messages.length);
+
+                  await this.#trace(
+                    "addToWorkerQueue",
+                    async (addToWorkerQueueSpan) => {
+                      const workerQueueKey = this.keys.sharedWorkerQueueKey();
+
+                      addToWorkerQueueSpan.setAttributes({
+                        message_count: messages.length,
+                        [SemanticAttributes.PARENT_QUEUE]: workerQueueKey,
+                      });
+
+                      await this.redis.rpush(
+                        workerQueueKey,
+                        ...messages.map((message) => message.messageId)
+                      );
+                    },
+                    {
+                      kind: SpanKind.INTERNAL,
+                      attributes: {
+                        [SEMATTRS_MESSAGING_OPERATION]: "receive",
+                        [SEMATTRS_MESSAGING_SYSTEM]: "marqs",
+                      },
+                    }
+                  );
+                } catch (error) {
+                  // Log error but continue trying other queues
+                  logger.warn(`[${this.name}] Failed to dequeue from queue ${messageQueue}`, {
+                    error,
+                  });
+                  return null;
+                }
+              },
+              {
+                kind: SpanKind.CONSUMER,
+                attributes: {
+                  [SEMATTRS_MESSAGING_OPERATION]: "receive",
+                  [SEMATTRS_MESSAGING_SYSTEM]: "marqs",
+                },
+              }
+            );
           }
         }
 
         // If we get here, we tried all queues but couldn't dequeue a message
         span.setAttribute("attempted_queues", attemptedQueues);
         span.setAttribute("attempted_envs", attemptedEnvs);
+        span.setAttribute("message_count", messageCount);
+        span.setAttribute("cooloff_period_count", coolOffPeriodCount);
 
         return;
       },
@@ -649,6 +994,64 @@ export class MarQS {
         },
       }
     );
+  }
+
+  async #processQueueForWorkerQueue(queueKey: string, parentQueueKey: string) {
+    return this.#trace("processQueueForWorkerQueue", async (span) => {
+      span.setAttributes({
+        [SemanticAttributes.QUEUE]: queueKey,
+        [SemanticAttributes.PARENT_QUEUE]: parentQueueKey,
+      });
+
+      const maxCount = this.options.sharedWorkerQueueMaxMessageCount ?? 10;
+
+      const dequeuedMessages = await this.#callDequeueMessages({
+        messageQueue: queueKey,
+        parentQueue: parentQueueKey,
+        maxCount,
+      });
+
+      if (!dequeuedMessages || dequeuedMessages.length === 0) {
+        return;
+      }
+
+      await this.#trace(
+        "addToWorkerQueue",
+        async (addToWorkerQueueSpan) => {
+          const workerQueueKey = this.keys.sharedWorkerQueueKey();
+
+          addToWorkerQueueSpan.setAttributes({
+            message_count: dequeuedMessages.length,
+            [SemanticAttributes.PARENT_QUEUE]: workerQueueKey,
+          });
+
+          await this.redis.rpush(
+            workerQueueKey,
+            ...dequeuedMessages.map((message) => message.messageId)
+          );
+        },
+        {
+          kind: SpanKind.INTERNAL,
+          attributes: {
+            [SEMATTRS_MESSAGING_OPERATION]: "receive",
+            [SEMATTRS_MESSAGING_SYSTEM]: "marqs",
+          },
+        }
+      );
+
+      // If we dequeued the max count, we need to enqueue another job to dequeue the next batch
+      if (dequeuedMessages.length === maxCount) {
+        await this.worker.enqueueOnce({
+          id: queueKey,
+          job: "processQueueForWorkerQueue",
+          payload: {
+            queueKey,
+            parentQueueKey,
+          },
+          availableAt: new Date(Date.now() + 500), // 500ms from now
+        });
+      }
+    });
   }
 
   public async acknowledgeMessage(messageId: string, reason: string = "unknown") {
@@ -681,6 +1084,20 @@ export class MarQS {
           messageQueue: message.queue,
           messageId,
         });
+
+        const sharedQueueKey = this.keys.sharedQueueKey();
+
+        if (this.options.eagerDequeuingEnabled && message.parentQueue === sharedQueueKey) {
+          await this.worker.enqueueOnce({
+            id: message.queue,
+            job: "processQueueForWorkerQueue",
+            payload: {
+              queueKey: message.queue,
+              parentQueueKey: message.parentQueue,
+            },
+            availableAt: new Date(Date.now() + 500), // 500ms from now
+          });
+        }
 
         await this.options.subscriber?.messageAcked(message);
       },
@@ -1256,12 +1673,14 @@ export class MarQS {
     }
   }
 
-  async #callDequeueMessage({
+  async #callDequeueMessages({
     messageQueue,
     parentQueue,
+    maxCount,
   }: {
     messageQueue: string;
     parentQueue: string;
+    maxCount: number;
   }) {
     const queueConcurrencyLimitKey = this.keys.queueConcurrencyLimitKeyFromQueue(messageQueue);
     const queueCurrentConcurrencyKey = this.keys.queueCurrentConcurrencyKeyFromQueue(messageQueue);
@@ -1271,7 +1690,7 @@ export class MarQS {
     const queueReserveConcurrencyKey = this.keys.queueReserveConcurrencyKeyFromQueue(messageQueue);
     const envQueueKey = this.keys.envQueueKeyFromQueue(messageQueue);
 
-    logger.debug("Calling dequeueMessage", {
+    logger.debug("Calling dequeueMessages", {
       messageQueue,
       parentQueue,
       queueConcurrencyLimitKey,
@@ -1284,7 +1703,7 @@ export class MarQS {
       service: this.name,
     });
 
-    const result = await this.redis.dequeueMessage(
+    const result = await this.redis.dequeueMessages(
       messageQueue,
       parentQueue,
       queueConcurrencyLimitKey,
@@ -1296,7 +1715,8 @@ export class MarQS {
       envQueueKey,
       messageQueue,
       String(Date.now()),
-      String(this.options.defaultEnvConcurrency)
+      String(this.options.defaultEnvConcurrency),
+      String(maxCount)
     );
 
     if (!result) {
@@ -1308,14 +1728,23 @@ export class MarQS {
       service: this.name,
     });
 
-    if (result.length !== 2) {
-      return;
+    const messages = [];
+    for (let i = 0; i < result.length; i += 2) {
+      const messageId = result[i];
+      const messageScore = result[i + 1];
+
+      messages.push({
+        messageId,
+        messageScore,
+      });
     }
 
-    return {
-      messageId: result[0],
-      messageScore: result[1],
-    };
+    logger.debug("dequeueMessages parsed result", {
+      messages,
+      service: this.name,
+    });
+
+    return messages.filter(Boolean);
   }
 
   async #callRequeueMessage(message: MessagePayload) {
@@ -1746,7 +2175,7 @@ return true
       `,
     });
 
-    this.redis.defineCommand("dequeueMessage", {
+    this.redis.defineCommand("dequeueMessages", {
       numberOfKeys: 9,
       lua: `
 local queueKey = KEYS[1]
@@ -1762,6 +2191,7 @@ local envQueueKey = KEYS[9]
 local queueName = ARGV[1]
 local currentTime = tonumber(ARGV[2])
 local defaultEnvConcurrencyLimit = ARGV[3]
+local maxCount = tonumber(ARGV[4] or '1')
 
 -- Check current env concurrency against the limit
 local envCurrentConcurrency = tonumber(redis.call('SCARD', envCurrentConcurrencyKey) or '0')
@@ -1784,27 +2214,38 @@ if queueCurrentConcurrency >= totalQueueConcurrencyLimit then
     return nil
 end
 
--- Attempt to dequeue the next message
-local messages = redis.call('ZRANGEBYSCORE', queueKey, '-inf', currentTime, 'WITHSCORES', 'LIMIT', 0, 1)
+-- Calculate how many messages we can actually dequeue based on concurrency limits
+local envAvailableCapacity = totalEnvConcurrencyLimit - envCurrentConcurrency
+local queueAvailableCapacity = totalQueueConcurrencyLimit - queueCurrentConcurrency
+local actualMaxCount = math.min(maxCount, envAvailableCapacity, queueAvailableCapacity)
 
-if #messages == 0 then
+if actualMaxCount <= 0 then
     return nil
 end
 
-local messageId = messages[1]
-local messageScore = tonumber(messages[2])
+-- Attempt to dequeue messages up to actualMaxCount
+local messagesWithScores = redis.call('ZRANGEBYSCORE', queueKey, '-inf', currentTime, 'WITHSCORES', 'LIMIT', 0, actualMaxCount)
 
--- Remove the message from the queue and update concurrency
-redis.call('ZREM', queueKey, messageId)
-redis.call('ZREM', envQueueKey, messageId)
-redis.call('SADD', queueCurrentConcurrencyKey, messageId)
-redis.call('SADD', envCurrentConcurrencyKey, messageId)
+if #messagesWithScores == 0 then
+    return nil
+end
+
+local messageIds = {}
+for i = 1, #messagesWithScores, 2 do
+    table.insert(messageIds, messagesWithScores[i])
+end
+
+-- Remove the messages from the queue and update concurrency
+redis.call('ZREM', queueKey, unpack(messageIds))
+redis.call('ZREM', envQueueKey, unpack(messageIds))
+redis.call('SADD', queueCurrentConcurrencyKey, unpack(messageIds))
+redis.call('SADD', envCurrentConcurrencyKey, unpack(messageIds))
 
 -- Remove the message from the reserve concurrency set
-redis.call('SREM', envReserveConcurrencyKey, messageId)
+redis.call('SREM', envReserveConcurrencyKey, unpack(messageIds))
 
 -- Remove the message from the queue reserve concurrency set
-redis.call('SREM', queueReserveConcurrencyKey, messageId)
+redis.call('SREM', queueReserveConcurrencyKey, unpack(messageIds))
 
 -- Rebalance the parent queue
 local earliestMessage = redis.call('ZRANGE', queueKey, 0, 0, 'WITHSCORES')
@@ -1814,7 +2255,27 @@ else
     redis.call('ZADD', parentQueueKey, earliestMessage[2], queueName)
 end
 
-return {messageId, messageScore} -- Return message details
+return messagesWithScores
+      `,
+    });
+
+    this.redis.defineCommand("popMessageFromWorkerQueue", {
+      numberOfKeys: 1,
+      lua: `
+local workerQueueKey = KEYS[1]
+
+-- lpop the first message from the worker queue
+local messageId = redis.call('LPOP', workerQueueKey)
+
+-- if there is no messageId, return nil
+if not messageId then
+    return nil
+end
+
+-- get the length of the worker queue
+local queueLength = tonumber(redis.call('LLEN', workerQueueKey) or '0')
+
+return {messageId, queueLength} -- Return message details
       `,
     });
 
@@ -2061,7 +2522,7 @@ declare module "ioredis" {
       callback?: Callback<string>
     ): Result<string, Context>;
 
-    dequeueMessage(
+    dequeueMessages(
       queueKey: string,
       parentQueueKey: string,
       queueConcurrencyLimitKey: string,
@@ -2074,7 +2535,13 @@ declare module "ioredis" {
       queueName: string,
       currentTime: string,
       defaultEnvConcurrencyLimit: string,
-      callback?: Callback<[string, string]>
+      maxCount: string,
+      callback?: Callback<string[]>
+    ): Result<string[] | null, Context>;
+
+    popMessageFromWorkerQueue(
+      workerQueueKey: string,
+      callback?: Callback<[string, string] | null>
     ): Result<[string, string] | null, Context>;
 
     requeueMessage(
@@ -2211,5 +2678,30 @@ function getMarQSClient() {
     enableRebalancing: !env.MARQS_DISABLE_REBALANCING,
     maximumNackCount: env.MARQS_MAXIMUM_NACK_COUNT,
     subscriber: concurrencyTracker,
+    sharedWorkerQueueConsumerIntervalMs: env.MARQS_SHARED_WORKER_QUEUE_CONSUMER_INTERVAL_MS,
+    sharedWorkerQueueMaxMessageCount: env.MARQS_SHARED_WORKER_QUEUE_MAX_MESSAGE_COUNT,
+    eagerDequeuingEnabled: env.MARQS_SHARED_WORKER_QUEUE_EAGER_DEQUEUE_ENABLED === "1",
+    sharedWorkerQueueCooloffCountThreshold: env.MARQS_SHARED_WORKER_QUEUE_COOLOFF_COUNT_THRESHOLD,
+    sharedWorkerQueueCooloffPeriodMs: env.MARQS_SHARED_WORKER_QUEUE_COOLOFF_PERIOD_MS,
+    workerOptions: {
+      enabled: env.MARQS_WORKER_ENABLED === "1",
+      pollIntervalMs: env.MARQS_WORKER_POLL_INTERVAL_MS,
+      immediatePollIntervalMs: env.MARQS_WORKER_IMMEDIATE_POLL_INTERVAL_MS,
+      shutdownTimeoutMs: env.MARQS_WORKER_SHUTDOWN_TIMEOUT_MS,
+      concurrency: {
+        workers: env.MARQS_WORKER_COUNT,
+        tasksPerWorker: env.MARQS_WORKER_CONCURRENCY_TASKS_PER_WORKER,
+        limit: env.MARQS_WORKER_CONCURRENCY_LIMIT,
+      },
+      redisOptions: {
+        keyPrefix: KEY_PREFIX,
+        port: env.REDIS_PORT ?? undefined,
+        host: env.REDIS_HOST ?? undefined,
+        username: env.REDIS_USERNAME ?? undefined,
+        password: env.REDIS_PASSWORD ?? undefined,
+        enableAutoPipelining: true,
+        ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
+      },
+    },
   });
 }

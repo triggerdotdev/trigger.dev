@@ -33,6 +33,7 @@ function initializeWorker() {
         retry: {
           maxAttempts: 3,
         },
+        logErrors: false,
       },
       "v3.performDeploymentAlerts": {
         schema: z.object({
@@ -42,6 +43,7 @@ function initializeWorker() {
         retry: {
           maxAttempts: 3,
         },
+        logErrors: false,
       },
       "v3.deliverAlert": {
         schema: z.object({
@@ -51,6 +53,7 @@ function initializeWorker() {
         retry: {
           maxAttempts: 3,
         },
+        logErrors: false,
       },
     },
     concurrency: {

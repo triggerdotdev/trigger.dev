@@ -204,6 +204,8 @@ export class RunsReplicationService {
   }
 
   public async shutdown() {
+    if (this._isShuttingDown) return;
+
     this._isShuttingDown = true;
 
     this.logger.info("Initiating shutdown of runs replication service");

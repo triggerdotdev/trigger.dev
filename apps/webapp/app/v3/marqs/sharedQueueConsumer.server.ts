@@ -166,6 +166,7 @@ export class SharedQueueConsumer {
   private _runningDurationInMs = 0;
   private _currentMessage: MessagePayload | undefined;
   private _currentMessageData: SharedQueueMessageBody | undefined;
+  private _stopWorkerQueueConsumer?: () => void;
 
   constructor(
     private _providerSender: ZodMessageSender<typeof serverWebsocketMessages>,
@@ -173,7 +174,7 @@ export class SharedQueueConsumer {
   ) {
     this._options = {
       maximumItemsPerTrace: options.maximumItemsPerTrace ?? 500,
-      traceTimeoutSeconds: options.traceTimeoutSeconds ?? 10,
+      traceTimeoutSeconds: options.traceTimeoutSeconds ?? 1,
       nextTickInterval: options.nextTickInterval ?? 1000, // 1 second
       interval: options.interval ?? 100, // 100ms
     };
@@ -233,6 +234,10 @@ export class SharedQueueConsumer {
       return;
     }
 
+    console.log("❌ Stopping the SharedQueueConsumer");
+
+    this._stopWorkerQueueConsumer?.();
+
     logger.debug("Stopping shared queue consumer");
     this._enabled = false;
 
@@ -252,6 +257,9 @@ export class SharedQueueConsumer {
     this._reasonStats = {};
     this._actionStats = {};
     this._outcomeStats = {};
+    this._stopWorkerQueueConsumer = marqs?.startSharedWorkerQueueConsumer(this._id);
+
+    console.log("✅ Started the SharedQueueConsumer");
 
     this.#doWork().finally(() => {});
   }
@@ -429,7 +437,7 @@ export class SharedQueueConsumer {
     this._currentMessage = undefined;
     this._currentMessageData = undefined;
 
-    const message = await marqs?.dequeueMessageInSharedQueue(this._id);
+    const message = await marqs?.dequeueMessageFromSharedWorkerQueue(this._id);
 
     if (!message) {
       return {
@@ -621,7 +629,8 @@ export class SharedQueueConsumer {
     const worker = deployment?.worker;
 
     if (!deployment || !worker) {
-      logger.error("No matching deployment found for task run", {
+      // This happens when a run is "WAITING_FOR_DEPLOY" and is expected
+      logger.info("No matching deployment found for task run", {
         queueMessage: message.data,
         messageId: message.messageId,
       });

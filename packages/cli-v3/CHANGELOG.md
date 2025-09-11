@@ -1,5 +1,26 @@
 # trigger.dev
 
+## 4.0.2
+
+### Patch Changes
+
+- add wait_for_run_to_complete tool so agents don't spam the get_run_details call after triggering ([#2445](https://github.com/triggerdotdev/trigger.dev/pull/2445))
+- fix(mcp): don't require a trigger.config.ts file to be present when installing rules ([#2453](https://github.com/triggerdotdev/trigger.dev/pull/2453))
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.2`
+  - `@trigger.dev/core@4.0.2`
+  - `@trigger.dev/schema-to-json@4.0.2`
+
+## 4.0.1
+
+### Patch Changes
+
+- feat: Add official MCP server, install MCP and rules CLI commands and wizards ([#2384](https://github.com/triggerdotdev/trigger.dev/pull/2384))
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.1`
+  - `@trigger.dev/core@4.0.1`
+  - `@trigger.dev/schema-to-json@4.0.1`
+
 ## 4.0.0
 
 ### Major Changes
@@ -945,7 +966,7 @@
     port: 5432,
     username: "postgres",
     password: "postgres",
-    database: "v3-catalog",
+    database: "hello-world",
     entities: [Photo],
     synchronize: true,
     logging: false,
@@ -1581,7 +1602,7 @@
     port: 5432,
     username: "postgres",
     password: "postgres",
-    database: "v3-catalog",
+    database: "hello-world",
     entities: [Photo],
     synchronize: true,
     logging: false,

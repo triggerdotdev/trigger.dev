@@ -7,17 +7,17 @@ mode: "center"
 
 <CardGroup cols={2}>
   <Card title="Quick start" img="/images/intro-quickstart.jpg" href="/quick-start">
-    Get started with Trigger.dev in 3 minutes
-  </Card>
-  <Card title="Examples" img="/images/intro-examples.jpg" href="/guides/introduction#example-tasks">
-    Explore dozens of examples tasks to use in your own projects
+    Get started with Trigger.dev and run your first task in 3 minutes
   </Card>
   <Card
-    title="Frameworks"
-    img="/images/intro-frameworks.jpg"
-    href="/guides/introduction#frameworks"
+    title="Guides, frameworks & examples"
+    img="/images/intro-examples.jpg"
+    href="/guides/introduction#example-tasks"
   >
-    Learn how to use Trigger.dev with your favorite frameworks
+    Browse our wide range of guides, frameworks and example projects
+  </Card>
+  <Card title="MCP Server" img="/images/intro-mcp.jpg" href="/mcp-introduction">
+    Learn how to install and configure the Trigger.dev MCP Server
   </Card>
   <Card title="Video walkthrough" img="/images/intro-video.jpg" href="/video-walkthrough">
     Watch an end-to-end demo of Trigger.dev in 10 minutes
@@ -74,26 +74,17 @@ We provide everything you need to build and manage background tasks: a CLI and S
   <Card title="Concurrency & Queues" icon="line-height" href="/queue-concurrency" color="#D946EF">
     Configure what you want to happen when there is more than one run at a time.
   </Card>
-</CardGroup>
-
-## Explore by example
-
-<CardGroup cols={3}>
-  <Card title="FFmpeg" img="/images/intro-ffmpeg.jpg" href="/guides/examples/ffmpeg-video-processing"/>
-  <Card title="Fal.ai" img="/images/intro-fal.jpg" href="/guides/examples/fal-ai-image-to-cartoon"/>
-  <Card title="Puppeteer" img="/images/intro-puppeteer.jpg" href="/guides/examples/puppeteer"/>
-  <Card title="LibreOffice" img="/images/intro-libreoffice.jpg" href="/guides/examples/libreoffice-pdf-conversion"/>
-  <Card title="OpenAI" img="/images/intro-openai.jpg" href="/guides/examples/open-ai-with-retrying"/>
-  <Card title="Browserbase" img="/images/intro-browserbase.jpg" href="/guides/examples/scrape-hacker-news"/>
-  <Card title="Sentry" img="/images/intro-sentry.jpg" href="/guides/examples/sentry-error-tracking"/>
-  <Card title="Resend" img="/images/intro-resend.jpg" href="/guides/examples/resend-email-sequence"/>
-  <Card title="Vercel AI SDK" img="/images/intro-vercel.jpg" href="/guides/examples/vercel-ai-sdk"/>
-  <Card title="Sharp" img="/images/intro-sharp.jpg" href="/guides/examples/sharp-image-processing"/>
-  <Card title="Deepgram" img="/images/intro-deepgram.jpg" href="/guides/examples/deepgram-transcribe-audio"/>
-  <Card title="Supabase" img="/images/intro-supabase.jpg" href="/guides/examples/supabase-database-operations"/>
-  <Card title="DALL•E" img="/images/intro-openai.jpg" href="/guides/examples/dall-e3-generate-image"/>
-  <Card title="Firecrawl" img="/images/intro-firecrawl.jpg" href="/guides/examples/firecrawl-url-crawl"/>
-  <Card title="Lightpanda" img="/images/intro-lightpanda.jpg" href="/guides/examples/lightpanda"/>
+  <Card
+    title="Wait for token (human-in-the-loop)"
+    icon="hand"
+    href="/wait-for-token"
+    color="#EAEA08"
+  >
+    Pause runs until a token is completed via an approval workflow.
+  </Card>
+  <Card title="Build extensions" icon="gear" href="/config/extensions/overview" color="#22C55E">
+    Customize the build process or the resulting bundle and container image.
+  </Card>
 </CardGroup>
 
 ## Explore by build extension
@@ -102,7 +93,9 @@ We provide everything you need to build and manage background tasks: a CLI and S
 | :-------------------- | :----------------------------------------------------------- | :----------------------------------------------------- |
 | prismaExtension       | Use Prisma with Trigger.dev                                  | [Learn more](/config/extensions/prismaExtension)       |
 | pythonExtension       | Execute Python scripts in Trigger.dev                        | [Learn more](/config/extensions/pythonExtension)       |
+| playwright            | Use Playwright with Trigger.dev                              | [Learn more](/config/extensions/playwright)            |
 | puppeteer             | Use Puppeteer with Trigger.dev                               | [Learn more](/config/extensions/puppeteer)             |
+| lightpanda            | Use Lightpanda with Trigger.dev                              | [Learn more](/config/extensions/lightpanda)            |
 | ffmpeg                | Use FFmpeg with Trigger.dev                                  | [Learn more](/config/extensions/ffmpeg)                |
 | aptGet                | Install system packages with aptGet                          | [Learn more](/config/extensions/aptGet)                |
 | additionalFiles       | Copy additional files to the build directory                 | [Learn more](/config/extensions/additionalFiles)       |
@@ -111,6 +104,78 @@ We provide everything you need to build and manage background tasks: a CLI and S
 | esbuildPlugin         | Add existing or custom esbuild plugins to your build process | [Learn more](/config/extensions/esbuildPlugin)         |
 | emitDecoratorMetadata | Support for the emitDecoratorMetadata TypeScript compiler    | [Learn more](/config/extensions/emitDecoratorMetadata) |
 | audioWaveform         | Support for Audio Waveform in your project                   | [Learn more](/config/extensions/audioWaveform)         |
+
+## Explore by example
+
+<CardGroup cols={3}>
+  <Card
+    title="FFmpeg"
+    img="/images/intro-ffmpeg.jpg"
+    href="/guides/examples/ffmpeg-video-processing"
+  />
+  <Card
+    title="Fal.ai"
+    img="/images/intro-fal.jpg"
+    href="/guides/examples/fal-ai-image-to-cartoon"
+  />
+  <Card title="Puppeteer" img="/images/intro-puppeteer.jpg" href="/guides/examples/puppeteer" />
+  <Card
+    title="LibreOffice"
+    img="/images/intro-libreoffice.jpg"
+    href="/guides/examples/libreoffice-pdf-conversion"
+  />
+  <Card
+    title="OpenAI"
+    img="/images/intro-openai.jpg"
+    href="/guides/examples/open-ai-with-retrying"
+  />
+  <Card
+    title="Browserbase"
+    img="/images/intro-browserbase.jpg"
+    href="/guides/examples/scrape-hacker-news"
+  />
+  <Card
+    title="Sentry"
+    img="/images/intro-sentry.jpg"
+    href="/guides/examples/sentry-error-tracking"
+  />
+  <Card
+    title="Resend"
+    img="/images/intro-resend.jpg"
+    href="/guides/examples/resend-email-sequence"
+  />
+  <Card
+    title="Vercel AI SDK"
+    img="/images/intro-vercel.jpg"
+    href="/guides/examples/vercel-ai-sdk"
+  />
+  <Card
+    title="Sharp"
+    img="/images/intro-sharp.jpg"
+    href="/guides/examples/sharp-image-processing"
+  />
+  <Card
+    title="Deepgram"
+    img="/images/intro-deepgram.jpg"
+    href="/guides/examples/deepgram-transcribe-audio"
+  />
+  <Card
+    title="Supabase"
+    img="/images/intro-supabase.jpg"
+    href="/guides/examples/supabase-database-operations"
+  />
+  <Card
+    title="DALL•E"
+    img="/images/intro-openai.jpg"
+    href="/guides/examples/dall-e3-generate-image"
+  />
+  <Card
+    title="Firecrawl"
+    img="/images/intro-firecrawl.jpg"
+    href="/guides/examples/firecrawl-url-crawl"
+  />
+  <Card title="Lightpanda" img="/images/intro-lightpanda.jpg" href="/guides/examples/lightpanda" />
+</CardGroup>
 
 ## Getting help
 

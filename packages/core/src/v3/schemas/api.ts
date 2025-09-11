@@ -29,7 +29,11 @@ export type WhoAmIResponse = z.infer<typeof WhoAmIResponseSchema>;
 
 export const GetProjectResponseBody = z.object({
   id: z.string(),
-  externalRef: z.string(),
+  externalRef: z
+    .string()
+    .describe(
+      "The external reference for the project, also known as the project ref, a unique identifier starting with proj_"
+    ),
   name: z.string(),
   slug: z.string(),
   createdAt: z.coerce.date(),
@@ -47,6 +51,27 @@ export const GetProjectsResponseBody = z.array(GetProjectResponseBody);
 
 export type GetProjectsResponseBody = z.infer<typeof GetProjectsResponseBody>;
 
+export const GetOrgsResponseBody = z.array(
+  z.object({
+    id: z.string(),
+    title: z.string(),
+    slug: z.string(),
+    createdAt: z.coerce.date(),
+  })
+);
+
+export type GetOrgsResponseBody = z.infer<typeof GetOrgsResponseBody>;
+
+export const CreateProjectRequestBody = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1, "Name is required")
+    .max(255, "Name must be less than 255 characters"),
+});
+
+export type CreateProjectRequestBody = z.infer<typeof CreateProjectRequestBody>;
+
 export const GetProjectEnvResponse = z.object({
   apiKey: z.string(),
   name: z.string(),
@@ -55,6 +80,49 @@ export const GetProjectEnvResponse = z.object({
 });
 
 export type GetProjectEnvResponse = z.infer<typeof GetProjectEnvResponse>;
+
+// Zod schema for the response body type
+export const GetWorkerTaskResponse = z.object({
+  id: z.string(),
+  slug: z.string(),
+  filePath: z.string(),
+  triggerSource: z.string(),
+  createdAt: z.coerce.date(),
+  payloadSchema: z.any().nullish(),
+});
+
+export const GetWorkerByTagResponse = z.object({
+  worker: z.object({
+    id: z.string(),
+    version: z.string(),
+    engine: z.string().nullish(),
+    sdkVersion: z.string().nullish(),
+    cliVersion: z.string().nullish(),
+    tasks: z.array(GetWorkerTaskResponse),
+  }),
+  urls: z.object({
+    runs: z.string(),
+  }),
+});
+
+export type GetWorkerByTagResponse = z.infer<typeof GetWorkerByTagResponse>;
+
+export const GetJWTRequestBody = z.object({
+  claims: z
+    .object({
+      scopes: z.array(z.string()).default([]),
+    })
+    .optional(),
+  expirationTime: z.union([z.number(), z.string()]).optional(),
+});
+
+export type GetJWTRequestBody = z.infer<typeof GetJWTRequestBody>;
+
+export const GetJWTResponse = z.object({
+  token: z.string(),
+});
+
+export type GetJWTResponse = z.infer<typeof GetJWTResponse>;
 
 export const CreateBackgroundWorkerRequestBody = z.object({
   localOnly: z.boolean(),
@@ -1078,3 +1146,123 @@ export function timeoutError(timeout: Date) {
     message: `Waitpoint timed out at ${timeout.toISOString()}`,
   };
 }
+
+const ApiDeploymentCommonShape = {
+  from: z.string().describe("The date to start the search from, in ISO 8601 format").optional(),
+  to: z.string().describe("The date to end the search, in ISO 8601 format").optional(),
+  period: z.string().describe("The period to search within (e.g. 1d, 7d, 3h, etc.)").optional(),
+  status: z
+    .enum(["PENDING", "BUILDING", "DEPLOYING", "DEPLOYED", "FAILED", "CANCELED", "TIMED_OUT"])
+    .describe("Filter deployments that are in this status")
+    .optional(),
+};
+
+const ApiDeploymentListPaginationCursor = z
+  .string()
+  .describe("The deployment ID to start the search from, to get the next page")
+  .optional();
+
+const ApiDeploymentListPaginationLimit = z.coerce
+  .number()
+  .describe("The number of deployments to return, defaults to 20 (max 100)")
+  .min(1, "Limit must be at least 1")
+  .max(100, "Limit must be less than 100")
+  .optional();
+
+export const ApiDeploymentListParams = {
+  ...ApiDeploymentCommonShape,
+  cursor: ApiDeploymentListPaginationCursor,
+  limit: ApiDeploymentListPaginationLimit,
+};
+
+export const ApiDeploymentListOptions = z.object(ApiDeploymentListParams);
+
+export type ApiDeploymentListOptions = z.infer<typeof ApiDeploymentListOptions>;
+
+export const ApiDeploymentListSearchParams = z.object({
+  ...ApiDeploymentCommonShape,
+  "page[after]": ApiDeploymentListPaginationCursor,
+  "page[size]": ApiDeploymentListPaginationLimit,
+});
+
+export type ApiDeploymentListSearchParams = z.infer<typeof ApiDeploymentListSearchParams>;
+
+export const ApiDeploymentListResponseItem = z.object({
+  id: z.string(),
+  createdAt: z.coerce.date(),
+  shortCode: z.string(),
+  version: z.string(),
+  runtime: z.string(),
+  runtimeVersion: z.string(),
+  status: z.enum([
+    "PENDING",
+    "BUILDING",
+    "DEPLOYING",
+    "DEPLOYED",
+    "FAILED",
+    "CANCELED",
+    "TIMED_OUT",
+  ]),
+  deployedAt: z.coerce.date().optional(),
+  git: z.record(z.any()).optional(),
+  error: DeploymentErrorData.optional(),
+});
+
+export type ApiDeploymentListResponseItem = z.infer<typeof ApiDeploymentListResponseItem>;
+
+export const ApiBranchListResponseBody = z.object({
+  branches: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      createdAt: z.coerce.date(),
+      updatedAt: z.coerce.date(),
+      git: z.record(z.any()).optional(),
+      isPaused: z.boolean(),
+    })
+  ),
+});
+
+export type ApiBranchListResponseBody = z.infer<typeof ApiBranchListResponseBody>;
+
+export const RetrieveRunTraceSpanSchema = z.object({
+  id: z.string(),
+  parentId: z.string().optional(),
+  message: z.string(),
+  data: z.object({
+    runId: z.string(),
+    taskSlug: z.string().optional(),
+    taskPath: z.string().optional(),
+    events: z.array(z.any()).optional(),
+    startTime: z.coerce.date(),
+    duration: z.number(),
+    isError: z.boolean(),
+    isPartial: z.boolean(),
+    isCancelled: z.boolean(),
+    level: z.string(),
+    environmentType: z.string(),
+    workerVersion: z.string().optional(),
+    queueName: z.string().optional(),
+    machinePreset: z.string().optional(),
+    properties: z.record(z.any()).optional(),
+    output: z.unknown().optional(),
+  }),
+});
+
+export type RetrieveRunTraceSpan = z.infer<typeof RetrieveRunTraceSpanSchema> & {
+  children: Array<RetrieveRunTraceSpan>;
+};
+
+export const RetrieveRunTraceSpan: z.ZodType<RetrieveRunTraceSpan> =
+  RetrieveRunTraceSpanSchema.extend({
+    children: z.lazy(() => RetrieveRunTraceSpan.array()),
+  });
+
+export const RetrieveRunTraceResponseBody = z.object({
+  trace: z.object({
+    traceId: z.string(),
+    rootSpan: RetrieveRunTraceSpan,
+  }),
+});
+
+export type RetrieveRunTraceResponseBody = z.infer<typeof RetrieveRunTraceResponseBody>;

@@ -381,7 +381,7 @@ function RunBody({
             onClick={() => {
               replace({ tab: "context" });
             }}
-            shortcut={{ key: "c" }}
+            shortcut={{ key: "x" }}
           >
             Context
           </TabButton>

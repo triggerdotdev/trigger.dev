@@ -65,7 +65,7 @@ export async function POST(request: Request) {
 }
 ```
 
-You can pass in options to the task using the second argument:
+You can pass in options to the task using the third argument:
 
 ```ts Your backend
 import { tasks } from "@trigger.dev/sdk";
@@ -116,7 +116,7 @@ export async function POST(request: Request) {
 }
 ```
 
-You can pass in options to the `batchTrigger` function using the second argument:
+You can pass in options to the `batchTrigger` function using the third argument:
 
 ```ts Your backend
 import { tasks } from "@trigger.dev/sdk";
@@ -960,6 +960,16 @@ await yourTask.trigger(payload, { region: "eu-central-1" });
 If you don't specify a region it will use the default for your project. Go to the "Regions" page in the dashboard to see available regions or switch your default.
 
 The region is where your runs are executed, it does not change where the run payload, output, tags, logs, or are any other data is stored.
+
+### `machine`
+
+You can override the default machine preset when you trigger a run:
+
+```ts
+await yourTask.trigger(payload, { machine: "large-1x" });
+```
+
+If you don't specify a machine it will use the machine preset for your task (or the default for your project). For more information read [the machines guide](/machines).
 
 ## Large Payloads
 

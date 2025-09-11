@@ -1,5 +1,9 @@
 # internal-platform
 
+## 4.0.2
+
+## 4.0.1
+
 ## 4.0.0
 
 ### Major Changes
@@ -614,7 +618,7 @@
     port: 5432,
     username: "postgres",
     password: "postgres",
-    database: "v3-catalog",
+    database: "hello-world",
     entities: [Photo],
     synchronize: true,
     logging: false,
@@ -1054,7 +1058,7 @@
     port: 5432,
     username: "postgres",
     password: "postgres",
-    database: "v3-catalog",
+    database: "hello-world",
     entities: [Photo],
     synchronize: true,
     logging: false,

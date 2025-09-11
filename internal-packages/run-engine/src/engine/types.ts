@@ -39,6 +39,9 @@ export type RunEngineOptions = {
     masterQueueConsumersDisabled?: boolean;
     processWorkerQueueDebounceMs?: number;
     masterQueueConsumersIntervalMs?: number;
+    masterQueueCooloffPeriodMs?: number;
+    masterQueueCooloffCountThreshold?: number;
+    masterQueueConsumerDequeueCount?: number;
     workerOptions?: WorkerConcurrencyOptions;
     retryOptions?: RetryOptions;
     defaultEnvConcurrency?: number;
@@ -68,6 +71,12 @@ export type RunEngineOptions = {
   /** If not set then checkpoints won't ever be used */
   retryWarmStartThresholdMs?: number;
   heartbeatTimeoutsMs?: Partial<HeartbeatTimeouts>;
+  suspendedHeartbeatRetriesConfig?: {
+    maxCount?: number;
+    maxDelayMs?: number;
+    initialDelayMs?: number;
+    factor?: number;
+  };
   queueRunsWaitingForWorkerBatchSize?: number;
   tracer: Tracer;
   meter?: Meter;

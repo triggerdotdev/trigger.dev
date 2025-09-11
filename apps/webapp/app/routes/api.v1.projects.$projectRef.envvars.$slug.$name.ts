@@ -3,7 +3,7 @@ import { UpdateEnvironmentVariableRequestBody } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import {
-  authenticateProjectApiKeyOrPersonalAccessToken,
+  authenticateRequest,
   authenticatedEnvironmentForAuthentication,
 } from "~/services/apiAuth.server";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
@@ -21,7 +21,7 @@ export async function action({ params, request }: ActionFunctionArgs) {
     return json({ error: "Invalid params" }, { status: 400 });
   }
 
-  const authenticationResult = await authenticateProjectApiKeyOrPersonalAccessToken(request);
+  const authenticationResult = await authenticateRequest(request);
 
   if (!authenticationResult) {
     return json({ error: "Invalid or Missing API key" }, { status: 401 });
@@ -97,7 +97,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     return json({ error: "Invalid params" }, { status: 400 });
   }
 
-  const authenticationResult = await authenticateProjectApiKeyOrPersonalAccessToken(request);
+  const authenticationResult = await authenticateRequest(request);
 
   if (!authenticationResult) {
     return json({ error: "Invalid or Missing API key" }, { status: 401 });

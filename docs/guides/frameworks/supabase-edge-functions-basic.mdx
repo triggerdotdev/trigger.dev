@@ -14,7 +14,6 @@ import UsefulNextSteps from "/snippets/useful-next-steps.mdx";
 import TriggerTaskNextjs from "/snippets/trigger-tasks-nextjs.mdx";
 import NextjsTroubleshootingMissingApiKey from "/snippets/nextjs-missing-api-key.mdx";
 import NextjsTroubleshootingButtonSyntax from "/snippets/nextjs-button-syntax.mdx";
-import WorkerFailedToStartWhenRunningDevCommand from "/snippets/worker-failed-to-start.mdx";
 import SupabaseDocsCards from "/snippets/supabase-docs-cards.mdx";
 
 import SupabaseAuthInfo from "/snippets/supabase-auth-info.mdx";
@@ -78,7 +77,7 @@ Replace the placeholder code in your `edge-function-trigger/index.ts` file with 
 // Setup type definitions for built-in Supabase Runtime APIs
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 // Import the Trigger.dev SDK - replace "<your-sdk-version>" with the version of the SDK you are using, e.g. "3.0.0". You can find this in your package.json file.
-import { tasks } from "npm:@trigger.dev/sdk@3.0.0/v3";
+import { tasks } from "npm:@trigger.dev/sdk@3.0.0";
 // Import your task type from your /trigger folder
 import type { helloWorldTask } from "../../../src/trigger/example.ts";
 //     👆 **type-only** import

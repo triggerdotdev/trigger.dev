@@ -1,6 +1,6 @@
 ---
 title: "Wait for token"
-description: "Wait until a token is completed."
+description: "Wait until a token is completed using waitpoint tokens."
 ---
 
 Waitpoint tokens pause task runs until you complete the token. They're commonly used for approval workflows and other scenarios where you need to wait for external confirmation, such as human-in-the-loop processes.
@@ -50,7 +50,7 @@ await wait.completeToken<ApprovalToken>(tokenId, {
 });
 ```
 
-Or you can make an HTTP POST request to the `url` it returns:
+Or you can make an HTTP POST request to the `url` it returns. This is an HTTP callback:
 
 ```ts
 import { wait } from "@trigger.dev/sdk";
@@ -261,24 +261,6 @@ Wait for a token to be completed.
 
 <ParamField query="token" type="string | { id: string }">
   The token to wait for.
-</ParamField>
-
-<ParamField query="options" type="object" optional>
-  Options for the wait.
-
-  <Expandable title="properties">
-    <ParamField query="releaseConcurrency" type="boolean" optional>
-      If set to true, this will cause the waitpoint to release the current run from the queue's concurrency.
-
-      This is useful if you want to allow other runs to execute while waiting
-
-      Note: It's possible that this run will not be able to resume when the waitpoint is complete if this is set to true.
-      It will go back in the queue and will resume once concurrency becomes available.
-
-      The default is `false`.
-    </ParamField>
-
-  </Expandable>
 </ParamField>
 
 ### returns

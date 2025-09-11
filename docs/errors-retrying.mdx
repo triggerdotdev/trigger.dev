@@ -180,7 +180,7 @@ export const taskWithFetchRetries = task({
 
 ## Advanced error handling and retrying
 
-We provide a `handleError` callback on the task and in your `trigger.config` file. This gets called when an uncaught error is thrown in your task.
+We provide a `catchError` callback on the task and in your `trigger.config` file. This gets called when an uncaught error is thrown in your task.
 
 You can
 
@@ -219,7 +219,7 @@ export const openaiTask = task({
 
     return chatCompletion.choices[0].message.content;
   },
-  handleError: async (payload, error, { ctx, retryAt }) => {
+  catchError: async ({ payload, error, ctx, retryAt }) => {
     if (error instanceof OpenAI.APIError) {
       if (!error.status) {
         return {

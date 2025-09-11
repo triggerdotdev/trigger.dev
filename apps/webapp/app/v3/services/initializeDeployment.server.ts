@@ -73,12 +73,15 @@ export class InitializeDeploymentService extends BaseService {
       const isV4Deployment = payload.type === "MANAGED";
       const registryConfig = getRegistryConfig(isV4Deployment);
 
+      const deploymentShortCode = nanoid(8);
+
       const [imageRefError, imageRefResult] = await tryCatch(
         getDeploymentImageRef({
           registry: registryConfig,
           projectRef: environment.project.externalRef,
           nextVersion,
-          environmentSlug: environment.slug,
+          environmentType: environment.type,
+          deploymentShortCode,
         })
       );
 
@@ -111,7 +114,7 @@ export class InitializeDeploymentService extends BaseService {
         data: {
           friendlyId: generateFriendlyId("deployment"),
           contentHash: payload.contentHash,
-          shortCode: nanoid(8),
+          shortCode: deploymentShortCode,
           version: nextVersion,
           status: "BUILDING",
           environmentId: environment.id,

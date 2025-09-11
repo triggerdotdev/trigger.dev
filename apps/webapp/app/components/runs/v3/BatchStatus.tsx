@@ -1,5 +1,5 @@
 import { CheckCircleIcon, XCircleIcon } from "@heroicons/react/20/solid";
-import { BatchTaskRunStatus } from "@trigger.dev/database";
+import type { BatchTaskRunStatus } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { Spinner } from "~/components/primitives/Spinner";
 import { cn } from "~/utils/cn";
