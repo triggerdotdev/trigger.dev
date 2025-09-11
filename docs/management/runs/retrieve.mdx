@@ -8,19 +8,24 @@ Retrieve information about a specific run by `runId`. The response includes stat
 ```ts
 import { runs } from "@trigger.dev/sdk";
 
-const result = await runs.retrieve("run_1234");
+const runId = "run_1234";
+try {
+  const run = await runs.retrieve(runId);
 
-if (result.isSuccess) {
-  console.log("Run was successful with output", result.output);
-}
-
-console.log("Run status:", result.status);
-console.log("Payload:", result.payload);
-console.log("Output:", result.output);
-
-for (const attempt of result.attempts) {
-  if (attempt.status === "FAILED") {
-    console.log("Attempt failed with error:", attempt.error);
+  if (run.status === "SUCCESS") {
+    console.log("Run was successful with output:", run.output);
   }
+
+  console.log("Run status:", run.status);
+  console.log("Payload:", run.payload);
+  console.log("Output:", run.output);
+
+  for (const attempt of run.attempts ?? []) {
+    if (attempt.status === "FAILED") {
+      console.log("Attempt failed with error:", attempt.error?.message ?? attempt.error);
+    }
+  }
+} catch (err) {
+  console.error("Failed to retrieve run", runId, err);
 }
 ```
