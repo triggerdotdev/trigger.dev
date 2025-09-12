@@ -1578,6 +1578,8 @@ model BatchTaskRun {
   ///this is used for all engine versions
   @@unique([runtimeEnvironmentId, idempotencyKey])
   @@index([dependentTaskAttemptId])
+  // This is for the batch list dashboard page
+  @@index([runtimeEnvironmentId, id(sort: Desc)])
 }
 
 enum BatchTaskRunStatus {
