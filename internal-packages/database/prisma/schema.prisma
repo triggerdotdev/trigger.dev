@@ -1062,6 +1062,8 @@ model Waitpoint {
   @@index([environmentId, type, createdAt(sort: Desc)])
   /// Status filtering
   @@index([environmentId, type, status])
+  /// For the waitpoint token dashboard page
+  @@index([environmentId, type, id(sort: Desc)])
 }
 
 enum WaitpointType {
