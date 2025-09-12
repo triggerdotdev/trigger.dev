@@ -1,4 +1,3 @@
-import { BillingCache } from "./billingCache.js";
 import { createRedisClient, Redis } from "@internal/redis";
 import { getMeter, Meter, startSpan, trace, Tracer } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
@@ -32,6 +31,7 @@ import { FairQueueSelectionStrategy } from "../run-queue/fairQueueSelectionStrat
 import { RunQueue } from "../run-queue/index.js";
 import { RunQueueFullKeyProducer } from "../run-queue/keyProducer.js";
 import { MinimalAuthenticatedEnvironment } from "../shared/index.js";
+import { BillingCache } from "./billingCache.js";
 import { NotImplementedError, RunDuplicateIdempotencyKeyError } from "./errors.js";
 import { EventBus, EventBusEvents } from "./eventBus.js";
 import { RunLocker } from "./locking.js";

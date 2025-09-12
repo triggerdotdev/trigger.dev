@@ -31,7 +31,6 @@ import type {
 } from "../../v3/services/triggerTask.server";
 import { getTaskEventStore } from "../../v3/taskEventStore.server";
 import { clampMaxDuration } from "../../v3/utils/maxDuration";
-import { EngineServiceValidationError } from "../concerns/errors";
 import { IdempotencyKeyConcern } from "../concerns/idempotencyKeys.server";
 import type {
   PayloadProcessor,
@@ -41,6 +40,7 @@ import type {
   TriggerTaskRequest,
   TriggerTaskValidator,
 } from "../types";
+import { ServiceValidationError } from "~/v3/services/common.server";
 
 export class RunEngineTriggerTaskService {
   private readonly queueConcern: QueueManager;
@@ -157,7 +157,7 @@ export class RunEngineTriggerTaskService {
       const [parseDelayError, delayUntil] = await tryCatch(parseDelay(body.options?.delay));
 
       if (parseDelayError) {
-        throw new EngineServiceValidationError(`Invalid delay ${body.options?.delay}`);
+        throw new ServiceValidationError(`Invalid delay ${body.options?.delay}`);
       }
 
       const ttl =
@@ -210,7 +210,7 @@ export class RunEngineTriggerTaskService {
         });
 
         if (!queueSizeGuard.ok) {
-          throw new EngineServiceValidationError(
+          throw new ServiceValidationError(
             `Cannot trigger ${taskId} as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`
           );
         }
@@ -351,7 +351,7 @@ export class RunEngineTriggerTaskService {
           );
 
           if (result?.error) {
-            throw new EngineServiceValidationError(
+            throw new ServiceValidationError(
               taskRunErrorToString(taskRunErrorEnhancer(result.error))
             );
           }
@@ -365,7 +365,7 @@ export class RunEngineTriggerTaskService {
         }
 
         if (error instanceof RunOneTimeUseTokenError) {
-          throw new EngineServiceValidationError(
+          throw new ServiceValidationError(
             `Cannot trigger ${taskId} with a one-time use token as it has already been used.`
           );
         }
