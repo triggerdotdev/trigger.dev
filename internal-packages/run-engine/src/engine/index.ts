@@ -13,6 +13,7 @@ import {
   StartRunAttemptResult,
   TaskRunContext,
   TaskRunExecutionResult,
+  TaskRunInternalError,
 } from "@trigger.dev/core/v3";
 import { RunId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import {
@@ -1249,6 +1250,11 @@ export class RunEngine {
         }
         case "EXECUTING":
         case "EXECUTING_WITH_WAITPOINTS": {
+          // Stalls for production runs should start being treated as an OOM error.
+          // We should calculate the retry delay using the retry settings on the run/task instead of hardcoding it.
+          // Stalls for dev runs should keep being treated as a timeout error because the vast majority of the time these snapshots stall because
+          // they have quit the CLI
+
           const retryDelay = 250;
 
           const timeoutDuration =
@@ -1264,20 +1270,37 @@ export class RunEngine {
               ? `Run timed out after ${timeoutDuration} due to missing heartbeats (sent every 30s). Check if your \`trigger.dev dev\` CLI is still running, or if CPU-heavy work is blocking the main thread.`
               : `Run timed out after ${timeoutDuration} due to missing heartbeats (sent every 30s). This typically happens when CPU-heavy work blocks the main thread.`;
 
+          const taskStalledErrorCode =
+            latestSnapshot.executionStatus === "EXECUTING"
+              ? "TASK_RUN_STALLED_EXECUTING"
+              : "TASK_RUN_STALLED_EXECUTING_WITH_WAITPOINTS";
+
+          const error =
+            latestSnapshot.environmentType === "DEVELOPMENT"
+              ? ({
+                  type: "INTERNAL_ERROR",
+                  code: taskStalledErrorCode,
+                  message: errorMessage,
+                } satisfies TaskRunInternalError)
+              : this.options.treatProductionExecutionStallsAsOOM
+              ? ({
+                  type: "INTERNAL_ERROR",
+                  code: "TASK_PROCESS_OOM_KILLED",
+                  message: "Run was terminated due to running out of memory",
+                } satisfies TaskRunInternalError)
+              : ({
+                  type: "INTERNAL_ERROR",
+                  code: taskStalledErrorCode,
+                  message: errorMessage,
+                } satisfies TaskRunInternalError);
+
           await this.runAttemptSystem.attemptFailed({
             runId,
             snapshotId: latestSnapshot.id,
             completion: {
               ok: false,
               id: runId,
-              error: {
-                type: "INTERNAL_ERROR",
-                code:
-                  latestSnapshot.executionStatus === "EXECUTING"
-                    ? "TASK_RUN_STALLED_EXECUTING"
-                    : "TASK_RUN_STALLED_EXECUTING_WITH_WAITPOINTS",
-                message: errorMessage,
-              },
+              error,
               retry: shouldRetry
                 ? {
                     //250ms in the future
