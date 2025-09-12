@@ -15,6 +15,8 @@ function createRunEngine() {
     prisma,
     readOnlyPrisma: $replica,
     logLevel: env.RUN_ENGINE_WORKER_LOG_LEVEL,
+    treatProductionExecutionStallsAsOOM:
+      env.RUN_ENGINE_TREAT_PRODUCTION_EXECUTION_STALLS_AS_OOM === "1",
     worker: {
       disabled: env.RUN_ENGINE_WORKER_ENABLED === "0",
       workers: env.RUN_ENGINE_WORKER_COUNT,
