@@ -1,5 +1,12 @@
 # @trigger.dev/schema-to-json
 
+## 4.0.3
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.3`
+
 ## 4.0.2
 
 ### Patch Changes

@@ -1,5 +1,16 @@
 # trigger.dev
 
+## 4.0.3
+
+### Patch Changes
+
+- Added new CLI command to list and view environment variables ([#2485](https://github.com/triggerdotdev/trigger.dev/pull/2485))
+- Added the heartbeats.yield utility to allow tasks that do continuous CPU-heavy work to heartbeat and continue running ([#2489](https://github.com/triggerdotdev/trigger.dev/pull/2489))
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.3`
+  - `@trigger.dev/core@4.0.3`
+  - `@trigger.dev/schema-to-json@4.0.3`
+
 ## 4.0.2
 
 ### Patch Changes
