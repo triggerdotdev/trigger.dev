@@ -148,6 +148,11 @@ export class RunsReplicationService {
         }
 
         for (const item of newBatch) {
+          if (!item?.run?.id) {
+            this.logger.warn("Skipping replication event with null run", { event: item });
+            continue;
+          }
+
           const key = `${item.event}_${item.run.id}`;
           const existingItem = merged.get(key);
 
