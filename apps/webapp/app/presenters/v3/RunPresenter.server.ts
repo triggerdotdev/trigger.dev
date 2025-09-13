@@ -1,6 +1,6 @@
 import { millisecondsToNanoseconds } from "@trigger.dev/core/v3";
 import { createTreeFromFlatItems, flattenTree } from "~/components/primitives/TreeView/TreeView";
-import { prisma, PrismaClient } from "~/db.server";
+import { prisma, type PrismaClient } from "~/db.server";
 import { createTimelineSpanEventsFromSpanEvents } from "~/utils/timelineSpanEvents";
 import { getUsername } from "~/utils/username";
 import { eventRepository } from "~/v3/eventRepository.server";
@@ -58,7 +58,13 @@ export class RunPresenter {
         rootTaskRun: {
           select: {
             friendlyId: true,
-            taskIdentifier: true,
+            spanId: true,
+            createdAt: true,
+          },
+        },
+        parentTaskRun: {
+          select: {
+            friendlyId: true,
             spanId: true,
             createdAt: true,
           },
@@ -111,6 +117,7 @@ export class RunPresenter {
       completedAt: run.completedAt,
       logsDeletedAt: showDeletedLogs ? null : run.logsDeletedAt,
       rootTaskRun: run.rootTaskRun,
+      parentTaskRun: run.parentTaskRun,
       environment: {
         id: run.runtimeEnvironment.id,
         organizationId: run.runtimeEnvironment.organizationId,
@@ -202,8 +209,6 @@ export class RunPresenter {
       trace: {
         rootSpanStatus,
         events: events,
-        parentRunFriendlyId:
-          tree?.id === traceSummary.rootSpan.id ? undefined : traceSummary.rootSpan.runId,
         duration: totalDuration,
         rootStartedAt: tree?.data.startTime,
         startedAt: run.startedAt,
