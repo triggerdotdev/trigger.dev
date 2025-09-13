@@ -227,7 +227,9 @@ export function createJsonErrorObject(error: TaskRunError): SerializedError {
       return {
         name: enhancedError.name,
         message: enhancedError.message,
-        stackTrace: enhancedError.stackTrace,
+        stackTrace: correctErrorStackTrace(enhancedError.stackTrace, undefined, {
+          removeFirstLine: false,
+        }),
       };
     }
     case "STRING_ERROR": {
@@ -400,6 +402,7 @@ const LINES_TO_IGNORE = [
   /ZodIpc/,
   /startActiveSpan/,
   /processTicksAndRejections/,
+  /AsyncLocalStorage/,
 ];
 
 function correctStackTraceLine(line: string, projectDir?: string, isDev?: boolean) {
