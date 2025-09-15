@@ -51,6 +51,7 @@ import { RunEngineOptions } from "../types.js";
 import { BatchSystem } from "./batchSystem.js";
 import { DelayedRunSystem } from "./delayedRunSystem.js";
 import {
+  EnhancedExecutionSnapshot,
   executionResultFromSnapshot,
   ExecutionSnapshotSystem,
   getLatestExecutionSnapshot,
@@ -690,6 +691,10 @@ export class RunAttemptSystem {
             throw new ServiceValidationError("Snapshot ID doesn't match the latest snapshot", 400);
           }
 
+          if (latestSnapshot.executionStatus === "FINISHED") {
+            throw new ServiceValidationError("Run is already finished", 400);
+          }
+
           span.setAttribute("completionStatus", completion.ok);
 
           const completedAt = new Date();
@@ -843,6 +848,10 @@ export class RunAttemptSystem {
             throw new ServiceValidationError("Snapshot ID doesn't match the latest snapshot", 400);
           }
 
+          if (latestSnapshot.executionStatus === "FINISHED") {
+            throw new ServiceValidationError("Run is already finished", 400);
+          }
+
           span.setAttribute("completionStatus", completion.ok);
 
           //remove waitpoints blocking the run
@@ -923,7 +932,7 @@ export class RunAttemptSystem {
             case "fail_run": {
               return await this.#permanentlyFailRun({
                 runId,
-                snapshotId,
+                latestSnapshot,
                 failedAt,
                 error: retryResult.sanitizedError,
                 workerId,
@@ -1130,6 +1139,7 @@ export class RunAttemptSystem {
     workerId,
     runnerId,
     checkpointId,
+    completedWaitpoints,
     tx,
   }: {
     run: TaskRun;
@@ -1145,6 +1155,10 @@ export class RunAttemptSystem {
     runnerId?: string;
     checkpointId?: string;
     tx?: PrismaClientOrTransaction;
+    completedWaitpoints?: {
+      id: string;
+      index?: number;
+    }[];
   }): Promise<{ wasRequeued: boolean } & ExecutionResult> {
     const prisma = tx ?? this.$.prisma;
 
@@ -1192,6 +1206,7 @@ export class RunAttemptSystem {
         workerId,
         runnerId,
         checkpointId,
+        completedWaitpoints,
       });
 
       return {
@@ -1443,14 +1458,14 @@ export class RunAttemptSystem {
 
   async #permanentlyFailRun({
     runId,
-    snapshotId,
+    latestSnapshot,
     failedAt,
     error,
     workerId,
     runnerId,
   }: {
     runId: string;
-    snapshotId?: string;
+    latestSnapshot: EnhancedExecutionSnapshot;
     failedAt: Date;
     error: TaskRunError;
     workerId?: string;
@@ -1459,7 +1474,7 @@ export class RunAttemptSystem {
     const prisma = this.$.prisma;
 
     return startSpan(this.$.tracer, "permanentlyFailRun", async (span) => {
-      const status = runStatusFromError(error);
+      const status = runStatusFromError(error, latestSnapshot.environmentType);
 
       //run permanently failed
       const run = await prisma.taskRun.update({
@@ -1512,7 +1527,7 @@ export class RunAttemptSystem {
           executionStatus: "FINISHED",
           description: "Run failed",
         },
-        previousSnapshotId: snapshotId,
+        previousSnapshotId: latestSnapshot.id,
         environmentId: run.runtimeEnvironment.id,
         environmentType: run.runtimeEnvironment.type,
         projectId: run.runtimeEnvironment.project.id,

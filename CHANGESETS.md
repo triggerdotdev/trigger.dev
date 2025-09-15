@@ -30,14 +30,16 @@ Please follow the best-practice of adding changesets in the same commit as the c
 
 ## Snapshot instructions
 
-1. Delete the `.changeset/pre.json` file (if it exists)
+1. Update the `.changeset/config.json` file to set the `"changelog"` field to this:
+
+```json
+"changelog": "@changesets/cli/changelog",
+```
 
 2. Do a temporary commit (do NOT push this, you should undo it after)
 
-3. Copy the `GITHUB_TOKEN` line from the .env file
+3. Run `./scripts/publish-prerelease.sh prerelease`
 
-4. Run `GITHUB_TOKEN=github_pat_12345 ./scripts/publish-prerelease.sh re2`
+You can choose a different tag if you want, but usually `prerelease` is fine.
 
-Make sure to replace the token with yours. `re2` is the tag that will be used for the pre-release.
-
-5. Undo the commit where you deleted the pre.json file.
+5. Undo the commit where you updated the config.json file.

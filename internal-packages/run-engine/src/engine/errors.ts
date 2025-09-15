@@ -1,8 +1,11 @@
 import { assertExhaustive } from "@trigger.dev/core";
 import { TaskRunError } from "@trigger.dev/core/v3";
-import { TaskRunStatus } from "@trigger.dev/database";
+import { RuntimeEnvironmentType, TaskRunStatus } from "@trigger.dev/database";
 
-export function runStatusFromError(error: TaskRunError): TaskRunStatus {
+export function runStatusFromError(
+  error: TaskRunError,
+  environmentType: RuntimeEnvironmentType
+): TaskRunStatus {
   if (error.type !== "INTERNAL_ERROR") {
     return "COMPLETED_WITH_ERRORS";
   }
@@ -21,6 +24,15 @@ export function runStatusFromError(error: TaskRunError): TaskRunStatus {
       return "CANCELED";
     case "MAX_DURATION_EXCEEDED":
       return "TIMED_OUT";
+    case "TASK_RUN_STALLED_EXECUTING":
+    case "TASK_RUN_STALLED_EXECUTING_WITH_WAITPOINTS": {
+      if (environmentType === "DEVELOPMENT") {
+        return "CANCELED";
+      }
+
+      return "COMPLETED_WITH_ERRORS";
+    }
+
     case "TASK_PROCESS_OOM_KILLED":
     case "TASK_PROCESS_MAYBE_OOM_KILLED":
     case "TASK_PROCESS_SIGSEGV":
@@ -40,8 +52,6 @@ export function runStatusFromError(error: TaskRunError): TaskRunStatus {
     case "TASK_DEQUEUED_INVALID_STATE":
     case "TASK_DEQUEUED_QUEUE_NOT_FOUND":
     case "TASK_RUN_DEQUEUED_MAX_RETRIES":
-    case "TASK_RUN_STALLED_EXECUTING":
-    case "TASK_RUN_STALLED_EXECUTING_WITH_WAITPOINTS":
     case "TASK_HAS_N0_EXECUTION_SNAPSHOT":
     case "GRACEFUL_EXIT_TIMEOUT":
     case "POD_EVICTED":

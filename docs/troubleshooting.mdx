@@ -181,6 +181,38 @@ View the [rate limits](/limits) page for more information.
 
 This can happen in different situations, for example when using plain strings as idempotency keys. Support for `Crypto` without a special flag was added in Node `v19.0.0`. You will have to upgrade Node - we recommend even-numbered major releases, e.g. `v20` or `v22`. Alternatively, you can switch from plain strings to the `idempotencyKeys.create` SDK function. [Read the guide](/idempotency).
 
+### Task run stalled executing
+
+If you see a `TASK_RUN_STALLED_EXECUTING` error it means that we didn't receive a heartbeat from your task before the stall timeout. We automatically heartbeat runs every 30 seconds, and the heartbeat timeout is 5 minutes.
+
+<Note>
+
+If this was a dev run, then most likely the `trigger.dev dev` CLI was stopped, and it wasn't an issue with your code.
+
+</Note>
+
+These errors can happen when code inside your task is blocking the event loop for too long. The most likely cause would be an accidental infinite loop. It could also be a CPU-heavy operation that's blocking the event loop, like nested loops with very large arrays. We recommend reading the [Don't Block the Event Loop](https://nodejs.org/en/learn/asynchronous-work/dont-block-the-event-loop) guide from Node.js for common patterns that can cause this.
+
+If you are doing a continuous CPU-heavy task, then we recommend you try using our `heartbeats.yield` function to automatically yield to the event loop periodically:
+
+```ts
+import { heartbeats } from "@trigger.dev/sdk";
+
+// code inside your task
+for (const row of bigDataset) {
+  await heartbeats.yield(); // safe to call every iteration, we will only actually yield when we need to
+  process(row); // this is a synchronous operation
+}
+```
+
+<Note>
+
+You could also offload the CPU-heavy work to a Node.js worker thread, but this is more complex to setup currently. We are planning on adding support for this in the future.
+
+</Note>
+
+If the above doesn't work, then we recommend you try increasing the machine size of your task. See our [machines guide](/machines) for more information.
+
 ## Framework specific issues
 
 ### NestJS swallows all errors/exceptions
