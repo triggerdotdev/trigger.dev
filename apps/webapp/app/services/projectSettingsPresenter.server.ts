@@ -4,6 +4,7 @@ import { BranchTrackingConfigSchema } from "~/v3/github";
 import { env } from "~/env.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { err, fromPromise, ok, okAsync } from "neverthrow";
+import { BuildSettingsSchema } from "~/v3/buildSettings";
 
 export class ProjectSettingsPresenter {
   #prismaClient: PrismaClient;
@@ -15,16 +16,6 @@ export class ProjectSettingsPresenter {
   getProjectSettings(organizationSlug: string, projectSlug: string, userId: string) {
     const githubAppEnabled = env.GITHUB_APP_ENABLED === "1";
 
-    if (!githubAppEnabled) {
-      return okAsync({
-        gitHubApp: {
-          enabled: false,
-          connectedRepository: undefined,
-          installations: undefined,
-        },
-      });
-    }
-
     const getProject = () =>
       fromPromise(findProjectBySlug(organizationSlug, projectSlug, userId), (error) => ({
         type: "other" as const,
@@ -35,6 +26,28 @@ export class ProjectSettingsPresenter {
         }
         return ok(project);
       });
+
+    if (!githubAppEnabled) {
+      return getProject().andThen((project) => {
+        if (!project) {
+          return err({ type: "project_not_found" as const });
+        }
+
+        const buildSettingsOrFailure = BuildSettingsSchema.safeParse(project.buildSettings);
+        const buildSettings = buildSettingsOrFailure.success
+          ? buildSettingsOrFailure.data
+          : undefined;
+
+        return ok({
+          gitHubApp: {
+            enabled: false,
+            connectedRepository: undefined,
+            installations: undefined,
+          },
+          buildSettings,
+        });
+      });
+    }
 
     const findConnectedGithubRepository = (projectId: string) =>
       fromPromise(
@@ -119,6 +132,11 @@ export class ProjectSettingsPresenter {
 
     return getProject().andThen((project) =>
       findConnectedGithubRepository(project.id).andThen((connectedGithubRepository) => {
+        const buildSettingsOrFailure = BuildSettingsSchema.safeParse(project.buildSettings);
+        const buildSettings = buildSettingsOrFailure.success
+          ? buildSettingsOrFailure.data
+          : undefined;
+
         if (connectedGithubRepository) {
           return okAsync({
             gitHubApp: {
@@ -128,6 +146,7 @@ export class ProjectSettingsPresenter {
               // a project can have only a single connected repository
               installations: undefined,
             },
+            buildSettings,
           });
         }
 
@@ -138,6 +157,7 @@ export class ProjectSettingsPresenter {
               connectedRepository: undefined,
               installations: githubAppInstallations,
             },
+            buildSettings,
           };
         });
       })

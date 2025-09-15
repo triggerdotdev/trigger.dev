@@ -62,7 +62,7 @@ import {
   EnvironmentParamSchema,
   v3ProjectSettingsPath,
 } from "~/utils/pathBuilder";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { Switch } from "~/components/primitives/Switch";
 import { type BranchTrackingConfig } from "~/v3/github";
@@ -120,7 +120,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     }
   }
 
-  const { gitHubApp } = resultOrFail.value;
+  const { gitHubApp, buildSettings } = resultOrFail.value;
 
   const session = await getSession(request.headers.get("Cookie"));
   const openGitHubRepoConnectionModal = session.get("gitHubAppInstalled") === true;
@@ -134,6 +134,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       githubAppInstallations: gitHubApp.installations,
       connectedGithubRepository: gitHubApp.connectedRepository,
       openGitHubRepoConnectionModal,
+      buildSettings,
     },
     { headers }
   );
@@ -153,6 +154,13 @@ const UpdateGitSettingsFormSchema = z.object({
     .string()
     .optional()
     .transform((val) => val === "on"),
+});
+
+const UpdateBuildSettingsFormSchema = z.object({
+  action: z.literal("update-build-settings"),
+  rootDirectory: z.string().trim().optional(),
+  installCommand: z.string().trim().optional(),
+  triggerConfigFile: z.string().trim().optional(),
 });
 
 export function createSchema(
@@ -188,6 +196,7 @@ export function createSchema(
     }),
     ConnectGitHubRepoFormSchema,
     UpdateGitSettingsFormSchema,
+    UpdateBuildSettingsFormSchema,
     z.object({
       action: z.literal("disconnect-repo"),
     }),
@@ -376,6 +385,31 @@ export const action: ActionFunction = async ({ request, params }) => {
         success: true,
       });
     }
+    case "update-build-settings": {
+      const { rootDirectory, installCommand, triggerConfigFile } = submission.value;
+
+      const resultOrFail = await projectSettingsService.updateBuildSettings(projectId, {
+        rootDirectory: rootDirectory || undefined,
+        installCommand: installCommand || undefined,
+        triggerConfigFile: triggerConfigFile || undefined,
+      });
+
+      if (resultOrFail.isErr()) {
+        switch (resultOrFail.error.type) {
+          case "other":
+          default: {
+            resultOrFail.error.type satisfies "other";
+
+            logger.error("Failed to update build settings", {
+              error: resultOrFail.error,
+            });
+            return redirectBackWithErrorMessage(request, "Failed to update build settings");
+          }
+        }
+      }
+
+      return redirectBackWithSuccessMessage(request, "Build settings updated successfully");
+    }
     default: {
       submission.value satisfies never;
       return redirectBackWithErrorMessage(request, "Failed to process request");
@@ -389,6 +423,7 @@ export default function Page() {
     connectedGithubRepository,
     githubAppEnabled,
     openGitHubRepoConnectionModal,
+    buildSettings,
   } = useTypedLoaderData<typeof loader>();
   const project = useProject();
   const organization = useOrganization();
@@ -511,22 +546,31 @@ export default function Page() {
             </div>
 
             {githubAppEnabled && (
-              <div>
-                <Header2 spacing>Git settings</Header2>
-                <div className="w-full rounded-sm border border-grid-dimmed p-4">
-                  {connectedGithubRepository ? (
-                    <ConnectedGitHubRepoForm connectedGitHubRepo={connectedGithubRepository} />
-                  ) : (
-                    <GitHubConnectionPrompt
-                      gitHubAppInstallations={githubAppInstallations ?? []}
-                      organizationSlug={organization.slug}
-                      projectSlug={project.slug}
-                      environmentSlug={environment.slug}
-                      openGitHubRepoConnectionModal={openGitHubRepoConnectionModal}
-                    />
-                  )}
+              <React.Fragment>
+                <div>
+                  <Header2 spacing>Git settings</Header2>
+                  <div className="w-full rounded-sm border border-grid-dimmed p-4">
+                    {connectedGithubRepository ? (
+                      <ConnectedGitHubRepoForm connectedGitHubRepo={connectedGithubRepository} />
+                    ) : (
+                      <GitHubConnectionPrompt
+                        gitHubAppInstallations={githubAppInstallations ?? []}
+                        organizationSlug={organization.slug}
+                        projectSlug={project.slug}
+                        environmentSlug={environment.slug}
+                        openGitHubRepoConnectionModal={openGitHubRepoConnectionModal}
+                      />
+                    )}
+                  </div>
                 </div>
-              </div>
+
+                <div>
+                  <Header2 spacing>Build settings</Header2>
+                  <div className="w-full rounded-sm border border-grid-dimmed p-4">
+                    <BuildSettingsForm buildSettings={buildSettings ?? {}} />
+                  </div>
+                </div>
+              </React.Fragment>
             )}
 
             <div>
@@ -1031,5 +1075,122 @@ function ConnectedGitHubRepoForm({
         </Fieldset>
       </Form>
     </>
+  );
+}
+
+type BuildSettings = {
+  rootDirectory?: string;
+  installCommand?: string;
+  triggerConfigFile?: string;
+};
+
+function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) {
+  const lastSubmission = useActionData() as any;
+  const navigation = useNavigation();
+
+  const [hasBuildSettingsChanges, setHasBuildSettingsChanges] = useState(false);
+  const [buildSettingsValues, setBuildSettingsValues] = useState({
+    rootDirectory: buildSettings?.rootDirectory || "",
+    installCommand: buildSettings?.installCommand || "",
+    triggerConfigFile: buildSettings?.triggerConfigFile || "",
+  });
+
+  useEffect(() => {
+    const hasChanges =
+      buildSettingsValues.rootDirectory !== (buildSettings?.rootDirectory || "") ||
+      buildSettingsValues.installCommand !== (buildSettings?.installCommand || "") ||
+      buildSettingsValues.triggerConfigFile !== (buildSettings?.triggerConfigFile || "");
+    setHasBuildSettingsChanges(hasChanges);
+  }, [buildSettingsValues, buildSettings]);
+
+  const [buildSettingsForm, fields] = useForm({
+    id: "update-build-settings",
+    lastSubmission: lastSubmission,
+    shouldRevalidate: "onSubmit",
+    onValidate({ formData }) {
+      return parse(formData, {
+        schema: UpdateBuildSettingsFormSchema,
+      });
+    },
+  });
+
+  const isBuildSettingsLoading =
+    navigation.formData?.get("action") === "update-build-settings" &&
+    (navigation.state === "submitting" || navigation.state === "loading");
+
+  return (
+    <Form method="post" {...buildSettingsForm.props}>
+      <Fieldset>
+        <InputGroup fullWidth>
+          <Label htmlFor={fields.rootDirectory.id}>Root directory</Label>
+          <Input
+            {...conform.input(fields.rootDirectory, { type: "text" })}
+            defaultValue={buildSettings?.rootDirectory || ""}
+            placeholder="/"
+            onChange={(e) => {
+              setBuildSettingsValues((prev) => ({
+                ...prev,
+                rootDirectory: e.target.value,
+              }));
+            }}
+          />
+          <Hint>The directory that contains your code.</Hint>
+          <FormError id={fields.rootDirectory.errorId}>{fields.rootDirectory.error}</FormError>
+        </InputGroup>
+        <InputGroup fullWidth>
+          <Label htmlFor={fields.installCommand.id}>Install command</Label>
+          <Input
+            {...conform.input(fields.installCommand, { type: "text" })}
+            defaultValue={buildSettings?.installCommand || ""}
+            placeholder="e.g., `npm install`, or `bun install`"
+            onChange={(e) => {
+              setBuildSettingsValues((prev) => ({
+                ...prev,
+                installCommand: e.target.value,
+              }));
+            }}
+          />
+          <Hint>
+            Command to install your project dependencies. This is auto-detected by default.
+          </Hint>
+          <FormError id={fields.installCommand.errorId}>{fields.installCommand.error}</FormError>
+        </InputGroup>
+        <InputGroup fullWidth>
+          <Label htmlFor={fields.triggerConfigFile.id}>Trigger config file</Label>
+          <Input
+            {...conform.input(fields.triggerConfigFile, { type: "text" })}
+            defaultValue={buildSettings?.triggerConfigFile || ""}
+            placeholder="trigger.config.ts"
+            onChange={(e) => {
+              setBuildSettingsValues((prev) => ({
+                ...prev,
+                triggerConfigFile: e.target.value,
+              }));
+            }}
+          />
+          <Hint>
+            Path to your trigger configuration file, relative to the specified root directory.
+          </Hint>
+          <FormError id={fields.triggerConfigFile.errorId}>
+            {fields.triggerConfigFile.error}
+          </FormError>
+        </InputGroup>
+        <FormError>{buildSettingsForm.error}</FormError>
+        <FormButtons
+          confirmButton={
+            <Button
+              type="submit"
+              name="action"
+              value="update-build-settings"
+              variant="secondary/small"
+              disabled={isBuildSettingsLoading || !hasBuildSettingsChanges}
+              LeadingIcon={isBuildSettingsLoading ? SpinnerWhite : undefined}
+            >
+              Save
+            </Button>
+          }
+        />
+      </Fieldset>
+    </Form>
   );
 }
