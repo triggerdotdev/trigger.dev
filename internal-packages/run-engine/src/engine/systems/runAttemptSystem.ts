@@ -1139,6 +1139,7 @@ export class RunAttemptSystem {
     workerId,
     runnerId,
     checkpointId,
+    completedWaitpoints,
     tx,
   }: {
     run: TaskRun;
@@ -1154,6 +1155,10 @@ export class RunAttemptSystem {
     runnerId?: string;
     checkpointId?: string;
     tx?: PrismaClientOrTransaction;
+    completedWaitpoints?: {
+      id: string;
+      index?: number;
+    }[];
   }): Promise<{ wasRequeued: boolean } & ExecutionResult> {
     const prisma = tx ?? this.$.prisma;
 
@@ -1201,6 +1206,7 @@ export class RunAttemptSystem {
         workerId,
         runnerId,
         checkpointId,
+        completedWaitpoints,
       });
 
       return {
