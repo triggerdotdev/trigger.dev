@@ -25,6 +25,7 @@ export class KubernetesWorkloadManager implements WorkloadManager {
   private readonly cpuRequestRatio = env.KUBERNETES_CPU_REQUEST_RATIO;
   private readonly memoryRequestMinGb = env.KUBERNETES_MEMORY_REQUEST_MIN_GB;
   private readonly memoryRequestRatio = env.KUBERNETES_MEMORY_REQUEST_RATIO;
+  private readonly memoryOverheadGb = env.KUBERNETES_MEMORY_OVERHEAD_GB;
 
   constructor(private opts: WorkloadManagerOptions) {
     this.k8s = createK8sApi();
@@ -319,9 +320,13 @@ export class KubernetesWorkloadManager implements WorkloadManager {
   }
 
   #getResourceLimitsForMachine(preset: MachinePreset): ResourceQuantities {
+    const memoryLimit = this.memoryOverheadGb
+      ? preset.memory + this.memoryOverheadGb
+      : preset.memory;
+
     return {
       cpu: `${preset.cpu}`,
-      memory: `${preset.memory}G`,
+      memory: `${memoryLimit}G`,
     };
   }
 
