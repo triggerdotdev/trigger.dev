@@ -108,9 +108,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   const disableVersionSelection = environment.type === "DEVELOPMENT";
   const allowArbitraryQueues = backgroundWorkers.at(0)?.engine === "V1";
 
-  const payload = await prettyPrintPacket(run.payload, run.payloadType, {
-    cloneCircularReferences: false,
-  });
+  const payload = await prettyPrintPacket(run.payload, run.payloadType);
 
   return typedjson({
     concurrencyKey: run.concurrencyKey,
