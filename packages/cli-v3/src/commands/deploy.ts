@@ -757,11 +757,20 @@ async function initializeOrAttachDeployment(
       );
     }
 
-    const { imageReference } = existingDeploymentOrError.data;
+    const { imageReference, status } = existingDeploymentOrError.data;
     if (!imageReference) {
       // this is just an artifact of our current DB schema
       // `imageReference` is stored as nullable, but it should always exist
       throw new Error("Existing deployment does not have an image reference");
+    }
+
+    if (
+      status === "CANCELED" ||
+      status === "FAILED" ||
+      status === "TIMED_OUT" ||
+      status === "DEPLOYED"
+    ) {
+      throw new Error(`Existing deployment is in an unexpected state: ${status}`);
     }
 
     return {
