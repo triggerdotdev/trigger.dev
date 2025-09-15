@@ -1238,7 +1238,6 @@ export class RunEngine {
             },
             orgId: latestSnapshot.organizationId,
             projectId: latestSnapshot.projectId,
-            checkpointId: latestSnapshot.checkpointId ?? undefined,
             error: {
               type: "INTERNAL_ERROR",
               code: "TASK_RUN_DEQUEUED_MAX_RETRIES",
