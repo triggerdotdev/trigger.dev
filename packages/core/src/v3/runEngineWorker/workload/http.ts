@@ -5,7 +5,6 @@ import {
   WorkloadRunAttemptCompleteRequestBody,
   WorkloadRunAttemptCompleteResponseBody,
   WorkloadRunAttemptStartResponseBody,
-  WorkloadRunLatestSnapshotResponseBody,
   WorkloadDequeueFromVersionResponseBody,
   WorkloadRunAttemptStartRequestBody,
   WorkloadSuspendRunResponseBody,
@@ -126,19 +125,6 @@ export class WorkloadHttpClient {
           ...this.defaultHeaders(),
         },
         body: JSON.stringify(body),
-      }
-    );
-  }
-
-  async getRunExecutionData(runId: string) {
-    return wrapZodFetch(
-      WorkloadRunLatestSnapshotResponseBody,
-      `${this.apiUrl}/api/v1/workload-actions/runs/${runId}/snapshots/latest`,
-      {
-        method: "GET",
-        headers: {
-          ...this.defaultHeaders(),
-        },
       }
     );
   }
