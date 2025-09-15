@@ -1,0 +1,124 @@
+---
+title: "Image-to-image generation using Replicate and nano-banana"
+sidebarTitle: "Replicate image generation"
+description: "Learn how to generate images from source image URLs using Replicate and Trigger.dev."
+---
+
+## Overview
+
+This example demonstrates how to use Trigger.dev to generate images from source image URLs using [Replicate](https://replicate.com/), the [nano-banana-image-to-image](https://replicate.com/meta/nano-banana-image-to-image) model.
+
+## Task code
+
+```tsx trigger/generateImage.tsx
+import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { task, wait } from "@trigger.dev/sdk";
+import Replicate, { Prediction } from "replicate";
+
+// Initialize clients
+const replicate = new Replicate({
+  auth: process.env.REPLICATE_API_TOKEN,
+});
+
+const s3Client = new S3Client({
+  region: "auto",
+  endpoint: process.env.R2_ENDPOINT,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID ?? "",
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY ?? "",
+  },
+});
+
+const model = "google/nano-banana";
+
+export const generateImageAndUploadToR2 = task({
+  id: "generate-image-and-upload-to-r2",
+  run: async (payload: { prompt: string; imageUrl: string }) => {
+    const { prompt, imageUrl } = payload;
+
+    const token = await wait.createToken({
+      timeout: "10m",
+    });
+
+    // Use Flux with structured prompt
+    const output = await replicate.predictions.create({
+      model: model,
+      input: { prompt, image_input: [imageUrl] },
+      // pass the provided URL to Replicate's webhook, so they can "callback"
+      webhook: token.url,
+      webhook_events_filter: ["completed"],
+    });
+
+    const result = await wait.forToken<Prediction>(token);
+    // unwrap() throws a timeout error or returns the result 👆
+
+    if (!result.ok) {
+      throw new Error("Failed to create prediction");
+    }
+
+    const generatedImageUrl = result.output.output;
+
+    const image = await fetch(generatedImageUrl);
+    const imageBuffer = Buffer.from(await image.arrayBuffer());
+
+    const base64Image = Buffer.from(imageBuffer).toString("base64");
+
+    const timestamp = Date.now();
+    const filename = `generated-${timestamp}.png`;
+
+    // Generate unique key for R2
+    const sanitizedFileName = filename.replace(/[^a-zA-Z0-9.-]/g, "_");
+    const r2Key = `uploaded-images/${timestamp}-${sanitizedFileName}`;
+
+    const uploadParams = {
+      Bucket: process.env.R2_BUCKET,
+      Key: r2Key,
+      Body: imageBuffer,
+      ContentType: "image/png",
+      // Add cache control for better performance
+      CacheControl: "public, max-age=31536000", // 1 year
+    };
+
+    const uploadResult = await s3Client.send(new PutObjectCommand(uploadParams));
+
+    // Construct the public URL using the R2_PUBLIC_URL env var
+    const publicUrl = `${process.env.R2_PUBLIC_URL}/${r2Key}`;
+
+    return {
+      success: true,
+      publicUrl,
+      originalPrompt: prompt,
+      sourceImageUrl: imageUrl,
+    };
+  },
+});
+```
+
+## Environment variables
+
+You will need to set the following environment variables:
+
+```
+TRIGGER_SECRET_KEY=<your-trigger-secret-key>
+REPLICATE_API_TOKEN=<your-replicate-api-token>
+R2_ENDPOINT=<your-r2-endpoint>
+R2_ACCESS_KEY_ID=<your-r2-access-key-id>
+R2_SECRET_ACCESS_KEY=<your-r2-secret-access-key>
+R2_BUCKET=<your-r2-bucket>
+R2_PUBLIC_URL=<your-r2-public-url>
+```
+
+## Learn more
+
+### React Email docs
+
+Check out the [React Email docs](https://react.email/docs) and learn how to set up and use React Email, including how to preview your emails locally.
+
+<CardGroup cols={2}>
+  <Card title="Components" icon="puzzle-piece" href="https://react.email/components">
+    Pre-built components you can copy and paste into your emails.
+  </Card>
+  <Card title="Templates" icon="rectangle-list" href="https://react.email/templates">
+    Extensive pre-built templates ready to use.
+  </Card>
+</CardGroup>
