@@ -1,7 +1,7 @@
 {
   "name": "trigger.dev",
   "version": "4.0.2",
-  "description": "A Command-Line Interface for Trigger.dev (v3) projects",
+  "description": "A Command-Line Interface for Trigger.dev projects",
   "type": "module",
   "license": "MIT",
   "repository": {
@@ -12,6 +12,7 @@
   "publishConfig": {
     "access": "public"
   },
+  "mcpName": "io.github.triggerdotdev/trigger.dev",
   "keywords": [
     "typescript",
     "trigger.dev",
