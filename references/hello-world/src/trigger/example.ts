@@ -438,3 +438,72 @@ export const lotsOfLogsTask = task({
     }
   },
 });
+
+export const throwErrorInOnSuccessHookTask = task({
+  id: "throw-error-in-on-success-hook",
+  run: async (payload: { message: string }, { ctx }) => {
+    logger.info("Hello, world from the throw error in on success hook task", {
+      message: payload.message,
+    });
+  },
+  onSuccess: async ({ payload, output, ctx }) => {
+    logger.info("Hello, world from the on success hook", { payload, output });
+    throw new Error("Forced error to cause a retry");
+  },
+});
+
+export const throwErrorInOnStartHookTask = task({
+  id: "throw-error-in-on-start-hook",
+  run: async (payload: { message: string }, { ctx }) => {
+    logger.info("Hello, world from the throw error in on start hook task", {
+      message: payload.message,
+    });
+  },
+  onStart: async ({ payload, ctx }) => {
+    logger.info("Hello, world from the on start hook", { payload });
+    throw new Error("Forced error to cause a retry");
+  },
+});
+
+export const throwErrorInOnCompleteHookTask = task({
+  id: "throw-error-in-on-complete-hook",
+  run: async (payload: { message: string }, { ctx }) => {
+    logger.info("Hello, world from the throw error in on complete hook task", {
+      message: payload.message,
+    });
+  },
+  onComplete: async ({ payload, result, ctx }) => {
+    logger.info("Hello, world from the on complete hook", { payload, result });
+    throw new Error("Forced error to cause a retry");
+  },
+});
+
+export const throwErrorInOnFailureHookTask = task({
+  id: "throw-error-in-on-failure-hook",
+  retry: {
+    maxAttempts: 1,
+  },
+  run: async (payload: { message: string }, { ctx }) => {
+    logger.info("Hello, world from the throw error in on failure hook task", {
+      message: payload.message,
+    });
+    throw new Error("Forced error to cause a retry");
+  },
+  onFailure: async ({ payload, error, ctx }) => {
+    logger.info("Hello, world from the on failure hook", { payload, error });
+    throw new Error("Forced error to cause a retry in on failure hook");
+  },
+});
+
+export const throwErrorInInitHookTask = task({
+  id: "throw-error-in-init-hook",
+  run: async (payload: { message: string }, { ctx }) => {
+    logger.info("Hello, world from the throw error in init hook task", {
+      message: payload.message,
+    });
+  },
+  init: async ({ payload, ctx }) => {
+    logger.info("Hello, world from the init hook", { payload });
+    throw new Error("Forced error to cause a retry");
+  },
+});

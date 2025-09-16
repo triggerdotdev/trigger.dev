@@ -174,63 +174,14 @@ tasks.onStart(({ ctx, payload, task }) => {
 
 ![Lifecycle functions](/images/lifecycle-functions.png)
 
-### `init` function
-
-This function is called before a run attempt:
-
-```ts /trigger/init.ts
-export const taskWithInit = task({
-  id: "task-with-init",
-  init: async ({ payload, ctx }) => {
-    //...
-  },
-  run: async (payload: any, { ctx }) => {
-    //...
-  },
-});
-```
-
-You can also return data from the `init` function that will be available in the params of the `run`, `cleanup`, `onSuccess`, and `onFailure` functions.
-
-```ts /trigger/init-return.ts
-export const taskWithInitReturn = task({
-  id: "task-with-init-return",
-  init: async ({ payload, ctx }) => {
-    return { someData: "someValue" };
-  },
-  run: async (payload: any, { ctx, init }) => {
-    console.log(init.someData); // "someValue"
-  },
-});
-```
-
-<Info>Errors thrown in the `init` function are ignored.</Info>
-
-### `cleanup` function
-
-This function is called after the `run` function is executed, regardless of whether the run was successful or not. It's useful for cleaning up resources, logging, or other side effects.
-
-```ts /trigger/cleanup.ts
-export const taskWithCleanup = task({
-  id: "task-with-cleanup",
-  cleanup: async ({ payload, ctx }) => {
-    //...
-  },
-  run: async (payload: any, { ctx }) => {
-    //...
-  },
-});
-```
-
-<Info>Errors thrown in the `cleanup` function will fail the attempt.</Info>
-
 ### `middleware` and `locals` functions
 
 Our task middleware system runs at the top level, executing before and after all lifecycle hooks. This allows you to wrap the entire task execution lifecycle with custom logic.
 
 <Info>
   An error thrown in `middleware` is just like an uncaught error in the run function: it will
-  propagate through to `catchError()` function and then will fail the attempt (causing a retry).
+  propagate through to `catchError()` function and then will fail the attempt (either causing a
+  retry or failing the run).
 </Info>
 
 The `locals` API allows you to share data between middleware and hooks.
@@ -298,7 +249,12 @@ export const myTask = task({
 
 ### `onStart` function
 
-When a task run starts, the `onStart` function is called. It's useful for sending notifications, logging, and other side effects. This function will only be called one per run (not per retry). If you want to run code before each retry, use the `init` function.
+When a task run starts, the `onStart` function is called. It's useful for sending notifications, logging, and other side effects.
+
+<Warning>
+  This function will only be called once per run (not per attempt). If you want to run code before
+  each attempt, use a middleware function.
+</Warning>
 
 ```ts /trigger/on-start.ts
 export const taskWithOnStart = task({
@@ -312,20 +268,17 @@ export const taskWithOnStart = task({
 });
 ```
 
-You can also define an `onStart` function in your `trigger.config.ts` file to get notified when any task starts.
+You can also define a global `onStart` function using `tasks.onStart()`.
 
-```ts trigger.config.ts
-import { defineConfig } from "@trigger.dev/sdk";
+```ts init.ts
+import { tasks } from "@trigger.dev/sdk";
 
-export default defineConfig({
-  project: "proj_1234",
-  onStart: async ({ payload, ctx }) => {
-    console.log("Task started", ctx.task.id);
-  },
+tasks.onStart(({ ctx, payload, task }) => {
+  console.log(`Run ${ctx.run.id} started on task ${task}`, ctx.run);
 });
 ```
 
-<Info>Errors thrown in the `onStart` function are ignored.</Info>
+<Info>Errors thrown in the `onStart` function will cause the attempt to fail.</Info>
 
 ### `onWait` and `onResume` functions
 
@@ -350,6 +303,20 @@ export const myTask = task({
 });
 ```
 
+You can also define global `onWait` and `onResume` functions using `tasks.onWait()` and `tasks.onResume()`:
+
+```ts init.ts
+import { tasks } from "@trigger.dev/sdk";
+
+tasks.onWait(({ ctx, payload, wait, task }) => {
+  console.log("Run paused", ctx.run, wait);
+});
+
+tasks.onResume(({ ctx, payload, wait, task }) => {
+  console.log("Run resumed", ctx.run, wait);
+});
+```
+
 ### `onSuccess` function
 
 When a task run succeeds, the `onSuccess` function is called. It's useful for sending notifications, logging, syncing state to your database, or other side effects.
@@ -366,20 +333,20 @@ export const taskWithOnSuccess = task({
 });
 ```
 
-You can also define an `onSuccess` function in your `trigger.config.ts` file to get notified when any task succeeds.
+You can also define a global `onSuccess` function using `tasks.onSuccess()`.
 
-```ts trigger.config.ts
-import { defineConfig } from "@trigger.dev/sdk";
+```ts init.ts
+import { tasks } from "@trigger.dev/sdk";
 
-export default defineConfig({
-  project: "proj_1234",
-  onSuccess: async ({ payload, output, ctx }) => {
-    console.log("Task succeeded", ctx.task.id);
-  },
+tasks.onSuccess(({ ctx, payload, output }) => {
+  console.log("Task succeeded", ctx.task.id);
 });
 ```
 
-<Info>Errors thrown in the `onSuccess` function are ignored.</Info>
+<Info>
+  Errors thrown in the `onSuccess` function will be ignored, but you will still be able to see them
+  in the dashboard.
+</Info>
 
 ### `onComplete` function
 
@@ -397,6 +364,21 @@ export const taskWithOnComplete = task({
 });
 ```
 
+You can also define a global `onComplete` function using `tasks.onComplete()`.
+
+```ts init.ts
+import { tasks } from "@trigger.dev/sdk";
+
+tasks.onComplete(({ ctx, payload, output }) => {
+  console.log("Task completed", ctx.task.id);
+});
+```
+
+<Info>
+  Errors thrown in the `onComplete` function will be ignored, but you will still be able to see them
+  in the dashboard.
+</Info>
+
 ### `onFailure` function
 
 When a task run fails, the `onFailure` function is called. It's useful for sending notifications, logging, or other side effects. It will only be executed once the task run has exhausted all its retries.
@@ -413,20 +395,20 @@ export const taskWithOnFailure = task({
 });
 ```
 
-You can also define an `onFailure` function in your `trigger.config.ts` file to get notified when any task fails.
+You can also define a global `onFailure` function using `tasks.onFailure()`.
 
-```ts trigger.config.ts
-import { defineConfig } from "@trigger.dev/sdk";
+```ts init.ts
+import { tasks } from "@trigger.dev/sdk";
 
-export default defineConfig({
-  project: "proj_1234",
-  onFailure: async ({ payload, error, ctx }) => {
-    console.log("Task failed", ctx.task.id);
-  },
+tasks.onFailure(({ ctx, payload, error }) => {
+  console.log("Task failed", ctx.task.id);
 });
 ```
 
-<Info>Errors thrown in the `onFailure` function are ignored.</Info>
+<Info>
+  Errors thrown in the `onFailure` function will be ignored, but you will still be able to see them
+  in the dashboard.
+</Info>
 
 <Note>
   `onFailure` doesn’t fire for some of the run statuses like `Crashed`, `System failures`, and
@@ -441,7 +423,7 @@ Read more about `catchError` in our [Errors and Retrying guide](/errors-retrying
 
 <Info>Uncaught errors will throw a special internal error of the type `HANDLE_ERROR_ERROR`.</Info>
 
-### onCancel
+### `onCancel` function
 
 You can define an `onCancel` hook that is called when a run is cancelled. This is useful if you want to clean up any resources that were allocated for the run.
 
@@ -539,6 +521,66 @@ export const cancelExampleTask = task({
   You will have up to 30 seconds to complete the `runPromise` in the `onCancel` hook. After that
   point the process will be killed.
 </Note>
+
+### `init` function (deprecated)
+
+<Warning>
+  The `init` hook is deprecated and will be removed in the future. Use
+  [middleware](/tasks/overview#middleware-and-locals-functions) instead.
+</Warning>
+
+This function is called before a run attempt:
+
+```ts /trigger/init.ts
+export const taskWithInit = task({
+  id: "task-with-init",
+  init: async ({ payload, ctx }) => {
+    //...
+  },
+  run: async (payload: any, { ctx }) => {
+    //...
+  },
+});
+```
+
+You can also return data from the `init` function that will be available in the params of the `run`, `cleanup`, `onSuccess`, and `onFailure` functions.
+
+```ts /trigger/init-return.ts
+export const taskWithInitReturn = task({
+  id: "task-with-init-return",
+  init: async ({ payload, ctx }) => {
+    return { someData: "someValue" };
+  },
+  run: async (payload: any, { ctx, init }) => {
+    console.log(init.someData); // "someValue"
+  },
+});
+```
+
+<Info>Errors thrown in the `init` function will cause the attempt to fail.</Info>
+
+### `cleanup` function (deprecated)
+
+<Warning>
+  The `cleanup` hook is deprecated and will be removed in the future. Use
+  [middleware](/tasks/overview#middleware-and-locals-functions) instead.
+</Warning>
+
+This function is called after the `run` function is executed, regardless of whether the run was successful or not. It's useful for cleaning up resources, logging, or other side effects.
+
+```ts /trigger/cleanup.ts
+export const taskWithCleanup = task({
+  id: "task-with-cleanup",
+  cleanup: async ({ payload, ctx }) => {
+    //...
+  },
+  run: async (payload: any, { ctx }) => {
+    //...
+  },
+});
+```
+
+<Info>Errors thrown in the `cleanup` function will cause the attempt to fail.</Info>
 
 ## Next steps
 

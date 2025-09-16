@@ -795,7 +795,7 @@ export class TaskExecutor {
 
     return await runTimelineMetrics.measureMetric("trigger.dev/execution", "success", async () => {
       for (const hook of globalSuccessHooks) {
-        const [hookError] = await tryCatch(
+        await tryCatch(
           this._tracer.startActiveSpan(
             "onSuccess()",
             async (span) => {
@@ -817,14 +817,10 @@ export class TaskExecutor {
             }
           )
         );
-
-        if (hookError) {
-          throw hookError;
-        }
       }
 
       if (taskSuccessHook) {
-        const [hookError] = await tryCatch(
+        await tryCatch(
           this._tracer.startActiveSpan(
             "onSuccess()",
             async (span) => {
@@ -846,10 +842,6 @@ export class TaskExecutor {
             }
           )
         );
-
-        if (hookError) {
-          throw hookError;
-        }
       }
     });
   }
@@ -870,7 +862,7 @@ export class TaskExecutor {
 
     return await runTimelineMetrics.measureMetric("trigger.dev/execution", "failure", async () => {
       for (const hook of globalFailureHooks) {
-        const [hookError] = await tryCatch(
+        await tryCatch(
           this._tracer.startActiveSpan(
             "onFailure()",
             async (span) => {
@@ -892,14 +884,10 @@ export class TaskExecutor {
             }
           )
         );
-
-        if (hookError) {
-          throw hookError;
-        }
       }
 
       if (taskFailureHook) {
-        const [hookError] = await tryCatch(
+        await tryCatch(
           this._tracer.startActiveSpan(
             "onFailure()",
             async (span) => {
@@ -921,10 +909,6 @@ export class TaskExecutor {
             }
           )
         );
-
-        if (hookError) {
-          throw hookError;
-        }
       }
     });
   }
@@ -1315,7 +1299,7 @@ export class TaskExecutor {
 
     return await runTimelineMetrics.measureMetric("trigger.dev/execution", "complete", async () => {
       for (const hook of globalCompleteHooks) {
-        const [hookError] = await tryCatch(
+        await tryCatch(
           this._tracer.startActiveSpan(
             "onComplete()",
             async (span) => {
@@ -1337,14 +1321,10 @@ export class TaskExecutor {
             }
           )
         );
-
-        if (hookError) {
-          throw hookError;
-        }
       }
 
       if (taskCompleteHook) {
-        const [hookError] = await tryCatch(
+        await tryCatch(
           this._tracer.startActiveSpan(
             "onComplete()",
             async (span) => {
@@ -1366,10 +1346,6 @@ export class TaskExecutor {
             }
           )
         );
-
-        if (hookError) {
-          throw hookError;
-        }
       }
     });
   }

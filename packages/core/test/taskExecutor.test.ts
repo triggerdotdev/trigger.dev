@@ -1246,6 +1246,48 @@ describe("TaskExecutor", () => {
     });
   });
 
+  test("should NOT propagate errors from onSuccess hooks", async () => {
+    const executionOrder: string[] = [];
+    const expectedError = new Error("On success hook error");
+
+    // Register global on success hook that throws an error
+    lifecycleHooks.registerGlobalSuccessHook({
+      id: "global-success",
+      fn: async () => {
+        executionOrder.push("global-success");
+        throw expectedError;
+      },
+    });
+
+    const task = {
+      id: "test-task",
+      fns: {
+        run: async (payload: any, params: RunFnParams<any>) => {
+          executionOrder.push("run");
+          return {
+            output: "test-output",
+          };
+        },
+      },
+    };
+
+    // Expect that this does not throw an error
+    const result = await executeTask(task, { test: "data" }, undefined);
+
+    // Verify that run was called and on success hook was called
+    expect(executionOrder).toEqual(["run", "global-success"]);
+
+    // Verify the error result
+    expect(result).toEqual({
+      result: {
+        ok: true,
+        id: "test-run-id",
+        output: '{"json":{"output":"test-output"}}',
+        outputType: "application/super+json",
+      },
+    });
+  });
+
   test("should call cleanup hooks in correct order after other hooks but before middleware completion", async () => {
     const executionOrder: string[] = [];
 
