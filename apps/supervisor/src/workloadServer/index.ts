@@ -16,7 +16,6 @@ import {
   type WorkloadRunAttemptCompleteResponseBody,
   WorkloadRunAttemptStartRequestBody,
   type WorkloadRunAttemptStartResponseBody,
-  type WorkloadRunLatestSnapshotResponseBody,
   WorkloadRunSnapshotsSinceResponseBody,
   type WorkloadServerToClientEvents,
   type WorkloadSuspendRunResponseBody,
@@ -322,28 +321,6 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
           },
         }
       )
-      .route("/api/v1/workload-actions/runs/:runFriendlyId/snapshots/latest", "GET", {
-        paramsSchema: WorkloadActionParams.pick({ runFriendlyId: true }),
-        handler: async ({ req, reply, params }) => {
-          const latestSnapshotResponse = await this.workerClient.getLatestSnapshot(
-            params.runFriendlyId,
-            this.runnerIdFromRequest(req)
-          );
-
-          if (!latestSnapshotResponse.success) {
-            this.logger.error("Failed to get latest snapshot", {
-              runId: params.runFriendlyId,
-              error: latestSnapshotResponse.error,
-            });
-            reply.empty(500);
-            return;
-          }
-
-          reply.json({
-            execution: latestSnapshotResponse.data.execution,
-          } satisfies WorkloadRunLatestSnapshotResponseBody);
-        },
-      })
       .route(
         "/api/v1/workload-actions/runs/:runFriendlyId/snapshots/since/:snapshotFriendlyId",
         "GET",
