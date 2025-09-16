@@ -77,6 +77,7 @@ import { DateTime } from "~/components/primitives/DateTime";
 import { TextLink } from "~/components/primitives/TextLink";
 import { cn } from "~/utils/cn";
 import { ProjectSettingsPresenter } from "~/services/projectSettingsPresenter.server";
+import { BuildSettings, BuildSettingsSchema } from "~/v3/buildSettings";
 
 export const meta: MetaFunction = () => {
   return [
@@ -158,10 +159,12 @@ const UpdateGitSettingsFormSchema = z.object({
 
 const UpdateBuildSettingsFormSchema = z.object({
   action: z.literal("update-build-settings"),
-  rootDirectory: z.string().trim().optional(),
+  triggerConfigFilePath: z.string().trim().optional(),
+  installDirectory: z.string().trim().optional(),
   installCommand: z.string().trim().optional(),
-  triggerConfigFile: z.string().trim().optional(),
 });
+
+type UpdateBuildSettingsFormSchema = z.infer<typeof UpdateBuildSettingsFormSchema>;
 
 export function createSchema(
   constraints: {
@@ -386,12 +389,12 @@ export const action: ActionFunction = async ({ request, params }) => {
       });
     }
     case "update-build-settings": {
-      const { rootDirectory, installCommand, triggerConfigFile } = submission.value;
+      const { installDirectory, installCommand, triggerConfigFilePath } = submission.value;
 
       const resultOrFail = await projectSettingsService.updateBuildSettings(projectId, {
-        rootDirectory: rootDirectory || undefined,
+        installDirectory: installDirectory || undefined,
         installCommand: installCommand || undefined,
-        triggerConfigFile: triggerConfigFile || undefined,
+        triggerConfigFilePath: triggerConfigFilePath || undefined,
       });
 
       if (resultOrFail.isErr()) {
@@ -1078,28 +1081,22 @@ function ConnectedGitHubRepoForm({
   );
 }
 
-type BuildSettings = {
-  rootDirectory?: string;
-  installCommand?: string;
-  triggerConfigFile?: string;
-};
-
 function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) {
   const lastSubmission = useActionData() as any;
   const navigation = useNavigation();
 
   const [hasBuildSettingsChanges, setHasBuildSettingsChanges] = useState(false);
   const [buildSettingsValues, setBuildSettingsValues] = useState({
-    rootDirectory: buildSettings?.rootDirectory || "",
+    installDirectory: buildSettings?.installDirectory || "",
     installCommand: buildSettings?.installCommand || "",
-    triggerConfigFile: buildSettings?.triggerConfigFile || "",
+    triggerConfigFilePath: buildSettings?.triggerConfigFilePath || "",
   });
 
   useEffect(() => {
     const hasChanges =
-      buildSettingsValues.rootDirectory !== (buildSettings?.rootDirectory || "") ||
+      buildSettingsValues.installDirectory !== (buildSettings?.installDirectory || "") ||
       buildSettingsValues.installCommand !== (buildSettings?.installCommand || "") ||
-      buildSettingsValues.triggerConfigFile !== (buildSettings?.triggerConfigFile || "");
+      buildSettingsValues.triggerConfigFilePath !== (buildSettings?.triggerConfigFilePath || "");
     setHasBuildSettingsChanges(hasChanges);
   }, [buildSettingsValues, buildSettings]);
 
@@ -1122,21 +1119,26 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
     <Form method="post" {...buildSettingsForm.props}>
       <Fieldset>
         <InputGroup fullWidth>
-          <Label htmlFor={fields.rootDirectory.id}>Root directory</Label>
+          <Label htmlFor={fields.triggerConfigFilePath.id}>Trigger config file</Label>
           <Input
-            {...conform.input(fields.rootDirectory, { type: "text" })}
-            defaultValue={buildSettings?.rootDirectory || ""}
-            placeholder="/"
+            {...conform.input(fields.triggerConfigFilePath, { type: "text" })}
+            defaultValue={buildSettings?.triggerConfigFilePath || ""}
+            placeholder="trigger.config.ts"
             onChange={(e) => {
               setBuildSettingsValues((prev) => ({
                 ...prev,
-                rootDirectory: e.target.value,
+                triggerConfigFile: e.target.value,
               }));
             }}
           />
-          <Hint>The directory that contains your code.</Hint>
-          <FormError id={fields.rootDirectory.errorId}>{fields.rootDirectory.error}</FormError>
+          <Hint>
+            Path to your Trigger configuration file, relative to the root directory of your repo.
+          </Hint>
+          <FormError id={fields.triggerConfigFilePath.errorId}>
+            {fields.triggerConfigFilePath.error}
+          </FormError>
         </InputGroup>
+
         <InputGroup fullWidth>
           <Label htmlFor={fields.installCommand.id}>Install command</Label>
           <Input
@@ -1150,29 +1152,25 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
               }));
             }}
           />
-          <Hint>
-            Command to install your project dependencies. This is auto-detected by default.
-          </Hint>
+          <Hint>Command to install your project dependencies. Auto-detected by default.</Hint>
           <FormError id={fields.installCommand.errorId}>{fields.installCommand.error}</FormError>
         </InputGroup>
         <InputGroup fullWidth>
-          <Label htmlFor={fields.triggerConfigFile.id}>Trigger config file</Label>
+          <Label htmlFor={fields.installDirectory.id}>Install directory</Label>
           <Input
-            {...conform.input(fields.triggerConfigFile, { type: "text" })}
-            defaultValue={buildSettings?.triggerConfigFile || ""}
-            placeholder="trigger.config.ts"
+            {...conform.input(fields.installDirectory, { type: "text" })}
+            defaultValue={buildSettings?.installDirectory || ""}
+            placeholder=""
             onChange={(e) => {
               setBuildSettingsValues((prev) => ({
                 ...prev,
-                triggerConfigFile: e.target.value,
+                rootDirectory: e.target.value,
               }));
             }}
           />
-          <Hint>
-            Path to your trigger configuration file, relative to the specified root directory.
-          </Hint>
-          <FormError id={fields.triggerConfigFile.errorId}>
-            {fields.triggerConfigFile.error}
+          <Hint>The directory where the install command is run in. Auto-detected by default.</Hint>
+          <FormError id={fields.installDirectory.errorId}>
+            {fields.installDirectory.error}
           </FormError>
         </InputGroup>
         <FormError>{buildSettingsForm.error}</FormError>
