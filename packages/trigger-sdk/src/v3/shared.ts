@@ -91,6 +91,7 @@ import type {
   TriggerApiRequestOptions,
   TriggerOptions,
 } from "@trigger.dev/core/v3";
+import { AnyOnStartAttemptHookFunction } from "../../../core/src/v3/lifecycleHooks/types.js";
 
 export type {
   AnyRunHandle,
@@ -1584,6 +1585,12 @@ function registerTaskLifecycleHooks<
   if (params.onStart) {
     lifecycleHooks.registerTaskStartHook(taskId, {
       fn: params.onStart as AnyOnStartHookFunction,
+    });
+  }
+
+  if (params.onStartAttempt) {
+    lifecycleHooks.registerTaskStartAttemptHook(taskId, {
+      fn: params.onStartAttempt as AnyOnStartAttemptHookFunction,
     });
   }
 

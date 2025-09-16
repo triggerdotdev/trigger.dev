@@ -13,6 +13,7 @@ import {
   type AnyOnMiddlewareHookFunction,
   type AnyOnCancelHookFunction,
 } from "@trigger.dev/core/v3";
+import { AnyOnStartAttemptHookFunction } from "../../../core/src/v3/lifecycleHooks/types.js";
 
 export type {
   AnyOnStartHookFunction,
@@ -36,6 +37,18 @@ export function onStart(
   fn?: AnyOnStartHookFunction
 ): void {
   lifecycleHooks.registerGlobalStartHook({
+    id: typeof fnOrName === "string" ? fnOrName : fnOrName.name ? fnOrName.name : undefined,
+    fn: typeof fnOrName === "function" ? fnOrName : fn!,
+  });
+}
+
+export function onStartAttempt(name: string, fn: AnyOnStartHookFunction): void;
+export function onStartAttempt(fn: AnyOnStartHookFunction): void;
+export function onStartAttempt(
+  fnOrName: string | AnyOnStartAttemptHookFunction,
+  fn?: AnyOnStartAttemptHookFunction
+): void {
+  lifecycleHooks.registerGlobalStartAttemptHook({
     id: typeof fnOrName === "string" ? fnOrName : fnOrName.name ? fnOrName.name : undefined,
     fn: typeof fnOrName === "function" ? fnOrName : fn!,
   });

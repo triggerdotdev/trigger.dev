@@ -247,19 +247,16 @@ export const myTask = task({
 });
 ```
 
-### `onStart` function
+### `onStartAttempt` function
 
-When a task run starts, the `onStart` function is called. It's useful for sending notifications, logging, and other side effects.
+<Info>The `onStartAttempt` function was introduced in v4.1.0</Info>
 
-<Warning>
-  This function will only be called once per run (not per attempt). If you want to run code before
-  each attempt, use a middleware function.
-</Warning>
+Before a task run attempt starts, the `onStartAttempt` function is called. It's useful for sending notifications, logging, and other side effects.
 
 ```ts /trigger/on-start.ts
-export const taskWithOnStart = task({
-  id: "task-with-on-start",
-  onStart: async ({ payload, ctx }) => {
+export const taskWithOnStartAttempt = task({
+  id: "task-with-on-start-attempt",
+  onStartAttempt: async ({ payload, ctx }) => {
     //...
   },
   run: async (payload: any, { ctx }) => {
@@ -268,17 +265,33 @@ export const taskWithOnStart = task({
 });
 ```
 
-You can also define a global `onStart` function using `tasks.onStart()`.
+You can also define a global `onStartAttempt` function using `tasks.onStartAttempt()`.
 
 ```ts init.ts
 import { tasks } from "@trigger.dev/sdk";
 
-tasks.onStart(({ ctx, payload, task }) => {
-  console.log(`Run ${ctx.run.id} started on task ${task}`, ctx.run);
+tasks.onStartAttempt(({ ctx, payload, task }) => {
+  console.log(
+    `Run ${ctx.run.id} started on task ${task} attempt ${ctx.run.attempt.number}`,
+    ctx.run
+  );
 });
 ```
 
-<Info>Errors thrown in the `onStart` function will cause the attempt to fail.</Info>
+<Info>Errors thrown in the `onStartAttempt` function will cause the attempt to fail.</Info>
+
+If you want to execute code before just the first attempt, you can use the `onStartAttempt` function and check `ctx.run.attempt.number === 1`:
+
+```ts /trigger/on-start-attempt.ts
+export const taskWithOnStartAttempt = task({
+  id: "task-with-on-start-attempt",
+  onStartAttempt: async ({ payload, ctx }) => {
+    if (ctx.run.attempt.number === 1) {
+      console.log("Run started on attempt 1", ctx.run);
+    }
+  },
+});
+```
 
 ### `onWait` and `onResume` functions
 
@@ -521,6 +534,41 @@ export const cancelExampleTask = task({
   You will have up to 30 seconds to complete the `runPromise` in the `onCancel` hook. After that
   point the process will be killed.
 </Note>
+
+### `onStart` function (deprecated)
+
+<Info>The `onStart` function was deprecated in v4.1.0. Use `onStartAttempt` instead.</Info>
+
+When a task run starts, the `onStart` function is called. It's useful for sending notifications, logging, and other side effects.
+
+<Warning>
+  This function will only be called once per run (not per attempt). If you want to run code before
+  each attempt, use a middleware function or the `onStartAttempt` function.
+</Warning>
+
+```ts /trigger/on-start.ts
+export const taskWithOnStart = task({
+  id: "task-with-on-start",
+  onStart: async ({ payload, ctx }) => {
+    //...
+  },
+  run: async (payload: any, { ctx }) => {
+    //...
+  },
+});
+```
+
+You can also define a global `onStart` function using `tasks.onStart()`.
+
+```ts init.ts
+import { tasks } from "@trigger.dev/sdk";
+
+tasks.onStart(({ ctx, payload, task }) => {
+  console.log(`Run ${ctx.run.id} started on task ${task}`, ctx.run);
+});
+```
+
+<Info>Errors thrown in the `onStart` function will cause the attempt to fail.</Info>
 
 ### `init` function (deprecated)
 
