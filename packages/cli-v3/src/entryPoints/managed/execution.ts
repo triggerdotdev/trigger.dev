@@ -896,7 +896,10 @@ export class RunExecution {
   /**
    * Processes env overrides from the metadata service. Generally called when we're resuming from a suspended state.
    */
-  public async processEnvOverrides(reason?: string): Promise<{ overrides: Metadata } | null> {
+  public async processEnvOverrides(
+    reason?: string,
+    shouldPollForSnapshotChanges?: boolean
+  ): Promise<{ overrides: Metadata } | null> {
     if (!this.metadataClient) {
       return null;
     }
@@ -941,6 +944,12 @@ export class RunExecution {
     }
     if (overrides.TRIGGER_RUNNER_ID) {
       this.httpClient.updateRunnerId(this.env.TRIGGER_RUNNER_ID);
+    }
+
+    // Poll for snapshot changes immediately
+    if (shouldPollForSnapshotChanges) {
+      this.sendDebugLog("[override] polling for snapshot changes", { reason });
+      this.fetchAndProcessSnapshotChanges("restore").catch(() => {});
     }
 
     return {

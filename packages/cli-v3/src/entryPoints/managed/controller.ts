@@ -514,7 +514,7 @@ export class ManagedRunController {
           supervisorApiUrl: this.env.TRIGGER_SUPERVISOR_API_URL,
         };
 
-        await this.currentExecution.processEnvOverrides("socket disconnected");
+        await this.currentExecution.processEnvOverrides("socket disconnected", true);
 
         const newEnv = {
           workerInstanceName: this.env.TRIGGER_WORKER_INSTANCE_NAME,
