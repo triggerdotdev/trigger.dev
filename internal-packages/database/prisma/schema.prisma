@@ -394,6 +394,8 @@ model Project {
   executionSnapshots        TaskRunExecutionSnapshot[]
   waitpointTags             WaitpointTag[]
   connectedGithubRepository ConnectedGithubRepository?
+
+  buildSettings Json?
 }
 
 enum ProjectVersion {
