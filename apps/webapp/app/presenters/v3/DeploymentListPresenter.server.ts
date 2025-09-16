@@ -144,7 +144,7 @@ export class DeploymentListPresenter {
   wd."git"
 FROM
   ${sqlDatabaseSchema}."WorkerDeployment" as wd
-INNER JOIN
+LEFT JOIN
   ${sqlDatabaseSchema}."User" as u ON wd."triggeredById" = u."id"
 WHERE
   wd."projectId" = ${project.id}

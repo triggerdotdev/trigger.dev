@@ -1,3 +1,4 @@
+import { JSONHeroPath } from "@jsonhero/path";
 import { Attributes, Span } from "@opentelemetry/api";
 import { z } from "zod";
 import { ApiClient } from "../apiClient/index.js";
@@ -12,7 +13,6 @@ import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
 import { TriggerTracer } from "../tracer.js";
 import { zodfetch } from "../zodfetch.js";
 import { flattenAttributes } from "./flattenAttributes.js";
-import { JSONHeroPath } from "@jsonhero/path";
 
 export type IOPacket = {
   data?: string | undefined;
@@ -389,16 +389,40 @@ export async function prettyPrintPacket(
     if (typeof rawData === "string") {
       rawData = safeJsonParse(rawData);
     }
+
     const { deserialize } = await loadSuperJSON();
 
-    return await prettyPrintPacket(deserialize(rawData), "application/json");
+    const hasCircularReferences = rawData && rawData.meta && hasCircularReference(rawData.meta);
+
+    if (hasCircularReferences) {
+      return await prettyPrintPacket(deserialize(rawData), "application/json", {
+        ...options,
+        cloneReferences: false,
+      });
+    }
+
+    return await prettyPrintPacket(deserialize(rawData), "application/json", {
+      ...options,
+      cloneReferences: true,
+    });
   }
 
   if (dataType === "application/json") {
     if (typeof rawData === "string") {
       rawData = safeJsonParse(rawData);
     }
-    return JSON.stringify(rawData, makeSafeReplacer(options), 2);
+
+    try {
+      return JSON.stringify(rawData, makeSafeReplacer(options), 2);
+    } catch (error) {
+      // If cloneReferences is true, it's possible if our hasCircularReference logic is incorrect that stringifying the data will fail with a circular reference error
+      // So we will try to stringify the data with cloneReferences set to false
+      if (options?.cloneReferences) {
+        return JSON.stringify(rawData, makeSafeReplacer({ ...options, cloneReferences: false }), 2);
+      }
+
+      throw error;
+    }
   }
 
   if (typeof rawData === "string") {
@@ -410,6 +434,7 @@ export async function prettyPrintPacket(
 
 interface ReplacerOptions {
   filteredKeys?: string[];
+  cloneReferences?: boolean;
 }
 
 function makeSafeReplacer(options?: ReplacerOptions) {
@@ -418,6 +443,10 @@ function makeSafeReplacer(options?: ReplacerOptions) {
   return function replacer(key: string, value: any) {
     if (typeof value === "object" && value !== null) {
       if (seen.has(value)) {
+        if (options?.cloneReferences) {
+          return structuredClone(value);
+        }
+
         return "[Circular]";
       }
       seen.add(value);
@@ -556,4 +585,81 @@ function getKeyFromObject(object: unknown, key: string) {
   const jsonHeroPath = new JSONHeroPath(key);
 
   return jsonHeroPath.first(object);
+}
+
+/**
+ * Detects if a superjson serialization contains circular references
+ * by analyzing the meta.referentialEqualities structure.
+ *
+ * Based on superjson's ReferentialEqualityAnnotations type:
+ * Record<string, string[]> | [string[]] | [string[], Record<string, string[]>]
+ *
+ * Circular references are represented as:
+ * - [string[]] where strings are paths that reference back to root or ancestors
+ * - The first element in [string[], Record<string, string[]>] format
+ */
+function hasCircularReference(meta: any): boolean {
+  if (!meta?.referentialEqualities) {
+    return false;
+  }
+
+  const re = meta.referentialEqualities;
+
+  // Case 1: [string[]] - array containing only circular references
+  if (Array.isArray(re) && re.length === 1 && Array.isArray(re[0])) {
+    return re[0].length > 0; // Has circular references
+  }
+
+  // Case 2: [string[], Record<string, string[]>] - mixed format
+  if (Array.isArray(re) && re.length === 2 && Array.isArray(re[0])) {
+    return re[0].length > 0; // First element contains circular references
+  }
+
+  // Case 3: Record<string, string[]> - check for circular patterns in shared references
+  if (!Array.isArray(re) && typeof re === "object") {
+    // Check if any reference path points to an ancestor path
+    for (const [targetPath, referencePaths] of Object.entries(re)) {
+      for (const refPath of referencePaths as string[]) {
+        if (isCircularPattern(targetPath, refPath)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  return false;
+}
+
+/**
+ * Checks if a reference pattern represents a circular reference
+ * by analyzing if the reference path points back to an ancestor of the target path
+ */
+function isCircularPattern(targetPath: string, referencePath: string): boolean {
+  const targetParts = targetPath.split(".");
+  const refParts = referencePath.split(".");
+
+  // For circular references, the reference path often contains the target path as a prefix
+  // Example: targetPath="user", referencePath="user.details.user"
+  // This means user.details.user points back to user (circular)
+
+  // Check if reference path starts with target path + additional segments that loop back
+  if (refParts.length > targetParts.length) {
+    // Check if reference path starts with target path
+    let isPrefix = true;
+    for (let i = 0; i < targetParts.length; i++) {
+      if (targetParts[i] !== refParts[i]) {
+        isPrefix = false;
+        break;
+      }
+    }
+
+    // If reference path starts with target path and ends with target path,
+    // it's likely a circular reference (e.g., "user" -> "user.details.user")
+    if (isPrefix && refParts[refParts.length - 1] === targetParts[targetParts.length - 1]) {
+      return true;
+    }
+  }
+
+  return false;
 }

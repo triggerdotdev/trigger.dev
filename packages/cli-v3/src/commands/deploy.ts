@@ -1,6 +1,9 @@
 import { intro, log, outro } from "@clack/prompts";
 import { getBranch, prepareDeploymentError, tryCatch } from "@trigger.dev/core/v3";
-import { InitializeDeploymentResponseBody } from "@trigger.dev/core/v3/schemas";
+import {
+  InitializeDeploymentRequestBody,
+  InitializeDeploymentResponseBody,
+} from "@trigger.dev/core/v3/schemas";
 import { Command, Option as CommandOption } from "commander";
 import { resolve } from "node:path";
 import { isCI } from "std-env";
@@ -306,19 +309,17 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     return;
   }
 
-  const deploymentResponse = await projectClient.client.initializeDeployment({
-    contentHash: buildManifest.contentHash,
-    userId: authorization.auth.tokenType === "personal" ? authorization.userId : undefined,
-    gitMeta,
-    type: features.run_engine_v2 ? "MANAGED" : "V1",
-    runtime: buildManifest.runtime,
-  });
-
-  if (!deploymentResponse.success) {
-    throw new Error(`Failed to start deployment: ${deploymentResponse.error}`);
-  }
-
-  const deployment = deploymentResponse.data;
+  const deployment = await initializeOrAttachDeployment(
+    projectClient.client,
+    {
+      contentHash: buildManifest.contentHash,
+      userId: authorization.auth.tokenType === "personal" ? authorization.userId : undefined,
+      gitMeta,
+      type: features.run_engine_v2 ? "MANAGED" : "V1",
+      runtime: buildManifest.runtime,
+    },
+    envVars.TRIGGER_EXISTING_DEPLOYMENT_ID
+  );
   const isLocalBuild = !deployment.externalBuildData;
 
   // Fail fast if we know local builds will fail
@@ -619,7 +620,7 @@ export async function syncEnvVarsWithServer(
 
 async function failDeploy(
   client: CliApiClient,
-  deployment: Deployment,
+  deployment: Pick<Deployment, "id" | "shortCode">,
   error: { name: string; message: string },
   logs: string,
   $spinner: ReturnType<typeof spinner>,
@@ -733,6 +734,60 @@ async function failDeploy(
       }
     }
   }
+}
+
+async function initializeOrAttachDeployment(
+  apiClient: CliApiClient,
+  data: InitializeDeploymentRequestBody,
+  existingDeploymentId?: string
+): Promise<InitializeDeploymentResponseBody> {
+  if (existingDeploymentId) {
+    // In the build server we initialize the deployment before installing the project dependencies,
+    // so that the status is correctly reflected in the dashboard. In this case, we need to attach
+    // to the existing deployment and continue with the remote build process.
+    // This is a workaround to avoid major changes in the deploy command and workflow. In the future,
+    // we'll likely make the build server the entry point of the flow for building and deploying and also
+    // adapt the related deployment API endpoints.
+
+    const existingDeploymentOrError = await apiClient.getDeployment(existingDeploymentId);
+
+    if (!existingDeploymentOrError.success) {
+      throw new Error(
+        `Failed to attach to existing deployment: ${existingDeploymentOrError.error}`
+      );
+    }
+
+    const { imageReference, status } = existingDeploymentOrError.data;
+    if (!imageReference) {
+      // this is just an artifact of our current DB schema
+      // `imageReference` is stored as nullable, but it should always exist
+      throw new Error("Existing deployment does not have an image reference");
+    }
+
+    if (
+      status === "CANCELED" ||
+      status === "FAILED" ||
+      status === "TIMED_OUT" ||
+      status === "DEPLOYED"
+    ) {
+      throw new Error(`Existing deployment is in an unexpected state: ${status}`);
+    }
+
+    return {
+      ...existingDeploymentOrError.data,
+      imageTag: imageReference,
+    };
+  }
+
+  const newDeploymentOrError = await apiClient.initializeDeployment({
+    ...data,
+  });
+
+  if (!newDeploymentOrError.success) {
+    throw new Error(`Failed to start deployment: ${newDeploymentOrError.error}`);
+  }
+
+  return newDeploymentOrError.data;
 }
 
 export function verifyDirectory(dir: string, projectPath: string) {
