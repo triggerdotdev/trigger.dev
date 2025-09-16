@@ -49,7 +49,7 @@ export const generateImageAndUploadToR2 = task({
       webhook_events_filter: ["completed"],
     });
 
-    const result = await wait.forToken<Prediction>(token);
+    const result = await wait.forToken<Prediction>(token).unwrap();
     // unwrap() throws a timeout error or returns the result 👆
 
     if (!result.ok) {
