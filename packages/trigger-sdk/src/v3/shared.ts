@@ -90,8 +90,8 @@ import type {
   TriggerAndWaitOptions,
   TriggerApiRequestOptions,
   TriggerOptions,
+  AnyOnStartAttemptHookFunction,
 } from "@trigger.dev/core/v3";
-import { AnyOnStartAttemptHookFunction } from "../../../core/src/v3/lifecycleHooks/types.js";
 
 export type {
   AnyRunHandle,

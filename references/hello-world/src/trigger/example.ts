@@ -507,3 +507,24 @@ export const throwErrorInInitHookTask = task({
     throw new Error("Forced error to cause a retry");
   },
 });
+
+export const testStartAttemptHookTask = task({
+  id: "test-start-attempt-hook",
+  retry: {
+    maxAttempts: 3,
+  },
+  run: async (payload: { message: string }, { ctx }) => {
+    logger.info("Hello, world from the test start attempt hook task", { message: payload.message });
+
+    if (ctx.attempt.number === 1) {
+      throw new Error("Forced error to cause a retry so we can test the onStartAttempt hook");
+    }
+  },
+  onStartAttempt: async ({ payload, ctx }) => {
+    console.log(`onStartAttempt hook called ${ctx.attempt.number}`);
+  },
+});
+
+tasks.onStartAttempt(({ payload, ctx }) => {
+  console.log(`global onStartAttempt hook called ${ctx.attempt.number}`);
+});

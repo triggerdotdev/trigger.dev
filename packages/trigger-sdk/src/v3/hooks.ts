@@ -12,8 +12,8 @@ import {
   type AnyOnCatchErrorHookFunction,
   type AnyOnMiddlewareHookFunction,
   type AnyOnCancelHookFunction,
+  type AnyOnStartAttemptHookFunction,
 } from "@trigger.dev/core/v3";
-import { AnyOnStartAttemptHookFunction } from "../../../core/src/v3/lifecycleHooks/types.js";
 
 export type {
   AnyOnStartHookFunction,

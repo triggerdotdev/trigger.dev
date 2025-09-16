@@ -1030,7 +1030,7 @@ export class TaskExecutor {
         if (taskStartHook) {
           const [hookError] = await tryCatch(
             this._tracer.startActiveSpan(
-              "onStart()",
+              "onStartAttempt()",
               async (span) => {
                 await taskStartHook({
                   payload,
