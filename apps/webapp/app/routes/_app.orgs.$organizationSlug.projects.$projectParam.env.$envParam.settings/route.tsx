@@ -77,7 +77,7 @@ import { DateTime } from "~/components/primitives/DateTime";
 import { TextLink } from "~/components/primitives/TextLink";
 import { cn } from "~/utils/cn";
 import { ProjectSettingsPresenter } from "~/services/projectSettingsPresenter.server";
-import { BuildSettings, BuildSettingsSchema } from "~/v3/buildSettings";
+import { type BuildSettings } from "~/v3/buildSettings";
 
 export const meta: MetaFunction = () => {
   return [
@@ -159,9 +159,32 @@ const UpdateGitSettingsFormSchema = z.object({
 
 const UpdateBuildSettingsFormSchema = z.object({
   action: z.literal("update-build-settings"),
-  triggerConfigFilePath: z.string().trim().optional(),
-  installDirectory: z.string().trim().optional(),
-  installCommand: z.string().trim().optional(),
+  triggerConfigFilePath: z
+    .string()
+    .trim()
+    .optional()
+    .transform((val) => (val ? val.replace(/^\/+/, "") : val))
+    .refine((val) => !val || val.length <= 255, {
+      message: "Config file path must not exceed 255 characters",
+    }),
+  installDirectory: z
+    .string()
+    .trim()
+    .optional()
+    .transform((val) => (val ? val.replace(/^\/+/, "") : val))
+    .refine((val) => !val || val.length <= 255, {
+      message: "Install directory must not exceed 255 characters",
+    }),
+  installCommand: z
+    .string()
+    .trim()
+    .optional()
+    .refine((val) => !val || !val.includes("\n"), {
+      message: "Install command must be a single line",
+    })
+    .refine((val) => !val || val.length <= 500, {
+      message: "Install command must not exceed 500 characters",
+    }),
 });
 
 type UpdateBuildSettingsFormSchema = z.infer<typeof UpdateBuildSettingsFormSchema>;
@@ -1127,7 +1150,7 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
             onChange={(e) => {
               setBuildSettingsValues((prev) => ({
                 ...prev,
-                triggerConfigFile: e.target.value,
+                triggerConfigFilePath: e.target.value,
               }));
             }}
           />
@@ -1164,7 +1187,7 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
             onChange={(e) => {
               setBuildSettingsValues((prev) => ({
                 ...prev,
-                rootDirectory: e.target.value,
+                installDirectory: e.target.value,
               }));
             }}
           />
