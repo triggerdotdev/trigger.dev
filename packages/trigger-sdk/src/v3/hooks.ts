@@ -42,8 +42,8 @@ export function onStart(
   });
 }
 
-export function onStartAttempt(name: string, fn: AnyOnStartHookFunction): void;
-export function onStartAttempt(fn: AnyOnStartHookFunction): void;
+export function onStartAttempt(name: string, fn: AnyOnStartAttemptHookFunction): void;
+export function onStartAttempt(fn: AnyOnStartAttemptHookFunction): void;
 export function onStartAttempt(
   fnOrName: string | AnyOnStartAttemptHookFunction,
   fn?: AnyOnStartAttemptHookFunction
