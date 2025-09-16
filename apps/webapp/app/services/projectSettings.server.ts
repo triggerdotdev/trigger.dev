@@ -4,6 +4,7 @@ import { DeleteProjectService } from "~/services/deleteProject.server";
 import { BranchTrackingConfigSchema, type BranchTrackingConfig } from "~/v3/github";
 import { checkGitHubBranchExists } from "~/services/gitHub.server";
 import { errAsync, fromPromise, okAsync, ResultAsync } from "neverthrow";
+import { BuildSettings } from "~/v3/buildSettings";
 
 export class ProjectSettingsService {
   #prismaClient: PrismaClient;
@@ -242,6 +243,23 @@ export class ProjectSettingsService {
         ]);
       })
       .andThen(updateConnectedRepo);
+  }
+
+  updateBuildSettings(projectId: string, buildSettings: BuildSettings) {
+    return fromPromise(
+      this.#prismaClient.project.update({
+        where: {
+          id: projectId,
+        },
+        data: {
+          buildSettings: buildSettings,
+        },
+      }),
+      (error) => ({
+        type: "other" as const,
+        cause: error,
+      })
+    );
   }
 
   verifyProjectMembership(organizationSlug: string, projectSlug: string, userId: string) {
