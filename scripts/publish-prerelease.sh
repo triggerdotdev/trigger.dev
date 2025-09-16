@@ -24,7 +24,7 @@ if [[ -z "${GITHUB_TOKEN}" ]]; then
 fi
 
 # Use the first argument as version or 'v3-prerelease' if not available
-version=${1:-'v3-prerelease'}
+version=${1:-'v4-prerelease'}
 
 # Ensure git stage is clear
 if [[ $(git status --porcelain) ]]; then
