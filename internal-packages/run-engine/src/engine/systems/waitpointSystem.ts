@@ -738,25 +738,21 @@ export class WaitpointSystem {
     }); // end of runlock
   }
 
-  public async createRunAssociatedWaitpoint(
-    tx: PrismaClientOrTransaction,
-    {
+  public buildRunAssociatedWaitpoint({
+    projectId,
+    environmentId,
+  }: {
+    projectId: string;
+    environmentId: string;
+  }) {
+    return {
+      ...WaitpointId.generate(),
+      type: "RUN" as const,
+      status: "PENDING" as const,
+      idempotencyKey: nanoid(24),
+      userProvidedIdempotencyKey: false,
       projectId,
       environmentId,
-      completedByTaskRunId,
-    }: { projectId: string; environmentId: string; completedByTaskRunId: string }
-  ) {
-    return tx.waitpoint.create({
-      data: {
-        ...WaitpointId.generate(),
-        type: "RUN",
-        status: "PENDING",
-        idempotencyKey: nanoid(24),
-        userProvidedIdempotencyKey: false,
-        projectId,
-        environmentId,
-        completedByTaskRunId,
-      },
-    });
+    };
   }
 }
