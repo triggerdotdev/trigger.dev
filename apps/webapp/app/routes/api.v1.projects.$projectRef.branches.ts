@@ -1,7 +1,8 @@
-import { json, LoaderFunctionArgs, type ActionFunctionArgs } from "@remix-run/server-runtime";
+import { json, type LoaderFunctionArgs, type ActionFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch, UpsertBranchRequestBody } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { prisma } from "~/db.server";
+import { authenticateRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
 import { UpsertBranchService } from "~/services/upsertBranch.server";
@@ -19,7 +20,11 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   logger.info("project upsert branch", { url: request.url });
 
-  const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
+  const authenticationResult = await authenticateRequest(request, {
+    personalAccessToken: true,
+    organizationAccessToken: true,
+    apiKey: false,
+  });
   if (!authenticationResult) {
     return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
   }
@@ -38,13 +43,16 @@ export async function action({ request, params }: ActionFunctionArgs) {
     },
     where: {
       externalRef: projectRef,
-      organization: {
-        members: {
-          some: {
-            userId: authenticationResult.userId,
-          },
-        },
-      },
+      organization:
+        authenticationResult.type === "organizationAccessToken"
+          ? { id: authenticationResult.result.organizationId }
+          : {
+              members: {
+                some: {
+                  userId: authenticationResult.result.userId,
+                },
+              },
+            },
     },
   });
   if (!project) {
@@ -81,11 +89,16 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const { branch, env, git } = parsed.data;
 
   const service = new UpsertBranchService();
-  const result = await service.call(authenticationResult.userId, {
-    branchName: branch,
-    parentEnvironmentId: previewEnvironment.id,
-    git,
-  });
+  const result = await service.call(
+    authenticationResult.type === "organizationAccessToken"
+      ? { type: "orgId", organizationId: authenticationResult.result.organizationId }
+      : { type: "userMembership", userId: authenticationResult.result.userId },
+    {
+      branchName: branch,
+      parentEnvironmentId: previewEnvironment.id,
+      git,
+    }
+  );
 
   if (!result.success) {
     return json({ error: result.error }, { status: 400 });
