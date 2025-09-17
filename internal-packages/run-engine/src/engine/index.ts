@@ -381,11 +381,15 @@ export class RunEngine {
         const status = delayUntil ? "DELAYED" : "PENDING";
 
         //create run
-        let taskRun: TaskRun;
+        let taskRun: TaskRun & { associatedWaitpoint: Waitpoint | null };
+        const taskRunId = RunId.fromFriendlyId(friendlyId);
         try {
           taskRun = await prisma.taskRun.create({
+            include: {
+              associatedWaitpoint: true,
+            },
             data: {
-              id: RunId.fromFriendlyId(friendlyId),
+              id: taskRunId,
               engine: "V2",
               status,
               number,
@@ -459,6 +463,12 @@ export class RunEngine {
                   runnerId,
                 },
               },
+              associatedWaitpoint: {
+                create: this.waitpointSystem.buildRunAssociatedWaitpoint({
+                  projectId: environment.project.id,
+                  environmentId: environment.id,
+                }),
+              },
             },
           });
         } catch (error) {
@@ -492,23 +502,13 @@ export class RunEngine {
 
         span.setAttribute("runId", taskRun.id);
 
-        //create associated waitpoint (this completes when the run completes)
-        const associatedWaitpoint = await this.waitpointSystem.createRunAssociatedWaitpoint(
-          prisma,
-          {
-            projectId: environment.project.id,
-            environmentId: environment.id,
-            completedByTaskRunId: taskRun.id,
-          }
-        );
-
         //triggerAndWait or batchTriggerAndWait
-        if (resumeParentOnCompletion && parentTaskRunId) {
+        if (resumeParentOnCompletion && parentTaskRunId && taskRun.associatedWaitpoint) {
           //this will block the parent run from continuing until this waitpoint is completed (and removed)
           await this.waitpointSystem.blockRunWithWaitpoint({
             runId: parentTaskRunId,
-            waitpoints: associatedWaitpoint.id,
-            projectId: associatedWaitpoint.projectId,
+            waitpoints: taskRun.associatedWaitpoint.id,
+            projectId: taskRun.associatedWaitpoint.projectId,
             organizationId: environment.organization.id,
             batch,
             workerId,

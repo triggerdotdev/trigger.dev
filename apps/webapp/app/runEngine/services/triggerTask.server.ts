@@ -37,10 +37,18 @@ import type {
   QueueManager,
   RunNumberIncrementer,
   TraceEventConcern,
+  TriggerRacepoints,
+  TriggerRacepointSystem,
   TriggerTaskRequest,
   TriggerTaskValidator,
 } from "../types";
 import { ServiceValidationError } from "~/v3/services/common.server";
+
+class NoopTriggerRacepointSystem implements TriggerRacepointSystem {
+  async waitForRacepoint(options: { racepoint: TriggerRacepoints; id: string }): Promise<void> {
+    return;
+  }
+}
 
 export class RunEngineTriggerTaskService {
   private readonly queueConcern: QueueManager;
@@ -52,6 +60,7 @@ export class RunEngineTriggerTaskService {
   private readonly engine: RunEngine;
   private readonly tracer: Tracer;
   private readonly traceEventConcern: TraceEventConcern;
+  private readonly triggerRacepointSystem: TriggerRacepointSystem;
   private readonly metadataMaximumSize: number;
 
   constructor(opts: {
@@ -65,6 +74,7 @@ export class RunEngineTriggerTaskService {
     traceEventConcern: TraceEventConcern;
     tracer: Tracer;
     metadataMaximumSize: number;
+    triggerRacepointSystem?: TriggerRacepointSystem;
   }) {
     this.prisma = opts.prisma;
     this.engine = opts.engine;
@@ -76,6 +86,7 @@ export class RunEngineTriggerTaskService {
     this.tracer = opts.tracer;
     this.traceEventConcern = opts.traceEventConcern;
     this.metadataMaximumSize = opts.metadataMaximumSize;
+    this.triggerRacepointSystem = opts.triggerRacepointSystem ?? new NoopTriggerRacepointSystem();
   }
 
   public async call({
@@ -196,18 +207,15 @@ export class RunEngineTriggerTaskService {
 
       const { idempotencyKey, idempotencyKeyExpiresAt } = idempotencyKeyConcernResult;
 
+      if (idempotencyKey) {
+        await this.triggerRacepointSystem.waitForRacepoint({
+          racepoint: "idempotencyKey",
+          id: idempotencyKey,
+        });
+      }
+
       if (!options.skipChecks) {
         const queueSizeGuard = await this.queueConcern.validateQueueLimits(environment);
-
-        logger.debug("Queue size guard result", {
-          queueSizeGuard,
-          environment: {
-            id: environment.id,
-            type: environment.type,
-            organization: environment.organization,
-            project: environment.project,
-          },
-        });
 
         if (!queueSizeGuard.ok) {
           throw new ServiceValidationError(

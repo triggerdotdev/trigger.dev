@@ -156,3 +156,9 @@ export interface TraceEventConcern {
     callback: (span: TracedEventSpan) => Promise<T>
   ): Promise<T>;
 }
+
+export type TriggerRacepoints = "idempotencyKey";
+
+export interface TriggerRacepointSystem {
+  waitForRacepoint(options: { racepoint: TriggerRacepoints; id: string }): Promise<void>;
+}
