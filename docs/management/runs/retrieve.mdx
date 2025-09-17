@@ -2,3 +2,30 @@
 title: "Retrieve run"
 openapi: "v3-openapi GET /api/v3/runs/{runId}"
 ---
+
+Retrieve information about a specific run by `runId`. The response includes status, payload, output, and attempts.
+
+```ts
+import { runs } from "@trigger.dev/sdk";
+
+const runId = "run_1234";
+try {
+  const run = await runs.retrieve(runId);
+
+  if (run.status === "SUCCESS") {
+    console.log("Run was successful with output:", run.output);
+  }
+
+  console.log("Run status:", run.status);
+  console.log("Payload:", run.payload);
+  console.log("Output:", run.output);
+
+  for (const attempt of run.attempts ?? []) {
+    if (attempt.status === "FAILED") {
+      console.log("Attempt failed with error:", attempt.error?.message ?? attempt.error);
+    }
+  }
+} catch (err) {
+  console.error("Failed to retrieve run", runId, err);
+}
+```
