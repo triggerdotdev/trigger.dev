@@ -132,7 +132,11 @@ export default function Page() {
                 <Property.Label>Deploy</Property.Label>
                 <Property.Value className="flex items-center gap-2">
                   <span>{deployment.shortCode}</span>
-                  {deployment.label && <Badge variant="outline-rounded">{deployment.label}</Badge>}
+                  {deployment.label && (
+                    <Badge variant="extra-small" className="capitalize">
+                      {deployment.label}
+                    </Badge>
+                  )}
                 </Property.Value>
               </Property.Item>
               <Property.Item>
