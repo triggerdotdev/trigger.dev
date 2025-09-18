@@ -312,6 +312,10 @@ const EnvironmentSchema = z
       .number()
       .int()
       .default(60 * 1000 * 8), // 8 minutes
+    DEPLOY_QUEUE_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .default(60 * 1000 * 15), // 15 minutes
 
     OBJECT_STORE_BASE_URL: z.string().optional(),
     OBJECT_STORE_ACCESS_KEY_ID: z.string().optional(),
