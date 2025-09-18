@@ -43,7 +43,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   const deploymentService = new DeploymentService();
 
-  await deploymentService
+  return await deploymentService
     .startDeployment(authenticatedEnv, deploymentId, {
       contentHash: body.data.contentHash,
       git: body.data.gitMeta,
