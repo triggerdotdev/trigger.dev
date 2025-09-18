@@ -419,6 +419,7 @@ export const InitializeDeploymentRequestBody = z.object({
   gitMeta: GitMeta.optional(),
   type: z.enum(["MANAGED", "UNMANAGED", "V1"]).optional(),
   runtime: z.string().optional(),
+  initialStatus: z.enum(["PENDING", "BUILDING"]).optional(),
 });
 
 export type InitializeDeploymentRequestBody = z.infer<typeof InitializeDeploymentRequestBody>;

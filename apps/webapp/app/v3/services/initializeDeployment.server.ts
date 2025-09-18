@@ -99,6 +99,10 @@ export class InitializeDeploymentService extends BaseService {
 
       const { imageRef, isEcr, repoCreated } = imageRefResult;
 
+      // we keep using `BUILDING` as the initial status if not explicitly set
+      // to avoid changing the behavior for deployments not created in the build server
+      const initialStatus = payload.initialStatus ?? "BUILDING";
+
       logger.debug("Creating deployment", {
         environmentId: environment.id,
         projectId: environment.projectId,
@@ -108,6 +112,7 @@ export class InitializeDeploymentService extends BaseService {
         imageRef,
         isEcr,
         repoCreated,
+        initialStatus,
       });
 
       const deployment = await this._prisma.workerDeployment.create({
@@ -116,7 +121,7 @@ export class InitializeDeploymentService extends BaseService {
           contentHash: payload.contentHash,
           shortCode: deploymentShortCode,
           version: nextVersion,
-          status: "BUILDING",
+          status: initialStatus,
           environmentId: environment.id,
           projectId: environment.projectId,
           externalBuildData,
@@ -131,7 +136,7 @@ export class InitializeDeploymentService extends BaseService {
 
       await TimeoutDeploymentService.enqueue(
         deployment.id,
-        "BUILDING",
+        deployment.status,
         "Building timed out",
         new Date(Date.now() + env.DEPLOY_TIMEOUT_MS)
       );
