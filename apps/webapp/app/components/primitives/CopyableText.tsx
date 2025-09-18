@@ -8,10 +8,12 @@ export function CopyableText({
   value,
   copyValue,
   className,
+  asChild,
 }: {
   value: string;
   copyValue?: string;
   className?: string;
+  asChild?: boolean;
 }) {
   const [isHovered, setIsHovered] = useState(false);
   const { copy, copied } = useCopy(copyValue ?? value);
@@ -50,6 +52,7 @@ export function CopyableText({
           content={copied ? "Copied!" : "Copy"}
           className="font-sans"
           disableHoverableContent
+          asChild={asChild}
         />
       </span>
     </span>
