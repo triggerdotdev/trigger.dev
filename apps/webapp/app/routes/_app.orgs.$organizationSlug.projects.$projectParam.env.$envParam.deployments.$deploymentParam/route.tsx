@@ -187,7 +187,13 @@ export default function Page() {
               <Property.Item>
                 <Property.Label>Started at</Property.Label>
                 <Property.Value>
-                  <DateTimeAccurate date={deployment.createdAt} /> UTC
+                  {deployment.startedAt ? (
+                    <>
+                      <DateTimeAccurate date={deployment.startedAt} /> UTC
+                    </>
+                  ) : (
+                    "–"
+                  )}
                 </Property.Value>
               </Property.Item>
               <Property.Item>
