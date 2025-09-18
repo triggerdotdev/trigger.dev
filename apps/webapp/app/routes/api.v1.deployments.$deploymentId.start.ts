@@ -50,6 +50,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
     },
     (error) => {
       switch (error.type) {
+        case "failed_to_extend_deployment_timeout":
+          return json(null, { status: 204 }); // ignore these errors for now
         case "deployment_not_found":
           return json({ error: "Deployment not found" }, { status: 404 });
         case "deployment_not_pending":

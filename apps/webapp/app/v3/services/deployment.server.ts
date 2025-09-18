@@ -1,8 +1,10 @@
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { BaseService } from "./baseService.server";
 import { errAsync, fromPromise, okAsync } from "neverthrow";
-import { type WorkerDeployment } from "@trigger.dev/database";
+import { type WorkerDeploymentStatus, type WorkerDeployment } from "@trigger.dev/database";
 import { type GitMeta } from "@trigger.dev/core/v3";
+import { TimeoutDeploymentService } from "./timeoutDeployment.server";
+import { env } from "~/env.server";
 
 export class DeploymentService extends BaseService {
   public async startDeployment(
@@ -55,9 +57,26 @@ export class DeploymentService extends BaseService {
         if (result.count === 0) {
           return errAsync({ type: "deployment_not_pending" as const });
         }
-        return okAsync(undefined);
+        return okAsync({ id: deployment.id });
       });
 
-    return getDeployment().andThen(validateDeployment).andThen(updateDeployment);
+    const extendTimeout = (deployment: Pick<WorkerDeployment, "id">) =>
+      fromPromise(
+        TimeoutDeploymentService.enqueue(
+          deployment.id,
+          "BUILDING" satisfies WorkerDeploymentStatus,
+          "Building timed out",
+          new Date(Date.now() + env.DEPLOY_TIMEOUT_MS)
+        ),
+        (error) => ({
+          type: "failed_to_extend_deployment_timeout" as const,
+          cause: error,
+        })
+      );
+
+    return getDeployment()
+      .andThen(validateDeployment)
+      .andThen(updateDeployment)
+      .andThen(extendTimeout);
   }
 }
