@@ -7,7 +7,7 @@ import { TimeoutDeploymentService } from "./timeoutDeployment.server";
 import { env } from "~/env.server";
 
 export class DeploymentService extends BaseService {
-  public async startDeployment(
+  public startDeployment(
     authenticatedEnv: AuthenticatedEnvironment,
     friendlyId: string,
     updates: Partial<Pick<WorkerDeployment, "contentHash" | "runtime"> & { git: GitMeta }>
@@ -75,7 +75,7 @@ export class DeploymentService extends BaseService {
           type: "failed_to_extend_deployment_timeout" as const,
           cause: error,
         })
-      );
+      ).map(() => undefined);
 
     return getDeployment()
       .andThen(validateDeployment)

@@ -43,24 +43,29 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   const deploymentService = new DeploymentService();
 
-  const result = await deploymentService.startDeployment(authenticatedEnv, deploymentId, body.data);
-  return result.match(
-    () => {
-      return json(null, { status: 204 });
-    },
-    (error) => {
-      switch (error.type) {
-        case "failed_to_extend_deployment_timeout":
-          return json(null, { status: 204 }); // ignore these errors for now
-        case "deployment_not_found":
-          return json({ error: "Deployment not found" }, { status: 404 });
-        case "deployment_not_pending":
-          return json({ error: "Deployment is not pending" }, { status: 409 });
-        case "other":
-        default:
-          error.type satisfies "other";
-          return json({ error: "Internal server error" }, { status: 500 });
+  await deploymentService
+    .startDeployment(authenticatedEnv, deploymentId, {
+      contentHash: body.data.contentHash,
+      git: body.data.gitMeta,
+      runtime: body.data.runtime,
+    })
+    .match(
+      () => {
+        return json(null, { status: 204 });
+      },
+      (error) => {
+        switch (error.type) {
+          case "failed_to_extend_deployment_timeout":
+            return json(null, { status: 204 }); // ignore these errors for now
+          case "deployment_not_found":
+            return json({ error: "Deployment not found" }, { status: 404 });
+          case "deployment_not_pending":
+            return json({ error: "Deployment is not pending" }, { status: 409 });
+          case "other":
+          default:
+            error.type satisfies "other";
+            return json({ error: "Internal server error" }, { status: 500 });
+        }
       }
-    }
-  );
+    );
 }
