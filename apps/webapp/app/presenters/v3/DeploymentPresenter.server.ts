@@ -102,6 +102,7 @@ export class DeploymentPresenter {
         builtAt: true,
         deployedAt: true,
         createdAt: true,
+        startedAt: true,
         git: true,
         promotions: {
           select: {
@@ -145,6 +146,7 @@ export class DeploymentPresenter {
         version: deployment.version,
         status: deployment.status,
         createdAt: deployment.createdAt,
+        startedAt: deployment.startedAt,
         builtAt: deployment.builtAt,
         deployedAt: deployment.deployedAt,
         tasks: deployment.worker?.tasks,
