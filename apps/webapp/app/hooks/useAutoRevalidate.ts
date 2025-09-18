@@ -4,14 +4,15 @@ import { useEffect } from "react";
 type UseAutoRevalidateOptions = {
   interval?: number; // in milliseconds
   onFocus?: boolean;
+  disabled?: boolean;
 };
 
 export function useAutoRevalidate(options: UseAutoRevalidateOptions = {}) {
-  const { interval = 5000, onFocus = true } = options;
+  const { interval = 5000, onFocus = true, disabled = false } = options;
   const revalidator = useRevalidator();
 
   useEffect(() => {
-    if (!interval || interval <= 0) return;
+    if (!interval || interval <= 0 || disabled) return;
 
     const intervalId = setInterval(() => {
       if (revalidator.state === "loading") {
@@ -21,10 +22,10 @@ export function useAutoRevalidate(options: UseAutoRevalidateOptions = {}) {
     }, interval);
 
     return () => clearInterval(intervalId);
-  }, [interval]);
+  }, [interval, disabled]);
 
   useEffect(() => {
-    if (!onFocus) return;
+    if (!onFocus || disabled) return;
 
     const handleFocus = () => {
       if (document.visibilityState === "visible" && revalidator.state !== "loading") {
@@ -41,7 +42,7 @@ export function useAutoRevalidate(options: UseAutoRevalidateOptions = {}) {
       document.removeEventListener("visibilitychange", handleFocus);
       window.removeEventListener("focus", handleFocus);
     };
-  }, [onFocus]);
+  }, [onFocus, disabled]);
 
   return revalidator;
 }

@@ -1028,10 +1028,9 @@ const EnvironmentSchema = z
     TASK_EVENT_PARTITIONING_ENABLED: z.string().default("0"),
     TASK_EVENT_PARTITIONED_WINDOW_IN_SECONDS: z.coerce.number().int().default(60), // 1 minute
 
-    QUEUE_SSE_AUTORELOAD_INTERVAL_MS: z.coerce.number().int().default(5_000),
-    QUEUE_SSE_AUTORELOAD_TIMEOUT_MS: z.coerce.number().int().default(60_000),
-
     DEPLOYMENTS_AUTORELOAD_POLL_INTERVAL_MS: z.coerce.number().int().default(5_000),
+    BULK_ACTION_AUTORELOAD_POLL_INTERVAL_MS: z.coerce.number().int().default(1_000),
+    QUEUES_AUTORELOAD_POLL_INTERVAL_MS: z.coerce.number().int().default(5_000),
 
     SLACK_BOT_TOKEN: z.string().optional(),
     SLACK_SIGNUP_REASON_CHANNEL_ID: z.string().optional(),
