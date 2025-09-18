@@ -697,6 +697,65 @@ describe("SnapshotManager", () => {
       true
     );
   });
+
+  it("should handle deprecated snapshot race condition - avoid false positives from stale polls", async () => {
+    const onSnapshotChange = vi.fn();
+
+    // Mock MetadataClient to simulate runner ID change (restore detected) on first call
+    let isFirstCall = true;
+    const mockMetadataClient = {
+      getEnvOverrides: vi.fn().mockImplementation(() => {
+        if (isFirstCall) {
+          isFirstCall = false;
+          return Promise.resolve([null, { TRIGGER_RUNNER_ID: "test-runner-2" }]); // Different runner ID = restore
+        }
+        return Promise.resolve([null, { TRIGGER_RUNNER_ID: "test-runner-2" }]); // Same runner ID afterward
+      }),
+    };
+
+    const manager = new SnapshotManager({
+      runnerId: "test-runner-1",
+      runFriendlyId: "test-run-1",
+      initialSnapshotId: "snapshot-1",
+      initialStatus: "EXECUTING_WITH_WAITPOINTS",
+      logger: mockLogger,
+      metadataClient: mockMetadataClient as any,
+      onSnapshotChange,
+      onSuspendable: mockSuspendableHandler,
+    });
+
+    // First update: Process restore transition with deprecated statuses (normal case)
+    // This simulates: EXECUTING_WITH_WAITPOINTS -> [SUSPENDED, QUEUED] -> PENDING_EXECUTING
+    await manager.handleSnapshotChanges([
+      createRunExecutionData({ snapshotId: "snapshot-suspended", executionStatus: "SUSPENDED" }),
+      createRunExecutionData({ snapshotId: "snapshot-queued", executionStatus: "QUEUED" }),
+      createRunExecutionData({ snapshotId: "snapshot-2", executionStatus: "PENDING_EXECUTING" }),
+    ]);
+
+    // First call should be deprecated=false (restore detected)
+    expect(onSnapshotChange).toHaveBeenCalledWith(
+      expect.objectContaining({ snapshot: expect.objectContaining({ friendlyId: "snapshot-2" }) }),
+      false
+    );
+
+    onSnapshotChange.mockClear();
+
+    // Second update: Should only get new snapshot (race condition case)
+    // This simulates a stale poll that returns: getSnapshotsSince(snapshot-1) -> [SUSPENDED, QUEUED, snapshot-2, snapshot-3]
+    // The SUSPENDED/QUEUED should be ignored as already seen
+    await manager.handleSnapshotChanges([
+      createRunExecutionData({ snapshotId: "snapshot-suspended", executionStatus: "SUSPENDED" }), // Already seen
+      createRunExecutionData({ snapshotId: "snapshot-queued", executionStatus: "QUEUED" }), // Already seen
+      createRunExecutionData({ snapshotId: "snapshot-2", executionStatus: "PENDING_EXECUTING" }), // Already processed
+      createRunExecutionData({ snapshotId: "snapshot-3", executionStatus: "EXECUTING" }), // New
+    ]);
+
+    // Should call onSnapshotChange with deprecated = false (no new deprecated snapshots)
+    expect(onSnapshotChange).toHaveBeenCalledWith(
+      expect.objectContaining({ snapshot: expect.objectContaining({ friendlyId: "snapshot-3" }) }),
+      false
+    );
+  });
 });
 
 // Helper to generate RunExecutionData with sensible defaults
