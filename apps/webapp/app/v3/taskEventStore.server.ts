@@ -21,6 +21,7 @@ export type TraceEvent = Pick<
   | "events"
   | "environmentType"
   | "kind"
+  | "attemptNumber"
 >;
 
 export type DetailedTraceEvent = Pick<
@@ -188,7 +189,8 @@ export class TaskEventStore {
           level,
           events,
           "environmentType",
-          "kind"
+          "kind",
+          "attemptNumber"
         FROM "TaskEventPartitioned"
         WHERE
           "traceId" = ${traceId}
@@ -220,7 +222,8 @@ export class TaskEventStore {
           level,
           events,
           "environmentType",
-          "kind"
+          "kind",
+          "attemptNumber"
         FROM "TaskEvent"
         WHERE "traceId" = ${traceId}
           ${
