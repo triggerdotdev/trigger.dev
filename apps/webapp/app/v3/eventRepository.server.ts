@@ -21,7 +21,14 @@ import {
   unflattenAttributes,
 } from "@trigger.dev/core/v3";
 import { parseTraceparent, serializeTraceparent } from "@trigger.dev/core/v3/isomorphic";
-import { Prisma, TaskEvent, TaskEventKind, TaskEventStatus } from "@trigger.dev/database";
+import {
+  Prisma,
+  RuntimeEnvironmentType,
+  TaskEvent,
+  TaskEventKind,
+  TaskEventStatus,
+  TaskRun,
+} from "@trigger.dev/database";
 import { nanoid } from "nanoid";
 import { createHash } from "node:crypto";
 import { EventEmitter } from "node:stream";
@@ -350,18 +357,44 @@ export class EventRepository {
     return completedEvent;
   }
 
-  async cancelEvent(event: TaskEventRecord, cancelledAt: Date, reason: string) {
-    if (!event.isPartial) {
-      return;
-    }
+  async cancelRunEvent({
+    reason,
+    run,
+    cancelledAt,
+    projectRef,
+    environmentType,
+    organizationId,
+  }: {
+    reason: string;
+    run: TaskRun;
+    cancelledAt: Date;
+    projectRef: string;
+    organizationId: string;
+    environmentType: RuntimeEnvironmentType;
+  }) {
+    const startTime = convertDateToNanoseconds(run.createdAt);
 
     await this.insertImmediate({
-      ...omit(event, "id"),
+      message: run.taskIdentifier,
+      serviceName: "api server",
+      serviceNamespace: "trigger.dev",
+      level: "TRACE",
+      kind: "SERVER",
+      traceId: run.traceId,
+      spanId: run.spanId,
+      parentId: run.parentSpanId,
+      runId: run.id,
+      taskSlug: run.taskIdentifier,
+      projectRef,
+      projectId: run.projectId,
+      environmentId: run.runtimeEnvironmentId,
+      environmentType,
+      organizationId,
       isPartial: false,
-      isError: false,
+      isError: true,
       isCancelled: true,
       status: "ERROR",
-      links: event.links ?? [],
+      runIsTest: run.isTest,
       events: [
         {
           name: "cancellation",
@@ -370,54 +403,16 @@ export class EventRepository {
             reason,
           },
         },
-        ...((event.events as any[]) ?? []),
       ],
-      duration: calculateDurationFromStart(event.startTime, cancelledAt),
-      properties: event.properties as Attributes,
-      metadata: event.metadata as Attributes,
-      style: event.style as Attributes,
-      output: event.output as Attributes,
-      outputType: event.outputType,
-      payload: event.payload as Attributes,
-      payloadType: event.payloadType,
+      startTime,
+      properties: {},
+      metadata: undefined,
+      style: undefined,
+      duration: calculateDurationFromStart(startTime, cancelledAt),
+      output: undefined,
+      payload: undefined,
+      payloadType: undefined,
     });
-  }
-
-  async cancelEvents(events: TaskEventRecord[], cancelledAt: Date, reason: string) {
-    const eventsToCancel = events.filter((event) => event.isPartial);
-
-    if (eventsToCancel.length === 0) {
-      return;
-    }
-
-    await this.insertMany(
-      eventsToCancel.map((event) => ({
-        ...omit(event, "id"),
-        isPartial: false,
-        isError: false,
-        isCancelled: true,
-        status: "ERROR",
-        links: event.links ?? [],
-        events: [
-          {
-            name: "cancellation",
-            time: cancelledAt,
-            properties: {
-              reason,
-            },
-          },
-          ...((event.events as any[]) ?? []),
-        ],
-        duration: calculateDurationFromStart(event.startTime, cancelledAt),
-        properties: event.properties as Attributes,
-        metadata: event.metadata as Attributes,
-        style: event.style as Attributes,
-        output: event.output as Attributes,
-        outputType: event.outputType,
-        payload: event.payload as Attributes,
-        payloadType: event.payloadType,
-      }))
-    );
   }
 
   async crashEvent({
@@ -567,7 +562,19 @@ export class EventRepository {
         }
 
         if (event.isCancelled || !event.isPartial) {
-          eventsBySpanId.set(event.spanId, event);
+          // If we have a cancelled event and an existing partial event,
+          // merge them: use cancelled event data but preserve style from the partial event
+          if (event.isCancelled && existingEvent.isPartial && !existingEvent.isCancelled) {
+            const mergedEvent: PreparedEvent = {
+              ...event, // Use cancelled event as base (has correct timing, status, events)
+              // Preserve style from the original partial event
+              style: existingEvent.style,
+            };
+            eventsBySpanId.set(event.spanId, mergedEvent);
+          } else {
+            // For non-cancelled events or other cases, use the standard replacement logic
+            eventsBySpanId.set(event.spanId, event);
+          }
         }
       }
 
@@ -583,6 +590,9 @@ export class EventRepository {
           event.duration
         );
 
+        const isCancelled =
+          event.isCancelled === true ? true : event.isPartial && ancestorCancelled;
+
         const span = {
           id: event.spanId,
           parentId: event.parentId ?? undefined,
@@ -592,9 +602,9 @@ export class EventRepository {
             message: event.message,
             style: event.style,
             duration,
-            isError: event.isError,
+            isError: isCancelled ? false : event.isError,
             isPartial: ancestorCancelled ? false : event.isPartial,
-            isCancelled: event.isCancelled === true ? true : event.isPartial && ancestorCancelled,
+            isCancelled,
             isDebug: event.kind === TaskEventKind.LOG,
             startTime: getDateFromNanoseconds(event.startTime),
             level: event.level,
@@ -617,6 +627,8 @@ export class EventRepository {
       if (!rootSpan) {
         return;
       }
+
+      logger.debug("[getTraceSummary] result", { rootSpan, spans });
 
       return {
         rootSpan,
@@ -1140,11 +1152,6 @@ export class EventRepository {
     ) => Promise<TResult>
   ): Promise<TResult> {
     const propagatedContext = extractContextFromCarrier(options.context ?? {});
-
-    logger.debug("[otelContext]", {
-      propagatedContext,
-      options,
-    });
 
     const start = process.hrtime.bigint();
     const startTime = options.startTime ?? getNowInNanoseconds();
@@ -1893,6 +1900,10 @@ function getNowInNanoseconds(): bigint {
 
 export function getDateFromNanoseconds(nanoseconds: bigint) {
   return new Date(Number(nanoseconds) / 1_000_000);
+}
+
+function convertDateToNanoseconds(date: Date) {
+  return BigInt(date.getTime()) * BigInt(1_000_000);
 }
 
 function nanosecondsToMilliseconds(nanoseconds: bigint | number): number {

@@ -299,20 +299,42 @@ export function registerRunEngineEventBusHandlers() {
 
   engine.eventBus.on("runCancelled", async ({ time, run }) => {
     try {
-      const eventStore = getTaskEventStoreTableForRun(run);
-
-      const inProgressEvents = await eventRepository.queryIncompleteEvents(
-        eventStore,
-        {
-          runId: run.friendlyId,
+      const taskRun = await $replica.taskRun.findFirst({
+        where: {
+          id: run.id,
         },
-        run.createdAt,
-        run.completedAt ?? undefined
-      );
+        include: {
+          project: {
+            select: {
+              externalRef: true,
+            },
+          },
+          runtimeEnvironment: {
+            select: {
+              type: true,
+              organizationId: true,
+            },
+          },
+        },
+      });
+
+      if (!taskRun) {
+        logger.error("[runCancelled] Task run not found", {
+          runId: run.id,
+        });
+        return;
+      }
 
       const error = createJsonErrorObject(run.error);
 
-      await eventRepository.cancelEvents(inProgressEvents, time, error.message);
+      await eventRepository.cancelRunEvent({
+        reason: error.message,
+        run: taskRun,
+        cancelledAt: time,
+        projectRef: taskRun.project.externalRef,
+        organizationId: taskRun.runtimeEnvironment.organizationId,
+        environmentType: taskRun.runtimeEnvironment.type,
+      });
     } catch (error) {
       logger.error("[runCancelled] Failed to cancel event", {
         error: error instanceof Error ? error.message : error,

@@ -352,8 +352,7 @@ export class TaskExecutor {
             ? runTimelineMetrics.convertMetricsToSpanEvents()
             : undefined,
       },
-      traceContext.extractContext(),
-      signal
+      traceContext.extractContext()
     );
 
     return { result };
