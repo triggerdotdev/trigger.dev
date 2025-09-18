@@ -61,6 +61,7 @@ import {
 } from "~/utils/pathBuilder";
 import { createSearchParams } from "~/utils/searchParams";
 import { compareDeploymentVersions } from "~/v3/utils/deploymentVersions";
+import { useAutoRevalidate } from "~/hooks/useAutoRevalidate";
 
 export const meta: MetaFunction = () => {
   return [
@@ -143,6 +144,8 @@ export default function Page() {
   const { deploymentParam } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
+
+  useAutoRevalidate({ interval: 5000, onFocus: true });
 
   // If we have a selected deployment from the version param, show it
   useEffect(() => {
