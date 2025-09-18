@@ -1,5 +1,12 @@
 # @trigger.dev/react-hooks
 
+## 4.0.4
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.4`
+
 ## 4.0.3
 
 ### Patch Changes

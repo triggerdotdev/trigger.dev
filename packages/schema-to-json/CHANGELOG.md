@@ -1,5 +1,13 @@
 # @trigger.dev/schema-to-json
 
+## 4.0.4
+
+### Patch Changes
+
+- remove effect from optional peer dependencies since it's now a production dependency ([#2527](https://github.com/triggerdotdev/trigger.dev/pull/2527))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.4`
+
 ## 4.0.3
 
 ### Patch Changes
