@@ -2,7 +2,7 @@ import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { BaseService } from "./baseService.server";
 import { errAsync, fromPromise, okAsync } from "neverthrow";
 import { type WorkerDeploymentStatus, type WorkerDeployment } from "@trigger.dev/database";
-import { type GitMeta } from "@trigger.dev/core/v3";
+import { logger, type GitMeta } from "@trigger.dev/core/v3";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
 import { env } from "~/env.server";
 
@@ -37,6 +37,9 @@ export class DeploymentService extends BaseService {
 
     const validateDeployment = (deployment: Pick<WorkerDeployment, "id" | "status">) => {
       if (deployment.status !== "PENDING") {
+        logger.warn("Attempted starting deployment that is not in PENDING status", {
+          deployment,
+        });
         return errAsync({ type: "deployment_not_pending" as const });
       }
 
@@ -47,7 +50,7 @@ export class DeploymentService extends BaseService {
       fromPromise(
         this._prisma.workerDeployment.updateMany({
           where: { id: deployment.id, status: "PENDING" }, // status could've changed in the meantime, we're not locking the row
-          data: { ...updates, status: "BUILDING" },
+          data: { ...updates, status: "BUILDING", startedAt: new Date() },
         }),
         (error) => ({
           type: "other" as const,
