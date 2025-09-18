@@ -138,7 +138,11 @@ export class InitializeDeploymentService extends BaseService {
         deployment.id,
         deployment.status,
         "Building timed out",
-        new Date(Date.now() + env.DEPLOY_TIMEOUT_MS)
+        new Date(
+          Date.now() + deployment.status === "PENDING"
+            ? env.DEPLOY_QUEUE_TIMEOUT_MS
+            : env.DEPLOY_TIMEOUT_MS
+        )
       );
 
       return {
