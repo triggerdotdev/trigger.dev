@@ -1,5 +1,22 @@
 # trigger.dev
 
+## 4.0.3
+
+### Patch Changes
+
+- Improves our schema to JSON Schema conversion, fixes zod 4 and a few other schema libraries, also correctly sets the dependencies ([#2483](https://github.com/triggerdotdev/trigger.dev/pull/2483))
+- Add the mcpName property to the CLI package.json to allow publishing our MCP server to the Anthropic MCP registry ([#2510](https://github.com/triggerdotdev/trigger.dev/pull/2510))
+- Added new CLI command to list and view environment variables ([#2485](https://github.com/triggerdotdev/trigger.dev/pull/2485))
+- Attach to existing deployment for deployments triggered in the build server. If `TRIGGER_EXISTING_DEPLOYMENT_ID` env var is set, the `deploy` command now skips the deployment initialization. ([#2501](https://github.com/triggerdotdev/trigger.dev/pull/2501))
+- - Reduce restore times by 5s due to immediate polling ([#2516](https://github.com/triggerdotdev/trigger.dev/pull/2516))
+  - Fix `s is not a function` and surface underlying error messages
+- Reduce restore recovery time and fix deprecated runner false positives ([#2523](https://github.com/triggerdotdev/trigger.dev/pull/2523))
+- Added the heartbeats.yield utility to allow tasks that do continuous CPU-heavy work to heartbeat and continue running ([#2489](https://github.com/triggerdotdev/trigger.dev/pull/2489))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.3`
+  - `@trigger.dev/build@4.0.3`
+  - `@trigger.dev/schema-to-json@4.0.3`
+
 ## 4.0.2
 
 ### Patch Changes
