@@ -160,6 +160,7 @@ export class WaitpointSystem {
           },
           blockedRunId: run.taskRunId,
           hasError: output?.isError ?? false,
+          cachedRunId: waitpoint.completedByTaskRunId ?? undefined,
         });
       }
     }

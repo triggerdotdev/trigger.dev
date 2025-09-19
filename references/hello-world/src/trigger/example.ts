@@ -1,6 +1,7 @@
 import { batch, logger, task, tasks, timeout, wait } from "@trigger.dev/sdk";
 import { setTimeout } from "timers/promises";
 import { ResourceMonitor } from "../resourceMonitor.js";
+import { fixedLengthTask } from "./batches.js";
 
 export const helloWorldTask = task({
   id: "hello-world",

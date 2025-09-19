@@ -840,6 +840,14 @@ function RunBody({
                       <Property.Label>Worker queue</Property.Label>
                       <Property.Value>{run.workerQueue}</Property.Value>
                     </Property.Item>
+                    <Property.Item>
+                      <Property.Label>Trace ID</Property.Label>
+                      <Property.Value>{run.traceId}</Property.Value>
+                    </Property.Item>
+                    <Property.Item>
+                      <Property.Label>Span ID</Property.Label>
+                      <Property.Value>{run.spanId}</Property.Value>
+                    </Property.Item>
                   </div>
                 )}
               </Property.Table>

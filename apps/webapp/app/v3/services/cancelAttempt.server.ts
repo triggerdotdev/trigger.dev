@@ -72,25 +72,6 @@ export class CancelAttemptService extends BaseService {
           error: isCancellable ? { type: "STRING_ERROR", raw: reason } : undefined,
         });
       });
-
-      const inProgressEvents = await eventRepository.queryIncompleteEvents(
-        getTaskEventStoreTableForRun(taskRunAttempt.taskRun),
-        {
-          runId: taskRunAttempt.taskRun.friendlyId,
-        },
-        taskRunAttempt.taskRun.createdAt,
-        taskRunAttempt.taskRun.completedAt ?? undefined
-      );
-
-      logger.debug("Cancelling in-progress events", {
-        inProgressEvents: inProgressEvents.map((event) => event.id),
-      });
-
-      await Promise.all(
-        inProgressEvents.map((event) => {
-          return eventRepository.cancelEvent(event, cancelledAt, reason);
-        })
-      );
     });
   }
 }

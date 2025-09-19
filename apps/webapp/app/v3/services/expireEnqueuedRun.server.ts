@@ -5,6 +5,7 @@ import { eventRepository } from "../eventRepository.server";
 import { BaseService } from "./baseService.server";
 import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
 import { getTaskEventStoreTableForRun } from "../taskEventStore.server";
+import { tryCatch } from "@trigger.dev/core/utils";
 
 export class ExpireEnqueuedRunService extends BaseService {
   public static async ack(runId: string, tx?: PrismaClientOrTransaction) {
@@ -78,28 +79,21 @@ export class ExpireEnqueuedRunService extends BaseService {
       },
     });
 
-    await eventRepository.completeEvent(
-      getTaskEventStoreTableForRun(run),
-      run.spanId,
-      run.createdAt,
-      run.completedAt ?? undefined,
-      {
-        endTime: new Date(),
-        attributes: {
-          isError: true,
-        },
-        events: [
-          {
-            name: "exception",
-            time: new Date(),
-            properties: {
-              exception: {
-                message: `Run expired because the TTL (${run.ttl}) was reached`,
-              },
-            },
-          },
-        ],
+    if (run.ttl) {
+      const [completeExpiredRunEventError] = await tryCatch(
+        eventRepository.completeExpiredRunEvent({
+          run,
+          endTime: new Date(),
+          ttl: run.ttl,
+        })
+      );
+
+      if (completeExpiredRunEventError) {
+        logger.error("[ExpireEnqueuedRunService] Failed to complete expired run event", {
+          error: completeExpiredRunEventError,
+          runId: run.id,
+        });
       }
-    );
+    }
   }
 }
