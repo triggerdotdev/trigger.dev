@@ -19,7 +19,40 @@ export class InitializeDeploymentService extends BaseService {
     environment: AuthenticatedEnvironment,
     payload: InitializeDeploymentRequestBody
   ) {
-    return this.traceWithEnv("call", environment, async (span) => {
+    return this.traceWithEnv("call", environment, async () => {
+      if (payload.gitMeta?.commitSha?.startsWith("deployment_")) {
+        // When we introduced automatic deployments via the build server, we slightly changed the deployment flow
+        // mainly in the initialization and starting step: now deployments are first initialized in the `PENDING` status
+        // and updated to `BUILDING` once the build server dequeues the build job.
+        // Newer versions of the `deploy` command in the CLI will automatically attach to the existing deployment
+        // and continue with the build process. For older versions, we can't change the command's client-side behavior,
+        // so we need to handle this case here in the initialization endpoint. As we control the env variables which
+        // the git meta is extracted from in the build server, we can use those to pass the existing deployment ID
+        // to this endpoint. This doesn't affect the git meta on the deployment as it is set prior to this step using the
+        // /start endpoint. It's a rather hacky solution, but it will do for now as it enables us to avoid degrading the
+        // build server experience for users with older CLI versions. We'll eventually be able to remove this workaround
+        // once we stop supporting 3.x CLI versions.
+
+        const existingDeploymentId = payload.gitMeta.commitSha;
+        const existingDeployment = await this._prisma.workerDeployment.findFirst({
+          where: {
+            environmentId: environment.id,
+            friendlyId: existingDeploymentId,
+          },
+        });
+
+        if (!existingDeployment) {
+          throw new ServiceValidationError(
+            "Existing deployment not found during deployment initialization"
+          );
+        }
+
+        return {
+          deployment: existingDeployment,
+          imageRef: existingDeployment.imageReference ?? "",
+        };
+      }
+
       if (payload.type === "UNMANAGED") {
         throw new ServiceValidationError("UNMANAGED deployments are not supported");
       }
