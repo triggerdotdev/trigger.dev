@@ -51,12 +51,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
     })
     .match(
       () => {
-        return json(null, { status: 204 });
+        return new Response(null, { status: 204 });
       },
       (error) => {
         switch (error.type) {
           case "failed_to_extend_deployment_timeout":
-            return json(null, { status: 204 }); // ignore these errors for now
+            return new Response(null, { status: 204 }); // ignore these errors for now
           case "deployment_not_found":
             return json({ error: "Deployment not found" }, { status: 404 });
           case "deployment_not_pending":
