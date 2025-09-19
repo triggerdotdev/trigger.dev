@@ -957,6 +957,10 @@ export class EventRepository {
       let preparedEvents: Array<PreparedEvent> = [];
 
       for (const event of events) {
+        if (event.kind === "UNSPECIFIED") {
+          continue;
+        }
+
         preparedEvents.push(prepareEvent(event));
       }
 
