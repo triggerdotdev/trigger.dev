@@ -676,8 +676,6 @@ export class EventRepository {
         }
       }
 
-      logger.debug("[getTraceSummary] preparedEvents before merge", { preparedEvents });
-
       for (const event of preparedEvents) {
         const existingEvent = eventsBySpanId.get(event.spanId);
 
@@ -710,8 +708,6 @@ export class EventRepository {
 
       preparedEvents = Array.from(eventsBySpanId.values());
 
-      logger.debug("[getTraceSummary] preparedEvents after merge", { preparedEvents });
-
       const spansBySpanId = new Map<string, SpanSummary>();
 
       const spans = preparedEvents.map((event) => {
@@ -719,10 +715,6 @@ export class EventRepository {
           spansById: eventsBySpanId,
           span: event,
         });
-
-        if (overrides) {
-          logger.debug("[getTraceSummary] overrides", { overrides, event });
-        }
 
         const ancestorCancelled = overrides?.isCancelled ?? false;
         const ancestorIsError = overrides?.isError ?? false;
@@ -772,8 +764,6 @@ export class EventRepository {
         return;
       }
 
-      logger.debug("[getTraceSummary] result", { rootSpan, spans });
-
       return {
         rootSpan,
         spans,
@@ -808,8 +798,6 @@ export class EventRepository {
           rootSpanId = event.spanId;
         }
       }
-
-      logger.debug("[getTraceDetailedSummary] preparedEvents before merge", { preparedEvents });
 
       for (const event of preparedEvents) {
         const existingEvent = eventsBySpanId.get(event.spanId);
@@ -847,8 +835,6 @@ export class EventRepository {
 
       preparedEvents = Array.from(eventsBySpanId.values());
 
-      logger.debug("[getTraceDetailedSummary] preparedEvents after merge", { preparedEvents });
-
       if (!rootSpanId) {
         return;
       }
@@ -862,10 +848,6 @@ export class EventRepository {
           spansById: eventsBySpanId,
           span: event,
         });
-
-        if (overrides) {
-          logger.debug("[getTraceDetailedSummary] overrides", { overrides, event });
-        }
 
         const ancestorCancelled = overrides?.isCancelled ?? false;
         const ancestorIsError = overrides?.isError ?? false;
@@ -928,8 +910,6 @@ export class EventRepository {
       if (!rootSpan) {
         return;
       }
-
-      logger.debug("[getTraceDetailedSummary] result", { traceId, rootSpan });
 
       return {
         traceId,
@@ -1016,8 +996,6 @@ export class EventRepository {
         endCreatedAt
       );
 
-      logger.debug("[getSpan] span", { span });
-
       const output = rehydrateJson(spanEvent.output);
       const payload = rehydrateJson(spanEvent.payload);
 
@@ -1067,8 +1045,6 @@ export class EventRepository {
         spanEvent.metadata as Attributes,
         spanEvent.environmentType === "DEVELOPMENT"
       );
-
-      logger.debug("[getSpan] spanEvents", { spanEvents });
 
       const originalRun = rehydrateAttribute<string>(
         spanEvent.properties,
@@ -1165,10 +1141,6 @@ export class EventRepository {
             return { stop: false };
           }
         );
-      }
-
-      if (overrides) {
-        logger.debug("[#createSpanFromEvent] overrides", { overrides, event });
       }
 
       const ancestorCancelled = overrides?.isCancelled ?? false;
