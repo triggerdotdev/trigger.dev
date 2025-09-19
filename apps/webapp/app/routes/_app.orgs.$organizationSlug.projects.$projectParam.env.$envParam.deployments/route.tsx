@@ -61,6 +61,8 @@ import {
 } from "~/utils/pathBuilder";
 import { createSearchParams } from "~/utils/searchParams";
 import { compareDeploymentVersions } from "~/v3/utils/deploymentVersions";
+import { useAutoRevalidate } from "~/hooks/useAutoRevalidate";
+import { env } from "~/env.server";
 
 export const meta: MetaFunction = () => {
   return [
@@ -116,7 +118,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       ? result.deployments.find((d) => d.version === version)
       : undefined;
 
-    return typedjson({ ...result, selectedDeployment });
+    const autoReloadPollIntervalMs = env.DEPLOYMENTS_AUTORELOAD_POLL_INTERVAL_MS;
+
+    return typedjson({ ...result, selectedDeployment, autoReloadPollIntervalMs });
   } catch (error) {
     console.error(error);
     throw new Response(undefined, {
@@ -137,12 +141,15 @@ export default function Page() {
     selectedDeployment,
     connectedGithubRepository,
     environmentGitHubBranch,
+    autoReloadPollIntervalMs,
   } = useTypedLoaderData<typeof loader>();
   const hasDeployments = totalPages > 0;
 
   const { deploymentParam } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
+
+  useAutoRevalidate({ interval: autoReloadPollIntervalMs, onFocus: true });
 
   // If we have a selected deployment from the version param, show it
   useEffect(() => {

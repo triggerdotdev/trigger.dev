@@ -4,7 +4,6 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { GitMetadata } from "~/components/GitMetadata";
 import { RuntimeIcon } from "~/components/RuntimeIcon";
-import { UserAvatar } from "~/components/UserProfilePhoto";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { Badge } from "~/components/primitives/Badge";
@@ -132,7 +131,11 @@ export default function Page() {
                 <Property.Label>Deploy</Property.Label>
                 <Property.Value className="flex items-center gap-2">
                   <span>{deployment.shortCode}</span>
-                  {deployment.label && <Badge variant="outline-rounded">{deployment.label}</Badge>}
+                  {deployment.label && (
+                    <Badge variant="extra-small" className="capitalize">
+                      {deployment.label}
+                    </Badge>
+                  )}
                 </Property.Value>
               </Property.Item>
               <Property.Item>

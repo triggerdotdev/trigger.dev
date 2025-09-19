@@ -1,10 +1,9 @@
 import { ArrowPathIcon } from "@heroicons/react/20/solid";
-import { Form, useRevalidator } from "@remix-run/react";
+import { Form } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
 import type { BulkActionType } from "@trigger.dev/database";
 import { motion } from "framer-motion";
-import { useEffect } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
@@ -18,8 +17,9 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
 import { BulkActionStatusCombo, BulkActionTypeCombo } from "~/components/runs/v3/BulkAction";
 import { UserAvatar } from "~/components/UserProfilePhoto";
+import { env } from "~/env.server";
+import { useAutoRevalidate } from "~/hooks/useAutoRevalidate";
 import { useEnvironment } from "~/hooks/useEnvironment";
-import { useEventSource } from "~/hooks/useEventSource";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
@@ -72,7 +72,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       throw new Error(error.message);
     }
 
-    return typedjson({ bulkAction: data });
+    const autoReloadPollIntervalMs = env.BULK_ACTION_AUTORELOAD_POLL_INTERVAL_MS;
+
+    return typedjson({ bulkAction: data, autoReloadPollIntervalMs });
   } catch (error) {
     console.error(error);
     throw new Response(undefined, {
@@ -130,30 +132,16 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 };
 
 export default function Page() {
-  const { bulkAction } = useTypedLoaderData<typeof loader>();
+  const { bulkAction, autoReloadPollIntervalMs } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
 
-  const disabled = bulkAction.status !== "PENDING";
-
-  const streamedEvents = useEventSource(
-    `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.id}/runs/bulkaction/${bulkAction.friendlyId}/stream`,
-    {
-      event: "progress",
-      disabled,
-    }
-  );
-
-  const revalidation = useRevalidator();
-
-  useEffect(() => {
-    if (disabled || streamedEvents === null) {
-      return;
-    }
-
-    revalidation.revalidate();
-  }, [streamedEvents, disabled]);
+  useAutoRevalidate({
+    interval: autoReloadPollIntervalMs,
+    onFocus: true,
+    disabled: bulkAction.status !== "PENDING",
+  });
 
   return (
     <div className="grid h-full max-h-full grid-rows-[2.5rem_2.5rem_1fr_3.25rem] overflow-hidden bg-background-bright">
