@@ -377,6 +377,14 @@ export const FinalizeDeploymentRequestBody = z.object({
 
 export type FinalizeDeploymentRequestBody = z.infer<typeof FinalizeDeploymentRequestBody>;
 
+export const StartDeploymentRequestBody = z.object({
+  contentHash: z.string().optional(),
+  gitMeta: GitMeta.optional(),
+  runtime: z.string().optional(),
+});
+
+export type StartDeploymentRequestBody = z.infer<typeof StartDeploymentRequestBody>;
+
 export const ExternalBuildData = z.object({
   buildId: z.string(),
   buildToken: z.string(),
@@ -419,6 +427,7 @@ export const InitializeDeploymentRequestBody = z.object({
   gitMeta: GitMeta.optional(),
   type: z.enum(["MANAGED", "UNMANAGED", "V1"]).optional(),
   runtime: z.string().optional(),
+  initialStatus: z.enum(["PENDING", "BUILDING"]).optional(),
 });
 
 export type InitializeDeploymentRequestBody = z.infer<typeof InitializeDeploymentRequestBody>;

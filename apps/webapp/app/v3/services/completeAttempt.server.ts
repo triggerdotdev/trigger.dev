@@ -213,7 +213,7 @@ export class CompleteAttemptService extends BaseService {
         taskRunAttempt.friendlyId,
         taskRunAttempt.taskRunId,
         new Date(),
-        "Cancelled by user",
+        "Canceled by user",
         env
       );
 

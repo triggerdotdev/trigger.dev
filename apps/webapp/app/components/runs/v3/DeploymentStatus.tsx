@@ -2,6 +2,7 @@ import {
   CheckCircleIcon,
   ExclamationTriangleIcon,
   NoSymbolIcon,
+  RectangleStackIcon,
   XCircleIcon,
 } from "@heroicons/react/20/solid";
 import type { WorkerDeploymentStatus } from "@trigger.dev/database";
@@ -49,6 +50,9 @@ export function DeploymentStatusIcon({
 }) {
   switch (status) {
     case "PENDING":
+      return (
+        <RectangleStackIcon className={cn(deploymentStatusClassNameColor(status), className)} />
+      );
     case "BUILDING":
     case "DEPLOYING":
       return <Spinner className={cn(deploymentStatusClassNameColor(status), className)} />;
@@ -73,6 +77,7 @@ export function DeploymentStatusIcon({
 export function deploymentStatusClassNameColor(status: WorkerDeploymentStatus): string {
   switch (status) {
     case "PENDING":
+      return "text-charcoal-500";
     case "BUILDING":
     case "DEPLOYING":
       return "text-pending";
@@ -92,7 +97,7 @@ export function deploymentStatusClassNameColor(status: WorkerDeploymentStatus): 
 export function deploymentStatusTitle(status: WorkerDeploymentStatus, isBuilt: boolean): string {
   switch (status) {
     case "PENDING":
-      return "Pending…";
+      return "Queued…";
     case "BUILDING":
       return "Building…";
     case "DEPLOYING":
@@ -121,6 +126,7 @@ export function deploymentStatusTitle(status: WorkerDeploymentStatus, isBuilt: b
 
 // PENDING and CANCELED are not used so are ommited from the UI
 export const deploymentStatuses: WorkerDeploymentStatus[] = [
+  "PENDING",
   "BUILDING",
   "DEPLOYING",
   "DEPLOYED",

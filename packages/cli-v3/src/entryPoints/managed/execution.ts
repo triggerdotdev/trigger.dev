@@ -873,7 +873,23 @@ export class RunExecution {
     );
 
     if (!continuationResult.success) {
-      throw new Error(continuationResult.error);
+      // Check if we need to refresh metadata due to connection error
+      if (continuationResult.isConnectionError) {
+        this.sendDebugLog("restore: connection error detected, refreshing metadata");
+        await this.processEnvOverrides("restore connection error");
+
+        // Retry the continuation after refreshing metadata
+        const retryResult = await this.httpClient.continueRunExecution(
+          this.runFriendlyId,
+          this.snapshotManager.snapshotId
+        );
+
+        if (!retryResult.success) {
+          throw new Error(retryResult.error);
+        }
+      } else {
+        throw new Error(continuationResult.error);
+      }
     }
 
     // Track restore count
@@ -899,10 +915,17 @@ export class RunExecution {
   public async processEnvOverrides(
     reason?: string,
     shouldPollForSnapshotChanges?: boolean
-  ): Promise<{ overrides: Metadata } | null> {
+  ): Promise<{
+    overrides: Metadata;
+    runnerIdChanged?: boolean;
+    supervisorChanged?: boolean;
+  } | null> {
     if (!this.metadataClient) {
       return null;
     }
+
+    const previousRunnerId = this.env.TRIGGER_RUNNER_ID;
+    const previousSupervisorUrl = this.env.TRIGGER_SUPERVISOR_API_URL;
 
     const [error, overrides] = await this.metadataClient.getEnvOverrides();
 
@@ -931,6 +954,14 @@ export class RunExecution {
     // Override the env with the new values
     this.env.override(overrides);
 
+    // Check if runner ID changed
+    const newRunnerId = this.env.TRIGGER_RUNNER_ID;
+    const runnerIdChanged = previousRunnerId !== newRunnerId;
+
+    // Check if supervisor URL changed
+    const newSupervisorUrl = this.env.TRIGGER_SUPERVISOR_API_URL;
+    const supervisorChanged = previousSupervisorUrl !== newSupervisorUrl;
+
     // Update services with new values
     if (overrides.TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS) {
       this.snapshotPoller?.updateInterval(this.env.TRIGGER_SNAPSHOT_POLL_INTERVAL_SECONDS * 1000);
@@ -954,6 +985,8 @@ export class RunExecution {
 
     return {
       overrides,
+      runnerIdChanged,
+      supervisorChanged,
     };
   }
 
@@ -977,6 +1010,12 @@ export class RunExecution {
 
     if (!response.success) {
       this.sendDebugLog("heartbeat: failed", { error: response.error });
+
+      // Check if we need to refresh metadata due to connection error
+      if (response.isConnectionError) {
+        this.sendDebugLog("heartbeat: connection error detected, refreshing metadata");
+        await this.processEnvOverrides("heartbeat connection error");
+      }
     }
 
     this.lastHeartbeat = new Date();
@@ -1192,6 +1231,14 @@ export class RunExecution {
         error: response.error,
       });
 
+      if (response.isConnectionError) {
+        // Log this separately to make it more visible
+        this.sendDebugLog(
+          "fetchAndProcessSnapshotChanges: connection error detected, refreshing metadata"
+        );
+      }
+
+      // Always trigger metadata refresh on snapshot fetch errors
       await this.processEnvOverrides("snapshots since error");
       return;
     }

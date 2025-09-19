@@ -125,7 +125,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
   }
 
   private createHttpServer({ host, port }: { host: string; port: number }) {
-    return new HttpServer({
+    const httpServer = new HttpServer({
       port,
       host,
       metrics: {
@@ -346,23 +346,6 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
           },
         }
       )
-      .route("/api/v1/workload-actions/runs/:runFriendlyId/logs/debug", "POST", {
-        paramsSchema: WorkloadActionParams.pick({ runFriendlyId: true }),
-        bodySchema: WorkloadDebugLogRequestBody,
-        handler: async ({ req, reply, params, body }) => {
-          reply.empty(204);
-
-          if (!env.SEND_RUN_DEBUG_LOGS) {
-            return;
-          }
-
-          await this.workerClient.sendDebugLog(
-            params.runFriendlyId,
-            body,
-            this.runnerIdFromRequest(req)
-          );
-        },
-      })
       .route("/api/v1/workload-actions/deployments/:deploymentId/dequeue", "GET", {
         paramsSchema: z.object({
           deploymentId: z.string(),
@@ -387,6 +370,31 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
           reply.json(dequeueResponse.data satisfies WorkloadDequeueFromVersionResponseBody);
         },
       });
+
+    if (env.SEND_RUN_DEBUG_LOGS) {
+      httpServer.route("/api/v1/workload-actions/runs/:runFriendlyId/logs/debug", "POST", {
+        paramsSchema: WorkloadActionParams.pick({ runFriendlyId: true }),
+        bodySchema: WorkloadDebugLogRequestBody,
+        handler: async ({ req, reply, params, body }) => {
+          reply.empty(204);
+
+          await this.workerClient.sendDebugLog(
+            params.runFriendlyId,
+            body,
+            this.runnerIdFromRequest(req)
+          );
+        },
+      });
+    } else {
+      // Lightweight mock route without schemas
+      httpServer.route("/api/v1/workload-actions/runs/:runFriendlyId/logs/debug", "POST", {
+        handler: async ({ reply }) => {
+          reply.empty(204);
+        },
+      });
+    }
+
+    return httpServer;
   }
 
   private createWebsocketServer() {
