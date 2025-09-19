@@ -514,6 +514,60 @@ export class EventRepository {
     });
   }
 
+  async completeExpiredRunEvent({
+    run,
+    endTime,
+    ttl,
+  }: {
+    run: CompleteableTaskRun;
+    endTime?: Date;
+    ttl: string;
+  }) {
+    const startTime = convertDateToNanoseconds(run.createdAt);
+
+    await this.insertImmediate({
+      message: run.taskIdentifier,
+      serviceName: "api server",
+      serviceNamespace: "trigger.dev",
+      level: "TRACE",
+      kind: "SERVER",
+      traceId: run.traceId,
+      spanId: run.spanId,
+      parentId: run.parentSpanId,
+      runId: run.friendlyId,
+      taskSlug: run.taskIdentifier,
+      projectRef: "",
+      projectId: run.projectId,
+      environmentId: run.runtimeEnvironmentId,
+      environmentType: run.environmentType ?? "DEVELOPMENT",
+      organizationId: run.organizationId ?? "",
+      isPartial: false,
+      isError: true,
+      isCancelled: false,
+      status: "ERROR",
+      runIsTest: run.isTest,
+      startTime,
+      events: [
+        {
+          name: "exception",
+          time: endTime ?? new Date(),
+          properties: {
+            exception: {
+              message: `Run expired because the TTL (${ttl}) was reached`,
+            },
+          },
+        },
+      ],
+      properties: {},
+      metadata: undefined,
+      style: undefined,
+      duration: calculateDurationFromStart(startTime, endTime ?? new Date()),
+      output: undefined,
+      payload: undefined,
+      payloadType: undefined,
+    });
+  }
+
   async createAttemptFailedRunEvent({
     run,
     endTime,

@@ -16,12 +16,11 @@ import {
 import { roomFromFriendlyRunId, socketIo } from "./handleSocketIo.server";
 import { engine } from "./runEngine.server";
 import { PerformTaskRunAlertsService } from "./services/alerts/performTaskRunAlerts.server";
-import { getTaskEventStoreTableForRun } from "./taskEventStore.server";
 
 export function registerRunEngineEventBusHandlers() {
   engine.eventBus.on("runSucceeded", async ({ time, run }) => {
     const [taskRunError, taskRun] = await tryCatch(
-      $replica.taskRun.findFirst({
+      $replica.taskRun.findFirstOrThrow({
         where: {
           id: run.id,
         },
@@ -46,13 +45,6 @@ export function registerRunEngineEventBusHandlers() {
     if (taskRunError) {
       logger.error("[runSucceeded] Failed to find task run", {
         error: taskRunError,
-        runId: run.id,
-      });
-      return;
-    }
-
-    if (!taskRun) {
-      logger.error("[runSucceeded] Task run not found", {
         runId: run.id,
       });
       return;
@@ -92,7 +84,7 @@ export function registerRunEngineEventBusHandlers() {
     const exception = createExceptionPropertiesFromError(sanitizedError);
 
     const [taskRunError, taskRun] = await tryCatch(
-      $replica.taskRun.findFirst({
+      $replica.taskRun.findFirstOrThrow({
         where: {
           id: run.id,
         },
@@ -122,13 +114,6 @@ export function registerRunEngineEventBusHandlers() {
       return;
     }
 
-    if (!taskRun) {
-      logger.error("[runFailed] Task run not found", {
-        runId: run.id,
-      });
-      return;
-    }
-
     const [completeFailedRunEventError] = await tryCatch(
       eventRepository.completeFailedRunEvent({
         run: taskRun,
@@ -150,7 +135,7 @@ export function registerRunEngineEventBusHandlers() {
     const exception = createExceptionPropertiesFromError(sanitizedError);
 
     const [taskRunError, taskRun] = await tryCatch(
-      $replica.taskRun.findFirst({
+      $replica.taskRun.findFirstOrThrow({
         where: {
           id: run.id,
         },
@@ -175,13 +160,6 @@ export function registerRunEngineEventBusHandlers() {
     if (taskRunError) {
       logger.error("[runAttemptFailed] Failed to find task run", {
         error: taskRunError,
-        runId: run.id,
-      });
-      return;
-    }
-
-    if (!taskRun) {
-      logger.error("[runAttemptFailed] Task run not found", {
         runId: run.id,
       });
       return;
@@ -218,7 +196,7 @@ export function registerRunEngineEventBusHandlers() {
       }
 
       const [cachedRunError, cachedRun] = await tryCatch(
-        $replica.taskRun.findFirst({
+        $replica.taskRun.findFirstOrThrow({
           where: {
             id: cachedRunId,
           },
@@ -243,13 +221,6 @@ export function registerRunEngineEventBusHandlers() {
       if (cachedRunError) {
         logger.error("[cachedRunCompleted] Failed to find cached run", {
           error: cachedRunError,
-          cachedRunId,
-        });
-        return;
-      }
-
-      if (!cachedRun) {
-        logger.error("[cachedRunCompleted] Cached run not found", {
           cachedRunId,
         });
         return;
@@ -314,52 +285,12 @@ export function registerRunEngineEventBusHandlers() {
   );
 
   engine.eventBus.on("runExpired", async ({ time, run }) => {
-    try {
-      const eventStore = getTaskEventStoreTableForRun(run);
-
-      const completedEvent = await eventRepository.completeEvent(
-        eventStore,
-        run.spanId,
-        run.createdAt,
-        run.completedAt ?? undefined,
-        {
-          endTime: time,
-          attributes: {
-            isError: true,
-          },
-          events: [
-            {
-              name: "exception",
-              time,
-              properties: {
-                exception: {
-                  message: `Run expired because the TTL (${run.ttl}) was reached`,
-                },
-              },
-            },
-          ],
-        }
-      );
-
-      if (!completedEvent) {
-        logger.error("[runFailed] Failed to complete event for unknown reason", {
-          runId: run.id,
-          spanId: run.spanId,
-        });
-        return;
-      }
-    } catch (error) {
-      logger.error("[runExpired] Failed to complete event", {
-        error: error instanceof Error ? error.message : error,
-        runId: run.id,
-        spanId: run.spanId,
-      });
+    if (!run.ttl) {
+      return;
     }
-  });
 
-  engine.eventBus.on("runCancelled", async ({ time, run }) => {
-    try {
-      const taskRun = await $replica.taskRun.findFirst({
+    const [taskRunError, taskRun] = await tryCatch(
+      $replica.taskRun.findFirstOrThrow({
         where: {
           id: run.id,
         },
@@ -378,27 +309,79 @@ export function registerRunEngineEventBusHandlers() {
           isTest: true,
           organizationId: true,
         },
+      })
+    );
+
+    if (taskRunError) {
+      logger.error("[runExpired] Failed to find task run", {
+        error: taskRunError,
+        runId: run.id,
       });
+      return;
+    }
 
-      if (!taskRun) {
-        logger.error("[runCancelled] Task run not found", {
-          runId: run.id,
-        });
-        return;
-      }
+    const [completeExpiredRunEventError] = await tryCatch(
+      eventRepository.completeExpiredRunEvent({
+        run: taskRun,
+        endTime: time,
+        ttl: run.ttl,
+      })
+    );
 
-      const error = createJsonErrorObject(run.error);
+    if (completeExpiredRunEventError) {
+      logger.error("[runExpired] Failed to complete expired run event", {
+        error: completeExpiredRunEventError,
+        runId: run.id,
+      });
+    }
+  });
 
-      await eventRepository.cancelRunEvent({
+  engine.eventBus.on("runCancelled", async ({ time, run }) => {
+    const [taskRunError, taskRun] = await tryCatch(
+      $replica.taskRun.findFirstOrThrow({
+        where: {
+          id: run.id,
+        },
+        select: {
+          id: true,
+          friendlyId: true,
+          traceId: true,
+          spanId: true,
+          parentSpanId: true,
+          createdAt: true,
+          completedAt: true,
+          taskIdentifier: true,
+          projectId: true,
+          runtimeEnvironmentId: true,
+          environmentType: true,
+          isTest: true,
+          organizationId: true,
+        },
+      })
+    );
+
+    if (taskRunError) {
+      logger.error("[runCancelled] Task run not found", {
+        error: taskRunError,
+        runId: run.id,
+      });
+      return;
+    }
+
+    const error = createJsonErrorObject(run.error);
+
+    const [cancelRunEventError] = await tryCatch(
+      eventRepository.cancelRunEvent({
         reason: error.message,
         run: taskRun,
         cancelledAt: time,
-      });
-    } catch (error) {
-      logger.error("[runCancelled] Failed to cancel event", {
-        error: error instanceof Error ? error.message : error,
+      })
+    );
+
+    if (cancelRunEventError) {
+      logger.error("[runCancelled] Failed to cancel run event", {
+        error: cancelRunEventError,
         runId: run.id,
-        spanId: run.spanId,
       });
     }
   });
