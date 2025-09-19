@@ -2001,11 +2001,15 @@ function getAncestorOverrides({
   spansById: Map<string, PreparedEvent>;
   span: PreparedEvent;
 }): AncestorOverrides | undefined {
-  const overrides: AncestorOverrides = {};
-
   if (span.level !== "TRACE") {
     return;
   }
+
+  if (!span.isPartial) {
+    return;
+  }
+
+  const overrides: AncestorOverrides = {};
 
   const cancelledAncestor = findCancelledAncestor(spansById, span, span.spanId);
 
