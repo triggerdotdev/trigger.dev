@@ -567,7 +567,7 @@ function RunBody({
                             />
                           </TextLink>
                         }
-                        content={`Jump to ${run.batch.friendlyId}`}
+                        content={`View batches filtered by ${run.batch.friendlyId}`}
                         disableHoverableContent
                       />
                     </Property.Value>
