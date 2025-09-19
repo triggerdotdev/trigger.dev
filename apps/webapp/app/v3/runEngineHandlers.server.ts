@@ -204,16 +204,86 @@ export function registerRunEngineEventBusHandlers() {
     }
   });
 
-  engine.eventBus.on("cachedRunCompleted", async ({ time, span, blockedRunId, hasError }) => {
-    try {
-      const blockedRun = await $replica.taskRun.findFirst({
-        select: {
-          taskEventStore: true,
-        },
-        where: {
-          id: blockedRunId,
-        },
-      });
+  engine.eventBus.on(
+    "cachedRunCompleted",
+    async ({ time, span, blockedRunId, hasError, cachedRunId }) => {
+      const [parentSpanId, spanId] = span.id.split(":");
+
+      if (!spanId || !parentSpanId) {
+        logger.debug("[cachedRunCompleted] Invalid span id", {
+          spanId,
+          parentSpanId,
+        });
+        return;
+      }
+
+      const [cachedRunError, cachedRun] = await tryCatch(
+        $replica.taskRun.findFirst({
+          where: {
+            id: cachedRunId,
+          },
+          select: {
+            id: true,
+            friendlyId: true,
+            traceId: true,
+            spanId: true,
+            parentSpanId: true,
+            createdAt: true,
+            completedAt: true,
+            taskIdentifier: true,
+            projectId: true,
+            runtimeEnvironmentId: true,
+            environmentType: true,
+            isTest: true,
+            organizationId: true,
+          },
+        })
+      );
+
+      if (cachedRunError) {
+        logger.error("[cachedRunCompleted] Failed to find cached run", {
+          error: cachedRunError,
+          cachedRunId,
+        });
+        return;
+      }
+
+      if (!cachedRun) {
+        logger.error("[cachedRunCompleted] Cached run not found", {
+          cachedRunId,
+        });
+        return;
+      }
+
+      const [blockedRunError, blockedRun] = await tryCatch(
+        $replica.taskRun.findFirst({
+          where: {
+            id: blockedRunId,
+          },
+          select: {
+            id: true,
+            friendlyId: true,
+            traceId: true,
+            spanId: true,
+            parentSpanId: true,
+            createdAt: true,
+            completedAt: true,
+            taskIdentifier: true,
+            projectId: true,
+            runtimeEnvironmentId: true,
+            environmentType: true,
+            isTest: true,
+            organizationId: true,
+          },
+        })
+      );
+
+      if (blockedRunError) {
+        logger.error("[cachedRunCompleted] Failed to find blocked run", {
+          error: blockedRunError,
+          blockedRunId,
+        });
+      }
 
       if (!blockedRun) {
         logger.error("[cachedRunCompleted] Blocked run not found", {
@@ -222,34 +292,26 @@ export function registerRunEngineEventBusHandlers() {
         return;
       }
 
-      const eventStore = getTaskEventStoreTableForRun(blockedRun);
-
-      const completedEvent = await eventRepository.completeEvent(
-        eventStore,
-        span.id,
-        span.createdAt,
-        time,
-        {
+      const [completeCachedRunEventError] = await tryCatch(
+        eventRepository.completeCachedRunEvent({
+          run: cachedRun,
+          blockedRun,
+          spanId,
+          parentSpanId,
+          spanCreatedAt: span.createdAt,
+          isError: hasError,
           endTime: time,
-          attributes: {
-            isError: hasError,
-          },
-        }
+        })
       );
 
-      if (!completedEvent) {
-        logger.error("[cachedRunCompleted] Failed to complete event for unknown reason", {
-          span,
+      if (completeCachedRunEventError) {
+        logger.error("[cachedRunCompleted] Failed to complete cached run event", {
+          error: completeCachedRunEventError,
+          cachedRunId,
         });
-        return;
       }
-    } catch (error) {
-      logger.error("[cachedRunCompleted] Failed to complete event for unknown reason", {
-        error: error instanceof Error ? error.message : error,
-        span,
-      });
     }
-  });
+  );
 
   engine.eventBus.on("runExpired", async ({ time, run }) => {
     try {

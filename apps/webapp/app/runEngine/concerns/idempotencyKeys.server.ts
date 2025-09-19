@@ -90,11 +90,18 @@ export class IdempotencyKeyConcern {
             isError: associatedWaitpoint.outputIsError,
           },
           async (event) => {
+            const spanId =
+              request.options?.parentAsLinkType === "replay"
+                ? event.spanId
+                : event.traceparent?.spanId
+                ? `${event.traceparent.spanId}:${event.spanId}`
+                : event.spanId;
+
             //block run with waitpoint
             await this.engine.blockRunWithWaitpoint({
               runId: RunId.fromFriendlyId(parentRunId),
               waitpoints: associatedWaitpoint.id,
-              spanIdToComplete: event.spanId,
+              spanIdToComplete: spanId,
               batch: request.options?.batchId
                 ? {
                     id: request.options.batchId,

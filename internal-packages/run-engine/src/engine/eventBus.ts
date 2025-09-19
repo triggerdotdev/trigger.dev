@@ -287,6 +287,7 @@ export type EventBusEvents = {
       };
       hasError: boolean;
       blockedRunId: string;
+      cachedRunId?: string;
     },
   ];
   runMetadataUpdated: [
