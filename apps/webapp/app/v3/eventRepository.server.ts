@@ -4,11 +4,9 @@ import { SemanticResourceAttributes } from "@opentelemetry/semantic-conventions"
 import {
   AttemptFailedSpanEvent,
   correctErrorStackTrace,
-  createPacketAttributesAsJson,
   ExceptionEventProperties,
   ExceptionSpanEvent,
   flattenAttributes,
-  IOPacket,
   isExceptionSpanEvent,
   NULL_SENTINEL,
   omit,
@@ -23,14 +21,7 @@ import {
   unflattenAttributes,
 } from "@trigger.dev/core/v3";
 import { parseTraceparent, serializeTraceparent } from "@trigger.dev/core/v3/isomorphic";
-import {
-  Prisma,
-  RuntimeEnvironmentType,
-  TaskEvent,
-  TaskEventKind,
-  TaskEventStatus,
-  TaskRun,
-} from "@trigger.dev/database";
+import { Prisma, TaskEvent, TaskEventKind, TaskEventStatus, TaskRun } from "@trigger.dev/database";
 import { nanoid } from "nanoid";
 import { createHash } from "node:crypto";
 import { EventEmitter } from "node:stream";
@@ -314,66 +305,6 @@ export class EventRepository {
 
   async insertManyImmediate(events: CreatableEvent[]) {
     return await this.#flushBatch(nanoid(), events);
-  }
-
-  async completeEvent(
-    storeTable: TaskEventStoreTable,
-    spanId: string,
-    startCreatedAt: Date,
-    endCreatedAt?: Date,
-    options?: UpdateEventOptions
-  ) {
-    const events = await this.queryIncompleteEvents(
-      storeTable,
-      { spanId },
-      startCreatedAt,
-      endCreatedAt
-    );
-
-    if (events.length === 0) {
-      logger.warn("No incomplete events found for spanId", { spanId, options });
-      return;
-    }
-
-    const event = events[0];
-
-    const output = options?.attributes.output
-      ? await createPacketAttributesAsJson(
-          options?.attributes.output,
-          options?.attributes.outputType ?? "application/json"
-        )
-      : undefined;
-
-    logger.debug("Completing event", {
-      spanId,
-      eventId: event.id,
-    });
-
-    const completedEvent = {
-      ...omit(event, "id"),
-      isPartial: false,
-      isError: options?.attributes.isError ?? false,
-      isCancelled: false,
-      status: options?.attributes.isError ? "ERROR" : "OK",
-      links: event.links ?? [],
-      events: event.events ?? (options?.events as any) ?? [],
-      duration: calculateDurationFromStart(event.startTime, options?.endTime),
-      properties: event.properties as Attributes,
-      metadata: event.metadata as Attributes,
-      style: event.style as Attributes,
-      output: output,
-      outputType:
-        options?.attributes.outputType === "application/store" ||
-        options?.attributes.outputType === "text/plain"
-          ? options?.attributes.outputType
-          : "application/json",
-      payload: event.payload as Attributes,
-      payloadType: event.payloadType,
-    } satisfies CreatableEvent;
-
-    await this.insert(completedEvent);
-
-    return completedEvent;
   }
 
   async completeSuccessfulRunEvent({ run, endTime }: { run: CompleteableTaskRun; endTime?: Date }) {
@@ -715,75 +646,6 @@ export class EventRepository {
       payload: event.payload as Attributes,
       payloadType: event.payloadType,
     });
-  }
-
-  async #queryEvents(
-    storeTable: TaskEventStoreTable,
-    queryOptions: QueryOptions,
-    startCreatedAt: Date,
-    endCreatedAt?: Date
-  ): Promise<TaskEventRecord[]> {
-    return await this.taskEventStore.findMany(
-      storeTable,
-      queryOptions,
-      startCreatedAt,
-      endCreatedAt
-    );
-  }
-
-  async queryIncompleteEvents(
-    storeTable: TaskEventStoreTable,
-    queryOptions: QueryOptions,
-    startCreatedAt: Date,
-    endCreatedAt?: Date,
-    allowCompleteDuplicate = false
-  ) {
-    // First we will find all the events that match the query options (selecting minimal data).
-    const taskEvents = await this.taskEventStore.findMany(
-      storeTable,
-      queryOptions,
-      startCreatedAt,
-      endCreatedAt,
-      { spanId: true, isPartial: true, isCancelled: true },
-      undefined,
-      { limit: 500 }
-    );
-
-    // Optimize the filtering by pre-processing the data
-    const completeEventSpanIds = new Set<string>();
-    const incompleteEvents: Array<{ spanId: string }> = [];
-
-    // Single pass to categorize events and build lookup structures
-    for (const event of taskEvents) {
-      if (!event.isPartial && !event.isCancelled) {
-        // This is a complete event
-        completeEventSpanIds.add(event.spanId);
-      } else if (event.isPartial && !event.isCancelled) {
-        // This is a potentially incomplete event
-        incompleteEvents.push(event);
-      }
-      // Skip cancelled events as they are not incomplete
-    }
-
-    // Filter incomplete events, excluding those with complete duplicates
-    const filteredTaskEvents = allowCompleteDuplicate
-      ? incompleteEvents
-      : incompleteEvents.filter((event) => !completeEventSpanIds.has(event.spanId));
-
-    if (filteredTaskEvents.length === 0) {
-      return [];
-    }
-
-    return this.#queryEvents(
-      storeTable,
-      {
-        spanId: {
-          in: filteredTaskEvents.map((event) => event.spanId),
-        },
-      },
-      startCreatedAt,
-      endCreatedAt
-    );
   }
 
   public async getTraceSummary(
