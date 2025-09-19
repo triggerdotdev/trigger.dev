@@ -48,6 +48,7 @@ export type DetailedTraceEvent = Pick<
   | "machinePreset"
   | "properties"
   | "output"
+  | "attemptNumber"
 >;
 
 export type TaskEventStoreTable = "taskEvent" | "taskEventPartitioned";
@@ -276,7 +277,8 @@ export class TaskEventStore {
           "queueName",
           "machinePreset",
           properties,
-          output
+          output,
+          "attemptNumber"
         FROM "TaskEventPartitioned"
         WHERE
           "traceId" = ${traceId}
@@ -314,7 +316,8 @@ export class TaskEventStore {
           "queueName",
           "machinePreset",
           properties,
-          output
+          output,
+          "attemptNumber"
         FROM "TaskEvent"
         WHERE "traceId" = ${traceId}
           ${

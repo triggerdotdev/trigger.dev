@@ -809,6 +809,8 @@ export class EventRepository {
         }
       }
 
+      logger.debug("[getTraceDetailedSummary] preparedEvents before merge", { preparedEvents });
+
       for (const event of preparedEvents) {
         const existingEvent = eventsBySpanId.get(event.spanId);
 
@@ -817,12 +819,35 @@ export class EventRepository {
           continue;
         }
 
+        // This is an invisible event, and we just want to keep the original event but concat together
+        // the event.events with the existingEvent.events
+        if (event.kind === "UNSPECIFIED") {
+          eventsBySpanId.set(event.spanId, {
+            ...existingEvent,
+            events: [...(existingEvent.events ?? []), ...(event.events ?? [])],
+          });
+          continue;
+        }
+
         if (event.isCancelled || !event.isPartial) {
-          eventsBySpanId.set(event.spanId, event);
+          // If we have a cancelled event and an existing partial event,
+          // merge them: use cancelled event data but preserve style from the partial event
+          if (event.isCancelled && existingEvent.isPartial && !existingEvent.isCancelled) {
+            const mergedEvent: PreparedDetailedEvent = {
+              ...event, // Use cancelled event as base (has correct timing, status, events)
+              // Preserve style from the original partial event
+              style: existingEvent.style,
+              events: [...(existingEvent.events ?? []), ...(event.events ?? [])],
+            };
+            eventsBySpanId.set(event.spanId, mergedEvent);
+            continue;
+          }
         }
       }
 
       preparedEvents = Array.from(eventsBySpanId.values());
+
+      logger.debug("[getTraceDetailedSummary] preparedEvents after merge", { preparedEvents });
 
       if (!rootSpanId) {
         return;
@@ -833,12 +858,27 @@ export class EventRepository {
 
       // First pass: create all span detailed summaries
       for (const event of preparedEvents) {
-        const ancestorCancelled = isAncestorCancelled(eventsBySpanId, event.spanId);
-        const duration = calculateDurationIfAncestorIsCancelled(
-          eventsBySpanId,
-          event.spanId,
-          event.duration
-        );
+        const overrides = getAncestorOverrides({
+          spansById: eventsBySpanId,
+          span: event,
+        });
+
+        if (overrides) {
+          logger.debug("[getTraceDetailedSummary] overrides", { overrides, event });
+        }
+
+        const ancestorCancelled = overrides?.isCancelled ?? false;
+        const ancestorIsError = overrides?.isError ?? false;
+        const duration = overrides?.duration ?? event.duration;
+        const events = [...(overrides?.events ?? []), ...(event.events ?? [])];
+        const isPartial = ancestorCancelled || ancestorIsError ? false : event.isPartial;
+        const isCancelled =
+          event.isCancelled === true ? true : event.isPartial && ancestorCancelled;
+        const isError = isCancelled
+          ? false
+          : typeof overrides?.isError === "boolean"
+          ? overrides.isError
+          : event.isError;
 
         const output = event.output ? (event.output as Attributes) : undefined;
         const properties = event.properties
@@ -853,12 +893,12 @@ export class EventRepository {
             runId: event.runId,
             taskSlug: event.taskSlug ?? undefined,
             taskPath: event.taskPath ?? undefined,
-            events: event.events?.filter((e) => !e.name.startsWith("trigger.dev")),
+            events: events?.filter((e) => !e.name.startsWith("trigger.dev")),
             startTime: getDateFromNanoseconds(event.startTime),
             duration: nanosecondsToMilliseconds(duration),
-            isError: event.isError,
-            isPartial: ancestorCancelled ? false : event.isPartial,
-            isCancelled: event.isCancelled === true ? true : event.isPartial && ancestorCancelled,
+            isError,
+            isPartial,
+            isCancelled,
             level: event.level,
             environmentType: event.environmentType,
             workerVersion: event.workerVersion ?? undefined,
@@ -888,6 +928,8 @@ export class EventRepository {
       if (!rootSpan) {
         return;
       }
+
+      logger.debug("[getTraceDetailedSummary] result", { traceId, rootSpan });
 
       return {
         traceId,
