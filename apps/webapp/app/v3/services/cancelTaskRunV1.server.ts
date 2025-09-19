@@ -106,9 +106,6 @@ export class CancelTaskRunServiceV1 extends BaseService {
         reason: opts.reason,
         run: cancelledTaskRun,
         cancelledAt: opts.cancelledAt,
-        projectRef: cancelledTaskRun.project.externalRef,
-        organizationId: cancelledTaskRun.runtimeEnvironment.organizationId,
-        environmentType: cancelledTaskRun.runtimeEnvironment.type,
       })
     );
 
