@@ -1,5 +1,15 @@
 # trigger.dev
 
+## 4.0.5
+
+### Patch Changes
+
+- Stop failing attempt spans when a run is cancelled ([#2530](https://github.com/triggerdotdev/trigger.dev/pull/2530))
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.5`
+  - `@trigger.dev/core@4.0.5`
+  - `@trigger.dev/schema-to-json@4.0.5`
+
 ## 4.0.4
 
 ### Patch Changes
