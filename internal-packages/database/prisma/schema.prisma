@@ -209,7 +209,6 @@ model Organization {
   organizationAccessTokens OrganizationAccessToken[]
   workerGroups             WorkerInstanceGroup[]
   workerInstances          WorkerInstance[]
-  executionSnapshots       TaskRunExecutionSnapshot[]
   githubAppInstallations   GithubAppInstallation[]
 }
 
@@ -326,7 +325,6 @@ model RuntimeEnvironment {
   taskRunCheckpoints   TaskRunCheckpoint[]
   waitpoints           Waitpoint[]
   workerInstances      WorkerInstance[]
-  executionSnapshots   TaskRunExecutionSnapshot[]
   waitpointTags        WaitpointTag[]
   BulkActionGroup      BulkActionGroup[]
 
@@ -391,7 +389,6 @@ model Project {
   waitpoints                Waitpoint[]
   taskRunWaitpoints         TaskRunWaitpoint[]
   taskRunCheckpoints        TaskRunCheckpoint[]
-  executionSnapshots        TaskRunExecutionSnapshot[]
   waitpointTags             WaitpointTag[]
   connectedGithubRepository ConnectedGithubRepository?
 
@@ -898,21 +895,15 @@ model TaskRunExecutionSnapshot {
 
   // Batch
   batchId String?
-  batch   BatchTaskRun? @relation(fields: [batchId], references: [id])
 
   /// This is the current run attempt number. Users can define how many attempts they want for a run.
   attemptNumber Int?
 
   /// Environment
   environmentId   String
-  environment     RuntimeEnvironment     @relation(fields: [environmentId], references: [id])
   environmentType RuntimeEnvironmentType
-
-  projectId String
-  project   Project @relation(fields: [projectId], references: [id])
-
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id])
+  projectId       String
+  organizationId  String
 
   /// Waitpoints that have been completed for this execution
   completedWaitpoints Waitpoint[] @relation("completedWaitpoints")
@@ -926,8 +917,6 @@ model TaskRunExecutionSnapshot {
 
   /// Worker
   workerId String?
-  worker   WorkerInstance? @relation(fields: [workerId], references: [id])
-
   runnerId String?
 
   createdAt DateTime @default(now())
@@ -1148,8 +1137,6 @@ model WorkerInstance {
 
   workerGroup   WorkerInstanceGroup @relation(fields: [workerGroupId], references: [id])
   workerGroupId String
-
-  TaskRunExecutionSnapshot TaskRunExecutionSnapshot[]
 
   organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String?
@@ -1541,13 +1528,11 @@ model BatchTaskRun {
   batchVersion String   @default("v1")
 
   //engine v2
-  /// Snapshots that reference this batch
-  executionSnapshots TaskRunExecutionSnapshot[]
   /// Specific run blockers,
-  runsBlocked        TaskRunWaitpoint[]
+  runsBlocked TaskRunWaitpoint[]
   /// Waitpoints that are blocked by this batch.
   /// When a Batch is created it blocks execution of the associated parent run (for andWait)
-  waitpoints         Waitpoint[]
+  waitpoints  Waitpoint[]
 
   // This is for v3 batches
   /// sealed is set to true once no more items can be added to the batch
