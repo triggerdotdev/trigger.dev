@@ -1,5 +1,6 @@
 import {
   onStart,
+  onStartAttempt,
   onFailure,
   onSuccess,
   onComplete,
@@ -88,7 +89,9 @@ export const tasks = {
   batchTrigger,
   triggerAndWait,
   batchTriggerAndWait,
+  /** @deprecated Use onStartAttempt instead */
   onStart,
+  onStartAttempt,
   onFailure,
   onSuccess,
   onComplete,

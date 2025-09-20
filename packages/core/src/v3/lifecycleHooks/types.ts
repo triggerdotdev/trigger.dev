@@ -33,6 +33,19 @@ export type OnStartHookFunction<TPayload, TInitOutput extends TaskInitOutput = T
 
 export type AnyOnStartHookFunction = OnStartHookFunction<unknown, TaskInitOutput>;
 
+export type TaskStartAttemptHookParams<TPayload = unknown> = {
+  ctx: TaskRunContext;
+  payload: TPayload;
+  task: string;
+  signal: AbortSignal;
+};
+
+export type OnStartAttemptHookFunction<TPayload> = (
+  params: TaskStartAttemptHookParams<TPayload>
+) => undefined | void | Promise<undefined | void>;
+
+export type AnyOnStartAttemptHookFunction = OnStartAttemptHookFunction<unknown>;
+
 export type TaskWait =
   | {
       type: "duration";
@@ -268,6 +281,17 @@ export interface LifecycleHooksManager {
   ): void;
   getTaskStartHook(taskId: string): AnyOnStartHookFunction | undefined;
   getGlobalStartHooks(): RegisteredHookFunction<AnyOnStartHookFunction>[];
+
+  registerGlobalStartAttemptHook(
+    hook: RegisterHookFunctionParams<AnyOnStartAttemptHookFunction>
+  ): void;
+  registerTaskStartAttemptHook(
+    taskId: string,
+    hook: RegisterHookFunctionParams<AnyOnStartAttemptHookFunction>
+  ): void;
+  getTaskStartAttemptHook(taskId: string): AnyOnStartAttemptHookFunction | undefined;
+  getGlobalStartAttemptHooks(): RegisteredHookFunction<AnyOnStartAttemptHookFunction>[];
+
   registerGlobalFailureHook(hook: RegisterHookFunctionParams<AnyOnFailureHookFunction>): void;
   registerTaskFailureHook(
     taskId: string,

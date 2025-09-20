@@ -18,6 +18,7 @@ import {
   RegisterHookFunctionParams,
   TaskWait,
   type LifecycleHooksManager,
+  AnyOnStartAttemptHookFunction,
 } from "./types.js";
 
 const NOOP_LIFECYCLE_HOOKS_MANAGER = new NoopLifecycleHooksManager();
@@ -79,6 +80,27 @@ export class LifecycleHooksAPI {
 
   public getGlobalStartHooks(): RegisteredHookFunction<AnyOnStartHookFunction>[] {
     return this.#getManager().getGlobalStartHooks();
+  }
+
+  public registerTaskStartAttemptHook(
+    taskId: string,
+    hook: RegisterHookFunctionParams<AnyOnStartAttemptHookFunction>
+  ): void {
+    this.#getManager().registerTaskStartAttemptHook(taskId, hook);
+  }
+
+  public registerGlobalStartAttemptHook(
+    hook: RegisterHookFunctionParams<AnyOnStartAttemptHookFunction>
+  ): void {
+    this.#getManager().registerGlobalStartAttemptHook(hook);
+  }
+
+  public getTaskStartAttemptHook(taskId: string): AnyOnStartAttemptHookFunction | undefined {
+    return this.#getManager().getTaskStartAttemptHook(taskId);
+  }
+
+  public getGlobalStartAttemptHooks(): RegisteredHookFunction<AnyOnStartAttemptHookFunction>[] {
+    return this.#getManager().getGlobalStartAttemptHooks();
   }
 
   public registerGlobalFailureHook(
