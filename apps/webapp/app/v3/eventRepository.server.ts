@@ -57,6 +57,7 @@ import type {
   SpanDetailedSummary,
   TraceDetailedSummary,
   UpdateEventOptions,
+  SpanDetail,
 } from "./eventRepository.types";
 import { DetailedTraceEvent, TaskEventStore, TaskEventStoreTable } from "./taskEventStore.server";
 import { startActiveSpan } from "./tracer.server";
@@ -827,49 +828,9 @@ export class EventRepository implements IEventRepository {
         endCreatedAt
       );
 
-      const output = rehydrateJson(spanEvent.output);
-      const payload = rehydrateJson(spanEvent.payload);
-
       const show = rehydrateShow(spanEvent.properties);
 
       const properties = sanitizedAttributes(spanEvent.properties);
-
-      const messagingEvent = SpanMessagingEvent.optional().safeParse(
-        (properties as any)?.messaging
-      );
-
-      const links: SpanLink[] = [];
-
-      if (messagingEvent.success && messagingEvent.data) {
-        if (messagingEvent.data.message && "id" in messagingEvent.data.message) {
-          if (messagingEvent.data.message.id.startsWith("run_")) {
-            links.push({
-              type: "run",
-              icon: "runs",
-              title: `Run ${messagingEvent.data.message.id}`,
-              runId: messagingEvent.data.message.id,
-            });
-          }
-        }
-      }
-
-      const backLinks = spanEvent.links as any as Link[] | undefined;
-
-      if (backLinks && backLinks.length > 0) {
-        backLinks.forEach((l) => {
-          const title = String(
-            l.attributes?.[SemanticInternalAttributes.LINK_TITLE] ?? "Triggered by"
-          );
-
-          links.push({
-            type: "span",
-            icon: "trigger",
-            title,
-            traceId: l.context.traceId,
-            spanId: l.context.spanId,
-          });
-        });
-      }
 
       const spanEvents = transformEvents(
         span.data.events,
@@ -891,16 +852,41 @@ export class EventRepository implements IEventRepository {
       };
 
       return {
-        ...spanEvent,
-        ...span.data,
-        payload,
-        output,
-        properties,
+        // Core Identity & Structure
+        spanId: spanEvent.spanId,
+        parentId: spanEvent.parentId,
+        message: spanEvent.message,
+
+        // Status & State
+        isError: span.data.isError,
+        isPartial: span.data.isPartial,
+        isCancelled: span.data.isCancelled,
+        level: spanEvent.level,
+        kind: spanEvent.kind,
+
+        // Timing
+        startTime: span.data.startTime,
+        duration: nanosecondsToMilliseconds(span.data.duration),
+
+        // Content & Display
         events: spanEvents,
-        show,
-        links,
-        originalRun,
+        style: span.data.style,
+        properties: properties,
+
+        // Context (Used in Span Details)
+        idempotencyKey: spanEvent.idempotencyKey,
+        taskSlug: spanEvent.taskSlug,
+        workerVersion: spanEvent.workerVersion,
+
+        // Entity & Relationships
         entity,
+        triggeredRuns: [], // Will be populated by SpanPresenter
+        showActionBar: show?.actions === true,
+
+        // Additional Properties (Used by SpanPresenter)
+        originalRun,
+        show,
+        metadata: spanEvent.metadata,
       };
     });
   }

@@ -11,6 +11,7 @@ import type {
   RunPreparedEvent,
   TaskEventRecord,
   ExceptionEventProperties,
+  SpanDetail,
 } from "./eventRepository.types";
 import type { TaskEventStoreTable } from "./taskEventStore.server";
 import type { DynamicFlushScheduler } from "./dynamicFlushScheduler.server";
@@ -155,7 +156,7 @@ export class ClickhouseEventRepository implements IEventRepository {
     startCreatedAt: Date,
     endCreatedAt?: Date,
     options?: { includeDebugLogs?: boolean }
-  ): Promise<any> {
+  ): Promise<SpanDetail | undefined> {
     throw new Error("ClickhouseEventRepository.getSpan not implemented");
   }
 

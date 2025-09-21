@@ -1081,7 +1081,7 @@ function SpanEntity({ span }: { span: Span }) {
                             {run.taskIdentifier}
                           </TableCell>
                           <TableCell to={path} actionClassName="py-1.5" rowHoverStyle="bright">
-                            {run.lockedToVersion?.version ?? "–"}
+                            {run.taskVersion ?? "–"}
                           </TableCell>
                           <TableCell to={path} actionClassName="py-1.5" rowHoverStyle="bright">
                             <DateTime date={run.createdAt} />
