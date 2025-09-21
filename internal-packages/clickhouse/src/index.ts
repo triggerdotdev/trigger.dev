@@ -12,6 +12,7 @@ import {
   getTaskUsageByOrganization,
   getTaskRunsCountQueryBuilder,
 } from "./taskRuns.js";
+import { insertTaskEvents } from "./taskEvents.js";
 import { Logger, type LogLevel } from "@trigger.dev/core/logger";
 import type { Agent as HttpAgent } from "http";
 import type { Agent as HttpsAgent } from "https";
@@ -151,6 +152,12 @@ export class ClickHouse {
       getCurrentRunningStats: getCurrentRunningStats(this.reader),
       getAverageDurations: getAverageDurations(this.reader),
       getTaskUsageByOrganization: getTaskUsageByOrganization(this.reader),
+    };
+  }
+
+  get taskEvents() {
+    return {
+      insert: insertTaskEvents(this.writer),
     };
   }
 }

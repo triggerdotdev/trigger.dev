@@ -16,14 +16,13 @@ import {
   Span_SpanKind,
   Status_StatusCode,
 } from "@trigger.dev/otlp-importer";
-import {
+import { EventRepository, eventRepository } from "./eventRepository.server";
+import type {
+  CreatableEvent,
   CreatableEventKind,
   CreatableEventStatus,
-  EventRepository,
-  eventRepository,
-  type CreatableEvent,
   CreatableEventEnvironmentType,
-} from "./eventRepository.server";
+} from "./eventRepository.types";
 import { logger } from "~/services/logger.server";
 import { trace, Tracer } from "@opentelemetry/api";
 import { startSpan } from "./tracing.server";
