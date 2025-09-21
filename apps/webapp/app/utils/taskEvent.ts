@@ -19,7 +19,7 @@ import type {
   SpanLink,
   SpanSummary,
   TraceSummary,
-} from "~/v3/eventRepository.server";
+} from "~/v3/eventRepository.types";
 
 export type TraceSpan = NonNullable<ReturnType<typeof createSpanFromEvents>>;
 

@@ -33,220 +33,38 @@ import { createRedisClient, RedisClient, RedisWithClusterOptions } from "~/redis
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 import { DynamicFlushScheduler } from "./dynamicFlushScheduler.server";
+import type {
+  IEventRepository,
+  CreatableEvent,
+  CreatableEventKind,
+  CreatableEventStatus,
+  CreatableEventEnvironmentType,
+  CompleteableTaskRun,
+  TraceAttributes,
+  SetAttribute,
+  TraceEventOptions,
+  EventBuilder,
+  EventRepoConfig,
+  QueryOptions,
+  TaskEventRecord,
+  QueriedEvent,
+  PreparedEvent,
+  PreparedDetailedEvent,
+  RunPreparedEvent,
+  SpanLink,
+  SpanSummary,
+  TraceSummary,
+  SpanDetailedSummary,
+  TraceDetailedSummary,
+  UpdateEventOptions,
+} from "./eventRepository.types";
 import { DetailedTraceEvent, TaskEventStore, TaskEventStoreTable } from "./taskEventStore.server";
 import { startActiveSpan } from "./tracer.server";
 import { startSpan } from "./tracing.server";
 
 const MAX_FLUSH_DEPTH = 5;
 
-export type CreatableEvent = Omit<
-  Prisma.TaskEventCreateInput,
-  "id" | "createdAt" | "properties" | "metadata" | "style" | "output" | "payload"
-> & {
-  properties: Attributes;
-  metadata: Attributes | undefined;
-  style: Attributes | undefined;
-  output: Attributes | string | boolean | number | undefined;
-  payload: Attributes | string | boolean | number | undefined;
-};
-
-export type CreatableEventKind = TaskEventKind;
-export type CreatableEventStatus = TaskEventStatus;
-export type CreatableEventEnvironmentType = CreatableEvent["environmentType"];
-
-export type CompleteableTaskRun = Pick<
-  TaskRun,
-  | "friendlyId"
-  | "traceId"
-  | "spanId"
-  | "parentSpanId"
-  | "createdAt"
-  | "completedAt"
-  | "taskIdentifier"
-  | "projectId"
-  | "runtimeEnvironmentId"
-  | "organizationId"
-  | "environmentType"
-  | "isTest"
->;
-
-export type TraceAttributes = Partial<
-  Pick<
-    CreatableEvent,
-    | "attemptId"
-    | "isError"
-    | "isCancelled"
-    | "isDebug"
-    | "runId"
-    | "runIsTest"
-    | "output"
-    | "outputType"
-    | "metadata"
-    | "properties"
-    | "style"
-    | "queueId"
-    | "queueName"
-    | "batchId"
-    | "payload"
-    | "payloadType"
-    | "idempotencyKey"
-  >
->;
-
-export type SetAttribute<T extends TraceAttributes> = (key: keyof T, value: T[keyof T]) => void;
-
-export type TraceEventOptions = {
-  kind?: CreatableEventKind;
-  context?: Record<string, unknown>;
-  spanParentAsLink?: boolean;
-  parentAsLinkType?: "trigger" | "replay";
-  spanIdSeed?: string;
-  attributes: TraceAttributes;
-  environment: TaskEventEnvironment;
-  taskSlug: string;
-  startTime?: bigint;
-  endTime?: Date;
-  immediate?: boolean;
-};
-
-export type EventBuilder = {
-  traceId: string;
-  spanId: string;
-  setAttribute: SetAttribute<TraceAttributes>;
-  stop: () => void;
-  failWithError: (error: TaskRunError) => void;
-};
-
-export type EventRepoConfig = {
-  batchSize: number;
-  batchInterval: number;
-  redis: RedisWithClusterOptions;
-  retentionInDays: number;
-  partitioningEnabled: boolean;
-  tracer?: Tracer;
-  minConcurrency?: number;
-  maxConcurrency?: number;
-  maxBatchSize?: number;
-  memoryPressureThreshold?: number;
-  loadSheddingThreshold?: number;
-  loadSheddingEnabled?: boolean;
-};
-
-export type QueryOptions = Prisma.TaskEventWhereInput;
-
-export type TaskEventRecord = TaskEvent;
-
-export type QueriedEvent = Prisma.TaskEventGetPayload<{
-  select: {
-    spanId: true;
-    parentId: true;
-    runId: true;
-    idempotencyKey: true;
-    message: true;
-    style: true;
-    startTime: true;
-    duration: true;
-    isError: true;
-    isPartial: true;
-    isCancelled: true;
-    level: true;
-    events: true;
-    environmentType: true;
-    kind: true;
-    attemptNumber: true;
-  };
-}>;
-
-export type PreparedEvent = Omit<QueriedEvent, "events" | "style" | "duration"> & {
-  duration: number;
-  events: SpanEvents;
-  style: TaskEventStyle;
-};
-
-export type PreparedDetailedEvent = Omit<DetailedTraceEvent, "events" | "style" | "duration"> & {
-  duration: number;
-  events: SpanEvents;
-  style: TaskEventStyle;
-};
-
-export type RunPreparedEvent = PreparedEvent & {
-  taskSlug?: string;
-};
-
-export type SpanLink =
-  | {
-      type: "run";
-      icon?: string;
-      title: string;
-      runId: string;
-    }
-  | {
-      type: "span";
-      icon?: string;
-      title: string;
-      traceId: string;
-      spanId: string;
-    };
-
-export type SpanSummary = {
-  id: string;
-  parentId: string | undefined;
-  runId: string;
-  data: {
-    message: string;
-    style: TaskEventStyle;
-    events: SpanEvents;
-    startTime: Date;
-    duration: number;
-    isError: boolean;
-    isPartial: boolean;
-    isCancelled: boolean;
-    isDebug: boolean;
-    level: NonNullable<CreatableEvent["level"]>;
-    environmentType: CreatableEventEnvironmentType;
-  };
-};
-
-export type TraceSummary = { rootSpan: SpanSummary; spans: Array<SpanSummary> };
-
-export type SpanDetailedSummary = {
-  id: string;
-  parentId: string | undefined;
-  message: string;
-  data: {
-    runId: string;
-    taskSlug?: string;
-    taskPath?: string;
-    events: SpanEvents;
-    startTime: Date;
-    duration: number;
-    isError: boolean;
-    isPartial: boolean;
-    isCancelled: boolean;
-    level: NonNullable<CreatableEvent["level"]>;
-    environmentType: CreatableEventEnvironmentType;
-    workerVersion?: string;
-    queueName?: string;
-    machinePreset?: string;
-    properties?: Attributes;
-    output?: Attributes;
-  };
-  children: Array<SpanDetailedSummary>;
-};
-
-export type TraceDetailedSummary = {
-  traceId: string;
-  rootSpan: SpanDetailedSummary;
-};
-
-export type UpdateEventOptions = {
-  attributes: TraceAttributes;
-  endTime?: Date;
-  immediate?: boolean;
-  events?: SpanEvents;
-};
-
-export class EventRepository {
+export class EventRepository implements IEventRepository {
   private readonly _flushScheduler: DynamicFlushScheduler<CreatableEvent>;
   private _randomIdGenerator = new RandomIdGenerator();
   private _redisPublishClient: RedisClient;
@@ -304,7 +122,7 @@ export class EventRepository {
   }
 
   async insertManyImmediate(events: CreatableEvent[]) {
-    return await this.#flushBatch(nanoid(), events);
+    return await this.#flushBatchWithReturn(nanoid(), events);
   }
 
   async completeSuccessfulRunEvent({ run, endTime }: { run: CompleteableTaskRun; endTime?: Date }) {
@@ -1637,6 +1455,35 @@ export class EventRepository {
   }
 
   async #flushBatch(flushId: string, batch: CreatableEvent[]) {
+    await startSpan(this._tracer, "flushBatch", async (span) => {
+      const events = excludePartialEventsWithCorrespondingFullEvent(batch);
+
+      span.setAttribute("flush_id", flushId);
+      span.setAttribute("event_count", events.length);
+      span.setAttribute("partial_event_count", batch.length - events.length);
+      span.setAttribute(
+        "last_flush_in_ms",
+        this._lastFlushedAt ? new Date().getTime() - this._lastFlushedAt.getTime() : 0
+      );
+
+      const flushedEvents = await this.#doFlushBatch(flushId, events);
+
+      this._lastFlushedAt = new Date();
+
+      if (flushedEvents.length !== events.length) {
+        logger.debug("[EventRepository][flushBatch] Failed to insert all events", {
+          attemptCount: events.length,
+          successCount: flushedEvents.length,
+        });
+
+        span.setAttribute("failed_event_count", events.length - flushedEvents.length);
+      }
+
+      this.#publishToRedis(flushedEvents);
+    });
+  }
+
+  async #flushBatchWithReturn(flushId: string, batch: CreatableEvent[]): Promise<CreatableEvent[]> {
     return await startSpan(this._tracer, "flushBatch", async (span) => {
       const events = excludePartialEventsWithCorrespondingFullEvent(batch);
 
@@ -1662,6 +1509,8 @@ export class EventRepository {
       }
 
       this.#publishToRedis(flushedEvents);
+
+      return flushedEvents;
     });
   }
 

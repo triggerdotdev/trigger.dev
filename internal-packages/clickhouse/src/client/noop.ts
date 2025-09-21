@@ -74,4 +74,31 @@ export class NoopClient implements ClickhouseReader, ClickhouseWriter {
       ];
     };
   }
+
+  public insertUnsafe<TRecord extends Record<string, any>>(req: {
+    name: string;
+    table: string;
+    settings?: ClickHouseSettings;
+  }): (events: TRecord | TRecord[]) => Promise<Result<InsertResult, InsertError>> {
+    return async (events: TRecord | TRecord[]) => {
+      return [
+        null,
+        {
+          executed: true,
+          query_id: "noop",
+          summary: {
+            read_rows: "0",
+            read_bytes: "0",
+            written_rows: "0",
+            written_bytes: "0",
+            total_rows_to_read: "0",
+            result_rows: "0",
+            result_bytes: "0",
+            elapsed_ns: "0",
+          },
+          response_headers: {},
+        },
+      ];
+    };
+  }
 }

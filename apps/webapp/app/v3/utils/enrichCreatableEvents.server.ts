@@ -1,4 +1,4 @@
-import type { CreatableEvent } from "../eventRepository.server";
+import type { CreatableEvent } from "../eventRepository.types";
 
 export function enrichCreatableEvents(events: CreatableEvent[]) {
   return events.map((event) => {
