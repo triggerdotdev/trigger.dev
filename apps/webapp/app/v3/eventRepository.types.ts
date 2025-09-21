@@ -12,6 +12,7 @@ import type {
   Prisma,
   TaskEvent,
   TaskEventKind,
+  TaskEventLevel,
   TaskEventStatus,
   TaskRun,
 } from "@trigger.dev/database";
@@ -181,6 +182,70 @@ export type RunPreparedEvent = PreparedEvent & {
   taskSlug?: string;
 };
 
+export type SpanDetail = {
+  // ============================================================================
+  // Core Identity & Structure
+  // ============================================================================
+  spanId: string; // Tree structure, span identification
+  parentId: string | null; // Tree hierarchy
+  message: string; // Displayed as span title
+
+  // ============================================================================
+  // Status & State
+  // ============================================================================
+  isError: boolean; // Error status display, filtering, status icons
+  isPartial: boolean; // In-progress status display, timeline calculations
+  isCancelled: boolean; // Cancelled status display, status determination
+  level: TaskEventLevel; // Text styling, timeline rendering decisions
+  kind: TaskEventKind; // Filter "UNSPECIFIED" events, determine debug status
+
+  // ============================================================================
+  // Timing
+  // ============================================================================
+  startTime: Date; // Timeline calculations, display
+  duration: number; // Timeline width, duration display, calculations
+
+  // ============================================================================
+  // Content & Display
+  // ============================================================================
+  events: SpanEvents; // Timeline events, SpanEvents component
+  style: TaskEventStyle; // Icons, variants, accessories (RunIcon, SpanTitle)
+  properties: Record<string, unknown> | string | number | boolean | null | undefined; // Displayed as JSON in span properties (CodeBlock)
+
+  // ============================================================================
+  // Context (Used in Span Details)
+  // ============================================================================
+  idempotencyKey: string | null; // Displayed in span detail properties (conditional)
+  taskSlug: string; // Displayed in span details, task filtering
+  workerVersion: string | null; // Displayed in span version field
+
+  // ============================================================================
+  // Entity & Relationships
+  // ============================================================================
+  entity: {
+    // Used for entity type switching in SpanEntity
+    type: string | undefined;
+    id: string | undefined;
+  };
+  triggeredRuns: Array<{
+    // Used in triggered runs table
+    friendlyId: string;
+    taskIdentifier: string;
+    spanId: string;
+    createdAt: Date;
+    number: number;
+    lockedToVersion?: { version: string };
+  }>;
+  showActionBar: boolean; // Computed from show.actions, used for action display
+
+  // ============================================================================
+  // Additional Properties (Used by SpanPresenter)
+  // ============================================================================
+  originalRun: string | undefined; // Used by SpanPresenter for run lookup
+  show: { actions?: boolean } | undefined; // Used by SpanPresenter to compute showActionBar
+  metadata: any; // Used by SpanPresenter for entity processing
+};
+
 // ============================================================================
 // Span and Link Types
 // ============================================================================
@@ -344,7 +409,7 @@ export interface IEventRepository {
     startCreatedAt: Date,
     endCreatedAt?: Date,
     options?: { includeDebugLogs?: boolean }
-  ): Promise<any>;
+  ): Promise<SpanDetail | undefined>;
 
   // Event recording methods
   recordEvent(
