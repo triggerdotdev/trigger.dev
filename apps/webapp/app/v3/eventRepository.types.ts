@@ -18,6 +18,7 @@ import type {
 import type { RedisWithClusterOptions } from "~/redis.server";
 import type { DynamicFlushScheduler } from "./dynamicFlushScheduler.server";
 import type { DetailedTraceEvent, TaskEventStoreTable } from "./taskEventStore.server";
+export type { ExceptionEventProperties };
 
 // ============================================================================
 // Event Creation Types
@@ -261,7 +262,6 @@ export type TraceDetailedSummary = {
 export interface IEventRepository {
   // Properties
   readonly subscriberCount: number;
-  readonly flushSchedulerStatus: ReturnType<DynamicFlushScheduler<CreatableEvent>["getStatus"]>;
 
   // Event insertion methods
   insert(event: CreatableEvent): Promise<void>;
