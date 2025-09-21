@@ -213,13 +213,6 @@ export type SpanDetail = {
   properties: Record<string, unknown> | string | number | boolean | null | undefined; // Displayed as JSON in span properties (CodeBlock)
 
   // ============================================================================
-  // Context (Used in Span Details)
-  // ============================================================================
-  idempotencyKey: string | null; // Displayed in span detail properties (conditional)
-  taskSlug: string; // Displayed in span details, task filtering
-  workerVersion: string | null; // Displayed in span version field
-
-  // ============================================================================
   // Entity & Relationships
   // ============================================================================
   entity: {
@@ -227,22 +220,11 @@ export type SpanDetail = {
     type: string | undefined;
     id: string | undefined;
   };
-  triggeredRuns: Array<{
-    // Used in triggered runs table
-    friendlyId: string;
-    taskIdentifier: string;
-    spanId: string;
-    createdAt: Date;
-    number: number;
-    lockedToVersion?: { version: string };
-  }>;
-  showActionBar: boolean; // Computed from show.actions, used for action display
 
   // ============================================================================
   // Additional Properties (Used by SpanPresenter)
   // ============================================================================
   originalRun: string | undefined; // Used by SpanPresenter for run lookup
-  show: { actions?: boolean } | undefined; // Used by SpanPresenter to compute showActionBar
   metadata: any; // Used by SpanPresenter for entity processing
 };
 

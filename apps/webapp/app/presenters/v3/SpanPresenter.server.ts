@@ -459,11 +459,23 @@ export class SpanPresenter extends BasePresenter {
     });
 
     const data = {
-      ...span,
+      spanId: span.spanId,
+      parentId: span.parentId,
+      message: span.message,
+      isError: span.isError,
+      isPartial: span.isPartial,
+      isCancelled: span.isCancelled,
+      level: span.level,
+      kind: span.kind,
+      startTime: span.startTime,
+      duration: span.duration,
       events: span.events,
+      style: span.style,
       properties: span.properties ? JSON.stringify(span.properties, null, 2) : undefined,
+      entity: span.entity,
+      originalRun: span.originalRun,
+      metadata: span.metadata,
       triggeredRuns,
-      showActionBar: span.show?.actions === true,
     };
 
     switch (span.entity.type) {
