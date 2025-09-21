@@ -7,7 +7,6 @@ import type { RunPreparedEvent } from "~/v3/eventRepository.types";
 import { createGzip } from "zlib";
 import { Readable } from "stream";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3/utils/durations";
-import { getDateFromNanoseconds } from "~/utils/taskEvent";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 import { TaskEventKind } from "@trigger.dev/database";
 
@@ -117,4 +116,8 @@ function formatRunEvent(event: RunPreparedEvent): string {
   }
 
   return entries.join("\n");
+}
+
+function getDateFromNanoseconds(nanoseconds: bigint) {
+  return new Date(Number(nanoseconds) / 1_000_000);
 }

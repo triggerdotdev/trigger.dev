@@ -828,8 +828,6 @@ export class EventRepository implements IEventRepository {
         endCreatedAt
       );
 
-      const show = rehydrateShow(spanEvent.properties);
-
       const properties = sanitizedAttributes(spanEvent.properties);
 
       const spanEvents = transformEvents(
@@ -838,11 +836,14 @@ export class EventRepository implements IEventRepository {
         spanEvent.environmentType === "DEVELOPMENT"
       );
 
+      // This is used when the span is a cached run (because of idempotency key)
+      // so this span isn't the actual run span, but points to the original run
       const originalRun = rehydrateAttribute<string>(
         spanEvent.properties,
         SemanticInternalAttributes.ORIGINAL_RUN_ID
       );
 
+      // Used for waitpoint token spans
       const entity = {
         type: rehydrateAttribute<string>(
           spanEvent.properties,
@@ -873,19 +874,11 @@ export class EventRepository implements IEventRepository {
         style: span.data.style,
         properties: properties,
 
-        // Context (Used in Span Details)
-        idempotencyKey: spanEvent.idempotencyKey,
-        taskSlug: spanEvent.taskSlug,
-        workerVersion: spanEvent.workerVersion,
-
         // Entity & Relationships
         entity,
-        triggeredRuns: [], // Will be populated by SpanPresenter
-        showActionBar: show?.actions === true,
 
         // Additional Properties (Used by SpanPresenter)
         originalRun,
-        show,
         metadata: spanEvent.metadata,
       };
     });
