@@ -54,6 +54,12 @@ export class ProjectSettingsPresenter {
         this.#prismaClient.connectedGithubRepository.findFirst({
           where: {
             projectId,
+            repository: {
+              installation: {
+                deletedAt: null,
+                suspendedAt: null,
+              },
+            },
           },
           select: {
             branchTracking: true,
