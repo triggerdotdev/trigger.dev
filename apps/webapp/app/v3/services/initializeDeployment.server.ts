@@ -87,8 +87,12 @@ export class InitializeDeploymentService extends BaseService {
         );
       }
 
-      // Try and create a depot build and get back the external build data
-      const externalBuildData = await createRemoteImageBuild(environment.project);
+      // For the `PENDING` initial status, defer the creation of the Depot build until the deployment is started.
+      // This helps avoid Depot token expiration issues.
+      const externalBuildData =
+        payload.initialStatus === "PENDING"
+          ? undefined
+          : await createRemoteImageBuild(environment.project);
 
       const triggeredBy = payload.userId
         ? await this._prisma.user.findFirst({

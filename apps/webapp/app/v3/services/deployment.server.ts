@@ -2,9 +2,10 @@ import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { BaseService } from "./baseService.server";
 import { errAsync, fromPromise, okAsync } from "neverthrow";
 import { type WorkerDeploymentStatus, type WorkerDeployment } from "@trigger.dev/database";
-import { logger, type GitMeta } from "@trigger.dev/core/v3";
+import { type ExternalBuildData, logger, type GitMeta } from "@trigger.dev/core/v3";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
 import { env } from "~/env.server";
+import { createRemoteImageBuild } from "../remoteImageBuilder.server";
 
 export class DeploymentService extends BaseService {
   public startDeployment(
@@ -46,11 +47,29 @@ export class DeploymentService extends BaseService {
       return okAsync(deployment);
     };
 
-    const updateDeployment = (deployment: Pick<WorkerDeployment, "id">) =>
+    const createRemoteBuild = (deployment: Pick<WorkerDeployment, "id">) =>
+      fromPromise(createRemoteImageBuild(authenticatedEnv.project), (error) => ({
+        type: "failed_to_create_remote_build" as const,
+        cause: error,
+      })).map((build) => ({
+        id: deployment.id,
+        externalBuildData: build,
+      }));
+
+    const updateDeployment = (
+      deployment: Pick<WorkerDeployment, "id"> & {
+        externalBuildData: ExternalBuildData | undefined;
+      }
+    ) =>
       fromPromise(
         this._prisma.workerDeployment.updateMany({
           where: { id: deployment.id, status: "PENDING" }, // status could've changed in the meantime, we're not locking the row
-          data: { ...updates, status: "BUILDING", startedAt: new Date() },
+          data: {
+            ...updates,
+            externalBuildData: deployment.externalBuildData,
+            status: "BUILDING",
+            startedAt: new Date(),
+          },
         }),
         (error) => ({
           type: "other" as const,
@@ -75,11 +94,13 @@ export class DeploymentService extends BaseService {
           type: "failed_to_extend_deployment_timeout" as const,
           cause: error,
         })
-      ).map(() => undefined);
+      );
 
     return getDeployment()
       .andThen(validateDeployment)
+      .andThen(createRemoteBuild)
       .andThen(updateDeployment)
-      .andThen(extendTimeout);
+      .andThen(extendTimeout)
+      .map(() => undefined);
   }
 }
