@@ -555,8 +555,6 @@ export class CompleteAttemptService extends BaseService {
           style: {
             icon: "schedule-attempt",
           },
-          queueId: taskRunAttempt.queueId,
-          queueName: taskRunAttempt.taskRun.queue,
         },
         context: taskRunAttempt.taskRun.traceContext as Record<string, string | undefined>,
         spanIdSeed: `retry-${taskRunAttempt.number + 1}`,

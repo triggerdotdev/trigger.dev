@@ -407,7 +407,6 @@ export function registerRunEngineEventBusHandlers() {
           style: {
             icon: "schedule-attempt",
           },
-          queueName: run.queue,
         },
         context: run.traceContext as Record<string, string | undefined>,
         endTime: retryAt,

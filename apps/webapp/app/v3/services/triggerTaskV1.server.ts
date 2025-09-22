@@ -296,7 +296,6 @@ export class TriggerTaskServiceV1 extends BaseService {
           {
             context: options.traceContext,
             spanParentAsLink: options.spanParentAsLink,
-            parentAsLinkType: options.parentAsLinkType,
             kind: "SERVER",
             environment,
             taskSlug: taskId,
@@ -307,9 +306,6 @@ export class TriggerTaskServiceV1 extends BaseService {
               style: {
                 icon: options.customIcon ?? "task",
               },
-              runIsTest: body.options?.test ?? false,
-              batchId: options.batchId,
-              idempotencyKey,
             },
             incomplete: true,
             immediate: true,
@@ -340,7 +336,6 @@ export class TriggerTaskServiceV1 extends BaseService {
                   queueName = sanitizeQueueName(`task/${taskId}`);
                 }
 
-                event.setAttribute("queueName", queueName);
                 span.setAttribute("queueName", queueName);
 
                 //upsert tags

@@ -28,14 +28,10 @@ This document analyzes every property in TaskEvent/CreatableEvent to determine w
 | `style`                        | Json                   | TraceSummary, SpanDetails              | Icons, variants, accessories (`RunIcon`, `SpanTitle`)                    |
 | `properties`                   | Json                   | SpanDetails                            | Displayed as JSON in span properties (`CodeBlock`)                       |
 | `metadata`                     | Json?                  | SpanDetails                            | Event transformation, span details processing                            |
-| `links`                        | Json?                  | SpanDetails                            | Span linking functionality (processed but not currently displayed)       |
 | **Context (Query/Processing)** |
 | `runId`                        | String                 | Query operations                       | Used in queries, not displayed in TraceSummary UI                        |
-| `idempotencyKey`               | String?                | SpanDetails                            | Displayed in span detail properties (conditional)                        |
 | `attemptNumber`                | Int?                   | Processing logic                       | Used for attempt failed logic, not displayed                             |
 | `environmentType`              | RuntimeEnvironmentType | Processing                             | Selected in queries, used in processing                                  |
-| `taskSlug`                     | String                 | SpanDetails                            | Displayed in span details, task filtering                                |
-| `workerVersion`                | String?                | SpanDetails                            | Displayed in span version field                                          |
 
 ## Properties to REMOVE (Not Used in UI)
 
@@ -59,6 +55,13 @@ This document analyzes every property in TaskEvent/CreatableEvent to determine w
 | **Task Information**               |
 | `taskPath`                         | String? | Selected but not rendered             | Selected in DetailedTraceEvent but not used      |
 | `taskExportName`                   | String? | Not selected or used                  | Not selected in any queries                      |
+| `taskSlug`                         | String  | Not displayed in current UI           | Previously used for filtering, no longer needed  |
+| **Worker Information**             |
+| `workerVersion`                    | String? | Not displayed in current UI           | Previously used for version display, removed     |
+| **Key Information**                |
+| `idempotencyKey`                   | String? | Not displayed in current UI           | Previously used for span details, removed        |
+| **Link Information**               |
+| `links`                            | Json?   | Not displayed in current UI           | Span linking functionality, not currently used   |
 | **Attempt Information**            |
 | `attemptId`                        | String? | Not selected or used                  | Legacy field, not used                           |
 | `isDebug`                          | Boolean | Deprecated field                      | Replaced by `kind === TaskEventKind.LOG`         |
@@ -79,8 +82,8 @@ This document analyzes every property in TaskEvent/CreatableEvent to determine w
 ## Summary Statistics
 
 - **Total Properties**: ~51 properties in TaskEvent
-- **Properties to Keep**: 22 properties (43%)
-- **Properties to Remove**: 29 properties (57%)
+- **Properties to Keep**: 18 properties (35%)
+- **Properties to Remove**: 33 properties (65%)
 
 ## Optimization Opportunities
 
@@ -93,20 +96,20 @@ This document analyzes every property in TaskEvent/CreatableEvent to determine w
 ### Span Details (getSpan)
 
 - **Current Selection**: ALL TaskEvent properties (full object)
-- **Used in UI**: 19 properties
+- **Used in UI**: 15 properties (after removing idempotencyKey, taskSlug, workerVersion, links)
 - **Optimization**: Could remove ~65% of properties
-- **Major Removals**: `payload`, `output`, all context/metadata fields
+- **Major Removals**: `payload`, `output`, `idempotencyKey`, `taskSlug`, `workerVersion`, `links`, all context/metadata fields
 
 ### CreatableEvent (Event Creation)
 
 - **Current**: Includes many unused fields
-- **Optimization**: Remove ~29 properties that are never displayed
+- **Optimization**: Remove ~33 properties that are never displayed
 - **Keep**: Core fields needed for queries and UI display
 
 ## Implementation Notes
 
 1. **TraceSummary** is already well-optimized with selective field queries
-2. **getSpan** has the biggest optimization opportunity - fetches full TaskEvent but only uses ~35%
+2. **getSpan** has the biggest optimization opportunity - fetches full TaskEvent but only uses ~30%
 3. **CreatableEvent** could be split into:
    - `MinimalCreatableEvent` for TraceSummary use cases
    - `DetailedCreatableEvent` for full span details
@@ -122,3 +125,64 @@ This document analyzes every property in TaskEvent/CreatableEvent to determine w
 - Actual UI rendering code
 
 This analysis is based on comprehensive examination of the actual UI components and their property access patterns.
+
+## Properties and Metadata Column Extraction Analysis
+
+This table shows the specific keys that are extracted from the `properties` and `metadata` JSON columns and how they are used.
+
+### Properties Column Extractions
+
+| Key                                      | SemanticInternalAttribute | Used In               | Usage Description                                       | Status  |
+| ---------------------------------------- | ------------------------- | --------------------- | ------------------------------------------------------- | ------- |
+| **Entity Information**                   |
+| `$entity.type`                           | `ENTITY_TYPE`             | SpanPresenter         | Entity type switching (waitpoint, attempt, etc.)        | ✅ USED |
+| `$entity.id`                             | `ENTITY_ID`               | SpanPresenter         | Entity ID for waitpoint/attempt lookup                  | ✅ USED |
+| **Run Relationships**                    |
+| `$original_run_id`                       | `ORIGINAL_RUN_ID`         | SpanPresenter         | Points to original run for cached spans                 | ✅ USED |
+| **Display Control**                      |
+| `$show.actions`                          | `SHOW_ACTIONS`            | EventRepository       | Controls action bar display (computed to showActionBar) | ✅ USED |
+| **Styling (from enrichCreatableEvents)** |
+| `gen_ai.system`                          | N/A                       | enrichCreatableEvents | Icon determination for AI spans                         | ✅ USED |
+| `name`                                   | N/A                       | enrichCreatableEvents | Icon determination for agent workflows                  | ✅ USED |
+| **Exception Handling**                   |
+| `project.dir`                            | `PROJECT_DIR`             | transformException    | Stack trace correction in development                   | ✅ USED |
+| **All Other Properties**                 |
+| Various                                  | N/A                       | SpanDetails UI        | Displayed as JSON in properties CodeBlock               | ✅ USED |
+
+### Metadata Column Extractions
+
+| Key                      | SemanticInternalAttribute | Used In         | Usage Description                    | Status  |
+| ------------------------ | ------------------------- | --------------- | ------------------------------------ | ------- |
+| **Warm Start Detection** |
+| `$warm_start`            | `WARM_START`              | SpanPresenter   | Determines if attempt was warm start | ✅ USED |
+| **Event Transformation** |
+| Various                  | N/A                       | transformEvents | Used in event transformation logic   | ✅ USED |
+
+### Properties/Metadata Keys NOT Extracted (Unused)
+
+Based on SemanticInternalAttributes that are NOT used in UI code:
+
+| Key                      | SemanticInternalAttribute | Reason Not Used          |
+| ------------------------ | ------------------------- | ------------------------ |
+| `ctx.environment.id`     | `ENVIRONMENT_ID`          | Backend context only     |
+| `ctx.environment.type`   | `ENVIRONMENT_TYPE`        | Backend context only     |
+| `ctx.organization.id`    | `ORGANIZATION_ID`         | Backend context only     |
+| `ctx.project.id`         | `PROJECT_ID`              | Backend context only     |
+| `ctx.run.id`             | `RUN_ID`                  | Backend context only     |
+| `ctx.task.id`            | `TASK_SLUG`               | No longer displayed      |
+| `worker.version`         | `WORKER_VERSION`          | No longer displayed      |
+| `ctx.run.idempotencyKey` | `IDEMPOTENCY_KEY`         | No longer displayed      |
+| `ctx.queue.name`         | `QUEUE_NAME`              | Backend context only     |
+| `ctx.machine.*`          | `MACHINE_PRESET_*`        | Not displayed in UI      |
+| `$output`                | `OUTPUT`                  | Not displayed in span UI |
+| `$payload`               | `PAYLOAD`                 | Not displayed in span UI |
+| And many others...       |                           | Backend/processing only  |
+
+### Summary
+
+- **Properties Column**: ~9 specific keys extracted and used in UI
+- **Metadata Column**: ~2 specific keys extracted and used in UI
+- **Unused Keys**: ~30+ SemanticInternalAttributes not used in UI
+- **Generic Usage**: Properties are also displayed as JSON in span details
+
+The majority of data in both columns is either backend context or unused in the current UI implementation.

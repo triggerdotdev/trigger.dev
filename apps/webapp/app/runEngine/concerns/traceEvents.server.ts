@@ -20,7 +20,6 @@ export class DefaultTraceEventsConcern implements TraceEventConcern {
       {
         context: request.options?.traceContext,
         spanParentAsLink: request.options?.spanParentAsLink,
-        parentAsLinkType: request.options?.parentAsLinkType,
         kind: "SERVER",
         environment: request.environment,
         taskSlug: request.taskId,
@@ -31,11 +30,6 @@ export class DefaultTraceEventsConcern implements TraceEventConcern {
           style: {
             icon: request.options?.customIcon ?? "task",
           },
-          runIsTest: request.body.options?.test ?? false,
-          batchId: request.options?.batchId
-            ? BatchId.toFriendlyId(request.options.batchId)
-            : undefined,
-          idempotencyKey: request.options?.idempotencyKey,
         },
         incomplete: true,
         immediate: true,
@@ -73,7 +67,6 @@ export class DefaultTraceEventsConcern implements TraceEventConcern {
       {
         context: request.options?.traceContext,
         spanParentAsLink: request.options?.spanParentAsLink,
-        parentAsLinkType: request.options?.parentAsLinkType,
         kind: "SERVER",
         environment: request.environment,
         taskSlug: request.taskId,
@@ -85,11 +78,6 @@ export class DefaultTraceEventsConcern implements TraceEventConcern {
           style: {
             icon: "task-cached",
           },
-          runIsTest: request.body.options?.test ?? false,
-          batchId: request.options?.batchId
-            ? BatchId.toFriendlyId(request.options.batchId)
-            : undefined,
-          idempotencyKey,
           runId: existingRun.friendlyId,
         },
         incomplete,
