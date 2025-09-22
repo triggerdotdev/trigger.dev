@@ -61,6 +61,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
             return json({ error: "Deployment not found" }, { status: 404 });
           case "deployment_not_pending":
             return json({ error: "Deployment is not pending" }, { status: 409 });
+          case "failed_to_create_remote_build":
+            return json({ error: "Failed to create remote build" }, { status: 500 });
           case "other":
           default:
             error.type satisfies "other";
