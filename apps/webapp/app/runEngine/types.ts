@@ -143,7 +143,7 @@ export type TracedEventSpan = {
 export interface TraceEventConcern {
   traceRun<T>(
     request: TriggerTaskRequest,
-    callback: (span: TracedEventSpan) => Promise<T>
+    callback: (span: TracedEventSpan, store: string) => Promise<T>
   ): Promise<T>;
   traceIdempotentRun<T>(
     request: TriggerTaskRequest,
@@ -153,7 +153,7 @@ export interface TraceEventConcern {
       incomplete: boolean;
       isError: boolean;
     },
-    callback: (span: TracedEventSpan) => Promise<T>
+    callback: (span: TracedEventSpan, store: string) => Promise<T>
   ): Promise<T>;
 }
 
