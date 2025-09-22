@@ -1110,6 +1110,19 @@ const EnvironmentSchema = z
     CLICKHOUSE_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
     CLICKHOUSE_COMPRESSION_REQUEST: z.string().default("1"),
 
+    EVENTS_CLICKHOUSE_URL: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.CLICKHOUSE_URL),
+    EVENTS_CLICKHOUSE_KEEP_ALIVE_ENABLED: z.string().default("1"),
+    EVENTS_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().optional(),
+    EVENTS_CLICKHOUSE_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(10),
+    EVENTS_CLICKHOUSE_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
+    EVENTS_CLICKHOUSE_COMPRESSION_REQUEST: z.string().default("1"),
+    EVENTS_CLICKHOUSE_BATCH_SIZE: z.coerce.number().int().default(1000),
+    EVENTS_CLICKHOUSE_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
+    EVENT_REPOSITORY_DEFAULT_STORE: z.enum(["postgres", "clickhouse"]).default("postgres"),
+
     // Bootstrap
     TRIGGER_BOOTSTRAP_ENABLED: z.string().default("0"),
     TRIGGER_BOOTSTRAP_WORKER_GROUP_NAME: z.string().optional(),

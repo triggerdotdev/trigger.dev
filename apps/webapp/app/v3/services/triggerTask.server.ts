@@ -14,6 +14,7 @@ import { tracer } from "../tracer.server";
 import { WithRunEngine } from "./baseService.server";
 import { TriggerTaskServiceV1 } from "./triggerTaskV1.server";
 import { env } from "~/env.server";
+import { clickhouseEventRepository } from "../clickhouseEventRepositoryInstance.server";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -93,7 +94,10 @@ export class TriggerTaskService extends WithRunEngine {
     body: TriggerTaskRequestBody,
     options: TriggerTaskServiceOptions = {}
   ): Promise<TriggerTaskServiceResult | undefined> {
-    const traceEventConcern = new DefaultTraceEventsConcern(eventRepository);
+    const traceEventConcern = new DefaultTraceEventsConcern(
+      eventRepository,
+      clickhouseEventRepository
+    );
 
     const service = new RunEngineTriggerTaskService({
       prisma: this._prisma,

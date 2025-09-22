@@ -7,5 +7,5 @@
     "packages/cli-v3/e2e": true
   },
   "vitest.disableWorkspaceWarning": true,
-  "typescript.experimental.useTsgo": true
+  "typescript.experimental.useTsgo": false
 }

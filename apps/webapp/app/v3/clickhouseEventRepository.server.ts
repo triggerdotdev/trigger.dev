@@ -197,13 +197,3 @@ export class ClickhouseEventRepository implements IEventRepository {
     throw new Error("ClickhouseEventRepository.generateSpanId not implemented");
   }
 }
-
-/**
- * Factory function to create a ClickhouseEventRepository instance.
- * This can be used as an alternative to the PostgreSQL-based EventRepository.
- */
-export function createClickhouseEventRepository(
-  config: ClickhouseEventRepositoryConfig
-): IEventRepository {
-  return new ClickhouseEventRepository(config);
-}
