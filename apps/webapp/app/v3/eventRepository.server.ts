@@ -35,7 +35,7 @@ import { singleton } from "~/utils/singleton";
 import { DynamicFlushScheduler } from "./dynamicFlushScheduler.server";
 import type {
   IEventRepository,
-  CreatableEvent,
+  CreateEventInput,
   CreatableEventKind,
   CreatableEventStatus,
   CreatableEventEnvironmentType,
@@ -51,7 +51,6 @@ import type {
   PreparedEvent,
   PreparedDetailedEvent,
   RunPreparedEvent,
-  SpanLink,
   SpanSummary,
   TraceSummary,
   SpanDetailedSummary,
@@ -66,7 +65,7 @@ import { startSpan } from "./tracing.server";
 const MAX_FLUSH_DEPTH = 5;
 
 export class EventRepository implements IEventRepository {
-  private readonly _flushScheduler: DynamicFlushScheduler<CreatableEvent>;
+  private readonly _flushScheduler: DynamicFlushScheduler<Prisma.TaskEventCreateManyInput>;
   private _randomIdGenerator = new RandomIdGenerator();
   private _redisPublishClient: RedisClient;
   private _subscriberCount = 0;
@@ -97,7 +96,7 @@ export class EventRepository implements IEventRepository {
       memoryPressureThreshold: _config.memoryPressureThreshold,
       loadSheddingThreshold: _config.loadSheddingThreshold,
       loadSheddingEnabled: _config.loadSheddingEnabled,
-      isDroppableEvent: (event: CreatableEvent) => {
+      isDroppableEvent: (event: Prisma.TaskEventCreateManyInput) => {
         // Only drop LOG events during load shedding
         return event.kind === TaskEventKind.LOG;
       },
@@ -110,20 +109,54 @@ export class EventRepository implements IEventRepository {
     this.taskEventStore = new TaskEventStore(db, readReplica);
   }
 
-  async insert(event: CreatableEvent) {
-    this._flushScheduler.addToBatch([event]);
+  #createableEventToPrismaEvent(event: CreateEventInput): Prisma.TaskEventCreateManyInput {
+    return {
+      message: event.message,
+      traceId: event.traceId,
+      spanId: event.spanId,
+      parentId: event.parentId,
+      isError: event.isError,
+      isPartial: event.isPartial,
+      isCancelled: event.isCancelled,
+      isDebug: false,
+      serviceName: "",
+      serviceNamespace: "",
+      level: event.level,
+      kind: event.kind,
+      status: event.status,
+      links: [],
+      events: event.events,
+      startTime: event.startTime,
+      duration: event.duration,
+      attemptNumber: event.attemptNumber,
+      environmentId: event.environmentId,
+      environmentType: event.environmentType,
+      organizationId: event.organizationId,
+      projectId: event.projectId,
+      projectRef: "",
+      runId: event.runId,
+      runIsTest: false,
+      taskSlug: event.taskSlug,
+      properties: event.properties as Prisma.InputJsonValue,
+      metadata: event.metadata as Prisma.InputJsonValue,
+      style: event.style as Prisma.InputJsonValue,
+    };
   }
 
-  async insertImmediate(event: CreatableEvent) {
-    await this.#flushBatch(nanoid(), [event]);
+  async insert(event: CreateEventInput) {
+    this._flushScheduler.addToBatch([this.#createableEventToPrismaEvent(event)]);
   }
 
-  async insertMany(events: CreatableEvent[]) {
-    this._flushScheduler.addToBatch(events);
+  async insertImmediate(event: CreateEventInput) {
+    await this.#flushBatch(nanoid(), [this.#createableEventToPrismaEvent(event)]);
   }
 
-  async insertManyImmediate(events: CreatableEvent[]) {
-    return await this.#flushBatchWithReturn(nanoid(), events);
+  async insertMany(events: CreateEventInput[]) {
+    this._flushScheduler.addToBatch(events.map(this.#createableEventToPrismaEvent));
+  }
+
+  async insertManyImmediate(events: CreateEventInput[]) {
+    await this.#flushBatchWithReturn(nanoid(), events.map(this.#createableEventToPrismaEvent));
   }
 
   async completeSuccessfulRunEvent({ run, endTime }: { run: CompleteableTaskRun; endTime?: Date }) {
@@ -131,17 +164,14 @@ export class EventRepository implements IEventRepository {
 
     await this.insertImmediate({
       message: run.taskIdentifier,
-      serviceName: "api server",
-      serviceNamespace: "trigger.dev",
       level: "TRACE",
       kind: "SERVER",
       traceId: run.traceId,
       spanId: run.spanId,
       parentId: run.parentSpanId,
       runId: run.friendlyId,
-      taskSlug: run.taskIdentifier,
-      projectRef: "",
       projectId: run.projectId,
+      taskSlug: run.taskIdentifier,
       environmentId: run.runtimeEnvironmentId,
       environmentType: run.environmentType ?? "DEVELOPMENT",
       organizationId: run.organizationId ?? "",
@@ -149,15 +179,11 @@ export class EventRepository implements IEventRepository {
       isError: false,
       isCancelled: false,
       status: "OK",
-      runIsTest: run.isTest,
       startTime,
       properties: {},
       metadata: undefined,
       style: undefined,
       duration: calculateDurationFromStart(startTime, endTime ?? new Date()),
-      output: undefined,
-      payload: undefined,
-      payloadType: undefined,
     });
   }
 
@@ -182,17 +208,14 @@ export class EventRepository implements IEventRepository {
 
     await this.insertImmediate({
       message: run.taskIdentifier,
-      serviceName: "api server",
-      serviceNamespace: "trigger.dev",
       level: "TRACE",
       kind: "SERVER",
       traceId: blockedRun.traceId,
       spanId: spanId,
       parentId: parentSpanId,
       runId: blockedRun.friendlyId,
-      taskSlug: run.taskIdentifier,
-      projectRef: "",
       projectId: run.projectId,
+      taskSlug: run.taskIdentifier,
       environmentId: run.runtimeEnvironmentId,
       environmentType: run.environmentType ?? "DEVELOPMENT",
       organizationId: run.organizationId ?? "",
@@ -200,15 +223,11 @@ export class EventRepository implements IEventRepository {
       isError,
       isCancelled: false,
       status: "OK",
-      runIsTest: run.isTest,
       startTime,
       properties: {},
       metadata: undefined,
       style: undefined,
       duration: calculateDurationFromStart(startTime, endTime ?? new Date()),
-      output: undefined,
-      payload: undefined,
-      payloadType: undefined,
     });
   }
 
@@ -225,17 +244,14 @@ export class EventRepository implements IEventRepository {
 
     await this.insertImmediate({
       message: run.taskIdentifier,
-      serviceName: "api server",
-      serviceNamespace: "trigger.dev",
       level: "TRACE",
       kind: "SERVER",
       traceId: run.traceId,
       spanId: run.spanId,
       parentId: run.parentSpanId,
       runId: run.friendlyId,
-      taskSlug: run.taskIdentifier,
-      projectRef: "",
       projectId: run.projectId,
+      taskSlug: run.taskIdentifier,
       environmentId: run.runtimeEnvironmentId,
       environmentType: run.environmentType ?? "DEVELOPMENT",
       organizationId: run.organizationId ?? "",
@@ -243,7 +259,6 @@ export class EventRepository implements IEventRepository {
       isError: true,
       isCancelled: false,
       status: "ERROR",
-      runIsTest: run.isTest,
       startTime,
       events: [
         {
@@ -258,9 +273,6 @@ export class EventRepository implements IEventRepository {
       metadata: undefined,
       style: undefined,
       duration: calculateDurationFromStart(startTime, endTime ?? new Date()),
-      output: undefined,
-      payload: undefined,
-      payloadType: undefined,
     });
   }
 
@@ -277,17 +289,14 @@ export class EventRepository implements IEventRepository {
 
     await this.insertImmediate({
       message: run.taskIdentifier,
-      serviceName: "api server",
-      serviceNamespace: "trigger.dev",
       level: "TRACE",
       kind: "SERVER",
       traceId: run.traceId,
       spanId: run.spanId,
       parentId: run.parentSpanId,
       runId: run.friendlyId,
-      taskSlug: run.taskIdentifier,
-      projectRef: "",
       projectId: run.projectId,
+      taskSlug: run.taskIdentifier,
       environmentId: run.runtimeEnvironmentId,
       environmentType: run.environmentType ?? "DEVELOPMENT",
       organizationId: run.organizationId ?? "",
@@ -295,7 +304,6 @@ export class EventRepository implements IEventRepository {
       isError: true,
       isCancelled: false,
       status: "ERROR",
-      runIsTest: run.isTest,
       startTime,
       events: [
         {
@@ -312,9 +320,6 @@ export class EventRepository implements IEventRepository {
       metadata: undefined,
       style: undefined,
       duration: calculateDurationFromStart(startTime, endTime ?? new Date()),
-      output: undefined,
-      payload: undefined,
-      payloadType: undefined,
     });
   }
 
@@ -333,17 +338,14 @@ export class EventRepository implements IEventRepository {
 
     await this.insertImmediate({
       message: run.taskIdentifier,
-      serviceName: "api server",
-      serviceNamespace: "trigger.dev",
       level: "TRACE",
       kind: "UNSPECIFIED", // This will be treated as an "invisible" event
       traceId: run.traceId,
       spanId: run.spanId,
       parentId: run.parentSpanId,
       runId: run.friendlyId,
-      taskSlug: run.taskIdentifier,
-      projectRef: "",
       projectId: run.projectId,
+      taskSlug: run.taskIdentifier,
       environmentId: run.runtimeEnvironmentId,
       environmentType: run.environmentType ?? "DEVELOPMENT",
       organizationId: run.organizationId ?? "",
@@ -351,7 +353,6 @@ export class EventRepository implements IEventRepository {
       isError: false,
       isCancelled: false,
       status: "OK",
-      runIsTest: run.isTest,
       startTime,
       events: [
         {
@@ -368,9 +369,6 @@ export class EventRepository implements IEventRepository {
       metadata: undefined,
       style: undefined,
       duration: calculateDurationFromStart(startTime, endTime ?? new Date()),
-      output: undefined,
-      payload: undefined,
-      payloadType: undefined,
     });
   }
 
@@ -387,17 +385,14 @@ export class EventRepository implements IEventRepository {
 
     await this.insertImmediate({
       message: run.taskIdentifier,
-      serviceName: "api server",
-      serviceNamespace: "trigger.dev",
       level: "TRACE",
       kind: "SERVER",
       traceId: run.traceId,
       spanId: run.spanId,
       parentId: run.parentSpanId,
       runId: run.friendlyId,
-      taskSlug: run.taskIdentifier,
-      projectRef: "",
       projectId: run.projectId,
+      taskSlug: run.taskIdentifier,
       environmentId: run.runtimeEnvironmentId,
       environmentType: run.environmentType ?? "DEVELOPMENT",
       organizationId: run.organizationId ?? "",
@@ -405,7 +400,6 @@ export class EventRepository implements IEventRepository {
       isError: true,
       isCancelled: true,
       status: "ERROR",
-      runIsTest: run.isTest,
       events: [
         {
           name: "cancellation",
@@ -420,9 +414,6 @@ export class EventRepository implements IEventRepository {
       metadata: undefined,
       style: undefined,
       duration: calculateDurationFromStart(startTime, cancelledAt),
-      output: undefined,
-      payload: undefined,
-      payloadType: undefined,
     });
   }
 
@@ -445,7 +436,6 @@ export class EventRepository implements IEventRepository {
       isError: true,
       isCancelled: false,
       status: "ERROR",
-      links: event.links ?? [],
       events: [
         {
           name: "exception",
@@ -460,10 +450,6 @@ export class EventRepository implements IEventRepository {
       properties: event.properties as Attributes,
       metadata: event.metadata as Attributes,
       style: event.style as Attributes,
-      output: event.output as Attributes,
-      outputType: event.outputType,
-      payload: event.payload as Attributes,
-      payloadType: event.payloadType,
     });
   }
 
@@ -552,7 +538,6 @@ export class EventRepository implements IEventRepository {
           id: event.spanId,
           parentId: event.parentId ?? undefined,
           runId: event.runId,
-          idempotencyKey: event.idempotencyKey,
           data: {
             message: event.message,
             style: event.style,
@@ -681,7 +666,6 @@ export class EventRepository implements IEventRepository {
           ? overrides.isError
           : event.isError;
 
-        const output = event.output ? (event.output as Attributes) : undefined;
         const properties = event.properties
           ? removePrivateProperties(event.properties as Attributes)
           : {};
@@ -693,7 +677,6 @@ export class EventRepository implements IEventRepository {
           data: {
             runId: event.runId,
             taskSlug: event.taskSlug ?? undefined,
-            taskPath: event.taskPath ?? undefined,
             events: events?.filter((e) => !e.name.startsWith("trigger.dev")),
             startTime: getDateFromNanoseconds(event.startTime),
             duration: nanosecondsToMilliseconds(duration),
@@ -702,11 +685,7 @@ export class EventRepository implements IEventRepository {
             isCancelled,
             level: event.level,
             environmentType: event.environmentType,
-            workerVersion: event.workerVersion ?? undefined,
-            queueName: event.queueName ?? undefined,
-            machinePreset: event.machinePreset ?? undefined,
             properties,
-            output,
           },
           children: [],
         };
@@ -971,7 +950,6 @@ export class EventRepository implements IEventRepository {
         id: event.spanId,
         parentId: event.parentId ?? undefined,
         runId: event.runId,
-        idempotencyKey: event.idempotencyKey,
         data: {
           message: event.message,
           style: event.style,
@@ -1167,8 +1145,6 @@ export class EventRepository implements IEventRepository {
       [SemanticInternalAttributes.PROJECT_ID]: options.environment.projectId,
       [SemanticInternalAttributes.PROJECT_REF]: options.environment.project.externalRef,
       [SemanticInternalAttributes.RUN_ID]: options.attributes.runId,
-      [SemanticInternalAttributes.RUN_IS_TEST]: options.attributes.runIsTest ?? false,
-      [SemanticInternalAttributes.BATCH_ID]: options.attributes.batchId ?? undefined,
       [SemanticInternalAttributes.TASK_SLUG]: options.taskSlug,
       [SemanticResourceAttributes.SERVICE_NAME]: "api server",
       [SemanticResourceAttributes.SERVICE_NAMESPACE]: "trigger.dev",
@@ -1183,14 +1159,11 @@ export class EventRepository implements IEventRepository {
       throw new Error("runId is required");
     }
 
-    const event: CreatableEvent = {
+    const event: CreateEventInput = {
       traceId,
       spanId,
       parentId,
-      tracestate: typeof tracestate === "string" ? tracestate : undefined,
       message: message,
-      serviceName: "api server",
-      serviceNamespace: "trigger.dev",
       level: options.attributes.isDebug ? "WARN" : "TRACE",
       kind: options.attributes.isDebug ? TaskEventKind.LOG : options.kind,
       status: "OK",
@@ -1200,14 +1173,9 @@ export class EventRepository implements IEventRepository {
       environmentId: options.environment.id,
       environmentType: options.environment.type,
       organizationId: options.environment.organizationId,
-      projectId: options.environment.projectId,
-      projectRef: options.environment.project.externalRef,
       runId: options.attributes.runId,
-      runIsTest: options.attributes.runIsTest ?? false,
+      projectId: options.environment.projectId,
       taskSlug: options.taskSlug,
-      queueId: options.attributes.queueId,
-      queueName: options.attributes.queueName,
-      batchId: options.attributes.batchId ?? undefined,
       properties: {
         ...style,
         ...(flattenAttributes(metadata, SemanticInternalAttributes.METADATA) as Record<
@@ -1218,16 +1186,12 @@ export class EventRepository implements IEventRepository {
       },
       metadata: metadata,
       style: stripAttributePrefix(style, SemanticInternalAttributes.STYLE),
-      output: undefined,
-      outputType: undefined,
-      payload: undefined,
-      payloadType: undefined,
     };
 
     if (options.immediate) {
       await this.insertImmediate(event);
     } else {
-      this._flushScheduler.addToBatch([event]);
+      this._flushScheduler.addToBatch([this.#createableEventToPrismaEvent(event)]);
     }
 
     return event;
@@ -1260,23 +1224,6 @@ export class EventRepository implements IEventRepository {
       ...options.context,
       traceparent: serializeTraceparent(traceId, spanId),
     };
-
-    const links: Link[] =
-      options.spanParentAsLink && propagatedContext?.traceparent
-        ? [
-            {
-              context: {
-                traceId: propagatedContext.traceparent.traceId,
-                spanId: propagatedContext.traceparent.spanId,
-                traceFlags: TraceFlags.SAMPLED,
-              },
-              attributes: {
-                [SemanticInternalAttributes.LINK_TITLE]:
-                  options.parentAsLinkType === "replay" ? "Replay of" : "Triggered by",
-              },
-            },
-          ]
-        : [];
 
     let isStopped = false;
     let failedWithError: TaskRunError | undefined;
@@ -1321,8 +1268,6 @@ export class EventRepository implements IEventRepository {
       [SemanticInternalAttributes.PROJECT_ID]: options.environment.projectId,
       [SemanticInternalAttributes.PROJECT_REF]: options.environment.project.externalRef,
       [SemanticInternalAttributes.RUN_ID]: options.attributes.runId,
-      [SemanticInternalAttributes.RUN_IS_TEST]: options.attributes.runIsTest ?? false,
-      [SemanticInternalAttributes.BATCH_ID]: options.attributes.batchId ?? undefined,
       [SemanticInternalAttributes.TASK_SLUG]: options.taskSlug,
       [SemanticResourceAttributes.SERVICE_NAME]: "api server",
       [SemanticResourceAttributes.SERVICE_NAMESPACE]: "trigger.dev",
@@ -1339,17 +1284,14 @@ export class EventRepository implements IEventRepository {
       throw new Error("runId is required");
     }
 
-    const event: CreatableEvent = {
+    const event: CreateEventInput = {
       traceId,
       spanId,
       parentId,
-      tracestate: typeof tracestate === "string" ? tracestate : undefined,
       duration: options.incomplete ? 0 : duration,
       isPartial: failedWithError ? false : options.incomplete,
       isError: options.isError === true || !!failedWithError,
       message: message,
-      serviceName: "api server",
-      serviceNamespace: "trigger.dev",
       level: "TRACE",
       kind: options.kind,
       status: failedWithError ? "ERROR" : "OK",
@@ -1358,13 +1300,8 @@ export class EventRepository implements IEventRepository {
       environmentType: options.environment.type,
       organizationId: options.environment.organizationId,
       projectId: options.environment.projectId,
-      projectRef: options.environment.project.externalRef,
       runId: options.attributes.runId,
-      runIsTest: options.attributes.runIsTest ?? false,
       taskSlug: options.taskSlug,
-      queueId: options.attributes.queueId,
-      queueName: options.attributes.queueName,
-      batchId: options.attributes.batchId ?? undefined,
       properties: {
         ...(flattenAttributes(metadata, SemanticInternalAttributes.METADATA) as Record<
           string,
@@ -1374,12 +1311,6 @@ export class EventRepository implements IEventRepository {
       },
       metadata: metadata,
       style: stripAttributePrefix(style, SemanticInternalAttributes.STYLE),
-      output: undefined,
-      outputType: undefined,
-      links: links as unknown as Prisma.InputJsonValue,
-      payload: options.attributes.payload,
-      payloadType: options.attributes.payloadType,
-      idempotencyKey: options.attributes.idempotencyKey,
       events: failedWithError
         ? [
             {
@@ -1396,7 +1327,7 @@ export class EventRepository implements IEventRepository {
     if (options.immediate) {
       await this.insertImmediate(event);
     } else {
-      this._flushScheduler.addToBatch([event]);
+      this._flushScheduler.addToBatch([this.#createableEventToPrismaEvent(event)]);
     }
 
     return result;
@@ -1433,7 +1364,7 @@ export class EventRepository implements IEventRepository {
     };
   }
 
-  async #flushBatch(flushId: string, batch: CreatableEvent[]) {
+  async #flushBatch(flushId: string, batch: Prisma.TaskEventCreateManyInput[]) {
     await startSpan(this._tracer, "flushBatch", async (span) => {
       const events = excludePartialEventsWithCorrespondingFullEvent(batch);
 
@@ -1462,7 +1393,10 @@ export class EventRepository implements IEventRepository {
     });
   }
 
-  async #flushBatchWithReturn(flushId: string, batch: CreatableEvent[]): Promise<CreatableEvent[]> {
+  async #flushBatchWithReturn(
+    flushId: string,
+    batch: Prisma.TaskEventCreateManyInput[]
+  ): Promise<Prisma.TaskEventCreateManyInput[]> {
     return await startSpan(this._tracer, "flushBatch", async (span) => {
       const events = excludePartialEventsWithCorrespondingFullEvent(batch);
 
@@ -1499,9 +1433,9 @@ export class EventRepository implements IEventRepository {
 
   async #doFlushBatch(
     flushId: string,
-    events: CreatableEvent[],
+    events: Prisma.TaskEventCreateManyInput[],
     depth: number = 1
-  ): Promise<CreatableEvent[]> {
+  ): Promise<Prisma.TaskEventCreateManyInput[]> {
     return await startSpan(this._tracer, "doFlushBatch", async (span) => {
       try {
         span.setAttribute("event_count", events.length);
@@ -1578,7 +1512,7 @@ export class EventRepository implements IEventRepository {
     });
   }
 
-  async #publishToRedis(events: CreatableEvent[]) {
+  async #publishToRedis(events: Prisma.TaskEventCreateManyInput[]) {
     if (events.length === 0) return;
     const uniqueTraces = new Set(events.map((e) => `events:${e.traceId}`));
 
@@ -1762,7 +1696,9 @@ export function createExceptionPropertiesFromError(error: TaskRunError): Excepti
  * @param batch - The batch of creatable events to filter.
  * @returns The filtered array of creatable events, excluding partial events with corresponding full events.
  */
-function excludePartialEventsWithCorrespondingFullEvent(batch: CreatableEvent[]): CreatableEvent[] {
+function excludePartialEventsWithCorrespondingFullEvent(
+  batch: Prisma.TaskEventCreateManyInput[]
+): Prisma.TaskEventCreateManyInput[] {
   const partialEvents = batch.filter((event) => event.isPartial);
   const fullEvents = batch.filter((event) => !event.isPartial);
 

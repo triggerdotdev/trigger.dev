@@ -25,20 +25,45 @@ export type { ExceptionEventProperties };
 // Event Creation Types
 // ============================================================================
 
-export type CreatableEvent = Omit<
+export type CreateEventInput = Omit<
   Prisma.TaskEventCreateInput,
-  "id" | "createdAt" | "properties" | "metadata" | "style" | "output" | "payload"
+  | "id"
+  | "createdAt"
+  | "properties"
+  | "metadata"
+  | "style"
+  | "output"
+  | "payload"
+  | "serviceName"
+  | "serviceNamespace"
+  | "tracestate"
+  | "projectRef"
+  | "runIsTest"
+  | "workerId"
+  | "queueId"
+  | "queueName"
+  | "batchId"
+  | "taskPath"
+  | "taskExportName"
+  | "workerVersion"
+  | "idempotencyKey"
+  | "attemptId"
+  | "usageDurationMs"
+  | "usageCostInCents"
+  | "machinePreset"
+  | "machinePresetCpu"
+  | "machinePresetMemory"
+  | "machinePresetCentsPerMs"
+  | "links"
 > & {
   properties: Attributes;
   metadata: Attributes | undefined;
   style: Attributes | undefined;
-  output: Attributes | string | boolean | number | undefined;
-  payload: Attributes | string | boolean | number | undefined;
 };
 
 export type CreatableEventKind = TaskEventKind;
 export type CreatableEventStatus = TaskEventStatus;
-export type CreatableEventEnvironmentType = CreatableEvent["environmentType"];
+export type CreatableEventEnvironmentType = CreateEventInput["environmentType"];
 
 // ============================================================================
 // Task Run Types
@@ -66,24 +91,8 @@ export type CompleteableTaskRun = Pick<
 
 export type TraceAttributes = Partial<
   Pick<
-    CreatableEvent,
-    | "attemptId"
-    | "isError"
-    | "isCancelled"
-    | "isDebug"
-    | "runId"
-    | "runIsTest"
-    | "output"
-    | "outputType"
-    | "metadata"
-    | "properties"
-    | "style"
-    | "queueId"
-    | "queueName"
-    | "batchId"
-    | "payload"
-    | "payloadType"
-    | "idempotencyKey"
+    CreateEventInput,
+    "isError" | "isCancelled" | "isDebug" | "runId" | "metadata" | "properties" | "style"
   >
 >;
 
@@ -93,7 +102,6 @@ export type TraceEventOptions = {
   kind?: CreatableEventKind;
   context?: Record<string, unknown>;
   spanParentAsLink?: boolean;
-  parentAsLinkType?: "trigger" | "replay";
   spanIdSeed?: string;
   attributes: TraceAttributes;
   environment: TaskEventEnvironment;
@@ -150,7 +158,6 @@ export type QueriedEvent = Prisma.TaskEventGetPayload<{
     spanId: true;
     parentId: true;
     runId: true;
-    idempotencyKey: true;
     message: true;
     style: true;
     startTime: true;
@@ -232,21 +239,6 @@ export type SpanDetail = {
 // Span and Link Types
 // ============================================================================
 
-export type SpanLink =
-  | {
-      type: "run";
-      icon?: string;
-      title: string;
-      runId: string;
-    }
-  | {
-      type: "span";
-      icon?: string;
-      title: string;
-      traceId: string;
-      spanId: string;
-    };
-
 export type SpanSummary = {
   id: string;
   parentId: string | undefined;
@@ -261,7 +253,7 @@ export type SpanSummary = {
     isPartial: boolean;
     isCancelled: boolean;
     isDebug: boolean;
-    level: NonNullable<CreatableEvent["level"]>;
+    level: NonNullable<CreateEventInput["level"]>;
     environmentType: CreatableEventEnvironmentType;
   };
 };
@@ -275,20 +267,15 @@ export type SpanDetailedSummary = {
   data: {
     runId: string;
     taskSlug?: string;
-    taskPath?: string;
     events: SpanEvents;
     startTime: Date;
     duration: number;
     isError: boolean;
     isPartial: boolean;
     isCancelled: boolean;
-    level: NonNullable<CreatableEvent["level"]>;
+    level: NonNullable<CreateEventInput["level"]>;
     environmentType: CreatableEventEnvironmentType;
-    workerVersion?: string;
-    queueName?: string;
-    machinePreset?: string;
     properties?: Attributes;
-    output?: Attributes;
   };
   children: Array<SpanDetailedSummary>;
 };
@@ -311,10 +298,10 @@ export interface IEventRepository {
   readonly subscriberCount: number;
 
   // Event insertion methods
-  insert(event: CreatableEvent): Promise<void>;
-  insertImmediate(event: CreatableEvent): Promise<void>;
-  insertMany(events: CreatableEvent[]): Promise<void>;
-  insertManyImmediate(events: CreatableEvent[]): Promise<CreatableEvent[]>;
+  insert(event: CreateEventInput): Promise<void>;
+  insertImmediate(event: CreateEventInput): Promise<void>;
+  insertMany(events: CreateEventInput[]): Promise<void>;
+  insertManyImmediate(events: CreateEventInput[]): Promise<void>;
 
   // Run event completion methods
   completeSuccessfulRunEvent(params: { run: CompleteableTaskRun; endTime?: Date }): Promise<void>;
@@ -397,7 +384,7 @@ export interface IEventRepository {
   recordEvent(
     message: string,
     options: TraceEventOptions & { duration?: number; parentId?: string }
-  ): Promise<CreatableEvent>;
+  ): Promise<CreateEventInput>;
 
   traceEvent<TResult>(
     message: string,

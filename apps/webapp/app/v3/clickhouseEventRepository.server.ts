@@ -2,7 +2,7 @@ import { EventEmitter } from "node:stream";
 import type { ClickHouse } from "@internal/clickhouse";
 import type {
   IEventRepository,
-  CreatableEvent,
+  CreateEventInput,
   CompleteableTaskRun,
   TraceEventOptions,
   EventBuilder,
@@ -42,19 +42,19 @@ export class ClickhouseEventRepository implements IEventRepository {
   }
 
   // Event insertion methods
-  async insert(event: CreatableEvent): Promise<void> {
+  async insert(event: CreateEventInput): Promise<void> {
     throw new Error("ClickhouseEventRepository.insert not implemented");
   }
 
-  async insertImmediate(event: CreatableEvent): Promise<void> {
+  async insertImmediate(event: CreateEventInput): Promise<void> {
     throw new Error("ClickhouseEventRepository.insertImmediate not implemented");
   }
 
-  async insertMany(events: CreatableEvent[]): Promise<void> {
+  async insertMany(events: CreateEventInput[]): Promise<void> {
     throw new Error("ClickhouseEventRepository.insertMany not implemented");
   }
 
-  async insertManyImmediate(events: CreatableEvent[]): Promise<CreatableEvent[]> {
+  async insertManyImmediate(events: CreateEventInput[]): Promise<void> {
     throw new Error("ClickhouseEventRepository.insertManyImmediate not implemented");
   }
 
@@ -164,7 +164,7 @@ export class ClickhouseEventRepository implements IEventRepository {
   async recordEvent(
     message: string,
     options: TraceEventOptions & { duration?: number; parentId?: string }
-  ): Promise<CreatableEvent> {
+  ): Promise<CreateEventInput> {
     throw new Error("ClickhouseEventRepository.recordEvent not implemented");
   }
 
