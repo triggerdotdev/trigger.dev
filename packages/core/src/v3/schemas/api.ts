@@ -465,6 +465,7 @@ export const GetDeploymentResponseBody = z.object({
   id: z.string(),
   status: z.enum([
     "PENDING",
+    "INSTALLING",
     "BUILDING",
     "DEPLOYING",
     "DEPLOYED",
