@@ -1,7 +1,7 @@
 import { Attributes } from "@opentelemetry/api";
 import { RandomIdGenerator } from "@opentelemetry/sdk-trace-base";
 import { parseTraceparent } from "@trigger.dev/core/v3/isomorphic";
-import { SpanEvents } from "@trigger.dev/core/v3/schemas";
+import { ExceptionEventProperties, SpanEvents, TaskRunError } from "@trigger.dev/core/v3/schemas";
 import { unflattenAttributes } from "@trigger.dev/core/v3/utils/flattenAttributes";
 import { createHash } from "node:crypto";
 
@@ -91,4 +91,35 @@ export function parseEventsField(events: unknown): SpanEvents {
     : undefined;
 
   return unsafe as SpanEvents;
+}
+
+export function createExceptionPropertiesFromError(error: TaskRunError): ExceptionEventProperties {
+  switch (error.type) {
+    case "BUILT_IN_ERROR": {
+      return {
+        type: error.name,
+        message: error.message,
+        stacktrace: error.stackTrace,
+      };
+    }
+    case "CUSTOM_ERROR": {
+      return {
+        type: "Error",
+        message: error.raw,
+      };
+    }
+    case "INTERNAL_ERROR": {
+      return {
+        type: "Internal error",
+        message: [error.code, error.message].filter(Boolean).join(": "),
+        stacktrace: error.stackTrace,
+      };
+    }
+    case "STRING_ERROR": {
+      return {
+        type: "Error",
+        message: error.raw,
+      };
+    }
+  }
 }
