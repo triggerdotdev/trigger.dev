@@ -74,10 +74,9 @@ export async function whoAmI(
   embedded: boolean = false,
   silent: boolean = false
 ): Promise<WhoAmIResult> {
-  // When no --profile is passed, Zod schema defaults to readAuthConfigCurrentProfileName()
-  // which returns the current profile from config or "default" if none exists.
-  // If --profile is passed, we trim whitespace and fallback to current profile if empty.
-  const profileToUse = options?.profile?.trim() || readAuthConfigCurrentProfileName();
+  // Profile is provided by Zod schema with default from readAuthConfigCurrentProfileName()
+  // Trim whitespace and fallback to "default" for consistency with other commands
+  const profileToUse = options?.profile?.trim() || "default";
 
   if (!embedded) {
     intro(`Displaying your account details [${profileToUse}]`);
