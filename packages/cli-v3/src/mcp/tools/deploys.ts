@@ -20,9 +20,8 @@ export const deployTool = {
 
     // Check if the deployment target environment is allowed
     if (!ctx.isEnvironmentAllowed(input.environment)) {
-      const allowedEnvs = ctx.options.envOnly?.join(", ") || "dev";
       return respondWithError(
-        `This MCP server is restricted to the following environments: ${allowedEnvs}. You cannot deploy to ${input.environment}.`
+        `Cannot deploy to ${input.environment} environment. This MCP server is restricted to: ${ctx.getAllowedEnvironments()}`
       );
     }
 
@@ -121,9 +120,8 @@ export const listDeploysTool = {
     ctx.logger?.log("calling list_deploys", { input });
 
     if (!ctx.isEnvironmentAllowed(input.environment)) {
-      const allowedEnvs = ctx.options.envOnly?.join(", ") || "dev";
       return respondWithError(
-        `This MCP server is restricted to the following environments: ${allowedEnvs}. You tried to access the ${input.environment} environment.`
+        `Cannot access ${input.environment} environment. This MCP server is restricted to: ${ctx.getAllowedEnvironments()}`
       );
     }
 

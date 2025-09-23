@@ -12,9 +12,8 @@ export const getCurrentWorker = {
     ctx.logger?.log("calling get_current_worker", { input });
 
     if (!ctx.isEnvironmentAllowed(input.environment)) {
-      const allowedEnvs = ctx.options.envOnly?.join(", ") || "dev";
       return respondWithError(
-        `This MCP server is restricted to the following environments: ${allowedEnvs}. You tried to access the ${input.environment} environment.`
+        `Cannot access ${input.environment} environment. This MCP server is restricted to: ${ctx.getAllowedEnvironments()}`
       );
     }
 
@@ -92,9 +91,8 @@ export const triggerTaskTool = {
     ctx.logger?.log("calling trigger_task", { input });
 
     if (!ctx.isEnvironmentAllowed(input.environment)) {
-      const allowedEnvs = ctx.options.envOnly?.join(", ") || "dev";
       return respondWithError(
-        `This MCP server is restricted to the following environments: ${allowedEnvs}. You tried to access the ${input.environment} environment.`
+        `Cannot access ${input.environment} environment. This MCP server is restricted to: ${ctx.getAllowedEnvironments()}`
       );
     }
 

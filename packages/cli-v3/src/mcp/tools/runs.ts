@@ -13,9 +13,8 @@ export const getRunDetailsTool = {
     ctx.logger?.log("calling get_run_details", { input });
 
     if (!ctx.isEnvironmentAllowed(input.environment)) {
-      const allowedEnvs = ctx.options.envOnly?.join(", ") || "dev";
       return respondWithError(
-        `This MCP server is restricted to the following environments: ${allowedEnvs}. You tried to access the ${input.environment} environment.`
+        `Cannot access ${input.environment} environment. This MCP server is restricted to: ${ctx.getAllowedEnvironments()}`
       );
     }
 
@@ -71,9 +70,8 @@ export const waitForRunToCompleteTool = {
     ctx.logger?.log("calling wait_for_run_to_complete", { input });
 
     if (!ctx.isEnvironmentAllowed(input.environment)) {
-      const allowedEnvs = ctx.options.envOnly?.join(", ") || "dev";
       return respondWithError(
-        `This MCP server is restricted to the following environments: ${allowedEnvs}. You tried to access the ${input.environment} environment.`
+        `Cannot access ${input.environment} environment. This MCP server is restricted to: ${ctx.getAllowedEnvironments()}`
       );
     }
 
@@ -125,9 +123,8 @@ export const cancelRunTool = {
     ctx.logger?.log("calling cancel_run", { input });
 
     if (!ctx.isEnvironmentAllowed(input.environment)) {
-      const allowedEnvs = ctx.options.envOnly?.join(", ") || "dev";
       return respondWithError(
-        `This MCP server is restricted to the following environments: ${allowedEnvs}. You tried to access the ${input.environment} environment.`
+        `Cannot access ${input.environment} environment. This MCP server is restricted to: ${ctx.getAllowedEnvironments()}`
       );
     }
 
@@ -166,9 +163,8 @@ export const listRunsTool = {
     ctx.logger?.log("calling list_runs", { input });
 
     if (!ctx.isEnvironmentAllowed(input.environment)) {
-      const allowedEnvs = ctx.options.envOnly?.join(", ") || "dev";
       return respondWithError(
-        `This MCP server is restricted to the following environments: ${allowedEnvs}. You tried to access the ${input.environment} environment.`
+        `Cannot access ${input.environment} environment. This MCP server is restricted to: ${ctx.getAllowedEnvironments()}`
       );
     }
 

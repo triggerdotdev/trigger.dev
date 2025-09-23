@@ -189,17 +189,19 @@ export class McpContext {
   }
 
   public isEnvironmentAllowed(environment: string): boolean {
-    // If envOnly is specified, use that
+    // If envOnly is specified, use that (devOnly is already converted to envOnly)
     if (this.options.envOnly && this.options.envOnly.length > 0) {
       return this.options.envOnly.includes(environment);
     }
 
-    // For backward compatibility, check devOnly
-    if (this.options.devOnly) {
-      return environment === "dev";
-    }
-
-    // If neither is specified, all environments are allowed
+    // If no restrictions, all environments are allowed
     return true;
+  }
+
+  public getAllowedEnvironments(): string {
+    if (this.options.envOnly && this.options.envOnly.length > 0) {
+      return this.options.envOnly.join(", ");
+    }
+    return "all environments";
   }
 }

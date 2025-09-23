@@ -131,6 +131,15 @@ export async function mcpCommand(options: McpCommandOptions) {
   let envOnly: string[] | undefined;
   if (options.envOnly) {
     envOnly = options.envOnly.split(',').map(env => env.trim());
+
+    // Validate environment names
+    const validEnvironments = ['dev', 'staging', 'prod', 'preview'];
+    const invalidEnvs = envOnly.filter(env => !validEnvironments.includes(env));
+    if (invalidEnvs.length > 0) {
+      logger.error(`Error: Invalid environment(s): ${invalidEnvs.join(', ')}`);
+      logger.error(`Valid environments are: ${validEnvironments.join(', ')}`);
+      process.exit(1);
+    }
   } else if (options.devOnly) {
     // For backward compatibility, convert devOnly to envOnly
     envOnly = ['dev'];
