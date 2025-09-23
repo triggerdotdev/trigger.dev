@@ -35,6 +35,7 @@ import { startSpan } from "../tracing.server";
 import {
   calculateDurationFromStart,
   convertDateToNanoseconds,
+  createExceptionPropertiesFromError,
   extractContextFromCarrier,
   generateDeterministicSpanId,
   generateSpanId,
@@ -1588,37 +1589,6 @@ function initializeEventRepo() {
   });
 
   return repo;
-}
-
-export function createExceptionPropertiesFromError(error: TaskRunError): ExceptionEventProperties {
-  switch (error.type) {
-    case "BUILT_IN_ERROR": {
-      return {
-        type: error.name,
-        message: error.message,
-        stacktrace: error.stackTrace,
-      };
-    }
-    case "CUSTOM_ERROR": {
-      return {
-        type: "Error",
-        message: error.raw,
-      };
-    }
-    case "INTERNAL_ERROR": {
-      return {
-        type: "Internal error",
-        message: [error.code, error.message].filter(Boolean).join(": "),
-        stacktrace: error.stackTrace,
-      };
-    }
-    case "STRING_ERROR": {
-      return {
-        type: "Error",
-        message: error.raw,
-      };
-    }
-  }
 }
 
 /**

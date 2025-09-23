@@ -28,6 +28,7 @@ import {
   generateTraceId,
   parseEventsField,
   convertDateToNanoseconds,
+  createExceptionPropertiesFromError,
 } from "./common.server";
 import { serializeTraceparent } from "@trigger.dev/core/v3/isomorphic";
 import {
@@ -46,6 +47,8 @@ import {
 import { unflattenAttributes } from "@trigger.dev/core/v3/utils/flattenAttributes";
 import { TaskEventLevel } from "@trigger.dev/database";
 import { originalRunIdCache } from "./originalRunIdCache.server";
+import { SemanticInternalAttributes } from "@trigger.dev/core/v3/semanticInternalAttributes";
+import { createJsonErrorObject } from "@trigger.dev/core/v3/errors";
 
 export type ClickhouseEventRepositoryConfig = {
   clickhouse: ClickHouse;
@@ -500,9 +503,46 @@ export class ClickhouseEventRepository implements IEventRepository {
       expires_at: convertDateToClickhouseDateTime(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)),
     };
 
-    // TODO: Handle failedWithError by creating a SPAN_EVENT
+    const originalRunId =
+      options.attributes.properties?.[SemanticInternalAttributes.ORIGINAL_RUN_ID];
 
-    this._flushScheduler.addToBatch([event]);
+    if (typeof originalRunId === "string") {
+      await originalRunIdCache.set(traceId, spanId, originalRunId);
+    }
+
+    const events = [event];
+
+    if (failedWithError) {
+      const error = createJsonErrorObject(failedWithError);
+
+      events.push({
+        environment_id: options.environment.id,
+        organization_id: options.environment.organizationId,
+        project_id: options.environment.projectId,
+        task_identifier: options.taskSlug,
+        run_id: options.attributes.runId,
+        start_time: startTime.toString(),
+        duration: String(options.incomplete ? 0 : duration),
+        trace_id: traceId,
+        span_id: spanId,
+        parent_span_id: parentId ?? "",
+        message: "exception",
+        kind: "SPAN_EVENT",
+        status: "ERROR",
+        attributes: {
+          error,
+        },
+        metadata: JSON.stringify({
+          exception: createExceptionPropertiesFromError(failedWithError),
+        }),
+        // TODO: make sure configurable and by org
+        expires_at: convertDateToClickhouseDateTime(
+          new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+        ),
+      });
+    }
+
+    this._flushScheduler.addToBatch(events);
 
     return result;
   }
