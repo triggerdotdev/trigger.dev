@@ -74,7 +74,7 @@ export async function whoAmI(
   embedded: boolean = false,
   silent: boolean = false
 ): Promise<WhoAmIResult> {
-  const profileToUse = options?.profile ?? readAuthConfigCurrentProfileName();
+  const profileToUse = options?.profile?.trim() || readAuthConfigCurrentProfileName();
 
   if (!embedded) {
     intro(`Displaying your account details [${profileToUse}]`);
