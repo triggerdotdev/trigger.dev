@@ -215,7 +215,8 @@ export async function installMcpServer(
     );
   }
 
-  const devOnly = await resolveDevOnly(opts);
+  // Skip devOnly prompt when envOnly is already provided
+  const devOnly = opts.envOnly ? false : await resolveDevOnly(opts);
 
   opts.devOnly = devOnly;
 
@@ -509,12 +510,11 @@ function resolveMcpServerConfig(
     args.push("--api-url", options.apiUrl);
   }
 
-  if (options.devOnly) {
-    args.push("--dev-only");
-  }
-
+  // Handle environment restrictions - envOnly takes precedence
   if (options.envOnly) {
     args.push("--env-only", options.envOnly);
+  } else if (options.devOnly) {
+    args.push("--dev-only");
   }
 
   if (options.disableDeployment) {
