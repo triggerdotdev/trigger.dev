@@ -1,11 +1,12 @@
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { BaseService } from "./baseService.server";
 import { errAsync, fromPromise, okAsync } from "neverthrow";
-import { type WorkerDeploymentStatus, type WorkerDeployment } from "@trigger.dev/database";
-import { type ExternalBuildData, logger, type GitMeta } from "@trigger.dev/core/v3";
+import { type WorkerDeployment } from "@trigger.dev/database";
+import { logger, type GitMeta } from "@trigger.dev/core/v3";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
 import { env } from "~/env.server";
 import { createRemoteImageBuild } from "../remoteImageBuilder.server";
+import { FINAL_DEPLOYMENT_STATUSES } from "./failDeployment.server";
 
 export class DeploymentService extends BaseService {
   /**
@@ -141,6 +142,81 @@ export class DeploymentService extends BaseService {
         return progressToBuilding(deployment);
       })
       .andThen(extendTimeout)
+      .map(() => undefined);
+  }
+
+  /**
+   * Cancels a deployment that is not yet in a final state.
+   *
+   * Only acts when the current status is not final. Not idempotent.
+   *
+   * @param authenticatedEnv The environment which the deployment belongs to.
+   * @param friendlyId The friendly deployment ID.
+   * @param data Cancelation reason.
+   */
+  public cancelDeployment(
+    authenticatedEnv: AuthenticatedEnvironment,
+    friendlyId: string,
+    data: Partial<Pick<WorkerDeployment, "canceledReason">>
+  ) {
+    const getDeployment = () =>
+      fromPromise(
+        this._prisma.workerDeployment.findFirst({
+          where: {
+            friendlyId,
+            environmentId: authenticatedEnv.id,
+          },
+          select: {
+            status: true,
+            id: true,
+          },
+        }),
+        (error) => ({
+          type: "other" as const,
+          cause: error,
+        })
+      ).andThen((deployment) => {
+        if (!deployment) {
+          return errAsync({ type: "deployment_not_found" as const });
+        }
+        return okAsync(deployment);
+      });
+
+    const validateDeployment = (deployment: Pick<WorkerDeployment, "id" | "status">) => {
+      if (FINAL_DEPLOYMENT_STATUSES.includes(deployment.status)) {
+        logger.warn("Attempted cancelling deployment in a final state", {
+          deployment,
+        });
+        return errAsync({ type: "deployment_cannot_be_cancelled" as const });
+      }
+
+      return okAsync(deployment);
+    };
+
+    const cancelDeployment = (deployment: Pick<WorkerDeployment, "id">) =>
+      fromPromise(
+        this._prisma.workerDeployment.updateMany({
+          where: {
+            id: deployment.id,
+            status: {
+              notIn: FINAL_DEPLOYMENT_STATUSES, // status could've changed in the meantime, we're not locking the row
+            },
+          },
+          data: {
+            status: "CANCELED",
+            canceledAt: new Date(),
+            canceledReason: data.canceledReason,
+          },
+        }),
+        (error) => ({
+          type: "other" as const,
+          cause: error,
+        })
+      );
+
+    return getDeployment()
+      .andThen(validateDeployment)
+      .andThen(cancelDeployment)
       .map(() => undefined);
   }
 }
