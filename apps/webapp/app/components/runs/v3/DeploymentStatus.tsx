@@ -137,6 +137,7 @@ export const deploymentStatuses: WorkerDeploymentStatus[] = [
   "DEPLOYED",
   "FAILED",
   "TIMED_OUT",
+  "CANCELED",
 ];
 
 export function deploymentStatusDescription(status: WorkerDeploymentStatus): string {
