@@ -2,12 +2,15 @@ import { RunsRepository } from "~/services/runsRepository/runsRepository.server"
 import { BasePresenter } from "./basePresenter.server";
 import { clickhouseClient } from "~/services/clickhouseInstance.server";
 import { type PrismaClient } from "@trigger.dev/database";
+import { timeFilters } from "~/components/runs/v3/SharedFilters";
 
 export type TagListOptions = {
   organizationId: string;
   environmentId: string;
   projectId: string;
-  createdAfter?: Date;
+  period?: string;
+  from?: Date;
+  to?: Date;
   //filters
   name?: string;
   //pagination
@@ -26,7 +29,9 @@ export class RunTagListPresenter extends BasePresenter {
     environmentId,
     projectId,
     name,
-    createdAfter,
+    period,
+    from,
+    to,
     page = 1,
     pageSize = DEFAULT_PAGE_SIZE,
   }: TagListOptions) {
@@ -37,15 +42,14 @@ export class RunTagListPresenter extends BasePresenter {
       prisma: this._replica as PrismaClient,
     });
 
-    // Passed in or past 30 days
-    const createdAt = createdAfter ?? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-
     const tags = await runsRepository.listTags({
       organizationId,
       projectId,
       environmentId,
       query: name,
-      createdAfter: createdAt,
+      period,
+      from: from ? from.getTime() : undefined,
+      to: to ? to.getTime() : undefined,
       offset: (page - 1) * pageSize,
       limit: pageSize + 1,
     });

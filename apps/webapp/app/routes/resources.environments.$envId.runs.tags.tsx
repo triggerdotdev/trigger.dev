@@ -1,5 +1,6 @@
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
+import { timeFilters } from "~/components/runs/v3/SharedFilters";
 import { $replica } from "~/db.server";
 import { RunTagListPresenter } from "~/presenters/v3/RunTagListPresenter.server";
 import { requireUserId } from "~/services/session.server";
@@ -34,9 +35,6 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
   const search = new URL(request.url).searchParams;
   const name = search.get("name");
-  const period = search.get("period");
-  const from = search.get("from");
-  const to = search.get("to");
 
   const parsedSearchParams = SearchParams.safeParse({
     name: name ? decodeURIComponent(name) : undefined,
@@ -49,13 +47,21 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     throw new Response("Invalid search params", { status: 400 });
   }
 
+  const { period, from, to } = timeFilters({
+    period: parsedSearchParams.data.period,
+    from: parsedSearchParams.data.from,
+    to: parsedSearchParams.data.to,
+  });
+
   const presenter = new RunTagListPresenter();
   const result = await presenter.call({
     environmentId: environment.id,
     projectId: environment.projectId,
     organizationId: environment.organizationId,
     name: parsedSearchParams.data.name,
-    createdAfter: parsedSearchParams.data.createdAfter,
+    period,
+    from,
+    to,
   });
   return result;
 }

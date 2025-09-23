@@ -6,9 +6,10 @@ import {
   type ListRunsOptions,
   type RunListInputOptions,
   type RunsRepositoryOptions,
-  TagListOptions,
+  type TagListOptions,
   convertRunListInputOptionsToFilterRunsOptions,
 } from "./runsRepository.server";
+import parseDuration from "parse-duration";
 
 export class ClickHouseRunsRepository implements IRunsRepository {
   constructor(private readonly options: RunsRepositoryOptions) {}
@@ -177,6 +178,23 @@ export class ClickHouseRunsRepository implements IRunsRepository {
         environmentId: options.environmentId,
       });
 
+    const periodMs = options.period ? parseDuration(options.period) ?? undefined : undefined;
+    if (periodMs) {
+      queryBuilder.where("created_at >= fromUnixTimestamp64Milli({period: Int64})", {
+        period: new Date(Date.now() - periodMs).getTime(),
+      });
+    }
+
+    if (options.from) {
+      queryBuilder.where("created_at >= fromUnixTimestamp64Milli({from: Int64})", {
+        from: options.from,
+      });
+    }
+
+    if (options.to) {
+      queryBuilder.where("created_at <= fromUnixTimestamp64Milli({to: Int64})", { to: options.to });
+    }
+
     const [queryError, result] = await queryBuilder.execute();
 
     if (queryError) {
@@ -186,8 +204,6 @@ export class ClickHouseRunsRepository implements IRunsRepository {
     if (result.length === 0) {
       throw new Error("No count rows returned");
     }
-
-    //todo process them
 
     return {
       tags: result[0].tags,

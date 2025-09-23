@@ -113,7 +113,9 @@ export type TagListOptions = {
   organizationId: string;
   projectId: string;
   environmentId: string;
-  createdAfter: Date;
+  period?: string;
+  from?: number;
+  to?: number;
   /** Performs a case insensitive contains search on the tag name */
   query?: string;
 } & OffsetPagination;
@@ -313,9 +315,20 @@ export class RunsRepository implements IRunsRepository {
 
   async listTags(options: TagListOptions): Promise<TagList> {
     const repository = await this.#getRepository();
-    return startActiveSpan("runsRepository.listTags", async () => {
-      return await repository.listTags(options);
-    });
+    return startActiveSpan(
+      "runsRepository.listTags",
+      async () => {
+        return await repository.listTags(options);
+      },
+      {
+        attributes: {
+          "repository.name": repository.name,
+          organizationId: options.organizationId,
+          projectId: options.projectId,
+          environmentId: options.environmentId,
+        },
+      }
+    );
   }
 }
 
