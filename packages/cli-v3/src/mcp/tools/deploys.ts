@@ -18,9 +18,11 @@ export const deployTool = {
   handler: toolHandler(DeployInput.shape, async (input, { ctx, createProgressTracker, _meta }) => {
     ctx.logger?.log("calling deploy", { input });
 
-    if (ctx.options.devOnly) {
+    // Check if the deployment target environment is allowed
+    if (!ctx.isEnvironmentAllowed(input.environment)) {
+      const allowedEnvs = ctx.options.envOnly?.join(", ") || "dev";
       return respondWithError(
-        `This MCP server is only available for the dev environment. The deploy command is not allowed with the --dev-only flag.`
+        `This MCP server is restricted to the following environments: ${allowedEnvs}. You cannot deploy to ${input.environment}.`
       );
     }
 
@@ -118,9 +120,10 @@ export const listDeploysTool = {
   handler: toolHandler(ListDeploysInput.shape, async (input, { ctx }) => {
     ctx.logger?.log("calling list_deploys", { input });
 
-    if (ctx.options.devOnly) {
+    if (!ctx.isEnvironmentAllowed(input.environment)) {
+      const allowedEnvs = ctx.options.envOnly?.join(", ") || "dev";
       return respondWithError(
-        `This MCP server is only available for the dev environment. You tried to access the ${input.environment} environment. Remove the --dev-only flag to access other environments.`
+        `This MCP server is restricted to the following environments: ${allowedEnvs}. You tried to access the ${input.environment} environment.`
       );
     }
 

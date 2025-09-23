@@ -20,6 +20,9 @@ const McpCommandOptions = CommonCommandOptions.extend({
   projectRef: z.string().optional(),
   logFile: z.string().optional(),
   devOnly: z.boolean().default(false),
+  envOnly: z.string().optional(),
+  disableDeployment: z.boolean().default(false),
+  readonly: z.boolean().default(false),
   rulesInstallManifestPath: z.string().optional(),
   rulesInstallBranch: z.string().optional(),
 });
@@ -34,7 +37,19 @@ export function configureMcpCommand(program: Command) {
       .option("-p, --project-ref <project ref>", "The project ref to use")
       .option(
         "--dev-only",
-        "Only run the MCP server for the dev environment. Attempts to access other environments will fail."
+        "Only run the MCP server for the dev environment. Attempts to access other environments will fail. (Deprecated: use --env-only dev instead)"
+      )
+      .option(
+        "--env-only <environments>",
+        "Restrict the MCP server to specific environments only. Comma-separated list of: dev, staging, prod, preview. Example: --env-only dev,staging"
+      )
+      .option(
+        "--disable-deployment",
+        "Disable deployment-related tools. When enabled, deployment tools won't be available. This option is overridden by --readonly."
+      )
+      .option(
+        "--readonly",
+        "Run in read-only mode. Disables all write operations including deployments, task triggering, and project creation. Overrides --disable-deployment."
       )
       .option("--log-file <log file>", "The file to log to")
       .addOption(
@@ -106,11 +121,30 @@ export async function mcpCommand(options: McpCommandOptions) {
     ? new FileLogger(options.logFile, server)
     : undefined;
 
+  // Check for mutual exclusivity
+  if (options.devOnly && options.envOnly) {
+    logger.error("Error: --dev-only and --env-only are mutually exclusive. Please use only one.");
+    process.exit(1);
+  }
+
+  // Parse envOnly into an array if provided
+  let envOnly: string[] | undefined;
+  if (options.envOnly) {
+    envOnly = options.envOnly.split(',').map(env => env.trim());
+  } else if (options.devOnly) {
+    // For backward compatibility, convert devOnly to envOnly
+    envOnly = ['dev'];
+  }
+
   const context = new McpContext(server, {
     projectRef: options.projectRef,
     fileLogger,
     apiUrl: options.apiUrl ?? CLOUD_API_URL,
     profile: options.profile,
+    devOnly: options.devOnly,
+    envOnly,
+    disableDeployment: options.disableDeployment,
+    readonly: options.readonly,
   });
 
   registerTools(context);

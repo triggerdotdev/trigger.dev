@@ -11,9 +11,10 @@ export const getCurrentWorker = {
   handler: toolHandler(CommonProjectsInput.shape, async (input, { ctx }) => {
     ctx.logger?.log("calling get_current_worker", { input });
 
-    if (ctx.options.devOnly && input.environment !== "dev") {
+    if (!ctx.isEnvironmentAllowed(input.environment)) {
+      const allowedEnvs = ctx.options.envOnly?.join(", ") || "dev";
       return respondWithError(
-        `This MCP server is only available for the dev environment. You tried to access the ${input.environment} environment. Remove the --dev-only flag to access other environments.`
+        `This MCP server is restricted to the following environments: ${allowedEnvs}. You tried to access the ${input.environment} environment.`
       );
     }
 
@@ -90,9 +91,10 @@ export const triggerTaskTool = {
   handler: toolHandler(TriggerTaskInput.shape, async (input, { ctx }) => {
     ctx.logger?.log("calling trigger_task", { input });
 
-    if (ctx.options.devOnly && input.environment !== "dev") {
+    if (!ctx.isEnvironmentAllowed(input.environment)) {
+      const allowedEnvs = ctx.options.envOnly?.join(", ") || "dev";
       return respondWithError(
-        `This MCP server is only available for the dev environment. You tried to access the ${input.environment} environment. Remove the --dev-only flag to access other environments.`
+        `This MCP server is restricted to the following environments: ${allowedEnvs}. You tried to access the ${input.environment} environment.`
       );
     }
 

@@ -19,6 +19,9 @@ export type McpContextOptions = {
   apiUrl?: string;
   profile?: string;
   devOnly?: boolean;
+  envOnly?: string[];
+  disableDeployment?: boolean;
+  readonly?: boolean;
 };
 
 export class McpContext {
@@ -183,5 +186,20 @@ export class McpContext {
 
   public get hasElicitationCapability() {
     return hasElicitationCapability(this.server);
+  }
+
+  public isEnvironmentAllowed(environment: string): boolean {
+    // If envOnly is specified, use that
+    if (this.options.envOnly && this.options.envOnly.length > 0) {
+      return this.options.envOnly.includes(environment);
+    }
+
+    // For backward compatibility, check devOnly
+    if (this.options.devOnly) {
+      return environment === "dev";
+    }
+
+    // If neither is specified, all environments are allowed
+    return true;
   }
 }
