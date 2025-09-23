@@ -1,5 +1,18 @@
-import { ArrowUturnLeftIcon, BookOpenIcon } from "@heroicons/react/20/solid";
-import { type MetaFunction, Outlet, useLocation, useNavigate, useParams } from "@remix-run/react";
+import {
+  ArrowPathIcon,
+  ArrowUturnLeftIcon,
+  BookOpenIcon,
+  NoSymbolIcon,
+} from "@heroicons/react/20/solid";
+import {
+  Form,
+  type MetaFunction,
+  Outlet,
+  useLocation,
+  useNavigate,
+  useNavigation,
+  useParams,
+} from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { CogIcon, GitBranchIcon } from "lucide-react";
 import { useEffect } from "react";
@@ -15,7 +28,15 @@ import { MainCenteredContainer, PageBody, PageContainer } from "~/components/lay
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
-import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
+import { SpinnerWhite } from "~/components/primitives/Spinner";
+import {
+  Dialog,
+  DialogDescription,
+  DialogContent,
+  DialogHeader,
+  DialogTrigger,
+  DialogFooter,
+} from "~/components/primitives/Dialog";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -39,10 +60,6 @@ import {
   deploymentStatusDescription,
   deploymentStatuses,
 } from "~/components/runs/v3/DeploymentStatus";
-import {
-  PromoteDeploymentDialog,
-  RollbackDeploymentDialog,
-} from "~/components/runs/v3/RollbackDeploymentDialog";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -63,6 +80,7 @@ import { createSearchParams } from "~/utils/searchParams";
 import { compareDeploymentVersions } from "~/v3/utils/deploymentVersions";
 import { useAutoRevalidate } from "~/hooks/useAutoRevalidate";
 import { env } from "~/env.server";
+import { DialogClose } from "@radix-ui/react-dialog";
 
 export const meta: MetaFunction = () => {
   return [
@@ -395,7 +413,10 @@ function DeploymentActionsCell({
     compareDeploymentVersions(deployment.version, currentDeployment.version) === -1;
   const canBePromoted = canBeMadeCurrent && !canBeRolledBack;
 
-  if (!canBeRolledBack && !canBePromoted) {
+  const finalStatuses = ["CANCELED", "DEPLOYED", "FAILED", "TIMED_OUT"];
+  const canBeCanceled = !finalStatuses.includes(deployment.status);
+
+  if (!canBeRolledBack && !canBePromoted && !canBeCanceled) {
     return (
       <TableCell to={path} isSelected={isSelected}>
         {""}
@@ -419,7 +440,7 @@ function DeploymentActionsCell({
                   fullWidth
                   textAlignLeft
                 >
-                  Rollback…
+                  Rollback
                 </Button>
               </DialogTrigger>
               <RollbackDeploymentDialog
@@ -439,7 +460,7 @@ function DeploymentActionsCell({
                   fullWidth
                   textAlignLeft
                 >
-                  Promote…
+                  Promote
                 </Button>
               </DialogTrigger>
               <PromoteDeploymentDialog
@@ -449,8 +470,158 @@ function DeploymentActionsCell({
               />
             </Dialog>
           )}
+          {canBeCanceled && (
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button
+                  variant="small-menu-item"
+                  LeadingIcon={NoSymbolIcon}
+                  leadingIconClassName="text-error"
+                  fullWidth
+                  textAlignLeft
+                >
+                  Cancel
+                </Button>
+              </DialogTrigger>
+              <CancelDeploymentDialog
+                projectId={project.id}
+                deploymentShortCode={deployment.shortCode}
+                redirectPath={`${location.pathname}${location.search}`}
+              />
+            </Dialog>
+          )}
         </>
       }
     />
+  );
+}
+
+type RollbackDeploymentDialogProps = {
+  projectId: string;
+  deploymentShortCode: string;
+  redirectPath: string;
+};
+
+function RollbackDeploymentDialog({
+  projectId,
+  deploymentShortCode,
+  redirectPath,
+}: RollbackDeploymentDialogProps) {
+  const navigation = useNavigation();
+
+  const formAction = `/resources/${projectId}/deployments/${deploymentShortCode}/rollback`;
+  const isLoading = navigation.formAction === formAction;
+
+  return (
+    <DialogContent key="rollback">
+      <DialogHeader>Rollback to this deployment?</DialogHeader>
+      <DialogDescription>
+        This deployment will become the default for all future runs. Tasks triggered but not
+        included in this deploy will remain queued until you roll back to or create a new deployment
+        with these tasks included.
+      </DialogDescription>
+      <DialogFooter>
+        <DialogClose asChild>
+          <Button variant="tertiary/medium">Cancel</Button>
+        </DialogClose>
+        <Form
+          action={`/resources/${projectId}/deployments/${deploymentShortCode}/rollback`}
+          method="post"
+        >
+          <Button
+            type="submit"
+            name="redirectUrl"
+            value={redirectPath}
+            variant="primary/medium"
+            LeadingIcon={isLoading ? SpinnerWhite : ArrowPathIcon}
+            disabled={isLoading}
+            shortcut={{ modifiers: ["mod"], key: "enter" }}
+          >
+            {isLoading ? "Rolling back..." : "Rollback deployment"}
+          </Button>
+        </Form>
+      </DialogFooter>
+    </DialogContent>
+  );
+}
+
+function PromoteDeploymentDialog({
+  projectId,
+  deploymentShortCode,
+  redirectPath,
+}: RollbackDeploymentDialogProps) {
+  const navigation = useNavigation();
+
+  const formAction = `/resources/${projectId}/deployments/${deploymentShortCode}/promote`;
+  const isLoading = navigation.formAction === formAction;
+
+  return (
+    <DialogContent key="promote">
+      <DialogHeader>Promote this deployment?</DialogHeader>
+      <DialogDescription>
+        This deployment will become the default for all future runs not explicitly tied to a
+        specific deployment.
+      </DialogDescription>
+      <DialogFooter>
+        <DialogClose asChild>
+          <Button variant="tertiary/medium">Cancel</Button>
+        </DialogClose>
+        <Form
+          action={`/resources/${projectId}/deployments/${deploymentShortCode}/promote`}
+          method="post"
+        >
+          <Button
+            type="submit"
+            name="redirectUrl"
+            value={redirectPath}
+            variant="primary/medium"
+            LeadingIcon={isLoading ? SpinnerWhite : ArrowPathIcon}
+            disabled={isLoading}
+            shortcut={{ modifiers: ["mod"], key: "enter" }}
+          >
+            {isLoading ? "Promoting..." : "Promote deployment"}
+          </Button>
+        </Form>
+      </DialogFooter>
+    </DialogContent>
+  );
+}
+
+function CancelDeploymentDialog({
+  projectId,
+  deploymentShortCode,
+  redirectPath,
+}: RollbackDeploymentDialogProps) {
+  const navigation = useNavigation();
+
+  const formAction = `/resources/${projectId}/deployments/${deploymentShortCode}/promote`;
+  const isLoading = navigation.formAction === formAction;
+
+  return (
+    <DialogContent key="cancel">
+      <DialogHeader>Cancel this deployment?</DialogHeader>
+      <DialogDescription>Canceling a deployment cannot be undone. Are you sure?</DialogDescription>
+      <DialogFooter>
+        <DialogClose asChild>
+          <Button variant="tertiary/medium">Back</Button>
+        </DialogClose>
+        <Form
+          action={`/resources/${projectId}/deployments/${deploymentShortCode}/cancel`}
+          method="post"
+        >
+          <Button
+            type="submit"
+            name="redirectUrl"
+            value={redirectPath}
+            variant="danger/medium"
+            LeadingIcon={isLoading ? SpinnerWhite : NoSymbolIcon}
+            disabled={isLoading}
+            shortcut={{ modifiers: ["mod"], key: "enter" }}
+          >
+            {isLoading ? "Canceling..." : "Cancel deployment"}
+          </Button>
+        </Form>
+      </DialogFooter>
+    </DialogContent>
   );
 }

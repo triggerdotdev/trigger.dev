@@ -155,16 +155,16 @@ export class DeploymentService extends BaseService {
    * @param data Cancelation reason.
    */
   public cancelDeployment(
-    authenticatedEnv: AuthenticatedEnvironment,
+    authenticatedEnv: Pick<AuthenticatedEnvironment, "projectId">,
     friendlyId: string,
-    data: Partial<Pick<WorkerDeployment, "canceledReason">>
+    data?: Partial<Pick<WorkerDeployment, "canceledReason">>
   ) {
     const getDeployment = () =>
       fromPromise(
         this._prisma.workerDeployment.findFirst({
           where: {
             friendlyId,
-            environmentId: authenticatedEnv.id,
+            projectId: authenticatedEnv.projectId,
           },
           select: {
             status: true,
@@ -205,7 +205,7 @@ export class DeploymentService extends BaseService {
           data: {
             status: "CANCELED",
             canceledAt: new Date(),
-            canceledReason: data.canceledReason,
+            canceledReason: data?.canceledReason,
           },
         }),
         (error) => ({
