@@ -12,12 +12,13 @@ import {
   getTaskUsageByOrganization,
   getTaskRunsCountQueryBuilder,
 } from "./taskRuns.js";
-import { insertTaskEvents } from "./taskEvents.js";
+import { getTraceSummaryQueryBuilder, insertTaskEvents } from "./taskEvents.js";
 import { Logger, type LogLevel } from "@trigger.dev/core/logger";
 import type { Agent as HttpAgent } from "http";
 import type { Agent as HttpsAgent } from "https";
 
 export type * from "./taskRuns.js";
+export type * from "./taskEvents.js";
 export type * from "./client/queryBuilder.js";
 
 export type ClickhouseCommonConfig = {
@@ -158,6 +159,7 @@ export class ClickHouse {
   get taskEvents() {
     return {
       insert: insertTaskEvents(this.writer),
+      traceSummaryQueryBuilder: getTraceSummaryQueryBuilder(this.reader),
     };
   }
 }

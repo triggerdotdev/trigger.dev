@@ -1,4 +1,4 @@
-import { Attributes, AttributeValue, Link, trace, TraceFlags, Tracer } from "@opentelemetry/api";
+import { Attributes, AttributeValue, trace, Tracer } from "@opentelemetry/api";
 import { RandomIdGenerator } from "@opentelemetry/sdk-trace-base";
 import { SemanticResourceAttributes } from "@opentelemetry/semantic-conventions";
 import {
@@ -8,66 +8,68 @@ import {
   ExceptionSpanEvent,
   flattenAttributes,
   isExceptionSpanEvent,
-  NULL_SENTINEL,
+  nanosecondsToMilliseconds,
   omit,
   PRIMARY_VARIANT,
   SemanticInternalAttributes,
   SpanEvent,
   SpanEvents,
-  SpanMessagingEvent,
-  TaskEventEnvironment,
   TaskEventStyle,
   TaskRunError,
   unflattenAttributes,
 } from "@trigger.dev/core/v3";
-import { parseTraceparent, serializeTraceparent } from "@trigger.dev/core/v3/isomorphic";
-import { Prisma, TaskEvent, TaskEventKind, TaskEventStatus, TaskRun } from "@trigger.dev/database";
+import { serializeTraceparent } from "@trigger.dev/core/v3/isomorphic";
+import { Prisma, TaskEvent, TaskEventKind } from "@trigger.dev/database";
 import { nanoid } from "nanoid";
-import { createHash } from "node:crypto";
-import { EventEmitter } from "node:stream";
 import { Gauge } from "prom-client";
 import { $replica, prisma, PrismaClient, PrismaReplicaClient } from "~/db.server";
 import { env } from "~/env.server";
 import { metricsRegister } from "~/metrics.server";
-import { createRedisClient, RedisClient, RedisWithClusterOptions } from "~/redis.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
-import { DynamicFlushScheduler } from "./dynamicFlushScheduler.server";
+import { DynamicFlushScheduler } from "../dynamicFlushScheduler.server";
+import { tracePubSub } from "../services/tracePubSub.server";
+import { DetailedTraceEvent, TaskEventStore, TaskEventStoreTable } from "../taskEventStore.server";
+import { startActiveSpan } from "../tracer.server";
+import { startSpan } from "../tracing.server";
+import {
+  calculateDurationFromStart,
+  convertDateToNanoseconds,
+  extractContextFromCarrier,
+  generateDeterministicSpanId,
+  generateSpanId,
+  generateTraceId,
+  getDateFromNanoseconds,
+  getNowInNanoseconds,
+  parseEventsField,
+  stripAttributePrefix,
+} from "./common.server";
 import type {
-  IEventRepository,
-  CreateEventInput,
-  CreatableEventKind,
-  CreatableEventStatus,
-  CreatableEventEnvironmentType,
   CompleteableTaskRun,
-  TraceAttributes,
-  SetAttribute,
-  TraceEventOptions,
+  CreateEventInput,
   EventBuilder,
   EventRepoConfig,
-  QueryOptions,
-  TaskEventRecord,
-  QueriedEvent,
-  PreparedEvent,
+  IEventRepository,
   PreparedDetailedEvent,
+  PreparedEvent,
+  QueriedEvent,
   RunPreparedEvent,
-  SpanSummary,
-  TraceSummary,
-  SpanDetailedSummary,
-  TraceDetailedSummary,
-  UpdateEventOptions,
   SpanDetail,
+  SpanDetailedSummary,
+  SpanSummary,
+  TaskEventRecord,
+  TraceAttributes,
+  TraceDetailedSummary,
+  TraceEventOptions,
+  TraceSummary,
 } from "./eventRepository.types";
-import { DetailedTraceEvent, TaskEventStore, TaskEventStoreTable } from "./taskEventStore.server";
-import { startActiveSpan } from "./tracer.server";
-import { startSpan } from "./tracing.server";
+import { originalRunIdCache } from "./originalRunIdCache.server";
 
 const MAX_FLUSH_DEPTH = 5;
 
 export class EventRepository implements IEventRepository {
   private readonly _flushScheduler: DynamicFlushScheduler<Prisma.TaskEventCreateManyInput>;
   private _randomIdGenerator = new RandomIdGenerator();
-  private _redisPublishClient: RedisClient;
   private _subscriberCount = 0;
   private _tracer: Tracer;
   private _lastFlushedAt: Date | undefined;
@@ -102,7 +104,6 @@ export class EventRepository implements IEventRepository {
       },
     });
 
-    this._redisPublishClient = createRedisClient("trigger:eventRepoPublisher", this._config.redis);
     this._tracer = _config.tracer ?? trace.getTracer("eventRepo", "0.0.1");
 
     // Instantiate the store using the partitioning flag.
@@ -143,11 +144,7 @@ export class EventRepository implements IEventRepository {
     };
   }
 
-  async insert(event: CreateEventInput) {
-    this._flushScheduler.addToBatch([this.#createableEventToPrismaEvent(event)]);
-  }
-
-  async insertImmediate(event: CreateEventInput) {
+  private async insertImmediate(event: CreateEventInput) {
     await this.#flushBatch(nanoid(), [this.#createableEventToPrismaEvent(event)]);
   }
 
@@ -173,7 +170,7 @@ export class EventRepository implements IEventRepository {
       projectId: run.projectId,
       taskSlug: run.taskIdentifier,
       environmentId: run.runtimeEnvironmentId,
-      environmentType: run.environmentType ?? "DEVELOPMENT",
+      environmentType: "DEVELOPMENT",
       organizationId: run.organizationId ?? "",
       isPartial: false,
       isError: false,
@@ -217,7 +214,7 @@ export class EventRepository implements IEventRepository {
       projectId: run.projectId,
       taskSlug: run.taskIdentifier,
       environmentId: run.runtimeEnvironmentId,
-      environmentType: run.environmentType ?? "DEVELOPMENT",
+      environmentType: "DEVELOPMENT",
       organizationId: run.organizationId ?? "",
       isPartial: false,
       isError,
@@ -253,7 +250,7 @@ export class EventRepository implements IEventRepository {
       projectId: run.projectId,
       taskSlug: run.taskIdentifier,
       environmentId: run.runtimeEnvironmentId,
-      environmentType: run.environmentType ?? "DEVELOPMENT",
+      environmentType: "DEVELOPMENT",
       organizationId: run.organizationId ?? "",
       isPartial: false,
       isError: true,
@@ -298,7 +295,7 @@ export class EventRepository implements IEventRepository {
       projectId: run.projectId,
       taskSlug: run.taskIdentifier,
       environmentId: run.runtimeEnvironmentId,
-      environmentType: run.environmentType ?? "DEVELOPMENT",
+      environmentType: "DEVELOPMENT",
       organizationId: run.organizationId ?? "",
       isPartial: false,
       isError: true,
@@ -347,7 +344,7 @@ export class EventRepository implements IEventRepository {
       projectId: run.projectId,
       taskSlug: run.taskIdentifier,
       environmentId: run.runtimeEnvironmentId,
-      environmentType: run.environmentType ?? "DEVELOPMENT",
+      environmentType: "DEVELOPMENT",
       organizationId: run.organizationId ?? "",
       isPartial: true,
       isError: false,
@@ -394,7 +391,7 @@ export class EventRepository implements IEventRepository {
       projectId: run.projectId,
       taskSlug: run.taskIdentifier,
       environmentId: run.runtimeEnvironmentId,
-      environmentType: run.environmentType ?? "DEVELOPMENT",
+      environmentType: "DEVELOPMENT",
       organizationId: run.organizationId ?? "",
       isPartial: false,
       isError: true,
@@ -455,6 +452,7 @@ export class EventRepository implements IEventRepository {
 
   public async getTraceSummary(
     storeTable: TaskEventStoreTable,
+    environmentId: string,
     traceId: string,
     startCreatedAt: Date,
     endCreatedAt?: Date,
@@ -549,7 +547,6 @@ export class EventRepository implements IEventRepository {
             startTime: getDateFromNanoseconds(event.startTime),
             level: event.level,
             events,
-            environmentType: event.environmentType,
           },
         };
 
@@ -577,6 +574,7 @@ export class EventRepository implements IEventRepository {
 
   public async getTraceDetailedSummary(
     storeTable: TaskEventStoreTable,
+    environmentId: string,
     traceId: string,
     startCreatedAt: Date,
     endCreatedAt?: Date,
@@ -684,7 +682,6 @@ export class EventRepository implements IEventRepository {
             isPartial,
             isCancelled,
             level: event.level,
-            environmentType: event.environmentType,
             properties,
           },
           children: [],
@@ -718,6 +715,7 @@ export class EventRepository implements IEventRepository {
 
   public async getRunEvents(
     storeTable: TaskEventStoreTable,
+    environmentId: string,
     runId: string,
     startCreatedAt: Date,
     endCreatedAt?: Date
@@ -768,22 +766,16 @@ export class EventRepository implements IEventRepository {
 
   // A Span can be cancelled if it is partial and has a parent that is cancelled
   // And a span's duration, if it is partial and has a cancelled parent, is the time between the start of the span and the time of the cancellation event of the parent
-  public async getSpan({
-    storeTable,
-    spanId,
-    environmentId,
-    startCreatedAt,
-    endCreatedAt,
-    options,
-  }: {
-    storeTable: TaskEventStoreTable;
-    spanId: string;
-    environmentId: string;
-    startCreatedAt: Date;
-    endCreatedAt?: Date;
-    options?: { includeDebugLogs?: boolean };
-  }) {
-    return await startActiveSpan("getSpan", async () => {
+  public async getSpan(
+    storeTable: TaskEventStoreTable,
+    environmentId: string,
+    spanId: string,
+    traceId: string,
+    startCreatedAt: Date,
+    endCreatedAt?: Date,
+    options?: { includeDebugLogs?: boolean }
+  ): Promise<SpanDetail | undefined> {
+    return await startActiveSpan("getSpan", async (s) => {
       const spanEvent = await this.#getSpanEvent({
         storeTable,
         spanId,
@@ -860,6 +852,30 @@ export class EventRepository implements IEventRepository {
         originalRun,
         metadata: spanEvent.metadata,
       };
+    });
+  }
+
+  async getSpanOriginalRunId(
+    storeTable: TaskEventStoreTable,
+    environmentId: string,
+    spanId: string,
+    traceId: string,
+    startCreatedAt: Date,
+    endCreatedAt?: Date
+  ): Promise<string | undefined> {
+    return await startActiveSpan("getSpanOriginalRunId", async (s) => {
+      return await originalRunIdCache.swr(traceId, spanId, async () => {
+        const span = await this.getSpan(
+          storeTable,
+          environmentId,
+          spanId,
+          traceId,
+          startCreatedAt,
+          endCreatedAt
+        );
+
+        return span?.originalRun;
+      });
     });
   }
 
@@ -960,7 +976,6 @@ export class EventRepository implements IEventRepository {
           startTime: getDateFromNanoseconds(event.startTime),
           level: event.level,
           events,
-          environmentType: event.environmentType,
         },
       };
 
@@ -1131,12 +1146,12 @@ export class EventRepository implements IEventRepository {
       options.duration ??
       (options.endTime ? calculateDurationFromStart(startTime, options.endTime) : 100);
 
-    const traceId = propagatedContext?.traceparent?.traceId ?? this.generateTraceId();
+    const traceId = propagatedContext?.traceparent?.traceId ?? generateTraceId();
     const parentId = options.parentId ?? propagatedContext?.traceparent?.spanId;
     const tracestate = propagatedContext?.tracestate;
     const spanId = options.spanIdSeed
-      ? this.#generateDeterministicSpanId(traceId, options.spanIdSeed)
-      : this.generateSpanId();
+      ? generateDeterministicSpanId(traceId, options.spanIdSeed)
+      : generateSpanId();
 
     const metadata = {
       [SemanticInternalAttributes.ENVIRONMENT_ID]: options.environment.id,
@@ -1193,8 +1208,6 @@ export class EventRepository implements IEventRepository {
     } else {
       this._flushScheduler.addToBatch([this.#createableEventToPrismaEvent(event)]);
     }
-
-    return event;
   }
 
   public async traceEvent<TResult>(
@@ -1212,13 +1225,13 @@ export class EventRepository implements IEventRepository {
     const startTime = options.startTime ?? getNowInNanoseconds();
 
     const traceId = options.spanParentAsLink
-      ? this.generateTraceId()
-      : propagatedContext?.traceparent?.traceId ?? this.generateTraceId();
+      ? generateTraceId()
+      : propagatedContext?.traceparent?.traceId ?? generateTraceId();
     const parentId = options.spanParentAsLink ? undefined : propagatedContext?.traceparent?.spanId;
     const tracestate = options.spanParentAsLink ? undefined : propagatedContext?.tracestate;
     const spanId = options.spanIdSeed
-      ? this.#generateDeterministicSpanId(traceId, options.spanIdSeed)
-      : this.generateSpanId();
+      ? generateDeterministicSpanId(traceId, options.spanIdSeed)
+      : generateSpanId();
 
     const traceContext = {
       ...options.context,
@@ -1331,37 +1344,6 @@ export class EventRepository implements IEventRepository {
     }
 
     return result;
-  }
-
-  async subscribeToTrace(traceId: string) {
-    const redis = createRedisClient("trigger:eventRepoSubscriber", this._config.redis);
-
-    const channel = `events:${traceId}`;
-
-    // Subscribe to the channel.
-    await redis.subscribe(channel);
-
-    // Increment the subscriber count.
-    this._subscriberCount++;
-
-    const eventEmitter = new EventEmitter();
-
-    // Define the message handler.
-    redis.on("message", (_, message) => {
-      eventEmitter.emit("message", message);
-    });
-
-    // Return a function that can be used to unsubscribe.
-    const unsubscribe = async () => {
-      await redis.unsubscribe(channel);
-      redis.quit();
-      this._subscriberCount--;
-    };
-
-    return {
-      unsubscribe,
-      eventEmitter,
-    };
   }
 
   async #flushBatch(flushId: string, batch: Prisma.TaskEventCreateManyInput[]) {
@@ -1514,39 +1496,8 @@ export class EventRepository implements IEventRepository {
 
   async #publishToRedis(events: Prisma.TaskEventCreateManyInput[]) {
     if (events.length === 0) return;
-    const uniqueTraces = new Set(events.map((e) => `events:${e.traceId}`));
 
-    await Promise.allSettled(
-      Array.from(uniqueTraces).map((traceId) =>
-        this._redisPublishClient.publish(traceId, new Date().toISOString())
-      )
-    );
-  }
-
-  public generateTraceId() {
-    return this._randomIdGenerator.generateTraceId();
-  }
-
-  public generateSpanId() {
-    return this._randomIdGenerator.generateSpanId();
-  }
-
-  /**
-   * Returns a deterministically random 8-byte span ID formatted/encoded as a 16 lowercase hex
-   * characters corresponding to 64 bits, based on the trace ID and seed.
-   */
-  #generateDeterministicSpanId(traceId: string, seed: string) {
-    const hash = createHash("sha1");
-    hash.update(traceId);
-    hash.update(seed);
-    const buffer = hash.digest();
-    let hexString = "";
-    for (let i = 0; i < 8; i++) {
-      const val = buffer.readUInt8(i);
-      const str = val.toString(16).padStart(2, "0");
-      hexString += str;
-    }
-    return hexString;
+    await tracePubSub.publish(events.map((e) => e.traceId));
   }
 }
 
@@ -1564,14 +1515,6 @@ function initializeEventRepo() {
     memoryPressureThreshold: env.EVENTS_MEMORY_PRESSURE_THRESHOLD,
     loadSheddingThreshold: env.EVENTS_LOAD_SHEDDING_THRESHOLD,
     loadSheddingEnabled: env.EVENTS_LOAD_SHEDDING_ENABLED === "1",
-    redis: {
-      port: env.PUBSUB_REDIS_PORT,
-      host: env.PUBSUB_REDIS_HOST,
-      username: env.PUBSUB_REDIS_USERNAME,
-      password: env.PUBSUB_REDIS_PASSWORD,
-      tlsDisabled: env.PUBSUB_REDIS_TLS_DISABLED === "true",
-      clusterMode: env.PUBSUB_REDIS_CLUSTER_MODE_ENABLED === "1",
-    },
   });
 
   new Gauge({
@@ -1647,19 +1590,6 @@ function initializeEventRepo() {
   return repo;
 }
 
-export function stripAttributePrefix(attributes: Attributes, prefix: string) {
-  const result: Attributes = {};
-
-  for (const [key, value] of Object.entries(attributes)) {
-    if (key.startsWith(prefix)) {
-      result[key.slice(prefix.length + 1)] = value;
-    } else {
-      result[key] = value;
-    }
-  }
-  return result;
-}
-
 export function createExceptionPropertiesFromError(error: TaskRunError): ExceptionEventProperties {
   switch (error.type) {
     case "BUILT_IN_ERROR": {
@@ -1709,21 +1639,6 @@ function excludePartialEventsWithCorrespondingFullEvent(
   );
 }
 
-export function extractContextFromCarrier(carrier: Record<string, unknown>) {
-  const traceparent = carrier["traceparent"];
-  const tracestate = carrier["tracestate"];
-
-  if (typeof traceparent !== "string") {
-    return undefined;
-  }
-
-  return {
-    ...carrier,
-    traceparent: parseTraceparent(traceparent),
-    tracestate,
-  };
-}
-
 function prepareEvent(event: QueriedEvent): PreparedEvent {
   return {
     ...event,
@@ -1740,17 +1655,6 @@ function prepareDetailedEvent(event: DetailedTraceEvent): PreparedDetailedEvent 
     events: parseEventsField(event.events),
     style: parseStyleField(event.style),
   };
-}
-
-function parseEventsField(events: Prisma.JsonValue): SpanEvents {
-  const unsafe = events
-    ? (events as any[]).map((e) => ({
-        ...e,
-        properties: unflattenAttributes(e.properties as Attributes),
-      }))
-    : undefined;
-
-  return unsafe as SpanEvents;
 }
 
 function parseStyleField(style: Prisma.JsonValue): TaskEventStyle {
@@ -1978,82 +1882,6 @@ function transformException(
         })
       : undefined,
   };
-}
-
-function calculateDurationFromStart(startTime: bigint, endTime: Date = new Date()) {
-  const $endtime = typeof endTime === "string" ? new Date(endTime) : endTime;
-
-  return Number(BigInt($endtime.getTime() * 1_000_000) - startTime);
-}
-
-function getNowInNanoseconds(): bigint {
-  return BigInt(new Date().getTime() * 1_000_000);
-}
-
-export function getDateFromNanoseconds(nanoseconds: bigint) {
-  return new Date(Number(nanoseconds) / 1_000_000);
-}
-
-function convertDateToNanoseconds(date: Date) {
-  return BigInt(date.getTime()) * BigInt(1_000_000);
-}
-
-function nanosecondsToMilliseconds(nanoseconds: bigint | number): number {
-  return Number(nanoseconds) / 1_000_000;
-}
-
-function rehydrateJson(json: Prisma.JsonValue): any {
-  if (json === null) {
-    return undefined;
-  }
-
-  if (json === NULL_SENTINEL) {
-    return null;
-  }
-
-  if (typeof json === "string") {
-    return json;
-  }
-
-  if (typeof json === "number") {
-    return json;
-  }
-
-  if (typeof json === "boolean") {
-    return json;
-  }
-
-  if (Array.isArray(json)) {
-    return json.map((item) => rehydrateJson(item));
-  }
-
-  if (typeof json === "object") {
-    return unflattenAttributes(json as Attributes);
-  }
-
-  return null;
-}
-
-function rehydrateShow(properties: Prisma.JsonValue): { actions?: boolean } | undefined {
-  if (properties === null || properties === undefined) {
-    return;
-  }
-
-  if (typeof properties !== "object") {
-    return;
-  }
-
-  if (Array.isArray(properties)) {
-    return;
-  }
-
-  const actions = properties[SemanticInternalAttributes.SHOW_ACTIONS];
-
-  if (typeof actions === "boolean") {
-    return { actions };
-  }
-
-  return;
 }
 
 export function rehydrateAttribute<T extends AttributeValue>(

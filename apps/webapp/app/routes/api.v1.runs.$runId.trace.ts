@@ -3,7 +3,7 @@ import { BatchId } from "@trigger.dev/core/v3/isomorphic";
 import { z } from "zod";
 import { $replica } from "~/db.server";
 import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
-import { eventRepository } from "~/v3/eventRepository.server";
+import { eventRepository } from "~/v3/eventRepository/eventRepository.server";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 
 const ParamsSchema = z.object({
@@ -35,9 +35,10 @@ export const loader = createLoaderApiRoute(
       superScopes: ["read:runs", "read:all", "admin"],
     },
   },
-  async ({ resource: run }) => {
+  async ({ resource: run, authentication }) => {
     const traceSummary = await eventRepository.getTraceDetailedSummary(
       getTaskEventStoreTableForRun(run),
+      authentication.environment.id,
       run.traceId,
       run.createdAt,
       run.completedAt ?? undefined

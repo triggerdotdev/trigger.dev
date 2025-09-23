@@ -63,4 +63,5 @@ export const SemanticInternalAttributes = {
   EXECUTION_ENVIRONMENT: "exec_env",
   WARM_START: "warm_start",
   ATTEMPT_EXECUTION_COUNT: "$trigger.executionCount",
+  TASK_EVENT_STORE: "$trigger.taskEventStore",
 };

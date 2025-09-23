@@ -3,7 +3,7 @@ import { eventStream } from "remix-utils/sse/server";
 import { PrismaClient, prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { throttle } from "~/utils/throttle";
-import { eventRepository } from "~/v3/eventRepository.server";
+import { tracePubSub } from "~/v3/services/tracePubSub.server";
 
 const pingInterval = 1000;
 
@@ -41,7 +41,7 @@ export class RunStreamPresenter {
 
     let pinger: NodeJS.Timeout | undefined = undefined;
 
-    const { unsubscribe, eventEmitter } = await eventRepository.subscribeToTrace(run.traceId);
+    const { unsubscribe, eventEmitter } = await tracePubSub.subscribeToTrace(run.traceId);
 
     return eventStream(request.signal, (send, close) => {
       const safeSend = (args: { event?: string; data: string }) => {

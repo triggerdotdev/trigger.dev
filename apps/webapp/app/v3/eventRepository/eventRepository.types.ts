@@ -1,12 +1,10 @@
-import { EventEmitter } from "node:stream";
-import { Attributes, AttributeValue, Link, Tracer } from "@opentelemetry/api";
+import { Attributes, Tracer } from "@opentelemetry/api";
 import type {
-  TaskRunError,
   ExceptionEventProperties,
   SpanEvents,
-  TaskEventStyle,
   TaskEventEnvironment,
-  SpanEvent,
+  TaskEventStyle,
+  TaskRunError,
 } from "@trigger.dev/core/v3";
 import type {
   Prisma,
@@ -16,9 +14,7 @@ import type {
   TaskEventStatus,
   TaskRun,
 } from "@trigger.dev/database";
-import type { RedisWithClusterOptions } from "~/redis.server";
-import type { DynamicFlushScheduler } from "./dynamicFlushScheduler.server";
-import type { DetailedTraceEvent, TaskEventStoreTable } from "./taskEventStore.server";
+import type { DetailedTraceEvent, TaskEventStoreTable } from "../taskEventStore.server";
 export type { ExceptionEventProperties };
 
 // ============================================================================
@@ -63,7 +59,6 @@ export type CreateEventInput = Omit<
 
 export type CreatableEventKind = TaskEventKind;
 export type CreatableEventStatus = TaskEventStatus;
-export type CreatableEventEnvironmentType = CreateEventInput["environmentType"];
 
 // ============================================================================
 // Task Run Types
@@ -81,7 +76,6 @@ export type CompleteableTaskRun = Pick<
   | "projectId"
   | "runtimeEnvironmentId"
   | "organizationId"
-  | "environmentType"
   | "isTest"
 >;
 
@@ -133,7 +127,6 @@ export type UpdateEventOptions = {
 export type EventRepoConfig = {
   batchSize: number;
   batchInterval: number;
-  redis: RedisWithClusterOptions;
   retentionInDays: number;
   partitioningEnabled: boolean;
   tracer?: Tracer;
@@ -167,7 +160,6 @@ export type QueriedEvent = Prisma.TaskEventGetPayload<{
     isCancelled: true;
     level: true;
     events: true;
-    environmentType: true;
     kind: true;
     attemptNumber: true;
   };
@@ -254,7 +246,6 @@ export type SpanSummary = {
     isCancelled: boolean;
     isDebug: boolean;
     level: NonNullable<CreateEventInput["level"]>;
-    environmentType: CreatableEventEnvironmentType;
   };
 };
 
@@ -274,7 +265,6 @@ export type SpanDetailedSummary = {
     isPartial: boolean;
     isCancelled: boolean;
     level: NonNullable<CreateEventInput["level"]>;
-    environmentType: CreatableEventEnvironmentType;
     properties?: Attributes;
   };
   children: Array<SpanDetailedSummary>;
@@ -294,12 +284,7 @@ export type TraceDetailedSummary = {
  * Defines the public API for managing task events, traces, and spans.
  */
 export interface IEventRepository {
-  // Properties
-  readonly subscriberCount: number;
-
   // Event insertion methods
-  insert(event: CreateEventInput): Promise<void>;
-  insertImmediate(event: CreateEventInput): Promise<void>;
   insertMany(events: CreateEventInput[]): Promise<void>;
   insertManyImmediate(events: CreateEventInput[]): Promise<void>;
 
@@ -350,6 +335,7 @@ export interface IEventRepository {
   // Query methods
   getTraceSummary(
     storeTable: TaskEventStoreTable,
+    environmentId: string,
     traceId: string,
     startCreatedAt: Date,
     endCreatedAt?: Date,
@@ -358,6 +344,7 @@ export interface IEventRepository {
 
   getTraceDetailedSummary(
     storeTable: TaskEventStoreTable,
+    environmentId: string,
     traceId: string,
     startCreatedAt: Date,
     endCreatedAt?: Date,
@@ -366,6 +353,7 @@ export interface IEventRepository {
 
   getRunEvents(
     storeTable: TaskEventStoreTable,
+    environmentId: string,
     runId: string,
     startCreatedAt: Date,
     endCreatedAt?: Date
@@ -373,6 +361,7 @@ export interface IEventRepository {
 
   getSpan(
     storeTable: TaskEventStoreTable,
+    environmentId: string,
     spanId: string,
     traceId: string,
     startCreatedAt: Date,
@@ -380,11 +369,20 @@ export interface IEventRepository {
     options?: { includeDebugLogs?: boolean }
   ): Promise<SpanDetail | undefined>;
 
+  getSpanOriginalRunId(
+    storeTable: TaskEventStoreTable,
+    environmentId: string,
+    spanId: string,
+    traceId: string,
+    startCreatedAt: Date,
+    endCreatedAt?: Date
+  ): Promise<string | undefined>;
+
   // Event recording methods
   recordEvent(
     message: string,
     options: TraceEventOptions & { duration?: number; parentId?: string }
-  ): Promise<CreateEventInput>;
+  ): Promise<void>;
 
   traceEvent<TResult>(
     message: string,
@@ -395,14 +393,4 @@ export interface IEventRepository {
       traceparent?: { traceId: string; spanId: string }
     ) => Promise<TResult>
   ): Promise<TResult>;
-
-  // Subscription methods
-  subscribeToTrace(traceId: string): Promise<{
-    unsubscribe: () => Promise<void>;
-    eventEmitter: EventEmitter;
-  }>;
-
-  // ID generation methods
-  generateTraceId(): string;
-  generateSpanId(): string;
 }

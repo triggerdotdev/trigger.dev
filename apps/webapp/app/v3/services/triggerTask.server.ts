@@ -9,12 +9,12 @@ import { RunEngineTriggerTaskService } from "~/runEngine/services/triggerTask.se
 import { DefaultTriggerTaskValidator } from "~/runEngine/validators/triggerTaskValidator";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { determineEngineVersion } from "../engineVersion.server";
-import { eventRepository } from "../eventRepository.server";
+import { eventRepository } from "../eventRepository/eventRepository.server";
 import { tracer } from "../tracer.server";
 import { WithRunEngine } from "./baseService.server";
 import { TriggerTaskServiceV1 } from "./triggerTaskV1.server";
 import { env } from "~/env.server";
-import { clickhouseEventRepository } from "../clickhouseEventRepositoryInstance.server";
+import { clickhouseEventRepository } from "../eventRepository/clickhouseEventRepositoryInstance.server";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;

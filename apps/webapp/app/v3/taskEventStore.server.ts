@@ -18,7 +18,6 @@ export type TraceEvent = Pick<
   | "isCancelled"
   | "level"
   | "events"
-  | "environmentType"
   | "kind"
   | "attemptNumber"
 >;
@@ -37,7 +36,6 @@ export type DetailedTraceEvent = Pick<
   | "isCancelled"
   | "level"
   | "events"
-  | "environmentType"
   | "kind"
   | "taskSlug"
   | "properties"
@@ -181,7 +179,6 @@ export class TaskEventStore {
           "isCancelled",
           level,
           events,
-          "environmentType",
           "kind",
           "attemptNumber"
         FROM "TaskEventPartitioned"
@@ -213,7 +210,6 @@ export class TaskEventStore {
           "isCancelled",
           level,
           events,
-          "environmentType",
           "kind",
           "attemptNumber"
         FROM "TaskEvent"
@@ -259,7 +255,6 @@ export class TaskEventStore {
           "isCancelled",
           level,
           events,
-          "environmentType",
           "kind",
           "taskSlug",
           properties,
@@ -292,7 +287,6 @@ export class TaskEventStore {
           "isCancelled",
           level,
           events,
-          "environmentType",
           "kind",
           "taskSlug",
           properties,

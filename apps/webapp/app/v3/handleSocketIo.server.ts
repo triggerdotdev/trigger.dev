@@ -22,7 +22,7 @@ import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 import { authenticateApiRequestWithFailure } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
-import { recordRunDebugLog } from "./eventRepository.server";
+import { recordRunDebugLog } from "./eventRepository/eventRepository.server";
 import { sharedQueueTasks } from "./marqs/sharedQueueConsumer.server";
 import { engine } from "./runEngine.server";
 import { CompleteAttemptService } from "./services/completeAttempt.server";
