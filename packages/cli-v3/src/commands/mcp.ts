@@ -130,7 +130,15 @@ export async function mcpCommand(options: McpCommandOptions) {
   // Parse envOnly into an array if provided
   let envOnly: string[] | undefined;
   if (options.envOnly) {
-    envOnly = options.envOnly.split(',').map(env => env.trim());
+    // Parse, normalize, and deduplicate environments
+    envOnly = Array.from(
+      new Set(
+        options.envOnly
+          .split(',')
+          .map(env => env.trim().toLowerCase())
+          .filter(Boolean) // Remove empty strings
+      )
+    );
 
     // Validate environment names
     const validEnvironments = ['dev', 'staging', 'prod', 'preview'];

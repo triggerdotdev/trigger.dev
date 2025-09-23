@@ -189,9 +189,13 @@ export class McpContext {
   }
 
   public isEnvironmentAllowed(environment: string): boolean {
+    // Normalize the environment name for comparison
+    const normalizedEnv = environment.trim().toLowerCase();
+
     // If envOnly is specified, use that (devOnly is already converted to envOnly)
     if (this.options.envOnly && this.options.envOnly.length > 0) {
-      return this.options.envOnly.includes(environment);
+      // Note: envOnly is already normalized to lowercase in mcp.ts
+      return this.options.envOnly.includes(normalizedEnv);
     }
 
     // If no restrictions, all environments are allowed

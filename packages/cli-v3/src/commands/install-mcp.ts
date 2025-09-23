@@ -287,8 +287,19 @@ function handleUnsupportedClientOnly(options: InstallMcpCommandOptions): Install
     args.push("--api-url", options.apiUrl);
   }
 
-  if (options.devOnly) {
+  // Handle environment restrictions - envOnly takes precedence
+  if (options.envOnly) {
+    args.push("--env-only", options.envOnly);
+  } else if (options.devOnly) {
     args.push("--dev-only");
+  }
+
+  if (options.disableDeployment) {
+    args.push("--disable-deployment");
+  }
+
+  if (options.readonly) {
+    args.push("--readonly");
   }
 
   if (options.projectRef) {
