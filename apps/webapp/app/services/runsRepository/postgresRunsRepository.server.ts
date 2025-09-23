@@ -8,7 +8,7 @@ import {
   type ListedRun,
   type RunListInputOptions,
   type RunsRepositoryOptions,
-  TagListOptions,
+  type TagListOptions,
   convertRunListInputOptionsToFilterRunsOptions,
 } from "./runsRepository.server";
 
