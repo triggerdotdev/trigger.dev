@@ -2,7 +2,7 @@ import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
-import { eventRepository } from "~/v3/eventRepository.server";
+import { eventRepository } from "~/v3/eventRepository/eventRepository.server";
 import { ApiRetrieveRunPresenter } from "~/presenters/v3/ApiRetrieveRunPresenter.server";
 
 const ParamsSchema = z.object({
@@ -30,9 +30,10 @@ export const loader = createLoaderApiRoute(
       superScopes: ["read:runs", "read:all", "admin"],
     },
   },
-  async ({ resource: run }) => {
+  async ({ resource: run, authentication }) => {
     const runEvents = await eventRepository.getRunEvents(
       getTaskEventStoreTableForRun(run),
+      authentication.environment.id,
       run.friendlyId,
       run.createdAt,
       run.completedAt ?? undefined

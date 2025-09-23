@@ -1,5 +1,5 @@
 import { TaskRun, TaskRunAttempt } from "@trigger.dev/database";
-import { eventRepository } from "../eventRepository.server";
+import { eventRepository } from "../eventRepository/eventRepository.server";
 import { BaseService } from "./baseService.server";
 import { logger } from "~/services/logger.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";

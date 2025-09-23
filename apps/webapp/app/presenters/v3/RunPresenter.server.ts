@@ -3,7 +3,7 @@ import { createTreeFromFlatItems, flattenTree } from "~/components/primitives/Tr
 import { prisma, type PrismaClient } from "~/db.server";
 import { createTimelineSpanEventsFromSpanEvents } from "~/utils/timelineSpanEvents";
 import { getUsername } from "~/utils/username";
-import { eventRepository } from "~/v3/eventRepository.server";
+import { resolveEventRepositoryForStore } from "~/v3/eventRepository";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 import { isFinalRunStatus } from "~/v3/taskStatus";
 
@@ -140,9 +140,12 @@ export class RunPresenter {
       };
     }
 
+    const eventRepository = resolveEventRepositoryForStore(run.taskEventStore);
+
     // get the events
     const traceSummary = await eventRepository.getTraceSummary(
       getTaskEventStoreTableForRun(run),
+      run.runtimeEnvironment.id,
       run.traceId,
       run.rootTaskRun?.createdAt ?? run.createdAt,
       run.completedAt ?? undefined,

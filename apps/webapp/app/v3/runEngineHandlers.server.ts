@@ -10,12 +10,12 @@ import { reportInvocationUsage } from "~/services/platform.v3.server";
 import { MetadataTooLargeError } from "~/utils/packets";
 import {
   createExceptionPropertiesFromError,
-  eventRepository,
   recordRunDebugLog,
-} from "./eventRepository.server";
+} from "./eventRepository/eventRepository.server";
 import { roomFromFriendlyRunId, socketIo } from "./handleSocketIo.server";
 import { engine } from "./runEngine.server";
 import { PerformTaskRunAlertsService } from "./services/alerts/performTaskRunAlerts.server";
+import { resolveEventRepositoryForStore } from "./eventRepository";
 
 export function registerRunEngineEventBusHandlers() {
   engine.eventBus.on("runSucceeded", async ({ time, run }) => {
@@ -38,6 +38,7 @@ export function registerRunEngineEventBusHandlers() {
           environmentType: true,
           isTest: true,
           organizationId: true,
+          taskEventStore: true,
         },
       })
     );
@@ -49,6 +50,8 @@ export function registerRunEngineEventBusHandlers() {
       });
       return;
     }
+
+    const eventRepository = resolveEventRepositoryForStore(run.taskEventStore);
 
     const [completeSuccessfulRunEventError] = await tryCatch(
       eventRepository.completeSuccessfulRunEvent({
@@ -102,6 +105,7 @@ export function registerRunEngineEventBusHandlers() {
           environmentType: true,
           isTest: true,
           organizationId: true,
+          taskEventStore: true,
         },
       })
     );
@@ -113,6 +117,8 @@ export function registerRunEngineEventBusHandlers() {
       });
       return;
     }
+
+    const eventRepository = resolveEventRepositoryForStore(taskRun.taskEventStore);
 
     const [completeFailedRunEventError] = await tryCatch(
       eventRepository.completeFailedRunEvent({
@@ -153,6 +159,7 @@ export function registerRunEngineEventBusHandlers() {
           environmentType: true,
           isTest: true,
           organizationId: true,
+          taskEventStore: true,
         },
       })
     );
@@ -164,6 +171,8 @@ export function registerRunEngineEventBusHandlers() {
       });
       return;
     }
+
+    const eventRepository = resolveEventRepositoryForStore(taskRun.taskEventStore);
 
     const [createAttemptFailedRunEventError] = await tryCatch(
       eventRepository.createAttemptFailedRunEvent({
@@ -245,6 +254,7 @@ export function registerRunEngineEventBusHandlers() {
             environmentType: true,
             isTest: true,
             organizationId: true,
+            taskEventStore: true,
           },
         })
       );
@@ -262,6 +272,8 @@ export function registerRunEngineEventBusHandlers() {
         });
         return;
       }
+
+      const eventRepository = resolveEventRepositoryForStore(blockedRun.taskEventStore);
 
       const [completeCachedRunEventError] = await tryCatch(
         eventRepository.completeCachedRunEvent({
@@ -308,6 +320,7 @@ export function registerRunEngineEventBusHandlers() {
           environmentType: true,
           isTest: true,
           organizationId: true,
+          taskEventStore: true,
         },
       })
     );
@@ -319,6 +332,8 @@ export function registerRunEngineEventBusHandlers() {
       });
       return;
     }
+
+    const eventRepository = resolveEventRepositoryForStore(taskRun.taskEventStore);
 
     const [completeExpiredRunEventError] = await tryCatch(
       eventRepository.completeExpiredRunEvent({
@@ -356,6 +371,7 @@ export function registerRunEngineEventBusHandlers() {
           environmentType: true,
           isTest: true,
           organizationId: true,
+          taskEventStore: true,
         },
       })
     );
@@ -367,6 +383,8 @@ export function registerRunEngineEventBusHandlers() {
       });
       return;
     }
+
+    const eventRepository = resolveEventRepositoryForStore(taskRun.taskEventStore);
 
     const error = createJsonErrorObject(run.error);
 
@@ -393,6 +411,8 @@ export function registerRunEngineEventBusHandlers() {
       if (run.nextMachineAfterOOM) {
         retryMessage += ` after OOM`;
       }
+
+      const eventRepository = resolveEventRepositoryForStore(run.taskEventStore);
 
       await eventRepository.recordEvent(retryMessage, {
         startTime: BigInt(time.getTime() * 1000000),

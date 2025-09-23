@@ -244,6 +244,7 @@ export type EventBusEvents = {
         updatedAt: Date;
         createdAt: Date;
         error: TaskRunError;
+        taskEventStore?: string;
       };
       organization: {
         id: string;

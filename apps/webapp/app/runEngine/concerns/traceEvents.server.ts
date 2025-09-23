@@ -1,10 +1,10 @@
-import { EventRepository } from "~/v3/eventRepository.server";
+import { EventRepository } from "~/v3/eventRepository/eventRepository.server";
 import { TracedEventSpan, TraceEventConcern, TriggerTaskRequest } from "../types";
 import { SemanticInternalAttributes } from "@trigger.dev/core/v3/semanticInternalAttributes";
 import { TaskRun } from "@trigger.dev/database";
 import { getTaskEventStore } from "~/v3/taskEventStore.server";
-import { ClickhouseEventRepository } from "~/v3/clickhouseEventRepository.server";
-import { IEventRepository } from "~/v3/eventRepository.types";
+import { ClickhouseEventRepository } from "~/v3/eventRepository/clickhouseEventRepository.server";
+import { IEventRepository } from "~/v3/eventRepository/eventRepository.types";
 import { FEATURE_FLAG, flags } from "~/v3/featureFlags.server";
 import { env } from "~/env.server";
 
@@ -51,9 +51,7 @@ export class DefaultTraceEventsConcern implements TraceEventConcern {
         environment: request.environment,
         taskSlug: request.taskId,
         attributes: {
-          properties: {
-            [SemanticInternalAttributes.SHOW_ACTIONS]: true,
-          },
+          properties: {},
           style: {
             icon: request.options?.customIcon ?? "task",
           },
@@ -103,7 +101,6 @@ export class DefaultTraceEventsConcern implements TraceEventConcern {
         taskSlug: request.taskId,
         attributes: {
           properties: {
-            [SemanticInternalAttributes.SHOW_ACTIONS]: true,
             [SemanticInternalAttributes.ORIGINAL_RUN_ID]: existingRun.friendlyId,
           },
           style: {

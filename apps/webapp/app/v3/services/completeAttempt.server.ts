@@ -23,7 +23,10 @@ import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { safeJsonParse } from "~/utils/json";
 import { marqs } from "~/v3/marqs/index.server";
-import { createExceptionPropertiesFromError, eventRepository } from "../eventRepository.server";
+import {
+  createExceptionPropertiesFromError,
+  eventRepository,
+} from "../eventRepository/eventRepository.server";
 import { FailedTaskRunRetryHelper } from "../failedTaskRun.server";
 import { socketIo } from "../handleSocketIo.server";
 import { getTaskEventStoreTableForRun } from "../taskEventStore.server";

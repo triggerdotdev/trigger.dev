@@ -1,7 +1,7 @@
 import { type Prisma } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { logger } from "~/services/logger.server";
-import { eventRepository } from "../eventRepository.server";
+import { eventRepository } from "../eventRepository/eventRepository.server";
 import { socketIo } from "../handleSocketIo.server";
 import { devPubSub } from "../marqs/devPubSub.server";
 import { CANCELLABLE_ATTEMPT_STATUSES, isCancellableRunStatus } from "../taskStatus";

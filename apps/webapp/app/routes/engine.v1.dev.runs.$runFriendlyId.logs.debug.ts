@@ -9,7 +9,7 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
-import { recordRunDebugLog } from "~/v3/eventRepository.server";
+import { recordRunDebugLog } from "~/v3/eventRepository/eventRepository.server";
 
 // const { action } = createActionApiRoute(
 //   {

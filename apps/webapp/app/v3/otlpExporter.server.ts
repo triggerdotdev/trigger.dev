@@ -1,4 +1,4 @@
-import { SemanticResourceAttributes } from "@opentelemetry/semantic-conventions";
+import { trace, Tracer } from "@opentelemetry/api";
 import { SemanticInternalAttributes } from "@trigger.dev/core/v3";
 import {
   AnyValue,
@@ -12,90 +12,104 @@ import {
   SeverityNumber,
   Span,
   Span_Event,
-  Span_Link,
   Span_SpanKind,
   Status_StatusCode,
 } from "@trigger.dev/otlp-importer";
-import { EventRepository, eventRepository } from "./eventRepository.server";
+import { logger } from "~/services/logger.server";
+import { ClickhouseEventRepository } from "./eventRepository/clickhouseEventRepository.server";
+import { clickhouseEventRepository } from "./eventRepository/clickhouseEventRepositoryInstance.server";
+import { generateSpanId } from "./eventRepository/common.server";
+import { EventRepository, eventRepository } from "./eventRepository/eventRepository.server";
 import type {
-  CreateEventInput,
   CreatableEventKind,
   CreatableEventStatus,
-  CreatableEventEnvironmentType,
-} from "./eventRepository.types";
-import { logger } from "~/services/logger.server";
-import { trace, Tracer } from "@opentelemetry/api";
+  CreateEventInput,
+  IEventRepository,
+} from "./eventRepository/eventRepository.types";
 import { startSpan } from "./tracing.server";
 import { enrichCreatableEvents } from "./utils/enrichCreatableEvents.server";
-
-export type OTLPExporterConfig = {
-  batchSize: number;
-  batchInterval: number;
-};
+import { env } from "~/env.server";
 
 class OTLPExporter {
   private _tracer: Tracer;
 
   constructor(
     private readonly _eventRepository: EventRepository,
+    private readonly _clickhouseEventRepository: ClickhouseEventRepository,
     private readonly _verbose: boolean,
     private readonly _spanAttributeValueLengthLimit: number
   ) {
     this._tracer = trace.getTracer("otlp-exporter");
   }
 
-  async exportTraces(
-    request: ExportTraceServiceRequest,
-    immediate: boolean = false
-  ): Promise<ExportTraceServiceResponse> {
+  async exportTraces(request: ExportTraceServiceRequest): Promise<ExportTraceServiceResponse> {
     return await startSpan(this._tracer, "exportTraces", async (span) => {
       this.#logExportTracesVerbose(request);
 
-      const events = this.#filterResourceSpans(request.resourceSpans).flatMap((resourceSpan) => {
-        return convertSpansToCreateableEvents(resourceSpan, this._spanAttributeValueLengthLimit);
-      });
+      const eventsWithStores = this.#filterResourceSpans(request.resourceSpans).flatMap(
+        (resourceSpan) => {
+          return convertSpansToCreateableEvents(resourceSpan, this._spanAttributeValueLengthLimit);
+        }
+      );
 
-      const enrichedEvents = enrichCreatableEvents(events);
+      const eventCount = await this.#exportEvents(eventsWithStores);
 
-      this.#logEventsVerbose(enrichedEvents, "exportTraces");
-
-      span.setAttribute("event_count", enrichedEvents.length);
-
-      if (immediate) {
-        await this._eventRepository.insertManyImmediate(enrichedEvents);
-      } else {
-        await this._eventRepository.insertMany(enrichedEvents);
-      }
+      span.setAttribute("event_count", eventCount);
 
       return ExportTraceServiceResponse.create();
     });
   }
 
-  async exportLogs(
-    request: ExportLogsServiceRequest,
-    immediate: boolean = false
-  ): Promise<ExportLogsServiceResponse> {
+  async exportLogs(request: ExportLogsServiceRequest): Promise<ExportLogsServiceResponse> {
     return await startSpan(this._tracer, "exportLogs", async (span) => {
       this.#logExportLogsVerbose(request);
 
-      const events = this.#filterResourceLogs(request.resourceLogs).flatMap((resourceLog) => {
-        return convertLogsToCreateableEvents(resourceLog, this._spanAttributeValueLengthLimit);
-      });
+      const eventsWithStores = this.#filterResourceLogs(request.resourceLogs).flatMap(
+        (resourceLog) => {
+          return convertLogsToCreateableEvents(resourceLog, this._spanAttributeValueLengthLimit);
+        }
+      );
 
-      const enrichedEvents = enrichCreatableEvents(events);
+      const eventCount = await this.#exportEvents(eventsWithStores);
 
-      this.#logEventsVerbose(enrichedEvents, "exportLogs");
-
-      span.setAttribute("event_count", enrichedEvents.length);
-
-      if (immediate) {
-        await this._eventRepository.insertManyImmediate(enrichedEvents);
-      } else {
-        await this._eventRepository.insertMany(enrichedEvents);
-      }
+      span.setAttribute("event_count", eventCount);
 
       return ExportLogsServiceResponse.create();
     });
+  }
+
+  async #exportEvents(
+    eventsWithStores: { events: Array<CreateEventInput>; taskEventStore: string }[]
+  ) {
+    const eventsGroupedByStore = eventsWithStores.reduce((acc, { events, taskEventStore }) => {
+      acc[taskEventStore] = acc[taskEventStore] || [];
+      acc[taskEventStore].push(...events);
+      return acc;
+    }, {} as Record<string, Array<CreateEventInput>>);
+
+    let eventCount = 0;
+
+    for (const [store, events] of Object.entries(eventsGroupedByStore)) {
+      const eventRepository = this.#getEventRepositoryForStore(store);
+
+      const enrichedEvents = enrichCreatableEvents(events);
+
+      this.#logEventsVerbose(enrichedEvents, `exportEvents ${store}`);
+
+      eventCount += enrichedEvents.length;
+
+      await eventRepository.insertMany(enrichedEvents);
+    }
+
+    return eventCount;
+  }
+
+  #getEventRepositoryForStore(store: string): IEventRepository {
+    if (store === "clickhouse") {
+      return this._clickhouseEventRepository;
+    }
+
+    return this._eventRepository;
   }
 
   #logEventsVerbose(events: CreateEventInput[], prefix: string) {
@@ -183,12 +197,16 @@ class OTLPExporter {
 function convertLogsToCreateableEvents(
   resourceLog: ResourceLogs,
   spanAttributeValueLengthLimit: number
-): Array<CreateEventInput> {
+): { events: Array<CreateEventInput>; taskEventStore: string } {
   const resourceAttributes = resourceLog.resource?.attributes ?? [];
 
   const resourceProperties = extractEventProperties(resourceAttributes);
 
-  return resourceLog.scopeLogs.flatMap((scopeLog) => {
+  const taskEventStore =
+    extractStringAttribute(resourceAttributes, [SemanticInternalAttributes.TASK_EVENT_STORE]) ??
+    env.EVENT_REPOSITORY_DEFAULT_STORE;
+
+  const events = resourceLog.scopeLogs.flatMap((scopeLog) => {
     return scopeLog.logRecords
       .map((log) => {
         const logLevel = logLevelToEventLevel(log.severityNumber);
@@ -220,7 +238,7 @@ function convertLogsToCreateableEvents(
 
         return {
           traceId: binaryToHex(log.traceId),
-          spanId: eventRepository.generateSpanId(),
+          spanId: generateSpanId(),
           parentId: binaryToHex(log.spanId),
           message: isStringValue(log.body)
             ? log.body.stringValue.slice(0, 4096)
@@ -239,8 +257,7 @@ function convertLogsToCreateableEvents(
           metadata: logProperties.metadata ?? resourceProperties.metadata ?? {},
           environmentId:
             logProperties.environmentId ?? resourceProperties.environmentId ?? "unknown",
-          environmentType:
-            logProperties.environmentType ?? resourceProperties.environmentType ?? "DEVELOPMENT",
+          environmentType: "DEVELOPMENT" as const,
           organizationId:
             logProperties.organizationId ?? resourceProperties.organizationId ?? "unknown",
           projectId: logProperties.projectId ?? resourceProperties.projectId ?? "unknown",
@@ -257,17 +274,23 @@ function convertLogsToCreateableEvents(
       })
       .filter(Boolean);
   });
+
+  return { events, taskEventStore };
 }
 
 function convertSpansToCreateableEvents(
   resourceSpan: ResourceSpans,
   spanAttributeValueLengthLimit: number
-): Array<CreateEventInput> {
+): { events: Array<CreateEventInput>; taskEventStore: string } {
   const resourceAttributes = resourceSpan.resource?.attributes ?? [];
 
   const resourceProperties = extractEventProperties(resourceAttributes);
 
-  return resourceSpan.scopeSpans.flatMap((scopeSpan) => {
+  const taskEventStore =
+    extractStringAttribute(resourceAttributes, [SemanticInternalAttributes.TASK_EVENT_STORE]) ??
+    env.EVENT_REPOSITORY_DEFAULT_STORE;
+
+  const events = resourceSpan.scopeSpans.flatMap((scopeSpan) => {
     return scopeSpan.spans
       .map((span) => {
         const isPartial = isPartialSpan(span);
@@ -324,8 +347,7 @@ function convertSpansToCreateableEvents(
           metadata: spanProperties.metadata ?? resourceProperties.metadata ?? {},
           environmentId:
             spanProperties.environmentId ?? resourceProperties.environmentId ?? "unknown",
-          environmentType:
-            spanProperties.environmentType ?? resourceProperties.environmentType ?? "DEVELOPMENT",
+          environmentType: "DEVELOPMENT" as const,
           organizationId:
             spanProperties.organizationId ?? resourceProperties.organizationId ?? "unknown",
           projectId: spanProperties.projectId ?? resourceProperties.projectId ?? "unknown",
@@ -342,6 +364,8 @@ function convertSpansToCreateableEvents(
       })
       .filter(Boolean);
   });
+
+  return { events, taskEventStore };
 }
 
 function extractEventProperties(attributes: KeyValue[], prefix?: string) {
@@ -351,10 +375,6 @@ function extractEventProperties(attributes: KeyValue[], prefix?: string) {
       prefix,
       SemanticInternalAttributes.ENVIRONMENT_ID,
     ]),
-    environmentType: extractStringAttribute(attributes, [
-      prefix,
-      SemanticInternalAttributes.ENVIRONMENT_TYPE,
-    ]) as CreatableEventEnvironmentType,
     organizationId: extractStringAttribute(attributes, [
       prefix,
       SemanticInternalAttributes.ORGANIZATION_ID,
@@ -380,14 +400,6 @@ function pickAttributes(attributes: KeyValue[], prefix: string): KeyValue[] {
     });
 }
 
-function pickAttributeStringValue(attributes: KeyValue[], key: string): string | undefined {
-  const attribute = attributes.find((attribute) => attribute.key === key);
-
-  if (!attribute) return undefined;
-
-  return isStringValue(attribute.value) ? attribute.value.stringValue : undefined;
-}
-
 function convertKeyValueItemsToMap(
   attributes: KeyValue[],
   filteredKeys: string[] = [],
@@ -401,9 +413,11 @@ function convertKeyValueItemsToMap(
 
   if (!filteredAttributes.length) return;
 
-  filteredAttributes = filteredAttributes.filter(
-    (attribute) => !filteredPrefixes.some((prefix) => attribute.key.startsWith(prefix))
-  );
+  if (filteredPrefixes.length) {
+    filteredAttributes = filteredAttributes.filter(
+      (attribute) => !filteredPrefixes.some((prefix) => attribute.key.startsWith(prefix))
+    );
+  }
 
   if (!filteredAttributes.length) return;
 
@@ -777,6 +791,7 @@ function truncateAttributes(attributes: KeyValue[], maximumLength: number = 1024
 
 export const otlpExporter = new OTLPExporter(
   eventRepository,
+  clickhouseEventRepository,
   process.env.OTLP_EXPORTER_VERBOSE === "1",
   process.env.SERVER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT
     ? parseInt(process.env.SERVER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT, 10)

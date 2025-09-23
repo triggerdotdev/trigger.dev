@@ -1,7 +1,7 @@
 import { PrismaClientOrTransaction } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { commonWorker } from "../commonWorker.server";
-import { eventRepository } from "../eventRepository.server";
+import { eventRepository } from "../eventRepository/eventRepository.server";
 import { BaseService } from "./baseService.server";
 import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
 import { getTaskEventStoreTableForRun } from "../taskEventStore.server";

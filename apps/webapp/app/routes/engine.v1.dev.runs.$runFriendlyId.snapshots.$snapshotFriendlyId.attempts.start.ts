@@ -1,5 +1,5 @@
 import { json, TypedResponse } from "@remix-run/server-runtime";
-import { MachinePreset } from "@trigger.dev/core/v3";
+import { MachinePreset, SemanticInternalAttributes } from "@trigger.dev/core/v3";
 import { RunId, SnapshotId } from "@trigger.dev/core/v3/isomorphic";
 import {
   WorkerApiRunAttemptStartRequestBody,
@@ -57,7 +57,8 @@ const { action } = createActionApiRoute(
       const envVars = await getEnvVars(
         authentication.environment,
         engineResult.run.id,
-        engineResult.execution.machine ?? defaultMachinePreset
+        engineResult.execution.machine ?? defaultMachinePreset,
+        engineResult.run.taskEventStore
       );
 
       return json({
@@ -77,7 +78,8 @@ const { action } = createActionApiRoute(
 async function getEnvVars(
   environment: RuntimeEnvironment,
   runId: string,
-  machinePreset: MachinePreset
+  machinePreset: MachinePreset,
+  taskEventStore?: string
 ): Promise<Record<string, string>> {
   const variables = await resolveVariablesForEnvironment(environment);
 
@@ -93,6 +95,19 @@ async function getEnvVars(
       { key: "TRIGGER_MACHINE_PRESET", value: machinePreset.name },
     ]
   );
+
+  if (taskEventStore) {
+    const resourceAttributes = JSON.stringify({
+      [SemanticInternalAttributes.TASK_EVENT_STORE]: taskEventStore,
+    });
+
+    variables.push(
+      ...[
+        { key: "OTEL_RESOURCE_ATTRIBUTES", value: resourceAttributes },
+        { key: "TRIGGER_OTEL_RESOURCE_ATTRIBUTES", value: resourceAttributes },
+      ]
+    );
+  }
 
   return variables.reduce((acc: Record<string, string>, curr) => {
     acc[curr.key] = curr.value;

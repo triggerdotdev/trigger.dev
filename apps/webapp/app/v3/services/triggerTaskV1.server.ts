@@ -22,7 +22,7 @@ import { parseDelay } from "~/utils/delays";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
 import { handleMetadataPacket } from "~/utils/packets";
 import { marqs } from "~/v3/marqs/index.server";
-import { eventRepository } from "../eventRepository.server";
+import { eventRepository } from "../eventRepository/eventRepository.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { findCurrentWorkerFromEnvironment } from "../models/workerDeployment.server";
 import { guardQueueSizeLimitsForEnv } from "../queueSizeLimits.server";
@@ -300,9 +300,7 @@ export class TriggerTaskServiceV1 extends BaseService {
             environment,
             taskSlug: taskId,
             attributes: {
-              properties: {
-                [SemanticInternalAttributes.SHOW_ACTIONS]: true,
-              },
+              properties: {},
               style: {
                 icon: options.customIcon ?? "task",
               },

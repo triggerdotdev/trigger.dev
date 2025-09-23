@@ -444,6 +444,7 @@ export class RunAttemptSystem {
                   parentTaskRunId: true,
                   rootTaskRunId: true,
                   workerQueue: true,
+                  taskEventStore: true,
                 },
               });
 
@@ -996,6 +997,7 @@ export class RunAttemptSystem {
                   updatedAt: run.updatedAt,
                   error: completion.error,
                   createdAt: run.createdAt,
+                  taskEventStore: run.taskEventStore,
                 },
                 organization: {
                   id: run.runtimeEnvironment.organizationId,

@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS trigger_dev.task_events_v1
   -- nanoseconds since the start time, only non-zero for spans
   duration UInt64 CODEC(ZSTD(1)),
   -- The TTL for the event, will be deleted 7 days after the event expires
-  expires_at DateTime,
+  expires_at DateTime64(3),
 
   INDEX idx_run_id run_id TYPE bloom_filter(0.001) GRANULARITY 1,
   INDEX idx_span_id span_id TYPE bloom_filter(0.001) GRANULARITY 1,
@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS trigger_dev.task_events_v1
 ENGINE = MergeTree
 PARTITION BY toDate(start_time)
 ORDER BY (environment_id, toUnixTimestamp(start_time), trace_id)
-TTL expires_at + INTERVAL 7 DAY
+TTL toDateTime(expires_at) + INTERVAL 7 DAY
 SETTINGS ttl_only_drop_parts = 1;
 
 -- +goose Down
