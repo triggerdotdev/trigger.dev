@@ -415,42 +415,6 @@ export class EventRepository implements IEventRepository {
     });
   }
 
-  async crashEvent({
-    event,
-    crashedAt,
-    exception,
-  }: {
-    event: TaskEventRecord;
-    crashedAt: Date;
-    exception: ExceptionEventProperties;
-  }) {
-    if (!event.isPartial) {
-      return;
-    }
-
-    await this.insertImmediate({
-      ...omit(event, "id"),
-      isPartial: false,
-      isError: true,
-      isCancelled: false,
-      status: "ERROR",
-      events: [
-        {
-          name: "exception",
-          time: crashedAt,
-          properties: {
-            exception,
-          },
-        } satisfies ExceptionSpanEvent,
-        ...((event.events as any[]) ?? []),
-      ],
-      duration: calculateDurationFromStart(event.startTime, crashedAt),
-      properties: event.properties as Attributes,
-      metadata: event.metadata as Attributes,
-      style: event.style as Attributes,
-    });
-  }
-
   public async getTraceSummary(
     storeTable: TaskEventStoreTable,
     environmentId: string,
