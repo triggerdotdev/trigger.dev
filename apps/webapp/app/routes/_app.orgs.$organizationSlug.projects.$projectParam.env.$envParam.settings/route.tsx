@@ -14,6 +14,7 @@ import {
   useActionData,
   useNavigation,
   useNavigate,
+  useSearchParams,
 } from "@remix-run/react";
 import { type ActionFunction, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -49,8 +50,6 @@ import {
   redirectBackWithSuccessMessage,
   redirectWithErrorMessage,
   redirectWithSuccessMessage,
-  getSession,
-  commitSession,
 } from "~/models/message.server";
 import { ProjectSettingsService } from "~/services/projectSettings.server";
 import { logger } from "~/services/logger.server";
@@ -123,22 +122,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const { gitHubApp, buildSettings } = resultOrFail.value;
 
-  const session = await getSession(request.headers.get("Cookie"));
-  const openGitHubRepoConnectionModal = session.get("gitHubAppInstalled") === true;
-  const headers = new Headers({
-    "Set-Cookie": await commitSession(session),
+  return typedjson({
+    githubAppEnabled: gitHubApp.enabled,
+    githubAppInstallations: gitHubApp.installations,
+    connectedGithubRepository: gitHubApp.connectedRepository,
+    buildSettings,
   });
-
-  return typedjson(
-    {
-      githubAppEnabled: gitHubApp.enabled,
-      githubAppInstallations: gitHubApp.installations,
-      connectedGithubRepository: gitHubApp.connectedRepository,
-      openGitHubRepoConnectionModal,
-      buildSettings,
-    },
-    { headers }
-  );
 };
 
 const ConnectGitHubRepoFormSchema = z.object({
@@ -444,13 +433,8 @@ export const action: ActionFunction = async ({ request, params }) => {
 };
 
 export default function Page() {
-  const {
-    githubAppInstallations,
-    connectedGithubRepository,
-    githubAppEnabled,
-    openGitHubRepoConnectionModal,
-    buildSettings,
-  } = useTypedLoaderData<typeof loader>();
+  const { githubAppInstallations, connectedGithubRepository, githubAppEnabled, buildSettings } =
+    useTypedLoaderData<typeof loader>();
   const project = useProject();
   const organization = useOrganization();
   const environment = useEnvironment();
@@ -584,7 +568,6 @@ export default function Page() {
                         organizationSlug={organization.slug}
                         projectSlug={project.slug}
                         environmentSlug={environment.slug}
-                        openGitHubRepoConnectionModal={openGitHubRepoConnectionModal}
                       />
                     )}
                   </div>
@@ -667,7 +650,6 @@ function ConnectGitHubRepoModal({
   organizationSlug,
   projectSlug,
   environmentSlug,
-  open = false,
 }: {
   gitHubAppInstallations: GitHubAppInstallation[];
   organizationSlug: string;
@@ -675,7 +657,7 @@ function ConnectGitHubRepoModal({
   environmentSlug: string;
   open?: boolean;
 }) {
-  const [isModalOpen, setIsModalOpen] = useState(open);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const lastSubmission = useActionData() as any;
   const navigate = useNavigate();
 
@@ -702,6 +684,17 @@ function ConnectGitHubRepoModal({
       });
     },
   });
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams);
+
+    if (params.get("openGithubRepoModal") === "1") {
+      setIsModalOpen(true);
+      params.delete("openGithubRepoModal");
+      setSearchParams(params);
+    }
+  }, [searchParams, setSearchParams]);
 
   useEffect(() => {
     if (lastSubmission && "success" in lastSubmission && lastSubmission.success === true) {
@@ -759,11 +752,11 @@ function ConnectGitHubRepoModal({
                         navigate(
                           githubAppInstallPath(
                             organizationSlug,
-                            v3ProjectSettingsPath(
+                            `${v3ProjectSettingsPath(
                               { slug: organizationSlug },
                               { slug: projectSlug },
                               { slug: environmentSlug }
-                            )
+                            )}?openGithubRepoModal=1`
                           )
                         );
                       }}
@@ -856,13 +849,11 @@ function GitHubConnectionPrompt({
   organizationSlug,
   projectSlug,
   environmentSlug,
-  openGitHubRepoConnectionModal = false,
 }: {
   gitHubAppInstallations: GitHubAppInstallation[];
   organizationSlug: string;
   projectSlug: string;
   environmentSlug: string;
-  openGitHubRepoConnectionModal?: boolean;
 }) {
   return (
     <Fieldset>
@@ -871,11 +862,11 @@ function GitHubConnectionPrompt({
           <LinkButton
             to={githubAppInstallPath(
               organizationSlug,
-              v3ProjectSettingsPath(
+              `${v3ProjectSettingsPath(
                 { slug: organizationSlug },
                 { slug: projectSlug },
                 { slug: environmentSlug }
-              )
+              )}?openGithubRepoModal=1`
             )}
             variant={"secondary/medium"}
             LeadingIcon={OctoKitty}
@@ -890,7 +881,6 @@ function GitHubConnectionPrompt({
               organizationSlug={organizationSlug}
               projectSlug={projectSlug}
               environmentSlug={environmentSlug}
-              open={openGitHubRepoConnectionModal}
             />
             <span className="flex items-center gap-1 text-xs text-text-dimmed">
               <CheckCircleIcon className="size-4 text-success" /> GitHub app is installed
