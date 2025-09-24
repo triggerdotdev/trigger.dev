@@ -129,3 +129,38 @@ export function createExceptionPropertiesFromError(error: TaskRunError): Excepti
     }
   }
 }
+
+// removes keys that start with a $ sign. If there are no keys left, return undefined
+export function removePrivateProperties(
+  attributes: Attributes | undefined | null
+): Attributes | undefined {
+  if (!attributes) {
+    return undefined;
+  }
+
+  const result: Attributes = {};
+
+  for (const [key, value] of Object.entries(attributes)) {
+    if (key.startsWith("$")) {
+      continue;
+    }
+
+    result[key] = value;
+  }
+
+  if (Object.keys(result).length === 0) {
+    return undefined;
+  }
+
+  return result;
+}
+
+export function isEmptyObject(obj: object) {
+  for (var prop in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, prop)) {
+      return false;
+    }
+  }
+
+  return true;
+}

@@ -79,6 +79,7 @@ import {
 import { createTimelineSpanEventsFromSpanEvents } from "~/utils/timelineSpanEvents";
 import { CompleteWaitpointForm } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.waitpoints.$waitpointFriendlyId.complete/route";
 import { requireUserId } from "~/services/session.server";
+import type { SpanOverride } from "~/v3/eventRepository/eventRepository.types";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -120,10 +121,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 export function SpanView({
   runParam,
   spanId,
+  spanOverrides,
   closePanel,
 }: {
   runParam: string;
   spanId: string | undefined;
+  spanOverrides?: SpanOverride;
   closePanel?: () => void;
 }) {
   const organization = useOrganization();
@@ -174,17 +177,26 @@ export function SpanView({
       );
     }
     case "span": {
-      return <SpanBody span={fetcher.data.span} runParam={runParam} closePanel={closePanel} />;
+      return (
+        <SpanBody
+          span={fetcher.data.span}
+          spanOverrides={spanOverrides}
+          runParam={runParam}
+          closePanel={closePanel}
+        />
+      );
     }
   }
 }
 
 function SpanBody({
   span,
+  spanOverrides,
   runParam,
   closePanel,
 }: {
   span: Span;
+  spanOverrides?: SpanOverride;
   runParam?: string;
   closePanel?: () => void;
 }) {
@@ -197,6 +209,8 @@ function SpanBody({
   if (tab === "context") {
     tab = "overview";
   }
+
+  span = applySpanOverrides(span, spanOverrides);
 
   return (
     <div className="grid h-full max-h-full grid-rows-[2.5rem_2rem_1fr] overflow-hidden bg-background-bright">
@@ -239,6 +253,38 @@ function SpanBody({
       </div>
     </div>
   );
+}
+
+function applySpanOverrides(span: Span, spanOverrides?: SpanOverride): Span {
+  if (!spanOverrides) {
+    return span;
+  }
+
+  const newSpan = { ...span };
+
+  if (spanOverrides.isCancelled) {
+    newSpan.isCancelled = true;
+    newSpan.isPartial = false;
+    newSpan.isError = false;
+  } else if (spanOverrides.isError) {
+    newSpan.isError = true;
+    newSpan.isPartial = false;
+    newSpan.isCancelled = false;
+  }
+
+  if (spanOverrides.duration) {
+    newSpan.duration = spanOverrides.duration;
+  }
+
+  if (spanOverrides.events) {
+    if (newSpan.events) {
+      newSpan.events = [...newSpan.events, ...spanOverrides.events];
+    } else {
+      newSpan.events = spanOverrides.events;
+    }
+  }
+
+  return newSpan;
 }
 
 function RunBody({

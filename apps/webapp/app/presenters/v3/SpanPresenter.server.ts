@@ -499,7 +499,6 @@ export class SpanPresenter extends BasePresenter {
       style: span.style,
       properties: span.properties ? JSON.stringify(span.properties, null, 2) : undefined,
       entity: span.entity,
-      originalRun: span.originalRun,
       metadata: span.metadata,
       triggeredRuns,
     };

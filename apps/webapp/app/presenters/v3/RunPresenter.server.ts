@@ -256,6 +256,7 @@ export class RunPresenter {
         queuedDuration: run.startedAt
           ? millisecondsToNanoseconds(run.startedAt.getTime() - run.createdAt.getTime())
           : undefined,
+        overridesBySpanId: traceSummary.overridesBySpanId,
       },
     };
   }
