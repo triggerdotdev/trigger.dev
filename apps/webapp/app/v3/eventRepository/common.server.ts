@@ -34,6 +34,12 @@ export function calculateDurationFromStart(startTime: bigint, endTime: Date = ne
   return Number(BigInt($endtime.getTime() * 1_000_000) - startTime);
 }
 
+export function calculateDurationFromStartJsDate(startTime: Date, endTime: Date = new Date()) {
+  const $endtime = typeof endTime === "string" ? new Date(endTime) : endTime;
+
+  return ($endtime.getTime() - startTime.getTime()) * 1_000_000;
+}
+
 export function convertDateToNanoseconds(date: Date): bigint {
   return BigInt(date.getTime()) * BigInt(1_000_000);
 }
