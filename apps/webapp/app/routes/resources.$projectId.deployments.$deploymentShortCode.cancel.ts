@@ -28,29 +28,30 @@ export const action: ActionFunction = async ({ request, params }) => {
     return json(submission);
   }
 
-  const verifyProjectMembership = fromPromise(
-    prisma.project.findFirst({
-      where: {
-        id: projectId,
-        organization: {
-          members: {
-            some: {
-              userId,
+  const verifyProjectMembership = () =>
+    fromPromise(
+      prisma.project.findFirst({
+        where: {
+          id: projectId,
+          organization: {
+            members: {
+              some: {
+                userId,
+              },
             },
           },
         },
-      },
-      select: {
-        id: true,
-      },
-    }),
-    (error) => ({ type: "other" as const, cause: error })
-  ).andThen((project) => {
-    if (!project) {
-      return errAsync({ type: "project_not_found" as const });
-    }
-    return okAsync(project);
-  });
+        select: {
+          id: true,
+        },
+      }),
+      (error) => ({ type: "other" as const, cause: error })
+    ).andThen((project) => {
+      if (!project) {
+        return errAsync({ type: "project_not_found" as const });
+      }
+      return okAsync(project);
+    });
 
   const findDeploymentFriendlyId = ({ id }: { id: string }) =>
     fromPromise(
@@ -75,7 +76,7 @@ export const action: ActionFunction = async ({ request, params }) => {
     });
 
   const deploymentService = new DeploymentService();
-  const result = await verifyProjectMembership
+  const result = await verifyProjectMembership()
     .andThen(findDeploymentFriendlyId)
     .andThen((deployment) =>
       deploymentService.cancelDeployment({ projectId: deployment.projectId }, deployment.friendlyId)
