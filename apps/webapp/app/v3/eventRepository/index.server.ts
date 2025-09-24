@@ -4,6 +4,8 @@ import { clickhouseEventRepository } from "./clickhouseEventRepositoryInstance.s
 import { IEventRepository, TraceEventOptions } from "./eventRepository.types";
 import { $replica } from "~/db.server";
 import { logger } from "~/services/logger.server";
+import { FEATURE_FLAG, flags } from "../featureFlags.server";
+import { getTaskEventStore } from "../taskEventStore.server";
 
 export function resolveEventRepositoryForStore(store: string | undefined): IEventRepository {
   const taskEventStore = store ?? env.EVENT_REPOSITORY_DEFAULT_STORE;
@@ -13,6 +15,22 @@ export function resolveEventRepositoryForStore(store: string | undefined): IEven
   }
 
   return eventRepository;
+}
+
+export async function getEventRepository(
+  featureFlags: Record<string, unknown> | undefined
+): Promise<{ repository: IEventRepository; store: string }> {
+  const taskEventRepository = await flags({
+    key: FEATURE_FLAG.taskEventRepository,
+    defaultValue: env.EVENT_REPOSITORY_DEFAULT_STORE,
+    overrides: featureFlags,
+  });
+
+  if (taskEventRepository === "clickhouse") {
+    return { repository: clickhouseEventRepository, store: "clickhouse" };
+  }
+
+  return { repository: eventRepository, store: getTaskEventStore() };
 }
 
 export async function recordRunDebugLog(

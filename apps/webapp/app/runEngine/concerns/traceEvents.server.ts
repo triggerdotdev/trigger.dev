@@ -7,6 +7,7 @@ import { ClickhouseEventRepository } from "~/v3/eventRepository/clickhouseEventR
 import { IEventRepository } from "~/v3/eventRepository/eventRepository.types";
 import { FEATURE_FLAG, flags } from "~/v3/featureFlags.server";
 import { env } from "~/env.server";
+import { getEventRepository } from "~/v3/eventRepository/index.server";
 
 export class DefaultTraceEventsConcern implements TraceEventConcern {
   private readonly eventRepository: EventRepository;
@@ -23,17 +24,9 @@ export class DefaultTraceEventsConcern implements TraceEventConcern {
   async #getEventRepository(
     request: TriggerTaskRequest
   ): Promise<{ repository: IEventRepository; store: string }> {
-    const taskEventRepository = await flags({
-      key: FEATURE_FLAG.taskEventRepository,
-      defaultValue: env.EVENT_REPOSITORY_DEFAULT_STORE,
-      overrides: request.environment.organization.featureFlags as Record<string, unknown>,
-    });
-
-    if (taskEventRepository === "clickhouse") {
-      return { repository: this.clickhouseEventRepository, store: "clickhouse" };
-    }
-
-    return { repository: this.eventRepository, store: getTaskEventStore() };
+    return await getEventRepository(
+      request.environment.organization.featureFlags as Record<string, unknown>
+    );
   }
 
   async traceRun<T>(
