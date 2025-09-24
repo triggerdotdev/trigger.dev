@@ -1,5 +1,5 @@
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import { ProgressDeploymentRequestBody, tryCatch } from "@trigger.dev/core/v3";
+import { CancelDeploymentRequestBody, tryCatch } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { authenticateRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
@@ -35,7 +35,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const { deploymentId } = parsedParams.data;
 
   const [, rawBody] = await tryCatch(request.json());
-  const body = ProgressDeploymentRequestBody.safeParse(rawBody ?? {});
+  const body = CancelDeploymentRequestBody.safeParse(rawBody ?? {});
 
   if (!body.success) {
     return json({ error: "Invalid request body", issues: body.error.issues }, { status: 400 });
@@ -44,10 +44,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const deploymentService = new DeploymentService();
 
   return await deploymentService
-    .progressDeployment(authenticatedEnv, deploymentId, {
-      contentHash: body.data.contentHash,
-      git: body.data.gitMeta,
-      runtime: body.data.runtime,
+    .cancelDeployment(authenticatedEnv, deploymentId, {
+      canceledReason: body.data.reason,
     })
     .match(
       () => {
@@ -55,17 +53,15 @@ export async function action({ request, params }: ActionFunctionArgs) {
       },
       (error) => {
         switch (error.type) {
-          case "failed_to_extend_deployment_timeout":
-            return new Response(null, { status: 204 }); // ignore these errors for now
           case "deployment_not_found":
             return json({ error: "Deployment not found" }, { status: 404 });
-          case "deployment_cannot_be_progressed":
+          case "failed_to_delete_deployment_timeout":
+            return new Response(null, { status: 204 }); // not a critical error, ignore
+          case "deployment_cannot_be_cancelled":
             return json(
-              { error: "Deployment is not in a progressable state (PENDING or INSTALLING)" },
+              { error: "Deployment is already in a final state and cannot be canceled" },
               { status: 409 }
             );
-          case "failed_to_create_remote_build":
-            return json({ error: "Failed to create remote build" }, { status: 500 });
           case "other":
           default:
             error.type satisfies "other";

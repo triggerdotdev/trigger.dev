@@ -158,6 +158,22 @@ export default function Page() {
                   />
                 </Property.Value>
               </Property.Item>
+              {deployment.canceledAt && (
+                <Property.Item>
+                  <Property.Label>Canceled at</Property.Label>
+                  <Property.Value>
+                    <>
+                      <DateTimeAccurate date={deployment.canceledAt} /> UTC
+                    </>
+                  </Property.Value>
+                </Property.Item>
+              )}
+              {deployment.canceledReason && (
+                <Property.Item>
+                  <Property.Label>Cancelation reason</Property.Label>
+                  <Property.Value>{deployment.canceledReason}</Property.Value>
+                </Property.Item>
+              )}
               <Property.Item>
                 <Property.Label>Tasks</Property.Label>
                 <Property.Value>{deployment.tasks ? deployment.tasks.length : "–"}</Property.Value>
@@ -194,6 +210,18 @@ export default function Page() {
                   {deployment.startedAt ? (
                     <>
                       <DateTimeAccurate date={deployment.startedAt} /> UTC
+                    </>
+                  ) : (
+                    "–"
+                  )}
+                </Property.Value>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>Installed at</Property.Label>
+                <Property.Value>
+                  {deployment.installedAt ? (
+                    <>
+                      <DateTimeAccurate date={deployment.installedAt} /> UTC
                     </>
                   ) : (
                     "–"

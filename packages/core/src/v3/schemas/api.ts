@@ -385,6 +385,12 @@ export const ProgressDeploymentRequestBody = z.object({
 
 export type ProgressDeploymentRequestBody = z.infer<typeof ProgressDeploymentRequestBody>;
 
+export const CancelDeploymentRequestBody = z.object({
+  reason: z.string().max(200, "Reason must be less than 200 characters").optional(),
+});
+
+export type CancelDeploymentRequestBody = z.infer<typeof CancelDeploymentRequestBody>;
+
 export const ExternalBuildData = z.object({
   buildId: z.string(),
   buildToken: z.string(),
