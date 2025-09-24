@@ -810,14 +810,6 @@ export class ClickhouseEventRepository implements IEventRepository {
     this.addToBatch(event);
   }
 
-  async crashEvent(params: {
-    event: TaskEventRecord;
-    crashedAt: Date;
-    exception: ExceptionEventProperties;
-  }): Promise<void> {
-    throw new Error("ClickhouseEventRepository.crashEvent not implemented");
-  }
-
   // Query methods
   async getTraceSummary(
     storeTable: TaskEventStoreTable,
@@ -846,6 +838,8 @@ export class ClickhouseEventRepository implements IEventRepository {
     if (options?.includeDebugLogs === false) {
       queryBuilder.where("kind != {kind: String}", { kind: "DEBUG_EVENT" });
     }
+
+    queryBuilder.orderBy("start_time ASC");
 
     const { query, params } = queryBuilder.build();
 

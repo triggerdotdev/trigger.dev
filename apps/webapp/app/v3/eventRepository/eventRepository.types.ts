@@ -326,12 +326,6 @@ export interface IEventRepository {
     cancelledAt: Date;
   }): Promise<void>;
 
-  crashEvent(params: {
-    event: TaskEventRecord;
-    crashedAt: Date;
-    exception: ExceptionEventProperties;
-  }): Promise<void>;
-
   // Query methods
   getTraceSummary(
     storeTable: TaskEventStoreTable,
