@@ -5,6 +5,7 @@ import {
   DequeuedMessage,
   ExecutionResult,
   MachinePreset,
+  SemanticInternalAttributes,
   StartRunAttemptResult,
   TaskRunExecutionResult,
 } from "@trigger.dev/core/v3";
@@ -444,7 +445,8 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
           environment,
           engineResult.run.id,
           engineResult.execution.machine ?? defaultMachinePreset,
-          environment.parentEnvironment ?? undefined
+          environment.parentEnvironment ?? undefined,
+          engineResult.run.taskEventStore ?? undefined
         )
       : {};
 
@@ -544,7 +546,8 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     environment: RuntimeEnvironment,
     runId: string,
     machinePreset: MachinePreset,
-    parentEnvironment?: RuntimeEnvironment
+    parentEnvironment?: RuntimeEnvironment,
+    taskEventStore?: string
   ): Promise<Record<string, string>> {
     const variables = await resolveVariablesForEnvironment(environment, parentEnvironment);
 
@@ -560,6 +563,19 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
         { key: "TRIGGER_MACHINE_PRESET", value: machinePreset.name },
       ]
     );
+
+    if (taskEventStore) {
+      const resourceAttributes = JSON.stringify({
+        [SemanticInternalAttributes.TASK_EVENT_STORE]: taskEventStore,
+      });
+
+      variables.push(
+        ...[
+          { key: "OTEL_RESOURCE_ATTRIBUTES", value: resourceAttributes },
+          { key: "TRIGGER_OTEL_RESOURCE_ATTRIBUTES", value: resourceAttributes },
+        ]
+      );
+    }
 
     return variables.reduce((acc: Record<string, string>, curr) => {
       acc[curr.key] = curr.value;
