@@ -62,6 +62,7 @@ export type ClickhouseEventRepositoryConfig = {
   batchSize?: number;
   flushInterval?: number;
   tracer?: Tracer;
+  maximumTraceSummaryViewCount?: number;
 };
 
 /**
@@ -885,6 +886,10 @@ export class ClickhouseEventRepository implements IEventRepository {
     }
 
     queryBuilder.orderBy("start_time ASC");
+
+    if (this._config.maximumTraceSummaryViewCount) {
+      queryBuilder.limit(this._config.maximumTraceSummaryViewCount);
+    }
 
     const { query, params } = queryBuilder.build();
 

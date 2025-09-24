@@ -3,7 +3,7 @@ import { RunId } from "@trigger.dev/core/v3/isomorphic";
 import { WorkerApiDebugLogBody } from "@trigger.dev/core/v3/runEngineWorker";
 import { z } from "zod";
 import { createActionWorkerApiRoute } from "~/services/routeBuilders/apiBuilder.server";
-import { recordRunDebugLog } from "~/v3/eventRepository/eventRepository.server";
+import { recordRunDebugLog } from "~/v3/eventRepository/index.server";
 
 export const action = createActionWorkerApiRoute(
   {

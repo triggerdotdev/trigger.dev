@@ -8,11 +8,10 @@ import { logger } from "~/services/logger.server";
 import { updateMetadataService } from "~/services/metadata/updateMetadataInstance.server";
 import { reportInvocationUsage } from "~/services/platform.v3.server";
 import { MetadataTooLargeError } from "~/utils/packets";
-import { recordRunDebugLog } from "./eventRepository/eventRepository.server";
 import { roomFromFriendlyRunId, socketIo } from "./handleSocketIo.server";
 import { engine } from "./runEngine.server";
 import { PerformTaskRunAlertsService } from "./services/alerts/performTaskRunAlerts.server";
-import { resolveEventRepositoryForStore } from "./eventRepository";
+import { resolveEventRepositoryForStore, recordRunDebugLog } from "./eventRepository/index.server";
 import { createExceptionPropertiesFromError } from "./eventRepository/common.server";
 
 export function registerRunEngineEventBusHandlers() {

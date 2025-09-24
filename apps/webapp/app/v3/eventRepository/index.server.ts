@@ -1,0 +1,132 @@
+import { env } from "~/env.server";
+import { eventRepository } from "./eventRepository.server";
+import { clickhouseEventRepository } from "./clickhouseEventRepositoryInstance.server";
+import { IEventRepository, TraceEventOptions } from "./eventRepository.types";
+import { $replica } from "~/db.server";
+import { logger } from "~/services/logger.server";
+
+export function resolveEventRepositoryForStore(store: string | undefined): IEventRepository {
+  const taskEventStore = store ?? env.EVENT_REPOSITORY_DEFAULT_STORE;
+
+  if (taskEventStore === "clickhouse") {
+    return clickhouseEventRepository;
+  }
+
+  return eventRepository;
+}
+
+export async function recordRunDebugLog(
+  runId: string,
+  message: string,
+  options: Omit<TraceEventOptions, "environment" | "taskSlug" | "startTime"> & {
+    duration?: number;
+    parentId?: string;
+    startTime?: Date;
+  }
+): Promise<
+  | {
+      success: true;
+    }
+  | {
+      success: false;
+      code: "RUN_NOT_FOUND" | "FAILED_TO_RECORD_EVENT";
+      error?: unknown;
+    }
+> {
+  return recordRunEvent(runId, message, {
+    ...options,
+    attributes: {
+      ...options?.attributes,
+      isDebug: true,
+    },
+  });
+}
+
+async function recordRunEvent(
+  runId: string,
+  message: string,
+  options: Omit<TraceEventOptions, "environment" | "taskSlug" | "startTime"> & {
+    duration?: number;
+    parentId?: string;
+    startTime?: Date;
+  }
+): Promise<
+  | {
+      success: true;
+    }
+  | {
+      success: false;
+      code: "RUN_NOT_FOUND" | "FAILED_TO_RECORD_EVENT";
+      error?: unknown;
+    }
+> {
+  try {
+    const foundRun = await findRunForEventCreation(runId);
+
+    if (!foundRun) {
+      logger.error("Failed to find run for event creation", { runId });
+      return {
+        success: false,
+        code: "RUN_NOT_FOUND",
+      };
+    }
+
+    const $eventRepository = resolveEventRepositoryForStore(foundRun.taskEventStore);
+
+    const { attributes, startTime, ...optionsRest } = options;
+
+    await $eventRepository.recordEvent(message, {
+      environment: foundRun.runtimeEnvironment,
+      taskSlug: foundRun.taskIdentifier,
+      context: foundRun.traceContext as Record<string, string | undefined>,
+      attributes: {
+        runId: foundRun.friendlyId,
+        ...attributes,
+      },
+      startTime: BigInt((startTime?.getTime() ?? Date.now()) * 1_000_000),
+      ...optionsRest,
+    });
+
+    return {
+      success: true,
+    };
+  } catch (error) {
+    logger.error("Failed to record event for run", {
+      error: error instanceof Error ? error.message : error,
+      runId,
+    });
+
+    return {
+      success: false,
+      code: "FAILED_TO_RECORD_EVENT",
+      error,
+    };
+  }
+}
+
+async function findRunForEventCreation(runId: string) {
+  return $replica.taskRun.findFirst({
+    where: {
+      id: runId,
+    },
+    select: {
+      friendlyId: true,
+      taskIdentifier: true,
+      traceContext: true,
+      taskEventStore: true,
+      runtimeEnvironment: {
+        select: {
+          id: true,
+          type: true,
+          organizationId: true,
+          projectId: true,
+          project: {
+            select: {
+              externalRef: true,
+            },
+          },
+        },
+      },
+    },
+  });
+}
