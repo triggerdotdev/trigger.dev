@@ -961,6 +961,16 @@ If you don't specify a region it will use the default for your project. Go to th
 
 The region is where your runs are executed, it does not change where the run payload, output, tags, logs, or are any other data is stored.
 
+### `machine`
+
+You can override the default machine preset when you trigger a run:
+
+```ts
+await yourTask.trigger(payload, { machine: "large-1x" });
+```
+
+If you don't specify a machine it will use the machine preset for your task (or the default for your project). For more information read [the machines guide](/machines).
+
 ## Large Payloads
 
 We recommend keeping your task payloads as small as possible. We currently have a hard limit on task payloads above 10MB.

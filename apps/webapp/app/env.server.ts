@@ -312,6 +312,10 @@ const EnvironmentSchema = z
       .number()
       .int()
       .default(60 * 1000 * 8), // 8 minutes
+    DEPLOY_QUEUE_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .default(60 * 1000 * 15), // 15 minutes
 
     OBJECT_STORE_BASE_URL: z.string().optional(),
     OBJECT_STORE_ACCESS_KEY_ID: z.string().optional(),
@@ -519,8 +523,8 @@ const EnvironmentSchema = z
     RUN_ENGINE_WORKER_IMMEDIATE_POLL_INTERVAL: z.coerce.number().int().default(100),
     RUN_ENGINE_TIMEOUT_PENDING_EXECUTING: z.coerce.number().int().default(60_000),
     RUN_ENGINE_TIMEOUT_PENDING_CANCEL: z.coerce.number().int().default(60_000),
-    RUN_ENGINE_TIMEOUT_EXECUTING: z.coerce.number().int().default(60_000),
-    RUN_ENGINE_TIMEOUT_EXECUTING_WITH_WAITPOINTS: z.coerce.number().int().default(60_000),
+    RUN_ENGINE_TIMEOUT_EXECUTING: z.coerce.number().int().default(300_000), // 5 minutes
+    RUN_ENGINE_TIMEOUT_EXECUTING_WITH_WAITPOINTS: z.coerce.number().int().default(300_000), // 5 minutes
     RUN_ENGINE_TIMEOUT_SUSPENDED: z.coerce
       .number()
       .int()
@@ -735,6 +739,7 @@ const EnvironmentSchema = z
     RUN_ENGINE_RUN_QUEUE_LOG_LEVEL: z
       .enum(["log", "error", "warn", "info", "debug"])
       .default("info"),
+    RUN_ENGINE_TREAT_PRODUCTION_EXECUTION_STALLS_AS_OOM: z.string().default("0"),
 
     /** How long should the presence ttl last */
     DEV_PRESENCE_SSE_TIMEOUT: z.coerce.number().int().default(30_000),
@@ -1023,8 +1028,9 @@ const EnvironmentSchema = z
     TASK_EVENT_PARTITIONING_ENABLED: z.string().default("0"),
     TASK_EVENT_PARTITIONED_WINDOW_IN_SECONDS: z.coerce.number().int().default(60), // 1 minute
 
-    QUEUE_SSE_AUTORELOAD_INTERVAL_MS: z.coerce.number().int().default(5_000),
-    QUEUE_SSE_AUTORELOAD_TIMEOUT_MS: z.coerce.number().int().default(60_000),
+    DEPLOYMENTS_AUTORELOAD_POLL_INTERVAL_MS: z.coerce.number().int().default(5_000),
+    BULK_ACTION_AUTORELOAD_POLL_INTERVAL_MS: z.coerce.number().int().default(1_000),
+    QUEUES_AUTORELOAD_POLL_INTERVAL_MS: z.coerce.number().int().default(5_000),
 
     SLACK_BOT_TOKEN: z.string().optional(),
     SLACK_SIGNUP_REASON_CHANNEL_ID: z.string().optional(),

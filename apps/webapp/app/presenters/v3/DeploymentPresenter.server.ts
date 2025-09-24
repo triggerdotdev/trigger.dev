@@ -102,6 +102,10 @@ export class DeploymentPresenter {
         builtAt: true,
         deployedAt: true,
         createdAt: true,
+        startedAt: true,
+        installedAt: true,
+        canceledAt: true,
+        canceledReason: true,
         git: true,
         promotions: {
           select: {
@@ -145,8 +149,12 @@ export class DeploymentPresenter {
         version: deployment.version,
         status: deployment.status,
         createdAt: deployment.createdAt,
+        startedAt: deployment.startedAt,
+        installedAt: deployment.installedAt,
         builtAt: deployment.builtAt,
         deployedAt: deployment.deployedAt,
+        canceledAt: deployment.canceledAt,
+        canceledReason: deployment.canceledReason,
         tasks: deployment.worker?.tasks,
         label: deployment.promotions?.[0]?.label,
         environment: {

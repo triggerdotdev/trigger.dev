@@ -251,6 +251,7 @@ export class SpanPresenter extends BasePresenter {
       engine: run.engine,
       region,
       workerQueue: run.workerQueue,
+      traceId: run.traceId,
       spanId: run.spanId,
       isCached: !!span.originalRun,
       machinePreset: machine?.name,

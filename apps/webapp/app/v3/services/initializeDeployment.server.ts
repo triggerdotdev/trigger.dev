@@ -19,7 +19,40 @@ export class InitializeDeploymentService extends BaseService {
     environment: AuthenticatedEnvironment,
     payload: InitializeDeploymentRequestBody
   ) {
-    return this.traceWithEnv("call", environment, async (span) => {
+    return this.traceWithEnv("call", environment, async () => {
+      if (payload.gitMeta?.commitSha?.startsWith("deployment_")) {
+        // When we introduced automatic deployments via the build server, we slightly changed the deployment flow
+        // mainly in the initialization and starting step: now deployments are first initialized in the `PENDING` status
+        // and updated to `BUILDING` once the build server dequeues the build job.
+        // Newer versions of the `deploy` command in the CLI will automatically attach to the existing deployment
+        // and continue with the build process. For older versions, we can't change the command's client-side behavior,
+        // so we need to handle this case here in the initialization endpoint. As we control the env variables which
+        // the git meta is extracted from in the build server, we can use those to pass the existing deployment ID
+        // to this endpoint. This doesn't affect the git meta on the deployment as it is set prior to this step using the
+        // /start endpoint. It's a rather hacky solution, but it will do for now as it enables us to avoid degrading the
+        // build server experience for users with older CLI versions. We'll eventually be able to remove this workaround
+        // once we stop supporting 3.x CLI versions.
+
+        const existingDeploymentId = payload.gitMeta.commitSha;
+        const existingDeployment = await this._prisma.workerDeployment.findFirst({
+          where: {
+            environmentId: environment.id,
+            friendlyId: existingDeploymentId,
+          },
+        });
+
+        if (!existingDeployment) {
+          throw new ServiceValidationError(
+            "Existing deployment not found during deployment initialization"
+          );
+        }
+
+        return {
+          deployment: existingDeployment,
+          imageRef: existingDeployment.imageReference ?? "",
+        };
+      }
+
       if (payload.type === "UNMANAGED") {
         throw new ServiceValidationError("UNMANAGED deployments are not supported");
       }
@@ -54,8 +87,12 @@ export class InitializeDeploymentService extends BaseService {
         );
       }
 
-      // Try and create a depot build and get back the external build data
-      const externalBuildData = await createRemoteImageBuild(environment.project);
+      // For the `PENDING` initial status, defer the creation of the Depot build until the deployment is started.
+      // This helps avoid Depot token expiration issues.
+      const externalBuildData =
+        payload.initialStatus === "PENDING"
+          ? undefined
+          : await createRemoteImageBuild(environment.project);
 
       const triggeredBy = payload.userId
         ? await this._prisma.user.findFirst({
@@ -99,6 +136,10 @@ export class InitializeDeploymentService extends BaseService {
 
       const { imageRef, isEcr, repoCreated } = imageRefResult;
 
+      // we keep using `BUILDING` as the initial status if not explicitly set
+      // to avoid changing the behavior for deployments not created in the build server
+      const initialStatus = payload.initialStatus ?? "BUILDING";
+
       logger.debug("Creating deployment", {
         environmentId: environment.id,
         projectId: environment.projectId,
@@ -108,6 +149,7 @@ export class InitializeDeploymentService extends BaseService {
         imageRef,
         isEcr,
         repoCreated,
+        initialStatus,
       });
 
       const deployment = await this._prisma.workerDeployment.create({
@@ -116,7 +158,7 @@ export class InitializeDeploymentService extends BaseService {
           contentHash: payload.contentHash,
           shortCode: deploymentShortCode,
           version: nextVersion,
-          status: "BUILDING",
+          status: initialStatus,
           environmentId: environment.id,
           projectId: environment.projectId,
           externalBuildData,
@@ -126,14 +168,18 @@ export class InitializeDeploymentService extends BaseService {
           imagePlatform: env.DEPLOY_IMAGE_PLATFORM,
           git: payload.gitMeta ?? undefined,
           runtime: payload.runtime ?? undefined,
+          startedAt: initialStatus === "BUILDING" ? new Date() : undefined,
         },
       });
 
+      const timeoutMs =
+        deployment.status === "PENDING" ? env.DEPLOY_QUEUE_TIMEOUT_MS : env.DEPLOY_TIMEOUT_MS;
+
       await TimeoutDeploymentService.enqueue(
         deployment.id,
-        "BUILDING",
+        deployment.status,
         "Building timed out",
-        new Date(Date.now() + env.DEPLOY_TIMEOUT_MS)
+        new Date(Date.now() + timeoutMs)
       );
 
       return {

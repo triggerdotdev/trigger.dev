@@ -377,6 +377,20 @@ export const FinalizeDeploymentRequestBody = z.object({
 
 export type FinalizeDeploymentRequestBody = z.infer<typeof FinalizeDeploymentRequestBody>;
 
+export const ProgressDeploymentRequestBody = z.object({
+  contentHash: z.string().optional(),
+  gitMeta: GitMeta.optional(),
+  runtime: z.string().optional(),
+});
+
+export type ProgressDeploymentRequestBody = z.infer<typeof ProgressDeploymentRequestBody>;
+
+export const CancelDeploymentRequestBody = z.object({
+  reason: z.string().max(200, "Reason must be less than 200 characters").optional(),
+});
+
+export type CancelDeploymentRequestBody = z.infer<typeof CancelDeploymentRequestBody>;
+
 export const ExternalBuildData = z.object({
   buildId: z.string(),
   buildToken: z.string(),
@@ -419,6 +433,7 @@ export const InitializeDeploymentRequestBody = z.object({
   gitMeta: GitMeta.optional(),
   type: z.enum(["MANAGED", "UNMANAGED", "V1"]).optional(),
   runtime: z.string().optional(),
+  initialStatus: z.enum(["PENDING", "BUILDING"]).optional(),
 });
 
 export type InitializeDeploymentRequestBody = z.infer<typeof InitializeDeploymentRequestBody>;
@@ -456,6 +471,7 @@ export const GetDeploymentResponseBody = z.object({
   id: z.string(),
   status: z.enum([
     "PENDING",
+    "INSTALLING",
     "BUILDING",
     "DEPLOYING",
     "DEPLOYED",
@@ -467,6 +483,8 @@ export const GetDeploymentResponseBody = z.object({
   shortCode: z.string(),
   version: z.string(),
   imageReference: z.string().nullish(),
+  imagePlatform: z.string(),
+  externalBuildData: ExternalBuildData.optional().nullable(),
   errorData: DeploymentErrorData.nullish(),
   worker: z
     .object({

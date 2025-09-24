@@ -8,14 +8,7 @@ import {
   RectangleStackIcon,
 } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
-import {
-  Form,
-  useNavigate,
-  useNavigation,
-  useRevalidator,
-  useSearchParams,
-  type MetaFunction,
-} from "@remix-run/react";
+import { Form, useNavigation, useSearchParams, type MetaFunction } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { useEffect, useState } from "react";
@@ -30,7 +23,7 @@ import { Feedback } from "~/components/Feedback";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { BigNumber } from "~/components/metrics/BigNumber";
 import { Badge } from "~/components/primitives/Badge";
-import { Button, ButtonVariant, LinkButton } from "~/components/primitives/Buttons";
+import { Button, type ButtonVariant, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { FormButtons } from "~/components/primitives/FormButtons";
@@ -56,7 +49,6 @@ import {
   TooltipTrigger,
 } from "~/components/primitives/Tooltip";
 import { useEnvironment } from "~/hooks/useEnvironment";
-import { useEventSource } from "~/hooks/useEventSource";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
@@ -74,6 +66,8 @@ import { Header3 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
 import { useThrottle } from "~/hooks/useThrottle";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
+import { useAutoRevalidate } from "~/hooks/useAutoRevalidate";
+import { env } from "~/env.server";
 
 const SearchParamsSchema = z.object({
   query: z.string().optional(),
@@ -121,9 +115,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
     const environmentQueuePresenter = new EnvironmentQueuePresenter();
 
+    const autoReloadPollIntervalMs = env.QUEUES_AUTORELOAD_POLL_INTERVAL_MS;
+
     return typedjson({
       ...queues,
       environment: await environmentQueuePresenter.call(environment),
+      autoReloadPollIntervalMs,
     });
   } catch (error) {
     console.error(error);
@@ -217,28 +214,23 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 };
 
 export default function Page() {
-  const { environment, queues, success, pagination, code, totalQueues, hasFilters } =
-    useTypedLoaderData<typeof loader>();
+  const {
+    environment,
+    queues,
+    success,
+    pagination,
+    code,
+    totalQueues,
+    hasFilters,
+    autoReloadPollIntervalMs,
+  } = useTypedLoaderData<typeof loader>();
 
   const organization = useOrganization();
   const project = useProject();
   const env = useEnvironment();
   const plan = useCurrentPlan();
 
-  // Reload the page periodically
-  const streamedEvents = useEventSource(
-    `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${env.slug}/queues/stream`,
-    {
-      event: "update",
-    }
-  );
-
-  const revalidation = useRevalidator();
-  useEffect(() => {
-    if (streamedEvents) {
-      revalidation.revalidate();
-    }
-  }, [streamedEvents]);
+  useAutoRevalidate({ interval: autoReloadPollIntervalMs, onFocus: true });
 
   const limitStatus =
     environment.running === environment.concurrencyLimit * environment.burstFactor

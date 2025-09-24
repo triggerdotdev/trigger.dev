@@ -1,4 +1,3 @@
-import { BillingCache } from "./billingCache.js";
 import { createRedisClient, Redis } from "@internal/redis";
 import { getMeter, Meter, startSpan, trace, Tracer } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
@@ -8,10 +7,12 @@ import {
   CreateCheckpointResult,
   DequeuedMessage,
   ExecutionResult,
+  formatDurationMilliseconds,
   RunExecutionData,
   StartRunAttemptResult,
   TaskRunContext,
   TaskRunExecutionResult,
+  TaskRunInternalError,
 } from "@trigger.dev/core/v3";
 import { RunId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import {
@@ -30,6 +31,7 @@ import { FairQueueSelectionStrategy } from "../run-queue/fairQueueSelectionStrat
 import { RunQueue } from "../run-queue/index.js";
 import { RunQueueFullKeyProducer } from "../run-queue/keyProducer.js";
 import { MinimalAuthenticatedEnvironment } from "../shared/index.js";
+import { BillingCache } from "./billingCache.js";
 import { NotImplementedError, RunDuplicateIdempotencyKeyError } from "./errors.js";
 import { EventBus, EventBusEvents } from "./eventBus.js";
 import { RunLocker } from "./locking.js";
@@ -212,6 +214,8 @@ export class RunEngine {
     });
 
     if (!options.worker.disabled) {
+      console.log("✅ Starting run engine worker");
+
       this.worker.start();
     }
 
@@ -377,11 +381,15 @@ export class RunEngine {
         const status = delayUntil ? "DELAYED" : "PENDING";
 
         //create run
-        let taskRun: TaskRun;
+        let taskRun: TaskRun & { associatedWaitpoint: Waitpoint | null };
+        const taskRunId = RunId.fromFriendlyId(friendlyId);
         try {
           taskRun = await prisma.taskRun.create({
+            include: {
+              associatedWaitpoint: true,
+            },
             data: {
-              id: RunId.fromFriendlyId(friendlyId),
+              id: taskRunId,
               engine: "V2",
               status,
               number,
@@ -455,6 +463,12 @@ export class RunEngine {
                   runnerId,
                 },
               },
+              associatedWaitpoint: {
+                create: this.waitpointSystem.buildRunAssociatedWaitpoint({
+                  projectId: environment.project.id,
+                  environmentId: environment.id,
+                }),
+              },
             },
           });
         } catch (error) {
@@ -488,23 +502,13 @@ export class RunEngine {
 
         span.setAttribute("runId", taskRun.id);
 
-        //create associated waitpoint (this completes when the run completes)
-        const associatedWaitpoint = await this.waitpointSystem.createRunAssociatedWaitpoint(
-          prisma,
-          {
-            projectId: environment.project.id,
-            environmentId: environment.id,
-            completedByTaskRunId: taskRun.id,
-          }
-        );
-
         //triggerAndWait or batchTriggerAndWait
-        if (resumeParentOnCompletion && parentTaskRunId) {
+        if (resumeParentOnCompletion && parentTaskRunId && taskRun.associatedWaitpoint) {
           //this will block the parent run from continuing until this waitpoint is completed (and removed)
           await this.waitpointSystem.blockRunWithWaitpoint({
             runId: parentTaskRunId,
-            waitpoints: associatedWaitpoint.id,
-            projectId: associatedWaitpoint.projectId,
+            waitpoints: taskRun.associatedWaitpoint.id,
+            projectId: taskRun.associatedWaitpoint.projectId,
             organizationId: environment.organization.id,
             batch,
             workerId,
@@ -1190,23 +1194,6 @@ export class RunEngine {
         snapshot: latestSnapshot,
       });
 
-      // For dev, we just cancel runs that are stuck
-      if (latestSnapshot.environmentType === "DEVELOPMENT") {
-        this.logger.log("RunEngine.#handleStalledSnapshot() cancelling DEV run", {
-          runId,
-          snapshot: latestSnapshot,
-        });
-
-        await this.cancelRun({
-          runId: latestSnapshot.runId,
-          finalizeRun: true,
-          reason:
-            "Run was disconnected, check you're running the CLI dev command and your network connection is healthy.",
-          tx,
-        });
-        return;
-      }
-
       switch (latestSnapshot.executionStatus) {
         case "RUN_CREATED": {
           throw new NotImplementedError("There shouldn't be a heartbeat for RUN_CREATED");
@@ -1251,6 +1238,8 @@ export class RunEngine {
             },
             orgId: latestSnapshot.organizationId,
             projectId: latestSnapshot.projectId,
+            checkpointId: latestSnapshot.checkpointId ?? undefined,
+            completedWaitpoints: latestSnapshot.completedWaitpoints,
             error: {
               type: "INTERNAL_ERROR",
               code: "TASK_RUN_DEQUEUED_MAX_RETRIES",
@@ -1262,28 +1251,64 @@ export class RunEngine {
         }
         case "EXECUTING":
         case "EXECUTING_WITH_WAITPOINTS": {
+          // Stalls for production runs should start being treated as an OOM error.
+          // We should calculate the retry delay using the retry settings on the run/task instead of hardcoding it.
+          // Stalls for dev runs should keep being treated as a timeout error because the vast majority of the time these snapshots stall because
+          // they have quit the CLI
+
           const retryDelay = 250;
 
-          //todo call attemptFailed and force requeuing
+          const timeoutDuration =
+            latestSnapshot.executionStatus === "EXECUTING"
+              ? formatDurationMilliseconds(this.heartbeatTimeouts.EXECUTING)
+              : formatDurationMilliseconds(this.heartbeatTimeouts.EXECUTING_WITH_WAITPOINTS);
+
+          // Dev runs don't retry, because the vast majority of the time these snapshots stall because
+          // they have quit the CLI
+          const shouldRetry = latestSnapshot.environmentType !== "DEVELOPMENT";
+          const errorMessage =
+            latestSnapshot.environmentType === "DEVELOPMENT"
+              ? `Run timed out after ${timeoutDuration} due to missing heartbeats (sent every 30s). Check if your \`trigger.dev dev\` CLI is still running, or if CPU-heavy work is blocking the main thread.`
+              : `Run timed out after ${timeoutDuration} due to missing heartbeats (sent every 30s). This typically happens when CPU-heavy work blocks the main thread.`;
+
+          const taskStalledErrorCode =
+            latestSnapshot.executionStatus === "EXECUTING"
+              ? "TASK_RUN_STALLED_EXECUTING"
+              : "TASK_RUN_STALLED_EXECUTING_WITH_WAITPOINTS";
+
+          const error =
+            latestSnapshot.environmentType === "DEVELOPMENT"
+              ? ({
+                  type: "INTERNAL_ERROR",
+                  code: taskStalledErrorCode,
+                  message: errorMessage,
+                } satisfies TaskRunInternalError)
+              : this.options.treatProductionExecutionStallsAsOOM
+              ? ({
+                  type: "INTERNAL_ERROR",
+                  code: "TASK_PROCESS_OOM_KILLED",
+                  message: "Run was terminated due to running out of memory",
+                } satisfies TaskRunInternalError)
+              : ({
+                  type: "INTERNAL_ERROR",
+                  code: taskStalledErrorCode,
+                  message: errorMessage,
+                } satisfies TaskRunInternalError);
+
           await this.runAttemptSystem.attemptFailed({
             runId,
             snapshotId: latestSnapshot.id,
             completion: {
               ok: false,
               id: runId,
-              error: {
-                type: "INTERNAL_ERROR",
-                code:
-                  latestSnapshot.executionStatus === "EXECUTING"
-                    ? "TASK_RUN_STALLED_EXECUTING"
-                    : "TASK_RUN_STALLED_EXECUTING_WITH_WAITPOINTS",
-                message: `Run stalled while executing. This can happen when the run becomes unresponsive, for example because the CPU is overloaded.`,
-              },
-              retry: {
-                //250ms in the future
-                timestamp: Date.now() + retryDelay,
-                delay: retryDelay,
-              },
+              error,
+              retry: shouldRetry
+                ? {
+                    //250ms in the future
+                    timestamp: Date.now() + retryDelay,
+                    delay: retryDelay,
+                  }
+                : undefined,
             },
             forceRequeue: true,
             tx: prisma,

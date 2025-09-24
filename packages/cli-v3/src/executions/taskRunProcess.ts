@@ -111,9 +111,7 @@ export class TaskRunProcess {
 
     try {
       await this.#cancel();
-    } catch (err) {
-      console.error("Error cancelling task run process", { err });
-    }
+    } catch (err) {}
 
     await this.#gracefullyTerminate(this.options.gracefulTerminationTimeoutInMs);
   }
@@ -125,11 +123,7 @@ export class TaskRunProcess {
       return;
     }
 
-    try {
-      await this.#flush();
-    } catch (err) {
-      console.error("Error flushing task run process", { err });
-    }
+    await tryCatch(this.#flush());
 
     if (kill) {
       await this.#gracefullyTerminate(this.options.gracefulTerminationTimeoutInMs);
@@ -445,11 +439,7 @@ export class TaskRunProcess {
     this._isBeingSuspended = true;
 
     if (flush) {
-      const [error] = await tryCatch(this.#flush());
-
-      if (error) {
-        console.error("Error flushing task run process", { error });
-      }
+      await tryCatch(this.#flush());
     }
 
     await this.kill("SIGKILL");

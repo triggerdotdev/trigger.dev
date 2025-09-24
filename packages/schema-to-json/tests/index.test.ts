@@ -1,44 +1,45 @@
-import { z } from "zod";
+import * as z3 from "zod/v3";
+import * as z4 from "zod/v4";
 import * as y from "yup";
 // @ts-ignore
 import { type } from "arktype";
 import { Schema } from "effect";
 import { Type } from "@sinclair/typebox";
-import {
-  schemaToJsonSchema,
-  canConvertSchema,
-  detectSchemaType,
-  initializeSchemaConverters,
-  areConvertersInitialized,
-} from "../src/index.js";
-
-// Initialize converters before running tests
-beforeAll(async () => {
-  await initializeSchemaConverters();
-});
+import { schemaToJsonSchema, canConvertSchema } from "../src/index.js";
 
 describe("schemaToJsonSchema", () => {
-  describe("Initialization", () => {
-    it("should have converters initialized", () => {
-      const status = areConvertersInitialized();
-      expect(status.zod).toBe(true);
-      expect(status.yup).toBe(true);
-      expect(status.effect).toBe(true);
-    });
-  });
-
   describe("Zod schemas", () => {
     it("should convert a simple Zod object schema", () => {
-      const schema = z.object({
-        name: z.string(),
-        age: z.number(),
-        email: z.string().email(),
+      const schema = z3.object({
+        name: z3.string(),
+        age: z3.number(),
+        email: z3.string().email(),
       });
 
       const result = schemaToJsonSchema(schema);
 
       expect(result).toBeDefined();
-      expect(result?.schemaType).toBe("zod");
+      expect(result?.jsonSchema).toMatchObject({
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          age: { type: "number" },
+          email: { type: "string", format: "email" },
+        },
+        required: ["name", "age", "email"],
+      });
+    });
+
+    it("should convert a simple Zod 4 object schema", () => {
+      const schema = z4.object({
+        name: z4.string(),
+        age: z4.number(),
+        email: z4.email(),
+      });
+
+      const result = schemaToJsonSchema(schema);
+
+      expect(result).toBeDefined();
       expect(result?.jsonSchema).toMatchObject({
         type: "object",
         properties: {
@@ -51,10 +52,10 @@ describe("schemaToJsonSchema", () => {
     });
 
     it("should convert a Zod schema with optional fields", () => {
-      const schema = z.object({
-        id: z.string(),
-        description: z.string().optional(),
-        tags: z.array(z.string()).optional(),
+      const schema = z3.object({
+        id: z3.string(),
+        description: z3.string().optional(),
+        tags: z3.array(z3.string()).optional(),
       });
 
       const result = schemaToJsonSchema(schema);
@@ -72,44 +73,15 @@ describe("schemaToJsonSchema", () => {
     });
 
     it("should handle Zod schema with name option", () => {
-      const schema = z.object({
-        value: z.number(),
+      const schema = z3.object({
+        value: z3.number(),
       });
 
-      const result = schemaToJsonSchema(schema, { name: "MySchema" });
+      const result = schemaToJsonSchema(schema, { useReferences: true });
 
       expect(result).toBeDefined();
       expect(result?.jsonSchema).toBeDefined();
       // The exact structure depends on zod-to-json-schema implementation
-    });
-
-    it("should handle Zod 4 schema with built-in toJsonSchema method", () => {
-      // Mock a Zod 4 schema with toJsonSchema method
-      const mockZod4Schema = {
-        parse: (val: unknown) => val,
-        parseAsync: async (val: unknown) => val,
-        toJsonSchema: () => ({
-          type: "object",
-          properties: {
-            id: { type: "string" },
-            count: { type: "number" },
-          },
-          required: ["id", "count"],
-        }),
-      };
-
-      const result = schemaToJsonSchema(mockZod4Schema);
-
-      expect(result).toBeDefined();
-      expect(result?.schemaType).toBe("zod");
-      expect(result?.jsonSchema).toEqual({
-        type: "object",
-        properties: {
-          id: { type: "string" },
-          count: { type: "number" },
-        },
-        required: ["id", "count"],
-      });
     });
   });
 
@@ -124,7 +96,6 @@ describe("schemaToJsonSchema", () => {
       const result = schemaToJsonSchema(schema);
 
       expect(result).toBeDefined();
-      expect(result?.schemaType).toBe("yup");
       expect(result?.jsonSchema).toMatchObject({
         type: "object",
         properties: {
@@ -169,7 +140,6 @@ describe("schemaToJsonSchema", () => {
       const result = schemaToJsonSchema(schema);
 
       expect(result).toBeDefined();
-      expect(result?.schemaType).toBe("arktype");
       expect(result?.jsonSchema).toBeDefined();
       expect(result?.jsonSchema.type).toBe("object");
     });
@@ -200,7 +170,6 @@ describe("schemaToJsonSchema", () => {
       const result = schemaToJsonSchema(schema);
 
       expect(result).toBeDefined();
-      expect(result?.schemaType).toBe("effect");
       expect(result?.jsonSchema).toMatchObject({
         type: "object",
         properties: {
@@ -238,7 +207,6 @@ describe("schemaToJsonSchema", () => {
       const result = schemaToJsonSchema(schema);
 
       expect(result).toBeDefined();
-      expect(result?.schemaType).toBe("typebox");
       expect(result?.jsonSchema).toMatchObject({
         type: "object",
         properties: {
@@ -272,27 +240,6 @@ describe("schemaToJsonSchema", () => {
     });
   });
 
-  describe("Additional options", () => {
-    it("should merge additional properties", () => {
-      const schema = z.object({
-        value: z.number(),
-      });
-
-      const result = schemaToJsonSchema(schema, {
-        additionalProperties: {
-          title: "My Schema",
-          description: "A test schema",
-          "x-custom": "custom value",
-        },
-      });
-
-      expect(result).toBeDefined();
-      expect(result?.jsonSchema.title).toBe("My Schema");
-      expect(result?.jsonSchema.description).toBe("A test schema");
-      expect(result?.jsonSchema["x-custom"]).toBe("custom value");
-    });
-  });
-
   describe("Unsupported schemas", () => {
     it("should return undefined for unsupported schema types", () => {
       const invalidSchema = { notASchema: true };
@@ -310,7 +257,7 @@ describe("schemaToJsonSchema", () => {
 
 describe("canConvertSchema", () => {
   it("should return true for supported schemas", () => {
-    expect(canConvertSchema(z.string())).toBe(true);
+    expect(canConvertSchema(z3.string())).toBe(true);
     expect(canConvertSchema(y.string())).toBe(true);
     expect(canConvertSchema(type("string"))).toBe(true);
     expect(canConvertSchema(Schema.String)).toBe(true);
@@ -320,31 +267,5 @@ describe("canConvertSchema", () => {
   it("should return false for unsupported schemas", () => {
     expect(canConvertSchema({ notASchema: true })).toBe(false);
     expect(canConvertSchema(() => true)).toBe(false);
-  });
-});
-
-describe("detectSchemaType", () => {
-  it("should detect Zod schemas", () => {
-    expect(detectSchemaType(z.string())).toBe("zod");
-  });
-
-  it("should detect Yup schemas", () => {
-    expect(detectSchemaType(y.string())).toBe("yup");
-  });
-
-  it("should detect ArkType schemas", () => {
-    expect(detectSchemaType(type("string"))).toBe("arktype");
-  });
-
-  it("should detect Effect schemas", () => {
-    expect(detectSchemaType(Schema.String)).toBe("effect");
-  });
-
-  it("should detect TypeBox schemas", () => {
-    expect(detectSchemaType(Type.String())).toBe("typebox");
-  });
-
-  it("should return unknown for unsupported schemas", () => {
-    expect(detectSchemaType({ notASchema: true })).toBe("unknown");
   });
 });

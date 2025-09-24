@@ -282,3 +282,22 @@ export const idempotencyTriggerByTaskAndWait = task({
     logger.log("Results 2", { results2 });
   },
 });
+
+export const idempotencyTriggerAndWaitWithInProgressRun = task({
+  id: "idempotency-trigger-and-wait-with-in-progress-run",
+  maxDuration: 60,
+  run: async () => {
+    await childTask.trigger(
+      { message: "Hello, world!", duration: 5000, failureChance: 100 },
+      {
+        idempotencyKey: "b",
+      }
+    );
+    await childTask.triggerAndWait(
+      { message: "Hello, world!", duration: 5000, failureChance: 0 },
+      {
+        idempotencyKey: "b",
+      }
+    );
+  },
+});
