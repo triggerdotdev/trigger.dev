@@ -1,5 +1,5 @@
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import { ProgressDeploymentRequestBody } from "@trigger.dev/core/v3";
+import { ProgressDeploymentRequestBody, tryCatch } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { authenticateRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
@@ -34,8 +34,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const { environment: authenticatedEnv } = authenticationResult.result;
   const { deploymentId } = parsedParams.data;
 
-  const rawBody = await request.json();
-  const body = ProgressDeploymentRequestBody.safeParse(rawBody);
+  const [, rawBody] = await tryCatch(request.json());
+  const body = ProgressDeploymentRequestBody.safeParse(rawBody ?? {});
 
   if (!body.success) {
     return json({ error: "Invalid request body", issues: body.error.issues }, { status: 400 });

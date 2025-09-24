@@ -8,7 +8,7 @@ import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { DeploymentService } from "~/v3/services/deployment.server";
 
-export const promoteSchema = z.object({
+export const cancelSchema = z.object({
   redirectUrl: z.string(),
 });
 
@@ -22,7 +22,7 @@ export const action: ActionFunction = async ({ request, params }) => {
   const { projectId, deploymentShortCode } = ParamSchema.parse(params);
 
   const formData = await request.formData();
-  const submission = parse(formData, { schema: promoteSchema });
+  const submission = parse(formData, { schema: cancelSchema });
 
   if (!submission.value) {
     return json(submission);
@@ -84,7 +84,7 @@ export const action: ActionFunction = async ({ request, params }) => {
 
   if (result.isErr()) {
     logger.error(
-      `Failed to promote deployment: ${result.error.type}`,
+      `Failed to cancel deployment: ${result.error.type}`,
       result.error.type === "other"
         ? {
             cause: result.error.cause,
@@ -105,7 +105,14 @@ export const action: ActionFunction = async ({ request, params }) => {
         return redirectWithErrorMessage(
           submission.value.redirectUrl,
           request,
-          "Deployment not found"
+          "Deployment is already in a final state and cannot be canceled"
+        );
+      case "failed_to_delete_deployment_timeout":
+        // not a critical error, ignore
+        return redirectWithSuccessMessage(
+          submission.value.redirectUrl,
+          request,
+          `Canceled deployment ${deploymentShortCode}.`
         );
       case "other":
       default:

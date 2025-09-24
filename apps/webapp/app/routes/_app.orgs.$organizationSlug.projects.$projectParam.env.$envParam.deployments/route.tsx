@@ -594,7 +594,7 @@ function CancelDeploymentDialog({
 }: RollbackDeploymentDialogProps) {
   const navigation = useNavigation();
 
-  const formAction = `/resources/${projectId}/deployments/${deploymentShortCode}/promote`;
+  const formAction = `/resources/${projectId}/deployments/${deploymentShortCode}/cancel`;
   const isLoading = navigation.formAction === formAction;
 
   return (
@@ -605,10 +605,7 @@ function CancelDeploymentDialog({
         <DialogClose asChild>
           <Button variant="tertiary/medium">Back</Button>
         </DialogClose>
-        <Form
-          action={`/resources/${projectId}/deployments/${deploymentShortCode}/cancel`}
-          method="post"
-        >
+        <Form action={formAction} method="post">
           <Button
             type="submit"
             name="redirectUrl"

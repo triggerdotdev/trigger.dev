@@ -212,11 +212,23 @@ export class DeploymentService extends BaseService {
           type: "other" as const,
           cause: error,
         })
-      );
+      ).andThen((result) => {
+        if (result.count === 0) {
+          return errAsync({ type: "deployment_cannot_be_cancelled" as const });
+        }
+        return okAsync({ id: deployment.id });
+      });
+
+    const deleteTimeout = (deployment: Pick<WorkerDeployment, "id">) =>
+      fromPromise(TimeoutDeploymentService.dequeue(deployment.id, this._prisma), (error) => ({
+        type: "failed_to_delete_deployment_timeout" as const,
+        cause: error,
+      }));
 
     return getDeployment()
       .andThen(validateDeployment)
       .andThen(cancelDeployment)
+      .andThen(deleteTimeout)
       .map(() => undefined);
   }
 }

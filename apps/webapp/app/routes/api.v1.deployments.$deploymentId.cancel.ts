@@ -1,5 +1,5 @@
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import { CancelDeploymentRequestBody } from "@trigger.dev/core/v3";
+import { CancelDeploymentRequestBody, tryCatch } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { authenticateRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
@@ -34,8 +34,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const { environment: authenticatedEnv } = authenticationResult.result;
   const { deploymentId } = parsedParams.data;
 
-  const rawBody = await request.json();
-  const body = CancelDeploymentRequestBody.safeParse(rawBody);
+  const [, rawBody] = await tryCatch(request.json());
+  const body = CancelDeploymentRequestBody.safeParse(rawBody ?? {});
 
   if (!body.success) {
     return json({ error: "Invalid request body", issues: body.error.issues }, { status: 400 });
@@ -55,6 +55,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
         switch (error.type) {
           case "deployment_not_found":
             return json({ error: "Deployment not found" }, { status: 404 });
+          case "failed_to_delete_deployment_timeout":
+            return new Response(null, { status: 204 }); // not a critical error, ignore
           case "deployment_cannot_be_cancelled":
             return json(
               { error: "Deployment is already in a final state and cannot be canceled" },
