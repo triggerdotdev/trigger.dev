@@ -586,7 +586,15 @@ export class ClickhouseEventRepository implements IEventRepository {
     this.addToBatch(event);
   }
 
-  async completeCachedRunEvent(params: {
+  async completeCachedRunEvent({
+    run,
+    blockedRun,
+    spanId,
+    parentSpanId,
+    spanCreatedAt,
+    isError,
+    endTime,
+  }: {
     run: CompleteableTaskRun;
     blockedRun: CompleteableTaskRun;
     spanId: string;
@@ -595,40 +603,211 @@ export class ClickhouseEventRepository implements IEventRepository {
     isError: boolean;
     endTime?: Date;
   }): Promise<void> {
-    throw new Error("ClickhouseEventRepository.completeCachedRunEvent not implemented");
+    if (!run.organizationId) {
+      return;
+    }
+
+    const startTime = convertDateToNanoseconds(spanCreatedAt);
+    const expiresAt = convertDateToClickhouseDateTime(
+      new Date(run.createdAt.getTime() + 30 * 24 * 60 * 60 * 1000)
+    );
+
+    const event: TaskEventV1Input = {
+      environment_id: run.runtimeEnvironmentId,
+      organization_id: run.organizationId,
+      project_id: run.projectId,
+      task_identifier: run.taskIdentifier,
+      run_id: blockedRun.friendlyId,
+      start_time: startTime.toString(),
+      duration: calculateDurationFromStart(startTime, endTime ?? new Date()).toString(),
+      trace_id: blockedRun.traceId,
+      span_id: spanId,
+      parent_span_id: parentSpanId,
+      message: run.taskIdentifier,
+      kind: "SPAN",
+      status: isError ? "ERROR" : "OK",
+      attributes: {},
+      metadata: "{}",
+      expires_at: expiresAt,
+    };
+
+    this.addToBatch(event);
   }
 
-  async completeFailedRunEvent(params: {
+  async completeFailedRunEvent({
+    run,
+    endTime,
+    exception,
+  }: {
     run: CompleteableTaskRun;
     endTime?: Date;
     exception: { message?: string; type?: string; stacktrace?: string };
   }): Promise<void> {
-    throw new Error("ClickhouseEventRepository.completeFailedRunEvent not implemented");
+    if (!run.organizationId) {
+      return;
+    }
+
+    const startTime = convertDateToNanoseconds(run.createdAt);
+    const expiresAt = convertDateToClickhouseDateTime(
+      new Date(run.createdAt.getTime() + 30 * 24 * 60 * 60 * 1000)
+    );
+
+    const event: TaskEventV1Input = {
+      environment_id: run.runtimeEnvironmentId,
+      organization_id: run.organizationId,
+      project_id: run.projectId,
+      task_identifier: run.taskIdentifier,
+      run_id: run.friendlyId,
+      start_time: startTime.toString(),
+      duration: calculateDurationFromStart(startTime, endTime ?? new Date()).toString(),
+      trace_id: run.traceId,
+      span_id: run.spanId,
+      parent_span_id: run.parentSpanId ?? "",
+      message: run.taskIdentifier,
+      kind: "SPAN",
+      status: "ERROR",
+      attributes: {
+        error: {
+          name: exception.type,
+          message: exception.message,
+          stackTrace: exception.stacktrace,
+        },
+      },
+      metadata: "{}",
+      expires_at: expiresAt,
+    };
+
+    this.addToBatch(event);
   }
 
-  async completeExpiredRunEvent(params: {
+  async completeExpiredRunEvent({
+    run,
+    endTime,
+    ttl,
+  }: {
     run: CompleteableTaskRun;
     endTime?: Date;
     ttl: string;
   }): Promise<void> {
-    throw new Error("ClickhouseEventRepository.completeExpiredRunEvent not implemented");
+    if (!run.organizationId) {
+      return;
+    }
+
+    const startTime = convertDateToNanoseconds(run.createdAt);
+    const expiresAt = convertDateToClickhouseDateTime(
+      new Date(run.createdAt.getTime() + 30 * 24 * 60 * 60 * 1000)
+    );
+
+    const event: TaskEventV1Input = {
+      environment_id: run.runtimeEnvironmentId,
+      organization_id: run.organizationId,
+      project_id: run.projectId,
+      task_identifier: run.taskIdentifier,
+      run_id: run.friendlyId,
+      start_time: startTime.toString(),
+      duration: calculateDurationFromStart(startTime, endTime ?? new Date()).toString(),
+      trace_id: run.traceId,
+      span_id: run.spanId,
+      parent_span_id: run.parentSpanId ?? "",
+      message: run.taskIdentifier,
+      kind: "SPAN",
+      status: "ERROR",
+      attributes: {
+        error: {
+          message: `Run expired because the TTL (${ttl}) was reached`,
+        },
+      },
+      metadata: "{}",
+      expires_at: expiresAt,
+    };
+
+    this.addToBatch(event);
   }
 
-  async createAttemptFailedRunEvent(params: {
+  async createAttemptFailedRunEvent({
+    run,
+    endTime,
+    attemptNumber,
+    exception,
+  }: {
     run: CompleteableTaskRun;
     endTime?: Date;
     attemptNumber: number;
     exception: { message?: string; type?: string; stacktrace?: string };
   }): Promise<void> {
-    throw new Error("ClickhouseEventRepository.createAttemptFailedRunEvent not implemented");
+    if (!run.organizationId) {
+      return;
+    }
+
+    const startTime = convertDateToNanoseconds(endTime ?? new Date());
+    const expiresAt = convertDateToClickhouseDateTime(
+      new Date(run.createdAt.getTime() + 30 * 24 * 60 * 60 * 1000)
+    );
+
+    const event: TaskEventV1Input = {
+      environment_id: run.runtimeEnvironmentId,
+      organization_id: run.organizationId,
+      project_id: run.projectId,
+      task_identifier: run.taskIdentifier,
+      run_id: run.friendlyId,
+      start_time: startTime.toString(),
+      duration: "0",
+      trace_id: run.traceId,
+      span_id: run.spanId,
+      parent_span_id: run.parentSpanId ?? "",
+      message: "attempt_failed",
+      kind: "ANCESTOR_OVERRIDE",
+      status: "OK",
+      attributes: {},
+      metadata: JSON.stringify({
+        exception,
+        attemptNumber,
+        runId: run.friendlyId,
+      }),
+      expires_at: expiresAt,
+    };
+
+    this.addToBatch(event);
   }
 
-  async cancelRunEvent(params: {
+  async cancelRunEvent({
+    reason,
+    run,
+    cancelledAt,
+  }: {
     reason: string;
     run: CompleteableTaskRun;
     cancelledAt: Date;
   }): Promise<void> {
-    throw new Error("ClickhouseEventRepository.cancelRunEvent not implemented");
+    if (!run.organizationId) {
+      return;
+    }
+
+    const startTime = convertDateToNanoseconds(cancelledAt);
+    const expiresAt = convertDateToClickhouseDateTime(
+      new Date(run.createdAt.getTime() + 30 * 24 * 60 * 60 * 1000)
+    );
+
+    const event: TaskEventV1Input = {
+      environment_id: run.runtimeEnvironmentId,
+      organization_id: run.organizationId,
+      project_id: run.projectId,
+      task_identifier: run.taskIdentifier,
+      run_id: run.friendlyId,
+      start_time: startTime.toString(),
+      duration: calculateDurationFromStart(startTime, cancelledAt).toString(),
+      trace_id: run.traceId,
+      span_id: run.spanId,
+      parent_span_id: run.parentSpanId ?? "",
+      message: run.taskIdentifier,
+      kind: "SPAN",
+      status: "CANCELLED",
+      attributes: {},
+      metadata: "{}",
+      expires_at: expiresAt,
+    };
+
+    this.addToBatch(event);
   }
 
   async crashEvent(params: {
@@ -786,7 +965,7 @@ export class ClickhouseEventRepository implements IEventRepository {
         // We need to add an event to the span
         span.data.events.push({
           name: record.message,
-          time: new Date(record.start_time),
+          time: convertClickhouseDateTime64ToJsDate(record.start_time),
           properties: parsedMetadata ?? {},
         });
       }
