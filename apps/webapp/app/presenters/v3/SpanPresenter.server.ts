@@ -17,7 +17,7 @@ import { isFailedRunStatus, isFinalRunStatus } from "~/v3/taskStatus";
 import { BasePresenter } from "./basePresenter.server";
 import { WaitpointPresenter } from "./WaitpointPresenter.server";
 import { engine } from "~/v3/runEngine.server";
-import { resolveEventRepositoryForStore } from "~/v3/eventRepository";
+import { resolveEventRepositoryForStore } from "~/v3/eventRepository/index.server";
 import { IEventRepository, SpanDetail } from "~/v3/eventRepository/eventRepository.types";
 
 type Result = Awaited<ReturnType<SpanPresenter["call"]>>;
@@ -492,7 +492,6 @@ export class SpanPresenter extends BasePresenter {
       isPartial: span.isPartial,
       isCancelled: span.isCancelled,
       level: span.level,
-      kind: span.kind,
       startTime: span.startTime,
       duration: span.duration,
       events: span.events,

@@ -3,7 +3,7 @@ import { createTreeFromFlatItems, flattenTree } from "~/components/primitives/Tr
 import { prisma, type PrismaClient } from "~/db.server";
 import { createTimelineSpanEventsFromSpanEvents } from "~/utils/timelineSpanEvents";
 import { getUsername } from "~/utils/username";
-import { resolveEventRepositoryForStore } from "~/v3/eventRepository";
+import { resolveEventRepositoryForStore } from "~/v3/eventRepository/index.server";
 import { SpanSummary } from "~/v3/eventRepository/eventRepository.types";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 import { isFinalRunStatus } from "~/v3/taskStatus";
