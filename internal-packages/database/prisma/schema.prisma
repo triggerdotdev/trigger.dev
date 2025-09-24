@@ -1764,9 +1764,10 @@ model WorkerDeployment {
   triggeredBy   User?   @relation(fields: [triggeredById], references: [id], onDelete: SetNull, onUpdate: Cascade)
   triggeredById String?
 
-  startedAt  DateTime?
-  builtAt    DateTime?
-  deployedAt DateTime?
+  startedAt   DateTime?
+  installedAt DateTime?
+  builtAt     DateTime?
+  deployedAt  DateTime?
 
   failedAt  DateTime?
   errorData Json?
@@ -1787,6 +1788,7 @@ model WorkerDeployment {
 
 enum WorkerDeploymentStatus {
   PENDING
+  INSTALLING
   /// This is the status when the image is being built
   BUILDING
   /// This is the status when the image is built and we are waiting for the indexing to finish
