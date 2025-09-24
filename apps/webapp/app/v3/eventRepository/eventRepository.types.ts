@@ -246,6 +246,7 @@ export type SpanSummary = {
     isCancelled: boolean;
     isDebug: boolean;
     level: NonNullable<CreateEventInput["level"]>;
+    attemptNumber?: number;
   };
 };
 

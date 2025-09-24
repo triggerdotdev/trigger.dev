@@ -1,35 +1,6 @@
 import type { ClickHouse, TaskEventSummaryV1Result, TaskEventV1Input } from "@internal/clickhouse";
 import { Attributes, startSpan, trace, Tracer } from "@internal/tracing";
-import { DynamicFlushScheduler } from "../dynamicFlushScheduler.server";
-import type {
-  CompleteableTaskRun,
-  CreateEventInput,
-  EventBuilder,
-  ExceptionEventProperties,
-  IEventRepository,
-  RunPreparedEvent,
-  SpanDetail,
-  SpanSummary,
-  TaskEventRecord,
-  TraceAttributes,
-  TraceDetailedSummary,
-  TraceEventOptions,
-  TraceSummary,
-} from "./eventRepository.types";
-import { tracePubSub } from "../services/tracePubSub.server";
-import type { TaskEventStoreTable } from "../taskEventStore.server";
-import { logger } from "~/services/logger.server";
-import {
-  generateSpanId,
-  extractContextFromCarrier,
-  getNowInNanoseconds,
-  generateDeterministicSpanId,
-  calculateDurationFromStart,
-  generateTraceId,
-  parseEventsField,
-  convertDateToNanoseconds,
-  createExceptionPropertiesFromError,
-} from "./common.server";
+import { createJsonErrorObject } from "@trigger.dev/core/v3/errors";
 import { serializeTraceparent } from "@trigger.dev/core/v3/isomorphic";
 import {
   AttemptFailedSpanEvent,
@@ -44,11 +15,39 @@ import {
   TaskEventStyle,
   TaskRunError,
 } from "@trigger.dev/core/v3/schemas";
+import { SemanticInternalAttributes } from "@trigger.dev/core/v3/semanticInternalAttributes";
 import { unflattenAttributes } from "@trigger.dev/core/v3/utils/flattenAttributes";
 import { TaskEventLevel } from "@trigger.dev/database";
+import { logger } from "~/services/logger.server";
+import { DynamicFlushScheduler } from "../dynamicFlushScheduler.server";
+import { tracePubSub } from "../services/tracePubSub.server";
+import type { TaskEventStoreTable } from "../taskEventStore.server";
+import {
+  calculateDurationFromStart,
+  calculateDurationFromStartJsDate,
+  convertDateToNanoseconds,
+  createExceptionPropertiesFromError,
+  extractContextFromCarrier,
+  generateDeterministicSpanId,
+  generateSpanId,
+  generateTraceId,
+  getNowInNanoseconds,
+  parseEventsField,
+} from "./common.server";
+import type {
+  CompleteableTaskRun,
+  CreateEventInput,
+  EventBuilder,
+  IEventRepository,
+  RunPreparedEvent,
+  SpanDetail,
+  SpanSummary,
+  TraceAttributes,
+  TraceDetailedSummary,
+  TraceEventOptions,
+  TraceSummary,
+} from "./eventRepository.types";
 import { originalRunIdCache } from "./originalRunIdCache.server";
-import { SemanticInternalAttributes } from "@trigger.dev/core/v3/semanticInternalAttributes";
-import { createJsonErrorObject } from "@trigger.dev/core/v3/errors";
 
 export type ClickhouseEventRepositoryConfig = {
   clickhouse: ClickHouse;
@@ -342,6 +341,7 @@ export class ClickhouseEventRepository implements IEventRepository {
   private createEventToTaskEventV1InputMetadata(event: CreateEventInput): string {
     return JSON.stringify({
       style: event.style ? unflattenAttributes(event.style) : undefined,
+      attemptNumber: event.attemptNumber,
     });
   }
 
@@ -783,7 +783,7 @@ export class ClickhouseEventRepository implements IEventRepository {
       return;
     }
 
-    const startTime = convertDateToNanoseconds(cancelledAt);
+    const startTime = convertDateToNanoseconds(run.createdAt);
     const expiresAt = convertDateToClickhouseDateTime(
       new Date(run.createdAt.getTime() + 30 * 24 * 60 * 60 * 1000)
     );
@@ -803,7 +803,9 @@ export class ClickhouseEventRepository implements IEventRepository {
       kind: "SPAN",
       status: "CANCELLED",
       attributes: {},
-      metadata: "{}",
+      metadata: JSON.stringify({
+        reason,
+      }),
       expires_at: expiresAt,
     };
 
@@ -867,7 +869,7 @@ export class ClickhouseEventRepository implements IEventRepository {
       return acc;
     }, {} as Record<string, TaskEventSummaryV1Result[]>);
 
-    const spanSummaries: Record<string, SpanSummary> = {};
+    const spanSummaries = new Map<string, SpanSummary>();
     let rootSpanId: string | undefined;
 
     for (const [spanId, spanRecords] of Object.entries(recordsGroupedBySpanId)) {
@@ -886,7 +888,7 @@ export class ClickhouseEventRepository implements IEventRepository {
         spanSummary,
       });
 
-      spanSummaries[spanId] = spanSummary;
+      spanSummaries.set(spanId, spanSummary);
 
       if (!rootSpanId && !spanSummary.parentId) {
         rootSpanId = spanId;
@@ -901,18 +903,118 @@ export class ClickhouseEventRepository implements IEventRepository {
       return;
     }
 
-    const spans = Object.values(spanSummaries);
-    const rootSpan = spanSummaries[rootSpanId];
+    const spans = Array.from(spanSummaries.values());
+    const rootSpan = spanSummaries.get(rootSpanId);
+
+    if (!rootSpan) {
+      logger.debug("ClickhouseEventRepository.getTraceSummary no rootSpan", {
+        spanSummaries,
+      });
+
+      return;
+    }
+
+    const finalSpans = spans.map((span) => {
+      return this.#applyAncestorOverrides(span, spanSummaries);
+    });
 
     logger.info("ClickhouseEventRepository.getTraceSummary result", {
       rootSpan,
-      spans,
+      spans: finalSpans,
     });
 
     return {
       rootSpan,
-      spans,
+      spans: finalSpans,
     };
+  }
+
+  #applyAncestorOverrides(span: SpanSummary, spansById: Map<string, SpanSummary>): SpanSummary {
+    if (span.data.level !== "TRACE") {
+      return span;
+    }
+
+    if (!span.data.isPartial) {
+      return span;
+    }
+
+    if (!span.parentId) {
+      return span;
+    }
+
+    // Now we need to walk the ancestors of the span by span.parentId
+    // The first ancestor that is a TRACE span that is "closed" we will use to override the span
+    let parentSpanId: string | undefined = span.parentId;
+    let overrideSpan: SpanSummary | undefined;
+
+    while (parentSpanId) {
+      const parentSpan = spansById.get(parentSpanId);
+
+      if (!parentSpan) {
+        break;
+      }
+
+      if (parentSpan.data.level === "TRACE" && !parentSpan.data.isPartial) {
+        overrideSpan = parentSpan;
+        break;
+      }
+
+      parentSpanId = parentSpan.parentId;
+    }
+
+    if (overrideSpan) {
+      return this.#applyAncestorToSpan(span, overrideSpan);
+    }
+
+    return span;
+  }
+
+  #applyAncestorToSpan(span: SpanSummary, overrideSpan: SpanSummary): SpanSummary {
+    const overrideEndTime = calculateEndTimeFromStartTime(
+      overrideSpan.data.startTime,
+      overrideSpan.data.duration
+    );
+
+    if (overrideSpan.data.isCancelled) {
+      span.data.isCancelled = true;
+      span.data.isPartial = false;
+      span.data.isError = false;
+      span.data.duration = calculateDurationFromStartJsDate(span.data.startTime, overrideEndTime);
+
+      const cancellationEvent = overrideSpan.data.events.find(
+        (event) => event.name === "cancellation"
+      );
+
+      if (cancellationEvent) {
+        span.data.events.push(cancellationEvent);
+      }
+    }
+
+    if (overrideSpan.data.isError && span.data.attemptNumber) {
+      const attemptFailedEvent = overrideSpan.data.events.find(
+        (event) =>
+          event.name === "attempt_failed" &&
+          event.properties.attemptNumber === span.data.attemptNumber &&
+          event.properties.runId === span.runId
+      ) as AttemptFailedSpanEvent | undefined;
+
+      if (attemptFailedEvent) {
+        span.data.isError = true;
+        span.data.isPartial = false;
+        span.data.isCancelled = false;
+        span.data.duration = calculateDurationFromStartJsDate(span.data.startTime, overrideEndTime);
+        span.data.events.push({
+          name: "exception",
+          time: attemptFailedEvent.time,
+          properties: {
+            exception: attemptFailedEvent.properties.exception,
+          },
+        } satisfies ExceptionSpanEvent);
+        span.data.events.push(attemptFailedEvent);
+      }
+    }
+
+    return span;
   }
 
   #mergeRecordsIntoSpanSummary(
@@ -955,6 +1057,14 @@ export class ClickhouseEventRepository implements IEventRepository {
 
       const parsedMetadata = this.#parseMetadata(record.metadata);
 
+      if (
+        parsedMetadata &&
+        "attemptNumber" in parsedMetadata &&
+        typeof parsedMetadata.attemptNumber === "number"
+      ) {
+        span.data.attemptNumber = parsedMetadata.attemptNumber;
+      }
+
       if (record.kind === "ANCESTOR_OVERRIDE" || record.kind === "SPAN_EVENT") {
         // We need to add an event to the span
         span.data.events.push({
@@ -986,6 +1096,7 @@ export class ClickhouseEventRepository implements IEventRepository {
             typeof record.duration === "number" ? record.duration : Number(record.duration);
         } else {
           span.data.startTime = convertClickhouseDateTime64ToJsDate(record.start_time);
+          span.data.message = record.message;
         }
       }
     }
@@ -1172,4 +1283,8 @@ function kindToLevel(kind: string): TaskEventLevel {
 
 function isLogEvent(kind: string): boolean {
   return kind.startsWith("LOG_") || kind === "DEBUG_EVENT";
+}
+
+function calculateEndTimeFromStartTime(startTime: Date, duration: number): Date {
+  return new Date(startTime.getTime() + duration / 1_000_000);
 }
