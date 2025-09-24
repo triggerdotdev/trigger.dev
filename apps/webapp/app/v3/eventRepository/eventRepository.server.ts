@@ -44,6 +44,8 @@ import {
   getNowInNanoseconds,
   parseEventsField,
   stripAttributePrefix,
+  removePrivateProperties,
+  isEmptyObject,
 } from "./common.server";
 import type {
   CompleteableTaskRun,
@@ -772,13 +774,6 @@ export class EventRepository implements IEventRepository {
         spanEvent.environmentType === "DEVELOPMENT"
       );
 
-      // This is used when the span is a cached run (because of idempotency key)
-      // so this span isn't the actual run span, but points to the original run
-      const originalRun = rehydrateAttribute<string>(
-        spanEvent.properties,
-        SemanticInternalAttributes.ORIGINAL_RUN_ID
-      );
-
       // Used for waitpoint token spans
       const entity = {
         type: rehydrateAttribute<string>(
@@ -813,8 +808,7 @@ export class EventRepository implements IEventRepository {
         // Entity & Relationships
         entity,
 
-        // Additional Properties (Used by SpanPresenter)
-        originalRun,
+        // Additional properties
         metadata: spanEvent.metadata,
       };
     });
@@ -830,16 +824,25 @@ export class EventRepository implements IEventRepository {
   ): Promise<string | undefined> {
     return await startActiveSpan("getSpanOriginalRunId", async (s) => {
       return await originalRunIdCache.swr(traceId, spanId, async () => {
-        const span = await this.getSpan(
+        const spanEvent = await this.#getSpanEvent(
           storeTable,
-          environmentId,
           spanId,
-          traceId,
           startCreatedAt,
-          endCreatedAt
+          endCreatedAt,
+          { includeDebugLogs: false }
         );
 
-        return span?.originalRun;
+        if (!spanEvent) {
+          return;
+        }
+        // This is used when the span is a cached run (because of idempotency key)
+        // so this span isn't the actual run span, but points to the original run
+        const originalRun = rehydrateAttribute<string>(
+          spanEvent.properties,
+          SemanticInternalAttributes.ORIGINAL_RUN_ID
+        );
+
+        return originalRun;
       });
     });
   }
@@ -1754,30 +1757,6 @@ function sanitizedAttributes(json: Prisma.JsonValue) {
 
   return unflattenAttributes(withoutPrivateProperties);
 }
-// removes keys that start with a $ sign. If there are no keys left, return undefined
-function removePrivateProperties(
-  attributes: Attributes | undefined | null
-): Attributes | undefined {
-  if (!attributes) {
-    return undefined;
-  }
-
-  const result: Attributes = {};
-
-  for (const [key, value] of Object.entries(attributes)) {
-    if (key.startsWith("$")) {
-      continue;
-    }
-
-    result[key] = value;
-  }
-
-  if (Object.keys(result).length === 0) {
-    return undefined;
-  }
-
-  return result;
-}
 
 function transformEvents(events: SpanEvents, properties: Attributes, isDev: boolean): SpanEvents {
   return (events ?? []).map((event) => transformEvent(event, properties, isDev));
@@ -2013,16 +1992,6 @@ function isRetriablePrismaError(
   }
 
   return false;
-}
-
-function isEmptyObject(obj: object) {
-  for (var prop in obj) {
-    if (Object.prototype.hasOwnProperty.call(obj, prop)) {
-      return false;
-    }
-  }
-
-  return true;
 }
 // Helper function to check if a field is empty/missing
 function isEmpty(value: any): boolean {

@@ -12,7 +12,11 @@ import {
   getTaskUsageByOrganization,
   getTaskRunsCountQueryBuilder,
 } from "./taskRuns.js";
-import { getTraceSummaryQueryBuilder, insertTaskEvents } from "./taskEvents.js";
+import {
+  getSpanDetailsQueryBuilder,
+  getTraceSummaryQueryBuilder,
+  insertTaskEvents,
+} from "./taskEvents.js";
 import { Logger, type LogLevel } from "@trigger.dev/core/logger";
 import type { Agent as HttpAgent } from "http";
 import type { Agent as HttpsAgent } from "https";
@@ -160,6 +164,7 @@ export class ClickHouse {
     return {
       insert: insertTaskEvents(this.writer),
       traceSummaryQueryBuilder: getTraceSummaryQueryBuilder(this.reader),
+      spanDetailsQueryBuilder: getSpanDetailsQueryBuilder(this.reader),
     };
   }
 }

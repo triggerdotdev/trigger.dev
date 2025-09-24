@@ -1,4 +1,9 @@
-import type { ClickHouse, TaskEventSummaryV1Result, TaskEventV1Input } from "@internal/clickhouse";
+import type {
+  ClickHouse,
+  TaskEventDetailsV1Result,
+  TaskEventSummaryV1Result,
+  TaskEventV1Input,
+} from "@internal/clickhouse";
 import { Attributes, startSpan, trace, Tracer } from "@internal/tracing";
 import { createJsonErrorObject } from "@trigger.dev/core/v3/errors";
 import { serializeTraceparent } from "@trigger.dev/core/v3/isomorphic";
@@ -33,6 +38,8 @@ import {
   generateTraceId,
   getNowInNanoseconds,
   parseEventsField,
+  removePrivateProperties,
+  isEmptyObject,
 } from "./common.server";
 import type {
   CompleteableTaskRun,
@@ -41,6 +48,7 @@ import type {
   IEventRepository,
   RunPreparedEvent,
   SpanDetail,
+  SpanOverride,
   SpanSummary,
   TraceAttributes,
   TraceDetailedSummary,
@@ -141,7 +149,7 @@ export class ClickhouseEventRepository implements IEventRepository {
         message: event.message,
         kind: this.createEventToTaskEventV1InputKind(event),
         status: this.createEventToTaskEventV1InputStatus(event),
-        attributes: this.createEventToTaskEventV1InputAttributes(event),
+        attributes: this.createEventToTaskEventV1InputAttributes(event.properties),
         metadata: this.createEventToTaskEventV1InputMetadata(event),
         expires_at: convertDateToClickhouseDateTime(
           new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // TODO: make sure configurable and by org
@@ -156,7 +164,14 @@ export class ClickhouseEventRepository implements IEventRepository {
 
     const spanEvents = parseEventsField(event.events);
 
-    return spanEvents.map((e) => this.createTaskEventV1InputFromSpanEvent(e, event));
+    const records = spanEvents.map((e) => this.createTaskEventV1InputFromSpanEvent(e, event));
+
+    if (event.isPartial) {
+      return records;
+    }
+
+    // Only return events where the event start_time is greater than the span start_time
+    return records.filter((r) => BigInt(r.start_time) > BigInt(event.startTime));
   }
 
   private createTaskEventV1InputFromSpanEvent(
@@ -330,19 +345,47 @@ export class ClickhouseEventRepository implements IEventRepository {
     return "OK";
   }
 
-  private createEventToTaskEventV1InputAttributes(
-    event: CreateEventInput
-  ): Record<string, unknown> {
-    return {
-      props: unflattenAttributes(event.properties),
-    };
+  private createEventToTaskEventV1InputAttributes(attributes: Attributes): Record<string, unknown> {
+    const publicAttributes = removePrivateProperties(attributes);
+
+    if (!publicAttributes) {
+      return {};
+    }
+
+    const unflattenedAttributes = unflattenAttributes(publicAttributes);
+
+    if (unflattenedAttributes && typeof unflattenedAttributes === "object") {
+      return {
+        ...unflattenedAttributes,
+      };
+    }
+
+    return {};
   }
 
   private createEventToTaskEventV1InputMetadata(event: CreateEventInput): string {
     return JSON.stringify({
       style: event.style ? unflattenAttributes(event.style) : undefined,
       attemptNumber: event.attemptNumber,
+      entity: this.extractEntityFromAttributes(event.properties),
     });
+  }
+
+  private extractEntityFromAttributes(
+    attributes: Attributes
+  ): { entityType: string; entityId?: string } | undefined {
+    if (!attributes || typeof attributes !== "object") {
+      return undefined;
+    }
+
+    const entityType = attributes[SemanticInternalAttributes.ENTITY_TYPE];
+    const entityId = attributes[SemanticInternalAttributes.ENTITY_ID];
+
+    if (typeof entityType !== "string") {
+      return undefined;
+    }
+
+    return { entityType, entityId: entityId as string | undefined };
   }
 
   private addToBatch(events: TaskEventV1Input[] | TaskEventV1Input) {
@@ -395,7 +438,7 @@ export class ClickhouseEventRepository implements IEventRepository {
       kind,
       status: "OK",
       attributes: options.attributes.properties
-        ? { props: unflattenAttributes(options.attributes.properties) }
+        ? this.createEventToTaskEventV1InputAttributes(options.attributes.properties)
         : undefined,
       metadata: JSON.stringify(metadata),
       // TODO: make sure configurable and by org
@@ -496,7 +539,7 @@ export class ClickhouseEventRepository implements IEventRepository {
       kind: "SPAN",
       status: failedWithError ? "ERROR" : options.incomplete ? "PARTIAL" : "OK",
       attributes: options.attributes.properties
-        ? { props: unflattenAttributes(options.attributes.properties) }
+        ? this.createEventToTaskEventV1InputAttributes(options.attributes.properties)
         : {},
       metadata: JSON.stringify(metadata),
       // TODO: make sure configurable and by org
@@ -914,8 +957,10 @@ export class ClickhouseEventRepository implements IEventRepository {
       return;
     }
 
+    const overridesBySpanId: Record<string, SpanOverride> = {};
+
     const finalSpans = spans.map((span) => {
-      return this.#applyAncestorOverrides(span, spanSummaries);
+      return this.#applyAncestorOverrides(span, spanSummaries, overridesBySpanId);
     });
 
     logger.info("ClickhouseEventRepository.getTraceSummary result", {
@@ -926,10 +971,167 @@ export class ClickhouseEventRepository implements IEventRepository {
     return {
       rootSpan,
       spans: finalSpans,
+      overridesBySpanId,
     };
   }
 
-  #applyAncestorOverrides(span: SpanSummary, spansById: Map<string, SpanSummary>): SpanSummary {
+  async getSpan(
+    storeTable: TaskEventStoreTable,
+    environmentId: string,
+    spanId: string,
+    traceId: string,
+    startCreatedAt: Date,
+    endCreatedAt?: Date,
+    options?: { includeDebugLogs?: boolean }
+  ): Promise<SpanDetail | undefined> {
+    const startCreatedAtWithBuffer = new Date(startCreatedAt.getTime() - 1000);
+
+    const queryBuilder = this._clickhouse.taskEvents.spanDetailsQueryBuilder();
+
+    queryBuilder.where("environment_id = {environmentId: String}", { environmentId });
+    queryBuilder.where("trace_id = {traceId: String}", { traceId });
+    queryBuilder.where("span_id = {spanId: String}", { spanId });
+    queryBuilder.where("start_time >= {startCreatedAt: String}", {
+      startCreatedAt: convertDateToNanoseconds(startCreatedAtWithBuffer).toString(),
+    });
+
+    if (endCreatedAt) {
+      queryBuilder.where("start_time <= {endCreatedAt: String}", {
+        endCreatedAt: convertDateToNanoseconds(endCreatedAt).toString(),
+      });
+    }
+
+    queryBuilder.orderBy("start_time ASC");
+
+    const { query, params } = queryBuilder.build();
+
+    logger.debug("ClickhouseEventRepository.getSpan query", {
+      query,
+      params,
+    });
+
+    const [queryError, records] = await queryBuilder.execute();
+
+    if (queryError) {
+      throw queryError;
+    }
+
+    if (!records) {
+      return;
+    }
+
+    const span = this.#mergeRecordsIntoSpanDetail(spanId, records);
+
+    logger.info("ClickhouseEventRepository.getSpan", {
+      span,
+    });
+
+    return span;
+  }
+
+  #mergeRecordsIntoSpanDetail(
+    spanId: string,
+    records: TaskEventDetailsV1Result[]
+  ): SpanDetail | undefined {
+    if (records.length === 0) {
+      return undefined;
+    }
+
+    let span: SpanDetail | undefined;
+
+    for (const record of records) {
+      if (!span) {
+        span = {
+          spanId: spanId,
+          parentId: record.parent_span_id ? record.parent_span_id : null,
+          message: record.message,
+          isError: false,
+          isPartial: true, // Partial by default, can only be set to false
+          isCancelled: false,
+          level: kindToLevel(record.kind),
+          startTime: convertClickhouseDateTime64ToJsDate(record.start_time),
+          duration: typeof record.duration === "number" ? record.duration : Number(record.duration),
+          events: [],
+          style: {},
+          properties: undefined,
+          entity: {
+            type: undefined,
+            id: undefined,
+          },
+          metadata: {},
+        };
+      }
+
+      if (isLogEvent(record.kind)) {
+        span.isPartial = false;
+        span.isCancelled = false;
+        span.isError = record.status === "ERROR";
+      }
+
+      const parsedMetadata = this.#parseMetadata(record.metadata);
+
+      if (record.kind === "SPAN_EVENT") {
+        // We need to add an event to the span
+        span.events.push({
+          name: record.message,
+          time: convertClickhouseDateTime64ToJsDate(record.start_time),
+          properties: parsedMetadata ?? {},
+        });
+      }
+
+      if (parsedMetadata && "style" in parsedMetadata && parsedMetadata.style) {
+        span.style = parsedMetadata.style as TaskEventStyle;
+      }
+
+      if (
+        parsedMetadata &&
+        "entity" in parsedMetadata &&
+        typeof parsedMetadata.entity === "object" &&
+        parsedMetadata.entity
+      ) {
+        span.entity = parsedMetadata.entity as { type: string | undefined; id: string | undefined };
+      }
+
+      if (record.kind === "SPAN") {
+        if (record.status === "ERROR") {
+          span.isError = true;
+          span.isPartial = false;
+          span.isCancelled = false;
+        } else if (record.status === "CANCELLED") {
+          span.isCancelled = true;
+          span.isPartial = false;
+          span.isError = false;
+        } else if (record.status === "OK") {
+          span.isPartial = false;
+        }
+
+        if (record.status !== "PARTIAL") {
+          span.duration =
+            typeof record.duration === "number" ? record.duration : Number(record.duration);
+        } else {
+          span.startTime = convertClickhouseDateTime64ToJsDate(record.start_time);
+          span.message = record.message;
+        }
+      }
+
+      if (
+        !span.properties &&
+        record.attributes &&
+        typeof record.attributes === "object" &&
+        !isEmptyObject(record.attributes)
+      ) {
+        span.properties = record.attributes as Record<string, unknown>;
+      }
+    }
+
+    return span;
+  }
+
+  #applyAncestorOverrides(
+    span: SpanSummary,
+    spansById: Map<string, SpanSummary>,
+    overridesBySpanId: Record<string, SpanOverride>
+  ): SpanSummary {
     if (span.data.level !== "TRACE") {
       return span;
     }
@@ -963,19 +1165,34 @@ export class ClickhouseEventRepository implements IEventRepository {
     }
 
     if (overrideSpan) {
-      return this.#applyAncestorToSpan(span, overrideSpan);
+      return this.#applyAncestorToSpan(span, overrideSpan, overridesBySpanId);
     }
 
     return span;
   }
 
-  #applyAncestorToSpan(span: SpanSummary, overrideSpan: SpanSummary): SpanSummary {
+  #applyAncestorToSpan(
+    span: SpanSummary,
+    overrideSpan: SpanSummary,
+    overridesBySpanId: Record<string, SpanOverride>
+  ): SpanSummary {
+    if (overridesBySpanId[span.id]) {
+      return span;
+    }
+
+    let override: SpanOverride | undefined = undefined;
+
     const overrideEndTime = calculateEndTimeFromStartTime(
       overrideSpan.data.startTime,
       overrideSpan.data.duration
     );
 
     if (overrideSpan.data.isCancelled) {
+      override = {
+        isCancelled: true,
+        duration: calculateDurationFromStartJsDate(span.data.startTime, overrideEndTime),
+      };
+
       span.data.isCancelled = true;
       span.data.isPartial = false;
       span.data.isError = false;
@@ -987,6 +1204,7 @@ export class ClickhouseEventRepository implements IEventRepository {
 
       if (cancellationEvent) {
         span.data.events.push(cancellationEvent);
+        override.events = [cancellationEvent];
       }
     }
 
@@ -999,19 +1217,31 @@ export class ClickhouseEventRepository implements IEventRepository {
       ) as AttemptFailedSpanEvent | undefined;
 
       if (attemptFailedEvent) {
-        span.data.isError = true;
-        span.data.isPartial = false;
-        span.data.isCancelled = false;
-        span.data.duration = calculateDurationFromStartJsDate(span.data.startTime, overrideEndTime);
-        span.data.events.push({
+        const exceptionEvent = {
           name: "exception",
           time: attemptFailedEvent.time,
           properties: {
             exception: attemptFailedEvent.properties.exception,
           },
-        } satisfies ExceptionSpanEvent);
+        } satisfies ExceptionSpanEvent;
+
+        span.data.isError = true;
+        span.data.isPartial = false;
+        span.data.isCancelled = false;
+        span.data.duration = calculateDurationFromStartJsDate(span.data.startTime, overrideEndTime);
+        span.data.events.push(exceptionEvent);
         span.data.events.push(attemptFailedEvent);
+
+        override = {
+          isError: true,
+          events: [exceptionEvent],
+          duration: calculateDurationFromStartJsDate(span.data.startTime, overrideEndTime),
+        };
       }
+    }
+
+    if (override) {
+      overridesBySpanId[span.id] = override;
     }
 
     return span;
@@ -1137,18 +1367,6 @@ export class ClickhouseEventRepository implements IEventRepository {
     endCreatedAt?: Date
   ): Promise<RunPreparedEvent[]> {
     throw new Error("ClickhouseEventRepository.getRunEvents not implemented");
-  }
-
-  async getSpan(
-    storeTable: TaskEventStoreTable,
-    environmentId: string,
-    spanId: string,
-    traceId: string,
-    startCreatedAt: Date,
-    endCreatedAt?: Date,
-    options?: { includeDebugLogs?: boolean }
-  ): Promise<SpanDetail | undefined> {
-    throw new Error("ClickhouseEventRepository.getSpan not implemented");
   }
 
   async getSpanOriginalRunId(

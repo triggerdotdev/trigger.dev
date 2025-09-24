@@ -196,7 +196,6 @@ export type SpanDetail = {
   isPartial: boolean; // In-progress status display, timeline calculations
   isCancelled: boolean; // Cancelled status display, status determination
   level: TaskEventLevel; // Text styling, timeline rendering decisions
-  kind: TaskEventKind; // Filter "UNSPECIFIED" events, determine debug status
 
   // ============================================================================
   // Timing
@@ -220,10 +219,6 @@ export type SpanDetail = {
     id: string | undefined;
   };
 
-  // ============================================================================
-  // Additional Properties (Used by SpanPresenter)
-  // ============================================================================
-  originalRun: string | undefined; // Used by SpanPresenter for run lookup
   metadata: any; // Used by SpanPresenter for entity processing
 };
 
@@ -250,7 +245,18 @@ export type SpanSummary = {
   };
 };
 
-export type TraceSummary = { rootSpan: SpanSummary; spans: Array<SpanSummary> };
+export type SpanOverride = {
+  isCancelled?: boolean;
+  isError?: boolean;
+  duration?: number;
+  events?: SpanEvents;
+};
+
+export type TraceSummary = {
+  rootSpan: SpanSummary;
+  spans: Array<SpanSummary>;
+  overridesBySpanId?: Record<string, SpanOverride>;
+};
 
 export type SpanDetailedSummary = {
   id: string;

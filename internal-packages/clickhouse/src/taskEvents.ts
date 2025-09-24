@@ -66,3 +66,27 @@ export function getTraceSummaryQueryBuilder(ch: ClickhouseReader, settings?: Cli
     settings,
   });
 }
+
+export const TaskEventDetailsV1Result = z.object({
+  span_id: z.string(),
+  parent_span_id: z.string(),
+  start_time: z.string(),
+  duration: z.number().or(z.string()),
+  status: z.string(),
+  kind: z.string(),
+  metadata: z.string(),
+  message: z.string(),
+  attributes: z.unknown(),
+});
+
+export type TaskEventDetailsV1Result = z.input<typeof TaskEventDetailsV1Result>;
+
+export function getSpanDetailsQueryBuilder(ch: ClickhouseReader, settings?: ClickHouseSettings) {
+  return ch.queryBuilder({
+    name: "getSpanDetails",
+    baseQuery:
+      "SELECT span_id, parent_span_id, start_time, duration, status, kind, metadata, message, attributes FROM trigger_dev.task_events_v1",
+    schema: TaskEventDetailsV1Result,
+    settings,
+  });
+}

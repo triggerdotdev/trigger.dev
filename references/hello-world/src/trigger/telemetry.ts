@@ -4,7 +4,7 @@ import { setTimeout } from "timers/promises";
 export const simpleSuccessTask = task({
   id: "otel/simple-success-task",
   run: async (payload: any, { ctx }) => {
-    logger.log("Hello log 1");
+    logger.log("Hello log 1", { ctx });
     logger.info("Hello info 1");
     logger.warn("Hello warn 1");
     logger.error("Hello error 1");
