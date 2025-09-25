@@ -1,5 +1,9 @@
-import { prisma } from "~/db.server";
+import { type Prisma, prisma } from "~/db.server";
 import { createEnvironment } from "./organization.server";
+import { customAlphabet } from "nanoid";
+
+const tokenValueLength = 40;
+const tokenGenerator = customAlphabet("123456789abcdefghijkmnopqrstuvwxyz", tokenValueLength);
 
 export async function getTeamMembersAndInvites({
   userId,
@@ -95,13 +99,19 @@ export async function inviteMembers({
     throw new Error("User does not have access to this organization");
   }
 
-  const created = await prisma.orgMemberInvite.createMany({
-    data: emails.map((email) => ({
-      email,
-      organizationId: org.id,
-      inviterId: userId,
-      role: "MEMBER",
-    })),
+  const invites = emails.map(
+    (email) =>
+      ({
+        email,
+        token: tokenGenerator(),
+        organizationId: org.id,
+        inviterId: userId,
+        role: "MEMBER",
+      } satisfies Prisma.OrgMemberInviteCreateManyInput)
+  );
+
+  await prisma.orgMemberInvite.createMany({
+    data: invites,
     skipDuplicates: true,
   });
 
