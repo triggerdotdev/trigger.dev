@@ -39,7 +39,7 @@ export function configureWorkersListCommand(program: Command) {
       )
       .action(async (path, options) => {
         await handleTelemetry(async () => {
-          await printStandloneInitialBanner(true);
+          await printStandloneInitialBanner(true, options.profile);
           await workersListCommand(path, options);
         });
       })

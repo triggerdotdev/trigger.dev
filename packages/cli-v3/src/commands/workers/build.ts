@@ -121,7 +121,7 @@ export function configureWorkersBuildCommand(program: Command) {
     .option("--save-logs", "If provided, will save logs even for successful builds")
     .action(async (path, options) => {
       await handleTelemetry(async () => {
-        await printStandloneInitialBanner(true);
+        await printStandloneInitialBanner(true, options.profile);
         await workersBuildCommand(path, options);
       });
     });
