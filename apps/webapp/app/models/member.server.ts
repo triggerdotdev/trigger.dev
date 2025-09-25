@@ -99,7 +99,7 @@ export async function inviteMembers({
     throw new Error("User does not have access to this organization");
   }
 
-  const invites = emails.map(
+  const invites = [...new Set(emails)].map(
     (email) =>
       ({
         email,
@@ -112,7 +112,6 @@ export async function inviteMembers({
 
   await prisma.orgMemberInvite.createMany({
     data: invites,
-    skipDuplicates: true,
   });
 
   return await prisma.orgMemberInvite.findMany({
