@@ -2,8 +2,9 @@ import { BuildManifest, BuildTarget } from "@trigger.dev/core/v3";
 import { binaryForRuntime, BuildContext, BuildExtension } from "@trigger.dev/core/v3/build";
 import assert from "node:assert";
 import { existsSync } from "node:fs";
-import { cp, readdir } from "node:fs/promises";
+import { cp, readdir, readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
+import { readPackageJSON, resolvePackageJSON } from "pkg-types";
 
 export type PrismaExtensionOptions = {
   schema: string;
@@ -102,12 +103,60 @@ export class PrismaExtension implements BuildExtension {
       (external) => external.name === "@prisma/client"
     );
 
-    const version = prismaExternal?.version ?? this.options.version;
+    let version = prismaExternal?.version ?? this.options.version;
 
+    // If still no version, try to read from installed node_modules
     if (!version) {
-      throw new Error(
-        `PrismaExtension could not determine the version of @prisma/client. It's possible that the @prisma/client was not used in the project. If this isn't the case, please provide a version in the PrismaExtension options.`
-      );
+      // First, try to read the actual installed @prisma/client version
+      const installedPrismaPath = join(context.workingDir, "node_modules", "@prisma", "client", "package.json");
+      if (existsSync(installedPrismaPath)) {
+        try {
+          const installedPkg = await readPackageJSON(installedPrismaPath);
+          if (installedPkg?.version) {
+            version = installedPkg.version;
+            context.logger.debug(
+              `PrismaExtension resolved version from node_modules: ${version}`
+            );
+          }
+        } catch (e) {
+          context.logger.debug("Failed to read @prisma/client from node_modules", { error: e });
+        }
+      }
+
+      // If still no version, check for catalog/workspace references and provide helpful error
+      if (!version) {
+        const packageJsonPath = await resolvePackageJSON(context.workingDir);
+        let errorDetail = "";
+
+        if (packageJsonPath) {
+          const pkg = await readPackageJSON(packageJsonPath);
+          const versionSpec = pkg.dependencies?.["@prisma/client"] ||
+                             pkg.devDependencies?.["@prisma/client"];
+
+          if (versionSpec?.startsWith("catalog:")) {
+            errorDetail = `Found pnpm catalog reference "${versionSpec}". `;
+          } else if (versionSpec?.startsWith("workspace:")) {
+            // Handle workspace: protocol - strip prefix and use the version if it's explicit
+            const stripped = versionSpec.replace("workspace:", "").trim();
+            if (stripped && stripped !== "*" && stripped !== "^" && stripped !== "~") {
+              version = stripped;
+              context.logger.debug(
+                `PrismaExtension resolved version from workspace protocol: ${version}`
+              );
+            } else {
+              errorDetail = `Found workspace reference "${versionSpec}". `;
+            }
+          }
+        }
+
+        if (!version) {
+          throw new Error(
+            `PrismaExtension could not determine the version of @prisma/client. ${errorDetail}` +
+            `When using pnpm catalogs or workspace protocols, please provide an explicit version in the PrismaExtension options: ` +
+            `prismaExtension({ version: "6.14.0", ... })`
+          );
+        }
+      }
     }
 
     context.logger.debug(`PrismaExtension is generating the Prisma client for version ${version}`);
