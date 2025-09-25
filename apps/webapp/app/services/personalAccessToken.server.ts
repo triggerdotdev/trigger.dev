@@ -80,7 +80,7 @@ export async function getPersonalAccessTokenFromAuthorizationCode(authorizationC
 }
 
 export async function revokePersonalAccessToken(tokenId: string, userId: string) {
-  await prisma.personalAccessToken.update({
+  const result = await prisma.personalAccessToken.updateMany({
     where: {
       id: tokenId,
       userId,
@@ -89,6 +89,10 @@ export async function revokePersonalAccessToken(tokenId: string, userId: string)
       revokedAt: new Date(),
     },
   });
+
+  if (result.count === 0) {
+    throw new Error("PAT not found or already revoked");
+  }
 }
 
 export type PersonalAccessTokenAuthenticationResult = {
