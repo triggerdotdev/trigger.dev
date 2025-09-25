@@ -1476,6 +1476,8 @@ export class RunAttemptSystem {
     return startSpan(this.$.tracer, "permanentlyFailRun", async (span) => {
       const status = runStatusFromError(error, latestSnapshot.environmentType);
 
+      const truncatedError = this.#truncateTaskRunError(error);
+
       //run permanently failed
       const run = await prisma.taskRun.update({
         where: {
@@ -1484,7 +1486,7 @@ export class RunAttemptSystem {
         data: {
           status,
           completedAt: failedAt,
-          error,
+          error: truncatedError,
         },
         select: {
           id: true,
@@ -1546,7 +1548,7 @@ export class RunAttemptSystem {
 
       await this.waitpointSystem.completeWaitpoint({
         id: run.associatedWaitpoint.id,
-        output: { value: JSON.stringify(error), isError: true },
+        output: { value: JSON.stringify(truncatedError), isError: true },
       });
 
       this.$.eventBus.emit("runFailed", {
@@ -1892,6 +1894,19 @@ export class RunAttemptSystem {
       });
     }
   }
+
+  #truncateTaskRunError(error: TaskRunError): TaskRunError {
+    if (error.type !== "BUILT_IN_ERROR") {
+      return error;
+    }
+
+    return {
+      type: "BUILT_IN_ERROR",
+      name: truncateString(error.name, 1024),
+      message: truncateString(error.message, 1024 * 16), // 16kb
+      stackTrace: truncateString(error.stackTrace, 1024 * 16), // 16kb
+    };
+  }
 }
 
 export function safeParseGitMeta(git: unknown): GitMeta | undefined {
@@ -1900,4 +1915,12 @@ export function safeParseGitMeta(git: unknown): GitMeta | undefined {
     return parsed.data;
   }
   return undefined;
+}
+
+function truncateString(str: string | undefined, maxLength: number): string {
+  if (!str) {
+    return "";
+  }
+
+  return str.slice(0, maxLength);
 }
