@@ -47,7 +47,7 @@ export const meta: MetaFunction = () => {
 };
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
-  await requireUserId(request);
+  const userId = await requireUserId(request);
   const { organizationSlug } = OrganizationParamsSchema.parse(params);
 
   const { isManagedCloud } = featuresForRequest(request);
@@ -55,8 +55,8 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     return redirect(organizationPath({ slug: organizationSlug }));
   }
 
-  const organization = await prisma.organization.findUnique({
-    where: { slug: organizationSlug },
+  const organization = await prisma.organization.findFirst({
+    where: { slug: organizationSlug, members: { some: { userId } } },
   });
 
   if (!organization) {
