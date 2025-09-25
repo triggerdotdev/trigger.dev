@@ -120,17 +120,10 @@ export async function inviteMembers({
   });
 }
 
-export async function getInviteFromToken({ token, userId }: { token: string; userId: string }) {
+export async function getInviteFromToken({ token }: { token: string }) {
   return await prisma.orgMemberInvite.findFirst({
     where: {
       token,
-      organization: {
-        members: {
-          some: {
-            userId,
-          },
-        },
-      },
     },
     include: {
       organization: true,
@@ -154,19 +147,19 @@ export async function getUsersInvites({ email }: { email: string }) {
   });
 }
 
-export async function acceptInvite({ userId, inviteId }: { userId: string; inviteId: string }) {
+export async function acceptInvite({
+  user,
+  inviteId,
+}: {
+  user: { id: string; email: string };
+  inviteId: string;
+}) {
   return await prisma.$transaction(async (tx) => {
     // 1. Delete the invite and get the invite details
     const invite = await tx.orgMemberInvite.delete({
       where: {
         id: inviteId,
-        organization: {
-          members: {
-            some: {
-              userId,
-            },
-          },
-        },
+        email: user.email,
       },
       include: {
         organization: {
@@ -181,7 +174,7 @@ export async function acceptInvite({ userId, inviteId }: { userId: string; invit
     const member = await tx.orgMember.create({
       data: {
         organizationId: invite.organizationId,
-        userId,
+        userId: user.id,
         role: invite.role,
       },
     });
@@ -201,14 +194,7 @@ export async function acceptInvite({ userId, inviteId }: { userId: string; invit
     // 4. Check for other invites
     const remainingInvites = await tx.orgMemberInvite.findMany({
       where: {
-        email: invite.email,
-        organization: {
-          members: {
-            some: {
-              userId,
-            },
-          },
-        },
+        email: user.email,
       },
     });
 
@@ -216,42 +202,29 @@ export async function acceptInvite({ userId, inviteId }: { userId: string; invit
   });
 }
 
-export async function declineInvite({ userId, inviteId }: { userId: string; inviteId: string }) {
+export async function declineInvite({
+  user,
+  inviteId,
+}: {
+  user: { id: string; email: string };
+  inviteId: string;
+}) {
   return await prisma.$transaction(async (tx) => {
     //1. delete invite
     const declinedInvite = await prisma.orgMemberInvite.delete({
       where: {
         id: inviteId,
-        organization: {
-          members: {
-            some: {
-              userId,
-            },
-          },
-        },
+        email: user.email,
       },
       include: {
         organization: true,
       },
     });
 
-    //2. get email
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { email: true },
-    });
-
-    //3. check for other invites
+    //2. check for other invites
     const remainingInvites = await prisma.orgMemberInvite.findMany({
       where: {
-        email: user!.email,
-        organization: {
-          members: {
-            some: {
-              userId,
-            },
-          },
-        },
+        email: user.email,
       },
     });
 
@@ -284,7 +257,7 @@ export async function revokeInvite({
   orgSlug: string;
   inviteId: string;
 }) {
-  const invite = await prisma.orgMemberInvite.delete({
+  const invite = await prisma.orgMemberInvite.findFirst({
     where: {
       id: inviteId,
       organization: {
@@ -297,6 +270,7 @@ export async function revokeInvite({
       },
     },
     select: {
+      id: true,
       email: true,
       organization: true,
     },
@@ -305,6 +279,12 @@ export async function revokeInvite({
   if (!invite) {
     throw new Error("Invite not found");
   }
+
+  await prisma.orgMemberInvite.delete({
+    where: {
+      id: invite.id,
+    },
+  });
 
   return { email: invite.email, organization: invite.organization };
 }

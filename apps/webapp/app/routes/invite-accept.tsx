@@ -24,7 +24,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     });
   }
 
-  const invite = await getInviteFromToken({ token, userId: user.id });
+  const invite = await getInviteFromToken({ token });
   if (!invite) {
     return redirectWithErrorMessage(
       "/",
