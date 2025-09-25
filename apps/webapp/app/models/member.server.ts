@@ -120,10 +120,17 @@ export async function inviteMembers({
   });
 }
 
-export async function getInviteFromToken({ token }: { token: string }) {
+export async function getInviteFromToken({ token, userId }: { token: string; userId: string }) {
   return await prisma.orgMemberInvite.findFirst({
     where: {
       token,
+      organization: {
+        members: {
+          some: {
+            userId,
+          },
+        },
+      },
     },
     include: {
       organization: true,
@@ -153,6 +160,13 @@ export async function acceptInvite({ userId, inviteId }: { userId: string; invit
     const invite = await tx.orgMemberInvite.delete({
       where: {
         id: inviteId,
+        organization: {
+          members: {
+            some: {
+              userId,
+            },
+          },
+        },
       },
       include: {
         organization: {
@@ -188,6 +202,13 @@ export async function acceptInvite({ userId, inviteId }: { userId: string; invit
     const remainingInvites = await tx.orgMemberInvite.findMany({
       where: {
         email: invite.email,
+        organization: {
+          members: {
+            some: {
+              userId,
+            },
+          },
+        },
       },
     });
 
@@ -201,6 +222,13 @@ export async function declineInvite({ userId, inviteId }: { userId: string; invi
     const declinedInvite = await prisma.orgMemberInvite.delete({
       where: {
         id: inviteId,
+        organization: {
+          members: {
+            some: {
+              userId,
+            },
+          },
+        },
       },
       include: {
         organization: true,
@@ -217,6 +245,13 @@ export async function declineInvite({ userId, inviteId }: { userId: string; invi
     const remainingInvites = await prisma.orgMemberInvite.findMany({
       where: {
         email: user!.email,
+        organization: {
+          members: {
+            some: {
+              userId,
+            },
+          },
+        },
       },
     });
 
@@ -224,10 +259,11 @@ export async function declineInvite({ userId, inviteId }: { userId: string; invi
   });
 }
 
-export async function resendInvite({ inviteId }: { inviteId: string }) {
+export async function resendInvite({ inviteId, userId }: { inviteId: string; userId: string }) {
   return await prisma.orgMemberInvite.update({
     where: {
       id: inviteId,
+      inviterId: userId,
     },
     data: {
       updatedAt: new Date(),
@@ -241,24 +277,24 @@ export async function resendInvite({ inviteId }: { inviteId: string }) {
 
 export async function revokeInvite({
   userId,
-  slug,
+  orgSlug,
   inviteId,
 }: {
   userId: string;
-  slug: string;
+  orgSlug: string;
   inviteId: string;
 }) {
-  const org = await prisma.organization.findFirst({
-    where: { slug, members: { some: { userId } } },
-  });
-
-  if (!org) {
-    throw new Error("User does not have access to this organization");
-  }
   const invite = await prisma.orgMemberInvite.delete({
     where: {
       id: inviteId,
-      organizationId: org.id,
+      organization: {
+        slug: orgSlug,
+        members: {
+          some: {
+            userId,
+          },
+        },
+      },
     },
     select: {
       email: true,
