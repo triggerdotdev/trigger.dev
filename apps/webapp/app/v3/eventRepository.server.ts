@@ -1004,6 +1004,7 @@ export class EventRepository {
       const span = await this.#createSpanFromEvent(
         storeTable,
         preparedEvent,
+        environmentId,
         startCreatedAt,
         endCreatedAt
       );
@@ -1089,6 +1090,7 @@ export class EventRepository {
   async #createSpanFromEvent(
     storeTable: TaskEventStoreTable,
     event: PreparedEvent,
+    environmentId: string,
     startCreatedAt: Date,
     endCreatedAt?: Date
   ) {
@@ -1099,6 +1101,7 @@ export class EventRepository {
         await this.#walkSpanAncestors(
           storeTable,
           event,
+          environmentId,
           startCreatedAt,
           endCreatedAt,
           (ancestorEvent, level) => {
@@ -1193,6 +1196,7 @@ export class EventRepository {
   async #walkSpanAncestors(
     storeTable: TaskEventStoreTable,
     event: PreparedEvent,
+    environmentId: string,
     startCreatedAt: Date,
     endCreatedAt: Date | undefined,
     callback: (event: PreparedEvent, level: number) => { stop: boolean }
@@ -1206,6 +1210,7 @@ export class EventRepository {
       let parentEvent = await this.#getSpanEvent({
         storeTable,
         spanId: parentId,
+        environmentId,
         startCreatedAt,
         endCreatedAt,
       });
@@ -1227,6 +1232,7 @@ export class EventRepository {
         parentEvent = await this.#getSpanEvent({
           storeTable,
           spanId: preparedParentEvent.parentId,
+          environmentId,
           startCreatedAt,
           endCreatedAt,
         });
@@ -1246,7 +1252,7 @@ export class EventRepository {
   }: {
     storeTable: TaskEventStoreTable;
     spanId: string;
-    environmentId?: string;
+    environmentId: string;
     startCreatedAt: Date;
     endCreatedAt?: Date;
     options?: { includeDebugLogs?: boolean };
@@ -1254,7 +1260,7 @@ export class EventRepository {
     return await startActiveSpan("getSpanEvent", async (s) => {
       const events = await this.taskEventStore.findMany(
         storeTable,
-        { spanId, ...(environmentId ? { environmentId } : {}) },
+        { spanId, environmentId },
         startCreatedAt,
         endCreatedAt,
         undefined,

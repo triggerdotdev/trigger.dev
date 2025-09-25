@@ -19,6 +19,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       project: {
         slug: projectParam,
         organization: {
+          slug: organizationSlug,
           members: {
             some: {
               userId,
