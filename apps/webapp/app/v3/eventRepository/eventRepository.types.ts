@@ -226,6 +226,23 @@ export type SpanDetail = {
 // Span and Link Types
 // ============================================================================
 
+export type SpanSummaryCommon = {
+  id: string;
+  parentId: string | undefined;
+  runId: string;
+  data: {
+    message: string;
+    events: SpanEvents;
+    startTime: Date;
+    duration: number;
+    isError: boolean;
+    isPartial: boolean;
+    isCancelled: boolean;
+    level: NonNullable<CreateEventInput["level"]>;
+    attemptNumber?: number;
+  };
+};
+
 export type SpanSummary = {
   id: string;
   parentId: string | undefined;
@@ -261,9 +278,9 @@ export type TraceSummary = {
 export type SpanDetailedSummary = {
   id: string;
   parentId: string | undefined;
-  message: string;
+  runId: string;
   data: {
-    runId: string;
+    message: string;
     taskSlug?: string;
     events: SpanEvents;
     startTime: Date;
@@ -272,6 +289,7 @@ export type SpanDetailedSummary = {
     isPartial: boolean;
     isCancelled: boolean;
     level: NonNullable<CreateEventInput["level"]>;
+    attemptNumber?: number;
     properties?: Attributes;
   };
   children: Array<SpanDetailedSummary>;

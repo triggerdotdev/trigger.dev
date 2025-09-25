@@ -638,9 +638,9 @@ export class EventRepository implements IEventRepository {
         const spanDetailedSummary: SpanDetailedSummary = {
           id: event.spanId,
           parentId: event.parentId ?? undefined,
-          message: event.message,
+          runId: event.runId,
           data: {
-            runId: event.runId,
+            message: event.message,
             taskSlug: event.taskSlug ?? undefined,
             events: events?.filter((e) => !e.name.startsWith("trigger.dev")),
             startTime: getDateFromNanoseconds(event.startTime),
