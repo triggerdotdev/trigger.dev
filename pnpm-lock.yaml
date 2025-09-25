@@ -1129,6 +1129,9 @@ importers:
       nanoid:
         specifier: 3.3.8
         version: 3.3.8
+      p-map:
+        specifier: ^6.0.0
+        version: 6.0.0
       redlock:
         specifier: 5.0.0-beta.2
         version: 5.0.0-beta.2(patch_hash=rwyegdki7iserrd7fgjwxkhnlu)

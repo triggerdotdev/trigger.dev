@@ -150,3 +150,11 @@ export type TriggerParams = {
 };
 
 export type EngineWorker = Worker<typeof workerCatalog>;
+
+export type ReportableQueue = {
+  name: string;
+  concurrencyLimit: number | null;
+  type: string;
+  paused: boolean;
+  friendlyId: string;
+};

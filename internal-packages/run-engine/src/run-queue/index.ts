@@ -355,12 +355,43 @@ export class RunQueue {
     return Math.floor(limit * burstFactor);
   }
 
+  public async getEnvConcurrencyBurstFactor(env: MinimalAuthenticatedEnvironment) {
+    const result = await this.redis.get(this.keys.envConcurrencyLimitBurstFactorKey(env));
+
+    const burstFactor = result
+      ? Number(result)
+      : this.options.defaultEnvConcurrencyBurstFactor ?? 1;
+
+    return burstFactor;
+  }
+
+  public async getCurrentConcurrencyOfEnvironment(env: MinimalAuthenticatedEnvironment) {
+    return this.redis.smembers(this.keys.envCurrentConcurrencyKey(env));
+  }
+
+  public async getCurrentConcurrencyOfQueue(env: MinimalAuthenticatedEnvironment, queue: string) {
+    return this.redis.smembers(this.keys.queueCurrentConcurrencyKey(env, queue));
+  }
+
   public async lengthOfQueue(
     env: MinimalAuthenticatedEnvironment,
     queue: string,
     concurrencyKey?: string
   ) {
     return this.redis.zcard(this.keys.queueKey(env, queue, concurrencyKey));
+  }
+
+  public async lengthOfQueueAvailableMessages(
+    env: MinimalAuthenticatedEnvironment,
+    queue: string,
+    currentTime: Date = new Date(),
+    concurrencyKey?: string
+  ) {
+    return this.redis.zcount(
+      this.keys.queueKey(env, queue, concurrencyKey),
+      "-inf",
+      String(currentTime.getTime())
+    );
   }
 
   public async lengthOfEnvQueue(env: MinimalAuthenticatedEnvironment) {
@@ -417,6 +448,14 @@ export class RunQueue {
     concurrencyKey?: string
   ) {
     return this.redis.scard(this.keys.queueCurrentConcurrencyKey(env, queue, concurrencyKey));
+  }
+
+  public async currentDequeuedOfQueue(
+    env: MinimalAuthenticatedEnvironment,
+    queue: string,
+    concurrencyKey?: string
+  ) {
+    return this.redis.scard(this.keys.queueCurrentDequeuedKey(env, queue, concurrencyKey));
   }
 
   public async currentConcurrencyOfQueues(
@@ -500,6 +539,15 @@ export class RunQueue {
     // The currentDequeuedKey is incremented when a message is dequeued from the worker queue,
     // wherease the currentConcurrencyKey is incremented when a message is dequeued from the message queue and put into the worker queue
     return this.redis.scard(this.keys.envCurrentDequeuedKey(env));
+  }
+
+  /**
+   * Get the operational current concurrency of the environment
+   * @param env - The environment to get the current concurrency of
+   * @returns The current concurrency of the environment
+   */
+  public async operationalCurrentConcurrencyOfEnvironment(env: MinimalAuthenticatedEnvironment) {
+    return this.redis.scard(this.keys.envCurrentConcurrencyKey(env));
   }
 
   public async messageExists(orgId: string, messageId: string) {
