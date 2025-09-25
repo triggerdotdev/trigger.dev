@@ -40,6 +40,7 @@ import {
   OutputPayload,
   OutputPayloadV2,
   RunQueueKeyProducer,
+  RunQueueKeyProducerEnvironment,
   RunQueueSelectionStrategy,
 } from "./types.js";
 import { WorkerQueueResolver } from "./workerQueueResolver.js";
@@ -355,12 +356,43 @@ export class RunQueue {
     return Math.floor(limit * burstFactor);
   }
 
+  public async getEnvConcurrencyBurstFactor(env: MinimalAuthenticatedEnvironment) {
+    const result = await this.redis.get(this.keys.envConcurrencyLimitBurstFactorKey(env));
+
+    const burstFactor = result
+      ? Number(result)
+      : this.options.defaultEnvConcurrencyBurstFactor ?? 1;
+
+    return burstFactor;
+  }
+
+  public async getCurrentConcurrencyOfEnvironment(env: MinimalAuthenticatedEnvironment) {
+    return this.redis.smembers(this.keys.envCurrentConcurrencyKey(env));
+  }
+
+  public async getCurrentConcurrencyOfQueue(env: MinimalAuthenticatedEnvironment, queue: string) {
+    return this.redis.smembers(this.keys.queueCurrentConcurrencyKey(env, queue));
+  }
+
   public async lengthOfQueue(
     env: MinimalAuthenticatedEnvironment,
     queue: string,
     concurrencyKey?: string
   ) {
     return this.redis.zcard(this.keys.queueKey(env, queue, concurrencyKey));
+  }
+
+  public async lengthOfQueueAvailableMessages(
+    env: MinimalAuthenticatedEnvironment,
+    queue: string,
+    currentTime: Date = new Date(),
+    concurrencyKey?: string
+  ) {
+    return this.redis.zcount(
+      this.keys.queueKey(env, queue, concurrencyKey),
+      "-inf",
+      String(currentTime.getTime())
+    );
   }
 
   public async lengthOfEnvQueue(env: MinimalAuthenticatedEnvironment) {
@@ -417,6 +449,14 @@ export class RunQueue {
     concurrencyKey?: string
   ) {
     return this.redis.scard(this.keys.queueCurrentConcurrencyKey(env, queue, concurrencyKey));
+  }
+
+  public async currentDequeuedOfQueue(
+    env: MinimalAuthenticatedEnvironment,
+    queue: string,
+    concurrencyKey?: string
+  ) {
+    return this.redis.scard(this.keys.queueCurrentDequeuedKey(env, queue, concurrencyKey));
   }
 
   public async currentConcurrencyOfQueues(
@@ -500,6 +540,15 @@ export class RunQueue {
     // The currentDequeuedKey is incremented when a message is dequeued from the worker queue,
     // wherease the currentConcurrencyKey is incremented when a message is dequeued from the message queue and put into the worker queue
     return this.redis.scard(this.keys.envCurrentDequeuedKey(env));
+  }
+
+  /**
+   * Get the operational current concurrency of the environment
+   * @param env - The environment to get the current concurrency of
+   * @returns The current concurrency of the environment
+   */
+  public async operationalCurrentConcurrencyOfEnvironment(env: MinimalAuthenticatedEnvironment) {
+    return this.redis.scard(this.keys.envCurrentConcurrencyKey(env));
   }
 
   public async messageExists(orgId: string, messageId: string) {
@@ -880,6 +929,15 @@ export class RunQueue {
 
       stream.on("error", (err) => reject(err));
     });
+  }
+
+  public async clearMessageFromConcurrencySets(params: {
+    runId: string;
+    orgId: string;
+    queue: string;
+    env: RunQueueKeyProducerEnvironment;
+  }) {
+    return this.#callClearMessageFromConcurrencySets(params);
   }
 
   async quit() {
@@ -1750,6 +1808,45 @@ export class RunQueue {
     );
   }
 
+  async #callClearMessageFromConcurrencySets({
+    runId,
+    orgId,
+    queue,
+    env,
+  }: {
+    runId: string;
+    orgId: string;
+    queue: string;
+    env: RunQueueKeyProducerEnvironment;
+  }) {
+    const messageId = runId;
+    const messageKey = this.keys.messageKey(orgId, messageId);
+    const queueCurrentConcurrencyKey = this.keys.queueCurrentConcurrencyKey(env, queue);
+    const envCurrentConcurrencyKey = this.keys.envCurrentConcurrencyKey(env);
+    const queueCurrentDequeuedKey = this.keys.queueCurrentDequeuedKey(env, queue);
+    const envCurrentDequeuedKey = this.keys.envCurrentDequeuedKey(env);
+
+    this.logger.debug("Calling clearMessageFromConcurrencySets", {
+      messageKey,
+      queue,
+      env,
+      queueCurrentConcurrencyKey,
+      envCurrentConcurrencyKey,
+      queueCurrentDequeuedKey,
+      envCurrentDequeuedKey,
+      messageId,
+      service: this.name,
+    });
+
+    return this.redis.clearMessageFromConcurrencySets(
+      queueCurrentConcurrencyKey,
+      envCurrentConcurrencyKey,
+      queueCurrentDequeuedKey,
+      envCurrentDequeuedKey,
+      messageId
+    );
+  }
+
   async #callNackMessage({ message, retryAt }: { message: OutputPayload; retryAt?: number }) {
     const messageId = message.runId;
     const messageKey = this.keys.messageKey(message.orgId, message.runId);
@@ -2587,6 +2684,26 @@ end
 return results
       `,
     });
+
+    this.redis.defineCommand("clearMessageFromConcurrencySets", {
+      numberOfKeys: 4,
+      lua: `
+-- Keys:
+local queueCurrentConcurrencyKey = KEYS[1]
+local envCurrentConcurrencyKey = KEYS[2]
+local queueCurrentDequeuedKey = KEYS[3]
+local envCurrentDequeuedKey = KEYS[4]
+
+-- Args:
+local messageId = ARGV[1]
+
+-- Update the concurrency keys
+redis.call('SREM', queueCurrentConcurrencyKey, messageId)
+redis.call('SREM', envCurrentConcurrencyKey, messageId)
+redis.call('SREM', queueCurrentDequeuedKey, messageId)
+redis.call('SREM', envCurrentDequeuedKey, messageId)
+`,
+    });
   }
 }
 
@@ -2668,6 +2785,17 @@ declare module "@internal/redis" {
       messageQueueName: string,
       messageKeyValue: string,
       removeFromWorkerQueue: string,
+      callback?: Callback<void>
+    ): Result<void, Context>;
+
+    clearMessageFromConcurrencySets(
+      // keys
+      queueCurrentConcurrencyKey: string,
+      envCurrentConcurrencyKey: string,
+      queueCurrentDequeuedKey: string,
+      envCurrentDequeuedKey: string,
+      // args
+      messageId: string,
       callback?: Callback<void>
     ): Result<void, Context>;
 

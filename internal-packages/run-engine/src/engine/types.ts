@@ -71,6 +71,7 @@ export type RunEngineOptions = {
   /** If not set then checkpoints won't ever be used */
   retryWarmStartThresholdMs?: number;
   heartbeatTimeoutsMs?: Partial<HeartbeatTimeouts>;
+  repairSnapshotTimeoutMs?: number;
   treatProductionExecutionStallsAsOOM?: boolean;
   suspendedHeartbeatRetriesConfig?: {
     maxCount?: number;
@@ -150,3 +151,11 @@ export type TriggerParams = {
 };
 
 export type EngineWorker = Worker<typeof workerCatalog>;
+
+export type ReportableQueue = {
+  name: string;
+  concurrencyLimit: number | null;
+  type: string;
+  paused: boolean;
+  friendlyId: string;
+};
