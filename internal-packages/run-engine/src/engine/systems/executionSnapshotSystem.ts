@@ -216,10 +216,11 @@ export async function getExecutionSnapshotsSince(
       completedWaitpoints: true,
       checkpoint: true,
     },
-    orderBy: { createdAt: "asc" },
+    orderBy: { createdAt: "desc" },
+    take: 50,
   });
 
-  return snapshots.map(enhanceExecutionSnapshot);
+  return snapshots.reverse().map(enhanceExecutionSnapshot);
 }
 
 export class ExecutionSnapshotSystem {
