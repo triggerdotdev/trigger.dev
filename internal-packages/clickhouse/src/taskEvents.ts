@@ -35,14 +35,6 @@ export function insertTaskEvents(ch: ClickhouseWriter, settings?: ClickHouseSett
   });
 }
 
-export const TraceSummaryV1QueryParams = z.object({
-  traceId: z.string(),
-  startTimeRange: z.object({
-    start: z.string(),
-    end: z.string(),
-  }),
-});
-
 export const TaskEventSummaryV1Result = z.object({
   span_id: z.string(),
   parent_span_id: z.string(),
@@ -63,6 +55,34 @@ export function getTraceSummaryQueryBuilder(ch: ClickhouseReader, settings?: Cli
     baseQuery:
       "SELECT span_id, parent_span_id, run_id, start_time, duration, status, kind, metadata, message FROM trigger_dev.task_events_v1",
     schema: TaskEventSummaryV1Result,
+    settings,
+  });
+}
+
+export const TaskEventDetailedSummaryV1Result = z.object({
+  span_id: z.string(),
+  parent_span_id: z.string(),
+  run_id: z.string(),
+  start_time: z.string(),
+  duration: z.number().or(z.string()),
+  status: z.string(),
+  kind: z.string(),
+  metadata: z.string(),
+  message: z.string(),
+  attributes: z.unknown(),
+});
+
+export type TaskEventDetailedSummaryV1Result = z.input<typeof TaskEventDetailedSummaryV1Result>;
+
+export function getTraceDetailedSummaryQueryBuilder(
+  ch: ClickhouseReader,
+  settings?: ClickHouseSettings
+) {
+  return ch.queryBuilder({
+    name: "getTaskEventDetailedSummary",
+    baseQuery:
+      "SELECT span_id, parent_span_id, run_id, start_time, duration, status, kind, metadata, message, attributes FROM trigger_dev.task_events_v1",
+    schema: TaskEventDetailedSummaryV1Result,
     settings,
   });
 }

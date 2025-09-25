@@ -1,5 +1,6 @@
 import type {
   ClickHouse,
+  TaskEventDetailedSummaryV1Result,
   TaskEventDetailsV1Result,
   TaskEventSummaryV1Result,
   TaskEventV1Input,
@@ -48,8 +49,10 @@ import type {
   IEventRepository,
   RunPreparedEvent,
   SpanDetail,
+  SpanDetailedSummary,
   SpanOverride,
   SpanSummary,
+  SpanSummaryCommon,
   TraceAttributes,
   TraceDetailedSummary,
   TraceEventOptions,
@@ -891,13 +894,6 @@ export class ClickhouseEventRepository implements IEventRepository {
       queryBuilder.limit(this._config.maximumTraceSummaryViewCount);
     }
 
-    const { query, params } = queryBuilder.build();
-
-    logger.debug("ClickhouseEventRepository.getTraceSummary query", {
-      query,
-      params,
-    });
-
     const [queryError, records] = await queryBuilder.execute();
 
     if (queryError) {
@@ -908,10 +904,6 @@ export class ClickhouseEventRepository implements IEventRepository {
       return;
     }
 
-    logger.info("ClickhouseEventRepository.getTraceSummary", {
-      records,
-    });
-
     const recordsGroupedBySpanId = records.reduce((acc, record) => {
       acc[record.span_id] = [...(acc[record.span_id] ?? []), record];
       return acc;
@@ -921,20 +913,11 @@ export class ClickhouseEventRepository implements IEventRepository {
     let rootSpanId: string | undefined;
 
     for (const [spanId, spanRecords] of Object.entries(recordsGroupedBySpanId)) {
-      logger.debug("ClickhouseEventRepository.getTraceSummary recordsGroupedBySpanId", {
-        spanId,
-        spanRecords,
-      });
-
       const spanSummary = this.#mergeRecordsIntoSpanSummary(spanId, spanRecords);
 
       if (!spanSummary) {
         continue;
       }
-
-      logger.debug("ClickhouseEventRepository.getTraceSummary spanSummary", {
-        spanSummary,
-      });
 
       spanSummaries.set(spanId, spanSummary);
 
@@ -944,10 +927,6 @@ export class ClickhouseEventRepository implements IEventRepository {
     }
 
     if (!rootSpanId) {
-      logger.debug("ClickhouseEventRepository.getTraceSummary no rootSpanId", {
-        spanSummaries,
-      });
-
       return;
     }
 
@@ -955,10 +934,6 @@ export class ClickhouseEventRepository implements IEventRepository {
     const rootSpan = spanSummaries.get(rootSpanId);
 
     if (!rootSpan) {
-      logger.debug("ClickhouseEventRepository.getTraceSummary no rootSpan", {
-        spanSummaries,
-      });
-
       return;
     }
 
@@ -966,11 +941,6 @@ export class ClickhouseEventRepository implements IEventRepository {
 
     const finalSpans = spans.map((span) => {
       return this.#applyAncestorOverrides(span, spanSummaries, overridesBySpanId);
-    });
-
-    logger.info("ClickhouseEventRepository.getTraceSummary result", {
-      rootSpan,
-      spans: finalSpans,
     });
 
     return {
@@ -1008,13 +978,6 @@ export class ClickhouseEventRepository implements IEventRepository {
 
     queryBuilder.orderBy("start_time ASC");
 
-    const { query, params } = queryBuilder.build();
-
-    logger.debug("ClickhouseEventRepository.getSpan query", {
-      query,
-      params,
-    });
-
     const [queryError, records] = await queryBuilder.execute();
 
     if (queryError) {
@@ -1027,11 +990,18 @@ export class ClickhouseEventRepository implements IEventRepository {
 
     const span = this.#mergeRecordsIntoSpanDetail(spanId, records);
 
-    logger.info("ClickhouseEventRepository.getSpan", {
-      span,
-    });
-
     return span;
+  }
+
+  async getSpanOriginalRunId(
+    storeTable: TaskEventStoreTable,
+    environmentId: string,
+    spanId: string,
+    traceId: string,
+    startCreatedAt: Date,
+    endCreatedAt?: Date
+  ): Promise<string | undefined> {
+    return await originalRunIdCache.lookup(traceId, spanId);
   }
 
   #mergeRecordsIntoSpanDetail(
@@ -1132,11 +1102,11 @@ export class ClickhouseEventRepository implements IEventRepository {
     return span;
   }
 
-  #applyAncestorOverrides(
-    span: SpanSummary,
-    spansById: Map<string, SpanSummary>,
+  #applyAncestorOverrides<TSpanSummary extends SpanSummaryCommon>(
+    span: TSpanSummary,
+    spansById: Map<string, TSpanSummary>,
     overridesBySpanId: Record<string, SpanOverride>
-  ): SpanSummary {
+  ): TSpanSummary {
     if (span.data.level !== "TRACE") {
       return span;
     }
@@ -1152,7 +1122,7 @@ export class ClickhouseEventRepository implements IEventRepository {
     // Now we need to walk the ancestors of the span by span.parentId
     // The first ancestor that is a TRACE span that is "closed" we will use to override the span
     let parentSpanId: string | undefined = span.parentId;
-    let overrideSpan: SpanSummary | undefined;
+    let overrideSpan: TSpanSummary | undefined;
 
     while (parentSpanId) {
       const parentSpan = spansById.get(parentSpanId);
@@ -1176,11 +1146,11 @@ export class ClickhouseEventRepository implements IEventRepository {
     return span;
   }
 
-  #applyAncestorToSpan(
-    span: SpanSummary,
-    overrideSpan: SpanSummary,
+  #applyAncestorToSpan<TSpanSummary extends SpanSummaryCommon>(
+    span: TSpanSummary,
+    overrideSpan: TSpanSummary,
     overridesBySpanId: Record<string, SpanOverride>
-  ): SpanSummary {
+  ): TSpanSummary {
     if (overridesBySpanId[span.id]) {
       return span;
     }
@@ -1361,7 +1331,182 @@ export class ClickhouseEventRepository implements IEventRepository {
     endCreatedAt?: Date,
     options?: { includeDebugLogs?: boolean }
   ): Promise<TraceDetailedSummary | undefined> {
-    throw new Error("ClickhouseEventRepository.getTraceDetailedSummary not implemented");
+    const startCreatedAtWithBuffer = new Date(startCreatedAt.getTime() - 1000);
+
+    const queryBuilder = this._clickhouse.taskEvents.traceDetailedSummaryQueryBuilder();
+
+    queryBuilder.where("environment_id = {environmentId: String}", { environmentId });
+    queryBuilder.where("trace_id = {traceId: String}", { traceId });
+    queryBuilder.where("start_time >= {startCreatedAt: String}", {
+      startCreatedAt: convertDateToNanoseconds(startCreatedAtWithBuffer).toString(),
+    });
+
+    if (endCreatedAt) {
+      queryBuilder.where("start_time <= {endCreatedAt: String}", {
+        endCreatedAt: convertDateToNanoseconds(endCreatedAt).toString(),
+      });
+    }
+
+    if (options?.includeDebugLogs === false) {
+      queryBuilder.where("kind != {kind: String}", { kind: "DEBUG_EVENT" });
+    }
+
+    queryBuilder.orderBy("start_time ASC");
+
+    if (this._config.maximumTraceSummaryViewCount) {
+      queryBuilder.limit(this._config.maximumTraceSummaryViewCount);
+    }
+
+    const [queryError, records] = await queryBuilder.execute();
+
+    if (queryError) {
+      throw queryError;
+    }
+
+    if (!records) {
+      return;
+    }
+
+    const recordsGroupedBySpanId = records.reduce((acc, record) => {
+      acc[record.span_id] = [...(acc[record.span_id] ?? []), record];
+      return acc;
+    }, {} as Record<string, TaskEventDetailedSummaryV1Result[]>);
+
+    const spanSummaries = new Map<string, SpanDetailedSummary>();
+    let rootSpanId: string | undefined;
+
+    for (const [spanId, spanRecords] of Object.entries(recordsGroupedBySpanId)) {
+      const spanSummary = this.#mergeRecordsIntoSpanDetailedSummary(spanId, spanRecords);
+
+      if (!spanSummary) {
+        continue;
+      }
+
+      spanSummaries.set(spanId, spanSummary);
+
+      if (!rootSpanId && !spanSummary.parentId) {
+        rootSpanId = spanId;
+      }
+    }
+
+    if (!rootSpanId) {
+      return;
+    }
+
+    const spans = Array.from(spanSummaries.values());
+
+    const overridesBySpanId: Record<string, SpanOverride> = {};
+    const spanDetailedSummaryMap = new Map<string, SpanDetailedSummary>();
+
+    const finalSpans = spans.map((span) => {
+      const finalSpan = this.#applyAncestorOverrides(span, spanSummaries, overridesBySpanId);
+      spanDetailedSummaryMap.set(span.id, finalSpan);
+      return finalSpan;
+    });
+
+    // Second pass: build parent-child relationships
+    for (const finalSpan of finalSpans) {
+      if (finalSpan.parentId) {
+        const parent = spanDetailedSummaryMap.get(finalSpan.parentId);
+        if (parent) {
+          parent.children.push(finalSpan);
+        }
+      }
+    }
+
+    const rootSpan = spanDetailedSummaryMap.get(rootSpanId);
+
+    if (!rootSpan) {
+      return;
+    }
+
+    return {
+      traceId,
+      rootSpan,
+    };
+  }
+
+  #mergeRecordsIntoSpanDetailedSummary(
+    spanId: string,
+    records: TaskEventDetailedSummaryV1Result[]
+  ): SpanDetailedSummary | undefined {
+    if (records.length === 0) {
+      return undefined;
+    }
+
+    let span: SpanDetailedSummary | undefined;
+
+    for (const record of records) {
+      if (!span) {
+        span = {
+          id: spanId,
+          parentId: record.parent_span_id ? record.parent_span_id : undefined,
+          runId: record.run_id,
+          data: {
+            message: record.message,
+            taskSlug: undefined,
+            duration:
+              typeof record.duration === "number" ? record.duration : Number(record.duration),
+            isError: false,
+            isPartial: true, // Partial by default, can only be set to false
+            isCancelled: false,
+            startTime: convertClickhouseDateTime64ToJsDate(record.start_time),
+            level: kindToLevel(record.kind),
+            events: [],
+          },
+          children: [],
+        };
+      }
+
+      if (isLogEvent(record.kind)) {
+        span.data.isPartial = false;
+        span.data.isCancelled = false;
+        span.data.isError = record.status === "ERROR";
+      }
+
+      const parsedMetadata = this.#parseMetadata(record.metadata);
+
+      if (
+        parsedMetadata &&
+        "attemptNumber" in parsedMetadata &&
+        typeof parsedMetadata.attemptNumber === "number"
+      ) {
+        span.data.attemptNumber = parsedMetadata.attemptNumber;
+      }
+
+      if (record.kind === "ANCESTOR_OVERRIDE" || record.kind === "SPAN_EVENT") {
+        // We need to add an event to the span
+        span.data.events.push({
+          name: record.message,
+          time: convertClickhouseDateTime64ToJsDate(record.start_time),
+          properties: parsedMetadata ?? {},
+        });
+      }
+
+      if (record.kind === "SPAN") {
+        if (record.status === "ERROR") {
+          span.data.isError = true;
+          span.data.isPartial = false;
+          span.data.isCancelled = false;
+        } else if (record.status === "CANCELLED") {
+          span.data.isCancelled = true;
+          span.data.isPartial = false;
+          span.data.isError = false;
+        } else if (record.status === "OK") {
+          span.data.isPartial = false;
+        }
+
+        if (record.status !== "PARTIAL") {
+          span.data.duration =
+            typeof record.duration === "number" ? record.duration : Number(record.duration);
+        } else {
+          span.data.startTime = convertClickhouseDateTime64ToJsDate(record.start_time);
+          span.data.message = record.message;
+        }
+      }
+    }
+
+    return span;
   }
 
   async getRunEvents(
@@ -1372,17 +1517,6 @@ export class ClickhouseEventRepository implements IEventRepository {
     endCreatedAt?: Date
   ): Promise<RunPreparedEvent[]> {
     throw new Error("ClickhouseEventRepository.getRunEvents not implemented");
-  }
-
-  async getSpanOriginalRunId(
-    storeTable: TaskEventStoreTable,
-    environmentId: string,
-    spanId: string,
-    traceId: string,
-    startCreatedAt: Date,
-    endCreatedAt?: Date
-  ): Promise<string | undefined> {
-    return await originalRunIdCache.lookup(traceId, spanId);
   }
 }
 

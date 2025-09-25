@@ -14,6 +14,7 @@ import {
 } from "./taskRuns.js";
 import {
   getSpanDetailsQueryBuilder,
+  getTraceDetailedSummaryQueryBuilder,
   getTraceSummaryQueryBuilder,
   insertTaskEvents,
 } from "./taskEvents.js";
@@ -164,6 +165,7 @@ export class ClickHouse {
     return {
       insert: insertTaskEvents(this.writer),
       traceSummaryQueryBuilder: getTraceSummaryQueryBuilder(this.reader),
+      traceDetailedSummaryQueryBuilder: getTraceDetailedSummaryQueryBuilder(this.reader),
       spanDetailsQueryBuilder: getSpanDetailsQueryBuilder(this.reader),
     };
   }
