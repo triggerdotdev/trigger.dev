@@ -676,6 +676,7 @@ async function failDeploy(
 
     switch (serverDeployment.status) {
       case "PENDING":
+      case "INSTALLING":
       case "DEPLOYING":
       case "BUILDING": {
         await doOutputLogs();
