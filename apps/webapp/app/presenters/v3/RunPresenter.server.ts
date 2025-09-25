@@ -28,7 +28,6 @@ export class RunPresenter {
   public async call({
     userId,
     projectSlug,
-    organizationSlug,
     environmentSlug,
     runFriendlyId,
     showDeletedLogs,
@@ -36,7 +35,6 @@ export class RunPresenter {
   }: {
     userId: string;
     projectSlug: string;
-    organizationSlug: string;
     environmentSlug: string;
     runFriendlyId: string;
     showDeletedLogs: boolean;
@@ -93,6 +91,13 @@ export class RunPresenter {
         friendlyId: runFriendlyId,
         project: {
           slug: projectSlug,
+          organization: {
+            members: {
+              some: {
+                userId,
+              },
+            },
+          },
         },
       },
     });

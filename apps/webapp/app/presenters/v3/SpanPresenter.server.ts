@@ -28,10 +28,12 @@ type GetSpanResult = NonNullable<Awaited<ReturnType<(typeof eventRepository)["ge
 
 export class SpanPresenter extends BasePresenter {
   public async call({
+    userId,
     projectSlug,
     spanId,
     runFriendlyId,
   }: {
+    userId: string;
     projectSlug: string;
     spanId: string;
     runFriendlyId: string;
@@ -39,6 +41,13 @@ export class SpanPresenter extends BasePresenter {
     const project = await this._replica.project.findFirst({
       where: {
         slug: projectSlug,
+        organization: {
+          members: {
+            some: {
+              userId,
+            },
+          },
+        },
       },
     });
 
@@ -57,6 +66,7 @@ export class SpanPresenter extends BasePresenter {
       },
       where: {
         friendlyId: runFriendlyId,
+        projectId: project.id,
       },
     });
 
@@ -64,13 +74,11 @@ export class SpanPresenter extends BasePresenter {
       return;
     }
 
-    const { traceId } = parentRun;
-
     const eventStore = getTaskEventStoreTableForRun(parentRun);
 
     const run = await this.getRun({
       eventStore,
-      traceId,
+      environmentId: parentRun.runtimeEnvironmentId,
       spanId,
       createdAt: parentRun.createdAt,
       completedAt: parentRun.completedAt,
@@ -82,10 +90,8 @@ export class SpanPresenter extends BasePresenter {
       };
     }
 
-    //get the run
     const span = await this.#getSpan({
       eventStore,
-      traceId,
       spanId,
       environmentId: parentRun.runtimeEnvironmentId,
       projectId: parentRun.projectId,
@@ -105,24 +111,24 @@ export class SpanPresenter extends BasePresenter {
 
   async getRun({
     eventStore,
-    traceId,
+    environmentId,
     spanId,
     createdAt,
     completedAt,
   }: {
     eventStore: TaskEventStoreTable;
-    traceId: string;
+    environmentId: string;
     spanId: string;
     createdAt: Date;
     completedAt: Date | null;
   }) {
-    const span = await eventRepository.getSpan(
-      eventStore,
+    const span = await eventRepository.getSpan({
+      storeTable: eventStore,
       spanId,
-      traceId,
-      createdAt,
-      completedAt ?? undefined
-    );
+      environmentId,
+      startCreatedAt: createdAt,
+      endCreatedAt: completedAt ?? undefined,
+    });
 
     if (!span) {
       return;
@@ -412,14 +418,12 @@ export class SpanPresenter extends BasePresenter {
 
   async #getSpan({
     eventStore,
-    traceId,
     spanId,
     environmentId,
     projectId,
     createdAt,
     completedAt,
   }: {
-    traceId: string;
     spanId: string;
     environmentId: string;
     projectId: string;
@@ -427,14 +431,15 @@ export class SpanPresenter extends BasePresenter {
     createdAt: Date;
     completedAt: Date | null;
   }) {
-    const span = await eventRepository.getSpan(
-      eventStore,
+    const span = await eventRepository.getSpan({
+      storeTable: eventStore,
       spanId,
-      traceId,
-      createdAt,
-      completedAt ?? undefined,
-      { includeDebugLogs: true }
-    );
+      environmentId,
+      startCreatedAt: createdAt,
+      endCreatedAt: completedAt ?? undefined,
+      options: { includeDebugLogs: true },
+    });
+
     if (!span) {
       return;
     }
