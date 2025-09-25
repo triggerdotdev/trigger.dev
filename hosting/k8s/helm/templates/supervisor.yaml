@@ -185,7 +185,7 @@ spec:
             - name: KUBERNETES_EPHEMERAL_STORAGE_SIZE_REQUEST
               value: {{ default "2Gi" .Values.supervisor.config.kubernetes.ephemeralStorageSizeRequest | quote }}
             {{- with .Values.supervisor.config.kubernetes.topologySpreadConstraints }}
-            - name: KUBERNETES_WORKER_TOPOLOGY_SPREAD_CONSTRAINTS
+            - name: KUBERNETES_TOPOLOGY_SPREAD_CONSTRAINTS
               value: {{ tpl (toYaml .) $ | toJson | quote }}
             {{- end }}
             # Pod cleaner configuration
