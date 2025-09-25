@@ -79,10 +79,11 @@ export async function getPersonalAccessTokenFromAuthorizationCode(authorizationC
   };
 }
 
-export async function revokePersonalAccessToken(tokenId: string) {
+export async function revokePersonalAccessToken(tokenId: string, userId: string) {
   await prisma.personalAccessToken.update({
     where: {
       id: tokenId,
+      userId,
     },
     data: {
       revokedAt: new Date(),
