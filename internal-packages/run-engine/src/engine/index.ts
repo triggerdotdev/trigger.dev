@@ -1106,6 +1106,8 @@ export class RunEngine {
     } catch (e) {
       this.logger.error("Failed to getSnapshotsSince", {
         message: e instanceof Error ? e.message : e,
+        runId,
+        snapshotId,
       });
       return null;
     }
