@@ -7,16 +7,16 @@ import {
 } from "@heroicons/react/20/solid";
 import { ArrowDownCircleIcon, ArrowUpCircleIcon } from "@heroicons/react/24/outline";
 import { Form, useLocation, useNavigation } from "@remix-run/react";
-import { ActionFunctionArgs } from "@remix-run/server-runtime";
+import { type ActionFunctionArgs } from "@remix-run/server-runtime";
 import { uiComponent } from "@team-plain/typescript-sdk";
 import { GitHubLightIcon } from "@trigger.dev/companyicons";
 import {
-  FreePlanDefinition,
-  Limits,
-  PaidPlanDefinition,
-  Plans,
-  SetPlanBody,
-  SubscriptionResult,
+  type FreePlanDefinition,
+  type Limits,
+  type PaidPlanDefinition,
+  type Plans,
+  type SetPlanBody,
+  type SubscriptionResult,
 } from "@trigger.dev/platform";
 import React, { useEffect, useState } from "react";
 import { z } from "zod";
@@ -75,8 +75,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
     message: message || undefined,
   });
 
-  const organization = await prisma.organization.findUnique({
-    where: { slug: organizationSlug },
+  const organization = await prisma.organization.findFirst({
+    where: { slug: organizationSlug, members: { some: { userId: user.id } } },
   });
 
   if (!organization) {
