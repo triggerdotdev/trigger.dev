@@ -35,7 +35,7 @@ export function configureUpdateCommand(program: Command) {
     .option("--skip-telemetry", "Opt-out of sending telemetry")
     .action(async (path, options) => {
       wrapCommandAction("dev", UpdateCommandOptions, options, async (opts) => {
-        await printStandloneInitialBanner(true);
+        await printStandloneInitialBanner(true, options.profile);
         await updateCommand(path, opts);
       });
     });

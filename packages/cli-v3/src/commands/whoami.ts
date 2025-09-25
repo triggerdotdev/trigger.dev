@@ -16,7 +16,6 @@ import { spinner } from "../utilities/windows.js";
 import { loadConfig } from "../config.js";
 import { resolveLocalEnvVars } from "../utilities/localEnvVars.js";
 import { tryCatch } from "@trigger.dev/core";
-import { readAuthConfigCurrentProfileName } from "../utilities/configFiles.js";
 
 type WhoAmIResult =
   | {
@@ -57,7 +56,7 @@ export function configureWhoamiCommand(program: Command) {
       )
   ).action(async (options) => {
     await handleTelemetry(async () => {
-      await printInitialBanner(false);
+      await printInitialBanner(false, options.profile);
       await whoAmICommand(options);
     });
   });
@@ -74,12 +73,8 @@ export async function whoAmI(
   embedded: boolean = false,
   silent: boolean = false
 ): Promise<WhoAmIResult> {
-  // Profile is provided by Zod schema with default from readAuthConfigCurrentProfileName()
-  // Trim whitespace and fallback to "default" for consistency with other commands
-  const profileToUse = options?.profile?.trim() || "default";
-
   if (!embedded) {
-    intro(`Displaying your account details [${profileToUse}]`);
+    intro(`Displaying your account details [${options?.profile ?? "default"}]`);
   }
 
   const envVars = resolveLocalEnvVars(options?.envFile);
@@ -106,7 +101,7 @@ export async function whoAmI(
     loadingSpinner.start("Checking your account details");
   }
 
-  const authentication = await isLoggedIn(profileToUse);
+  const authentication = await isLoggedIn(options?.profile);
 
   if (!authentication.ok) {
     if (authentication.error === "fetch failed") {
@@ -115,11 +110,15 @@ export async function whoAmI(
       if (embedded) {
         !silent &&
           loadingSpinner.stop(
-            `Failed to check account details. You may want to run \`trigger.dev logout --profile ${profileToUse}\` and try again.`
+            `Failed to check account details. You may want to run \`trigger.dev logout --profile ${
+              options?.profile ?? "default"
+            }\` and try again.`
           );
       } else {
         loadingSpinner.stop(
-          `You must login first. Use \`trigger.dev login --profile ${profileToUse}\` to login.`
+          `You must login first. Use \`trigger.dev login --profile ${
+            options?.profile ?? "default"
+          }\` to login.`
         );
         outro(`Whoami failed: ${authentication.error}`);
       }
@@ -149,7 +148,7 @@ export async function whoAmI(
       `User ID: ${userData.data.userId}
 Email:   ${userData.data.email}
 URL:     ${chalkLink(authentication.auth.apiUrl)}`,
-      `Account details [${profileToUse}]`
+      `Account details [${authentication.profile}]`
     );
 
     const { project } = userData.data;
