@@ -3,14 +3,14 @@ import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { requireUserId } from "~/services/session.server";
-import { ProjectParamSchema, v3DeploymentPath, v3RunPath } from "~/utils/pathBuilder";
+import { ProjectParamSchema, v3RunPath } from "~/utils/pathBuilder";
 
 const ParamSchema = ProjectParamSchema.extend({
   runParam: z.string(),
 });
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  await requireUserId(request);
+  const userId = await requireUserId(request);
   const { organizationSlug, projectParam, runParam } = ParamSchema.parse(params);
 
   const run = await prisma.taskRun.findFirst({
@@ -18,6 +18,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       friendlyId: runParam,
       project: {
         slug: projectParam,
+        organization: {
+          members: {
+            some: {
+              userId,
+            },
+          },
+        },
       },
     },
     select: {

@@ -142,7 +142,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const [error, result] = await tryCatch(
     presenter.call({
       userId,
-      organizationSlug,
       showDeletedLogs: !!impersonationId,
       projectSlug: projectParam,
       runFriendlyId: runParam,

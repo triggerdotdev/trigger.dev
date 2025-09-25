@@ -970,22 +970,30 @@ export class EventRepository {
 
   // A Span can be cancelled if it is partial and has a parent that is cancelled
   // And a span's duration, if it is partial and has a cancelled parent, is the time between the start of the span and the time of the cancellation event of the parent
-  public async getSpan(
-    storeTable: TaskEventStoreTable,
-    spanId: string,
-    traceId: string,
-    startCreatedAt: Date,
-    endCreatedAt?: Date,
-    options?: { includeDebugLogs?: boolean }
-  ) {
-    return await startActiveSpan("getSpan", async (s) => {
-      const spanEvent = await this.#getSpanEvent(
+  public async getSpan({
+    storeTable,
+    spanId,
+    environmentId,
+    startCreatedAt,
+    endCreatedAt,
+    options,
+  }: {
+    storeTable: TaskEventStoreTable;
+    spanId: string;
+    environmentId: string;
+    startCreatedAt: Date;
+    endCreatedAt?: Date;
+    options?: { includeDebugLogs?: boolean };
+  }) {
+    return await startActiveSpan("getSpan", async () => {
+      const spanEvent = await this.#getSpanEvent({
         storeTable,
         spanId,
+        environmentId,
         startCreatedAt,
         endCreatedAt,
-        options
-      );
+        options,
+      });
 
       if (!spanEvent) {
         return;
@@ -1195,12 +1203,12 @@ export class EventRepository {
     }
 
     await startActiveSpan("walkSpanAncestors", async (s) => {
-      let parentEvent = await this.#getSpanEvent(
+      let parentEvent = await this.#getSpanEvent({
         storeTable,
-        parentId,
+        spanId: parentId,
         startCreatedAt,
-        endCreatedAt
-      );
+        endCreatedAt,
+      });
       let level = 1;
 
       while (parentEvent) {
@@ -1216,29 +1224,37 @@ export class EventRepository {
           return;
         }
 
-        parentEvent = await this.#getSpanEvent(
+        parentEvent = await this.#getSpanEvent({
           storeTable,
-          preparedParentEvent.parentId,
+          spanId: preparedParentEvent.parentId,
           startCreatedAt,
-          endCreatedAt
-        );
+          endCreatedAt,
+        });
 
         level++;
       }
     });
   }
 
-  async #getSpanEvent(
-    storeTable: TaskEventStoreTable,
-    spanId: string,
-    startCreatedAt: Date,
-    endCreatedAt?: Date,
-    options?: { includeDebugLogs?: boolean }
-  ) {
+  async #getSpanEvent({
+    storeTable,
+    spanId,
+    environmentId,
+    startCreatedAt,
+    endCreatedAt,
+    options,
+  }: {
+    storeTable: TaskEventStoreTable;
+    spanId: string;
+    environmentId?: string;
+    startCreatedAt: Date;
+    endCreatedAt?: Date;
+    options?: { includeDebugLogs?: boolean };
+  }) {
     return await startActiveSpan("getSpanEvent", async (s) => {
       const events = await this.taskEventStore.findMany(
         storeTable,
-        { spanId },
+        { spanId, ...(environmentId ? { environmentId } : {}) },
         startCreatedAt,
         endCreatedAt,
         undefined,
