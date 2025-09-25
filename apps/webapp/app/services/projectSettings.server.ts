@@ -90,7 +90,7 @@ export class ProjectSettingsService {
             repositoryId: repositoryId,
             branchTracking: {
               prod: { branch: defaultBranch },
-              staging: { branch: defaultBranch },
+              staging: {},
             } satisfies BranchTrackingConfig,
             previewDeploymentsEnabled: true,
           },
