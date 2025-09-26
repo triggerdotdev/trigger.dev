@@ -129,15 +129,22 @@ export class RunEngine {
 
     const keys = new RunQueueFullKeyProducer();
 
+    const queueSelectionStrategyOptions = {
+      keys,
+      redis: { ...options.queue.redis, keyPrefix: `${options.queue.redis.keyPrefix}runqueue:` },
+      defaultEnvConcurrencyLimit: options.queue?.defaultEnvConcurrency ?? 10,
+      ...options.queue?.queueSelectionStrategyOptions,
+    };
+
+    this.logger.log("RunEngine FairQueueSelectionStrategy queueSelectionStrategyOptions", {
+      options: queueSelectionStrategyOptions,
+    });
+
     this.runQueue = new RunQueue({
       name: "rq",
       tracer: trace.getTracer("rq"),
       keys,
-      queueSelectionStrategy: new FairQueueSelectionStrategy({
-        keys,
-        redis: { ...options.queue.redis, keyPrefix: `${options.queue.redis.keyPrefix}runqueue:` },
-        defaultEnvConcurrencyLimit: options.queue?.defaultEnvConcurrency ?? 10,
-      }),
+      queueSelectionStrategy: new FairQueueSelectionStrategy(queueSelectionStrategyOptions),
       defaultEnvConcurrency: options.queue?.defaultEnvConcurrency ?? 10,
       defaultEnvConcurrencyBurstFactor: options.queue?.defaultEnvConcurrencyBurstFactor,
       logger: new Logger("RunQueue", options.queue?.logLevel ?? "info"),
@@ -1730,10 +1737,13 @@ export class RunEngine {
           });
 
           if (!taskRun) {
-            this.logger.error("RunEngine.handleRepairSnapshot SUSPENDED/FINISHED task run not found", {
-              runId,
-              snapshotId,
-            });
+            this.logger.error(
+              "RunEngine.handleRepairSnapshot SUSPENDED/FINISHED task run not found",
+              {
+                runId,
+                snapshotId,
+              }
+            );
             return;
           }
 
