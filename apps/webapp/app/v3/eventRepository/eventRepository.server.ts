@@ -9,7 +9,6 @@ import {
   flattenAttributes,
   isExceptionSpanEvent,
   nanosecondsToMilliseconds,
-  omit,
   PRIMARY_VARIANT,
   SemanticInternalAttributes,
   SpanEvent,
@@ -42,10 +41,10 @@ import {
   generateTraceId,
   getDateFromNanoseconds,
   getNowInNanoseconds,
-  parseEventsField,
-  stripAttributePrefix,
-  removePrivateProperties,
   isEmptyObject,
+  parseEventsField,
+  removePrivateProperties,
+  stripAttributePrefix,
 } from "./common.server";
 import type {
   CompleteableTaskRun,
@@ -60,7 +59,6 @@ import type {
   SpanDetail,
   SpanDetailedSummary,
   SpanSummary,
-  TaskEventRecord,
   TraceAttributes,
   TraceDetailedSummary,
   TraceEventOptions,
@@ -824,13 +822,14 @@ export class EventRepository implements IEventRepository {
   ): Promise<string | undefined> {
     return await startActiveSpan("getSpanOriginalRunId", async (s) => {
       return await originalRunIdCache.swr(traceId, spanId, async () => {
-        const spanEvent = await this.#getSpanEvent(
+        const spanEvent = await this.#getSpanEvent({
           storeTable,
           spanId,
+          environmentId,
           startCreatedAt,
           endCreatedAt,
-          { includeDebugLogs: false }
-        );
+          options: { includeDebugLogs: false },
+        });
 
         if (!spanEvent) {
           return;
