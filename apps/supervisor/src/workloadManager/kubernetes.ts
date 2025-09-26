@@ -56,6 +56,22 @@ export class KubernetesWorkloadManager implements WorkloadManager {
     };
   }
 
+  private parseTopologySpreadConstraints(): k8s.V1TopologySpreadConstraint[] | null {
+    if (!env.KUBERNETES_TOPOLOGY_SPREAD_CONSTRAINTS) {
+      return null;
+    }
+
+    try {
+      return JSON.parse(env.KUBERNETES_TOPOLOGY_SPREAD_CONSTRAINTS);
+    } catch (error) {
+      this.logger.error("[KubernetesWorkloadManager] Failed to parse topology spread constraints", {
+        error: error instanceof Error ? error.message : String(error),
+        raw: env.KUBERNETES_TOPOLOGY_SPREAD_CONSTRAINTS,
+      });
+      return null;
+    }
+  }
+
   private stripImageDigest(imageRef: string): string {
     if (!env.KUBERNETES_STRIP_IMAGE_DIGEST) {
       return imageRef;
@@ -270,6 +286,8 @@ export class KubernetesWorkloadManager implements WorkloadManager {
   }
 
   get #defaultPodSpec(): Omit<k8s.V1PodSpec, "containers"> {
+    const topologySpreadConstraints = this.parseTopologySpreadConstraints();
+
     return {
       restartPolicy: "Never",
       automountServiceAccountToken: false,
@@ -281,6 +299,7 @@ export class KubernetesWorkloadManager implements WorkloadManager {
             },
           }
         : {}),
+      ...(topologySpreadConstraints ? { topologySpreadConstraints } : {}),
     };
   }
 
