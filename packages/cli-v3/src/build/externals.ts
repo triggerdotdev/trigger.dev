@@ -215,6 +215,17 @@ function createExternalsCollector(
                 return undefined;
               }
 
+              // Verify we found the right package.json (not a parent workspace)
+              if (packageJson.name !== packageName) {
+                logger.debug("[externals][onResolve] Found package.json but name doesn't match", {
+                  expected: packageName,
+                  found: packageJson.name,
+                  packageJsonPath,
+                  external,
+                });
+                return undefined;
+              }
+
               if (!external.filter.test(packageJson.name)) {
                 logger.debug("[externals][onResolve] Package name does not match", {
                   external,
