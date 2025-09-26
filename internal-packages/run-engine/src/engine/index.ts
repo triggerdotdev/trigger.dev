@@ -1414,6 +1414,11 @@ export class RunEngine {
           throw new NotImplementedError("There shouldn't be a heartbeat for QUEUED_EXECUTING");
         }
         case "PENDING_EXECUTING": {
+          this.logger.log("RunEngine stalled snapshot PENDING_EXECUTING", {
+            runId,
+            snapshotId: latestSnapshot.id,
+          });
+
           //the run didn't start executing, we need to requeue it
           const run = await prisma.taskRun.findFirst({
             where: { id: runId },
