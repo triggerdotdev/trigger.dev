@@ -16,6 +16,14 @@ export const workerCatalog = {
     }),
     visibilityTimeoutMs: 30_000,
   },
+  repairSnapshot: {
+    schema: z.object({
+      runId: z.string(),
+      snapshotId: z.string(),
+      executionStatus: z.string(),
+    }),
+    visibilityTimeoutMs: 30_000,
+  },
   expireRun: {
     schema: z.object({
       runId: z.string(),

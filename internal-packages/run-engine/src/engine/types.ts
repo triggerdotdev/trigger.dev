@@ -71,6 +71,7 @@ export type RunEngineOptions = {
   /** If not set then checkpoints won't ever be used */
   retryWarmStartThresholdMs?: number;
   heartbeatTimeoutsMs?: Partial<HeartbeatTimeouts>;
+  repairSnapshotTimeoutMs?: number;
   treatProductionExecutionStallsAsOOM?: boolean;
   suspendedHeartbeatRetriesConfig?: {
     maxCount?: number;
