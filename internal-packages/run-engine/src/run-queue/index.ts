@@ -40,6 +40,7 @@ import {
   OutputPayload,
   OutputPayloadV2,
   RunQueueKeyProducer,
+  RunQueueKeyProducerEnvironment,
   RunQueueSelectionStrategy,
 } from "./types.js";
 import { WorkerQueueResolver } from "./workerQueueResolver.js";
@@ -930,6 +931,15 @@ export class RunQueue {
     });
   }
 
+  public async clearMessageFromConcurrencySets(params: {
+    runId: string;
+    orgId: string;
+    queue: string;
+    env: RunQueueKeyProducerEnvironment;
+  }) {
+    return this.#callClearMessageFromConcurrencySets(params);
+  }
+
   async quit() {
     this.abortController.abort();
 
@@ -1799,6 +1809,45 @@ export class RunQueue {
     );
   }
 
+  async #callClearMessageFromConcurrencySets({
+    runId,
+    orgId,
+    queue,
+    env,
+  }: {
+    runId: string;
+    orgId: string;
+    queue: string;
+    env: RunQueueKeyProducerEnvironment;
+  }) {
+    const messageId = runId;
+    const messageKey = this.keys.messageKey(orgId, messageId);
+    const queueCurrentConcurrencyKey = this.keys.queueCurrentConcurrencyKey(env, queue);
+    const envCurrentConcurrencyKey = this.keys.envCurrentConcurrencyKey(env);
+    const queueCurrentDequeuedKey = this.keys.queueCurrentDequeuedKey(env, queue);
+    const envCurrentDequeuedKey = this.keys.envCurrentDequeuedKey(env);
+
+    this.logger.debug("Calling clearMessageFromConcurrencySets", {
+      messageKey,
+      queue,
+      env,
+      queueCurrentConcurrencyKey,
+      envCurrentConcurrencyKey,
+      queueCurrentDequeuedKey,
+      envCurrentDequeuedKey,
+      messageId,
+      service: this.name,
+    });
+
+    return this.redis.clearMessageFromConcurrencySets(
+      queueCurrentConcurrencyKey,
+      envCurrentConcurrencyKey,
+      queueCurrentDequeuedKey,
+      envCurrentDequeuedKey,
+      messageId
+    );
+  }
+
   async #callNackMessage({ message, retryAt }: { message: OutputPayload; retryAt?: number }) {
     const messageId = message.runId;
     const messageKey = this.keys.messageKey(message.orgId, message.runId);
@@ -2640,6 +2689,26 @@ end
 return results
       `,
     });
+
+    this.redis.defineCommand("clearMessageFromConcurrencySets", {
+      numberOfKeys: 4,
+      lua: `
+-- Keys:
+local queueCurrentConcurrencyKey = KEYS[1]
+local envCurrentConcurrencyKey = KEYS[2]
+local queueCurrentDequeuedKey = KEYS[3]
+local envCurrentDequeuedKey = KEYS[4]
+
+-- Args:
+local messageId = ARGV[1]
+
+-- Update the concurrency keys
+redis.call('SREM', queueCurrentConcurrencyKey, messageId)
+redis.call('SREM', envCurrentConcurrencyKey, messageId)
+redis.call('SREM', queueCurrentDequeuedKey, messageId)
+redis.call('SREM', envCurrentDequeuedKey, messageId)
+`,
+    });
   }
 }
 
@@ -2721,6 +2790,17 @@ declare module "@internal/redis" {
       messageQueueName: string,
       messageKeyValue: string,
       removeFromWorkerQueue: string,
+      callback?: Callback<void>
+    ): Result<void, Context>;
+
+    clearMessageFromConcurrencySets(
+      // keys
+      queueCurrentConcurrencyKey: string,
+      envCurrentConcurrencyKey: string,
+      queueCurrentDequeuedKey: string,
+      envCurrentDequeuedKey: string,
+      // args
+      messageId: string,
       callback?: Callback<void>
     ): Result<void, Context>;
 

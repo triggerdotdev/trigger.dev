@@ -71,6 +71,7 @@ export class RunEngine {
   private tracer: Tracer;
   private meter: Meter;
   private heartbeatTimeouts: HeartbeatTimeouts;
+  private repairSnapshotTimeoutMs: number;
 
   prisma: PrismaClient;
   readOnlyPrisma: PrismaReplicaClient;
@@ -191,6 +192,9 @@ export class RunEngine {
         heartbeatSnapshot: async ({ payload }) => {
           await this.#handleStalledSnapshot(payload);
         },
+        repairSnapshot: async ({ payload }) => {
+          await this.#handleRepairSnapshot(payload);
+        },
         expireRun: async ({ payload }) => {
           await this.ttlSystem.expireRun({ runId: payload.runId });
         },
@@ -240,6 +244,8 @@ export class RunEngine {
       ...defaultHeartbeatTimeouts,
       ...(options.heartbeatTimeoutsMs ?? {}),
     };
+
+    this.repairSnapshotTimeoutMs = options.repairSnapshotTimeoutMs ?? 60_000;
 
     const resources: SystemResources = {
       prisma: this.prisma,
@@ -1174,81 +1180,77 @@ export class RunEngine {
   async repairEnvironment(environment: AuthenticatedEnvironment, dryRun: boolean) {
     const runIds = await this.runQueue.getCurrentConcurrencyOfEnvironment(environment);
 
-    const completedRuns = await this.#concurrencySweeperCallback(runIds, 5000);
+    return this.#repairRuns(runIds, dryRun);
+  }
 
-    if (dryRun) {
+  async repairQueue(
+    environment: AuthenticatedEnvironment,
+    queue: string,
+    dryRun: boolean,
+    ignoreRunIds: string[]
+  ) {
+    const runIds = await this.runQueue.getCurrentConcurrencyOfQueue(environment, queue);
+
+    const runIdsToRepair = runIds.filter((runId) => !ignoreRunIds.includes(runId));
+
+    return this.#repairRuns(runIdsToRepair, dryRun);
+  }
+
+  async #repairRuns(runIds: string[], dryRun: boolean) {
+    if (runIds.length === 0) {
       return {
         runIds,
-        completedRunIds: completedRuns.map((r) => r.id),
+        repairs: [],
         dryRun,
       };
     }
 
-    if (completedRuns.length === 0) {
-      return {
-        runIds,
-        completedRunIds: [],
-        dryRun,
-      };
-    }
-
-    await pMap(
-      completedRuns,
-      async (run) => {
-        await this.runQueue.acknowledgeMessage(run.orgId, run.id, {
-          skipDequeueProcessing: true,
-          removeFromWorkerQueue: false,
-        });
+    const repairs = await pMap(
+      runIds,
+      async (runId) => {
+        return this.#repairRun(runId, dryRun);
       },
       { concurrency: 5 }
     );
 
     return {
       runIds,
-      completedRunIds: completedRuns.map((r) => r.id),
+      repairs,
       dryRun,
     };
   }
 
-  async repairQueue(environment: AuthenticatedEnvironment, queue: string, dryRun: boolean) {
-    const runIds = await this.runQueue.getCurrentConcurrencyOfQueue(environment, queue);
+  async #repairRun(runId: string, dryRun: boolean) {
+    const snapshot = await getLatestExecutionSnapshot(this.prisma, runId);
 
-    const completedRuns = await this.#concurrencySweeperCallback(runIds, 5000);
-
-    if (dryRun) {
-      return {
-        queue,
-        runIds,
-        completedRunIds: completedRuns.map((r) => r.id),
-        dryRun,
-      };
-    }
-
-    if (completedRuns.length === 0) {
-      return {
-        queue,
-        runIds,
-        completedRunIds: [],
-        dryRun,
-      };
-    }
-
-    await pMap(
-      completedRuns,
-      async (run) => {
-        await this.runQueue.acknowledgeMessage(run.orgId, run.id, {
-          skipDequeueProcessing: true,
-          removeFromWorkerQueue: false,
+    if (
+      snapshot.executionStatus === "QUEUED" ||
+      snapshot.executionStatus === "SUSPENDED" ||
+      snapshot.executionStatus === "FINISHED"
+    ) {
+      if (!dryRun) {
+        // Schedule the repair job
+        await this.worker.enqueueOnce({
+          id: `repair-in-progress-run:${runId}`,
+          job: "repairSnapshot",
+          payload: { runId, snapshotId: snapshot.id, executionStatus: snapshot.executionStatus },
+          availableAt: new Date(Date.now() + this.repairSnapshotTimeoutMs),
         });
-      },
-      { concurrency: 5 }
-    );
+      }
+
+      return {
+        action: "repairSnapshot",
+        runId,
+        snapshotStatus: snapshot.executionStatus,
+        snapshotId: snapshot.id,
+      };
+    }
 
     return {
-      queue,
-      runIds,
-      completedRunIds: completedRuns.map((r) => r.id),
-      dryRun,
+      action: "ignore",
+      runId,
+      snapshotStatus: snapshot.executionStatus,
+      snapshotId: snapshot.id,
     };
   }
 
@@ -1642,6 +1644,117 @@ export class RunEngine {
         }
         case "FINISHED": {
           throw new NotImplementedError("There shouldn't be a heartbeat for FINISHED");
+        }
+        default: {
+          assertNever(latestSnapshot.executionStatus);
+        }
+      }
+    });
+  }
+
+  async #handleRepairSnapshot({
+    runId,
+    snapshotId,
+    executionStatus,
+  }: {
+    runId: string;
+    snapshotId: string;
+    executionStatus: string;
+  }) {
+    return await this.runLock.lock("handleRepairSnapshot", [runId], async () => {
+      const latestSnapshot = await getLatestExecutionSnapshot(this.prisma, runId);
+
+      if (latestSnapshot.id !== snapshotId) {
+        this.logger.log(
+          "RunEngine.handleRepairSnapshot no longer the latest snapshot, stopping the repair.",
+          {
+            runId,
+            snapshotId,
+            latestSnapshotExecutionStatus: latestSnapshot.executionStatus,
+            repairExecutionStatus: executionStatus,
+          }
+        );
+
+        return;
+      }
+
+      // Okay, so this means we haven't transitioned to a new status yes, so we need to do something
+      switch (latestSnapshot.executionStatus) {
+        case "EXECUTING":
+        case "EXECUTING_WITH_WAITPOINTS":
+        case "PENDING_CANCEL":
+        case "PENDING_EXECUTING":
+        case "QUEUED_EXECUTING":
+        case "RUN_CREATED": {
+          // Do nothing;
+          return;
+        }
+        case "QUEUED": {
+          this.logger.log("RunEngine.handleRepairSnapshot QUEUED", {
+            runId,
+            snapshotId,
+          });
+
+          //it will automatically be requeued X times depending on the queue retry settings
+          const gotRequeued = await this.runQueue.nackMessage({
+            orgId: latestSnapshot.organizationId,
+            messageId: runId,
+          });
+
+          if (!gotRequeued) {
+            this.logger.error("RunEngine.handleRepairSnapshot QUEUED repair failed", {
+              runId,
+              snapshot: latestSnapshot,
+            });
+          } else {
+            this.logger.log("RunEngine.handleRepairSnapshot QUEUED repair successful", {
+              runId,
+              snapshot: latestSnapshot,
+            });
+          }
+
+          break;
+        }
+        case "FINISHED":
+        case "SUSPENDED": {
+          this.logger.log("RunEngine.handleRepairSnapshot SUSPENDED/FINISHED", {
+            runId,
+            snapshotId,
+          });
+
+          const taskRun = await this.prisma.taskRun.findFirst({
+            where: { id: runId },
+            select: {
+              queue: true,
+            },
+          });
+
+          if (!taskRun) {
+            this.logger.error("RunEngine.handleRepairSnapshot SUSPENDED/FINISHED task run not found", {
+              runId,
+              snapshotId,
+            });
+            return;
+          }
+
+          // We need to clear this run from the current concurrency sets
+          await this.runQueue.clearMessageFromConcurrencySets({
+            runId,
+            orgId: latestSnapshot.organizationId,
+            queue: taskRun.queue,
+            env: {
+              id: latestSnapshot.environmentId,
+              type: latestSnapshot.environmentType,
+              project: {
+                id: latestSnapshot.projectId,
+              },
+              organization: {
+                id: latestSnapshot.organizationId,
+              },
+            },
+          });
+
+          break;
         }
         default: {
           assertNever(latestSnapshot.executionStatus);

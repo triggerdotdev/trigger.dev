@@ -86,7 +86,17 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const repairResults = await pMap(
     queues,
     async (queue) => {
-      return engine.repairQueue(environment, queue.name, parsedBody.dryRun);
+      const repair = await engine.repairQueue(
+        environment,
+        queue.name,
+        parsedBody.dryRun,
+        repairEnvironmentResults.runIds
+      );
+
+      return {
+        queue: queue.name,
+        ...repair,
+      };
     },
     { concurrency: 5 }
   );
