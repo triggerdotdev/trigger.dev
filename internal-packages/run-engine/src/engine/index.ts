@@ -1682,7 +1682,6 @@ export class RunEngine {
       switch (latestSnapshot.executionStatus) {
         case "EXECUTING":
         case "EXECUTING_WITH_WAITPOINTS":
-        case "FINISHED":
         case "PENDING_CANCEL":
         case "PENDING_EXECUTING":
         case "QUEUED_EXECUTING":
@@ -1716,8 +1715,9 @@ export class RunEngine {
 
           break;
         }
+        case "FINISHED":
         case "SUSPENDED": {
-          this.logger.log("RunEngine.handleRepairSnapshot SUSPENDED", {
+          this.logger.log("RunEngine.handleRepairSnapshot SUSPENDED/FINISHED", {
             runId,
             snapshotId,
           });
@@ -1730,7 +1730,7 @@ export class RunEngine {
           });
 
           if (!taskRun) {
-            this.logger.error("RunEngine.handleRepairSnapshot SUSPENDED task run not found", {
+            this.logger.error("RunEngine.handleRepairSnapshot SUSPENDED/FINISHED task run not found", {
               runId,
               snapshotId,
             });
