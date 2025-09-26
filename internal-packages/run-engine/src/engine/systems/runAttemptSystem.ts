@@ -1140,6 +1140,7 @@ export class RunAttemptSystem {
     runnerId,
     checkpointId,
     completedWaitpoints,
+    batchId,
     tx,
   }: {
     run: TaskRun;
@@ -1159,6 +1160,7 @@ export class RunAttemptSystem {
       id: string;
       index?: number;
     }[];
+    batchId?: string;
   }): Promise<{ wasRequeued: boolean } & ExecutionResult> {
     const prisma = tx ?? this.$.prisma;
 
@@ -1207,6 +1209,7 @@ export class RunAttemptSystem {
         runnerId,
         checkpointId,
         completedWaitpoints,
+        batchId,
       });
 
       return {
