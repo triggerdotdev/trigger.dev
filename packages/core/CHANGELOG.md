@@ -1,5 +1,11 @@
 # internal-platform
 
+## 4.0.5
+
+### Patch Changes
+
+- Added INSTALLING status to the deployment status enum. ([#2544](https://github.com/triggerdotdev/trigger.dev/pull/2544))
+
 ## 4.0.4
 
 ## 4.0.3
