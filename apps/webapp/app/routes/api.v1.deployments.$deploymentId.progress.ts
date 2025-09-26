@@ -1,5 +1,5 @@
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import { StartDeploymentRequestBody } from "@trigger.dev/core/v3";
+import { ProgressDeploymentRequestBody, tryCatch } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { authenticateRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
@@ -34,8 +34,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const { environment: authenticatedEnv } = authenticationResult.result;
   const { deploymentId } = parsedParams.data;
 
-  const rawBody = await request.json();
-  const body = StartDeploymentRequestBody.safeParse(rawBody);
+  const [, rawBody] = await tryCatch(request.json());
+  const body = ProgressDeploymentRequestBody.safeParse(rawBody ?? {});
 
   if (!body.success) {
     return json({ error: "Invalid request body", issues: body.error.issues }, { status: 400 });
@@ -44,23 +44,28 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const deploymentService = new DeploymentService();
 
   return await deploymentService
-    .startDeployment(authenticatedEnv, deploymentId, {
+    .progressDeployment(authenticatedEnv, deploymentId, {
       contentHash: body.data.contentHash,
       git: body.data.gitMeta,
       runtime: body.data.runtime,
     })
     .match(
       () => {
-        return json(null, { status: 204 });
+        return new Response(null, { status: 204 });
       },
       (error) => {
         switch (error.type) {
           case "failed_to_extend_deployment_timeout":
-            return json(null, { status: 204 }); // ignore these errors for now
+            return new Response(null, { status: 204 }); // ignore these errors for now
           case "deployment_not_found":
             return json({ error: "Deployment not found" }, { status: 404 });
-          case "deployment_not_pending":
-            return json({ error: "Deployment is not pending" }, { status: 409 });
+          case "deployment_cannot_be_progressed":
+            return json(
+              { error: "Deployment is not in a progressable state (PENDING or INSTALLING)" },
+              { status: 409 }
+            );
+          case "failed_to_create_remote_build":
+            return json({ error: "Failed to create remote build" }, { status: 500 });
           case "other":
           default:
             error.type satisfies "other";

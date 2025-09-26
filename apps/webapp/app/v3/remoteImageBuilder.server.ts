@@ -1,9 +1,12 @@
 import { depot } from "@depot/sdk-node";
-import { Project } from "@trigger.dev/database";
+import { type ExternalBuildData } from "@trigger.dev/core/v3";
+import { type Project } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 
-export async function createRemoteImageBuild(project: Project) {
+export async function createRemoteImageBuild(
+  project: Project
+): Promise<ExternalBuildData | undefined> {
   if (!remoteBuildsEnabled()) {
     return;
   }

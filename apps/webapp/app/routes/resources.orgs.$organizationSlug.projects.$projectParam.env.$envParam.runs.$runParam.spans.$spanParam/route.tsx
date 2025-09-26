@@ -78,8 +78,10 @@ import {
 } from "~/utils/pathBuilder";
 import { createTimelineSpanEventsFromSpanEvents } from "~/utils/timelineSpanEvents";
 import { CompleteWaitpointForm } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.waitpoints.$waitpointFriendlyId.complete/route";
+import { requireUserId } from "~/services/session.server";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
+  const userId = await requireUserId(request);
   const { projectParam, organizationSlug, envParam, runParam, spanParam } =
     v3SpanParamsSchema.parse(params);
 
@@ -90,6 +92,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       projectSlug: projectParam,
       spanId: spanParam,
       runFriendlyId: runParam,
+      userId,
     });
 
     return typedjson(result);

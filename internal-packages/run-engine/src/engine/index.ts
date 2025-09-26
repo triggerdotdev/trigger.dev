@@ -1119,6 +1119,8 @@ export class RunEngine {
     } catch (e) {
       this.logger.error("Failed to getSnapshotsSince", {
         message: e instanceof Error ? e.message : e,
+        runId,
+        snapshotId,
       });
       return null;
     }
@@ -1414,6 +1416,11 @@ export class RunEngine {
           throw new NotImplementedError("There shouldn't be a heartbeat for QUEUED_EXECUTING");
         }
         case "PENDING_EXECUTING": {
+          this.logger.log("RunEngine stalled snapshot PENDING_EXECUTING", {
+            runId,
+            snapshotId: latestSnapshot.id,
+          });
+
           //the run didn't start executing, we need to requeue it
           const run = await prisma.taskRun.findFirst({
             where: { id: runId },
@@ -1449,6 +1456,7 @@ export class RunEngine {
             projectId: latestSnapshot.projectId,
             checkpointId: latestSnapshot.checkpointId ?? undefined,
             completedWaitpoints: latestSnapshot.completedWaitpoints,
+            batchId: latestSnapshot.batchId ?? undefined,
             error: {
               type: "INTERNAL_ERROR",
               code: "TASK_RUN_DEQUEUED_MAX_RETRIES",

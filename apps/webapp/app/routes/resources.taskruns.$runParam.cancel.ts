@@ -1,9 +1,10 @@
 import { parse } from "@conform-to/zod";
-import { ActionFunction, json } from "@remix-run/node";
+import { type ActionFunction, json } from "@remix-run/node";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { logger } from "~/services/logger.server";
+import { requireUserId } from "~/services/session.server";
 import { CancelTaskRunService } from "~/v3/services/cancelTaskRun.server";
 
 export const cancelSchema = z.object({
@@ -15,6 +16,7 @@ const ParamSchema = z.object({
 });
 
 export const action: ActionFunction = async ({ request, params }) => {
+  const userId = await requireUserId(request);
   const { runParam } = ParamSchema.parse(params);
 
   const formData = await request.formData();
@@ -25,9 +27,18 @@ export const action: ActionFunction = async ({ request, params }) => {
   }
 
   try {
-    const taskRun = await prisma.taskRun.findUnique({
+    const taskRun = await prisma.taskRun.findFirst({
       where: {
         friendlyId: runParam,
+        project: {
+          organization: {
+            members: {
+              some: {
+                userId,
+              },
+            },
+          },
+        },
       },
     });
 

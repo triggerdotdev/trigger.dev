@@ -1,4 +1,4 @@
-import { LoaderFunctionArgs } from "@remix-run/node";
+import { type LoaderFunctionArgs } from "@remix-run/node";
 import { typedjson } from "remix-typedjson";
 import { z } from "zod";
 import { $replica } from "~/db.server";
