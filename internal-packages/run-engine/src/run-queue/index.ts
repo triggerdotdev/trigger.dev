@@ -1417,27 +1417,28 @@ export class RunQueue {
 
       const pipeline = this.redis.pipeline();
 
-      const workerQueueKeys = new Set<string>();
+      const operations = [];
 
       for (const message of messages) {
         const workerQueueKey = this.keys.workerQueueKey(
           this.#getWorkerQueueFromMessage(message.message)
         );
 
-        workerQueueKeys.add(workerQueueKey);
-
         const messageKeyValue = this.keys.messageKey(message.message.orgId, message.messageId);
+
+        operations.push({
+          workerQueueKey: workerQueueKey,
+          messageId: message.messageId,
+        });
 
         pipeline.rpush(workerQueueKey, messageKeyValue);
       }
 
-      span.setAttribute("worker_queue_count", workerQueueKeys.size);
-      span.setAttribute("worker_queue_keys", Array.from(workerQueueKeys));
+      span.setAttribute("operations_count", operations.length);
 
-      this.logger.debug("enqueueMessagesToWorkerQueues pipeline", {
+      this.logger.info("enqueueMessagesToWorkerQueues", {
         service: this.name,
-        messages,
-        workerQueueKeys: Array.from(workerQueueKeys),
+        operations,
       });
 
       await pipeline.exec();
