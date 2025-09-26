@@ -1706,6 +1706,14 @@ export class RunQueue {
       const message = await this.#dequeueMessageFromKey(messageKey);
 
       if (!message) {
+        this.logger.error("Failed to dequeue message from worker queue", {
+          messageKey,
+          workerQueue,
+          workerQueueKey,
+          workerQueueLength,
+          service: this.name,
+        });
+
         return;
       }
 
