@@ -1512,11 +1512,92 @@ export class ClickhouseEventRepository implements IEventRepository {
   async getRunEvents(
     storeTable: TaskEventStoreTable,
     environmentId: string,
+    traceId: string,
     runId: string,
     startCreatedAt: Date,
     endCreatedAt?: Date
   ): Promise<RunPreparedEvent[]> {
-    throw new Error("ClickhouseEventRepository.getRunEvents not implemented");
+    const startCreatedAtWithBuffer = new Date(startCreatedAt.getTime() - 1000);
+
+    const queryBuilder = this._clickhouse.taskEvents.traceSummaryQueryBuilder();
+
+    queryBuilder.where("environment_id = {environmentId: String}", { environmentId });
+    queryBuilder.where("trace_id = {traceId: String}", { traceId });
+    queryBuilder.where("run_id = {runId: String}", { runId });
+    queryBuilder.where("start_time >= {startCreatedAt: String}", {
+      startCreatedAt: convertDateToNanoseconds(startCreatedAtWithBuffer).toString(),
+    });
+
+    if (endCreatedAt) {
+      queryBuilder.where("start_time <= {endCreatedAt: String}", {
+        endCreatedAt: convertDateToNanoseconds(endCreatedAt).toString(),
+      });
+    }
+
+    queryBuilder.where("kind != {kind: String}", { kind: "DEBUG_EVENT" });
+    queryBuilder.orderBy("start_time ASC");
+
+    if (this._config.maximumTraceSummaryViewCount) {
+      queryBuilder.limit(this._config.maximumTraceSummaryViewCount);
+    }
+
+    const [queryError, records] = await queryBuilder.execute();
+
+    if (queryError) {
+      throw queryError;
+    }
+
+    if (!records) {
+      return [];
+    }
+
+    const recordsGroupedBySpanId = records.reduce((acc, record) => {
+      acc[record.span_id] = [...(acc[record.span_id] ?? []), record];
+      return acc;
+    }, {} as Record<string, TaskEventSummaryV1Result[]>);
+
+    const spanSummaries = new Map<string, SpanSummary>();
+
+    for (const [spanId, spanRecords] of Object.entries(recordsGroupedBySpanId)) {
+      const spanSummary = this.#mergeRecordsIntoSpanSummary(spanId, spanRecords);
+
+      if (!spanSummary) {
+        continue;
+      }
+
+      spanSummaries.set(spanId, spanSummary);
+    }
+
+    const spans = Array.from(spanSummaries.values());
+
+    const overridesBySpanId: Record<string, SpanOverride> = {};
+
+    const finalSpans = spans.map((span) => {
+      return this.#applyAncestorOverrides(span, spanSummaries, overridesBySpanId);
+    });
+
+    const runPreparedEvents = finalSpans.map((span) => this.#spanSummaryToRunPreparedEvent(span));
+
+    return runPreparedEvents;
+  }
+
+  #spanSummaryToRunPreparedEvent(span: SpanSummary): RunPreparedEvent {
+    return {
+      spanId: span.id,
+      parentId: span.parentId ?? null,
+      runId: span.runId,
+      message: span.data.message,
+      style: span.data.style,
+      events: span.data.events,
+      startTime: convertDateToNanoseconds(span.data.startTime),
+      duration: span.data.duration,
+      isError: span.data.isError,
+      isPartial: span.data.isPartial,
+      isCancelled: span.data.isCancelled,
+      kind: "UNSPECIFIED",
+      attemptNumber: span.data.attemptNumber ?? null,
+      level: span.data.level,
+    };
   }
 }
 
