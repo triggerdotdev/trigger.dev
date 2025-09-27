@@ -1,11 +1,9 @@
 import { $transaction, type PrismaClientOrTransaction, prisma } from "~/db.server";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { eventRepository } from "../eventRepository/eventRepository.server";
 import { isCancellableRunStatus } from "../taskStatus";
 import { BaseService } from "./baseService.server";
 import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
-import { getTaskEventStoreTableForRun } from "../taskEventStore.server";
 
 export class CancelAttemptService extends BaseService {
   public async call(

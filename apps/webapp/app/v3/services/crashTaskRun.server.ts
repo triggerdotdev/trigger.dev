@@ -1,14 +1,13 @@
-import { TaskRun, TaskRunAttempt } from "@trigger.dev/database";
-import { eventRepository } from "../eventRepository/eventRepository.server";
-import { BaseService } from "./baseService.server";
-import { logger } from "~/services/logger.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { CRASHABLE_ATTEMPT_STATUSES, isCrashableRunStatus } from "../taskStatus";
-import { sanitizeError, TaskRunErrorCodes, TaskRunInternalError } from "@trigger.dev/core/v3";
-import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
-import { FailedTaskRunRetryHelper } from "../failedTaskRun.server";
-import { getTaskEventStoreTableForRun } from "../taskEventStore.server";
 import { tryCatch } from "@trigger.dev/core/utils";
+import { sanitizeError, TaskRunErrorCodes, TaskRunInternalError } from "@trigger.dev/core/v3";
+import { TaskRun, TaskRunAttempt } from "@trigger.dev/database";
+import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { logger } from "~/services/logger.server";
+import { FailedTaskRunRetryHelper } from "../failedTaskRun.server";
+import { CRASHABLE_ATTEMPT_STATUSES, isCrashableRunStatus } from "../taskStatus";
+import { BaseService } from "./baseService.server";
+import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
+import { resolveEventRepositoryForStore } from "../eventRepository/index.server";
 
 export type CrashTaskRunServiceOptions = {
   reason?: string;
@@ -120,6 +119,8 @@ export class CrashTaskRunService extends BaseService {
         stackTrace: opts.logs,
       },
     });
+
+    const eventRepository = resolveEventRepositoryForStore(crashedTaskRun.taskEventStore);
 
     const [createAttemptFailedEventError] = await tryCatch(
       eventRepository.completeFailedRunEvent({

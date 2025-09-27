@@ -22,7 +22,6 @@ import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { marqs } from "~/v3/marqs/index.server";
-import { eventRepository } from "../eventRepository/eventRepository.server";
 import { FailedTaskRunRetryHelper } from "../failedTaskRun.server";
 import { socketIo } from "../handleSocketIo.server";
 import { createExceptionPropertiesFromError } from "../eventRepository/common.server";
@@ -32,6 +31,7 @@ import { CancelAttemptService } from "./cancelAttempt.server";
 import { CreateCheckpointService } from "./createCheckpoint.server";
 import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
 import { RetryAttemptService } from "./retryAttempt.server";
+import { resolveEventRepositoryForStore } from "../eventRepository/index.server";
 
 type FoundAttempt = Awaited<ReturnType<typeof findAttempt>>;
 
@@ -162,6 +162,8 @@ export class CompleteAttemptService extends BaseService {
       metadata: completion.metadata,
       env,
     });
+
+    const eventRepository = resolveEventRepositoryForStore(taskRunAttempt.taskRun.taskEventStore);
 
     const [completeSuccessfulRunEventError] = await tryCatch(
       eventRepository.completeSuccessfulRunEvent({
@@ -313,6 +315,8 @@ export class CompleteAttemptService extends BaseService {
       // The attempt failed due to an OOM error but we're already on the machine we should retry on
       exitRun(taskRunAttempt.taskRunId);
     }
+
+    const eventRepository = resolveEventRepositoryForStore(taskRunAttempt.taskRun.taskEventStore);
 
     const [completeFailedRunEventError] = await tryCatch(
       eventRepository.completeFailedRunEvent({
@@ -533,6 +537,8 @@ export class CompleteAttemptService extends BaseService {
     oomMachine?: MachinePresetName;
   }) {
     const retryAt = new Date(executionRetry.timestamp);
+
+    const eventRepository = resolveEventRepositoryForStore(taskRunAttempt.taskRun.taskEventStore);
 
     // Retry the task run
     await eventRepository.recordEvent(
