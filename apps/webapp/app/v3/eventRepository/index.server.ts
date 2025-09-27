@@ -20,17 +20,39 @@ export function resolveEventRepositoryForStore(store: string | undefined): IEven
 export async function getEventRepository(
   featureFlags: Record<string, unknown> | undefined
 ): Promise<{ repository: IEventRepository; store: string }> {
-  const taskEventRepository = await flags({
-    key: FEATURE_FLAG.taskEventRepository,
-    defaultValue: env.EVENT_REPOSITORY_DEFAULT_STORE,
-    overrides: featureFlags,
-  });
+  const taskEventRepository = await resolveTaskEventRepositoryFlag(featureFlags);
 
   if (taskEventRepository === "clickhouse") {
     return { repository: clickhouseEventRepository, store: "clickhouse" };
   }
 
   return { repository: eventRepository, store: getTaskEventStore() };
+}
+
+async function resolveTaskEventRepositoryFlag(
+  featureFlags: Record<string, unknown> | undefined
+): Promise<"clickhouse" | "postgres"> {
+  const flag = await flags({
+    key: FEATURE_FLAG.taskEventRepository,
+    defaultValue: env.EVENT_REPOSITORY_DEFAULT_STORE,
+    overrides: featureFlags,
+  });
+
+  if (flag === "clickhouse") {
+    return "clickhouse";
+  }
+
+  if (env.EVENT_REPOSITORY_CLICKHOUSE_ROLLOUT_PERCENT) {
+    const rolloutPercent = env.EVENT_REPOSITORY_CLICKHOUSE_ROLLOUT_PERCENT;
+
+    const randomNumber = Math.random();
+
+    if (randomNumber < rolloutPercent) {
+      return "clickhouse";
+    }
+  }
+
+  return flag;
 }
 
 export async function recordRunDebugLog(
