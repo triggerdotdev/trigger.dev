@@ -1,8 +1,5 @@
 import { RunEngineVersion, type TaskRun } from "@trigger.dev/database";
-import { logger } from "~/services/logger.server";
-import { eventRepository } from "../eventRepository/eventRepository.server";
 import { engine } from "../runEngine.server";
-import { getTaskEventStoreTableForRun } from "../taskEventStore.server";
 import { BaseService } from "./baseService.server";
 import { CancelTaskRunServiceV1 } from "./cancelTaskRunV1.server";
 
