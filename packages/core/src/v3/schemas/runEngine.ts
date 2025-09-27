@@ -118,6 +118,7 @@ const BaseRunMetadata = z.object({
   friendlyId: z.string(),
   status: z.enum(Object.values(TaskRunStatus) as [TaskRunStatus]),
   attemptNumber: z.number().nullish(),
+  taskEventStore: z.string().optional(),
 });
 
 export const ExecutionResult = z.object({

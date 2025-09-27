@@ -9,11 +9,12 @@ import { RunEngineTriggerTaskService } from "~/runEngine/services/triggerTask.se
 import { DefaultTriggerTaskValidator } from "~/runEngine/validators/triggerTaskValidator";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { determineEngineVersion } from "../engineVersion.server";
-import { eventRepository } from "../eventRepository.server";
+import { eventRepository } from "../eventRepository/eventRepository.server";
 import { tracer } from "../tracer.server";
 import { WithRunEngine } from "./baseService.server";
 import { TriggerTaskServiceV1 } from "./triggerTaskV1.server";
 import { env } from "~/env.server";
+import { clickhouseEventRepository } from "../eventRepository/clickhouseEventRepositoryInstance.server";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -93,7 +94,10 @@ export class TriggerTaskService extends WithRunEngine {
     body: TriggerTaskRequestBody,
     options: TriggerTaskServiceOptions = {}
   ): Promise<TriggerTaskServiceResult | undefined> {
-    const traceEventConcern = new DefaultTraceEventsConcern(eventRepository);
+    const traceEventConcern = new DefaultTraceEventsConcern(
+      eventRepository,
+      clickhouseEventRepository
+    );
 
     const service = new RunEngineTriggerTaskService({
       prisma: this._prisma,

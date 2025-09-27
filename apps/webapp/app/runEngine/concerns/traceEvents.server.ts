@@ -1,41 +1,53 @@
-import { EventRepository } from "~/v3/eventRepository.server";
+import { EventRepository } from "~/v3/eventRepository/eventRepository.server";
 import { TracedEventSpan, TraceEventConcern, TriggerTaskRequest } from "../types";
 import { SemanticInternalAttributes } from "@trigger.dev/core/v3/semanticInternalAttributes";
-import { BatchId } from "@trigger.dev/core/v3/isomorphic";
 import { TaskRun } from "@trigger.dev/database";
+import { getTaskEventStore } from "~/v3/taskEventStore.server";
+import { ClickhouseEventRepository } from "~/v3/eventRepository/clickhouseEventRepository.server";
+import { IEventRepository } from "~/v3/eventRepository/eventRepository.types";
+import { FEATURE_FLAG, flags } from "~/v3/featureFlags.server";
+import { env } from "~/env.server";
+import { getEventRepository } from "~/v3/eventRepository/index.server";
 
 export class DefaultTraceEventsConcern implements TraceEventConcern {
   private readonly eventRepository: EventRepository;
+  private readonly clickhouseEventRepository: ClickhouseEventRepository;
 
-  constructor(eventRepository: EventRepository) {
+  constructor(
+    eventRepository: EventRepository,
+    clickhouseEventRepository: ClickhouseEventRepository
+  ) {
     this.eventRepository = eventRepository;
+    this.clickhouseEventRepository = clickhouseEventRepository;
+  }
+
+  async #getEventRepository(
+    request: TriggerTaskRequest
+  ): Promise<{ repository: IEventRepository; store: string }> {
+    return await getEventRepository(
+      request.environment.organization.featureFlags as Record<string, unknown>
+    );
   }
 
   async traceRun<T>(
     request: TriggerTaskRequest,
-    callback: (span: TracedEventSpan) => Promise<T>
+    callback: (span: TracedEventSpan, store: string) => Promise<T>
   ): Promise<T> {
-    return await this.eventRepository.traceEvent(
+    const { repository, store } = await this.#getEventRepository(request);
+
+    return await repository.traceEvent(
       request.taskId,
       {
         context: request.options?.traceContext,
         spanParentAsLink: request.options?.spanParentAsLink,
-        parentAsLinkType: request.options?.parentAsLinkType,
         kind: "SERVER",
         environment: request.environment,
         taskSlug: request.taskId,
         attributes: {
-          properties: {
-            [SemanticInternalAttributes.SHOW_ACTIONS]: true,
-          },
+          properties: {},
           style: {
             icon: request.options?.customIcon ?? "task",
           },
-          runIsTest: request.body.options?.test ?? false,
-          batchId: request.options?.batchId
-            ? BatchId.toFriendlyId(request.options.batchId)
-            : undefined,
-          idempotencyKey: request.options?.idempotencyKey,
         },
         incomplete: true,
         immediate: true,
@@ -44,14 +56,17 @@ export class DefaultTraceEventsConcern implements TraceEventConcern {
           : undefined,
       },
       async (event, traceContext, traceparent) => {
-        return await callback({
-          traceId: event.traceId,
-          spanId: event.spanId,
-          traceContext,
-          traceparent,
-          setAttribute: (key, value) => event.setAttribute(key as any, value),
-          failWithError: event.failWithError.bind(event),
-        });
+        return await callback(
+          {
+            traceId: event.traceId,
+            spanId: event.spanId,
+            traceContext,
+            traceparent,
+            setAttribute: (key, value) => event.setAttribute(key as any, value),
+            failWithError: event.failWithError.bind(event),
+          },
+          store
+        );
       }
     );
   }
@@ -64,32 +79,26 @@ export class DefaultTraceEventsConcern implements TraceEventConcern {
       incomplete: boolean;
       isError: boolean;
     },
-    callback: (span: TracedEventSpan) => Promise<T>
+    callback: (span: TracedEventSpan, store: string) => Promise<T>
   ): Promise<T> {
     const { existingRun, idempotencyKey, incomplete, isError } = options;
+    const { repository, store } = await this.#getEventRepository(request);
 
-    return await this.eventRepository.traceEvent(
+    return await repository.traceEvent(
       `${request.taskId} (cached)`,
       {
         context: request.options?.traceContext,
         spanParentAsLink: request.options?.spanParentAsLink,
-        parentAsLinkType: request.options?.parentAsLinkType,
         kind: "SERVER",
         environment: request.environment,
         taskSlug: request.taskId,
         attributes: {
           properties: {
-            [SemanticInternalAttributes.SHOW_ACTIONS]: true,
             [SemanticInternalAttributes.ORIGINAL_RUN_ID]: existingRun.friendlyId,
           },
           style: {
             icon: "task-cached",
           },
-          runIsTest: request.body.options?.test ?? false,
-          batchId: request.options?.batchId
-            ? BatchId.toFriendlyId(request.options.batchId)
-            : undefined,
-          idempotencyKey,
           runId: existingRun.friendlyId,
         },
         incomplete,
@@ -111,14 +120,17 @@ export class DefaultTraceEventsConcern implements TraceEventConcern {
           }
         );
 
-        return await callback({
-          traceId: event.traceId,
-          spanId: event.spanId,
-          traceContext,
-          traceparent,
-          setAttribute: (key, value) => event.setAttribute(key as any, value),
-          failWithError: event.failWithError.bind(event),
-        });
+        return await callback(
+          {
+            traceId: event.traceId,
+            spanId: event.spanId,
+            traceContext,
+            traceparent,
+            setAttribute: (key, value) => event.setAttribute(key as any, value),
+            failWithError: event.failWithError.bind(event),
+          },
+          store
+        );
       }
     );
   }

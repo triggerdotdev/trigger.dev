@@ -29,7 +29,6 @@ import type {
   TriggerTaskServiceOptions,
   TriggerTaskServiceResult,
 } from "../../v3/services/triggerTask.server";
-import { getTaskEventStore } from "../../v3/taskEventStore.server";
 import { clampMaxDuration } from "../../v3/utils/maxDuration";
 import { IdempotencyKeyConcern } from "../concerns/idempotencyKeys.server";
 import type {
@@ -267,7 +266,7 @@ export class RunEngineTriggerTaskService {
       const workerQueue = await this.queueConcern.getWorkerQueue(environment, body.options?.region);
 
       try {
-        return await this.traceEventConcern.traceRun(triggerRequest, async (event) => {
+        return await this.traceEventConcern.traceRun(triggerRequest, async (event, store) => {
           const result = await this.runNumberIncrementer.incrementRunNumber(
             triggerRequest,
             async (num) => {
@@ -311,7 +310,7 @@ export class RunEngineTriggerTaskService {
                   delayUntil,
                   queuedAt: delayUntil ? undefined : new Date(),
                   maxAttempts: body.options?.maxAttempts,
-                  taskEventStore: getTaskEventStore(),
+                  taskEventStore: store,
                   ttl,
                   tags,
                   oneTimeUseToken: options.oneTimeUseToken,

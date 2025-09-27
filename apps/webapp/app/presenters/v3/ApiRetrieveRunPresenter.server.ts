@@ -75,6 +75,7 @@ export class ApiRetrieveRunPresenter {
       },
       select: {
         ...commonRunSelect,
+        traceId: true,
         payload: true,
         payloadType: true,
         output: true,

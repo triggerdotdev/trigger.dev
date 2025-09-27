@@ -9,7 +9,6 @@ export type TraceEvent = Pick<
   | "spanId"
   | "parentId"
   | "runId"
-  | "idempotencyKey"
   | "message"
   | "style"
   | "startTime"
@@ -19,7 +18,6 @@ export type TraceEvent = Pick<
   | "isCancelled"
   | "level"
   | "events"
-  | "environmentType"
   | "kind"
   | "attemptNumber"
 >;
@@ -29,7 +27,6 @@ export type DetailedTraceEvent = Pick<
   | "spanId"
   | "parentId"
   | "runId"
-  | "idempotencyKey"
   | "message"
   | "style"
   | "startTime"
@@ -39,15 +36,9 @@ export type DetailedTraceEvent = Pick<
   | "isCancelled"
   | "level"
   | "events"
-  | "environmentType"
   | "kind"
   | "taskSlug"
-  | "taskPath"
-  | "workerVersion"
-  | "queueName"
-  | "machinePreset"
   | "properties"
-  | "output"
   | "attemptNumber"
 >;
 
@@ -179,7 +170,6 @@ export class TaskEventStore {
           "spanId",
           "parentId",
           "runId",
-          "idempotencyKey",
           LEFT(message, 256) as message,
           style,
           "startTime",
@@ -189,7 +179,6 @@ export class TaskEventStore {
           "isCancelled",
           level,
           events,
-          "environmentType",
           "kind",
           "attemptNumber"
         FROM "TaskEventPartitioned"
@@ -212,7 +201,6 @@ export class TaskEventStore {
           "spanId",
           "parentId",
           "runId",
-          "idempotencyKey",
           LEFT(message, 256) as message,
           style,
           "startTime",
@@ -222,7 +210,6 @@ export class TaskEventStore {
           "isCancelled",
           level,
           events,
-          "environmentType",
           "kind",
           "attemptNumber"
         FROM "TaskEvent"
@@ -259,7 +246,6 @@ export class TaskEventStore {
           "spanId",
           "parentId",
           "runId",
-          "idempotencyKey",
           message,
           style,
           "startTime",
@@ -269,15 +255,9 @@ export class TaskEventStore {
           "isCancelled",
           level,
           events,
-          "environmentType",
           "kind",
           "taskSlug",
-          "taskPath",
-          "workerVersion",
-          "queueName",
-          "machinePreset",
           properties,
-          output,
           "attemptNumber"
         FROM "TaskEventPartitioned"
         WHERE
@@ -298,7 +278,6 @@ export class TaskEventStore {
           "spanId",
           "parentId",
           "runId",
-          "idempotencyKey",
           message,
           style,
           "startTime",
@@ -308,15 +287,9 @@ export class TaskEventStore {
           "isCancelled",
           level,
           events,
-          "environmentType",
           "kind",
           "taskSlug",
-          "taskPath",
-          "workerVersion",
-          "queueName",
-          "machinePreset",
           properties,
-          output,
           "attemptNumber"
         FROM "TaskEvent"
         WHERE "traceId" = ${traceId}

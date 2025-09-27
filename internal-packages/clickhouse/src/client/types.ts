@@ -90,5 +90,11 @@ export interface ClickhouseWriter {
     settings?: ClickHouseSettings;
   }): ClickhouseInsertFunction<z.input<TSchema>>;
 
+  insertUnsafe<TRecord extends Record<string, any>>(req: {
+    name: string;
+    table: string;
+    settings?: ClickHouseSettings;
+  }): ClickhouseInsertFunction<TRecord>;
+
   close(): Promise<void>;
 }

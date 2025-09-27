@@ -1,11 +1,10 @@
 import { PrismaClientOrTransaction } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { commonWorker } from "../commonWorker.server";
-import { eventRepository } from "../eventRepository.server";
 import { BaseService } from "./baseService.server";
 import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
-import { getTaskEventStoreTableForRun } from "../taskEventStore.server";
 import { tryCatch } from "@trigger.dev/core/utils";
+import { resolveEventRepositoryForStore } from "../eventRepository/index.server";
 
 export class ExpireEnqueuedRunService extends BaseService {
   public static async ack(runId: string, tx?: PrismaClientOrTransaction) {
@@ -78,6 +77,8 @@ export class ExpireEnqueuedRunService extends BaseService {
         raw: `Run expired because the TTL (${run.ttl}) was reached`,
       },
     });
+
+    const eventRepository = resolveEventRepositoryForStore(run.taskEventStore);
 
     if (run.ttl) {
       const [completeExpiredRunEventError] = await tryCatch(

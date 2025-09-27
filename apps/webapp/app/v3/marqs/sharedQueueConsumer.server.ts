@@ -22,6 +22,7 @@ import {
   TaskRunSuccessfulExecutionResult,
   parsePacket,
   serverWebsocketMessages,
+  SemanticInternalAttributes,
 } from "@trigger.dev/core/v3";
 import { ZodMessageSender } from "@trigger.dev/core/v3/zodMessageHandler";
 import {
@@ -1648,6 +1649,7 @@ export const AttemptForExecutionGetPayload = {
         baseCostInCents: true,
         maxDurationInSeconds: true,
         tags: true,
+        taskEventStore: true,
       },
     },
     queue: {
@@ -1880,7 +1882,8 @@ class SharedQueueTasks {
     const variables = await this.#buildEnvironmentVariables(
       attempt.runtimeEnvironment,
       taskRun.id,
-      machinePreset
+      machinePreset,
+      taskRun.taskEventStore ?? undefined
     );
 
     const payload: V3ProdTaskRunExecutionPayload = {
@@ -2049,6 +2052,7 @@ class SharedQueueTasks {
           },
         },
         machinePreset: true,
+        taskEventStore: true,
       },
     });
 
@@ -2071,7 +2075,12 @@ class SharedQueueTasks {
     const machinePreset =
       machinePresetFromRun(run) ?? machinePresetFromConfig(run.lockedBy?.machineConfig ?? {});
 
-    const variables = await this.#buildEnvironmentVariables(environment, run.id, machinePreset);
+    const variables = await this.#buildEnvironmentVariables(
+      environment,
+      run.id,
+      machinePreset,
+      run.taskEventStore ?? undefined
+    );
 
     return {
       traceContext: run.traceContext as Record<string, unknown>,
@@ -2178,7 +2187,8 @@ class SharedQueueTasks {
   async #buildEnvironmentVariables(
     environment: RuntimeEnvironmentForEnvRepo,
     runId: string,
-    machinePreset: MachinePreset
+    machinePreset: MachinePreset,
+    taskEventStore?: string
   ): Promise<Array<EnvironmentVariable>> {
     const variables = await resolveVariablesForEnvironment(environment);
 
@@ -2186,6 +2196,14 @@ class SharedQueueTasks {
       run_id: runId,
       machine_preset: machinePreset.name,
     });
+
+    if (taskEventStore) {
+      const resourceAttributes = JSON.stringify({
+        [SemanticInternalAttributes.TASK_EVENT_STORE]: taskEventStore,
+      });
+
+      variables.push(...[{ key: "OTEL_RESOURCE_ATTRIBUTES", value: resourceAttributes }]);
+    }
 
     return [
       ...variables,
