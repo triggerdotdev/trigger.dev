@@ -2,13 +2,13 @@ import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { prisma } from "~/db.server";
 import { requireUser } from "~/services/session.server";
 import { v3RunParamsSchema } from "~/utils/pathBuilder";
-import { eventRepository } from "~/v3/eventRepository/eventRepository.server";
 import type { RunPreparedEvent } from "~/v3/eventRepository/eventRepository.types";
 import { createGzip } from "zlib";
 import { Readable } from "stream";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3/utils/durations";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 import { TaskEventKind } from "@trigger.dev/database";
+import { resolveEventRepositoryForStore } from "~/v3/eventRepository/index.server";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const user = await requireUser(request);
@@ -33,9 +33,12 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     return new Response("Not found", { status: 404 });
   }
 
+  const eventRepository = resolveEventRepositoryForStore(run.taskEventStore);
+
   const runEvents = await eventRepository.getRunEvents(
     getTaskEventStoreTableForRun(run),
     run.runtimeEnvironmentId,
+    run.traceId,
     run.friendlyId,
     run.createdAt,
     run.completedAt ?? undefined

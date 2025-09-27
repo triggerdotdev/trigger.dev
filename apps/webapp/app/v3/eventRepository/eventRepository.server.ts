@@ -681,6 +681,7 @@ export class EventRepository implements IEventRepository {
   public async getRunEvents(
     storeTable: TaskEventStoreTable,
     environmentId: string,
+    traceId: string,
     runId: string,
     startCreatedAt: Date,
     endCreatedAt?: Date

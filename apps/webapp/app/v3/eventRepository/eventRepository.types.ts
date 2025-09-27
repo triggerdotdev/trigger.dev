@@ -373,6 +373,7 @@ export interface IEventRepository {
   getRunEvents(
     storeTable: TaskEventStoreTable,
     environmentId: string,
+    traceId: string,
     runId: string,
     startCreatedAt: Date,
     endCreatedAt?: Date
