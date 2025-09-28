@@ -181,7 +181,7 @@ export default function Page() {
   const fieldValues = useRef<string[]>(alerts.emails);
   const emailFields = useFieldList(form.ref, { ...emails, defaultValue: alerts.emails });
 
-  const checkboxLevels = [0.75, 0.9, 1.0];
+  const checkboxLevels = [0.75, 0.9, 1.0, 2.0, 5.0];
 
   useEffect(() => {
     if (alerts.emails.length > 0) {
