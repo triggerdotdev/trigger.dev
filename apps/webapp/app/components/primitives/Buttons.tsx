@@ -298,19 +298,17 @@ export const Button = forwardRef<HTMLButtonElement, ButtonPropsType>(
     const innerRef = useRef<HTMLButtonElement>(null);
     useImperativeHandle(ref, () => innerRef.current as HTMLButtonElement);
 
-    if (props.shortcut) {
-      useShortcutKeys({
-        shortcut: props.shortcut,
-        action: (e) => {
-          if (innerRef.current) {
-            innerRef.current.click();
-            e.preventDefault();
-            e.stopPropagation();
-          }
-        },
-        disabled,
-      });
-    }
+    useShortcutKeys({
+      shortcut: props.shortcut,
+      action: (e) => {
+        if (innerRef.current) {
+          innerRef.current.click();
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      },
+      disabled: disabled || !props.shortcut,
+    });
 
     return (
       <button
