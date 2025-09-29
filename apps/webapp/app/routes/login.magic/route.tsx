@@ -1,7 +1,11 @@
 import { ArrowLeftIcon, EnvelopeIcon } from "@heroicons/react/20/solid";
 import { InboxArrowDownIcon } from "@heroicons/react/24/solid";
-import type { ActionFunctionArgs, LoaderFunctionArgs, MetaFunction } from "@remix-run/node";
-import { redirect } from "@remix-run/node";
+import {
+  redirect,
+  type ActionFunctionArgs,
+  type LoaderFunctionArgs,
+  type MetaFunction,
+} from "@remix-run/node";
 import { Form, useNavigation } from "@remix-run/react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -18,6 +22,14 @@ import { Spinner } from "~/components/primitives/Spinner";
 import { TextLink } from "~/components/primitives/TextLink";
 import { authenticator } from "~/services/auth.server";
 import { commitSession, getUserSession } from "~/services/sessionStorage.server";
+import {
+  checkMagicLinkEmailRateLimit,
+  checkMagicLinkEmailDailyRateLimit,
+  MagicLinkRateLimitError,
+  checkMagicLinkIpRateLimit,
+} from "~/services/magicLinkRateLimiter.server";
+import { logger, tryCatch } from "@trigger.dev/core/v3";
+import { env } from "~/env.server";
 
 export const meta: MetaFunction = ({ matches }) => {
   const parentMeta = matches
@@ -71,28 +83,98 @@ export async function action({ request }: ActionFunctionArgs) {
 
   const payload = Object.fromEntries(await clonedRequest.formData());
 
-  const { action } = z
-    .object({
-      action: z.enum(["send", "reset"]),
-    })
+  const data = z
+    .discriminatedUnion("action", [
+      z.object({
+        action: z.literal("send"),
+        email: z.string().trim().toLowerCase(),
+      }),
+      z.object({
+        action: z.literal("reset"),
+      }),
+    ])
     .parse(payload);
 
-  if (action === "send") {
-    return authenticator.authenticate("email-link", request, {
-      successRedirect: "/login/magic",
-      failureRedirect: "/login/magic",
-    });
-  } else {
-    const session = await getUserSession(request);
-    session.unset("triggerdotdev:magiclink");
+  switch (data.action) {
+    case "send": {
+      if (!env.LOGIN_RATE_LIMITS_ENABLED) {
+        return authenticator.authenticate("email-link", request, {
+          successRedirect: "/login/magic",
+          failureRedirect: "/login/magic",
+        });
+      }
 
-    return redirect("/login/magic", {
-      headers: {
-        "Set-Cookie": await commitSession(session),
-      },
-    });
+      const { email } = data;
+      const xff = request.headers.get("x-forwarded-for");
+      const clientIp = extractClientIp(xff);
+
+      const [error] = await tryCatch(
+        Promise.all([
+          clientIp ? checkMagicLinkIpRateLimit(clientIp) : Promise.resolve(),
+          checkMagicLinkEmailRateLimit(email),
+          checkMagicLinkEmailDailyRateLimit(email),
+        ])
+      );
+
+      if (error) {
+        if (error instanceof MagicLinkRateLimitError) {
+          logger.warn("Login magic link rate limit exceeded", {
+            clientIp,
+            email,
+            error,
+          });
+        } else {
+          logger.error("Failed sending login magic link", {
+            clientIp,
+            email,
+            error,
+          });
+        }
+
+        const errorMessage =
+          error instanceof MagicLinkRateLimitError
+            ? "Too many magic link requests. Please try again shortly."
+            : "Failed sending magic link. Please try again shortly.";
+
+        const session = await getUserSession(request);
+        session.set("auth:error", {
+          message: errorMessage,
+        });
+
+        return redirect("/login/magic", {
+          headers: {
+            "Set-Cookie": await commitSession(session),
+          },
+        });
+      }
+
+      return authenticator.authenticate("email-link", request, {
+        successRedirect: "/login/magic",
+        failureRedirect: "/login/magic",
+      });
+    }
+    case "reset":
+    default: {
+      data.action satisfies "reset";
+
+      const session = await getUserSession(request);
+      session.unset("triggerdotdev:magiclink");
+
+      return redirect("/login/magic", {
+        headers: {
+          "Set-Cookie": await commitSession(session),
+        },
+      });
+    }
   }
 }
+
+const extractClientIp = (xff: string | null) => {
+  if (!xff) return null;
+
+  const parts = xff.split(",").map((p) => p.trim());
+  return parts[parts.length - 1]; // take last item, ALB appends the real client IP by default
+};
 
 export default function LoginMagicLinkPage() {
   const { magicLinkSent, magicLinkError } = useTypedLoaderData<typeof loader>();
