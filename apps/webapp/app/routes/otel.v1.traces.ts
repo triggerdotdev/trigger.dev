@@ -4,15 +4,15 @@ import { otlpExporter } from "~/v3/otlpExporter.server";
 
 export async function action({ request }: ActionFunctionArgs) {
   try {
-    const contentType = request.headers.get("content-type");
+    const contentType = request.headers.get("content-type")?.toLowerCase() ?? "";
 
-    if (contentType === "application/json") {
+    if (contentType.startsWith("application/json")) {
       const body = await request.json();
 
       const exportResponse = await otlpExporter.exportTraces(body as ExportTraceServiceRequest);
 
       return json(exportResponse, { status: 200 });
-    } else if (contentType === "application/x-protobuf") {
+    } else if (contentType.startsWith("application/x-protobuf")) {
       const buffer = await request.arrayBuffer();
 
       const exportRequest = ExportTraceServiceRequest.decode(new Uint8Array(buffer));
