@@ -124,8 +124,8 @@ export async function action({ request }: ActionFunctionArgs) {
 
         const errorMessage =
           error instanceof MagicLinkRateLimitError
-            ? "Failed sending magic link. Please try again shortly."
-            : "Too many magic link requests. Please try again shortly.";
+            ? "Too many magic link requests. Please try again shortly."
+            : "Failed sending magic link. Please try again shortly.";
 
         const session = await getUserSession(request);
         session.set("auth:error", {
