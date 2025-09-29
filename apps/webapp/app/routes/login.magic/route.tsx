@@ -105,7 +105,8 @@ export async function action({ request }: ActionFunctionArgs) {
       }
 
       const { email } = data;
-      const clientIp = request.headers.get("x-forwarded-for");
+      const xff = request.headers.get("x-forwarded-for");
+      const clientIp = extractClientIp(xff);
 
       const [error] = await tryCatch(
         Promise.all([
@@ -167,6 +168,13 @@ export async function action({ request }: ActionFunctionArgs) {
     }
   }
 }
+
+const extractClientIp = (xff: string | null) => {
+  if (!xff) return null;
+
+  const parts = xff.split(",").map((p) => p.trim());
+  return parts[parts.length - 1]; // take last item, ALB appends the real client IP by default
+};
 
 export default function LoginMagicLinkPage() {
   const { magicLinkSent, magicLinkError } = useTypedLoaderData<typeof loader>();
