@@ -29,6 +29,7 @@ import {
   checkMagicLinkIpRateLimit,
 } from "~/services/magicLinkRateLimiter.server";
 import { logger, tryCatch } from "@trigger.dev/core/v3";
+import { env } from "~/env.server";
 
 export const meta: MetaFunction = ({ matches }) => {
   const parentMeta = matches
@@ -96,6 +97,13 @@ export async function action({ request }: ActionFunctionArgs) {
 
   switch (data.action) {
     case "send": {
+      if (env.LOGIN_RATE_LIMITS_ENABLED !== "1") {
+        return authenticator.authenticate("email-link", request, {
+          successRedirect: "/login/magic",
+          failureRedirect: "/login/magic",
+        });
+      }
+
       const { email } = data;
       const clientIp = request.headers.get("x-forwarded-for");
 
