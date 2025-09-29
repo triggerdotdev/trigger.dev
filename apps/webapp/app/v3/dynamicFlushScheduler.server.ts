@@ -242,8 +242,10 @@ export class DynamicFlushScheduler<T> {
 
     // Don't await here - let them run concurrently
     Promise.allSettled(flushPromises).then(() => {
+      const shouldContinueFlushing =
+        this.batchQueue.length > 0 && (this.consecutiveFlushFailures < 3 || this.isShuttingDown);
       // After flush completes, check if we need to flush more
-      if (this.batchQueue.length > 0 && !this.isShuttingDown && this.consecutiveFlushFailures < 3) {
+      if (shouldContinueFlushing) {
         this.flushBatches();
       }
     });
