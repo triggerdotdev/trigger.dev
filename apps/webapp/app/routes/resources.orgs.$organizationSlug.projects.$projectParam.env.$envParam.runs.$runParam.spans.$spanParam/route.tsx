@@ -272,7 +272,7 @@ function applySpanOverrides(span: Span, spanOverrides?: SpanOverride): Span {
     newSpan.isCancelled = false;
   }
 
-  if (spanOverrides.duration) {
+  if (typeof spanOverrides.duration !== "undefined") {
     newSpan.duration = spanOverrides.duration;
   }
 
