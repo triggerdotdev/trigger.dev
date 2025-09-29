@@ -140,7 +140,7 @@ export class SpanPresenter extends BasePresenter {
       eventStore,
       environmentId,
       spanId,
-      environmentId,
+      traceId,
       createdAt,
       completedAt ?? undefined
     );
