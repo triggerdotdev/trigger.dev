@@ -59,7 +59,7 @@ const EnvironmentSchema = z
     ADMIN_EMAILS: z.string().refine(isValidRegex, "ADMIN_EMAILS must be a valid regex.").optional(),
     REMIX_APP_PORT: z.string().optional(),
     LOGIN_ORIGIN: z.string().default("http://localhost:3030"),
-    LOGIN_RATE_LIMITS_ENABLED: z.enum(["0", "1"]).default("1"),
+    LOGIN_RATE_LIMITS_ENABLED: BoolEnv.default(true),
     APP_ORIGIN: z.string().default("http://localhost:3030"),
     API_ORIGIN: z.string().optional(),
     STREAM_ORIGIN: z.string().optional(),

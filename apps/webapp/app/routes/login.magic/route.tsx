@@ -97,7 +97,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
   switch (data.action) {
     case "send": {
-      if (env.LOGIN_RATE_LIMITS_ENABLED !== "1") {
+      if (!env.LOGIN_RATE_LIMITS_ENABLED) {
         return authenticator.authenticate("email-link", request, {
           successRedirect: "/login/magic",
           failureRedirect: "/login/magic",
