@@ -6,10 +6,10 @@
   "types": "./src/index.ts",
   "type": "module",
   "dependencies": {
+    "@internal/redis": "workspace:*",
+    "@trigger.dev/core": "workspace:*",
     "@unkey/cache": "^1.5.0",
     "@unkey/error": "^0.2.0",
-    "@trigger.dev/core": "workspace:*",
-    "@internal/redis": "workspace:*",
     "superjson": "^2.2.1"
   },
   "scripts": {

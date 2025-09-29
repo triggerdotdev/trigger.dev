@@ -1,7 +1,6 @@
 import {
   createCache,
   DefaultStatefulContext,
-  MemoryStore,
   Namespace,
   RedisCacheStore,
   type UnkeyCache,
@@ -25,7 +24,6 @@ export class OriginalRunIdCache {
   constructor(options: OriginalRunIdCacheOptions) {
     // Initialize cache
     const ctx = new DefaultStatefulContext();
-    const memory = new MemoryStore({ persistentMap: new Map() });
     const redisCacheStore = new RedisCacheStore({
       name: "original-run-id-cache",
       connection: {
@@ -37,7 +35,7 @@ export class OriginalRunIdCache {
 
     this.cache = createCache({
       originalRunId: new Namespace<string>(ctx, {
-        stores: [memory, redisCacheStore],
+        stores: [redisCacheStore],
         fresh: ORIGINAL_RUN_ID_FRESH_TTL,
         stale: ORIGINAL_RUN_ID_STALE_TTL,
       }),

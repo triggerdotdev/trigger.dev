@@ -220,8 +220,8 @@ function convertLogsToCreateableEvents(
           SemanticInternalAttributes.METADATA
         );
 
-        const properties = {
-          ...convertKeyValueItemsToMap(
+        const properties =
+          convertKeyValueItemsToMap(
             truncateAttributes(log.attributes ?? [], spanAttributeValueLengthLimit),
             [],
             undefined,
@@ -233,8 +233,7 @@ function convertLogsToCreateableEvents(
               SemanticInternalAttributes.METRIC_EVENTS,
               SemanticInternalAttributes.TRIGGER,
             ]
-          ),
-        };
+          ) ?? {};
 
         return {
           traceId: binaryToHex(log.traceId),
@@ -257,7 +256,7 @@ function convertLogsToCreateableEvents(
           metadata: logProperties.metadata ?? resourceProperties.metadata ?? {},
           environmentId:
             logProperties.environmentId ?? resourceProperties.environmentId ?? "unknown",
-          environmentType: "DEVELOPMENT" as const,
+          environmentType: "DEVELOPMENT" as const, // We've deprecated this but we need to keep it for backwards compatibility
           organizationId:
             logProperties.organizationId ?? resourceProperties.organizationId ?? "unknown",
           projectId: logProperties.projectId ?? resourceProperties.projectId ?? "unknown",
@@ -304,8 +303,8 @@ function convertSpansToCreateableEvents(
           SemanticInternalAttributes.METADATA
         );
 
-        const properties = {
-          ...convertKeyValueItemsToMap(
+        const properties =
+          convertKeyValueItemsToMap(
             truncateAttributes(span.attributes ?? [], spanAttributeValueLengthLimit),
             [],
             undefined,
@@ -317,8 +316,7 @@ function convertSpansToCreateableEvents(
               SemanticInternalAttributes.METRIC_EVENTS,
               SemanticInternalAttributes.TRIGGER,
             ]
-          ),
-        };
+          ) ?? {};
 
         return {
           traceId: binaryToHex(span.traceId),

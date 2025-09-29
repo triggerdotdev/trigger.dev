@@ -6,6 +6,7 @@ import {
   Namespace,
   type UnkeyCache,
   MemoryStore,
+  createMemoryStore,
 } from "@internal/cache";
 import { randomUUID } from "crypto";
 import seedrandom from "seedrandom";
@@ -106,7 +107,7 @@ export class FairQueueSelectionStrategy implements RunQueueSelectionStrategy {
 
   constructor(private options: FairQueueSelectionStrategyOptions) {
     const ctx = new DefaultStatefulContext();
-    const memory = new MemoryStore({ persistentMap: new Map() });
+    const memory = createMemoryStore(1000);
 
     this._cache = createCache({
       concurrencyLimit: new Namespace<number>(ctx, {

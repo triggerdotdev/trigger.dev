@@ -33,7 +33,13 @@ export class RequestIdempotencyService<TTypes extends string> {
       : "request-idempotency:";
 
     const ctx = new DefaultStatefulContext();
-    const memory = new MemoryStore({ persistentMap: new Map() });
+    const memory = new MemoryStore({
+      persistentMap: new Map(),
+      unstableEvictOnSet: {
+        frequency: 0.001,
+        maxItems: 1000,
+      },
+    });
     const redisCacheStore = new RedisCacheStore({
       name: "request-idempotency",
       connection: {

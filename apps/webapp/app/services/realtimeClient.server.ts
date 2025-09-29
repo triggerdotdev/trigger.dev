@@ -83,7 +83,10 @@ export class RealtimeClient {
     this.#registerCommands();
 
     const ctx = new DefaultStatefulContext();
-    const memory = new MemoryStore({ persistentMap: new Map() });
+    const memory = new MemoryStore({
+      persistentMap: new Map(),
+      unstableEvictOnSet: { frequency: 0.01, maxItems: 1000 },
+    });
     const redisCacheStore = new RedisCacheStore({
       connection: {
         keyPrefix: "tr:cache:realtime",

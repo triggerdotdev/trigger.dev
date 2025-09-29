@@ -1,5 +1,5 @@
 import { createRedisClient, RedisClient, RedisWithClusterOptions } from "~/redis.server";
-import { EventEmitter } from "node:stream";
+import { EventEmitter } from "node:events";
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
 

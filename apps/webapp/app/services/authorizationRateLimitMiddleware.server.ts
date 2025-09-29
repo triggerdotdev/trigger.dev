@@ -64,6 +64,7 @@ type Options = {
   limiterCache?: {
     fresh: number;
     stale: number;
+    maxItems: number;
   };
   log?: {
     requests?: boolean;
@@ -145,7 +146,10 @@ export function authorizationRateLimitMiddleware({
   limiterConfigOverride,
 }: Options) {
   const ctx = new DefaultStatefulContext();
-  const memory = new MemoryStore({ persistentMap: new Map() });
+  const memory = new MemoryStore({
+    persistentMap: new Map(),
+    unstableEvictOnSet: { frequency: 0.001, maxItems: limiterCache?.maxItems ?? 1000 },
+  });
   const redisCacheStore = new RedisCacheStore({
     connection: {
       keyPrefix: `cache:${keyPrefix}:rate-limit-cache:`,
