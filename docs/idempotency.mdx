@@ -5,11 +5,6 @@ description: "An API call or operation is “idempotent” if it has the same re
 
 We currently support idempotency at the task level, meaning that if you trigger a task with the same `idempotencyKey` twice, the second request will not create a new task run.
 
-<Warning>
-  In version 3.3.0 and later, the `idempotencyKey` option is not available when using
-  `triggerAndWait` or `batchTriggerAndWait`, due to a bug that would sometimes cause the parent task
-  to become stuck. We are working on a fix for this issue.
-</Warning>
 
 ## `idempotencyKey` option
 
