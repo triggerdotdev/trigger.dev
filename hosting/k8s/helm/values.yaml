@@ -48,19 +48,21 @@ webapp:
     tag: "" # Defaults to Chart.appVersion when empty
     pullPolicy: IfNotPresent
 
-  # Init container image configuration
-  initImage:
-    registry: docker.io
-    repository: busybox
-    tag: "1.35"
-    pullPolicy: IfNotPresent
+  # Init container for shared directory setup
+  volumePermissions:
+    image:
+      registry: docker.io
+      repository: busybox
+      tag: "1.35"
+      pullPolicy: IfNotPresent
 
-  # Token syncer image configuration
-  tokenSyncerImage:
-    registry: docker.io
-    repository: bitnamilegacy/kubectl
-    tag: "1.28"
-    pullPolicy: IfNotPresent
+  # Sidecar for token syncing
+  tokenSyncer:
+    image:
+      registry: docker.io
+      repository: bitnamilegacy/kubectl
+      tag: "1.28"
+      pullPolicy: IfNotPresent
 
   # Origin configuration
   appOrigin: "http://localhost:3040"

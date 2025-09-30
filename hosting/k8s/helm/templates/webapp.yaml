@@ -67,9 +67,9 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       initContainers:
-        - name: init-shared
-          image: "{{ .Values.webapp.initImage.registry }}/{{ .Values.webapp.initImage.repository }}:{{ .Values.webapp.initImage.tag }}"
-          imagePullPolicy: {{ .Values.webapp.initImage.pullPolicy }}
+        - name: volume-permissions
+          image: {{ include "trigger-v4.webapp.volumePermissions.image" . }}
+          imagePullPolicy: {{ .Values.webapp.volumePermissions.image.pullPolicy }}
           command: ['sh', '-c', 'mkdir -p /home/node/shared']
           securityContext:
             runAsUser: 1000
@@ -78,8 +78,8 @@ spec:
               mountPath: /home/node/shared
       containers:
         - name: token-syncer
-          image: "{{ .Values.webapp.tokenSyncerImage.registry }}/{{ .Values.webapp.tokenSyncerImage.repository }}:{{ .Values.webapp.tokenSyncerImage.tag }}"
-          imagePullPolicy: {{ .Values.webapp.tokenSyncerImage.pullPolicy }}
+          image: {{ include "trigger-v4.webapp.tokenSyncer.image" . }}
+          imagePullPolicy: {{ .Values.webapp.tokenSyncer.image.pullPolicy }}
           securityContext:
             runAsUser: 1000
             runAsNonRoot: true
