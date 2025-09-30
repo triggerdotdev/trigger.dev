@@ -26,7 +26,6 @@ export const box = {
 
 export const hr = {
   borderColor: "#272A2E",
-  margin: "20px 0",
 };
 
 export const sans = {
