@@ -77,7 +77,7 @@ spec:
               mountPath: /home/node/shared
       containers:
         - name: token-syncer
-          image: bitnami/kubectl:1.28
+          image: bitnamilegacy/kubectl:1.28
           securityContext:
             runAsUser: 1000
             runAsNonRoot: true
