@@ -88,6 +88,8 @@ webapp:
   nodeSelector: {}
   tolerations: []
   affinity: {}
+  # Topology Spread Constraints for pod assignment spread across your cluster among failure-domains. Evaluated as a template
+  topologySpreadConstraints: []
 
   logLevel: "info"
   gracefulShutdownTimeout: 1000
