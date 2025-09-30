@@ -96,6 +96,34 @@ Get the full image name for supervisor
 {{- end }}
 
 {{/*
+Get the full image name for webapp volumePermissions init container
+*/}}
+{{- define "trigger-v4.webapp.volumePermissions.image" -}}
+{{- $registry := .Values.global.imageRegistry | default .Values.webapp.volumePermissions.image.registry -}}
+{{- $repository := .Values.webapp.volumePermissions.image.repository -}}
+{{- $tag := .Values.webapp.volumePermissions.image.tag -}}
+{{- if $registry }}
+{{- printf "%s/%s:%s" $registry $repository $tag }}
+{{- else }}
+{{- printf "%s:%s" $repository $tag }}
+{{- end }}
+{{- end }}
+
+{{/*
+Get the full image name for webapp tokenSyncer sidecar
+*/}}
+{{- define "trigger-v4.webapp.tokenSyncer.image" -}}
+{{- $registry := .Values.global.imageRegistry | default .Values.webapp.tokenSyncer.image.registry -}}
+{{- $repository := .Values.webapp.tokenSyncer.image.repository -}}
+{{- $tag := .Values.webapp.tokenSyncer.image.tag -}}
+{{- if $registry }}
+{{- printf "%s/%s:%s" $registry $repository $tag }}
+{{- else }}
+{{- printf "%s:%s" $repository $tag }}
+{{- end }}
+{{- end }}
+
+{{/*
 PostgreSQL hostname (deprecated - used only for legacy DATABASE_HOST env var)
 */}}
 {{- define "trigger-v4.postgres.hostname" -}}

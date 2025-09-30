@@ -76,7 +76,7 @@ services:
       - database
 
   clickhouse:
-    image: bitnami/clickhouse:latest
+    image: bitnamilegacy/clickhouse:latest
     restart: always
     container_name: clickhouse
     environment:
