@@ -139,7 +139,7 @@ services:
       start_period: 10s
 
   clickhouse:
-    image: bitnami/clickhouse:${CLICKHOUSE_IMAGE_TAG:-latest}
+    image: bitnamilegacy/clickhouse:${CLICKHOUSE_IMAGE_TAG:-latest}
     restart: ${RESTART_POLICY:-unless-stopped}
     logging: *logging-config
     ports:
@@ -183,7 +183,7 @@ services:
       start_period: 10s
 
   minio:
-    image: bitnami/minio:${MINIO_IMAGE_TAG:-latest}
+    image: bitnamilegacy/minio:${MINIO_IMAGE_TAG:-latest}
     restart: ${RESTART_POLICY:-unless-stopped}
     logging: *logging-config
     ports:
