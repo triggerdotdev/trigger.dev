@@ -71,7 +71,7 @@ export function configureEnvCommand(program: Command) {
       )
   ).action(async (options) => {
     await handleTelemetry(async () => {
-      await printInitialBanner(false);
+      await printInitialBanner(false, options.profile);
       await envListCommand(options);
     });
   });
@@ -95,7 +95,7 @@ export function configureEnvCommand(program: Command) {
   ).action(async (name, options) => {
     await handleTelemetry(async () => {
       if (!options.raw) {
-        await printInitialBanner(false);
+        await printInitialBanner(false, options.profile);
       }
       await envGetCommand({ ...options, name });
     });
@@ -120,7 +120,7 @@ export function configureEnvCommand(program: Command) {
       .option("--force", "Overwrite the output file if it exists")
   ).action(async (options) => {
     await handleTelemetry(async () => {
-      await printInitialBanner(false);
+      await printInitialBanner(false, options.profile);
       await envPullCommand(options);
     });
   });
