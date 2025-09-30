@@ -48,7 +48,7 @@ services:
       - db
 
   clickhouse:
-    image: bitnami/clickhouse:latest
+    image: bitnamilegacy/clickhouse:latest
     container_name: clickhouse-dev
     environment:
       CLICKHOUSE_ADMIN_USER: default
