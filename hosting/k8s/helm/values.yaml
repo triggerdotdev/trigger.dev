@@ -265,8 +265,6 @@ supervisor:
       workerNodetypeLabel: "" # When set, runs will only be scheduled on nodes with "nodetype=<label>"
       ephemeralStorageSizeLimit: "" # Default: 10Gi
       ephemeralStorageSizeRequest: "" # Default: 2Gi´
-      # Topology Spread Constraints for worker pods created by the supervisor. Evaluated as a template
-      topologySpreadConstraints: []
     podCleaner:
       enabled: true
       batchSize: 100
@@ -357,8 +355,6 @@ supervisor:
   nodeSelector: {}
   tolerations: []
   affinity: {}
-  # Topology Spread Constraints for pod assignment spread across your cluster among failure-domains. Evaluated as a template
-  topologySpreadConstraints: []
 
 # PostgreSQL configuration
 # Subchart: https://github.com/bitnami/charts/tree/main/bitnami/postgresql

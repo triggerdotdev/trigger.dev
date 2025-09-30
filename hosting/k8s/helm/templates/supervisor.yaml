@@ -184,10 +184,6 @@ spec:
               value: {{ default "10Gi" .Values.supervisor.config.kubernetes.ephemeralStorageSizeLimit | quote }}
             - name: KUBERNETES_EPHEMERAL_STORAGE_SIZE_REQUEST
               value: {{ default "2Gi" .Values.supervisor.config.kubernetes.ephemeralStorageSizeRequest | quote }}
-            {{- with .Values.supervisor.config.kubernetes.topologySpreadConstraints }}
-            - name: KUBERNETES_TOPOLOGY_SPREAD_CONSTRAINTS
-              value: {{ tpl (toYaml .) $ | toJson | quote }}
-            {{- end }}
             # Pod cleaner configuration
             - name: POD_CLEANER_ENABLED
               value: {{ .Values.supervisor.config.podCleaner.enabled | quote }}
@@ -275,10 +271,6 @@ spec:
       {{- with .Values.supervisor.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- with .Values.supervisor.topologySpreadConstraints }}
-      topologySpreadConstraints:
-        {{- tpl (toYaml .) $ | nindent 8 }}
       {{- end }}
 ---
 apiVersion: v1
