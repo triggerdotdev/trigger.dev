@@ -352,6 +352,10 @@ export class ClickhouseEventRepository implements IEventRepository {
   }
 
   private createEventToTaskEventV1InputAttributes(attributes: Attributes): Record<string, unknown> {
+    if (!attributes) {
+      return {};
+    }
+
     const publicAttributes = removePrivateProperties(attributes);
 
     if (!publicAttributes) {
