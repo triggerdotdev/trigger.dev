@@ -158,7 +158,7 @@ export class ClickhouseEventRepository implements IEventRepository {
         attributes: this.createEventToTaskEventV1InputAttributes(event.properties),
         metadata: this.createEventToTaskEventV1InputMetadata(event),
         expires_at: convertDateToClickhouseDateTime(
-          new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // TODO: make sure configurable and by org
+          new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) // 1 year
         ),
       },
       ...this.spanEventsToTaskEventV1Input(event),
@@ -228,7 +228,7 @@ export class ClickhouseEventRepository implements IEventRepository {
         exception: spanEvent.properties.exception,
       }), // Events have no metadata
       expires_at: convertDateToClickhouseDateTime(
-        new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // TODO: make sure configurable and by org
+        new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) // 1 year
       ),
     };
   }
@@ -256,7 +256,7 @@ export class ClickhouseEventRepository implements IEventRepository {
         reason: spanEvent.properties.reason,
       }), // Events have no metadata
       expires_at: convertDateToClickhouseDateTime(
-        new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // TODO: make sure configurable and by org
+        new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) // 1 year
       ),
     };
   }
@@ -288,7 +288,7 @@ export class ClickhouseEventRepository implements IEventRepository {
       },
       metadata: JSON.stringify(spanEvent.properties),
       expires_at: convertDateToClickhouseDateTime(
-        new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // TODO: make sure configurable and by org
+        new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) // 1 year
       ),
     };
   }
@@ -314,7 +314,7 @@ export class ClickhouseEventRepository implements IEventRepository {
       attributes: {},
       metadata: JSON.stringify(unflattenAttributes(spanEvent.properties as Attributes)),
       expires_at: convertDateToClickhouseDateTime(
-        new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // TODO: make sure configurable and by org
+        new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) // 1 year
       ),
     };
   }
@@ -448,7 +448,7 @@ export class ClickhouseEventRepository implements IEventRepository {
         : undefined,
       metadata: JSON.stringify(metadata),
       // TODO: make sure configurable and by org
-      expires_at: convertDateToClickhouseDateTime(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)),
+      expires_at: convertDateToClickhouseDateTime(new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)),
     };
 
     this._flushScheduler.addToBatch([event]);
@@ -549,7 +549,7 @@ export class ClickhouseEventRepository implements IEventRepository {
         : {},
       metadata: JSON.stringify(metadata),
       // TODO: make sure configurable and by org
-      expires_at: convertDateToClickhouseDateTime(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)),
+      expires_at: convertDateToClickhouseDateTime(new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)),
     };
 
     const originalRunId =
@@ -586,7 +586,7 @@ export class ClickhouseEventRepository implements IEventRepository {
         }),
         // TODO: make sure configurable and by org
         expires_at: convertDateToClickhouseDateTime(
-          new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+          new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
         ),
       });
     }
