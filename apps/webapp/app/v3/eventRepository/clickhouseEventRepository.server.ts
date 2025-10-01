@@ -66,6 +66,7 @@ export type ClickhouseEventRepositoryConfig = {
   flushInterval?: number;
   tracer?: Tracer;
   maximumTraceSummaryViewCount?: number;
+  maximumTraceDetailedSummaryViewCount?: number;
 };
 
 /**
@@ -104,10 +105,6 @@ export class ClickhouseEventRepository implements IEventRepository {
     await startSpan(this._tracer, "flushBatch", async (span) => {
       span.setAttribute("flush_id", flushId);
       span.setAttribute("event_count", events.length);
-
-      logger.debug("ClickhouseEventRepository.flushBatch", {
-        events,
-      });
 
       const [insertError, insertResult] = await this._clickhouse.taskEvents.insert(events);
 
@@ -904,16 +901,23 @@ export class ClickhouseEventRepository implements IEventRepository {
       return;
     }
 
-    const recordsGroupedBySpanId = records.reduce((acc, record) => {
-      acc[record.span_id] = [...(acc[record.span_id] ?? []), record];
-      return acc;
-    }, {} as Record<string, TaskEventSummaryV1Result[]>);
+    // O(n) grouping instead of O(n²) array spreading
+    const recordsGroupedBySpanId: Record<string, TaskEventSummaryV1Result[]> = {};
+    for (const record of records) {
+      if (!recordsGroupedBySpanId[record.span_id]) {
+        recordsGroupedBySpanId[record.span_id] = [];
+      }
+      recordsGroupedBySpanId[record.span_id].push(record);
+    }
 
     const spanSummaries = new Map<string, SpanSummary>();
     let rootSpanId: string | undefined;
 
+    // Create temporary metadata cache for this query
+    const metadataCache = new Map<string, Record<string, unknown>>();
+
     for (const [spanId, spanRecords] of Object.entries(recordsGroupedBySpanId)) {
-      const spanSummary = this.#mergeRecordsIntoSpanSummary(spanId, spanRecords);
+      const spanSummary = this.#mergeRecordsIntoSpanSummary(spanId, spanRecords, metadataCache);
 
       if (!spanSummary) {
         continue;
@@ -988,7 +992,9 @@ export class ClickhouseEventRepository implements IEventRepository {
       return;
     }
 
-    const span = this.#mergeRecordsIntoSpanDetail(spanId, records);
+    // Create temporary metadata cache for this query
+    const metadataCache = new Map<string, Record<string, unknown>>();
+    const span = this.#mergeRecordsIntoSpanDetail(spanId, records, metadataCache);
 
     return span;
   }
@@ -1006,7 +1012,8 @@ export class ClickhouseEventRepository implements IEventRepository {
 
   #mergeRecordsIntoSpanDetail(
     spanId: string,
-    records: TaskEventDetailsV1Result[]
+    records: TaskEventDetailsV1Result[],
+    metadataCache: Map<string, Record<string, unknown>>
   ): SpanDetail | undefined {
     if (records.length === 0) {
       return undefined;
@@ -1043,7 +1050,7 @@ export class ClickhouseEventRepository implements IEventRepository {
         span.isError = record.status === "ERROR";
       }
 
-      const parsedMetadata = this.#parseMetadata(record.metadata);
+      const parsedMetadata = this.#parseMetadata(record.metadata, metadataCache);
 
       if (record.kind === "SPAN_EVENT") {
         // We need to add an event to the span
@@ -1089,17 +1096,20 @@ export class ClickhouseEventRepository implements IEventRepository {
         }
       }
 
-      if (
-        !span.properties &&
-        record.attributes &&
-        typeof record.attributes === "object" &&
-        !isEmptyObject(record.attributes)
-      ) {
-        span.properties = record.attributes as Record<string, unknown>;
+      if (!span.properties && typeof record.attributes_text === "string") {
+        span.properties = this.#parseAttributes(record.attributes_text);
       }
     }
 
     return span;
+  }
+
+  #parseAttributes(attributes_text: string): Record<string, unknown> {
+    if (!attributes_text) {
+      return {};
+    }
+
+    return JSON.parse(attributes_text) as Record<string, unknown>;
   }
 
   #applyAncestorOverrides<TSpanSummary extends SpanSummaryCommon>(
@@ -1224,7 +1234,8 @@ export class ClickhouseEventRepository implements IEventRepository {
 
   #mergeRecordsIntoSpanSummary(
     spanId: string,
-    records: TaskEventSummaryV1Result[]
+    records: TaskEventSummaryV1Result[],
+    metadataCache: Map<string, Record<string, unknown>>
   ): SpanSummary | undefined {
     if (records.length === 0) {
       return undefined;
@@ -1260,7 +1271,7 @@ export class ClickhouseEventRepository implements IEventRepository {
         span.data.isError = record.status === "ERROR";
       }
 
-      const parsedMetadata = this.#parseMetadata(record.metadata);
+      const parsedMetadata = this.#parseMetadata(record.metadata, metadataCache);
 
       if (
         parsedMetadata &&
@@ -1309,9 +1320,18 @@ export class ClickhouseEventRepository implements IEventRepository {
     return span;
   }
 
-  #parseMetadata(metadata: string): Record<string, unknown> | undefined {
+  #parseMetadata(
+    metadata: string,
+    cache: Map<string, Record<string, unknown>>
+  ): Record<string, unknown> | undefined {
     if (!metadata) {
       return undefined;
+    }
+
+    // Check cache first
+    const cached = cache.get(metadata);
+    if (cached) {
+      return cached;
     }
 
     const parsed = JSON.parse(metadata);
@@ -1320,7 +1340,12 @@ export class ClickhouseEventRepository implements IEventRepository {
       return undefined;
     }
 
-    return parsed as Record<string, unknown>;
+    const result = parsed as Record<string, unknown>;
+
+    // Cache the result - no size limit needed since cache is per-query
+    cache.set(metadata, result);
+
+    return result;
   }
 
   async getTraceDetailedSummary(
@@ -1353,8 +1378,8 @@ export class ClickhouseEventRepository implements IEventRepository {
 
     queryBuilder.orderBy("start_time ASC");
 
-    if (this._config.maximumTraceSummaryViewCount) {
-      queryBuilder.limit(this._config.maximumTraceSummaryViewCount);
+    if (this._config.maximumTraceDetailedSummaryViewCount) {
+      queryBuilder.limit(this._config.maximumTraceDetailedSummaryViewCount);
     }
 
     const [queryError, records] = await queryBuilder.execute();
@@ -1367,16 +1392,27 @@ export class ClickhouseEventRepository implements IEventRepository {
       return;
     }
 
-    const recordsGroupedBySpanId = records.reduce((acc, record) => {
-      acc[record.span_id] = [...(acc[record.span_id] ?? []), record];
-      return acc;
-    }, {} as Record<string, TaskEventDetailedSummaryV1Result[]>);
+    // O(n) grouping instead of O(n²) array spreading
+    const recordsGroupedBySpanId: Record<string, TaskEventDetailedSummaryV1Result[]> = {};
+    for (const record of records) {
+      if (!recordsGroupedBySpanId[record.span_id]) {
+        recordsGroupedBySpanId[record.span_id] = [];
+      }
+      recordsGroupedBySpanId[record.span_id].push(record);
+    }
 
     const spanSummaries = new Map<string, SpanDetailedSummary>();
     let rootSpanId: string | undefined;
 
+    // Create temporary metadata cache for this query
+    const metadataCache = new Map<string, Record<string, unknown>>();
+
     for (const [spanId, spanRecords] of Object.entries(recordsGroupedBySpanId)) {
-      const spanSummary = this.#mergeRecordsIntoSpanDetailedSummary(spanId, spanRecords);
+      const spanSummary = this.#mergeRecordsIntoSpanDetailedSummary(
+        spanId,
+        spanRecords,
+        metadataCache
+      );
 
       if (!spanSummary) {
         continue;
@@ -1428,7 +1464,8 @@ export class ClickhouseEventRepository implements IEventRepository {
 
   #mergeRecordsIntoSpanDetailedSummary(
     spanId: string,
-    records: TaskEventDetailedSummaryV1Result[]
+    records: TaskEventDetailedSummaryV1Result[],
+    metadataCache: Map<string, Record<string, unknown>>
   ): SpanDetailedSummary | undefined {
     if (records.length === 0) {
       return undefined;
@@ -1464,7 +1501,7 @@ export class ClickhouseEventRepository implements IEventRepository {
         span.data.isError = record.status === "ERROR";
       }
 
-      const parsedMetadata = this.#parseMetadata(record.metadata);
+      const parsedMetadata = this.#parseMetadata(record.metadata, metadataCache);
 
       if (
         parsedMetadata &&
@@ -1551,21 +1588,34 @@ export class ClickhouseEventRepository implements IEventRepository {
       return [];
     }
 
-    const recordsGroupedBySpanId = records.reduce((acc, record) => {
-      acc[record.span_id] = [...(acc[record.span_id] ?? []), record];
-      return acc;
-    }, {} as Record<string, TaskEventSummaryV1Result[]>);
+    // O(n) grouping instead of O(n²) array spreading
+    const recordsGroupedBySpanId: Record<string, TaskEventSummaryV1Result[]> = {};
+    for (const record of records) {
+      if (!recordsGroupedBySpanId[record.span_id]) {
+        recordsGroupedBySpanId[record.span_id] = [];
+      }
+      recordsGroupedBySpanId[record.span_id].push(record);
+    }
 
     const spanSummaries = new Map<string, SpanSummary>();
+    let rootSpanId: string | undefined;
+
+    // Create temporary metadata cache for this query
+    const metadataCache = new Map<string, Record<string, unknown>>();
 
     for (const [spanId, spanRecords] of Object.entries(recordsGroupedBySpanId)) {
-      const spanSummary = this.#mergeRecordsIntoSpanSummary(spanId, spanRecords);
+      const spanSummary = this.#mergeRecordsIntoSpanSummary(spanId, spanRecords, metadataCache);
 
       if (!spanSummary) {
         continue;
       }
 
       spanSummaries.set(spanId, spanSummary);
+
+      // Find root span for optimized override algorithm
+      if (!rootSpanId && !spanSummary.parentId) {
+        rootSpanId = spanId;
+      }
     }
 
     const spans = Array.from(spanSummaries.values());
@@ -1601,6 +1651,10 @@ export class ClickhouseEventRepository implements IEventRepository {
   }
 }
 
+// Precompile regex for performance (used ~30k times per trace)
+const CLICKHOUSE_DATETIME_REGEX =
+  /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(?:Z|([+-])(\d{2}):?(\d{2}))?$/;
+
 export const convertDateToClickhouseDateTime = (date: Date): string => {
   // 2024-11-06T20:37:00.123Z -> 2024-11-06 21:37:00.123
   return date.toISOString().replace("T", " ").replace("Z", "");
@@ -1616,10 +1670,7 @@ export const convertDateToClickhouseDateTime = (date: Date): string => {
  */
 export function convertClickhouseDateTime64ToNanosecondsEpoch(date: string): bigint {
   const s = date.trim();
-  const re =
-    /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(?:Z|([+-])(\d{2}):?(\d{2}))?$/;
-
-  const m = re.exec(s);
+  const m = CLICKHOUSE_DATETIME_REGEX.exec(s);
   if (!m) {
     throw new Error(`Invalid ClickHouse DateTime64 string: "${date}"`);
   }
@@ -1662,13 +1713,34 @@ export function convertClickhouseDateTime64ToNanosecondsEpoch(date: string): big
  *  - "2025-09-23T12:32:46.13"
  *  - "2025-09-23 12:32:46Z"
  *  - "2025-09-23 12:32:46.130262875+02:00"
+ *
+ * Optimized with fast path for common format (avoids regex for 99% of cases).
  */
 export function convertClickhouseDateTime64ToJsDate(date: string): Date {
-  const s = date.trim();
-  const re =
-    /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(?:Z|([+-])(\d{2}):?(\d{2}))?$/;
+  // Fast path for common format: "2025-09-23 12:32:46.130262875" or "2025-09-23 12:32:46"
+  // This avoids the expensive regex for the common case
+  if (date.length >= 19 && date[4] === "-" && date[7] === "-" && date[10] === " ") {
+    const year = Number(date.substring(0, 4));
+    const month = Number(date.substring(5, 7));
+    const day = Number(date.substring(8, 10));
+    const hour = Number(date.substring(11, 13));
+    const minute = Number(date.substring(14, 16));
+    const second = Number(date.substring(17, 19));
 
-  const m = re.exec(s);
+    // Parse fractional seconds if present
+    let ms = 0;
+    if (date.length > 20 && date[19] === ".") {
+      // Take first 3 digits after decimal (milliseconds), pad if shorter
+      const fracStr = date.substring(20, Math.min(23, date.length));
+      ms = Number(fracStr.padEnd(3, "0"));
+    }
+
+    return new Date(Date.UTC(year, month - 1, day, hour, minute, second, ms));
+  }
+
+  // Fallback to regex for other formats (T separator, timezone offsets, etc.)
+  const s = date.trim();
+  const m = CLICKHOUSE_DATETIME_REGEX.exec(s);
   if (!m) {
     throw new Error(`Invalid ClickHouse DateTime64 string: "${date}"`);
   }

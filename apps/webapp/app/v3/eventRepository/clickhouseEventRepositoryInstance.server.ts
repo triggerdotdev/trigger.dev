@@ -40,6 +40,8 @@ function initializeClickhouseRepository() {
     batchSize: env.EVENTS_CLICKHOUSE_BATCH_SIZE,
     flushInterval: env.EVENTS_CLICKHOUSE_FLUSH_INTERVAL_MS,
     maximumTraceSummaryViewCount: env.EVENTS_CLICKHOUSE_MAX_TRACE_SUMMARY_VIEW_COUNT,
+    maximumTraceDetailedSummaryViewCount:
+      env.EVENTS_CLICKHOUSE_MAX_TRACE_DETAILED_SUMMARY_VIEW_COUNT,
   });
 
   return repository;

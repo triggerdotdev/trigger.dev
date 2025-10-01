@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ClickhouseQueryFunction, ClickhouseReader } from "./types.js";
+import { ClickhouseQueryFunction, ClickhouseReader, ColumnExpression } from "./types.js";
 import { ClickHouseSettings } from "@clickhouse/client";
 export type QueryParamValue = string | number | boolean | Array<string | number | boolean> | null;
 export type QueryParams = Record<string, QueryParamValue>;
@@ -89,5 +89,101 @@ export class ClickhouseQueryBuilder<TOutput> {
       query += ` ${this.limitClause}`;
     }
     return { query, params: this.params };
+  }
+}
+
+export class ClickhouseQueryFastBuilder<TOutput extends Record<string, any>> {
+  private name: string;
+  private table: string;
+  private columns: Array<string | ColumnExpression>;
+  private reader: ClickhouseReader;
+  private settings: ClickHouseSettings | undefined;
+  private whereClauses: string[] = [];
+  private params: QueryParams = {};
+  private orderByClause: string | null = null;
+  private limitClause: string | null = null;
+  private groupByClause: string | null = null;
+
+  constructor(
+    name: string,
+    table: string,
+    columns: Array<string | ColumnExpression>,
+    reader: ClickhouseReader,
+    settings?: ClickHouseSettings
+  ) {
+    this.name = name;
+    this.table = table;
+    this.columns = columns;
+    this.reader = reader;
+    this.settings = settings;
+  }
+
+  where(clause: string, params?: QueryParams): this {
+    this.whereClauses.push(clause);
+    if (params) {
+      Object.assign(this.params, params);
+    }
+    return this;
+  }
+
+  whereIf(condition: any, clause: string, params?: QueryParams): this {
+    if (condition) {
+      this.where(clause, params);
+    }
+    return this;
+  }
+
+  groupBy(clause: string): this {
+    this.groupByClause = clause;
+    return this;
+  }
+
+  orderBy(clause: string): this {
+    this.orderByClause = clause;
+    return this;
+  }
+
+  limit(limit: number): this {
+    this.limitClause = `LIMIT ${limit}`;
+    return this;
+  }
+
+  execute(): ReturnType<ClickhouseQueryFunction<void, TOutput>> {
+    const { query, params } = this.build();
+
+    const queryFunction = this.reader.queryFast<TOutput, Record<string, any>>({
+      name: this.name,
+      query,
+      columns: this.columns,
+      settings: this.settings,
+    });
+
+    return queryFunction(params);
+  }
+
+  build(): { query: string; params: QueryParams } {
+    let query = `SELECT ${this.buildColumns().join(", ")} FROM ${this.table}`;
+    if (this.whereClauses.length > 0) {
+      query += " WHERE " + this.whereClauses.join(" AND ");
+    }
+    if (this.groupByClause) {
+      query += ` GROUP BY ${this.groupByClause}`;
+    }
+    if (this.orderByClause) {
+      query += ` ORDER BY ${this.orderByClause}`;
+    }
+    if (this.limitClause) {
+      query += ` ${this.limitClause}`;
+    }
+    return { query, params: this.params };
+  }
+
+  buildColumns(): string[] {
+    return this.columns.map((column) => {
+      if (typeof column === "string") {
+        return column;
+      }
+      return [column.expression, column.name].join(" AS ");
+    });
   }
 }

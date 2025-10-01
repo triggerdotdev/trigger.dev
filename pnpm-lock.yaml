@@ -969,8 +969,8 @@ importers:
   internal-packages/clickhouse:
     dependencies:
       '@clickhouse/client':
-        specifier: ^1.11.1
-        version: 1.11.1
+        specifier: ^1.12.1
+        version: 1.12.1
       '@internal/tracing':
         specifier: workspace:*
         version: link:../tracing
@@ -5385,11 +5385,22 @@ packages:
     resolution: {integrity: sha512-bme0le2yhDSAh13d2fxhSW5ZrNoVqZ3LTyac8jK6hNH0qkksXnjYkLS6KQalPU6NMpffxHmpI4+/Gi2MnX0NCA==}
     dev: false
 
+  /@clickhouse/client-common@1.12.1:
+    resolution: {integrity: sha512-ccw1N6hB4+MyaAHIaWBwGZ6O2GgMlO99FlMj0B0UEGfjxM9v5dYVYql6FpP19rMwrVAroYs/IgX2vyZEBvzQLg==}
+    dev: false
+
   /@clickhouse/client@1.11.1:
     resolution: {integrity: sha512-u9h++h72SmWystijNqfNvMkfA+5+Y1LNfmLL/odCL3VgI3oyAPP9ubSw/Yrt2zRZkLKehMMD1kuOej0QHbSoBA==}
     engines: {node: '>=16'}
     dependencies:
       '@clickhouse/client-common': 1.11.1
+    dev: false
+
+  /@clickhouse/client@1.12.1:
+    resolution: {integrity: sha512-7ORY85rphRazqHzImNXMrh4vsaPrpetFoTWpZYueCO2bbO6PXYDXp/GQ4DgxnGIqbWB/Di1Ai+Xuwq2o7DJ36A==}
+    engines: {node: '>=16'}
+    dependencies:
+      '@clickhouse/client-common': 1.12.1
     dev: false
 
   /@codemirror/autocomplete@6.18.6:

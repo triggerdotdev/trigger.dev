@@ -3,7 +3,7 @@ import type { z } from "zod";
 import type { InsertError, QueryError } from "./errors.js";
 import { ClickHouseSettings } from "@clickhouse/client";
 import type { BaseQueryParams, InsertResult } from "@clickhouse/client";
-import { ClickhouseQueryBuilder } from "./queryBuilder.js";
+import { ClickhouseQueryBuilder, ClickhouseQueryFastBuilder } from "./queryBuilder.js";
 
 export type ClickhouseQueryFunction<TInput, TOutput> = (
   params: TInput,
@@ -16,6 +16,15 @@ export type ClickhouseQueryFunction<TInput, TOutput> = (
 export type ClickhouseQueryBuilderFunction<TOutput> = (options?: {
   settings?: ClickHouseSettings;
 }) => ClickhouseQueryBuilder<TOutput>;
+
+export type ClickhouseQueryBuilderFastFunction<TOutput extends Record<string, any>> = (options?: {
+  settings?: ClickHouseSettings;
+}) => ClickhouseQueryFastBuilder<TOutput>;
+
+export type ColumnExpression = {
+  name: string;
+  expression: string;
+};
 
 export interface ClickhouseReader {
   query<TIn extends z.ZodSchema<any>, TOut extends z.ZodSchema<any>>(req: {
@@ -47,6 +56,32 @@ export interface ClickhouseReader {
     settings?: ClickHouseSettings;
   }): ClickhouseQueryFunction<z.input<TIn>, z.output<TOut>>;
 
+  queryFast<TOut extends Record<string, any>, TParams extends Record<string, any>>(req: {
+    /**
+     * The name of the operation.
+     * This will be used to identify the operation in the span.
+     */
+    name: string;
+    /**
+     * The SQL query to run.
+     * Use {paramName: Type} to define parameters
+     * Example: `SELECT * FROM table WHERE id = {id: String}`
+     */
+    query: string;
+
+    /**
+     * The columns returned by the query, in the order
+     *
+     * @example ["run_id", "created_at", "updated_at"]
+     */
+    columns: Array<string | ColumnExpression>;
+    /**
+     * The settings to use for the query.
+     * These will be merged with the default settings.
+     */
+    settings?: ClickHouseSettings;
+  }): ClickhouseQueryFunction<TParams, TOut>;
+
   queryBuilder<TOut extends z.ZodSchema<any>>(req: {
     /**
      * The name of the operation.
@@ -70,6 +105,31 @@ export interface ClickhouseReader {
      */
     settings?: ClickHouseSettings;
   }): ClickhouseQueryBuilderFunction<z.input<TOut>>;
+
+  queryBuilderFast<TOut extends Record<string, any>>(req: {
+    /**
+     * The name of the operation.
+     * This will be used to identify the operation in the span.
+     */
+    name: string;
+    /**
+     * The table to query
+     *
+     * @example trigger_dev.task_runs_v1
+     */
+    table: string;
+    /**
+     * The columns to query
+     *
+     * @example ["run_id", "created_at", "updated_at"]
+     */
+    columns: Array<string | ColumnExpression>;
+    /**
+     * The settings to use for the query.
+     * These will be merged with the default settings.
+     */
+    settings?: ClickHouseSettings;
+  }): ClickhouseQueryBuilderFastFunction<TOut>;
 
   close(): Promise<void>;
 }

@@ -4,6 +4,8 @@ import {
   ClickHouseLogLevel,
   type ClickHouseSettings,
   createClient,
+  type ResultSet,
+  type Row,
 } from "@clickhouse/client";
 import { recordSpanError, Span, startSpan, trace, Tracer } from "@internal/tracing";
 import { flattenAttributes, tryCatch } from "@trigger.dev/core/v3";
@@ -11,16 +13,18 @@ import { z } from "zod";
 import { InsertError, QueryError } from "./errors.js";
 import type {
   ClickhouseInsertFunction,
+  ClickhouseQueryBuilderFastFunction,
   ClickhouseQueryBuilderFunction,
   ClickhouseQueryFunction,
   ClickhouseReader,
   ClickhouseWriter,
+  ColumnExpression,
 } from "./types.js";
 import { generateErrorMessage } from "zod-error";
 import { Logger, type LogLevel } from "@trigger.dev/core/logger";
 import type { Agent as HttpAgent } from "http";
 import type { Agent as HttpsAgent } from "https";
-import { ClickhouseQueryBuilder } from "./queryBuilder.js";
+import { ClickhouseQueryBuilder, ClickhouseQueryFastBuilder } from "./queryBuilder.js";
 import { randomUUID } from "node:crypto";
 
 export type ClickhouseConfig = {
@@ -225,6 +229,112 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
     };
   }
 
+  public queryFast<TOut extends Record<string, any>, TParams extends Record<string, any>>(req: {
+    name: string;
+    query: string;
+    columns: Array<string | ColumnExpression>;
+    settings?: ClickHouseSettings;
+  }): ClickhouseQueryFunction<TParams, TOut> {
+    return async (params, options) => {
+      const queryId = randomUUID();
+
+      return await startSpan(this.tracer, "queryFast", async (span) => {
+        this.logger.debug("Querying clickhouse fast", {
+          name: req.name,
+          query: req.query.replace(/\s+/g, " "),
+          params,
+          settings: req.settings,
+          attributes: options?.attributes,
+          queryId,
+        });
+
+        span.setAttributes({
+          "clickhouse.clientName": this.name,
+          "clickhouse.operationName": req.name,
+          "clickhouse.queryId": queryId,
+          ...flattenAttributes(req.settings, "clickhouse.settings"),
+          ...flattenAttributes(options?.attributes),
+        });
+
+        const [clickhouseError, resultSet] = await tryCatch(
+          this.client.query({
+            query: req.query,
+            query_params: params,
+            format: "JSONCompactEachRow",
+            query_id: queryId,
+            ...options?.params,
+            clickhouse_settings: {
+              ...req.settings,
+              ...options?.params?.clickhouse_settings,
+            },
+          })
+        );
+
+        if (clickhouseError) {
+          this.logger.error("Error querying clickhouse", {
+            name: req.name,
+            error: clickhouseError,
+            query: req.query,
+            params,
+            queryId,
+          });
+
+          recordClickhouseError(span, clickhouseError);
+
+          return [
+            new QueryError(`Unable to query clickhouse: ${clickhouseError.message}`, {
+              query: req.query,
+            }),
+            null,
+          ];
+        }
+
+        span.setAttributes({
+          "clickhouse.query_id": resultSet.query_id,
+          ...flattenAttributes(resultSet.response_headers, "clickhouse.response_headers"),
+        });
+
+        const summaryHeader = resultSet.response_headers["x-clickhouse-summary"];
+
+        if (typeof summaryHeader === "string") {
+          span.setAttributes({
+            ...flattenAttributes(JSON.parse(summaryHeader), "clickhouse.summary"),
+          });
+        }
+
+        const resultRows: Array<TOut> = [];
+
+        for await (const rows of resultSet.stream()) {
+          if (rows.length === 0) {
+            continue;
+          }
+
+          for (const row of rows) {
+            const rowData = row.json();
+
+            const hydratedRow: Record<string, any> = {};
+            for (let i = 0; i < req.columns.length; i++) {
+              const column = req.columns[i];
+
+              if (typeof column === "string") {
+                hydratedRow[column] = rowData[i];
+              } else {
+                hydratedRow[column.name] = rowData[i];
+              }
+            }
+            resultRows.push(hydratedRow as TOut);
+          }
+        }
+
+        span.setAttributes({
+          "clickhouse.rows": resultRows.length,
+        });
+
+        return [null, resultRows];
+      });
+    };
+  }
+
   public queryBuilder<TOut extends z.ZodSchema<any>>(req: {
     name: string;
     baseQuery: string;
@@ -233,6 +343,19 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
   }): ClickhouseQueryBuilderFunction<z.input<TOut>> {
     return (chSettings) =>
       new ClickhouseQueryBuilder(req.name, req.baseQuery, this, req.schema, {
+        ...req.settings,
+        ...chSettings?.settings,
+      });
+  }
+
+  public queryBuilderFast<TOut extends Record<string, any>>(req: {
+    name: string;
+    table: string;
+    columns: string[];
+    settings?: ClickHouseSettings;
+  }): ClickhouseQueryBuilderFastFunction<TOut> {
+    return (chSettings) =>
+      new ClickhouseQueryFastBuilder(req.name, req.table, req.columns, this, {
         ...req.settings,
         ...chSettings?.settings,
       });

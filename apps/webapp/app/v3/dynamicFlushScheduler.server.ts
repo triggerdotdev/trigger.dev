@@ -1,4 +1,5 @@
 import { Logger } from "@trigger.dev/core/logger";
+import { tryCatch } from "@trigger.dev/core/utils";
 import { nanoid } from "nanoid";
 import pLimit from "p-limit";
 import { signalsEmitter } from "~/services/signals.server";
@@ -195,47 +196,62 @@ export class DynamicFlushScheduler<T> {
     // Schedule all batches for concurrent processing
     const flushPromises = batchesToFlush.map((batch) =>
       this.limiter(async () => {
-        const flushId = nanoid();
         const itemCount = batch.length;
 
-        try {
-          const startTime = Date.now();
-          await this.callback(flushId, batch);
+        const self = this;
 
-          const duration = Date.now() - startTime;
-          this.totalQueuedItems -= itemCount;
-          this.consecutiveFlushFailures = 0;
-          this.lastFlushTime = Date.now();
-          this.metrics.flushedBatches++;
-          this.metrics.totalItemsFlushed += itemCount;
+        async function tryFlush(flushId: string, batchToFlush: T[], attempt: number = 1) {
+          try {
+            const startTime = Date.now();
+            await self.callback(flushId, batchToFlush);
 
-          this.logger.debug("Batch flushed successfully", {
-            flushId,
-            itemCount,
-            duration,
-            remainingQueueDepth: this.totalQueuedItems,
-            activeConcurrency: this.limiter.activeCount,
-            pendingConcurrency: this.limiter.pendingCount,
-          });
-        } catch (error) {
-          this.consecutiveFlushFailures++;
-          this.metrics.failedBatches++;
+            const duration = Date.now() - startTime;
+            self.totalQueuedItems -= itemCount;
+            self.consecutiveFlushFailures = 0;
+            self.lastFlushTime = Date.now();
+            self.metrics.flushedBatches++;
+            self.metrics.totalItemsFlushed += itemCount;
 
-          this.logger.error("Error flushing batch", {
-            flushId,
-            itemCount,
-            error,
-            consecutiveFailures: this.consecutiveFlushFailures,
-          });
+            self.logger.debug("Batch flushed successfully", {
+              flushId,
+              itemCount,
+              duration,
+              remainingQueueDepth: self.totalQueuedItems,
+              activeConcurrency: self.limiter.activeCount,
+              pendingConcurrency: self.limiter.pendingCount,
+            });
+          } catch (error) {
+            self.consecutiveFlushFailures++;
+            self.metrics.failedBatches++;
 
-          // Re-queue the batch at the front if it fails
-          this.batchQueue.unshift(batch);
-          this.totalQueuedItems += itemCount;
+            self.logger.error("Error attempting to flush batch", {
+              flushId,
+              itemCount,
+              error,
+              consecutiveFailures: self.consecutiveFlushFailures,
+              attempt,
+            });
 
-          // Back off on failures
-          if (this.consecutiveFlushFailures > 3) {
-            this.adjustConcurrency(true);
+            // Back off on failures
+            if (self.consecutiveFlushFailures > 5) {
+              self.adjustConcurrency(true);
+            }
+
+            if (attempt <= 3) {
+              await new Promise((resolve) => setTimeout(resolve, 500));
+              return await tryFlush(flushId, batchToFlush, attempt + 1);
+            } else {
+              throw error;
+            }
           }
+        }
+
+        const [flushError] = await tryCatch(tryFlush(nanoid(), batch));
+
+        if (flushError) {
+          this.logger.error("Error flushing batch", {
+            error: flushError,
+          });
         }
       })
     );

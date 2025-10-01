@@ -240,6 +240,7 @@ import { logger } from "./services/logger.server";
 import { Prisma } from "./db.server";
 import { registerRunEngineEventBusHandlers } from "./v3/runEngineHandlers.server";
 import { remoteBuildsEnabled } from "./v3/remoteImageBuilder.server";
+import { resourceMonitor } from "./services/resourceMonitor.server";
 
 if (env.EVENT_LOOP_MONITOR_ENABLED === "1") {
   eventLoopMonitor.enable();
@@ -249,4 +250,8 @@ if (remoteBuildsEnabled()) {
   console.log("🏗️  Remote builds enabled");
 } else {
   console.log("🏗️  Local builds enabled");
+}
+
+if (env.RESOURCE_MONITOR_ENABLED === "1") {
+  resourceMonitor.startMonitoring(1000);
 }

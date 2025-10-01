@@ -493,6 +493,7 @@ const EnvironmentSchema = z
     CENTS_PER_RUN: z.coerce.number().default(0),
 
     EVENT_LOOP_MONITOR_ENABLED: z.string().default("1"),
+    RESOURCE_MONITOR_ENABLED: z.string().default("0"),
     MAXIMUM_LIVE_RELOADING_EVENTS: z.coerce.number().int().default(1000),
     MAXIMUM_TRACE_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(25_000),
     MAXIMUM_TRACE_DETAILED_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(10_000),
@@ -1123,7 +1124,8 @@ const EnvironmentSchema = z
     EVENTS_CLICKHOUSE_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
     EVENT_REPOSITORY_CLICKHOUSE_ROLLOUT_PERCENT: z.coerce.number().optional(),
     EVENT_REPOSITORY_DEFAULT_STORE: z.enum(["postgres", "clickhouse"]).default("postgres"),
-    EVENTS_CLICKHOUSE_MAX_TRACE_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(250_000),
+    EVENTS_CLICKHOUSE_MAX_TRACE_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(25_000),
+    EVENTS_CLICKHOUSE_MAX_TRACE_DETAILED_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(5_000),
 
     // Bootstrap
     TRIGGER_BOOTSTRAP_ENABLED: z.string().default("0"),
