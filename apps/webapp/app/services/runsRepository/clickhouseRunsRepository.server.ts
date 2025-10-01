@@ -202,11 +202,13 @@ export class ClickHouseRunsRepository implements IRunsRepository {
     }
 
     if (result.length === 0) {
-      throw new Error("No count rows returned");
+      return {
+        tags: [],
+      };
     }
 
     return {
-      tags: result[0].tags,
+      tags: result.flatMap((row) => row.tags),
     };
   }
 }

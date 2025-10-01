@@ -61,7 +61,7 @@ import { type loader as versionsLoader } from "~/routes/resources.orgs.$organiza
 import { type loader as tagsLoader } from "~/routes/resources.environments.$envId.runs.tags";
 import { Button } from "../../primitives/Buttons";
 import { BulkActionTypeCombo } from "./BulkAction";
-import { appliedSummary, FilterMenuProvider, TimeFilter } from "./SharedFilters";
+import { appliedSummary, FilterMenuProvider, TimeFilter, timeFilters } from "./SharedFilters";
 import { AIFilterInput } from "./AIFilterInput";
 import {
   allTaskRunStatuses,
@@ -812,7 +812,7 @@ function TagsDropdown({
   onClose?: () => void;
 }) {
   const environment = useEnvironment();
-  const { values, replace } = useSearchParams();
+  const { values, value, replace } = useSearchParams();
 
   const handleChange = (values: string[]) => {
     clearSearchValue();
@@ -822,6 +822,12 @@ function TagsDropdown({
       direction: undefined,
     });
   };
+
+  const { period, from, to } = timeFilters({
+    period: value("period"),
+    from: value("from"),
+    to: value("to"),
+  });
 
   const tagValues = values("tags").filter((v) => v !== "");
   const selected = tagValues.length > 0 ? tagValues : undefined;
@@ -833,8 +839,17 @@ function TagsDropdown({
     if (searchValue) {
       searchParams.set("name", encodeURIComponent(searchValue));
     }
+    if (period) {
+      searchParams.set("period", period);
+    }
+    if (from) {
+      searchParams.set("from", from.getTime().toString());
+    }
+    if (to) {
+      searchParams.set("to", to.getTime().toString());
+    }
     fetcher.load(`/resources/environments/${environment.id}/runs/tags?${searchParams}`);
-  }, [searchValue]);
+  }, [searchValue, period, from?.getTime(), to?.getTime()]);
 
   const filtered = useMemo(() => {
     let items: string[] = [];
