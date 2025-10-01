@@ -114,7 +114,10 @@ export class GithubRulesManifestLoader implements RulesManifestLoader {
 
   async loadManifestContent(): Promise<string> {
     const response = await fetch(
-      `https://raw.githubusercontent.com/triggerdotdev/trigger.dev/refs/heads/${this.branch}/rules/manifest.json`
+      `https://raw.githubusercontent.com/triggerdotdev/trigger.dev/refs/heads/${this.branch}/rules/manifest.json`,
+      {
+        signal: AbortSignal.timeout(5000),
+      }
     );
 
     if (!response.ok) {

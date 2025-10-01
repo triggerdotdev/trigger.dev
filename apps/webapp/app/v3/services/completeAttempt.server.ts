@@ -1,4 +1,4 @@
-import { Attributes } from "@opentelemetry/api";
+import { tryCatch } from "@trigger.dev/core/utils";
 import {
   MachinePresetName,
   TaskRunContext,
@@ -21,19 +21,17 @@ import { PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { safeJsonParse } from "~/utils/json";
 import { marqs } from "~/v3/marqs/index.server";
-import { createExceptionPropertiesFromError, eventRepository } from "../eventRepository.server";
 import { FailedTaskRunRetryHelper } from "../failedTaskRun.server";
 import { socketIo } from "../handleSocketIo.server";
-import { getTaskEventStoreTableForRun } from "../taskEventStore.server";
+import { createExceptionPropertiesFromError } from "../eventRepository/common.server";
 import { FAILED_RUN_STATUSES, isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
 import { BaseService } from "./baseService.server";
 import { CancelAttemptService } from "./cancelAttempt.server";
 import { CreateCheckpointService } from "./createCheckpoint.server";
 import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
 import { RetryAttemptService } from "./retryAttempt.server";
-import { tryCatch } from "@trigger.dev/core/utils";
+import { resolveEventRepositoryForStore } from "../eventRepository/index.server";
 
 type FoundAttempt = Awaited<ReturnType<typeof findAttempt>>;
 
@@ -164,6 +162,8 @@ export class CompleteAttemptService extends BaseService {
       metadata: completion.metadata,
       env,
     });
+
+    const eventRepository = resolveEventRepositoryForStore(taskRunAttempt.taskRun.taskEventStore);
 
     const [completeSuccessfulRunEventError] = await tryCatch(
       eventRepository.completeSuccessfulRunEvent({
@@ -315,6 +315,8 @@ export class CompleteAttemptService extends BaseService {
       // The attempt failed due to an OOM error but we're already on the machine we should retry on
       exitRun(taskRunAttempt.taskRunId);
     }
+
+    const eventRepository = resolveEventRepositoryForStore(taskRunAttempt.taskRun.taskEventStore);
 
     const [completeFailedRunEventError] = await tryCatch(
       eventRepository.completeFailedRunEvent({
@@ -536,6 +538,8 @@ export class CompleteAttemptService extends BaseService {
   }) {
     const retryAt = new Date(executionRetry.timestamp);
 
+    const eventRepository = resolveEventRepositoryForStore(taskRunAttempt.taskRun.taskEventStore);
+
     // Retry the task run
     await eventRepository.recordEvent(
       `Retry #${execution.attempt.number} delay${oomMachine ? " after OOM" : ""}`,
@@ -555,8 +559,6 @@ export class CompleteAttemptService extends BaseService {
           style: {
             icon: "schedule-attempt",
           },
-          queueId: taskRunAttempt.queueId,
-          queueName: taskRunAttempt.taskRun.queue,
         },
         context: taskRunAttempt.taskRun.traceContext as Record<string, string | undefined>,
         spanIdSeed: `retry-${taskRunAttempt.number + 1}`,

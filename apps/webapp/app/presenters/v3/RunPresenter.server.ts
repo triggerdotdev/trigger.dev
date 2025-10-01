@@ -3,9 +3,11 @@ import { createTreeFromFlatItems, flattenTree } from "~/components/primitives/Tr
 import { prisma, type PrismaClient } from "~/db.server";
 import { createTimelineSpanEventsFromSpanEvents } from "~/utils/timelineSpanEvents";
 import { getUsername } from "~/utils/username";
-import { eventRepository } from "~/v3/eventRepository.server";
+import { resolveEventRepositoryForStore } from "~/v3/eventRepository/index.server";
+import { SpanSummary } from "~/v3/eventRepository/eventRepository.types";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 import { isFinalRunStatus } from "~/v3/taskStatus";
+import { env } from "~/env.server";
 
 type Result = Awaited<ReturnType<RunPresenter["call"]>>;
 export type Run = Result["run"];
@@ -45,9 +47,11 @@ export class RunPresenter {
         id: true,
         createdAt: true,
         taskEventStore: true,
+        taskIdentifier: true,
         number: true,
         traceId: true,
         spanId: true,
+        parentSpanId: true,
         friendlyId: true,
         status: true,
         startedAt: true,
@@ -137,21 +141,55 @@ export class RunPresenter {
       return {
         run: runData,
         trace: undefined,
+        maximumLiveReloadingSetting: env.MAXIMUM_LIVE_RELOADING_EVENTS,
       };
     }
 
+    const eventRepository = resolveEventRepositoryForStore(run.taskEventStore);
+
     // get the events
-    const traceSummary = await eventRepository.getTraceSummary(
+    let traceSummary = await eventRepository.getTraceSummary(
       getTaskEventStoreTableForRun(run),
+      run.runtimeEnvironment.id,
       run.traceId,
       run.rootTaskRun?.createdAt ?? run.createdAt,
       run.completedAt ?? undefined,
       { includeDebugLogs: showDebug }
     );
+
     if (!traceSummary) {
-      return {
-        run: runData,
-        trace: undefined,
+      const spanSummary: SpanSummary = {
+        id: run.spanId,
+        parentId: run.parentSpanId ?? undefined,
+        runId: run.friendlyId,
+        data: {
+          message: run.taskIdentifier,
+          style: { icon: "task", variant: "primary" },
+          events: [],
+          startTime: run.createdAt,
+          duration: 0,
+          isError:
+            run.status === "COMPLETED_WITH_ERRORS" ||
+            run.status === "CRASHED" ||
+            run.status === "EXPIRED" ||
+            run.status === "SYSTEM_FAILURE" ||
+            run.status === "TIMED_OUT",
+          isPartial:
+            run.status === "DELAYED" ||
+            run.status === "PENDING" ||
+            run.status === "PAUSED" ||
+            run.status === "RETRYING_AFTER_FAILURE" ||
+            run.status === "DEQUEUED" ||
+            run.status === "EXECUTING",
+          isCancelled: run.status === "CANCELED",
+          isDebug: false,
+          level: "TRACE",
+        },
+      };
+
+      traceSummary = {
+        rootSpan: spanSummary,
+        spans: [spanSummary],
       };
     }
 
@@ -220,7 +258,9 @@ export class RunPresenter {
         queuedDuration: run.startedAt
           ? millisecondsToNanoseconds(run.startedAt.getTime() - run.createdAt.getTime())
           : undefined,
+        overridesBySpanId: traceSummary.overridesBySpanId,
       },
+      maximumLiveReloadingSetting: eventRepository.maximumLiveReloadingSetting,
     };
   }
 }

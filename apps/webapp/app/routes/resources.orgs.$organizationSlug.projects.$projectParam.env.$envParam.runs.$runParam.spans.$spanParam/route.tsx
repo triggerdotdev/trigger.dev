@@ -79,6 +79,7 @@ import {
 import { createTimelineSpanEventsFromSpanEvents } from "~/utils/timelineSpanEvents";
 import { CompleteWaitpointForm } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.waitpoints.$waitpointFriendlyId.complete/route";
 import { requireUserId } from "~/services/session.server";
+import type { SpanOverride } from "~/v3/eventRepository/eventRepository.types";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -120,10 +121,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 export function SpanView({
   runParam,
   spanId,
+  spanOverrides,
   closePanel,
 }: {
   runParam: string;
   spanId: string | undefined;
+  spanOverrides?: SpanOverride;
   closePanel?: () => void;
 }) {
   const organization = useOrganization();
@@ -174,17 +177,26 @@ export function SpanView({
       );
     }
     case "span": {
-      return <SpanBody span={fetcher.data.span} runParam={runParam} closePanel={closePanel} />;
+      return (
+        <SpanBody
+          span={fetcher.data.span}
+          spanOverrides={spanOverrides}
+          runParam={runParam}
+          closePanel={closePanel}
+        />
+      );
     }
   }
 }
 
 function SpanBody({
   span,
+  spanOverrides,
   runParam,
   closePanel,
 }: {
   span: Span;
+  spanOverrides?: SpanOverride;
   runParam?: string;
   closePanel?: () => void;
 }) {
@@ -197,6 +209,8 @@ function SpanBody({
   if (tab === "context") {
     tab = "overview";
   }
+
+  span = applySpanOverrides(span, spanOverrides);
 
   return (
     <div className="grid h-full max-h-full grid-rows-[2.5rem_2rem_1fr] overflow-hidden bg-background-bright">
@@ -232,86 +246,45 @@ function SpanBody({
           >
             Overview
           </TabButton>
-          <TabButton
-            isActive={tab === "detail"}
-            layoutId="span-span"
-            onClick={() => {
-              replace({ tab: "detail" });
-            }}
-            shortcut={{ key: "d" }}
-          >
-            Detail
-          </TabButton>
         </TabContainer>
       </div>
       <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-        {tab === "detail" ? (
-          <div className="flex flex-col gap-4 px-3 pt-3">
-            <Property.Table>
-              <Property.Item>
-                <Property.Label>Status</Property.Label>
-                <Property.Value>
-                  <TaskRunAttemptStatusCombo
-                    status={
-                      span.isCancelled
-                        ? "CANCELED"
-                        : span.isError
-                        ? "FAILED"
-                        : span.isPartial
-                        ? "EXECUTING"
-                        : "COMPLETED"
-                    }
-                    className="text-sm"
-                  />
-                </Property.Value>
-              </Property.Item>
-              <Property.Item>
-                <Property.Label>Task</Property.Label>
-                <Property.Value>
-                  <SimpleTooltip
-                    button={
-                      <TextLink
-                        to={v3RunsPath(organization, project, environment, {
-                          tasks: [span.taskSlug],
-                        })}
-                      >
-                        {span.taskSlug}
-                      </TextLink>
-                    }
-                    content={`Filter runs by ${span.taskSlug}`}
-                  />
-                </Property.Value>
-              </Property.Item>
-              {span.idempotencyKey && (
-                <Property.Item>
-                  <Property.Label>Idempotency key</Property.Label>
-                  <Property.Value>{span.idempotencyKey}</Property.Value>
-                </Property.Item>
-              )}
-              <Property.Item>
-                <Property.Label>Version</Property.Label>
-                <Property.Value>
-                  {span.workerVersion ? (
-                    span.workerVersion
-                  ) : (
-                    <span className="flex items-center gap-1">
-                      <span>Never started</span>
-                      <InfoIconTooltip
-                        content={"Runs get locked to the latest version when they start."}
-                        contentClassName="normal-case tracking-normal"
-                      />
-                    </span>
-                  )}
-                </Property.Value>
-              </Property.Item>
-            </Property.Table>
-          </div>
-        ) : (
-          <SpanEntity span={span} />
-        )}
+        <SpanEntity span={span} />
       </div>
     </div>
   );
+}
+
+function applySpanOverrides(span: Span, spanOverrides?: SpanOverride): Span {
+  if (!spanOverrides) {
+    return span;
+  }
+
+  const newSpan = { ...span };
+
+  if (spanOverrides.isCancelled) {
+    newSpan.isCancelled = true;
+    newSpan.isPartial = false;
+    newSpan.isError = false;
+  } else if (spanOverrides.isError) {
+    newSpan.isError = true;
+    newSpan.isPartial = false;
+    newSpan.isCancelled = false;
+  }
+
+  if (typeof spanOverrides.duration !== "undefined") {
+    newSpan.duration = spanOverrides.duration;
+  }
+
+  if (spanOverrides.events) {
+    if (newSpan.events) {
+      newSpan.events = [...newSpan.events, ...spanOverrides.events];
+    } else {
+      newSpan.events = spanOverrides.events;
+    }
+  }
+
+  return newSpan;
 }
 
 function RunBody({
@@ -1081,7 +1054,7 @@ function SpanEntity({ span }: { span: Span }) {
                             {run.taskIdentifier}
                           </TableCell>
                           <TableCell to={path} actionClassName="py-1.5" rowHoverStyle="bright">
-                            {run.lockedToVersion?.version ?? "–"}
+                            {run.taskVersion ?? "–"}
                           </TableCell>
                           <TableCell to={path} actionClassName="py-1.5" rowHoverStyle="bright">
                             <DateTime date={run.createdAt} />

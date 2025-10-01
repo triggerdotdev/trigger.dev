@@ -2,14 +2,13 @@ import { createCache, DefaultStatefulContext, Namespace, Cache as UnkeyCache } f
 import { MemoryStore } from "@unkey/cache/stores";
 import { Ratelimit } from "@upstash/ratelimit";
 import { Request as ExpressRequest, Response as ExpressResponse, NextFunction } from "express";
-import { RedisOptions } from "ioredis";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { env } from "~/env.server";
+import { RedisWithClusterOptions } from "~/redis.server";
 import { logger } from "./logger.server";
 import { createRedisRateLimitClient, Duration, RateLimiter } from "./rateLimiter.server";
 import { RedisCacheStore } from "./unkey/redisCacheStore.server";
-import { RedisWithClusterOptions } from "~/redis.server";
 
 const DurationSchema = z.custom<Duration>((value) => {
   if (typeof value !== "string") {
@@ -64,6 +63,7 @@ type Options = {
   limiterCache?: {
     fresh: number;
     stale: number;
+    maxItems: number;
   };
   log?: {
     requests?: boolean;
@@ -145,7 +145,10 @@ export function authorizationRateLimitMiddleware({
   limiterConfigOverride,
 }: Options) {
   const ctx = new DefaultStatefulContext();
-  const memory = new MemoryStore({ persistentMap: new Map() });
+  const memory = new MemoryStore({
+    persistentMap: new Map(),
+    unstableEvictOnSet: { frequency: 0.001, maxItems: limiterCache?.maxItems ?? 1000 },
+  });
   const redisCacheStore = new RedisCacheStore({
     connection: {
       keyPrefix: `cache:${keyPrefix}:rate-limit-cache:`,

@@ -1,7 +1,6 @@
 import { type Prisma } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { logger } from "~/services/logger.server";
-import { eventRepository } from "../eventRepository.server";
 import { socketIo } from "../handleSocketIo.server";
 import { devPubSub } from "../marqs/devPubSub.server";
 import { CANCELLABLE_ATTEMPT_STATUSES, isCancellableRunStatus } from "../taskStatus";
@@ -11,6 +10,7 @@ import { CancelTaskAttemptDependenciesService } from "./cancelTaskAttemptDepende
 import { CancelableTaskRun } from "./cancelTaskRun.server";
 import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
 import { tryCatch } from "@trigger.dev/core/utils";
+import { resolveEventRepositoryForStore } from "../eventRepository/index.server";
 
 type ExtendedTaskRun = Prisma.TaskRunGetPayload<{
   include: {
@@ -100,6 +100,8 @@ export class CancelTaskRunServiceV1 extends BaseService {
         raw: opts.reason,
       },
     });
+
+    const eventRepository = resolveEventRepositoryForStore(cancelledTaskRun.taskEventStore);
 
     const [cancelRunEventError] = await tryCatch(
       eventRepository.cancelRunEvent({
