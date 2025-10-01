@@ -49,7 +49,7 @@ GROUP BY organization_id, project_id, environment_id, bucket_start;
 
 
 -- +goose Down
-DROP TABLE IF EXISTS trigger_dev.task_event_usage_by_hour_v1;
-DROP TABLE IF EXISTS trigger_dev.task_event_usage_by_minute_v1;
 DROP MATERIALIZED VIEW IF EXISTS trigger_dev.mv_task_event_usage_by_minute_v1;
 DROP MATERIALIZED VIEW IF EXISTS trigger_dev.mv_task_event_usage_by_hour_v1;
+DROP TABLE IF EXISTS trigger_dev.task_event_usage_by_hour_v1;
+DROP TABLE IF EXISTS trigger_dev.task_event_usage_by_minute_v1;

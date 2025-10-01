@@ -116,7 +116,7 @@ export class GithubRulesManifestLoader implements RulesManifestLoader {
     const response = await fetch(
       `https://raw.githubusercontent.com/triggerdotdev/trigger.dev/refs/heads/${this.branch}/rules/manifest.json`,
       {
-        signal: AbortSignal.timeout(2000),
+        signal: AbortSignal.timeout(5000),
       }
     );
 

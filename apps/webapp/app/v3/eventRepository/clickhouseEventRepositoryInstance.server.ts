@@ -30,7 +30,7 @@ function initializeClickhouseRepository() {
     },
     logLevel: env.EVENTS_CLICKHOUSE_LOG_LEVEL,
     compression: {
-      request: true,
+      request: env.EVENTS_CLICKHOUSE_COMPRESSION_REQUEST === "1",
     },
     maxOpenConnections: env.EVENTS_CLICKHOUSE_MAX_OPEN_CONNECTIONS,
   });

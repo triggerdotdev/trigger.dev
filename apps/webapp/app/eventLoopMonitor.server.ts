@@ -65,8 +65,6 @@ function after(asyncId: number) {
       cached.parentCtx
     );
 
-    console.log("🥸  Event loop blocked", { asyncType: cached.type, time });
-
     newSpan.end();
   }
 }
