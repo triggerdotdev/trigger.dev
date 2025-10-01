@@ -1,5 +1,4 @@
 import { env } from "~/env.server";
-import { authenticateAuthorizationHeader } from "./apiAuth.server";
 import { authorizationRateLimitMiddleware } from "./authorizationRateLimitMiddleware.server";
 import { Duration } from "./rateLimiter.server";
 
@@ -22,6 +21,7 @@ export const engineRateLimiter = authorizationRateLimitMiddleware({
   limiterCache: {
     fresh: 60_000 * 10, // Data is fresh for 10 minutes
     stale: 60_000 * 20, // Date is stale after 20 minutes
+    maxItems: 1000,
   },
   pathMatchers: [/^\/engine/],
   // Regex allow any path starting with /engine/v1/worker-actions/
