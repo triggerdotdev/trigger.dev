@@ -172,7 +172,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   return json({
     run: result.run,
     trace: result.trace,
-    maximumLiveReloadingSetting: env.MAXIMUM_LIVE_RELOADING_EVENTS,
+    maximumLiveReloadingSetting: result.maximumLiveReloadingSetting,
     resizable: {
       parent,
       tree,

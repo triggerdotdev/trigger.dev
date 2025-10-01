@@ -67,6 +67,7 @@ export type ClickhouseEventRepositoryConfig = {
   tracer?: Tracer;
   maximumTraceSummaryViewCount?: number;
   maximumTraceDetailedSummaryViewCount?: number;
+  maximumLiveReloadingSetting?: number;
 };
 
 /**
@@ -99,6 +100,10 @@ export class ClickhouseEventRepository implements IEventRepository {
         return event.kind === "DEBUG_EVENT";
       },
     });
+  }
+
+  get maximumLiveReloadingSetting() {
+    return this._config.maximumLiveReloadingSetting ?? 1000;
   }
 
   async #flushBatch(flushId: string, events: TaskEventV1Input[]) {

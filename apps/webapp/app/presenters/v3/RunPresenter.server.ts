@@ -7,6 +7,7 @@ import { resolveEventRepositoryForStore } from "~/v3/eventRepository/index.serve
 import { SpanSummary } from "~/v3/eventRepository/eventRepository.types";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 import { isFinalRunStatus } from "~/v3/taskStatus";
+import { env } from "~/env.server";
 
 type Result = Awaited<ReturnType<RunPresenter["call"]>>;
 export type Run = Result["run"];
@@ -140,6 +141,7 @@ export class RunPresenter {
       return {
         run: runData,
         trace: undefined,
+        maximumLiveReloadingSetting: env.MAXIMUM_LIVE_RELOADING_EVENTS,
       };
     }
 
@@ -258,6 +260,7 @@ export class RunPresenter {
           : undefined,
         overridesBySpanId: traceSummary.overridesBySpanId,
       },
+      maximumLiveReloadingSetting: eventRepository.maximumLiveReloadingSetting,
     };
   }
 }

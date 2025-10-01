@@ -84,6 +84,10 @@ export class EventRepository implements IEventRepository {
     return this._flushScheduler.getStatus();
   }
 
+  get maximumLiveReloadingSetting() {
+    return env.MAXIMUM_LIVE_RELOADING_EVENTS;
+  }
+
   constructor(
     db: PrismaClient = prisma,
     readReplica: PrismaReplicaClient = $replica,

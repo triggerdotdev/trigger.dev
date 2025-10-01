@@ -309,6 +309,7 @@ export type TraceDetailedSummary = {
  * Defines the public API for managing task events, traces, and spans.
  */
 export interface IEventRepository {
+  maximumLiveReloadingSetting: number;
   // Event insertion methods
   insertMany(events: CreateEventInput[]): Promise<void>;
   insertManyImmediate(events: CreateEventInput[]): Promise<void>;
