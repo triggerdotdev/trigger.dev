@@ -274,6 +274,11 @@ export class KubernetesWorkloadManager implements WorkloadManager {
       restartPolicy: "Never",
       automountServiceAccountToken: false,
       imagePullSecrets: this.getImagePullSecrets(),
+      ...(env.KUBERNETES_SCHEDULER_NAME
+        ? {
+            schedulerName: env.KUBERNETES_SCHEDULER_NAME,
+          }
+        : {}),
       ...(env.KUBERNETES_WORKER_NODETYPE_LABEL
         ? {
             nodeSelector: {
