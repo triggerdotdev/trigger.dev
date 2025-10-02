@@ -180,7 +180,8 @@ export class RunPresenter {
             run.status === "PAUSED" ||
             run.status === "RETRYING_AFTER_FAILURE" ||
             run.status === "DEQUEUED" ||
-            run.status === "EXECUTING",
+            run.status === "EXECUTING" ||
+            run.status === "WAITING_TO_RESUME",
           isCancelled: run.status === "CANCELED",
           isDebug: false,
           level: "TRACE",
