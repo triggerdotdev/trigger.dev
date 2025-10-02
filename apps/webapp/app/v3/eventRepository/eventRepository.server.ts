@@ -124,7 +124,6 @@ export class EventRepository implements IEventRepository {
       isError: event.isError,
       isPartial: event.isPartial,
       isCancelled: event.isCancelled,
-      isDebug: false,
       serviceName: "",
       serviceNamespace: "",
       level: event.level,
