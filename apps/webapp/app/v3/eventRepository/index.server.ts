@@ -2,7 +2,7 @@ import { env } from "~/env.server";
 import { eventRepository } from "./eventRepository.server";
 import { clickhouseEventRepository } from "./clickhouseEventRepositoryInstance.server";
 import { IEventRepository, TraceEventOptions } from "./eventRepository.types";
-import { $replica } from "~/db.server";
+import { $replica, prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { FEATURE_FLAG, flags } from "../featureFlags.server";
 import { getTaskEventStore } from "../taskEventStore.server";
@@ -145,7 +145,7 @@ async function recordRunEvent(
 }
 
 async function findRunForEventCreation(runId: string) {
-  return $replica.taskRun.findFirst({
+  return prisma.taskRun.findFirst({
     where: {
       id: runId,
     },

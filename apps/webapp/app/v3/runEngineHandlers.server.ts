@@ -403,7 +403,13 @@ export function registerRunEngineEventBusHandlers() {
 
   engine.eventBus.on("runRetryScheduled", async ({ time, run, environment, retryAt }) => {
     try {
-      let retryMessage = `Retry #${run.attemptNumber} delay`;
+      if (retryAt && time && time >= retryAt) {
+        return;
+      }
+
+      let retryMessage = `Retry ${
+        typeof run.attemptNumber === "number" ? `#${run.attemptNumber - 1}` : ""
+      } delay`;
 
       if (run.nextMachineAfterOOM) {
         retryMessage += ` after OOM`;

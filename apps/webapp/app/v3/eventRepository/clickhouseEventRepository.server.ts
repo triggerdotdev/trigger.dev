@@ -156,7 +156,7 @@ export class ClickhouseEventRepository implements IEventRepository {
         task_identifier: event.taskSlug,
         run_id: event.runId,
         start_time: formatClickhouseDate64NanosecondsEpochString(event.startTime.toString()),
-        duration: (event.duration ?? 0).toString(),
+        duration: formatClickhouseUnsignedIntegerString(event.duration ?? 0),
         trace_id: event.traceId,
         span_id: event.spanId,
         parent_span_id: event.parentId ?? "",
@@ -432,7 +432,9 @@ export class ClickhouseEventRepository implements IEventRepository {
     const startTime = options.startTime ?? getNowInNanoseconds();
     const duration =
       options.duration ??
-      (options.endTime ? calculateDurationFromStart(startTime, options.endTime) : 100);
+      (options.endTime
+        ? calculateDurationFromStart(startTime, options.endTime, 100 * 1_000_000)
+        : 100);
 
     const traceId = propagatedContext?.traceparent?.traceId ?? generateTraceId();
     const parentId = options.parentId ?? propagatedContext?.traceparent?.spanId;
@@ -460,7 +462,7 @@ export class ClickhouseEventRepository implements IEventRepository {
       task_identifier: options.taskSlug,
       run_id: options.attributes.runId,
       start_time: formatClickhouseDate64NanosecondsEpochString(startTime.toString()),
-      duration: duration.toString(),
+      duration: formatClickhouseUnsignedIntegerString(duration),
       trace_id: traceId,
       span_id: spanId,
       parent_span_id: parentId ?? "",
@@ -561,7 +563,7 @@ export class ClickhouseEventRepository implements IEventRepository {
       task_identifier: options.taskSlug,
       run_id: options.attributes.runId,
       start_time: formatClickhouseDate64NanosecondsEpochString(startTime.toString()),
-      duration: String(options.incomplete ? 0 : duration),
+      duration: formatClickhouseUnsignedIntegerString(options.incomplete ? 0 : duration),
       trace_id: traceId,
       span_id: spanId,
       parent_span_id: parentId ?? "",
@@ -595,7 +597,7 @@ export class ClickhouseEventRepository implements IEventRepository {
         task_identifier: options.taskSlug,
         run_id: options.attributes.runId,
         start_time: formatClickhouseDate64NanosecondsEpochString(startTime.toString()),
-        duration: String(options.incomplete ? 0 : duration),
+        duration: formatClickhouseUnsignedIntegerString(options.incomplete ? 0 : duration),
         trace_id: traceId,
         span_id: spanId,
         parent_span_id: parentId ?? "",
@@ -644,7 +646,9 @@ export class ClickhouseEventRepository implements IEventRepository {
       task_identifier: run.taskIdentifier,
       run_id: run.friendlyId,
       start_time: formatClickhouseDate64NanosecondsEpochString(startTime.toString()),
-      duration: calculateDurationFromStart(startTime, endTime ?? new Date()).toString(),
+      duration: formatClickhouseUnsignedIntegerString(
+        calculateDurationFromStart(startTime, endTime ?? new Date())
+      ),
       trace_id: run.traceId,
       span_id: run.spanId,
       parent_span_id: run.parentSpanId ?? "",
@@ -692,7 +696,9 @@ export class ClickhouseEventRepository implements IEventRepository {
       task_identifier: run.taskIdentifier,
       run_id: blockedRun.friendlyId,
       start_time: formatClickhouseDate64NanosecondsEpochString(startTime.toString()),
-      duration: calculateDurationFromStart(startTime, endTime ?? new Date()).toString(),
+      duration: formatClickhouseUnsignedIntegerString(
+        calculateDurationFromStart(startTime, endTime ?? new Date())
+      ),
       trace_id: blockedRun.traceId,
       span_id: spanId,
       parent_span_id: parentSpanId,
@@ -732,7 +738,9 @@ export class ClickhouseEventRepository implements IEventRepository {
       task_identifier: run.taskIdentifier,
       run_id: run.friendlyId,
       start_time: formatClickhouseDate64NanosecondsEpochString(startTime.toString()),
-      duration: calculateDurationFromStart(startTime, endTime ?? new Date()).toString(),
+      duration: formatClickhouseUnsignedIntegerString(
+        calculateDurationFromStart(startTime, endTime ?? new Date())
+      ),
       trace_id: run.traceId,
       span_id: run.spanId,
       parent_span_id: run.parentSpanId ?? "",
@@ -778,7 +786,9 @@ export class ClickhouseEventRepository implements IEventRepository {
       task_identifier: run.taskIdentifier,
       run_id: run.friendlyId,
       start_time: formatClickhouseDate64NanosecondsEpochString(startTime.toString()),
-      duration: calculateDurationFromStart(startTime, endTime ?? new Date()).toString(),
+      duration: formatClickhouseUnsignedIntegerString(
+        calculateDurationFromStart(startTime, endTime ?? new Date())
+      ),
       trace_id: run.traceId,
       span_id: run.spanId,
       parent_span_id: run.parentSpanId ?? "",
@@ -868,7 +878,9 @@ export class ClickhouseEventRepository implements IEventRepository {
       task_identifier: run.taskIdentifier,
       run_id: run.friendlyId,
       start_time: formatClickhouseDate64NanosecondsEpochString(startTime.toString()),
-      duration: calculateDurationFromStart(startTime, cancelledAt).toString(),
+      duration: formatClickhouseUnsignedIntegerString(
+        calculateDurationFromStart(startTime, cancelledAt)
+      ),
       trace_id: run.traceId,
       span_id: run.spanId,
       parent_span_id: run.parentSpanId ?? "",
@@ -1840,4 +1852,16 @@ function formatClickhouseDate64NanosecondsEpochString(date: string): string {
 function convertClickhouseDate64NanosecondsEpochStringToBigInt(date: string): bigint {
   const parts = date.split(".");
   return BigInt(parts.join(""));
+}
+
+function formatClickhouseUnsignedIntegerString(value: number | bigint): string {
+  if (value < 0) {
+    return "0";
+  }
+
+  if (typeof value === "bigint") {
+    return value.toString();
+  }
+
+  return Math.floor(value).toString();
 }
