@@ -28,10 +28,20 @@ export function getDateFromNanoseconds(nanoseconds: bigint): Date {
   return new Date(Number(nanoseconds) / 1_000_000);
 }
 
-export function calculateDurationFromStart(startTime: bigint, endTime: Date = new Date()) {
+export function calculateDurationFromStart(
+  startTime: bigint,
+  endTime: Date = new Date(),
+  minimumDuration?: number
+) {
   const $endtime = typeof endTime === "string" ? new Date(endTime) : endTime;
 
-  return Number(BigInt($endtime.getTime() * 1_000_000) - startTime);
+  const duration = Number(BigInt($endtime.getTime() * 1_000_000) - startTime);
+
+  if (minimumDuration && duration < minimumDuration) {
+    return minimumDuration;
+  }
+
+  return duration;
 }
 
 export function calculateDurationFromStartJsDate(startTime: Date, endTime: Date = new Date()) {
