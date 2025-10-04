@@ -18,8 +18,17 @@ export function resolveEventRepositoryForStore(store: string | undefined): IEven
 }
 
 export async function getEventRepository(
-  featureFlags: Record<string, unknown> | undefined
+  featureFlags: Record<string, unknown> | undefined,
+  parentStore: string | undefined
 ): Promise<{ repository: IEventRepository; store: string }> {
+  if (typeof parentStore === "string") {
+    if (parentStore === "clickhouse") {
+      return { repository: clickhouseEventRepository, store: "clickhouse" };
+    } else {
+      return { repository: eventRepository, store: getTaskEventStore() };
+    }
+  }
+
   const taskEventRepository = await resolveTaskEventRepositoryFlag(featureFlags);
 
   if (taskEventRepository === "clickhouse") {

@@ -17,7 +17,10 @@ export class IdempotencyKeyConcern {
     private readonly traceEventConcern: TraceEventConcern
   ) {}
 
-  async handleTriggerRequest(request: TriggerTaskRequest): Promise<IdempotencyKeyConcernResult> {
+  async handleTriggerRequest(
+    request: TriggerTaskRequest,
+    parentStore: string | undefined
+  ): Promise<IdempotencyKeyConcernResult> {
     const idempotencyKey = request.options?.idempotencyKey ?? request.body.options?.idempotencyKey;
     const idempotencyKeyExpiresAt =
       request.options?.idempotencyKeyExpiresAt ??
@@ -83,6 +86,7 @@ export class IdempotencyKeyConcern {
       if (associatedWaitpoint && resumeParentOnCompletion && parentRunId) {
         await this.traceEventConcern.traceIdempotentRun(
           request,
+          parentStore,
           {
             existingRun,
             idempotencyKey,

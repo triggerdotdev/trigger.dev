@@ -179,6 +179,7 @@ export class TriggerTaskServiceV1 extends BaseService {
                   depth: true,
                   queueTimestamp: true,
                   queue: true,
+                  taskEventStore: true,
                 },
               },
             },
@@ -216,6 +217,7 @@ export class TriggerTaskServiceV1 extends BaseService {
                   taskIdentifier: true,
                   rootTaskRunId: true,
                   depth: true,
+                  taskEventStore: true,
                 },
               },
             },
@@ -237,6 +239,7 @@ export class TriggerTaskServiceV1 extends BaseService {
                       depth: true,
                       queueTimestamp: true,
                       queue: true,
+                      taskEventStore: true,
                     },
                   },
                 },
@@ -289,7 +292,10 @@ export class TriggerTaskServiceV1 extends BaseService {
         : undefined;
 
       const { repository, store } = await getEventRepository(
-        environment.organization.featureFlags as Record<string, unknown>
+        environment.organization.featureFlags as Record<string, unknown>,
+        dependentAttempt?.taskRun.taskEventStore ??
+          parentAttempt?.taskRun.taskEventStore ??
+          dependentBatchRun?.dependentTaskAttempt?.taskRun.taskEventStore
       );
 
       try {

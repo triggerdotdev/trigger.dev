@@ -1,39 +1,26 @@
-import { EventRepository } from "~/v3/eventRepository/eventRepository.server";
-import { TracedEventSpan, TraceEventConcern, TriggerTaskRequest } from "../types";
 import { SemanticInternalAttributes } from "@trigger.dev/core/v3/semanticInternalAttributes";
 import { TaskRun } from "@trigger.dev/database";
-import { getTaskEventStore } from "~/v3/taskEventStore.server";
-import { ClickhouseEventRepository } from "~/v3/eventRepository/clickhouseEventRepository.server";
 import { IEventRepository } from "~/v3/eventRepository/eventRepository.types";
-import { FEATURE_FLAG, flags } from "~/v3/featureFlags.server";
-import { env } from "~/env.server";
 import { getEventRepository } from "~/v3/eventRepository/index.server";
+import { TracedEventSpan, TraceEventConcern, TriggerTaskRequest } from "../types";
 
 export class DefaultTraceEventsConcern implements TraceEventConcern {
-  private readonly eventRepository: EventRepository;
-  private readonly clickhouseEventRepository: ClickhouseEventRepository;
-
-  constructor(
-    eventRepository: EventRepository,
-    clickhouseEventRepository: ClickhouseEventRepository
-  ) {
-    this.eventRepository = eventRepository;
-    this.clickhouseEventRepository = clickhouseEventRepository;
-  }
-
   async #getEventRepository(
-    request: TriggerTaskRequest
+    request: TriggerTaskRequest,
+    parentStore: string | undefined
   ): Promise<{ repository: IEventRepository; store: string }> {
     return await getEventRepository(
-      request.environment.organization.featureFlags as Record<string, unknown>
+      request.environment.organization.featureFlags as Record<string, unknown>,
+      parentStore
     );
   }
 
   async traceRun<T>(
     request: TriggerTaskRequest,
+    parentStore: string | undefined,
     callback: (span: TracedEventSpan, store: string) => Promise<T>
   ): Promise<T> {
-    const { repository, store } = await this.#getEventRepository(request);
+    const { repository, store } = await this.#getEventRepository(request, parentStore);
 
     return await repository.traceEvent(
       request.taskId,
@@ -73,6 +60,7 @@ export class DefaultTraceEventsConcern implements TraceEventConcern {
 
   async traceIdempotentRun<T>(
     request: TriggerTaskRequest,
+    parentStore: string | undefined,
     options: {
       existingRun: TaskRun;
       idempotencyKey: string;
@@ -82,7 +70,7 @@ export class DefaultTraceEventsConcern implements TraceEventConcern {
     callback: (span: TracedEventSpan, store: string) => Promise<T>
   ): Promise<T> {
     const { existingRun, idempotencyKey, incomplete, isError } = options;
-    const { repository, store } = await this.#getEventRepository(request);
+    const { repository, store } = await this.#getEventRepository(request, parentStore);
 
     return await repository.traceEvent(
       `${request.taskId} (cached)`,
@@ -107,7 +95,7 @@ export class DefaultTraceEventsConcern implements TraceEventConcern {
       },
       async (event, traceContext, traceparent) => {
         //log a message
-        await this.eventRepository.recordEvent(
+        await repository.recordEvent(
           `There's an existing run for idempotencyKey: ${idempotencyKey}`,
           {
             taskSlug: request.taskId,
