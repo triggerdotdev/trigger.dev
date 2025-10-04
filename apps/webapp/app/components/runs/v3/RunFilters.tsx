@@ -58,10 +58,10 @@ import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { type loader as queuesLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.queues";
 import { type loader as versionsLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.versions";
-import { type loader as tagsLoader } from "~/routes/resources.projects.$projectParam.runs.tags";
+import { type loader as tagsLoader } from "~/routes/resources.environments.$envId.runs.tags";
 import { Button } from "../../primitives/Buttons";
 import { BulkActionTypeCombo } from "./BulkAction";
-import { appliedSummary, FilterMenuProvider, TimeFilter } from "./SharedFilters";
+import { appliedSummary, FilterMenuProvider, TimeFilter, timeFilters } from "./SharedFilters";
 import { AIFilterInput } from "./AIFilterInput";
 import {
   allTaskRunStatuses,
@@ -71,6 +71,7 @@ import {
   TaskRunStatusCombo,
 } from "./TaskRunStatus";
 import { TaskTriggerSourceIcon } from "./TaskTriggerSource";
+import { environment } from "effect/Differ";
 
 export const RunStatus = z.enum(allTaskRunStatuses);
 
@@ -810,8 +811,8 @@ function TagsDropdown({
   searchValue: string;
   onClose?: () => void;
 }) {
-  const project = useProject();
-  const { values, replace } = useSearchParams();
+  const environment = useEnvironment();
+  const { values, value, replace } = useSearchParams();
 
   const handleChange = (values: string[]) => {
     clearSearchValue();
@@ -821,6 +822,12 @@ function TagsDropdown({
       direction: undefined,
     });
   };
+
+  const { period, from, to } = timeFilters({
+    period: value("period"),
+    from: value("from"),
+    to: value("to"),
+  });
 
   const tagValues = values("tags").filter((v) => v !== "");
   const selected = tagValues.length > 0 ? tagValues : undefined;
@@ -832,8 +839,17 @@ function TagsDropdown({
     if (searchValue) {
       searchParams.set("name", encodeURIComponent(searchValue));
     }
-    fetcher.load(`/resources/projects/${project.slug}/runs/tags?${searchParams}`);
-  }, [searchValue]);
+    if (period) {
+      searchParams.set("period", period);
+    }
+    if (from) {
+      searchParams.set("from", from.getTime().toString());
+    }
+    if (to) {
+      searchParams.set("to", to.getTime().toString());
+    }
+    fetcher.load(`/resources/environments/${environment.id}/runs/tags?${searchParams}`);
+  }, [searchValue, period, from?.getTime(), to?.getTime()]);
 
   const filtered = useMemo(() => {
     let items: string[] = [];
@@ -845,7 +861,7 @@ function TagsDropdown({
       return matchSorter(items, searchValue);
     }
 
-    items.push(...fetcher.data.tags.map((t) => t.name));
+    items.push(...fetcher.data.tags);
 
     return matchSorter(Array.from(new Set(items)), searchValue);
   }, [searchValue, fetcher.data]);

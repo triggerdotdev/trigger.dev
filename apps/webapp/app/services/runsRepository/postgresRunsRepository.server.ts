@@ -8,6 +8,7 @@ import {
   type ListedRun,
   type RunListInputOptions,
   type RunsRepositoryOptions,
+  type TagListOptions,
   convertRunListInputOptionsToFilterRunsOptions,
 } from "./runsRepository.server";
 
@@ -102,6 +103,32 @@ export class PostgresRunsRepository implements IRunsRepository {
     }
 
     return Number(result[0].count);
+  }
+
+  async listTags({ projectId, query, offset, limit }: TagListOptions) {
+    const tags = await this.options.prisma.taskRunTag.findMany({
+      select: {
+        name: true,
+      },
+      where: {
+        projectId,
+        name: query
+          ? {
+              startsWith: query,
+              mode: "insensitive",
+            }
+          : undefined,
+      },
+      orderBy: {
+        id: "desc",
+      },
+      take: limit + 1,
+      skip: offset,
+    });
+
+    return {
+      tags: tags.map((tag) => tag.name),
+    };
   }
 
   #buildRunIdsQuery(
