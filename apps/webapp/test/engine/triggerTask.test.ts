@@ -79,6 +79,7 @@ class MockTriggerTaskValidator implements TriggerTaskValidator {
 class MockTraceEventConcern implements TraceEventConcern {
   async traceRun<T>(
     request: TriggerTaskRequest,
+    parentStore: string | undefined,
     callback: (span: TracedEventSpan, store: string) => Promise<T>
   ): Promise<T> {
     return await callback(
@@ -96,6 +97,7 @@ class MockTraceEventConcern implements TraceEventConcern {
 
   async traceIdempotentRun<T>(
     request: TriggerTaskRequest,
+    parentStore: string | undefined,
     options: {
       existingRun: TaskRun;
       idempotencyKey: string;
