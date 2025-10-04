@@ -126,7 +126,7 @@ export default function Page() {
                 replace({ month: value });
               }}
               dropdownIcon
-              variant="tertiary/small"
+              variant="secondary/small"
             >
               {(matches) =>
                 matches.map((month) => (
