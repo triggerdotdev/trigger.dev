@@ -197,9 +197,13 @@ export default function Page() {
             </div>
           </div>
           <div>
-            <Header2 spacing className="pl-3">
-              Tasks
-            </Header2>
+            <div className="flex w-full items-center justify-between gap-2 px-3 pb-2">
+              <Header2>Tasks</Header2>
+              <Paragraph variant="extra-small">
+                Dev runs are excluded from the data below since they do not have an associated
+                compute cost.
+              </Paragraph>
+            </div>
             <Suspense fallback={<Spinner />}>
               <Await
                 resolve={tasks}
@@ -262,14 +266,6 @@ export default function Page() {
                           )}
                         </TableBody>
                       </Table>
-                      <InfoPanel
-                        icon={InformationCircleIcon}
-                        variant="minimal"
-                        panelClassName="max-w-full"
-                      >
-                        Dev environment runs are excluded from the usage data above, since they do
-                        not have an associated compute cost.
-                      </InfoPanel>
                     </>
                   );
                 }}
@@ -290,6 +286,7 @@ const chartConfig = {
 } satisfies ChartConfig;
 
 const tooltipDateFormatter = new Intl.DateTimeFormat("en-US", {
+  weekday: "short",
   month: "short",
   day: "numeric",
 });
