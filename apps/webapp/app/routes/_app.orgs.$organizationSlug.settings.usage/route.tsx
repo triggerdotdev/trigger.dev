@@ -311,7 +311,7 @@ function UsageChart({ data }: { data: UsageSeriesData }) {
           tickFormatter={(value) => {
             if (!value) return "";
             const date = new Date(value);
-            return `${date.getDate()}`;
+            return `${date.getUTCDate()}`;
           }}
           className="text-xs"
         />
