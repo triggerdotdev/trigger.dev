@@ -13,13 +13,14 @@ import {
   GlobeAmericasIcon,
   IdentificationIcon,
   KeyIcon,
+  PencilSquareIcon,
   PlusIcon,
   RectangleStackIcon,
   ServerStackIcon,
   Squares2X2Icon,
   UsersIcon,
 } from "@heroicons/react/20/solid";
-import { useNavigation } from "@remix-run/react";
+import { Link, useNavigation } from "@remix-run/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import simplur from "simplur";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
@@ -397,9 +398,15 @@ function ProjectSelector({
       >
         <div className="flex flex-col gap-2 bg-charcoal-750 p-2">
           <div className="flex items-center gap-2.5">
-            <div className="box-content size-10 overflow-clip rounded-sm bg-charcoal-800">
+            <Link
+              to={organizationSettingsPath(organization)}
+              className="group relative box-content size-10 overflow-clip rounded-sm bg-charcoal-800"
+            >
               <Avatar avatar={organization.avatar} size={2.5} orgName={organization.title} />
-            </div>
+              <div className="absolute inset-0 z-10 grid h-full w-full place-items-center bg-black/50 opacity-0 transition group-hover:opacity-100">
+                <PencilSquareIcon className="size-5 text-text-bright" />
+              </div>
+            </Link>
             <div className="space-y-0.5">
               <Paragraph variant="small/bright">{organization.title}</Paragraph>
               <div className="flex items-baseline gap-2">
