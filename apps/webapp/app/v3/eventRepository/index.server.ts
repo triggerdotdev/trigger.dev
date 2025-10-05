@@ -38,6 +38,24 @@ export async function getEventRepository(
   return { repository: eventRepository, store: getTaskEventStore() };
 }
 
+export async function getV3EventRepository(
+  parentStore: string | undefined
+): Promise<{ repository: IEventRepository; store: string }> {
+  if (typeof parentStore === "string") {
+    if (parentStore === "clickhouse") {
+      return { repository: clickhouseEventRepository, store: "clickhouse" };
+    } else {
+      return { repository: eventRepository, store: getTaskEventStore() };
+    }
+  }
+
+  if (env.EVENT_REPOSITORY_DEFAULT_STORE === "clickhouse") {
+    return { repository: clickhouseEventRepository, store: "clickhouse" };
+  } else {
+    return { repository: eventRepository, store: getTaskEventStore() };
+  }
+}
+
 async function resolveTaskEventRepositoryFlag(
   featureFlags: Record<string, unknown> | undefined
 ): Promise<"clickhouse" | "postgres"> {
