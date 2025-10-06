@@ -166,6 +166,7 @@
     "openai": "^4.33.1",
     "p-limit": "^6.2.0",
     "p-map": "^6.0.0",
+    "p-retry": "^4.6.1",
     "parse-duration": "^2.1.0",
     "posthog-js": "^1.93.3",
     "posthog-node": "4.17.1",
