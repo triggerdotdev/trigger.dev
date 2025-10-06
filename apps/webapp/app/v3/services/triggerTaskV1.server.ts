@@ -22,7 +22,7 @@ import { parseDelay } from "~/utils/delays";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
 import { handleMetadataPacket } from "~/utils/packets";
 import { marqs } from "~/v3/marqs/index.server";
-import { getEventRepository } from "../eventRepository/index.server";
+import { getV3EventRepository } from "../eventRepository/index.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { findCurrentWorkerFromEnvironment } from "../models/workerDeployment.server";
 import { guardQueueSizeLimitsForEnv } from "../queueSizeLimits.server";
@@ -291,8 +291,7 @@ export class TriggerTaskServiceV1 extends BaseService {
           })
         : undefined;
 
-      const { repository, store } = await getEventRepository(
-        environment.organization.featureFlags as Record<string, unknown>,
+      const { repository, store } = await getV3EventRepository(
         dependentAttempt?.taskRun.taskEventStore ??
           parentAttempt?.taskRun.taskEventStore ??
           dependentBatchRun?.dependentTaskAttempt?.taskRun.taskEventStore
