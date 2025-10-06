@@ -47,7 +47,7 @@ export const meta: MetaFunction = () => {
 };
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
-  await requireUserId(request);
+  const userId = await requireUserId(request);
   const { organizationSlug } = OrganizationParamsSchema.parse(params);
 
   const { isManagedCloud } = featuresForRequest(request);
@@ -55,8 +55,8 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     return redirect(organizationPath({ slug: organizationSlug }));
   }
 
-  const organization = await prisma.organization.findUnique({
-    where: { slug: organizationSlug },
+  const organization = await prisma.organization.findFirst({
+    where: { slug: organizationSlug, members: { some: { userId } } },
   });
 
   if (!organization) {
@@ -181,7 +181,7 @@ export default function Page() {
   const fieldValues = useRef<string[]>(alerts.emails);
   const emailFields = useFieldList(form.ref, { ...emails, defaultValue: alerts.emails });
 
-  const checkboxLevels = [0.75, 0.9, 1.0];
+  const checkboxLevels = [0.75, 0.9, 1.0, 2.0, 5.0];
 
   useEffect(() => {
     if (alerts.emails.length > 0) {

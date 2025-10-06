@@ -1,4 +1,3 @@
-import { BillingCache } from "./billingCache.js";
 import { createRedisClient, Redis } from "@internal/redis";
 import { getMeter, Meter, startSpan, trace, Tracer } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
@@ -8,10 +7,12 @@ import {
   CreateCheckpointResult,
   DequeuedMessage,
   ExecutionResult,
+  formatDurationMilliseconds,
   RunExecutionData,
   StartRunAttemptResult,
   TaskRunContext,
   TaskRunExecutionResult,
+  TaskRunInternalError,
 } from "@trigger.dev/core/v3";
 import { RunId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import {
@@ -29,7 +30,8 @@ import { EventEmitter } from "node:events";
 import { FairQueueSelectionStrategy } from "../run-queue/fairQueueSelectionStrategy.js";
 import { RunQueue } from "../run-queue/index.js";
 import { RunQueueFullKeyProducer } from "../run-queue/keyProducer.js";
-import { MinimalAuthenticatedEnvironment } from "../shared/index.js";
+import { AuthenticatedEnvironment, MinimalAuthenticatedEnvironment } from "../shared/index.js";
+import { BillingCache } from "./billingCache.js";
 import { NotImplementedError, RunDuplicateIdempotencyKeyError } from "./errors.js";
 import { EventBus, EventBusEvents } from "./eventBus.js";
 import { RunLocker } from "./locking.js";
@@ -51,8 +53,15 @@ import { RunAttemptSystem } from "./systems/runAttemptSystem.js";
 import { SystemResources } from "./systems/systems.js";
 import { TtlSystem } from "./systems/ttlSystem.js";
 import { WaitpointSystem } from "./systems/waitpointSystem.js";
-import { EngineWorker, HeartbeatTimeouts, RunEngineOptions, TriggerParams } from "./types.js";
+import {
+  EngineWorker,
+  HeartbeatTimeouts,
+  ReportableQueue,
+  RunEngineOptions,
+  TriggerParams,
+} from "./types.js";
 import { workerCatalog } from "./workerCatalog.js";
+import pMap from "p-map";
 
 export class RunEngine {
   private runLockRedis: Redis;
@@ -62,6 +71,7 @@ export class RunEngine {
   private tracer: Tracer;
   private meter: Meter;
   private heartbeatTimeouts: HeartbeatTimeouts;
+  private repairSnapshotTimeoutMs: number;
 
   prisma: PrismaClient;
   readOnlyPrisma: PrismaReplicaClient;
@@ -119,15 +129,22 @@ export class RunEngine {
 
     const keys = new RunQueueFullKeyProducer();
 
+    const queueSelectionStrategyOptions = {
+      keys,
+      redis: { ...options.queue.redis, keyPrefix: `${options.queue.redis.keyPrefix}runqueue:` },
+      defaultEnvConcurrencyLimit: options.queue?.defaultEnvConcurrency ?? 10,
+      ...options.queue?.queueSelectionStrategyOptions,
+    };
+
+    this.logger.log("RunEngine FairQueueSelectionStrategy queueSelectionStrategyOptions", {
+      options: queueSelectionStrategyOptions,
+    });
+
     this.runQueue = new RunQueue({
       name: "rq",
       tracer: trace.getTracer("rq"),
       keys,
-      queueSelectionStrategy: new FairQueueSelectionStrategy({
-        keys,
-        redis: { ...options.queue.redis, keyPrefix: `${options.queue.redis.keyPrefix}runqueue:` },
-        defaultEnvConcurrencyLimit: options.queue?.defaultEnvConcurrency ?? 10,
-      }),
+      queueSelectionStrategy: new FairQueueSelectionStrategy(queueSelectionStrategyOptions),
       defaultEnvConcurrency: options.queue?.defaultEnvConcurrency ?? 10,
       defaultEnvConcurrencyBurstFactor: options.queue?.defaultEnvConcurrencyBurstFactor,
       logger: new Logger("RunQueue", options.queue?.logLevel ?? "info"),
@@ -182,6 +199,9 @@ export class RunEngine {
         heartbeatSnapshot: async ({ payload }) => {
           await this.#handleStalledSnapshot(payload);
         },
+        repairSnapshot: async ({ payload }) => {
+          await this.#handleRepairSnapshot(payload);
+        },
         expireRun: async ({ payload }) => {
           await this.ttlSystem.expireRun({ runId: payload.runId });
         },
@@ -212,6 +232,8 @@ export class RunEngine {
     });
 
     if (!options.worker.disabled) {
+      console.log("✅ Starting run engine worker");
+
       this.worker.start();
     }
 
@@ -229,6 +251,8 @@ export class RunEngine {
       ...defaultHeartbeatTimeouts,
       ...(options.heartbeatTimeoutsMs ?? {}),
     };
+
+    this.repairSnapshotTimeoutMs = options.repairSnapshotTimeoutMs ?? 60_000;
 
     const resources: SystemResources = {
       prisma: this.prisma,
@@ -377,11 +401,15 @@ export class RunEngine {
         const status = delayUntil ? "DELAYED" : "PENDING";
 
         //create run
-        let taskRun: TaskRun;
+        let taskRun: TaskRun & { associatedWaitpoint: Waitpoint | null };
+        const taskRunId = RunId.fromFriendlyId(friendlyId);
         try {
           taskRun = await prisma.taskRun.create({
+            include: {
+              associatedWaitpoint: true,
+            },
             data: {
-              id: RunId.fromFriendlyId(friendlyId),
+              id: taskRunId,
               engine: "V2",
               status,
               number,
@@ -455,6 +483,12 @@ export class RunEngine {
                   runnerId,
                 },
               },
+              associatedWaitpoint: {
+                create: this.waitpointSystem.buildRunAssociatedWaitpoint({
+                  projectId: environment.project.id,
+                  environmentId: environment.id,
+                }),
+              },
             },
           });
         } catch (error) {
@@ -488,23 +522,13 @@ export class RunEngine {
 
         span.setAttribute("runId", taskRun.id);
 
-        //create associated waitpoint (this completes when the run completes)
-        const associatedWaitpoint = await this.waitpointSystem.createRunAssociatedWaitpoint(
-          prisma,
-          {
-            projectId: environment.project.id,
-            environmentId: environment.id,
-            completedByTaskRunId: taskRun.id,
-          }
-        );
-
         //triggerAndWait or batchTriggerAndWait
-        if (resumeParentOnCompletion && parentTaskRunId) {
+        if (resumeParentOnCompletion && parentTaskRunId && taskRun.associatedWaitpoint) {
           //this will block the parent run from continuing until this waitpoint is completed (and removed)
           await this.waitpointSystem.blockRunWithWaitpoint({
             runId: parentTaskRunId,
-            waitpoints: associatedWaitpoint.id,
-            projectId: associatedWaitpoint.projectId,
+            waitpoints: taskRun.associatedWaitpoint.id,
+            projectId: taskRun.associatedWaitpoint.projectId,
             organizationId: environment.organization.id,
             batch,
             workerId,
@@ -1102,6 +1126,8 @@ export class RunEngine {
     } catch (e) {
       this.logger.error("Failed to getSnapshotsSince", {
         message: e instanceof Error ? e.message : e,
+        runId,
+        snapshotId,
       });
       return null;
     }
@@ -1158,6 +1184,202 @@ export class RunEngine {
     }
   }
 
+  async repairEnvironment(environment: AuthenticatedEnvironment, dryRun: boolean) {
+    const runIds = await this.runQueue.getCurrentConcurrencyOfEnvironment(environment);
+
+    return this.#repairRuns(runIds, dryRun);
+  }
+
+  async repairQueue(
+    environment: AuthenticatedEnvironment,
+    queue: string,
+    dryRun: boolean,
+    ignoreRunIds: string[]
+  ) {
+    const runIds = await this.runQueue.getCurrentConcurrencyOfQueue(environment, queue);
+
+    const runIdsToRepair = runIds.filter((runId) => !ignoreRunIds.includes(runId));
+
+    return this.#repairRuns(runIdsToRepair, dryRun);
+  }
+
+  async #repairRuns(runIds: string[], dryRun: boolean) {
+    if (runIds.length === 0) {
+      return {
+        runIds,
+        repairs: [],
+        dryRun,
+      };
+    }
+
+    const repairs = await pMap(
+      runIds,
+      async (runId) => {
+        return this.#repairRun(runId, dryRun);
+      },
+      { concurrency: 5 }
+    );
+
+    return {
+      runIds,
+      repairs,
+      dryRun,
+    };
+  }
+
+  async #repairRun(runId: string, dryRun: boolean) {
+    const snapshot = await getLatestExecutionSnapshot(this.prisma, runId);
+
+    if (
+      snapshot.executionStatus === "QUEUED" ||
+      snapshot.executionStatus === "SUSPENDED" ||
+      snapshot.executionStatus === "FINISHED"
+    ) {
+      if (!dryRun) {
+        // Schedule the repair job
+        await this.worker.enqueueOnce({
+          id: `repair-in-progress-run:${runId}`,
+          job: "repairSnapshot",
+          payload: { runId, snapshotId: snapshot.id, executionStatus: snapshot.executionStatus },
+          availableAt: new Date(Date.now() + this.repairSnapshotTimeoutMs),
+        });
+      }
+
+      return {
+        action: "repairSnapshot",
+        runId,
+        snapshotStatus: snapshot.executionStatus,
+        snapshotId: snapshot.id,
+      };
+    }
+
+    return {
+      action: "ignore",
+      runId,
+      snapshotStatus: snapshot.executionStatus,
+      snapshotId: snapshot.id,
+    };
+  }
+
+  async generateEnvironmentReport(
+    environment: AuthenticatedEnvironment,
+    queues: ReportableQueue[],
+    verbose: boolean
+  ) {
+    const [
+      concurrencyLimit, // env limit (no burst)
+      concurrencyLimitWithBurstFactor, // env limit * burst
+      currentDequeued,
+      currentConcurrency,
+      burstFactor,
+    ] = await Promise.all([
+      this.runQueue.getEnvConcurrencyLimit(environment),
+      this.runQueue.getEnvConcurrencyLimitWithBurstFactor(environment),
+      this.runQueue.currentConcurrencyOfEnvironment(environment), // "currentDequeued" in your label terminology
+      this.runQueue.operationalCurrentConcurrencyOfEnvironment(environment),
+      this.runQueue.getEnvConcurrencyBurstFactor(environment),
+    ]);
+
+    const envMetrics = {
+      envCurrent: currentConcurrency,
+      envLimit: concurrencyLimit,
+      envLimitWithBurst: concurrencyLimitWithBurstFactor,
+      burstFactor,
+    };
+
+    const envAnalysis = analyzeEnvironment(envMetrics);
+
+    const queueReports = await pMap(
+      queues,
+      async (queue) => {
+        return this.#generateReportForQueue(environment, queue, envMetrics, verbose);
+      },
+      { concurrency: 5 }
+    );
+
+    return {
+      concurrencyLimit: {
+        value: concurrencyLimit,
+        key: verbose ? this.runQueue.keys.envConcurrencyLimitKey(environment) : undefined,
+      },
+      concurrencyLimitWithBurstFactor: {
+        value: concurrencyLimitWithBurstFactor,
+        key: verbose
+          ? this.runQueue.keys.envConcurrencyLimitBurstFactorKey(environment)
+          : undefined,
+      },
+      currentDequeued: {
+        value: currentDequeued,
+        key: verbose ? this.runQueue.keys.envCurrentDequeuedKey(environment) : undefined,
+        label: "Env current dequeued, this is what is displayed to the user",
+      },
+      currentConcurrency: {
+        value: currentConcurrency,
+        key: verbose ? this.runQueue.keys.envCurrentConcurrencyKey(environment) : undefined,
+        label:
+          "Env current concurrency, this is what is used to determine if the environment can be dequeued from",
+      },
+      analysis: envAnalysis,
+      queues: queueReports,
+    };
+  }
+
+  async #generateReportForQueue(
+    environment: AuthenticatedEnvironment,
+    queue: ReportableQueue,
+    envMetrics: EnvInputs,
+    verbose: boolean
+  ) {
+    const currentConcurrency = await this.runQueue.currentConcurrencyOfQueue(
+      environment,
+      queue.name
+    );
+    const currentDequeued = await this.runQueue.currentDequeuedOfQueue(environment, queue.name);
+    const concurrencyLimit = await this.runQueue.getQueueConcurrencyLimit(environment, queue.name);
+    const messagesDueCount = await this.runQueue.lengthOfQueueAvailableMessages(
+      environment,
+      queue.name
+    );
+
+    const queueAnalysis = analyzeQueue({
+      paused: queue.paused === true,
+      envLimit: envMetrics.envLimit,
+      envLimitWithBurst: envMetrics.envLimitWithBurst,
+      queueLimit: typeof concurrencyLimit === "number" ? concurrencyLimit : undefined,
+      queueCurrent: currentConcurrency,
+      envCurrent: envMetrics.envCurrent,
+      dueCount: messagesDueCount,
+    });
+
+    return {
+      name: queue.name,
+      friendlyId: queue.friendlyId,
+      type: queue.type,
+      paused: queue.paused,
+      dbConcurrencyLimit: queue.concurrencyLimit,
+      key: this.runQueue.keys.queueKey(environment, queue.name),
+      analysis: queueAnalysis,
+      concurrencyLimit: {
+        value: typeof concurrencyLimit === "number" ? concurrencyLimit : null,
+        key: verbose
+          ? this.runQueue.keys.queueConcurrencyLimitKey(environment, queue.name)
+          : undefined,
+      },
+      currentConcurrency: {
+        value: currentConcurrency,
+        key: verbose
+          ? this.runQueue.keys.queueCurrentConcurrencyKey(environment, queue.name)
+          : undefined,
+      },
+      currentDequeued: {
+        value: currentDequeued,
+        key: verbose
+          ? this.runQueue.keys.queueCurrentDequeuedKey(environment, queue.name)
+          : undefined,
+      },
+    };
+  }
+
   async #handleStalledSnapshot({
     runId,
     snapshotId,
@@ -1190,23 +1412,6 @@ export class RunEngine {
         snapshot: latestSnapshot,
       });
 
-      // For dev, we just cancel runs that are stuck
-      if (latestSnapshot.environmentType === "DEVELOPMENT") {
-        this.logger.log("RunEngine.#handleStalledSnapshot() cancelling DEV run", {
-          runId,
-          snapshot: latestSnapshot,
-        });
-
-        await this.cancelRun({
-          runId: latestSnapshot.runId,
-          finalizeRun: true,
-          reason:
-            "Run was disconnected, check you're running the CLI dev command and your network connection is healthy.",
-          tx,
-        });
-        return;
-      }
-
       switch (latestSnapshot.executionStatus) {
         case "RUN_CREATED": {
           throw new NotImplementedError("There shouldn't be a heartbeat for RUN_CREATED");
@@ -1218,6 +1423,11 @@ export class RunEngine {
           throw new NotImplementedError("There shouldn't be a heartbeat for QUEUED_EXECUTING");
         }
         case "PENDING_EXECUTING": {
+          this.logger.log("RunEngine stalled snapshot PENDING_EXECUTING", {
+            runId,
+            snapshotId: latestSnapshot.id,
+          });
+
           //the run didn't start executing, we need to requeue it
           const run = await prisma.taskRun.findFirst({
             where: { id: runId },
@@ -1251,6 +1461,9 @@ export class RunEngine {
             },
             orgId: latestSnapshot.organizationId,
             projectId: latestSnapshot.projectId,
+            checkpointId: latestSnapshot.checkpointId ?? undefined,
+            completedWaitpoints: latestSnapshot.completedWaitpoints,
+            batchId: latestSnapshot.batchId ?? undefined,
             error: {
               type: "INTERNAL_ERROR",
               code: "TASK_RUN_DEQUEUED_MAX_RETRIES",
@@ -1262,28 +1475,64 @@ export class RunEngine {
         }
         case "EXECUTING":
         case "EXECUTING_WITH_WAITPOINTS": {
+          // Stalls for production runs should start being treated as an OOM error.
+          // We should calculate the retry delay using the retry settings on the run/task instead of hardcoding it.
+          // Stalls for dev runs should keep being treated as a timeout error because the vast majority of the time these snapshots stall because
+          // they have quit the CLI
+
           const retryDelay = 250;
 
-          //todo call attemptFailed and force requeuing
+          const timeoutDuration =
+            latestSnapshot.executionStatus === "EXECUTING"
+              ? formatDurationMilliseconds(this.heartbeatTimeouts.EXECUTING)
+              : formatDurationMilliseconds(this.heartbeatTimeouts.EXECUTING_WITH_WAITPOINTS);
+
+          // Dev runs don't retry, because the vast majority of the time these snapshots stall because
+          // they have quit the CLI
+          const shouldRetry = latestSnapshot.environmentType !== "DEVELOPMENT";
+          const errorMessage =
+            latestSnapshot.environmentType === "DEVELOPMENT"
+              ? `Run timed out after ${timeoutDuration} due to missing heartbeats (sent every 30s). Check if your \`trigger.dev dev\` CLI is still running, or if CPU-heavy work is blocking the main thread.`
+              : `Run timed out after ${timeoutDuration} due to missing heartbeats (sent every 30s). This typically happens when CPU-heavy work blocks the main thread.`;
+
+          const taskStalledErrorCode =
+            latestSnapshot.executionStatus === "EXECUTING"
+              ? "TASK_RUN_STALLED_EXECUTING"
+              : "TASK_RUN_STALLED_EXECUTING_WITH_WAITPOINTS";
+
+          const error =
+            latestSnapshot.environmentType === "DEVELOPMENT"
+              ? ({
+                  type: "INTERNAL_ERROR",
+                  code: taskStalledErrorCode,
+                  message: errorMessage,
+                } satisfies TaskRunInternalError)
+              : this.options.treatProductionExecutionStallsAsOOM
+              ? ({
+                  type: "INTERNAL_ERROR",
+                  code: "TASK_PROCESS_OOM_KILLED",
+                  message: "Run was terminated due to running out of memory",
+                } satisfies TaskRunInternalError)
+              : ({
+                  type: "INTERNAL_ERROR",
+                  code: taskStalledErrorCode,
+                  message: errorMessage,
+                } satisfies TaskRunInternalError);
+
           await this.runAttemptSystem.attemptFailed({
             runId,
             snapshotId: latestSnapshot.id,
             completion: {
               ok: false,
               id: runId,
-              error: {
-                type: "INTERNAL_ERROR",
-                code:
-                  latestSnapshot.executionStatus === "EXECUTING"
-                    ? "TASK_RUN_STALLED_EXECUTING"
-                    : "TASK_RUN_STALLED_EXECUTING_WITH_WAITPOINTS",
-                message: `Run stalled while executing. This can happen when the run becomes unresponsive, for example because the CPU is overloaded.`,
-              },
-              retry: {
-                //250ms in the future
-                timestamp: Date.now() + retryDelay,
-                delay: retryDelay,
-              },
+              error,
+              retry: shouldRetry
+                ? {
+                    //250ms in the future
+                    timestamp: Date.now() + retryDelay,
+                    delay: retryDelay,
+                  }
+                : undefined,
             },
             forceRequeue: true,
             tx: prisma,
@@ -1410,14 +1659,129 @@ export class RunEngine {
     });
   }
 
+  async #handleRepairSnapshot({
+    runId,
+    snapshotId,
+    executionStatus,
+  }: {
+    runId: string;
+    snapshotId: string;
+    executionStatus: string;
+  }) {
+    return await this.runLock.lock("handleRepairSnapshot", [runId], async () => {
+      const latestSnapshot = await getLatestExecutionSnapshot(this.prisma, runId);
+
+      if (latestSnapshot.id !== snapshotId) {
+        this.logger.log(
+          "RunEngine.handleRepairSnapshot no longer the latest snapshot, stopping the repair.",
+          {
+            runId,
+            snapshotId,
+            latestSnapshotExecutionStatus: latestSnapshot.executionStatus,
+            repairExecutionStatus: executionStatus,
+          }
+        );
+
+        return;
+      }
+
+      // Okay, so this means we haven't transitioned to a new status yes, so we need to do something
+      switch (latestSnapshot.executionStatus) {
+        case "EXECUTING":
+        case "EXECUTING_WITH_WAITPOINTS":
+        case "PENDING_CANCEL":
+        case "PENDING_EXECUTING":
+        case "QUEUED_EXECUTING":
+        case "RUN_CREATED": {
+          // Do nothing;
+          return;
+        }
+        case "QUEUED": {
+          this.logger.log("RunEngine.handleRepairSnapshot QUEUED", {
+            runId,
+            snapshotId,
+          });
+
+          //it will automatically be requeued X times depending on the queue retry settings
+          const gotRequeued = await this.runQueue.nackMessage({
+            orgId: latestSnapshot.organizationId,
+            messageId: runId,
+          });
+
+          if (!gotRequeued) {
+            this.logger.error("RunEngine.handleRepairSnapshot QUEUED repair failed", {
+              runId,
+              snapshot: latestSnapshot,
+            });
+          } else {
+            this.logger.log("RunEngine.handleRepairSnapshot QUEUED repair successful", {
+              runId,
+              snapshot: latestSnapshot,
+            });
+          }
+
+          break;
+        }
+        case "FINISHED":
+        case "SUSPENDED": {
+          this.logger.log("RunEngine.handleRepairSnapshot SUSPENDED/FINISHED", {
+            runId,
+            snapshotId,
+          });
+
+          const taskRun = await this.prisma.taskRun.findFirst({
+            where: { id: runId },
+            select: {
+              queue: true,
+            },
+          });
+
+          if (!taskRun) {
+            this.logger.error(
+              "RunEngine.handleRepairSnapshot SUSPENDED/FINISHED task run not found",
+              {
+                runId,
+                snapshotId,
+              }
+            );
+            return;
+          }
+
+          // We need to clear this run from the current concurrency sets
+          await this.runQueue.clearMessageFromConcurrencySets({
+            runId,
+            orgId: latestSnapshot.organizationId,
+            queue: taskRun.queue,
+            env: {
+              id: latestSnapshot.environmentId,
+              type: latestSnapshot.environmentType,
+              project: {
+                id: latestSnapshot.projectId,
+              },
+              organization: {
+                id: latestSnapshot.organizationId,
+              },
+            },
+          });
+
+          break;
+        }
+        default: {
+          assertNever(latestSnapshot.executionStatus);
+        }
+      }
+    });
+  }
+
   async #concurrencySweeperCallback(
-    runIds: string[]
+    runIds: string[],
+    completedAtOffsetMs: number = 1000 * 60 * 10
   ): Promise<Array<{ id: string; orgId: string }>> {
     const runs = await this.readOnlyPrisma.taskRun.findMany({
       where: {
         id: { in: runIds },
         completedAt: {
-          lte: new Date(Date.now() - 1000 * 60 * 10), // This only finds runs that were completed more than 10 minutes ago
+          lte: new Date(Date.now() - completedAtOffsetMs), // This only finds runs that were completed more than 10 minutes ago
         },
         organizationId: {
           not: null,
@@ -1457,4 +1821,99 @@ export class RunEngine {
   invalidateBillingCache(orgId: string): void {
     this.billingCache.invalidate(orgId);
   }
+}
+
+type EnvInputs = {
+  envCurrent: number;
+  envLimit: number;
+  envLimitWithBurst: number;
+  burstFactor?: number;
+};
+
+function analyzeEnvironment(inputs: EnvInputs) {
+  const { envCurrent, envLimit, envLimitWithBurst, burstFactor } = inputs;
+
+  const reasons: string[] = [];
+  const envAvailableCapacity = Math.max(0, envLimitWithBurst - envCurrent);
+  const canDequeue = envAvailableCapacity > 0;
+
+  if (!canDequeue) {
+    reasons.push(
+      `Environment concurrency (${envCurrent}) has reached the limit with burst (${envLimitWithBurst}).`
+    );
+  }
+
+  return {
+    canDequeue,
+    reasons,
+    metrics: {
+      envAvailableCapacity,
+    },
+  };
+}
+
+type QueueInputs = {
+  paused?: boolean;
+  envLimit: number;
+  envLimitWithBurst: number;
+  queueLimit?: number; // undefined => no explicit queue limit (Lua uses a huge default)
+  queueCurrent: number;
+  envCurrent: number;
+  dueCount?: number; // optional (if you implement countDueMessages)
+};
+
+function analyzeQueue(inputs: QueueInputs) {
+  const { paused, envLimit, envLimitWithBurst, queueLimit, queueCurrent, envCurrent, dueCount } =
+    inputs;
+
+  const reasons: string[] = [];
+
+  // Effective queue limit mirrors the Lua: min(queueLimit || 1_000_000, envLimit)
+  const queueLimitCapped = typeof queueLimit === "number" ? queueLimit : 1_000_000;
+  const effectiveQueueLimit = Math.min(queueLimitCapped, envLimit);
+
+  const envAvailable = Math.max(0, envLimitWithBurst - envCurrent);
+  const queueAvailable = Math.max(0, effectiveQueueLimit - queueCurrent);
+
+  // Mirror Lua's actualMaxCount = min(maxCount, envAvailable, queueAvailable).
+  // Here we only need to know if capacity exists at all (maxCount >= 1 assumed).
+  const hasCapacity = envAvailable > 0 && queueAvailable > 0;
+
+  // High-signal reasons (ordered)
+  if (paused) {
+    reasons.push("Queue is paused.");
+  }
+
+  if (envAvailable <= 0) {
+    reasons.push(
+      `Environment concurrency (${envCurrent}) has reached the limit with burst (${envLimitWithBurst}).`
+    );
+  }
+
+  if (queueAvailable <= 0) {
+    reasons.push(
+      `Queue concurrency (${queueCurrent}) has reached the effective queue limit (${effectiveQueueLimit}).`
+    );
+  }
+
+  // Optional visibility: no due messages (score > now or empty queue)
+  if (typeof dueCount === "number" && dueCount <= 0) {
+    reasons.push("No due messages in the queue (nothing scored ≤ now).");
+  }
+
+  // Final decision:
+  // - Not paused
+  // - Has capacity (both env and queue)
+  // - And (optionally) has work due
+  const canDequeue = !paused && hasCapacity && (typeof dueCount === "number" ? dueCount > 0 : true);
+
+  return {
+    canDequeue,
+    reasons: canDequeue ? [] : reasons,
+    metrics: {
+      effectiveQueueLimit,
+      queueAvailableCapacity: queueAvailable,
+      messagesDueCount: typeof dueCount === "number" ? dueCount : null,
+    },
+  };
 }

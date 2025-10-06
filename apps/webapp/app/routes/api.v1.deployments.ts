@@ -1,8 +1,8 @@
-import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
+import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import {
   ApiDeploymentListSearchParams,
   InitializeDeploymentRequestBody,
-  InitializeDeploymentResponseBody,
+  type InitializeDeploymentResponseBody,
 } from "@trigger.dev/core/v3";
 import { $replica } from "~/db.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";

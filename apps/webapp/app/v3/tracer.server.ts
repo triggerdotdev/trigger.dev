@@ -57,6 +57,7 @@ import { flattenAttributes } from "@trigger.dev/core/v3";
 import { prisma } from "~/db.server";
 import { metricsRegister } from "~/metrics.server";
 import type { Prisma } from "@trigger.dev/database";
+import { performance } from "node:perf_hooks";
 
 export const SEMINTATTRS_FORCE_RECORDING = "forceRecording";
 
@@ -602,9 +603,16 @@ function configureNodejsMetrics({ meter }: { meter: Meter }) {
     description: "Event loop 99th percentile delay",
     unit: "s",
   });
+  // ELU observable gauge (unit is a ratio, 0..1)
+  const eluGauge = meter.createObservableGauge("nodejs.event_loop.utilization", {
+    description: "Event loop utilization over the last collection interval",
+    unit: "1", // OpenTelemetry convention for ratios
+  });
 
   // Get UV threadpool size (defaults to 4 if not set)
   const uvThreadpoolSize = parseInt(process.env.UV_THREADPOOL_SIZE || "4", 10);
+
+  let lastEventLoopUtilization = performance.eventLoopUtilization();
 
   // Single helper to read metrics from prom-client
   async function readNodeMetrics() {
@@ -648,6 +656,16 @@ function configureNodejsMetrics({ meter }: { meter: Meter }) {
       }
     }
 
+    const currentEventLoopUtilization = performance.eventLoopUtilization();
+    // Diff over [lastSnapshot, current]
+    const diff = performance.eventLoopUtilization(
+      currentEventLoopUtilization,
+      lastEventLoopUtilization
+    );
+
+    // diff.utilization is between 0 and 1 (fraction of time "active")
+    const utilization = Number.isFinite(diff.utilization) ? diff.utilization : 0;
+
     return {
       threadpoolSize: uvThreadpoolSize,
       handlesByType,
@@ -661,6 +679,7 @@ function configureNodejsMetrics({ meter }: { meter: Meter }) {
         p50: eventLoopLagP50?.values?.[0]?.value ?? 0,
         p90: eventLoopLagP90?.values?.[0]?.value ?? 0,
         p99: eventLoopLagP99?.values?.[0]?.value ?? 0,
+        utilization,
       },
     };
   }
@@ -698,6 +717,7 @@ function configureNodejsMetrics({ meter }: { meter: Meter }) {
       res.observe(eventLoopLagP50Gauge, eventLoop.p50);
       res.observe(eventLoopLagP90Gauge, eventLoop.p90);
       res.observe(eventLoopLagP99Gauge, eventLoop.p99);
+      res.observe(eluGauge, eventLoop.utilization);
     },
     [
       uvThreadpoolSizeGauge,
@@ -711,6 +731,7 @@ function configureNodejsMetrics({ meter }: { meter: Meter }) {
       eventLoopLagP50Gauge,
       eventLoopLagP90Gauge,
       eventLoopLagP99Gauge,
+      eluGauge,
     ]
   );
 }

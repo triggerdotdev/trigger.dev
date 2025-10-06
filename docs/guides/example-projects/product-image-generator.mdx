@@ -1,0 +1,61 @@
+---
+title: "Product image generator using Replicate and Trigger.dev"
+sidebarTitle: "Product image generator"
+description: "AI-powered product image generator that transforms basic product photos into professional marketing shots using Replicate's image generation models"
+---
+
+## Overview
+
+This project demonstrates how to build an AI-powered product image generator that transforms basic product photos into professional marketing shots. Users upload a product image and receive three professionally styled variations: clean product shots, lifestyle scenes, and hero shots with dramatic lighting.
+
+## Video
+
+<video
+  controls
+  className="w-full aspect-video"
+  src="https://content.trigger.dev/product-image-generator-example.mp4"
+/>
+
+## GitHub repo
+
+Clone this repo and follow the instructions in the `README.md` file to get started.
+
+<Card
+  title="View the product image generator repo"
+  icon="GitHub"
+  href="https://github.com/triggerdotdev/examples/tree/main/product-image-generator"
+>
+  Click here to view the full code in our examples repository on GitHub. You can fork it and use it
+  as a starting point for your project.
+</Card>
+
+## Tech stack
+
+- [**Next.js**](https://nextjs.org/) – frontend React framework
+- [**Replicate**](https://replicate.com/docs) – AI image generation using the `google/nano-banana` image-to-image model
+- [**UploadThing**](https://uploadthing.com/) – file upload management and server callbacks
+- [**Cloudflare R2**](https://developers.cloudflare.com/r2/) – scalable image storage with public URLs
+
+## How it works
+
+The application orchestrates image generation through two main tasks: [`generateImages`](https://github.com/triggerdotdev/examples/blob/main/product-image-generator/app/trigger/generate-images.ts) coordinates batch processing, while [`generateImage`](https://github.com/triggerdotdev/examples/blob/main/product-image-generator/app/trigger/generate-images.ts) handles individual style generation.
+
+Each generation task enhances prompts with style-specific instructions, calls Replicate's `google/nano-banana` image-to-image model, creates waitpoint tokens for async webhook handling, and uploads results to Cloudflare R2. The frontend displays real-time progress updates via React hooks as tasks complete.
+
+Style presets include clean product shots (white background), lifestyle scenes (person holding product), and hero shots (dramatic lighting).
+
+## Relevant code
+
+- **Image generation tasks** – batch processing with waitpoints for Replicate webhook callbacks ([`app/trigger/generate-images.ts`](https://github.com/triggerdotdev/examples/blob/main/product-image-generator/app/trigger/generate-images.ts))
+- **Upload handler** – UploadThing integration that triggers batch generation ([`app/api/uploadthing/core.ts`](https://github.com/triggerdotdev/examples/blob/main/product-image-generator/app/api/uploadthing/core.ts))
+- **Real-time progress UI** – live task updates using React hooks ([`app/components/GeneratedCard.tsx`](https://github.com/triggerdotdev/examples/blob/main/product-image-generator/app/components/GeneratedCard.tsx))
+- **Custom prompt interface** – user-defined style generation ([`app/components/CustomPromptCard.tsx`](https://github.com/triggerdotdev/examples/blob/main/product-image-generator/app/components/CustomPromptCard.tsx))
+- **Main app component** – layout and state management ([`app/ProductImageGenerator.tsx`](https://github.com/triggerdotdev/examples/blob/main/product-image-generator/app/ProductImageGenerator.tsx))
+
+## Learn more
+
+- [**Waitpoints**](/wait-for-token) – pause tasks for async webhook callbacks
+- [**React hooks**](/realtime/react-hooks/overview) – real-time task updates and frontend integration
+- [**Batch operations**](/triggering#tasks-batchtrigger) – parallel task execution patterns
+- [**Replicate API**](https://replicate.com/docs/get-started/nextjs) – AI model integration
+- [**UploadThing**](https://docs.uploadthing.com/) – file upload handling and server callbacks

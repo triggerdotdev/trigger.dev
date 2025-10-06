@@ -130,7 +130,10 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   const upsertBranchService = new UpsertBranchService();
-  const result = await upsertBranchService.call(userId, submission.value);
+  const result = await upsertBranchService.call(
+    { type: "userMembership", userId },
+    submission.value
+  );
 
   if (result.success) {
     if (result.alreadyExisted) {

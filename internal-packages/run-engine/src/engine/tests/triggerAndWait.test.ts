@@ -4,6 +4,7 @@ import { expect } from "vitest";
 import { RunEngine } from "../index.js";
 import { setTimeout } from "node:timers/promises";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
+import { RunDuplicateIdempotencyKeyError } from "../errors.js";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -448,6 +449,166 @@ describe("RunEngine triggerAndWait", () => {
           childRun.id
         );
         expect(parent2ExecutionDataAfter.completedWaitpoints![0].output).toBe('{"foo":"bar"}');
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+  containerTest(
+    "triggerAndWait two parent runs triggering the same child run with the same idempotency key",
+    async ({ prisma, redisOptions }) => {
+      //create environment
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+          masterQueueConsumersDisabled: true,
+          processWorkerQueueDebounceMs: 50,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      try {
+        const parentTask = "parent-task";
+        const childTask = "child-task";
+        const idempotencyKey = "a-key";
+
+        //create background worker
+        await setupBackgroundWorker(engine, authenticatedEnvironment, [parentTask, childTask]);
+
+        //trigger the run
+        const parentRun1 = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_p1234",
+            environment: authenticatedEnvironment,
+            taskIdentifier: parentTask,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t12345",
+            spanId: "s12345",
+            queue: `task/${parentTask}`,
+            isTest: false,
+            tags: [],
+            workerQueue: "main",
+          },
+          prisma
+        );
+
+        //dequeue parent and create the attempt
+        await setTimeout(500);
+        const dequeued = await engine.dequeueFromWorkerQueue({
+          consumerId: "test_12345",
+          workerQueue: "main",
+        });
+        await engine.startRunAttempt({
+          runId: parentRun1.id,
+          snapshotId: dequeued[0].snapshot.id,
+        });
+
+        const parentRun2 = await engine.trigger(
+          {
+            number: 2,
+            friendlyId: "run_p12345",
+            environment: authenticatedEnvironment,
+            taskIdentifier: parentTask,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t12346",
+            spanId: "s12346",
+            queue: `task/${parentTask}`,
+            isTest: false,
+            tags: [],
+            workerQueue: "main",
+          },
+          prisma
+        );
+
+        await setTimeout(500);
+        const dequeued2 = await engine.dequeueFromWorkerQueue({
+          consumerId: "test_12345",
+          workerQueue: "main",
+        });
+        await engine.startRunAttempt({
+          runId: parentRun2.id,
+          snapshotId: dequeued2[0].snapshot.id,
+        });
+
+        await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_c1234",
+            environment: authenticatedEnvironment,
+            taskIdentifier: childTask,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t12345",
+            spanId: "s12345",
+            queue: `task/${childTask}`,
+            isTest: false,
+            tags: [],
+            resumeParentOnCompletion: true,
+            parentTaskRunId: parentRun1.id,
+            workerQueue: "main",
+            idempotencyKey,
+          },
+          prisma
+        );
+
+        // This should throw a RunDuplicateIdempotencyKeyError
+        await expect(
+          engine.trigger(
+            {
+              number: 2,
+              friendlyId: "run_c12345",
+              environment: authenticatedEnvironment,
+              taskIdentifier: childTask,
+              payload: "{}",
+              payloadType: "application/json",
+              context: {},
+              traceContext: {},
+              traceId: "t123455",
+              spanId: "s123455",
+              queue: `task/${childTask}`,
+              isTest: false,
+              tags: [],
+              resumeParentOnCompletion: true,
+              parentTaskRunId: parentRun2.id,
+              workerQueue: "main",
+              idempotencyKey,
+            },
+            prisma
+          )
+        ).rejects.toThrow(RunDuplicateIdempotencyKeyError);
       } finally {
         await engine.quit();
       }

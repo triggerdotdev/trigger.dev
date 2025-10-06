@@ -22,6 +22,7 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
   limiterCache: {
     fresh: 60_000 * 10, // Data is fresh for 10 minutes
     stale: 60_000 * 20, // Date is stale after 20 minutes
+    maxItems: 1000,
   },
   limiterConfigOverride: async (authorizationValue) => {
     const authenticatedEnv = await authenticateAuthorizationHeader(authorizationValue, {

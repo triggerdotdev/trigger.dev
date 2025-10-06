@@ -14,6 +14,7 @@ import { assertNever } from "assert-never";
 import { useEffect } from "react";
 import { typedjson, useTypedFetcher } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
+import { FlagIcon } from "~/assets/icons/RegionIcons";
 import { AdminDebugRun } from "~/components/admin/debugRun";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
@@ -22,6 +23,7 @@ import { MachineLabelCombo } from "~/components/MachineLabelCombo";
 import { MachineTooltipInfo } from "~/components/MachineTooltipInfo";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
+import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTime, DateTimeAccurate } from "~/components/primitives/DateTime";
 import { Header2, Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -76,9 +78,11 @@ import {
 } from "~/utils/pathBuilder";
 import { createTimelineSpanEventsFromSpanEvents } from "~/utils/timelineSpanEvents";
 import { CompleteWaitpointForm } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.waitpoints.$waitpointFriendlyId.complete/route";
-import { FlagIcon } from "~/assets/icons/RegionIcons";
+import { requireUserId } from "~/services/session.server";
+import type { SpanOverride } from "~/v3/eventRepository/eventRepository.types";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
+  const userId = await requireUserId(request);
   const { projectParam, organizationSlug, envParam, runParam, spanParam } =
     v3SpanParamsSchema.parse(params);
 
@@ -89,6 +93,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       projectSlug: projectParam,
       spanId: spanParam,
       runFriendlyId: runParam,
+      userId,
     });
 
     return typedjson(result);
@@ -116,10 +121,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 export function SpanView({
   runParam,
   spanId,
+  spanOverrides,
   closePanel,
 }: {
   runParam: string;
   spanId: string | undefined;
+  spanOverrides?: SpanOverride;
   closePanel?: () => void;
 }) {
   const organization = useOrganization();
@@ -170,17 +177,26 @@ export function SpanView({
       );
     }
     case "span": {
-      return <SpanBody span={fetcher.data.span} runParam={runParam} closePanel={closePanel} />;
+      return (
+        <SpanBody
+          span={fetcher.data.span}
+          spanOverrides={spanOverrides}
+          runParam={runParam}
+          closePanel={closePanel}
+        />
+      );
     }
   }
 }
 
 function SpanBody({
   span,
+  spanOverrides,
   runParam,
   closePanel,
 }: {
   span: Span;
+  spanOverrides?: SpanOverride;
   runParam?: string;
   closePanel?: () => void;
 }) {
@@ -193,6 +209,8 @@ function SpanBody({
   if (tab === "context") {
     tab = "overview";
   }
+
+  span = applySpanOverrides(span, spanOverrides);
 
   return (
     <div className="grid h-full max-h-full grid-rows-[2.5rem_2rem_1fr] overflow-hidden bg-background-bright">
@@ -228,86 +246,45 @@ function SpanBody({
           >
             Overview
           </TabButton>
-          <TabButton
-            isActive={tab === "detail"}
-            layoutId="span-span"
-            onClick={() => {
-              replace({ tab: "detail" });
-            }}
-            shortcut={{ key: "d" }}
-          >
-            Detail
-          </TabButton>
         </TabContainer>
       </div>
       <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-        {tab === "detail" ? (
-          <div className="flex flex-col gap-4 px-3 pt-3">
-            <Property.Table>
-              <Property.Item>
-                <Property.Label>Status</Property.Label>
-                <Property.Value>
-                  <TaskRunAttemptStatusCombo
-                    status={
-                      span.isCancelled
-                        ? "CANCELED"
-                        : span.isError
-                        ? "FAILED"
-                        : span.isPartial
-                        ? "EXECUTING"
-                        : "COMPLETED"
-                    }
-                    className="text-sm"
-                  />
-                </Property.Value>
-              </Property.Item>
-              <Property.Item>
-                <Property.Label>Task</Property.Label>
-                <Property.Value>
-                  <SimpleTooltip
-                    button={
-                      <TextLink
-                        to={v3RunsPath(organization, project, environment, {
-                          tasks: [span.taskSlug],
-                        })}
-                      >
-                        {span.taskSlug}
-                      </TextLink>
-                    }
-                    content={`Filter runs by ${span.taskSlug}`}
-                  />
-                </Property.Value>
-              </Property.Item>
-              {span.idempotencyKey && (
-                <Property.Item>
-                  <Property.Label>Idempotency key</Property.Label>
-                  <Property.Value>{span.idempotencyKey}</Property.Value>
-                </Property.Item>
-              )}
-              <Property.Item>
-                <Property.Label>Version</Property.Label>
-                <Property.Value>
-                  {span.workerVersion ? (
-                    span.workerVersion
-                  ) : (
-                    <span className="flex items-center gap-1">
-                      <span>Never started</span>
-                      <InfoIconTooltip
-                        content={"Runs get locked to the latest version when they start."}
-                        contentClassName="normal-case tracking-normal"
-                      />
-                    </span>
-                  )}
-                </Property.Value>
-              </Property.Item>
-            </Property.Table>
-          </div>
-        ) : (
-          <SpanEntity span={span} />
-        )}
+        <SpanEntity span={span} />
       </div>
     </div>
   );
+}
+
+function applySpanOverrides(span: Span, spanOverrides?: SpanOverride): Span {
+  if (!spanOverrides) {
+    return span;
+  }
+
+  const newSpan = { ...span };
+
+  if (spanOverrides.isCancelled) {
+    newSpan.isCancelled = true;
+    newSpan.isPartial = false;
+    newSpan.isError = false;
+  } else if (spanOverrides.isError) {
+    newSpan.isError = true;
+    newSpan.isPartial = false;
+    newSpan.isCancelled = false;
+  }
+
+  if (typeof spanOverrides.duration !== "undefined") {
+    newSpan.duration = spanOverrides.duration;
+  }
+
+  if (spanOverrides.events) {
+    if (newSpan.events) {
+      newSpan.events = [...newSpan.events, ...spanOverrides.events];
+    } else {
+      newSpan.events = spanOverrides.events;
+    }
+  }
+
+  return newSpan;
 }
 
 function RunBody({
@@ -409,6 +386,7 @@ function RunBody({
                     <SimpleTooltip
                       button={<TaskRunStatusCombo status={run.status} />}
                       content={descriptionForTaskRunStatus(run.status)}
+                      disableHoverableContent
                     />
                   </Property.Value>
                 </Property.Item>
@@ -422,82 +400,129 @@ function RunBody({
                             tasks: [run.taskIdentifier],
                           })}
                         >
-                          {run.taskIdentifier}
+                          <CopyableText
+                            value={run.taskIdentifier}
+                            copyValue={run.taskIdentifier}
+                            asChild
+                          />
                         </TextLink>
                       }
-                      content={`Filter runs by ${run.taskIdentifier}`}
+                      content={`View runs filtered by ${run.taskIdentifier}`}
+                      disableHoverableContent
                     />
                   </Property.Value>
                 </Property.Item>
                 {run.relationships.root ? (
                   run.relationships.root.isParent ? (
                     <Property.Item>
-                      <Property.Label>Root & Parent</Property.Label>
+                      <Property.Label>Root & Parent run</Property.Label>
                       <Property.Value>
-                        <TextLink
-                          to={v3RunSpanPath(
-                            organization,
-                            project,
-                            environment,
-                            {
-                              friendlyId: run.relationships.root.friendlyId,
-                            },
-                            { spanId: run.relationships.root.spanId }
-                          )}
-                          className="group flex flex-wrap items-center gap-x-1 gap-y-0"
-                        >
-                          {run.relationships.root.taskIdentifier}
-                          <span className="break-all text-text-dimmed transition-colors group-hover:text-text-bright/80">
-                            ({run.relationships.root.friendlyId})
-                          </span>
-                        </TextLink>
-                      </Property.Value>
-                    </Property.Item>
-                  ) : (
-                    <>
-                      <Property.Item>
-                        <Property.Label>Root</Property.Label>
-                        <Property.Value>
-                          <TextLink
-                            to={v3RunSpanPath(
-                              organization,
-                              project,
-                              environment,
-                              {
-                                friendlyId: run.relationships.root.friendlyId,
-                              },
-                              { spanId: run.relationships.root.spanId }
-                            )}
-                            className="group flex flex-wrap items-center gap-x-1 gap-y-0"
-                          >
-                            {run.relationships.root.taskIdentifier}
-                            <span className="break-all text-text-dimmed transition-colors group-hover:text-text-bright/80">
-                              ({run.relationships.root.friendlyId})
-                            </span>
-                          </TextLink>
-                        </Property.Value>
-                      </Property.Item>
-                      {run.relationships.parent ? (
-                        <Property.Item>
-                          <Property.Label>Parent</Property.Label>
-                          <Property.Value>
+                        <SimpleTooltip
+                          button={
                             <TextLink
                               to={v3RunSpanPath(
                                 organization,
                                 project,
                                 environment,
                                 {
-                                  friendlyId: run.relationships.parent.friendlyId,
+                                  friendlyId: run.relationships.root.friendlyId,
                                 },
-                                { spanId: run.relationships.parent.spanId }
+                                { spanId: run.relationships.root.spanId }
                               )}
                               className="group flex flex-wrap items-center gap-x-1 gap-y-0"
                             >
-                              {run.relationships.parent.taskIdentifier}
+                              <CopyableText
+                                value={run.relationships.root.taskIdentifier}
+                                copyValue={run.relationships.root.taskIdentifier}
+                                asChild
+                              />
                               <span className="break-all text-text-dimmed transition-colors group-hover:text-text-bright/80">
-                                ({run.relationships.parent.friendlyId})
+                                <CopyableText
+                                  value={run.relationships.root.friendlyId}
+                                  copyValue={run.relationships.root.friendlyId}
+                                  asChild
+                                />
                               </span>
                             </TextLink>
+                          }
+                          content={`Jump to root/parent run`}
+                          disableHoverableContent
+                        />
+                      </Property.Value>
+                    </Property.Item>
+                  ) : (
+                    <>
+                      <Property.Item>
+                        <Property.Label>Root run</Property.Label>
+                        <Property.Value>
+                          <SimpleTooltip
+                            button={
+                              <TextLink
+                                to={v3RunSpanPath(
+                                  organization,
+                                  project,
+                                  environment,
+                                  {
+                                    friendlyId: run.relationships.root.friendlyId,
+                                  },
+                                  { spanId: run.relationships.root.spanId }
+                                )}
+                                className="group flex flex-wrap items-center gap-x-1 gap-y-0"
+                              >
+                                <CopyableText
+                                  value={run.relationships.root.taskIdentifier}
+                                  copyValue={run.relationships.root.taskIdentifier}
+                                  asChild
+                                />
+                                <span className="break-all text-text-dimmed transition-colors group-hover:text-text-bright/80">
+                                  <CopyableText
+                                    value={run.relationships.root.friendlyId}
+                                    copyValue={run.relationships.root.friendlyId}
+                                    asChild
+                                  />
+                                </span>
+                              </TextLink>
+                            }
+                            content={`Jump to root run`}
+                            disableHoverableContent
+                          />
+                        </Property.Value>
+                      </Property.Item>
+                      {run.relationships.parent ? (
+                        <Property.Item>
+                          <Property.Label>Parent run</Property.Label>
+                          <Property.Value>
+                            <SimpleTooltip
+                              button={
+                                <TextLink
+                                  to={v3RunSpanPath(
+                                    organization,
+                                    project,
+                                    environment,
+                                    {
+                                      friendlyId: run.relationships.parent.friendlyId,
+                                    },
+                                    { spanId: run.relationships.parent.spanId }
+                                  )}
+                                  className="group flex flex-wrap items-center gap-x-1 gap-y-0"
+                                >
+                                  <CopyableText
+                                    value={run.relationships.parent.taskIdentifier}
+                                    copyValue={run.relationships.parent.taskIdentifier}
+                                    asChild
+                                  />
+                                  <span className="break-all text-text-dimmed transition-colors group-hover:text-text-bright/80">
+                                    <CopyableText
+                                      value={run.relationships.parent.friendlyId}
+                                      copyValue={run.relationships.parent.friendlyId}
+                                      asChild
+                                    />
+                                  </span>
+                                </TextLink>
+                              }
+                              content={`Jump to parent run`}
+                              disableHoverableContent
+                            />
                           </Property.Value>
                         </Property.Item>
                       ) : null}
@@ -511,10 +536,15 @@ function RunBody({
                       <SimpleTooltip
                         button={
                           <TextLink to={v3BatchPath(organization, project, environment, run.batch)}>
-                            {run.batch.friendlyId}
+                            <CopyableText
+                              value={run.batch.friendlyId}
+                              copyValue={run.batch.friendlyId}
+                              asChild
+                            />
                           </TextLink>
                         }
-                        content={`Jump to ${run.batch.friendlyId}`}
+                        content={`View batches filtered by ${run.batch.friendlyId}`}
+                        disableHoverableContent
                       />
                     </Property.Value>
                   </Property.Item>
@@ -540,7 +570,7 @@ function RunBody({
                   <Property.Value>
                     {run.version ? (
                       environment.type === "DEVELOPMENT" ? (
-                        run.version
+                        <CopyableText value={run.version} copyValue={run.version} asChild />
                       ) : (
                         <SimpleTooltip
                           button={
@@ -553,7 +583,7 @@ function RunBody({
                               )}
                               className="group flex flex-wrap items-center gap-x-1 gap-y-0"
                             >
-                              {run.version}
+                              <CopyableText value={run.version} copyValue={run.version} asChild />
                             </TextLink>
                           }
                           content={"Jump to deployment"}
@@ -606,13 +636,23 @@ function RunBody({
                   <Property.Item>
                     <Property.Label>Replayed from</Property.Label>
                     <Property.Value>
-                      <TextLink
-                        to={v3RunRedirectPath(organization, project, {
-                          friendlyId: run.replayedFromTaskRunFriendlyId,
-                        })}
-                      >
-                        {run.replayedFromTaskRunFriendlyId}
-                      </TextLink>
+                      <SimpleTooltip
+                        button={
+                          <TextLink
+                            to={v3RunRedirectPath(organization, project, {
+                              friendlyId: run.replayedFromTaskRunFriendlyId,
+                            })}
+                          >
+                            <CopyableText
+                              value={run.replayedFromTaskRunFriendlyId}
+                              copyValue={run.replayedFromTaskRunFriendlyId}
+                              asChild
+                            />
+                          </TextLink>
+                        }
+                        content={`Jump to replayed run`}
+                        disableHoverableContent
+                      />
                     </Property.Value>
                   </Property.Item>
                 )}
@@ -747,11 +787,15 @@ function RunBody({
                 </Property.Item>
                 <Property.Item>
                   <Property.Label>Run ID</Property.Label>
-                  <Property.Value>{run.friendlyId}</Property.Value>
+                  <Property.Value>
+                    <CopyableText value={run.friendlyId} copyValue={run.friendlyId} asChild />
+                  </Property.Value>
                 </Property.Item>
                 <Property.Item>
                   <Property.Label>Internal ID</Property.Label>
-                  <Property.Value>{run.id}</Property.Value>
+                  <Property.Value>
+                    <CopyableText value={run.id} copyValue={run.id} asChild />
+                  </Property.Value>
                 </Property.Item>
                 <Property.Item>
                   <Property.Label>Run Engine</Property.Label>
@@ -771,6 +815,14 @@ function RunBody({
                     <Property.Item>
                       <Property.Label>Worker queue</Property.Label>
                       <Property.Value>{run.workerQueue}</Property.Value>
+                    </Property.Item>
+                    <Property.Item>
+                      <Property.Label>Trace ID</Property.Label>
+                      <Property.Value>{run.traceId}</Property.Value>
+                    </Property.Item>
+                    <Property.Item>
+                      <Property.Label>Span ID</Property.Label>
+                      <Property.Value>{run.spanId}</Property.Value>
                     </Property.Item>
                   </div>
                 )}
@@ -1002,7 +1054,7 @@ function SpanEntity({ span }: { span: Span }) {
                             {run.taskIdentifier}
                           </TableCell>
                           <TableCell to={path} actionClassName="py-1.5" rowHoverStyle="bright">
-                            {run.lockedToVersion?.version ?? "–"}
+                            {run.taskVersion ?? "–"}
                           </TableCell>
                           <TableCell to={path} actionClassName="py-1.5" rowHoverStyle="bright">
                             <DateTime date={run.createdAt} />

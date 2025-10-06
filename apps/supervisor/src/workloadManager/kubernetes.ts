@@ -20,6 +20,13 @@ export class KubernetesWorkloadManager implements WorkloadManager {
   private namespace = env.KUBERNETES_NAMESPACE;
   private placementTagProcessor: PlacementTagProcessor;
 
+  // Resource settings
+  private readonly cpuRequestMinCores = env.KUBERNETES_CPU_REQUEST_MIN_CORES;
+  private readonly cpuRequestRatio = env.KUBERNETES_CPU_REQUEST_RATIO;
+  private readonly memoryRequestMinGb = env.KUBERNETES_MEMORY_REQUEST_MIN_GB;
+  private readonly memoryRequestRatio = env.KUBERNETES_MEMORY_REQUEST_RATIO;
+  private readonly memoryOverheadGb = env.KUBERNETES_MEMORY_OVERHEAD_GB;
+
   constructor(private opts: WorkloadManagerOptions) {
     this.k8s = createK8sApi();
     this.placementTagProcessor = new PlacementTagProcessor({
@@ -61,6 +68,10 @@ export class KubernetesWorkloadManager implements WorkloadManager {
     }
 
     return imageRef.substring(0, atIndex);
+  }
+
+  private clamp(value: number, min: number, max: number): number {
+    return Math.min(Math.max(value, min), max);
   }
 
   async create(opts: WorkloadManagerCreateOptions) {
@@ -263,6 +274,11 @@ export class KubernetesWorkloadManager implements WorkloadManager {
       restartPolicy: "Never",
       automountServiceAccountToken: false,
       imagePullSecrets: this.getImagePullSecrets(),
+      ...(env.KUBERNETES_SCHEDULER_NAME
+        ? {
+            schedulerName: env.KUBERNETES_SCHEDULER_NAME,
+          }
+        : {}),
       ...(env.KUBERNETES_WORKER_NODETYPE_LABEL
         ? {
             nodeSelector: {
@@ -295,16 +311,27 @@ export class KubernetesWorkloadManager implements WorkloadManager {
   }
 
   #getResourceRequestsForMachine(preset: MachinePreset): ResourceQuantities {
+    const cpuRequest = preset.cpu * this.cpuRequestRatio;
+    const memoryRequest = preset.memory * this.memoryRequestRatio;
+
+    // Clamp between min and max
+    const clampedCpu = this.clamp(cpuRequest, this.cpuRequestMinCores, preset.cpu);
+    const clampedMemory = this.clamp(memoryRequest, this.memoryRequestMinGb, preset.memory);
+
     return {
-      cpu: `${preset.cpu * 0.75}`,
-      memory: `${preset.memory}G`,
+      cpu: `${clampedCpu}`,
+      memory: `${clampedMemory}G`,
     };
   }
 
   #getResourceLimitsForMachine(preset: MachinePreset): ResourceQuantities {
+    const memoryLimit = this.memoryOverheadGb
+      ? preset.memory + this.memoryOverheadGb
+      : preset.memory;
+
     return {
       cpu: `${preset.cpu}`,
-      memory: `${preset.memory}G`,
+      memory: `${memoryLimit}G`,
     };
   }
 

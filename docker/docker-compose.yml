@@ -4,7 +4,8 @@ volumes:
   database-data:
   database-data-alt:
   redis-data:
-  clickhouse:
+  clickhouse-data:
+  clickhouse-logs:
 
 networks:
   app_network:
@@ -76,17 +77,23 @@ services:
       - database
 
   clickhouse:
-    image: bitnami/clickhouse:latest
+    image: clickhouse/clickhouse-server:25.6.2
     restart: always
     container_name: clickhouse
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
     environment:
-      CLICKHOUSE_ADMIN_USER: default
-      CLICKHOUSE_ADMIN_PASSWORD: password
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: password
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
     ports:
       - "8123:8123"
       - "9000:9000"
     volumes:
-      - clickhouse:/bitnami/clickhouse
+      - clickhouse-data:/var/lib/clickhouse
+      - clickhouse-logs:/var/log/clickhouse-server
     networks:
       - app_network
     healthcheck:
@@ -105,10 +112,10 @@ services:
           "--query",
           "SELECT 1",
         ]
-      interval: 3s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
+      interval: "3s"
+      timeout: "5s"
+      retries: "5"
+      start_period: "10s"
 
   clickhouse_migrator:
     build:

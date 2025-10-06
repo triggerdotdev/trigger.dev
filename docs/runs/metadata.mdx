@@ -523,7 +523,7 @@ Using metadata updates in conjunction with our [Realtime React hooks](/realtime/
 Track progress with percentage and current step:
 
 ```ts
-import { task, metadata } from "@trigger.dev/sdk/v3";
+import { task, metadata } from "@trigger.dev/sdk";
 
 export const batchProcessingTask = task({
   id: "batch-processing",
@@ -550,7 +550,7 @@ export const batchProcessingTask = task({
 Append log entries while maintaining status:
 
 ```ts
-import { task, metadata } from "@trigger.dev/sdk/v3";
+import { task, metadata } from "@trigger.dev/sdk";
 
 export const deploymentTask = task({
   id: "deployment",
@@ -584,7 +584,7 @@ export const deploymentTask = task({
 Store user information and notification preferences:
 
 ```ts
-import { task, metadata } from "@trigger.dev/sdk/v3";
+import { task, metadata } from "@trigger.dev/sdk";
 
 export const userTask = task({
   id: "user-task",

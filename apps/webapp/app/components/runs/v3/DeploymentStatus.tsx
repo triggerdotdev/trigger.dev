@@ -2,6 +2,7 @@ import {
   CheckCircleIcon,
   ExclamationTriangleIcon,
   NoSymbolIcon,
+  RectangleStackIcon,
   XCircleIcon,
 } from "@heroicons/react/20/solid";
 import type { WorkerDeploymentStatus } from "@trigger.dev/database";
@@ -49,6 +50,10 @@ export function DeploymentStatusIcon({
 }) {
   switch (status) {
     case "PENDING":
+      return (
+        <RectangleStackIcon className={cn(deploymentStatusClassNameColor(status), className)} />
+      );
+    case "INSTALLING":
     case "BUILDING":
     case "DEPLOYING":
       return <Spinner className={cn(deploymentStatusClassNameColor(status), className)} />;
@@ -73,6 +78,8 @@ export function DeploymentStatusIcon({
 export function deploymentStatusClassNameColor(status: WorkerDeploymentStatus): string {
   switch (status) {
     case "PENDING":
+      return "text-charcoal-500";
+    case "INSTALLING":
     case "BUILDING":
     case "DEPLOYING":
       return "text-pending";
@@ -92,7 +99,9 @@ export function deploymentStatusClassNameColor(status: WorkerDeploymentStatus): 
 export function deploymentStatusTitle(status: WorkerDeploymentStatus, isBuilt: boolean): string {
   switch (status) {
     case "PENDING":
-      return "Pending…";
+      return "Queued…";
+    case "INSTALLING":
+      return "Installing…";
     case "BUILDING":
       return "Building…";
     case "DEPLOYING":
@@ -121,17 +130,22 @@ export function deploymentStatusTitle(status: WorkerDeploymentStatus, isBuilt: b
 
 // PENDING and CANCELED are not used so are ommited from the UI
 export const deploymentStatuses: WorkerDeploymentStatus[] = [
+  "PENDING",
+  "INSTALLING",
   "BUILDING",
   "DEPLOYING",
   "DEPLOYED",
   "FAILED",
   "TIMED_OUT",
+  "CANCELED",
 ];
 
 export function deploymentStatusDescription(status: WorkerDeploymentStatus): string {
   switch (status) {
     case "PENDING":
       return "The deployment is queued and waiting to be processed.";
+    case "INSTALLING":
+      return "The project dependencies are being installed.";
     case "BUILDING":
       return "The code is being built and prepared for deployment.";
     case "DEPLOYING":

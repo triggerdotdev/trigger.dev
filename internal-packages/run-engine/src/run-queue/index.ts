@@ -40,8 +40,10 @@ import {
   OutputPayload,
   OutputPayloadV2,
   RunQueueKeyProducer,
+  RunQueueKeyProducerEnvironment,
   RunQueueSelectionStrategy,
 } from "./types.js";
+import { WorkerQueueResolver } from "./workerQueueResolver.js";
 
 const SemanticAttributes = {
   QUEUE: "runqueue.queue",
@@ -169,6 +171,7 @@ export class RunQueue {
   private shardCount: number;
   private abortController: AbortController;
   private worker: Worker<typeof workerCatalog>;
+  private workerQueueResolver: WorkerQueueResolver;
   private _observableWorkerQueues: Set<string> = new Set();
   private _meter: Meter;
   private _queueCooloffStates: Map<string, QueueCooloffState> = new Map();
@@ -185,6 +188,8 @@ export class RunQueue {
       },
     });
     this.logger = options.logger ?? new Logger("RunQueue", options.logLevel ?? "info");
+
+    this.workerQueueResolver = new WorkerQueueResolver({ logger: this.logger });
     this._meter = options.meter ?? getMeter("run-queue");
 
     const workerQueueObservableGauge = this._meter.createObservableGauge(
@@ -351,12 +356,43 @@ export class RunQueue {
     return Math.floor(limit * burstFactor);
   }
 
+  public async getEnvConcurrencyBurstFactor(env: MinimalAuthenticatedEnvironment) {
+    const result = await this.redis.get(this.keys.envConcurrencyLimitBurstFactorKey(env));
+
+    const burstFactor = result
+      ? Number(result)
+      : this.options.defaultEnvConcurrencyBurstFactor ?? 1;
+
+    return burstFactor;
+  }
+
+  public async getCurrentConcurrencyOfEnvironment(env: MinimalAuthenticatedEnvironment) {
+    return this.redis.smembers(this.keys.envCurrentConcurrencyKey(env));
+  }
+
+  public async getCurrentConcurrencyOfQueue(env: MinimalAuthenticatedEnvironment, queue: string) {
+    return this.redis.smembers(this.keys.queueCurrentConcurrencyKey(env, queue));
+  }
+
   public async lengthOfQueue(
     env: MinimalAuthenticatedEnvironment,
     queue: string,
     concurrencyKey?: string
   ) {
     return this.redis.zcard(this.keys.queueKey(env, queue, concurrencyKey));
+  }
+
+  public async lengthOfQueueAvailableMessages(
+    env: MinimalAuthenticatedEnvironment,
+    queue: string,
+    currentTime: Date = new Date(),
+    concurrencyKey?: string
+  ) {
+    return this.redis.zcount(
+      this.keys.queueKey(env, queue, concurrencyKey),
+      "-inf",
+      String(currentTime.getTime())
+    );
   }
 
   public async lengthOfEnvQueue(env: MinimalAuthenticatedEnvironment) {
@@ -413,6 +449,14 @@ export class RunQueue {
     concurrencyKey?: string
   ) {
     return this.redis.scard(this.keys.queueCurrentConcurrencyKey(env, queue, concurrencyKey));
+  }
+
+  public async currentDequeuedOfQueue(
+    env: MinimalAuthenticatedEnvironment,
+    queue: string,
+    concurrencyKey?: string
+  ) {
+    return this.redis.scard(this.keys.queueCurrentDequeuedKey(env, queue, concurrencyKey));
   }
 
   public async currentConcurrencyOfQueues(
@@ -496,6 +540,15 @@ export class RunQueue {
     // The currentDequeuedKey is incremented when a message is dequeued from the worker queue,
     // wherease the currentConcurrencyKey is incremented when a message is dequeued from the message queue and put into the worker queue
     return this.redis.scard(this.keys.envCurrentDequeuedKey(env));
+  }
+
+  /**
+   * Get the operational current concurrency of the environment
+   * @param env - The environment to get the current concurrency of
+   * @returns The current concurrency of the environment
+   */
+  public async operationalCurrentConcurrencyOfEnvironment(env: MinimalAuthenticatedEnvironment) {
+    return this.redis.scard(this.keys.envCurrentConcurrencyKey(env));
   }
 
   public async messageExists(orgId: string, messageId: string) {
@@ -876,6 +929,15 @@ export class RunQueue {
 
       stream.on("error", (err) => reject(err));
     });
+  }
+
+  public async clearMessageFromConcurrencySets(params: {
+    runId: string;
+    orgId: string;
+    queue: string;
+    env: RunQueueKeyProducerEnvironment;
+  }) {
+    return this.#callClearMessageFromConcurrencySets(params);
   }
 
   async quit() {
@@ -1365,27 +1427,28 @@ export class RunQueue {
 
       const pipeline = this.redis.pipeline();
 
-      const workerQueueKeys = new Set<string>();
+      const operations = [];
 
       for (const message of messages) {
         const workerQueueKey = this.keys.workerQueueKey(
           this.#getWorkerQueueFromMessage(message.message)
         );
 
-        workerQueueKeys.add(workerQueueKey);
-
         const messageKeyValue = this.keys.messageKey(message.message.orgId, message.messageId);
+
+        operations.push({
+          workerQueueKey: workerQueueKey,
+          messageId: message.messageId,
+        });
 
         pipeline.rpush(workerQueueKey, messageKeyValue);
       }
 
-      span.setAttribute("worker_queue_count", workerQueueKeys.size);
-      span.setAttribute("worker_queue_keys", Array.from(workerQueueKeys));
+      span.setAttribute("operations_count", operations.length);
 
-      this.logger.debug("enqueueMessagesToWorkerQueues pipeline", {
+      this.logger.info("enqueueMessagesToWorkerQueues", {
         service: this.name,
-        messages,
-        workerQueueKeys: Array.from(workerQueueKeys),
+        operations,
       });
 
       await pipeline.exec();
@@ -1643,6 +1706,14 @@ export class RunQueue {
       const message = await this.#dequeueMessageFromKey(messageKey);
 
       if (!message) {
+        this.logger.error("Failed to dequeue message from worker queue", {
+          messageKey,
+          workerQueue,
+          workerQueueKey,
+          workerQueueLength,
+          service: this.name,
+        });
+
         return;
       }
 
@@ -1746,6 +1817,45 @@ export class RunQueue {
     );
   }
 
+  async #callClearMessageFromConcurrencySets({
+    runId,
+    orgId,
+    queue,
+    env,
+  }: {
+    runId: string;
+    orgId: string;
+    queue: string;
+    env: RunQueueKeyProducerEnvironment;
+  }) {
+    const messageId = runId;
+    const messageKey = this.keys.messageKey(orgId, messageId);
+    const queueCurrentConcurrencyKey = this.keys.queueCurrentConcurrencyKey(env, queue);
+    const envCurrentConcurrencyKey = this.keys.envCurrentConcurrencyKey(env);
+    const queueCurrentDequeuedKey = this.keys.queueCurrentDequeuedKey(env, queue);
+    const envCurrentDequeuedKey = this.keys.envCurrentDequeuedKey(env);
+
+    this.logger.debug("Calling clearMessageFromConcurrencySets", {
+      messageKey,
+      queue,
+      env,
+      queueCurrentConcurrencyKey,
+      envCurrentConcurrencyKey,
+      queueCurrentDequeuedKey,
+      envCurrentDequeuedKey,
+      messageId,
+      service: this.name,
+    });
+
+    return this.redis.clearMessageFromConcurrencySets(
+      queueCurrentConcurrencyKey,
+      envCurrentConcurrencyKey,
+      queueCurrentDequeuedKey,
+      envCurrentDequeuedKey,
+      messageId
+    );
+  }
+
   async #callNackMessage({ message, retryAt }: { message: OutputPayload; retryAt?: number }) {
     const messageId = message.runId;
     const messageKey = this.keys.messageKey(message.orgId, message.runId);
@@ -1845,19 +1955,8 @@ export class RunQueue {
     );
   }
 
-  #getWorkerQueueFromMessage(message: OutputPayload) {
-    if (message.version === "2") {
-      return message.workerQueue;
-    }
-
-    // In v2, if the environment is development, the worker queue is the environment id.
-    if (message.environmentType === "DEVELOPMENT") {
-      return message.environmentId;
-    }
-
-    // In v1, the master queue is something like us-nyc-3,
-    // which in v2 is the worker queue.
-    return message.masterQueues[0];
+  #getWorkerQueueFromMessage(message: OutputPayload): string {
+    return this.workerQueueResolver.getWorkerQueueFromMessage(message);
   }
 
   #createBlockingDequeueClient() {
@@ -1869,10 +1968,12 @@ export class RunQueue {
   // Call this every 10 minutes
   private async scanConcurrencySets() {
     if (this.abortController.signal.aborted) {
+      this.logger.info("Abort signal received, skipping concurrency scan");
+
       return;
     }
 
-    this.logger.debug("Scanning concurrency sets for completed runs");
+    this.logger.info("Scanning concurrency sets for completed runs");
 
     const stats = {
       streamCallbacks: 0,
@@ -1925,7 +2026,7 @@ export class RunQueue {
         return;
       }
 
-      this.logger.debug("Processing concurrency keys from stream", {
+      this.logger.info("Processing concurrency keys from stream", {
         keys: uniqueKeys,
       });
 
@@ -1995,27 +2096,29 @@ export class RunQueue {
   }
 
   private async processCurrentConcurrencyRunIds(concurrencyKey: string, runIds: string[]) {
-    this.logger.debug(`Processing concurrency set with ${runIds.length} runs`, {
+    this.logger.info("Processing concurrency set with runs", {
       concurrencyKey,
-      runIds: runIds.slice(0, 5), // Log first 5 for debugging
+      runIds: runIds.slice(0, 5), // Log first 5 for debugging,
+      runIdsLength: runIds.length,
     });
 
     // Call the callback to determine which runs are completed
     const completedRuns = await this.options.concurrencySweeper?.callback(runIds);
 
     if (!completedRuns) {
-      this.logger.debug("No completed runs found in concurrency set", { concurrencyKey });
+      this.logger.info("No completed runs found in concurrency set", { concurrencyKey });
       return;
     }
 
     if (completedRuns.length === 0) {
-      this.logger.debug("No completed runs found in concurrency set", { concurrencyKey });
+      this.logger.info("No completed runs found in concurrency set", { concurrencyKey });
       return;
     }
 
-    this.logger.debug(`Found ${completedRuns.length} completed runs to mark for ack`, {
+    this.logger.info("Found completed runs to mark for ack", {
       concurrencyKey,
       completedRunIds: completedRuns.map((r) => r.id).slice(0, 5),
+      completedRunIdsLength: completedRuns.length,
     });
 
     // Mark the completed runs for acknowledgment
@@ -2039,7 +2142,7 @@ export class RunQueue {
 
     const count = await this.redis.zadd(markedForAckKey, ...args);
 
-    this.logger.debug(`Marked ${count} runs for acknowledgment`, {
+    this.logger.info("Marked runs for acknowledgment", {
       markedForAckKey,
       count,
     });
@@ -2594,6 +2697,26 @@ end
 return results
       `,
     });
+
+    this.redis.defineCommand("clearMessageFromConcurrencySets", {
+      numberOfKeys: 4,
+      lua: `
+-- Keys:
+local queueCurrentConcurrencyKey = KEYS[1]
+local envCurrentConcurrencyKey = KEYS[2]
+local queueCurrentDequeuedKey = KEYS[3]
+local envCurrentDequeuedKey = KEYS[4]
+
+-- Args:
+local messageId = ARGV[1]
+
+-- Update the concurrency keys
+redis.call('SREM', queueCurrentConcurrencyKey, messageId)
+redis.call('SREM', envCurrentConcurrencyKey, messageId)
+redis.call('SREM', queueCurrentDequeuedKey, messageId)
+redis.call('SREM', envCurrentDequeuedKey, messageId)
+`,
+    });
   }
 }
 
@@ -2675,6 +2798,17 @@ declare module "@internal/redis" {
       messageQueueName: string,
       messageKeyValue: string,
       removeFromWorkerQueue: string,
+      callback?: Callback<void>
+    ): Result<void, Context>;
+
+    clearMessageFromConcurrencySets(
+      // keys
+      queueCurrentConcurrencyKey: string,
+      envCurrentConcurrencyKey: string,
+      queueCurrentDequeuedKey: string,
+      envCurrentDequeuedKey: string,
+      // args
+      messageId: string,
       callback?: Callback<void>
     ): Result<void, Context>;
 

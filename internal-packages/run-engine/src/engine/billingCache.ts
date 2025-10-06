@@ -8,6 +8,7 @@ import {
   type UnkeyCache,
   type CacheError,
   type Result,
+  createMemoryStore,
 } from "@internal/cache";
 import type { RedisOptions } from "@internal/redis";
 import type { Logger } from "@trigger.dev/core/logger";
@@ -41,7 +42,6 @@ export class BillingCache {
 
     // Initialize cache
     const ctx = new DefaultStatefulContext();
-    const memory = new MemoryStore({ persistentMap: new Map() });
     const redisCacheStore = new RedisCacheStore({
       name: "billing-cache",
       connection: {
@@ -53,7 +53,7 @@ export class BillingCache {
 
     this.cache = createCache({
       currentPlan: new Namespace<BillingPlan>(ctx, {
-        stores: [memory, redisCacheStore],
+        stores: [createMemoryStore(1000), redisCacheStore],
         fresh: BILLING_FRESH_TTL,
         stale: BILLING_STALE_TTL,
       }),

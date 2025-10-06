@@ -146,10 +146,12 @@ export async function devCommand(options: DevCommandOptions) {
       typeof options.skipRulesInstall === "boolean" && options.skipRulesInstall;
 
     if (!skipRulesInstall) {
-      await initiateRulesInstallWizard({
-        manifestPath: options.rulesInstallManifestPath,
-        branch: options.rulesInstallBranch,
-      });
+      await tryCatch(
+        initiateRulesInstallWizard({
+          manifestPath: options.rulesInstallManifestPath,
+          branch: options.rulesInstallBranch,
+        })
+      );
     }
   }
 

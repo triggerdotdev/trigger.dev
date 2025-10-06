@@ -1,5 +1,14 @@
 # internal-platform
 
+## 4.0.4
+
+## 4.0.3
+
+### Patch Changes
+
+- Attach to existing deployment for deployments triggered in the build server. If `TRIGGER_EXISTING_DEPLOYMENT_ID` env var is set, the `deploy` command now skips the deployment initialization. ([#2501](https://github.com/triggerdotdev/trigger.dev/pull/2501))
+- Reduce restore recovery time and fix deprecated runner false positives ([#2523](https://github.com/triggerdotdev/trigger.dev/pull/2523))
+
 ## 4.0.2
 
 ## 4.0.1

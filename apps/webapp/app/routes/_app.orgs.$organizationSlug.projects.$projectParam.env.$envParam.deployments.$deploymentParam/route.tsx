@@ -4,7 +4,6 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { GitMetadata } from "~/components/GitMetadata";
 import { RuntimeIcon } from "~/components/RuntimeIcon";
-import { UserAvatar } from "~/components/UserProfilePhoto";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { Badge } from "~/components/primitives/Badge";
@@ -32,6 +31,7 @@ import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { v3DeploymentParams, v3DeploymentsPath, v3RunsPath } from "~/utils/pathBuilder";
 import { capitalizeWord } from "~/utils/string";
+import { UserTag } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.deployments/route";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -131,7 +131,11 @@ export default function Page() {
                 <Property.Label>Deploy</Property.Label>
                 <Property.Value className="flex items-center gap-2">
                   <span>{deployment.shortCode}</span>
-                  {deployment.label && <Badge variant="outline-rounded">{deployment.label}</Badge>}
+                  {deployment.label && (
+                    <Badge variant="extra-small" className="capitalize">
+                      {deployment.label}
+                    </Badge>
+                  )}
                 </Property.Value>
               </Property.Item>
               <Property.Item>
@@ -154,6 +158,22 @@ export default function Page() {
                   />
                 </Property.Value>
               </Property.Item>
+              {deployment.canceledAt && (
+                <Property.Item>
+                  <Property.Label>Canceled at</Property.Label>
+                  <Property.Value>
+                    <>
+                      <DateTimeAccurate date={deployment.canceledAt} /> UTC
+                    </>
+                  </Property.Value>
+                </Property.Item>
+              )}
+              {deployment.canceledReason && (
+                <Property.Item>
+                  <Property.Label>Cancelation reason</Property.Label>
+                  <Property.Value>{deployment.canceledReason}</Property.Value>
+                </Property.Item>
+              )}
               <Property.Item>
                 <Property.Label>Tasks</Property.Label>
                 <Property.Value>{deployment.tasks ? deployment.tasks.length : "–"}</Property.Value>
@@ -187,7 +207,25 @@ export default function Page() {
               <Property.Item>
                 <Property.Label>Started at</Property.Label>
                 <Property.Value>
-                  <DateTimeAccurate date={deployment.createdAt} /> UTC
+                  {deployment.startedAt ? (
+                    <>
+                      <DateTimeAccurate date={deployment.startedAt} /> UTC
+                    </>
+                  ) : (
+                    "–"
+                  )}
+                </Property.Value>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>Installed at</Property.Label>
+                <Property.Value>
+                  {deployment.installedAt ? (
+                    <>
+                      <DateTimeAccurate date={deployment.installedAt} /> UTC
+                    </>
+                  ) : (
+                    "–"
+                  )}
                 </Property.Value>
               </Property.Item>
               <Property.Item>
@@ -226,17 +264,16 @@ export default function Page() {
               <Property.Item>
                 <Property.Label>Deployed by</Property.Label>
                 <Property.Value>
-                  {deployment.deployedBy ? (
-                    <div className="flex items-center gap-1">
-                      <UserAvatar
-                        avatarUrl={deployment.deployedBy.avatarUrl}
-                        name={deployment.deployedBy.name ?? deployment.deployedBy.displayName}
-                        className="h-4 w-4"
-                      />
-                      <Paragraph variant="small">
-                        {deployment.deployedBy.name ?? deployment.deployedBy.displayName}
-                      </Paragraph>
-                    </div>
+                  {deployment.git?.source === "trigger_github_app" ? (
+                    <UserTag
+                      name={deployment.git.ghUsername ?? "GitHub Integration"}
+                      avatarUrl={deployment.git.ghUserAvatarUrl}
+                    />
+                  ) : deployment.deployedBy ? (
+                    <UserTag
+                      name={deployment.deployedBy.name ?? deployment.deployedBy.displayName ?? ""}
+                      avatarUrl={deployment.deployedBy.avatarUrl ?? undefined}
+                    />
                   ) : (
                     "–"
                   )}

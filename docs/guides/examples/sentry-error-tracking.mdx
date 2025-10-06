@@ -56,7 +56,7 @@ export default defineConfig({
       environment: process.env.NODE_ENV === "production" ? "production" : "development",
     });
   },
-  onFailure: async (payload, error, { ctx }) => {
+  onFailure: async ({ payload, error, ctx }) => {
     Sentry.captureException(error, {
       extra: {
         payload,

@@ -1,5 +1,6 @@
 import {
   createCache,
+  createMemoryStore,
   DefaultStatefulContext,
   MemoryStore,
   Namespace,
@@ -51,6 +52,7 @@ import { RunEngineOptions } from "../types.js";
 import { BatchSystem } from "./batchSystem.js";
 import { DelayedRunSystem } from "./delayedRunSystem.js";
 import {
+  EnhancedExecutionSnapshot,
   executionResultFromSnapshot,
   ExecutionSnapshotSystem,
   getLatestExecutionSnapshot,
@@ -124,8 +126,7 @@ export class RunAttemptSystem {
     this.delayedRunSystem = options.delayedRunSystem;
 
     const ctx = new DefaultStatefulContext();
-    // TODO: use an LRU cache for memory store
-    const memory = new MemoryStore({ persistentMap: new Map() });
+    const memory = createMemoryStore(5000, 0.001);
     const redisCacheStore = new RedisCacheStore({
       name: "run-attempt-system",
       connection: {
@@ -443,6 +444,7 @@ export class RunAttemptSystem {
                   parentTaskRunId: true,
                   rootTaskRunId: true,
                   workerQueue: true,
+                  taskEventStore: true,
                 },
               });
 
@@ -690,6 +692,10 @@ export class RunAttemptSystem {
             throw new ServiceValidationError("Snapshot ID doesn't match the latest snapshot", 400);
           }
 
+          if (latestSnapshot.executionStatus === "FINISHED") {
+            throw new ServiceValidationError("Run is already finished", 400);
+          }
+
           span.setAttribute("completionStatus", completion.ok);
 
           const completedAt = new Date();
@@ -843,6 +849,10 @@ export class RunAttemptSystem {
             throw new ServiceValidationError("Snapshot ID doesn't match the latest snapshot", 400);
           }
 
+          if (latestSnapshot.executionStatus === "FINISHED") {
+            throw new ServiceValidationError("Run is already finished", 400);
+          }
+
           span.setAttribute("completionStatus", completion.ok);
 
           //remove waitpoints blocking the run
@@ -923,7 +933,7 @@ export class RunAttemptSystem {
             case "fail_run": {
               return await this.#permanentlyFailRun({
                 runId,
-                snapshotId,
+                latestSnapshot,
                 failedAt,
                 error: retryResult.sanitizedError,
                 workerId,
@@ -987,6 +997,7 @@ export class RunAttemptSystem {
                   updatedAt: run.updatedAt,
                   error: completion.error,
                   createdAt: run.createdAt,
+                  taskEventStore: run.taskEventStore,
                 },
                 organization: {
                   id: run.runtimeEnvironment.organizationId,
@@ -1129,6 +1140,9 @@ export class RunAttemptSystem {
     error,
     workerId,
     runnerId,
+    checkpointId,
+    completedWaitpoints,
+    batchId,
     tx,
   }: {
     run: TaskRun;
@@ -1142,7 +1156,13 @@ export class RunAttemptSystem {
     error: TaskRunInternalError;
     workerId?: string;
     runnerId?: string;
+    checkpointId?: string;
     tx?: PrismaClientOrTransaction;
+    completedWaitpoints?: {
+      id: string;
+      index?: number;
+    }[];
+    batchId?: string;
   }): Promise<{ wasRequeued: boolean } & ExecutionResult> {
     const prisma = tx ?? this.$.prisma;
 
@@ -1189,6 +1209,9 @@ export class RunAttemptSystem {
         organizationId: orgId,
         workerId,
         runnerId,
+        checkpointId,
+        completedWaitpoints,
+        batchId,
       });
 
       return {
@@ -1236,7 +1259,7 @@ export class RunAttemptSystem {
     tx?: PrismaClientOrTransaction;
   }): Promise<ExecutionResult & { alreadyFinished: boolean }> {
     const prisma = tx ?? this.$.prisma;
-    reason = reason ?? "Cancelled by user";
+    reason = reason ?? "Canceled by user";
 
     return startSpan(this.$.tracer, "cancelRun", async (span) => {
       return this.$.runLock.lock("cancelRun", [runId], async () => {
@@ -1440,14 +1463,14 @@ export class RunAttemptSystem {
 
   async #permanentlyFailRun({
     runId,
-    snapshotId,
+    latestSnapshot,
     failedAt,
     error,
     workerId,
     runnerId,
   }: {
     runId: string;
-    snapshotId?: string;
+    latestSnapshot: EnhancedExecutionSnapshot;
     failedAt: Date;
     error: TaskRunError;
     workerId?: string;
@@ -1456,7 +1479,9 @@ export class RunAttemptSystem {
     const prisma = this.$.prisma;
 
     return startSpan(this.$.tracer, "permanentlyFailRun", async (span) => {
-      const status = runStatusFromError(error);
+      const status = runStatusFromError(error, latestSnapshot.environmentType);
+
+      const truncatedError = this.#truncateTaskRunError(error);
 
       //run permanently failed
       const run = await prisma.taskRun.update({
@@ -1466,7 +1491,7 @@ export class RunAttemptSystem {
         data: {
           status,
           completedAt: failedAt,
-          error,
+          error: truncatedError,
         },
         select: {
           id: true,
@@ -1509,7 +1534,7 @@ export class RunAttemptSystem {
           executionStatus: "FINISHED",
           description: "Run failed",
         },
-        previousSnapshotId: snapshotId,
+        previousSnapshotId: latestSnapshot.id,
         environmentId: run.runtimeEnvironment.id,
         environmentType: run.runtimeEnvironment.type,
         projectId: run.runtimeEnvironment.project.id,
@@ -1528,7 +1553,7 @@ export class RunAttemptSystem {
 
       await this.waitpointSystem.completeWaitpoint({
         id: run.associatedWaitpoint.id,
-        output: { value: JSON.stringify(error), isError: true },
+        output: { value: JSON.stringify(truncatedError), isError: true },
       });
 
       this.$.eventBus.emit("runFailed", {
@@ -1874,6 +1899,19 @@ export class RunAttemptSystem {
       });
     }
   }
+
+  #truncateTaskRunError(error: TaskRunError): TaskRunError {
+    if (error.type !== "BUILT_IN_ERROR") {
+      return error;
+    }
+
+    return {
+      type: "BUILT_IN_ERROR",
+      name: truncateString(error.name, 1024),
+      message: truncateString(error.message, 1024 * 16), // 16kb
+      stackTrace: truncateString(error.stackTrace, 1024 * 16), // 16kb
+    };
+  }
 }
 
 export function safeParseGitMeta(git: unknown): GitMeta | undefined {
@@ -1882,4 +1920,12 @@ export function safeParseGitMeta(git: unknown): GitMeta | undefined {
     return parsed.data;
   }
   return undefined;
+}
+
+function truncateString(str: string | undefined, maxLength: number): string {
+  if (!str) {
+    return "";
+  }
+
+  return str.slice(0, maxLength);
 }

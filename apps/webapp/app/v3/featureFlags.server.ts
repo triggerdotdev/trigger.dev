@@ -4,11 +4,13 @@ import { prisma, type PrismaClientOrTransaction } from "~/db.server";
 export const FEATURE_FLAG = {
   defaultWorkerInstanceGroupId: "defaultWorkerInstanceGroupId",
   runsListRepository: "runsListRepository",
+  taskEventRepository: "taskEventRepository",
 } as const;
 
 const FeatureFlagCatalog = {
   [FEATURE_FLAG.defaultWorkerInstanceGroupId]: z.string(),
   [FEATURE_FLAG.runsListRepository]: z.enum(["clickhouse", "postgres"]),
+  [FEATURE_FLAG.taskEventRepository]: z.enum(["clickhouse", "postgres"]),
 };
 
 type FeatureFlagKey = keyof typeof FeatureFlagCatalog;
@@ -16,6 +18,7 @@ type FeatureFlagKey = keyof typeof FeatureFlagCatalog;
 export type FlagsOptions<T extends FeatureFlagKey> = {
   key: T;
   defaultValue?: z.infer<(typeof FeatureFlagCatalog)[T]>;
+  overrides?: Record<string, unknown>;
 };
 
 export function makeFlags(_prisma: PrismaClientOrTransaction = prisma) {
@@ -34,7 +37,17 @@ export function makeFlags(_prisma: PrismaClientOrTransaction = prisma) {
       },
     });
 
-    const parsed = FeatureFlagCatalog[opts.key].safeParse(value?.value);
+    const flagSchema = FeatureFlagCatalog[opts.key];
+
+    if (opts.overrides?.[opts.key]) {
+      const parsed = flagSchema.safeParse(opts.overrides[opts.key]);
+
+      if (parsed.success) {
+        return parsed.data;
+      }
+    }
+
+    const parsed = flagSchema.safeParse(value?.value);
 
     if (!parsed.success) {
       return opts.defaultValue;

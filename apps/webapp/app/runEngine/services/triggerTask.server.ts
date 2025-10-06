@@ -29,18 +29,25 @@ import type {
   TriggerTaskServiceOptions,
   TriggerTaskServiceResult,
 } from "../../v3/services/triggerTask.server";
-import { getTaskEventStore } from "../../v3/taskEventStore.server";
 import { clampMaxDuration } from "../../v3/utils/maxDuration";
-import { EngineServiceValidationError } from "../concerns/errors";
 import { IdempotencyKeyConcern } from "../concerns/idempotencyKeys.server";
 import type {
   PayloadProcessor,
   QueueManager,
   RunNumberIncrementer,
   TraceEventConcern,
+  TriggerRacepoints,
+  TriggerRacepointSystem,
   TriggerTaskRequest,
   TriggerTaskValidator,
 } from "../types";
+import { ServiceValidationError } from "~/v3/services/common.server";
+
+class NoopTriggerRacepointSystem implements TriggerRacepointSystem {
+  async waitForRacepoint(options: { racepoint: TriggerRacepoints; id: string }): Promise<void> {
+    return;
+  }
+}
 
 export class RunEngineTriggerTaskService {
   private readonly queueConcern: QueueManager;
@@ -52,6 +59,7 @@ export class RunEngineTriggerTaskService {
   private readonly engine: RunEngine;
   private readonly tracer: Tracer;
   private readonly traceEventConcern: TraceEventConcern;
+  private readonly triggerRacepointSystem: TriggerRacepointSystem;
   private readonly metadataMaximumSize: number;
 
   constructor(opts: {
@@ -65,6 +73,7 @@ export class RunEngineTriggerTaskService {
     traceEventConcern: TraceEventConcern;
     tracer: Tracer;
     metadataMaximumSize: number;
+    triggerRacepointSystem?: TriggerRacepointSystem;
   }) {
     this.prisma = opts.prisma;
     this.engine = opts.engine;
@@ -76,6 +85,7 @@ export class RunEngineTriggerTaskService {
     this.tracer = opts.tracer;
     this.traceEventConcern = opts.traceEventConcern;
     this.metadataMaximumSize = opts.metadataMaximumSize;
+    this.triggerRacepointSystem = opts.triggerRacepointSystem ?? new NoopTriggerRacepointSystem();
   }
 
   public async call({
@@ -157,7 +167,7 @@ export class RunEngineTriggerTaskService {
       const [parseDelayError, delayUntil] = await tryCatch(parseDelay(body.options?.delay));
 
       if (parseDelayError) {
-        throw new EngineServiceValidationError(`Invalid delay ${body.options?.delay}`);
+        throw new ServiceValidationError(`Invalid delay ${body.options?.delay}`);
       }
 
       const ttl =
@@ -187,7 +197,8 @@ export class RunEngineTriggerTaskService {
       }
 
       const idempotencyKeyConcernResult = await this.idempotencyKeyConcern.handleTriggerRequest(
-        triggerRequest
+        triggerRequest,
+        parentRun?.taskEventStore
       );
 
       if (idempotencyKeyConcernResult.isCached) {
@@ -196,21 +207,18 @@ export class RunEngineTriggerTaskService {
 
       const { idempotencyKey, idempotencyKeyExpiresAt } = idempotencyKeyConcernResult;
 
+      if (idempotencyKey) {
+        await this.triggerRacepointSystem.waitForRacepoint({
+          racepoint: "idempotencyKey",
+          id: idempotencyKey,
+        });
+      }
+
       if (!options.skipChecks) {
         const queueSizeGuard = await this.queueConcern.validateQueueLimits(environment);
 
-        logger.debug("Queue size guard result", {
-          queueSizeGuard,
-          environment: {
-            id: environment.id,
-            type: environment.type,
-            organization: environment.organization,
-            project: environment.project,
-          },
-        });
-
         if (!queueSizeGuard.ok) {
-          throw new EngineServiceValidationError(
+          throw new ServiceValidationError(
             `Cannot trigger ${taskId} as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`
           );
         }
@@ -259,105 +267,109 @@ export class RunEngineTriggerTaskService {
       const workerQueue = await this.queueConcern.getWorkerQueue(environment, body.options?.region);
 
       try {
-        return await this.traceEventConcern.traceRun(triggerRequest, async (event) => {
-          const result = await this.runNumberIncrementer.incrementRunNumber(
-            triggerRequest,
-            async (num) => {
-              event.setAttribute("queueName", queueName);
-              span.setAttribute("queueName", queueName);
-              event.setAttribute("runId", runFriendlyId);
-              span.setAttribute("runId", runFriendlyId);
+        return await this.traceEventConcern.traceRun(
+          triggerRequest,
+          parentRun?.taskEventStore,
+          async (event, store) => {
+            const result = await this.runNumberIncrementer.incrementRunNumber(
+              triggerRequest,
+              async (num) => {
+                event.setAttribute("queueName", queueName);
+                span.setAttribute("queueName", queueName);
+                event.setAttribute("runId", runFriendlyId);
+                span.setAttribute("runId", runFriendlyId);
 
-              const payloadPacket = await this.payloadProcessor.process(triggerRequest);
+                const payloadPacket = await this.payloadProcessor.process(triggerRequest);
 
-              const taskRun = await this.engine.trigger(
-                {
-                  number: num,
-                  friendlyId: runFriendlyId,
-                  environment: environment,
-                  idempotencyKey,
-                  idempotencyKeyExpiresAt: idempotencyKey ? idempotencyKeyExpiresAt : undefined,
-                  taskIdentifier: taskId,
-                  payload: payloadPacket.data ?? "",
-                  payloadType: payloadPacket.dataType,
-                  context: body.context,
-                  traceContext: this.#propagateExternalTraceContext(
-                    event.traceContext,
-                    parentRun?.traceContext,
-                    event.traceparent?.spanId
-                  ),
-                  traceId: event.traceId,
-                  spanId: event.spanId,
-                  parentSpanId:
-                    options.parentAsLinkType === "replay" ? undefined : event.traceparent?.spanId,
-                  replayedFromTaskRunFriendlyId: options.replayedFromTaskRunFriendlyId,
-                  lockedToVersionId: lockedToBackgroundWorker?.id,
-                  taskVersion: lockedToBackgroundWorker?.version,
-                  sdkVersion: lockedToBackgroundWorker?.sdkVersion,
-                  cliVersion: lockedToBackgroundWorker?.cliVersion,
-                  concurrencyKey: body.options?.concurrencyKey,
-                  queue: queueName,
-                  lockedQueueId,
-                  workerQueue,
-                  isTest: body.options?.test ?? false,
-                  delayUntil,
-                  queuedAt: delayUntil ? undefined : new Date(),
-                  maxAttempts: body.options?.maxAttempts,
-                  taskEventStore: getTaskEventStore(),
-                  ttl,
-                  tags,
-                  oneTimeUseToken: options.oneTimeUseToken,
-                  parentTaskRunId: parentRun?.id,
-                  rootTaskRunId: parentRun?.rootTaskRunId ?? parentRun?.id,
-                  batch: options?.batchId
-                    ? {
-                        id: options.batchId,
-                        index: options.batchIndex ?? 0,
-                      }
-                    : undefined,
-                  resumeParentOnCompletion: body.options?.resumeParentOnCompletion,
-                  depth,
-                  metadata: metadataPacket?.data,
-                  metadataType: metadataPacket?.dataType,
-                  seedMetadata: metadataPacket?.data,
-                  seedMetadataType: metadataPacket?.dataType,
-                  maxDurationInSeconds: body.options?.maxDuration
-                    ? clampMaxDuration(body.options.maxDuration)
-                    : undefined,
-                  machine: body.options?.machine,
-                  priorityMs: body.options?.priority ? body.options.priority * 1_000 : undefined,
-                  queueTimestamp:
-                    options.queueTimestamp ??
-                    (parentRun && body.options?.resumeParentOnCompletion
-                      ? parentRun.queueTimestamp ?? undefined
-                      : undefined),
-                  scheduleId: options.scheduleId,
-                  scheduleInstanceId: options.scheduleInstanceId,
-                  createdAt: options.overrideCreatedAt,
-                  bulkActionId: body.options?.bulkActionId,
-                  planType,
-                },
-                this.prisma
-              );
+                const taskRun = await this.engine.trigger(
+                  {
+                    number: num,
+                    friendlyId: runFriendlyId,
+                    environment: environment,
+                    idempotencyKey,
+                    idempotencyKeyExpiresAt: idempotencyKey ? idempotencyKeyExpiresAt : undefined,
+                    taskIdentifier: taskId,
+                    payload: payloadPacket.data ?? "",
+                    payloadType: payloadPacket.dataType,
+                    context: body.context,
+                    traceContext: this.#propagateExternalTraceContext(
+                      event.traceContext,
+                      parentRun?.traceContext,
+                      event.traceparent?.spanId
+                    ),
+                    traceId: event.traceId,
+                    spanId: event.spanId,
+                    parentSpanId:
+                      options.parentAsLinkType === "replay" ? undefined : event.traceparent?.spanId,
+                    replayedFromTaskRunFriendlyId: options.replayedFromTaskRunFriendlyId,
+                    lockedToVersionId: lockedToBackgroundWorker?.id,
+                    taskVersion: lockedToBackgroundWorker?.version,
+                    sdkVersion: lockedToBackgroundWorker?.sdkVersion,
+                    cliVersion: lockedToBackgroundWorker?.cliVersion,
+                    concurrencyKey: body.options?.concurrencyKey,
+                    queue: queueName,
+                    lockedQueueId,
+                    workerQueue,
+                    isTest: body.options?.test ?? false,
+                    delayUntil,
+                    queuedAt: delayUntil ? undefined : new Date(),
+                    maxAttempts: body.options?.maxAttempts,
+                    taskEventStore: store,
+                    ttl,
+                    tags,
+                    oneTimeUseToken: options.oneTimeUseToken,
+                    parentTaskRunId: parentRun?.id,
+                    rootTaskRunId: parentRun?.rootTaskRunId ?? parentRun?.id,
+                    batch: options?.batchId
+                      ? {
+                          id: options.batchId,
+                          index: options.batchIndex ?? 0,
+                        }
+                      : undefined,
+                    resumeParentOnCompletion: body.options?.resumeParentOnCompletion,
+                    depth,
+                    metadata: metadataPacket?.data,
+                    metadataType: metadataPacket?.dataType,
+                    seedMetadata: metadataPacket?.data,
+                    seedMetadataType: metadataPacket?.dataType,
+                    maxDurationInSeconds: body.options?.maxDuration
+                      ? clampMaxDuration(body.options.maxDuration)
+                      : undefined,
+                    machine: body.options?.machine,
+                    priorityMs: body.options?.priority ? body.options.priority * 1_000 : undefined,
+                    queueTimestamp:
+                      options.queueTimestamp ??
+                      (parentRun && body.options?.resumeParentOnCompletion
+                        ? parentRun.queueTimestamp ?? undefined
+                        : undefined),
+                    scheduleId: options.scheduleId,
+                    scheduleInstanceId: options.scheduleInstanceId,
+                    createdAt: options.overrideCreatedAt,
+                    bulkActionId: body.options?.bulkActionId,
+                    planType,
+                  },
+                  this.prisma
+                );
 
-              const error = taskRun.error ? TaskRunError.parse(taskRun.error) : undefined;
+                const error = taskRun.error ? TaskRunError.parse(taskRun.error) : undefined;
 
-              if (error) {
-                event.failWithError(error);
+                if (error) {
+                  event.failWithError(error);
+                }
+
+                return { run: taskRun, error, isCached: false };
               }
-
-              return { run: taskRun, error, isCached: false };
-            }
-          );
-
-          if (result?.error) {
-            throw new EngineServiceValidationError(
-              taskRunErrorToString(taskRunErrorEnhancer(result.error))
             );
-          }
 
-          return result;
-        });
+            if (result?.error) {
+              throw new ServiceValidationError(
+                taskRunErrorToString(taskRunErrorEnhancer(result.error))
+              );
+            }
+
+            return result;
+          }
+        );
       } catch (error) {
         if (error instanceof RunDuplicateIdempotencyKeyError) {
           //retry calling this function, because this time it will return the idempotent run
@@ -365,7 +377,7 @@ export class RunEngineTriggerTaskService {
         }
 
         if (error instanceof RunOneTimeUseTokenError) {
-          throw new EngineServiceValidationError(
+          throw new ServiceValidationError(
             `Cannot trigger ${taskId} with a one-time use token as it has already been used.`
           );
         }

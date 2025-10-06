@@ -30,6 +30,7 @@ import {
   WorkerManifest,
   WorkerToExecutorMessageCatalog,
   traceContext,
+  heartbeats,
 } from "@trigger.dev/core/v3";
 import { TriggerTracer } from "@trigger.dev/core/v3/tracer";
 import {
@@ -55,6 +56,7 @@ import {
   usage,
   UsageTimeoutManager,
   StandardTraceContextManager,
+  StandardHeartbeatsManager,
 } from "@trigger.dev/core/v3/workers";
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { readFile } from "node:fs/promises";
@@ -133,6 +135,11 @@ runMetadata.setGlobalManager(runMetadataManager);
 
 const waitUntilManager = new StandardWaitUntilManager();
 waitUntil.setGlobalManager(waitUntilManager);
+
+const standardHeartbeatsManager = new StandardHeartbeatsManager(
+  parseInt(heartbeatIntervalMs ?? "30000", 10)
+);
+heartbeats.setGlobalManager(standardHeartbeatsManager);
 
 const triggerLogLevel = getEnvVar("TRIGGER_LOG_LEVEL");
 
@@ -289,6 +296,7 @@ function resetExecutionEnvironment() {
   durableClock.reset();
   taskContext.disable();
   standardTraceContextManager.reset();
+  standardHeartbeatsManager.reset();
 
   // Wait for all streams to finish before completing the run
   waitUntil.register({
@@ -522,6 +530,8 @@ const zodIpc = new ZodIpcConnection({
           _execution = execution;
           _isRunning = true;
 
+          standardHeartbeatsManager.startHeartbeat(_execution.run.id);
+
           runMetadataManager.startPeriodicFlush(
             getNumberEnvVar("TRIGGER_RUN_METADATA_FLUSH_INTERVAL", 1000)
           );
@@ -549,6 +559,8 @@ const zodIpc = new ZodIpcConnection({
             });
           }
         } finally {
+          standardHeartbeatsManager.stopHeartbeat();
+
           _execution = undefined;
           _isRunning = false;
 
@@ -722,16 +734,8 @@ runtime.setGlobalRuntimeManager(_sharedWorkerRuntime);
 
 process.title = "trigger-managed-worker";
 
-const heartbeatInterval = parseInt(heartbeatIntervalMs ?? "30000", 10);
-
-for await (const _ of setInterval(heartbeatInterval)) {
-  if (_isRunning && _execution) {
-    try {
-      await zodIpc.send("TASK_HEARTBEAT", { id: _execution.run.id });
-    } catch (err) {
-      console.error("Failed to send HEARTBEAT message", err);
-    }
-  }
-}
+standardHeartbeatsManager.registerListener(async (id) => {
+  await zodIpc.send("TASK_HEARTBEAT", { id });
+});
 
 console.log(`[${new Date().toISOString()}] Executor started`);

@@ -49,6 +49,10 @@ export class SnapshotManager {
   private changeQueue: QueuedChangeItem[] = [];
   private isProcessingQueue = false;
 
+  // Track seen deprecated snapshots to prevent false positives
+  private seenDeprecatedSnapshotIds: string[] = [];
+  private readonly maxSeenDeprecatedSnapshotIds = 50;
+
   constructor(opts: SnapshotManagerOptions) {
     this.runFriendlyId = opts.runFriendlyId;
     this.runnerId = opts.runnerId;
@@ -284,9 +288,13 @@ export class SnapshotManager {
 
         // Check if any previous snapshot is QUEUED or SUSPENDED
         const deprecatedStatus: TaskRunExecutionStatus[] = ["QUEUED", "SUSPENDED"];
-        const deprecatedSnapshots = previousSnapshots.filter((snap) =>
-          deprecatedStatus.includes(snap.snapshot.executionStatus)
-        );
+        const deprecatedSnapshots = previousSnapshots.filter((snap) => {
+          const isDeprecated = deprecatedStatus.includes(snap.snapshot.executionStatus);
+          const previouslySeen = this.seenDeprecatedSnapshotIds.some(
+            (s) => s === snap.snapshot.friendlyId
+          );
+          return isDeprecated && !previouslySeen;
+        });
 
         let deprecated = false;
         if (deprecatedSnapshots.length > 0) {
@@ -297,6 +305,18 @@ export class SnapshotManager {
             deprecated = false;
           } else {
             deprecated = true;
+          }
+
+          // Add the deprecated snapshot IDs to the seen list
+          this.seenDeprecatedSnapshotIds.push(
+            ...deprecatedSnapshots.map((s) => s.snapshot.friendlyId)
+          );
+
+          if (this.seenDeprecatedSnapshotIds.length > this.maxSeenDeprecatedSnapshotIds) {
+            // Only keep the latest maxSeenDeprecatedSnapshotIds
+            this.seenDeprecatedSnapshotIds = this.seenDeprecatedSnapshotIds.slice(
+              -this.maxSeenDeprecatedSnapshotIds
+            );
           }
         }
 

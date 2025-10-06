@@ -1,13 +1,13 @@
-import { TaskRun, TaskRunAttempt } from "@trigger.dev/database";
-import { eventRepository } from "../eventRepository.server";
-import { BaseService } from "./baseService.server";
-import { logger } from "~/services/logger.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { CRASHABLE_ATTEMPT_STATUSES, isCrashableRunStatus } from "../taskStatus";
+import { tryCatch } from "@trigger.dev/core/utils";
 import { sanitizeError, TaskRunErrorCodes, TaskRunInternalError } from "@trigger.dev/core/v3";
-import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
+import { TaskRun, TaskRunAttempt } from "@trigger.dev/database";
+import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { logger } from "~/services/logger.server";
 import { FailedTaskRunRetryHelper } from "../failedTaskRun.server";
-import { getTaskEventStoreTableForRun } from "../taskEventStore.server";
+import { CRASHABLE_ATTEMPT_STATUSES, isCrashableRunStatus } from "../taskStatus";
+import { BaseService } from "./baseService.server";
+import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
+import { resolveEventRepositoryForStore } from "../eventRepository/index.server";
 
 export type CrashTaskRunServiceOptions = {
   reason?: string;
@@ -120,33 +120,26 @@ export class CrashTaskRunService extends BaseService {
       },
     });
 
-    const inProgressEvents = await eventRepository.queryIncompleteEvents(
-      getTaskEventStoreTableForRun(taskRun),
-      {
-        runId: taskRun.friendlyId,
-      },
-      taskRun.createdAt,
-      taskRun.completedAt ?? undefined,
-      options?.overrideCompletion
-    );
+    const eventRepository = resolveEventRepositoryForStore(crashedTaskRun.taskEventStore);
 
-    logger.debug("[CrashTaskRunService] Crashing in-progress events", {
-      inProgressEvents: inProgressEvents.map((event) => event.id),
-    });
-
-    await Promise.all(
-      inProgressEvents.map((event) => {
-        return eventRepository.crashEvent({
-          event: event,
-          crashedAt: opts.crashedAt,
-          exception: {
-            type: opts.errorCode ?? TaskRunErrorCodes.TASK_RUN_CRASHED,
-            message: opts.reason,
-            stacktrace: opts.logs,
-          },
-        });
+    const [createAttemptFailedEventError] = await tryCatch(
+      eventRepository.completeFailedRunEvent({
+        run: crashedTaskRun,
+        endTime: opts.crashedAt,
+        exception: {
+          type: opts.errorCode ?? TaskRunErrorCodes.TASK_RUN_CRASHED,
+          message: opts.reason,
+          stacktrace: opts.logs,
+        },
       })
     );
+
+    if (createAttemptFailedEventError) {
+      logger.error("[CrashTaskRunService] Failed to complete failed run event", {
+        error: createAttemptFailedEventError,
+        runId: crashedTaskRun.id,
+      });
+    }
 
     if (!opts.crashAttempts) {
       return;

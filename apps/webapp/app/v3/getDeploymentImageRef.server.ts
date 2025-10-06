@@ -11,6 +11,7 @@ import { STSClient, AssumeRoleCommand } from "@aws-sdk/client-sts";
 import { tryCatch } from "@trigger.dev/core";
 import { logger } from "~/services/logger.server";
 import { type RegistryConfig } from "./registryConfig.server";
+import type { EnvironmentType } from "@trigger.dev/core/v3";
 
 // Optional configuration for cross-account access
 export type AssumeRoleConfig = {
@@ -101,19 +102,22 @@ export async function getDeploymentImageRef({
   registry,
   projectRef,
   nextVersion,
-  environmentSlug,
+  environmentType,
+  deploymentShortCode,
 }: {
   registry: RegistryConfig;
   projectRef: string;
   nextVersion: string;
-  environmentSlug: string;
+  environmentType: EnvironmentType;
+  deploymentShortCode: string;
 }): Promise<{
   imageRef: string;
   isEcr: boolean;
   repoCreated: boolean;
 }> {
   const repositoryName = `${registry.namespace}/${projectRef}`;
-  const imageRef = `${registry.host}/${repositoryName}:${nextVersion}.${environmentSlug}`;
+  const envType = environmentType.toLowerCase();
+  const imageRef = `${registry.host}/${repositoryName}:${nextVersion}.${envType}.${deploymentShortCode}`;
 
   if (!isEcrRegistry(registry.host)) {
     return {

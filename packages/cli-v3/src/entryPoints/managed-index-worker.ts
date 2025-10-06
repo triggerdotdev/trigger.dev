@@ -18,7 +18,7 @@ import { registerResources } from "../indexing/registerResources.js";
 import { env } from "std-env";
 import { normalizeImportPath } from "../utilities/normalizeImportPath.js";
 import { detectRuntimeVersion } from "@trigger.dev/core/v3/build";
-import { schemaToJsonSchema, initializeSchemaConverters } from "@trigger.dev/schema-to-json";
+import { schemaToJsonSchema } from "@trigger.dev/schema-to-json";
 
 sourceMapSupport.install({
   handleUncaughtExceptions: false,
@@ -201,8 +201,6 @@ await new Promise<void>((resolve) => {
 });
 
 async function convertSchemasToJsonSchemas(tasks: TaskManifest[]): Promise<TaskManifest[]> {
-  await initializeSchemaConverters();
-
   const convertedTasks = tasks.map((task) => {
     const schema = resourceCatalog.getTaskSchema(task.id);
 

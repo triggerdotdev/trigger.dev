@@ -6,5 +6,5 @@ export {
   type CacheError,
 } from "@unkey/cache";
 export { type Result, Ok, Err } from "@unkey/error";
-export { MemoryStore } from "@unkey/cache/stores";
 export { RedisCacheStore } from "./stores/redis.js";
+export { createMemoryStore, type MemoryStore } from "./stores/memory.js";

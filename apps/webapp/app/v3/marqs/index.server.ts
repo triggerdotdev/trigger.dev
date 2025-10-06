@@ -24,6 +24,7 @@ import z from "zod";
 import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { signalsEmitter } from "~/services/signals.server";
 import { singleton } from "~/utils/singleton";
 import { legacyRunEngineWorker } from "../legacyRunEngineWorker.server";
 import { concurrencyTracker } from "../services/taskRunConcurrencyTracker.server";
@@ -112,6 +113,7 @@ export class MarQS {
   private queueDequeueCooloffPeriod: Map<string, number> = new Map();
   private queueDequeueCooloffCounts: Map<string, number> = new Map();
   private clearCooloffPeriodInterval: NodeJS.Timeout;
+  isShuttingDown: boolean = false;
 
   constructor(private readonly options: MarQSOptions) {
     this.redis = options.redis;
@@ -151,11 +153,14 @@ export class MarQS {
   }
 
   #setupShutdownHandlers() {
-    process.on("SIGTERM", () => this.shutdown("SIGTERM"));
-    process.on("SIGINT", () => this.shutdown("SIGINT"));
+    signalsEmitter.on("SIGTERM", () => this.shutdown("SIGTERM"));
+    signalsEmitter.on("SIGINT", () => this.shutdown("SIGINT"));
   }
 
   async shutdown(signal: NodeJS.Signals) {
+    if (this.isShuttingDown) return;
+    this.isShuttingDown = true;
+
     console.log("👇 Shutting down marqs", this.name, signal);
     clearInterval(this.clearCooloffPeriodInterval);
     this.#rebalanceWorkers.forEach((worker) => worker.stop());

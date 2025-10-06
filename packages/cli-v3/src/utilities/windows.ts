@@ -57,12 +57,30 @@ const wrappedClackSpinner = () => {
       spinner.start(truncateMessage(currentMessage));
     },
     stop: (msg?: string, code?: number): void => {
-      isActive = false;
       process.stdout.off("resize", handleResize);
+
+      if (!isActive) {
+        // Spinner was never started, just display the message
+        if (msg) {
+          log.message(msg);
+        }
+        return;
+      }
+
+      isActive = false;
       spinner.stop(truncateMessage(msg ?? ""), code);
     },
     message: (msg?: string): void => {
       currentMessage = msg ?? "";
+
+      if (!isActive) {
+        // Spinner was never started, just display the message
+        if (msg) {
+          log.message(msg);
+        }
+        return;
+      }
+
       spinner.message(truncateMessage(currentMessage));
     },
   };

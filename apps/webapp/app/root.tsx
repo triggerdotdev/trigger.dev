@@ -20,6 +20,13 @@ export const links: LinksFunction = () => {
   return [{ rel: "stylesheet", href: tailwindStylesheetUrl }];
 };
 
+export const headers = () => ({
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "X-Content-Type-Options": "nosniff",
+  "Permissions-Policy":
+    "geolocation=(), microphone=(), camera=(), accelerometer=(), gyroscope=(), magnetometer=(), payment=(), usb=()",
+});
+
 export const meta: MetaFunction = ({ data }) => {
   const typedData = data as UseDataFunctionReturn<typeof loader>;
   return [

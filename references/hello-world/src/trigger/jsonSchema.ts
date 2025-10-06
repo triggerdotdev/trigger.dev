@@ -1,5 +1,6 @@
 import { task, schemaTask, logger, type JSONSchema } from "@trigger.dev/sdk/v3";
-import { z } from "zod";
+import { z } from "zod/v3";
+import * as z4 from "zod/v4";
 import * as y from "yup";
 import { type } from "arktype";
 import { Type, Static } from "@sinclair/typebox";
@@ -23,6 +24,38 @@ const userSchema = z.object({
 export const processUserWithZod = schemaTask({
   id: "json-schema-zod-example",
   schema: userSchema,
+  run: async (payload, { ctx }) => {
+    // payload is fully typed based on the Zod schema
+    logger.info("Processing user with Zod schema", {
+      userId: payload.id,
+      userName: payload.name,
+    });
+
+    // The schema is automatically converted to JSON Schema and synced
+    return {
+      processed: true,
+      userId: payload.id,
+      welcomeMessage: `Welcome ${payload.name}!`,
+    };
+  },
+});
+
+const userSchema4 = z4.object({
+  id: z4.uuid(),
+  name: z4.string().min(1),
+  email: z4.email(),
+  age: z4.number().int().min(0).max(150),
+  preferences: z4
+    .object({
+      newsletter: z4.boolean().default(false),
+      theme: z4.enum(["light", "dark"]).default("light"),
+    })
+    .optional(),
+});
+
+export const processUserWithZod4 = schemaTask({
+  id: "json-schema-zod-example-4",
+  schema: userSchema4,
   run: async (payload, { ctx }) => {
     // payload is fully typed based on the Zod schema
     logger.info("Processing user with Zod schema", {

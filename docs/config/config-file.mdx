@@ -99,16 +99,16 @@ import { defineConfig } from "@trigger.dev/sdk";
 export default defineConfig({
   project: "<project ref>",
   // Your other config settings...
-  onSuccess: async (payload, output, { ctx }) => {
+  onSuccess: async ({ payload, output, ctx }) => {
     console.log("Task succeeded", ctx.task.id);
   },
-  onFailure: async (payload, error, { ctx }) => {
+  onFailure: async ({ payload, error, ctx }) => {
     console.log("Task failed", ctx.task.id);
   },
-  onStart: async (payload, { ctx }) => {
+  onStart: async ({ payload, ctx }) => {
     console.log("Task started", ctx.task.id);
   },
-  init: async (payload, { ctx }) => {
+  init: async ({ payload, ctx }) => {
     console.log("I run before any task is run");
   },
 });

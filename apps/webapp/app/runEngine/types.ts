@@ -143,16 +143,24 @@ export type TracedEventSpan = {
 export interface TraceEventConcern {
   traceRun<T>(
     request: TriggerTaskRequest,
-    callback: (span: TracedEventSpan) => Promise<T>
+    parentStore: string | undefined,
+    callback: (span: TracedEventSpan, store: string) => Promise<T>
   ): Promise<T>;
   traceIdempotentRun<T>(
     request: TriggerTaskRequest,
+    parentStore: string | undefined,
     options: {
       existingRun: TaskRun;
       idempotencyKey: string;
       incomplete: boolean;
       isError: boolean;
     },
-    callback: (span: TracedEventSpan) => Promise<T>
+    callback: (span: TracedEventSpan, store: string) => Promise<T>
   ): Promise<T>;
+}
+
+export type TriggerRacepoints = "idempotencyKey";
+
+export interface TriggerRacepointSystem {
+  waitForRacepoint(options: { racepoint: TriggerRacepoints; id: string }): Promise<void>;
 }

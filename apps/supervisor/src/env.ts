@@ -85,6 +85,12 @@ const Env = z.object({
   KUBERNETES_EPHEMERAL_STORAGE_SIZE_LIMIT: z.string().default("10Gi"),
   KUBERNETES_EPHEMERAL_STORAGE_SIZE_REQUEST: z.string().default("2Gi"),
   KUBERNETES_STRIP_IMAGE_DIGEST: BoolEnv.default(false),
+  KUBERNETES_CPU_REQUEST_MIN_CORES: z.coerce.number().min(0).default(0),
+  KUBERNETES_CPU_REQUEST_RATIO: z.coerce.number().min(0).max(1).default(0.75), // Ratio of CPU limit, so 0.75 = 75% of CPU limit
+  KUBERNETES_MEMORY_REQUEST_MIN_GB: z.coerce.number().min(0).default(0),
+  KUBERNETES_MEMORY_REQUEST_RATIO: z.coerce.number().min(0).max(1).default(1), // Ratio of memory limit, so 1 = 100% of memory limit
+  KUBERNETES_MEMORY_OVERHEAD_GB: z.coerce.number().min(0).optional(), // Optional memory overhead to add to the limit in GB
+  KUBERNETES_SCHEDULER_NAME: z.string().optional(), // Custom scheduler name for pods
 
   // Placement tags settings
   PLACEMENT_TAGS_ENABLED: BoolEnv.default(false),

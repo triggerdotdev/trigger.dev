@@ -8,10 +8,12 @@ export function CopyableText({
   value,
   copyValue,
   className,
+  asChild,
 }: {
   value: string;
   copyValue?: string;
   className?: string;
+  asChild?: boolean;
 }) {
   const [isHovered, setIsHovered] = useState(false);
   const { copy, copied } = useCopy(copyValue ?? value);
@@ -35,6 +37,7 @@ export function CopyableText({
             <span
               className={cn(
                 "ml-1 flex size-6 items-center justify-center rounded border border-charcoal-650 bg-charcoal-750",
+                asChild && "p-1",
                 copied
                   ? "text-green-500"
                   : "text-text-dimmed hover:border-charcoal-600 hover:bg-charcoal-700 hover:text-text-bright"
@@ -50,6 +53,7 @@ export function CopyableText({
           content={copied ? "Copied!" : "Copy"}
           className="font-sans"
           disableHoverableContent
+          asChild={asChild}
         />
       </span>
     </span>

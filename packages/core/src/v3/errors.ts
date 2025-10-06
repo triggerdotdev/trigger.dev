@@ -352,6 +352,7 @@ export function shouldLookupRetrySettings(error: TaskRunError): boolean {
       switch (error.code) {
         case "TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE":
         case "TASK_PROCESS_SIGTERM":
+        case "TASK_PROCESS_SIGSEGV":
           return true;
 
         default:
@@ -569,14 +570,14 @@ const prettyInternalErrors: Partial<
   Record<
     TaskRunInternalError["code"],
     {
-      message: string;
+      message?: string;
       link?: ErrorLink;
     }
   >
 > = {
   TASK_PROCESS_OOM_KILLED: {
     message:
-      "Your task ran out of memory. Try increasing the machine specs. If this doesn't fix it there might be a memory leak.",
+      "Your run was terminated due to exceeding the machine's memory limit. Try increasing the machine preset in your task options or replay using a larger machine.",
     link: {
       name: "Machines",
       href: links.docs.machines.home,
@@ -584,7 +585,7 @@ const prettyInternalErrors: Partial<
   },
   TASK_PROCESS_MAYBE_OOM_KILLED: {
     message:
-      "We think your task ran out of memory, but we can't be certain. If this keeps happening, try increasing the machine specs.",
+      "Your run was terminated due to exceeding the machine's memory limit. Try increasing the machine preset in your task options or replay using a larger machine.",
     link: {
       name: "Machines",
       href: links.docs.machines.home,
@@ -630,6 +631,12 @@ const prettyInternalErrors: Partial<
     link: {
       name: "See docs for help",
       href: links.docs.concurrency.recursiveDeadlock,
+    },
+  },
+  TASK_RUN_STALLED_EXECUTING: {
+    link: {
+      name: "Read our troubleshooting guide",
+      href: links.docs.troubleshooting.stalledExecution,
     },
   },
 };

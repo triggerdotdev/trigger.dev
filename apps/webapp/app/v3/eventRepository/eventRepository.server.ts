@@ -1,238 +1,76 @@
-import { Attributes, AttributeValue, Link, trace, TraceFlags, Tracer } from "@opentelemetry/api";
+import { Attributes, AttributeValue, trace, Tracer } from "@opentelemetry/api";
 import { RandomIdGenerator } from "@opentelemetry/sdk-trace-base";
 import { SemanticResourceAttributes } from "@opentelemetry/semantic-conventions";
 import {
+  AttemptFailedSpanEvent,
   correctErrorStackTrace,
-  createPacketAttributesAsJson,
   ExceptionEventProperties,
   ExceptionSpanEvent,
   flattenAttributes,
   isExceptionSpanEvent,
-  NULL_SENTINEL,
-  omit,
+  nanosecondsToMilliseconds,
   PRIMARY_VARIANT,
   SemanticInternalAttributes,
   SpanEvent,
   SpanEvents,
-  SpanMessagingEvent,
-  TaskEventEnvironment,
   TaskEventStyle,
   TaskRunError,
   unflattenAttributes,
 } from "@trigger.dev/core/v3";
-import { parseTraceparent, serializeTraceparent } from "@trigger.dev/core/v3/isomorphic";
-import { Prisma, TaskEvent, TaskEventKind, TaskEventStatus } from "@trigger.dev/database";
+import { serializeTraceparent } from "@trigger.dev/core/v3/isomorphic";
+import { Prisma, TaskEvent, TaskEventKind } from "@trigger.dev/database";
 import { nanoid } from "nanoid";
-import { createHash } from "node:crypto";
-import { EventEmitter } from "node:stream";
 import { Gauge } from "prom-client";
 import { $replica, prisma, PrismaClient, PrismaReplicaClient } from "~/db.server";
 import { env } from "~/env.server";
 import { metricsRegister } from "~/metrics.server";
-import { createRedisClient, RedisClient, RedisWithClusterOptions } from "~/redis.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
-import { DynamicFlushScheduler } from "./dynamicFlushScheduler.server";
-import { DetailedTraceEvent, TaskEventStore, TaskEventStoreTable } from "./taskEventStore.server";
-import { startActiveSpan } from "./tracer.server";
-import { startSpan } from "./tracing.server";
+import { DynamicFlushScheduler } from "../dynamicFlushScheduler.server";
+import { tracePubSub } from "../services/tracePubSub.server";
+import { DetailedTraceEvent, TaskEventStore, TaskEventStoreTable } from "../taskEventStore.server";
+import { startActiveSpan } from "../tracer.server";
+import { startSpan } from "../tracing.server";
+import {
+  calculateDurationFromStart,
+  convertDateToNanoseconds,
+  createExceptionPropertiesFromError,
+  extractContextFromCarrier,
+  generateDeterministicSpanId,
+  generateSpanId,
+  generateTraceId,
+  getDateFromNanoseconds,
+  getNowInNanoseconds,
+  isEmptyObject,
+  parseEventsField,
+  removePrivateProperties,
+  stripAttributePrefix,
+} from "./common.server";
+import type {
+  CompleteableTaskRun,
+  CreateEventInput,
+  EventBuilder,
+  EventRepoConfig,
+  IEventRepository,
+  PreparedDetailedEvent,
+  PreparedEvent,
+  QueriedEvent,
+  RunPreparedEvent,
+  SpanDetail,
+  SpanDetailedSummary,
+  SpanSummary,
+  TraceAttributes,
+  TraceDetailedSummary,
+  TraceEventOptions,
+  TraceSummary,
+} from "./eventRepository.types";
+import { originalRunIdCache } from "./originalRunIdCache.server";
 
 const MAX_FLUSH_DEPTH = 5;
 
-export type CreatableEvent = Omit<
-  Prisma.TaskEventCreateInput,
-  "id" | "createdAt" | "properties" | "metadata" | "style" | "output" | "payload"
-> & {
-  properties: Attributes;
-  metadata: Attributes | undefined;
-  style: Attributes | undefined;
-  output: Attributes | string | boolean | number | undefined;
-  payload: Attributes | string | boolean | number | undefined;
-};
-
-export type CreatableEventKind = TaskEventKind;
-export type CreatableEventStatus = TaskEventStatus;
-export type CreatableEventEnvironmentType = CreatableEvent["environmentType"];
-
-export type TraceAttributes = Partial<
-  Pick<
-    CreatableEvent,
-    | "attemptId"
-    | "isError"
-    | "isCancelled"
-    | "isDebug"
-    | "runId"
-    | "runIsTest"
-    | "output"
-    | "outputType"
-    | "metadata"
-    | "properties"
-    | "style"
-    | "queueId"
-    | "queueName"
-    | "batchId"
-    | "payload"
-    | "payloadType"
-    | "idempotencyKey"
-  >
->;
-
-export type SetAttribute<T extends TraceAttributes> = (key: keyof T, value: T[keyof T]) => void;
-
-export type TraceEventOptions = {
-  kind?: CreatableEventKind;
-  context?: Record<string, unknown>;
-  spanParentAsLink?: boolean;
-  parentAsLinkType?: "trigger" | "replay";
-  spanIdSeed?: string;
-  attributes: TraceAttributes;
-  environment: TaskEventEnvironment;
-  taskSlug: string;
-  startTime?: bigint;
-  endTime?: Date;
-  immediate?: boolean;
-};
-
-export type EventBuilder = {
-  traceId: string;
-  spanId: string;
-  setAttribute: SetAttribute<TraceAttributes>;
-  stop: () => void;
-  failWithError: (error: TaskRunError) => void;
-};
-
-export type EventRepoConfig = {
-  batchSize: number;
-  batchInterval: number;
-  redis: RedisWithClusterOptions;
-  retentionInDays: number;
-  partitioningEnabled: boolean;
-  tracer?: Tracer;
-  minConcurrency?: number;
-  maxConcurrency?: number;
-  maxBatchSize?: number;
-  memoryPressureThreshold?: number;
-  loadSheddingThreshold?: number;
-  loadSheddingEnabled?: boolean;
-};
-
-export type QueryOptions = Prisma.TaskEventWhereInput;
-
-export type TaskEventRecord = TaskEvent;
-
-export type QueriedEvent = Prisma.TaskEventGetPayload<{
-  select: {
-    spanId: true;
-    parentId: true;
-    runId: true;
-    idempotencyKey: true;
-    message: true;
-    style: true;
-    startTime: true;
-    duration: true;
-    isError: true;
-    isPartial: true;
-    isCancelled: true;
-    level: true;
-    events: true;
-    environmentType: true;
-    kind: true;
-  };
-}>;
-
-export type PreparedEvent = Omit<QueriedEvent, "events" | "style" | "duration"> & {
-  duration: number;
-  events: SpanEvents;
-  style: TaskEventStyle;
-};
-
-export type PreparedDetailedEvent = Omit<DetailedTraceEvent, "events" | "style" | "duration"> & {
-  duration: number;
-  events: SpanEvents;
-  style: TaskEventStyle;
-};
-
-export type RunPreparedEvent = PreparedEvent & {
-  taskSlug?: string;
-};
-
-export type SpanLink =
-  | {
-      type: "run";
-      icon?: string;
-      title: string;
-      runId: string;
-    }
-  | {
-      type: "span";
-      icon?: string;
-      title: string;
-      traceId: string;
-      spanId: string;
-    };
-
-export type SpanSummary = {
-  id: string;
-  parentId: string | undefined;
-  runId: string;
-  data: {
-    message: string;
-    style: TaskEventStyle;
-    events: SpanEvents;
-    startTime: Date;
-    duration: number;
-    isError: boolean;
-    isPartial: boolean;
-    isCancelled: boolean;
-    isDebug: boolean;
-    level: NonNullable<CreatableEvent["level"]>;
-    environmentType: CreatableEventEnvironmentType;
-  };
-};
-
-export type TraceSummary = { rootSpan: SpanSummary; spans: Array<SpanSummary> };
-
-export type SpanDetailedSummary = {
-  id: string;
-  parentId: string | undefined;
-  message: string;
-  data: {
-    runId: string;
-    taskSlug?: string;
-    taskPath?: string;
-    events: SpanEvents;
-    startTime: Date;
-    duration: number;
-    isError: boolean;
-    isPartial: boolean;
-    isCancelled: boolean;
-    level: NonNullable<CreatableEvent["level"]>;
-    environmentType: CreatableEventEnvironmentType;
-    workerVersion?: string;
-    queueName?: string;
-    machinePreset?: string;
-    properties?: Attributes;
-    output?: Attributes;
-  };
-  children: Array<SpanDetailedSummary>;
-};
-
-export type TraceDetailedSummary = {
-  traceId: string;
-  rootSpan: SpanDetailedSummary;
-};
-
-export type UpdateEventOptions = {
-  attributes: TraceAttributes;
-  endTime?: Date;
-  immediate?: boolean;
-  events?: SpanEvents;
-};
-
-export class EventRepository {
-  private readonly _flushScheduler: DynamicFlushScheduler<CreatableEvent>;
+export class EventRepository implements IEventRepository {
+  private readonly _flushScheduler: DynamicFlushScheduler<Prisma.TaskEventCreateManyInput>;
   private _randomIdGenerator = new RandomIdGenerator();
-  private _redisPublishClient: RedisClient;
   private _subscriberCount = 0;
   private _tracer: Tracer;
   private _lastFlushedAt: Date | undefined;
@@ -244,6 +82,10 @@ export class EventRepository {
 
   get flushSchedulerStatus() {
     return this._flushScheduler.getStatus();
+  }
+
+  get maximumLiveReloadingSetting() {
+    return env.MAXIMUM_LIVE_RELOADING_EVENTS;
   }
 
   constructor(
@@ -261,107 +103,304 @@ export class EventRepository {
       memoryPressureThreshold: _config.memoryPressureThreshold,
       loadSheddingThreshold: _config.loadSheddingThreshold,
       loadSheddingEnabled: _config.loadSheddingEnabled,
-      isDroppableEvent: (event: CreatableEvent) => {
+      isDroppableEvent: (event: Prisma.TaskEventCreateManyInput) => {
         // Only drop LOG events during load shedding
         return event.kind === TaskEventKind.LOG;
       },
     });
 
-    this._redisPublishClient = createRedisClient("trigger:eventRepoPublisher", this._config.redis);
     this._tracer = _config.tracer ?? trace.getTracer("eventRepo", "0.0.1");
 
     // Instantiate the store using the partitioning flag.
     this.taskEventStore = new TaskEventStore(db, readReplica);
   }
 
-  async insert(event: CreatableEvent) {
-    this._flushScheduler.addToBatch([event]);
+  #createableEventToPrismaEvent(event: CreateEventInput): Prisma.TaskEventCreateManyInput {
+    return {
+      message: event.message,
+      traceId: event.traceId,
+      spanId: event.spanId,
+      parentId: event.parentId,
+      isError: event.isError,
+      isPartial: event.isPartial,
+      isCancelled: event.isCancelled,
+      serviceName: "",
+      serviceNamespace: "",
+      level: event.level,
+      kind: event.kind,
+      status: event.status,
+      links: [],
+      events: event.events,
+      startTime: event.startTime,
+      duration: event.duration,
+      attemptNumber: event.attemptNumber,
+      environmentId: event.environmentId,
+      environmentType: event.environmentType,
+      organizationId: event.organizationId,
+      projectId: event.projectId,
+      projectRef: "",
+      runId: event.runId,
+      runIsTest: false,
+      taskSlug: event.taskSlug,
+      properties: event.properties as Prisma.InputJsonValue,
+      metadata: event.metadata as Prisma.InputJsonValue,
+      style: event.style as Prisma.InputJsonValue,
+    };
   }
 
-  async insertImmediate(event: CreatableEvent) {
-    await this.#flushBatch(nanoid(), [event]);
+  private async insertImmediate(event: CreateEventInput) {
+    await this.#flushBatch(nanoid(), [this.#createableEventToPrismaEvent(event)]);
   }
 
-  async insertMany(events: CreatableEvent[]) {
-    this._flushScheduler.addToBatch(events);
+  async insertMany(events: CreateEventInput[]) {
+    this._flushScheduler.addToBatch(events.map(this.#createableEventToPrismaEvent));
   }
 
-  async insertManyImmediate(events: CreatableEvent[]) {
-    return await this.#flushBatch(nanoid(), events);
+  async insertManyImmediate(events: CreateEventInput[]) {
+    await this.#flushBatchWithReturn(nanoid(), events.map(this.#createableEventToPrismaEvent));
   }
 
-  async completeEvent(
-    storeTable: TaskEventStoreTable,
-    spanId: string,
-    startCreatedAt: Date,
-    endCreatedAt?: Date,
-    options?: UpdateEventOptions
-  ) {
-    const events = await this.queryIncompleteEvents(
-      storeTable,
-      { spanId },
-      startCreatedAt,
-      endCreatedAt
-    );
-
-    if (events.length === 0) {
-      logger.warn("No incomplete events found for spanId", { spanId, options });
-      return;
-    }
-
-    const event = events[0];
-
-    const output = options?.attributes.output
-      ? await createPacketAttributesAsJson(
-          options?.attributes.output,
-          options?.attributes.outputType ?? "application/json"
-        )
-      : undefined;
-
-    logger.debug("Completing event", {
-      spanId,
-      eventId: event.id,
-    });
-
-    const completedEvent = {
-      ...omit(event, "id"),
-      isPartial: false,
-      isError: options?.attributes.isError ?? false,
-      isCancelled: false,
-      status: options?.attributes.isError ? "ERROR" : "OK",
-      links: event.links ?? [],
-      events: event.events ?? (options?.events as any) ?? [],
-      duration: calculateDurationFromStart(event.startTime, options?.endTime),
-      properties: event.properties as Attributes,
-      metadata: event.metadata as Attributes,
-      style: event.style as Attributes,
-      output: output,
-      outputType:
-        options?.attributes.outputType === "application/store" ||
-        options?.attributes.outputType === "text/plain"
-          ? options?.attributes.outputType
-          : "application/json",
-      payload: event.payload as Attributes,
-      payloadType: event.payloadType,
-    } satisfies CreatableEvent;
-
-    await this.insert(completedEvent);
-
-    return completedEvent;
-  }
-
-  async cancelEvent(event: TaskEventRecord, cancelledAt: Date, reason: string) {
-    if (!event.isPartial) {
-      return;
-    }
+  async completeSuccessfulRunEvent({ run, endTime }: { run: CompleteableTaskRun; endTime?: Date }) {
+    const startTime = convertDateToNanoseconds(run.createdAt);
 
     await this.insertImmediate({
-      ...omit(event, "id"),
+      message: run.taskIdentifier,
+      level: "TRACE",
+      kind: "SERVER",
+      traceId: run.traceId,
+      spanId: run.spanId,
+      parentId: run.parentSpanId,
+      runId: run.friendlyId,
+      projectId: run.projectId,
+      taskSlug: run.taskIdentifier,
+      environmentId: run.runtimeEnvironmentId,
+      environmentType: "DEVELOPMENT",
+      organizationId: run.organizationId ?? "",
       isPartial: false,
       isError: false,
+      isCancelled: false,
+      status: "OK",
+      startTime,
+      properties: {},
+      metadata: undefined,
+      style: undefined,
+      duration: calculateDurationFromStart(startTime, endTime ?? new Date()),
+    });
+  }
+
+  async completeCachedRunEvent({
+    run,
+    blockedRun,
+    endTime,
+    spanId,
+    parentSpanId,
+    spanCreatedAt,
+    isError,
+  }: {
+    run: CompleteableTaskRun;
+    blockedRun: CompleteableTaskRun;
+    spanId: string;
+    parentSpanId: string;
+    spanCreatedAt: Date;
+    isError: boolean;
+    endTime?: Date;
+  }) {
+    const startTime = convertDateToNanoseconds(spanCreatedAt);
+
+    await this.insertImmediate({
+      message: run.taskIdentifier,
+      level: "TRACE",
+      kind: "SERVER",
+      traceId: blockedRun.traceId,
+      spanId: spanId,
+      parentId: parentSpanId,
+      runId: blockedRun.friendlyId,
+      projectId: run.projectId,
+      taskSlug: run.taskIdentifier,
+      environmentId: run.runtimeEnvironmentId,
+      environmentType: "DEVELOPMENT",
+      organizationId: run.organizationId ?? "",
+      isPartial: false,
+      isError,
+      isCancelled: false,
+      status: "OK",
+      startTime,
+      properties: {},
+      metadata: undefined,
+      style: undefined,
+      duration: calculateDurationFromStart(startTime, endTime ?? new Date()),
+    });
+  }
+
+  async completeFailedRunEvent({
+    run,
+    endTime,
+    exception,
+  }: {
+    run: CompleteableTaskRun;
+    endTime?: Date;
+    exception: { message?: string; type?: string; stacktrace?: string };
+  }) {
+    const startTime = convertDateToNanoseconds(run.createdAt);
+
+    await this.insertImmediate({
+      message: run.taskIdentifier,
+      level: "TRACE",
+      kind: "SERVER",
+      traceId: run.traceId,
+      spanId: run.spanId,
+      parentId: run.parentSpanId,
+      runId: run.friendlyId,
+      projectId: run.projectId,
+      taskSlug: run.taskIdentifier,
+      environmentId: run.runtimeEnvironmentId,
+      environmentType: "DEVELOPMENT",
+      organizationId: run.organizationId ?? "",
+      isPartial: false,
+      isError: true,
+      isCancelled: false,
+      status: "ERROR",
+      startTime,
+      events: [
+        {
+          name: "exception",
+          time: endTime ?? new Date(),
+          properties: {
+            exception,
+          },
+        },
+      ],
+      properties: {},
+      metadata: undefined,
+      style: undefined,
+      duration: calculateDurationFromStart(startTime, endTime ?? new Date()),
+    });
+  }
+
+  async completeExpiredRunEvent({
+    run,
+    endTime,
+    ttl,
+  }: {
+    run: CompleteableTaskRun;
+    endTime?: Date;
+    ttl: string;
+  }) {
+    const startTime = convertDateToNanoseconds(run.createdAt);
+
+    await this.insertImmediate({
+      message: run.taskIdentifier,
+      level: "TRACE",
+      kind: "SERVER",
+      traceId: run.traceId,
+      spanId: run.spanId,
+      parentId: run.parentSpanId,
+      runId: run.friendlyId,
+      projectId: run.projectId,
+      taskSlug: run.taskIdentifier,
+      environmentId: run.runtimeEnvironmentId,
+      environmentType: "DEVELOPMENT",
+      organizationId: run.organizationId ?? "",
+      isPartial: false,
+      isError: true,
+      isCancelled: false,
+      status: "ERROR",
+      startTime,
+      events: [
+        {
+          name: "exception",
+          time: endTime ?? new Date(),
+          properties: {
+            exception: {
+              message: `Run expired because the TTL (${ttl}) was reached`,
+            },
+          },
+        },
+      ],
+      properties: {},
+      metadata: undefined,
+      style: undefined,
+      duration: calculateDurationFromStart(startTime, endTime ?? new Date()),
+    });
+  }
+
+  async createAttemptFailedRunEvent({
+    run,
+    endTime,
+    attemptNumber,
+    exception,
+  }: {
+    run: CompleteableTaskRun;
+    endTime?: Date;
+    attemptNumber: number;
+    exception: { message?: string; type?: string; stacktrace?: string };
+  }) {
+    const startTime = convertDateToNanoseconds(run.createdAt);
+
+    await this.insertImmediate({
+      message: run.taskIdentifier,
+      level: "TRACE",
+      kind: "UNSPECIFIED", // This will be treated as an "invisible" event
+      traceId: run.traceId,
+      spanId: run.spanId,
+      parentId: run.parentSpanId,
+      runId: run.friendlyId,
+      projectId: run.projectId,
+      taskSlug: run.taskIdentifier,
+      environmentId: run.runtimeEnvironmentId,
+      environmentType: "DEVELOPMENT",
+      organizationId: run.organizationId ?? "",
+      isPartial: true,
+      isError: false,
+      isCancelled: false,
+      status: "OK",
+      startTime,
+      events: [
+        {
+          name: "attempt_failed",
+          time: endTime ?? new Date(),
+          properties: {
+            exception,
+            attemptNumber,
+            runId: run.friendlyId,
+          },
+        } satisfies AttemptFailedSpanEvent,
+      ],
+      properties: {},
+      metadata: undefined,
+      style: undefined,
+      duration: calculateDurationFromStart(startTime, endTime ?? new Date()),
+    });
+  }
+
+  async cancelRunEvent({
+    reason,
+    run,
+    cancelledAt,
+  }: {
+    reason: string;
+    run: CompleteableTaskRun;
+    cancelledAt: Date;
+  }) {
+    const startTime = convertDateToNanoseconds(run.createdAt);
+
+    await this.insertImmediate({
+      message: run.taskIdentifier,
+      level: "TRACE",
+      kind: "SERVER",
+      traceId: run.traceId,
+      spanId: run.spanId,
+      parentId: run.parentSpanId,
+      runId: run.friendlyId,
+      projectId: run.projectId,
+      taskSlug: run.taskIdentifier,
+      environmentId: run.runtimeEnvironmentId,
+      environmentType: "DEVELOPMENT",
+      organizationId: run.organizationId ?? "",
+      isPartial: false,
+      isError: true,
       isCancelled: true,
       status: "ERROR",
-      links: event.links ?? [],
       events: [
         {
           name: "cancellation",
@@ -370,168 +409,18 @@ export class EventRepository {
             reason,
           },
         },
-        ...((event.events as any[]) ?? []),
       ],
-      duration: calculateDurationFromStart(event.startTime, cancelledAt),
-      properties: event.properties as Attributes,
-      metadata: event.metadata as Attributes,
-      style: event.style as Attributes,
-      output: event.output as Attributes,
-      outputType: event.outputType,
-      payload: event.payload as Attributes,
-      payloadType: event.payloadType,
+      startTime,
+      properties: {},
+      metadata: undefined,
+      style: undefined,
+      duration: calculateDurationFromStart(startTime, cancelledAt),
     });
-  }
-
-  async cancelEvents(events: TaskEventRecord[], cancelledAt: Date, reason: string) {
-    const eventsToCancel = events.filter((event) => event.isPartial);
-
-    if (eventsToCancel.length === 0) {
-      return;
-    }
-
-    await this.insertMany(
-      eventsToCancel.map((event) => ({
-        ...omit(event, "id"),
-        isPartial: false,
-        isError: false,
-        isCancelled: true,
-        status: "ERROR",
-        links: event.links ?? [],
-        events: [
-          {
-            name: "cancellation",
-            time: cancelledAt,
-            properties: {
-              reason,
-            },
-          },
-          ...((event.events as any[]) ?? []),
-        ],
-        duration: calculateDurationFromStart(event.startTime, cancelledAt),
-        properties: event.properties as Attributes,
-        metadata: event.metadata as Attributes,
-        style: event.style as Attributes,
-        output: event.output as Attributes,
-        outputType: event.outputType,
-        payload: event.payload as Attributes,
-        payloadType: event.payloadType,
-      }))
-    );
-  }
-
-  async crashEvent({
-    event,
-    crashedAt,
-    exception,
-  }: {
-    event: TaskEventRecord;
-    crashedAt: Date;
-    exception: ExceptionEventProperties;
-  }) {
-    if (!event.isPartial) {
-      return;
-    }
-
-    await this.insertImmediate({
-      ...omit(event, "id"),
-      isPartial: false,
-      isError: true,
-      isCancelled: false,
-      status: "ERROR",
-      links: event.links ?? [],
-      events: [
-        {
-          name: "exception",
-          time: crashedAt,
-          properties: {
-            exception,
-          },
-        } satisfies ExceptionSpanEvent,
-        ...((event.events as any[]) ?? []),
-      ],
-      duration: calculateDurationFromStart(event.startTime, crashedAt),
-      properties: event.properties as Attributes,
-      metadata: event.metadata as Attributes,
-      style: event.style as Attributes,
-      output: event.output as Attributes,
-      outputType: event.outputType,
-      payload: event.payload as Attributes,
-      payloadType: event.payloadType,
-    });
-  }
-
-  async #queryEvents(
-    storeTable: TaskEventStoreTable,
-    queryOptions: QueryOptions,
-    startCreatedAt: Date,
-    endCreatedAt?: Date
-  ): Promise<TaskEventRecord[]> {
-    return await this.taskEventStore.findMany(
-      storeTable,
-      queryOptions,
-      startCreatedAt,
-      endCreatedAt
-    );
-  }
-
-  async queryIncompleteEvents(
-    storeTable: TaskEventStoreTable,
-    queryOptions: QueryOptions,
-    startCreatedAt: Date,
-    endCreatedAt?: Date,
-    allowCompleteDuplicate = false
-  ) {
-    // First we will find all the events that match the query options (selecting minimal data).
-    const taskEvents = await this.taskEventStore.findMany(
-      storeTable,
-      queryOptions,
-      startCreatedAt,
-      endCreatedAt,
-      { spanId: true, isPartial: true, isCancelled: true },
-      undefined,
-      { limit: 500 }
-    );
-
-    // Optimize the filtering by pre-processing the data
-    const completeEventSpanIds = new Set<string>();
-    const incompleteEvents: Array<{ spanId: string }> = [];
-
-    // Single pass to categorize events and build lookup structures
-    for (const event of taskEvents) {
-      if (!event.isPartial && !event.isCancelled) {
-        // This is a complete event
-        completeEventSpanIds.add(event.spanId);
-      } else if (event.isPartial && !event.isCancelled) {
-        // This is a potentially incomplete event
-        incompleteEvents.push(event);
-      }
-      // Skip cancelled events as they are not incomplete
-    }
-
-    // Filter incomplete events, excluding those with complete duplicates
-    const filteredTaskEvents = allowCompleteDuplicate
-      ? incompleteEvents
-      : incompleteEvents.filter((event) => !completeEventSpanIds.has(event.spanId));
-
-    if (filteredTaskEvents.length === 0) {
-      return [];
-    }
-
-    return this.#queryEvents(
-      storeTable,
-      {
-        spanId: {
-          in: filteredTaskEvents.map((event) => event.spanId),
-        },
-      },
-      startCreatedAt,
-      endCreatedAt
-    );
   }
 
   public async getTraceSummary(
     storeTable: TaskEventStoreTable,
+    environmentId: string,
     traceId: string,
     startCreatedAt: Date,
     endCreatedAt?: Date,
@@ -566,8 +455,25 @@ export class EventRepository {
           continue;
         }
 
+        // This is an invisible event, and we just want to keep the original event but concat together
+        // the event.events with the existingEvent.events
+        if (event.kind === "UNSPECIFIED") {
+          eventsBySpanId.set(event.spanId, {
+            ...existingEvent,
+            events: [...(existingEvent.events ?? []), ...(event.events ?? [])],
+          });
+          continue;
+        }
+
         if (event.isCancelled || !event.isPartial) {
-          eventsBySpanId.set(event.spanId, event);
+          const mergedEvent: PreparedEvent = {
+            ...event,
+            // Preserve style from the original partial event
+            style: existingEvent.style,
+            events: [...(existingEvent.events ?? []), ...(event.events ?? [])],
+          };
+          eventsBySpanId.set(event.spanId, mergedEvent);
+          continue;
         }
       }
 
@@ -576,30 +482,39 @@ export class EventRepository {
       const spansBySpanId = new Map<string, SpanSummary>();
 
       const spans = preparedEvents.map((event) => {
-        const ancestorCancelled = isAncestorCancelled(eventsBySpanId, event.spanId);
-        const duration = calculateDurationIfAncestorIsCancelled(
-          eventsBySpanId,
-          event.spanId,
-          event.duration
-        );
+        const overrides = getAncestorOverrides({
+          spansById: eventsBySpanId,
+          span: event,
+        });
+
+        const ancestorCancelled = overrides?.isCancelled ?? false;
+        const ancestorIsError = overrides?.isError ?? false;
+        const duration = overrides?.duration ?? event.duration;
+        const events = [...(overrides?.events ?? []), ...(event.events ?? [])];
+        const isPartial = ancestorCancelled || ancestorIsError ? false : event.isPartial;
+        const isCancelled =
+          event.isCancelled === true ? true : event.isPartial && ancestorCancelled;
+        const isError = isCancelled
+          ? false
+          : typeof overrides?.isError === "boolean"
+          ? overrides.isError
+          : event.isError;
 
         const span = {
           id: event.spanId,
           parentId: event.parentId ?? undefined,
           runId: event.runId,
-          idempotencyKey: event.idempotencyKey,
           data: {
             message: event.message,
             style: event.style,
             duration,
-            isError: event.isError,
-            isPartial: ancestorCancelled ? false : event.isPartial,
-            isCancelled: event.isCancelled === true ? true : event.isPartial && ancestorCancelled,
+            isError,
+            isPartial,
+            isCancelled,
             isDebug: event.kind === TaskEventKind.LOG,
             startTime: getDateFromNanoseconds(event.startTime),
             level: event.level,
-            events: event.events,
-            environmentType: event.environmentType,
+            events,
           },
         };
 
@@ -627,6 +542,7 @@ export class EventRepository {
 
   public async getTraceDetailedSummary(
     storeTable: TaskEventStoreTable,
+    environmentId: string,
     traceId: string,
     startCreatedAt: Date,
     endCreatedAt?: Date,
@@ -661,8 +577,29 @@ export class EventRepository {
           continue;
         }
 
+        // This is an invisible event, and we just want to keep the original event but concat together
+        // the event.events with the existingEvent.events
+        if (event.kind === "UNSPECIFIED") {
+          eventsBySpanId.set(event.spanId, {
+            ...existingEvent,
+            events: [...(existingEvent.events ?? []), ...(event.events ?? [])],
+          });
+          continue;
+        }
+
         if (event.isCancelled || !event.isPartial) {
-          eventsBySpanId.set(event.spanId, event);
+          // If we have a cancelled event and an existing partial event,
+          // merge them: use cancelled event data but preserve style from the partial event
+          if (event.isCancelled && existingEvent.isPartial && !existingEvent.isCancelled) {
+            const mergedEvent: PreparedDetailedEvent = {
+              ...event, // Use cancelled event as base (has correct timing, status, events)
+              // Preserve style from the original partial event
+              style: existingEvent.style,
+              events: [...(existingEvent.events ?? []), ...(event.events ?? [])],
+            };
+            eventsBySpanId.set(event.spanId, mergedEvent);
+            continue;
+          }
         }
       }
 
@@ -677,14 +614,24 @@ export class EventRepository {
 
       // First pass: create all span detailed summaries
       for (const event of preparedEvents) {
-        const ancestorCancelled = isAncestorCancelled(eventsBySpanId, event.spanId);
-        const duration = calculateDurationIfAncestorIsCancelled(
-          eventsBySpanId,
-          event.spanId,
-          event.duration
-        );
+        const overrides = getAncestorOverrides({
+          spansById: eventsBySpanId,
+          span: event,
+        });
 
-        const output = event.output ? (event.output as Attributes) : undefined;
+        const ancestorCancelled = overrides?.isCancelled ?? false;
+        const ancestorIsError = overrides?.isError ?? false;
+        const duration = overrides?.duration ?? event.duration;
+        const events = [...(overrides?.events ?? []), ...(event.events ?? [])];
+        const isPartial = ancestorCancelled || ancestorIsError ? false : event.isPartial;
+        const isCancelled =
+          event.isCancelled === true ? true : event.isPartial && ancestorCancelled;
+        const isError = isCancelled
+          ? false
+          : typeof overrides?.isError === "boolean"
+          ? overrides.isError
+          : event.isError;
+
         const properties = event.properties
           ? removePrivateProperties(event.properties as Attributes)
           : {};
@@ -692,24 +639,18 @@ export class EventRepository {
         const spanDetailedSummary: SpanDetailedSummary = {
           id: event.spanId,
           parentId: event.parentId ?? undefined,
-          message: event.message,
+          runId: event.runId,
           data: {
-            runId: event.runId,
+            message: event.message,
             taskSlug: event.taskSlug ?? undefined,
-            taskPath: event.taskPath ?? undefined,
-            events: event.events?.filter((e) => !e.name.startsWith("trigger.dev")),
+            events: events?.filter((e) => !e.name.startsWith("trigger.dev")),
             startTime: getDateFromNanoseconds(event.startTime),
             duration: nanosecondsToMilliseconds(duration),
-            isError: event.isError,
-            isPartial: ancestorCancelled ? false : event.isPartial,
-            isCancelled: event.isCancelled === true ? true : event.isPartial && ancestorCancelled,
+            isError,
+            isPartial,
+            isCancelled,
             level: event.level,
-            environmentType: event.environmentType,
-            workerVersion: event.workerVersion ?? undefined,
-            queueName: event.queueName ?? undefined,
-            machinePreset: event.machinePreset ?? undefined,
             properties,
-            output,
           },
           children: [],
         };
@@ -742,6 +683,8 @@ export class EventRepository {
 
   public async getRunEvents(
     storeTable: TaskEventStoreTable,
+    environmentId: string,
+    traceId: string,
     runId: string,
     startCreatedAt: Date,
     endCreatedAt?: Date
@@ -772,12 +715,17 @@ export class EventRepository {
           events: true,
           environmentType: true,
           taskSlug: true,
+          attemptNumber: true,
         }
       );
 
       let preparedEvents: Array<PreparedEvent> = [];
 
       for (const event of events) {
+        if (event.kind === "UNSPECIFIED") {
+          continue;
+        }
+
         preparedEvents.push(prepareEvent(event));
       }
 
@@ -789,20 +737,22 @@ export class EventRepository {
   // And a span's duration, if it is partial and has a cancelled parent, is the time between the start of the span and the time of the cancellation event of the parent
   public async getSpan(
     storeTable: TaskEventStoreTable,
+    environmentId: string,
     spanId: string,
     traceId: string,
     startCreatedAt: Date,
     endCreatedAt?: Date,
     options?: { includeDebugLogs?: boolean }
-  ) {
+  ): Promise<SpanDetail | undefined> {
     return await startActiveSpan("getSpan", async (s) => {
-      const spanEvent = await this.#getSpanEvent(
+      const spanEvent = await this.#getSpanEvent({
         storeTable,
         spanId,
+        environmentId,
         startCreatedAt,
         endCreatedAt,
-        options
-      );
+        options,
+      });
 
       if (!spanEvent) {
         return;
@@ -813,65 +763,20 @@ export class EventRepository {
       const span = await this.#createSpanFromEvent(
         storeTable,
         preparedEvent,
+        environmentId,
         startCreatedAt,
         endCreatedAt
       );
 
-      const output = rehydrateJson(spanEvent.output);
-      const payload = rehydrateJson(spanEvent.payload);
-
-      const show = rehydrateShow(spanEvent.properties);
-
       const properties = sanitizedAttributes(spanEvent.properties);
 
-      const messagingEvent = SpanMessagingEvent.optional().safeParse(
-        (properties as any)?.messaging
-      );
-
-      const links: SpanLink[] = [];
-
-      if (messagingEvent.success && messagingEvent.data) {
-        if (messagingEvent.data.message && "id" in messagingEvent.data.message) {
-          if (messagingEvent.data.message.id.startsWith("run_")) {
-            links.push({
-              type: "run",
-              icon: "runs",
-              title: `Run ${messagingEvent.data.message.id}`,
-              runId: messagingEvent.data.message.id,
-            });
-          }
-        }
-      }
-
-      const backLinks = spanEvent.links as any as Link[] | undefined;
-
-      if (backLinks && backLinks.length > 0) {
-        backLinks.forEach((l) => {
-          const title = String(
-            l.attributes?.[SemanticInternalAttributes.LINK_TITLE] ?? "Triggered by"
-          );
-
-          links.push({
-            type: "span",
-            icon: "trigger",
-            title,
-            traceId: l.context.traceId,
-            spanId: l.context.spanId,
-          });
-        });
-      }
-
       const spanEvents = transformEvents(
-        preparedEvent.events,
+        span.data.events,
         spanEvent.metadata as Attributes,
         spanEvent.environmentType === "DEVELOPMENT"
       );
 
-      const originalRun = rehydrateAttribute<string>(
-        spanEvent.properties,
-        SemanticInternalAttributes.ORIGINAL_RUN_ID
-      );
-
+      // Used for waitpoint token spans
       const entity = {
         type: rehydrateAttribute<string>(
           spanEvent.properties,
@@ -881,34 +786,85 @@ export class EventRepository {
       };
 
       return {
-        ...spanEvent,
-        ...span.data,
-        payload,
-        output,
-        properties,
+        // Core Identity & Structure
+        spanId: spanEvent.spanId,
+        parentId: spanEvent.parentId,
+        message: spanEvent.message,
+
+        // Status & State
+        isError: span.data.isError,
+        isPartial: span.data.isPartial,
+        isCancelled: span.data.isCancelled,
+        level: spanEvent.level,
+        kind: spanEvent.kind,
+
+        // Timing
+        startTime: span.data.startTime,
+        duration: nanosecondsToMilliseconds(span.data.duration),
+
+        // Content & Display
         events: spanEvents,
-        show,
-        links,
-        originalRun,
+        style: span.data.style,
+        properties: properties,
+
+        // Entity & Relationships
         entity,
+
+        // Additional properties
+        metadata: spanEvent.metadata,
       };
+    });
+  }
+
+  async getSpanOriginalRunId(
+    storeTable: TaskEventStoreTable,
+    environmentId: string,
+    spanId: string,
+    traceId: string,
+    startCreatedAt: Date,
+    endCreatedAt?: Date
+  ): Promise<string | undefined> {
+    return await startActiveSpan("getSpanOriginalRunId", async (s) => {
+      return await originalRunIdCache.swr(traceId, spanId, async () => {
+        const spanEvent = await this.#getSpanEvent({
+          storeTable,
+          spanId,
+          environmentId,
+          startCreatedAt,
+          endCreatedAt,
+          options: { includeDebugLogs: false },
+        });
+
+        if (!spanEvent) {
+          return;
+        }
+        // This is used when the span is a cached run (because of idempotency key)
+        // so this span isn't the actual run span, but points to the original run
+        const originalRun = rehydrateAttribute<string>(
+          spanEvent.properties,
+          SemanticInternalAttributes.ORIGINAL_RUN_ID
+        );
+
+        return originalRun;
+      });
     });
   }
 
   async #createSpanFromEvent(
     storeTable: TaskEventStoreTable,
     event: PreparedEvent,
+    environmentId: string,
     startCreatedAt: Date,
     endCreatedAt?: Date
   ) {
     return await startActiveSpan("createSpanFromEvent", async (s) => {
-      let ancestorCancelled = false;
-      let duration = event.duration;
+      let overrides: AncestorOverrides | undefined;
 
       if (!event.isCancelled && event.isPartial) {
         await this.#walkSpanAncestors(
           storeTable,
           event,
+          environmentId,
           startCreatedAt,
           endCreatedAt,
           (ancestorEvent, level) => {
@@ -917,7 +873,9 @@ export class EventRepository {
             }
 
             if (ancestorEvent.isCancelled) {
-              ancestorCancelled = true;
+              overrides = {
+                isCancelled: true,
+              };
 
               // We need to get the cancellation time from the cancellation span event
               const cancellationEvent = ancestorEvent.events.find(
@@ -925,33 +883,70 @@ export class EventRepository {
               );
 
               if (cancellationEvent) {
-                duration = calculateDurationFromStart(event.startTime, cancellationEvent.time);
+                overrides.duration = calculateDurationFromStart(
+                  event.startTime,
+                  cancellationEvent.time
+                );
               }
 
               return { stop: true };
             }
+
+            const attemptFailedEvent = (ancestorEvent.events ?? []).find(
+              (spanEvent) =>
+                spanEvent.name === "attempt_failed" &&
+                spanEvent.properties.attemptNumber === event.attemptNumber
+            );
+
+            if (!attemptFailedEvent) {
+              return { stop: false };
+            }
+
+            overrides = {
+              isError: true,
+              events: [
+                {
+                  name: "exception",
+                  time: attemptFailedEvent.time,
+                  properties: {
+                    exception: (attemptFailedEvent as AttemptFailedSpanEvent).properties.exception,
+                  },
+                },
+              ],
+              duration: calculateDurationFromStart(event.startTime, attemptFailedEvent.time),
+            };
 
             return { stop: false };
           }
         );
       }
 
+      const ancestorCancelled = overrides?.isCancelled ?? false;
+      const ancestorIsError = overrides?.isError ?? false;
+      const duration = overrides?.duration ?? event.duration;
+      const events = [...(overrides?.events ?? []), ...(event.events ?? [])];
+      const isPartial = ancestorCancelled || ancestorIsError ? false : event.isPartial;
+      const isCancelled = event.isCancelled === true ? true : event.isPartial && ancestorCancelled;
+      const isError = isCancelled
+        ? false
+        : typeof overrides?.isError === "boolean"
+        ? overrides.isError
+        : event.isError;
+
       const span = {
         id: event.spanId,
         parentId: event.parentId ?? undefined,
         runId: event.runId,
-        idempotencyKey: event.idempotencyKey,
         data: {
           message: event.message,
           style: event.style,
           duration,
-          isError: event.isError,
-          isPartial: ancestorCancelled ? false : event.isPartial,
-          isCancelled: event.isCancelled === true ? true : event.isPartial && ancestorCancelled,
+          isError,
+          isPartial,
+          isCancelled,
           startTime: getDateFromNanoseconds(event.startTime),
           level: event.level,
-          events: event.events,
-          environmentType: event.environmentType,
+          events,
         },
       };
 
@@ -962,6 +957,7 @@ export class EventRepository {
   async #walkSpanAncestors(
     storeTable: TaskEventStoreTable,
     event: PreparedEvent,
+    environmentId: string,
     startCreatedAt: Date,
     endCreatedAt: Date | undefined,
     callback: (event: PreparedEvent, level: number) => { stop: boolean }
@@ -972,12 +968,13 @@ export class EventRepository {
     }
 
     await startActiveSpan("walkSpanAncestors", async (s) => {
-      let parentEvent = await this.#getSpanEvent(
+      let parentEvent = await this.#getSpanEvent({
         storeTable,
-        parentId,
+        spanId: parentId,
+        environmentId,
         startCreatedAt,
-        endCreatedAt
-      );
+        endCreatedAt,
+      });
       let level = 1;
 
       while (parentEvent) {
@@ -993,29 +990,38 @@ export class EventRepository {
           return;
         }
 
-        parentEvent = await this.#getSpanEvent(
+        parentEvent = await this.#getSpanEvent({
           storeTable,
-          preparedParentEvent.parentId,
+          spanId: preparedParentEvent.parentId,
+          environmentId,
           startCreatedAt,
-          endCreatedAt
-        );
+          endCreatedAt,
+        });
 
         level++;
       }
     });
   }
 
-  async #getSpanEvent(
-    storeTable: TaskEventStoreTable,
-    spanId: string,
-    startCreatedAt: Date,
-    endCreatedAt?: Date,
-    options?: { includeDebugLogs?: boolean }
-  ) {
+  async #getSpanEvent({
+    storeTable,
+    spanId,
+    environmentId,
+    startCreatedAt,
+    endCreatedAt,
+    options,
+  }: {
+    storeTable: TaskEventStoreTable;
+    spanId: string;
+    environmentId: string;
+    startCreatedAt: Date;
+    endCreatedAt?: Date;
+    options?: { includeDebugLogs?: boolean };
+  }) {
     return await startActiveSpan("getSpanEvent", async (s) => {
       const events = await this.taskEventStore.findMany(
         storeTable,
-        { spanId },
+        { spanId, environmentId },
         startCreatedAt,
         endCreatedAt,
         undefined,
@@ -1026,17 +1032,78 @@ export class EventRepository {
       );
 
       let finalEvent: TaskEvent | undefined;
+      let overrideEvents: TaskEvent[] = [];
+      let partialEvent: TaskEvent | undefined;
 
+      // Separate partial and final events
       for (const event of events) {
-        if (event.isPartial && finalEvent) {
+        if (event.kind === "UNSPECIFIED") {
+          overrideEvents.push(event);
           continue;
         }
 
-        finalEvent = event;
+        if (event.isPartial) {
+          // Take the first partial event (earliest)
+          if (!partialEvent) {
+            partialEvent = event;
+          }
+        } else {
+          // Take the last complete/cancelled event (most recent)
+          finalEvent = event;
+        }
       }
 
-      return finalEvent;
+      // If we have both partial and final events, merge them intelligently
+      if (finalEvent && partialEvent) {
+        return this.#mergeOverrides(
+          this.#mergePartialWithFinalEvent(partialEvent, finalEvent),
+          overrideEvents
+        );
+      }
+
+      // Return whichever event we have
+      return this.#mergeOverrides(finalEvent ?? partialEvent, overrideEvents);
     });
+  }
+
+  /**
+   * Merges a partial event with a final (complete/cancelled) event.
+   * Uses the final event as base but fills in missing fields from the partial event.
+   */
+  #mergePartialWithFinalEvent(partialEvent: TaskEvent, finalEvent: TaskEvent): TaskEvent {
+    const merged = {
+      ...finalEvent, // Use final event as base
+      // Override with partial event fields only if final event fields are missing/empty
+      properties: isEmpty(finalEvent.properties) ? partialEvent.properties : finalEvent.properties,
+      metadata: isEmpty(finalEvent.metadata) ? partialEvent.metadata : finalEvent.metadata,
+      style: isEmpty(finalEvent.style) ? partialEvent.style : finalEvent.style,
+      output: isEmpty(finalEvent.output) ? partialEvent.output : finalEvent.output,
+      payload: isEmpty(finalEvent.payload) ? partialEvent.payload : finalEvent.payload,
+      payloadType: !finalEvent.payloadType ? partialEvent.payloadType : finalEvent.payloadType,
+    };
+
+    return merged;
+  }
+
+  #mergeOverrides(
+    event: TaskEvent | undefined,
+    overrideEvents: TaskEvent[]
+  ): TaskEvent | undefined {
+    function extractEventsFromEvent(event: TaskEvent): SpanEvent[] {
+      return (event.events ?? []) as unknown as SpanEvent[];
+    }
+
+    if (!event) {
+      return;
+    }
+
+    return {
+      ...event,
+      events: [
+        ...extractEventsFromEvent(event),
+        ...overrideEvents.flatMap(extractEventsFromEvent),
+      ] as unknown as Prisma.JsonValue,
+    };
   }
 
   public async recordEvent(
@@ -1050,12 +1117,12 @@ export class EventRepository {
       options.duration ??
       (options.endTime ? calculateDurationFromStart(startTime, options.endTime) : 100);
 
-    const traceId = propagatedContext?.traceparent?.traceId ?? this.generateTraceId();
+    const traceId = propagatedContext?.traceparent?.traceId ?? generateTraceId();
     const parentId = options.parentId ?? propagatedContext?.traceparent?.spanId;
     const tracestate = propagatedContext?.tracestate;
     const spanId = options.spanIdSeed
-      ? this.#generateDeterministicSpanId(traceId, options.spanIdSeed)
-      : this.generateSpanId();
+      ? generateDeterministicSpanId(traceId, options.spanIdSeed)
+      : generateSpanId();
 
     const metadata = {
       [SemanticInternalAttributes.ENVIRONMENT_ID]: options.environment.id,
@@ -1064,8 +1131,6 @@ export class EventRepository {
       [SemanticInternalAttributes.PROJECT_ID]: options.environment.projectId,
       [SemanticInternalAttributes.PROJECT_REF]: options.environment.project.externalRef,
       [SemanticInternalAttributes.RUN_ID]: options.attributes.runId,
-      [SemanticInternalAttributes.RUN_IS_TEST]: options.attributes.runIsTest ?? false,
-      [SemanticInternalAttributes.BATCH_ID]: options.attributes.batchId ?? undefined,
       [SemanticInternalAttributes.TASK_SLUG]: options.taskSlug,
       [SemanticResourceAttributes.SERVICE_NAME]: "api server",
       [SemanticResourceAttributes.SERVICE_NAMESPACE]: "trigger.dev",
@@ -1080,14 +1145,11 @@ export class EventRepository {
       throw new Error("runId is required");
     }
 
-    const event: CreatableEvent = {
+    const event: CreateEventInput = {
       traceId,
       spanId,
       parentId,
-      tracestate: typeof tracestate === "string" ? tracestate : undefined,
       message: message,
-      serviceName: "api server",
-      serviceNamespace: "trigger.dev",
       level: options.attributes.isDebug ? "WARN" : "TRACE",
       kind: options.attributes.isDebug ? TaskEventKind.LOG : options.kind,
       status: "OK",
@@ -1097,14 +1159,9 @@ export class EventRepository {
       environmentId: options.environment.id,
       environmentType: options.environment.type,
       organizationId: options.environment.organizationId,
-      projectId: options.environment.projectId,
-      projectRef: options.environment.project.externalRef,
       runId: options.attributes.runId,
-      runIsTest: options.attributes.runIsTest ?? false,
+      projectId: options.environment.projectId,
       taskSlug: options.taskSlug,
-      queueId: options.attributes.queueId,
-      queueName: options.attributes.queueName,
-      batchId: options.attributes.batchId ?? undefined,
       properties: {
         ...style,
         ...(flattenAttributes(metadata, SemanticInternalAttributes.METADATA) as Record<
@@ -1115,19 +1172,13 @@ export class EventRepository {
       },
       metadata: metadata,
       style: stripAttributePrefix(style, SemanticInternalAttributes.STYLE),
-      output: undefined,
-      outputType: undefined,
-      payload: undefined,
-      payloadType: undefined,
     };
 
     if (options.immediate) {
       await this.insertImmediate(event);
     } else {
-      this._flushScheduler.addToBatch([event]);
+      this._flushScheduler.addToBatch([this.#createableEventToPrismaEvent(event)]);
     }
-
-    return event;
   }
 
   public async traceEvent<TResult>(
@@ -1141,44 +1192,22 @@ export class EventRepository {
   ): Promise<TResult> {
     const propagatedContext = extractContextFromCarrier(options.context ?? {});
 
-    logger.debug("[otelContext]", {
-      propagatedContext,
-      options,
-    });
-
     const start = process.hrtime.bigint();
     const startTime = options.startTime ?? getNowInNanoseconds();
 
     const traceId = options.spanParentAsLink
-      ? this.generateTraceId()
-      : propagatedContext?.traceparent?.traceId ?? this.generateTraceId();
+      ? generateTraceId()
+      : propagatedContext?.traceparent?.traceId ?? generateTraceId();
     const parentId = options.spanParentAsLink ? undefined : propagatedContext?.traceparent?.spanId;
     const tracestate = options.spanParentAsLink ? undefined : propagatedContext?.tracestate;
     const spanId = options.spanIdSeed
-      ? this.#generateDeterministicSpanId(traceId, options.spanIdSeed)
-      : this.generateSpanId();
+      ? generateDeterministicSpanId(traceId, options.spanIdSeed)
+      : generateSpanId();
 
     const traceContext = {
       ...options.context,
       traceparent: serializeTraceparent(traceId, spanId),
     };
-
-    const links: Link[] =
-      options.spanParentAsLink && propagatedContext?.traceparent
-        ? [
-            {
-              context: {
-                traceId: propagatedContext.traceparent.traceId,
-                spanId: propagatedContext.traceparent.spanId,
-                traceFlags: TraceFlags.SAMPLED,
-              },
-              attributes: {
-                [SemanticInternalAttributes.LINK_TITLE]:
-                  options.parentAsLinkType === "replay" ? "Replay of" : "Triggered by",
-              },
-            },
-          ]
-        : [];
 
     let isStopped = false;
     let failedWithError: TaskRunError | undefined;
@@ -1223,8 +1252,6 @@ export class EventRepository {
       [SemanticInternalAttributes.PROJECT_ID]: options.environment.projectId,
       [SemanticInternalAttributes.PROJECT_REF]: options.environment.project.externalRef,
       [SemanticInternalAttributes.RUN_ID]: options.attributes.runId,
-      [SemanticInternalAttributes.RUN_IS_TEST]: options.attributes.runIsTest ?? false,
-      [SemanticInternalAttributes.BATCH_ID]: options.attributes.batchId ?? undefined,
       [SemanticInternalAttributes.TASK_SLUG]: options.taskSlug,
       [SemanticResourceAttributes.SERVICE_NAME]: "api server",
       [SemanticResourceAttributes.SERVICE_NAMESPACE]: "trigger.dev",
@@ -1241,17 +1268,14 @@ export class EventRepository {
       throw new Error("runId is required");
     }
 
-    const event: CreatableEvent = {
+    const event: CreateEventInput = {
       traceId,
       spanId,
       parentId,
-      tracestate: typeof tracestate === "string" ? tracestate : undefined,
       duration: options.incomplete ? 0 : duration,
       isPartial: failedWithError ? false : options.incomplete,
       isError: options.isError === true || !!failedWithError,
       message: message,
-      serviceName: "api server",
-      serviceNamespace: "trigger.dev",
       level: "TRACE",
       kind: options.kind,
       status: failedWithError ? "ERROR" : "OK",
@@ -1260,13 +1284,8 @@ export class EventRepository {
       environmentType: options.environment.type,
       organizationId: options.environment.organizationId,
       projectId: options.environment.projectId,
-      projectRef: options.environment.project.externalRef,
       runId: options.attributes.runId,
-      runIsTest: options.attributes.runIsTest ?? false,
       taskSlug: options.taskSlug,
-      queueId: options.attributes.queueId,
-      queueName: options.attributes.queueName,
-      batchId: options.attributes.batchId ?? undefined,
       properties: {
         ...(flattenAttributes(metadata, SemanticInternalAttributes.METADATA) as Record<
           string,
@@ -1276,12 +1295,6 @@ export class EventRepository {
       },
       metadata: metadata,
       style: stripAttributePrefix(style, SemanticInternalAttributes.STYLE),
-      output: undefined,
-      outputType: undefined,
-      links: links as unknown as Prisma.InputJsonValue,
-      payload: options.attributes.payload,
-      payloadType: options.attributes.payloadType,
-      idempotencyKey: options.attributes.idempotencyKey,
       events: failedWithError
         ? [
             {
@@ -1298,45 +1311,14 @@ export class EventRepository {
     if (options.immediate) {
       await this.insertImmediate(event);
     } else {
-      this._flushScheduler.addToBatch([event]);
+      this._flushScheduler.addToBatch([this.#createableEventToPrismaEvent(event)]);
     }
 
     return result;
   }
 
-  async subscribeToTrace(traceId: string) {
-    const redis = createRedisClient("trigger:eventRepoSubscriber", this._config.redis);
-
-    const channel = `events:${traceId}`;
-
-    // Subscribe to the channel.
-    await redis.subscribe(channel);
-
-    // Increment the subscriber count.
-    this._subscriberCount++;
-
-    const eventEmitter = new EventEmitter();
-
-    // Define the message handler.
-    redis.on("message", (_, message) => {
-      eventEmitter.emit("message", message);
-    });
-
-    // Return a function that can be used to unsubscribe.
-    const unsubscribe = async () => {
-      await redis.unsubscribe(channel);
-      redis.quit();
-      this._subscriberCount--;
-    };
-
-    return {
-      unsubscribe,
-      eventEmitter,
-    };
-  }
-
-  async #flushBatch(flushId: string, batch: CreatableEvent[]) {
-    return await startSpan(this._tracer, "flushBatch", async (span) => {
+  async #flushBatch(flushId: string, batch: Prisma.TaskEventCreateManyInput[]) {
+    await startSpan(this._tracer, "flushBatch", async (span) => {
       const events = excludePartialEventsWithCorrespondingFullEvent(batch);
 
       span.setAttribute("flush_id", flushId);
@@ -1364,15 +1346,49 @@ export class EventRepository {
     });
   }
 
+  async #flushBatchWithReturn(
+    flushId: string,
+    batch: Prisma.TaskEventCreateManyInput[]
+  ): Promise<Prisma.TaskEventCreateManyInput[]> {
+    return await startSpan(this._tracer, "flushBatch", async (span) => {
+      const events = excludePartialEventsWithCorrespondingFullEvent(batch);
+
+      span.setAttribute("flush_id", flushId);
+      span.setAttribute("event_count", events.length);
+      span.setAttribute("partial_event_count", batch.length - events.length);
+      span.setAttribute(
+        "last_flush_in_ms",
+        this._lastFlushedAt ? new Date().getTime() - this._lastFlushedAt.getTime() : 0
+      );
+
+      const flushedEvents = await this.#doFlushBatch(flushId, events);
+
+      this._lastFlushedAt = new Date();
+
+      if (flushedEvents.length !== events.length) {
+        logger.debug("[EventRepository][flushBatch] Failed to insert all events", {
+          attemptCount: events.length,
+          successCount: flushedEvents.length,
+        });
+
+        span.setAttribute("failed_event_count", events.length - flushedEvents.length);
+      }
+
+      this.#publishToRedis(flushedEvents);
+
+      return flushedEvents;
+    });
+  }
+
   private get taskEventStoreTable(): TaskEventStoreTable {
     return this._config.partitioningEnabled ? "taskEventPartitioned" : "taskEvent";
   }
 
   async #doFlushBatch(
     flushId: string,
-    events: CreatableEvent[],
+    events: Prisma.TaskEventCreateManyInput[],
     depth: number = 1
-  ): Promise<CreatableEvent[]> {
+  ): Promise<Prisma.TaskEventCreateManyInput[]> {
     return await startSpan(this._tracer, "doFlushBatch", async (span) => {
       try {
         span.setAttribute("event_count", events.length);
@@ -1449,41 +1465,10 @@ export class EventRepository {
     });
   }
 
-  async #publishToRedis(events: CreatableEvent[]) {
+  async #publishToRedis(events: Prisma.TaskEventCreateManyInput[]) {
     if (events.length === 0) return;
-    const uniqueTraces = new Set(events.map((e) => `events:${e.traceId}`));
 
-    await Promise.allSettled(
-      Array.from(uniqueTraces).map((traceId) =>
-        this._redisPublishClient.publish(traceId, new Date().toISOString())
-      )
-    );
-  }
-
-  public generateTraceId() {
-    return this._randomIdGenerator.generateTraceId();
-  }
-
-  public generateSpanId() {
-    return this._randomIdGenerator.generateSpanId();
-  }
-
-  /**
-   * Returns a deterministically random 8-byte span ID formatted/encoded as a 16 lowercase hex
-   * characters corresponding to 64 bits, based on the trace ID and seed.
-   */
-  #generateDeterministicSpanId(traceId: string, seed: string) {
-    const hash = createHash("sha1");
-    hash.update(traceId);
-    hash.update(seed);
-    const buffer = hash.digest();
-    let hexString = "";
-    for (let i = 0; i < 8; i++) {
-      const val = buffer.readUInt8(i);
-      const str = val.toString(16).padStart(2, "0");
-      hexString += str;
-    }
-    return hexString;
+    await tracePubSub.publish(events.map((e) => e.traceId));
   }
 }
 
@@ -1501,14 +1486,6 @@ function initializeEventRepo() {
     memoryPressureThreshold: env.EVENTS_MEMORY_PRESSURE_THRESHOLD,
     loadSheddingThreshold: env.EVENTS_LOAD_SHEDDING_THRESHOLD,
     loadSheddingEnabled: env.EVENTS_LOAD_SHEDDING_ENABLED === "1",
-    redis: {
-      port: env.PUBSUB_REDIS_PORT,
-      host: env.PUBSUB_REDIS_HOST,
-      username: env.PUBSUB_REDIS_USERNAME,
-      password: env.PUBSUB_REDIS_PASSWORD,
-      tlsDisabled: env.PUBSUB_REDIS_TLS_DISABLED === "true",
-      clusterMode: env.PUBSUB_REDIS_CLUSTER_MODE_ENABLED === "1",
-    },
   });
 
   new Gauge({
@@ -1584,56 +1561,14 @@ function initializeEventRepo() {
   return repo;
 }
 
-export function stripAttributePrefix(attributes: Attributes, prefix: string) {
-  const result: Attributes = {};
-
-  for (const [key, value] of Object.entries(attributes)) {
-    if (key.startsWith(prefix)) {
-      result[key.slice(prefix.length + 1)] = value;
-    } else {
-      result[key] = value;
-    }
-  }
-  return result;
-}
-
-export function createExceptionPropertiesFromError(error: TaskRunError): ExceptionEventProperties {
-  switch (error.type) {
-    case "BUILT_IN_ERROR": {
-      return {
-        type: error.name,
-        message: error.message,
-        stacktrace: error.stackTrace,
-      };
-    }
-    case "CUSTOM_ERROR": {
-      return {
-        type: "Error",
-        message: error.raw,
-      };
-    }
-    case "INTERNAL_ERROR": {
-      return {
-        type: "Internal error",
-        message: [error.code, error.message].filter(Boolean).join(": "),
-        stacktrace: error.stackTrace,
-      };
-    }
-    case "STRING_ERROR": {
-      return {
-        type: "Error",
-        message: error.raw,
-      };
-    }
-  }
-}
-
 /**
  * Filters out partial events from a batch of creatable events, excluding those that have a corresponding full event.
  * @param batch - The batch of creatable events to filter.
  * @returns The filtered array of creatable events, excluding partial events with corresponding full events.
  */
-function excludePartialEventsWithCorrespondingFullEvent(batch: CreatableEvent[]): CreatableEvent[] {
+function excludePartialEventsWithCorrespondingFullEvent(
+  batch: Prisma.TaskEventCreateManyInput[]
+): Prisma.TaskEventCreateManyInput[] {
   const partialEvents = batch.filter((event) => event.isPartial);
   const fullEvents = batch.filter((event) => !event.isPartial);
 
@@ -1642,21 +1577,6 @@ function excludePartialEventsWithCorrespondingFullEvent(batch: CreatableEvent[])
       return !fullEvents.some((fullEvent) => fullEvent.spanId === partialEvent.spanId);
     })
   );
-}
-
-export function extractContextFromCarrier(carrier: Record<string, unknown>) {
-  const traceparent = carrier["traceparent"];
-  const tracestate = carrier["tracestate"];
-
-  if (typeof traceparent !== "string") {
-    return undefined;
-  }
-
-  return {
-    ...carrier,
-    traceparent: parseTraceparent(traceparent),
-    tracestate,
-  };
 }
 
 function prepareEvent(event: QueriedEvent): PreparedEvent {
@@ -1675,17 +1595,6 @@ function prepareDetailedEvent(event: DetailedTraceEvent): PreparedDetailedEvent 
     events: parseEventsField(event.events),
     style: parseStyleField(event.style),
   };
-}
-
-function parseEventsField(events: Prisma.JsonValue): SpanEvents {
-  const unsafe = events
-    ? (events as any[]).map((e) => ({
-        ...e,
-        properties: unflattenAttributes(e.properties as Attributes),
-      }))
-    : undefined;
-
-  return unsafe as SpanEvents;
 }
 
 function parseStyleField(style: Prisma.JsonValue): TaskEventStyle {
@@ -1708,98 +1617,132 @@ function parseStyleField(style: Prisma.JsonValue): TaskEventStyle {
   return {};
 }
 
-function isAncestorCancelled(
-  events: Map<string, { isCancelled: boolean; parentId: string | null }>,
-  spanId: string
-) {
-  const event = events.get(spanId);
+type AncestorOverrides = {
+  isCancelled?: boolean;
+  duration?: number;
+  isError?: boolean;
+  events?: SpanEvents;
+};
 
-  if (!event) {
-    return false;
-  }
-
-  if (event.isCancelled) {
-    return true;
-  }
-
-  if (event.parentId) {
-    return isAncestorCancelled(events, event.parentId);
-  }
-
-  return false;
-}
-
-function calculateDurationIfAncestorIsCancelled(
-  events: Map<
-    string,
-    {
-      isCancelled: boolean;
-      parentId: string | null;
-      isPartial: boolean;
-      startTime: bigint;
-      events: SpanEvents;
-    }
-  >,
-  spanId: string,
-  defaultDuration: number
-) {
-  const event = events.get(spanId);
-
-  if (!event) {
-    return defaultDuration;
-  }
-
-  if (event.isCancelled) {
-    return defaultDuration;
-  }
-
-  if (!event.isPartial) {
-    return defaultDuration;
-  }
-
-  if (event.parentId) {
-    const cancelledAncestor = findFirstCancelledAncestor(events, event.parentId);
-
-    if (cancelledAncestor) {
-      // We need to get the cancellation time from the cancellation span event
-      const cancellationEvent = cancelledAncestor.events.find(
-        (event) => event.name === "cancellation"
-      );
-
-      if (cancellationEvent) {
-        return calculateDurationFromStart(event.startTime, cancellationEvent.time);
-      }
-    }
-  }
-
-  return defaultDuration;
-}
-
-function findFirstCancelledAncestor(
-  events: Map<
-    string,
-    {
-      isCancelled: boolean;
-      parentId: string | null;
-      isPartial: boolean;
-      startTime: bigint;
-      events: SpanEvents;
-    }
-  >,
-  spanId: string
-) {
-  const event = events.get(spanId);
-
-  if (!event) {
+function getAncestorOverrides({
+  spansById,
+  span,
+}: {
+  spansById: Map<string, PreparedEvent>;
+  span: PreparedEvent;
+}): AncestorOverrides | undefined {
+  if (span.level !== "TRACE") {
     return;
   }
 
-  if (event.isCancelled) {
-    return event;
+  if (!span.isPartial) {
+    return;
   }
 
-  if (event.parentId) {
-    return findFirstCancelledAncestor(events, event.parentId);
+  const overrides: AncestorOverrides = {};
+
+  const cancelledAncestor = findCancelledAncestor(spansById, span, span.spanId);
+
+  if (cancelledAncestor) {
+    overrides.isCancelled = true;
+
+    // We need to get the cancellation time from the cancellation span event
+    const cancellationEvent = cancelledAncestor.events.find(
+      (event) => event.name === "cancellation"
+    );
+
+    if (cancellationEvent) {
+      overrides.duration = calculateDurationFromStart(span.startTime, cancellationEvent.time);
+    }
+
+    return overrides;
+  }
+
+  const attemptFailedAncestorEvent = findAttemptFailedAncestor(spansById, span, span.spanId);
+
+  if (attemptFailedAncestorEvent) {
+    overrides.isError = true;
+    overrides.events = [
+      {
+        name: "exception",
+        time: attemptFailedAncestorEvent.time,
+        properties: {
+          exception: attemptFailedAncestorEvent.properties.exception,
+        },
+      } satisfies ExceptionSpanEvent,
+    ];
+    overrides.duration = calculateDurationFromStart(
+      span.startTime,
+      attemptFailedAncestorEvent.time
+    );
+
+    return overrides;
+  }
+
+  return;
+}
+
+function findCancelledAncestor(
+  spansById: Map<string, PreparedEvent>,
+  originalSpan: PreparedEvent,
+  spanId?: string | null
+) {
+  if (!spanId) {
+    return;
+  }
+
+  if (originalSpan.spanId === spanId) {
+    return findCancelledAncestor(spansById, originalSpan, originalSpan.parentId);
+  }
+
+  const ancestorSpan = spansById.get(spanId);
+
+  if (!ancestorSpan) {
+    return;
+  }
+
+  if (ancestorSpan.isCancelled) {
+    return ancestorSpan;
+  }
+
+  if (ancestorSpan.parentId) {
+    return findCancelledAncestor(spansById, originalSpan, ancestorSpan.parentId);
+  }
+
+  return;
+}
+
+function findAttemptFailedAncestor(
+  spansById: Map<string, PreparedEvent>,
+  originalSpan: PreparedEvent,
+  spanId?: string | null
+) {
+  if (!spanId) {
+    return;
+  }
+
+  if (originalSpan.spanId === spanId) {
+    return findAttemptFailedAncestor(spansById, originalSpan, originalSpan.parentId);
+  }
+
+  const ancestorSpan = spansById.get(spanId);
+
+  if (!ancestorSpan) {
+    return;
+  }
+
+  const attemptFailedEvent = (ancestorSpan.events ?? []).find(
+    (event) =>
+      event.name === "attempt_failed" &&
+      event.properties.attemptNumber === originalSpan.attemptNumber
+  );
+
+  if (attemptFailedEvent) {
+    return attemptFailedEvent as AttemptFailedSpanEvent;
+  }
+
+  if (ancestorSpan.parentId) {
+    return findAttemptFailedAncestor(spansById, originalSpan, ancestorSpan.parentId);
   }
 
   return;
@@ -1816,30 +1759,6 @@ function sanitizedAttributes(json: Prisma.JsonValue) {
   }
 
   return unflattenAttributes(withoutPrivateProperties);
-}
-// removes keys that start with a $ sign. If there are no keys left, return undefined
-function removePrivateProperties(
-  attributes: Attributes | undefined | null
-): Attributes | undefined {
-  if (!attributes) {
-    return undefined;
-  }
-
-  const result: Attributes = {};
-
-  for (const [key, value] of Object.entries(attributes)) {
-    if (key.startsWith("$")) {
-      continue;
-    }
-
-    result[key] = value;
-  }
-
-  if (Object.keys(result).length === 0) {
-    return undefined;
-  }
-
-  return result;
 }
 
 function transformEvents(events: SpanEvents, properties: Attributes, isDev: boolean): SpanEvents {
@@ -1881,78 +1800,6 @@ function transformException(
   };
 }
 
-function calculateDurationFromStart(startTime: bigint, endTime: Date = new Date()) {
-  const $endtime = typeof endTime === "string" ? new Date(endTime) : endTime;
-
-  return Number(BigInt($endtime.getTime() * 1_000_000) - startTime);
-}
-
-function getNowInNanoseconds(): bigint {
-  return BigInt(new Date().getTime() * 1_000_000);
-}
-
-export function getDateFromNanoseconds(nanoseconds: bigint) {
-  return new Date(Number(nanoseconds) / 1_000_000);
-}
-
-function nanosecondsToMilliseconds(nanoseconds: bigint | number): number {
-  return Number(nanoseconds) / 1_000_000;
-}
-
-function rehydrateJson(json: Prisma.JsonValue): any {
-  if (json === null) {
-    return undefined;
-  }
-
-  if (json === NULL_SENTINEL) {
-    return null;
-  }
-
-  if (typeof json === "string") {
-    return json;
-  }
-
-  if (typeof json === "number") {
-    return json;
-  }
-
-  if (typeof json === "boolean") {
-    return json;
-  }
-
-  if (Array.isArray(json)) {
-    return json.map((item) => rehydrateJson(item));
-  }
-
-  if (typeof json === "object") {
-    return unflattenAttributes(json as Attributes);
-  }
-
-  return null;
-}
-
-function rehydrateShow(properties: Prisma.JsonValue): { actions?: boolean } | undefined {
-  if (properties === null || properties === undefined) {
-    return;
-  }
-
-  if (typeof properties !== "object") {
-    return;
-  }
-
-  if (Array.isArray(properties)) {
-    return;
-  }
-
-  const actions = properties[SemanticInternalAttributes.SHOW_ACTIONS];
-
-  if (typeof actions === "boolean") {
-    return { actions };
-  }
-
-  return;
-}
-
 export function rehydrateAttribute<T extends AttributeValue>(
   properties: Prisma.JsonValue,
   key: string
@@ -1976,119 +1823,6 @@ export function rehydrateAttribute<T extends AttributeValue>(
   }
 
   return value as T;
-}
-
-export async function findRunForEventCreation(runId: string) {
-  return prisma.taskRun.findFirst({
-    where: {
-      id: runId,
-    },
-    select: {
-      friendlyId: true,
-      taskIdentifier: true,
-      traceContext: true,
-      runtimeEnvironment: {
-        select: {
-          id: true,
-          type: true,
-          organizationId: true,
-          projectId: true,
-          project: {
-            select: {
-              externalRef: true,
-            },
-          },
-        },
-      },
-    },
-  });
-}
-
-export async function recordRunEvent(
-  runId: string,
-  message: string,
-  options: Omit<TraceEventOptions, "environment" | "taskSlug" | "startTime"> & {
-    duration?: number;
-    parentId?: string;
-    startTime?: Date;
-  }
-): Promise<
-  | {
-      success: true;
-    }
-  | {
-      success: false;
-      code: "RUN_NOT_FOUND" | "FAILED_TO_RECORD_EVENT";
-      error?: unknown;
-    }
-> {
-  try {
-    const foundRun = await findRunForEventCreation(runId);
-
-    if (!foundRun) {
-      logger.error("Failed to find run for event creation", { runId });
-      return {
-        success: false,
-        code: "RUN_NOT_FOUND",
-      };
-    }
-
-    const { attributes, startTime, ...optionsRest } = options;
-
-    await eventRepository.recordEvent(message, {
-      environment: foundRun.runtimeEnvironment,
-      taskSlug: foundRun.taskIdentifier,
-      context: foundRun.traceContext as Record<string, string | undefined>,
-      attributes: {
-        runId: foundRun.friendlyId,
-        ...attributes,
-      },
-      startTime: BigInt((startTime?.getTime() ?? Date.now()) * 1_000_000),
-      ...optionsRest,
-    });
-
-    return {
-      success: true,
-    };
-  } catch (error) {
-    logger.error("Failed to record event for run", {
-      error: error instanceof Error ? error.message : error,
-      runId,
-    });
-
-    return {
-      success: false,
-      code: "FAILED_TO_RECORD_EVENT",
-      error,
-    };
-  }
-}
-
-export async function recordRunDebugLog(
-  runId: string,
-  message: string,
-  options: Omit<TraceEventOptions, "environment" | "taskSlug" | "startTime"> & {
-    duration?: number;
-    parentId?: string;
-    startTime?: Date;
-  }
-): Promise<
-  | {
-      success: true;
-    }
-  | {
-      success: false;
-      code: "RUN_NOT_FOUND" | "FAILED_TO_RECORD_EVENT";
-      error?: unknown;
-    }
-> {
-  return recordRunEvent(runId, message, {
-    ...options,
-    attributes: {
-      ...options?.attributes,
-      isDebug: true,
-    },
-  });
 }
 
 /**
@@ -2147,5 +1881,11 @@ function isRetriablePrismaError(
     return isUnicodeError(error);
   }
 
+  return false;
+}
+// Helper function to check if a field is empty/missing
+function isEmpty(value: any): boolean {
+  if (value === null || value === undefined) return true;
+  if (typeof value === "object" && !Array.isArray(value) && isEmptyObject(value)) return true;
   return false;
 }

@@ -2,6 +2,9 @@ global:
   imageRegistry: ""
   imagePullSecrets: []
   storageClass: ""
+  security:
+    # Required when using bitnami legacy images
+    allowInsecureImages: true
 
 nameOverride: ""
 fullnameOverride: ""
@@ -45,6 +48,22 @@ webapp:
     tag: "" # Defaults to Chart.appVersion when empty
     pullPolicy: IfNotPresent
 
+  # Init container for shared directory setup
+  volumePermissions:
+    image:
+      registry: docker.io
+      repository: busybox
+      tag: "1.35"
+      pullPolicy: IfNotPresent
+
+  # Sidecar for token syncing
+  tokenSyncer:
+    image:
+      registry: docker.io
+      repository: bitnamilegacy/kubectl
+      tag: "1.28"
+      pullPolicy: IfNotPresent
+
   # Origin configuration
   appOrigin: "http://localhost:3040"
   loginOrigin: "http://localhost:3040"
@@ -69,6 +88,8 @@ webapp:
   nodeSelector: {}
   tolerations: []
   affinity: {}
+  # Topology Spread Constraints for pod assignment spread across your cluster among failure-domains. Evaluated as a template
+  topologySpreadConstraints: []
 
   logLevel: "info"
   gracefulShutdownTimeout: 1000
@@ -359,6 +380,11 @@ supervisor:
 postgres:
   deploy: true
 
+  image:
+    # Use bitnami legacy repo
+    repository: bitnamilegacy/postgresql
+    # image: docker.io/bitnamilegacy/postgresql:17.5.0-debian-12-r12
+
   # Bitnami PostgreSQL chart configuration (when deploy: true)
   auth:
     enablePostgresUser: true
@@ -408,6 +434,11 @@ postgres:
 # Subchart: https://github.com/bitnami/charts/tree/main/bitnami/redis
 redis:
   deploy: true
+
+  image:
+    # Use bitnami legacy repo
+    repository: bitnamilegacy/redis
+    # image: docker.io/bitnamilegacy/redis:8.0.2-debian-12-r4
 
   # Bitnami Redis chart configuration (when deploy: true)
   auth:
@@ -499,6 +530,11 @@ electric:
 clickhouse:
   deploy: true
 
+  image:
+    # Use bitnami legacy repo
+    repository: bitnamilegacy/clickhouse
+    # image: docker.io/bitnamilegacy/clickhouse:25.6.1-debian-12-r0
+
   # TLS/Secure connection configuration
   secure: false # Set to true to use HTTPS and secure connections
 
@@ -560,6 +596,11 @@ s3:
   # Set to false to use external S3-compatible storage
   # Set to true to deploy internal MinIO (default)
   deploy: true
+
+  image:
+    # Use bitnami legacy repo
+    repository: bitnamilegacy/minio
+    # image: docker.io/bitnamilegacy/minio:2025.6.13-debian-12-r0
 
   # Bitnami MinIO chart configuration (when deploy: true)
   # MinIO provides S3-compatible storage when deployed internally

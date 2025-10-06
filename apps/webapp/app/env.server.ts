@@ -59,6 +59,7 @@ const EnvironmentSchema = z
     ADMIN_EMAILS: z.string().refine(isValidRegex, "ADMIN_EMAILS must be a valid regex.").optional(),
     REMIX_APP_PORT: z.string().optional(),
     LOGIN_ORIGIN: z.string().default("http://localhost:3030"),
+    LOGIN_RATE_LIMITS_ENABLED: BoolEnv.default(true),
     APP_ORIGIN: z.string().default("http://localhost:3030"),
     API_ORIGIN: z.string().optional(),
     STREAM_ORIGIN: z.string().optional(),
@@ -312,6 +313,10 @@ const EnvironmentSchema = z
       .number()
       .int()
       .default(60 * 1000 * 8), // 8 minutes
+    DEPLOY_QUEUE_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .default(60 * 1000 * 15), // 15 minutes
 
     OBJECT_STORE_BASE_URL: z.string().optional(),
     OBJECT_STORE_ACCESS_KEY_ID: z.string().optional(),
@@ -488,6 +493,7 @@ const EnvironmentSchema = z
     CENTS_PER_RUN: z.coerce.number().default(0),
 
     EVENT_LOOP_MONITOR_ENABLED: z.string().default("1"),
+    RESOURCE_MONITOR_ENABLED: z.string().default("0"),
     MAXIMUM_LIVE_RELOADING_EVENTS: z.coerce.number().int().default(1000),
     MAXIMUM_TRACE_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(25_000),
     MAXIMUM_TRACE_DETAILED_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(10_000),
@@ -519,8 +525,8 @@ const EnvironmentSchema = z
     RUN_ENGINE_WORKER_IMMEDIATE_POLL_INTERVAL: z.coerce.number().int().default(100),
     RUN_ENGINE_TIMEOUT_PENDING_EXECUTING: z.coerce.number().int().default(60_000),
     RUN_ENGINE_TIMEOUT_PENDING_CANCEL: z.coerce.number().int().default(60_000),
-    RUN_ENGINE_TIMEOUT_EXECUTING: z.coerce.number().int().default(60_000),
-    RUN_ENGINE_TIMEOUT_EXECUTING_WITH_WAITPOINTS: z.coerce.number().int().default(60_000),
+    RUN_ENGINE_TIMEOUT_EXECUTING: z.coerce.number().int().default(300_000), // 5 minutes
+    RUN_ENGINE_TIMEOUT_EXECUTING_WITH_WAITPOINTS: z.coerce.number().int().default(300_000), // 5 minutes
     RUN_ENGINE_TIMEOUT_SUSPENDED: z.coerce
       .number()
       .int()
@@ -735,6 +741,7 @@ const EnvironmentSchema = z
     RUN_ENGINE_RUN_QUEUE_LOG_LEVEL: z
       .enum(["log", "error", "warn", "info", "debug"])
       .default("info"),
+    RUN_ENGINE_TREAT_PRODUCTION_EXECUTION_STALLS_AS_OOM: z.string().default("0"),
 
     /** How long should the presence ttl last */
     DEV_PRESENCE_SSE_TIMEOUT: z.coerce.number().int().default(30_000),
@@ -1023,8 +1030,9 @@ const EnvironmentSchema = z
     TASK_EVENT_PARTITIONING_ENABLED: z.string().default("0"),
     TASK_EVENT_PARTITIONED_WINDOW_IN_SECONDS: z.coerce.number().int().default(60), // 1 minute
 
-    QUEUE_SSE_AUTORELOAD_INTERVAL_MS: z.coerce.number().int().default(5_000),
-    QUEUE_SSE_AUTORELOAD_TIMEOUT_MS: z.coerce.number().int().default(60_000),
+    DEPLOYMENTS_AUTORELOAD_POLL_INTERVAL_MS: z.coerce.number().int().default(5_000),
+    BULK_ACTION_AUTORELOAD_POLL_INTERVAL_MS: z.coerce.number().int().default(1_000),
+    QUEUES_AUTORELOAD_POLL_INTERVAL_MS: z.coerce.number().int().default(5_000),
 
     SLACK_BOT_TOKEN: z.string().optional(),
     SLACK_SIGNUP_REASON_CHANNEL_ID: z.string().optional(),
@@ -1103,6 +1111,23 @@ const EnvironmentSchema = z
     CLICKHOUSE_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
     CLICKHOUSE_COMPRESSION_REQUEST: z.string().default("1"),
 
+    EVENTS_CLICKHOUSE_URL: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.CLICKHOUSE_URL),
+    EVENTS_CLICKHOUSE_KEEP_ALIVE_ENABLED: z.string().default("1"),
+    EVENTS_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().optional(),
+    EVENTS_CLICKHOUSE_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(10),
+    EVENTS_CLICKHOUSE_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
+    EVENTS_CLICKHOUSE_COMPRESSION_REQUEST: z.string().default("1"),
+    EVENTS_CLICKHOUSE_BATCH_SIZE: z.coerce.number().int().default(1000),
+    EVENTS_CLICKHOUSE_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
+    EVENT_REPOSITORY_CLICKHOUSE_ROLLOUT_PERCENT: z.coerce.number().optional(),
+    EVENT_REPOSITORY_DEFAULT_STORE: z.enum(["postgres", "clickhouse"]).default("postgres"),
+    EVENTS_CLICKHOUSE_MAX_TRACE_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(25_000),
+    EVENTS_CLICKHOUSE_MAX_TRACE_DETAILED_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(5_000),
+    EVENTS_CLICKHOUSE_MAX_LIVE_RELOADING_SETTING: z.coerce.number().int().default(2000),
+
     // Bootstrap
     TRIGGER_BOOTSTRAP_ENABLED: z.string().default("0"),
     TRIGGER_BOOTSTRAP_WORKER_GROUP_NAME: z.string().optional(),
@@ -1167,6 +1192,8 @@ const EnvironmentSchema = z
     AI_RUN_FILTER_MODEL: z.string().optional(),
 
     EVENT_LOOP_MONITOR_THRESHOLD_MS: z.coerce.number().int().default(100),
+    EVENT_LOOP_MONITOR_UTILIZATION_INTERVAL_MS: z.coerce.number().int().default(1000),
+    EVENT_LOOP_MONITOR_UTILIZATION_SAMPLE_RATE: z.coerce.number().default(0.05),
 
     VERY_SLOW_QUERY_THRESHOLD_MS: z.coerce.number().int().optional(),
   })

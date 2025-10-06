@@ -1,6 +1,8 @@
 import { Logger } from "@trigger.dev/core/logger";
+import { tryCatch } from "@trigger.dev/core/utils";
 import { nanoid } from "nanoid";
 import pLimit from "p-limit";
+import { signalsEmitter } from "~/services/signals.server";
 
 export type DynamicFlushSchedulerConfig<T> = {
   batchSize: number;
@@ -22,6 +24,7 @@ export class DynamicFlushScheduler<T> {
   private readonly BATCH_SIZE: number;
   private readonly FLUSH_INTERVAL: number;
   private flushTimer: NodeJS.Timeout | null;
+  private metricsReporterTimer: NodeJS.Timeout | undefined;
   private readonly callback: (flushId: string, batch: T[]) => Promise<void>;
 
   // New properties for dynamic scaling
@@ -41,6 +44,7 @@ export class DynamicFlushScheduler<T> {
     droppedEvents: 0,
     droppedEventsByKind: new Map<string, number>(),
   };
+  private isShuttingDown: boolean = false;
 
   // New properties for load shedding
   private readonly loadSheddingThreshold: number;
@@ -75,6 +79,7 @@ export class DynamicFlushScheduler<T> {
 
     this.startFlushTimer();
     this.startMetricsReporter();
+    this.setupShutdownHandlers();
   }
 
   addToBatch(items: T[]): void {
@@ -119,8 +124,8 @@ export class DynamicFlushScheduler<T> {
     this.currentBatch.push(...itemsToAdd);
     this.totalQueuedItems += itemsToAdd.length;
 
-    // Check if we need to create a batch
-    if (this.currentBatch.length >= this.currentBatchSize) {
+    // Check if we need to create a batch (if we are shutting down, create a batch immediately because the flush timer is stopped)
+    if (this.currentBatch.length >= this.currentBatchSize || this.isShuttingDown) {
       this.createBatch();
     }
 
@@ -137,6 +142,23 @@ export class DynamicFlushScheduler<T> {
     this.resetFlushTimer();
   }
 
+  private setupShutdownHandlers(): void {
+    signalsEmitter.on("SIGTERM", () =>
+      this.shutdown().catch((error) => {
+        this.logger.error("Error shutting down dynamic flush scheduler", {
+          error,
+        });
+      })
+    );
+    signalsEmitter.on("SIGINT", () =>
+      this.shutdown().catch((error) => {
+        this.logger.error("Error shutting down dynamic flush scheduler", {
+          error,
+        });
+      })
+    );
+  }
+
   private startFlushTimer(): void {
     this.flushTimer = setInterval(() => this.checkAndFlush(), this.FLUSH_INTERVAL);
   }
@@ -145,6 +167,9 @@ export class DynamicFlushScheduler<T> {
     if (this.flushTimer) {
       clearInterval(this.flushTimer);
     }
+
+    if (this.isShuttingDown) return;
+
     this.startFlushTimer();
   }
 
@@ -171,62 +196,79 @@ export class DynamicFlushScheduler<T> {
     // Schedule all batches for concurrent processing
     const flushPromises = batchesToFlush.map((batch) =>
       this.limiter(async () => {
-        const flushId = nanoid();
         const itemCount = batch.length;
 
-        try {
-          const startTime = Date.now();
-          await this.callback(flushId, batch);
+        const self = this;
 
-          const duration = Date.now() - startTime;
-          this.totalQueuedItems -= itemCount;
-          this.consecutiveFlushFailures = 0;
-          this.lastFlushTime = Date.now();
-          this.metrics.flushedBatches++;
-          this.metrics.totalItemsFlushed += itemCount;
+        async function tryFlush(flushId: string, batchToFlush: T[], attempt: number = 1) {
+          try {
+            const startTime = Date.now();
+            await self.callback(flushId, batchToFlush);
 
-          this.logger.debug("Batch flushed successfully", {
-            flushId,
-            itemCount,
-            duration,
-            remainingQueueDepth: this.totalQueuedItems,
-            activeConcurrency: this.limiter.activeCount,
-            pendingConcurrency: this.limiter.pendingCount,
-          });
-        } catch (error) {
-          this.consecutiveFlushFailures++;
-          this.metrics.failedBatches++;
+            const duration = Date.now() - startTime;
+            self.totalQueuedItems -= itemCount;
+            self.consecutiveFlushFailures = 0;
+            self.lastFlushTime = Date.now();
+            self.metrics.flushedBatches++;
+            self.metrics.totalItemsFlushed += itemCount;
 
-          this.logger.error("Error flushing batch", {
-            flushId,
-            itemCount,
-            error,
-            consecutiveFailures: this.consecutiveFlushFailures,
-          });
+            self.logger.debug("Batch flushed successfully", {
+              flushId,
+              itemCount,
+              duration,
+              remainingQueueDepth: self.totalQueuedItems,
+              activeConcurrency: self.limiter.activeCount,
+              pendingConcurrency: self.limiter.pendingCount,
+            });
+          } catch (error) {
+            self.consecutiveFlushFailures++;
+            self.metrics.failedBatches++;
 
-          // Re-queue the batch at the front if it fails
-          this.batchQueue.unshift(batch);
-          this.totalQueuedItems += itemCount;
+            self.logger.error("Error attempting to flush batch", {
+              flushId,
+              itemCount,
+              error,
+              consecutiveFailures: self.consecutiveFlushFailures,
+              attempt,
+            });
 
-          // Back off on failures
-          if (this.consecutiveFlushFailures > 3) {
-            this.adjustConcurrency(true);
+            // Back off on failures
+            if (self.consecutiveFlushFailures > 5) {
+              self.adjustConcurrency(true);
+            }
+
+            if (attempt <= 3) {
+              await new Promise((resolve) => setTimeout(resolve, 500));
+              return await tryFlush(flushId, batchToFlush, attempt + 1);
+            } else {
+              throw error;
+            }
           }
+        }
+
+        const [flushError] = await tryCatch(tryFlush(nanoid(), batch));
+
+        if (flushError) {
+          this.logger.error("Error flushing batch", {
+            error: flushError,
+          });
         }
       })
     );
 
     // Don't await here - let them run concurrently
     Promise.allSettled(flushPromises).then(() => {
+      const shouldContinueFlushing =
+        this.batchQueue.length > 0 && (this.consecutiveFlushFailures < 3 || this.isShuttingDown);
       // After flush completes, check if we need to flush more
-      if (this.batchQueue.length > 0) {
+      if (shouldContinueFlushing) {
         this.flushBatches();
       }
     });
   }
 
   private lastConcurrencyAdjustment: number = Date.now();
-  
+
   private adjustConcurrency(backOff: boolean = false): void {
     const currentConcurrency = this.limiter.concurrency;
     let newConcurrency = currentConcurrency;
@@ -281,7 +323,7 @@ export class DynamicFlushScheduler<T> {
 
   private startMetricsReporter(): void {
     // Report metrics every 30 seconds
-    setInterval(() => {
+    this.metricsReporterTimer = setInterval(() => {
       const droppedByKind: Record<string, number> = {};
       this.metrics.droppedEventsByKind.forEach((count, kind) => {
         droppedByKind[kind] = count;
@@ -356,8 +398,16 @@ export class DynamicFlushScheduler<T> {
 
   // Graceful shutdown
   async shutdown(): Promise<void> {
+    if (this.isShuttingDown) return;
+
+    this.isShuttingDown = true;
+
     if (this.flushTimer) {
       clearInterval(this.flushTimer);
+    }
+
+    if (this.metricsReporterTimer) {
+      clearInterval(this.metricsReporterTimer);
     }
 
     // Flush any remaining items
