@@ -1110,9 +1110,16 @@ export class ClickhouseEventRepository implements IEventRepository {
         parsedMetadata &&
         "entity" in parsedMetadata &&
         typeof parsedMetadata.entity === "object" &&
-        parsedMetadata.entity
+        parsedMetadata.entity &&
+        "entityType" in parsedMetadata.entity &&
+        typeof parsedMetadata.entity.entityType === "string" &&
+        "entityId" in parsedMetadata.entity &&
+        typeof parsedMetadata.entity.entityId === "string"
       ) {
-        span.entity = parsedMetadata.entity as { type: string | undefined; id: string | undefined };
+        span.entity = {
+          id: parsedMetadata.entity.entityId,
+          type: parsedMetadata.entity.entityType,
+        };
       }
 
       if (record.kind === "SPAN") {
