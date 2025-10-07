@@ -11,6 +11,7 @@ overrides:
   form-data@^2: 2.5.4
   form-data@^3: 3.0.4
   form-data@^4: 4.0.4
+  axios@1.9.0: '>=1.12.0'
 
 patchedDependencies:
   '@changesets/assemble-release-plan@5.2.4':
@@ -16038,7 +16039,7 @@ packages:
       '@slack/types': 2.14.0
       '@types/node': 20.14.14
       '@types/retry': 0.12.0
-      axios: 1.9.0
+      axios: 1.12.2
       eventemitter3: 5.0.1
       form-data: 4.0.4
       is-electron: 2.2.2
@@ -20057,8 +20058,8 @@ packages:
     engines: {node: '>=4'}
     dev: true
 
-  /axios@1.9.0:
-    resolution: {integrity: sha512-re4CqKTJaURpzbLHtIi6XpDv20/CnpXOtjRY5/CU32L8gU8ek9UIivcfvSWvmKEngmVbrUtPpdDwWDWL7DNHvg==}
+  /axios@1.12.2:
+    resolution: {integrity: sha512-vMJzPewAlRyOgxV2dU0Cuz2O8zzzx9VYtbJOaBgXFeLc4IV/Eg50n4LowmehOOR61S8ZMpc2K5Sa7g6A4jfkUw==}
     dependencies:
       follow-redirects: 1.15.9
       form-data: 4.0.4
@@ -29272,7 +29273,7 @@ packages:
     resolution: {integrity: sha512-cVlQPOwOPjakUnrueKRCQe1m2Ku+XzKaOos7Tn/zDZkkZFeBT/byP7tbNf7LiwhaBRWFBRowZZb/MsTtSRaorg==}
     engines: {node: '>=15.0.0'}
     dependencies:
-      axios: 1.9.0
+      axios: 1.12.2
     transitivePeerDependencies:
       - debug
     dev: false
