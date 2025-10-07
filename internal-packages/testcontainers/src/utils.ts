@@ -154,7 +154,7 @@ export async function createElectricContainer(
   )}:5432/${postgresContainer.getDatabase()}?sslmode=disable`;
 
   const container = await new GenericContainer(
-    "electricsql/electric:1.0.13@sha256:4e69c4a6ec3e976efbdd8b7e6de427e771aeacdbc0c8c7ca22eb0ca6ab1611ff"
+    "electricsql/electric:1.1.14@sha256:784495364583e0675c29f62d3f45ae76ee6e65ea5ad5eec7ae10293f5e439c89"
   )
     .withExposedPorts(3000)
     .withNetwork(network)
