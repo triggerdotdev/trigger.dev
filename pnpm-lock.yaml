@@ -1550,8 +1550,8 @@ importers:
         specifier: ^3.1.1
         version: 3.1.1
       '@electric-sql/client':
-        specifier: 1.0.0-beta.1
-        version: 1.0.0-beta.1
+        specifier: 1.0.14
+        version: 1.0.14
       '@google-cloud/precise-date':
         specifier: ^4.0.0
         version: 4.0.0
@@ -5789,8 +5789,10 @@ packages:
       '@rollup/rollup-darwin-arm64': 4.41.1
     dev: false
 
-  /@electric-sql/client@1.0.0-beta.1:
-    resolution: {integrity: sha512-Ei9jN3pDoGzc+a/bGqnB5ajb52IvSv7/n2btuyzUlcOHIR2kM9fqtYTJXPwZYKLkGZlHWlpHgWyRtrinkP2nHg==}
+  /@electric-sql/client@1.0.14:
+    resolution: {integrity: sha512-LtPAfeMxXRiYS0hyDQ5hue2PjljUiK9stvzsVyVb4nwxWQxfOWTSF42bHTs/o5i3x1T4kAQ7mwHpxa4A+f8X7Q==}
+    dependencies:
+      '@microsoft/fetch-event-source': 2.0.1
     optionalDependencies:
       '@rollup/rollup-darwin-arm64': 4.41.1
     dev: false
@@ -8213,6 +8215,10 @@ packages:
     transitivePeerDependencies:
       - supports-color
     dev: true
+
+  /@microsoft/fetch-event-source@2.0.1:
+    resolution: {integrity: sha512-W6CLUJ2eBMw3Rec70qrsEW0jOm/3twwJv21mrmj2yORiaVmVYGS4sSS5yUwvQc1ZlDLYGPnClVWmUUMagKNsfA==}
+    dev: false
 
   /@modelcontextprotocol/sdk@1.17.1(supports-color@10.0.0):
     resolution: {integrity: sha512-CPle1OQehbWqd25La9Ack5B07StKIxh4+Bf19qnpZKJC1oI22Y0czZHbifjw1UoczIfKBwBDAp/dFxvHG13B5A==}

@@ -54,6 +54,7 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres:postgres@database:5432/postgres?sslmode=disable
       ELECTRIC_INSECURE: true
+      ELECTRIC_ENABLE_INTEGRATION_TESTING: true
     networks:
       - app_network
     ports:
