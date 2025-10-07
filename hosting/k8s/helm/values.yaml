@@ -602,6 +602,12 @@ s3:
     repository: bitnamilegacy/minio
     # image: docker.io/bitnamilegacy/minio:2025.6.13-debian-12-r0
 
+  # MinIO Console (Browser UI) configuration
+  console:
+    image:
+      repository: bitnamilegacy/minio-object-browser
+      # image: docker.io/bitnamilegacy/minio-object-browser:2025.1.10-debian-12-r1
+
   # Bitnami MinIO chart configuration (when deploy: true)
   # MinIO provides S3-compatible storage when deployed internally
   auth:
