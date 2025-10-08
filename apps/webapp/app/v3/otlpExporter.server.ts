@@ -29,6 +29,8 @@ import type {
 import { startSpan } from "./tracing.server";
 import { enrichCreatableEvents } from "./utils/enrichCreatableEvents.server";
 import { env } from "~/env.server";
+import { detectBadJsonStrings } from "~/utils/detectBadJsonStrings";
+import { singleton } from "~/utils/singleton";
 
 class OTLPExporter {
   private _tracer: Tracer;
@@ -221,18 +223,16 @@ function convertLogsToCreateableEvents(
         );
 
         const properties =
-          convertKeyValueItemsToMap(
-            truncateAttributes(log.attributes ?? [], spanAttributeValueLengthLimit),
-            [],
-            undefined,
-            [
+          truncateAttributes(
+            convertKeyValueItemsToMap(log.attributes ?? [], [], undefined, [
               SemanticInternalAttributes.USAGE,
               SemanticInternalAttributes.SPAN,
               SemanticInternalAttributes.METADATA,
               SemanticInternalAttributes.STYLE,
               SemanticInternalAttributes.METRIC_EVENTS,
               SemanticInternalAttributes.TRIGGER,
-            ]
+            ]),
+            spanAttributeValueLengthLimit
           ) ?? {};
 
         return {
@@ -304,18 +304,16 @@ function convertSpansToCreateableEvents(
         );
 
         const properties =
-          convertKeyValueItemsToMap(
-            truncateAttributes(span.attributes ?? [], spanAttributeValueLengthLimit),
-            [],
-            undefined,
-            [
+          truncateAttributes(
+            convertKeyValueItemsToMap(span.attributes ?? [], [], undefined, [
               SemanticInternalAttributes.USAGE,
               SemanticInternalAttributes.SPAN,
               SemanticInternalAttributes.METADATA,
               SemanticInternalAttributes.STYLE,
               SemanticInternalAttributes.METRIC_EVENTS,
               SemanticInternalAttributes.TRIGGER,
-            ]
+            ]),
+            spanAttributeValueLengthLimit
           ) ?? {};
 
         return {
@@ -774,24 +772,83 @@ function binaryToHex(buffer: Buffer | string | undefined): string | undefined {
   return Buffer.from(Array.from(buffer)).toString("hex");
 }
 
-function truncateAttributes(attributes: KeyValue[], maximumLength: number = 1024): KeyValue[] {
-  return attributes.map((attribute) => {
-    return isStringValue(attribute.value)
-      ? {
-          key: attribute.key,
-          value: {
-            stringValue: attribute.value.stringValue.slice(0, maximumLength),
-          },
-        }
-      : attribute;
-  });
+function truncateAttributes(
+  attributes: Record<string, string | number | boolean | undefined> | undefined,
+  maximumLength: number = 1024
+): Record<string, string | number | boolean | undefined> | undefined {
+  if (!attributes) return undefined;
+
+  const truncatedAttributes: Record<string, string | number | boolean | undefined> = {};
+
+  for (const [key, value] of Object.entries(attributes)) {
+    if (!key) continue;
+
+    if (typeof value === "string") {
+      truncatedAttributes[key] = truncateAndDetectUnpairedSurrogate(value, maximumLength);
+    } else {
+      truncatedAttributes[key] = value;
+    }
+  }
+
+  return truncatedAttributes;
 }
 
-export const otlpExporter = new OTLPExporter(
-  eventRepository,
-  clickhouseEventRepository,
-  process.env.OTLP_EXPORTER_VERBOSE === "1",
-  process.env.SERVER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT
-    ? parseInt(process.env.SERVER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT, 10)
-    : 8192
-);
+function truncateAndDetectUnpairedSurrogate(str: string, maximumLength: number): string {
+  const truncatedString = smartTruncateString(str, maximumLength);
+
+  if (hasUnpairedSurrogateAtEnd(truncatedString)) {
+    return smartTruncateString(truncatedString, [...truncatedString].length - 1);
+  }
+
+  return truncatedString;
+}
+
+const ASCII_ONLY_REGEX = /^[\x00-\x7F]*$/;
+
+function smartTruncateString(str: string, maximumLength: number): string {
+  if (!str) return "";
+  if (str.length <= maximumLength) return str;
+
+  if (ASCII_ONLY_REGEX.test(str)) {
+    return str.slice(0, maximumLength);
+  }
+
+  return [...str].slice(0, maximumLength).join("");
+}
+
+function hasUnpairedSurrogateAtEnd(str: string): boolean {
+  if (str.length === 0) return false;
+
+  const lastCode = str.charCodeAt(str.length - 1);
+
+  // Check if last character is an unpaired high surrogate
+  if (lastCode >= 0xd800 && lastCode <= 0xdbff) {
+    return true; // High surrogate at end = unpaired
+  }
+
+  // Check if last character is an unpaired low surrogate
+  if (lastCode >= 0xdc00 && lastCode <= 0xdfff) {
+    // Low surrogate is only valid if preceded by high surrogate
+    if (str.length === 1) return true; // Single low surrogate
+
+    const secondLastCode = str.charCodeAt(str.length - 2);
+    if (secondLastCode < 0xd800 || secondLastCode > 0xdbff) {
+      return true; // Low surrogate not preceded by high surrogate
+    }
+  }
+
+  return false;
+}
+
+export const otlpExporter = singleton("otlpExporter", initializeOTLPExporter);
+
+function initializeOTLPExporter() {
+  return new OTLPExporter(
+    eventRepository,
+    clickhouseEventRepository,
+    process.env.OTLP_EXPORTER_VERBOSE === "1",
+    process.env.SERVER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT
+      ? parseInt(process.env.SERVER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT, 10)
+      : 8192
+  );
+}
