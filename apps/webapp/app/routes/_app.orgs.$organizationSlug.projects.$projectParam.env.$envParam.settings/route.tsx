@@ -160,14 +160,6 @@ const UpdateBuildSettingsFormSchema = z.object({
     .refine((val) => !val || val.length <= 255, {
       message: "Config file path must not exceed 255 characters",
     }),
-  installDirectory: z
-    .string()
-    .trim()
-    .optional()
-    .transform((val) => (val ? val.replace(/^\/+/, "") : val))
-    .refine((val) => !val || val.length <= 255, {
-      message: "Install directory must not exceed 255 characters",
-    }),
   installCommand: z
     .string()
     .trim()
@@ -177,6 +169,16 @@ const UpdateBuildSettingsFormSchema = z.object({
     })
     .refine((val) => !val || val.length <= 500, {
       message: "Install command must not exceed 500 characters",
+    }),
+  preBuildCommand: z
+    .string()
+    .trim()
+    .optional()
+    .refine((val) => !val || !val.includes("\n"), {
+      message: "Pre-build command must be a single line",
+    })
+    .refine((val) => !val || val.length <= 500, {
+      message: "Pre-build command must not exceed 500 characters",
     }),
 });
 
@@ -405,11 +407,11 @@ export const action: ActionFunction = async ({ request, params }) => {
       });
     }
     case "update-build-settings": {
-      const { installDirectory, installCommand, triggerConfigFilePath } = submission.value;
+      const { installCommand, preBuildCommand, triggerConfigFilePath } = submission.value;
 
       const resultOrFail = await projectSettingsService.updateBuildSettings(projectId, {
-        installDirectory: installDirectory || undefined,
         installCommand: installCommand || undefined,
+        preBuildCommand: preBuildCommand || undefined,
         triggerConfigFilePath: triggerConfigFilePath || undefined,
       });
 
@@ -1130,14 +1132,14 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
 
   const [hasBuildSettingsChanges, setHasBuildSettingsChanges] = useState(false);
   const [buildSettingsValues, setBuildSettingsValues] = useState({
-    installDirectory: buildSettings?.installDirectory || "",
+    preBuildCommand: buildSettings?.preBuildCommand || "",
     installCommand: buildSettings?.installCommand || "",
     triggerConfigFilePath: buildSettings?.triggerConfigFilePath || "",
   });
 
   useEffect(() => {
     const hasChanges =
-      buildSettingsValues.installDirectory !== (buildSettings?.installDirectory || "") ||
+      buildSettingsValues.preBuildCommand !== (buildSettings?.preBuildCommand || "") ||
       buildSettingsValues.installCommand !== (buildSettings?.installCommand || "") ||
       buildSettingsValues.triggerConfigFilePath !== (buildSettings?.triggerConfigFilePath || "");
     setHasBuildSettingsChanges(hasChanges);
@@ -1187,7 +1189,7 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
           <Input
             {...conform.input(fields.installCommand, { type: "text" })}
             defaultValue={buildSettings?.installCommand || ""}
-            placeholder="e.g., `npm install`, or `bun install`"
+            placeholder="e.g., `npm install`, `pnpm install`, or `bun install`"
             onChange={(e) => {
               setBuildSettingsValues((prev) => ({
                 ...prev,
@@ -1195,26 +1197,30 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
               }));
             }}
           />
-          <Hint>Command to install your project dependencies. Auto-detected by default.</Hint>
+          <Hint>
+            Command to install your project dependencies. This will be run from the root directory
+            of your repo. Auto-detected by default.
+          </Hint>
           <FormError id={fields.installCommand.errorId}>{fields.installCommand.error}</FormError>
         </InputGroup>
         <InputGroup fullWidth>
-          <Label htmlFor={fields.installDirectory.id}>Install directory</Label>
+          <Label htmlFor={fields.preBuildCommand.id}>Pre-build command</Label>
           <Input
-            {...conform.input(fields.installDirectory, { type: "text" })}
-            defaultValue={buildSettings?.installDirectory || ""}
-            placeholder=""
+            {...conform.input(fields.preBuildCommand, { type: "text" })}
+            defaultValue={buildSettings?.preBuildCommand || ""}
+            placeholder="e.g., `npm run prisma:generate`"
             onChange={(e) => {
               setBuildSettingsValues((prev) => ({
                 ...prev,
-                installDirectory: e.target.value,
+                preBuildCommand: e.target.value,
               }));
             }}
           />
-          <Hint>The directory where the install command is run in. Auto-detected by default.</Hint>
-          <FormError id={fields.installDirectory.errorId}>
-            {fields.installDirectory.error}
-          </FormError>
+          <Hint>
+            Any command that needs to run before we build and deploy your project. This will be run
+            from the root directory of your repo.
+          </Hint>
+          <FormError id={fields.preBuildCommand.errorId}>{fields.preBuildCommand.error}</FormError>
         </InputGroup>
         <FormError>{buildSettingsForm.error}</FormError>
         <FormButtons
