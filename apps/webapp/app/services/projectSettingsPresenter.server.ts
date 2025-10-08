@@ -136,7 +136,7 @@ export class ProjectSettingsPresenter {
 
     const isPreviewEnvironmentEnabled = (projectId: string) =>
       fromPromise(
-        prisma.runtimeEnvironment.findFirst({
+        this.#prismaClient.runtimeEnvironment.findFirst({
           select: {
             id: true,
           },
