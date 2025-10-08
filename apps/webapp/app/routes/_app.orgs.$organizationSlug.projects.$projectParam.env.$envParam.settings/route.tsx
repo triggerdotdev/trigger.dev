@@ -60,6 +60,8 @@ import {
   githubAppInstallPath,
   EnvironmentParamSchema,
   v3ProjectSettingsPath,
+  docsPath,
+  v3BillingPath,
 } from "~/utils/pathBuilder";
 import React, { useEffect, useState } from "react";
 import { Select, SelectItem } from "~/components/primitives/Select";
@@ -77,6 +79,7 @@ import { TextLink } from "~/components/primitives/TextLink";
 import { cn } from "~/utils/cn";
 import { ProjectSettingsPresenter } from "~/services/projectSettingsPresenter.server";
 import { type BuildSettings } from "~/v3/buildSettings";
+import { InfoIconTooltip } from "~/components/primitives/Tooltip";
 
 export const meta: MetaFunction = () => {
   return [
@@ -126,6 +129,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     githubAppEnabled: gitHubApp.enabled,
     githubAppInstallations: gitHubApp.installations,
     connectedGithubRepository: gitHubApp.connectedRepository,
+    isPreviewEnvironmentEnabled: gitHubApp.isPreviewEnvironmentEnabled,
     buildSettings,
   });
 };
@@ -433,8 +437,13 @@ export const action: ActionFunction = async ({ request, params }) => {
 };
 
 export default function Page() {
-  const { githubAppInstallations, connectedGithubRepository, githubAppEnabled, buildSettings } =
-    useTypedLoaderData<typeof loader>();
+  const {
+    githubAppInstallations,
+    connectedGithubRepository,
+    githubAppEnabled,
+    buildSettings,
+    isPreviewEnvironmentEnabled,
+  } = useTypedLoaderData<typeof loader>();
   const project = useProject();
   const organization = useOrganization();
   const environment = useEnvironment();
@@ -561,7 +570,10 @@ export default function Page() {
                   <Header2 spacing>Git settings</Header2>
                   <div className="w-full rounded-sm border border-grid-dimmed p-4">
                     {connectedGithubRepository ? (
-                      <ConnectedGitHubRepoForm connectedGitHubRepo={connectedGithubRepository} />
+                      <ConnectedGitHubRepoForm
+                        connectedGitHubRepo={connectedGithubRepository}
+                        previewEnvironmentEnabled={isPreviewEnvironmentEnabled}
+                      />
                     ) : (
                       <GitHubConnectionPrompt
                         gitHubAppInstallations={githubAppInstallations ?? []}
@@ -903,11 +915,14 @@ type ConnectedGitHubRepo = {
 
 function ConnectedGitHubRepoForm({
   connectedGitHubRepo,
+  previewEnvironmentEnabled,
 }: {
   connectedGitHubRepo: ConnectedGitHubRepo;
+  previewEnvironmentEnabled?: boolean;
 }) {
   const lastSubmission = useActionData() as any;
   const navigation = useNavigation();
+  const organization = useOrganization();
 
   const [hasGitSettingsChanges, setHasGitSettingsChanges] = useState(false);
   const [gitSettingsValues, setGitSettingsValues] = useState({
@@ -1003,10 +1018,10 @@ function ConnectedGitHubRepoForm({
         <Fieldset>
           <InputGroup fullWidth>
             <Hint>
-              Every commit on the selected tracking branch creates a deployment in the corresponding
+              Every push to the selected tracking branch creates a deployment in the corresponding
               environment.
             </Hint>
-            <div className="grid grid-cols-[120px_1fr] gap-3">
+            <div className="mt-1 grid grid-cols-[120px_1fr] gap-3">
               <div className="flex items-center gap-1.5">
                 <EnvironmentIcon environment={{ type: "PRODUCTION" }} className="size-4" />
                 <span className={`text-sm ${environmentTextClassName({ type: "PRODUCTION" })}`}>
@@ -1054,19 +1069,34 @@ function ConnectedGitHubRepoForm({
                   {environmentFullTitle({ type: "PREVIEW" })}
                 </span>
               </div>
-              <Switch
-                name="previewDeploymentsEnabled"
-                defaultChecked={connectedGitHubRepo.previewDeploymentsEnabled}
-                variant="small"
-                label="create preview deployments for pull requests"
-                labelPosition="right"
-                onCheckedChange={(checked) => {
-                  setGitSettingsValues((prev) => ({
-                    ...prev,
-                    previewDeploymentsEnabled: checked,
-                  }));
-                }}
-              />
+              <div className="flex items-center gap-1.5">
+                <Switch
+                  name="previewDeploymentsEnabled"
+                  disabled={!previewEnvironmentEnabled}
+                  defaultChecked={
+                    connectedGitHubRepo.previewDeploymentsEnabled && previewEnvironmentEnabled
+                  }
+                  variant="small"
+                  label="Create preview deployments for pull requests"
+                  labelPosition="right"
+                  onCheckedChange={(checked) => {
+                    setGitSettingsValues((prev) => ({
+                      ...prev,
+                      previewDeploymentsEnabled: checked,
+                    }));
+                  }}
+                />
+                {!previewEnvironmentEnabled && (
+                  <InfoIconTooltip
+                    content={
+                      <span className="text-xs">
+                        <TextLink to={v3BillingPath(organization)}>Upgrade</TextLink> your plan to
+                        enable preview branches
+                      </span>
+                    }
+                  />
+                )}
+              </div>
             </div>
             <FormError>{fields.productionBranch?.error}</FormError>
             <FormError>{fields.stagingBranch?.error}</FormError>
