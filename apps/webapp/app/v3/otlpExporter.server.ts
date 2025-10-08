@@ -803,17 +803,19 @@ function truncateAndDetectUnpairedSurrogate(str: string, maximumLength: number):
   return truncatedString;
 }
 
-const ASCII_ONLY_REGEX = /^[\x00-\x7F]*$/;
+const ASCII_ONLY_REGEX = /^[\p{ASCII}]*$/u;
 
 function smartTruncateString(str: string, maximumLength: number): string {
   if (!str) return "";
   if (str.length <= maximumLength) return str;
 
-  if (ASCII_ONLY_REGEX.test(str)) {
+  const checkLength = Math.min(str.length, maximumLength * 2 + 2);
+
+  if (ASCII_ONLY_REGEX.test(str.slice(0, checkLength))) {
     return str.slice(0, maximumLength);
   }
 
-  return [...str].slice(0, maximumLength).join("");
+  return [...str.slice(0, checkLength)].slice(0, maximumLength).join("");
 }
 
 function hasUnpairedSurrogateAtEnd(str: string): boolean {

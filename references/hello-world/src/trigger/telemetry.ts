@@ -51,20 +51,6 @@ export const taskWithChildTasks = task({
   },
 });
 
-export const taskWithBadLogString = task({
-  id: "otel/task-with-bad-log-string",
-  run: async (payload: any, { ctx }) => {
-    logger.log("Hello, world!", {
-      myString: "👋🏽 I’m Shelby, of Defense.\n\n𝐋𝐞𝐭'𝐬 𝐛𝐮𝐢𝐥𝐝 𝐭𝐡𝐞 \ud835",
-    });
-
-    logger.log("Hello, world!", {
-      myString:
-        "👋🏽 I’m Shelby, an award-winning people leader, an award-winning people leader, an award-winning people leader, an award-winning people leader, an award-winning people leader, an award-winning people leader, an award-winning people leader, an award-winning people leader, an award-winning people leader, an award-winning people leader, an award-winning people leader, MIT-trained mathematician, and AI researcher, engineer, and speaker.\n\nI drive clarity, vision, and execution at the frontier of AI, empowering teams to build breakthrough technologies with real-world, enterprise impact. 💥\n\n🔹 35+ influential AI research publications across AI agents, LLMs, SLMs, and ML (see 𝘗𝘶𝘣𝘭𝘪𝘤𝘢𝘵𝘪𝘰𝘯𝘴 below)\n🔹 8+ years developing applied AI for Fortune 500 use cases\n🔹 10+ years hands-on engineering • 16+ years teaching & speaking with clarity\n🔹 Featured in VentureBeat, ZDNET, and more (see 𝘔𝘦𝘥𝘪𝘢 𝘊𝘰𝘷𝘦𝘳𝘢𝘨𝘦 below)\n🔹 30+ AI keynotes, talks, podcasts, and panels (see 𝘒𝘦𝘺𝘯𝘰𝘵𝘦𝘴 below)\n\nCurrently, I lead and manage a growing team of AI researchers and engineers at Salesforce. We push the boundaries of agentic AI, multi-agent systems, on-device AI, and efficient models.\n\nPreviously, I spent time in research andAI, and efficient models.\n\nPreviously, I spent time in research andAI, and efficient models.\n\nPreviously, I spent time in research andAI, and efficient models.\n\nPreviously, I spent time in research andAI, and efficient models.\n\nPreviously, I spent time in research andAI, and efficient models.\n\nPreviously, I spent time in research andAI, and efficient models.\n\nPreviously, I spent time in research andAI, and efficient models.\n\nPreviously, I spent time in research andAI, and efficient models.\n\nPreviously, I spent time in research and engineering at Intel, IBM Research, MITRE, and the Department of Defense.\n\n𝐋𝐞𝐭'𝐬 𝐛𝐮𝐢𝐥𝐝 𝐭𝐡𝐞 \ud835",
-    });
-  },
-});
-
 export const generateLogsParentTask = task({
   id: "otel/generate-logs-parent",
   run: async (payload: any) => {
