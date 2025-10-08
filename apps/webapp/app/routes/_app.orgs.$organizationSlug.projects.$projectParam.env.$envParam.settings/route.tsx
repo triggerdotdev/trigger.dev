@@ -1187,7 +1187,7 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
             }}
           />
           <Hint>
-            Any commands that needs to run before we build and deploy your project. This will be run
+            Any command that needs to run before we build and deploy your project. This will be run
             from the root directory of your repo.
           </Hint>
           <FormError id={fields.preBuildCommand.errorId}>{fields.preBuildCommand.error}</FormError>
