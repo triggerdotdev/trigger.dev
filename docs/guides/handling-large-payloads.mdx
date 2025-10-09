@@ -1,0 +1,410 @@
+---
+title: "Handling large payloads"
+sidebarTitle: "Large payloads"
+description: "Learn how to work with payloads that exceed the default size limits when triggering tasks."
+---
+
+## Overview
+
+Trigger.dev has payload size limits to ensure optimal performance and prevent memory issues:
+
+- **Single task trigger**: 3MB maximum payload size
+- **Batch trigger**: 1MB maximum total payload size (all items combined)
+- **Automatic server-side offloading**: Payloads larger than 512KB are automatically offloaded to object storage on the server
+
+<Note>
+  When triggering tasks **from within another task** using `tasks.trigger()` or
+  `tasks.triggerAndWait()`, payloads larger than 512KB are automatically handled by the server and
+  uploaded to object storage. However, when triggering from your backend via the API, you'll hit the
+  3MB limit and need to use one of the approaches below.
+</Note>
+
+## Approach 1: Compression (Recommended)
+
+You compress payloads in your backend, and Trigger.dev automatically decompresses them before running your task.
+
+### How it works
+
+1. **Your backend**: Compress the payload using gzip
+2. **Send to Trigger.dev**: Include special `_compressed` and `_encoding` fields
+3. **Worker runtime**: Automatically detects and decompresses before your task runs
+4. **Your task**: Receives the original uncompressed data (no decompression code needed!)
+
+### Benefits
+
+- ✅ Simple - just compress in your backend
+- ✅ No external dependencies beyond Node.js built-in `zlib`
+- ✅ No S3 credentials needed
+- ✅ 70-90% size reduction for JSON/text data
+- ✅ Can handle 3-20MB uncompressed payloads
+
+### Backend code (compress before triggering)
+
+```ts backend/trigger-task.ts
+import { tasks } from "@trigger.dev/sdk/v3";
+import { gzip } from "zlib";
+import { promisify } from "util";
+
+const gzipAsync = promisify(gzip);
+
+export async function triggerTaskWithLargePayload(data: any) {
+  // Compress your entire payload data
+  const jsonString = JSON.stringify(data);
+
+  // Compress the JSON string
+  const compressed = await gzipAsync(jsonString);
+
+  // Convert to base64 for transmission
+  const compressedBase64 = compressed.toString("base64");
+
+  console.log(`Original size: ${jsonString.length} bytes`);
+  console.log(`Compressed size: ${compressedBase64.length} bytes`);
+  console.log(
+    `Compression ratio: ${((1 - compressedBase64.length / jsonString.length) * 100).toFixed(1)}%`
+  );
+
+  // Trigger with special compression fields
+  const handle = await tasks.trigger("process-large-data", {
+    _compressed: compressedBase64, // Required: base64-encoded gzipped data
+    _encoding: "gzip-base64", // Required: must be exactly "gzip-base64"
+    // Optional: any other fields you want to include
+    metadata: { timestamp: Date.now() },
+  });
+
+  return handle;
+}
+```
+
+### Task code (with auto-decompression)
+
+```ts trigger/process-large-data.ts
+import { task, logger } from "@trigger.dev/sdk/v3";
+
+export const processLargeData = task({
+  id: "process-large-data",
+  run: async (payload: { records: any[]; metadata?: any }) => {
+    // Payload is automatically decompressed by Trigger.dev!
+    // You receive the original uncompressed data
+    // No decompression code needed!
+
+    logger.info("Processing large dataset", {
+      recordCount: payload.records?.length,
+    });
+
+    // Your processing logic here
+    return {
+      processed: true,
+      recordCount: payload.records?.length,
+    };
+  },
+});
+```
+
+<Note>
+  The worker runtime detects the `_compressed` and `_encoding` fields, automatically decompresses
+  the data, and removes these special fields before calling your `run()` function. Your task
+  receives clean, uncompressed data.
+</Note>
+
+### Request format
+
+The actual HTTP request sent to Trigger.dev looks like this:
+
+```http
+POST /api/v1/tasks/process-large-data/trigger
+Content-Type: application/json
+Authorization: Bearer tr_dev_xxxxx
+
+{
+  "payload": {
+    "_compressed": "H4sIAAAAAAAA/6tWKkktLlGyUlAy...",
+    "_encoding": "gzip-base64",
+    "metadata": { "timestamp": 1234567890 }
+  }
+}
+```
+
+**Stored in database:**
+
+- `payload`: `'{"_compressed":"H4sIAAAA...","_encoding":"gzip-base64","metadata":{...}}'`
+- `payloadType`: `"application/json"`
+
+**Received by your task:**
+
+```typescript
+{
+  records: [...],  // Original uncompressed data
+  metadata: { timestamp: 1234567890 }
+  // _compressed and _encoding fields removed
+}
+```
+
+### Important notes
+
+**Field requirements:**
+
+- `_compressed`: Must be a base64-encoded string of gzipped data (required)
+- `_encoding`: Must be exactly `"gzip-base64"` (required)
+- Both fields will be automatically removed before your task runs
+- Any additional fields will be merged with the decompressed data
+
+**What to compress:**
+
+- Compress your **entire payload** that you want to send to the task
+- Do NOT include `_compressed` and `_encoding` in the data you compress
+- These are metadata fields added AFTER compression
+
+**Example:**
+
+```typescript
+// ✓ Correct
+const data = { records: [...], info: {...} };
+const compressed = await gzip(JSON.stringify(data));
+await tasks.trigger("task", {
+  _compressed: compressed.toString("base64"),
+  _encoding: "gzip-base64"
+});
+
+// ✗ Wrong - don't compress the metadata fields
+const compressed = await gzip(JSON.stringify({
+  _compressed: "...",  // Don't do this!
+  _encoding: "..."
+}));
+```
+
+### Compression effectiveness
+
+| Payload Type | Original Size | Compressed Size | Savings |
+| :----------- | :------------ | :-------------- | :------ |
+| JSON data    | 5MB           | ~500KB          | 90%     |
+
+## Approach 2: Automatic S3 upload (Coming soon)
+
+<Note>
+  **Planned feature**: The SDK will automatically upload large payloads to Trigger.dev's object
+  storage, completely transparent to you. No code changes needed.
+</Note>
+
+### How it will work
+
+When you trigger a task with a large payload, the SDK will:
+
+1. **Detect** payload is larger than 2MB
+2. **Request** a presigned upload URL from Trigger.dev's API
+3. **Upload** payload to Trigger.dev's object storage
+4. **Send** just a tiny reference to the task trigger API
+5. **Worker** automatically downloads the full payload before running your task
+
+### Benefits
+
+- ✅ Completely transparent - no code changes
+- ✅ No practical size limit (up to 5GB per object)
+- ✅ Uses Trigger.dev's infrastructure (no S3 setup needed)
+- ✅ Only requires your existing `TRIGGER_SECRET_KEY`
+- ✅ Works for all data types (JSON, binary, etc.)
+
+### Your code (unchanged)
+
+```typescript
+// Backend - just works with any payload size!
+await tasks.trigger("process-data", {
+  hugeDataset: [...], // 50MB? No problem!
+  records: [...],
+});
+
+// Task - receives full payload automatically
+export const processData = task({
+  id: "process-data",
+  run: async (payload) => {
+    // You get the complete payload, no matter how large
+    console.log(payload.hugeDataset); // ✅ Just works!
+  },
+});
+```
+
+### How it works under the hood
+
+The SDK enhancement will work like this:
+
+```typescript
+// In packages/trigger-sdk/src/v3/shared.ts - trigger_internal()
+const payloadPacket = await stringifyIO(payload);
+
+// Check if payload is too large for inline transmission
+if (payloadPacket.data.length > 2_000_000 && !taskContext.isInsideTask) {
+  // 1. Get presigned URL from Trigger.dev
+  const { presignedUrl } = await apiClient.createUploadPayloadUrl(filename);
+
+  // 2. Upload to Trigger.dev's S3
+  await fetch(presignedUrl, { method: "PUT", body: payloadPacket.data });
+
+  // 3. Send just the filename reference
+  return await apiClient.triggerTask(id, {
+    payload: filename,
+    options: { ...options, payloadType: "application/store" },
+  });
+}
+
+// Small payload - send inline as usual
+```
+
+The worker runtime already handles `payloadType: "application/store"` and automatically downloads from S3 before running your task.
+
+## Comparison
+
+### Choose the right approach
+
+| Feature                   | Compression (Now)                    | S3 Upload (Coming) |
+| :------------------------ | :----------------------------------- | :----------------- |
+| **Implementation**        | ✅ Available now (manual decompress) | Coming soon        |
+| **Code changes**          | Backend only (compress)              | None               |
+| **Max payload size**      | ~20MB (compressed must fit in 3MB)   | Unlimited (5GB)    |
+| **External dependencies** | None (Node.js built-in)              | None               |
+| **Best for**              | JSON/text data 3-20MB                | Any data 20MB+     |
+| **Setup required**        | None                                 | None               |
+
+## How Trigger.dev handles payloads
+
+Understanding how Trigger.dev processes payloads can help you understand these approaches:
+
+### Task-to-task calls (already works)
+
+When tasks trigger other tasks, payloads larger than 512KB are automatically handled:
+
+1. **Task A** calls `tasks.trigger("task-b", largePayload)`
+2. **Server receives** the payload via API
+3. **Server checks size**: > 512KB?
+4. **If yes**: Upload to Trigger.dev's object storage, store filename reference
+5. **If no**: Store payload inline in database
+6. **Task B runs**: Worker automatically downloads from storage if needed
+
+This happens transparently for task-to-task calls because both the trigger and execution happen within Trigger.dev's infrastructure.
+
+### External API calls (current limitation)
+
+When triggering from your backend:
+
+1. **Your backend** calls `tasks.trigger()` with payload
+2. **SDK sends** full payload in HTTP request
+3. **API middleware** checks: Content-Length > 3MB?
+4. **If yes**: ❌ Request rejected (413 error)
+5. **If no**: ✅ Proceeds to server-side offloading (if > 512KB)
+
+**This is where the 3MB limit applies** - it's enforced before the payload reaches the server's automatic offloading logic.
+
+## Alternative: Manual decompression
+
+If you prefer full control over the compression/decompression process, you can handle both yourself:
+
+### Backend code
+
+```ts backend/trigger-task.ts
+import { tasks } from "@trigger.dev/sdk/v3";
+import { gzip } from "zlib";
+import { promisify } from "util";
+
+const gzipAsync = promisify(gzip);
+
+export async function triggerTaskWithLargePayload(data: any) {
+  const jsonString = JSON.stringify(data);
+  const compressed = await gzipAsync(jsonString);
+  const compressedBase64 = compressed.toString("base64");
+
+  return await tasks.trigger("process-large-data", {
+    compressedData: compressedBase64,
+    encoding: "gzip-base64",
+  });
+}
+```
+
+### Task code
+
+```ts trigger/process-large-data.ts
+import { task, logger } from "@trigger.dev/sdk/v3";
+import { gunzip } from "zlib";
+import { promisify } from "util";
+
+const gunzipAsync = promisify(gunzip);
+
+export const processLargeData = task({
+  id: "process-large-data",
+  run: async (payload: { compressedData: string; encoding: string }) => {
+    // Manual decompression (until auto-decompression is available)
+    const compressed = Buffer.from(payload.compressedData, "base64");
+    const decompressed = await gunzipAsync(compressed);
+    const originalData = JSON.parse(decompressed.toString("utf-8"));
+
+    logger.info("Payload decompressed", {
+      originalSize: decompressed.length,
+      compressedSize: compressed.length,
+    });
+
+    // Your processing logic here
+    return {
+      processed: true,
+      recordCount: originalData.records?.length,
+    };
+  },
+});
+```
+
+## Best practices
+
+### When using compression
+
+- ✅ Test compression ratios with your actual data
+- ✅ Log both compressed and original sizes for monitoring
+- ✅ Use compression for JSON/text data only
+- ✅ Ensure compressed payload is under 3MB
+- ❌ Don't compress binary data (images, videos) - it won't help
+
+### Error handling
+
+Always include proper error handling:
+
+```ts
+try {
+  const compressed = await gzipAsync(jsonString);
+  // ... trigger task
+} catch (error) {
+  console.error("Compression failed:", error);
+  throw new Error("Failed to compress payload");
+}
+```
+
+## Troubleshooting
+
+### "Request body too large" error
+
+If you see this error, your payload (even after compression) exceeds the 3MB limit.
+
+**Solutions:**
+
+1. Check your compression is working correctly
+2. Remove unnecessary data from your payload
+3. Split into multiple smaller task triggers
+4. Wait for the S3 upload approach (coming soon)
+
+### "Object store credentials are not set" error
+
+This error occurs when the server tries to offload a payload (> 512KB) but object storage isn't configured. This typically only happens in self-hosted setups.
+
+**Solutions:**
+
+1. Use compression to get under 512KB
+2. Configure object storage for your self-hosted instance (see [self-hosting docs](/open-source-self-hosting))
+
+### Out of memory errors
+
+If your task runs out of memory while decompressing or processing:
+
+1. Use a [larger machine](/machines) for your task
+2. Process data in chunks instead of loading everything at once
+3. Consider if you really need to pass all that data, or if you can fetch it from a database inside the task
+
+## Related resources
+
+- [Limits](/limits) - All Trigger.dev limits and quotas
+- [Machines](/machines) - Configure task compute resources
+- [Environment Variables](/config/environment-variables) - Managing secrets and configuration
+- [Error handling](/errors-retrying) - Handling and retrying failed tasks

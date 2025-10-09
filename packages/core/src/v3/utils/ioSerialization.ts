@@ -29,8 +29,68 @@ export async function parsePacket(value: IOPacket, options?: ParsePacketOptions)
   }
 
   switch (value.dataType) {
-    case "application/json":
-      return JSON.parse(value.data, makeSafeReviver(options));
+    case "application/json": {
+      const parsed = JSON.parse(value.data, makeSafeReviver(options));
+
+      // Auto-decompress if the user payload contains compression metadata
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        parsed._encoding === "gzip-base64" &&
+        parsed._compressed
+      ) {
+        try {
+          const { gunzip } = await import("zlib");
+          const { promisify } = await import("util");
+          const gunzipAsync = promisify(gunzip);
+
+          const compressedBase64 = parsed._compressed;
+          const compressedSize = compressedBase64.length;
+
+          // Decode from base64 and decompress
+          const compressed = Buffer.from(compressedBase64, "base64");
+          const decompressed = await gunzipAsync(Uint8Array.from(compressed));
+          const decompressedString = decompressed.toString("utf-8");
+          const originalData = JSON.parse(decompressedString);
+
+          const previewLength = 150; // just for console logs
+          console.log("[parsePacket] Auto-decompression applied", {
+            encoding: parsed._encoding,
+            compressedSize: compressedSize,
+            decompressedSize: decompressedString.length,
+            compressionRatio: `${((1 - compressedSize / decompressedString.length) * 100).toFixed(
+              1
+            )}%`,
+          });
+          console.log(
+            "[parsePacket] Original data preview:",
+            JSON.stringify(originalData).substring(0, previewLength) + "..."
+          );
+          console.log(
+            "[parsePacket] Decompressed matches original:",
+            JSON.stringify(originalData) === decompressedString
+          );
+
+          // Remove compression metadata and merge with any other fields from the user payload
+          const { _compressed, _encoding, ...otherFields } = parsed;
+
+          // If there are other fields, merge it all
+          if (Object.keys(otherFields).length > 0) {
+            return { ...originalData, ...otherFields };
+          }
+
+          return originalData;
+        } catch (error) {
+          throw new Error(
+            `Failed to decompress payload: ${
+              error instanceof Error ? error.message : String(error)
+            }`
+          );
+        }
+      }
+
+      return parsed;
+    }
     case "application/super+json":
       const { parse } = await loadSuperJSON();
 

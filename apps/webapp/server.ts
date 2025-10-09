@@ -1,5 +1,10 @@
 import "./sentry.server";
 
+import dotenv from "dotenv";
+import path from "path";
+
+dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
+
 import { createRequestHandler } from "@remix-run/express";
 import { broadcastDevReady, logDevReady } from "@remix-run/server-runtime";
 import compression from "compression";
@@ -7,7 +12,6 @@ import type { Server as EngineServer } from "engine.io";
 import express from "express";
 import morgan from "morgan";
 import { nanoid } from "nanoid";
-import path from "path";
 import type { Server as IoServer } from "socket.io";
 import { WebSocketServer } from "ws";
 import { RateLimitMiddleware } from "~/services/apiRateLimit.server";

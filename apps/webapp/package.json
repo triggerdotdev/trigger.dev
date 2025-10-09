@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "sideEffects": false,
   "scripts": {
-    "build": "run-s build:** && pnpm run upload:sourcemaps",
+    "build": "run-s build:**",
     "build:db:seed": "esbuild --platform=node --bundle --minify --format=cjs ./prisma/seed.ts --outdir=prisma",
     "build:remix": "remix build --sourcemap",
     "build:server": "esbuild --platform=node --format=cjs ./server.ts --outdir=build --sourcemap",

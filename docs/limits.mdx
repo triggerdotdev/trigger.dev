@@ -78,10 +78,16 @@ Additional bundles are available for $10/month per 100 concurrent connections. C
 | Limit                  | Details                                       |
 | :--------------------- | :-------------------------------------------- |
 | Single trigger payload | Must not exceed 3MB                           |
-| Batch trigger payload  | The total of all payloads must not exceed 5MB |
+| Batch trigger payload  | The total of all payloads must not exceed 1MB |
 | Task outputs           | Must not exceed 10MB                          |
 
 Payloads and outputs that exceed 512KB will be offloaded to object storage and a presigned URL will be provided to download the data when calling `runs.retrieve`. You don't need to do anything to handle this in your tasks however, as we will transparently upload/download these during operation.
+
+<Note>
+  Need to work with larger payloads? Check out our [guide on handling large
+  payloads](/guides/handling-large-payloads) which shows you how to use compression or upload to
+  your own storage to work around these limits.
+</Note>
 
 ## Batch size
 
