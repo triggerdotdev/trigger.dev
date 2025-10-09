@@ -69,6 +69,11 @@ type Pagination = {
   };
 };
 
+type OffsetPagination = {
+  offset: number;
+  limit: number;
+};
+
 export type ListedRun = Prisma.TaskRunGetPayload<{
   select: {
     id: true;
@@ -104,6 +109,21 @@ export type ListedRun = Prisma.TaskRunGetPayload<{
 
 export type ListRunsOptions = RunListInputOptions & Pagination;
 
+export type TagListOptions = {
+  organizationId: string;
+  projectId: string;
+  environmentId: string;
+  period?: string;
+  from?: number;
+  to?: number;
+  /** Performs a case insensitive contains search on the tag name */
+  query?: string;
+} & OffsetPagination;
+
+export type TagList = {
+  tags: string[];
+};
+
 export interface IRunsRepository {
   name: string;
   listRunIds(options: ListRunsOptions): Promise<string[]>;
@@ -115,6 +135,7 @@ export interface IRunsRepository {
     };
   }>;
   countRuns(options: RunListInputOptions): Promise<number>;
+  listTags(options: TagListOptions): Promise<TagList>;
 }
 
 export class RunsRepository implements IRunsRepository {
@@ -280,6 +301,24 @@ export class RunsRepository implements IRunsRepository {
           }
           throw error;
         }
+      },
+      {
+        attributes: {
+          "repository.name": repository.name,
+          organizationId: options.organizationId,
+          projectId: options.projectId,
+          environmentId: options.environmentId,
+        },
+      }
+    );
+  }
+
+  async listTags(options: TagListOptions): Promise<TagList> {
+    const repository = await this.#getRepository();
+    return startActiveSpan(
+      "runsRepository.listTags",
+      async () => {
+        return await repository.listTags(options);
       },
       {
         attributes: {
