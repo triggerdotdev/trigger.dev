@@ -37,7 +37,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     logger.warn("GitHub App callback with invalid params", {
       queryParams,
     });
-    return redirectWithErrorMessage("/", request, "Failed to install GitHub App");
+    return redirectWithErrorMessage("/", request, "Failed to install GitHub app");
   }
 
   const callbackData = result.data;
@@ -50,7 +50,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       error: sessionResult.error,
     });
 
-    return redirectWithErrorMessage("/", request, "Failed to install GitHub App");
+    return redirectWithErrorMessage("/", request, "Failed to install GitHub app");
   }
 
   const { organizationId, redirectTo: unsafeRedirectTo } = sessionResult;
@@ -72,7 +72,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       userId: user.id,
       organizationId,
     });
-    return redirectWithErrorMessage(redirectTo, request, "Failed to install GitHub App");
+    return redirectWithErrorMessage(redirectTo, request, "Failed to install GitHub app");
   }
 
   switch (callbackData.setup_action) {
@@ -85,7 +85,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
         logger.error("Failed to link GitHub App installation", {
           error,
         });
-        return redirectWithErrorMessage(redirectTo, request, "Failed to install GitHub App");
+        return redirectWithErrorMessage(redirectTo, request, "Failed to install GitHub app");
       }
 
       return redirectWithSuccessMessage(redirectTo, request, "GitHub App installed successfully");
@@ -116,6 +116,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
     default:
       callbackData satisfies never;
-      return redirectWithErrorMessage(redirectTo, request, "Failed to install GitHub App");
+      return redirectWithErrorMessage(redirectTo, request, "Failed to install GitHub app");
   }
 }
