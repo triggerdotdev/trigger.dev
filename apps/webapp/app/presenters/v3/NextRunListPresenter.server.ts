@@ -9,7 +9,7 @@ import { type Direction } from "~/components/ListPagination";
 import { timeFilters } from "~/components/runs/v3/SharedFilters";
 import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { getAllTaskIdentifiers } from "~/models/task.server";
-import { RunsRepository } from "~/services/runsRepository/runsRepository.server";
+import { createRunsRepository } from "~/services/runsRepositoryFactory.server";
 import { machinePresetFromRun } from "~/v3/machinePresets.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { isCancellableRunStatus, isFinalRunStatus, isPendingRunStatus } from "~/v3/taskStatus";
@@ -153,7 +153,7 @@ export class NextRunListPresenter {
       throw new ServiceValidationError("No environment found");
     }
 
-    const runsRepository = new RunsRepository({
+    const runsRepository = createRunsRepository({
       clickhouse: this.clickhouse,
       prisma: this.replica as PrismaClient,
     });
