@@ -1,7 +1,15 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+
 vi.mock("~/env.server", () => ({
-  env: {},
+  env: {
+    RUN_REPLICATION_ENABLED: "0",
+    RUN_REPLICATION_CLICKHOUSE_URL: undefined,
+    DATABASE_CONNECTION_LIMIT: 10,
+    DATABASE_POOL_TIMEOUT: 60,
+    DATABASE_CONNECTION_TIMEOUT: 20,
+  },
 }));
+
 vi.mock("~/db.server", () => ({
   prisma: {},
   $replica: {},
@@ -12,69 +20,51 @@ import type { ClickHouse } from "@internal/clickhouse";
 import type { PrismaClient } from "@trigger.dev/database";
 
 describe("createRunsRepository", () => {
-  let mockClickhouse: ClickHouse;
-  let mockPrisma: PrismaClient;
-  let originalEnv: Record<string, unknown>;
+  const mockClickhouse = {} as ClickHouse;
+  const mockPrisma = {} as PrismaClient;
 
-  beforeEach(async () => {
-    const envModule = await import("~/env.server");
-    originalEnv = { ...envModule.env };
-
-    mockClickhouse = {} as ClickHouse;
-    mockPrisma = {} as PrismaClient;
-  });
-
-  afterEach(async () => {
-    const envModule = await import("~/env.server");
-    Object.assign(envModule.env, originalEnv);
-  });
-
-  it("should default to postgres when RUN_REPLICATION_ENABLED is not set", async () => {
-    const envModule = await import("~/env.server");
-    envModule.env.RUN_REPLICATION_ENABLED = "0";
-    envModule.env.RUN_REPLICATION_CLICKHOUSE_URL = "http://localhost:8123";
-
+  it("should default to postgres when replication is disabled", () => {
     const repository = createRunsRepository({
       clickhouse: mockClickhouse,
       prisma: mockPrisma,
+      isReplicationEnabled: false,
+      isClickHouseConfigured: true,
     });
 
     expect(repository).toBeDefined();
     expect(repository.listRuns).toBeDefined();
   });
 
-  it("should default to postgres when RUN_REPLICATION_CLICKHOUSE_URL is not set", async () => {
-    const envModule = await import("~/env.server");
-    envModule.env.RUN_REPLICATION_ENABLED = "1";
-    envModule.env.RUN_REPLICATION_CLICKHOUSE_URL = undefined;
-
+  it("should default to postgres when ClickHouse is not configured", () => {
     const repository = createRunsRepository({
       clickhouse: mockClickhouse,
       prisma: mockPrisma,
+      isReplicationEnabled: true,
+      isClickHouseConfigured: false,
     });
 
     expect(repository).toBeDefined();
     expect(repository.listRuns).toBeDefined();
   });
 
-  it("should default to clickhouse when both conditions are met", async () => {
-    const envModule = await import("~/env.server");
-    envModule.env.RUN_REPLICATION_ENABLED = "1";
-    envModule.env.RUN_REPLICATION_CLICKHOUSE_URL = "http://localhost:8123";
-
+  it("should default to clickhouse when both conditions are met", () => {
     const repository = createRunsRepository({
       clickhouse: mockClickhouse,
       prisma: mockPrisma,
+      isReplicationEnabled: true,
+      isClickHouseConfigured: true,
     });
 
     expect(repository).toBeDefined();
     expect(repository.listRuns).toBeDefined();
   });
 
-  it("should create a valid RunsRepository instance", () => {
+  it("should create a valid RunsRepository instance with all required methods", () => {
     const repository = createRunsRepository({
       clickhouse: mockClickhouse,
       prisma: mockPrisma,
+      isReplicationEnabled: false,
+      isClickHouseConfigured: false,
     });
 
     expect(repository.listRuns).toBeDefined();
