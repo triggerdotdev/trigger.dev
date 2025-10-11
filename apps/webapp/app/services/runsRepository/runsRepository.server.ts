@@ -13,6 +13,7 @@ import { startActiveSpan } from "~/v3/tracer.server";
 import { logger } from "../logger.server";
 import { ClickHouseRunsRepository } from "./clickhouseRunsRepository.server";
 import { PostgresRunsRepository } from "./postgresRunsRepository.server";
+import { env } from "~/env.server";
 
 export type RunsRepositoryOptions = {
   clickhouse: ClickHouse;
@@ -130,7 +131,11 @@ export class RunsRepository implements IRunsRepository {
   ) {
     this.clickHouseRunsRepository = new ClickHouseRunsRepository(options);
     this.postgresRunsRepository = new PostgresRunsRepository(options);
-    this.defaultRepository = options.defaultRepository ?? "clickhouse";
+    this.defaultRepository =
+      options.defaultRepository ??
+      ((env.RUN_REPLICATION_ENABLED === "1" && env.RUN_REPLICATION_CLICKHOUSE_URL)
+        ? "clickhouse"
+        : "postgres");
     this.logger = options.logger ?? logger;
   }
 
