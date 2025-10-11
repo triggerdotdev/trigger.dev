@@ -40,7 +40,7 @@ export function configureWorkersCreateCommand(program: Command) {
       )
       .action(async (path, options) => {
         await handleTelemetry(async () => {
-          await printStandloneInitialBanner(true);
+          await printStandloneInitialBanner(true, options.profile);
           await workersCreateCommand(path, options);
         });
       })

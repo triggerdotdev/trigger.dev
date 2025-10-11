@@ -13,6 +13,7 @@ import { tryCatch } from "@trigger.dev/core";
 const AnalyzeOptions = CommonCommandOptions.pick({
   logLevel: true,
   skipTelemetry: true,
+  profile: true,
 }).extend({
   verbose: z.boolean().optional().default(false),
 });
@@ -39,7 +40,7 @@ export function configureAnalyzeCommand(program: Command) {
 
 export async function analyzeCommand(dir: string | undefined, options: unknown) {
   return await wrapCommandAction("analyze", AnalyzeOptions, options, async (opts) => {
-    await printInitialBanner(false);
+    await printInitialBanner(false, opts.profile);
     return await analyze(dir, opts);
   });
 }
