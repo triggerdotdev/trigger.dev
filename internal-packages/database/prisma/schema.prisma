@@ -1482,8 +1482,15 @@ model TaskQueue {
   runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   runtimeEnvironmentId String
 
-  concurrencyLimit Int?
-  rateLimit        Json?
+  /// Represents the current concurrency limit for the queue
+  concurrencyLimit             Int?
+  /// When the concurrency limit was overridden
+  concurrencyLimitOverriddenAt DateTime?
+  /// Who overrode the concurrency limit (will be null if overridden via the API)
+  concurrencyLimitOverriddenBy String?
+  /// If concurrencyLimit is overridden, this is the overridden value
+  concurrencyLimitBase         Int?
+  rateLimit                    Json?
 
   paused Boolean @default(false)
 

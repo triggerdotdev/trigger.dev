@@ -1,11 +1,17 @@
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { engine } from "~/v3/runEngine.server";
 import { BasePresenter } from "./basePresenter.server";
-import { type TaskQueueType } from "@trigger.dev/database";
+import { TaskQueue, User, type TaskQueueType } from "@trigger.dev/database";
 import { assertExhaustive } from "@trigger.dev/core";
 import { determineEngineVersion } from "~/v3/engineVersion.server";
-import { type QueueItem, type RetrieveQueueParam } from "@trigger.dev/core/v3";
+import { type Prettify, type QueueItem, type RetrieveQueueParam } from "@trigger.dev/core/v3";
 import { PrismaClientOrTransaction } from "@trigger.dev/database";
+
+export type FoundQueue = Prettify<
+  Omit<TaskQueue, "concurrencyLimitOverriddenBy"> & {
+    concurrencyLimitOverriddenBy?: User | null;
+  }
+>;
 
 /**
  * Shared queue lookup logic used by both QueueRetrievePresenter and PauseQueueService
@@ -16,22 +22,50 @@ export async function getQueue(
   queue: RetrieveQueueParam
 ) {
   if (typeof queue === "string") {
-    return prismaClient.taskQueue.findFirst({
-      where: {
-        friendlyId: queue,
-        runtimeEnvironmentId: environment.id,
-      },
-    });
+    return joinQueueWithUser(
+      prismaClient,
+      await prismaClient.taskQueue.findFirst({
+        where: {
+          friendlyId: queue,
+          runtimeEnvironmentId: environment.id,
+        },
+      })
+    );
   }
 
   const queueName =
     queue.type === "task" ? `task/${queue.name.replace(/^task\//, "")}` : queue.name;
-  return prismaClient.taskQueue.findFirst({
-    where: {
-      name: queueName,
-      runtimeEnvironmentId: environment.id,
-    },
+  return joinQueueWithUser(
+    prismaClient,
+    await prismaClient.taskQueue.findFirst({
+      where: {
+        name: queueName,
+        runtimeEnvironmentId: environment.id,
+      },
+    })
+  );
+}
+
+async function joinQueueWithUser(
+  prismaClient: PrismaClientOrTransaction,
+  queue?: TaskQueue | null
+): Promise<FoundQueue | undefined> {
+  if (!queue) return undefined;
+  if (!queue.concurrencyLimitOverriddenBy) {
+    return {
+      ...queue,
+      concurrencyLimitOverriddenBy: undefined,
+    };
+  }
+
+  const user = await prismaClient.user.findFirst({
+    where: { id: queue.concurrencyLimitOverriddenBy },
   });
+
+  return {
+    ...queue,
+    concurrencyLimitOverriddenBy: user,
+  };
 }
 
 export class QueueRetrievePresenter extends BasePresenter {
@@ -75,6 +109,9 @@ export class QueueRetrievePresenter extends BasePresenter {
         running: results[1]?.[queue.name] ?? 0,
         queued: results[0]?.[queue.name] ?? 0,
         concurrencyLimit: queue.concurrencyLimit ?? null,
+        concurrencyLimitBase: queue.concurrencyLimitBase ?? null,
+        concurrencyLimitOverriddenAt: queue.concurrencyLimitOverriddenAt ?? null,
+        concurrencyLimitOverriddenBy: queue.concurrencyLimitOverriddenBy ?? null,
         paused: queue.paused,
       }),
     };
@@ -104,6 +141,9 @@ export function toQueueItem(data: {
   running: number;
   queued: number;
   concurrencyLimit: number | null;
+  concurrencyLimitBase: number | null;
+  concurrencyLimitOverriddenAt: Date | null;
+  concurrencyLimitOverriddenBy: User | null;
   paused: boolean;
 }): QueueItem & { releaseConcurrencyOnWaitpoint: boolean } {
   return {
@@ -113,9 +153,22 @@ export function toQueueItem(data: {
     type: queueTypeFromType(data.type),
     running: data.running,
     queued: data.queued,
-    concurrencyLimit: data.concurrencyLimit,
     paused: data.paused,
+    concurrencyLimit: data.concurrencyLimit,
+    concurrency: {
+      current: data.concurrencyLimit,
+      base: data.concurrencyLimitBase,
+      override: data.concurrencyLimitOverriddenAt ? data.concurrencyLimit : null,
+      overriddenBy: toQueueConcurrencyOverriddenBy(data.concurrencyLimitOverriddenBy),
+      overriddenAt: data.concurrencyLimitOverriddenAt,
+    },
     // TODO: This needs to be removed but keeping this here for now to avoid breaking existing clients
     releaseConcurrencyOnWaitpoint: true,
   };
+}
+
+function toQueueConcurrencyOverriddenBy(user: User | null) {
+  if (!user) return null;
+
+  return user.displayName ?? user.name ?? null;
 }

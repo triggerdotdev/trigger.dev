@@ -6,6 +6,7 @@ import {
   PauseIcon,
   PlayIcon,
   RectangleStackIcon,
+  WrenchScrewdriverIcon,
 } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { Form, useNavigation, useSearchParams, type MetaFunction } from "@remix-run/react";
@@ -61,6 +62,8 @@ import { cn } from "~/utils/cn";
 import { docsPath, EnvironmentParamSchema, v3BillingPath, v3RunsPath } from "~/utils/pathBuilder";
 import { PauseEnvironmentService } from "~/v3/services/pauseEnvironment.server";
 import { PauseQueueService } from "~/v3/services/pauseQueue.server";
+import { concurrencySystem } from "~/v3/services/concurrencySystemInstance.server";
+import { getUserById } from "~/models/user.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { Header3 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
@@ -207,6 +210,75 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         request,
         `Queue ${action === "queue-pause" ? "paused" : "resumed"}`
       );
+    }
+    case "queue-override": {
+      const friendlyId = formData.get("friendlyId");
+      const concurrencyLimit = formData.get("concurrencyLimit");
+
+      if (!friendlyId) {
+        return redirectWithErrorMessage(redirectPath, request, "Queue ID is required");
+      }
+
+      if (!concurrencyLimit) {
+        return redirectWithErrorMessage(redirectPath, request, "Concurrency limit is required");
+      }
+
+      const limitNumber = parseInt(concurrencyLimit.toString(), 10);
+      if (isNaN(limitNumber) || limitNumber < 0) {
+        return redirectWithErrorMessage(
+          redirectPath,
+          request,
+          "Concurrency limit must be a valid number"
+        );
+      }
+
+      const user = await getUserById(userId);
+      if (!user) {
+        return redirectWithErrorMessage(redirectPath, request, "User not found");
+      }
+
+      const result = await concurrencySystem.queues.overrideQueueConcurrencyLimit(
+        environment,
+        friendlyId.toString(),
+        limitNumber,
+        user
+      );
+
+      if (!result.isOk()) {
+        return redirectWithErrorMessage(
+          redirectPath,
+          request,
+          "Failed to override queue concurrency limit"
+        );
+      }
+
+      return redirectWithSuccessMessage(
+        redirectPath,
+        request,
+        "Queue concurrency limit overridden"
+      );
+    }
+    case "queue-remove-override": {
+      const friendlyId = formData.get("friendlyId");
+
+      if (!friendlyId) {
+        return redirectWithErrorMessage(redirectPath, request, "Queue ID is required");
+      }
+
+      const result = await concurrencySystem.queues.resetConcurrencyLimit(
+        environment,
+        friendlyId.toString()
+      );
+
+      if (!result.isOk()) {
+        return redirectWithErrorMessage(
+          redirectPath,
+          request,
+          "Failed to reset queue concurrency limit"
+        );
+      }
+
+      return redirectWithSuccessMessage(redirectPath, request, "Queue concurrency limit reset");
     }
     default:
       return redirectWithErrorMessage(redirectPath, request, "Something went wrong");
@@ -375,7 +447,8 @@ export default function Page() {
                   <TableRow>
                     <TableHeaderCell>Name</TableHeaderCell>
                     <TableHeaderCell alignment="right">Queued</TableHeaderCell>
-                    <TableHeaderCell alignment="right">Running/limit</TableHeaderCell>
+                    <TableHeaderCell alignment="right">Running</TableHeaderCell>
+                    <TableHeaderCell alignment="right">Limit</TableHeaderCell>
                     <TableHeaderCell
                       alignment="right"
                       tooltip={
@@ -401,6 +474,17 @@ export default function Page() {
                               This queue is limited by a concurrency limit set in your code.
                             </Paragraph>
                           </div>
+                          <div className="space-y-0.5">
+                            <Header3>Overridden</Header3>
+                            <Paragraph
+                              variant="small"
+                              className="!text-wrap text-text-dimmed"
+                              spacing
+                            >
+                              This queue's concurrency limit has been manually overridden from the
+                              dashboard or API.
+                            </Paragraph>
+                          </div>
                         </div>
                       }
                     >
@@ -415,7 +499,7 @@ export default function Page() {
                   {queues.length > 0 ? (
                     queues.map((queue) => {
                       const limit = queue.concurrencyLimit ?? environment.concurrencyLimit;
-                      const isAtLimit = queue.running === limit;
+                      const isAtLimit = queue.running >= limit;
                       const queueFilterableName = `${queue.type === "task" ? "task/" : ""}${
                         queue.name
                       }`;
@@ -472,24 +556,37 @@ export default function Page() {
                           <TableCell
                             alignment="right"
                             className={cn(
-                              queue.paused ? "tabular-nums opacity-50" : undefined,
+                              "tabular-nums",
+                              queue.paused ? "opacity-50" : undefined,
                               queue.running > 0 && "text-text-bright",
                               isAtLimit && "text-warning"
                             )}
                           >
-                            {queue.running}/
-                            <span className={cn("tabular-nums", isAtLimit && "text-warning")}>
-                              {limit}
-                            </span>
+                            {queue.running}
+                          </TableCell>
+                          <TableCell
+                            alignment="right"
+                            className={cn(
+                              "tabular-nums",
+                              queue.paused ? "opacity-50" : undefined,
+                              queue.concurrency?.overriddenAt && "text-indigo-500"
+                            )}
+                          >
+                            {limit}
                           </TableCell>
                           <TableCell
                             alignment="right"
                             className={cn(
                               queue.paused ? "opacity-50" : undefined,
-                              isAtLimit && "text-warning"
+                              isAtLimit && "text-warning",
+                              queue.concurrency?.overriddenAt && "text-indigo-500"
                             )}
                           >
-                            {queue.concurrencyLimit ? "User" : "Environment"}
+                            {queue.concurrency?.overriddenAt
+                              ? "Overridden"
+                              : queue.concurrencyLimit
+                              ? "User"
+                              : "Environment"}
                           </TableCell>
                           <TableCellMenu
                             isSticky
@@ -516,6 +613,11 @@ export default function Page() {
                                     showTooltip={false}
                                   />
                                 )}
+                                <QueueOverrideConcurrencyButton
+                                  queue={queue}
+                                  environmentConcurrencyLimit={environment.concurrencyLimit}
+                                  fullWidth
+                                />
                                 <LinkButton
                                   variant="minimal/small"
                                   to={v3RunsPath(organization, project, env, {
@@ -568,7 +670,7 @@ export default function Page() {
                     })
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={6}>
+                      <TableCell colSpan={7}>
                         <div className="grid place-items-center py-6 text-text-dimmed">
                           <Paragraph>
                             {hasFilters
@@ -799,6 +901,143 @@ function QueuePauseResumeButton({
                 </DialogClose>
               }
             />
+          </Form>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function QueueOverrideConcurrencyButton({
+  queue,
+  environmentConcurrencyLimit,
+  variant = "minimal/small",
+  fullWidth = false,
+}: {
+  queue: {
+    id: string;
+    name: string;
+    concurrencyLimit: number | null;
+    concurrency?: { overriddenAt: Date | null };
+  };
+  environmentConcurrencyLimit: number;
+  variant?: ButtonVariant;
+  fullWidth?: boolean;
+}) {
+  const navigation = useNavigation();
+  const [isOpen, setIsOpen] = useState(false);
+  const [concurrencyLimit, setConcurrencyLimit] = useState<string>(
+    queue.concurrencyLimit?.toString() ?? environmentConcurrencyLimit.toString()
+  );
+
+  const isOverridden = !!queue.concurrency?.overriddenAt;
+  const currentLimit = queue.concurrencyLimit ?? environmentConcurrencyLimit;
+
+  useEffect(() => {
+    if (navigation.state === "loading" || navigation.state === "idle") {
+      setIsOpen(false);
+    }
+  }, [navigation.state]);
+
+  const isLoading = Boolean(
+    navigation.formData?.get("action") === "queue-override" ||
+      navigation.formData?.get("action") === "queue-remove-override"
+  );
+
+  return (
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <DialogTrigger asChild>
+        <Button
+          type="button"
+          variant={variant}
+          LeadingIcon={WrenchScrewdriverIcon}
+          leadingIconClassName={isOverridden ? "text-indigo-500" : "text-dimmed"}
+          fullWidth={fullWidth}
+          textAlignLeft={fullWidth}
+        >
+          {isOverridden ? "Edit override..." : "Override limit..."}
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          {isOverridden ? "Edit concurrency override" : "Override concurrency limit"}
+        </DialogHeader>
+        <div className="flex flex-col gap-3 pt-3">
+          {isOverridden ? (
+            <>
+              <Paragraph variant="small">
+                This queue's concurrency limit is currently overridden to {currentLimit}.
+                {queue.concurrencyLimit !== null &&
+                  ` The original limit set in code was ${queue.concurrencyLimit}.`}
+              </Paragraph>
+              <Paragraph variant="small">
+                You can update the override or remove it to restore the{" "}
+                {queue.concurrencyLimit !== null
+                  ? "limit set in code"
+                  : "environment concurrency limit"}
+                .
+              </Paragraph>
+            </>
+          ) : (
+            <Paragraph variant="small">
+              Override this queue's concurrency limit. The current limit is {currentLimit}{" "}
+              {queue.concurrencyLimit !== null ? "(set in code)" : "(from environment)"}.
+            </Paragraph>
+          )}
+          <Form method="post" onSubmit={() => setIsOpen(false)} className="space-y-3">
+            <input type="hidden" name="friendlyId" value={queue.id} />
+            <div className="space-y-2">
+              <label htmlFor="concurrencyLimit" className="text-sm text-text-bright">
+                Concurrency limit
+              </label>
+              <Input
+                type="number"
+                name="concurrencyLimit"
+                id="concurrencyLimit"
+                min="0"
+                value={concurrencyLimit}
+                onChange={(e) => setConcurrencyLimit(e.target.value)}
+                placeholder={currentLimit.toString()}
+                autoFocus
+              />
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                {isOverridden && (
+                  <Button
+                    type="submit"
+                    name="action"
+                    value="queue-remove-override"
+                    disabled={isLoading}
+                    variant="danger/medium"
+                  >
+                    Remove override
+                  </Button>
+                )}
+              </div>
+              <FormButtons
+                confirmButton={
+                  <Button
+                    type="submit"
+                    name="action"
+                    value="queue-override"
+                    disabled={isLoading || !concurrencyLimit}
+                    variant="primary/medium"
+                    LeadingIcon={isLoading ? <Spinner color="white" /> : WrenchScrewdriverIcon}
+                    shortcut={{ modifiers: ["mod"], key: "enter" }}
+                  >
+                    {isOverridden ? "Update override" : "Override limit"}
+                  </Button>
+                }
+                cancelButton={
+                  <DialogClose asChild>
+                    <Button type="button" variant="tertiary/medium">
+                      Cancel
+                    </Button>
+                  </DialogClose>
+                }
+              />
+            </div>
           </Form>
         </div>
       </DialogContent>
