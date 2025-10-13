@@ -19,12 +19,23 @@ import {
   getTraceSummaryQueryBuilder,
   insertTaskEvents,
 } from "./taskEvents.js";
+import {
+  getTaskRunCountMetrics,
+  getTaskRunDurationMetrics,
+  getTaskRunCostMetrics,
+  getTaskRunStatusMetrics,
+  getCustomMetrics,
+  getDynamicMetricsQueryBuilder,
+  createMetricsQuery,
+  type MetricQueryParams,
+} from "./metrics.js";
 import { Logger, type LogLevel } from "@trigger.dev/core/logger";
 import type { Agent as HttpAgent } from "http";
 import type { Agent as HttpsAgent } from "https";
 
 export type * from "./taskRuns.js";
 export type * from "./taskEvents.js";
+export type * from "./metrics.js";
 export type * from "./client/queryBuilder.js";
 
 export type ClickhouseCommonConfig = {
@@ -169,6 +180,18 @@ export class ClickHouse {
       traceSummaryQueryBuilder: getTraceSummaryQueryBuilder(this.reader),
       traceDetailedSummaryQueryBuilder: getTraceDetailedSummaryQueryBuilder(this.reader),
       spanDetailsQueryBuilder: getSpanDetailsQueryBuilder(this.reader),
+    };
+  }
+
+  get metrics() {
+    return {
+      getTaskRunCount: getTaskRunCountMetrics(this.reader),
+      getTaskRunDuration: getTaskRunDurationMetrics(this.reader),
+      getTaskRunCost: getTaskRunCostMetrics(this.reader),
+      getTaskRunStatus: getTaskRunStatusMetrics(this.reader),
+      getCustom: getCustomMetrics(this.reader),
+      getDynamic: getDynamicMetricsQueryBuilder(this.reader),
+      createQuery: (params: MetricQueryParams, metricType?: "count" | "duration" | "cost" | "status" | "custom", customMetric?: { aggregation: "count" | "sum" | "avg" | "min" | "max"; column: string }) => createMetricsQuery(this.reader, params, metricType, customMetric),
     };
   }
 }
