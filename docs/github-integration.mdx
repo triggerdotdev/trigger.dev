@@ -34,9 +34,9 @@ This eliminates the need to manually run the `trigger.dev deploy` command or set
 <Step title="Customize build settings (optional)">
   Configure how your project is built:
 
-  - **Trigger config file**: Path to your `trigger.config.ts` file. By default, we look for it in the root of your repository.
-  - **Install command**: Auto-detected by default, but you can override it if necessary.
-  - **Pre-build command**: Run any commands before building and deploying your project, e.g., `pnpm run prisma:generate`.
+  - **Trigger config file**: Path to your `trigger.config.ts` file. By default, we look for it in the root of your repository. The path should be relative to the root of your repository and contain the config file name, e.g., `apps/tasks/trigger.config.ts`.
+  - **Install command**: Auto-detected by default, but you can override it if necessary. The command will be run from the root of your repository.
+  - **Pre-build command**: Run any commands before building and deploying your project, e.g., `pnpm run prisma:generate`. The command will be run from the root of your repository.
 </Step>
 
 </Steps>
