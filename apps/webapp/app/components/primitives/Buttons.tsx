@@ -298,19 +298,17 @@ export const Button = forwardRef<HTMLButtonElement, ButtonPropsType>(
     const innerRef = useRef<HTMLButtonElement>(null);
     useImperativeHandle(ref, () => innerRef.current as HTMLButtonElement);
 
-    if (props.shortcut) {
-      useShortcutKeys({
-        shortcut: props.shortcut,
-        action: (e) => {
-          if (innerRef.current) {
-            innerRef.current.click();
-            e.preventDefault();
-            e.stopPropagation();
-          }
-        },
-        disabled,
-      });
-    }
+    useShortcutKeys({
+      shortcut: props.shortcut,
+      action: (e) => {
+        if (innerRef.current) {
+          innerRef.current.click();
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      },
+      disabled: disabled || !props.shortcut,
+    });
 
     return (
       <button
@@ -345,16 +343,16 @@ export const LinkButton = ({
   ...props
 }: LinkPropsType) => {
   const innerRef = useRef<HTMLAnchorElement>(null);
-  if (props.shortcut) {
-    useShortcutKeys({
-      shortcut: props.shortcut,
-      action: () => {
-        if (innerRef.current) {
-          innerRef.current.click();
-        }
-      },
-    });
-  }
+  
+  useShortcutKeys({
+    shortcut: props.shortcut,
+    action: () => {
+      if (innerRef.current) {
+        innerRef.current.click();
+      }
+    },
+    disabled: disabled || !props.shortcut,
+  });
 
   if (disabled) {
     return (
