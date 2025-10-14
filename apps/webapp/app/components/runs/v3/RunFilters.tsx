@@ -421,7 +421,7 @@ function AppliedFilters({ possibleTasks, bulkActions }: RunFiltersProps) {
     <>
       <AppliedStatusFilter />
       <AppliedTaskFilter possibleTasks={possibleTasks} />
-      {/* <AppliedTagsFilter /> */}
+      <AppliedTagsFilter />
       <AppliedVersionsFilter />
       <AppliedQueuesFilter />
       <AppliedMachinesFilter />
