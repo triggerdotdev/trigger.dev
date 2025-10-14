@@ -421,7 +421,7 @@ function AppliedFilters({ possibleTasks, bulkActions }: RunFiltersProps) {
     <>
       <AppliedStatusFilter />
       <AppliedTaskFilter possibleTasks={possibleTasks} />
-      <AppliedTagsFilter />
+      {/* <AppliedTagsFilter /> */}
       <AppliedVersionsFilter />
       <AppliedQueuesFilter />
       <AppliedMachinesFilter />
@@ -853,7 +853,7 @@ function TagsDropdown({
   const filtered = useMemo(() => {
     let items: string[] = [];
     if (searchValue === "") {
-      items = selected ?? [];
+      items = [...(selected ?? [])];
     }
 
     if (fetcher.data === undefined) {
@@ -863,7 +863,7 @@ function TagsDropdown({
     items.push(...fetcher.data.tags);
 
     return matchSorter(Array.from(new Set(items)), searchValue);
-  }, [searchValue, fetcher.data]);
+  }, [searchValue, fetcher.data, selected]);
 
   return (
     <SelectProvider value={selected ?? []} setValue={handleChange} virtualFocus={true}>
