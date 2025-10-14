@@ -144,7 +144,7 @@ function createRunEngine() {
           logger.warn("engine.getCurrentPlan: no v3 subscription plan", { orgId });
           return {
             isPaying: plan.v3Subscription.isPaying,
-            type: "free",
+            type: plan.v3Subscription.isPaying ? "paid" : "free",
           };
         }
 
