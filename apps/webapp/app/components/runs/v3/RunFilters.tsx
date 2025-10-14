@@ -848,7 +848,7 @@ function TagsDropdown({
       searchParams.set("to", to.getTime().toString());
     }
     fetcher.load(`/resources/environments/${environment.id}/runs/tags?${searchParams}`);
-  }, [searchValue, period, from?.getTime(), to?.getTime()]);
+  }, [environment.id, searchValue, period, from?.getTime(), to?.getTime()]);
 
   const filtered = useMemo(() => {
     let items: string[] = [];
