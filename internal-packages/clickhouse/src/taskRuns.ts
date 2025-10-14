@@ -115,13 +115,17 @@ export function getTaskRunsCountQueryBuilder(ch: ClickhouseReader, settings?: Cl
   });
 }
 
+export const TaskRunTagsQueryResult = z.object({
+  tag: z.string(),
+});
+
+export type TaskRunTagsQueryResult = z.infer<typeof TaskRunTagsQueryResult>;
+
 export function getTaskRunTagsQueryBuilder(ch: ClickhouseReader, settings?: ClickHouseSettings) {
   return ch.queryBuilder({
     name: "getTaskRunTags",
-    baseQuery: "SELECT DISTINCT tags FROM trigger_dev.task_runs_v2",
-    schema: z.object({
-      tags: z.array(z.string()),
-    }),
+    baseQuery: "SELECT DISTINCT arrayJoin(tags) as tag FROM trigger_dev.task_runs_v2",
+    schema: TaskRunTagsQueryResult,
     settings,
   });
 }

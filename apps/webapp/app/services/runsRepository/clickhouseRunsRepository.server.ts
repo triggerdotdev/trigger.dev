@@ -195,20 +195,24 @@ export class ClickHouseRunsRepository implements IRunsRepository {
       queryBuilder.where("created_at <= fromUnixTimestamp64Milli({to: Int64})", { to: options.to });
     }
 
+    // Filter by query (case-insensitive contains search)
+    if (options.query && options.query.trim().length > 0) {
+      queryBuilder.where("positionCaseInsensitiveUTF8(tag, {query: String}) > 0", {
+        query: options.query,
+      });
+    }
+
+    // Add ordering and pagination
+    queryBuilder.orderBy("tag ASC").limit(options.limit);
+
     const [queryError, result] = await queryBuilder.execute();
 
     if (queryError) {
       throw queryError;
     }
 
-    if (result.length === 0) {
-      return {
-        tags: [],
-      };
-    }
-
     return {
-      tags: result.flatMap((row) => row.tags),
+      tags: result.map((row) => row.tag),
     };
   }
 }
