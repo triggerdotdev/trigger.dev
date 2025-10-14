@@ -71,7 +71,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         name: search,
         page: 1,
         pageSize: 50,
-        period: "1y",
+        period: "30d",
       });
       return {
         tags: tags.tags,
