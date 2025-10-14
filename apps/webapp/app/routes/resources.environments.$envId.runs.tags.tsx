@@ -34,10 +34,9 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   }
 
   const search = new URL(request.url).searchParams;
-  const name = search.get("name");
 
   const parsedSearchParams = SearchParams.safeParse({
-    name: name ? decodeURIComponent(name) : undefined,
+    name: search.get("name") ?? undefined,
     period: search.get("period") ?? undefined,
     from: search.get("from") ?? undefined,
     to: search.get("to") ?? undefined,

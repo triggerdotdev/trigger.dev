@@ -280,7 +280,7 @@ export function getRunFiltersFromSearchParams(
     bulkId: searchParams.get("bulkId") ?? undefined,
     tags:
       searchParams.getAll("tags").filter((v) => v.length > 0).length > 0
-        ? searchParams.getAll("tags").map((t) => decodeURIComponent(t))
+        ? searchParams.getAll("tags")
         : undefined,
     from: searchParams.get("from") ?? undefined,
     to: searchParams.get("to") ?? undefined,
@@ -836,7 +836,7 @@ function TagsDropdown({
   useEffect(() => {
     const searchParams = new URLSearchParams();
     if (searchValue) {
-      searchParams.set("name", encodeURIComponent(searchValue));
+      searchParams.set("name", searchValue);
     }
     if (period) {
       searchParams.set("period", period);
@@ -973,7 +973,7 @@ function QueuesDropdown({
       const searchParams = new URLSearchParams();
       searchParams.set("per_page", "25");
       if (searchValue) {
-        searchParams.set("query", encodeURIComponent(s));
+        searchParams.set("query", s);
       }
       fetcher.load(
         `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${
@@ -1235,7 +1235,7 @@ function VersionsDropdown({
     (s) => {
       const searchParams = new URLSearchParams();
       if (searchValue) {
-        searchParams.set("query", encodeURIComponent(s));
+        searchParams.set("query", s);
       }
       fetcher.load(
         `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${
