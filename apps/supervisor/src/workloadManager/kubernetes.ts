@@ -307,6 +307,7 @@ export class KubernetesWorkloadManager implements WorkloadManager {
       envtype: this.#envTypeToLabelValue(opts.envType),
       org: opts.orgId,
       project: opts.projectId,
+      machine: opts.machine.name,
     };
   }
 
