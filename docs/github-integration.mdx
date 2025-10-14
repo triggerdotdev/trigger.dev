@@ -94,9 +94,13 @@ Changes to repository access will be reflected immediately in your Trigger.dev p
 ## Environment variables at build time
 
 You can expose environment variables during the build and deployment process by prefixing them with `TRIGGER_BUILD_`.
+In the build server, the `TRIGGER_BUILD_` prefix is stripped from the variable name, i.e., `TRIGGER_BUILD_MY_TOKEN` is exposed as `MY_TOKEN`.
+
 Build extensions will also have access to these variables.
 
-Build environment variables only apply to deployments in the environment you set them in.
+<Note>
+  Build environment variables only apply to deployments in the environment you set them in.
+</Note>
 
 Learn more about managing [environment variables](/deploy-environment-variables).
 
