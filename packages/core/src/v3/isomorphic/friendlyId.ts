@@ -91,6 +91,7 @@ export const BackgroundWorkerId = new IdUtil("worker");
 export const CheckpointId = new IdUtil("checkpoint");
 export const QueueId = new IdUtil("queue");
 export const RunId = new IdUtil("run");
+export const SandboxEnvironmentId = new IdUtil("sandbox");
 export const SnapshotId = new IdUtil("snapshot");
 export const WaitpointId = new IdUtil("waitpoint");
 export const BatchId = new IdUtil("batch");

@@ -4,9 +4,17 @@ import {
   CreateBackgroundWorkerRequestBody,
   QueueManifest,
   TaskResource,
+  type SandboxMetadata,
 } from "@trigger.dev/core/v3";
-import { BackgroundWorkerId } from "@trigger.dev/core/v3/isomorphic";
-import type { BackgroundWorker, TaskQueue, TaskQueueType } from "@trigger.dev/database";
+import { BackgroundWorkerId, SandboxEnvironmentId } from "@trigger.dev/core/v3/isomorphic";
+import type {
+  BackgroundWorker,
+  BackgroundWorkerTask,
+  SandboxEnvironment,
+  TaskQueue,
+  TaskQueueType,
+  TaskTriggerSource,
+} from "@trigger.dev/database";
 import cronstrue from "cronstrue";
 import { Prisma, PrismaClientOrTransaction } from "~/db.server";
 import { sanitizeQueueName } from "~/models/taskQueue.server";
@@ -26,6 +34,8 @@ import { projectPubSub } from "./projectPubSub.server";
 import { tryCatch } from "@trigger.dev/core/v3";
 import { engine } from "../runEngine.server";
 import { scheduleEngine } from "../scheduleEngine.server";
+import pMap from "p-map";
+import { createHash } from "node:crypto";
 
 export class CreateBackgroundWorkerService extends BaseService {
   public async call(
@@ -120,7 +130,7 @@ export class CreateBackgroundWorkerService extends BaseService {
         throw new ServiceValidationError("Error creating background worker files");
       }
 
-      const [resourcesError] = await tryCatch(
+      const [resourcesError, workerResources] = await tryCatch(
         createWorkerResources(
           body.metadata,
           backgroundWorker,
@@ -155,6 +165,25 @@ export class CreateBackgroundWorkerService extends BaseService {
         }
 
         throw new ServiceValidationError("Error syncing declarative schedules");
+      }
+
+      const [sandboxEnvironmentsError] = await tryCatch(
+        syncSandboxEnvironments(
+          body.metadata.tasks,
+          workerResources.tasks,
+          backgroundWorker,
+          environment,
+          this._prisma
+        )
+      );
+
+      if (sandboxEnvironmentsError) {
+        logger.error("Error syncing sandbox environments", {
+          error: sandboxEnvironmentsError,
+          backgroundWorker,
+          environment,
+        });
+        throw new ServiceValidationError("Error syncing sandbox environments");
       }
 
       const [updateConcurrencyLimitsError] = await tryCatch(
@@ -215,7 +244,16 @@ export async function createWorkerResources(
   const queues = await createWorkerQueues(metadata, worker, environment, prisma);
 
   // Create the tasks
-  await createWorkerTasks(metadata, queues, worker, environment, prisma, tasksToBackgroundFiles);
+  const tasks = await createWorkerTasks(
+    metadata,
+    queues,
+    worker,
+    environment,
+    prisma,
+    tasksToBackgroundFiles
+  );
+
+  return { queues, tasks: tasks.filter(Boolean) };
 }
 
 async function createWorkerTasks(
@@ -226,16 +264,12 @@ async function createWorkerTasks(
   prisma: PrismaClientOrTransaction,
   tasksToBackgroundFiles?: Map<string, string>
 ) {
-  // Create tasks in chunks of 20
-  const CHUNK_SIZE = 20;
-  for (let i = 0; i < metadata.tasks.length; i += CHUNK_SIZE) {
-    const chunk = metadata.tasks.slice(i, i + CHUNK_SIZE);
-    await Promise.all(
-      chunk.map((task) =>
-        createWorkerTask(task, queues, worker, environment, prisma, tasksToBackgroundFiles)
-      )
-    );
-  }
+  // Use pMap with concurrency 20 to process all tasks
+  return pMap(
+    metadata.tasks,
+    (task) => createWorkerTask(task, queues, worker, environment, prisma, tasksToBackgroundFiles),
+    { concurrency: 20 }
+  );
 }
 
 async function createWorkerTask(
@@ -264,7 +298,7 @@ async function createWorkerTask(
       );
     }
 
-    await prisma.backgroundWorkerTask.create({
+    return await prisma.backgroundWorkerTask.create({
       data: {
         friendlyId: generateFriendlyId("task"),
         projectId: worker.projectId,
@@ -277,7 +311,7 @@ async function createWorkerTask(
         retryConfig: task.retry,
         queueConfig: task.queue,
         machineConfig: task.machine,
-        triggerSource: task.triggerSource === "schedule" ? "SCHEDULED" : "STANDARD",
+        triggerSource: backgroundWorkerTaskSource(task),
         fileId: tasksToBackgroundFiles?.get(task.id) ?? null,
         maxDurationInSeconds: task.maxDuration ? clampMaxDuration(task.maxDuration) : null,
         queueId: queue.id,
@@ -291,6 +325,13 @@ async function createWorkerTask(
         logger.warn("Task already exists", {
           task,
           worker,
+        });
+
+        return await prisma.backgroundWorkerTask.findFirst({
+          where: {
+            workerId: worker.id,
+            slug: task.id,
+          },
         });
       } else {
         logger.error("Prisma Error creating background worker task", {
@@ -319,6 +360,16 @@ async function createWorkerTask(
         worker,
       });
     }
+  }
+}
+
+function backgroundWorkerTaskSource(task: TaskResource): TaskTriggerSource {
+  if (task.triggerSource === "sandbox") {
+    return "SANDBOX";
+  } else if (task.triggerSource === "schedule") {
+    return "SCHEDULED";
+  } else {
+    return "STANDARD";
   }
 }
 
@@ -650,6 +701,138 @@ export async function syncDeclarativeSchedules(
       });
     }
   }
+}
+
+export async function syncSandboxEnvironments(
+  taskResources: TaskResource[],
+  tasks: BackgroundWorkerTask[],
+  worker: BackgroundWorker,
+  environment: AuthenticatedEnvironment,
+  prisma: PrismaClientOrTransaction
+) {
+  const tasksWithSandboxEnvironments = taskResources.filter((task) => task.sandbox);
+
+  logger.info("Syncing sandbox environments", {
+    tasksWithSandboxEnvironments,
+    environment,
+  });
+
+  const existingProvisionedSandboxEnvironments = await prisma.sandboxEnvironment.findMany({
+    where: {
+      runtimeEnvironmentId: environment.id,
+      type: "PROVISIONED",
+    },
+  });
+
+  // Upsert sandbox environments by the deduplicationKey (which is the task.id)
+  return await pMap(
+    tasksWithSandboxEnvironments,
+    (task) =>
+      upsertSandboxEnvironment(
+        task,
+        task.sandbox!,
+        tasks,
+        existingProvisionedSandboxEnvironments,
+        environment,
+        prisma
+      ),
+    {
+      concurrency: 4,
+    }
+  );
+}
+
+async function upsertSandboxEnvironment(
+  task: TaskResource,
+  sandbox: SandboxMetadata,
+  workerTasks: BackgroundWorkerTask[],
+  sandboxEnvironments: SandboxEnvironment[],
+  environment: AuthenticatedEnvironment,
+  prisma: PrismaClientOrTransaction
+) {
+  const workerTask = workerTasks.find((t) => t.slug === task.id);
+
+  if (!workerTask) {
+    throw new Error(`Worker task not found for task ${task.id}`);
+  }
+
+  const contentHash = calculateSandboxContentHash(sandbox);
+
+  const existingSandboxEnvironment = sandboxEnvironments.find(
+    (sandboxEnvironment) => sandboxEnvironment.deduplicationKey === task.id
+  );
+
+  if (existingSandboxEnvironment) {
+    if (existingSandboxEnvironment.contentHash !== contentHash) {
+      // If the content hash is different, we need to rebuild the sandbox environment
+      return await prisma.sandboxEnvironment.update({
+        where: {
+          id: existingSandboxEnvironment.id,
+        },
+        data: {
+          contentHash,
+          status: environment.type === "DEVELOPMENT" ? "DEPLOYED" : "PENDING",
+          packages: sandbox.packages,
+          systemPackages: sandbox.systemPackages,
+          runtime: sandbox.runtime,
+          backgroundWorkerTasks: {
+            connect: {
+              id: workerTask.id,
+            },
+          },
+        },
+      });
+    } else {
+      return await prisma.sandboxEnvironment.update({
+        where: {
+          id: existingSandboxEnvironment.id,
+        },
+        data: {
+          backgroundWorkerTasks: {
+            connect: {
+              id: workerTask.id,
+            },
+          },
+        },
+      });
+    }
+  } else {
+    const id = SandboxEnvironmentId.generate();
+
+    // Okay so we need to create the new sandbox environment
+    return await prisma.sandboxEnvironment.create({
+      data: {
+        id: id.id,
+        status: environment.type === "DEVELOPMENT" ? "DEPLOYED" : "PENDING",
+        friendlyId: id.friendlyId,
+        deduplicationKey: task.id,
+        runtimeEnvironmentId: environment.id,
+        organizationId: environment.organizationId,
+        projectId: environment.projectId,
+        runtime: sandbox.runtime,
+        packages: sandbox.packages,
+        systemPackages: sandbox.systemPackages,
+        contentHash,
+        backgroundWorkerTasks: {
+          connect: {
+            id: workerTask.id,
+          },
+        },
+      },
+    });
+  }
+}
+
+function calculateSandboxContentHash(sandbox: SandboxMetadata) {
+  const { packages, systemPackages, runtime } = sandbox;
+  const keyMaterial: string[] = [];
+
+  // Add packages, systemPackages, and runtime to the key material, making sure to sort the arrays
+  keyMaterial.push(...[...packages].sort());
+  keyMaterial.push(...[...systemPackages].sort());
+  keyMaterial.push(runtime);
+
+  return createHash("sha256").update(keyMaterial.join("")).digest("hex");
 }
 
 export async function createBackgroundFiles(
