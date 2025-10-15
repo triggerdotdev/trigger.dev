@@ -951,11 +951,10 @@ function QueueOverrideConcurrencyButton({
           type="button"
           variant={variant}
           LeadingIcon={WrenchScrewdriverIcon}
-          leadingIconClassName={isOverridden ? "text-indigo-500" : "text-dimmed"}
           fullWidth={fullWidth}
           textAlignLeft={fullWidth}
         >
-          {isOverridden ? "Edit override..." : "Override limit..."}
+          {isOverridden ? "Edit override…" : "Override limit…"}
         </Button>
       </DialogTrigger>
       <DialogContent>
