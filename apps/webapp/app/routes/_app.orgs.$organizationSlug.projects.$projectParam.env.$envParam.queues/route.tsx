@@ -536,6 +536,18 @@ export default function Page() {
                               <span className={queue.paused ? "opacity-50" : undefined}>
                                 {queue.name}
                               </span>
+                              {queue.concurrency?.overriddenAt ? (
+                                <SimpleTooltip
+                                  button={
+                                    <Badge variant="extra-small" className="text-text-bright">
+                                      Concurrency overriden
+                                    </Badge>
+                                  }
+                                  content="This queue's concurrency limit has been manually overridden from the dashboard or API."
+                                  className="max-w-xs"
+                                  disableHoverableContent
+                                />
+                              ) : null}
                               {queue.paused ? (
                                 <Badge variant="extra-small" className="text-warning">
                                   Paused
@@ -588,10 +600,7 @@ export default function Page() {
                             )}
                           >
                             {queue.concurrency?.overriddenAt ? (
-                              <div className="flex items-center justify-end gap-1">
-                                <AdjustmentsHorizontalIcon className="size-3.5 text-text-dimmed" />
-                                Override
-                              </div>
+                              <span className="text-text-bright">Override</span>
                             ) : queue.concurrencyLimit ? (
                               "User"
                             ) : (
