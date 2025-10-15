@@ -1077,8 +1077,7 @@ const EnvironmentSchema = z
       .string()
       .default(process.env.REDIS_TLS_DISABLED ?? "false"),
 
-    RUN_REPLICATION_CLICKHOUSE_URL: z.string().optional(),
-    RUN_REPLICATION_ENABLED: z.string().default("0"),
+    RUN_REPLICATION_ENABLED: z.string().default("1"),
     RUN_REPLICATION_SLOT_NAME: z.string().default("task_runs_to_clickhouse_v1"),
     RUN_REPLICATION_PUBLICATION_NAME: z.string().default("task_runs_to_clickhouse_v1_publication"),
     RUN_REPLICATION_MAX_FLUSH_CONCURRENCY: z.coerce.number().int().default(2),

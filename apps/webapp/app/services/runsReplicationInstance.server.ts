@@ -15,15 +15,15 @@ function initializeRunsReplicationInstance() {
   const { DATABASE_URL } = process.env;
   invariant(typeof DATABASE_URL === "string", "DATABASE_URL env var not set");
 
-  if (!env.RUN_REPLICATION_CLICKHOUSE_URL) {
-    console.log("🗃️  Runs replication service not enabled");
+  if (env.RUN_REPLICATION_ENABLED !== "1") {
+    console.log("🗃️  Runs replication service disabled (RUN_REPLICATION_ENABLED=0)");
     return;
   }
 
-  console.log("🗃️  Runs replication service enabled");
+  console.log("🗃️  Runs replication service starting");
 
   const clickhouse = new ClickHouse({
-    url: env.RUN_REPLICATION_CLICKHOUSE_URL,
+    url: env.CLICKHOUSE_URL,
     name: "runs-replication",
     keepAlive: {
       enabled: env.RUN_REPLICATION_KEEP_ALIVE_ENABLED === "1",
@@ -68,21 +68,19 @@ function initializeRunsReplicationInstance() {
     insertStrategy: env.RUN_REPLICATION_INSERT_STRATEGY,
   });
 
-  if (env.RUN_REPLICATION_ENABLED === "1") {
-    service
-      .start()
-      .then(() => {
-        console.log("🗃️ Runs replication service started");
-      })
-      .catch((error) => {
-        console.error("🗃️ Runs replication service failed to start", {
-          error,
-        });
+  service
+    .start()
+    .then(() => {
+      console.log("🗃️  Runs replication service started");
+    })
+    .catch((error) => {
+      console.error("🗃️  Runs replication service failed to start", {
+        error,
       });
+    });
 
-    signalsEmitter.on("SIGTERM", service.shutdown.bind(service));
-    signalsEmitter.on("SIGINT", service.shutdown.bind(service));
-  }
+  signalsEmitter.on("SIGTERM", service.shutdown.bind(service));
+  signalsEmitter.on("SIGINT", service.shutdown.bind(service));
 
   return service;
 }

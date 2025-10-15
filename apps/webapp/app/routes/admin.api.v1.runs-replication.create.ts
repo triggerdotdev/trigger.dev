@@ -78,7 +78,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
 function createRunReplicationService(params: CreateRunReplicationServiceParams) {
   const clickhouse = new ClickHouse({
-    url: env.RUN_REPLICATION_CLICKHOUSE_URL,
+    url: env.CLICKHOUSE_URL,
     name: params.name,
     keepAlive: {
       enabled: params.keepAliveEnabled,

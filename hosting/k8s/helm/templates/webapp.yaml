@@ -381,8 +381,6 @@ spec:
               value: {{ .Values.webapp.clickhouse.logLevel | quote }}
             - name: RUN_REPLICATION_ENABLED
               value: "1"
-            - name: RUN_REPLICATION_CLICKHOUSE_URL
-              value: {{ include "trigger-v4.clickhouse.replication.url" . | quote }}
             - name: RUN_REPLICATION_LOG_LEVEL
               value: {{ .Values.webapp.runReplication.logLevel | quote }}
             {{- if not .Values.telemetry.enabled }}
