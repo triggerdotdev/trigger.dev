@@ -64,6 +64,10 @@ export type ClickhouseEventRepositoryConfig = {
   clickhouse: ClickHouse;
   batchSize?: number;
   flushInterval?: number;
+  insertStrategy?: "insert" | "insert_async";
+  waitForAsyncInsert?: boolean;
+  asyncInsertMaxDataSize?: number;
+  asyncInsertBusyTimeoutMs?: number;
   tracer?: Tracer;
   maximumTraceSummaryViewCount?: number;
   maximumTraceDetailedSummaryViewCount?: number;
@@ -119,7 +123,11 @@ export class ClickhouseEventRepository implements IEventRepository {
         });
       }
 
-      const [insertError, insertResult] = await this._clickhouse.taskEvents.insert(events);
+      const [insertError, insertResult] = await this._clickhouse.taskEvents.insert(events, {
+        params: {
+          clickhouse_settings: this.#getClickhouseInsertSettings(),
+        },
+      });
 
       if (insertError) {
         throw insertError;
@@ -132,6 +140,19 @@ export class ClickhouseEventRepository implements IEventRepository {
 
       this.#publishToRedis(events);
     });
+  }
+
+  #getClickhouseInsertSettings() {
+    if (this._config.insertStrategy === "insert") {
+      return {};
+    } else {
+      return {
+        async_insert: 1 as const,
+        async_insert_max_data_size: this._config.asyncInsertMaxDataSize?.toString() ?? "10485760",
+        async_insert_busy_timeout_ms: this._config.asyncInsertBusyTimeoutMs ?? 5000,
+        wait_for_async_insert: this._config.waitForAsyncInsert ? (1 as const) : (0 as const),
+      };
+    }
   }
 
   async #publishToRedis(events: TaskEventV1Input[]) {
