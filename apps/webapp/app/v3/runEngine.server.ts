@@ -5,6 +5,7 @@ import { defaultMachine, getCurrentPlan } from "~/services/platform.v3.server";
 import { singleton } from "~/utils/singleton";
 import { allMachines } from "./machinePresets.server";
 import { meter, tracer } from "./tracer.server";
+import { logger } from "~/services/logger.server";
 
 export const engine = singleton("RunEngine", createRunEngine);
 
@@ -120,23 +121,37 @@ function createRunEngine() {
       getCurrentPlan: async (orgId: string) => {
         const plan = await getCurrentPlan(orgId);
 
+        // This only happens when there's no billing service running or on errors
         if (!plan) {
+          logger.warn("engine.getCurrentPlan: no plan", { orgId });
           return {
-            isPaying: false,
-            type: "free",
+            isPaying: true,
+            type: "paid", // default to paid
           };
         }
 
+        // This shouldn't happen
         if (!plan.v3Subscription) {
+          logger.warn("engine.getCurrentPlan: no v3 subscription", { orgId });
           return {
             isPaying: false,
             type: "free",
           };
         }
 
+        // Neither should this
+        if (!plan.v3Subscription.plan) {
+          logger.warn("engine.getCurrentPlan: no v3 subscription plan", { orgId });
+          return {
+            isPaying: plan.v3Subscription.isPaying,
+            type: plan.v3Subscription.isPaying ? "paid" : "free",
+          };
+        }
+
+        // This is the normal case when the billing service is running
         return {
           isPaying: plan.v3Subscription.isPaying,
-          type: plan.v3Subscription.plan?.type ?? "free",
+          type: plan.v3Subscription.plan.type,
         };
       },
     },

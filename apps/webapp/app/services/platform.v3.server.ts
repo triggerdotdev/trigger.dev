@@ -205,7 +205,7 @@ export async function getCurrentPlan(orgId: string) {
     firstDayOfNextMonth.setUTCHours(0, 0, 0, 0);
 
     if (!result.success) {
-      logger.error("Error getting current plan", { orgId, error: result.error });
+      logger.error("Error getting current plan - no success", { orgId, error: result.error });
       return undefined;
     }
 
@@ -221,7 +221,7 @@ export async function getCurrentPlan(orgId: string) {
 
     return { ...result, usage };
   } catch (e) {
-    logger.error("Error getting current plan", { orgId, error: e });
+    logger.error("Error getting current plan - caught error", { orgId, error: e });
     return undefined;
   }
 }
@@ -232,13 +232,13 @@ export async function getLimits(orgId: string) {
   try {
     const result = await client.currentPlan(orgId);
     if (!result.success) {
-      logger.error("Error getting limits", { orgId, error: result.error });
+      logger.error("Error getting limits - no success", { orgId, error: result.error });
       return undefined;
     }
 
     return result.v3Subscription?.plan?.limits;
   } catch (e) {
-    logger.error("Error getting limits", { orgId, error: e });
+    logger.error("Error getting limits - caught error", { orgId, error: e });
     return undefined;
   }
 }
@@ -279,12 +279,12 @@ export async function getPlans() {
   try {
     const result = await client.plans();
     if (!result.success) {
-      logger.error("Error getting plans", { error: result.error });
+      logger.error("Error getting plans - no success", { error: result.error });
       return undefined;
     }
     return result;
   } catch (e) {
-    logger.error("Error getting plans", { error: e });
+    logger.error("Error getting plans - caught error", { error: e });
     return undefined;
   }
 }
@@ -362,12 +362,12 @@ export async function getUsage(organizationId: string, { from, to }: { from: Dat
   try {
     const result = await client.usage(organizationId, { from, to });
     if (!result.success) {
-      logger.error("Error getting usage", { error: result.error });
+      logger.error("Error getting usage - no success", { error: result.error });
       return undefined;
     }
     return result;
   } catch (e) {
-    logger.error("Error getting usage", { error: e });
+    logger.error("Error getting usage - caught error", { error: e });
     return undefined;
   }
 }
@@ -396,12 +396,12 @@ export async function getUsageSeries(organizationId: string, params: UsageSeries
   try {
     const result = await client.usageSeries(organizationId, params);
     if (!result.success) {
-      logger.error("Error getting usage series", { error: result.error });
+      logger.error("Error getting usage series - no success", { error: result.error });
       return undefined;
     }
     return result;
   } catch (e) {
-    logger.error("Error getting usage series", { error: e });
+    logger.error("Error getting usage series - caught error", { error: e });
     return undefined;
   }
 }
@@ -420,12 +420,12 @@ export async function reportInvocationUsage(
       additionalData,
     });
     if (!result.success) {
-      logger.error("Error reporting invocation", { error: result.error });
+      logger.error("Error reporting invocation - no success", { error: result.error });
       return undefined;
     }
     return result;
   } catch (e) {
-    logger.error("Error reporting invocation", { error: e });
+    logger.error("Error reporting invocation - caught error", { error: e });
     return undefined;
   }
 }
@@ -448,14 +448,14 @@ export async function getEntitlement(
   try {
     const result = await client.getEntitlement(organizationId);
     if (!result.success) {
-      logger.error("Error getting entitlement", { error: result.error });
+      logger.error("Error getting entitlement - no success", { error: result.error });
       return {
         hasAccess: true as const,
       };
     }
     return result;
   } catch (e) {
-    logger.error("Error getting entitlement", { error: e });
+    logger.error("Error getting entitlement - caught error", { error: e });
     return {
       hasAccess: true as const,
     };
