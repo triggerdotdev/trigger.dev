@@ -11,28 +11,32 @@ export const helloWorldSandboxTask = task({
   id: "hello-world-sandbox-task",
   run: async (payload: any, { ctx }) => {
     // Dynamically generate a simple image using sharp and return it as a base64 string
-    const result = await helloWorldSandbox.runCodeAndWait<string>({
-      entry: "index.ts#main",
-      input: {
-        width: 32,
-        height: 32,
-        colors: [
-          [255, 0, 0], // Red
-          [0, 255, 0], // Green
-          [0, 0, 255], // Blue
-          [255, 255, 0], // Yellow
-          [255, 255, 255], // White
-        ],
-      },
-      files: [
-        {
-          path: "index.ts",
-          content: `
+    const result = await helloWorldSandbox.runCodeAndWait<string>(
+      {
+        entry: "index.ts#main",
+        input: {
+          width: 32,
+          height: 32,
+          colors: [
+            [255, 0, 0], // Red
+            [0, 255, 0], // Green
+            [0, 0, 255], // Blue
+            [255, 255, 0], // Yellow
+            [255, 255, 255], // White
+          ],
+        },
+        files: [
+          {
+            path: "index.ts",
+            content: `
             import sharp from 'sharp';
 
             type RGB = [number, number, number];
 
             export async function main({ width = 32, height = 32, colors }: { width: number, height: number, colors?: RGB[] }) {
+              console.log("MY_VARIABLE", process.env.MY_VARIABLE);
+              console.log(JSON.stringify({ message: "env vars", env: process.env }));
+
               const defaultColors: RGB[] = [
                 [255, 0, 0],   // Red
                 [0, 255, 0],   // Green
@@ -67,9 +71,15 @@ export const helloWorldSandboxTask = task({
               return pngBuffer.toString('base64');
             }
           `,
+          },
+        ],
+      },
+      {
+        env: {
+          MY_VARIABLE: "my-value",
         },
-      ],
-    });
+      }
+    );
 
     if (result.ok) {
       console.log(result.output);

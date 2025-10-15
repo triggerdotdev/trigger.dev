@@ -656,12 +656,13 @@ model TaskRun {
 
   concurrencyKey String?
 
-  delayUntil        DateTime?
-  queuedAt          DateTime?
-  ttl               String?
-  expiredAt         DateTime?
-  maxAttempts       Int?
-  lockedRetryConfig Json?
+  delayUntil                 DateTime?
+  queuedAt                   DateTime?
+  ttl                        String?
+  expiredAt                  DateTime?
+  maxAttempts                Int?
+  lockedRetryConfig          Json?
+  environmentVariablesConfig Json?
 
   /// optional token that can be used to authenticate the task run
   oneTimeUseToken String?

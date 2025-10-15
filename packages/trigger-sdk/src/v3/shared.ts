@@ -90,6 +90,8 @@ import type {
   TriggerAndWaitOptions,
   TriggerApiRequestOptions,
   TriggerOptions,
+  TriggerEnvironmentVariablesOption,
+  TriggerTaskEnvironmentVariablesConfig,
 } from "@trigger.dev/core/v3";
 
 export type {
@@ -1179,6 +1181,7 @@ async function trigger_internal<TRunTypes extends AnyRunTypes>(
         priority: options?.priority,
         region: options?.region,
         lockToVersion: options?.version ?? getEnvVar("TRIGGER_VERSION"),
+        env: envOptionToEnvironmentVariablesConfig(options?.env),
       },
     },
     {
@@ -1336,6 +1339,7 @@ async function triggerAndWait_internal<TIdentifier extends string, TPayload, TOu
             machine: options?.machine,
             priority: options?.priority,
             region: options?.region,
+            env: envOptionToEnvironmentVariablesConfig(options?.env),
           },
         },
         {},
@@ -1647,4 +1651,43 @@ function registerTaskLifecycleHooks<
       fn: params.onCancel as AnyOnCancelHookFunction,
     });
   }
+}
+
+function envOptionToEnvironmentVariablesConfig(
+  env?: TriggerEnvironmentVariablesOption
+): TriggerTaskEnvironmentVariablesConfig | undefined {
+  if (!env) {
+    return;
+  }
+
+  if (
+    "variables" in env &&
+    env.variables &&
+    typeof env.variables === "object" &&
+    !Array.isArray(env.variables)
+  ) {
+    return {
+      whitelist: Array.isArray(env.whitelist)
+        ? env.whitelist
+        : env.whitelist
+        ? [env.whitelist]
+        : undefined,
+      blacklist: Array.isArray(env.blacklist)
+        ? env.blacklist
+        : env.blacklist
+        ? [env.blacklist]
+        : undefined,
+      variables: env.variables,
+    };
+  }
+
+  if (typeof env === "object" && !Array.isArray(env) && env && typeof env === "object") {
+    return {
+      whitelist: undefined,
+      blacklist: undefined,
+      variables: env as Record<string, string>,
+    };
+  }
+
+  return;
 }

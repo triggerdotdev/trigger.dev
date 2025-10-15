@@ -1,5 +1,10 @@
 import type { BackgroundWorker, TaskRun } from "@trigger.dev/database";
-import type { IOPacket, TaskRunError, TriggerTaskRequestBody } from "@trigger.dev/core/v3";
+import type {
+  IOPacket,
+  TaskRunEnvironmentVariablesConfig,
+  TaskRunError,
+  TriggerTaskRequestBody,
+} from "@trigger.dev/core/v3";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import type { ReportUsagePlan } from "@trigger.dev/platform";
 
@@ -163,4 +168,8 @@ export type TriggerRacepoints = "idempotencyKey";
 
 export interface TriggerRacepointSystem {
   waitForRacepoint(options: { racepoint: TriggerRacepoints; id: string }): Promise<void>;
+}
+
+export interface EnvironmentVariablesProcessor {
+  process(request: TriggerTaskRequest): Promise<TaskRunEnvironmentVariablesConfig | undefined>;
 }

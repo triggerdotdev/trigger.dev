@@ -32,6 +32,7 @@ import type {
 import { clampMaxDuration } from "../../v3/utils/maxDuration";
 import { IdempotencyKeyConcern } from "../concerns/idempotencyKeys.server";
 import type {
+  EnvironmentVariablesProcessor,
   PayloadProcessor,
   QueueManager,
   RunNumberIncrementer,
@@ -61,6 +62,7 @@ export class RunEngineTriggerTaskService {
   private readonly traceEventConcern: TraceEventConcern;
   private readonly triggerRacepointSystem: TriggerRacepointSystem;
   private readonly metadataMaximumSize: number;
+  private readonly environmentVariablesProcessor: EnvironmentVariablesProcessor;
 
   constructor(opts: {
     prisma: PrismaClientOrTransaction;
@@ -73,6 +75,7 @@ export class RunEngineTriggerTaskService {
     traceEventConcern: TraceEventConcern;
     tracer: Tracer;
     metadataMaximumSize: number;
+    environmentVariablesProcessor: EnvironmentVariablesProcessor;
     triggerRacepointSystem?: TriggerRacepointSystem;
   }) {
     this.prisma = opts.prisma;
@@ -85,6 +88,7 @@ export class RunEngineTriggerTaskService {
     this.tracer = opts.tracer;
     this.traceEventConcern = opts.traceEventConcern;
     this.metadataMaximumSize = opts.metadataMaximumSize;
+    this.environmentVariablesProcessor = opts.environmentVariablesProcessor;
     this.triggerRacepointSystem = opts.triggerRacepointSystem ?? new NoopTriggerRacepointSystem();
   }
 
@@ -266,6 +270,10 @@ export class RunEngineTriggerTaskService {
 
       const workerQueue = await this.queueConcern.getWorkerQueue(environment, body.options?.region);
 
+      const environmentVariablesConfig = await this.environmentVariablesProcessor.process(
+        triggerRequest
+      );
+
       try {
         return await this.traceEventConcern.traceRun(
           triggerRequest,
@@ -347,6 +355,7 @@ export class RunEngineTriggerTaskService {
                     createdAt: options.overrideCreatedAt,
                     bulkActionId: body.options?.bulkActionId,
                     planType,
+                    environmentVariablesConfig,
                   },
                   this.prisma
                 );

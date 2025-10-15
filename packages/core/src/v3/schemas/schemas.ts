@@ -332,3 +332,23 @@ export const TriggerTraceContext = z.object({
 });
 
 export type TriggerTraceContext = z.infer<typeof TriggerTraceContext>;
+
+export const TaskRunEnvironmentVariablesConfig = z.object({
+  override: z.boolean().optional(),
+  whitelist: z.array(z.string()).optional(),
+  blacklist: z.array(z.string()).optional(),
+  variables: z
+    .record(
+      z.object({
+        encryptor: z.string(),
+        value: z.object({
+          tag: z.string(),
+          nonce: z.string(),
+          ciphertext: z.string(),
+        }),
+      })
+    )
+    .optional(),
+});
+
+export type TaskRunEnvironmentVariablesConfig = z.infer<typeof TaskRunEnvironmentVariablesConfig>;

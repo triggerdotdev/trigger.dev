@@ -18,7 +18,7 @@ import { RunEngine } from "@internal/run-engine";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "@internal/run-engine/tests";
 import { assertNonNullable, containerTest } from "@internal/testcontainers";
 import { trace } from "@opentelemetry/api";
-import { IOPacket } from "@trigger.dev/core/v3";
+import { IOPacket, TaskRunEnvironmentVariablesConfig } from "@trigger.dev/core/v3";
 import { TaskRun } from "@trigger.dev/database";
 import { IdempotencyKeyConcern } from "~/runEngine/concerns/idempotencyKeys.server";
 import { DefaultQueueManager } from "~/runEngine/concerns/queues.server";
@@ -40,6 +40,7 @@ import {
 import { RunEngineTriggerTaskService } from "../../app/runEngine/services/triggerTask.server";
 import { promiseWithResolvers } from "@trigger.dev/core";
 import { setTimeout } from "node:timers/promises";
+import { DefaultEnvironmentVariablesProcessor } from "~/runEngine/concerns/environmentVariablesProcessor.server";
 
 vi.setConfig({ testTimeout: 30_000 }); // 30 seconds timeout
 
@@ -200,6 +201,9 @@ describe("RunEngineTriggerTaskService", () => {
       traceEventConcern: new MockTraceEventConcern(),
       tracer: trace.getTracer("test", "0.0.0"),
       metadataMaximumSize: 1024 * 1024 * 1, // 1MB
+      environmentVariablesProcessor: new DefaultEnvironmentVariablesProcessor(
+        "7d046af878577f9c85295ce92324ec79"
+      ),
     });
 
     const result = await triggerTaskService.call({
@@ -224,6 +228,7 @@ describe("RunEngineTriggerTaskService", () => {
     expect(run?.engine).toBe("V2");
     expect(run?.queuedAt).toBeDefined();
     expect(run?.queue).toBe(`task/${taskIdentifier}`);
+    expect(run?.environmentVariablesConfig).toBeNull();
 
     // Lets make sure the task is in the queue
     const queueLength = await engine.runQueue.lengthOfQueue(
@@ -291,6 +296,9 @@ describe("RunEngineTriggerTaskService", () => {
       traceEventConcern: new MockTraceEventConcern(),
       tracer: trace.getTracer("test", "0.0.0"),
       metadataMaximumSize: 1024 * 1024 * 1, // 1MB
+      environmentVariablesProcessor: new DefaultEnvironmentVariablesProcessor(
+        "7d046af878577f9c85295ce92324ec79"
+      ),
     });
 
     const result = await triggerTaskService.call({
@@ -320,6 +328,7 @@ describe("RunEngineTriggerTaskService", () => {
     expect(run?.engine).toBe("V2");
     expect(run?.queuedAt).toBeDefined();
     expect(run?.queue).toBe(`task/${taskIdentifier}`);
+    expect(run?.environmentVariablesConfig).toBeNull();
 
     // Lets make sure the task is in the queue
     const queueLength = await engine.runQueue.lengthOfQueue(
@@ -472,6 +481,9 @@ describe("RunEngineTriggerTaskService", () => {
         tracer: trace.getTracer("test", "0.0.0"),
         metadataMaximumSize: 1024 * 1024 * 1, // 1MB
         triggerRacepointSystem,
+        environmentVariablesProcessor: new DefaultEnvironmentVariablesProcessor(
+          "7d046af878577f9c85295ce92324ec79"
+        ),
       });
 
       const idempotencyKey = "test-idempotency-key";
@@ -655,6 +667,9 @@ describe("RunEngineTriggerTaskService", () => {
         traceEventConcern: new MockTraceEventConcern(),
         tracer: trace.getTracer("test", "0.0.0"),
         metadataMaximumSize: 1024 * 1024 * 1, // 1MB
+        environmentVariablesProcessor: new DefaultEnvironmentVariablesProcessor(
+          "7d046af878577f9c85295ce92324ec79"
+        ),
       });
 
       // Test case 1: Trigger with lockToVersion but no specific queue
@@ -727,6 +742,113 @@ describe("RunEngineTriggerTaskService", () => {
       expect(result4).toBeDefined();
       expect(result4?.run.queue).toBe("non-existent-queue");
       expect(result4?.run.status).toBe("PENDING");
+
+      await engine.quit();
+    }
+  );
+
+  containerTest(
+    "should process environment variables correctly",
+    async ({ prisma, redisOptions }) => {
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0005,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const taskIdentifier = "test-task";
+
+      //create background worker
+      await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+      const queuesManager = new DefaultQueueManager(prisma, engine);
+
+      const idempotencyKeyConcern = new IdempotencyKeyConcern(
+        prisma,
+        engine,
+        new MockTraceEventConcern()
+      );
+
+      const triggerTaskService = new RunEngineTriggerTaskService({
+        engine,
+        prisma,
+        runNumberIncrementer: new MockRunNumberIncrementer(),
+        payloadProcessor: new MockPayloadProcessor(),
+        queueConcern: queuesManager,
+        idempotencyKeyConcern,
+        validator: new MockTriggerTaskValidator(),
+        traceEventConcern: new MockTraceEventConcern(),
+        tracer: trace.getTracer("test", "0.0.0"),
+        metadataMaximumSize: 1024 * 1024 * 1, // 1MB
+        environmentVariablesProcessor: new DefaultEnvironmentVariablesProcessor(
+          "7d046af878577f9c85295ce92324ec79"
+        ),
+      });
+
+      const result = await triggerTaskService.call({
+        taskId: taskIdentifier,
+        environment: authenticatedEnvironment,
+        body: {
+          payload: { test: "test" },
+          options: {
+            env: {
+              variables: {
+                TEST_VARIABLE: "test-value",
+              },
+              whitelist: ["OPENAI_API_KEY"],
+            },
+          },
+        },
+      });
+
+      expect(result).toBeDefined();
+      expect(result?.run.friendlyId).toBeDefined();
+      expect(result?.run.status).toBe("PENDING");
+      expect(result?.isCached).toBe(false);
+
+      const run = await prisma.taskRun.findUnique({
+        where: {
+          id: result?.run.id,
+        },
+      });
+
+      expect(run).toBeDefined();
+      expect(run?.friendlyId).toBe(result?.run.friendlyId);
+      expect(run?.engine).toBe("V2");
+      expect(run?.environmentVariablesConfig).toBeDefined();
+
+      const config = TaskRunEnvironmentVariablesConfig.safeParse(run?.environmentVariablesConfig);
+      expect(config.success).toBe(true);
+      expect(config.data?.variables).toBeDefined();
+      expect(config.data?.variables?.TEST_VARIABLE).toBeDefined();
+      expect(config.data?.whitelist).toBeDefined();
+      expect(config.data?.whitelist?.length).toBe(1);
+      expect(config.data?.whitelist?.[0]).toBe("OPENAI_API_KEY");
 
       await engine.quit();
     }
