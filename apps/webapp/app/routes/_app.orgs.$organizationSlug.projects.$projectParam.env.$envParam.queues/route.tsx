@@ -912,8 +912,6 @@ function QueuePauseResumeButton({
 function QueueOverrideConcurrencyButton({
   queue,
   environmentConcurrencyLimit,
-  variant = "minimal/small",
-  fullWidth = false,
 }: {
   queue: {
     id: string;
@@ -922,8 +920,6 @@ function QueueOverrideConcurrencyButton({
     concurrency?: { overriddenAt: Date | null };
   };
   environmentConcurrencyLimit: number;
-  variant?: ButtonVariant;
-  fullWidth?: boolean;
 }) {
   const navigation = useNavigation();
   const [isOpen, setIsOpen] = useState(false);
