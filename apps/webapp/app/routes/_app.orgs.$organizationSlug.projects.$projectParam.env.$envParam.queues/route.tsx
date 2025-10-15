@@ -540,7 +540,7 @@ export default function Page() {
                                 <SimpleTooltip
                                   button={
                                     <Badge variant="extra-small" className="text-text-bright">
-                                      Concurrency overriden
+                                      Concurrency limit overridden
                                     </Badge>
                                   }
                                   content="This queue's concurrency limit has been manually overridden from the dashboard or API."
