@@ -646,8 +646,8 @@ export default function Page() {
                                   })}
                                 />
                                 <PopoverMenuItem
-                                  icon={RectangleStackIcon}
-                                  leadingIconClassName="text-queues"
+                                  icon={Spinner}
+                                  leadingIconClassName="text-queues animate-none"
                                   title="View running runs"
                                   to={v3RunsPath(organization, project, env, {
                                     queues: [queueFilterableName],
@@ -659,7 +659,6 @@ export default function Page() {
                                 <QueueOverrideConcurrencyButton
                                   queue={queue}
                                   environmentConcurrencyLimit={environment.concurrencyLimit}
-                                  fullWidth
                                 />
                               </>
                             }
