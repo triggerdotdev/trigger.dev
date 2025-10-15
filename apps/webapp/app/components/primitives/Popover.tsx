@@ -7,7 +7,7 @@ import * as React from "react";
 import { DropdownIcon } from "~/assets/icons/DropdownIcon";
 import * as useShortcutKeys from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
-import { type ButtonContentPropsType, LinkButton } from "./Buttons";
+import { type ButtonContentPropsType, Button, LinkButton } from "./Buttons";
 import { Paragraph, type ParagraphVariant } from "./Paragraph";
 import { ShortcutKey } from "./ShortcutKey";
 import { type RenderIcon } from "./Icon";
@@ -60,32 +60,45 @@ function PopoverMenuItem({
   variant = { variant: "small-menu-item" },
   leadingIconClassName,
   className,
+  onClick,
+  disabled,
 }: {
-  to: string;
+  to?: string;
   icon?: RenderIcon;
   title: React.ReactNode;
   isSelected?: boolean;
   variant?: ButtonContentPropsType;
   leadingIconClassName?: string;
   className?: string;
+  onClick?: React.MouseEventHandler;
+  disabled?: boolean;
 }) {
+  const commonProps = {
+    variant: variant.variant,
+    LeadingIcon: icon,
+    leadingIconClassName,
+    fullWidth: true,
+    textAlignLeft: true,
+    TrailingIcon: isSelected ? CheckIcon : undefined,
+    className: cn(
+      "group-hover:bg-charcoal-700",
+      isSelected ? "bg-charcoal-750 group-hover:bg-charcoal-600/50" : undefined,
+      className
+    ),
+  } as const;
+
+  if (to) {
+    return (
+      <LinkButton to={to} {...commonProps} onClick={onClick}>
+        {title}
+      </LinkButton>
+    );
+  }
+
   return (
-    <LinkButton
-      to={to}
-      variant={variant.variant}
-      LeadingIcon={icon}
-      leadingIconClassName={leadingIconClassName}
-      fullWidth
-      textAlignLeft
-      TrailingIcon={isSelected ? CheckIcon : undefined}
-      className={cn(
-        "group-hover:bg-charcoal-700",
-        isSelected ? "bg-charcoal-750 group-hover:bg-charcoal-600/50" : undefined,
-        className
-      )}
-    >
+    <Button {...commonProps} onClick={onClick} disabled={disabled} type="button">
       {title}
-    </LinkButton>
+    </Button>
   );
 }
 
