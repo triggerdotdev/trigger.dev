@@ -6,8 +6,10 @@ import {
   type ListRunsOptions,
   type RunListInputOptions,
   type RunsRepositoryOptions,
+  type TagListOptions,
   convertRunListInputOptionsToFilterRunsOptions,
 } from "./runsRepository.server";
+import parseDuration from "parse-duration";
 
 export class ClickHouseRunsRepository implements IRunsRepository {
   constructor(private readonly options: RunsRepositoryOptions) {}
@@ -161,6 +163,57 @@ export class ClickHouseRunsRepository implements IRunsRepository {
     }
 
     return result[0].count;
+  }
+
+  async listTags(options: TagListOptions) {
+    const queryBuilder = this.options.clickhouse.taskRuns
+      .tagQueryBuilder()
+      .where("organization_id = {organizationId: String}", {
+        organizationId: options.organizationId,
+      })
+      .where("project_id = {projectId: String}", {
+        projectId: options.projectId,
+      })
+      .where("environment_id = {environmentId: String}", {
+        environmentId: options.environmentId,
+      });
+
+    const periodMs = options.period ? parseDuration(options.period) ?? undefined : undefined;
+    if (periodMs) {
+      queryBuilder.where("created_at >= fromUnixTimestamp64Milli({period: Int64})", {
+        period: new Date(Date.now() - periodMs).getTime(),
+      });
+    }
+
+    if (options.from) {
+      queryBuilder.where("created_at >= fromUnixTimestamp64Milli({from: Int64})", {
+        from: options.from,
+      });
+    }
+
+    if (options.to) {
+      queryBuilder.where("created_at <= fromUnixTimestamp64Milli({to: Int64})", { to: options.to });
+    }
+
+    // Filter by query (case-insensitive contains search)
+    if (options.query && options.query.trim().length > 0) {
+      queryBuilder.where("positionCaseInsensitiveUTF8(tag, {query: String}) > 0", {
+        query: options.query,
+      });
+    }
+
+    // Add ordering and pagination
+    queryBuilder.orderBy("tag ASC").limit(options.limit);
+
+    const [queryError, result] = await queryBuilder.execute();
+
+    if (queryError) {
+      throw queryError;
+    }
+
+    return {
+      tags: result.map((row) => row.tag),
+    };
   }
 }
 

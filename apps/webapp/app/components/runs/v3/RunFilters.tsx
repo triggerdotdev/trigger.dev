@@ -58,10 +58,10 @@ import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { type loader as queuesLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.queues";
 import { type loader as versionsLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.versions";
-import { type loader as tagsLoader } from "~/routes/resources.projects.$projectParam.runs.tags";
+import { type loader as tagsLoader } from "~/routes/resources.environments.$envId.runs.tags";
 import { Button } from "../../primitives/Buttons";
 import { BulkActionTypeCombo } from "./BulkAction";
-import { appliedSummary, FilterMenuProvider, TimeFilter } from "./SharedFilters";
+import { appliedSummary, FilterMenuProvider, TimeFilter, timeFilters } from "./SharedFilters";
 import { AIFilterInput } from "./AIFilterInput";
 import {
   allTaskRunStatuses,
@@ -280,7 +280,7 @@ export function getRunFiltersFromSearchParams(
     bulkId: searchParams.get("bulkId") ?? undefined,
     tags:
       searchParams.getAll("tags").filter((v) => v.length > 0).length > 0
-        ? searchParams.getAll("tags").map((t) => decodeURIComponent(t))
+        ? searchParams.getAll("tags")
         : undefined,
     from: searchParams.get("from") ?? undefined,
     to: searchParams.get("to") ?? undefined,
@@ -810,8 +810,8 @@ function TagsDropdown({
   searchValue: string;
   onClose?: () => void;
 }) {
-  const project = useProject();
-  const { values, replace } = useSearchParams();
+  const environment = useEnvironment();
+  const { values, value, replace } = useSearchParams();
 
   const handleChange = (values: string[]) => {
     clearSearchValue();
@@ -822,6 +822,12 @@ function TagsDropdown({
     });
   };
 
+  const { period, from, to } = timeFilters({
+    period: value("period"),
+    from: value("from"),
+    to: value("to"),
+  });
+
   const tagValues = values("tags").filter((v) => v !== "");
   const selected = tagValues.length > 0 ? tagValues : undefined;
 
@@ -830,25 +836,34 @@ function TagsDropdown({
   useEffect(() => {
     const searchParams = new URLSearchParams();
     if (searchValue) {
-      searchParams.set("name", encodeURIComponent(searchValue));
+      searchParams.set("name", searchValue);
     }
-    fetcher.load(`/resources/projects/${project.slug}/runs/tags?${searchParams}`);
-  }, [searchValue]);
+    if (period) {
+      searchParams.set("period", period);
+    }
+    if (from) {
+      searchParams.set("from", from.getTime().toString());
+    }
+    if (to) {
+      searchParams.set("to", to.getTime().toString());
+    }
+    fetcher.load(`/resources/environments/${environment.id}/runs/tags?${searchParams}`);
+  }, [environment.id, searchValue, period, from?.getTime(), to?.getTime()]);
 
   const filtered = useMemo(() => {
     let items: string[] = [];
     if (searchValue === "") {
-      items = selected ?? [];
+      items = [...(selected ?? [])];
     }
 
     if (fetcher.data === undefined) {
       return matchSorter(items, searchValue);
     }
 
-    items.push(...fetcher.data.tags.map((t) => t.name));
+    items.push(...fetcher.data.tags);
 
     return matchSorter(Array.from(new Set(items)), searchValue);
-  }, [searchValue, fetcher.data]);
+  }, [searchValue, fetcher.data, selected]);
 
   return (
     <SelectProvider value={selected ?? []} setValue={handleChange} virtualFocus={true}>
@@ -958,7 +973,7 @@ function QueuesDropdown({
       const searchParams = new URLSearchParams();
       searchParams.set("per_page", "25");
       if (searchValue) {
-        searchParams.set("query", encodeURIComponent(s));
+        searchParams.set("query", s);
       }
       fetcher.load(
         `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${
@@ -1220,7 +1235,7 @@ function VersionsDropdown({
     (s) => {
       const searchParams = new URLSearchParams();
       if (searchValue) {
-        searchParams.set("query", encodeURIComponent(s));
+        searchParams.set("query", s);
       }
       fetcher.load(
         `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${
