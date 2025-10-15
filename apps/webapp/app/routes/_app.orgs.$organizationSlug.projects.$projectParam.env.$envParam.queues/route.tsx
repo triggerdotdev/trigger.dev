@@ -964,24 +964,20 @@ function QueueOverrideConcurrencyButton({
         </DialogHeader>
         <div className="flex flex-col gap-3 pt-3">
           {isOverridden ? (
-            <>
-              <Paragraph variant="small">
-                This queue's concurrency limit is currently overridden to {currentLimit}.
-                {queue.concurrencyLimit !== null &&
-                  ` The original limit set in code was ${queue.concurrencyLimit}.`}
-              </Paragraph>
-              <Paragraph variant="small">
-                You can update the override or remove it to restore the{" "}
-                {queue.concurrencyLimit !== null
-                  ? "limit set in code"
-                  : "environment concurrency limit"}
-                .
-              </Paragraph>
-            </>
+            <Paragraph>
+              This queue's concurrency limit is currently overridden to {currentLimit}.
+              {queue.concurrencyLimit !== null &&
+                ` The original limit set in code was ${queue.concurrencyLimit}.`}{" "}
+              You can update the override or remove it to restore the{" "}
+              {queue.concurrencyLimit !== null
+                ? "limit set in code"
+                : "environment concurrency limit"}
+              .
+            </Paragraph>
           ) : (
-            <Paragraph variant="small">
-              Override this queue's concurrency limit. The current limit is {currentLimit}{" "}
-              {queue.concurrencyLimit !== null ? "(set in code)" : "(from environment)"}.
+            <Paragraph>
+              Override this queue's concurrency limit. The current limit is {currentLimit}, which is
+              set {queue.concurrencyLimit !== null ? "in code" : "by the environment"}.
             </Paragraph>
           )}
           <Form method="post" onSubmit={() => setIsOpen(false)} className="space-y-3">
@@ -1001,43 +997,42 @@ function QueueOverrideConcurrencyButton({
                 autoFocus
               />
             </div>
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                {isOverridden && (
-                  <Button
-                    type="submit"
-                    name="action"
-                    value="queue-remove-override"
-                    disabled={isLoading}
-                    variant="danger/medium"
-                  >
-                    Remove override
-                  </Button>
-                )}
-              </div>
-              <FormButtons
-                confirmButton={
-                  <Button
-                    type="submit"
-                    name="action"
-                    value="queue-override"
-                    disabled={isLoading || !concurrencyLimit}
-                    variant="primary/medium"
-                    LeadingIcon={isLoading ? <Spinner color="white" /> : WrenchScrewdriverIcon}
-                    shortcut={{ modifiers: ["mod"], key: "enter" }}
-                  >
-                    {isOverridden ? "Update override" : "Override limit"}
-                  </Button>
-                }
-                cancelButton={
+
+            <FormButtons
+              confirmButton={
+                <Button
+                  type="submit"
+                  name="action"
+                  value="queue-override"
+                  disabled={isLoading || !concurrencyLimit}
+                  variant="primary/medium"
+                  LeadingIcon={isLoading && <Spinner color="white" />}
+                  shortcut={{ modifiers: ["mod"], key: "enter" }}
+                >
+                  {isOverridden ? "Update override" : "Override limit"}
+                </Button>
+              }
+              cancelButton={
+                <div className="flex items-center justify-between gap-2">
+                  {isOverridden && (
+                    <Button
+                      type="submit"
+                      name="action"
+                      value="queue-remove-override"
+                      disabled={isLoading}
+                      variant="danger/medium"
+                    >
+                      Remove override
+                    </Button>
+                  )}
                   <DialogClose asChild>
                     <Button type="button" variant="tertiary/medium">
                       Cancel
                     </Button>
                   </DialogClose>
-                }
-              />
-            </div>
+                </div>
+              }
+            />
           </Form>
         </div>
       </DialogContent>
