@@ -5,9 +5,10 @@ import { EllipsisVerticalIcon } from "@heroicons/react/24/solid";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
 import * as React from "react";
 import { DropdownIcon } from "~/assets/icons/DropdownIcon";
+import { Link } from "@remix-run/react";
 import * as useShortcutKeys from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
-import { type ButtonContentPropsType, Button, LinkButton } from "./Buttons";
+import { type ButtonContentPropsType, Button, ButtonContent } from "./Buttons";
 import { Paragraph, type ParagraphVariant } from "./Paragraph";
 import { ShortcutKey } from "./ShortcutKey";
 import { type RenderIcon } from "./Icon";
@@ -52,55 +53,78 @@ function PopoverSectionHeader({
   );
 }
 
-function PopoverMenuItem({
-  to,
-  icon,
-  title,
-  isSelected,
-  variant = { variant: "small-menu-item" },
-  leadingIconClassName,
-  className,
-  onClick,
-  disabled,
-}: {
-  to?: string;
-  icon?: RenderIcon;
-  title: React.ReactNode;
-  isSelected?: boolean;
-  variant?: ButtonContentPropsType;
-  leadingIconClassName?: string;
-  className?: string;
-  onClick?: React.MouseEventHandler;
-  disabled?: boolean;
-}) {
-  const commonProps = {
-    variant: variant.variant,
-    LeadingIcon: icon,
-    leadingIconClassName,
-    fullWidth: true,
-    textAlignLeft: true,
-    TrailingIcon: isSelected ? CheckIcon : undefined,
-    className: cn(
-      "group-hover:bg-charcoal-700",
-      isSelected ? "bg-charcoal-750 group-hover:bg-charcoal-600/50" : undefined,
-      className
-    ),
-  } as const;
+const PopoverMenuItem = React.forwardRef<
+  HTMLButtonElement | HTMLAnchorElement,
+  {
+    to?: string;
+    icon?: RenderIcon;
+    title: React.ReactNode;
+    isSelected?: boolean;
+    variant?: ButtonContentPropsType;
+    leadingIconClassName?: string;
+    className?: string;
+    onClick?: React.MouseEventHandler;
+    disabled?: boolean;
+  }
+>(
+  (
+    {
+      to,
+      icon,
+      title,
+      isSelected,
+      variant = { variant: "small-menu-item" },
+      leadingIconClassName,
+      className,
+      onClick,
+      disabled,
+    },
+    ref
+  ) => {
+    const contentProps = {
+      variant: variant.variant,
+      LeadingIcon: icon,
+      leadingIconClassName,
+      fullWidth: true,
+      textAlignLeft: true,
+      TrailingIcon: isSelected ? CheckIcon : undefined,
+      className: cn(
+        "group-hover:bg-charcoal-700",
+        isSelected ? "bg-charcoal-750 group-hover:bg-charcoal-600/50" : undefined,
+        className
+      ),
+    } as const;
 
-  if (to) {
+    if (to) {
+      return (
+        <Link
+          to={to}
+          ref={ref as React.Ref<HTMLAnchorElement>}
+          className={cn("group/button focus-custom", contentProps.fullWidth ? "w-full" : "")}
+          onClick={onClick as any}
+        >
+          <ButtonContent {...contentProps}>{title}</ButtonContent>
+        </Link>
+      );
+    }
+
     return (
-      <LinkButton to={to} {...commonProps} onClick={onClick}>
-        {title}
-      </LinkButton>
+      <button
+        type="button"
+        ref={ref as React.Ref<HTMLButtonElement>}
+        onClick={onClick}
+        disabled={disabled}
+        className={cn(
+          "group/button outline-none focus-custom",
+          contentProps.fullWidth ? "w-full" : ""
+        )}
+      >
+        <ButtonContent {...contentProps}>{title}</ButtonContent>
+      </button>
     );
   }
-
-  return (
-    <Button {...commonProps} onClick={onClick} disabled={disabled} type="button">
-      {title}
-    </Button>
-  );
-}
+);
+PopoverMenuItem.displayName = "PopoverMenuItem";
 
 function PopoverCustomTrigger({
   isOpen,
