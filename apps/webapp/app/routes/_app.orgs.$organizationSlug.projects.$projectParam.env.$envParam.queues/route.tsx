@@ -340,17 +340,19 @@ export default function Page() {
               animate
               accessory={
                 <div className="flex items-start gap-1">
+                  {environment.runsEnabled ? <EnvironmentPauseResumeButton env={env} /> : null}
                   <LinkButton
-                    variant="tertiary/small"
+                    variant="secondary/small"
+                    LeadingIcon={RunsIcon}
+                    leadingIconClassName="text-runs"
+                    className="px-2"
                     to={v3RunsPath(organization, project, env, {
                       statuses: ["PENDING"],
                       period: "30d",
                       rootOnly: false,
                     })}
-                  >
-                    View runs
-                  </LinkButton>
-                  {environment.runsEnabled ? <EnvironmentPauseResumeButton env={env} /> : null}
+                    tooltip="View queued runs"
+                  />
                 </div>
               }
               valueClassName={env.paused ? "text-warning" : undefined}
@@ -373,15 +375,17 @@ export default function Page() {
               }
               accessory={
                 <LinkButton
-                  variant="tertiary/small"
+                  variant="secondary/small"
+                  LeadingIcon={RunsIcon}
+                  leadingIconClassName="text-runs"
+                  className="px-2"
                   to={v3RunsPath(organization, project, env, {
                     statuses: ["DEQUEUED", "EXECUTING"],
                     period: "30d",
                     rootOnly: false,
                   })}
-                >
-                  View runs
-                </LinkButton>
+                  tooltip="View runs"
+                />
               }
               compactThreshold={1000000}
             />
