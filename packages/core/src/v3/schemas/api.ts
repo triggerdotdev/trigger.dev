@@ -149,6 +149,18 @@ export const RunTags = z.union([RunTag, RunTag.array()]);
 
 export type RunTags = z.infer<typeof RunTags>;
 
+export const TriggerTaskEnvironmentVariables = z.record(z.string());
+
+export const TriggerTaskEnvironmentVariablesConfig = z.object({
+  whitelist: z.array(z.string()).optional(),
+  blacklist: z.array(z.string()).optional(),
+  variables: z.record(z.string()).optional(),
+});
+
+export type TriggerTaskEnvironmentVariablesConfig = z.infer<
+  typeof TriggerTaskEnvironmentVariablesConfig
+>;
+
 export const TriggerTaskRequestBody = z.object({
   payload: z.any(),
   context: z.any(),
@@ -203,6 +215,7 @@ export const TriggerTaskRequestBody = z.object({
       priority: z.number().optional(),
       bulkActionId: z.string().optional(),
       region: z.string().optional(),
+      env: TriggerTaskEnvironmentVariablesConfig.optional(),
     })
     .optional(),
 });

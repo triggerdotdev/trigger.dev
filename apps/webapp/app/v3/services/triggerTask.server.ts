@@ -13,6 +13,7 @@ import { determineEngineVersion } from "../engineVersion.server";
 import { tracer } from "../tracer.server";
 import { WithRunEngine } from "./baseService.server";
 import { TriggerTaskServiceV1 } from "./triggerTaskV1.server";
+import { DefaultEnvironmentVariablesProcessor } from "~/runEngine/concerns/environmentVariablesProcessor.server";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -109,6 +110,7 @@ export class TriggerTaskService extends WithRunEngine {
       traceEventConcern,
       tracer: tracer,
       metadataMaximumSize: env.TASK_RUN_METADATA_MAXIMUM_SIZE,
+      environmentVariablesProcessor: new DefaultEnvironmentVariablesProcessor(env.ENCRYPTION_KEY),
     });
 
     return await service.call({

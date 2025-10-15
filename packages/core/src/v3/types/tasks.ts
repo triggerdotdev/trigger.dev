@@ -686,6 +686,52 @@ export type TriggerJwtOptions = {
   expirationTime?: number | Date | string;
 };
 
+type TriggerEnvironmentVariables = Record<string, string>;
+
+/**
+ * The options for defining the environment variables that will be passed to the run.
+ *
+ * @example
+ * ```ts
+ * {
+ *   whitelist: ["OPENAI_API_KEY"], // Will pass the project's OPENAI_API_KEY environment variable to the run
+ *   variables: {
+ *     "MY_VARIABLE": "my-value", // Will define a new environment variable MY_VARIABLE with the value "my-value" in the run
+ *   },
+ * }
+ * ```
+ *
+ * @example
+ * ```ts
+ * {
+ *   "MY_VARIABLE": "my-value", // Will define a new environment variable MY_VARIABLE with the value "my-value" in the run
+ * }
+ * ```
+ *
+ */
+export type TriggerEnvironmentVariablesOption =
+  | TriggerEnvironmentVariables
+  | {
+      /**
+       * Whitelist specific environment variables that will be passed to the run from your project's environment variables.
+       *
+       * By default, all project environment variables will NOT be passed to the run.
+       */
+      whitelist?: string[];
+      /**
+       * Blacklist specific environment variables that will not be passed to the run from your project's environment variables.
+       *
+       * If this is specified, the `whitelist` will be ignored, and all project environment variables will be passed to except the ones in the blacklist.
+       */
+      blacklist?: string[];
+      /**
+       * Override the environment variables that will be passed to the run from your project's environment variables or define new ones.
+       *
+       * These will override project environment variables or define new environment variables that will be passed to the run.
+       */
+      variables?: TriggerEnvironmentVariables;
+    };
+
 export type TriggerOptions = {
   /**
    * A unique key that can be used to ensure that a task is only triggered once per key.
@@ -872,6 +918,16 @@ export type TriggerOptions = {
    * ```
    */
   region?: string;
+
+  /**
+   * The environment variables to pass to the run.
+   *
+   * @example
+   * ```ts
+   * await myTask.trigger({ foo: "bar" }, { env: { MY_VARIABLE: "my-value" } });
+   * ```
+   */
+  env?: TriggerEnvironmentVariablesOption;
 };
 
 export type TriggerAndWaitOptions = Omit<TriggerOptions, "version">;

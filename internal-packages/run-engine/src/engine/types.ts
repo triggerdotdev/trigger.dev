@@ -5,6 +5,7 @@ import {
   MachinePreset,
   MachinePresetName,
   RetryOptions,
+  TaskRunEnvironmentVariablesConfig,
   TriggerTraceContext,
 } from "@trigger.dev/core/v3";
 import { PrismaClient, PrismaReplicaClient } from "@trigger.dev/database";
@@ -148,6 +149,7 @@ export type TriggerParams = {
   createdAt?: Date;
   bulkActionId?: string;
   planType?: string;
+  environmentVariablesConfig?: TaskRunEnvironmentVariablesConfig;
 };
 
 export type EngineWorker = Worker<typeof workerCatalog>;
