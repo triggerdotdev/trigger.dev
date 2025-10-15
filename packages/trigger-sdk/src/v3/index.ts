@@ -16,6 +16,7 @@ export * from "./locals.js";
 export * from "./otel.js";
 export * from "./schemas.js";
 export * from "./heartbeats.js";
+export * from "./sandbox.js";
 export type { Context };
 
 import type { Context } from "./shared.js";

@@ -329,6 +329,7 @@ model RuntimeEnvironment {
   workerInstances      WorkerInstance[]
   waitpointTags        WaitpointTag[]
   BulkActionGroup      BulkActionGroup[]
+  sandboxEnvironments  SandboxEnvironment[]
 
   @@unique([projectId, slug, orgMemberId])
   @@unique([projectId, shortcode])
@@ -549,6 +550,9 @@ model BackgroundWorkerTask {
 
   triggerSource TaskTriggerSource @default(STANDARD)
 
+  sandboxEnvironment   SandboxEnvironment? @relation(fields: [sandboxEnvironmentId], references: [id], onDelete: SetNull)
+  sandboxEnvironmentId String?
+
   payloadSchema Json?
 
   @@unique([workerId, slug])
@@ -560,6 +564,7 @@ model BackgroundWorkerTask {
 enum TaskTriggerSource {
   STANDARD
   SCHEDULED
+  SANDBOX
 }
 
 model TaskRun {
@@ -2324,4 +2329,50 @@ model ConnectedGithubRepository {
   // A project can only be connected to one repository
   @@unique([projectId])
   @@index([repositoryId])
+}
+
+model SandboxEnvironment {
+  id   String      @id @default(cuid())
+  type SandboxType @default(PROVISIONED)
+
+  friendlyId String @unique
+
+  deduplicationKey String
+
+  packages       String[]
+  systemPackages String[]
+  runtime        String
+
+  imageReference String?
+  imageVersion   String?
+  contentHash    String? // for deduplication
+
+  status SandboxStatus @default(PENDING)
+
+  organizationId String
+  projectId      String
+
+  runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade)
+  runtimeEnvironmentId String
+
+  backgroundWorkerTasks BackgroundWorkerTask[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([runtimeEnvironmentId, deduplicationKey])
+  @@index([runtimeEnvironmentId])
+}
+
+enum SandboxStatus {
+  PENDING
+  DEPLOYING
+  DEPLOYED
+  FAILED
+  CANCELED
+}
+
+enum SandboxType {
+  PROVISIONED
+  PROGRAMMATIC
 }

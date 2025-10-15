@@ -180,6 +180,25 @@ export const ScheduleMetadata = z.object({
   environments: z.array(EnvironmentType).optional(),
 });
 
+export const SandboxMetadata = z.object({
+  packages: z.array(z.string()),
+  systemPackages: z.array(z.string()),
+  runtime: z.string(),
+});
+
+export const SandboxPayloadSchema = z.object({
+  files: z.array(
+    z.object({
+      path: z.string(),
+      content: z.string(),
+    })
+  ),
+  entry: z.string().optional(),
+  input: z.unknown().optional(),
+});
+
+export type SandboxPayload = z.infer<typeof SandboxPayloadSchema>;
+
 const taskMetadata = {
   id: z.string(),
   description: z.string().optional(),
@@ -188,6 +207,7 @@ const taskMetadata = {
   machine: MachineConfig.optional(),
   triggerSource: z.string().optional(),
   schedule: ScheduleMetadata.optional(),
+  sandbox: SandboxMetadata.optional(),
   maxDuration: z.number().optional(),
   payloadSchema: z.unknown().optional(),
 };
