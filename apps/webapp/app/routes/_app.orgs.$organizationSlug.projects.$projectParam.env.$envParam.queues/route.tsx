@@ -7,7 +7,6 @@ import {
   PauseIcon,
   PlayIcon,
   RectangleStackIcon,
-  WrenchScrewdriverIcon,
 } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { Form, useNavigation, useSearchParams, type MetaFunction } from "@remix-run/react";
@@ -16,6 +15,7 @@ import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { useEffect, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { TaskIconSmall } from "~/assets/icons/TaskIcon";
 import upgradeForQueuesPath from "~/assets/images/queues-dashboard.png";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
@@ -25,13 +25,16 @@ import { Feedback } from "~/components/Feedback";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { BigNumber } from "~/components/metrics/BigNumber";
 import { Badge } from "~/components/primitives/Badge";
-import { Button, type ButtonVariant, LinkButton } from "~/components/primitives/Buttons";
+import { Button, LinkButton, type ButtonVariant } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { FormButtons } from "~/components/primitives/FormButtons";
+import { Header3 } from "~/components/primitives/Headers";
+import { Input } from "~/components/primitives/Input";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { PopoverMenuItem } from "~/components/primitives/Popover";
 import { Spinner } from "~/components/primitives/Spinner";
 import {
   Table,
@@ -50,29 +53,25 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "~/components/primitives/Tooltip";
+import { env } from "~/env.server";
+import { useAutoRevalidate } from "~/hooks/useAutoRevalidate";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { useThrottle } from "~/hooks/useThrottle";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
+import { getUserById } from "~/models/user.server";
 import { EnvironmentQueuePresenter } from "~/presenters/v3/EnvironmentQueuePresenter.server";
 import { QueueListPresenter } from "~/presenters/v3/QueueListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { docsPath, EnvironmentParamSchema, v3BillingPath, v3RunsPath } from "~/utils/pathBuilder";
+import { concurrencySystem } from "~/v3/services/concurrencySystemInstance.server";
 import { PauseEnvironmentService } from "~/v3/services/pauseEnvironment.server";
 import { PauseQueueService } from "~/v3/services/pauseQueue.server";
-import { concurrencySystem } from "~/v3/services/concurrencySystemInstance.server";
-import { getUserById } from "~/models/user.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { Header3 } from "~/components/primitives/Headers";
-import { Input } from "~/components/primitives/Input";
-import { useThrottle } from "~/hooks/useThrottle";
-import { RunsIcon } from "~/assets/icons/RunsIcon";
-import { useAutoRevalidate } from "~/hooks/useAutoRevalidate";
-import { env } from "~/env.server";
-import { PopoverMenuItem } from "~/components/primitives/Popover";
 
 const SearchParamsSchema = z.object({
   query: z.string().optional(),
