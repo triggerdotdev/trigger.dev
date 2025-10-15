@@ -1,7 +1,7 @@
 import { sandbox, task } from "@trigger.dev/sdk";
 
 export const helloWorldSandbox = sandbox.define({
-  id: "hello-world-sandbox",
+  id: "hello-world-sandbox-2",
   packages: ["sharp"],
   systemPackages: [],
   runtime: "node:22",

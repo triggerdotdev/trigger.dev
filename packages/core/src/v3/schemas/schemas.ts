@@ -186,6 +186,8 @@ export const SandboxMetadata = z.object({
   runtime: z.string(),
 });
 
+export type SandboxMetadata = z.infer<typeof SandboxMetadata>;
+
 export const SandboxPayloadSchema = z.object({
   files: z.array(
     z.object({

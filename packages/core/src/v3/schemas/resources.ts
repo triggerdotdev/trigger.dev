@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { QueueManifest, RetryOptions, ScheduleMetadata } from "./schemas.js";
+import { QueueManifest, RetryOptions, SandboxMetadata, ScheduleMetadata } from "./schemas.js";
 import { MachineConfig } from "./common.js";
 
 export const TaskResource = z.object({
@@ -12,6 +12,7 @@ export const TaskResource = z.object({
   machine: MachineConfig.optional(),
   triggerSource: z.string().optional(),
   schedule: ScheduleMetadata.optional(),
+  sandbox: SandboxMetadata.optional(),
   maxDuration: z.number().optional(),
   // JSONSchema type - using z.unknown() for runtime validation to accept JSONSchema7
   payloadSchema: z.unknown().optional(),

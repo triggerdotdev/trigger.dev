@@ -157,6 +157,14 @@ export function v3EnvironmentPath(
   )}/env/${environmentParam(environment)}`;
 }
 
+export function sandboxesPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/sandboxes`;
+}
+
 export function v3TasksStreamingPath(
   organization: OrgForPath,
   project: ProjectForPath,
