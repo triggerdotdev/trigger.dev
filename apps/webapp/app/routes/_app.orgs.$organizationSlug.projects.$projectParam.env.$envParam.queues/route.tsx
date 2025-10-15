@@ -1,4 +1,5 @@
 import {
+  AdjustmentsHorizontalIcon,
   ArrowUpCircleIcon,
   BookOpenIcon,
   ChatBubbleLeftEllipsisIcon,
@@ -71,6 +72,7 @@ import { useThrottle } from "~/hooks/useThrottle";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { useAutoRevalidate } from "~/hooks/useAutoRevalidate";
 import { env } from "~/env.server";
+import { PopoverMenuItem } from "~/components/primitives/Popover";
 
 const SearchParamsSchema = z.object({
   query: z.string().optional(),
@@ -475,7 +477,7 @@ export default function Page() {
                             </Paragraph>
                           </div>
                           <div className="space-y-0.5">
-                            <Header3>Overridden</Header3>
+                            <Header3>Override</Header3>
                             <Paragraph
                               variant="small"
                               className="!text-wrap text-text-dimmed"
@@ -549,14 +551,17 @@ export default function Page() {
                           </TableCell>
                           <TableCell
                             alignment="right"
-                            className={queue.paused ? "opacity-50" : undefined}
+                            className={cn(
+                              "w-[1%] tabular-nums",
+                              queue.paused ? "opacity-50" : undefined
+                            )}
                           >
                             {queue.queued}
                           </TableCell>
                           <TableCell
                             alignment="right"
                             className={cn(
-                              "tabular-nums",
+                              "w-[1%] tabular-nums",
                               queue.paused ? "opacity-50" : undefined,
                               queue.running > 0 && "text-text-bright",
                               isAtLimit && "text-warning"
@@ -567,9 +572,9 @@ export default function Page() {
                           <TableCell
                             alignment="right"
                             className={cn(
-                              "tabular-nums",
+                              "w-[1%] tabular-nums",
                               queue.paused ? "opacity-50" : undefined,
-                              queue.concurrency?.overriddenAt && "text-indigo-500"
+                              queue.concurrency?.overriddenAt && "font-medium text-text-bright"
                             )}
                           >
                             {limit}
@@ -577,16 +582,22 @@ export default function Page() {
                           <TableCell
                             alignment="right"
                             className={cn(
+                              "w-[1%]",
                               queue.paused ? "opacity-50" : undefined,
                               isAtLimit && "text-warning",
-                              queue.concurrency?.overriddenAt && "text-indigo-500"
+                              queue.concurrency?.overriddenAt && "font-medium text-text-bright"
                             )}
                           >
-                            {queue.concurrency?.overriddenAt
-                              ? "Overridden"
-                              : queue.concurrencyLimit
-                              ? "User"
-                              : "Environment"}
+                            {queue.concurrency?.overriddenAt ? (
+                              <div className="flex items-center justify-end gap-1">
+                                <AdjustmentsHorizontalIcon className="size-3.5 text-text-dimmed" />
+                                Override
+                              </div>
+                            ) : queue.concurrencyLimit ? (
+                              "User"
+                            ) : (
+                              "Environment"
+                            )}
                           </TableCell>
                           <TableCellMenu
                             isSticky
@@ -613,55 +624,44 @@ export default function Page() {
                                     showTooltip={false}
                                   />
                                 )}
-                                <QueueOverrideConcurrencyButton
-                                  queue={queue}
-                                  environmentConcurrencyLimit={environment.concurrencyLimit}
-                                  fullWidth
-                                />
-                                <LinkButton
-                                  variant="minimal/small"
+
+                                <PopoverMenuItem
+                                  icon={RunsIcon}
+                                  leadingIconClassName="text-runs"
+                                  title="View all runs"
                                   to={v3RunsPath(organization, project, env, {
                                     queues: [queueFilterableName],
                                     period: "30d",
                                     rootOnly: false,
                                   })}
-                                  fullWidth
-                                  textAlignLeft
-                                  LeadingIcon={RunsIcon}
-                                  leadingIconClassName="text-indigo-500"
-                                >
-                                  View all runs
-                                </LinkButton>
-                                <LinkButton
-                                  variant="minimal/small"
+                                />
+                                <PopoverMenuItem
+                                  icon={RectangleStackIcon}
+                                  leadingIconClassName="text-queues"
+                                  title="View queued runs"
                                   to={v3RunsPath(organization, project, env, {
                                     queues: [queueFilterableName],
                                     statuses: ["PENDING"],
                                     period: "30d",
                                     rootOnly: false,
                                   })}
-                                  fullWidth
-                                  textAlignLeft
-                                  LeadingIcon={RectangleStackIcon}
+                                />
+                                <PopoverMenuItem
+                                  icon={RectangleStackIcon}
                                   leadingIconClassName="text-queues"
-                                >
-                                  View queued runs
-                                </LinkButton>
-                                <LinkButton
-                                  variant="minimal/small"
+                                  title="View running runs"
                                   to={v3RunsPath(organization, project, env, {
                                     queues: [queueFilterableName],
                                     statuses: ["DEQUEUED", "EXECUTING"],
                                     period: "30d",
                                     rootOnly: false,
                                   })}
+                                />
+                                <QueueOverrideConcurrencyButton
+                                  queue={queue}
+                                  environmentConcurrencyLimit={environment.concurrencyLimit}
                                   fullWidth
-                                  textAlignLeft
-                                  LeadingIcon={Spinner}
-                                  leadingIconClassName="size-4 animate-none"
-                                >
-                                  View running runs
-                                </LinkButton>
+                                />
                               </>
                             }
                           />
@@ -827,21 +827,7 @@ function QueuePauseResumeButton({
   fullWidth?: boolean;
   showTooltip?: boolean;
 }) {
-  const navigation = useNavigation();
   const [isOpen, setIsOpen] = useState(false);
-
-  const button = (
-    <Button
-      type="button"
-      variant={variant}
-      LeadingIcon={queue.paused ? PlayIcon : PauseIcon}
-      leadingIconClassName={queue.paused ? "text-success" : "text-warning"}
-      fullWidth={fullWidth}
-      textAlignLeft={fullWidth}
-    >
-      {queue.paused ? "Resume..." : "Pause..."}
-    </Button>
-  );
 
   const trigger = showTooltip ? (
     <div>
@@ -849,7 +835,18 @@ function QueuePauseResumeButton({
         <Tooltip>
           <TooltipTrigger asChild>
             <div>
-              <DialogTrigger asChild>{button}</DialogTrigger>
+              <DialogTrigger asChild>
+                <Button
+                  type="button"
+                  variant={variant}
+                  LeadingIcon={queue.paused ? PlayIcon : PauseIcon}
+                  leadingIconClassName={queue.paused ? "text-success" : "text-warning"}
+                  fullWidth={fullWidth}
+                  textAlignLeft={fullWidth}
+                >
+                  {queue.paused ? "Resume..." : "Pause..."}
+                </Button>
+              </DialogTrigger>
             </div>
           </TooltipTrigger>
           <TooltipContent side="right" className={"text-xs"}>
@@ -861,7 +858,13 @@ function QueuePauseResumeButton({
       </TooltipProvider>
     </div>
   ) : (
-    <DialogTrigger asChild>{button}</DialogTrigger>
+    <DialogTrigger asChild>
+      <PopoverMenuItem
+        icon={queue.paused ? PlayIcon : PauseIcon}
+        leadingIconClassName={queue.paused ? "text-success" : "text-warning"}
+        title={queue.paused ? "Resume..." : "Pause..."}
+      />
+    </DialogTrigger>
   );
 
   return (
@@ -947,15 +950,10 @@ function QueueOverrideConcurrencyButton({
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button
-          type="button"
-          variant={variant}
-          LeadingIcon={WrenchScrewdriverIcon}
-          fullWidth={fullWidth}
-          textAlignLeft={fullWidth}
-        >
-          {isOverridden ? "Edit override…" : "Override limit…"}
-        </Button>
+        <PopoverMenuItem
+          icon={AdjustmentsHorizontalIcon}
+          title={isOverridden ? "Edit override…" : "Override limit…"}
+        />
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
