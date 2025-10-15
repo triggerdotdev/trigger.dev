@@ -111,7 +111,7 @@
               "deployment/atomic-deployment",
               {
                 "group": "Deployment integrations",
-                "pages": ["vercel-integration"]
+                "pages": ["github-integration", "vercel-integration"]
               }
             ]
           },
