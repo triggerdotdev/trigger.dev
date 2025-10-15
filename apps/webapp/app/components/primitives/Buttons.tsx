@@ -276,7 +276,7 @@ export function ButtonContent(props: ButtonContentPropsType) {
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>{buttonContent}</TooltipTrigger>
-          <TooltipContent className="text-dimmed flex items-center gap-3 py-1.5 pl-2.5 pr-3 text-xs">
+          <TooltipContent className="flex items-center gap-3 py-1.5 pl-2.5 pr-3 text-xs text-text-bright">
             {tooltip} {shortcut && renderShortcutKey()}
           </TooltipContent>
         </Tooltip>
