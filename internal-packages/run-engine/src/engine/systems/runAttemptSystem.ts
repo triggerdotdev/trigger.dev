@@ -614,6 +614,8 @@ export class RunAttemptSystem {
                   id: BatchId.toFriendlyId(updatedRun.batchId),
                 }
               : undefined,
+            executor:
+              task.source && task.source === "SANDBOX" ? "SANDBOX_EXECUTOR" : "TASK_RUN_EXECUTOR",
           };
 
           return { run: updatedRun, snapshot, execution };
@@ -1617,6 +1619,7 @@ export class RunAttemptSystem {
           slug: true,
           filePath: true,
           exportName: true,
+          triggerSource: true,
         },
       });
 
@@ -1624,6 +1627,7 @@ export class RunAttemptSystem {
         id: task.slug,
         filePath: task.filePath,
         exportName: task.exportName ?? undefined,
+        source: task.triggerSource,
       };
     });
 

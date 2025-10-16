@@ -57,6 +57,7 @@ import {
   UsageTimeoutManager,
   StandardTraceContextManager,
   StandardHeartbeatsManager,
+  SandboxTaskExecutor,
 } from "@trigger.dev/core/v3/workers";
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { readFile } from "node:fs/promises";
@@ -65,7 +66,7 @@ import sourceMapSupport from "source-map-support";
 import { env } from "std-env";
 import { normalizeImportPath } from "../utilities/normalizeImportPath.js";
 import { VERSION } from "../version.js";
-import { promiseWithResolvers } from "@trigger.dev/core/utils";
+import { promiseWithResolvers, tryCatch } from "@trigger.dev/core/utils";
 
 sourceMapSupport.install({
   handleUncaughtExceptions: false,
@@ -280,6 +281,49 @@ async function bootstrap() {
   return bootstrapCache;
 }
 
+async function sandboxBootstrap() {
+  return await runTimelineMetrics.measureMetric("trigger.dev/start", "bootstrap", {}, async () => {
+    log("Bootstrapping worker");
+
+    const tracingSDK = new TracingSDK({
+      url: env.TRIGGER_OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318",
+      instrumentations: [],
+      exporters: [],
+      logExporters: [],
+      diagLogLevel: (env.TRIGGER_OTEL_LOG_LEVEL as TracingDiagnosticLogLevel) ?? "none",
+      forceFlushTimeoutMillis: 30_000,
+    });
+
+    const otelTracer: Tracer = tracingSDK.getTracer("trigger-dev-worker", VERSION);
+    const otelLogger: Logger = tracingSDK.getLogger("trigger-dev-worker", VERSION);
+
+    const tracer = new TriggerTracer({ tracer: otelTracer, logger: otelLogger });
+    const consoleInterceptor = new ConsoleInterceptor(
+      otelLogger,
+      true,
+      false,
+      OTEL_LOG_ATTRIBUTE_COUNT_LIMIT
+    );
+
+    const otelTaskLogger = new OtelTaskLogger({
+      logger: otelLogger,
+      tracer: tracer,
+      level: "info",
+      maxAttributeCount: OTEL_LOG_ATTRIBUTE_COUNT_LIMIT,
+    });
+
+    logger.setGlobalTaskLogger(otelTaskLogger);
+
+    log("Bootstrapped worker");
+
+    return {
+      tracer,
+      tracingSDK,
+      consoleInterceptor,
+    };
+  });
+}
+
 let _execution: TaskRunExecution | undefined;
 let _isRunning = false;
 let _isCancelled = false;
@@ -330,136 +374,34 @@ const zodIpc = new ZodIpcConnection({
       { execution, traceContext, metadata, metrics, env, isWarmStart },
       sender
     ) => {
-      if (env) {
-        populateEnv(env, {
-          override: true,
-          previousEnv: _lastEnv,
-        });
-
-        _lastEnv = env;
-      }
-
-      log(`[${new Date().toISOString()}] Received EXECUTE_TASK_RUN`, execution);
-
-      if (_lastFlushPromise) {
-        const now = performance.now();
-
-        await _lastFlushPromise;
-
-        const duration = performance.now() - now;
-
-        log(`[${new Date().toISOString()}] Awaited last flush in ${duration}ms`);
-      }
-
-      resetExecutionEnvironment();
-
-      standardTraceContextManager.traceContext = traceContext;
-      standardRunTimelineMetricsManager.registerMetricsFromExecution(metrics, isWarmStart);
-
-      if (_isRunning) {
-        logError("Worker is already running a task");
-
-        await sender.send("TASK_RUN_COMPLETED", {
-          execution,
-          result: {
-            ok: false,
-            id: execution.run.id,
-            error: {
-              type: "INTERNAL_ERROR",
-              code: TaskRunErrorCodes.TASK_ALREADY_RUNNING,
-            },
-            usage: {
-              durationMs: 0,
-            },
-            flushedMetadata: await runMetadataManager.stopAndReturnLastFlush(),
-          },
-        });
-
-        return;
-      }
-
-      const ctx = TaskRunContext.parse(execution);
-
-      taskContext.setGlobalTaskContext({
-        ctx,
-        worker: metadata,
-        isWarmStart: isWarmStart ?? false,
-      });
-
-      try {
-        const { tracer, tracingSDK, consoleInterceptor, config, workerManifest } =
-          await bootstrap();
-
-        _tracingSDK = tracingSDK;
-
-        const taskManifest = workerManifest.tasks.find((t) => t.id === execution.task.id);
-
-        if (!taskManifest) {
-          logError(`Could not find task ${execution.task.id}`);
-
-          await sender.send("TASK_RUN_COMPLETED", {
-            execution,
-            result: {
-              ok: false,
-              id: execution.run.id,
-              error: {
-                type: "INTERNAL_ERROR",
-                code: TaskRunErrorCodes.COULD_NOT_FIND_TASK,
-                message: `Could not find task ${execution.task.id}. Make sure the task is exported and the ID is correct.`,
-              },
-              usage: {
-                durationMs: 0,
-              },
-              flushedMetadata: await runMetadataManager.stopAndReturnLastFlush(),
-            },
+      if (execution.executor === "SANDBOX_EXECUTOR") {
+        if (env) {
+          populateEnv(env, {
+            override: true,
+            previousEnv: _lastEnv,
           });
 
-          return;
+          _lastEnv = env;
         }
 
-        // First attempt to get the task from the resource catalog
-        let task = resourceCatalog.getTask(execution.task.id);
+        log(`[${new Date().toISOString()}] Received SANDBOX_EXECUTOR`, execution);
 
-        if (!task) {
-          log(`Could not find task ${execution.task.id} in resource catalog, importing...`);
+        if (_lastFlushPromise) {
+          const now = performance.now();
 
-          try {
-            await runTimelineMetrics.measureMetric(
-              "trigger.dev/start",
-              "import",
-              {
-                entryPoint: taskManifest.entryPoint,
-                file: taskManifest.filePath,
-              },
-              async () => {
-                const beforeImport = performance.now();
-                resourceCatalog.setCurrentFileContext(
-                  taskManifest.entryPoint,
-                  taskManifest.filePath
-                );
+          await _lastFlushPromise;
 
-                // Load init file if it exists
-                if (workerManifest.initEntryPoint) {
-                  try {
-                    await import(normalizeImportPath(workerManifest.initEntryPoint));
-                    log(`Loaded init file from ${workerManifest.initEntryPoint}`);
-                  } catch (err) {
-                    logError(`Failed to load init file`, err);
-                    throw err;
-                  }
-                }
+          const duration = performance.now() - now;
 
-                await import(normalizeImportPath(taskManifest.entryPoint));
-                resourceCatalog.clearCurrentFileContext();
-                const durationMs = performance.now() - beforeImport;
+          log(`[${new Date().toISOString()}] Awaited last flush in ${duration}ms`);
 
-                log(
-                  `Imported task ${execution.task.id} [${taskManifest.entryPoint}] in ${durationMs}ms`
-                );
-              }
-            );
-          } catch (err) {
-            logError(`Failed to import task ${execution.task.id}`, err);
+          resetExecutionEnvironment();
+
+          standardTraceContextManager.traceContext = traceContext;
+          standardRunTimelineMetricsManager.registerMetricsFromExecution(metrics, isWarmStart);
+
+          if (_isRunning) {
+            logError("Worker is already running a task");
 
             await sender.send("TASK_RUN_COMPLETED", {
               execution,
@@ -468,9 +410,7 @@ const zodIpc = new ZodIpcConnection({
                 id: execution.run.id,
                 error: {
                   type: "INTERNAL_ERROR",
-                  code: TaskRunErrorCodes.COULD_NOT_IMPORT_TASK,
-                  message: err instanceof Error ? err.message : String(err),
-                  stackTrace: err instanceof Error ? err.stack : undefined,
+                  code: TaskRunErrorCodes.TASK_ALREADY_RUNNING,
                 },
                 usage: {
                   durationMs: 0,
@@ -482,12 +422,75 @@ const zodIpc = new ZodIpcConnection({
             return;
           }
 
-          // Now try and get the task again
-          task = resourceCatalog.getTask(execution.task.id);
+          const [bootstrapError, bootstrapResult] = await tryCatch(sandboxBootstrap());
+
+          if (bootstrapError) {
+            logError("Failed to bootstrap sandbox", bootstrapError);
+
+            await sender.send("TASK_RUN_COMPLETED", {
+              execution,
+              result: {
+                ok: false,
+                id: execution.run.id,
+                error: {
+                  type: "INTERNAL_ERROR",
+                  code: TaskRunErrorCodes.CONFIGURED_INCORRECTLY,
+                  message: bootstrapError.message,
+                },
+                usage: {
+                  durationMs: 0,
+                },
+                flushedMetadata: await runMetadataManager.stopAndReturnLastFlush(),
+              },
+            });
+
+            return;
+          }
+
+          const { tracer, tracingSDK, consoleInterceptor } = bootstrapResult;
+
+          runMetadataManager.runId = execution.run.id;
+          runMetadataManager.runIdIsRoot = typeof execution.run.rootTaskRunId === "undefined";
+
+          _executionCount++;
+
+          const executor = new SandboxTaskExecutor({
+            tracingSDK,
+            tracer,
+            consoleInterceptor,
+          });
+
+          return;
+        }
+      } else {
+        if (env) {
+          populateEnv(env, {
+            override: true,
+            previousEnv: _lastEnv,
+          });
+
+          _lastEnv = env;
         }
 
-        if (!task) {
-          logError(`Could not find task ${execution.task.id}`);
+        log(`[${new Date().toISOString()}] Received EXECUTE_TASK_RUN`, execution);
+
+        if (_lastFlushPromise) {
+          const now = performance.now();
+
+          await _lastFlushPromise;
+
+          const duration = performance.now() - now;
+
+          log(`[${new Date().toISOString()}] Awaited last flush in ${duration}ms`);
+        }
+
+        resetExecutionEnvironment();
+
+        standardTraceContextManager.traceContext = traceContext;
+        standardRunTimelineMetricsManager.registerMetricsFromExecution(metrics, isWarmStart);
+
+        if (_isRunning) {
+          logError("Worker is already running a task");
 
           await sender.send("TASK_RUN_COMPLETED", {
             execution,
@@ -496,7 +499,7 @@ const zodIpc = new ZodIpcConnection({
               id: execution.run.id,
               error: {
                 type: "INTERNAL_ERROR",
-                code: TaskRunErrorCodes.COULD_NOT_FIND_EXECUTOR,
+                code: TaskRunErrorCodes.TASK_ALREADY_RUNNING,
               },
               usage: {
                 durationMs: 0,
@@ -508,84 +511,215 @@ const zodIpc = new ZodIpcConnection({
           return;
         }
 
-        runMetadataManager.runId = execution.run.id;
-        runMetadataManager.runIdIsRoot = typeof execution.run.rootTaskRunId === "undefined";
+        const ctx = TaskRunContext.parse(execution);
 
-        _executionCount++;
-
-        const executor = new TaskExecutor(task, {
-          tracer,
-          tracingSDK,
-          consoleInterceptor,
-          retries: config.retries,
-          isWarmStart,
-          executionCount: _executionCount,
+        taskContext.setGlobalTaskContext({
+          ctx,
+          worker: metadata,
+          isWarmStart: isWarmStart ?? false,
         });
 
         try {
-          _execution = execution;
-          _isRunning = true;
+          const { tracer, tracingSDK, consoleInterceptor, config, workerManifest } =
+            await bootstrap();
 
-          standardHeartbeatsManager.startHeartbeat(attemptKey(execution));
+          _tracingSDK = tracingSDK;
 
-          runMetadataManager.startPeriodicFlush(
-            getNumberEnvVar("TRIGGER_RUN_METADATA_FLUSH_INTERVAL", 1000)
-          );
+          const taskManifest = workerManifest.tasks.find((t) => t.id === execution.task.id);
 
-          devUsageManager.setInitialState({
-            cpuTime: execution.run.durationMs ?? 0,
-            costInCents: execution.run.costInCents ?? 0,
-          });
+          if (!taskManifest) {
+            logError(`Could not find task ${execution.task.id}`);
 
-          _executionMeasurement = usage.start();
-
-          const timeoutController = timeout.abortAfterTimeout(execution.run.maxDuration);
-
-          const signal = AbortSignal.any([_cancelController.signal, timeoutController.signal]);
-
-          const { result } = await executor.execute(execution, ctx, signal);
-
-          if (_isRunning && !_isCancelled) {
-            const usageSample = usage.stop(_executionMeasurement);
-
-            return sender.send("TASK_RUN_COMPLETED", {
+            await sender.send("TASK_RUN_COMPLETED", {
               execution,
               result: {
-                ...result,
+                ok: false,
+                id: execution.run.id,
+                error: {
+                  type: "INTERNAL_ERROR",
+                  code: TaskRunErrorCodes.COULD_NOT_FIND_TASK,
+                  message: `Could not find task ${execution.task.id}. Make sure the task is exported and the ID is correct.`,
+                },
                 usage: {
-                  durationMs: usageSample.cpuTime,
+                  durationMs: 0,
                 },
                 flushedMetadata: await runMetadataManager.stopAndReturnLastFlush(),
               },
             });
+
+            return;
           }
-        } finally {
-          standardHeartbeatsManager.stopHeartbeat();
 
-          _execution = undefined;
-          _isRunning = false;
-          log(`[${new Date().toISOString()}] Task run completed`);
+          // First attempt to get the task from the resource catalog
+          let task = resourceCatalog.getTask(execution.task.id);
+
+          if (!task) {
+            log(`Could not find task ${execution.task.id} in resource catalog, importing...`);
+
+            try {
+              await runTimelineMetrics.measureMetric(
+                "trigger.dev/start",
+                "import",
+                {
+                  entryPoint: taskManifest.entryPoint,
+                  file: taskManifest.filePath,
+                },
+                async () => {
+                  const beforeImport = performance.now();
+                  resourceCatalog.setCurrentFileContext(
+                    taskManifest.entryPoint,
+                    taskManifest.filePath
+                  );
+
+                  // Load init file if it exists
+                  if (workerManifest.initEntryPoint) {
+                    try {
+                      await import(normalizeImportPath(workerManifest.initEntryPoint));
+                      log(`Loaded init file from ${workerManifest.initEntryPoint}`);
+                    } catch (err) {
+                      logError(`Failed to load init file`, err);
+                      throw err;
+                    }
+                  }
+
+                  await import(normalizeImportPath(taskManifest.entryPoint));
+                  resourceCatalog.clearCurrentFileContext();
+                  const durationMs = performance.now() - beforeImport;
+
+                  log(
+                    `Imported task ${execution.task.id} [${taskManifest.entryPoint}] in ${durationMs}ms`
+                  );
+                }
+              );
+            } catch (err) {
+              logError(`Failed to import task ${execution.task.id}`, err);
+
+              await sender.send("TASK_RUN_COMPLETED", {
+                execution,
+                result: {
+                  ok: false,
+                  id: execution.run.id,
+                  error: {
+                    type: "INTERNAL_ERROR",
+                    code: TaskRunErrorCodes.COULD_NOT_IMPORT_TASK,
+                    message: err instanceof Error ? err.message : String(err),
+                    stackTrace: err instanceof Error ? err.stack : undefined,
+                  },
+                  usage: {
+                    durationMs: 0,
+                  },
+                  flushedMetadata: await runMetadataManager.stopAndReturnLastFlush(),
+                },
+              });
+
+              return;
+            }
+
+            // Now try and get the task again
+            task = resourceCatalog.getTask(execution.task.id);
+          }
+
+          if (!task) {
+            logError(`Could not find task ${execution.task.id}`);
+
+            await sender.send("TASK_RUN_COMPLETED", {
+              execution,
+              result: {
+                ok: false,
+                id: execution.run.id,
+                error: {
+                  type: "INTERNAL_ERROR",
+                  code: TaskRunErrorCodes.COULD_NOT_FIND_EXECUTOR,
+                },
+                usage: {
+                  durationMs: 0,
+                },
+                flushedMetadata: await runMetadataManager.stopAndReturnLastFlush(),
+              },
+            });
+
+            return;
+          }
+
+          runMetadataManager.runId = execution.run.id;
+          runMetadataManager.runIdIsRoot = typeof execution.run.rootTaskRunId === "undefined";
+
+          _executionCount++;
+
+          const executor = new TaskExecutor(task, {
+            tracer,
+            tracingSDK,
+            consoleInterceptor,
+            retries: config.retries,
+            isWarmStart,
+            executionCount: _executionCount,
+          });
+
+          try {
+            _execution = execution;
+            _isRunning = true;
+
+            standardHeartbeatsManager.startHeartbeat(attemptKey(execution));
+
+            runMetadataManager.startPeriodicFlush(
+              getNumberEnvVar("TRIGGER_RUN_METADATA_FLUSH_INTERVAL", 1000)
+            );
+
+            devUsageManager.setInitialState({
+              cpuTime: execution.run.durationMs ?? 0,
+              costInCents: execution.run.costInCents ?? 0,
+            });
+
+            _executionMeasurement = usage.start();
+
+            const timeoutController = timeout.abortAfterTimeout(execution.run.maxDuration);
+
+            const signal = AbortSignal.any([_cancelController.signal, timeoutController.signal]);
+
+            const { result } = await executor.execute(execution, ctx, signal);
+
+            if (_isRunning && !_isCancelled) {
+              const usageSample = usage.stop(_executionMeasurement);
+
+              return sender.send("TASK_RUN_COMPLETED", {
+                execution,
+                result: {
+                  ...result,
+                  usage: {
+                    durationMs: usageSample.cpuTime,
+                  },
+                  flushedMetadata: await runMetadataManager.stopAndReturnLastFlush(),
+                },
+              });
+            }
+          } finally {
+            standardHeartbeatsManager.stopHeartbeat();
+
+            _execution = undefined;
+            _isRunning = false;
+            log(`[${new Date().toISOString()}] Task run completed`);
+          }
+        } catch (err) {
+          logError("Failed to execute task", err);
+
+          await sender.send("TASK_RUN_COMPLETED", {
+            execution,
+            result: {
+              ok: false,
+              id: execution.run.id,
+              error: {
+                type: "INTERNAL_ERROR",
+                code: TaskRunErrorCodes.CONFIGURED_INCORRECTLY,
+                message: err instanceof Error ? err.message : String(err),
+                stackTrace: err instanceof Error ? err.stack : undefined,
+              },
+              usage: {
+                durationMs: 0,
+              },
+              flushedMetadata: await runMetadataManager.stopAndReturnLastFlush(),
+            },
+          });
         }
-      } catch (err) {
-        logError("Failed to execute task", err);
-
-        await sender.send("TASK_RUN_COMPLETED", {
-          execution,
-          result: {
-            ok: false,
-            id: execution.run.id,
-            error: {
-              type: "INTERNAL_ERROR",
-              code: TaskRunErrorCodes.CONFIGURED_INCORRECTLY,
-              message: err instanceof Error ? err.message : String(err),
-              stackTrace: err instanceof Error ? err.stack : undefined,
-            },
-            usage: {
-              durationMs: 0,
-            },
-            flushedMetadata: await runMetadataManager.stopAndReturnLastFlush(),
-          },
-        });
       }
     },
     CANCEL: async ({ timeoutInMs }) => {
