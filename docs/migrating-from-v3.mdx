@@ -304,6 +304,24 @@ const batch = await batch.retrieve(batchHandle.batchId);
 console.log(batch.runs);
 ```
 
+### ClickHouse
+
+**V4 now uses ClickHouse by default** as the database for storing run traces and analytics data. 
+If you're using Docker Compose, you need to update your `docker-compose.yml` to add the ClickHouse service and configure the webapp to connect to it. Update your configuration according to the [docker-compose.yml file on GitHub](https://github.com/triggerdotdev/trigger.dev/blob/main/hosting/docker/webapp/docker-compose.yml).
+
+You need to configure the following environment variables:
+
+```bash
+# ClickHouse configuration
+CLICKHOUSE_URL=http://default:password@clickhouse:8123?secure=false
+CLICKHOUSE_LOG_LEVEL=info
+
+# Run replication
+RUN_REPLICATION_ENABLED=1
+RUN_REPLICATION_CLICKHOUSE_URL=http://default:password@clickhouse:8123
+RUN_REPLICATION_LOG_LEVEL=info
+```
+
 ### OpenTelemetry
 
 We are now using newer versions of the OpenTelemetry packages. This means that if you're using custom exporters you may need to update the packages:
