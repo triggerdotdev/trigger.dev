@@ -257,6 +257,7 @@ export type GitMeta = z.infer<typeof GitMeta>;
 export const TaskRunExecutionTask = z.object({
   id: z.string(),
   filePath: z.string(),
+  source: z.string().optional(),
 });
 
 export type TaskRunExecutionTask = z.infer<typeof TaskRunExecutionTask>;
@@ -341,6 +342,7 @@ export const TaskRunExecution = z.object({
       traceContext: z.record(z.unknown()).optional(),
     })
   ),
+  executor: z.string().default("TASK_RUN_EXECUTOR"),
   ...StaticTaskRunExecutionShape,
 });
 
