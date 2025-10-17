@@ -1,25 +1,33 @@
 import Redis, { RedisOptions } from "ioredis";
-import { AuthenticatedEnvironment } from "../apiAuth.server";
-import { logger } from "../logger.server";
 import { StreamIngestor, StreamResponder } from "./types";
 import { LineTransformStream } from "./utils.server";
 import { env } from "~/env.server";
+import { Logger, LogLevel } from "@trigger.dev/core/logger";
 
 export type RealtimeStreamsOptions = {
   redis: RedisOptions | undefined;
+  logger?: Logger;
+  logLevel?: LogLevel;
+  inactivityTimeoutMs?: number; // Close stream after this many ms of no new data (default: 60000)
 };
 
+// Legacy constant for backward compatibility (no longer written, but still recognized when reading)
 const END_SENTINEL = "<<CLOSE_STREAM>>";
 
 // Class implementing both interfaces
 export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
-  constructor(private options: RealtimeStreamsOptions) {}
+  private logger: Logger;
+  private inactivityTimeoutMs: number;
+
+  constructor(private options: RealtimeStreamsOptions) {
+    this.logger = options.logger ?? new Logger("RedisRealtimeStreams", options.logLevel ?? "info");
+    this.inactivityTimeoutMs = options.inactivityTimeoutMs ?? 60000; // Default: 60 seconds
+  }
 
   async streamResponse(
     request: Request,
     runId: string,
     streamId: string,
-    environment: AuthenticatedEnvironment,
     signal: AbortSignal
   ): Promise<Response> {
     const redis = new Redis(this.options.redis ?? {});
@@ -31,6 +39,8 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
         let lastId = "0";
         let retryCount = 0;
         const maxRetries = 3;
+        let lastDataTime = Date.now();
+        const blockTimeMs = 5000;
 
         try {
           while (!signal.aborted) {
@@ -39,7 +49,7 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
                 "COUNT",
                 100,
                 "BLOCK",
-                5000,
+                blockTimeMs,
                 "STREAMS",
                 streamKey,
                 lastId
@@ -49,6 +59,7 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
 
               if (messages && messages.length > 0) {
                 const [_key, entries] = messages[0];
+                let foundData = false;
 
                 for (let i = 0; i < entries.length; i++) {
                   const [id, fields] = entries[i];
@@ -72,14 +83,14 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
                     }
 
                     if (data) {
-                      if (data === END_SENTINEL && i === entries.length - 1) {
-                        controller.close();
-                        return;
+                      // Skip legacy END_SENTINEL entries (backward compatibility)
+                      if (data === END_SENTINEL) {
+                        continue;
                       }
 
-                      if (data !== END_SENTINEL) {
-                        controller.enqueue(data);
-                      }
+                      controller.enqueue(data);
+                      foundData = true;
+                      lastDataTime = Date.now();
 
                       if (signal.aborted) {
                         controller.close();
@@ -88,20 +99,57 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
                     }
                   }
                 }
+
+                // If we didn't find any data in this batch, might have only seen sentinels
+                if (!foundData) {
+                  // Check for inactivity timeout
+                  const inactiveMs = Date.now() - lastDataTime;
+                  if (inactiveMs >= this.inactivityTimeoutMs) {
+                    this.logger.debug(
+                      "[RealtimeStreams][streamResponse] Closing stream due to inactivity",
+                      {
+                        streamKey,
+                        inactiveMs,
+                        threshold: this.inactivityTimeoutMs,
+                      }
+                    );
+                    controller.close();
+                    return;
+                  }
+                }
+              } else {
+                // No messages received (timed out on BLOCK)
+                // Check for inactivity timeout
+                const inactiveMs = Date.now() - lastDataTime;
+                if (inactiveMs >= this.inactivityTimeoutMs) {
+                  this.logger.debug(
+                    "[RealtimeStreams][streamResponse] Closing stream due to inactivity",
+                    {
+                      streamKey,
+                      inactiveMs,
+                      threshold: this.inactivityTimeoutMs,
+                    }
+                  );
+                  controller.close();
+                  return;
+                }
               }
             } catch (error) {
               if (signal.aborted) break;
 
-              logger.error("[RealtimeStreams][streamResponse] Error reading from Redis stream:", {
-                error,
-              });
+              this.logger.error(
+                "[RealtimeStreams][streamResponse] Error reading from Redis stream:",
+                {
+                  error,
+                }
+              );
               retryCount++;
               if (retryCount >= maxRetries) throw error;
               await new Promise((resolve) => setTimeout(resolve, 1000 * retryCount));
             }
           }
         } catch (error) {
-          logger.error("[RealtimeStreams][streamResponse] Fatal error in stream processing:", {
+          this.logger.error("[RealtimeStreams][streamResponse] Fatal error in stream processing:", {
             error,
           });
           controller.error(error);
@@ -146,6 +194,7 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
     stream: ReadableStream<Uint8Array>,
     runId: string,
     streamId: string,
+    clientId: string,
     resumeFromChunk?: number
   ): Promise<Response> {
     const redis = new Redis(this.options.redis ?? {});
@@ -154,11 +203,13 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
     // Start counting from the resume point, not from 0
     let currentChunkIndex = startChunk;
 
+    const self = this;
+
     async function cleanup() {
       try {
         await redis.quit();
       } catch (error) {
-        logger.error("[RedisRealtimeStreams][ingestData] Error in cleanup:", { error });
+        self.logger.error("[RedisRealtimeStreams][ingestData] Error in cleanup:", { error });
       }
     }
 
@@ -173,10 +224,11 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
           break;
         }
 
-        // Write each chunk with its index
-        logger.debug("[RedisRealtimeStreams][ingestData] Writing chunk", {
+        // Write each chunk with its index and clientId
+        this.logger.debug("[RedisRealtimeStreams][ingestData] Writing chunk", {
           streamKey,
           runId,
+          clientId,
           chunkIndex: currentChunkIndex,
           resumeFromChunk: startChunk,
           value,
@@ -188,6 +240,8 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
           "~",
           String(env.REALTIME_STREAM_MAX_LENGTH),
           "*",
+          "clientId",
+          clientId,
           "chunkIndex",
           currentChunkIndex.toString(),
           "data",
@@ -197,32 +251,21 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
         currentChunkIndex++;
       }
 
-      // Send the END_SENTINEL and set TTL with a pipeline.
-      const pipeline = redis.pipeline();
-      pipeline.xadd(
-        streamKey,
-        "MAXLEN",
-        "~",
-        String(env.REALTIME_STREAM_MAX_LENGTH),
-        "*",
-        "data",
-        END_SENTINEL
-      );
-      pipeline.expire(streamKey, env.REALTIME_STREAM_TTL);
-      await pipeline.exec();
+      // Set TTL for cleanup when stream is done
+      await redis.expire(streamKey, env.REALTIME_STREAM_TTL);
 
       return new Response(null, { status: 200 });
     } catch (error) {
       if (error instanceof Error) {
         if ("code" in error && error.code === "ECONNRESET") {
-          logger.info("[RealtimeStreams][ingestData] Connection reset during ingestData:", {
+          this.logger.info("[RealtimeStreams][ingestData] Connection reset during ingestData:", {
             error,
           });
           return new Response(null, { status: 500 });
         }
       }
 
-      logger.error("[RealtimeStreams][ingestData] Error in ingestData:", { error });
+      this.logger.error("[RealtimeStreams][ingestData] Error in ingestData:", { error });
 
       return new Response(null, { status: 500 });
     } finally {
@@ -230,48 +273,79 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
     }
   }
 
-  async getLastChunkIndex(runId: string, streamId: string): Promise<number> {
+  async getLastChunkIndex(runId: string, streamId: string, clientId: string): Promise<number> {
     const redis = new Redis(this.options.redis ?? {});
     const streamKey = `stream:${runId}:${streamId}`;
 
     try {
-      // Get the last entry from the stream using XREVRANGE
-      const entries = await redis.xrevrange(streamKey, "+", "-", "COUNT", 1);
+      // Paginate through the stream from newest to oldest until we find this client's last chunk
+      const batchSize = 100;
+      let lastId = "+"; // Start from newest
 
-      if (!entries || entries.length === 0) {
-        // No entries in stream, return -1 to indicate no chunks received
-        return -1;
-      }
+      while (true) {
+        const entries = await redis.xrevrange(streamKey, lastId, "-", "COUNT", batchSize);
 
-      const [_id, fields] = entries[0];
-
-      // Find the chunkIndex field
-      for (let i = 0; i < fields.length; i += 2) {
-        if (fields[i] === "chunkIndex") {
-          const chunkIndex = parseInt(fields[i + 1], 10);
-          logger.debug("[RedisRealtimeStreams][getLastChunkIndex] Found last chunk", {
-            streamKey,
-            chunkIndex,
-          });
-          return chunkIndex;
+        if (!entries || entries.length === 0) {
+          // Reached the beginning of the stream, no chunks from this client
+          this.logger.debug(
+            "[RedisRealtimeStreams][getLastChunkIndex] No chunks found for client",
+            {
+              streamKey,
+              clientId,
+            }
+          );
+          return -1;
         }
-      }
 
-      // If no chunkIndex field found (legacy entries), return -1
-      logger.warn("[RedisRealtimeStreams][getLastChunkIndex] No chunkIndex found in entry", {
-        streamKey,
-      });
-      return -1;
+        // Search through this batch for the client's last chunk
+        for (const [id, fields] of entries) {
+          let entryClientId: string | null = null;
+          let chunkIndex: number | null = null;
+          let data: string | null = null;
+
+          for (let i = 0; i < fields.length; i += 2) {
+            if (fields[i] === "clientId") {
+              entryClientId = fields[i + 1];
+            }
+            if (fields[i] === "chunkIndex") {
+              chunkIndex = parseInt(fields[i + 1], 10);
+            }
+            if (fields[i] === "data") {
+              data = fields[i + 1];
+            }
+          }
+
+          // Skip legacy END_SENTINEL entries (backward compatibility)
+          if (data === END_SENTINEL) {
+            continue;
+          }
+
+          // Check if this entry is from our client and has a chunkIndex
+          if (entryClientId === clientId && chunkIndex !== null) {
+            this.logger.debug("[RedisRealtimeStreams][getLastChunkIndex] Found last chunk", {
+              streamKey,
+              clientId,
+              chunkIndex,
+            });
+            return chunkIndex;
+          }
+        }
+
+        // Move to next batch (older entries)
+        // Use the ID of the last entry in this batch as the new cursor
+        lastId = `(${entries[entries.length - 1][0]}`; // Exclusive range with (
+      }
     } catch (error) {
-      logger.error("[RedisRealtimeStreams][getLastChunkIndex] Error getting last chunk:", {
+      this.logger.error("[RedisRealtimeStreams][getLastChunkIndex] Error getting last chunk:", {
         error,
         streamKey,
+        clientId,
       });
       // Return -1 to indicate we don't know what the server has
       return -1;
     } finally {
       await redis.quit().catch((err) => {
-        logger.error("[RedisRealtimeStreams][getLastChunkIndex] Error in cleanup:", { err });
+        this.logger.error("[RedisRealtimeStreams][getLastChunkIndex] Error in cleanup:", { err });
       });
     }
   }

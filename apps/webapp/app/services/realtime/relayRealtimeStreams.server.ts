@@ -43,7 +43,6 @@ export class RelayRealtimeStreams implements StreamIngestor, StreamResponder {
     request: Request,
     runId: string,
     streamId: string,
-    environment: AuthenticatedEnvironment,
     signal: AbortSignal
   ): Promise<Response> {
     let record = this._buffers.get(`${runId}:${streamId}`);
@@ -69,13 +68,7 @@ export class RelayRealtimeStreams implements StreamIngestor, StreamResponder {
         );
 
         // No ephemeral record, use fallback
-        return this.options.fallbackResponder.streamResponse(
-          request,
-          runId,
-          streamId,
-          environment,
-          signal
-        );
+        return this.options.fallbackResponder.streamResponse(request, runId, streamId, signal);
       }
     }
 
@@ -86,13 +79,7 @@ export class RelayRealtimeStreams implements StreamIngestor, StreamResponder {
         runId,
       });
 
-      return this.options.fallbackResponder.streamResponse(
-        request,
-        runId,
-        streamId,
-        environment,
-        signal
-      );
+      return this.options.fallbackResponder.streamResponse(request, runId, streamId, signal);
     }
 
     record.locked = true;
@@ -135,6 +122,7 @@ export class RelayRealtimeStreams implements StreamIngestor, StreamResponder {
     stream: ReadableStream<Uint8Array>,
     runId: string,
     streamId: string,
+    clientId: string,
     resumeFromChunk?: number
   ): Promise<Response> {
     const [localStream, fallbackStream] = stream.tee();
@@ -142,6 +130,7 @@ export class RelayRealtimeStreams implements StreamIngestor, StreamResponder {
     logger.debug("[RelayRealtimeStreams][ingestData] Ingesting data", {
       runId,
       streamId,
+      clientId,
       resumeFromChunk,
     });
 
@@ -155,6 +144,7 @@ export class RelayRealtimeStreams implements StreamIngestor, StreamResponder {
       fallbackStream,
       runId,
       streamId,
+      clientId,
       resumeFromChunk
     );
   }
@@ -247,9 +237,9 @@ export class RelayRealtimeStreams implements StreamIngestor, StreamResponder {
     });
   }
 
-  async getLastChunkIndex(runId: string, streamId: string): Promise<number> {
+  async getLastChunkIndex(runId: string, streamId: string, clientId: string): Promise<number> {
     // Relay doesn't store chunks, forward to fallback
-    return this.options.fallbackIngestor.getLastChunkIndex(runId, streamId);
+    return this.options.fallbackIngestor.getLastChunkIndex(runId, streamId, clientId);
   }
 
   // Don't forget to clear interval on shutdown if needed

@@ -2,6 +2,7 @@ import { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { $replica } from "~/db.server";
 import { relayRealtimeStreams } from "~/services/realtime/relayRealtimeStreams.server";
+import { v1RealtimeStreams } from "~/services/realtime/v1StreamsGlobal.server";
 import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
 const ParamsSchema = z.object({
@@ -11,6 +12,25 @@ const ParamsSchema = z.object({
 
 export async function action({ request, params }: ActionFunctionArgs) {
   const $params = ParamsSchema.parse(params);
+
+  // Extract client ID from header, default to "default" if not provided
+  const clientId = request.headers.get("X-Client-Id") || "default";
+
+  // Handle HEAD request to get last chunk index for this client
+  if (request.method === "HEAD") {
+    const lastChunkIndex = await relayRealtimeStreams.getLastChunkIndex(
+      $params.runId,
+      $params.streamId,
+      clientId
+    );
+
+    return new Response(null, {
+      status: 200,
+      headers: {
+        "X-Last-Chunk-Index": lastChunkIndex.toString(),
+      },
+    });
+  }
 
   if (!request.body) {
     return new Response("No body provided", { status: 400 });
@@ -23,6 +43,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     request.body,
     $params.runId,
     $params.streamId,
+    clientId,
     resumeFromChunkNumber
   );
 }
@@ -59,11 +80,10 @@ export const loader = createLoaderApiRoute(
     },
   },
   async ({ params, request, resource: run, authentication }) => {
-    return relayRealtimeStreams.streamResponse(
+    return v1RealtimeStreams.streamResponse(
       request,
       run.friendlyId,
       params.streamId,
-      authentication.environment,
       request.signal
     );
   }
