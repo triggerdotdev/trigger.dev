@@ -16,7 +16,15 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return new Response("No body provided", { status: 400 });
   }
 
-  return relayRealtimeStreams.ingestData(request.body, $params.runId, $params.streamId);
+  const resumeFromChunk = request.headers.get("X-Resume-From-Chunk");
+  const resumeFromChunkNumber = resumeFromChunk ? parseInt(resumeFromChunk, 10) : undefined;
+
+  return relayRealtimeStreams.ingestData(
+    request.body,
+    $params.runId,
+    $params.streamId,
+    resumeFromChunkNumber
+  );
 }
 
 export const loader = createLoaderApiRoute(
