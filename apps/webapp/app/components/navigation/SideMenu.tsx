@@ -260,6 +260,13 @@ export function SideMenu({
               data-action="queues"
             />
             <SideMenuItem
+              name="Waitpoint tokens"
+              icon={WaitpointTokenIcon}
+              activeIconColor="text-waitpointTokens"
+              to={v3WaitpointTokensPath(organization, project, environment)}
+              badge={<V4Badge />}
+            />
+            <SideMenuItem
               name="Deployments"
               icon={ServerStackIcon}
               activeIconColor="text-deployments"
@@ -274,16 +281,6 @@ export function SideMenu({
               data-action="test"
             />
           </div>
-
-          <SideMenuSection title="Waitpoints">
-            <SideMenuItem
-              name="Tokens"
-              icon={WaitpointTokenIcon}
-              activeIconColor="text-sky-500"
-              to={v3WaitpointTokensPath(organization, project, environment)}
-              badge={<V4Badge />}
-            />
-          </SideMenuSection>
 
           <SideMenuSection title="Manage">
             <SideMenuItem
