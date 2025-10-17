@@ -1,6 +1,7 @@
 import { request as httpsRequest } from "node:https";
 import { request as httpRequest } from "node:http";
 import { URL } from "node:url";
+import { randomBytes } from "node:crypto";
 
 export type MetadataOptions<T> = {
   baseUrl: string;
@@ -13,6 +14,7 @@ export type MetadataOptions<T> = {
   target?: "self" | "parent" | "root";
   maxRetries?: number;
   maxBufferSize?: number; // Max number of chunks to keep in ring buffer
+  clientId?: string; // Optional client ID, auto-generated if not provided
 };
 
 interface BufferedChunk<T> {
@@ -31,6 +33,7 @@ export class MetadataStream<T> {
   private readonly baseDelayMs = 1000; // 1 second base delay
   private readonly maxDelayMs = 30000; // 30 seconds max delay
   private readonly maxBufferSize: number;
+  private readonly clientId: string;
   private ringBuffer: BufferedChunk<T>[] = []; // Ring buffer for recent chunks
   private bufferStartIndex = 0; // Index of the oldest chunk in buffer
   private highestBufferedIndex = -1; // Highest chunk index that's been buffered
@@ -44,11 +47,16 @@ export class MetadataStream<T> {
     this.consumerStream = consumerStream;
     this.maxRetries = options.maxRetries ?? 10;
     this.maxBufferSize = options.maxBufferSize ?? 1000; // Default 1000 chunks
+    this.clientId = options.clientId || this.generateClientId();
 
     // Start background task to continuously read from stream into ring buffer
     this.startBuffering();
 
     this.streamPromise = this.initializeServerStream();
+  }
+
+  private generateClientId(): string {
+    return randomBytes(4).toString("hex");
   }
 
   private createTeeStreams() {
@@ -107,6 +115,7 @@ export class MetadataStream<T> {
         headers: {
           ...this.options.headers,
           "Content-Type": "application/json",
+          "X-Client-Id": this.clientId,
           "X-Resume-From-Chunk": startFromChunk.toString(),
         },
         timeout,
@@ -315,7 +324,10 @@ export class MetadataStream<T> {
         hostname: url.hostname,
         port: url.port || (url.protocol === "https:" ? 443 : 80),
         path: url.pathname + url.search,
-        headers: this.options.headers,
+        headers: {
+          ...this.options.headers,
+          "X-Client-Id": this.clientId,
+        },
         timeout: 5000, // 5 second timeout for HEAD request
       });
 

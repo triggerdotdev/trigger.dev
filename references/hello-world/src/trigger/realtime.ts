@@ -77,6 +77,28 @@ export const realtimeStreamsTask = task({
   },
 });
 
+export const realtimeStreamsV2Task = task({
+  id: "realtime-streams-v2",
+  run: async () => {
+    const mockStream1 = createStreamFromGenerator(generateMockData(5 * 60 * 1000));
+
+    await metadata.stream("mock-data", mockStream1);
+
+    await setTimeout(10000); // Offset by 10 seconds
+
+    const mockStream2 = createStreamFromGenerator(generateMockData(5 * 60 * 1000));
+    const stream2 = await metadata.stream("mock-data", mockStream2);
+
+    for await (const chunk of stream2) {
+      logger.info("Received chunk", { chunk });
+    }
+
+    return {
+      message: "Hello, world!",
+    };
+  },
+});
+
 async function* generateMockData(durationMs: number = 5 * 60 * 1000) {
   const chunkInterval = 1000;
   const totalChunks = Math.floor(durationMs / chunkInterval);

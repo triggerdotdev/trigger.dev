@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { $replica } from "~/db.server";
-import { relayRealtimeStreams } from "~/services/realtime/relayRealtimeStreams.server";
+import { v1RealtimeStreams } from "~/services/realtime/v1StreamsGlobal.server";
 import {
   createActionApiRoute,
   createLoaderApiRoute,
@@ -53,6 +53,9 @@ const { action } = createActionApiRoute(
       return new Response("Target not found", { status: 404 });
     }
 
+    // Extract client ID from header, default to "default" if not provided
+    const clientId = request.headers.get("X-Client-Id") || "default";
+
     if (!request.body) {
       return new Response("No body provided", { status: 400 });
     }
@@ -60,10 +63,11 @@ const { action } = createActionApiRoute(
     const resumeFromChunk = request.headers.get("X-Resume-From-Chunk");
     const resumeFromChunkNumber = resumeFromChunk ? parseInt(resumeFromChunk, 10) : undefined;
 
-    return relayRealtimeStreams.ingestData(
+    return v1RealtimeStreams.ingestData(
       request.body,
       targetId,
       params.streamId,
+      clientId,
       resumeFromChunkNumber
     );
   }
@@ -118,7 +122,14 @@ const loader = createLoaderApiRoute(
       return new Response("Only HEAD requests are allowed for this endpoint", { status: 405 });
     }
 
-    const lastChunkIndex = await relayRealtimeStreams.getLastChunkIndex(targetId, params.streamId);
+    // Extract client ID from header, default to "default" if not provided
+    const clientId = request.headers.get("X-Client-Id") || "default";
+
+    const lastChunkIndex = await v1RealtimeStreams.getLastChunkIndex(
+      targetId,
+      params.streamId,
+      clientId
+    );
 
     return new Response(null, {
       status: 200,
