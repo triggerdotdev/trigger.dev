@@ -28,10 +28,25 @@ export const QueueItem = z.object({
   running: z.number(),
   /** The number of runs currently queued */
   queued: z.number(),
-  /** The concurrency limit of the queue */
-  concurrencyLimit: z.number().nullable(),
   /** Whether the queue is paused. If it's paused, no new runs will be started. */
   paused: z.boolean(),
+  /** The concurrency limit of the queue */
+  concurrencyLimit: z.number().nullable(),
+  /** The concurrency limit of the queue */
+  concurrency: z
+    .object({
+      /** The effective/current concurrency limit */
+      current: z.number().nullable(),
+      /** The base concurrency limit (default) */
+      base: z.number().nullable(),
+      /** The effective/current concurrency limit */
+      override: z.number().nullable(),
+      /** When the override was applied */
+      overriddenAt: z.coerce.date().nullable(),
+      /** Who overrode the concurrency limit (will be null if overridden via the API) */
+      overriddenBy: z.string().nullable(),
+    })
+    .optional(),
 });
 
 export type QueueItem = z.infer<typeof QueueItem>;
