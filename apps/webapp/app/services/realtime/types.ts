@@ -5,8 +5,11 @@ export interface StreamIngestor {
   ingestData(
     stream: ReadableStream<Uint8Array>,
     runId: string,
-    streamId: string
+    streamId: string,
+    resumeFromChunk?: number
   ): Promise<Response>;
+
+  getLastChunkIndex(runId: string, streamId: string): Promise<number>;
 }
 
 // Interface for stream response

@@ -55,18 +55,36 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
                   lastId = id;
 
                   if (fields && fields.length >= 2) {
-                    if (fields[1] === END_SENTINEL && i === entries.length - 1) {
-                      controller.close();
-                      return;
+                    // Extract the data field from the Redis entry
+                    // Fields format: ["field1", "value1", "field2", "value2", ...]
+                    let data: string | null = null;
+
+                    for (let j = 0; j < fields.length; j += 2) {
+                      if (fields[j] === "data") {
+                        data = fields[j + 1];
+                        break;
+                      }
                     }
 
-                    if (fields[1] !== END_SENTINEL) {
-                      controller.enqueue(fields[1]);
+                    // Handle legacy entries that don't have field names (just data at index 1)
+                    if (data === null && fields.length >= 2) {
+                      data = fields[1];
                     }
 
-                    if (signal.aborted) {
-                      controller.close();
-                      return;
+                    if (data) {
+                      if (data === END_SENTINEL && i === entries.length - 1) {
+                        controller.close();
+                        return;
+                      }
+
+                      if (data !== END_SENTINEL) {
+                        controller.enqueue(data);
+                      }
+
+                      if (signal.aborted) {
+                        controller.close();
+                        return;
+                      }
                     }
                   }
                 }
@@ -127,10 +145,14 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
   async ingestData(
     stream: ReadableStream<Uint8Array>,
     runId: string,
-    streamId: string
+    streamId: string,
+    resumeFromChunk?: number
   ): Promise<Response> {
     const redis = new Redis(this.options.redis ?? {});
     const streamKey = `stream:${runId}:${streamId}`;
+    const startChunk = resumeFromChunk ?? 0;
+    // Start counting from the resume point, not from 0
+    let currentChunkIndex = startChunk;
 
     async function cleanup() {
       try {
@@ -151,9 +173,12 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
           break;
         }
 
-        logger.debug("[RedisRealtimeStreams][ingestData] Reading data", {
+        // Write each chunk with its index
+        logger.debug("[RedisRealtimeStreams][ingestData] Writing chunk", {
           streamKey,
           runId,
+          chunkIndex: currentChunkIndex,
+          resumeFromChunk: startChunk,
           value,
         });
 
@@ -163,9 +188,13 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
           "~",
           String(env.REALTIME_STREAM_MAX_LENGTH),
           "*",
+          "chunkIndex",
+          currentChunkIndex.toString(),
           "data",
           value
         );
+
+        currentChunkIndex++;
       }
 
       // Send the END_SENTINEL and set TTL with a pipeline.
@@ -198,6 +227,52 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
       return new Response(null, { status: 500 });
     } finally {
       await cleanup();
+    }
+  }
+
+  async getLastChunkIndex(runId: string, streamId: string): Promise<number> {
+    const redis = new Redis(this.options.redis ?? {});
+    const streamKey = `stream:${runId}:${streamId}`;
+
+    try {
+      // Get the last entry from the stream using XREVRANGE
+      const entries = await redis.xrevrange(streamKey, "+", "-", "COUNT", 1);
+
+      if (!entries || entries.length === 0) {
+        // No entries in stream, return -1 to indicate no chunks received
+        return -1;
+      }
+
+      const [_id, fields] = entries[0];
+
+      // Find the chunkIndex field
+      for (let i = 0; i < fields.length; i += 2) {
+        if (fields[i] === "chunkIndex") {
+          const chunkIndex = parseInt(fields[i + 1], 10);
+          logger.debug("[RedisRealtimeStreams][getLastChunkIndex] Found last chunk", {
+            streamKey,
+            chunkIndex,
+          });
+          return chunkIndex;
+        }
+      }
+
+      // If no chunkIndex field found (legacy entries), return -1
+      logger.warn("[RedisRealtimeStreams][getLastChunkIndex] No chunkIndex found in entry", {
+        streamKey,
+      });
+      return -1;
+    } catch (error) {
+      logger.error("[RedisRealtimeStreams][getLastChunkIndex] Error getting last chunk:", {
+        error,
+        streamKey,
+      });
+      // Return -1 to indicate we don't know what the server has
+      return -1;
+    } finally {
+      await redis.quit().catch((err) => {
+        logger.error("[RedisRealtimeStreams][getLastChunkIndex] Error in cleanup:", { err });
+      });
     }
   }
 }
