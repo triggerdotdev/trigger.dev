@@ -134,11 +134,16 @@ export class RelayRealtimeStreams implements StreamIngestor, StreamResponder {
   async ingestData(
     stream: ReadableStream<Uint8Array>,
     runId: string,
-    streamId: string
+    streamId: string,
+    resumeFromChunk?: number
   ): Promise<Response> {
     const [localStream, fallbackStream] = stream.tee();
 
-    logger.debug("[RelayRealtimeStreams][ingestData] Ingesting data", { runId, streamId });
+    logger.debug("[RelayRealtimeStreams][ingestData] Ingesting data", {
+      runId,
+      streamId,
+      resumeFromChunk,
+    });
 
     // Handle local buffering asynchronously and catch errors
     this.handleLocalIngestion(localStream, runId, streamId).catch((err) => {
@@ -146,7 +151,12 @@ export class RelayRealtimeStreams implements StreamIngestor, StreamResponder {
     });
 
     // Forward to the fallback ingestor asynchronously and catch errors
-    return this.options.fallbackIngestor.ingestData(fallbackStream, runId, streamId);
+    return this.options.fallbackIngestor.ingestData(
+      fallbackStream,
+      runId,
+      streamId,
+      resumeFromChunk
+    );
   }
 
   /**
@@ -235,6 +245,11 @@ export class RelayRealtimeStreams implements StreamIngestor, StreamResponder {
       };
       checkBuffer();
     });
+  }
+
+  async getLastChunkIndex(runId: string, streamId: string): Promise<number> {
+    // Relay doesn't store chunks, forward to fallback
+    return this.options.fallbackIngestor.getLastChunkIndex(runId, streamId);
   }
 
   // Don't forget to clear interval on shutdown if needed
