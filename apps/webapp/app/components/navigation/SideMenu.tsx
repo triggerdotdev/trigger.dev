@@ -26,7 +26,8 @@ import simplur from "simplur";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 import { RunsIconExtraSmall } from "~/assets/icons/RunsIcon";
-import { SandboxesIconSmall, TaskIconSmall } from "~/assets/icons/TaskIcon";
+import { SandboxesIcon } from "~/assets/icons/SandboxesIcon";
+import { TaskIconSmall } from "~/assets/icons/TaskIcon";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
 import { Avatar } from "~/components/primitives/Avatar";
 import { type MatchedEnvironment } from "~/hooks/useEnvironment";
@@ -239,10 +240,10 @@ export function SideMenu({
             />
             <SideMenuItem
               name="Sandboxes"
-              icon={SandboxesIconSmall}
+              icon={SandboxesIcon}
               activeIconColor="text-sandboxes"
               to={sandboxesPath(organization, project, environment)}
-              data-action="tasks"
+              data-action="sandboxes"
             />
             <SideMenuItem
               name="Schedules"

@@ -1,6 +1,7 @@
 import { ClockIcon } from "@heroicons/react/20/solid";
 import type { TaskTriggerSource } from "@trigger.dev/database";
-import { SandboxesIconSmall, TaskIconSmall } from "~/assets/icons/TaskIcon";
+import { SandboxesIcon } from "~/assets/icons/SandboxesIcon";
+import { TaskIconSmall } from "~/assets/icons/TaskIcon";
 import { cn } from "~/utils/cn";
 
 export function TaskTriggerSourceIcon({
@@ -20,7 +21,7 @@ export function TaskTriggerSourceIcon({
       );
     }
     case "SANDBOX": {
-      return <SandboxesIconSmall className="text-sandboxes size-[1.125rem] min-w-[1.125rem]" />;
+      return <SandboxesIcon className="size-[1.125rem] min-w-[1.125rem] text-sandboxes" />;
     }
   }
 }
