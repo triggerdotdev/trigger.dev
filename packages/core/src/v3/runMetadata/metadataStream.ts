@@ -122,6 +122,9 @@ export class MetadataStream<T> {
       });
 
       req.on("error", async (error) => {
+        const errorCode = "code" in error ? error.code : undefined;
+        const errorMsg = error instanceof Error ? error.message : String(error);
+
         // Check if this is a retryable connection error
         if (this.isRetryableError(error)) {
           if (this.retryCount < this.maxRetries) {
@@ -144,28 +147,56 @@ export class MetadataStream<T> {
         reject(error);
       });
 
-      req.on("timeout", () => {
-        req.destroy(new Error("Request timed out"));
-      });
+      req.on("timeout", async () => {
+        // Timeout is retryable
+        if (this.retryCount < this.maxRetries) {
+          this.retryCount++;
+          const delayMs = this.calculateBackoffDelay();
 
-      req.on("response", (res) => {
-        if (res.statusCode === 408) {
-          if (this.retryCount < this.maxRetries) {
-            this.retryCount++;
-            resolve(this.makeRequest(startFromChunk));
-            return;
-          }
-          reject(new Error(`Max retries (${this.maxRetries}) exceeded after timeout`));
+          await this.delay(delayMs);
+
+          // Query server to find where to resume
+          const serverLastChunk = await this.queryServerLastChunkIndex();
+          const resumeFromChunk = serverLastChunk + 1;
+
+          resolve(this.makeRequest(resumeFromChunk));
           return;
         }
 
+        reject(new Error("Request timed out"));
+      });
+
+      req.on("response", async (res) => {
+        // Check for retryable status codes (408, 429, 5xx)
+        if (res.statusCode && this.isRetryableStatusCode(res.statusCode)) {
+          if (this.retryCount < this.maxRetries) {
+            this.retryCount++;
+            const delayMs = this.calculateBackoffDelay();
+
+            await this.delay(delayMs);
+
+            // Query server to find where to resume (in case some data was written)
+            const serverLastChunk = await this.queryServerLastChunkIndex();
+            const resumeFromChunk = serverLastChunk + 1;
+
+            resolve(this.makeRequest(resumeFromChunk));
+            return;
+          }
+
+          reject(
+            new Error(`Max retries (${this.maxRetries}) exceeded for status code ${res.statusCode}`)
+          );
+          return;
+        }
+
+        // Non-retryable error status
         if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
           const error = new Error(`HTTP error! status: ${res.statusCode}`);
           reject(error);
           return;
         }
 
-        // Reset retry count on successful response
+        // Success! Reset retry count
         this.retryCount = 0;
 
         res.on("end", () => {
@@ -195,12 +226,6 @@ export class MetadataStream<T> {
                 const stringified = JSON.stringify(chunk.data) + "\n";
                 req.write(stringified);
                 this.currentChunkIndex = lastSentIndex + 1;
-              } else {
-                // Chunk not in buffer (outside ring buffer window)
-                // This can happen if the ring buffer size is too small
-                console.warn(
-                  `[metadataStream] Chunk ${lastSentIndex} not in ring buffer (outside window), cannot recover`
-                );
               }
             }
 
@@ -259,6 +284,8 @@ export class MetadataStream<T> {
       "ETIMEDOUT", // Connection timed out
       "ENOTFOUND", // DNS lookup failed
       "EPIPE", // Broken pipe
+      "EHOSTUNREACH", // Host unreachable
+      "ENETUNREACH", // Network unreachable
       "socket hang up", // Socket hang up
     ];
 
@@ -271,6 +298,18 @@ export class MetadataStream<T> {
     if (error.message && error.message.includes("socket hang up")) {
       return true;
     }
+
+    return false;
+  }
+
+  private isRetryableStatusCode(statusCode: number): boolean {
+    // Retry on transient server errors
+    if (statusCode === 408) return true; // Request Timeout
+    if (statusCode === 429) return true; // Rate Limit
+    if (statusCode === 500) return true; // Internal Server Error
+    if (statusCode === 502) return true; // Bad Gateway
+    if (statusCode === 503) return true; // Service Unavailable
+    if (statusCode === 504) return true; // Gateway Timeout
 
     return false;
   }
@@ -314,9 +353,10 @@ export class MetadataStream<T> {
     return result;
   }
 
-  private async queryServerLastChunkIndex(): Promise<number> {
+  private async queryServerLastChunkIndex(attempt: number = 0): Promise<number> {
     return new Promise((resolve, reject) => {
       const url = new URL(this.buildUrl());
+      const maxHeadRetries = 3; // Separate retry limit for HEAD requests
 
       const requestFn = url.protocol === "https:" ? httpsRequest : httpRequest;
       const req = requestFn({
@@ -331,17 +371,52 @@ export class MetadataStream<T> {
         timeout: 5000, // 5 second timeout for HEAD request
       });
 
-      req.on("error", (error) => {
-        // Return -1 to indicate we don't know what the server has
+      req.on("error", async (error) => {
+        if (this.isRetryableError(error) && attempt < maxHeadRetries) {
+          await this.delay(1000 * (attempt + 1)); // Simple linear backoff
+          const result = await this.queryServerLastChunkIndex(attempt + 1);
+          resolve(result);
+          return;
+        }
+
+        // Return -1 to indicate we don't know what the server has (resume from 0)
         resolve(-1);
       });
 
-      req.on("timeout", () => {
+      req.on("timeout", async () => {
         req.destroy();
+
+        if (attempt < maxHeadRetries) {
+          await this.delay(1000 * (attempt + 1));
+          const result = await this.queryServerLastChunkIndex(attempt + 1);
+          resolve(result);
+          return;
+        }
+
         resolve(-1);
       });
 
-      req.on("response", (res) => {
+      req.on("response", async (res) => {
+        // Retry on 5xx errors
+        if (res.statusCode && this.isRetryableStatusCode(res.statusCode)) {
+          if (attempt < maxHeadRetries) {
+            await this.delay(1000 * (attempt + 1));
+            const result = await this.queryServerLastChunkIndex(attempt + 1);
+            resolve(result);
+            return;
+          }
+
+          resolve(-1);
+          return;
+        }
+
+        // Non-retryable error
+        if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
+          resolve(-1);
+          return;
+        }
+
+        // Success - extract chunk index
         const lastChunkHeader = res.headers["x-last-chunk-index"];
         if (lastChunkHeader) {
           const lastChunkIndex = parseInt(
