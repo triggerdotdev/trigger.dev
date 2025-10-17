@@ -141,6 +141,19 @@ services:
     networks:
       - app_network
 
+  toxiproxy:
+    container_name: toxiproxy
+    image: ghcr.io/shopify/toxiproxy:latest
+    restart: always
+    volumes:
+      - ./config/toxiproxy.json:/config/toxiproxy.json
+    ports:
+      - "30303:30303" # Proxied webapp port
+      - "8474:8474" # Toxiproxy API port
+    networks:
+      - app_network
+    command: ["-host", "0.0.0.0", "-config", "/config/toxiproxy.json"]
+
   # otel-collector:
   #   container_name: otel-collector
   #   image: otel/opentelemetry-collector-contrib:latest
