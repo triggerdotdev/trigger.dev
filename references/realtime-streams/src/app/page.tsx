@@ -5,7 +5,8 @@ import type { streamsTask } from "@/trigger/streams";
 export default async function Home() {
   // Trigger the streams task
   const handle = await tasks.trigger<typeof streamsTask>("streams", {
-    stallDurationMs: 45 * 1000,
+    scenario: "markdown",
+    tokenDelayMs: 20, // Slower streaming
   });
 
   console.log("handle", handle);
