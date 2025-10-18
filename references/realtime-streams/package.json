@@ -1,0 +1,28 @@
+{
+  "name": "references-realtime-streams",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build --turbopack",
+    "start": "next start",
+    "dev:trigger": "trigger dev",
+    "deploy": "trigger deploy"
+  },
+  "dependencies": {
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "next": "15.5.6",
+    "@trigger.dev/react-hooks": "workspace:*",
+    "@trigger.dev/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@tailwindcss/postcss": "^4",
+    "tailwindcss": "^4",
+    "trigger.dev": "workspace:*"
+  }
+}

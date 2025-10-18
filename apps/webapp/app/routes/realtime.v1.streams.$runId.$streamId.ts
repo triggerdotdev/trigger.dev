@@ -1,7 +1,6 @@
 import { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { $replica } from "~/db.server";
-import { relayRealtimeStreams } from "~/services/realtime/relayRealtimeStreams.server";
 import { v1RealtimeStreams } from "~/services/realtime/v1StreamsGlobal.server";
 import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
@@ -18,7 +17,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   // Handle HEAD request to get last chunk index for this client
   if (request.method === "HEAD") {
-    const lastChunkIndex = await relayRealtimeStreams.getLastChunkIndex(
+    const lastChunkIndex = await v1RealtimeStreams.getLastChunkIndex(
       $params.runId,
       $params.streamId,
       clientId
@@ -39,7 +38,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const resumeFromChunk = request.headers.get("X-Resume-From-Chunk");
   const resumeFromChunkNumber = resumeFromChunk ? parseInt(resumeFromChunk, 10) : undefined;
 
-  return relayRealtimeStreams.ingestData(
+  return v1RealtimeStreams.ingestData(
     request.body,
     $params.runId,
     $params.streamId,
@@ -80,11 +79,15 @@ export const loader = createLoaderApiRoute(
     },
   },
   async ({ params, request, resource: run, authentication }) => {
+    // Get Last-Event-ID header for resuming from a specific position
+    const lastEventId = request.headers.get("Last-Event-ID") || undefined;
+
     return v1RealtimeStreams.streamResponse(
       request,
       run.friendlyId,
       params.streamId,
-      request.signal
+      request.signal,
+      lastEventId
     );
   }
 );
