@@ -14,6 +14,12 @@ export type RealtimeStreamsOptions = {
 // Legacy constant for backward compatibility (no longer written, but still recognized when reading)
 const END_SENTINEL = "<<CLOSE_STREAM>>";
 
+// Internal types for stream pipeline
+type StreamChunk =
+  | { type: "ping" }
+  | { type: "data"; redisId: string; data: string }
+  | { type: "legacy-data"; redisId: string; data: string };
+
 // Class implementing both interfaces
 export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
   private logger: Logger;
@@ -28,22 +34,40 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
     request: Request,
     runId: string,
     streamId: string,
-    signal: AbortSignal
+    signal: AbortSignal,
+    lastEventId?: string
   ): Promise<Response> {
     const redis = new Redis(this.options.redis ?? {});
     const streamKey = `stream:${runId}:${streamId}`;
     let isCleanedUp = false;
 
-    const stream = new ReadableStream({
+    const stream = new ReadableStream<StreamChunk>({
       start: async (controller) => {
-        let lastId = "0";
+        // Start from lastEventId if provided, otherwise from beginning
+        let lastId = lastEventId || "0";
         let retryCount = 0;
         const maxRetries = 3;
         let lastDataTime = Date.now();
+        let lastEnqueueTime = Date.now();
         const blockTimeMs = 5000;
+        const pingIntervalMs = 10000; // 10 seconds
+
+        if (lastEventId) {
+          this.logger.debug("[RealtimeStreams][streamResponse] Resuming from lastEventId", {
+            streamKey,
+            lastEventId,
+          });
+        }
 
         try {
           while (!signal.aborted) {
+            // Check if we need to send a ping
+            const timeSinceLastEnqueue = Date.now() - lastEnqueueTime;
+            if (timeSinceLastEnqueue >= pingIntervalMs) {
+              controller.enqueue({ type: "ping" });
+              lastEnqueueTime = Date.now();
+            }
+
             try {
               const messages = await redis.xread(
                 "COUNT",
@@ -88,9 +112,16 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
                         continue;
                       }
 
-                      controller.enqueue(data);
+                      // Enqueue structured chunk with Redis stream ID
+                      controller.enqueue({
+                        type: "data",
+                        redisId: id,
+                        data,
+                      });
+
                       foundData = true;
                       lastDataTime = Date.now();
+                      lastEnqueueTime = Date.now();
 
                       if (signal.aborted) {
                         controller.close();
@@ -161,12 +192,31 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
         await cleanup();
       },
     })
-      .pipeThrough(new LineTransformStream())
       .pipeThrough(
-        new TransformStream({
+        // Transform 1: Split data content by newlines, preserving metadata
+        new TransformStream<StreamChunk, StreamChunk & { line?: string }>({
           transform(chunk, controller) {
-            for (const line of chunk) {
-              controller.enqueue(`data: ${line}\n\n`);
+            if (chunk.type === "ping") {
+              controller.enqueue(chunk);
+            } else if (chunk.type === "data" || chunk.type === "legacy-data") {
+              // Split data by newlines, emit separate chunks with same metadata
+              const lines = chunk.data.split("\n").filter((line) => line.trim().length > 0);
+              for (const line of lines) {
+                controller.enqueue({ ...chunk, line });
+              }
+            }
+          },
+        })
+      )
+      .pipeThrough(
+        // Transform 2: Format as SSE
+        new TransformStream<StreamChunk & { line?: string }, string>({
+          transform(chunk, controller) {
+            if (chunk.type === "ping") {
+              controller.enqueue(`: ping\n\n`);
+            } else if ((chunk.type === "data" || chunk.type === "legacy-data") && chunk.line) {
+              // Use Redis stream ID as SSE event ID
+              controller.enqueue(`id: ${chunk.redisId}\ndata: ${chunk.line}\n\n`);
             }
           },
         })

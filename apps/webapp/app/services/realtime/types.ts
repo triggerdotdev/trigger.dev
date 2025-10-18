@@ -19,6 +19,7 @@ export interface StreamResponder {
     request: Request,
     runId: string,
     streamId: string,
-    signal: AbortSignal
+    signal: AbortSignal,
+    lastEventId?: string
   ): Promise<Response>;
 }
