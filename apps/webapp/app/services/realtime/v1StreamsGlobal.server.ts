@@ -13,6 +13,7 @@ function initializeRedisRealtimeStreams() {
       ...(env.REALTIME_STREAMS_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
       keyPrefix: "tr:realtime:streams:",
     },
+    inactivityTimeoutMs: env.REALTIME_STREAMS_INACTIVITY_TIMEOUT_MS,
   });
 }
 

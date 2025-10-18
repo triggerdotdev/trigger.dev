@@ -165,19 +165,43 @@ export interface StreamSubscriptionFactory {
 
 // Real implementation for production
 export class SSEStreamSubscription implements StreamSubscription {
+  private lastEventId: string | undefined;
+  private retryCount = 0;
+  private maxRetries = 5;
+  private retryDelayMs = 1000;
+
   constructor(
     private url: string,
     private options: { headers?: Record<string, string>; signal?: AbortSignal }
   ) {}
 
   async subscribe(): Promise<ReadableStream<unknown>> {
-    return fetch(this.url, {
-      headers: {
+    const self = this;
+
+    return new ReadableStream({
+      async start(controller) {
+        await self.connectStream(controller);
+      },
+    });
+  }
+
+  private async connectStream(controller: ReadableStreamDefaultController): Promise<void> {
+    try {
+      const headers: Record<string, string> = {
         Accept: "text/event-stream",
         ...this.options.headers,
-      },
-      signal: this.options.signal,
-    }).then((response) => {
+      };
+
+      // Include Last-Event-ID header if we're resuming
+      if (this.lastEventId) {
+        headers["Last-Event-ID"] = this.lastEventId;
+      }
+
+      const response = await fetch(this.url, {
+        headers,
+        signal: this.options.signal,
+      });
+
       if (!response.ok) {
         throw ApiError.generate(
           response.status,
@@ -191,17 +215,86 @@ export class SSEStreamSubscription implements StreamSubscription {
         throw new Error("No response body");
       }
 
-      return response.body
+      // Reset retry count on successful connection
+      this.retryCount = 0;
+
+      const stream = response.body
         .pipeThrough(new TextDecoderStream())
         .pipeThrough(new EventSourceParserStream())
         .pipeThrough(
           new TransformStream({
-            transform(chunk, controller) {
-              controller.enqueue(safeParseJSON(chunk.data));
+            transform: (chunk, chunkController) => {
+              // Track the last event ID for resume support
+              if (chunk.id) {
+                this.lastEventId = chunk.id;
+              }
+              chunkController.enqueue(safeParseJSON(chunk.data));
             },
           })
         );
-    });
+
+      const reader = stream.getReader();
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+
+          if (done) {
+            break;
+          }
+
+          if (this.options.signal?.aborted) {
+            reader.cancel();
+            break;
+          }
+
+          controller.enqueue(value);
+        }
+      } catch (error) {
+        reader.releaseLock();
+        throw error;
+      }
+
+      reader.releaseLock();
+    } catch (error) {
+      if (this.options.signal?.aborted) {
+        // Don't retry if aborted
+        controller.close();
+        return;
+      }
+
+      // Retry on error
+      await this.retryConnection(controller, error as Error);
+    }
+  }
+
+  private async retryConnection(
+    controller: ReadableStreamDefaultController,
+    error?: Error
+  ): Promise<void> {
+    if (this.options.signal?.aborted) {
+      controller.close();
+      return;
+    }
+
+    if (this.retryCount >= this.maxRetries) {
+      controller.error(error || new Error("Max retries reached"));
+      return;
+    }
+
+    this.retryCount++;
+    const delay = this.retryDelayMs * Math.pow(2, this.retryCount - 1);
+
+    // Wait before retrying
+    await new Promise((resolve) => setTimeout(resolve, delay));
+
+    if (this.options.signal?.aborted) {
+      controller.close();
+      return;
+    }
+
+    // Reconnect
+    await this.connectStream(controller);
   }
 }
 
