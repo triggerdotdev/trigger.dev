@@ -244,12 +244,17 @@ describe("RedisRealtimeStreams", () => {
 
         if (value) {
           const text = decoder.decode(value);
-          // Parse SSE format: "data: {json}\n\n"
-          const lines = text.split("\n\n").filter((line) => line.startsWith("data: "));
-          for (const line of lines) {
-            const data = line.replace("data: ", "").trim();
-            if (data) {
-              receivedData.push(data);
+          // Parse SSE format: "id: ...\ndata: {json}\n\n"
+          const events = text.split("\n\n").filter((event) => event.trim());
+          for (const event of events) {
+            const lines = event.split("\n");
+            for (const line of lines) {
+              if (line.startsWith("data: ")) {
+                const data = line.substring(6).trim();
+                if (data) {
+                  receivedData.push(data);
+                }
+              }
             }
           }
         }
@@ -461,11 +466,16 @@ describe("RedisRealtimeStreams", () => {
 
         if (value) {
           const text = decoder.decode(value);
-          const lines = text.split("\n\n").filter((line) => line.startsWith("data: "));
-          for (const line of lines) {
-            const data = line.replace("data: ", "").trim();
-            if (data) {
-              receivedData.push(data);
+          const events = text.split("\n\n").filter((event) => event.trim());
+          for (const event of events) {
+            const lines = event.split("\n");
+            for (const line of lines) {
+              if (line.startsWith("data: ")) {
+                const data = line.substring(6).trim();
+                if (data) {
+                  receivedData.push(data);
+                }
+              }
             }
           }
         }
@@ -476,7 +486,6 @@ describe("RedisRealtimeStreams", () => {
       reader.releaseLock();
 
       // Verify we received both legacy chunks
-      // Note: LineTransformStream strips newlines from the output
       expect(receivedData.length).toBe(2);
       expect(receivedData[0]).toBe("legacy chunk 1");
       expect(receivedData[1]).toBe("legacy chunk 2");
@@ -1010,11 +1019,16 @@ describe("RedisRealtimeStreams", () => {
 
         if (value) {
           const text = decoder.decode(value);
-          const lines = text.split("\n\n").filter((line) => line.startsWith("data: "));
-          for (const line of lines) {
-            const data = line.replace("data: ", "").trim();
-            if (data) {
-              receivedData.push(data);
+          const events = text.split("\n\n").filter((event) => event.trim());
+          for (const event of events) {
+            const lines = event.split("\n");
+            for (const line of lines) {
+              if (line.startsWith("data: ")) {
+                const data = line.substring(6).trim();
+                if (data) {
+                  receivedData.push(data);
+                }
+              }
             }
           }
         }
@@ -1096,11 +1110,16 @@ describe("RedisRealtimeStreams", () => {
 
           if (value) {
             const text = decoder.decode(value);
-            const lines = text.split("\n\n").filter((line) => line.startsWith("data: "));
-            for (const line of lines) {
-              const data = line.replace("data: ", "").trim();
-              if (data) {
-                receivedData.push(data);
+            const events = text.split("\n\n").filter((event) => event.trim());
+            for (const event of events) {
+              const lines = event.split("\n");
+              for (const line of lines) {
+                if (line.startsWith("data: ")) {
+                  const data = line.substring(6).trim();
+                  if (data) {
+                    receivedData.push(data);
+                  }
+                }
               }
             }
           }
@@ -1124,6 +1143,274 @@ describe("RedisRealtimeStreams", () => {
       // The inactivity is checked AFTER the BLOCK returns
       expect(elapsedMs).toBeGreaterThan(4000); // At least one BLOCK cycle
       expect(elapsedMs).toBeLessThan(8000); // But not more than 2 cycles
+
+      // Cleanup
+      await redis.del(`stream:${runId}:${streamId}`);
+      await redis.quit();
+    }
+  );
+
+  redisTest(
+    "Should format response with event IDs from Redis stream",
+    { timeout: 30_000 },
+    async ({ redisOptions }) => {
+      const redis = new Redis(redisOptions);
+      const redisRealtimeStreams = new RedisRealtimeStreams({
+        redis: redisOptions,
+      });
+
+      const runId = "run_event_id_test";
+      const streamId = "event-id-stream";
+
+      // Ingest some data with specific clientId
+      const chunks = [
+        JSON.stringify({ message: "chunk 0" }),
+        JSON.stringify({ message: "chunk 1" }),
+        JSON.stringify({ message: "chunk 2" }),
+      ];
+
+      const encoder = new TextEncoder();
+      const ingestStream = new ReadableStream({
+        start(controller) {
+          for (const chunk of chunks) {
+            controller.enqueue(encoder.encode(chunk + "\n"));
+          }
+          controller.close();
+        },
+      });
+
+      await redisRealtimeStreams.ingestData(ingestStream, runId, streamId, "test-client-123");
+
+      // Stream the response
+      const mockRequest = new Request("http://localhost/test");
+      const abortController = new AbortController();
+
+      const response = await redisRealtimeStreams.streamResponse(
+        mockRequest,
+        runId,
+        streamId,
+        abortController.signal
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("Content-Type")).toBe("text/event-stream");
+
+      // Read the stream
+      const reader = response.body!.getReader();
+      const decoder = new TextDecoder();
+      const receivedEvents: Array<{ id: string; data: string }> = [];
+
+      let done = false;
+      while (!done && receivedEvents.length < 3) {
+        const { value, done: streamDone } = await reader.read();
+        done = streamDone;
+
+        if (value) {
+          const text = decoder.decode(value);
+          // Split by double newline to get individual events
+          const events = text.split("\n\n").filter((event) => event.trim());
+
+          for (const event of events) {
+            const lines = event.split("\n");
+            let id: string | null = null;
+            let data: string | null = null;
+
+            for (const line of lines) {
+              if (line.startsWith("id: ")) {
+                id = line.substring(4);
+              } else if (line.startsWith("data: ")) {
+                data = line.substring(6);
+              }
+            }
+
+            if (id && data) {
+              receivedEvents.push({ id, data });
+            }
+          }
+        }
+      }
+
+      // Cancel the stream
+      abortController.abort();
+      reader.releaseLock();
+
+      // Verify we received all chunks with correct event IDs
+      expect(receivedEvents.length).toBe(3);
+
+      // Verify event IDs are Redis stream IDs (format: timestamp-sequence like "1234567890123-0")
+      for (let i = 0; i < 3; i++) {
+        expect(receivedEvents[i].id).toMatch(/^\d+-\d+$/);
+        expect(receivedEvents[i].data).toBe(chunks[i]);
+      }
+
+      // Verify IDs are in order (each ID should be > previous)
+      expect(receivedEvents[1].id > receivedEvents[0].id).toBe(true);
+      expect(receivedEvents[2].id > receivedEvents[1].id).toBe(true);
+
+      // Cleanup
+      await redis.del(`stream:${runId}:${streamId}`);
+      await redis.quit();
+    }
+  );
+
+  redisTest(
+    "Should support resuming from Last-Event-ID",
+    { timeout: 30_000 },
+    async ({ redisOptions }) => {
+      const redis = new Redis(redisOptions);
+      const redisRealtimeStreams = new RedisRealtimeStreams({
+        redis: redisOptions,
+      });
+
+      const runId = "run_resume_test";
+      const streamId = "resume-stream";
+
+      // Ingest data in two batches
+      const firstBatch = [
+        JSON.stringify({ batch: 1, chunk: 0 }),
+        JSON.stringify({ batch: 1, chunk: 1 }),
+        JSON.stringify({ batch: 1, chunk: 2 }),
+      ];
+
+      const encoder = new TextEncoder();
+      const firstStream = new ReadableStream({
+        start(controller) {
+          for (const chunk of firstBatch) {
+            controller.enqueue(encoder.encode(chunk + "\n"));
+          }
+          controller.close();
+        },
+      });
+
+      await redisRealtimeStreams.ingestData(firstStream, runId, streamId, "client-A");
+
+      // Stream and read first batch
+      const mockRequest1 = new Request("http://localhost/test");
+      const abortController1 = new AbortController();
+
+      const response1 = await redisRealtimeStreams.streamResponse(
+        mockRequest1,
+        runId,
+        streamId,
+        abortController1.signal
+      );
+
+      expect(response1.status).toBe(200);
+
+      const reader1 = response1.body!.getReader();
+      const decoder1 = new TextDecoder();
+      const firstEvents: Array<{ id: string; data: string }> = [];
+
+      let done1 = false;
+      while (!done1 && firstEvents.length < 3) {
+        const { value, done: streamDone } = await reader1.read();
+        done1 = streamDone;
+
+        if (value) {
+          const text = decoder1.decode(value);
+          const events = text.split("\n\n").filter((event) => event.trim());
+
+          for (const event of events) {
+            const lines = event.split("\n");
+            let id: string | null = null;
+            let data: string | null = null;
+
+            for (const line of lines) {
+              if (line.startsWith("id: ")) {
+                id = line.substring(4);
+              } else if (line.startsWith("data: ")) {
+                data = line.substring(6);
+              }
+            }
+
+            if (id && data) {
+              firstEvents.push({ id, data });
+            }
+          }
+        }
+      }
+
+      abortController1.abort();
+      reader1.releaseLock();
+
+      expect(firstEvents.length).toBe(3);
+      const lastEventId = firstEvents[firstEvents.length - 1].id;
+
+      // Ingest second batch
+      const secondBatch = [
+        JSON.stringify({ batch: 2, chunk: 0 }),
+        JSON.stringify({ batch: 2, chunk: 1 }),
+      ];
+
+      const secondStream = new ReadableStream({
+        start(controller) {
+          for (const chunk of secondBatch) {
+            controller.enqueue(encoder.encode(chunk + "\n"));
+          }
+          controller.close();
+        },
+      });
+
+      await redisRealtimeStreams.ingestData(secondStream, runId, streamId, "client-A");
+
+      // Resume streaming from lastEventId
+      const mockRequest2 = new Request("http://localhost/test");
+      const abortController2 = new AbortController();
+
+      const response2 = await redisRealtimeStreams.streamResponse(
+        mockRequest2,
+        runId,
+        streamId,
+        abortController2.signal,
+        lastEventId
+      );
+
+      expect(response2.status).toBe(200);
+
+      const reader2 = response2.body!.getReader();
+      const decoder2 = new TextDecoder();
+      const resumedEvents: Array<{ id: string; data: string }> = [];
+
+      let done2 = false;
+      while (!done2 && resumedEvents.length < 2) {
+        const { value, done: streamDone } = await reader2.read();
+        done2 = streamDone;
+
+        if (value) {
+          const text = decoder2.decode(value);
+          const events = text.split("\n\n").filter((event) => event.trim());
+
+          for (const event of events) {
+            const lines = event.split("\n");
+            let id: string | null = null;
+            let data: string | null = null;
+
+            for (const line of lines) {
+              if (line.startsWith("id: ")) {
+                id = line.substring(4);
+              } else if (line.startsWith("data: ")) {
+                data = line.substring(6);
+              }
+            }
+
+            if (id && data) {
+              resumedEvents.push({ id, data });
+            }
+          }
+        }
+      }
+
+      abortController2.abort();
+      reader2.releaseLock();
+
+      // Verify we only received the second batch (events after lastEventId)
+      expect(resumedEvents.length).toBe(2);
+      expect(resumedEvents[0].data).toBe(secondBatch[0]);
+      expect(resumedEvents[1].data).toBe(secondBatch[1]);
+
+      // Verify the resumed events have IDs greater than lastEventId
+      expect(resumedEvents[0].id > lastEventId).toBe(true);
+      expect(resumedEvents[1].id > lastEventId).toBe(true);
 
       // Cleanup
       await redis.del(`stream:${runId}:${streamId}`);
