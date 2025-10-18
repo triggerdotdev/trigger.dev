@@ -5,22 +5,105 @@ export type STREAMS = {
   stream: string;
 };
 
+export type StreamScenario = "stall" | "continuous" | "burst" | "slow-steady" | "markdown";
+
+export type StreamPayload = {
+  scenario?: StreamScenario;
+  // Stall scenario options
+  stallDurationMs?: number;
+  includePing?: boolean;
+  // Continuous scenario options
+  durationSec?: number;
+  intervalMs?: number;
+  // Burst scenario options
+  burstCount?: number;
+  tokensPerBurst?: number;
+  burstIntervalMs?: number;
+  pauseBetweenBurstsMs?: number;
+  // Slow steady scenario options
+  durationMin?: number;
+  tokenIntervalSec?: number;
+  // Markdown scenario options
+  tokenDelayMs?: number;
+};
+
 export const streamsTask = task({
   id: "streams",
-  run: async (payload: { stallDurationMs?: number } = {}) => {
+  run: async (payload: StreamPayload = {}) => {
     await setTimeout(1000);
 
-    const stallDurationMs = payload.stallDurationMs ?? 3 * 60 * 1000; // Default 3 minutes
-    const mockStream1 = createStreamFromGenerator(generateLLMTokenStream(false, stallDurationMs));
+    const scenario = payload.scenario ?? "continuous";
+    logger.info("Starting stream scenario", { scenario });
 
-    const stream = await metadata.stream("stream", mockStream1);
+    let generator: AsyncGenerator<string>;
+    let scenarioDescription: string;
 
-    for await (const chunk of stream) {
-      logger.info("Received chunk", { chunk });
+    switch (scenario) {
+      case "stall": {
+        const stallDurationMs = payload.stallDurationMs ?? 3 * 60 * 1000; // Default 3 minutes
+        const includePing = payload.includePing ?? false;
+        generator = generateLLMTokenStream(includePing, stallDurationMs);
+        scenarioDescription = `Stall scenario: ${stallDurationMs / 1000}s with ${
+          includePing ? "ping tokens" : "no pings"
+        }`;
+        break;
+      }
+      case "continuous": {
+        const durationSec = payload.durationSec ?? 45;
+        const intervalMs = payload.intervalMs ?? 10;
+        generator = generateContinuousTokenStream(durationSec, intervalMs);
+        scenarioDescription = `Continuous scenario: ${durationSec}s with ${intervalMs}ms intervals`;
+        break;
+      }
+      case "burst": {
+        const burstCount = payload.burstCount ?? 10;
+        const tokensPerBurst = payload.tokensPerBurst ?? 20;
+        const burstIntervalMs = payload.burstIntervalMs ?? 5;
+        const pauseBetweenBurstsMs = payload.pauseBetweenBurstsMs ?? 2000;
+        generator = generateBurstTokenStream(
+          burstCount,
+          tokensPerBurst,
+          burstIntervalMs,
+          pauseBetweenBurstsMs
+        );
+        scenarioDescription = `Burst scenario: ${burstCount} bursts of ${tokensPerBurst} tokens`;
+        break;
+      }
+      case "slow-steady": {
+        const durationMin = payload.durationMin ?? 5;
+        const tokenIntervalSec = payload.tokenIntervalSec ?? 5;
+        generator = generateSlowSteadyTokenStream(durationMin, tokenIntervalSec);
+        scenarioDescription = `Slow steady scenario: ${durationMin}min with ${tokenIntervalSec}s intervals`;
+        break;
+      }
+      case "markdown": {
+        const tokenDelayMs = payload.tokenDelayMs ?? 15;
+        generator = generateMarkdownTokenStream(tokenDelayMs);
+        scenarioDescription = `Markdown scenario: generating formatted content with ${tokenDelayMs}ms delays`;
+        break;
+      }
+      default: {
+        throw new Error(`Unknown scenario: ${scenario}`);
+      }
     }
 
+    logger.info("Starting stream", { scenarioDescription });
+
+    const mockStream = createStreamFromGenerator(generator);
+    const stream = await metadata.stream("stream", mockStream);
+
+    let tokenCount = 0;
+    for await (const chunk of stream) {
+      tokenCount++;
+    }
+
+    logger.info("Stream completed", { scenario, tokenCount });
+
     return {
-      message: "Hello, world!",
+      scenario,
+      scenarioDescription,
+      tokenCount,
+      message: `Completed ${scenario} scenario with ${tokenCount} tokens`,
     };
   },
 });
@@ -99,6 +182,154 @@ async function* generateLLMTokenStream(
   for (const token of continuationTokens) {
     await setTimeout(Math.random() * 10 + 5); // 5-15ms delay
     yield token;
+  }
+}
+
+// Continuous stream: emit tokens at regular intervals for a specified duration
+async function* generateContinuousTokenStream(durationSec: number, intervalMs: number) {
+  const words = [
+    "The",
+    "quick",
+    "brown",
+    "fox",
+    "jumps",
+    "over",
+    "the",
+    "lazy",
+    "dog",
+    "while",
+    "streaming",
+    "tokens",
+    "continuously",
+    "at",
+    "regular",
+    "intervals",
+    "to",
+    "test",
+    "real-time",
+    "data",
+    "flow",
+  ];
+
+  const endTime = Date.now() + durationSec * 1000;
+  let wordIndex = 0;
+
+  while (Date.now() < endTime) {
+    await setTimeout(intervalMs);
+    yield words[wordIndex % words.length] + " ";
+    wordIndex++;
+  }
+
+  yield "\n[Stream completed]";
+}
+
+// Burst stream: emit rapid bursts of tokens with pauses between bursts
+async function* generateBurstTokenStream(
+  burstCount: number,
+  tokensPerBurst: number,
+  burstIntervalMs: number,
+  pauseBetweenBurstsMs: number
+) {
+  const tokens = "abcdefghijklmnopqrstuvwxyz".split("");
+
+  for (let burst = 0; burst < burstCount; burst++) {
+    yield `\n[Burst ${burst + 1}/${burstCount}] `;
+
+    // Emit tokens rapidly in this burst
+    for (let token = 0; token < tokensPerBurst; token++) {
+      await setTimeout(burstIntervalMs);
+      yield tokens[token % tokens.length];
+    }
+
+    // Pause between bursts (except after the last burst)
+    if (burst < burstCount - 1) {
+      await setTimeout(pauseBetweenBurstsMs);
+    }
+  }
+
+  yield "\n[All bursts completed]";
+}
+
+// Slow steady stream: emit tokens at longer intervals over many minutes
+async function* generateSlowSteadyTokenStream(durationMin: number, tokenIntervalSec: number) {
+  const sentences = [
+    "This is a slow and steady stream.",
+    "Each token arrives after several seconds.",
+    "Perfect for testing long-running connections.",
+    "The stream maintains a consistent pace.",
+    "Patience is key when testing reliability.",
+    "Connections should remain stable throughout.",
+    "This helps verify timeout handling.",
+    "Real-world streams often have variable timing.",
+    "Testing edge cases is important.",
+    "Almost done with the slow stream test.",
+  ];
+
+  const endTime = Date.now() + durationMin * 60 * 1000;
+  let sentenceIndex = 0;
+
+  while (Date.now() < endTime) {
+    const sentence = sentences[sentenceIndex % sentences.length];
+    yield `${sentence} `;
+
+    sentenceIndex++;
+    await setTimeout(tokenIntervalSec * 1000);
+  }
+
+  yield "\n[Long stream completed successfully]";
+}
+
+// Markdown stream: emit realistic markdown content character by character
+async function* generateMarkdownTokenStream(tokenDelayMs: number) {
+  const markdownContent =
+    "# Streaming Markdown Example\n\n" +
+    "This is a demonstration of **streaming markdown** content in real-time. The content is being generated *character by character*, simulating how an LLM might generate formatted text.\n\n" +
+    "## Features\n\n" +
+    "Here are some key features being tested:\n\n" +
+    "- **Bold text** for emphasis\n" +
+    "- *Italic text* for subtle highlighting\n" +
+    "- `inline code` for technical terms\n" +
+    "- [Links](https://trigger.dev) to external resources\n\n" +
+    "### Code Examples\n\n" +
+    "You can also stream code blocks:\n\n" +
+    "```typescript\n" +
+    'import { task, metadata } from "@trigger.dev/sdk";\n\n' +
+    "export const myTask = task({\n" +
+    '  id: "example-task",\n' +
+    "  run: async (payload) => {\n" +
+    '    const stream = await metadata.stream("output", myStream);\n' +
+    "    \n" +
+    "    for await (const chunk of stream) {\n" +
+    "      console.log(chunk);\n" +
+    "    }\n" +
+    "    \n" +
+    "    return { success: true };\n" +
+    "  },\n" +
+    "});\n" +
+    "```\n\n" +
+    "### Lists and Structure\n\n" +
+    "Numbered lists work great too:\n\n" +
+    "1. First item with important details\n" +
+    "2. Second item with more context\n" +
+    "3. Third item completing the sequence\n\n" +
+    "#### Nested Content\n\n" +
+    "> Blockquotes are useful for highlighting important information or quoting external sources.\n\n" +
+    "You can combine **_bold and italic_** text, or use ~~strikethrough~~ for corrections.\n\n" +
+    "## Technical Details\n\n" +
+    "| Feature | Status | Notes |\n" +
+    "|---------|--------|-------|\n" +
+    "| Streaming | ✓ | Working perfectly |\n" +
+    "| Markdown | ✓ | Full support |\n" +
+    "| Realtime | ✓ | Sub-second latency |\n\n" +
+    "### Conclusion\n\n" +
+    "This markdown streaming scenario demonstrates how formatted content can be transmitted in real-time, maintaining proper structure and formatting throughout the stream.\n\n" +
+    "---\n\n" +
+    "*Generated with Trigger.dev realtime streams* 🚀\n";
+
+  // Stream each character with a small delay
+  for (const char of markdownContent) {
+    await setTimeout(tokenDelayMs);
+    yield char;
   }
 }
 

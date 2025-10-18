@@ -2,6 +2,7 @@
 
 import { useRealtimeRunWithStreams } from "@trigger.dev/react-hooks";
 import type { STREAMS, streamsTask } from "@/trigger/streams";
+import { Streamdown } from "streamdown";
 
 export function Streams({ accessToken, runId }: { accessToken: string; runId: string }) {
   const { run, streams, error } = useRealtimeRunWithStreams<typeof streamsTask, STREAMS>(runId, {
@@ -20,7 +21,9 @@ export function Streams({ accessToken, runId }: { accessToken: string; runId: st
       <div>
         Run: {run.id} = {run.status}
       </div>
-      <div>{stream}</div>
+      <div>
+        <Streamdown isAnimating={true}>{stream}</Streamdown>
+      </div>
     </div>
   );
 }

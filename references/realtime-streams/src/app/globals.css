@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@source "../node_modules/streamdown/dist/index.js";
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
