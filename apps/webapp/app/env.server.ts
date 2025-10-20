@@ -1204,6 +1204,14 @@ const EnvironmentSchema = z
     EVENT_LOOP_MONITOR_UTILIZATION_SAMPLE_RATE: z.coerce.number().default(0.05),
 
     VERY_SLOW_QUERY_THRESHOLD_MS: z.coerce.number().int().optional(),
+
+    REALTIME_STREAMS_S2_BASIN: z.string().optional(),
+    REALTIME_STREAMS_S2_ACCESS_TOKEN: z.string().optional(),
+    REALTIME_STREAMS_S2_LOG_LEVEL: z
+      .enum(["log", "error", "warn", "info", "debug"])
+      .default("info"),
+    REALTIME_STREAMS_S2_FLUSH_INTERVAL_MS: z.coerce.number().int().default(100),
+    REALTIME_STREAMS_S2_RESUME_TTL_SECONDS: z.coerce.number().int().default(86400),
   })
   .and(GithubAppEnvSchema);
 

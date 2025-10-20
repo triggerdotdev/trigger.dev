@@ -749,6 +749,9 @@ model TaskRun {
 
   maxDurationInSeconds Int?
 
+  /// The version of the realtime streams implementation used by the run
+  realtimeStreamsVersion String @default("v1")
+
   @@unique([oneTimeUseToken])
   @@unique([runtimeEnvironmentId, taskIdentifier, idempotencyKey])
   // Finding child runs

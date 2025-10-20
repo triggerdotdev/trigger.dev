@@ -1,4 +1,4 @@
-import { type ApiRequestOptions } from "../apiClient/index.js";
+import type { ApiClientFutureFlags, ApiRequestOptions } from "../apiClient/index.js";
 
 export type ApiClientConfiguration = {
   baseURL?: string;
@@ -15,4 +15,5 @@ export type ApiClientConfiguration = {
    */
   previewBranch?: string;
   requestOptions?: ApiRequestOptions;
+  future?: ApiClientFutureFlags;
 };

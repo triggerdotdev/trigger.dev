@@ -565,7 +565,7 @@ export async function batchTriggerById<TTask extends AnyTask>(
   options?: BatchTriggerOptions,
   requestOptions?: TriggerApiRequestOptions
 ): Promise<BatchRunHandleFromTypes<InferRunTypes<TTask>>> {
-  const apiClient = apiClientManager.clientOrThrow();
+  const apiClient = apiClientManager.clientOrThrow(requestOptions?.clientConfig);
 
   const response = await apiClient.batchTriggerV3(
     {
@@ -730,7 +730,7 @@ export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
     throw new Error("batchTriggerAndWait can only be used from inside a task.run()");
   }
 
-  const apiClient = apiClientManager.clientOrThrow();
+  const apiClient = apiClientManager.clientOrThrow(requestOptions?.clientConfig);
 
   return await tracer.startActiveSpan(
     "batch.triggerAndWait()",
@@ -895,7 +895,7 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
   options?: BatchTriggerOptions,
   requestOptions?: TriggerApiRequestOptions
 ): Promise<BatchTasksRunHandleFromTypes<TTasks>> {
-  const apiClient = apiClientManager.clientOrThrow();
+  const apiClient = apiClientManager.clientOrThrow(requestOptions?.clientConfig);
 
   const response = await apiClient.batchTriggerV3(
     {
@@ -1062,7 +1062,7 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
     throw new Error("batchTriggerAndWait can only be used from inside a task.run()");
   }
 
-  const apiClient = apiClientManager.clientOrThrow();
+  const apiClient = apiClientManager.clientOrThrow(requestOptions?.clientConfig);
 
   return await tracer.startActiveSpan(
     "batch.triggerByTaskAndWait()",
@@ -1151,7 +1151,7 @@ async function trigger_internal<TRunTypes extends AnyRunTypes>(
   options?: TriggerOptions,
   requestOptions?: TriggerApiRequestOptions
 ): Promise<RunHandleFromTypes<TRunTypes>> {
-  const apiClient = apiClientManager.clientOrThrow();
+  const apiClient = apiClientManager.clientOrThrow(requestOptions?.clientConfig);
 
   const parsedPayload = parsePayload ? await parsePayload(payload) : payload;
 
@@ -1211,7 +1211,7 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
   requestOptions?: TriggerApiRequestOptions,
   queue?: string
 ): Promise<BatchRunHandleFromTypes<TRunTypes>> {
-  const apiClient = apiClientManager.clientOrThrow();
+  const apiClient = apiClientManager.clientOrThrow(requestOptions?.clientConfig);
 
   const ctx = taskContext.ctx;
 
@@ -1296,7 +1296,7 @@ async function triggerAndWait_internal<TIdentifier extends string, TPayload, TOu
   payload: TPayload,
   parsePayload?: SchemaParseFn<TPayload>,
   options?: TriggerAndWaitOptions,
-  requestOptions?: ApiRequestOptions
+  requestOptions?: TriggerApiRequestOptions
 ): Promise<TaskRunResult<TIdentifier, TOutput>> {
   const ctx = taskContext.ctx;
 
@@ -1304,7 +1304,7 @@ async function triggerAndWait_internal<TIdentifier extends string, TPayload, TOu
     throw new Error("triggerAndWait can only be used from inside a task.run()");
   }
 
-  const apiClient = apiClientManager.clientOrThrow();
+  const apiClient = apiClientManager.clientOrThrow(requestOptions?.clientConfig);
 
   const parsedPayload = parsePayload ? await parsePayload(payload) : payload;
 
@@ -1375,7 +1375,7 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
   items: Array<BatchTriggerAndWaitItem<TPayload>>,
   parsePayload?: SchemaParseFn<TPayload>,
   options?: BatchTriggerAndWaitOptions,
-  requestOptions?: ApiRequestOptions,
+  requestOptions?: TriggerApiRequestOptions,
   queue?: string
 ): Promise<BatchResult<TIdentifier, TOutput>> {
   const ctx = taskContext.ctx;
@@ -1384,7 +1384,7 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
     throw new Error("batchTriggerAndWait can only be used from inside a task.run()");
   }
 
-  const apiClient = apiClientManager.clientOrThrow();
+  const apiClient = apiClientManager.clientOrThrow(requestOptions?.clientConfig);
 
   return await tracer.startActiveSpan(
     name,
