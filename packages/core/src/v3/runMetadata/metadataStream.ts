@@ -10,7 +10,7 @@ export type MetadataOptions<T> = {
   source: AsyncIterable<T>;
   headers?: Record<string, string>;
   signal?: AbortSignal;
-  version?: "v1" | "v2";
+  version?: string;
   target?: "self" | "parent" | "root";
   maxRetries?: number;
   maxBufferSize?: number; // Max number of chunks to keep in ring buffer
@@ -46,7 +46,7 @@ export class MetadataStream<T> {
     this.serverStream = serverStream;
     this.consumerStream = consumerStream;
     this.maxRetries = options.maxRetries ?? 10;
-    this.maxBufferSize = options.maxBufferSize ?? 1000; // Default 1000 chunks
+    this.maxBufferSize = options.maxBufferSize ?? 10000; // Default 10000 chunks
     this.clientId = options.clientId || this.generateClientId();
 
     // Start background task to continuously read from stream into ring buffer
@@ -117,6 +117,7 @@ export class MetadataStream<T> {
           "Content-Type": "application/json",
           "X-Client-Id": this.clientId,
           "X-Resume-From-Chunk": startFromChunk.toString(),
+          "X-Stream-Version": this.options.version ?? "v1",
         },
         timeout,
       });
@@ -262,16 +263,9 @@ export class MetadataStream<T> {
   }
 
   private buildUrl(): string {
-    switch (this.options.version ?? "v1") {
-      case "v1": {
-        return `${this.options.baseUrl}/realtime/v1/streams/${this.options.runId}/${
-          this.options.target ?? "self"
-        }/${this.options.key}`;
-      }
-      case "v2": {
-        return `${this.options.baseUrl}/realtime/v2/streams/${this.options.runId}/${this.options.key}`;
-      }
-    }
+    return `${this.options.baseUrl}/realtime/v1/streams/${this.options.runId}/${
+      this.options.target ?? "self"
+    }/${this.options.key}`;
   }
 
   private isRetryableError(error: any): boolean {
@@ -367,6 +361,7 @@ export class MetadataStream<T> {
         headers: {
           ...this.options.headers,
           "X-Client-Id": this.clientId,
+          "X-Stream-Version": this.options.version ?? "v1",
         },
         timeout: 5000, // 5 second timeout for HEAD request
       });
