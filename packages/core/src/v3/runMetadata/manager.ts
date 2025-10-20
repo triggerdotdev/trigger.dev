@@ -25,11 +25,11 @@ export class StandardMetadataManager implements RunMetadataManager {
 
   public runId: string | undefined;
   public runIdIsRoot: boolean = false;
+  public streamsVersion: string = "v1";
 
   constructor(
     private apiClient: ApiClient,
-    private streamsBaseUrl: string,
-    private streamsVersion: "v1" | "v2" = "v1"
+    private streamsBaseUrl: string
   ) {}
 
   reset(): void {
@@ -373,10 +373,7 @@ export class StandardMetadataManager implements RunMetadataManager {
       streamInstance.wait().finally(() => this.activeStreams.delete(key));
 
       // Add the key to the special stream metadata object
-      updater
-        .append(`$$streams`, key)
-        .set("$$streamsVersion", this.streamsVersion)
-        .set("$$streamsBaseUrl", this.streamsBaseUrl);
+      updater.append(`$$streams`, key).set("$$streamsBaseUrl", this.streamsBaseUrl);
 
       await this.flush();
 

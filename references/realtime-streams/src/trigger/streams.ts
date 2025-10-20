@@ -5,7 +5,19 @@ export type STREAMS = {
   stream: string;
 };
 
-export type StreamScenario = "stall" | "continuous" | "burst" | "slow-steady" | "markdown";
+export type PerformanceChunk = {
+  timestamp: number; // When the chunk was sent from the task
+  chunkIndex: number;
+  data: string;
+};
+
+export type StreamScenario =
+  | "stall"
+  | "continuous"
+  | "burst"
+  | "slow-steady"
+  | "markdown"
+  | "performance";
 
 export type StreamPayload = {
   scenario?: StreamScenario;
@@ -25,6 +37,9 @@ export type StreamPayload = {
   tokenIntervalSec?: number;
   // Markdown scenario options
   tokenDelayMs?: number;
+  // Performance scenario options
+  chunkCount?: number;
+  chunkIntervalMs?: number;
 };
 
 export const streamsTask = task({
@@ -80,6 +95,13 @@ export const streamsTask = task({
         const tokenDelayMs = payload.tokenDelayMs ?? 15;
         generator = generateMarkdownTokenStream(tokenDelayMs);
         scenarioDescription = `Markdown scenario: generating formatted content with ${tokenDelayMs}ms delays`;
+        break;
+      }
+      case "performance": {
+        const chunkCount = payload.chunkCount ?? 500;
+        const chunkIntervalMs = payload.chunkIntervalMs ?? 50;
+        generator = generatePerformanceStream(chunkCount, chunkIntervalMs);
+        scenarioDescription = `Performance scenario: ${chunkCount} chunks with ${chunkIntervalMs}ms intervals`;
         break;
       }
       default: {
@@ -279,11 +301,11 @@ async function* generateSlowSteadyTokenStream(durationMin: number, tokenInterval
   yield "\n[Long stream completed successfully]";
 }
 
-// Markdown stream: emit realistic markdown content character by character
+// Markdown stream: emit realistic markdown content as tokens (8 characters at a time)
 async function* generateMarkdownTokenStream(tokenDelayMs: number) {
   const markdownContent =
     "# Streaming Markdown Example\n\n" +
-    "This is a demonstration of **streaming markdown** content in real-time. The content is being generated *character by character*, simulating how an LLM might generate formatted text.\n\n" +
+    "This is a demonstration of **streaming markdown** content in real-time. The content is being generated *token by token*, simulating how an LLM might generate formatted text.\n\n" +
     "## Features\n\n" +
     "Here are some key features being tested:\n\n" +
     "- **Bold text** for emphasis\n" +
@@ -326,10 +348,31 @@ async function* generateMarkdownTokenStream(tokenDelayMs: number) {
     "---\n\n" +
     "*Generated with Trigger.dev realtime streams* 🚀\n";
 
-  // Stream each character with a small delay
-  for (const char of markdownContent) {
-    await setTimeout(tokenDelayMs);
-    yield char;
+  // Stream tokens of 8 characters at a time with 5ms delay
+  // Use Array.from() to properly handle Unicode characters
+  const CHARACTERS_PER_TOKEN = 8;
+  const DELAY_MS = 5;
+
+  const characters = Array.from(markdownContent);
+
+  for (let i = 0; i < characters.length; i += CHARACTERS_PER_TOKEN) {
+    await setTimeout(DELAY_MS);
+    yield characters.slice(i, i + CHARACTERS_PER_TOKEN).join("");
+  }
+}
+
+// Performance stream: emit JSON chunks with timestamps for latency measurement
+async function* generatePerformanceStream(chunkCount: number, chunkIntervalMs: number) {
+  for (let i = 0; i < chunkCount; i++) {
+    await setTimeout(chunkIntervalMs);
+
+    const chunk: PerformanceChunk = {
+      timestamp: Date.now(),
+      chunkIndex: i,
+      data: `Chunk ${i + 1}/${chunkCount}`,
+    };
+
+    yield JSON.stringify(chunk);
   }
 }
 

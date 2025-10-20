@@ -15,6 +15,7 @@
     "next": "15.5.6",
     "react": "19.1.0",
     "react-dom": "19.1.0",
+    "shiki": "^3.13.0",
     "streamdown": "^1.4.0"
   },
   "devDependencies": {

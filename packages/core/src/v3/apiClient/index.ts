@@ -83,6 +83,7 @@ import {
   UpdateEnvironmentVariableParams,
 } from "./types.js";
 import { API_VERSION, API_VERSION_HEADER_NAME } from "./version.js";
+import { ApiClientConfiguration } from "../apiClientManager-api.js";
 
 export type CreateWaitpointTokenResponse = Prettify<
   CreateWaitpointTokenResponseBody & {
@@ -112,6 +113,7 @@ export type TriggerRequestOptions = ZodFetchOptions & {
 
 export type TriggerApiRequestOptions = ApiRequestOptions & {
   publicAccessToken?: TriggerJwtOptions;
+  clientConfig?: ApiClientConfiguration;
 };
 
 const DEFAULT_ZOD_FETCH_OPTIONS: ZodFetchOptions = {
@@ -122,6 +124,10 @@ const DEFAULT_ZOD_FETCH_OPTIONS: ZodFetchOptions = {
     factor: 1.6,
     randomize: false,
   },
+};
+
+export type ApiClientFutureFlags = {
+  unstable_v2RealtimeStreams?: boolean;
 };
 
 export { isRequestOptions };
@@ -145,18 +151,21 @@ export class ApiClient {
   public readonly baseUrl: string;
   public readonly accessToken: string;
   public readonly previewBranch?: string;
+  public readonly futureFlags: ApiClientFutureFlags;
   private readonly defaultRequestOptions: ZodFetchOptions;
 
   constructor(
     baseUrl: string,
     accessToken: string,
     previewBranch?: string,
-    requestOptions: ApiRequestOptions = {}
+    requestOptions: ApiRequestOptions = {},
+    futureFlags: ApiClientFutureFlags = {}
   ) {
     this.accessToken = accessToken;
     this.baseUrl = baseUrl.replace(/\/$/, "");
     this.previewBranch = previewBranch;
     this.defaultRequestOptions = mergeRequestOptions(DEFAULT_ZOD_FETCH_OPTIONS, requestOptions);
+    this.futureFlags = futureFlags;
   }
 
   get fetchClient(): typeof fetch {
@@ -1136,6 +1145,10 @@ export class ApiClient {
     }
 
     headers[API_VERSION_HEADER_NAME] = API_VERSION;
+
+    if (this.futureFlags.unstable_v2RealtimeStreams) {
+      headers["x-trigger-realtime-streams-version"] = "v2";
+    }
 
     return headers;
   }
