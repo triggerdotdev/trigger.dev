@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { $replica } from "~/db.server";
-import { v1RealtimeStreams } from "~/services/realtime/v1StreamsGlobal.server";
+import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
 import {
   createActionApiRoute,
   createLoaderApiRoute,
@@ -55,6 +55,7 @@ const { action } = createActionApiRoute(
 
     // Extract client ID from header, default to "default" if not provided
     const clientId = request.headers.get("X-Client-Id") || "default";
+    const streamVersion = request.headers.get("X-Stream-Version") || "v1";
 
     if (!request.body) {
       return new Response("No body provided", { status: 400 });
@@ -63,7 +64,9 @@ const { action } = createActionApiRoute(
     const resumeFromChunk = request.headers.get("X-Resume-From-Chunk");
     const resumeFromChunkNumber = resumeFromChunk ? parseInt(resumeFromChunk, 10) : undefined;
 
-    return v1RealtimeStreams.ingestData(
+    const realtimeStream = getRealtimeStreamInstance(authentication.environment, streamVersion);
+
+    return realtimeStream.ingestData(
       request.body,
       targetId,
       params.streamId,
@@ -101,7 +104,7 @@ const loader = createLoaderApiRoute(
       });
     },
   },
-  async ({ request, params, resource: run }) => {
+  async ({ request, params, resource: run, authentication }) => {
     if (!run) {
       return new Response("Run not found", { status: 404 });
     }
@@ -124,8 +127,11 @@ const loader = createLoaderApiRoute(
 
     // Extract client ID from header, default to "default" if not provided
     const clientId = request.headers.get("X-Client-Id") || "default";
+    const streamVersion = request.headers.get("X-Stream-Version") || "v1";
 
-    const lastChunkIndex = await v1RealtimeStreams.getLastChunkIndex(
+    const realtimeStream = getRealtimeStreamInstance(authentication.environment, streamVersion);
+
+    const lastChunkIndex = await realtimeStream.getLastChunkIndex(
       targetId,
       params.streamId,
       clientId
