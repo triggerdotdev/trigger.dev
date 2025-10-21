@@ -2,6 +2,7 @@ import { request as httpsRequest } from "node:https";
 import { request as httpRequest } from "node:http";
 import { URL } from "node:url";
 import { randomBytes } from "node:crypto";
+import type { StreamInstance } from "./types.js";
 
 export type MetadataOptions<T> = {
   baseUrl: string;
@@ -22,7 +23,7 @@ interface BufferedChunk<T> {
   data: T;
 }
 
-export class MetadataStream<T> {
+export class MetadataStream<T> implements StreamInstance {
   private controller = new AbortController();
   private serverStream: ReadableStream<T>;
   private consumerStream: ReadableStream<T>;

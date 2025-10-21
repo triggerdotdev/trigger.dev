@@ -1233,7 +1233,7 @@ const EnvironmentSchema = z
       .enum(["log", "error", "warn", "info", "debug"])
       .default("info"),
     REALTIME_STREAMS_S2_FLUSH_INTERVAL_MS: z.coerce.number().int().default(100),
-    REALTIME_STREAMS_S2_RESUME_TTL_SECONDS: z.coerce.number().int().default(86400),
+    REALTIME_STREAMS_S2_MAX_RETRIES: z.coerce.number().int().default(10),
   })
   .and(GithubAppEnvSchema)
   .and(S2EnvSchema);

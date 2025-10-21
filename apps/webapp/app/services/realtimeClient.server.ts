@@ -43,6 +43,7 @@ const DEFAULT_ELECTRIC_COLUMNS = [
   "outputType",
   "runTags",
   "error",
+  "realtimeStreams",
 ];
 
 const RESERVED_COLUMNS = ["id", "taskIdentifier", "friendlyId", "status", "createdAt"];
