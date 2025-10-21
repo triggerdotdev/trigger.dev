@@ -29,6 +29,13 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
     this.inactivityTimeoutMs = options.inactivityTimeoutMs ?? 60000; // Default: 60 seconds
   }
 
+  async initializeStream(
+    runId: string,
+    streamId: string
+  ): Promise<{ responseHeaders?: Record<string, string> }> {
+    return {};
+  }
+
   async streamResponse(
     request: Request,
     runId: string,

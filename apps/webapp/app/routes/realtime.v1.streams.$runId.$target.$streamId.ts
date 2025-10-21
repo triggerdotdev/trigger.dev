@@ -1,5 +1,6 @@
+import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
-import { $replica } from "~/db.server";
+import { $replica, prisma } from "~/db.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
 import {
   createActionApiRoute,
@@ -53,26 +54,58 @@ const { action } = createActionApiRoute(
       return new Response("Target not found", { status: 404 });
     }
 
-    // Extract client ID from header, default to "default" if not provided
-    const clientId = request.headers.get("X-Client-Id") || "default";
-    const streamVersion = request.headers.get("X-Stream-Version") || "v1";
+    if (request.method === "PUT") {
+      // This is the "create" endpoint
+      const updatedRun = await prisma.taskRun.update({
+        where: {
+          friendlyId: targetId,
+          runtimeEnvironmentId: authentication.environment.id,
+        },
+        data: {
+          realtimeStreams: {
+            push: params.streamId,
+          },
+        },
+        select: {
+          realtimeStreamsVersion: true,
+        },
+      });
 
-    if (!request.body) {
-      return new Response("No body provided", { status: 400 });
+      const realtimeStream = getRealtimeStreamInstance(
+        authentication.environment,
+        updatedRun.realtimeStreamsVersion
+      );
+
+      const { responseHeaders } = await realtimeStream.initializeStream(targetId, params.streamId);
+
+      return json(
+        {
+          version: updatedRun.realtimeStreamsVersion,
+        },
+        { status: 202, headers: responseHeaders }
+      );
+    } else {
+      // Extract client ID from header, default to "default" if not provided
+      const clientId = request.headers.get("X-Client-Id") || "default";
+      const streamVersion = request.headers.get("X-Stream-Version") || "v1";
+
+      if (!request.body) {
+        return new Response("No body provided", { status: 400 });
+      }
+
+      const resumeFromChunk = request.headers.get("X-Resume-From-Chunk");
+      const resumeFromChunkNumber = resumeFromChunk ? parseInt(resumeFromChunk, 10) : undefined;
+
+      const realtimeStream = getRealtimeStreamInstance(authentication.environment, streamVersion);
+
+      return realtimeStream.ingestData(
+        request.body,
+        targetId,
+        params.streamId,
+        clientId,
+        resumeFromChunkNumber
+      );
     }
-
-    const resumeFromChunk = request.headers.get("X-Resume-From-Chunk");
-    const resumeFromChunkNumber = resumeFromChunk ? parseInt(resumeFromChunk, 10) : undefined;
-
-    const realtimeStream = getRealtimeStreamInstance(authentication.environment, streamVersion);
-
-    return realtimeStream.ingestData(
-      request.body,
-      targetId,
-      params.streamId,
-      clientId,
-      resumeFromChunkNumber
-    );
   }
 );
 

@@ -29,3 +29,7 @@ export interface RunMetadataManager extends RunMetadataUpdater {
   get parent(): RunMetadataUpdater;
   get root(): RunMetadataUpdater;
 }
+
+export interface StreamInstance {
+  wait(): Promise<void>;
+}
