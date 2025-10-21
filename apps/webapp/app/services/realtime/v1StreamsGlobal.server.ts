@@ -33,15 +33,6 @@ export function getRealtimeStreamInstance(
       return new S2RealtimeStreams({
         basin: env.REALTIME_STREAMS_S2_BASIN,
         accessToken: env.REALTIME_STREAMS_S2_ACCESS_TOKEN,
-        redis: {
-          port: env.REALTIME_STREAMS_REDIS_PORT,
-          host: env.REALTIME_STREAMS_REDIS_HOST,
-          username: env.REALTIME_STREAMS_REDIS_USERNAME,
-          password: env.REALTIME_STREAMS_REDIS_PASSWORD,
-          enableAutoPipelining: true,
-          ...(env.REALTIME_STREAMS_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
-          keyPrefix: "tr:realtime:streams:",
-        },
         streamPrefix: [
           "org",
           environment.organization.id,
@@ -51,7 +42,7 @@ export function getRealtimeStreamInstance(
         ].join("/"),
         logLevel: env.REALTIME_STREAMS_S2_LOG_LEVEL,
         flushIntervalMs: env.REALTIME_STREAMS_S2_FLUSH_INTERVAL_MS,
-        resumeTtlSeconds: env.REALTIME_STREAMS_S2_RESUME_TTL_SECONDS,
+        maxRetries: env.REALTIME_STREAMS_S2_MAX_RETRIES,
       });
     }
 

@@ -14,6 +14,7 @@ import {
   CompleteWaitpointTokenResponseBody,
   CreateEnvironmentVariableRequestBody,
   CreateScheduleOptions,
+  CreateStreamResponseBody,
   CreateUploadPayloadUrlResponseBody,
   CreateWaitpointTokenRequestBody,
   CreateWaitpointTokenResponseBody,
@@ -1082,6 +1083,30 @@ export class ApiClient {
     const stream = await subscription.subscribe();
 
     return stream as AsyncIterableStream<T>;
+  }
+
+  async createStream(
+    runId: string,
+    target: string,
+    streamId: string,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      CreateStreamResponseBody,
+      `${this.baseUrl}/realtime/v1/streams/${runId}/${target}/${streamId}`,
+      {
+        method: "PUT",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    )
+      .withResponse()
+      .then(async ({ data, response }) => {
+        return {
+          ...data,
+          headers: Object.fromEntries(response.headers.entries()),
+        };
+      });
   }
 
   async generateJWTClaims(requestOptions?: ZodFetchOptions): Promise<Record<string, any>> {

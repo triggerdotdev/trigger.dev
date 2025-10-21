@@ -52,6 +52,7 @@ export type RunShape<TRunTypes extends AnyRunTypes> = TRunTypes extends AnyRunTy
       isFailed: boolean;
       isSuccess: boolean;
       isCancelled: boolean;
+      realtimeStreams: string[];
     }
   : never;
 
@@ -418,13 +419,11 @@ export class RunSubscription<TRunTypes extends AnyRunTypes> {
             run,
           });
 
+          const streams = getStreamsFromRunShape(run);
+
           // Check for stream metadata
-          if (
-            run.metadata &&
-            "$$streams" in run.metadata &&
-            Array.isArray(run.metadata.$$streams)
-          ) {
-            for (const streamKey of run.metadata.$$streams) {
+          if (streams.length > 0) {
+            for (const streamKey of streams) {
               if (typeof streamKey !== "string") {
                 continue;
               }
@@ -536,6 +535,7 @@ export class RunSubscription<TRunTypes extends AnyRunTypes> {
       error: row.error ? createJsonErrorObject(row.error) : undefined,
       isTest: row.isTest ?? false,
       metadata,
+      realtimeStreams: row.realtimeStreams ?? [],
       ...booleanHelpersFromRunStatus(status),
     } as RunShape<TRunTypes>;
   }
@@ -685,4 +685,21 @@ if (isSafari()) {
 
   // @ts-ignore-error
   ReadableStream.prototype[Symbol.asyncIterator] ??= ReadableStream.prototype.values;
+}
+
+function getStreamsFromRunShape(run: AnyRunShape): string[] {
+  const metadataStreams =
+    run.metadata &&
+    "$$streams" in run.metadata &&
+    Array.isArray(run.metadata.$$streams) &&
+    run.metadata.$$streams.length > 0 &&
+    run.metadata.$$streams.every((stream) => typeof stream === "string")
+      ? run.metadata.$$streams
+      : undefined;
+
+  if (metadataStreams) {
+    return metadataStreams;
+  }
+
+  return run.realtimeStreams;
 }

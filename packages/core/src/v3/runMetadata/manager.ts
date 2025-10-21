@@ -7,17 +7,30 @@ import { IOPacket, stringifyIO } from "../utils/ioSerialization.js";
 import { ApiRequestOptions } from "../zodfetch.js";
 import { MetadataStream } from "./metadataStream.js";
 import { applyMetadataOperations, collapseOperations } from "./operations.js";
-import { RunMetadataManager, RunMetadataUpdater } from "./types.js";
+import type { RunMetadataManager, RunMetadataUpdater, StreamInstance } from "./types.js";
+import { S2MetadataStream } from "./s2MetadataStream.js";
 
 const MAXIMUM_ACTIVE_STREAMS = 10;
 const MAXIMUM_TOTAL_STREAMS = 20;
+
+type ParsedStreamResponse =
+  | {
+      version: "v1";
+    }
+  | {
+      version: "v2";
+      accessToken: string;
+      basin: string;
+      flushIntervalMs?: number;
+      maxRetries?: number;
+    };
 
 export class StandardMetadataManager implements RunMetadataManager {
   private flushTimeoutId: NodeJS.Timeout | null = null;
   private isFlushing: boolean = false;
   private store: Record<string, DeserializedJson> | undefined;
   // Add a Map to track active streams
-  private activeStreams = new Map<string, MetadataStream<any>>();
+  private activeStreams = new Map<string, StreamInstance>();
 
   private queuedOperations: Set<RunMetadataChangeOperation> = new Set();
   private queuedParentOperations: Set<RunMetadataChangeOperation> = new Set();
@@ -355,34 +368,37 @@ export class StandardMetadataManager implements RunMetadataManager {
       return $value;
     }
 
-    try {
-      const streamInstance = new MetadataStream({
-        key,
-        runId: this.runId,
-        source: $value,
-        baseUrl: this.streamsBaseUrl,
-        headers: this.apiClient.getHeaders(),
-        signal,
-        version: this.streamsVersion,
-        target,
-      });
+    const { version, headers } = await this.apiClient.createStream(this.runId, target, key);
 
-      this.activeStreams.set(key, streamInstance);
+    const parsedResponse = this.#parseCreateStreamResponse(version, headers);
 
-      // Clean up when stream completes
-      streamInstance.wait().finally(() => this.activeStreams.delete(key));
+    const streamInstance =
+      parsedResponse.version === "v1"
+        ? new MetadataStream({
+            key,
+            runId: this.runId,
+            source: $value,
+            baseUrl: this.streamsBaseUrl,
+            headers: this.apiClient.getHeaders(),
+            signal,
+            version,
+            target,
+          })
+        : new S2MetadataStream({
+            basin: parsedResponse.basin,
+            stream: key,
+            accessToken: parsedResponse.accessToken,
+            source: $value,
+            signal,
+            limiter: (await import("p-limit")).default,
+          });
 
-      // Add the key to the special stream metadata object
-      updater.append(`$$streams`, key).set("$$streamsBaseUrl", this.streamsBaseUrl);
+    this.activeStreams.set(key, streamInstance);
 
-      await this.flush();
+    // Clean up when stream completes
+    streamInstance.wait().finally(() => this.activeStreams.delete(key));
 
-      return streamInstance;
-    } catch (error) {
-      // Clean up metadata key if stream creation fails
-      updater.remove(`$$streams`, key);
-      throw error;
-    }
+    return streamInstance;
   }
 
   public hasActiveStreams(): boolean {
@@ -535,5 +551,32 @@ export class StandardMetadataManager implements RunMetadataManager {
       this.queuedParentOperations.size > 0 ||
       this.queuedRootOperations.size > 0
     );
+  }
+
+  #parseCreateStreamResponse(
+    version: string,
+    headers: Record<string, string> | undefined
+  ): ParsedStreamResponse {
+    if (version === "v1") {
+      return { version: "v1" };
+    }
+
+    const accessToken = headers?.["x-s2-access-token"];
+    const basin = headers?.["x-s2-basin"];
+
+    if (!accessToken || !basin) {
+      return { version: "v1" };
+    }
+
+    const flushIntervalMs = headers?.["x-s2-flush-interval-ms"];
+    const maxRetries = headers?.["x-s2-max-retries"];
+
+    return {
+      version: "v2",
+      accessToken,
+      basin,
+      flushIntervalMs: flushIntervalMs ? parseInt(flushIntervalMs) : undefined,
+      maxRetries: maxRetries ? parseInt(maxRetries) : undefined,
+    };
   }
 }
