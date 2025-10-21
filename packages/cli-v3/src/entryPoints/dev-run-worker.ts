@@ -347,10 +347,6 @@ const zodIpc = new ZodIpcConnection({
         await _lastFlushPromise;
 
         const duration = performance.now() - now;
-          runMetadataManager.streamsVersion =
-            typeof execution.run.realtimeStreamsVersion === "undefined"
-              ? "v1"
-              : execution.run.realtimeStreamsVersion;
 
         log(`[${new Date().toISOString()}] Awaited last flush in ${duration}ms`);
       }
@@ -486,24 +482,6 @@ const zodIpc = new ZodIpcConnection({
             return;
           }
 
-          runMetadataManager.runId = execution.run.id;
-          runMetadataManager.runIdIsRoot = typeof execution.run.rootTaskRunId === "undefined";
-          runMetadataManager.streamsVersion =
-            typeof execution.run.realtimeStreamsVersion === "undefined"
-              ? "v1"
-              : execution.run.realtimeStreamsVersion;
-
-          _executionCount++;
-
-          const executor = new TaskExecutor(task, {
-            tracer,
-            tracingSDK,
-            consoleInterceptor,
-            retries: config.retries,
-            isWarmStart,
-            executionCount: _executionCount,
-          });
-
           // Now try and get the task again
           task = resourceCatalog.getTask(execution.task.id);
         }
@@ -532,6 +510,10 @@ const zodIpc = new ZodIpcConnection({
 
         runMetadataManager.runId = execution.run.id;
         runMetadataManager.runIdIsRoot = typeof execution.run.rootTaskRunId === "undefined";
+        runMetadataManager.streamsVersion =
+          typeof execution.run.realtimeStreamsVersion === "undefined"
+            ? "v1"
+            : execution.run.realtimeStreamsVersion;
 
         _executionCount++;
 
