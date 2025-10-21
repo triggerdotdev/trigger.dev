@@ -1,7 +1,10 @@
-import { AuthenticatedEnvironment } from "../apiAuth.server";
-
 // Interface for stream ingestion
 export interface StreamIngestor {
+  initializeStream(
+    runId: string,
+    streamId: string
+  ): Promise<{ responseHeaders?: Record<string, string> }>;
+
   ingestData(
     stream: ReadableStream<Uint8Array>,
     runId: string,
