@@ -25,6 +25,7 @@ export class FailedPodHandler {
 
   private readonly informer: Informer<V1Pod>;
   private readonly reconnectIntervalMs: number;
+  private reconnecting = false;
 
   // Metrics
   private readonly register: Registry;
@@ -250,21 +251,41 @@ export class FailedPodHandler {
   }
 
   private makeOnError(informerName: string) {
-    return () => this.onError(informerName);
+    return (err?: unknown) => this.onError(informerName, err);
   }
 
-  private async onError(informerName: string) {
+  private async onError(informerName: string, err?: unknown) {
     if (!this.isRunning) {
       this.logger.warn("onError: informer not running");
       return;
     }
 
-    this.logger.error("error event fired", { informerName });
-    this.informerEventsTotal.inc({ namespace: this.namespace, verb: "error" });
+    // Guard against multiple simultaneous reconnections
+    if (this.reconnecting) {
+      this.logger.debug("onError: reconnection already in progress, skipping", {
+        informerName,
+      });
+      return;
+    }
 
-    // Reconnect on errors
-    await setTimeout(this.reconnectIntervalMs);
-    await this.informer.start();
+    this.reconnecting = true;
+
+    try {
+      const error = err instanceof Error ? err : undefined;
+      this.logger.error("error event fired", {
+        informerName,
+        error: error?.message,
+        errorType: error?.name,
+        errorStack: error?.stack,
+      });
+      this.informerEventsTotal.inc({ namespace: this.namespace, verb: "error" });
+
+      // Reconnect on errors
+      await setTimeout(this.reconnectIntervalMs);
+      await this.informer.start();
+    } finally {
+      this.reconnecting = false;
+    }
   }
 
   private makeOnConnect(informerName: string) {
