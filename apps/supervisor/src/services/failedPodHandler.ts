@@ -276,7 +276,6 @@ export class FailedPodHandler {
         informerName,
         error: error?.message,
         errorType: error?.name,
-        errorStack: error?.stack,
       });
       this.informerEventsTotal.inc({ namespace: this.namespace, verb: "error" });
 
