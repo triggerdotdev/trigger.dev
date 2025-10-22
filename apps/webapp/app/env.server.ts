@@ -754,8 +754,8 @@ const EnvironmentSchema = z
     /** The max number of runs per API call that we'll dequeue in DEV */
     DEV_DEQUEUE_MAX_RUNS_PER_PULL: z.coerce.number().int().default(10),
 
-    /** The maximum concurrent local run processes executing at once in dev */
-    DEV_MAX_CONCURRENT_RUNS: z.coerce.number().int().default(25),
+    /** The maximum concurrent local run processes executing at once in dev. This is a hard limit */
+    DEV_MAX_CONCURRENT_RUNS: z.coerce.number().int().optional(),
 
     /** The CLI should connect to this for dev runs */
     DEV_ENGINE_URL: z.string().default(process.env.APP_ORIGIN ?? "http://localhost:3030"),
