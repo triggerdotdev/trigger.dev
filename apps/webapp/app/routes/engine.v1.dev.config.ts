@@ -20,7 +20,11 @@ export const loader = createLoaderApiRoute(
         environmentId: authentication.environment.id,
         dequeueIntervalWithRun: env.DEV_DEQUEUE_INTERVAL_WITH_RUN,
         dequeueIntervalWithoutRun: env.DEV_DEQUEUE_INTERVAL_WITHOUT_RUN,
-        maxConcurrentRuns: authentication.environment.maximumConcurrencyLimit,
+        // Limit max runs to smaller of an optional global limit and the environment limit
+        maxConcurrentRuns: Math.min(
+          env.DEV_MAX_CONCURRENT_RUNS ?? authentication.environment.maximumConcurrencyLimit,
+          authentication.environment.maximumConcurrencyLimit
+        ),
         engineUrl: env.DEV_ENGINE_URL,
       });
     } catch (error) {
