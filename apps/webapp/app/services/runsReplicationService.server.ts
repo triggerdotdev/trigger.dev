@@ -57,6 +57,7 @@ export type RunsReplicationServiceOptions = {
   insertMaxRetries?: number;
   insertBaseDelayMs?: number;
   insertMaxDelayMs?: number;
+  disablePayloadInsert?: boolean;
 };
 
 type PostgresTaskRun = TaskRun & { masterQueue: string };
@@ -100,6 +101,7 @@ export class RunsReplicationService {
   private _insertBaseDelayMs: number;
   private _insertMaxDelayMs: number;
   private _insertStrategy: "insert" | "insert_async";
+  private _disablePayloadInsert: boolean;
 
   public readonly events: EventEmitter<RunsReplicationServiceEvents>;
 
@@ -112,6 +114,7 @@ export class RunsReplicationService {
     this._acknowledgeTimeoutMs = options.acknowledgeTimeoutMs ?? 1_000;
 
     this._insertStrategy = options.insertStrategy ?? "insert";
+    this._disablePayloadInsert = options.disablePayloadInsert ?? false;
 
     this._replicationClient = new LogicalReplicationClient({
       pgConfig: {
@@ -750,7 +753,7 @@ export class RunsReplicationService {
       };
     }
 
-    if (event === "update" || event === "delete") {
+    if (event === "update" || event === "delete" || this._disablePayloadInsert) {
       const taskRunInsert = await this.#prepareTaskRunInsert(
         run,
         run.organizationId,
