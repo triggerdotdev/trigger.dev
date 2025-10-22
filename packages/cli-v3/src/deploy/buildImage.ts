@@ -427,11 +427,12 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
 
   const errors: string[] = [];
 
-  let registryHost: string | undefined;
+  let cloudRegistryHost: string | undefined;
   if (push && options.authenticateToRegistry) {
-    registryHost = process.env.TRIGGER_DOCKER_REGISTRY ?? extractRegistryHostFromImageTag(imageTag);
+    cloudRegistryHost =
+      process.env.TRIGGER_DOCKER_REGISTRY ?? extractRegistryHostFromImageTag(imageTag);
 
-    if (!registryHost) {
+    if (!cloudRegistryHost) {
       return {
         ok: false as const,
         error: "Failed to extract registry host from image tag",
@@ -451,11 +452,11 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
       };
     }
 
-    logger.debug(`Logging in to docker registry: ${registryHost}`);
+    logger.debug(`Logging in to docker registry: ${cloudRegistryHost}`);
 
     const loginProcess = x(
       "docker",
-      ["login", "--username", credentials.username, "--password-stdin", registryHost],
+      ["login", "--username", credentials.username, "--password-stdin", cloudRegistryHost],
       {
         nodeOptions: {
           cwd: options.cwd,
@@ -474,12 +475,12 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
     if (loginProcess.exitCode !== 0) {
       return {
         ok: false as const,
-        error: `Failed to login to registry: ${registryHost}`,
+        error: `Failed to login to registry: ${cloudRegistryHost}`,
         logs: extractLogs(errors),
       };
     }
 
-    options.onLog?.(`Successfully logged in to ${registryHost}`);
+    options.onLog?.(`Successfully logged in to ${cloudRegistryHost}`);
   }
 
   const args = [
@@ -541,9 +542,9 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
   }
 
   if (buildProcess.exitCode !== 0) {
-    if (registryHost) {
-      logger.debug(`Logging out from docker registry: ${registryHost}`);
-      await x("docker", ["logout", registryHost]);
+    if (cloudRegistryHost) {
+      logger.debug(`Logging out from docker registry: ${cloudRegistryHost}`);
+      await x("docker", ["logout", cloudRegistryHost]);
     }
 
     return {
@@ -591,9 +592,9 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
     options.onLog?.(`Image size: ${(imageSizeBytes / (1024 * 1024)).toFixed(2)} MB`);
   }
 
-  if (registryHost) {
-    logger.debug(`Logging out from docker registry: ${registryHost}`);
-    await x("docker", ["logout", registryHost]);
+  if (cloudRegistryHost) {
+    logger.debug(`Logging out from docker registry: ${cloudRegistryHost}`);
+    await x("docker", ["logout", cloudRegistryHost]);
   }
 
   return {
