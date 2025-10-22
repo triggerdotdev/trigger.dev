@@ -336,6 +336,7 @@ async function _workerBuildCommand(dir: string, options: WorkersBuildCommandOpti
     projectRef: resolvedConfig.project,
     apiUrl: projectClient.client.apiURL,
     apiKey: projectClient.client.accessToken!,
+    apiClient: projectClient.client,
     branchName: branch,
     authAccessToken: authorization.auth.accessToken,
     compilationPath: destination.path,
