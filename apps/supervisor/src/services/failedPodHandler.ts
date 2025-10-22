@@ -283,6 +283,14 @@ export class FailedPodHandler {
       // Reconnect on errors
       await setTimeout(this.reconnectIntervalMs);
       await this.informer.start();
+    } catch (handlerError) {
+      const error = handlerError instanceof Error ? handlerError : undefined;
+      this.logger.error("onError: reconnection attempt failed", {
+        informerName,
+        error: error?.message,
+        errorType: error?.name,
+        errorStack: error?.stack,
+      });
     } finally {
       this.reconnecting = false;
     }
