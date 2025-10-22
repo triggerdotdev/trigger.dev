@@ -469,7 +469,6 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
     for await (const line of loginProcess) {
       errors.push(line);
       logger.debug(line);
-      options.onLog?.(line);
     }
 
     if (loginProcess.exitCode !== 0) {
