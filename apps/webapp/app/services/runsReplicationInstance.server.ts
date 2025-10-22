@@ -66,6 +66,7 @@ function initializeRunsReplicationInstance() {
     insertBaseDelayMs: env.RUN_REPLICATION_INSERT_BASE_DELAY_MS,
     insertMaxDelayMs: env.RUN_REPLICATION_INSERT_MAX_DELAY_MS,
     insertStrategy: env.RUN_REPLICATION_INSERT_STRATEGY,
+    disablePayloadInsert: env.RUN_REPLICATION_DISABLE_PAYLOAD_INSERT === "1",
   });
 
   if (env.RUN_REPLICATION_ENABLED === "1") {
