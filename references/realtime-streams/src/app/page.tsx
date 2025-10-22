@@ -18,6 +18,24 @@ export default function Home() {
           <TriggerButton scenario="slow-steady">Slow Steady Stream (5 min)</TriggerButton>
         </div>
 
+        <div className="flex flex-col gap-4">
+          <TriggerButton useDurableStreams={true} scenario="markdown">
+            Markdown Stream (Durable)
+          </TriggerButton>
+          <TriggerButton useDurableStreams={true} scenario="continuous">
+            Continuous Stream (Durable)
+          </TriggerButton>
+          <TriggerButton useDurableStreams={true} scenario="burst">
+            Burst Stream (Durable)
+          </TriggerButton>
+          <TriggerButton useDurableStreams={true} scenario="stall">
+            Stall Stream (3 min) (Durable)
+          </TriggerButton>
+          <TriggerButton useDurableStreams={true} scenario="slow-steady">
+            Slow Steady Stream (5 min) (Durable)
+          </TriggerButton>
+        </div>
+
         <div className="mt-8 pt-8 border-t border-gray-300">
           <h2 className="text-xl font-semibold mb-4">Performance Testing</h2>
           <TriggerButton scenario="performance" redirect="/performance">

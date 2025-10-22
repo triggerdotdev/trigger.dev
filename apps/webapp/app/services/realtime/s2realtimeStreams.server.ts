@@ -10,8 +10,7 @@ export type S2RealtimeStreamsOptions = {
   streamPrefix?: string; // defaults to ""
 
   // Read behavior
-  s2WaitSeconds?: number; // long poll wait for reads (default 60)
-  sseHeartbeatMs?: number; // ping interval to keep h2 alive (default 25000)
+  s2WaitSeconds?: number;
 
   flushIntervalMs?: number; // how often to flush buffered chunks (default 200ms)
   maxRetries?: number; // max number of retries for failed flushes (default 10)
@@ -37,7 +36,6 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
   private readonly streamPrefix: string;
 
   private readonly s2WaitSeconds: number;
-  private readonly sseHeartbeatMs: number;
 
   private readonly flushIntervalMs: number;
   private readonly maxRetries: number;
@@ -52,7 +50,6 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     this.streamPrefix = opts.streamPrefix ?? "";
 
     this.s2WaitSeconds = opts.s2WaitSeconds ?? 60;
-    this.sseHeartbeatMs = opts.sseHeartbeatMs ?? 25_000;
 
     this.flushIntervalMs = opts.flushIntervalMs ?? 200;
     this.maxRetries = opts.maxRetries ?? 10;
@@ -111,68 +108,18 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     lastEventId?: string
   ): Promise<Response> {
     const s2Stream = this.toStreamName(runId, streamId);
-    const encoder = new TextEncoder();
+    const startSeq = this.parseLastEventId(lastEventId);
 
-    const startSeq = this.parseLastEventId(lastEventId); // if undefined => from beginning
-    const readable = new ReadableStream<Uint8Array>({
-      start: async (controller) => {
-        let aborted = false;
-        const onAbort = () => (aborted = true);
-        signal.addEventListener("abort", onAbort);
-
-        const hb = setInterval(() => {
-          controller.enqueue(encoder.encode(`: ping\n\n`));
-        }, this.sseHeartbeatMs);
-
-        try {
-          let nextSeq = startSeq ?? 0;
-
-          // Live follow via long-poll read (wait=)
-          // clamp=true ensures starting past-tail doesn't 416; it clamps to tail and waits.
-          while (!aborted) {
-            const resp = await this.s2ReadOnce(s2Stream, {
-              seq_num: nextSeq,
-              clamp: true,
-              count: 1000,
-              wait: this.s2WaitSeconds, // long polling for new data. :contentReference[oaicite:6]{index=6}
-            });
-
-            if (resp.records?.length) {
-              for (const rec of resp.records) {
-                const seq = rec.seq_num!;
-                controller.enqueue(encoder.encode(`id: ${seq}\n`));
-                const body = rec.body ?? "";
-                const lines = body.split("\n").filter((l) => l.length > 0);
-                for (const line of lines) {
-                  controller.enqueue(encoder.encode(`data: ${line}\n`));
-                }
-                controller.enqueue(encoder.encode(`\n`));
-                nextSeq = seq + 1;
-              }
-            }
-            // If no records within wait, loop; heartbeat keeps connection alive.
-          }
-        } catch (error) {
-          this.logger.error("[S2RealtimeStreams][streamResponse] fatal", {
-            error,
-            runId,
-            streamId,
-          });
-          controller.error(error);
-        } finally {
-          signal.removeEventListener("abort", onAbort);
-          clearInterval(hb);
-        }
-      },
+    // Request SSE stream from S2 and return it directly
+    const s2Response = await this.s2StreamRecords(s2Stream, {
+      seq_num: startSeq ?? 0,
+      clamp: true,
+      wait: this.s2WaitSeconds, // S2 will keep the connection open and stream new records
+      signal, // Pass abort signal so S2 connection is cleaned up when client disconnects
     });
 
-    return new Response(readable, {
-      headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        Connection: "keep-alive",
-      },
-    });
+    // Return S2's SSE response directly to the client
+    return s2Response;
   }
 
   // ---------- Internals: S2 REST ----------
@@ -207,6 +154,47 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     }
     const data = (await res.json()) as S2IssueAccessTokenResponse;
     return data.access_token;
+  }
+
+  private async s2StreamRecords(
+    stream: string,
+    opts: {
+      seq_num?: number;
+      clamp?: boolean;
+      wait?: number;
+      signal?: AbortSignal;
+    }
+  ): Promise<Response> {
+    // GET /v1/streams/{stream}/records with Accept: text/event-stream for SSE streaming
+    const qs = new URLSearchParams();
+    if (opts.seq_num != null) qs.set("seq_num", String(opts.seq_num));
+    if (opts.clamp != null) qs.set("clamp", String(opts.clamp));
+    if (opts.wait != null) qs.set("wait", String(opts.wait));
+
+    const res = await fetch(`${this.baseUrl}/streams/${encodeURIComponent(stream)}/records?${qs}`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        Accept: "text/event-stream",
+        "S2-Format": "raw",
+      },
+      signal: opts.signal,
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`S2 stream failed: ${res.status} ${res.statusText} ${text}`);
+    }
+
+    const headers = new Headers(res.headers);
+    headers.set("X-Stream-Version", "v2");
+    headers.set("Access-Control-Expose-Headers", "*");
+
+    return new Response(res.body, {
+      headers,
+      status: res.status,
+      statusText: res.statusText,
+    });
   }
 
   private async s2ReadOnce(
