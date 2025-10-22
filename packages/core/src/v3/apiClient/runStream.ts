@@ -216,6 +216,14 @@ export class SSEStreamSubscription implements StreamSubscription {
         throw new Error("No response body");
       }
 
+      const responseHeaders = Object.fromEntries(response.headers);
+
+      console.log("stream response headers", responseHeaders);
+
+      const streamVersion = response.headers.get("X-Stream-Version") ?? "v1";
+
+      console.log("stream version", streamVersion);
+
       // Reset retry count on successful connection
       this.retryCount = 0;
 
@@ -225,11 +233,25 @@ export class SSEStreamSubscription implements StreamSubscription {
         .pipeThrough(
           new TransformStream({
             transform: (chunk, chunkController) => {
-              // Track the last event ID for resume support
-              if (chunk.id) {
-                this.lastEventId = chunk.id;
+              if (streamVersion === "v1") {
+                // Track the last event ID for resume support
+                if (chunk.id) {
+                  this.lastEventId = chunk.id;
+                }
+                chunkController.enqueue(safeParseJSON(chunk.data));
+              } else {
+                if (chunk.event === "batch") {
+                  const data = safeParseJSON(chunk.data) as {
+                    records: Array<{ body: string; seq_num: number; timestamp: number }>;
+                  };
+
+                  for (const record of data.records) {
+                    this.lastEventId = record.seq_num.toString();
+
+                    chunkController.enqueue(safeParseJSON(record.body));
+                  }
+                }
               }
-              chunkController.enqueue(safeParseJSON(chunk.data));
             },
           })
         );

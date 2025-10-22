@@ -43,6 +43,7 @@ export function getRealtimeStreamInstance(
         logLevel: env.REALTIME_STREAMS_S2_LOG_LEVEL,
         flushIntervalMs: env.REALTIME_STREAMS_S2_FLUSH_INTERVAL_MS,
         maxRetries: env.REALTIME_STREAMS_S2_MAX_RETRIES,
+        s2WaitSeconds: env.REALTIME_STREAMS_S2_WAIT_SECONDS,
       });
     }
 
