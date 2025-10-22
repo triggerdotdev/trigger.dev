@@ -373,6 +373,7 @@ export type StartDeploymentIndexingResponseBody = z.infer<
 export const FinalizeDeploymentRequestBody = z.object({
   skipPromotion: z.boolean().optional(),
   imageDigest: z.string().optional(),
+  skipPushToRegistry: z.boolean().optional(),
 });
 
 export type FinalizeDeploymentRequestBody = z.infer<typeof FinalizeDeploymentRequestBody>;

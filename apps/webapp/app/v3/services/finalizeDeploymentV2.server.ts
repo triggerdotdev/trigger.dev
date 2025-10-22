@@ -71,6 +71,15 @@ export class FinalizeDeploymentV2Service extends BaseService {
       throw new ServiceValidationError("Worker deployment is not in DEPLOYING status");
     }
 
+    const finalizeService = new FinalizeDeploymentService();
+
+    if (body.skipPushToRegistry) {
+      logger.debug("Skipping push to registry during deployment finalization", {
+        deployment,
+      });
+      return await finalizeService.call(authenticatedEnv, id, body);
+    }
+
     const externalBuildData = deployment.externalBuildData
       ? ExternalBuildData.safeParse(deployment.externalBuildData)
       : undefined;
@@ -134,7 +143,6 @@ export class FinalizeDeploymentV2Service extends BaseService {
       pushedImage: pushResult.image,
     });
 
-    const finalizeService = new FinalizeDeploymentService();
     const finalizedDeployment = await finalizeService.call(authenticatedEnv, id, body);
 
     return finalizedDeployment;
