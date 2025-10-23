@@ -1,5 +1,6 @@
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { SSEStreamPart, SSEStreamSubscription } from "@trigger.dev/core/v3";
+import { type SSEStreamPart, SSEStreamSubscription } from "@trigger.dev/core/v3";
+import { BoltIcon, BoltSlashIcon } from "@heroicons/react/20/solid";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useEffect, useRef, useState } from "react";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { $replica } from "~/db.server";
@@ -136,28 +137,27 @@ export function RealtimeStreamViewer({
     .length;
 
   return (
-    <div className="flex h-full flex-col overflow-hidden border-t border-grid-bright">
+    <div className="flex h-full flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-grid-bright bg-charcoal-850 px-3 py-2">
-        <div className="flex items-center gap-3">
-          <Paragraph variant="extra-small/bright" className="mb-0">
+      <div className="flex items-center justify-between border-b border-grid-bright bg-background-bright px-3 py-2">
+          <Paragraph variant="small/bright" className="mb-0">
             Stream: <span className="font-mono text-text-dimmed">{streamKey}</span>
           </Paragraph>
-          <div className="flex items-center gap-1.5">
-            <div
-              className={cn(
-                "size-2 rounded-full transition-colors",
-                isConnected ? "bg-green-500" : "bg-charcoal-500"
-              )}
-            />
-            <Paragraph variant="extra-small" className="mb-0">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-0.5">
+            {isConnected ? (
+              <BoltIcon className={cn("size-3.5 animate-pulse text-success")} />
+            ) : (
+              <BoltSlashIcon className={cn("size-3.5 text-text-dimmed")} />
+            )}
+            <Paragraph variant="small" className="mb-0">
               {isConnected ? "Connected" : "Disconnected"}
             </Paragraph>
           </div>
-        </div>
-        <Paragraph variant="extra-small" className="mb-0">
+        <Paragraph variant="small" className="mb-0">
           {chunks.length} {chunks.length === 1 ? "chunk" : "chunks"}
         </Paragraph>
+            </div>
       </div>
 
       {/* Content */}
