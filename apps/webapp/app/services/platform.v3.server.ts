@@ -511,6 +511,24 @@ export async function setBillingAlert(
   return result;
 }
 
+export async function generateRegistryCredentials(
+  projectId: string,
+  region: "us-east-1" | "eu-central-1"
+) {
+  if (!client) return undefined;
+  const result = await client.generateRegistryCredentials(projectId, region);
+  if (!result.success) {
+    logger.error("Error generating registry credentials", {
+      error: result.error,
+      projectId,
+      region,
+    });
+    throw new Error("Failed to generate registry credentials");
+  }
+
+  return result;
+}
+
 function isCloud(): boolean {
   const acceptableHosts = [
     "https://cloud.trigger.dev",

@@ -373,6 +373,7 @@ export type StartDeploymentIndexingResponseBody = z.infer<
 export const FinalizeDeploymentRequestBody = z.object({
   skipPromotion: z.boolean().optional(),
   imageDigest: z.string().optional(),
+  skipPushToRegistry: z.boolean().optional(),
 });
 
 export type FinalizeDeploymentRequestBody = z.infer<typeof FinalizeDeploymentRequestBody>;
@@ -437,6 +438,17 @@ export const InitializeDeploymentRequestBody = z.object({
 });
 
 export type InitializeDeploymentRequestBody = z.infer<typeof InitializeDeploymentRequestBody>;
+
+export const GenerateRegistryCredentialsResponseBody = z.object({
+  username: z.string(),
+  password: z.string(),
+  expiresAt: z.string(),
+  repositoryUri: z.string(),
+});
+
+export type GenerateRegistryCredentialsResponseBody = z.infer<
+  typeof GenerateRegistryCredentialsResponseBody
+>;
 
 export const DeploymentErrorData = z.object({
   name: z.string(),
