@@ -19,6 +19,7 @@ import { WaitpointPresenter } from "./WaitpointPresenter.server";
 import { engine } from "~/v3/runEngine.server";
 import { resolveEventRepositoryForStore } from "~/v3/eventRepository/index.server";
 import { IEventRepository, SpanDetail } from "~/v3/eventRepository/eventRepository.types";
+import { safeJsonParse } from "~/utils/json";
 
 type Result = Awaited<ReturnType<SpanPresenter["call"]>>;
 export type Span = NonNullable<NonNullable<Result>["span"]>;
@@ -570,6 +571,10 @@ export class SpanPresenter extends BasePresenter {
           return { ...data, entity: null };
         }
 
+        const metadata = span.entity.metadata
+          ? (safeJsonParse(span.entity.metadata) as Record<string, unknown> | undefined)
+          : undefined;
+
         return {
           ...data,
           entity: {
@@ -577,6 +582,7 @@ export class SpanPresenter extends BasePresenter {
             object: {
               runId,
               streamKey,
+              metadata,
             },
           },
         };
