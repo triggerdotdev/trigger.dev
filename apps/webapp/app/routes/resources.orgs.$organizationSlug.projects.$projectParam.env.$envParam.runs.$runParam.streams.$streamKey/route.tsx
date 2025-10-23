@@ -1,8 +1,20 @@
 import { type SSEStreamPart, SSEStreamSubscription } from "@trigger.dev/core/v3";
-import { BoltIcon, BoltSlashIcon } from "@heroicons/react/20/solid";
+import {
+  BoltIcon,
+  BoltSlashIcon,
+  ListBulletIcon,
+  Bars3BottomLeftIcon,
+} from "@heroicons/react/20/solid";
+import { Clipboard, ClipboardCheck } from "lucide-react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "~/components/primitives/Tooltip";
 import { $replica } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -11,6 +23,8 @@ import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.s
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { v3RunStreamParamsSchema } from "~/utils/pathBuilder";
+
+type ViewMode = "list" | "compact";
 
 type StreamChunk = {
   id: string;
@@ -98,6 +112,33 @@ export function RealtimeStreamViewer({
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
+  const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [mouseOver, setMouseOver] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const getCompactText = useCallback(() => {
+    return chunks
+      .map((chunk) => {
+        if (typeof chunk.data === "string") {
+          return chunk.data;
+        }
+        return JSON.stringify(chunk.data);
+      })
+      .join("");
+  }, [chunks]);
+
+  const onCopied = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      navigator.clipboard.writeText(getCompactText());
+      setCopied(true);
+      setTimeout(() => {
+        setCopied(false);
+      }, 1500);
+    },
+    [getCompactText]
+  );
 
   // Use IntersectionObserver to detect when the bottom element is visible
   useEffect(() => {
@@ -143,29 +184,77 @@ export function RealtimeStreamViewer({
         <Paragraph variant="small/bright" className="mb-0">
           Stream: <span className="font-mono text-text-dimmed">{streamKey}</span>
         </Paragraph>
-        <div className="flex items-center gap-1.5">
-          <div className="flex items-center gap-1">
-          {isConnected ? (
-            <BoltIcon className={cn("size-3.5 animate-pulse text-success")} />
-          ) : (
-            <BoltSlashIcon className={cn("size-3.5 text-text-dimmed")} />
-          )}
-          <Paragraph variant="small" className="mb-0">
-            {isConnected ? "Connected" : "Disconnected"}
-          </Paragraph>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1">
+              {isConnected ? (
+                <BoltIcon className={cn("size-3.5 animate-pulse text-success")} />
+              ) : (
+                <BoltSlashIcon className={cn("size-3.5 text-text-dimmed")} />
+              )}
+              <Paragraph variant="small" className="mb-0">
+                {isConnected ? "Connected" : "Disconnected"}
+              </Paragraph>
+            </div>
+            <div className="size-1 rounded-full bg-text-dimmed/50" />
+            <Paragraph variant="small" className="mb-0">
+              {chunks.length} {chunks.length === 1 ? "chunk" : "chunks"}
+            </Paragraph>
           </div>
-          <div className="size-1 rounded-full bg-text-dimmed/50"/>
-          <Paragraph variant="small" className="mb-0">
-            {chunks.length} {chunks.length === 1 ? "chunk" : "chunks"}
-          </Paragraph>
+          <TooltipProvider>
+            <Tooltip disableHoverableContent>
+              <TooltipTrigger
+                onClick={() => setViewMode(viewMode === "list" ? "compact" : "list")}
+                className="text-text-dimmed transition-colors focus-custom hover:cursor-pointer hover:text-text-bright"
+              >
+                {viewMode === "list" ? (
+                  <Bars3BottomLeftIcon className="size-4" />
+                ) : (
+                  <ListBulletIcon className="size-4" />
+                )}
+              </TooltipTrigger>
+              <TooltipContent side="left" className="text-xs">
+                {viewMode === "list" ? "Compact view" : "List view"}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
       </div>
 
       {/* Content */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto bg-charcoal-900 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        className="relative flex-1 overflow-y-auto bg-charcoal-900 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
       >
+        {chunks.length > 0 && (
+          <div className="pointer-events-none sticky top-2.5 z-50 h-0">
+            <div className="pointer-events-auto absolute right-3 top-0">
+              <TooltipProvider>
+                <Tooltip open={copied || mouseOver} disableHoverableContent>
+                  <TooltipTrigger
+                    onClick={onCopied}
+                    onMouseEnter={() => setMouseOver(true)}
+                    onMouseLeave={() => setMouseOver(false)}
+                    className={cn(
+                      "transition-colors duration-100 focus-custom hover:cursor-pointer",
+                      copied ? "text-success" : "text-text-dimmed hover:text-text-bright"
+                    )}
+                  >
+                    {copied ? (
+                      <ClipboardCheck className="size-4" />
+                    ) : (
+                      <Clipboard className="size-4" />
+                    )}
+                  </TooltipTrigger>
+                  <TooltipContent side="left" className="text-xs">
+                    {copied ? "Copied" : "Copy"}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+          </div>
+        )}
+
         {error && (
           <div className="border-b border-error/20 bg-error/10 p-3">
             <Paragraph variant="small" className="mb-0 text-error">
@@ -182,7 +271,7 @@ export function RealtimeStreamViewer({
           </div>
         )}
 
-        {chunks.length > 0 && (
+        {chunks.length > 0 && viewMode === "list" && (
           <div className="p-3 font-mono text-xs leading-relaxed">
             {chunks.map((chunk, index) => (
               <StreamChunkLine
@@ -192,6 +281,14 @@ export function RealtimeStreamViewer({
                 maxLineNumberWidth={maxLineNumberWidth}
               />
             ))}
+            {/* Sentinel element for IntersectionObserver */}
+            <div ref={bottomRef} className="h-px" />
+          </div>
+        )}
+
+        {chunks.length > 0 && viewMode === "compact" && (
+          <div className="p-3 font-mono text-xs leading-relaxed">
+            <CompactStreamView chunks={chunks} />
             {/* Sentinel element for IntersectionObserver */}
             <div ref={bottomRef} className="h-px" />
           </div>
@@ -213,6 +310,19 @@ export function RealtimeStreamViewer({
       )}
     </div>
   );
+}
+
+function CompactStreamView({ chunks }: { chunks: StreamChunk[] }) {
+  const compactText = chunks
+    .map((chunk) => {
+      if (typeof chunk.data === "string") {
+        return chunk.data;
+      }
+      return JSON.stringify(chunk.data);
+    })
+    .join("");
+
+  return <div className="whitespace-pre-wrap break-all text-text-bright">{compactText}</div>;
 }
 
 function StreamChunkLine({
