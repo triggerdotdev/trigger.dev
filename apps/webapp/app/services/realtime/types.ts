@@ -16,6 +16,11 @@ export interface StreamIngestor {
   getLastChunkIndex(runId: string, streamId: string, clientId: string): Promise<number>;
 }
 
+export type StreamResponseOptions = {
+  timeoutInSeconds?: number;
+  lastEventId?: string;
+};
+
 // Interface for stream response
 export interface StreamResponder {
   streamResponse(
@@ -23,6 +28,6 @@ export interface StreamResponder {
     runId: string,
     streamId: string,
     signal: AbortSignal,
-    lastEventId?: string
+    options?: StreamResponseOptions
   ): Promise<Response>;
 }

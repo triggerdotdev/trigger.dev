@@ -80,6 +80,7 @@ import { createTimelineSpanEventsFromSpanEvents } from "~/utils/timelineSpanEven
 import { CompleteWaitpointForm } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.waitpoints.$waitpointFriendlyId.complete/route";
 import { requireUserId } from "~/services/session.server";
 import type { SpanOverride } from "~/v3/eventRepository/eventRepository.types";
+import { RealtimeStreamViewer } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.streams.$streamKey/route";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -1143,6 +1144,24 @@ function SpanEntity({ span }: { span: Span }) {
               <CompleteWaitpointForm waitpoint={span.entity.object} />
             </div>
           )}
+        </div>
+      );
+    }
+    case "realtime-stream": {
+      return (
+        <div className="grid h-full grid-rows-[1fr_auto]">
+          <div className="flex flex-col gap-4 overflow-y-auto px-3 pt-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+            <div>
+              <Header2>Realtime stream</Header2>
+              <Paragraph variant="small">
+                A realtime stream is a stream of data that is sent to the client.
+              </Paragraph>
+            </div>
+          </div>
+          <RealtimeStreamViewer
+            runId={span.entity.object.runId}
+            streamKey={span.entity.object.streamKey}
+          />
         </div>
       );
     }

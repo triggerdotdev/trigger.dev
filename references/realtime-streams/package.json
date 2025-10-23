@@ -10,8 +10,10 @@
     "deploy": "trigger deploy"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^2.0.53",
     "@trigger.dev/react-hooks": "workspace:*",
     "@trigger.dev/sdk": "workspace:*",
+    "ai": "^5.0.76",
     "next": "15.5.6",
     "react": "19.1.0",
     "react-dom": "19.1.0",

@@ -1,5 +1,5 @@
 // app/realtime/S2RealtimeStreams.ts
-import { StreamIngestor, StreamResponder } from "./types";
+import { StreamIngestor, StreamResponder, StreamResponseOptions } from "./types";
 import { Logger, LogLevel } from "@trigger.dev/core/logger";
 import { randomUUID } from "node:crypto";
 
@@ -105,16 +105,16 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     runId: string,
     streamId: string,
     signal: AbortSignal,
-    lastEventId?: string
+    options?: StreamResponseOptions
   ): Promise<Response> {
     const s2Stream = this.toStreamName(runId, streamId);
-    const startSeq = this.parseLastEventId(lastEventId);
+    const startSeq = this.parseLastEventId(options?.lastEventId);
 
     // Request SSE stream from S2 and return it directly
     const s2Response = await this.s2StreamRecords(s2Stream, {
       seq_num: startSeq ?? 0,
       clamp: true,
-      wait: this.s2WaitSeconds, // S2 will keep the connection open and stream new records
+      wait: options?.timeoutInSeconds ?? this.s2WaitSeconds, // S2 will keep the connection open and stream new records
       signal, // Pass abort signal so S2 connection is cleaned up when client disconnects
     });
 

@@ -30,3 +30,4 @@ export { StandardLocalsManager } from "../locals/manager.js";
 export { populateEnv } from "./populateEnv.js";
 export { StandardTraceContextManager } from "../traceContext/manager.js";
 export { StandardHeartbeatsManager } from "../heartbeats/manager.js";
+export { StandardRealtimeStreamsManager } from "../realtimeStreams/manager.js";

@@ -160,8 +160,20 @@ export interface StreamSubscription {
   subscribe(): Promise<ReadableStream<unknown>>;
 }
 
+export type CreateStreamSubscriptionOptions = {
+  baseUrl?: string;
+  onComplete?: () => void;
+  onError?: (error: Error) => void;
+  timeoutInSeconds?: number;
+  lastEventId?: string;
+};
+
 export interface StreamSubscriptionFactory {
-  createSubscription(runId: string, streamKey: string, baseUrl?: string): StreamSubscription;
+  createSubscription(
+    runId: string,
+    streamKey: string,
+    options?: CreateStreamSubscriptionOptions
+  ): StreamSubscription;
 }
 
 // Real implementation for production
@@ -173,8 +185,17 @@ export class SSEStreamSubscription implements StreamSubscription {
 
   constructor(
     private url: string,
-    private options: { headers?: Record<string, string>; signal?: AbortSignal }
-  ) {}
+    private options: {
+      headers?: Record<string, string>;
+      signal?: AbortSignal;
+      onComplete?: () => void;
+      onError?: (error: Error) => void;
+      timeoutInSeconds?: number;
+      lastEventId?: string;
+    }
+  ) {
+    this.lastEventId = options.lastEventId;
+  }
 
   async subscribe(): Promise<ReadableStream<unknown>> {
     const self = this;
@@ -182,6 +203,9 @@ export class SSEStreamSubscription implements StreamSubscription {
     return new ReadableStream({
       async start(controller) {
         await self.connectStream(controller);
+      },
+      cancel(reason) {
+        self.options.onComplete?.();
       },
     });
   }
@@ -198,31 +222,35 @@ export class SSEStreamSubscription implements StreamSubscription {
         headers["Last-Event-ID"] = this.lastEventId;
       }
 
+      if (this.options.timeoutInSeconds) {
+        headers["Timeout-Seconds"] = this.options.timeoutInSeconds.toString();
+      }
+
       const response = await fetch(this.url, {
         headers,
         signal: this.options.signal,
       });
 
       if (!response.ok) {
-        throw ApiError.generate(
+        const error = ApiError.generate(
           response.status,
           {},
           "Could not subscribe to stream",
           Object.fromEntries(response.headers)
         );
+
+        this.options.onError?.(error);
+        throw error;
       }
 
       if (!response.body) {
-        throw new Error("No response body");
+        const error = new Error("No response body");
+
+        this.options.onError?.(error);
+        throw error;
       }
 
-      const responseHeaders = Object.fromEntries(response.headers);
-
-      console.log("stream response headers", responseHeaders);
-
       const streamVersion = response.headers.get("X-Stream-Version") ?? "v1";
-
-      console.log("stream version", streamVersion);
 
       // Reset retry count on successful connection
       this.retryCount = 0;
@@ -259,30 +287,37 @@ export class SSEStreamSubscription implements StreamSubscription {
       const reader = stream.getReader();
 
       try {
+        let chunkCount = 0;
         while (true) {
           const { done, value } = await reader.read();
 
           if (done) {
-            break;
+            reader.releaseLock();
+            controller.close();
+            this.options.onComplete?.();
+            return;
           }
 
           if (this.options.signal?.aborted) {
             reader.cancel();
-            break;
+            reader.releaseLock();
+            controller.close();
+            this.options.onComplete?.();
+            return;
           }
 
+          chunkCount++;
           controller.enqueue(value);
         }
       } catch (error) {
         reader.releaseLock();
         throw error;
       }
-
-      reader.releaseLock();
     } catch (error) {
       if (this.options.signal?.aborted) {
         // Don't retry if aborted
         controller.close();
+        this.options.onComplete?.();
         return;
       }
 
@@ -297,11 +332,14 @@ export class SSEStreamSubscription implements StreamSubscription {
   ): Promise<void> {
     if (this.options.signal?.aborted) {
       controller.close();
+      this.options.onComplete?.();
       return;
     }
 
     if (this.retryCount >= this.maxRetries) {
-      controller.error(error || new Error("Max retries reached"));
+      const finalError = error || new Error("Max retries reached");
+      controller.error(finalError);
+      this.options.onError?.(finalError);
       return;
     }
 
@@ -313,6 +351,7 @@ export class SSEStreamSubscription implements StreamSubscription {
 
     if (this.options.signal?.aborted) {
       controller.close();
+      this.options.onComplete?.();
       return;
     }
 
@@ -324,45 +363,27 @@ export class SSEStreamSubscription implements StreamSubscription {
 export class SSEStreamSubscriptionFactory implements StreamSubscriptionFactory {
   constructor(
     private baseUrl: string,
-    private options: { headers?: Record<string, string>; signal?: AbortSignal }
+    private options: {
+      headers?: Record<string, string>;
+      signal?: AbortSignal;
+    }
   ) {}
 
-  createSubscription(runId: string, streamKey: string, baseUrl?: string): StreamSubscription {
+  createSubscription(
+    runId: string,
+    streamKey: string,
+    options?: CreateStreamSubscriptionOptions
+  ): StreamSubscription {
     if (!runId || !streamKey) {
       throw new Error("runId and streamKey are required");
     }
 
-    const url = `${baseUrl ?? this.baseUrl}/realtime/v1/streams/${runId}/${streamKey}`;
-    return new SSEStreamSubscription(url, this.options);
-  }
-}
+    const url = `${options?.baseUrl ?? this.baseUrl}/realtime/v1/streams/${runId}/${streamKey}`;
 
-// Real implementation for production
-export class ElectricStreamSubscription implements StreamSubscription {
-  constructor(
-    private url: string,
-    private options: { headers?: Record<string, string>; signal?: AbortSignal }
-  ) {}
-
-  async subscribe(): Promise<ReadableStream<unknown>> {
-    return zodShapeStream(SubscribeRealtimeStreamChunkRawShape, this.url, this.options)
-      .stream.pipeThrough(
-        new TransformStream({
-          transform(chunk, controller) {
-            controller.enqueue(chunk.value);
-          },
-        })
-      )
-      .pipeThrough(new LineTransformStream())
-      .pipeThrough(
-        new TransformStream({
-          transform(chunk, controller) {
-            for (const line of chunk) {
-              controller.enqueue(safeParseJSON(line));
-            }
-          },
-        })
-      );
+    return new SSEStreamSubscription(url, {
+      ...this.options,
+      ...options,
+    });
   }
 }
 
@@ -456,39 +477,33 @@ export class RunSubscription<TRunTypes extends AnyRunTypes> {
                 const subscription = this.options.streamFactory.createSubscription(
                   run.id,
                   streamKey,
-                  this.options.client?.baseUrl
+                  {
+                    baseUrl: this.options.client?.baseUrl,
+                  }
                 );
 
                 // Start stream processing in the background
-                subscription
-                  .subscribe()
-                  .then((stream) => {
-                    stream
-                      .pipeThrough(
-                        new TransformStream({
-                          transform(chunk, controller) {
-                            controller.enqueue({
-                              type: streamKey,
-                              chunk: chunk as TStreams[typeof streamKey],
-                              run,
-                            });
-                          },
-                        })
-                      )
-                      .pipeTo(
-                        new WritableStream({
-                          write(chunk) {
-                            controller.enqueue(chunk);
-                          },
-                        })
-                      )
-                      .catch((error) => {
-                        console.error(`Error in stream ${streamKey}:`, error);
-                      });
-                  })
-                  .catch((error) => {
-                    console.error(`Error subscribing to stream ${streamKey}:`, error);
-                  });
+                subscription.subscribe().then((stream) => {
+                  stream
+                    .pipeThrough(
+                      new TransformStream({
+                        transform(chunk, controller) {
+                          controller.enqueue({
+                            type: streamKey,
+                            chunk: chunk as TStreams[typeof streamKey],
+                            run,
+                          });
+                        },
+                      })
+                    )
+                    .pipeTo(
+                      new WritableStream({
+                        write(chunk) {
+                          controller.enqueue(chunk);
+                        },
+                      })
+                    );
+                });
               }
             }
           }
