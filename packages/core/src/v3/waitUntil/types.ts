@@ -5,6 +5,6 @@ export type MaybeDeferredPromise = {
 
 export interface WaitUntilManager {
   register(promise: MaybeDeferredPromise): void;
-  blockUntilSettled(timeout: number): Promise<void>;
+  blockUntilSettled(): Promise<void>;
   requiresResolving(): boolean;
 }
