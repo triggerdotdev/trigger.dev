@@ -1,21 +1,24 @@
-import type { Organization, Project } from "@trigger.dev/database";
+import { MachinePresetName } from "@trigger.dev/core/v3";
+import type { Organization, Project, RuntimeEnvironmentType } from "@trigger.dev/database";
 import {
   BillingClient,
-  type Limits,
-  type SetPlanBody,
-  type UsageSeriesParams,
-  type UsageResult,
   defaultMachine as defaultMachineFromPlatform,
   machines as machinesFromPlatform,
-  type MachineCode,
-  type UpdateBillingAlertsRequest,
   type BillingAlertsResult,
+  type Limits,
+  type MachineCode,
   type ReportUsageResult,
-  type ReportUsagePlan,
+  type SetPlanBody,
+  type UpdateBillingAlertsRequest,
+  type UsageResult,
+  type UsageSeriesParams,
+  type CurrentPlan,
 } from "@trigger.dev/platform";
 import { createCache, DefaultStatefulContext, Namespace } from "@unkey/cache";
 import { MemoryStore } from "@unkey/cache/stores";
+import { existsSync, readFileSync } from "node:fs";
 import { redirect } from "remix-typedjson";
+import { z } from "zod";
 import { env } from "~/env.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { createEnvironment } from "~/models/organization.server";
@@ -23,9 +26,7 @@ import { logger } from "~/services/logger.server";
 import { newProjectPath, organizationBillingPath } from "~/utils/pathBuilder";
 import { singleton } from "~/utils/singleton";
 import { RedisCacheStore } from "./unkey/redisCacheStore.server";
-import { existsSync, readFileSync } from "node:fs";
-import { z } from "zod";
-import { MachinePresetName } from "@trigger.dev/core/v3";
+import { $replica } from "~/db.server";
 
 function initializeClient() {
   if (isCloud() && process.env.BILLING_API_URL && process.env.BILLING_API_KEY) {
@@ -252,6 +253,52 @@ export async function getLimit(orgId: string, limit: keyof Limits, fallback: num
   if (typeof result === "number") return result;
   if (typeof result === "object" && "number" in result) return result.number;
   return fallback;
+}
+
+export async function getDefaultEnvironmentConcurrencyLimit(
+  organizationId: string,
+  environmentType: RuntimeEnvironmentType
+): Promise<number> {
+  if (!client) {
+    const org = await $replica.organization.findFirst({
+      where: {
+        id: organizationId,
+      },
+      select: {
+        maximumConcurrencyLimit: true,
+      },
+    });
+    if (!org) throw new Error("Organization not found");
+    return org.maximumConcurrencyLimit;
+  }
+
+  const result = await client.currentPlan(organizationId);
+  if (!result.success) throw new Error("Error getting current plan");
+
+  const limit = getDefaultEnvironmentLimitFromPlan(environmentType, result);
+  if (!limit) throw new Error("No plan found");
+
+  return limit;
+}
+
+export function getDefaultEnvironmentLimitFromPlan(
+  environmentType: RuntimeEnvironmentType,
+  plan: CurrentPlan
+): number | undefined {
+  if (!plan.v3Subscription?.plan) return undefined;
+
+  switch (environmentType) {
+    case "DEVELOPMENT":
+      return plan.v3Subscription.plan.limits.concurrentRuns.development;
+    case "STAGING":
+      return plan.v3Subscription.plan.limits.concurrentRuns.staging;
+    case "PREVIEW":
+      return plan.v3Subscription.plan.limits.concurrentRuns.preview;
+    case "PRODUCTION":
+      return plan.v3Subscription.plan.limits.concurrentRuns.production;
+    default:
+      return plan.v3Subscription.plan.limits.concurrentRuns.number;
+  }
 }
 
 export async function getCachedLimit(orgId: string, limit: keyof Limits, fallback: number) {
