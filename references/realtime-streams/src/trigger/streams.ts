@@ -113,7 +113,7 @@ export const streamsTask = task({
 
     const mockStream = createStreamFromGenerator(generator);
 
-    const { wait } = await streams.append("stream", mockStream);
+    const { waitUntilComplete } = await streams.append("stream", mockStream);
 
     await setTimeout(1000);
 
@@ -128,7 +128,7 @@ export const streamsTask = task({
       tokenCount++;
     }
 
-    await wait();
+    await waitUntilComplete();
 
     logger.info("Stream completed", { scenario, tokenCount });
 
