@@ -15,7 +15,12 @@ import { createThrottledQueue } from "../utils/throttle.js";
 export type UseRealtimeRunOptions = UseApiClientOptions & {
   id?: string;
   enabled?: boolean;
-  experimental_throttleInMs?: number;
+  /**
+   * The number of milliseconds to throttle the stream updates.
+   *
+   * @default 16
+   */
+  throttleInMs?: number;
 };
 
 export type UseRealtimeSingleRunOptions<TTask extends AnyTask = AnyTask> = UseRealtimeRunOptions & {
@@ -283,7 +288,7 @@ export function useRealtimeRunWithStreams<
         setError,
         abortControllerRef,
         typeof options?.stopOnCompletion === "boolean" ? options.stopOnCompletion : true,
-        options?.experimental_throttleInMs
+        options?.throttleInMs ?? 16
       );
     } catch (err) {
       // Ignore abort errors as they are expected.
@@ -587,7 +592,12 @@ export type UseRealtimeStreamInstance<TPart> = {
 export type UseRealtimeStreamOptions<TPart> = UseApiClientOptions & {
   id?: string;
   enabled?: boolean;
-  experimental_throttleInMs?: number;
+  /**
+   * The number of milliseconds to throttle the stream updates.
+   *
+   * @default 16
+   */
+  throttleInMs?: number;
   /**
    * The number of seconds to wait for new data to be available,
    * If no data arrives within the timeout, the stream will be closed.
@@ -704,7 +714,7 @@ export function useRealtimeStream<TPart>(
         abortControllerRef,
         options?.timeoutInSeconds,
         options?.startIndex,
-        options?.experimental_throttleInMs
+        options?.throttleInMs ?? 16
       );
     } catch (err) {
       // Ignore abort errors as they are expected.
