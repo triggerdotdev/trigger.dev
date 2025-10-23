@@ -7,6 +7,7 @@ import { TimeoutDeploymentService } from "./timeoutDeployment.server";
 import { env } from "~/env.server";
 import { createRemoteImageBuild } from "../remoteImageBuilder.server";
 import { FINAL_DEPLOYMENT_STATUSES } from "./failDeployment.server";
+import { generateRegistryCredentials } from "~/services/platform.v3.server";
 
 export class DeploymentService extends BaseService {
   /**
@@ -230,5 +231,93 @@ export class DeploymentService extends BaseService {
       .andThen(cancelDeployment)
       .andThen(deleteTimeout)
       .map(() => undefined);
+  }
+
+  /**
+   * Generates registry credentials for a deployment. Returns an error if the deployment is in a final state.
+   *
+   * Uses the `platform` package, only available in cloud.
+   *
+   * @param authenticatedEnv The environment which the deployment belongs to.
+   * @param friendlyId The friendly deployment ID.
+   */
+  public generateRegistryCredentials(
+    authenticatedEnv: Pick<AuthenticatedEnvironment, "projectId">,
+    friendlyId: string
+  ) {
+    const validateDeployment = (
+      deployment: Pick<WorkerDeployment, "id" | "status" | "imageReference">
+    ) => {
+      if (FINAL_DEPLOYMENT_STATUSES.includes(deployment.status)) {
+        return errAsync({ type: "deployment_is_already_final" as const });
+      }
+      return okAsync(deployment);
+    };
+
+    const getDeploymentRegion = (deployment: Pick<WorkerDeployment, "imageReference">) => {
+      if (!deployment.imageReference) {
+        return errAsync({ type: "deployment_has_no_image_reference" as const });
+      }
+      if (!deployment.imageReference.includes("amazonaws.com")) {
+        return errAsync({ type: "registry_not_supported" as const });
+      }
+
+      // we should connect the deployment to a region more explicitly in the future
+      // for now we just use the image reference to determine the region
+      if (deployment.imageReference.includes("us-east-1")) {
+        return okAsync({ region: "us-east-1" as const });
+      }
+      if (deployment.imageReference.includes("eu-central-1")) {
+        return okAsync({ region: "eu-central-1" as const });
+      }
+
+      return errAsync({ type: "registry_region_not_supported" as const });
+    };
+
+    const generateCredentials = ({ region }: { region: "us-east-1" | "eu-central-1" }) =>
+      fromPromise(generateRegistryCredentials(authenticatedEnv.projectId, region), (error) => ({
+        type: "other" as const,
+        cause: error,
+      })).andThen((result) => {
+        if (!result || !result.success) {
+          return errAsync({ type: "missing_registry_credentials" as const });
+        }
+        return okAsync({
+          username: result.username,
+          password: result.password,
+          expiresAt: new Date(result.expiresAt),
+          repositoryUri: result.repositoryUri,
+        });
+      });
+
+    return this.getDeployment(authenticatedEnv.projectId, friendlyId)
+      .andThen(validateDeployment)
+      .andThen(getDeploymentRegion)
+      .andThen(generateCredentials);
+  }
+
+  private getDeployment(projectId: string, friendlyId: string) {
+    return fromPromise(
+      this._prisma.workerDeployment.findFirst({
+        where: {
+          friendlyId,
+          projectId,
+        },
+        select: {
+          status: true,
+          id: true,
+          imageReference: true,
+        },
+      }),
+      (error) => ({
+        type: "other" as const,
+        cause: error,
+      })
+    ).andThen((deployment) => {
+      if (!deployment) {
+        return errAsync({ type: "deployment_not_found" as const });
+      }
+      return okAsync(deployment);
+    });
   }
 }

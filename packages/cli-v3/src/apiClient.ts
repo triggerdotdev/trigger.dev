@@ -37,6 +37,7 @@ import {
   GetJWTRequestBody,
   GetJWTResponse,
   ApiBranchListResponseBody,
+  GenerateRegistryCredentialsResponseBody,
 } from "@trigger.dev/core/v3";
 import {
   WorkloadDebugLogRequestBody,
@@ -323,6 +324,22 @@ export class CliApiClient {
         method: "POST",
         headers: this.getHeaders(),
         body: JSON.stringify(params),
+      }
+    );
+  }
+
+  async generateRegistryCredentials(deploymentId: string) {
+    if (!this.accessToken) {
+      throw new Error("generateRegistryCredentials: No access token");
+    }
+
+    return wrapZodFetch(
+      GenerateRegistryCredentialsResponseBody,
+      `${this.apiURL}/api/v1/deployments/${deploymentId}/generate-registry-credentials`,
+      {
+        method: "POST",
+        headers: this.getHeaders(),
+        body: "{}",
       }
     );
   }
