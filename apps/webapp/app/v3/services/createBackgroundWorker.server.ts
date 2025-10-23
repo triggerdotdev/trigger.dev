@@ -361,14 +361,7 @@ async function createWorkerQueue(
 
   const baseConcurrencyLimit =
     typeof queue.concurrencyLimit === "number"
-      ? Math.max(
-          Math.min(
-            queue.concurrencyLimit,
-            environment.maximumConcurrencyLimit,
-            environment.organization.maximumConcurrencyLimit
-          ),
-          0
-        )
+      ? Math.max(Math.min(queue.concurrencyLimit, environment.maximumConcurrencyLimit), 0)
       : queue.concurrencyLimit;
 
   const taskQueue = await upsertWorkerQueueRecord(
