@@ -217,6 +217,7 @@ export type SpanDetail = {
     // Used for entity type switching in SpanEntity
     type: string | undefined;
     id: string | undefined;
+    metadata: string | undefined;
   };
 
   metadata: any; // Used by SpanPresenter for entity processing

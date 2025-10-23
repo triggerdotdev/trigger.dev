@@ -115,6 +115,9 @@ async function readStream<T>(
       runId,
       [SemanticInternalAttributes.ENTITY_TYPE]: "realtime-stream",
       [SemanticInternalAttributes.ENTITY_ID]: `${runId}:${key}`,
+      [SemanticInternalAttributes.ENTITY_METADATA]: JSON.stringify({
+        startIndex: options?.startIndex,
+      }),
       [SemanticInternalAttributes.STYLE_ICON]: "streams",
       ...accessoryAttributes({
         items: [
