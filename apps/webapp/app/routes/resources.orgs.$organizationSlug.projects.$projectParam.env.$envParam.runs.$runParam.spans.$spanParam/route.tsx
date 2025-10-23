@@ -214,7 +214,7 @@ function SpanBody({
   span = applySpanOverrides(span, spanOverrides);
 
   return (
-    <div className="grid h-full max-h-full grid-rows-[2.5rem_2rem_1fr] overflow-hidden bg-background-bright">
+    <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr] overflow-hidden bg-background-bright">
       <div className="flex items-center justify-between gap-2 overflow-x-hidden px-3">
         <div className="flex items-center gap-1 overflow-x-hidden">
           <RunIcon
@@ -234,20 +234,6 @@ function SpanBody({
             shortcut={{ key: "esc" }}
           />
         )}
-      </div>
-      <div className="h-fit overflow-x-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-        <TabContainer>
-          <TabButton
-            isActive={!tab || tab === "overview"}
-            layoutId="span-span"
-            onClick={() => {
-              replace({ tab: "overview" });
-            }}
-            shortcut={{ key: "o" }}
-          >
-            Overview
-          </TabButton>
-        </TabContainer>
       </div>
       <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
         <SpanEntity span={span} />
@@ -1149,21 +1135,11 @@ function SpanEntity({ span }: { span: Span }) {
     }
     case "realtime-stream": {
       return (
-        <div className="grid h-full grid-rows-[1fr_auto]">
-          <div className="flex flex-col gap-4 overflow-y-auto px-3 pt-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-            <div>
-              <Header2>Realtime stream</Header2>
-              <Paragraph variant="small">
-                A realtime stream is a stream of data that is sent to the client.
-              </Paragraph>
-            </div>
-          </div>
-          <RealtimeStreamViewer
-            runId={span.entity.object.runId}
-            streamKey={span.entity.object.streamKey}
-            metadata={span.entity.object.metadata}
-          />
-        </div>
+        <RealtimeStreamViewer
+          runId={span.entity.object.runId}
+          streamKey={span.entity.object.streamKey}
+          metadata={span.entity.object.metadata}
+        />
       );
     }
     default: {
