@@ -71,23 +71,28 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     run.realtimeStreamsVersion
   );
 
-  return realtimeStream.streamResponse(
-    request,
-    run.friendlyId,
-    streamKey,
-    request.signal,
-    lastEventId
-  );
+  return realtimeStream.streamResponse(request, run.friendlyId, streamKey, request.signal, {
+    lastEventId,
+  });
 };
 
-export function RealtimeStreamViewer({ runId, streamKey }: { runId: string; streamKey: string }) {
+export function RealtimeStreamViewer({
+  runId,
+  streamKey,
+  metadata,
+}: {
+  runId: string;
+  streamKey: string;
+  metadata: Record<string, unknown> | undefined;
+}) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
 
   const resourcePath = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/runs/${runId}/streams/${streamKey}`;
 
-  const { chunks, error, isConnected } = useRealtimeStream(resourcePath);
+  const startIndex = typeof metadata?.startIndex === "number" ? metadata.startIndex : undefined;
+  const { chunks, error, isConnected } = useRealtimeStream(resourcePath, startIndex);
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
@@ -124,7 +129,10 @@ export function RealtimeStreamViewer({ runId, streamKey }: { runId: string; stre
     }
   }, [chunks, isAtBottom]);
 
-  const maxLineNumberWidth = chunks.length.toString().length;
+  const firstLineNumber = startIndex ?? 0;
+  const lastLineNumber = firstLineNumber + chunks.length - 1;
+  const maxLineNumberWidth = (chunks.length > 0 ? lastLineNumber : firstLineNumber).toString()
+    .length;
 
   return (
     <div className="flex h-full flex-col overflow-hidden border-t border-grid-bright">
@@ -178,7 +186,7 @@ export function RealtimeStreamViewer({ runId, streamKey }: { runId: string; stre
               <StreamChunkLine
                 key={index}
                 chunk={chunk}
-                lineNumber={index + 1}
+                lineNumber={firstLineNumber + index}
                 maxLineNumberWidth={maxLineNumberWidth}
               />
             ))}
@@ -246,7 +254,7 @@ function StreamChunkLine({
   );
 }
 
-function useRealtimeStream(resourcePath: string) {
+function useRealtimeStream(resourcePath: string, startIndex?: number) {
   const [chunks, setChunks] = useState<StreamChunk[]>([]);
   const [error, setError] = useState<Error | null>(null);
   const [isConnected, setIsConnected] = useState(false);
@@ -259,6 +267,8 @@ function useRealtimeStream(resourcePath: string) {
       try {
         const sseSubscription = new SSEStreamSubscription(resourcePath, {
           signal: abortController.signal,
+          lastEventId: startIndex ? (startIndex - 1).toString() : undefined,
+          timeoutInSeconds: 30,
         });
 
         const stream = await sseSubscription.subscribe();
@@ -300,7 +310,7 @@ function useRealtimeStream(resourcePath: string) {
       abortController.abort();
       reader?.cancel();
     };
-  }, [resourcePath]);
+  }, [resourcePath, startIndex]);
 
   return { chunks, error, isConnected };
 }
