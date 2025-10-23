@@ -20,6 +20,7 @@ export type S2MetadataStreamOptions<T = any> = {
   signal?: AbortSignal;
   flushIntervalMs?: number; // How often to flush batched chunks (default 200ms)
   maxRetries?: number; // Max number of retries for failed flushes (default 10)
+  debug?: boolean; // Enable debug logging (default false)
 };
 
 /**
@@ -30,6 +31,7 @@ export type S2MetadataStreamOptions<T = any> = {
  * - Periodic flushing: Flushes buffered chunks every ~200ms (configurable)
  * - Sequential writes: Uses p-limit to ensure writes happen in order
  * - Automatic retries: Retries failed writes with exponential backoff
+ * - Debug logging: Enable with debug: true to see detailed operation logs
  *
  * Example usage:
  * ```typescript
@@ -39,6 +41,7 @@ export type S2MetadataStreamOptions<T = any> = {
  *   accessToken: "s2-token-here",
  *   source: myAsyncIterable,
  *   flushIntervalMs: 200, // Optional: flush every 200ms
+ *   debug: true, // Optional: enable debug logging
  * });
  *
  * // Wait for streaming to complete
@@ -57,6 +60,7 @@ export class S2MetadataStream<T = any> implements StreamInstance {
   private streamPromise: Promise<void>;
   private readonly flushIntervalMs: number;
   private readonly maxRetries: number;
+  private readonly debug: boolean;
 
   // Buffering state
   private streamComplete = false;
@@ -74,10 +78,15 @@ export class S2MetadataStream<T = any> implements StreamInstance {
 
   constructor(private options: S2MetadataStreamOptions<T>) {
     this.limiter = options.limiter(1);
+    this.debug = options.debug ?? false;
 
     this.s2Client = new S2({ accessToken: options.accessToken });
     this.flushIntervalMs = options.flushIntervalMs ?? 200;
     this.maxRetries = options.maxRetries ?? 10;
+
+    this.log(
+      `[S2MetadataStream] Initializing: basin=${options.basin}, stream=${options.stream}, flushIntervalMs=${this.flushIntervalMs}, maxRetries=${this.maxRetries}`
+    );
 
     const [serverStream, consumerStream] = this.createTeeStreams();
     this.serverStream = serverStream;
@@ -105,7 +114,6 @@ export class S2MetadataStream<T = any> implements StreamInstance {
 
           controller.close();
         } catch (error) {
-          console.error("[S2MetadataStream] Error reading from source", error);
           controller.error(error);
         }
       },
@@ -115,6 +123,7 @@ export class S2MetadataStream<T = any> implements StreamInstance {
   }
 
   private startBuffering(): void {
+    this.log("[S2MetadataStream] Starting buffering task");
     this.streamReader = this.serverStream.getReader();
 
     this.bufferReaderTask = (async () => {
@@ -126,20 +135,29 @@ export class S2MetadataStream<T = any> implements StreamInstance {
 
           if (done) {
             this.streamComplete = true;
+            this.log(`[S2MetadataStream] Stream complete after ${chunkCount} chunks`);
             break;
           }
 
           // Add to pending flushes
           this.pendingFlushes.push(value);
           chunkCount++;
+
+          if (chunkCount % 100 === 0) {
+            this.log(
+              `[S2MetadataStream] Buffered ${chunkCount} chunks, pending flushes: ${this.pendingFlushes.length}`
+            );
+          }
         }
       } catch (error) {
+        this.logError("[S2MetadataStream] Error in buffering task:", error);
         throw error;
       }
     })();
   }
 
   private startPeriodicFlush(): void {
+    this.log(`[S2MetadataStream] Starting periodic flush (every ${this.flushIntervalMs}ms)`);
     this.flushInterval = setInterval(() => {
       this.flush().catch(() => {
         // Errors are already logged in flush()
@@ -154,10 +172,10 @@ export class S2MetadataStream<T = any> implements StreamInstance {
 
     // Take all pending chunks
     const chunksToFlush = this.pendingFlushes.splice(0);
+    this.log(`[S2MetadataStream] Flushing ${chunksToFlush.length} chunks to S2`);
 
     // Add flush to limiter queue to ensure sequential execution
     const flushPromise = this.limiter(async () => {
-      const startTime = Date.now();
       try {
         // Convert chunks to S2 record format (body as JSON string)
         const records = chunksToFlush.map((data) => ({
@@ -170,21 +188,20 @@ export class S2MetadataStream<T = any> implements StreamInstance {
           appendInput: { records },
         });
 
-        const duration = Date.now() - startTime;
+        this.log(`[S2MetadataStream] Successfully flushed ${chunksToFlush.length} chunks`);
 
         // Reset retry count on success
         this.retryCount = 0;
       } catch (error) {
-        console.error("[S2MetadataStream] Flush error", {
-          error,
-          count: chunksToFlush.length,
-          retryCount: this.retryCount,
-        });
-
         // Handle retryable errors
         if (this.isRetryableError(error) && this.retryCount < this.maxRetries) {
           this.retryCount++;
           const delayMs = this.calculateBackoffDelay();
+
+          this.logError(
+            `[S2MetadataStream] Flush failed (attempt ${this.retryCount}/${this.maxRetries}), retrying in ${delayMs}ms:`,
+            error
+          );
 
           await this.delay(delayMs);
 
@@ -192,10 +209,10 @@ export class S2MetadataStream<T = any> implements StreamInstance {
           this.pendingFlushes.unshift(...chunksToFlush);
           await this.flush();
         } else {
-          console.error("[S2MetadataStream] Max retries exceeded or non-retryable error", {
-            retryCount: this.retryCount,
-            maxRetries: this.maxRetries,
-          });
+          this.logError(
+            `[S2MetadataStream] Flush failed permanently after ${this.retryCount} retries:`,
+            error
+          );
           throw error;
         }
       }
@@ -205,20 +222,28 @@ export class S2MetadataStream<T = any> implements StreamInstance {
   }
 
   private async initializeServerStream(): Promise<void> {
+    this.log("[S2MetadataStream] Waiting for buffer task to complete");
     // Wait for buffer task and all flushes to complete
     await this.bufferReaderTask;
 
+    this.log(
+      `[S2MetadataStream] Buffer task complete, performing final flush (${this.pendingFlushes.length} pending chunks)`
+    );
     // Final flush
     await this.flush();
 
+    this.log(`[S2MetadataStream] Waiting for ${this.flushPromises.length} flush promises`);
     // Wait for all pending flushes
     await Promise.all(this.flushPromises);
 
+    this.log("[S2MetadataStream] All flushes complete, cleaning up");
     // Clean up
     if (this.flushInterval) {
       clearInterval(this.flushInterval);
       this.flushInterval = null;
     }
+
+    this.log("[S2MetadataStream] Stream completed successfully");
   }
 
   public async wait(): Promise<void> {
@@ -230,6 +255,18 @@ export class S2MetadataStream<T = any> implements StreamInstance {
   }
 
   // Helper methods
+
+  private log(message: string): void {
+    if (this.debug) {
+      console.log(message);
+    }
+  }
+
+  private logError(message: string, error?: any): void {
+    if (this.debug) {
+      console.error(message, error);
+    }
+  }
 
   private isRetryableError(error: any): boolean {
     if (!error) return false;

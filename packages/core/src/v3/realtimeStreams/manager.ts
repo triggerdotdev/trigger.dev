@@ -15,7 +15,8 @@ import { S2MetadataStream } from "../runMetadata/s2MetadataStream.js";
 export class StandardRealtimeStreamsManager implements RealtimeStreamsManager {
   constructor(
     private apiClient: ApiClient,
-    private baseUrl: string
+    private baseUrl: string,
+    private debug: boolean = false
   ) {}
   // Add a Map to track active streams
   private activeStreams = new Map<string, { wait: () => Promise<void> }>();
@@ -65,6 +66,7 @@ export class StandardRealtimeStreamsManager implements RealtimeStreamsManager {
             source,
             signal: options?.signal,
             limiter: (await import("p-limit")).default,
+            debug: this.debug,
           });
 
     this.activeStreams.set(key, streamInstance);
