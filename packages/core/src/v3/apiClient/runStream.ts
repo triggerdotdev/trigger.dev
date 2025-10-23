@@ -1,12 +1,12 @@
-import { EventSourceParserStream } from "eventsource-parser/stream";
+import { EventSourceMessage, EventSourceParserStream } from "eventsource-parser/stream";
 import { DeserializedJson } from "../../schemas/json.js";
 import { createJsonErrorObject } from "../errors.js";
-import {
-  RunStatus,
-  SubscribeRealtimeStreamChunkRawShape,
-  SubscribeRunRawShape,
-} from "../schemas/api.js";
+import { RunStatus, SubscribeRunRawShape } from "../schemas/api.js";
 import { SerializedError } from "../schemas/common.js";
+import {
+  AsyncIterableStream,
+  createAsyncIterableReadable,
+} from "../streams/asyncIterableStream.js";
 import { AnyRunTypes, AnyTask, InferRunTypes } from "../types/tasks.js";
 import { getEnvVar } from "../utils/getEnv.js";
 import {
@@ -16,11 +16,7 @@ import {
 } from "../utils/ioSerialization.js";
 import { ApiError } from "./errors.js";
 import { ApiClient } from "./index.js";
-import { LineTransformStream, zodShapeStream } from "./stream.js";
-import {
-  AsyncIterableStream,
-  createAsyncIterableReadable,
-} from "../streams/asyncIterableStream.js";
+import { zodShapeStream } from "./stream.js";
 
 export type RunShape<TRunTypes extends AnyRunTypes> = TRunTypes extends AnyRunTypes
   ? {
@@ -157,7 +153,7 @@ export function runShapeStream<TRunTypes extends AnyRunTypes>(
 
 // First, define interfaces for the stream handling
 export interface StreamSubscription {
-  subscribe(): Promise<ReadableStream<unknown>>;
+  subscribe(): Promise<ReadableStream<SSEStreamPart<unknown>>>;
 }
 
 export type CreateStreamSubscriptionOptions = {
@@ -175,6 +171,12 @@ export interface StreamSubscriptionFactory {
     options?: CreateStreamSubscriptionOptions
   ): StreamSubscription;
 }
+
+export type SSEStreamPart<TChunk = unknown> = {
+  id: string;
+  chunk: TChunk;
+  timestamp: number;
+};
 
 // Real implementation for production
 export class SSEStreamSubscription implements StreamSubscription {
@@ -197,7 +199,7 @@ export class SSEStreamSubscription implements StreamSubscription {
     this.lastEventId = options.lastEventId;
   }
 
-  async subscribe(): Promise<ReadableStream<unknown>> {
+  async subscribe(): Promise<ReadableStream<SSEStreamPart>> {
     const self = this;
 
     return new ReadableStream({
@@ -210,7 +212,9 @@ export class SSEStreamSubscription implements StreamSubscription {
     });
   }
 
-  private async connectStream(controller: ReadableStreamDefaultController): Promise<void> {
+  private async connectStream(
+    controller: ReadableStreamDefaultController<SSEStreamPart>
+  ): Promise<void> {
     try {
       const headers: Record<string, string> = {
         Accept: "text/event-stream",
@@ -259,14 +263,21 @@ export class SSEStreamSubscription implements StreamSubscription {
         .pipeThrough(new TextDecoderStream())
         .pipeThrough(new EventSourceParserStream())
         .pipeThrough(
-          new TransformStream({
+          new TransformStream<EventSourceMessage, SSEStreamPart>({
             transform: (chunk, chunkController) => {
               if (streamVersion === "v1") {
                 // Track the last event ID for resume support
                 if (chunk.id) {
                   this.lastEventId = chunk.id;
                 }
-                chunkController.enqueue(safeParseJSON(chunk.data));
+
+                const timestamp = parseRedisStreamIdTimestamp(chunk.id);
+
+                chunkController.enqueue({
+                  id: chunk.id ?? "unknown",
+                  chunk: safeParseJSON(chunk.data),
+                  timestamp,
+                });
               } else {
                 if (chunk.event === "batch") {
                   const data = safeParseJSON(chunk.data) as {
@@ -276,7 +287,11 @@ export class SSEStreamSubscription implements StreamSubscription {
                   for (const record of data.records) {
                     this.lastEventId = record.seq_num.toString();
 
-                    chunkController.enqueue(safeParseJSON(record.body));
+                    chunkController.enqueue({
+                      id: record.seq_num.toString(),
+                      chunk: safeParseJSON(record.body),
+                      timestamp: record.timestamp,
+                    });
                   }
                 }
               }
@@ -490,7 +505,7 @@ export class RunSubscription<TRunTypes extends AnyRunTypes> {
                         transform(chunk, controller) {
                           controller.enqueue({
                             type: streamKey,
-                            chunk: chunk as TStreams[typeof streamKey],
+                            chunk: chunk.chunk as TStreams[typeof streamKey],
                             run,
                           });
                         },
@@ -739,4 +754,18 @@ function getStreamsFromRunShape(run: AnyRunShape): string[] {
   }
 
   return run.realtimeStreams;
+}
+
+// Redis stream IDs are in the format: <timestamp>-<sequence>
+function parseRedisStreamIdTimestamp(id?: string): number {
+  if (!id) {
+    return Date.now();
+  }
+
+  const timestamp = parseInt(id.split("-")[0] as string);
+  if (isNaN(timestamp)) {
+    return Date.now();
+  }
+
+  return timestamp;
 }

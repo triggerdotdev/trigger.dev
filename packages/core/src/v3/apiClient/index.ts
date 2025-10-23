@@ -74,6 +74,7 @@ import {
   TaskRunShape,
   runShapeStream,
   RealtimeRunSkipColumns,
+  type SSEStreamPart,
 } from "./runStream.js";
 import {
   CreateEnvironmentVariableParams,
@@ -142,6 +143,7 @@ export type {
   RunStreamCallback,
   RunSubscription,
   TaskRunShape,
+  SSEStreamPart,
 };
 
 export * from "./getBranch.js";
@@ -1095,7 +1097,13 @@ export class ApiClient {
 
     const stream = await subscription.subscribe();
 
-    return stream as AsyncIterableStream<T>;
+    return stream.pipeThrough(
+      new TransformStream<SSEStreamPart, T>({
+        transform(chunk, controller) {
+          controller.enqueue(chunk.chunk as T);
+        },
+      })
+    );
   }
 
   async createStream(

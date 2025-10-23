@@ -19,11 +19,16 @@ export type AppendStreamOptions = {
   requestOptions?: ApiRequestOptions;
 };
 
+export type AppendStreamResult<T> = {
+  stream: AsyncIterableStream<T>;
+  waitUntilComplete: () => Promise<void>;
+};
+
 async function append<T>(
   key: string,
   value: AsyncIterable<T> | ReadableStream<T>,
   options?: AppendStreamOptions
-): Promise<RealtimeStreamInstance<T>> {
+): Promise<AppendStreamResult<T>> {
   const runId = getRunIdForOptions(options);
 
   if (!runId) {
@@ -64,7 +69,10 @@ async function append<T>(
       span.end();
     });
 
-    return instance;
+    return {
+      stream: instance.stream,
+      waitUntilComplete: () => instance.wait(),
+    };
   } catch (error) {
     // if the error is a signal abort error, we need to end the span but not record an exception
     if (error instanceof Error && error.name === "AbortError") {

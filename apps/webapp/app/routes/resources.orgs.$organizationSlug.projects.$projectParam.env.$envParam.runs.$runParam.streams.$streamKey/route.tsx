@@ -1,5 +1,5 @@
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { SSEStreamSubscription } from "@trigger.dev/core/v3";
+import { SSEStreamPart, SSEStreamSubscription } from "@trigger.dev/core/v3";
 import { useEffect, useRef, useState } from "react";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { $replica } from "~/db.server";
@@ -12,6 +12,7 @@ import { cn } from "~/utils/cn";
 import { v3RunStreamParamsSchema } from "~/utils/pathBuilder";
 
 type StreamChunk = {
+  id: string;
   data: unknown;
   timestamp: number;
 };
@@ -261,7 +262,7 @@ function useRealtimeStream(resourcePath: string, startIndex?: number) {
 
   useEffect(() => {
     const abortController = new AbortController();
-    let reader: ReadableStreamDefaultReader<unknown> | null = null;
+    let reader: ReadableStreamDefaultReader<SSEStreamPart<unknown>> | null = null;
 
     async function connectAndConsume() {
       try {
@@ -288,8 +289,9 @@ function useRealtimeStream(resourcePath: string, startIndex?: number) {
             setChunks((prev) => [
               ...prev,
               {
-                data: value,
-                timestamp: Date.now(),
+                id: value.id,
+                data: value.chunk,
+                timestamp: value.timestamp,
               },
             ]);
           }
