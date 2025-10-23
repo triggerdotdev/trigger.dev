@@ -149,19 +149,19 @@ traceContext.setGlobalManager(standardTraceContextManager);
 
 const durableClock = new DurableClock();
 clock.setGlobalClock(durableClock);
-const runMetadataManager = new StandardMetadataManager(
-  apiClientManager.clientOrThrow(),
-  getEnvVar("TRIGGER_STREAM_URL", getEnvVar("TRIGGER_API_URL")) ?? "https://api.trigger.dev"
-);
+const runMetadataManager = new StandardMetadataManager(apiClientManager.clientOrThrow());
 runMetadata.setGlobalManager(runMetadataManager);
 
 const standardRealtimeStreamsManager = new StandardRealtimeStreamsManager(
   apiClientManager.clientOrThrow(),
-  getEnvVar("TRIGGER_STREAM_URL", getEnvVar("TRIGGER_API_URL")) ?? "https://api.trigger.dev"
+  getEnvVar("TRIGGER_STREAM_URL", getEnvVar("TRIGGER_API_URL")) ?? "https://api.trigger.dev",
+  (getEnvVar("TRIGGER_STREAMS_DEBUG") === "1" || getEnvVar("TRIGGER_STREAMS_DEBUG") === "true") ??
+    false
 );
 realtimeStreams.setGlobalManager(standardRealtimeStreamsManager);
 
-const waitUntilManager = new StandardWaitUntilManager();
+const waitUntilTimeoutInMs = getNumberEnvVar("TRIGGER_WAIT_UNTIL_TIMEOUT_MS", 60_000);
+const waitUntilManager = new StandardWaitUntilManager(waitUntilTimeoutInMs);
 waitUntil.setGlobalManager(waitUntilManager);
 
 const triggerLogLevel = getEnvVar("TRIGGER_LOG_LEVEL");
@@ -531,10 +531,6 @@ const zodIpc = new ZodIpcConnection({
 
         runMetadataManager.runId = execution.run.id;
         runMetadataManager.runIdIsRoot = typeof execution.run.rootTaskRunId === "undefined";
-        runMetadataManager.streamsVersion =
-          typeof execution.run.realtimeStreamsVersion === "undefined"
-            ? "v1"
-            : execution.run.realtimeStreamsVersion;
 
         _executionCount++;
 

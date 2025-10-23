@@ -573,6 +573,176 @@ export function useRealtimeBatch<TTask extends AnyTask>(
   return { runs: runs ?? [], error, stop };
 }
 
+export type UseRealtimeStreamInstance<TPart> = {
+  parts: Array<TPart>;
+
+  error: Error | undefined;
+
+  /**
+   * Abort the current request immediately, keep the generated tokens if any.
+   */
+  stop: () => void;
+};
+
+export type UseRealtimeStreamOptions<TPart> = UseApiClientOptions & {
+  id?: string;
+  enabled?: boolean;
+  experimental_throttleInMs?: number;
+  /**
+   * The number of seconds to wait for new data to be available,
+   * If no data arrives within the timeout, the stream will be closed.
+   *
+   * @default 60 seconds
+   */
+  timeoutInSeconds?: number;
+
+  /**
+   * The index to start reading from.
+   * If not provided, the stream will start from the beginning.
+   * @default 0
+   */
+  startIndex?: number;
+
+  /**
+   * Callback this is called when new data is received.
+   */
+  onData?: (data: TPart) => void;
+};
+
+/**
+ * Hook to subscribe to realtime updates of a stream.
+ *
+ * @template TPart - The type of the part
+ * @param {string} runId - The unique identifier of the run to subscribe to
+ * @param {string} streamKey - The unique identifier of the stream to subscribe to
+ * @param {UseRealtimeStreamOptions<TPart>} [options] - Configuration options for the subscription
+ * @returns {UseRealtimeStreamInstance<TPart>} An object containing the current state of the stream, and error handling
+ *
+ * @example
+ * ```ts
+ * const { parts, error } = useRealtimeStream<string>('run-id-123', 'stream-key-123');
+ *
+ * for (const part of parts) {
+ *   console.log(part);
+ * }
+ * ```
+ */
+export function useRealtimeStream<TPart>(
+  runId: string,
+  streamKey: string,
+  options?: UseRealtimeStreamOptions<TPart>
+): UseRealtimeStreamInstance<TPart> {
+  const hookId = useId();
+  const idKey = options?.id ?? hookId;
+
+  const [initialPartsFallback] = useState([] as Array<TPart>);
+
+  // Store the streams state in SWR, using the idKey as the key to share states.
+  const { data: parts, mutate: mutateParts } = useSWR<Array<TPart>>(
+    [idKey, runId, streamKey, "parts"],
+    null,
+    {
+      fallbackData: initialPartsFallback,
+    }
+  );
+
+  // Keep the latest streams in a ref.
+  const partsRef = useRef<Array<TPart>>(parts ?? ([] as Array<TPart>));
+  useEffect(() => {
+    partsRef.current = parts || ([] as Array<TPart>);
+  }, [parts]);
+
+  // Add state to track when the subscription is complete
+  const { data: isComplete = false, mutate: setIsComplete } = useSWR<boolean>(
+    [idKey, runId, streamKey, "complete"],
+    null
+  );
+
+  const { data: error = undefined, mutate: setError } = useSWR<undefined | Error>(
+    [idKey, runId, streamKey, "error"],
+    null
+  );
+
+  // Abort controller to cancel the current API call.
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const stop = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+  }, []);
+
+  const onData = useCallback(
+    (data: TPart) => {
+      if (options?.onData) {
+        options.onData(data);
+      }
+    },
+    [options?.onData]
+  );
+
+  const apiClient = useApiClient(options);
+
+  const triggerRequest = useCallback(async () => {
+    try {
+      if (!runId || !apiClient) {
+        return;
+      }
+
+      const abortController = new AbortController();
+      abortControllerRef.current = abortController;
+
+      await processRealtimeStream<TPart>(
+        runId,
+        streamKey,
+        apiClient,
+        mutateParts,
+        partsRef,
+        setError,
+        onData,
+        abortControllerRef,
+        options?.timeoutInSeconds,
+        options?.startIndex,
+        options?.experimental_throttleInMs
+      );
+    } catch (err) {
+      // Ignore abort errors as they are expected.
+      if ((err as any).name === "AbortError") {
+        abortControllerRef.current = null;
+        return;
+      }
+
+      setError(err as Error);
+    } finally {
+      if (abortControllerRef.current) {
+        abortControllerRef.current = null;
+      }
+
+      // Mark the subscription as complete
+      setIsComplete(true);
+    }
+  }, [runId, streamKey, mutateParts, partsRef, abortControllerRef, apiClient, setError]);
+
+  useEffect(() => {
+    if (typeof options?.enabled === "boolean" && !options.enabled) {
+      return;
+    }
+
+    if (!runId) {
+      return;
+    }
+
+    triggerRequest().finally(() => {});
+
+    return () => {
+      stop();
+    };
+  }, [runId, stop, options?.enabled]);
+
+  return { parts: parts ?? initialPartsFallback, error, stop };
+}
+
 async function processRealtimeBatch<TTask extends AnyTask = AnyTask>(
   batchId: string,
   apiClient: ApiClient,
@@ -732,5 +902,49 @@ async function processRealtimeRun<TTask extends AnyTask = AnyTask>(
 
   for await (const part of subscription) {
     mutateRunData(part);
+  }
+}
+
+async function processRealtimeStream<TPart>(
+  runId: string,
+  streamKey: string,
+  apiClient: ApiClient,
+  mutatePartsData: KeyedMutator<Array<TPart>>,
+  existingPartsRef: React.MutableRefObject<Array<TPart>>,
+  onError: (e: Error) => void,
+  onData: (data: TPart) => void,
+  abortControllerRef: React.MutableRefObject<AbortController | null>,
+  timeoutInSeconds?: number,
+  startIndex?: number,
+  throttleInMs?: number
+) {
+  try {
+    const stream = await apiClient.fetchStream<TPart>(runId, streamKey, {
+      signal: abortControllerRef.current?.signal,
+      timeoutInSeconds,
+      lastEventId: startIndex ? (startIndex - 1).toString() : undefined,
+    });
+
+    // Throttle the stream
+    const streamQueue = createThrottledQueue<TPart>(async (parts) => {
+      mutatePartsData([...existingPartsRef.current, ...parts]);
+    }, throttleInMs);
+
+    for await (const part of stream) {
+      onData(part);
+      streamQueue.add(part);
+    }
+  } catch (err) {
+    if ((err as any).name === "AbortError") {
+      return;
+    }
+
+    if (err instanceof Error) {
+      onError(err);
+    } else {
+      onError(new Error(String(err)));
+    }
+
+    throw err;
   }
 }
