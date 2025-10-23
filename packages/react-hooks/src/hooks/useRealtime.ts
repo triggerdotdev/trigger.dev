@@ -428,6 +428,9 @@ export function useRealtimeRunsWithTag<TTask extends AnyTask>(
 
   const apiClient = useApiClient(options);
 
+  const stableTag = Array.isArray(tag)
+    ? JSON.stringify([...tag].sort())
+    : tag;
   const triggerRequest = useCallback(async () => {
     try {
       if (!apiClient) {
@@ -459,7 +462,7 @@ export function useRealtimeRunsWithTag<TTask extends AnyTask>(
         abortControllerRef.current = null;
       }
     }
-  }, [tag, mutateRuns, runsRef, abortControllerRef, apiClient, setError]);
+  }, [stableTag, mutateRuns, runsRef, abortControllerRef, apiClient, setError]);
 
   useEffect(() => {
     if (typeof options?.enabled === "boolean" && !options.enabled) {
@@ -471,7 +474,7 @@ export function useRealtimeRunsWithTag<TTask extends AnyTask>(
     return () => {
       stop();
     };
-  }, [tag, stop, options?.enabled]);
+  }, [stableTag, stop, options?.enabled]);
 
   return { runs: runs ?? [], error, stop };
 }
