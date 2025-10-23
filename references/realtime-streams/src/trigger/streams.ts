@@ -1,4 +1,4 @@
-import { logger, metadata, task } from "@trigger.dev/sdk";
+import { logger, streams, task } from "@trigger.dev/sdk";
 import { setTimeout } from "timers/promises";
 
 export type STREAMS = {
@@ -44,7 +44,7 @@ export type StreamPayload = {
 
 export const streamsTask = task({
   id: "streams",
-  run: async (payload: StreamPayload = {}) => {
+  run: async (payload: StreamPayload = {}, { ctx }) => {
     await setTimeout(1000);
 
     const scenario = payload.scenario ?? "continuous";
@@ -64,7 +64,7 @@ export const streamsTask = task({
         break;
       }
       case "continuous": {
-        const durationSec = payload.durationSec ?? 45;
+        const durationSec = payload.durationSec ?? 10;
         const intervalMs = payload.intervalMs ?? 10;
         generator = generateContinuousTokenStream(durationSec, intervalMs);
         scenarioDescription = `Continuous scenario: ${durationSec}s with ${intervalMs}ms intervals`;
@@ -112,10 +112,19 @@ export const streamsTask = task({
     logger.info("Starting stream", { scenarioDescription });
 
     const mockStream = createStreamFromGenerator(generator);
-    const stream = await metadata.stream("stream", mockStream);
+
+    await streams.append("stream", mockStream);
+
+    await setTimeout(1000);
+
+    const stream = await streams.read(ctx.run.id, "stream", {
+      timeoutInSeconds: 10,
+      startIndex: 10,
+    });
 
     let tokenCount = 0;
     for await (const chunk of stream) {
+      console.log(chunk);
       tokenCount++;
     }
 

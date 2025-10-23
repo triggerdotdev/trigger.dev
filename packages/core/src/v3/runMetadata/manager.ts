@@ -1,36 +1,18 @@
 import { dequal } from "dequal/lite";
 import { DeserializedJson } from "../../schemas/json.js";
 import { ApiClient } from "../apiClient/index.js";
+import { realtimeStreams } from "../realtime-streams-api.js";
 import { RunMetadataChangeOperation } from "../schemas/common.js";
 import { AsyncIterableStream } from "../streams/asyncIterableStream.js";
 import { IOPacket, stringifyIO } from "../utils/ioSerialization.js";
 import { ApiRequestOptions } from "../zodfetch.js";
-import { MetadataStream } from "./metadataStream.js";
 import { applyMetadataOperations, collapseOperations } from "./operations.js";
-import type { RunMetadataManager, RunMetadataUpdater, StreamInstance } from "./types.js";
-import { S2MetadataStream } from "./s2MetadataStream.js";
-
-const MAXIMUM_ACTIVE_STREAMS = 10;
-const MAXIMUM_TOTAL_STREAMS = 20;
-
-type ParsedStreamResponse =
-  | {
-      version: "v1";
-    }
-  | {
-      version: "v2";
-      accessToken: string;
-      basin: string;
-      flushIntervalMs?: number;
-      maxRetries?: number;
-    };
+import type { RunMetadataManager, RunMetadataUpdater } from "./types.js";
 
 export class StandardMetadataManager implements RunMetadataManager {
   private flushTimeoutId: NodeJS.Timeout | null = null;
   private isFlushing: boolean = false;
   private store: Record<string, DeserializedJson> | undefined;
-  // Add a Map to track active streams
-  private activeStreams = new Map<string, StreamInstance>();
 
   private queuedOperations: Set<RunMetadataChangeOperation> = new Set();
   private queuedParentOperations: Set<RunMetadataChangeOperation> = new Set();
@@ -38,18 +20,13 @@ export class StandardMetadataManager implements RunMetadataManager {
 
   public runId: string | undefined;
   public runIdIsRoot: boolean = false;
-  public streamsVersion: string = "v1";
 
-  constructor(
-    private apiClient: ApiClient,
-    private streamsBaseUrl: string
-  ) {}
+  constructor(private apiClient: ApiClient) {}
 
   reset(): void {
     this.queuedOperations.clear();
     this.queuedParentOperations.clear();
     this.queuedRootOperations.clear();
-    this.activeStreams.clear();
     this.store = undefined;
     this.runId = undefined;
     this.runIdIsRoot = false;
@@ -326,15 +303,7 @@ export class StandardMetadataManager implements RunMetadataManager {
   }
 
   public async fetchStream<T>(key: string, signal?: AbortSignal): Promise<AsyncIterableStream<T>> {
-    if (!this.runId) {
-      throw new Error("Run ID is required to fetch metadata streams.");
-    }
-
-    const baseUrl = this.getKey("$$streamsBaseUrl");
-
-    const $baseUrl = typeof baseUrl === "string" ? baseUrl : this.streamsBaseUrl;
-
-    return this.apiClient.fetchStream<T>(this.runId, key, { baseUrl: $baseUrl, signal });
+    throw new Error("This needs to use the new realtime streams API");
   }
 
   private async doStream<T>(
@@ -350,84 +319,12 @@ export class StandardMetadataManager implements RunMetadataManager {
       return $value;
     }
 
-    // Check to make sure we haven't exceeded the max number of active streams
-    if (this.activeStreams.size >= MAXIMUM_ACTIVE_STREAMS) {
-      console.warn(
-        `Exceeded the maximum number of active streams (${MAXIMUM_ACTIVE_STREAMS}). The "${key}" stream will be ignored.`
-      );
-      return $value;
-    }
+    const streamInstance = await realtimeStreams.append(key, value, {
+      signal,
+      target,
+    });
 
-    // Check to make sure we haven't exceeded the max number of total streams
-    const streams = (this.store?.$$streams ?? []) as string[];
-
-    if (streams.length >= MAXIMUM_TOTAL_STREAMS) {
-      console.warn(
-        `Exceeded the maximum number of total streams (${MAXIMUM_TOTAL_STREAMS}). The "${key}" stream will be ignored.`
-      );
-      return $value;
-    }
-
-    const { version, headers } = await this.apiClient.createStream(this.runId, target, key);
-
-    const parsedResponse = this.#parseCreateStreamResponse(version, headers);
-
-    const streamInstance =
-      parsedResponse.version === "v1"
-        ? new MetadataStream({
-            key,
-            runId: this.runId,
-            source: $value,
-            baseUrl: this.streamsBaseUrl,
-            headers: this.apiClient.getHeaders(),
-            signal,
-            version,
-            target,
-          })
-        : new S2MetadataStream({
-            basin: parsedResponse.basin,
-            stream: key,
-            accessToken: parsedResponse.accessToken,
-            source: $value,
-            signal,
-            limiter: (await import("p-limit")).default,
-          });
-
-    this.activeStreams.set(key, streamInstance);
-
-    // Clean up when stream completes
-    streamInstance.wait().finally(() => this.activeStreams.delete(key));
-
-    return streamInstance;
-  }
-
-  public hasActiveStreams(): boolean {
-    return this.activeStreams.size > 0;
-  }
-
-  // Waits for all the streams to finish
-  public async waitForAllStreams(timeout: number = 60_000): Promise<void> {
-    if (this.activeStreams.size === 0) {
-      return;
-    }
-
-    const promises = Array.from(this.activeStreams.values()).map((stream) => stream.wait());
-
-    try {
-      await Promise.race([
-        Promise.allSettled(promises),
-        new Promise<void>((resolve, _) => setTimeout(() => resolve(), timeout)),
-      ]);
-    } catch (error) {
-      console.error("Error waiting for streams to finish:", error);
-
-      // If we time out, abort all remaining streams
-      for (const [key, promise] of this.activeStreams.entries()) {
-        // We can add abort logic here if needed
-        this.activeStreams.delete(key);
-      }
-      throw error;
-    }
+    return streamInstance.stream;
   }
 
   public async refresh(requestOptions?: ApiRequestOptions): Promise<void> {
@@ -551,32 +448,5 @@ export class StandardMetadataManager implements RunMetadataManager {
       this.queuedParentOperations.size > 0 ||
       this.queuedRootOperations.size > 0
     );
-  }
-
-  #parseCreateStreamResponse(
-    version: string,
-    headers: Record<string, string> | undefined
-  ): ParsedStreamResponse {
-    if (version === "v1") {
-      return { version: "v1" };
-    }
-
-    const accessToken = headers?.["x-s2-access-token"];
-    const basin = headers?.["x-s2-basin"];
-
-    if (!accessToken || !basin) {
-      return { version: "v1" };
-    }
-
-    const flushIntervalMs = headers?.["x-s2-flush-interval-ms"];
-    const maxRetries = headers?.["x-s2-max-retries"];
-
-    return {
-      version: "v2",
-      accessToken,
-      basin,
-      flushIntervalMs: flushIntervalMs ? parseInt(flushIntervalMs) : undefined,
-      maxRetries: maxRetries ? parseInt(maxRetries) : undefined,
-    };
   }
 }

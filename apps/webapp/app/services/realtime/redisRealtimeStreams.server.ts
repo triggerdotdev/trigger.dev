@@ -1,7 +1,7 @@
 import { Logger, LogLevel } from "@trigger.dev/core/logger";
 import Redis, { RedisOptions } from "ioredis";
 import { env } from "~/env.server";
-import { StreamIngestor, StreamResponder } from "./types";
+import { StreamIngestor, StreamResponder, StreamResponseOptions } from "./types";
 
 export type RealtimeStreamsOptions = {
   redis: RedisOptions | undefined;
@@ -41,7 +41,7 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
     runId: string,
     streamId: string,
     signal: AbortSignal,
-    lastEventId?: string
+    options?: StreamResponseOptions
   ): Promise<Response> {
     const redis = new Redis(this.options.redis ?? {});
     const streamKey = `stream:${runId}:${streamId}`;
@@ -50,7 +50,7 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
     const stream = new ReadableStream<StreamChunk>({
       start: async (controller) => {
         // Start from lastEventId if provided, otherwise from beginning
-        let lastId = lastEventId || "0";
+        let lastId = options?.lastEventId ?? "0";
         let retryCount = 0;
         const maxRetries = 3;
         let lastDataTime = Date.now();
@@ -58,10 +58,10 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
         const blockTimeMs = 5000;
         const pingIntervalMs = 10000; // 10 seconds
 
-        if (lastEventId) {
+        if (options?.lastEventId) {
           this.logger.debug("[RealtimeStreams][streamResponse] Resuming from lastEventId", {
             streamKey,
-            lastEventId,
+            lastEventId: options?.lastEventId,
           });
         }
 
@@ -139,15 +139,19 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
 
                 // If we didn't find any data in this batch, might have only seen sentinels
                 if (!foundData) {
+                  const inactivityTimeoutMs = options?.timeoutInSeconds
+                    ? options.timeoutInSeconds * 1000
+                    : this.inactivityTimeoutMs;
+
                   // Check for inactivity timeout
                   const inactiveMs = Date.now() - lastDataTime;
-                  if (inactiveMs >= this.inactivityTimeoutMs) {
+                  if (inactiveMs >= inactivityTimeoutMs) {
                     this.logger.debug(
                       "[RealtimeStreams][streamResponse] Closing stream due to inactivity",
                       {
                         streamKey,
                         inactiveMs,
-                        threshold: this.inactivityTimeoutMs,
+                        threshold: inactivityTimeoutMs,
                       }
                     );
                     controller.close();

@@ -551,6 +551,36 @@ export class SpanPresenter extends BasePresenter {
           },
         };
       }
+      case "realtime-stream": {
+        if (!span.entity.id) {
+          logger.error(`SpanPresenter: No realtime stream id`, {
+            spanId,
+            realtimeStreamId: span.entity.id,
+          });
+          return { ...data, entity: null };
+        }
+
+        const [runId, streamKey] = span.entity.id.split(":");
+
+        if (!runId || !streamKey) {
+          logger.error(`SpanPresenter: Invalid realtime stream id`, {
+            spanId,
+            realtimeStreamId: span.entity.id,
+          });
+          return { ...data, entity: null };
+        }
+
+        return {
+          ...data,
+          entity: {
+            type: "realtime-stream" as const,
+            object: {
+              runId,
+              streamKey,
+            },
+          },
+        };
+      }
       default:
         return { ...data, entity: null };
     }

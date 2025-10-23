@@ -70,6 +70,7 @@ import {
   RunStreamCallback,
   RunSubscription,
   SSEStreamSubscriptionFactory,
+  SSEStreamSubscription,
   TaskRunShape,
   runShapeStream,
   RealtimeRunSkipColumns,
@@ -131,7 +132,7 @@ export type ApiClientFutureFlags = {
   unstable_v2RealtimeStreams?: boolean;
 };
 
-export { isRequestOptions };
+export { isRequestOptions, SSEStreamSubscription };
 export type {
   AnyRealtimeRun,
   AnyRunShape,
@@ -1071,14 +1072,26 @@ export class ApiClient {
   async fetchStream<T>(
     runId: string,
     streamKey: string,
-    options?: { signal?: AbortSignal; baseUrl?: string }
+    options?: {
+      signal?: AbortSignal;
+      baseUrl?: string;
+      timeoutInSeconds?: number;
+      onComplete?: () => void;
+      onError?: (error: Error) => void;
+      lastEventId?: string;
+    }
   ): Promise<AsyncIterableStream<T>> {
     const streamFactory = new SSEStreamSubscriptionFactory(options?.baseUrl ?? this.baseUrl, {
       headers: this.getHeaders(),
       signal: options?.signal,
     });
 
-    const subscription = streamFactory.createSubscription(runId, streamKey);
+    const subscription = streamFactory.createSubscription(runId, streamKey, {
+      onComplete: options?.onComplete,
+      onError: options?.onError,
+      timeoutInSeconds: options?.timeoutInSeconds,
+      lastEventId: options?.lastEventId,
+    });
 
     const stream = await subscription.subscribe();
 
