@@ -1232,7 +1232,7 @@ const EnvironmentSchema = z
     REALTIME_STREAMS_S2_FLUSH_INTERVAL_MS: z.coerce.number().int().default(100),
     REALTIME_STREAMS_S2_MAX_RETRIES: z.coerce.number().int().default(10),
     REALTIME_STREAMS_S2_WAIT_SECONDS: z.coerce.number().int().default(60),
-    WAIT_UNTIL_TIMEOUT_MS: z.coerce.number().int().default(60_000),
+    WAIT_UNTIL_TIMEOUT_MS: z.coerce.number().int().default(600_000),
   })
   .and(GithubAppEnvSchema)
   .and(S2EnvSchema);

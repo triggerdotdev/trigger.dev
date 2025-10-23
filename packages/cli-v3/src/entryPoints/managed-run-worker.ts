@@ -140,7 +140,8 @@ const standardRealtimeStreamsManager = new StandardRealtimeStreamsManager(
 );
 realtimeStreams.setGlobalManager(standardRealtimeStreamsManager);
 
-const waitUntilManager = new StandardWaitUntilManager();
+const waitUntilTimeoutInMs = getNumberEnvVar("TRIGGER_WAIT_UNTIL_TIMEOUT_MS", 60_000);
+const waitUntilManager = new StandardWaitUntilManager(waitUntilTimeoutInMs);
 waitUntil.setGlobalManager(waitUntilManager);
 
 const standardHeartbeatsManager = new StandardHeartbeatsManager(
