@@ -140,24 +140,25 @@ export function RealtimeStreamViewer({
     <div className="flex h-full flex-col overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-grid-bright bg-background-bright px-3 py-2">
-          <Paragraph variant="small/bright" className="mb-0">
-            Stream: <span className="font-mono text-text-dimmed">{streamKey}</span>
-          </Paragraph>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-0.5">
-            {isConnected ? (
-              <BoltIcon className={cn("size-3.5 animate-pulse text-success")} />
-            ) : (
-              <BoltSlashIcon className={cn("size-3.5 text-text-dimmed")} />
-            )}
-            <Paragraph variant="small" className="mb-0">
-              {isConnected ? "Connected" : "Disconnected"}
-            </Paragraph>
-          </div>
-        <Paragraph variant="small" className="mb-0">
-          {chunks.length} {chunks.length === 1 ? "chunk" : "chunks"}
+        <Paragraph variant="small/bright" className="mb-0">
+          Stream: <span className="font-mono text-text-dimmed">{streamKey}</span>
         </Paragraph>
-            </div>
+        <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
+          {isConnected ? (
+            <BoltIcon className={cn("size-3.5 animate-pulse text-success")} />
+          ) : (
+            <BoltSlashIcon className={cn("size-3.5 text-text-dimmed")} />
+          )}
+          <Paragraph variant="small" className="mb-0">
+            {isConnected ? "Connected" : "Disconnected"}
+          </Paragraph>
+          </div>
+          <div className="size-1 rounded-full bg-text-dimmed/50"/>
+          <Paragraph variant="small" className="mb-0">
+            {chunks.length} {chunks.length === 1 ? "chunk" : "chunks"}
+          </Paragraph>
+        </div>
       </div>
 
       {/* Content */}
