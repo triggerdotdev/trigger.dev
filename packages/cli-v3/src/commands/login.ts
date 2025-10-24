@@ -50,7 +50,7 @@ export function configureLoginCommand(program: Command) {
     .version(VERSION, "-v, --version", "Display the version number")
     .action(async (options) => {
       await handleTelemetry(async () => {
-        await printInitialBanner(false);
+        await printInitialBanner(false, options.profile);
         await loginCommand(options);
       });
     });
