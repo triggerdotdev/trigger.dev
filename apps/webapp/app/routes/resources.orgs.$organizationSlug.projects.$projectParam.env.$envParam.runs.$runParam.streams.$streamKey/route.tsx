@@ -193,7 +193,7 @@ export function RealtimeStreamViewer({
         clearTimeout(scrollTimeout);
       }
     };
-  }, [chunks.length]);
+  }, [chunks.length, viewMode]);
 
   // Auto-scroll to bottom when new chunks arrive, if we're at the bottom
   useEffect(() => {
@@ -210,7 +210,7 @@ export function RealtimeStreamViewer({
   return (
     <div className="flex h-full flex-col overflow-hidden border-t border-grid-bright">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-grid-bright bg-background-bright px-3 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-grid-bright bg-background-bright px-3 py-2.5">
         <div className="flex items-center gap-1.5">
           <TooltipProvider>
             <Tooltip>
