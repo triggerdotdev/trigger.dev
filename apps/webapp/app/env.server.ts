@@ -198,6 +198,10 @@ const EnvironmentSchema = z
       .string()
       .default(process.env.REDIS_TLS_DISABLED ?? "false"),
     REALTIME_STREAMS_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
+    REALTIME_STREAMS_INACTIVITY_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .default(60000 * 5), // 5 minutes
 
     REALTIME_MAXIMUM_CREATED_AT_FILTER_AGE_IN_MS: z.coerce
       .number()
@@ -1201,6 +1205,14 @@ const EnvironmentSchema = z
     EVENT_LOOP_MONITOR_UTILIZATION_SAMPLE_RATE: z.coerce.number().default(0.05),
 
     VERY_SLOW_QUERY_THRESHOLD_MS: z.coerce.number().int().optional(),
+
+    REALTIME_STREAMS_S2_BASIN: z.string().optional(),
+    REALTIME_STREAMS_S2_ACCESS_TOKEN: z.string().optional(),
+    REALTIME_STREAMS_S2_LOG_LEVEL: z
+      .enum(["log", "error", "warn", "info", "debug"])
+      .default("info"),
+    REALTIME_STREAMS_S2_FLUSH_INTERVAL_MS: z.coerce.number().int().default(100),
+    REALTIME_STREAMS_S2_MAX_RETRIES: z.coerce.number().int().default(10),
   })
   .and(GithubAppEnvSchema);
 

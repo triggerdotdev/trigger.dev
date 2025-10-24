@@ -510,6 +510,10 @@ const zodIpc = new ZodIpcConnection({
 
         runMetadataManager.runId = execution.run.id;
         runMetadataManager.runIdIsRoot = typeof execution.run.rootTaskRunId === "undefined";
+        runMetadataManager.streamsVersion =
+          typeof execution.run.realtimeStreamsVersion === "undefined"
+            ? "v1"
+            : execution.run.realtimeStreamsVersion;
 
         _executionCount++;
 
