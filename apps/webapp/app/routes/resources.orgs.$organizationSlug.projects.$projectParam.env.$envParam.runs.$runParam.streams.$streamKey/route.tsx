@@ -350,7 +350,7 @@ export function RealtimeStreamViewer({
         )}
 
         {chunks.length > 0 && viewMode === "compact" && (
-          <div className="p-3 pt-0 font-mono text-xs leading-relaxed">
+          <div className="p-3 font-mono text-xs leading-relaxed">
             <CompactStreamView chunks={chunks} />
             {/* Sentinel element for IntersectionObserver */}
             <div ref={bottomRef} className="h-px" />
