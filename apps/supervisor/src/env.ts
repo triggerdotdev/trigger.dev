@@ -81,6 +81,7 @@ const Env = z.object({
   KUBERNETES_FORCE_ENABLED: BoolEnv.default(false),
   KUBERNETES_NAMESPACE: z.string().default("default"),
   KUBERNETES_WORKER_NODETYPE_LABEL: z.string().default("v4-worker"),
+  KUBERNETES_WORKER_PRIORITY_CLASS_NAME: z.string().optional(),
   KUBERNETES_IMAGE_PULL_SECRETS: z.string().optional(), // csv
   KUBERNETES_EPHEMERAL_STORAGE_SIZE_LIMIT: z.string().default("10Gi"),
   KUBERNETES_EPHEMERAL_STORAGE_SIZE_REQUEST: z.string().default("2Gi"),
@@ -91,7 +92,6 @@ const Env = z.object({
   KUBERNETES_MEMORY_REQUEST_RATIO: z.coerce.number().min(0).max(1).default(1), // Ratio of memory limit, so 1 = 100% of memory limit
   KUBERNETES_MEMORY_OVERHEAD_GB: z.coerce.number().min(0).optional(), // Optional memory overhead to add to the limit in GB
   KUBERNETES_SCHEDULER_NAME: z.string().optional(), // Custom scheduler name for pods
-  KUBERNETES_POD_PRIORITY_CLASS_NAME: z.string().optional(), // Priority class name for task run pods
 
   // Placement tags settings
   PLACEMENT_TAGS_ENABLED: BoolEnv.default(false),
