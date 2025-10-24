@@ -215,7 +215,7 @@ function SpanBody({
 
   return (
     <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr] overflow-hidden bg-background-bright">
-      <div className="flex items-center justify-between gap-2 overflow-x-hidden px-3">
+      <div className="flex items-center justify-between gap-2 overflow-x-hidden border-b border-grid-bright px-3 pr-2">
         <div className="flex items-center gap-1 overflow-x-hidden">
           <RunIcon
             name={span.style?.icon}
@@ -229,9 +229,11 @@ function SpanBody({
         {runParam && closePanel && (
           <Button
             onClick={closePanel}
-            variant="minimal/medium"
-            LeadingIcon={ExitIcon}
+            variant="minimal/small"
+            TrailingIcon={ExitIcon}
             shortcut={{ key: "esc" }}
+            shortcutPosition="before-trailing-icon"
+            className="pl-1"
           />
         )}
       </div>
@@ -294,7 +296,7 @@ function RunBody({
 
   return (
     <div className="grid h-full max-h-full grid-rows-[2.5rem_2rem_1fr_3.25rem] overflow-hidden bg-background-bright">
-      <div className="flex items-center justify-between gap-2 overflow-x-hidden px-3">
+      <div className="flex items-center justify-between gap-2 overflow-x-hidden px-3 pr-2">
         <div className="flex items-center gap-1 overflow-x-hidden">
           <RunIcon
             name={run.isCached ? "task-cached" : "task"}
@@ -311,9 +313,11 @@ function RunBody({
         {runParam && closePanel && (
           <Button
             onClick={closePanel}
-            variant="minimal/medium"
-            LeadingIcon={ExitIcon}
+            variant="minimal/small"
+            TrailingIcon={ExitIcon}
             shortcut={{ key: "esc" }}
+            shortcutPosition="before-trailing-icon"
+            className="pl-1"
           />
         )}
       </div>
