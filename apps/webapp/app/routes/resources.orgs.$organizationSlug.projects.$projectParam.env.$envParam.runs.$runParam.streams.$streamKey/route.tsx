@@ -8,6 +8,7 @@ import {
 import { Clipboard, ClipboardCheck } from "lucide-react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useCallback, useEffect, useRef, useState } from "react";
+import simplur from "simplur";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   Tooltip,
@@ -178,14 +179,14 @@ export function RealtimeStreamViewer({
     .length;
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
+    <div className="flex h-full flex-col overflow-hidden border-t border-grid-bright">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-grid-bright bg-background-bright px-3 py-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-grid-bright bg-background-bright px-3 py-3">
         <Paragraph variant="small/bright" className="mb-0">
           Stream: <span className="font-mono text-text-dimmed">{streamKey}</span>
         </Paragraph>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2.5">
             <div className="flex items-center gap-1">
               {isConnected ? (
                 <BoltIcon className={cn("size-3.5 animate-pulse text-success")} />
@@ -196,9 +197,8 @@ export function RealtimeStreamViewer({
                 {isConnected ? "Connected" : "Disconnected"}
               </Paragraph>
             </div>
-            <div className="size-1 rounded-full bg-text-dimmed/50" />
             <Paragraph variant="small" className="mb-0">
-              {chunks.length} {chunks.length === 1 ? "chunk" : "chunks"}
+              {simplur`${chunks.length} chunk[|s]`}
             </Paragraph>
           </div>
           <TooltipProvider>
