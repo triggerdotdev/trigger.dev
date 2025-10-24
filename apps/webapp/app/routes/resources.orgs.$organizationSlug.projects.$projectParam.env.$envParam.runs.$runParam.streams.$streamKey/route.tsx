@@ -9,6 +9,7 @@ import { MoveToBottomIcon } from "~/assets/icons/MoveToBottomIcon";
 import { MoveToTopIcon } from "~/assets/icons/MoveToTopIcon";
 import { SnakedArrowIcon } from "~/assets/icons/SnakedArrowIcon";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { Spinner } from "~/components/primitives/Spinner";
 import {
   Tooltip,
   TooltipContent,
@@ -208,7 +209,7 @@ export function RealtimeStreamViewer({
     .length;
 
   return (
-    <div className="flex h-full flex-col overflow-hidden border-t border-grid-bright">
+    <div className="flex h-full flex-col overflow-hidden">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-grid-bright bg-background-bright px-3 py-2.5">
         <div className="flex items-center gap-1.5">
@@ -318,9 +319,18 @@ export function RealtimeStreamViewer({
 
         {chunks.length === 0 && !error && (
           <div className="flex h-full items-center justify-center">
-            <Paragraph variant="small" className="mb-0 text-text-dimmed">
-              {isConnected ? "Waiting for data..." : "No data received"}
-            </Paragraph>
+            {isConnected ? (
+              <div className="flex items-center gap-2">
+                <Spinner />
+                <Paragraph variant="small" className="mb-0 text-text-dimmed">
+                  Waiting for data…
+                </Paragraph>
+              </div>
+            ) : (
+              <Paragraph variant="small" className="mb-0 text-text-dimmed">
+                No data received
+              </Paragraph>
+            )}
           </div>
         )}
 
