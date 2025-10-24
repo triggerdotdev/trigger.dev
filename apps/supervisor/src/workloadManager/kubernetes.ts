@@ -286,9 +286,9 @@ export class KubernetesWorkloadManager implements WorkloadManager {
             },
           }
         : {}),
-      ...(env.KUBERNETES_POD_PRIORITY_CLASS_NAME
+      ...(env.KUBERNETES_WORKER_PRIORITY_CLASS_NAME
         ? {
-            priorityClassName: env.KUBERNETES_POD_PRIORITY_CLASS_NAME,
+            priorityClassName: env.KUBERNETES_WORKER_PRIORITY_CLASS_NAME,
           }
         : {}),
     };
