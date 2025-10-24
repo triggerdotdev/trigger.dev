@@ -242,10 +242,16 @@ export function RealtimeStreamViewer({
             </Paragraph>
             <div className="flex items-center gap-3">
               <TooltipProvider>
-                <Tooltip disableHoverableContent>
+                <Tooltip open={chunks.length === 0 ? false : undefined} disableHoverableContent>
                   <TooltipTrigger
+                    disabled={chunks.length === 0}
                     onClick={() => setViewMode(viewMode === "list" ? "compact" : "list")}
-                    className="text-text-dimmed transition-colors focus-custom hover:cursor-pointer hover:text-text-bright"
+                    className={cn(
+                      "text-text-dimmed transition-colors focus-custom",
+                      chunks.length === 0
+                        ? "cursor-not-allowed opacity-50"
+                        : "hover:cursor-pointer hover:text-text-bright"
+                    )}
                   >
                     {viewMode === "list" ? (
                       <SnakedArrowIcon className="size-4" />
@@ -258,55 +264,65 @@ export function RealtimeStreamViewer({
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-              {chunks.length > 0 && (
-                <TooltipProvider>
-                  <Tooltip open={copied || mouseOver} disableHoverableContent>
-                    <TooltipTrigger
-                      onClick={onCopied}
-                      onMouseEnter={() => setMouseOver(true)}
-                      onMouseLeave={() => setMouseOver(false)}
-                      className={cn(
-                        "transition-colors duration-100 focus-custom hover:cursor-pointer",
-                        copied ? "text-success" : "text-text-dimmed hover:text-text-bright"
-                      )}
-                    >
-                      {copied ? (
-                        <ClipboardCheck className="size-4" />
-                      ) : (
-                        <Clipboard className="size-4" />
-                      )}
-                    </TooltipTrigger>
-                    <TooltipContent side="left" className="text-xs">
-                      {copied ? "Copied" : "Copy"}
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              )}
-              {chunks.length > 0 && (
-                <TooltipProvider>
-                  <Tooltip disableHoverableContent>
-                    <TooltipTrigger
-                      onClick={() => {
-                        if (isAtBottom) {
-                          scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
-                        } else {
-                          bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-                        }
-                      }}
-                      className="text-text-dimmed transition-colors focus-custom hover:cursor-pointer hover:text-text-bright"
-                    >
-                      {isAtBottom ? (
-                        <MoveToTopIcon className="size-4" />
-                      ) : (
-                        <MoveToBottomIcon className="size-4" />
-                      )}
-                    </TooltipTrigger>
-                    <TooltipContent side="left" className="text-xs">
-                      {isAtBottom ? "Scroll to top" : "Scroll to bottom"}
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              )}
+              <TooltipProvider>
+                <Tooltip
+                  open={chunks.length === 0 ? false : copied || mouseOver || undefined}
+                  disableHoverableContent
+                >
+                  <TooltipTrigger
+                    disabled={chunks.length === 0}
+                    onClick={onCopied}
+                    onMouseEnter={() => setMouseOver(true)}
+                    onMouseLeave={() => setMouseOver(false)}
+                    className={cn(
+                      "transition-colors duration-100 focus-custom",
+                      chunks.length === 0
+                        ? "cursor-not-allowed opacity-50"
+                        : copied
+                        ? "text-success hover:cursor-pointer"
+                        : "text-text-dimmed hover:cursor-pointer hover:text-text-bright"
+                    )}
+                  >
+                    {copied ? (
+                      <ClipboardCheck className="size-4" />
+                    ) : (
+                      <Clipboard className="size-4" />
+                    )}
+                  </TooltipTrigger>
+                  <TooltipContent side="left" className="text-xs">
+                    {copied ? "Copied" : "Copy"}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <TooltipProvider>
+                <Tooltip open={chunks.length === 0 ? false : undefined} disableHoverableContent>
+                  <TooltipTrigger
+                    disabled={chunks.length === 0}
+                    onClick={() => {
+                      if (isAtBottom) {
+                        scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+                      } else {
+                        bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+                      }
+                    }}
+                    className={cn(
+                      "text-text-dimmed transition-colors focus-custom",
+                      chunks.length === 0
+                        ? "cursor-not-allowed opacity-50"
+                        : "hover:cursor-pointer hover:text-text-bright"
+                    )}
+                  >
+                    {isAtBottom ? (
+                      <MoveToTopIcon className="size-4" />
+                    ) : (
+                      <MoveToBottomIcon className="size-4" />
+                    )}
+                  </TooltipTrigger>
+                  <TooltipContent side="left" className="text-xs">
+                    {isAtBottom ? "Scroll to top" : "Scroll to bottom"}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
           </div>
         </div>
