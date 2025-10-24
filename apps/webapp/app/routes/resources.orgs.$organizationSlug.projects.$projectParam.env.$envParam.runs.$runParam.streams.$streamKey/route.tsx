@@ -1,14 +1,13 @@
-import { type SSEStreamPart, SSEStreamSubscription } from "@trigger.dev/core/v3";
-import {
-  BoltIcon,
-  BoltSlashIcon,
-  ListBulletIcon,
-  Bars3BottomLeftIcon,
-} from "@heroicons/react/20/solid";
-import { Clipboard, ClipboardCheck } from "lucide-react";
+import { BoltIcon, BoltSlashIcon } from "@heroicons/react/20/solid";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type SSEStreamPart, SSEStreamSubscription } from "@trigger.dev/core/v3";
+import { Clipboard, ClipboardCheck } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import simplur from "simplur";
+import { ListBulletIcon } from "~/assets/icons/ListBulletIcon";
+import { MoveToBottomIcon } from "~/assets/icons/MoveToBottomIcon";
+import { MoveToTopIcon } from "~/assets/icons/MoveToTopIcon";
+import { SnakedArrowIcon } from "~/assets/icons/SnakedArrowIcon";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   Tooltip,
@@ -144,7 +143,8 @@ export function RealtimeStreamViewer({
   // Use IntersectionObserver to detect when the bottom element is visible
   useEffect(() => {
     const bottomElement = bottomRef.current;
-    if (!bottomElement) return;
+    const scrollElement = scrollRef.current;
+    if (!bottomElement || !scrollElement) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -154,17 +154,46 @@ export function RealtimeStreamViewer({
         }
       },
       {
-        root: scrollRef.current,
+        root: scrollElement,
         threshold: 0.1,
+        rootMargin: "0px",
       }
     );
 
     observer.observe(bottomElement);
 
+    // Also add a scroll listener as a backup to ensure state updates
+    let scrollTimeout: ReturnType<typeof setTimeout> | null = null;
+    const handleScroll = () => {
+      if (!scrollElement || !bottomElement) return;
+
+      // Clear any existing timeout
+      if (scrollTimeout) {
+        clearTimeout(scrollTimeout);
+      }
+
+      // Debounce the state update to avoid interrupting smooth scroll
+      scrollTimeout = setTimeout(() => {
+        const scrollBottom = scrollElement.scrollTop + scrollElement.clientHeight;
+        const isNearBottom = scrollElement.scrollHeight - scrollBottom < 50;
+        setIsAtBottom(isNearBottom);
+      }, 100);
+    };
+
+    scrollElement.addEventListener("scroll", handleScroll);
+    // Check initial state
+    const scrollBottom = scrollElement.scrollTop + scrollElement.clientHeight;
+    const isNearBottom = scrollElement.scrollHeight - scrollBottom < 50;
+    setIsAtBottom(isNearBottom);
+
     return () => {
       observer.disconnect();
+      scrollElement.removeEventListener("scroll", handleScroll);
+      if (scrollTimeout) {
+        clearTimeout(scrollTimeout);
+      }
     };
-  }, []);
+  }, [chunks.length]);
 
   // Auto-scroll to bottom when new chunks arrive, if we're at the bottom
   useEffect(() => {
@@ -182,25 +211,29 @@ export function RealtimeStreamViewer({
     <div className="flex h-full flex-col overflow-hidden border-t border-grid-bright">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-grid-bright bg-background-bright px-3 py-3">
-        <Paragraph variant="small/bright" className="mb-0">
-          Stream: <span className="font-mono text-text-dimmed">{streamKey}</span>
-        </Paragraph>
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <div className="flex items-center gap-1">
-              {isConnected ? (
-                <BoltIcon className={cn("size-3.5 animate-pulse text-success")} />
-              ) : (
-                <BoltSlashIcon className={cn("size-3.5 text-text-dimmed")} />
-              )}
-              <Paragraph variant="small" className="mb-0">
+        <div className="flex items-center gap-1.5">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger>
+                {isConnected ? (
+                  <BoltIcon className={cn("size-3.5 animate-pulse text-success")} />
+                ) : (
+                  <BoltSlashIcon className={cn("size-3.5 text-text-dimmed")} />
+                )}
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">
                 {isConnected ? "Connected" : "Disconnected"}
-              </Paragraph>
-            </div>
-            <Paragraph variant="small" className="mb-0">
-              {simplur`${chunks.length} chunk[|s]`}
-            </Paragraph>
-          </div>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <Paragraph variant="small/bright" className="mb-0">
+            Stream: <span className="font-mono text-text-dimmed">{streamKey}</span>
+          </Paragraph>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <Paragraph variant="small" className="mb-0">
+            {simplur`${chunks.length} chunk[|s]`}
+          </Paragraph>
           <TooltipProvider>
             <Tooltip disableHoverableContent>
               <TooltipTrigger
@@ -208,53 +241,73 @@ export function RealtimeStreamViewer({
                 className="text-text-dimmed transition-colors focus-custom hover:cursor-pointer hover:text-text-bright"
               >
                 {viewMode === "list" ? (
-                  <Bars3BottomLeftIcon className="size-4" />
+                  <SnakedArrowIcon className="size-4" />
                 ) : (
                   <ListBulletIcon className="size-4" />
                 )}
               </TooltipTrigger>
               <TooltipContent side="left" className="text-xs">
-                {viewMode === "list" ? "Compact view" : "List view"}
+                {viewMode === "list" ? "Flow as text" : "View as list"}
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
+          {chunks.length > 0 && (
+            <TooltipProvider>
+              <Tooltip open={copied || mouseOver} disableHoverableContent>
+                <TooltipTrigger
+                  onClick={onCopied}
+                  onMouseEnter={() => setMouseOver(true)}
+                  onMouseLeave={() => setMouseOver(false)}
+                  className={cn(
+                    "transition-colors duration-100 focus-custom hover:cursor-pointer",
+                    copied ? "text-success" : "text-text-dimmed hover:text-text-bright"
+                  )}
+                >
+                  {copied ? (
+                    <ClipboardCheck className="size-4" />
+                  ) : (
+                    <Clipboard className="size-4" />
+                  )}
+                </TooltipTrigger>
+                <TooltipContent side="left" className="text-xs">
+                  {copied ? "Copied" : "Copy"}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+          {chunks.length > 0 && (
+            <TooltipProvider>
+              <Tooltip disableHoverableContent>
+                <TooltipTrigger
+                  onClick={() => {
+                    if (isAtBottom) {
+                      scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+                    } else {
+                      bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+                    }
+                  }}
+                  className="text-text-dimmed transition-colors focus-custom hover:cursor-pointer hover:text-text-bright"
+                >
+                  {isAtBottom ? (
+                    <MoveToTopIcon className="size-4" />
+                  ) : (
+                    <MoveToBottomIcon className="size-4" />
+                  )}
+                </TooltipTrigger>
+                <TooltipContent side="left" className="text-xs">
+                  {isAtBottom ? "Scroll to top" : "Scroll to bottom"}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
         </div>
       </div>
 
       {/* Content */}
       <div
         ref={scrollRef}
-        className="relative flex-1 overflow-y-auto bg-charcoal-900 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        className="flex-1 overflow-y-auto bg-charcoal-900 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
       >
-        {chunks.length > 0 && (
-          <div className="pointer-events-none sticky top-2.5 z-50 h-0">
-            <div className="pointer-events-auto absolute right-3 top-0">
-              <TooltipProvider>
-                <Tooltip open={copied || mouseOver} disableHoverableContent>
-                  <TooltipTrigger
-                    onClick={onCopied}
-                    onMouseEnter={() => setMouseOver(true)}
-                    onMouseLeave={() => setMouseOver(false)}
-                    className={cn(
-                      "transition-colors duration-100 focus-custom hover:cursor-pointer",
-                      copied ? "text-success" : "text-text-dimmed hover:text-text-bright"
-                    )}
-                  >
-                    {copied ? (
-                      <ClipboardCheck className="size-4" />
-                    ) : (
-                      <Clipboard className="size-4" />
-                    )}
-                  </TooltipTrigger>
-                  <TooltipContent side="left" className="text-xs">
-                    {copied ? "Copied" : "Copy"}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
-          </div>
-        )}
-
         {error && (
           <div className="border-b border-error/20 bg-error/10 p-3">
             <Paragraph variant="small" className="mb-0 text-error">
@@ -272,7 +325,7 @@ export function RealtimeStreamViewer({
         )}
 
         {chunks.length > 0 && viewMode === "list" && (
-          <div className="p-3 font-mono text-xs leading-relaxed">
+          <div className="font-mono text-xs leading-tight">
             {chunks.map((chunk, index) => (
               <StreamChunkLine
                 key={index}
@@ -287,27 +340,13 @@ export function RealtimeStreamViewer({
         )}
 
         {chunks.length > 0 && viewMode === "compact" && (
-          <div className="p-3 font-mono text-xs leading-relaxed">
+          <div className="p-3 pt-0 font-mono text-xs leading-relaxed">
             <CompactStreamView chunks={chunks} />
             {/* Sentinel element for IntersectionObserver */}
             <div ref={bottomRef} className="h-px" />
           </div>
         )}
       </div>
-
-      {/* Footer with auto-scroll indicator */}
-      {!isAtBottom && chunks.length > 0 && (
-        <div className="border-t border-grid-bright bg-charcoal-850 px-3 py-2">
-          <button
-            onClick={() => {
-              bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-            }}
-            className="text-xs text-blue-500 hover:text-blue-400"
-          >
-            ↓ Scroll to bottom
-          </button>
-        </div>
-      )}
     </div>
   );
 }
@@ -351,7 +390,7 @@ function StreamChunkLine({
     <div className="group flex w-full gap-3 py-1 hover:bg-charcoal-800">
       {/* Line number */}
       <div
-        className="flex-none select-none text-right text-charcoal-500"
+        className="flex-none select-none pl-2 text-right text-charcoal-500"
         style={{ width: `${Math.max(maxLineNumberWidth, 3)}ch` }}
       >
         {lineNumber}
