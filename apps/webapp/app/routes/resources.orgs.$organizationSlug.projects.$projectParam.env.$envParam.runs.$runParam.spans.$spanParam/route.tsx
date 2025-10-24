@@ -1062,6 +1062,9 @@ function SpanEntity({ span }: { span: Span }) {
             code={span.properties}
             maxLines={20}
             showLineNumbers={false}
+            showCopyButton
+            showTextWrapping
+            showOpenInModal
           />
         ) : null}
       </div>
@@ -1107,6 +1110,9 @@ function SpanEntity({ span }: { span: Span }) {
               code={span.properties}
               maxLines={20}
               showLineNumbers={false}
+              showCopyButton
+              showTextWrapping
+              showOpenInModal
             />
           ) : null}
         </div>
