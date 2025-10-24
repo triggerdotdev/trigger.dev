@@ -211,96 +211,104 @@ export function RealtimeStreamViewer({
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-grid-bright bg-background-bright px-3 py-2.5">
-        <div className="flex items-center gap-1.5">
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger>
-                {isConnected ? (
-                  <BoltIcon className={cn("size-3.5 animate-pulse text-success")} />
-                ) : (
-                  <BoltSlashIcon className={cn("size-3.5 text-text-dimmed")} />
-                )}
-              </TooltipTrigger>
-              <TooltipContent side="top" className="text-xs">
-                {isConnected ? "Connected" : "Disconnected"}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          <Paragraph variant="small/bright" className="mb-0">
-            Stream: <span className="font-mono text-text-dimmed">{streamKey}</span>
-          </Paragraph>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <Paragraph variant="small" className="mb-0">
-            {simplur`${chunks.length} chunk[|s]`}
-          </Paragraph>
-          <TooltipProvider>
-            <Tooltip disableHoverableContent>
-              <TooltipTrigger
-                onClick={() => setViewMode(viewMode === "list" ? "compact" : "list")}
-                className="text-text-dimmed transition-colors focus-custom hover:cursor-pointer hover:text-text-bright"
-              >
-                {viewMode === "list" ? (
-                  <SnakedArrowIcon className="size-4" />
-                ) : (
-                  <ListBulletIcon className="size-4" />
-                )}
-              </TooltipTrigger>
-              <TooltipContent side="left" className="text-xs">
-                {viewMode === "list" ? "Flow as text" : "View as list"}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          {chunks.length > 0 && (
+      <div className="border-b border-grid-bright bg-background-bright @container">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 @[300px]:flex-nowrap">
+          <div className="flex min-w-0 items-center gap-1.5">
             <TooltipProvider>
-              <Tooltip open={copied || mouseOver} disableHoverableContent>
-                <TooltipTrigger
-                  onClick={onCopied}
-                  onMouseEnter={() => setMouseOver(true)}
-                  onMouseLeave={() => setMouseOver(false)}
-                  className={cn(
-                    "transition-colors duration-100 focus-custom hover:cursor-pointer",
-                    copied ? "text-success" : "text-text-dimmed hover:text-text-bright"
-                  )}
-                >
-                  {copied ? (
-                    <ClipboardCheck className="size-4" />
+              <Tooltip>
+                <TooltipTrigger>
+                  {isConnected ? (
+                    <BoltIcon className={cn("size-3.5 animate-pulse text-success")} />
                   ) : (
-                    <Clipboard className="size-4" />
+                    <BoltSlashIcon className={cn("size-3.5 text-text-dimmed")} />
                   )}
                 </TooltipTrigger>
-                <TooltipContent side="left" className="text-xs">
-                  {copied ? "Copied" : "Copy"}
+                <TooltipContent side="top" className="text-xs">
+                  {isConnected ? "Connected" : "Disconnected"}
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
-          )}
-          {chunks.length > 0 && (
-            <TooltipProvider>
-              <Tooltip disableHoverableContent>
-                <TooltipTrigger
-                  onClick={() => {
-                    if (isAtBottom) {
-                      scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
-                    } else {
-                      bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-                    }
-                  }}
-                  className="text-text-dimmed transition-colors focus-custom hover:cursor-pointer hover:text-text-bright"
-                >
-                  {isAtBottom ? (
-                    <MoveToTopIcon className="size-4" />
-                  ) : (
-                    <MoveToBottomIcon className="size-4" />
-                  )}
-                </TooltipTrigger>
-                <TooltipContent side="left" className="text-xs">
-                  {isAtBottom ? "Scroll to top" : "Scroll to bottom"}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
+            <Paragraph
+              variant="small/bright"
+              className="mb-0 flex min-w-0 items-center gap-1 truncate whitespace-nowrap"
+            >
+              <span>Stream:</span>
+              <span className="truncate font-mono text-text-dimmed">{streamKey}</span>
+            </Paragraph>
+          </div>
+          <div className="flex w-full flex-wrap items-center justify-between gap-3 @[300px]:w-auto @[300px]:flex-nowrap">
+            <Paragraph variant="small" className="mb-0 whitespace-nowrap">
+              {simplur`${chunks.length} chunk[|s]`}
+            </Paragraph>
+            <div className="flex items-center gap-3">
+              <TooltipProvider>
+                <Tooltip disableHoverableContent>
+                  <TooltipTrigger
+                    onClick={() => setViewMode(viewMode === "list" ? "compact" : "list")}
+                    className="text-text-dimmed transition-colors focus-custom hover:cursor-pointer hover:text-text-bright"
+                  >
+                    {viewMode === "list" ? (
+                      <SnakedArrowIcon className="size-4" />
+                    ) : (
+                      <ListBulletIcon className="size-4" />
+                    )}
+                  </TooltipTrigger>
+                  <TooltipContent side="left" className="text-xs">
+                    {viewMode === "list" ? "Flow as text" : "View as list"}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              {chunks.length > 0 && (
+                <TooltipProvider>
+                  <Tooltip open={copied || mouseOver} disableHoverableContent>
+                    <TooltipTrigger
+                      onClick={onCopied}
+                      onMouseEnter={() => setMouseOver(true)}
+                      onMouseLeave={() => setMouseOver(false)}
+                      className={cn(
+                        "transition-colors duration-100 focus-custom hover:cursor-pointer",
+                        copied ? "text-success" : "text-text-dimmed hover:text-text-bright"
+                      )}
+                    >
+                      {copied ? (
+                        <ClipboardCheck className="size-4" />
+                      ) : (
+                        <Clipboard className="size-4" />
+                      )}
+                    </TooltipTrigger>
+                    <TooltipContent side="left" className="text-xs">
+                      {copied ? "Copied" : "Copy"}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+              {chunks.length > 0 && (
+                <TooltipProvider>
+                  <Tooltip disableHoverableContent>
+                    <TooltipTrigger
+                      onClick={() => {
+                        if (isAtBottom) {
+                          scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+                        } else {
+                          bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+                        }
+                      }}
+                      className="text-text-dimmed transition-colors focus-custom hover:cursor-pointer hover:text-text-bright"
+                    >
+                      {isAtBottom ? (
+                        <MoveToTopIcon className="size-4" />
+                      ) : (
+                        <MoveToBottomIcon className="size-4" />
+                      )}
+                    </TooltipTrigger>
+                    <TooltipContent side="left" className="text-xs">
+                      {isAtBottom ? "Scroll to top" : "Scroll to bottom"}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
