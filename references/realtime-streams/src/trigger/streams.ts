@@ -64,7 +64,7 @@ export const streamsTask = task({
         break;
       }
       case "continuous": {
-        const durationSec = payload.durationSec ?? 10;
+        const durationSec = payload.durationSec ?? 45;
         const intervalMs = payload.intervalMs ?? 10;
         generator = generateContinuousTokenStream(durationSec, intervalMs);
         scenarioDescription = `Continuous scenario: ${durationSec}s with ${intervalMs}ms intervals`;
