@@ -222,28 +222,30 @@ export class StreamsWriterV2<T = any> implements StreamsWriter {
   }
 
   private async initializeServerStream(): Promise<void> {
-    this.log("[S2MetadataStream] Waiting for buffer task to complete");
-    // Wait for buffer task and all flushes to complete
-    await this.bufferReaderTask;
+    try {
+      this.log("[S2MetadataStream] Waiting for buffer task to complete");
+      // Wait for buffer task and all flushes to complete
+      await this.bufferReaderTask;
 
-    this.log(
-      `[S2MetadataStream] Buffer task complete, performing final flush (${this.pendingFlushes.length} pending chunks)`
-    );
-    // Final flush
-    await this.flush();
+      this.log(
+        `[S2MetadataStream] Buffer task complete, performing final flush (${this.pendingFlushes.length} pending chunks)`
+      );
+      // Final flush
+      await this.flush();
 
-    this.log(`[S2MetadataStream] Waiting for ${this.flushPromises.length} flush promises`);
-    // Wait for all pending flushes
-    await Promise.all(this.flushPromises);
+      this.log(`[S2MetadataStream] Waiting for ${this.flushPromises.length} flush promises`);
+      // Wait for all pending flushes
+      await Promise.all(this.flushPromises);
 
-    this.log("[S2MetadataStream] All flushes complete, cleaning up");
-    // Clean up
-    if (this.flushInterval) {
-      clearInterval(this.flushInterval);
-      this.flushInterval = null;
+      this.log("[S2MetadataStream] Stream completed successfully");
+    } finally {
+      // Clean up interval to prevent timer leak
+      this.log("[S2MetadataStream] Cleaning up flush interval");
+      if (this.flushInterval) {
+        clearInterval(this.flushInterval);
+        this.flushInterval = null;
+      }
     }
-
-    this.log("[S2MetadataStream] Stream completed successfully");
   }
 
   public async wait(): Promise<void> {
