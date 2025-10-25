@@ -75,6 +75,7 @@ export class StreamsWriterV2<T = any> implements StreamsWriter {
   private retryCount = 0;
   private readonly baseDelayMs = 1000;
   private readonly maxDelayMs = 30000;
+  private aborted = false;
 
   constructor(private options: StreamsWriterV2Options<T>) {
     this.limiter = options.limiter(1);
@@ -88,6 +89,24 @@ export class StreamsWriterV2<T = any> implements StreamsWriter {
       `[S2MetadataStream] Initializing: basin=${options.basin}, stream=${options.stream}, flushIntervalMs=${this.flushIntervalMs}, maxRetries=${this.maxRetries}`
     );
 
+    // Check if already aborted
+    if (options.signal?.aborted) {
+      this.aborted = true;
+      this.log("[S2MetadataStream] Signal already aborted, skipping initialization");
+      this.serverStream = new ReadableStream<T>();
+      this.consumerStream = new ReadableStream<T>();
+      this.streamPromise = Promise.resolve();
+      return;
+    }
+
+    // Set up abort signal handler
+    if (options.signal) {
+      options.signal.addEventListener("abort", () => {
+        this.log("[S2MetadataStream] Abort signal received");
+        this.handleAbort();
+      });
+    }
+
     const [serverStream, consumerStream] = this.createTeeStreams();
     this.serverStream = serverStream;
     this.consumerStream = consumerStream;
@@ -99,6 +118,43 @@ export class StreamsWriterV2<T = any> implements StreamsWriter {
     this.startPeriodicFlush();
 
     this.streamPromise = this.initializeServerStream();
+  }
+
+  private handleAbort(): void {
+    if (this.aborted) {
+      return; // Already aborted
+    }
+
+    this.aborted = true;
+    this.log("[S2MetadataStream] Handling abort - cleaning up resources");
+
+    // Clear flush interval
+    if (this.flushInterval) {
+      clearInterval(this.flushInterval);
+      this.flushInterval = null;
+      this.log("[S2MetadataStream] Cleared flush interval");
+    }
+
+    // Cancel stream reader
+    if (this.streamReader) {
+      this.streamReader
+        .cancel("Aborted")
+        .catch((error) => {
+          this.logError("[S2MetadataStream] Error canceling stream reader:", error);
+        })
+        .finally(() => {
+          this.log("[S2MetadataStream] Stream reader canceled");
+        });
+    }
+
+    // Clear pending flushes
+    const pendingCount = this.pendingFlushes.length;
+    this.pendingFlushes = [];
+    if (pendingCount > 0) {
+      this.log(`[S2MetadataStream] Cleared ${pendingCount} pending flushes`);
+    }
+
+    this.log("[S2MetadataStream] Abort cleanup complete");
   }
 
   private createTeeStreams() {
@@ -131,11 +187,23 @@ export class StreamsWriterV2<T = any> implements StreamsWriter {
         let chunkCount = 0;
 
         while (true) {
+          // Check if aborted
+          if (this.aborted) {
+            this.log("[S2MetadataStream] Buffering stopped due to abort signal");
+            break;
+          }
+
           const { done, value } = await this.streamReader!.read();
 
           if (done) {
             this.streamComplete = true;
             this.log(`[S2MetadataStream] Stream complete after ${chunkCount} chunks`);
+            break;
+          }
+
+          // Check again after async read
+          if (this.aborted) {
+            this.log("[S2MetadataStream] Buffering stopped due to abort signal");
             break;
           }
 
@@ -166,6 +234,12 @@ export class StreamsWriterV2<T = any> implements StreamsWriter {
   }
 
   private async flush(): Promise<void> {
+    // Don't flush if aborted
+    if (this.aborted) {
+      this.log("[S2MetadataStream] Flush skipped due to abort signal");
+      return;
+    }
+
     if (this.pendingFlushes.length === 0) {
       return;
     }
@@ -226,6 +300,12 @@ export class StreamsWriterV2<T = any> implements StreamsWriter {
       this.log("[S2MetadataStream] Waiting for buffer task to complete");
       // Wait for buffer task and all flushes to complete
       await this.bufferReaderTask;
+
+      // Skip final flush if aborted
+      if (this.aborted) {
+        this.log("[S2MetadataStream] Stream initialization aborted");
+        return;
+      }
 
       this.log(
         `[S2MetadataStream] Buffer task complete, performing final flush (${this.pendingFlushes.length} pending chunks)`
