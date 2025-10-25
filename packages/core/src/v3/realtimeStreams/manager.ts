@@ -19,8 +19,11 @@ export class StandardRealtimeStreamsManager implements RealtimeStreamsManager {
     private baseUrl: string,
     private debug: boolean = false
   ) {}
-  // Add a Map to track active streams
-  private activeStreams = new Map<string, { wait: () => Promise<void> }>();
+  // Add a Map to track active streams with their abort controllers
+  private activeStreams = new Map<
+    string,
+    { wait: () => Promise<void>; abortController: AbortController }
+  >();
 
   reset(): void {
     this.activeStreams.clear();
@@ -51,6 +54,13 @@ export class StandardRealtimeStreamsManager implements RealtimeStreamsManager {
 
     const parsedResponse = parseCreateStreamResponse(version, headers);
 
+    // Create an AbortController for this stream
+    const abortController = new AbortController();
+    // Chain with user-provided signal if present
+    const combinedSignal = options?.signal
+      ? AbortSignal.any?.([options.signal, abortController.signal]) ?? abortController.signal
+      : abortController.signal;
+
     const streamInstance =
       parsedResponse.version === "v1"
         ? new StreamsWriterV1({
@@ -59,7 +69,7 @@ export class StandardRealtimeStreamsManager implements RealtimeStreamsManager {
             source: asyncIterableSource,
             baseUrl: this.baseUrl,
             headers: this.apiClient.getHeaders(),
-            signal: options?.signal,
+            signal: combinedSignal,
             version,
             target: "self",
           })
@@ -68,12 +78,12 @@ export class StandardRealtimeStreamsManager implements RealtimeStreamsManager {
             stream: key,
             accessToken: parsedResponse.accessToken,
             source: asyncIterableSource,
-            signal: options?.signal,
+            signal: combinedSignal,
             limiter: (await import("p-limit")).default,
             debug: this.debug,
           });
 
-    this.activeStreams.set(key, streamInstance);
+    this.activeStreams.set(key, { wait: () => streamInstance.wait(), abortController });
 
     // Clean up when stream completes
     streamInstance.wait().finally(() => this.activeStreams.delete(key));
@@ -98,21 +108,31 @@ export class StandardRealtimeStreamsManager implements RealtimeStreamsManager {
 
     const promises = Array.from(this.activeStreams.values()).map((stream) => stream.wait());
 
-    try {
-      await Promise.race([
-        Promise.allSettled(promises),
-        new Promise<void>((resolve, _) => setTimeout(() => resolve(), timeout)),
-      ]);
-    } catch (error) {
-      console.error("Error waiting for streams to finish:", error);
+    // Create a timeout promise that resolves to a special sentinel value
+    const TIMEOUT_SENTINEL = Symbol("timeout");
+    const timeoutPromise = new Promise<typeof TIMEOUT_SENTINEL>((resolve) =>
+      setTimeout(() => resolve(TIMEOUT_SENTINEL), timeout)
+    );
 
-      // If we time out, abort all remaining streams
-      for (const [key, promise] of this.activeStreams.entries()) {
-        // We can add abort logic here if needed
+    // Race between all streams completing/rejecting and the timeout
+    const result = await Promise.race([Promise.all(promises), timeoutPromise]);
+
+    // Check if we timed out
+    if (result === TIMEOUT_SENTINEL) {
+      // Timeout occurred - abort all active streams
+      const abortedCount = this.activeStreams.size;
+      for (const [key, streamInfo] of this.activeStreams.entries()) {
+        streamInfo.abortController.abort();
         this.activeStreams.delete(key);
       }
-      throw error;
+
+      throw new Error(
+        `Timeout waiting for streams to finish after ${timeout}ms. Aborted ${abortedCount} active stream(s).`
+      );
     }
+
+    // If we reach here, Promise.all completed (either all resolved or one rejected)
+    // Any rejection from Promise.all will have already propagated
   }
 }
 
