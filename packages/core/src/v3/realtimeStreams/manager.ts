@@ -1,6 +1,7 @@
 import {
   AsyncIterableStream,
   createAsyncIterableStreamFromAsyncIterable,
+  ensureAsyncIterable,
 } from "../streams/asyncIterableStream.js";
 import {
   RealtimeAppendStreamOptions,
@@ -30,6 +31,9 @@ export class StandardRealtimeStreamsManager implements RealtimeStreamsManager {
     source: AsyncIterable<T> | ReadableStream<T>,
     options?: RealtimeAppendStreamOptions
   ): Promise<RealtimeStreamInstance<T>> {
+    // Normalize ReadableStream to AsyncIterable
+    const asyncIterableSource = ensureAsyncIterable(source);
+
     const runId = getRunIdForOptions(options);
 
     if (!runId) {
@@ -52,7 +56,7 @@ export class StandardRealtimeStreamsManager implements RealtimeStreamsManager {
         ? new MetadataStream({
             key,
             runId,
-            source,
+            source: asyncIterableSource,
             baseUrl: this.baseUrl,
             headers: this.apiClient.getHeaders(),
             signal: options?.signal,
@@ -63,7 +67,7 @@ export class StandardRealtimeStreamsManager implements RealtimeStreamsManager {
             basin: parsedResponse.basin,
             stream: key,
             accessToken: parsedResponse.accessToken,
-            source,
+            source: asyncIterableSource,
             signal: options?.signal,
             limiter: (await import("p-limit")).default,
             debug: this.debug,
