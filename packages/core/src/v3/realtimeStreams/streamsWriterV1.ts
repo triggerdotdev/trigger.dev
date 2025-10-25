@@ -131,6 +131,10 @@ export class StreamsWriterV1<T> implements StreamsWriter {
         if (this.isRetryableError(error)) {
           if (this.retryCount < this.maxRetries) {
             this.retryCount++;
+            
+            // Clean up the current request to avoid socket leaks
+            req.destroy();
+            
             const delayMs = this.calculateBackoffDelay();
 
             await this.delay(delayMs);
@@ -153,6 +157,10 @@ export class StreamsWriterV1<T> implements StreamsWriter {
         // Timeout is retryable
         if (this.retryCount < this.maxRetries) {
           this.retryCount++;
+          
+          // Clean up the current request to avoid socket leaks
+          req.destroy();
+          
           const delayMs = this.calculateBackoffDelay();
 
           await this.delay(delayMs);
@@ -165,6 +173,7 @@ export class StreamsWriterV1<T> implements StreamsWriter {
           return;
         }
 
+        req.destroy();
         reject(new Error("Request timed out"));
       });
 
@@ -173,6 +182,13 @@ export class StreamsWriterV1<T> implements StreamsWriter {
         if (res.statusCode && this.isRetryableStatusCode(res.statusCode)) {
           if (this.retryCount < this.maxRetries) {
             this.retryCount++;
+            
+            // Drain and destroy the response and request to avoid socket leaks
+            // We need to consume the response before destroying it
+            res.resume(); // Start draining the response
+            res.destroy(); // Destroy the response to free the socket
+            req.destroy(); // Destroy the request as well
+            
             const delayMs = this.calculateBackoffDelay();
 
             await this.delay(delayMs);
@@ -185,6 +201,8 @@ export class StreamsWriterV1<T> implements StreamsWriter {
             return;
           }
 
+          res.destroy();
+          req.destroy();
           reject(
             new Error(`Max retries (${this.maxRetries}) exceeded for status code ${res.statusCode}`)
           );
@@ -193,6 +211,8 @@ export class StreamsWriterV1<T> implements StreamsWriter {
 
         // Non-retryable error status
         if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
+          res.destroy();
+          req.destroy();
           const error = new Error(`HTTP error! status: ${res.statusCode}`);
           reject(error);
           return;
@@ -369,12 +389,16 @@ export class StreamsWriterV1<T> implements StreamsWriter {
 
       req.on("error", async (error) => {
         if (this.isRetryableError(error) && attempt < maxHeadRetries) {
+          // Clean up the current request to avoid socket leaks
+          req.destroy();
+          
           await this.delay(1000 * (attempt + 1)); // Simple linear backoff
           const result = await this.queryServerLastChunkIndex(attempt + 1);
           resolve(result);
           return;
         }
 
+        req.destroy();
         // Return -1 to indicate we don't know what the server has (resume from 0)
         resolve(-1);
       });
@@ -396,18 +420,27 @@ export class StreamsWriterV1<T> implements StreamsWriter {
         // Retry on 5xx errors
         if (res.statusCode && this.isRetryableStatusCode(res.statusCode)) {
           if (attempt < maxHeadRetries) {
+            // Drain and destroy the response and request to avoid socket leaks
+            res.resume();
+            res.destroy();
+            req.destroy();
+            
             await this.delay(1000 * (attempt + 1));
             const result = await this.queryServerLastChunkIndex(attempt + 1);
             resolve(result);
             return;
           }
 
+          res.destroy();
+          req.destroy();
           resolve(-1);
           return;
         }
 
         // Non-retryable error
         if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
+          res.destroy();
+          req.destroy();
           resolve(-1);
           return;
         }
