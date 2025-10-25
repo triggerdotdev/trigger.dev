@@ -10,8 +10,8 @@ import {
 } from "./types.js";
 import { taskContext } from "../task-context-api.js";
 import { ApiClient } from "../apiClient/index.js";
-import { MetadataStream } from "../runMetadata/metadataStream.js";
-import { S2MetadataStream } from "../runMetadata/s2MetadataStream.js";
+import { StreamsWriterV1 } from "./streamsWriterV1.js";
+import { StreamsWriterV2 } from "./streamsWriterV2.js";
 
 export class StandardRealtimeStreamsManager implements RealtimeStreamsManager {
   constructor(
@@ -53,7 +53,7 @@ export class StandardRealtimeStreamsManager implements RealtimeStreamsManager {
 
     const streamInstance =
       parsedResponse.version === "v1"
-        ? new MetadataStream({
+        ? new StreamsWriterV1({
             key,
             runId,
             source: asyncIterableSource,
@@ -63,7 +63,7 @@ export class StandardRealtimeStreamsManager implements RealtimeStreamsManager {
             version,
             target: "self",
           })
-        : new S2MetadataStream({
+        : new StreamsWriterV2({
             basin: parsedResponse.basin,
             stream: key,
             accessToken: parsedResponse.accessToken,
