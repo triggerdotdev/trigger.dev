@@ -117,26 +117,24 @@ export const streamsTask = task({
 
     await setTimeout(1000);
 
-    const stream = await streams.read(ctx.run.id, "stream", {
-      timeoutInSeconds: 10,
-      startIndex: 10,
-    });
+    // const stream = await streams.read(ctx.run.id, "stream", {
+    //   timeoutInSeconds: 10,
+    //   startIndex: 10,
+    // });
 
-    let tokenCount = 0;
-    for await (const chunk of stream) {
-      console.log(chunk);
-      tokenCount++;
-    }
+    // let tokenCount = 0;
+    // for await (const chunk of stream) {
+    //   console.log(chunk);
+    //   tokenCount++;
+    // }
 
-    await waitUntilComplete();
+    // await waitUntilComplete();
 
-    logger.info("Stream completed", { scenario, tokenCount });
+    logger.info("Stream completed", { scenario });
 
     return {
       scenario,
       scenarioDescription,
-      tokenCount,
-      message: `Completed ${scenario} scenario with ${tokenCount} tokens`,
     };
   },
 });
