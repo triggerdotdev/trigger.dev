@@ -81,6 +81,8 @@ export class StandardRealtimeStreamsManager implements RealtimeStreamsManager {
             signal: combinedSignal,
             limiter: (await import("p-limit")).default,
             debug: this.debug,
+            flushIntervalMs: parsedResponse.flushIntervalMs,
+            maxRetries: parsedResponse.maxRetries,
           });
 
     this.activeStreams.set(key, { wait: () => streamInstance.wait(), abortController });
