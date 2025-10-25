@@ -94,7 +94,16 @@ const { action } = createActionApiRoute(
       }
 
       const resumeFromChunk = request.headers.get("X-Resume-From-Chunk");
-      const resumeFromChunkNumber = resumeFromChunk ? parseInt(resumeFromChunk, 10) : undefined;
+      let resumeFromChunkNumber: number | undefined = undefined;
+      if (resumeFromChunk) {
+        const parsed = parseInt(resumeFromChunk, 10);
+        if (isNaN(parsed) || parsed < 0) {
+          return new Response(`Invalid X-Resume-From-Chunk header value: ${resumeFromChunk}`, {
+            status: 400,
+          });
+        }
+        resumeFromChunkNumber = parsed;
+      }
 
       const realtimeStream = getRealtimeStreamInstance(authentication.environment, streamVersion);
 
