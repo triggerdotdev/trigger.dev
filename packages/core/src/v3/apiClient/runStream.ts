@@ -762,7 +762,7 @@ function parseRedisStreamIdTimestamp(id?: string): number {
     return Date.now();
   }
 
-  const timestamp = parseInt(id.split("-")[0] as string);
+  const timestamp = parseInt(id.split("-")[0] as string, 10);
   if (isNaN(timestamp)) {
     return Date.now();
   }
