@@ -47,6 +47,6 @@ export function getRealtimeStreamInstance(
       });
     }
 
-    return v1RealtimeStreams;
+    throw new Error("Realtime streams v2 is required for this run but S2 configuration is missing");
   }
 }
