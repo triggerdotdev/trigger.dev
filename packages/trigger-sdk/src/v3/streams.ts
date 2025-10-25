@@ -76,6 +76,7 @@ async function append<T>(
   } catch (error) {
     // if the error is a signal abort error, we need to end the span but not record an exception
     if (error instanceof Error && error.name === "AbortError") {
+      span.end();
       throw error;
     }
 
