@@ -336,7 +336,7 @@ function resetExecutionEnvironment() {
   // Wait for all streams to finish before completing the run
   waitUntil.register({
     requiresResolving: () => standardRealtimeStreamsManager.hasActiveStreams(),
-    promise: () => standardRealtimeStreamsManager.waitForAllStreams(),
+    promise: (timeoutInMs) => standardRealtimeStreamsManager.waitForAllStreams(timeoutInMs),
   });
 
   log(`[${new Date().toISOString()}] Reset execution environment`);
