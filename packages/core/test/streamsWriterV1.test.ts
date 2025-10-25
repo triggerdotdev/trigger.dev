@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createServer, Server, IncomingMessage, ServerResponse } from "node:http";
 import { AddressInfo } from "node:net";
-import { MetadataStream } from "../src/v3/runMetadata/metadataStream.js";
+import { StreamsWriterV1 } from "../src/v3/realtimeStreams/streamsWriterV1.js";
 
 type RequestHandler = (req: IncomingMessage, res: ServerResponse) => void;
 
-describe("MetadataStream", () => {
+describe("StreamsWriterV1", () => {
   let server: Server;
   let baseUrl: string;
   let requestHandler: RequestHandler | null = null;
@@ -67,7 +67,7 @@ describe("MetadataStream", () => {
       yield { chunk: 2, data: "chunk 2" };
     }
 
-    const metadataStream = new MetadataStream({
+    const metadataStream = new StreamsWriterV1({
       baseUrl,
       runId: "run_123",
       key: "test-stream",
@@ -95,7 +95,7 @@ describe("MetadataStream", () => {
       yield { chunk: 0 };
     }
 
-    const metadataStream = new MetadataStream({
+    const metadataStream = new StreamsWriterV1({
       baseUrl,
       runId: "run_123",
       key: "test-stream",
@@ -138,7 +138,7 @@ describe("MetadataStream", () => {
       yield { chunk: 2 };
     }
 
-    const metadataStream = new MetadataStream({
+    const metadataStream = new StreamsWriterV1({
       baseUrl,
       runId: "run_123",
       key: "test-stream",
@@ -187,7 +187,7 @@ describe("MetadataStream", () => {
       yield { chunk: 0 };
     }
 
-    const metadataStream = new MetadataStream({
+    const metadataStream = new StreamsWriterV1({
       baseUrl,
       runId: "run_123",
       key: "test-stream",
@@ -214,7 +214,7 @@ describe("MetadataStream", () => {
 
       if (requestCount === 1) {
         // First request - don't respond, let it timeout
-        // (timeout is set to 15 minutes in MetadataStream, so we can't actually test this easily)
+        // (timeout is set to 15 minutes in StreamsWriterV1, so we can't actually test this easily)
         // Instead we'll just delay and then respond
         setTimeout(() => {
           res.writeHead(200);
@@ -231,7 +231,7 @@ describe("MetadataStream", () => {
       yield { chunk: 0 };
     }
 
-    const metadataStream = new MetadataStream({
+    const metadataStream = new StreamsWriterV1({
       baseUrl,
       runId: "run_123",
       key: "test-stream",
@@ -274,7 +274,7 @@ describe("MetadataStream", () => {
       }
     }
 
-    const metadataStream = new MetadataStream({
+    const metadataStream = new StreamsWriterV1({
       baseUrl,
       runId: "run_123",
       key: "test-stream",
@@ -319,7 +319,7 @@ describe("MetadataStream", () => {
       yield { chunk: 0 };
     }
 
-    const metadataStream = new MetadataStream({
+    const metadataStream = new StreamsWriterV1({
       baseUrl,
       runId: "run_123",
       key: "test-stream",
@@ -366,7 +366,7 @@ describe("MetadataStream", () => {
         yield { chunk: 1 };
       }
 
-      const metadataStream = new MetadataStream({
+      const metadataStream = new StreamsWriterV1({
         baseUrl,
         runId: "run_123",
         key: "test-stream",
@@ -414,7 +414,7 @@ describe("MetadataStream", () => {
       yield { chunk: 0 };
     }
 
-    const metadataStream = new MetadataStream({
+    const metadataStream = new StreamsWriterV1({
       baseUrl,
       runId: "run_123",
       key: "test-stream",
@@ -455,7 +455,7 @@ describe("MetadataStream", () => {
       yield { chunk: 0 };
     }
 
-    const metadataStream = new MetadataStream({
+    const metadataStream = new StreamsWriterV1({
       baseUrl,
       runId: "run_123",
       key: "test-stream",
@@ -478,7 +478,7 @@ describe("MetadataStream", () => {
       }
     }
 
-    const metadataStream = new MetadataStream({
+    const metadataStream = new StreamsWriterV1({
       baseUrl,
       runId: "run_123",
       key: "test-stream",
@@ -528,7 +528,7 @@ describe("MetadataStream", () => {
       }
     }
 
-    const metadataStream = new MetadataStream({
+    const metadataStream = new StreamsWriterV1({
       baseUrl,
       runId: "run_123",
       key: "test-stream",
@@ -587,7 +587,7 @@ describe("MetadataStream", () => {
       yield { chunk: 0 };
     }
 
-    const metadataStream = new MetadataStream({
+    const metadataStream = new StreamsWriterV1({
       baseUrl,
       runId: "run_123",
       key: "test-stream",
@@ -637,7 +637,7 @@ describe("MetadataStream", () => {
       }
     }
 
-    const metadataStream = new MetadataStream({
+    const metadataStream = new StreamsWriterV1({
       baseUrl,
       runId: "run_123",
       key: "test-stream",
@@ -659,7 +659,7 @@ describe("MetadataStream", () => {
       yield { chunk: 2, data: "data 2" };
     }
 
-    const metadataStream = new MetadataStream({
+    const metadataStream = new StreamsWriterV1({
       baseUrl,
       runId: "run_123",
       key: "test-stream",
@@ -697,7 +697,7 @@ describe("MetadataStream", () => {
       yield { chunk: 0 };
     }
 
-    const metadataStream = new MetadataStream({
+    const metadataStream = new StreamsWriterV1({
       baseUrl,
       runId: "run_123",
       key: "test-stream",
@@ -739,7 +739,7 @@ describe("MetadataStream", () => {
       yield { chunk: 0 };
     }
 
-    const metadataStream = new MetadataStream({
+    const metadataStream = new StreamsWriterV1({
       baseUrl,
       runId: "run_123",
       key: "test-stream",
@@ -770,7 +770,7 @@ describe("MetadataStream", () => {
       yield { chunk: 1 };
     }
 
-    const metadataStream = new MetadataStream({
+    const metadataStream = new StreamsWriterV1({
       baseUrl,
       runId: "run_123",
       key: "test-stream",
@@ -794,7 +794,7 @@ describe("MetadataStream", () => {
       return;
     }
 
-    const metadataStream = new MetadataStream({
+    const metadataStream = new StreamsWriterV1({
       baseUrl,
       runId: "run_123",
       key: "test-stream",
@@ -820,7 +820,7 @@ describe("MetadataStream", () => {
       // Note: Throwing here would test error handling, but causes test infrastructure issues
     }
 
-    const metadataStream = new MetadataStream({
+    const metadataStream = new StreamsWriterV1({
       baseUrl,
       runId: "run_123",
       key: "test-stream",
@@ -861,7 +861,7 @@ describe("MetadataStream", () => {
       yield { chunk: 1 };
     }
 
-    const metadataStream = new MetadataStream({
+    const metadataStream = new StreamsWriterV1({
       baseUrl,
       runId: "run_123",
       key: "test-stream",
@@ -911,7 +911,7 @@ describe("MetadataStream", () => {
         yield { chunk: 0 };
       }
 
-      const metadataStream = new MetadataStream({
+      const metadataStream = new StreamsWriterV1({
         baseUrl,
         runId: "run_123",
         key: "test-stream",
@@ -957,7 +957,7 @@ describe("MetadataStream", () => {
       }
     }
 
-    const metadataStream = new MetadataStream({
+    const metadataStream = new StreamsWriterV1({
       baseUrl,
       runId: "run_123",
       key: "test-stream",
