@@ -1,6 +1,6 @@
 export type MaybeDeferredPromise = {
   requiresResolving(): boolean;
-  promise: Promise<any> | (() => Promise<any>);
+  promise: Promise<any> | ((timeoutInMs: number) => Promise<any>);
 };
 
 export interface WaitUntilManager {

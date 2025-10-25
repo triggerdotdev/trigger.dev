@@ -19,7 +19,7 @@ export class StandardWaitUntilManager implements WaitUntilManager {
     }
 
     const promises = this.promisesRequringResolving.map((p) =>
-      typeof p.promise === "function" ? p.promise() : p.promise
+      typeof p.promise === "function" ? p.promise(this.timeoutInMs) : p.promise
     );
 
     await Promise.race([
