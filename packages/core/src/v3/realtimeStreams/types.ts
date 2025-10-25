@@ -19,3 +19,7 @@ export interface RealtimeStreamInstance<T> {
   wait(): Promise<void>;
   get stream(): AsyncIterableStream<T>;
 }
+
+export interface StreamsWriter {
+  wait(): Promise<void>;
+}

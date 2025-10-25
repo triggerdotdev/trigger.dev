@@ -2,9 +2,9 @@ import { request as httpsRequest } from "node:https";
 import { request as httpRequest } from "node:http";
 import { URL } from "node:url";
 import { randomBytes } from "node:crypto";
-import type { StreamInstance } from "./types.js";
+import { StreamsWriter } from "./types.js";
 
-export type MetadataOptions<T> = {
+export type StreamsWriterV1Options<T> = {
   baseUrl: string;
   runId: string;
   key: string;
@@ -23,7 +23,7 @@ interface BufferedChunk<T> {
   data: T;
 }
 
-export class MetadataStream<T> implements StreamInstance {
+export class StreamsWriterV1<T> implements StreamsWriter {
   private controller = new AbortController();
   private serverStream: ReadableStream<T>;
   private consumerStream: ReadableStream<T>;
@@ -42,7 +42,7 @@ export class MetadataStream<T> implements StreamInstance {
   private bufferReaderTask: Promise<void> | null = null;
   private streamComplete = false;
 
-  constructor(private options: MetadataOptions<T>) {
+  constructor(private options: StreamsWriterV1Options<T>) {
     const [serverStream, consumerStream] = this.createTeeStreams();
     this.serverStream = serverStream;
     this.consumerStream = consumerStream;

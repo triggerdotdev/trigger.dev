@@ -1,5 +1,5 @@
 import { S2 } from "@s2-dev/streamstore";
-import type { StreamInstance } from "./types.js";
+import { StreamsWriter } from "./types.js";
 
 type LimitFunction = {
   readonly activeCount: number;
@@ -11,7 +11,7 @@ type LimitFunction = {
   ): Promise<ReturnType>;
 };
 
-export type S2MetadataStreamOptions<T = any> = {
+export type StreamsWriterV2Options<T = any> = {
   basin: string;
   stream: string;
   accessToken: string;
@@ -24,7 +24,7 @@ export type S2MetadataStreamOptions<T = any> = {
 };
 
 /**
- * S2MetadataStream writes metadata stream data directly to S2 (https://s2.dev).
+ * StreamsWriterV2 writes metadata stream data directly to S2 (https://s2.dev).
  *
  * Features:
  * - Batching: Reads chunks as fast as possible and buffers them
@@ -53,7 +53,7 @@ export type S2MetadataStreamOptions<T = any> = {
  * }
  * ```
  */
-export class S2MetadataStream<T = any> implements StreamInstance {
+export class StreamsWriterV2<T = any> implements StreamsWriter {
   private s2Client: S2;
   private serverStream: ReadableStream<T>;
   private consumerStream: ReadableStream<T>;
@@ -76,7 +76,7 @@ export class S2MetadataStream<T = any> implements StreamInstance {
   private readonly baseDelayMs = 1000;
   private readonly maxDelayMs = 30000;
 
-  constructor(private options: S2MetadataStreamOptions<T>) {
+  constructor(private options: StreamsWriterV2Options<T>) {
     this.limiter = options.limiter(1);
     this.debug = options.debug ?? false;
 
