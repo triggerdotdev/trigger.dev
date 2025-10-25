@@ -118,6 +118,7 @@ export class ReplayTaskRunService extends BaseService {
           traceContext: {
             traceparent: `00-${existingTaskRun.traceId}-${existingTaskRun.spanId}-01`,
           },
+          realtimeStreamsVersion: existingTaskRun.realtimeStreamsVersion,
         }
       );
 

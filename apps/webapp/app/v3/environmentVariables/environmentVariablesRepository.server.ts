@@ -1185,6 +1185,14 @@ async function resolveCommonBuiltInVariables(
         String(env.TRIGGER_OTEL_ATTRIBUTE_PER_EVENT_COUNT_LIMIT)
       ),
     },
+    {
+      key: "TRIGGER_WAIT_UNTIL_TIMEOUT_MS",
+      value: resolveBuiltInEnvironmentVariableOverrides(
+        "TRIGGER_WAIT_UNTIL_TIMEOUT_MS",
+        runtimeEnvironment,
+        String(env.WAIT_UNTIL_TIMEOUT_MS)
+      ),
+    },
   ];
 }
 

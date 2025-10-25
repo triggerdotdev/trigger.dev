@@ -987,6 +987,7 @@ export const SubscribeRunRawShape = z.object({
   outputType: z.string().nullish(),
   runTags: z.array(z.string()).nullish().default([]),
   error: TaskRunError.nullish(),
+  realtimeStreams: z.array(z.string()).nullish().default([]),
 });
 
 export type SubscribeRunRawShape = z.infer<typeof SubscribeRunRawShape>;
@@ -1296,3 +1297,8 @@ export const RetrieveRunTraceResponseBody = z.object({
 });
 
 export type RetrieveRunTraceResponseBody = z.infer<typeof RetrieveRunTraceResponseBody>;
+
+export const CreateStreamResponseBody = z.object({
+  version: z.string(),
+});
+export type CreateStreamResponseBody = z.infer<typeof CreateStreamResponseBody>;
