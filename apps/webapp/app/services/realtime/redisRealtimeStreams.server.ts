@@ -74,6 +74,11 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
               lastEnqueueTime = Date.now();
             }
 
+            // Compute inactivity threshold once to use consistently in both branches
+            const inactivityThresholdMs = options?.timeoutInSeconds
+              ? options.timeoutInSeconds * 1000
+              : this.inactivityTimeoutMs;
+
             try {
               const messages = await redis.xread(
                 "COUNT",
@@ -139,19 +144,15 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
 
                 // If we didn't find any data in this batch, might have only seen sentinels
                 if (!foundData) {
-                  const inactivityTimeoutMs = options?.timeoutInSeconds
-                    ? options.timeoutInSeconds * 1000
-                    : this.inactivityTimeoutMs;
-
                   // Check for inactivity timeout
                   const inactiveMs = Date.now() - lastDataTime;
-                  if (inactiveMs >= inactivityTimeoutMs) {
+                  if (inactiveMs >= inactivityThresholdMs) {
                     this.logger.debug(
                       "[RealtimeStreams][streamResponse] Closing stream due to inactivity",
                       {
                         streamKey,
                         inactiveMs,
-                        threshold: inactivityTimeoutMs,
+                        threshold: inactivityThresholdMs,
                       }
                     );
                     controller.close();
@@ -162,13 +163,13 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
                 // No messages received (timed out on BLOCK)
                 // Check for inactivity timeout
                 const inactiveMs = Date.now() - lastDataTime;
-                if (inactiveMs >= this.inactivityTimeoutMs) {
+                if (inactiveMs >= inactivityThresholdMs) {
                   this.logger.debug(
                     "[RealtimeStreams][streamResponse] Closing stream due to inactivity",
                     {
                       streamKey,
                       inactiveMs,
-                      threshold: this.inactivityTimeoutMs,
+                      threshold: inactivityThresholdMs,
                     }
                   );
                   controller.close();
