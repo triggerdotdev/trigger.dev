@@ -19,11 +19,11 @@ export class StandardRealtimeStreamsManager implements RealtimeStreamsManager {
     private baseUrl: string,
     private debug: boolean = false
   ) {}
-  // Add a Map to track active streams with their abort controllers
-  private activeStreams = new Map<
-    string,
-    { wait: () => Promise<void>; abortController: AbortController }
-  >();
+  // Track active streams - using a Set allows multiple streams for the same key to coexist
+  private activeStreams = new Set<{
+    wait: () => Promise<void>;
+    abortController: AbortController;
+  }>();
 
   reset(): void {
     this.activeStreams.clear();
@@ -85,10 +85,12 @@ export class StandardRealtimeStreamsManager implements RealtimeStreamsManager {
             maxRetries: parsedResponse.maxRetries,
           });
 
-    this.activeStreams.set(key, { wait: () => streamInstance.wait(), abortController });
+    // Register this stream
+    const streamInfo = { wait: () => streamInstance.wait(), abortController };
+    this.activeStreams.add(streamInfo);
 
     // Clean up when stream completes
-    streamInstance.wait().finally(() => this.activeStreams.delete(key));
+    streamInstance.wait().finally(() => this.activeStreams.delete(streamInfo));
 
     return {
       wait: () => streamInstance.wait(),
@@ -108,7 +110,7 @@ export class StandardRealtimeStreamsManager implements RealtimeStreamsManager {
       return;
     }
 
-    const promises = Array.from(this.activeStreams.values()).map((stream) => stream.wait());
+    const promises = Array.from(this.activeStreams).map((stream) => stream.wait());
 
     // Create a timeout promise that resolves to a special sentinel value
     const TIMEOUT_SENTINEL = Symbol("timeout");
@@ -123,9 +125,9 @@ export class StandardRealtimeStreamsManager implements RealtimeStreamsManager {
     if (result === TIMEOUT_SENTINEL) {
       // Timeout occurred - abort all active streams
       const abortedCount = this.activeStreams.size;
-      for (const [key, streamInfo] of this.activeStreams.entries()) {
+      for (const streamInfo of this.activeStreams) {
         streamInfo.abortController.abort();
-        this.activeStreams.delete(key);
+        this.activeStreams.delete(streamInfo);
       }
 
       throw new Error(
