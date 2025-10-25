@@ -87,6 +87,7 @@ import {
 } from "./types.js";
 import { API_VERSION, API_VERSION_HEADER_NAME } from "./version.js";
 import { ApiClientConfiguration } from "../apiClientManager-api.js";
+import { getEnvVar } from "../utils/getEnv.js";
 
 export type CreateWaitpointTokenResponse = Prettify<
   CreateWaitpointTokenResponseBody & {
@@ -1192,7 +1193,13 @@ export class ApiClient {
 
     headers[API_VERSION_HEADER_NAME] = API_VERSION;
 
-    if (this.futureFlags.unstable_v2RealtimeStreams) {
+    if (
+      this.futureFlags.unstable_v2RealtimeStreams ||
+      getEnvVar("TRIGGER_V2_REALTIME_STREAMS") === "1" ||
+      getEnvVar("TRIGGER_V2_REALTIME_STREAMS") === "true" ||
+      getEnvVar("TRIGGER_REALTIME_STREAMS_V2") === "1" ||
+      getEnvVar("TRIGGER_REALTIME_STREAMS_V2") === "true"
+    ) {
       headers["x-trigger-realtime-streams-version"] = "v2";
     }
 
