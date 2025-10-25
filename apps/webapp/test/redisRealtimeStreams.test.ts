@@ -1362,7 +1362,7 @@ describe("RedisRealtimeStreams", () => {
         runId,
         streamId,
         abortController2.signal,
-        lastEventId
+        { lastEventId }
       );
 
       expect(response2.status).toBe(200);
