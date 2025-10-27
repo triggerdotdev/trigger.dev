@@ -1,4 +1,5 @@
-import { MetaFunction } from "@remix-run/react";
+import { PlusIcon } from "@heroicons/react/20/solid";
+import { type MetaFunction } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -6,14 +7,12 @@ import { z } from "zod";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import {
-  MainCenteredContainer,
   MainHorizontallyCenteredContainer,
   PageBody,
   PageContainer,
 } from "~/components/layout/AppLayout";
-import { Header2 } from "~/components/primitives/Headers";
-import { InputGroup } from "~/components/primitives/InputGroup";
-import { Label } from "~/components/primitives/Label";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Header2, Header3 } from "~/components/primitives/Headers";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
@@ -25,20 +24,20 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
+import { InfoIconTooltip } from "~/components/primitives/Tooltip";
+import { useFeatures } from "~/hooks/useFeatures";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import {
-  EnvironmentWithConcurrency,
+  type ConcurrencyResult,
+  type EnvironmentWithConcurrency,
   ManageConcurrencyPresenter,
 } from "~/presenters/v3/ManageConcurrencyPresenter.server";
 import { requireUser, requireUserId } from "~/services/session.server";
-import { cn } from "~/utils/cn";
 import { EnvironmentParamSchema, regionsPath, v3BillingPath } from "~/utils/pathBuilder";
 import { SetDefaultRegionService } from "~/v3/services/setDefaultRegion.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { useFeatures } from "~/hooks/useFeatures";
-import { LinkButton } from "~/components/primitives/Buttons";
 
 export const meta: MetaFunction = () => {
   return [
@@ -123,8 +122,13 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 };
 
 export default function Page() {
-  const { canAddConcurrency, environments } = useTypedLoaderData<typeof loader>();
-  const organization = useOrganization();
+  const {
+    canAddConcurrency,
+    extraConcurrency,
+    extraAllocatedConcurrency,
+    extraUnallocatedConcurrency,
+    environments,
+  } = useTypedLoaderData<typeof loader>();
 
   return (
     <PageContainer>
@@ -149,24 +153,116 @@ export default function Page() {
       <PageBody scrollable={false}>
         <MainHorizontallyCenteredContainer>
           {canAddConcurrency ? (
-            <div>
-              <div className="mb-3 border-b border-grid-dimmed pb-1">
-                <Header2>Manage your concurrency</Header2>
-              </div>
-              <div className="flex flex-col gap-6">
-                <InputGroup fullWidth>
-                  <div className="flex w-full items-center justify-between">
-                    <Label>Secret key</Label>
-                  </div>
-                </InputGroup>
-              </div>
-            </div>
+            <Upgradable
+              canAddConcurrency={canAddConcurrency}
+              extraConcurrency={extraConcurrency}
+              extraAllocatedConcurrency={extraAllocatedConcurrency}
+              extraUnallocatedConcurrency={extraUnallocatedConcurrency}
+              environments={environments}
+            />
           ) : (
             <NotUpgradable environments={environments} />
           )}
         </MainHorizontallyCenteredContainer>
       </PageBody>
     </PageContainer>
+  );
+}
+
+function Upgradable({
+  canAddConcurrency,
+  extraConcurrency,
+  extraAllocatedConcurrency,
+  extraUnallocatedConcurrency,
+  environments,
+}: ConcurrencyResult) {
+  const organization = useOrganization();
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="border-b border-grid-dimmed pb-1">
+        <Header2>Your concurrency</Header2>
+      </div>
+      <Paragraph variant="small">
+        Concurrency limits determine how many runs you can execute at the same time. You can add
+        extra concurrency to your organization which you can allocate to environments in your
+        projects.
+      </Paragraph>
+      <div className="mt-3 flex flex-col gap-6">
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center first-letter:pb-1">
+            <Header3 className="grow">Extra concurrency</Header3>
+            <Button variant="primary/small" LeadingIcon={PlusIcon}>
+              Purchase extra concurrency...
+            </Button>
+          </div>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHeaderCell className="pl-0">Extra concurrency purchased</TableHeaderCell>
+                <TableHeaderCell alignment="right" className="text-text-bright">
+                  {extraConcurrency}
+                </TableHeaderCell>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow>
+                <TableCell>Allocated concurrency</TableCell>
+                <TableCell alignment="right" className="text-text-bright">
+                  {extraAllocatedConcurrency}
+                </TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>Unallocated concurrency</TableCell>
+                <TableCell
+                  alignment="right"
+                  className={extraUnallocatedConcurrency > 0 ? "text-success" : "text-text-bright"}
+                >
+                  {extraUnallocatedConcurrency}
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </div>
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center pb-1">
+            <Header3 className="grow">Concurrency allocation</Header3>
+          </div>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHeaderCell className="pl-0">Environment</TableHeaderCell>
+                <TableHeaderCell alignment="right">
+                  <span className="flex items-center gap-x-1">
+                    Included{" "}
+                    <InfoIconTooltip content="This is the included concurrency based on your plan." />
+                  </span>
+                </TableHeaderCell>
+                <TableHeaderCell alignment="right">Extra concurrency</TableHeaderCell>
+                <TableHeaderCell alignment="right">Total</TableHeaderCell>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {environments.map((environment) => (
+                <TableRow key={environment.id}>
+                  <TableCell className="pl-0">
+                    <EnvironmentCombo environment={environment} />
+                  </TableCell>
+                  <TableCell alignment="right">{environment.planConcurrencyLimit}</TableCell>
+                  <TableCell alignment="right" className="text-text-bright">
+                    {Math.max(
+                      0,
+                      environment.maximumConcurrencyLimit - environment.planConcurrencyLimit
+                    )}
+                  </TableCell>
+                  <TableCell alignment="right">{environment.maximumConcurrencyLimit}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </div>
+    </div>
   );
 }
 
