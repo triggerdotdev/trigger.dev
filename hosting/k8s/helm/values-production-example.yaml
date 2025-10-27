@@ -78,13 +78,15 @@ clickhouse:
     enabled: true
     size: 100Gi
     storageClass: "fast-ssd"
+  # ClickHouse can be very resource intensive, so we recommend setting limits and requests accordingly
+  # Note: not doing this can cause OOM crashes which will cause issues across many different
   resources:
     limits:
-      cpu: 1000m
-      memory: 2Gi
+      cpu: 4000m
+      memory: 16Gi
     requests:
-      cpu: 500m
-      memory: 1Gi
+      cpu: 2000m
+      memory: 8Gi
 
 # Production S3-compatible object storage
 s3:
