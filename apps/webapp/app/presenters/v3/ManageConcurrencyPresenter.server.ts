@@ -8,6 +8,7 @@ export type ConcurrencyResult = {
   environments: EnvironmentWithConcurrency[];
   extraConcurrency: number;
   extraAllocatedConcurrency: number;
+  extraUnallocatedConcurrency: number;
 };
 
 export type EnvironmentWithConcurrency = {
@@ -48,6 +49,11 @@ export class ManageConcurrencyPresenter extends BasePresenter {
         parentEnvironmentId: true,
         isBranchableEnvironment: true,
         maximumConcurrencyLimit: true,
+        orgMember: {
+          select: {
+            userId: true,
+          },
+        },
       },
       where: {
         organizationId,
@@ -73,6 +79,10 @@ export class ManageConcurrencyPresenter extends BasePresenter {
       }
 
       if (environment.projectId === projectId) {
+        if (environment.type === "DEVELOPMENT" && environment.orgMember?.userId !== userId) {
+          continue;
+        }
+
         projectEnvironments.push({
           id: environment.id,
           type: environment.type,
@@ -85,10 +95,13 @@ export class ManageConcurrencyPresenter extends BasePresenter {
       }
     }
 
+    const extraAllocated = Math.min(extraConcurrency, extraAllocatedConcurrency);
+
     return {
       canAddConcurrency,
       extraConcurrency,
-      extraAllocatedConcurrency,
+      extraAllocatedConcurrency: extraAllocated,
+      extraUnallocatedConcurrency: extraConcurrency - extraAllocated,
       environments: sortEnvironments(projectEnvironments).reverse(),
     };
   }
