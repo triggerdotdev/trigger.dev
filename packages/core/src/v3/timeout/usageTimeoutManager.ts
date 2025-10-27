@@ -5,9 +5,19 @@ export class UsageTimeoutManager implements TimeoutManager {
   private _abortController: AbortController;
   private _abortSignal: AbortSignal | undefined;
   private _intervalId: NodeJS.Timeout | undefined;
+  private _listener?: (
+    timeoutInSeconds: number,
+    elapsedTimeInSeconds: number
+  ) => void | Promise<void>;
 
   constructor(private readonly usageManager: UsageManager) {
     this._abortController = new AbortController();
+  }
+
+  registerListener(
+    listener: (timeoutInSeconds: number, elapsedTimeInSeconds: number) => void | Promise<void>
+  ): void {
+    this._listener = listener;
   }
 
   get signal(): AbortSignal | undefined {
@@ -42,8 +52,15 @@ export class UsageTimeoutManager implements TimeoutManager {
         if (sample.cpuTime > timeoutInSeconds * 1000) {
           clearInterval(this._intervalId);
 
+          const elapsedTimeInSeconds = sample.cpuTime / 1000;
+
+          // Call the listener if registered
+          if (this._listener) {
+            this._listener(timeoutInSeconds, elapsedTimeInSeconds);
+          }
+
           this._abortController.abort(
-            new TaskRunExceededMaxDuration(timeoutInSeconds, sample.cpuTime / 1000)
+            new TaskRunExceededMaxDuration(timeoutInSeconds, elapsedTimeInSeconds)
           );
         }
       }

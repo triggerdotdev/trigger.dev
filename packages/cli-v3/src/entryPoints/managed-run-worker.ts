@@ -726,6 +726,17 @@ function initializeUsageManager({
   usage.setGlobalUsageManager(prodUsageManager);
   timeout.setGlobalManager(new UsageTimeoutManager(devUsageManager));
 
+  // Register listener to send IPC message when max duration is exceeded
+  timeout.registerListener(async (maxDurationInSeconds, elapsedTimeInSeconds) => {
+    console.log(
+      `[${new Date().toISOString()}] Max duration exceeded: ${maxDurationInSeconds}s, elapsed: ${elapsedTimeInSeconds}s`
+    );
+    await zodIpc.send("MAX_DURATION_EXCEEDED", {
+      maxDurationInSeconds,
+      elapsedTimeInSeconds,
+    });
+  });
+
   return prodUsageManager;
 }
 
