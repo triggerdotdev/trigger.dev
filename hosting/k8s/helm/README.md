@@ -656,14 +656,16 @@ helm upgrade --install trigger . \
           cpu: 250m
           memory: 512Mi
   
+  # ClickHouse can be very resource intensive, so we recommend setting limits and requests accordingly
+  # Note: not doing this can cause OOM crashes which will cause issues across many different features
   clickhouse:
     resources:
       limits:
-        cpu: 1000m
-        memory: 2Gi
+        cpu: 4000m
+        memory: 16Gi
       requests:
-        cpu: 500m
-        memory: 1Gi
+        cpu: 2000m
+        memory: 8Gi
   
   supervisor:
     resources:
