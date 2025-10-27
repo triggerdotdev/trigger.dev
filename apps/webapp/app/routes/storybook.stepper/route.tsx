@@ -7,6 +7,7 @@ export default function Story() {
   const [value1, setValue1] = useState<number | "">(0);
   const [value2, setValue2] = useState<number | "">(100);
   const [value3, setValue3] = useState<number | "">(0);
+  const [value4, setValue4] = useState<number | "">(250);
 
   return (
     <div className="grid h-full w-full place-items-center">
@@ -36,6 +37,16 @@ export default function Story() {
         </div>
 
         <div className="flex flex-col gap-2">
+          <label className="text-sm text-text-dimmed">Size: large, Step: 50</label>
+          <InputStepper
+            value={value4}
+            onChange={(e) => setValue4(e.target.value === "" ? "" : Number(e.target.value))}
+            step={50}
+            controlSize="large"
+          />
+        </div>
+
+        <div className="flex flex-col gap-2">
           <label className="text-sm text-text-dimmed">Disabled state</label>
           <InputStepper
             value={value3}
@@ -54,6 +65,7 @@ type InputStepperProps = JSX.IntrinsicElements["input"] & {
   min?: number;
   max?: number;
   round?: boolean;
+  controlSize?: "base" | "large";
 };
 
 function InputStepper({
@@ -63,6 +75,7 @@ function InputStepper({
   min,
   max,
   round = true,
+  controlSize = "base",
   name,
   id,
   disabled = false,
@@ -150,10 +163,30 @@ function InputStepper({
     } as unknown as ChangeEvent<HTMLInputElement>);
   }
 
+  const sizeStyles = {
+    base: {
+      container: "h-9",
+      input: "text-sm px-3",
+      button: "size-6",
+      icon: "size-3.5",
+      gap: "gap-1 pr-1.5",
+    },
+    large: {
+      container: "h-11 rounded-md",
+      input: "text-base px-3.5",
+      button: "size-8",
+      icon: "size-5",
+      gap: "gap-1.5 pr-[0.3125rem]",
+    },
+  } as const;
+
+  const size = sizeStyles[controlSize];
+
   return (
     <div
       className={cn(
-        "flex h-9 items-center rounded border border-charcoal-600 bg-tertiary transition hover:border-charcoal-550/80 hover:bg-charcoal-600/80",
+        "flex items-center rounded border border-charcoal-600 bg-tertiary transition hover:border-charcoal-550/80 hover:bg-charcoal-600/80",
+        size.container,
         "has-[:focus-visible]:outline has-[:focus-visible]:outline-1 has-[:focus-visible]:outline-offset-0 has-[:focus-visible]:outline-text-link",
         disabled && "cursor-not-allowed opacity-50",
         className
@@ -196,13 +229,14 @@ function InputStepper({
         disabled={disabled}
         readOnly={readOnly}
         className={cn(
-          "placeholder:text-muted-foreground h-full grow border-0 bg-transparent px-3 text-left text-sm text-text-bright outline-none ring-0 focus:border-0 focus:outline-none focus:ring-0 disabled:cursor-not-allowed",
+          "placeholder:text-muted-foreground h-full grow border-0 bg-transparent text-left text-text-bright outline-none ring-0 focus:border-0 focus:outline-none focus:ring-0 disabled:cursor-not-allowed",
+          size.input,
           // Hide number input arrows
           "[type=number]:border-0 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
         )}
       />
 
-      <div className="flex items-center gap-1 pr-1.5">
+      <div className={cn("flex items-center", size.gap)}>
         <button
           type="button"
           onClick={handleStepDown}
@@ -210,13 +244,14 @@ function InputStepper({
           disabled={disabled || isMinDisabled}
           aria-label={`Decrease by ${step}`}
           className={cn(
-            "flex size-6 items-center justify-center rounded border border-error/30 bg-error/20 transition",
+            "flex items-center justify-center rounded border border-error/30 bg-error/20 transition",
+            size.button,
             "hover:border-error/50 hover:bg-error/30",
             "disabled:cursor-not-allowed disabled:opacity-40",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-text-link"
           )}
         >
-          <MinusIcon className="h-3.5 w-3.5 text-error" />
+          <MinusIcon className={cn("text-error", size.icon)} />
         </button>
 
         <button
@@ -226,13 +261,14 @@ function InputStepper({
           disabled={disabled || isMaxDisabled}
           aria-label={`Increase by ${step}`}
           className={cn(
-            "flex size-6 items-center justify-center rounded border border-success/30 bg-success/10 transition",
+            "flex items-center justify-center rounded border border-success/30 bg-success/10 transition",
+            size.button,
             "hover:border-success/40 hover:bg-success/20",
             "disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-text-link"
           )}
         >
-          <PlusIcon className="h-3.5 w-3.5 text-success" />
+          <PlusIcon className={cn("text-success", size.icon)} />
         </button>
       </div>
     </div>
