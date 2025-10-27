@@ -49,20 +49,12 @@ export default function Story() {
   );
 }
 
-interface InputStepperProps {
-  value: number | "";
-  onChange: (e: ChangeEvent<HTMLInputElement>) => void;
+type InputStepperProps = JSX.IntrinsicElements["input"] & {
   step?: number;
   min?: number;
   max?: number;
   round?: boolean;
-  name?: string;
-  id?: string;
-  disabled?: boolean;
-  readOnly?: boolean;
-  className?: string;
-  placeholder?: string;
-}
+};
 
 function InputStepper({
   value,
@@ -128,7 +120,6 @@ function InputStepper({
 
   function roundToStep(val: number): number {
     if (step <= 0) return val;
-    // HTML number input uses min as the step base when provided, otherwise 0
     const base = min ?? 0;
     const shifted = val - base;
     const quotient = shifted / step;
@@ -138,7 +129,6 @@ function InputStepper({
     const up = base + ceiled * step;
     const distDown = Math.abs(val - down);
     const distUp = Math.abs(up - val);
-    // Ties go down
     return distUp < distDown ? up : down;
   }
 
@@ -154,7 +144,7 @@ function InputStepper({
     // Update the real input's value for immediate UI feedback
     el.value = String(rounded);
     // Invoke consumer onChange with the real element as target/currentTarget
-    onChange({
+    onChange?.({
       target: el,
       currentTarget: el,
     } as unknown as ChangeEvent<HTMLInputElement>);
@@ -181,13 +171,13 @@ function InputStepper({
           if (e.currentTarget.value === "") {
             // reflect emptiness in the input and notify consumer as empty
             if (inputRef.current) inputRef.current.value = "";
-            onChange({
+            onChange?.({
               target: e.currentTarget,
               currentTarget: e.currentTarget,
             } as ChangeEvent<HTMLInputElement>);
             return;
           }
-          onChange(e);
+          onChange?.(e);
         }}
         onBlur={(e) => {
           // If blur is caused by clicking our step buttons, we prevent pointerdown
@@ -213,7 +203,6 @@ function InputStepper({
       />
 
       <div className="flex items-center gap-1 pr-1.5">
-        {/* Minus Button */}
         <button
           type="button"
           onClick={handleStepDown}
