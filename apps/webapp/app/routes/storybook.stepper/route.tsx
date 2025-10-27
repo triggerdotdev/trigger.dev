@@ -4,9 +4,9 @@ import { Header2 } from "~/components/primitives/Headers";
 import { cn } from "~/utils/cn";
 
 export default function Story() {
-  const [value1, setValue1] = useState(0);
-  const [value2, setValue2] = useState(100);
-  const [value3, setValue3] = useState(0);
+  const [value1, setValue1] = useState<number | "">(0);
+  const [value2, setValue2] = useState<number | "">(100);
+  const [value3, setValue3] = useState<number | "">(0);
 
   return (
     <div className="grid h-full w-full place-items-center">
@@ -17,19 +17,20 @@ export default function Story() {
           <label className="text-sm text-text-dimmed">Size: base (default), Step: 75</label>
           <InputStepper
             value={value1}
-            onChange={(e) => setValue1(Number(e.target.value))}
+            onChange={(e) => setValue1(e.target.value === "" ? "" : Number(e.target.value))}
             step={75}
           />
         </div>
 
         <div className="flex flex-col gap-2">
           <label className="text-sm text-text-dimmed">
-            Size: base (default), Step: 50, Max: 1000
+            Size: base (default), Step: 50, Min: 0, Max: 1000
           </label>
           <InputStepper
             value={value2}
-            onChange={(e) => setValue2(Number(e.target.value))}
+            onChange={(e) => setValue2(e.target.value === "" ? "" : Number(e.target.value))}
             step={50}
+            min={0}
             max={1000}
           />
         </div>
@@ -38,7 +39,7 @@ export default function Story() {
           <label className="text-sm text-text-dimmed">Disabled state</label>
           <InputStepper
             value={value3}
-            onChange={(e) => setValue3(Number(e.target.value))}
+            onChange={(e) => setValue3(e.target.value === "" ? "" : Number(e.target.value))}
             step={50}
             disabled
           />
@@ -49,16 +50,18 @@ export default function Story() {
 }
 
 interface InputStepperProps {
-  value: number;
+  value: number | "";
   onChange: (e: ChangeEvent<HTMLInputElement>) => void;
   step?: number;
   min?: number;
   max?: number;
+  round?: boolean;
   name?: string;
   id?: string;
   disabled?: boolean;
   readOnly?: boolean;
   className?: string;
+  placeholder?: string;
 }
 
 function InputStepper({
@@ -67,20 +70,29 @@ function InputStepper({
   step = 50,
   min,
   max,
+  round = true,
   name,
   id,
   disabled = false,
   readOnly = false,
   className,
+  placeholder = "Type a number",
 }: InputStepperProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleStepUp = () => {
     if (!inputRef.current || disabled) return;
 
+    // If rounding is enabled, ensure we start from a rounded base before stepping
+    if (round) {
+      // If field is empty, treat as 0 (or min if provided) before stepping up
+      if (inputRef.current.value === "") {
+        inputRef.current.value = String(min ?? 0);
+      } else {
+        commitRoundedFromInput();
+      }
+    }
     inputRef.current.stepUp();
-
-    // Dispatch a native change event so the onChange handler is called
     const event = new Event("change", { bubbles: true });
     inputRef.current.dispatchEvent(event);
   };
@@ -88,15 +100,65 @@ function InputStepper({
   const handleStepDown = () => {
     if (!inputRef.current || disabled) return;
 
+    // If rounding is enabled, ensure we start from a rounded base before stepping
+    if (round) {
+      // If field is empty, treat as 0 (or min if provided) before stepping down
+      if (inputRef.current.value === "") {
+        inputRef.current.value = String(min ?? 0);
+      } else {
+        commitRoundedFromInput();
+      }
+    }
     inputRef.current.stepDown();
-
-    // Dispatch a native change event so the onChange handler is called
     const event = new Event("change", { bubbles: true });
     inputRef.current.dispatchEvent(event);
   };
 
-  const isMinDisabled = min !== undefined && value <= min;
-  const isMaxDisabled = max !== undefined && value >= max;
+  const numericValue = value === "" ? NaN : (value as number);
+  const isMinDisabled = min !== undefined && !Number.isNaN(numericValue) && numericValue <= min;
+  const isMaxDisabled = max !== undefined && !Number.isNaN(numericValue) && numericValue >= max;
+
+  function clamp(val: number): number {
+    if (Number.isNaN(val)) return typeof value === "number" ? value : min ?? 0;
+    let next = val;
+    if (min !== undefined) next = Math.max(min, next);
+    if (max !== undefined) next = Math.min(max, next);
+    return next;
+  }
+
+  function roundToStep(val: number): number {
+    if (step <= 0) return val;
+    // HTML number input uses min as the step base when provided, otherwise 0
+    const base = min ?? 0;
+    const shifted = val - base;
+    const quotient = shifted / step;
+    const floored = Math.floor(quotient);
+    const ceiled = Math.ceil(quotient);
+    const down = base + floored * step;
+    const up = base + ceiled * step;
+    const distDown = Math.abs(val - down);
+    const distUp = Math.abs(up - val);
+    // Ties go down
+    return distUp < distDown ? up : down;
+  }
+
+  function commitRoundedFromInput() {
+    if (!inputRef.current || disabled || readOnly) return;
+    const el = inputRef.current;
+    const raw = el.value;
+    if (raw === "") return; // do not coerce empty to 0; keep placeholder visible
+    const numeric = Number(raw);
+    if (Number.isNaN(numeric)) return; // ignore non-numeric
+    const rounded = clamp(roundToStep(numeric));
+    if (String(rounded) === String(value)) return;
+    // Update the real input's value for immediate UI feedback
+    el.value = String(rounded);
+    // Invoke consumer onChange with the real element as target/currentTarget
+    onChange({
+      target: el,
+      currentTarget: el,
+    } as unknown as ChangeEvent<HTMLInputElement>);
+  }
 
   return (
     <div
@@ -113,7 +175,31 @@ function InputStepper({
         id={id}
         name={name}
         value={value}
-        onChange={onChange}
+        placeholder={placeholder}
+        onChange={(e) => {
+          // Allow empty string to pass through so user can clear the field
+          if (e.currentTarget.value === "") {
+            // reflect emptiness in the input and notify consumer as empty
+            if (inputRef.current) inputRef.current.value = "";
+            onChange({
+              target: e.currentTarget,
+              currentTarget: e.currentTarget,
+            } as ChangeEvent<HTMLInputElement>);
+            return;
+          }
+          onChange(e);
+        }}
+        onBlur={(e) => {
+          // If blur is caused by clicking our step buttons, we prevent pointerdown
+          // so blur shouldn't fire. This is for safety in case of keyboard focus move.
+          if (round) commitRoundedFromInput();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && round) {
+            e.preventDefault();
+            commitRoundedFromInput();
+          }
+        }}
         step={step}
         min={min}
         max={max}
@@ -131,6 +217,7 @@ function InputStepper({
         <button
           type="button"
           onClick={handleStepDown}
+          onPointerDown={(e) => e.preventDefault()}
           disabled={disabled || isMinDisabled}
           aria-label={`Decrease by ${step}`}
           className={cn(
@@ -146,6 +233,7 @@ function InputStepper({
         <button
           type="button"
           onClick={handleStepUp}
+          onPointerDown={(e) => e.preventDefault()}
           disabled={disabled || isMaxDisabled}
           aria-label={`Increase by ${step}`}
           className={cn(
