@@ -1,5 +1,6 @@
 import { MinusIcon, PlusIcon } from "@heroicons/react/20/solid";
 import { useState, useRef, type ChangeEvent } from "react";
+import { Header2 } from "~/components/primitives/Headers";
 import { cn } from "~/utils/cn";
 
 export default function Story() {
@@ -8,9 +9,9 @@ export default function Story() {
   const [value3, setValue3] = useState(0);
 
   return (
-    <div className="grid h-full max-w-4xl place-items-center">
+    <div className="grid h-full w-full place-items-center">
       <div className="flex flex-col gap-4">
-        <h2 className="text-lg font-semibold text-text-bright">InputStepper examples</h2>
+        <Header2>InputStepper</Header2>
 
         <div className="flex flex-col gap-2">
           <label className="text-sm text-text-dimmed">Size: base (default), Step: 75</label>
@@ -102,7 +103,7 @@ function InputStepper({
       className={cn(
         "flex h-9 items-center rounded border border-charcoal-600 bg-tertiary transition hover:border-charcoal-550/80 hover:bg-charcoal-600/80",
         "has-[:focus-visible]:outline has-[:focus-visible]:outline-1 has-[:focus-visible]:outline-offset-0 has-[:focus-visible]:outline-text-link",
-        "has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50",
+        disabled && "cursor-not-allowed opacity-50",
         className
       )}
     >
