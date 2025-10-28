@@ -970,10 +970,10 @@ function QueueOverrideConcurrencyButton({
           {isOverridden ? (
             <Paragraph>
               This queue's concurrency limit is currently overridden to {currentLimit}.
-              {queue.concurrencyLimit !== null &&
-                ` The original limit set in code was ${queue.concurrencyLimit}.`}{" "}
+              {queue.concurrencyLimitBase !== null &&
+                ` The original limit set in code was ${queue.concurrencyLimitBase}.`}{" "}
               You can update the override or remove it to restore the{" "}
-              {queue.concurrencyLimit !== null
+              {queue.concurrencyLimitBase !== null
                 ? "limit set in code"
                 : "environment concurrency limit"}
               .
