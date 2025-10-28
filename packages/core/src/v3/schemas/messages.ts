@@ -189,6 +189,13 @@ export const ExecutorToWorkerMessageCatalog = {
       suspendable: z.boolean(),
     }),
   },
+  MAX_DURATION_EXCEEDED: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      maxDurationInSeconds: z.number(),
+      elapsedTimeInSeconds: z.number(),
+    }),
+  },
 };
 
 export const WorkerToExecutorMessageCatalog = {

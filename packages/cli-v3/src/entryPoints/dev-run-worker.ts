@@ -128,6 +128,17 @@ usage.setGlobalUsageManager(devUsageManager);
 const usageTimeoutManager = new UsageTimeoutManager(devUsageManager);
 timeout.setGlobalManager(usageTimeoutManager);
 
+// Register listener to send IPC message when max duration is exceeded
+timeout.registerListener(async (maxDurationInSeconds, elapsedTimeInSeconds) => {
+  log(
+    `[${new Date().toISOString()}] Max duration exceeded: ${maxDurationInSeconds}s, elapsed: ${elapsedTimeInSeconds}s`
+  );
+  await zodIpc.send("MAX_DURATION_EXCEEDED", {
+    maxDurationInSeconds,
+    elapsedTimeInSeconds,
+  });
+});
+
 const standardResourceCatalog = new StandardResourceCatalog();
 resourceCatalog.setGlobalResourceCatalog(standardResourceCatalog);
 

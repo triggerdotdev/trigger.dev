@@ -557,6 +557,17 @@ export class GracefulExitTimeoutError extends Error {
   }
 }
 
+export class MaxDurationExceededError extends Error {
+  constructor(
+    public readonly maxDurationInSeconds: number,
+    public readonly elapsedTimeInSeconds: number
+  ) {
+    super(`Run exceeded maximum compute time (maxDuration) of ${maxDurationInSeconds} seconds`);
+
+    this.name = "MaxDurationExceededError";
+  }
+}
+
 type ErrorLink = {
   name: string;
   href: string;

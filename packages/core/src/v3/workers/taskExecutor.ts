@@ -3,7 +3,6 @@ import { promiseWithResolvers } from "../../utils.js";
 import { ApiError, RateLimitError } from "../apiClient/errors.js";
 import { ConsoleInterceptor } from "../consoleInterceptor.js";
 import {
-  InternalError,
   isCompleteTaskWithOutput,
   isInternalError,
   parseError,
@@ -419,29 +418,13 @@ export class TaskExecutor {
       throw new Error("Task does not have a run function");
     }
 
-    // Create a promise that rejects when the signal aborts
-    const abortPromise = new Promise((_, reject) => {
-      signal.addEventListener("abort", () => {
-        if (typeof signal.reason === "string" && signal.reason.includes("cancel")) {
-          return;
-        }
-
-        const maxDuration = ctx.run.maxDuration;
-        reject(
-          new InternalError({
-            code: TaskRunErrorCodes.MAX_DURATION_EXCEEDED,
-            message: `Run exceeded maximum compute time (maxDuration) of ${maxDuration} seconds`,
-          })
-        );
-      });
-    });
-
     return runTimelineMetrics.measureMetric("trigger.dev/execution", "run", async () => {
       return await this._tracer.startActiveSpan(
         "run()",
         async (span) => {
-          // Race between the run function and the abort promise
-          return await Promise.race([runFn(payload, { ctx, init, signal }), abortPromise]);
+          // maxDuration is now enforced by killing the process, not by Promise.race
+          // The signal is still passed to runFn for cancellation and other abort conditions
+          return await runFn(payload, { ctx, init, signal });
         },
         {
           attributes: { [SemanticInternalAttributes.STYLE_ICON]: "task-fn-run" },

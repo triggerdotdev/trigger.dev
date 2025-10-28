@@ -47,6 +47,13 @@ export class TimeoutAPI implements TimeoutManager {
     this.disable();
   }
 
+  public registerListener(listener: (timeoutInSeconds: number, elapsedTimeInSeconds: number) => void | Promise<void>) {
+    const manager = this.#getManager();
+    if (manager.registerListener) {
+      manager.registerListener(listener);
+    }
+  }
+
   #getManager(): TimeoutManager {
     return getGlobal(API_NAME) ?? NOOP_TIMEOUT_MANAGER;
   }
