@@ -1,5 +1,15 @@
 # internal-platform
 
+## 4.0.5
+
+### Patch Changes
+
+- Move max duration handling into the parent process ([#2637](https://github.com/triggerdotdev/trigger.dev/pull/2637))
+- fix(realtime): Upgrade to @electric-sql/client@1.0.14 to prevent cached 409 Conflict errors from breaking realtime updates ([#2588](https://github.com/triggerdotdev/trigger.dev/pull/2588))
+- Added INSTALLING status to the deployment status enum. ([#2544](https://github.com/triggerdotdev/trigger.dev/pull/2544))
+- Fix SIGTERM handling during warm start long poll ([#2593](https://github.com/triggerdotdev/trigger.dev/pull/2593))
+- Added support for deployments with local builds. ([#2628](https://github.com/triggerdotdev/trigger.dev/pull/2628))
+
 ## 4.0.4
 
 ## 4.0.3
