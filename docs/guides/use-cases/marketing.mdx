@@ -1,0 +1,103 @@
+---
+title: "Marketing"
+description: "Orchestrate campaigns that respond dynamically to user behavior. Build drip sequences, personalization engines, and analytics workflows with Trigger.dev"
+---
+
+import UseCasesCards from "/snippets/use-cases-cards.mdx";
+
+## Overview
+
+Marketing automation workflows require orchestrating complex campaigns that respond to user behavior, send personalized content, and track engagement across multiple channels. Build reliable marketing pipelines in TypeScript with automatic retries, progress tracking, and no timeout limits; perfect for email sequences, customer journeys, personalization engines, and analytics workflows.
+
+## Basic marketing workflow implementation
+
+A typical marketing automation workflow:
+
+1. **Trigger**: User event, [webhook](/triggering), or [scheduled task](/tasks/scheduled)
+2. **Segment**: Query database for targeting criteria
+3. **Generate**: Create personalized content (AI-generated copy, dynamic images)
+4. **Send**: Deliver via email/SMS APIs with [retry logic](/errors-retrying)
+5. **Track**: Store engagement data, [trigger follow-ups](/triggering#yourtask-trigger)
+
+Each step is durable and retryable—if email sending fails, Trigger.dev automatically retries without regenerating personalized content.
+
+Trigger.dev is ideal for marketing automation because [wait.for()](/wait-for) and [wait.until()](/wait-until) let you build drip campaigns with precise delays (hours to weeks) without paying for idle time, [batchTriggerAndWait()](/triggering#yourtask-batchtriggerandwait) sends to thousands in parallel with configurable concurrency, and [idempotency keys](/idempotency) ensure users never receive duplicate messages even when tasks retry.
+
+## Common marketing workflow patterns
+
+### Drip Campaigns
+
+Use scheduled tasks and wait conditions to create sophisticated email sequences:
+
+- Welcome series for new subscribers
+- Onboarding sequences for new users
+- Re-engagement campaigns for inactive users
+- Product education sequences
+
+### Behavioral Triggers
+
+Respond to user actions with personalized campaigns:
+
+- Cart abandonment recovery
+- Post-purchase follow-up
+- Feature usage-based messaging
+- Milestone celebration campaigns
+
+### Personalization at Scale
+
+Generate personalized content for thousands of users:
+
+- Dynamic email content based on user preferences
+- Personalized product recommendations
+- Custom landing pages for different segments
+- Individualized promotional offers
+
+### Analytics and Reporting
+
+Track campaign performance and optimize:
+
+- A/B test different message variants
+- Monitor engagement metrics across channels
+- Generate automated performance reports
+- Trigger campaigns based on performance thresholds
+
+## Marketing workflow examples
+
+<CardGroup cols={2}>
+  <Card
+    title="Email sequences with Resend"
+    icon="book"
+    href="/guides/examples/resend-email-sequence"
+  >
+    Send a sequence of emails over several days using Resend.
+  </Card>
+  <Card title="React Email" icon="book" href="/guides/examples/react-email">
+    Send emails using React Email with JSX email templates.
+  </Card>
+  <Card title="Stripe webhooks" icon="book" href="/guides/examples/stripe-webhook">
+    Trigger campaigns from Stripe payment events and subscription changes.
+  </Card>
+  <Card
+    title="Generate and translate marketing copy"
+    icon="book"
+    href="/guides/ai-agents/generate-translate-copy"
+  >
+    Chain prompts to generate and translate copy in multiple languages.
+  </Card>
+  <Card
+    title="Product image generator"
+    icon="book"
+    href="/guides/example-projects/product-image-generator"
+  >
+    Transform basic product photos into professional marketing images.
+  </Card>
+  <Card
+    title="Human-in-the-loop workflow"
+    icon="book"
+    href="/guides/example-projects/human-in-the-loop-workflow"
+  >
+    Add human approval steps to workflows using ReactFlow and waitpoint tokens.
+  </Card>
+</CardGroup>
+
+<UseCasesCards />

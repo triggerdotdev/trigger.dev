@@ -1,0 +1,111 @@
+---
+title: "AI-Powered Media Generation"
+description: "Build reliable AI media generation workflows for images, videos, audio, and more with Trigger.dev. No timeouts, automatic retries, and real-time progress tracking"
+---
+
+import UseCasesCards from "/snippets/use-cases-cards.mdx";
+
+## Overview
+
+AI-powered media generation workflows require handling unpredictable API latencies, managing rate limits, and processing computationally intensive operations. Build reliable AI content generation pipelines in TypeScript with automatic retries, progress tracking, and no timeout limits; perfect for AI image generation, video synthesis, audio creation, and multi-modal content workflows.
+
+## Basic AI media generation workflow implementation
+
+A typical AI generation pipeline:
+
+1. **Input**: Receive prompts, parameters, reference images
+2. **Generate**: Call AI APIs (OpenAI, Replicate, Fal.ai, Stability, etc.)
+3. **Post-process**: Upscale, optimize, apply transformations
+4. **Review**: Human approval or automated quality checks
+5. **Deliver**: Upload to storage, update database
+
+Each step is durable and retryable—if an AI API call times out, Trigger.dev automatically retries without re-executing expensive prompt generation thanks to [checkpoint-resume](/how-it-works#the-checkpoint-resume-system) and [idempotency](/idempotency).
+
+Trigger.dev is ideal for AI media generation because [checkpoint-resume](/how-it-works#the-checkpoint-resume-system) pauses during AI API calls (you only pay for active compute, not inference time), no [timeout limits](/runs/max-duration) means generation can take minutes or hours, [batchTriggerAndWait()](/triggering#yourtask-batchtriggerandwait) generates hundreds in parallel with [queue.concurrencyLimit](/queue-concurrency) respecting API rate limits, [metadata.stream()](/runs/metadata#stream) + [realtime](/realtime) stream previews to your frontend, and [wait.for()](/wait-for-token) adds human approval gates for brand safety.
+
+## AI media generation workflow examples
+
+<CardGroup cols={2}>
+  <Card
+    title="Product image generator"
+    icon="book"
+    href="/guides/example-projects/product-image-generator"
+  >
+    Transform product photos into professional marketing images using Replicate.
+  </Card>
+  <Card title="DALL·E 3" icon="book" href="/guides/examples/dall-e3-generate-image">
+    Generate images from text prompts using OpenAI's DALL·E 3.
+  </Card>
+  <Card title="Fal.ai realtime" icon="book" href="/guides/examples/fal-ai-realtime">
+    Generate images with Fal.ai and stream progress updates in real-time.
+  </Card>
+  <Card
+    title="Vercel AI SDK image generator"
+    icon="book"
+    href="/guides/example-projects/vercel-ai-sdk-image-generator"
+  >
+    Build image generation workflows using Vercel's AI SDK.
+  </Card>
+  <Card
+    title="Meme generator (human-in-the-loop)"
+    icon="book"
+    href="/guides/example-projects/meme-generator-human-in-the-loop"
+  >
+    Generate memes with DALL·E 3 and add human approval steps.
+  </Card>
+  <Card
+    title="Deep research agent"
+    icon="book"
+    href="/guides/example-projects/vercel-ai-sdk-deep-research"
+  >
+    Build a research agent that generates comprehensive reports with Vercel AI SDK.
+  </Card>
+</CardGroup>
+
+## Production use cases
+
+<Card title="Icon customer story" href="https://trigger.dev/customers/icon-customer-story">
+
+Read how Icon uses Trigger.dev to process and generate thousands of AI-powered videos per month for their AI-driven video creation platform.
+
+</Card>
+
+## Common AI generation patterns
+
+### Single Media Generation
+
+Generate individual AI-powered content on demand:
+
+- Generate images from text prompts
+- Transform existing images with AI models
+- Create variations of source images
+- Apply AI filters and effects
+
+### Batch Generation
+
+Create content at scale for production workflows:
+
+- Generate hundreds of product images
+- Create personalized marketing assets at scale
+- Generate thumbnail variations for A/B testing
+- Bulk process images through AI models
+
+### Multi-step AI Pipelines
+
+Chain multiple AI operations for sophisticated workflows:
+
+- Prompt generation → Image generation → Upscaling
+- Image generation → Style transfer → Optimization
+- Audio generation → Transcription → Translation
+- Video generation → Thumbnail extraction → Metadata generation
+
+### Human-in-the-loop
+
+Add review and approval steps to AI workflows:
+
+- Generate content → Human review → Publish
+- AI moderation → Flagged content review → Decision
+- Batch generation → Sample review → Approve batch
+- Iterative refinement with human feedback
+
+<UseCasesCards />

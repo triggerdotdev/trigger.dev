@@ -1,0 +1,106 @@
+---
+title: "Data Processing & ETL"
+description: "Build reliable data processing and ETL pipelines with automatic retries, progress tracking, and no timeout limits using Trigger.dev"
+---
+
+import UseCasesCards from "/snippets/use-cases-cards.mdx";
+
+## Overview
+
+Data processing and ETL (Extract, Transform, Load) workflows require handling large datasets, complex transformations, and reliable data movement between systems. Build robust data pipelines in TypeScript with automatic retries, progress tracking, and no timeout limits; perfect for web scraping, database synchronization, real-time analytics, and large-scale data transformation.
+
+## Basic data processing and ETL workflow implementation
+
+A typical ETL pipeline:
+
+1. **Extract**: Pull from APIs, databases, S3, or web scraping
+2. **Transform**: Clean, validate, enrich data
+3. **Load**: Write to warehouse, database, or storage
+4. **Monitor**: Track progress, handle failures
+
+Each step is durable and retryable—if transformation fails, Trigger.dev automatically retries without re-extracting source data thanks to [checkpoint-resume](/how-it-works#the-checkpoint-resume-system) and [idempotency keys](/idempotency).
+
+Trigger.dev is ideal for ETL pipelines because there are no [timeout limits](/runs/max-duration) (process datasets for hours or days), [batchTriggerAndWait()](/triggering#yourtask-batchtriggerandwait) parallelizes across thousands of records with [queue.concurrencyLimit](/queue-concurrency) to respect API rate limits, [metadata](/runs/metadata) + [realtime](/realtime) stream row-by-row progress to dashboards, and [schedules.task()](/tasks/scheduled) handles recurring jobs with cron syntax.
+
+## Data processing workflow examples
+
+<CardGroup cols={2}>
+  <Card
+    title="Realtime CSV importer"
+    icon="book"
+    href="/guides/example-projects/realtime-csv-importer"
+  >
+    Import CSV files with progress tracking streamed to the frontend.
+  </Card>
+  <Card title="Web scraper with BrowserBase" icon="book" href="/guides/examples/scrape-hacker-news">
+    Scrape Hacker News using BrowserBase and Puppeteer, summarize with ChatGPT.
+  </Card>
+  <Card title="Firecrawl" icon="book" href="/guides/examples/firecrawl-url-crawl">
+    Crawl URLs and return LLM-ready markdown using Firecrawl.
+  </Card>
+  <Card
+    title="Supabase database operations"
+    icon="book"
+    href="/guides/examples/supabase-database-operations"
+  >
+    Run CRUD operations on a Supabase database table.
+  </Card>
+  <Card title="Sequin database triggers" icon="book" href="/guides/frameworks/sequin">
+    Trigger tasks from database changes using Sequin's CDC platform.
+  </Card>
+  <Card
+    title="Sync Vercel environment variables"
+    icon="book"
+    href="/guides/examples/vercel-sync-env-vars"
+  >
+    Automatically sync environment variables from Vercel projects.
+  </Card>
+</CardGroup>
+
+## Production use cases
+
+<Card title="Papermark customer story" href="https://trigger.dev/customers/papermark-customer-story">
+
+Read how Papermark processes thousands of documents per month using Trigger.dev.
+
+</Card>
+
+## Common data processing patterns
+
+### Scheduled Data Syncs
+
+Run ETL jobs on a schedule to keep systems in sync:
+
+- Daily database exports and backups
+- Hourly API data pulls and transformations
+- Real-time webhook processing and routing
+- Periodic data warehouse updates
+
+### Event-Driven Processing
+
+Respond to data events with automated workflows:
+
+- Process new database records as they're created
+- Transform uploaded files immediately
+- React to webhook events from external systems
+- Handle real-time data streams
+
+### Batch Processing
+
+Process large datasets efficiently:
+
+- Import CSV files with thousands of rows
+- Bulk update records across systems
+- Process queued data in parallel batches
+- Generate reports from aggregated data
+
+### Pipeline Orchestration
+
+Chain multiple processing steps together:
+
+- Extract from API → Transform → Load to database
+- Web scraping → Data cleaning → Analysis → Storage
+- File upload → Validation → Processing → Notification
+- Multi-source data aggregation and enrichment
+
+<UseCasesCards />

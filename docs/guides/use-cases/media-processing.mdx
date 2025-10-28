@@ -1,0 +1,107 @@
+---
+title: "Media Processing"
+description: "Build reliable media processing workflows for video transcoding, image processing, audio transformation, and more with Trigger.dev"
+---
+
+import UseCasesCards from "/snippets/use-cases-cards.mdx";
+
+## Overview
+
+Media processing workflows require handling large files (videos, images, audio), long-running operations, and resource-intensive transformations. Build reliable media processing pipelines in TypeScript with automatic retries, progress tracking, and no timeout limits; perfect for video transcoding, image optimization, audio processing, and AI-powered media analysis.
+
+## Media processing workflow implementation
+
+A typical media processing pipeline:
+
+1. **Trigger**: Upload webhook or S3 event
+2. **Download**: Fetch source file (video, image, audio, document)
+3. **Process**: Transcode, resize, compress, extract frames
+4. **Upload**: Store results to S3/R2/storage
+5. **Cleanup**: Update database, delete temp files
+
+Each step is durable and retryable—if FFmpeg processing fails, Trigger.dev automatically retries without re-downloading the source file thanks to [checkpoint-resume](/how-it-works#the-checkpoint-resume-system) and [idempotency](/idempotency).
+
+Trigger.dev is ideal for media processing because there are no [timeout limits](/runs/max-duration) (transcode multi-hour videos or run CPU-intensive operations indefinitely), [batchTriggerAndWait()](/triggering#yourtask-batchtriggerandwait) processes hundreds of files in parallel with [queue.concurrencyLimit](/queue-concurrency) controlling resource usage, [metadata](/runs/metadata) + [realtime](/realtime) stream processing progress to your frontend, and [wait.for()](/wait-for-token) enables human approval workflows for content moderation.
+
+## Media processing workflow examples
+
+<CardGroup cols={2}>
+  <Card title="FFmpeg video processing" icon="book" href="/guides/examples/ffmpeg-video-processing">
+    Process videos and upload results to R2 storage using FFmpeg.
+  </Card>
+  <Card
+    title="Deepgram audio transcription"
+    icon="book"
+    href="/guides/examples/deepgram-transcribe-audio"
+  >
+    Transcribe audio files using Deepgram's speech recognition API.
+  </Card>
+  <Card
+    title="LibreOffice PDF conversion"
+    icon="book"
+    href="/guides/examples/libreoffice-pdf-conversion"
+  >
+    Convert documents to PDF using LibreOffice.
+  </Card>
+  <Card
+    title="Python PDF form extractor"
+    icon="book"
+    href="/guides/python/python-pdf-form-extractor"
+  >
+    Extract form data from PDFs using Python and PyMuPDF.
+  </Card>
+</CardGroup>
+
+## Production use cases
+
+<Card title="Icon customer story" href="https://trigger.dev/customers/icon-customer-story">
+
+Read how Icon uses Trigger.dev to process and generate thousands of videos per month for their AI-driven video creation platform.
+
+</Card>
+
+<Card title="Papermark customer story" href="https://trigger.dev/customers/papermark-customer-story">
+
+Read how Papermark process thousands of documents per month using Trigger.dev.
+
+</Card>
+
+## Common media processing patterns
+
+### Video Processing
+
+Transform and optimize video content at scale:
+
+- Transcode videos to multiple formats and resolutions
+- Generate thumbnails and preview clips
+- Add watermarks, captions, or overlays
+- Extract audio tracks or video frames
+
+### Image Processing
+
+Optimize and transform images for any use case:
+
+- Resize and compress for web delivery
+- Generate multiple variants (thumbnails, crops, formats)
+- Apply filters, effects, or branding
+- Convert between formats (PNG, JPEG, WebP)
+
+### Audio Processing
+
+Process and transform audio files:
+
+- Transcribe speech to text
+- Convert between audio formats
+- Extract audio from video files
+- Apply audio effects and normalization
+
+### Document Processing
+
+Handle document transformation workflows:
+
+- Convert documents to PDF
+- Extract text and form data
+- Generate document previews
+- OCR and text extraction
+
+<UseCasesCards />
