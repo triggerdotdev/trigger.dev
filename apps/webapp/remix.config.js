@@ -26,6 +26,7 @@ module.exports = {
     "prismjs/components/prism-typescript",
     "redlock",
     "parse-duration",
+    "uncrypto",
   ],
   browserNodeBuiltinsPolyfill: { modules: { path: true, os: true, crypto: true } },
 };
