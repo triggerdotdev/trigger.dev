@@ -56,7 +56,7 @@ export class UsageTimeoutManager implements TimeoutManager {
 
           // Call the listener if registered
           if (this._listener) {
-            this._listener(timeoutInSeconds, elapsedTimeInSeconds);
+            void this._listener(timeoutInSeconds, elapsedTimeInSeconds);
           }
 
           this._abortController.abort(
