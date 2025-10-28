@@ -991,6 +991,7 @@ function QueueOverrideConcurrencyButton({
                 name="concurrencyLimit"
                 id="concurrencyLimit"
                 min="0"
+                max={environmentConcurrencyLimit}
                 value={concurrencyLimit}
                 onChange={(e) => setConcurrencyLimit(e.target.value)}
                 placeholder={currentLimit.toString()}
