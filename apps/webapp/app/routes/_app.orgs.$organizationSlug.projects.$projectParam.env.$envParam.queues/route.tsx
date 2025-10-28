@@ -12,6 +12,7 @@ import { DialogClose } from "@radix-ui/react-dialog";
 import { Form, useNavigation, useSearchParams, type MetaFunction } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import type { RuntimeEnvironmentType } from "@trigger.dev/database";
+import type { QueueItem } from "@trigger.dev/core/v3/schemas";
 import { useEffect, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -926,12 +927,7 @@ function QueueOverrideConcurrencyButton({
   queue,
   environmentConcurrencyLimit,
 }: {
-  queue: {
-    id: string;
-    name: string;
-    concurrencyLimit: number | null;
-    concurrency?: { overriddenAt: Date | null };
-  };
+  queue: QueueItem;
   environmentConcurrencyLimit: number;
 }) {
   const navigation = useNavigation();
@@ -970,10 +966,10 @@ function QueueOverrideConcurrencyButton({
           {isOverridden ? (
             <Paragraph>
               This queue's concurrency limit is currently overridden to {currentLimit}.
-              {queue.concurrencyLimit !== null &&
-                ` The original limit set in code was ${queue.concurrencyLimit}.`}{" "}
+              {typeof queue.concurrency?.base === "number" &&
+                ` The original limit set in code was ${queue.concurrency.base}.`}{" "}
               You can update the override or remove it to restore the{" "}
-              {queue.concurrencyLimit !== null
+              {typeof queue.concurrency?.base === "number"
                 ? "limit set in code"
                 : "environment concurrency limit"}
               .
@@ -995,6 +991,7 @@ function QueueOverrideConcurrencyButton({
                 name="concurrencyLimit"
                 id="concurrencyLimit"
                 min="0"
+                max={environmentConcurrencyLimit}
                 value={concurrencyLimit}
                 onChange={(e) => setConcurrencyLimit(e.target.value)}
                 placeholder={currentLimit.toString()}
