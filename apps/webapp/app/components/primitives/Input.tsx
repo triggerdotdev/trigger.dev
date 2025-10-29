@@ -44,6 +44,24 @@ const variants = {
     iconSize: "size-3 ml-0.5",
     accessory: "pr-0.5",
   },
+  "outline/large": {
+    container: "px-1 h-10 w-full rounded border border-grid-bright hover:border-charcoal-550",
+    input: "px-2 rounded text-sm",
+    iconSize: "size-4 ml-1",
+    accessory: "pr-1",
+  },
+  "outline/medium": {
+    container: "px-1 h-8 w-full rounded border border-grid-bright hover:border-charcoal-550",
+    input: "px-1 rounded text-sm",
+    iconSize: "size-4 ml-0.5",
+    accessory: "pr-1",
+  },
+  "outline/small": {
+    container: "px-1 h-6 w-full rounded border border-grid-bright hover:border-charcoal-550",
+    input: "px-1 rounded text-xs",
+    iconSize: "size-3 ml-0.5",
+    accessory: "pr-0.5",
+  },
 };
 
 export type InputProps = React.InputHTMLAttributes<HTMLInputElement> & {
