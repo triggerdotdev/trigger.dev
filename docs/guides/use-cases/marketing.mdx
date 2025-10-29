@@ -50,45 +50,93 @@ Messages send exactly once, even after retries. Personalized content isn't regen
 
 Process thousands in parallel while respecting rate limits. Send to entire segments without overwhelming APIs.
 
-## Common workflows
-
-Here are some basic examples of marketing workflows:
+## Example workflows
 
 <Tabs>
-  <Tab title="Drip campaigns">
-    <Steps>
-      <Step title="Trigger">User signs up or performs action</Step>
-      <Step title="Segment">Query database for targeting criteria</Step>
-      <Step title="Wait">Pause for specified time (hours/days)</Step>
-      <Step title="Send">Deliver personalized message</Step>
-      <Step title="Track">Log engagement and trigger next step</Step>
-    </Steps>
+  <Tab title="Email sequence">
+    Simple drip campaign. User signs up, waits specified delay, sends personalized email, tracks engagement.
+
+<div align="center">
+
+```mermaid
+graph TB
+    A[startDripCampaign] --> B[fetchUserData]
+    B --> C[wait.for 24h]
+    C --> D[sendPersonalizedEmail]
+    D --> E[trackEngagement]
+```
+
+</div>
   </Tab>
-  <Tab title="Real-time personalization">
-    <Steps>
-      <Step title="User action">Cart add, page view, feature usage</Step>
-      <Step title="Fetch data">Pull user profile and preferences</Step>
-      <Step title="Generate content">Create personalized message</Step>
-      <Step title="Deliver">Send via email, SMS, or in-app</Step>
-    </Steps>
+
+  <Tab title="Multi-channel">
+    **Router pattern with delay orchestration**. User action triggers campaign, router selects channel based on preferences (email/SMS/push), coordinates multi-day sequence with delays between messages, tracks engagement across channels.
+
+<div align="center">
+
+```mermaid
+graph TB
+    A[startCampaign] --> B[fetchUserProfile]
+    B --> C[selectChannel]
+    C --> D{Preferred<br/>Channel?}
+
+    D -->|Email| E[sendEmail1]
+    D -->|SMS| F[sendSMS1]
+    D -->|Push| G[sendPush1]
+
+    E --> H[wait.for 2d]
+    F --> H
+    G --> H
+
+    H --> I[sendFollowUp]
+    I --> J[trackConversion]
+```
+
+</div>
   </Tab>
+
   <Tab title="Content approval">
-    <Steps>
-      <Step title="Create draft">Generate AI content or asset</Step>
-      <Step title="Human review">Pause for approval workflow</Step>
-      <Step title="Revise">Apply feedback if needed</Step>
-      <Step title="Approve">Mark ready for publishing</Step>
-      <Step title="Publish">Deploy to channels</Step>
-    </Steps>
+    **Supervisor pattern with approval gate**. Generates AI marketing content (images, copy, assets), pauses with wait.for for human review, applies revisions if needed, publishes to channels after approval.
+
+<div align="center">
+
+```mermaid
+graph TB
+    A[createCampaignAssets] --> B[generateAIContent]
+    B --> C[wait.for approval]
+    C --> D{Approved?}
+
+    D -->|Yes| E[publishToChannels]
+    D -->|Needs revision| F[applyFeedback]
+    F --> B
+```
+
+</div>
   </Tab>
+
   <Tab title="Survey analysis">
-    <Steps>
-      <Step title="Response">User completes survey</Step>
-      <Step title="Enrich data">Add context from CRM</Step>
-      <Step title="Analyze">Score and categorize</Step>
-      <Step title="Update CRM">Save insights</Step>
-      <Step title="Trigger follow-up">Send personalized response</Step>
-    </Steps>
+    **Coordinator pattern with enrichment**. User completes survey, batch triggers parallel enrichment from CRM/analytics, analyzes and scores responses, updates customer profiles, triggers personalized follow-up campaigns.
+
+<div align="center">
+
+```mermaid
+graph TB
+    A[processSurveyResponse] --> B[coordinateEnrichment]
+    B --> C[batchTriggerAndWait]
+
+    C --> D[fetchCRMData]
+    C --> E[fetchAnalytics]
+    C --> F[fetchBehaviorData]
+
+    D --> G[analyzeAndScore]
+    E --> G
+    F --> G
+
+    G --> H[updateCRMProfile]
+    H --> I[triggerFollowUp]
+```
+
+</div>
   </Tab>
 </Tabs>
 

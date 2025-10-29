@@ -46,43 +46,146 @@ Show processing status updating live in your UI. Users see exactly where encodin
 
 Process hundreds of files simultaneously with configurable concurrency limits. Control resource usage without overwhelming infrastructure.
 
-## Common workflows
-
-Here are some basic examples of media processing workflows:
+## Example workflows
 
 <Tabs>
-  <Tab title="Video processing">
-    <Steps>
-      <Step title="Trigger">Receive upload webhook or storage event</Step>
-      <Step title="Download">Fetch source video file</Step>
-      <Step title="Transcode">Convert to multiple formats/resolutions with FFmpeg</Step>
-      <Step title="Upload">Store results to S3/R2/storage</Step>
-      <Step title="Cleanup">Update database, delete temp files</Step>
-    </Steps>
+  <Tab title="Video transcode">
+    Simple video transcoding pipeline. Downloads video from storage, transcodes to multiple formats, extracts thumbnail, uploads results.
+
+<div align="center">
+
+```mermaid
+graph TB
+    A[processVideo] --> B[downloadFromStorage]
+    B --> C[transcodeToHD]
+    C --> D[transcodeToSD]
+    D --> E[extractThumbnail]
+    E --> F[uploadToStorage]
+```
+
+</div>
   </Tab>
-  <Tab title="Image processing">
-    <Steps>
-      <Step title="Upload">Receive image from user or webhook</Step>
-      <Step title="Process">Resize, compress, apply filters</Step>
-      <Step title="Variants">Generate thumbnails and multiple formats</Step>
-      <Step title="Store">Save to storage and update database</Step>
-    </Steps>
+
+  <Tab title="Adaptive pipeline">
+    **Router + Coordinator pattern**. Analyzes video metadata to determine source resolution, routes to appropriate transcoding preset, batch triggers parallel post-processing for thumbnails, preview clips, and chapter detection.
+
+<div align="center">
+
+```mermaid
+graph TB
+    A[processVideoUpload] --> B[analyzeMetadata]
+    B --> C{Source<br/>Resolution?}
+
+    C -->|4K Source| D[transcode4K]
+    C -->|HD Source| E[transcodeHD]
+    C -->|SD Source| F[transcodeSD]
+
+    D --> G[coordinatePostProcessing]
+    E --> G
+    F --> G
+
+    G --> H[batchTriggerAndWait]
+    H --> I[extractThumbnails]
+    H --> J[generatePreview]
+    H --> K[detectChapters]
+
+    I --> L[uploadToStorage]
+    J --> L
+    K --> L
+
+    L --> M[notifyComplete]
+```
+
+</div>
   </Tab>
-  <Tab title="Audio processing">
-    <Steps>
-      <Step title="Download">Fetch audio file from storage</Step>
-      <Step title="Transcribe">Convert speech to text</Step>
-      <Step title="Transform">Apply effects, normalize, convert format</Step>
-      <Step title="Deliver">Store results and notify completion</Step>
-    </Steps>
+
+  <Tab title="Smart images">
+    **Router + Coordinator pattern**. Analyzes image content to detect type, routes to specialized processing (background removal for products, face detection for portraits, scene analysis for landscapes), upscales with AI, batch triggers parallel variant generation.
+
+<div align="center">
+
+```mermaid
+graph TB
+    A[processImageUpload] --> B[analyzeContent]
+    B --> C{Content<br/>Type?}
+
+    C -->|Product| D[removeBackground]
+    C -->|Portrait| E[detectFaces]
+    C -->|Landscape| F[analyzeScene]
+
+    D --> G[upscaleWithAI]
+    E --> G
+    F --> G
+
+    G --> H[batchTriggerAndWait]
+    H --> I[generateWebP]
+    H --> J[generateThumbnails]
+    H --> K[generateSocialCrops]
+
+    I --> L[uploadToStorage]
+    J --> L
+    K --> L
+```
+
+</div>
   </Tab>
+
+  <Tab title="Podcast production">
+    **Coordinator pattern**. Pre-processes raw audio with noise reduction and speaker diarization, batch triggers parallel tasks for transcription (Deepgram), audio enhancement, and chapter detection, aggregates results to generate show notes and publish.
+
+<div align="center">
+
+```mermaid
+graph TB
+    A[processAudioUpload] --> B[cleanAudio]
+    B --> C[coordinateProcessing]
+
+    C --> D[batchTriggerAndWait]
+    D --> E[transcribeWithDeepgram]
+    D --> F[enhanceAudio]
+    D --> G[detectChapters]
+
+    E --> H[generateShowNotes]
+    F --> H
+    G --> H
+
+    H --> I[publishToPlatforms]
+```
+
+</div>
+  </Tab>
+
   <Tab title="Document processing">
-    <Steps>
-      <Step title="Receive">Get document via upload or webhook</Step>
-      <Step title="Convert">Transform to PDF or extract text</Step>
-      <Step title="Extract">Pull form data or run OCR</Step>
-      <Step title="Store">Save processed results</Step>
-    </Steps>
+    **Router pattern with human-in-the-loop**. Detects file type and routes to appropriate processor, classifies document with AI to determine type (invoice/contract/receipt), extracts structured data fields, optionally pauses with wait.for for human approval.
+
+<div align="center">
+
+```mermaid
+graph TB
+    A[processDocumentUpload] --> B[detectFileType]
+
+    B -->|PDF| C[extractText]
+    B -->|Word/Excel| D[convertToPDF]
+    B -->|Image| E[runOCR]
+
+    C --> F[classifyDocument]
+    D --> F
+    E --> F
+
+    F -->|Invoice| G[extractLineItems]
+    F -->|Contract| H[extractClauses]
+    F -->|Receipt| I[extractExpenses]
+
+    G --> J{Needs<br/>Review?}
+    H --> J
+    I --> J
+
+    J -->|Yes| K[wait.for approval]
+    J -->|No| L[processAndIntegrate]
+    K --> L
+```
+
+</div>
   </Tab>
 </Tabs>
 

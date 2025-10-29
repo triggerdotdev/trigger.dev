@@ -46,42 +46,98 @@ Process thousands of records simultaneously while respecting API rate limits. Sc
 
 Show row-by-row processing status updating live in your dashboard. Users see exactly where processing is and how long remains.
 
-## Common workflows
-
-Here are some basic examples of data processing and ETL workflows:
+## Example workflows
 
 <Tabs>
+  <Tab title="CSV import">
+    Simple CSV import pipeline. Receives file upload, parses CSV rows, validates data, imports to database with progress tracking.
+
+<div align="center">
+
+```mermaid
+graph TB
+    A[importCSV] --> B[parseCSVFile]
+    B --> C[validateRows]
+    C --> D[bulkInsertToDB]
+    D --> E[notifyCompletion]
+```
+
+</div>
+  </Tab>
+
   <Tab title="ETL pipeline">
-    <Steps>
-      <Step title="Extract">Pull from APIs, databases, S3, or web scraping</Step>
-      <Step title="Transform">Clean, validate, enrich data</Step>
-      <Step title="Load">Write to warehouse, database, or storage</Step>
-      <Step title="Monitor">Track progress, handle failures</Step>
-    </Steps>
+    **Coordinator pattern with parallel extraction**. Batch triggers parallel extraction from multiple sources (APIs, databases, S3), transforms and validates data, loads to data warehouse with monitoring.
+
+<div align="center">
+
+```mermaid
+graph TB
+    A[runETLPipeline] --> B[coordinateExtraction]
+    B --> C[batchTriggerAndWait]
+
+    C --> D[extractFromAPI]
+    C --> E[extractFromDatabase]
+    C --> F[extractFromS3]
+
+    D --> G[transformData]
+    E --> G
+    F --> G
+
+    G --> H[validateData]
+    H --> I[loadToWarehouse]
+```
+
+</div>
   </Tab>
+
   <Tab title="Web scraping">
-    <Steps>
-      <Step title="Navigate">Load target pages with headless browser</Step>
-      <Step title="Extract">Pull content, links, structured data</Step>
-      <Step title="Transform">Clean HTML, parse JSON, normalize data</Step>
-      <Step title="Store">Save to database or file storage</Step>
-    </Steps>
+    **Coordinator pattern with browser automation**. Launches headless browsers in parallel to scrape multiple pages, extracts structured data, cleans and normalizes content, stores in database.
+
+<div align="center">
+
+```mermaid
+graph TB
+    A[scrapeSite] --> B[coordinateScraping]
+    B --> C[batchTriggerAndWait]
+
+    C --> D[scrapePage1]
+    C --> E[scrapePage2]
+    C --> F[scrapePageN]
+
+    D --> G[cleanData]
+    E --> G
+    F --> G
+
+    G --> H[normalizeData]
+    H --> I[storeInDatabase]
+```
+
+</div>
   </Tab>
+
   <Tab title="Batch enrichment">
-    <Steps>
-      <Step title="Query">Fetch records needing enrichment</Step>
-      <Step title="Enrich">Call external APIs in parallel batches</Step>
-      <Step title="Validate">Check data quality and completeness</Step>
-      <Step title="Update">Write enriched data back to database</Step>
-    </Steps>
-  </Tab>
-  <Tab title="File processing">
-    <Steps>
-      <Step title="Upload">Receive file via webhook or storage event</Step>
-      <Step title="Parse">Read CSV, JSON, XML, or binary format</Step>
-      <Step title="Process">Transform, validate, chunk large files</Step>
-      <Step title="Import">Bulk insert to database or data warehouse</Step>
-    </Steps>
+    **Coordinator pattern with rate limiting**. Fetches records needing enrichment, batch triggers parallel API calls with configurable concurrency to respect rate limits, validates enriched data, updates database.
+
+<div align="center">
+
+```mermaid
+graph TB
+    A[enrichRecords] --> B[fetchRecordsToEnrich]
+    B --> C[coordinateEnrichment]
+    C --> D[batchTriggerAndWait]
+
+    D --> E[enrichRecord1]
+    D --> F[enrichRecord2]
+    D --> G[enrichRecordN]
+
+    E --> H[validateEnrichedData]
+    F --> H
+    G --> H
+
+    H --> I[updateDatabase]
+```
+
+</div>
   </Tab>
 </Tabs>
 

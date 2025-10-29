@@ -46,42 +46,84 @@ Handle generations that take minutes or hours without execution limits. Perfect 
 
 Add review steps before publishing AI-generated content. Pause workflows for human approval using waitpoint tokens.
 
-## Common workflows
-
-Here are some basic examples of AI media generation workflows:
+## Example workflows
 
 <Tabs>
-  <Tab title="Single generation">
-    <Steps>
-      <Step title="Input">Receive prompts and parameters</Step>
-      <Step title="Generate">Call AI API (OpenAI, Replicate, Fal.ai)</Step>
-      <Step title="Post-process">Upscale, optimize, apply transformations</Step>
-      <Step title="Deliver">Upload to storage, update database</Step>
-    </Steps>
+  <Tab title="Image generation">
+    Simple AI image generation. Receives prompt and parameters, calls OpenAI DALL·E 3, post-processes result, uploads to storage.
+
+<div align="center">
+
+```mermaid
+graph TB
+    A[generateImage] --> B[callDALLE3]
+    B --> C[optimizeImage]
+    C --> D[uploadToStorage]
+    D --> E[updateDatabase]
+```
+
+</div>
   </Tab>
+
   <Tab title="Batch generation">
-    <Steps>
-      <Step title="Queue">Receive batch of generation requests</Step>
-      <Step title="Generate">Process hundreds in parallel with rate limiting</Step>
-      <Step title="Quality check">Validate outputs, filter failures</Step>
-      <Step title="Deliver">Store results, notify completion</Step>
-    </Steps>
+    **Coordinator pattern with rate limiting**. Receives batch of generation requests, coordinates parallel processing with configurable concurrency to respect API rate limits, validates outputs, stores results.
+
+<div align="center">
+
+```mermaid
+graph TB
+    A[processBatch] --> B[coordinateGeneration]
+    B --> C[batchTriggerAndWait]
+
+    C --> D[generateImage1]
+    C --> E[generateImage2]
+    C --> F[generateImageN]
+
+    D --> G[validateResults]
+    E --> G
+    F --> G
+
+    G --> H[storeResults]
+    H --> I[notifyCompletion]
+```
+
+</div>
   </Tab>
+
   <Tab title="Multi-step pipeline">
-    <Steps>
-      <Step title="Generate">Create initial content with AI</Step>
-      <Step title="Transform">Apply style transfer or enhancement</Step>
-      <Step title="Upscale">Increase quality/resolution</Step>
-      <Step title="Optimize">Compress and format for delivery</Step>
-    </Steps>
+    **Coordinator pattern with sequential processing**. Generates initial content with AI, applies style transfer or enhancement, upscales resolution, optimizes and compresses for delivery.
+
+<div align="center">
+
+```mermaid
+graph TB
+    A[processCreative] --> B[generateWithAI]
+    B --> C[applyStyleTransfer]
+    C --> D[upscaleResolution]
+    D --> E[optimizeAndCompress]
+    E --> F[uploadToStorage]
+```
+
+</div>
   </Tab>
+
   <Tab title="Human-in-the-loop">
-    <Steps>
-      <Step title="Generate">Create AI content</Step>
-      <Step title="Review">Pause for human approval</Step>
-      <Step title="Revise">Apply feedback if needed</Step>
-      <Step title="Publish">Deploy approved content</Step>
-    </Steps>
+    **Supervisor pattern with approval gate**. Generates AI content, pauses execution with wait.for to allow human review, applies feedback if needed, publishes approved content.
+
+<div align="center">
+
+```mermaid
+graph TB
+    A[generateContent] --> B[createWithAI]
+    B --> C[wait.for approval]
+    C --> D{Approved?}
+
+    D -->|Yes| E[publishContent]
+    D -->|Needs revision| F[applyFeedback]
+    F --> B
+```
+
+</div>
   </Tab>
 </Tabs>
 
