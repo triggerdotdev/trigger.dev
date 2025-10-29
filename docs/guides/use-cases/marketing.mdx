@@ -1,103 +1,95 @@
 ---
-title: "Marketing"
-description: "Orchestrate campaigns that respond dynamically to user behavior. Build drip sequences, personalization engines, and analytics workflows with Trigger.dev"
+title: "Marketing workflows"
+sidebarTitle: "Marketing workflows"
+description: "Learn how to use Trigger.dev for marketing workflows, including drip campaigns, behavioral triggers, personalization engines, and AI-powered content workflows"
 ---
 
 import UseCasesCards from "/snippets/use-cases-cards.mdx";
 
 ## Overview
 
-Marketing automation workflows require orchestrating complex campaigns that respond to user behavior, send personalized content, and track engagement across multiple channels. Build reliable marketing pipelines in TypeScript with automatic retries, progress tracking, and no timeout limits; perfect for email sequences, customer journeys, personalization engines, and analytics workflows.
+Build marketing workflows from drip campaigns to real-time personalization. Handle multi-day sequences, behavioral triggers, dynamic content generation, and live analytics, all with automatic retries and progress tracking.
 
-## Basic marketing workflow implementation
+## Featured examples
 
-A typical marketing automation workflow:
-
-1. **Trigger**: User event, [webhook](/triggering), or [scheduled task](/tasks/scheduled)
-2. **Segment**: Query database for targeting criteria
-3. **Generate**: Create personalized content (AI-generated copy, dynamic images)
-4. **Send**: Deliver via email/SMS APIs with [retry logic](/errors-retrying)
-5. **Track**: Store engagement data, [trigger follow-ups](/triggering#yourtask-trigger)
-
-Each step is durable and retryable—if email sending fails, Trigger.dev automatically retries without regenerating personalized content.
-
-Trigger.dev is ideal for marketing automation because [wait.for()](/wait-for) and [wait.until()](/wait-until) let you build drip campaigns with precise delays (hours to weeks) without paying for idle time, [batchTriggerAndWait()](/triggering#yourtask-batchtriggerandwait) sends to thousands in parallel with configurable concurrency, and [idempotency keys](/idempotency) ensure users never receive duplicate messages even when tasks retry.
-
-## Common marketing workflow patterns
-
-### Drip Campaigns
-
-Use scheduled tasks and wait conditions to create sophisticated email sequences:
-
-- Welcome series for new subscribers
-- Onboarding sequences for new users
-- Re-engagement campaigns for inactive users
-- Product education sequences
-
-### Behavioral Triggers
-
-Respond to user actions with personalized campaigns:
-
-- Cart abandonment recovery
-- Post-purchase follow-up
-- Feature usage-based messaging
-- Milestone celebration campaigns
-
-### Personalization at Scale
-
-Generate personalized content for thousands of users:
-
-- Dynamic email content based on user preferences
-- Personalized product recommendations
-- Custom landing pages for different segments
-- Individualized promotional offers
-
-### Analytics and Reporting
-
-Track campaign performance and optimize:
-
-- A/B test different message variants
-- Monitor engagement metrics across channels
-- Generate automated performance reports
-- Trigger campaigns based on performance thresholds
-
-## Marketing workflow examples
-
-<CardGroup cols={2}>
+<CardGroup cols={3}>
   <Card
     title="Email sequences with Resend"
     icon="book"
     href="/guides/examples/resend-email-sequence"
   >
-    Send a sequence of emails over several days using Resend.
-  </Card>
-  <Card title="React Email" icon="book" href="/guides/examples/react-email">
-    Send emails using React Email with JSX email templates.
-  </Card>
-  <Card title="Stripe webhooks" icon="book" href="/guides/examples/stripe-webhook">
-    Trigger campaigns from Stripe payment events and subscription changes.
-  </Card>
-  <Card
-    title="Generate and translate marketing copy"
-    icon="book"
-    href="/guides/ai-agents/generate-translate-copy"
-  >
-    Chain prompts to generate and translate copy in multiple languages.
+    Send multi-day email sequences with wait delays between messages.
   </Card>
   <Card
     title="Product image generator"
     icon="book"
     href="/guides/example-projects/product-image-generator"
   >
-    Transform basic product photos into professional marketing images.
+    Transform product photos into professional marketing images with AI.
   </Card>
   <Card
     title="Human-in-the-loop workflow"
     icon="book"
     href="/guides/example-projects/human-in-the-loop-workflow"
   >
-    Add human approval steps to workflows using ReactFlow and waitpoint tokens.
+    Add approval gates to workflows using waitpoint tokens.
   </Card>
 </CardGroup>
+
+## Why Trigger.dev for marketing
+
+**Delays without idle costs**
+
+Wait hours or weeks between steps. Pay only for active compute, not wait time. Perfect for drip campaigns and scheduled follow-ups.
+
+**Guaranteed delivery**
+
+Messages send exactly once, even after retries. Personalized content isn't regenerated on failure.
+
+**Scale without limits**
+
+Process thousands in parallel while respecting rate limits. Send to entire segments without overwhelming APIs.
+
+## Common workflows
+
+Here are some basic examples of marketing workflows:
+
+<Tabs>
+  <Tab title="Drip campaigns">
+    <Steps>
+      <Step title="Trigger">User signs up or performs action</Step>
+      <Step title="Segment">Query database for targeting criteria</Step>
+      <Step title="Wait">Pause for specified time (hours/days)</Step>
+      <Step title="Send">Deliver personalized message</Step>
+      <Step title="Track">Log engagement and trigger next step</Step>
+    </Steps>
+  </Tab>
+  <Tab title="Real-time personalization">
+    <Steps>
+      <Step title="User action">Cart add, page view, feature usage</Step>
+      <Step title="Fetch data">Pull user profile and preferences</Step>
+      <Step title="Generate content">Create personalized message</Step>
+      <Step title="Deliver">Send via email, SMS, or in-app</Step>
+    </Steps>
+  </Tab>
+  <Tab title="Content approval">
+    <Steps>
+      <Step title="Create draft">Generate AI content or asset</Step>
+      <Step title="Human review">Pause for approval workflow</Step>
+      <Step title="Revise">Apply feedback if needed</Step>
+      <Step title="Approve">Mark ready for publishing</Step>
+      <Step title="Publish">Deploy to channels</Step>
+    </Steps>
+  </Tab>
+  <Tab title="Survey analysis">
+    <Steps>
+      <Step title="Response">User completes survey</Step>
+      <Step title="Enrich data">Add context from CRM</Step>
+      <Step title="Analyze">Score and categorize</Step>
+      <Step title="Update CRM">Save insights</Step>
+      <Step title="Trigger follow-up">Send personalized response</Step>
+    </Steps>
+  </Tab>
+</Tabs>
 
 <UseCasesCards />

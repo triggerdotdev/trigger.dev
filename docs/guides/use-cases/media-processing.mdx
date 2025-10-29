@@ -1,31 +1,18 @@
 ---
-title: "Media Processing"
-description: "Build reliable media processing workflows for video transcoding, image processing, audio transformation, and more with Trigger.dev"
+title: "Media processing workflows"
+sidebarTitle: "Media processing"
+description: "Learn how to use Trigger.dev for media processing including video transcoding, image optimization, audio transformation, and document conversion workflows"
 ---
 
 import UseCasesCards from "/snippets/use-cases-cards.mdx";
 
 ## Overview
 
-Media processing workflows require handling large files (videos, images, audio), long-running operations, and resource-intensive transformations. Build reliable media processing pipelines in TypeScript with automatic retries, progress tracking, and no timeout limits; perfect for video transcoding, image optimization, audio processing, and AI-powered media analysis.
+Build media processing pipelines that handle large files and long-running operations. Process videos, images, audio, and documents with automatic retries, progress tracking, and no timeout limits.
 
-## Media processing workflow implementation
+## Featured examples
 
-A typical media processing pipeline:
-
-1. **Trigger**: Upload webhook or S3 event
-2. **Download**: Fetch source file (video, image, audio, document)
-3. **Process**: Transcode, resize, compress, extract frames
-4. **Upload**: Store results to S3/R2/storage
-5. **Cleanup**: Update database, delete temp files
-
-Each step is durable and retryable—if FFmpeg processing fails, Trigger.dev automatically retries without re-downloading the source file thanks to [checkpoint-resume](/how-it-works#the-checkpoint-resume-system) and [idempotency](/idempotency).
-
-Trigger.dev is ideal for media processing because there are no [timeout limits](/runs/max-duration) (transcode multi-hour videos or run CPU-intensive operations indefinitely), [batchTriggerAndWait()](/triggering#yourtask-batchtriggerandwait) processes hundreds of files in parallel with [queue.concurrencyLimit](/queue-concurrency) controlling resource usage, [metadata](/runs/metadata) + [realtime](/realtime) stream processing progress to your frontend, and [wait.for()](/wait-for-token) enables human approval workflows for content moderation.
-
-## Media processing workflow examples
-
-<CardGroup cols={2}>
+<CardGroup cols={3}>
   <Card title="FFmpeg video processing" icon="book" href="/guides/examples/ffmpeg-video-processing">
     Process videos and upload results to R2 storage using FFmpeg.
   </Card>
@@ -43,65 +30,60 @@ Trigger.dev is ideal for media processing because there are no [timeout limits](
   >
     Convert documents to PDF using LibreOffice.
   </Card>
-  <Card
-    title="Python PDF form extractor"
-    icon="book"
-    href="/guides/python/python-pdf-form-extractor"
-  >
-    Extract form data from PDFs using Python and PyMuPDF.
-  </Card>
 </CardGroup>
 
-## Production use cases
+## Why Trigger.dev for media processing
 
-<Card title="Icon customer story" href="https://trigger.dev/customers/icon-customer-story">
+### Process multi-hour videos without timeouts
 
-Read how Icon uses Trigger.dev to process and generate thousands of videos per month for their AI-driven video creation platform.
+Transcode videos, extract frames, or run CPU-intensive operations for hours. No execution time limits.
 
-</Card>
+### Stream progress to users in real-time
 
-<Card title="Papermark customer story" href="https://trigger.dev/customers/papermark-customer-story">
+Show processing status updating live in your UI. Users see exactly where encoding is and how long remains.
 
-Read how Papermark process thousands of documents per month using Trigger.dev.
+### Parallel processing with resource control
 
-</Card>
+Process hundreds of files simultaneously with configurable concurrency limits. Control resource usage without overwhelming infrastructure.
 
-## Common media processing patterns
+## Common workflows
 
-### Video Processing
+Here are some basic examples of media processing workflows:
 
-Transform and optimize video content at scale:
-
-- Transcode videos to multiple formats and resolutions
-- Generate thumbnails and preview clips
-- Add watermarks, captions, or overlays
-- Extract audio tracks or video frames
-
-### Image Processing
-
-Optimize and transform images for any use case:
-
-- Resize and compress for web delivery
-- Generate multiple variants (thumbnails, crops, formats)
-- Apply filters, effects, or branding
-- Convert between formats (PNG, JPEG, WebP)
-
-### Audio Processing
-
-Process and transform audio files:
-
-- Transcribe speech to text
-- Convert between audio formats
-- Extract audio from video files
-- Apply audio effects and normalization
-
-### Document Processing
-
-Handle document transformation workflows:
-
-- Convert documents to PDF
-- Extract text and form data
-- Generate document previews
-- OCR and text extraction
+<Tabs>
+  <Tab title="Video processing">
+    <Steps>
+      <Step title="Trigger">Receive upload webhook or storage event</Step>
+      <Step title="Download">Fetch source video file</Step>
+      <Step title="Transcode">Convert to multiple formats/resolutions with FFmpeg</Step>
+      <Step title="Upload">Store results to S3/R2/storage</Step>
+      <Step title="Cleanup">Update database, delete temp files</Step>
+    </Steps>
+  </Tab>
+  <Tab title="Image processing">
+    <Steps>
+      <Step title="Upload">Receive image from user or webhook</Step>
+      <Step title="Process">Resize, compress, apply filters</Step>
+      <Step title="Variants">Generate thumbnails and multiple formats</Step>
+      <Step title="Store">Save to storage and update database</Step>
+    </Steps>
+  </Tab>
+  <Tab title="Audio processing">
+    <Steps>
+      <Step title="Download">Fetch audio file from storage</Step>
+      <Step title="Transcribe">Convert speech to text</Step>
+      <Step title="Transform">Apply effects, normalize, convert format</Step>
+      <Step title="Deliver">Store results and notify completion</Step>
+    </Steps>
+  </Tab>
+  <Tab title="Document processing">
+    <Steps>
+      <Step title="Receive">Get document via upload or webhook</Step>
+      <Step title="Convert">Transform to PDF or extract text</Step>
+      <Step title="Extract">Pull form data or run OCR</Step>
+      <Step title="Store">Save processed results</Step>
+    </Steps>
+  </Tab>
+</Tabs>
 
 <UseCasesCards />

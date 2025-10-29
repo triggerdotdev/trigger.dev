@@ -1,50 +1,27 @@
 ---
-title: "AI-Powered Media Generation"
-description: "Build reliable AI media generation workflows for images, videos, audio, and more with Trigger.dev. No timeouts, automatic retries, and real-time progress tracking"
+title: "AI-powered media generation workflows"
+sidebarTitle: "AI-powered media generation"
+description: "Learn how to use Trigger.dev for AI media generation including image creation, video synthesis, audio generation, and multi-modal content workflows"
 ---
 
 import UseCasesCards from "/snippets/use-cases-cards.mdx";
 
 ## Overview
 
-AI-powered media generation workflows require handling unpredictable API latencies, managing rate limits, and processing computationally intensive operations. Build reliable AI content generation pipelines in TypeScript with automatic retries, progress tracking, and no timeout limits; perfect for AI image generation, video synthesis, audio creation, and multi-modal content workflows.
+Build AI media generation pipelines that handle unpredictable API latencies and long-running operations. Generate images, videos, audio, and multi-modal content with automatic retries, progress tracking, and no timeout limits.
 
-## Basic AI media generation workflow implementation
+## Featured examples
 
-A typical AI generation pipeline:
-
-1. **Input**: Receive prompts, parameters, reference images
-2. **Generate**: Call AI APIs (OpenAI, Replicate, Fal.ai, Stability, etc.)
-3. **Post-process**: Upscale, optimize, apply transformations
-4. **Review**: Human approval or automated quality checks
-5. **Deliver**: Upload to storage, update database
-
-Each step is durable and retryable—if an AI API call times out, Trigger.dev automatically retries without re-executing expensive prompt generation thanks to [checkpoint-resume](/how-it-works#the-checkpoint-resume-system) and [idempotency](/idempotency).
-
-Trigger.dev is ideal for AI media generation because [checkpoint-resume](/how-it-works#the-checkpoint-resume-system) pauses during AI API calls (you only pay for active compute, not inference time), no [timeout limits](/runs/max-duration) means generation can take minutes or hours, [batchTriggerAndWait()](/triggering#yourtask-batchtriggerandwait) generates hundreds in parallel with [queue.concurrencyLimit](/queue-concurrency) respecting API rate limits, [metadata.stream()](/runs/metadata#stream) + [realtime](/realtime) stream previews to your frontend, and [wait.for()](/wait-for-token) adds human approval gates for brand safety.
-
-## AI media generation workflow examples
-
-<CardGroup cols={2}>
+<CardGroup cols={3}>
+  <Card title="DALL·E 3" icon="book" href="/guides/examples/dall-e3-generate-image">
+    Generate images from text prompts using OpenAI's DALL·E 3.
+  </Card>
   <Card
     title="Product image generator"
     icon="book"
     href="/guides/example-projects/product-image-generator"
   >
     Transform product photos into professional marketing images using Replicate.
-  </Card>
-  <Card title="DALL·E 3" icon="book" href="/guides/examples/dall-e3-generate-image">
-    Generate images from text prompts using OpenAI's DALL·E 3.
-  </Card>
-  <Card title="Fal.ai realtime" icon="book" href="/guides/examples/fal-ai-realtime">
-    Generate images with Fal.ai and stream progress updates in real-time.
-  </Card>
-  <Card
-    title="Vercel AI SDK image generator"
-    icon="book"
-    href="/guides/example-projects/vercel-ai-sdk-image-generator"
-  >
-    Build image generation workflows using Vercel's AI SDK.
   </Card>
   <Card
     title="Meme generator (human-in-the-loop)"
@@ -53,59 +30,59 @@ Trigger.dev is ideal for AI media generation because [checkpoint-resume](/how-it
   >
     Generate memes with DALL·E 3 and add human approval steps.
   </Card>
-  <Card
-    title="Deep research agent"
-    icon="book"
-    href="/guides/example-projects/vercel-ai-sdk-deep-research"
-  >
-    Build a research agent that generates comprehensive reports with Vercel AI SDK.
-  </Card>
 </CardGroup>
 
-## Production use cases
+## Why Trigger.dev for AI media generation
 
-<Card title="Icon customer story" href="https://trigger.dev/customers/icon-customer-story">
+**Pay only for active compute, not AI inference time**
 
-Read how Icon uses Trigger.dev to process and generate thousands of AI-powered videos per month for their AI-driven video creation platform.
+Checkpoint-resume pauses during AI API calls. Generate content that takes minutes or hours without paying for idle inference time.
 
-</Card>
+**No timeout limits for long generations**
 
-## Common AI generation patterns
+Handle generations that take minutes or hours without execution limits. Perfect for high-quality video synthesis and complex multi-modal workflows.
 
-### Single Media Generation
+**Human approval gates for brand safety**
 
-Generate individual AI-powered content on demand:
+Add review steps before publishing AI-generated content. Pause workflows for human approval using waitpoint tokens.
 
-- Generate images from text prompts
-- Transform existing images with AI models
-- Create variations of source images
-- Apply AI filters and effects
+## Common workflows
 
-### Batch Generation
+Here are some basic examples of AI media generation workflows:
 
-Create content at scale for production workflows:
-
-- Generate hundreds of product images
-- Create personalized marketing assets at scale
-- Generate thumbnail variations for A/B testing
-- Bulk process images through AI models
-
-### Multi-step AI Pipelines
-
-Chain multiple AI operations for sophisticated workflows:
-
-- Prompt generation → Image generation → Upscaling
-- Image generation → Style transfer → Optimization
-- Audio generation → Transcription → Translation
-- Video generation → Thumbnail extraction → Metadata generation
-
-### Human-in-the-loop
-
-Add review and approval steps to AI workflows:
-
-- Generate content → Human review → Publish
-- AI moderation → Flagged content review → Decision
-- Batch generation → Sample review → Approve batch
-- Iterative refinement with human feedback
+<Tabs>
+  <Tab title="Single generation">
+    <Steps>
+      <Step title="Input">Receive prompts and parameters</Step>
+      <Step title="Generate">Call AI API (OpenAI, Replicate, Fal.ai)</Step>
+      <Step title="Post-process">Upscale, optimize, apply transformations</Step>
+      <Step title="Deliver">Upload to storage, update database</Step>
+    </Steps>
+  </Tab>
+  <Tab title="Batch generation">
+    <Steps>
+      <Step title="Queue">Receive batch of generation requests</Step>
+      <Step title="Generate">Process hundreds in parallel with rate limiting</Step>
+      <Step title="Quality check">Validate outputs, filter failures</Step>
+      <Step title="Deliver">Store results, notify completion</Step>
+    </Steps>
+  </Tab>
+  <Tab title="Multi-step pipeline">
+    <Steps>
+      <Step title="Generate">Create initial content with AI</Step>
+      <Step title="Transform">Apply style transfer or enhancement</Step>
+      <Step title="Upscale">Increase quality/resolution</Step>
+      <Step title="Optimize">Compress and format for delivery</Step>
+    </Steps>
+  </Tab>
+  <Tab title="Human-in-the-loop">
+    <Steps>
+      <Step title="Generate">Create AI content</Step>
+      <Step title="Review">Pause for human approval</Step>
+      <Step title="Revise">Apply feedback if needed</Step>
+      <Step title="Publish">Deploy approved content</Step>
+    </Steps>
+  </Tab>
+</Tabs>
 
 <UseCasesCards />

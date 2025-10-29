@@ -1,106 +1,88 @@
 ---
-title: "Data Processing & ETL"
-description: "Build reliable data processing and ETL pipelines with automatic retries, progress tracking, and no timeout limits using Trigger.dev"
+title: "Data processing & ETL workflows"
+sidebarTitle: "Data processing & ETL"
+description: "Learn how to use Trigger.dev for data processing and ETL including web scraping, database synchronization, batch enrichment, and streaming analytics workflows"
 ---
 
 import UseCasesCards from "/snippets/use-cases-cards.mdx";
 
 ## Overview
 
-Data processing and ETL (Extract, Transform, Load) workflows require handling large datasets, complex transformations, and reliable data movement between systems. Build robust data pipelines in TypeScript with automatic retries, progress tracking, and no timeout limits; perfect for web scraping, database synchronization, real-time analytics, and large-scale data transformation.
+Build data pipelines that process large datasets without timeouts. Handle streaming analytics, batch enrichment, web scraping, database sync, and file processing with automatic retries and progress tracking.
 
-## Basic data processing and ETL workflow implementation
+## Featured examples
 
-A typical ETL pipeline:
-
-1. **Extract**: Pull from APIs, databases, S3, or web scraping
-2. **Transform**: Clean, validate, enrich data
-3. **Load**: Write to warehouse, database, or storage
-4. **Monitor**: Track progress, handle failures
-
-Each step is durable and retryable—if transformation fails, Trigger.dev automatically retries without re-extracting source data thanks to [checkpoint-resume](/how-it-works#the-checkpoint-resume-system) and [idempotency keys](/idempotency).
-
-Trigger.dev is ideal for ETL pipelines because there are no [timeout limits](/runs/max-duration) (process datasets for hours or days), [batchTriggerAndWait()](/triggering#yourtask-batchtriggerandwait) parallelizes across thousands of records with [queue.concurrencyLimit](/queue-concurrency) to respect API rate limits, [metadata](/runs/metadata) + [realtime](/realtime) stream row-by-row progress to dashboards, and [schedules.task()](/tasks/scheduled) handles recurring jobs with cron syntax.
-
-## Data processing workflow examples
-
-<CardGroup cols={2}>
+<CardGroup cols={3}>
   <Card
     title="Realtime CSV importer"
     icon="book"
     href="/guides/example-projects/realtime-csv-importer"
   >
-    Import CSV files with progress tracking streamed to the frontend.
+    Import CSV files with progress streamed live to frontend.
   </Card>
   <Card title="Web scraper with BrowserBase" icon="book" href="/guides/examples/scrape-hacker-news">
-    Scrape Hacker News using BrowserBase and Puppeteer, summarize with ChatGPT.
-  </Card>
-  <Card title="Firecrawl" icon="book" href="/guides/examples/firecrawl-url-crawl">
-    Crawl URLs and return LLM-ready markdown using Firecrawl.
+    Scrape websites using BrowserBase and Puppeteer.
   </Card>
   <Card
     title="Supabase database operations"
     icon="book"
     href="/guides/examples/supabase-database-operations"
   >
-    Run CRUD operations on a Supabase database table.
-  </Card>
-  <Card title="Sequin database triggers" icon="book" href="/guides/frameworks/sequin">
-    Trigger tasks from database changes using Sequin's CDC platform.
-  </Card>
-  <Card
-    title="Sync Vercel environment variables"
-    icon="book"
-    href="/guides/examples/vercel-sync-env-vars"
-  >
-    Automatically sync environment variables from Vercel projects.
+    Run CRUD operations on Supabase database tables.
   </Card>
 </CardGroup>
 
-## Production use cases
+## Why Trigger.dev for data processing
 
-<Card title="Papermark customer story" href="https://trigger.dev/customers/papermark-customer-story">
+**Process datasets for hours without timeouts**
 
-Read how Papermark processes thousands of documents per month using Trigger.dev.
+Handle multi-hour transformations, large file processing, or complete database exports. No execution time limits.
 
-</Card>
+**Parallel processing with built-in rate limiting**
 
-## Common data processing patterns
+Process thousands of records simultaneously while respecting API rate limits. Scale efficiently without overwhelming downstream services.
 
-### Scheduled Data Syncs
+**Stream progress to your users in real-time**
 
-Run ETL jobs on a schedule to keep systems in sync:
+Show row-by-row processing status updating live in your dashboard. Users see exactly where processing is and how long remains.
 
-- Daily database exports and backups
-- Hourly API data pulls and transformations
-- Real-time webhook processing and routing
-- Periodic data warehouse updates
+## Common workflows
 
-### Event-Driven Processing
+Here are some basic examples of data processing and ETL workflows:
 
-Respond to data events with automated workflows:
-
-- Process new database records as they're created
-- Transform uploaded files immediately
-- React to webhook events from external systems
-- Handle real-time data streams
-
-### Batch Processing
-
-Process large datasets efficiently:
-
-- Import CSV files with thousands of rows
-- Bulk update records across systems
-- Process queued data in parallel batches
-- Generate reports from aggregated data
-
-### Pipeline Orchestration
-
-Chain multiple processing steps together:
-
-- Extract from API → Transform → Load to database
-- Web scraping → Data cleaning → Analysis → Storage
-- File upload → Validation → Processing → Notification
-- Multi-source data aggregation and enrichment
+<Tabs>
+  <Tab title="ETL pipeline">
+    <Steps>
+      <Step title="Extract">Pull from APIs, databases, S3, or web scraping</Step>
+      <Step title="Transform">Clean, validate, enrich data</Step>
+      <Step title="Load">Write to warehouse, database, or storage</Step>
+      <Step title="Monitor">Track progress, handle failures</Step>
+    </Steps>
+  </Tab>
+  <Tab title="Web scraping">
+    <Steps>
+      <Step title="Navigate">Load target pages with headless browser</Step>
+      <Step title="Extract">Pull content, links, structured data</Step>
+      <Step title="Transform">Clean HTML, parse JSON, normalize data</Step>
+      <Step title="Store">Save to database or file storage</Step>
+    </Steps>
+  </Tab>
+  <Tab title="Batch enrichment">
+    <Steps>
+      <Step title="Query">Fetch records needing enrichment</Step>
+      <Step title="Enrich">Call external APIs in parallel batches</Step>
+      <Step title="Validate">Check data quality and completeness</Step>
+      <Step title="Update">Write enriched data back to database</Step>
+    </Steps>
+  </Tab>
+  <Tab title="File processing">
+    <Steps>
+      <Step title="Upload">Receive file via webhook or storage event</Step>
+      <Step title="Parse">Read CSV, JSON, XML, or binary format</Step>
+      <Step title="Process">Transform, validate, chunk large files</Step>
+      <Step title="Import">Bulk insert to database or data warehouse</Step>
+    </Steps>
+  </Tab>
+</Tabs>
 
 <UseCasesCards />
