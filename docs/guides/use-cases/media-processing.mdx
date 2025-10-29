@@ -44,17 +44,22 @@ Build media processing pipelines that handle large files and long-running operat
 
 <Tabs>
   <Tab title="Video transcode">
-    Simple video transcoding pipeline. Downloads video from storage, transcodes to multiple formats, extracts thumbnail, uploads results.
+    Simple video transcoding pipeline. Downloads video from storage, batch triggers parallel transcoding to multiple formats and thumbnail extraction, uploads all results.
 
 <div align="center">
 
 ```mermaid
 graph TB
     A[processVideo] --> B[downloadFromStorage]
-    B --> C[transcodeToHD]
-    C --> D[transcodeToSD]
-    D --> E[extractThumbnail]
-    E --> F[uploadToStorage]
+    B --> C[batchTriggerAndWait]
+
+    C --> D[transcodeToHD]
+    C --> E[transcodeToSD]
+    C --> F[extractThumbnail]
+
+    D --> G[uploadToStorage]
+    E --> G
+    F --> G
 ```
 
 </div>
@@ -150,7 +155,7 @@ graph TB
   </Tab>
 
   <Tab title="Document extraction with approval">
-    **Router pattern with human-in-the-loop**. Detects file type and routes to appropriate processor, classifies document with AI to determine type (invoice/contract/receipt), extracts structured data fields, optionally pauses with wait.for for human approval.
+    **Router pattern with human-in-the-loop**. Detects file type and routes to appropriate processor, classifies document with AI to determine type (invoice/contract/receipt), extracts structured data fields, optionally pauses with wait.forToken for human approval.
 
 <div align="center">
 

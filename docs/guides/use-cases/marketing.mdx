@@ -8,7 +8,7 @@ import UseCasesCards from "/snippets/use-cases-cards.mdx";
 
 ## Overview
 
-Build marketing workflows from drip campaigns to orchestrating multi-channel campaigns. Handle multi-day sequences, behavioral triggers, dynamic content generation, and live analytics, all with automatic retries and progress tracking.
+Build marketing workflows from email drip sequences to orchestrating full multi-channel campaigns. Handle multi-day sequences, behavioral triggers, dynamic content generation, and build live analytics dashboards.
 
 ## Featured examples
 
@@ -62,10 +62,12 @@ Read how Icon uses Trigger.dev to process and generate thousands of videos per m
 
 ```mermaid
 graph TB
-    A[startDripCampaign] --> B[fetchUserData]
+    A[userCreateAccount] --> B[sendWelcomeEmail]
     B --> C[wait.for 24h]
-    C --> D[sendPersonalizedEmail]
-    D --> E[trackEngagement]
+    C --> D[sendProductTipsEmail]
+    D --> E[wait.for 7d]
+    E --> F[sendFeedbackEmail]
+
 ```
 
 </div>
@@ -84,7 +86,7 @@ graph TB
 
     D -->|Email| E[sendEmail1]
     D -->|SMS| F[sendSMS1]
-    D -->|Social media post| G[postToX1]
+    D -->|Push| G[sendPush1]
 
     E --> H[wait.for 2d]
     F --> H
