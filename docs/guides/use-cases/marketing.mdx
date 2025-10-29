@@ -100,14 +100,14 @@ graph TB
   </Tab>
 
   <Tab title="AI content with approval">
-    **Supervisor pattern with approval gate**. Generates AI marketing content (images, copy, assets), pauses with wait.for for human review, applies revisions if needed, publishes to channels after approval.
+    **Supervisor pattern with approval gate**. Generates AI marketing content (images, copy, assets), pauses with wait.forToken for human review, applies revisions if needed, publishes to channels after approval.
 
 <div align="center">
 
 ```mermaid
 graph TB
     A[createCampaignAssets] --> B[generateAIContent]
-    B --> C[wait.for approval]
+    B --> C[wait.forToken approval]
     C --> D{Approved?}
 
     D -->|Yes| E[publishToChannels]
