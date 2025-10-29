@@ -1,7 +1,8 @@
 import { PlusIcon } from "@heroicons/react/20/solid";
-import { type MetaFunction } from "@remix-run/react";
+import { Form, type MetaFunction } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
+import { useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
@@ -12,7 +13,19 @@ import {
   PageContainer,
 } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTrigger,
+} from "~/components/primitives/Dialog";
+import { Fieldset } from "~/components/primitives/Fieldset";
 import { Header2, Header3 } from "~/components/primitives/Headers";
+import { Input } from "~/components/primitives/Input";
+import { InputGroup } from "~/components/primitives/InputGroup";
+import { InputNumberStepper } from "~/components/primitives/InputNumberStepper";
+import { Label } from "~/components/primitives/Label";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
@@ -34,7 +47,9 @@ import {
   type EnvironmentWithConcurrency,
   ManageConcurrencyPresenter,
 } from "~/presenters/v3/ManageConcurrencyPresenter.server";
+import { getPlans } from "~/services/platform.v3.server";
 import { requireUser, requireUserId } from "~/services/session.server";
+import { formatCurrency } from "~/utils/numberFormatter";
 import { EnvironmentParamSchema, regionsPath, v3BillingPath } from "~/utils/pathBuilder";
 import { SetDefaultRegionService } from "~/v3/services/setDefaultRegion.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
@@ -73,6 +88,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       status: 400,
       statusText: error.message,
     });
+  }
+
+  const plans = await tryCatch(getPlans());
+  if (!plans) {
+    throw new Response(null, { status: 404, statusText: "Plans not found" });
   }
 
   return typedjson(result);
@@ -128,6 +148,7 @@ export default function Page() {
     extraAllocatedConcurrency,
     extraUnallocatedConcurrency,
     environments,
+    concurrencyPricing,
   } = useTypedLoaderData<typeof loader>();
 
   return (
@@ -159,6 +180,7 @@ export default function Page() {
               extraAllocatedConcurrency={extraAllocatedConcurrency}
               extraUnallocatedConcurrency={extraUnallocatedConcurrency}
               environments={environments}
+              concurrencyPricing={concurrencyPricing}
             />
           ) : (
             <NotUpgradable environments={environments} />
@@ -175,6 +197,7 @@ function Upgradable({
   extraAllocatedConcurrency,
   extraUnallocatedConcurrency,
   environments,
+  concurrencyPricing,
 }: ConcurrencyResult) {
   const organization = useOrganization();
 
@@ -192,20 +215,16 @@ function Upgradable({
         <div className="flex flex-col gap-2">
           <div className="flex items-center first-letter:pb-1">
             <Header3 className="grow">Extra concurrency</Header3>
-            <Button variant="primary/small" LeadingIcon={PlusIcon}>
-              Purchase extra concurrency...
-            </Button>
+            <PurchaseConcurrencyModal concurrencyPricing={concurrencyPricing} />
           </div>
           <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHeaderCell className="pl-0">Extra concurrency purchased</TableHeaderCell>
-                <TableHeaderCell alignment="right" className="text-text-bright">
-                  {extraConcurrency}
-                </TableHeaderCell>
-              </TableRow>
-            </TableHeader>
             <TableBody>
+              <TableRow>
+                <TableCell className="pl-0 text-text-bright">Extra concurrency purchased</TableCell>
+                <TableCell alignment="right" className="text-text-bright">
+                  {extraConcurrency}
+                </TableCell>
+              </TableRow>
               <TableRow>
                 <TableCell>Allocated concurrency</TableCell>
                 <TableCell alignment="right" className="text-text-bright">
@@ -233,7 +252,7 @@ function Upgradable({
               <TableRow>
                 <TableHeaderCell className="pl-0">Environment</TableHeaderCell>
                 <TableHeaderCell alignment="right">
-                  <span className="flex items-center gap-x-1">
+                  <span className="flex items-center justify-end gap-x-1">
                     Included{" "}
                     <InfoIconTooltip content="This is the included concurrency based on your plan." />
                   </span>
@@ -250,10 +269,20 @@ function Upgradable({
                   </TableCell>
                   <TableCell alignment="right">{environment.planConcurrencyLimit}</TableCell>
                   <TableCell alignment="right" className="text-text-bright">
-                    {Math.max(
-                      0,
-                      environment.maximumConcurrencyLimit - environment.planConcurrencyLimit
-                    )}
+                    <div className="flex items-center justify-end">
+                      <Input
+                        type="number"
+                        variant="secondary-small"
+                        className="text-right"
+                        containerClassName="w-16 bg-transparent"
+                        fullWidth={false}
+                        defaultValue={Math.max(
+                          0,
+                          environment.maximumConcurrencyLimit - environment.planConcurrencyLimit
+                        )}
+                        min="0"
+                      />
+                    </div>
                   </TableCell>
                   <TableCell alignment="right">{environment.maximumConcurrencyLimit}</TableCell>
                 </TableRow>
@@ -309,5 +338,79 @@ function NotUpgradable({ environments }: { environments: EnvironmentWithConcurre
         </Table>
       </div>
     </div>
+  );
+}
+
+function PurchaseConcurrencyModal({
+  concurrencyPricing,
+}: {
+  concurrencyPricing: {
+    stepSize: number;
+    centsPerStep: number;
+  };
+}) {
+  const [amount, setAmount] = useState(0);
+
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button variant="primary/small" LeadingIcon={PlusIcon}>
+          Purchase extra concurrency
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>Purchase extra concurrency</DialogHeader>
+        <div className="flex flex-col gap-4 pt-2">
+          <Paragraph variant="base/bright" spacing>
+            You can purchase bundles of {concurrencyPricing.stepSize} concurrency for
+            {formatCurrency(concurrencyPricing.centsPerStep / 100, false)}/month. You’ll be billed
+            monthly, with changes available after a full billing cycle.
+          </Paragraph>
+          <Form method="post">
+            <Fieldset>
+              <InputGroup fullWidth>
+                <Label htmlFor="amount" className="text-text-dimmed">
+                  Extra concurrency to purchase
+                </Label>
+                <InputNumberStepper
+                  type="number"
+                  id="amount"
+                  name="amount"
+                  step={concurrencyPricing.stepSize}
+                  min={0}
+                  value={amount}
+                  onChange={(e) => setAmount(Number(e.target.value))}
+                />
+              </InputGroup>
+            </Fieldset>
+          </Form>
+          <div className="flex flex-col">
+            <div className="grid grid-cols-2 border-b border-grid-dimmed pb-1">
+              <Header3 className="font-normal text-text-dimmed">Summary</Header3>
+              <Header3 className="justify-self-end font-normal text-text-dimmed">Total</Header3>
+            </div>
+            <div className="grid grid-cols-2 pt-2">
+              <Header3 className="pb-0 font-normal">{amount}</Header3>
+              <Header3 className="justify-self-end font-normal">
+                {formatCurrency(
+                  (amount * concurrencyPricing.centsPerStep) / concurrencyPricing.stepSize / 100,
+                  false
+                )}
+              </Header3>
+            </div>
+            <div className="grid grid-cols-2 text-xs">
+              <span className="text-text-dimmed">
+                ({amount / concurrencyPricing.stepSize} bundles @{" "}
+                {formatCurrency(concurrencyPricing.centsPerStep / 100, false)}/mth)
+              </span>
+              <span className="justify-self-end text-text-dimmed">/mth</span>
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="primary/small">Purchase</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

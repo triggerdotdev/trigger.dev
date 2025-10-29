@@ -24,6 +24,7 @@ export function InputNumberStepper({
   readOnly = false,
   className,
   placeholder = "Type a number",
+  ...props
 }: InputNumberStepperProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -176,6 +177,7 @@ export function InputNumberStepper({
           // Hide number input arrows
           "[type=number]:border-0 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
         )}
+        {...props}
       />
 
       <div className={cn("flex items-center", size.gap)}>
