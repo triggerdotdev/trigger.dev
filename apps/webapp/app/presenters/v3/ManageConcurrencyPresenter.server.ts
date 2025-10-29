@@ -1,5 +1,9 @@
 import { type RuntimeEnvironmentType } from "@trigger.dev/database";
-import { getCurrentPlan, getDefaultEnvironmentLimitFromPlan } from "~/services/platform.v3.server";
+import {
+  getCurrentPlan,
+  getDefaultEnvironmentLimitFromPlan,
+  getPlans,
+} from "~/services/platform.v3.server";
 import { BasePresenter } from "./basePresenter.server";
 import { sortEnvironments } from "~/utils/environmentSort";
 
@@ -9,6 +13,10 @@ export type ConcurrencyResult = {
   extraConcurrency: number;
   extraAllocatedConcurrency: number;
   extraUnallocatedConcurrency: number;
+  concurrencyPricing: {
+    stepSize: number;
+    centsPerStep: number;
+  };
 };
 
 export type EnvironmentWithConcurrency = {
@@ -97,12 +105,18 @@ export class ManageConcurrencyPresenter extends BasePresenter {
 
     const extraAllocated = Math.min(extraConcurrency, extraAllocatedConcurrency);
 
+    const plans = await getPlans();
+    if (!plans) {
+      throw new Error("Couldn't retrieve add on pricing");
+    }
+
     return {
       canAddConcurrency,
       extraConcurrency,
       extraAllocatedConcurrency: extraAllocated,
       extraUnallocatedConcurrency: extraConcurrency - extraAllocated,
       environments: sortEnvironments(projectEnvironments).reverse(),
+      concurrencyPricing: plans.addOnPricing.concurrency,
     };
   }
 }

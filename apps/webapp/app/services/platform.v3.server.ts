@@ -403,6 +403,22 @@ export async function setPlan(
   }
 }
 
+export async function setConcurrencyAddOn(organizationId: string, amount: number) {
+  if (!client) return undefined;
+
+  try {
+    const result = await client.setAddOn(organizationId, { type: "concurrency", amount });
+    if (!result.success) {
+      logger.error("Error setting concurrency add on - no success", { error: result.error });
+      return undefined;
+    }
+    return result;
+  } catch (e) {
+    logger.error("Error setting concurrency add on - caught error", { error: e });
+    return undefined;
+  }
+}
+
 export async function getUsage(organizationId: string, { from, to }: { from: Date; to: Date }) {
   if (!client) return undefined;
 
