@@ -1,6 +1,6 @@
 ---
-title: "AI-powered media generation workflows"
-sidebarTitle: "AI-powered media generation"
+title: "AI media generation workflows"
+sidebarTitle: "AI media generation"
 description: "Learn how to use Trigger.dev for AI media generation including image creation, video synthesis, audio generation, and multi-modal content workflows"
 ---
 
@@ -13,9 +13,6 @@ Build AI media generation pipelines that handle unpredictable API latencies and 
 ## Featured examples
 
 <CardGroup cols={3}>
-  <Card title="DALL·E 3" icon="book" href="/guides/examples/dall-e3-generate-image">
-    Generate images from text prompts using OpenAI's DALL·E 3.
-  </Card>
   <Card
     title="Product image generator"
     icon="book"
@@ -30,9 +27,16 @@ Build AI media generation pipelines that handle unpredictable API latencies and 
   >
     Generate memes with DALL·E 3 and add human approval steps.
   </Card>
+  <Card
+    title="Vercel AI SDK image generation"
+    icon="book"
+    href="/guides/example-projects/vercel-ai-sdk-image-generator"
+  >
+    Generate images from text prompts using the Vercel AI SDK.
+  </Card>
 </CardGroup>
 
-## Why Trigger.dev for AI media generation
+## Benefits of using Trigger.dev for AI media generation workflows
 
 **Pay only for active compute, not AI inference time:** Checkpoint-resume pauses during AI API calls. Generate content that takes minutes or hours without paying for idle inference time.
 
@@ -40,7 +44,24 @@ Build AI media generation pipelines that handle unpredictable API latencies and 
 
 **Human approval gates for brand safety:** Add review steps before publishing AI-generated content. Pause workflows for human approval using waitpoint tokens.
 
-## Example workflows
+## Production use cases
+
+<CardGroup cols={1}>
+
+  <Card title="Icon customer story" href="https://trigger.dev/customers/icon-customer-story">
+
+Read how Icon uses Trigger.dev to process and generate thousands of videos per month for their AI-driven video creation platform.
+
+</Card>
+
+<Card title="Papermark customer story" href="https://trigger.dev/customers/papermark-customer-story">
+
+Read how Papermark process thousands of documents per month using Trigger.dev.
+
+</Card>
+</CardGroup>
+
+## Example worfklow patterns
 
 <Tabs>
   <Tab title="Image generation">
@@ -50,10 +71,9 @@ Build AI media generation pipelines that handle unpredictable API latencies and 
 
 ```mermaid
 graph TB
-    A[generateImage] --> B[callDALLE3]
-    B --> C[optimizeImage]
-    C --> D[uploadToStorage]
-    D --> E[updateDatabase]
+    A[generateImage] --> B[optimizeImage]
+    B --> C[uploadToStorage]
+    C --> D[updateDatabase]
 ```
 
 </div>

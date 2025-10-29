@@ -1,7 +1,7 @@
 ---
 title: "Media processing workflows"
 sidebarTitle: "Media processing"
-description: "Learn how to use Trigger.dev for media processing including video transcoding, image optimization, audio transformation, and document conversion workflows"
+description: "Learn how to use Trigger.dev for media processing including video transcoding, image optimization, audio transformation, and document conversion."
 ---
 
 import UseCasesCards from "/snippets/use-cases-cards.mdx";
@@ -17,11 +17,11 @@ Build media processing pipelines that handle large files and long-running operat
     Process videos and upload results to R2 storage using FFmpeg.
   </Card>
   <Card
-    title="Deepgram audio transcription"
+    title="Product image generator"
     icon="book"
-    href="/guides/examples/deepgram-transcribe-audio"
+    href="/guides/example-projects/product-image-generator"
   >
-    Transcribe audio files using Deepgram's speech recognition API.
+    Transform product photos into professional marketing images using Replicate.
   </Card>
   <Card
     title="LibreOffice PDF conversion"
@@ -32,7 +32,7 @@ Build media processing pipelines that handle large files and long-running operat
   </Card>
 </CardGroup>
 
-## Why Trigger.dev for media processing
+## Benefits of using Trigger.dev for media processing workflows
 
 **Process multi-hour videos without timeouts:** Transcode videos, extract frames, or run CPU-intensive operations for hours. No execution time limits.
 
@@ -40,7 +40,7 @@ Build media processing pipelines that handle large files and long-running operat
 
 **Parallel processing with resource control:** Process hundreds of files simultaneously with configurable concurrency limits. Control resource usage without overwhelming infrastructure.
 
-## Example workflows
+## Example worfklow patterns
 
 <Tabs>
   <Tab title="Video transcode">
@@ -60,7 +60,7 @@ graph TB
 </div>
   </Tab>
 
-  <Tab title="Adaptive pipeline">
+  <Tab title="Adaptive video processing">
     **Router + Coordinator pattern**. Analyzes video metadata to determine source resolution, routes to appropriate transcoding preset, batch triggers parallel post-processing for thumbnails, preview clips, and chapter detection.
 
 <div align="center">
@@ -93,7 +93,7 @@ graph TB
 </div>
   </Tab>
 
-  <Tab title="Smart images">
+  <Tab title="Smart image optimization">
     **Router + Coordinator pattern**. Analyzes image content to detect type, routes to specialized processing (background removal for products, face detection for portraits, scene analysis for landscapes), upscales with AI, batch triggers parallel variant generation.
 
 <div align="center">
@@ -149,7 +149,7 @@ graph TB
 </div>
   </Tab>
 
-  <Tab title="Document processing">
+  <Tab title="Document extraction with approval">
     **Router pattern with human-in-the-loop**. Detects file type and routes to appropriate processor, classifies document with AI to determine type (invoice/contract/receipt), extracts structured data fields, optionally pauses with wait.for for human approval.
 
 <div align="center">

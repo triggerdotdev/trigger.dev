@@ -1,14 +1,14 @@
 ---
 title: "Data processing & ETL workflows"
 sidebarTitle: "Data processing & ETL"
-description: "Learn how to use Trigger.dev for data processing and ETL including web scraping, database synchronization, batch enrichment, and streaming analytics workflows"
+description: "Learn how to use Trigger.dev for data processing and ETL (Extract, Transform, Load), including web scraping, database synchronization, batch enrichment and more."
 ---
 
 import UseCasesCards from "/snippets/use-cases-cards.mdx";
 
 ## Overview
 
-Build data pipelines that process large datasets without timeouts. Handle streaming analytics, batch enrichment, web scraping, database sync, and file processing with automatic retries and progress tracking.
+Build complex data pipelines that process large datasets without timeouts. Handle streaming analytics, batch enrichment, web scraping, database sync, and file processing with automatic retries and progress tracking.
 
 ## Featured examples
 
@@ -24,15 +24,15 @@ Build data pipelines that process large datasets without timeouts. Handle stream
     Scrape websites using BrowserBase and Puppeteer.
   </Card>
   <Card
-    title="Supabase database operations"
+    title="Supabase database webhooks"
     icon="book"
-    href="/guides/examples/supabase-database-operations"
+    href="/guides/frameworks/supabase-edge-functions-database-webhooks"
   >
-    Run CRUD operations on Supabase database tables.
+    Trigger tasks from Supabase database webhooks.
   </Card>
 </CardGroup>
 
-## Why Trigger.dev for data processing
+## Benefits of using Trigger.dev for data processing & ETL workflows
 
 **Process datasets for hours without timeouts:** Handle multi-hour transformations, large file processing, or complete database exports. No execution time limits.
 
@@ -40,7 +40,28 @@ Build data pipelines that process large datasets without timeouts. Handle stream
 
 **Stream progress to your users in real-time:** Show row-by-row processing status updating live in your dashboard. Users see exactly where processing is and how long remains.
 
-## Example workflows
+## Production use cases
+
+<CardGroup cols={1}>
+  <Card title="MagicSchool AI customer story" href="https://trigger.dev/customers/magicschool-ai-customer-story">
+
+Read how MagicSchool AI uses Trigger.dev to generate insights from millions of student interactions.
+
+</Card>
+
+<Card title="Comp AI customer story" href="https://trigger.dev/customers/comp-ai-customer-story">
+
+Read how Comp AI uses Trigger.dev to automate evidence collection at scale, powering their open source, AI-driven compliance platform.
+
+</Card>
+<Card title="Midday customer story" href="https://trigger.dev/customers/midday-customer-story">
+
+Read how Midday use Trigger.dev to sync large volumes of bank transactions in their financial management platform.
+
+</Card>
+</CardGroup>
+
+## Example worfklow patterns
 
 <Tabs>
   <Tab title="CSV import">
