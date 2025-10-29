@@ -15,40 +15,7 @@ mode: "center"
   <Card title="SvelteKit" img="/images/logo-svelte.png" href="/guides/community/sveltekit" />
 </CardGroup>
 
-## Use cases
-
-Explore comprehensive guides for common use cases and workflows:
-
-<CardGroup cols={2}>
-  <Card
-    title="Data Processing & ETL"
-    href="/guides/use-cases/data-processing-etl"
-  >
-    Transform and move data reliably at any scale. Whether streaming real-time analytics, enriching
-    customer records, or synchronizing large datasets.
-  </Card>
-  <Card
-    title="Content generation"
-    href="/guides/use-cases/content-generation"
-  >
-    Create scalable content workflows from single assets to thousands. Generate PDFs, videos, or
-    social media content with progress tracking and approval steps.
-  </Card>
-  <Card
-    title="Media processing"
-    href="/guides/use-cases/media-processing"
-  >
-    Process audio, video, and images efficiently with adaptive workflows. From real-time
-    transcription to batch optimization.
-  </Card>
-  <Card
-    title="Marketing"
-    href="/guides/use-cases/marketing"
-  >
-    Orchestrate campaigns that respond dynamically to user behavior. Build drip sequences,
-    personalization engines, and analytics workflows.
-  </Card>
-</CardGroup>
+import UseCasesCards from "/snippets/use-cases-cards.mdx";
 
 ## Guides
 
@@ -73,6 +40,8 @@ Get set up fast using our detailed walk-through guides.
 | [Supabase edge function hello world](/guides/frameworks/supabase-edge-functions-basic)     | Trigger tasks from Supabase edge function                            |
 | [Using webhooks in Next.js](/guides/frameworks/nextjs-webhooks)                            | Trigger tasks from a webhook in Next.js                              |
 | [Using webhooks in Remix](/guides/frameworks/remix-webhooks)                               | Trigger tasks from a webhook in Remix                                |
+
+<UseCasesCards />
 
 ## Example projects
 
