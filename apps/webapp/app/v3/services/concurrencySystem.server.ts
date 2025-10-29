@@ -121,11 +121,7 @@ function overrideQueueConcurrencyLimit(
   overriddenBy?: User
 ) {
   const newConcurrencyLimit = Math.max(
-    Math.min(
-      concurrencyLimit,
-      environment.maximumConcurrencyLimit,
-      environment.organization.maximumConcurrencyLimit
-    ),
+    Math.min(concurrencyLimit, environment.maximumConcurrencyLimit),
     0
   );
 
