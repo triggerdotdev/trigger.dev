@@ -64,7 +64,7 @@ Read how Midday use Trigger.dev to sync large volumes of bank transactions in th
 ## Example worfklow patterns
 
 <Tabs>
-  <Tab title="CSV import">
+  <Tab title="CSV file import">
     Simple CSV import pipeline. Receives file upload, parses CSV rows, validates data, imports to database with progress tracking.
 
 <div align="center">
@@ -80,7 +80,7 @@ graph TB
 </div>
   </Tab>
 
-  <Tab title="ETL pipeline">
+  <Tab title="Multi-source ETL pipeline">
     **Coordinator pattern with parallel extraction**. Batch triggers parallel extraction from multiple sources (APIs, databases, S3), transforms and validates data, loads to data warehouse with monitoring.
 
 <div align="center">
@@ -105,7 +105,7 @@ graph TB
 </div>
   </Tab>
 
-  <Tab title="Web scraping">
+  <Tab title="Parallel web scraping">
     **Coordinator pattern with browser automation**. Launches headless browsers in parallel to scrape multiple pages, extracts structured data, cleans and normalizes content, stores in database.
 
 <div align="center">
@@ -130,7 +130,7 @@ graph TB
 </div>
   </Tab>
 
-  <Tab title="Batch enrichment">
+  <Tab title="Batch data enrichment">
     **Coordinator pattern with rate limiting**. Fetches records needing enrichment, batch triggers parallel API calls with configurable concurrency to respect rate limits, validates enriched data, updates database.
 
 <div align="center">

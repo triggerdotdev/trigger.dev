@@ -71,7 +71,7 @@ graph TB
 </div>
   </Tab>
 
-  <Tab title="Multi-channel">
+  <Tab title="Multi-channel campaigns">
     **Router pattern with delay orchestration**. User action triggers campaign, router selects channel based on preferences (email/SMS/push), coordinates multi-day sequence with delays between messages, tracks engagement across channels.
 
 <div align="center">
@@ -84,7 +84,7 @@ graph TB
 
     D -->|Email| E[sendEmail1]
     D -->|SMS| F[sendSMS1]
-    D -->|Push| G[sendPush1]
+    D -->|Social media post| G[postToX1]
 
     E --> H[wait.for 2d]
     F --> H
@@ -97,7 +97,7 @@ graph TB
 </div>
   </Tab>
 
-  <Tab title="Content approval">
+  <Tab title="AI content with approval">
     **Supervisor pattern with approval gate**. Generates AI marketing content (images, copy, assets), pauses with wait.for for human review, applies revisions if needed, publishes to channels after approval.
 
 <div align="center">
@@ -116,7 +116,7 @@ graph TB
 </div>
   </Tab>
 
-  <Tab title="Survey analysis">
+  <Tab title="Survey response enrichment">
     **Coordinator pattern with enrichment**. User completes survey, batch triggers parallel enrichment from CRM/analytics, analyzes and scores responses, updates customer profiles, triggers personalized follow-up campaigns.
 
 <div align="center">

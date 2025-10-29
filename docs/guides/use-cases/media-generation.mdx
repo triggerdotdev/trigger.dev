@@ -64,7 +64,7 @@ Read how Papermark process thousands of documents per month using Trigger.dev.
 ## Example worfklow patterns
 
 <Tabs>
-  <Tab title="Image generation">
+  <Tab title="AI image generation">
     Simple AI image generation. Receives prompt and parameters, calls OpenAI DALL·E 3, post-processes result, uploads to storage.
 
 <div align="center">
@@ -79,7 +79,7 @@ graph TB
 </div>
   </Tab>
 
-  <Tab title="Batch generation">
+  <Tab title="Batch image generation">
     **Coordinator pattern with rate limiting**. Receives batch of generation requests, coordinates parallel processing with configurable concurrency to respect API rate limits, validates outputs, stores results.
 
 <div align="center">
@@ -104,7 +104,7 @@ graph TB
 </div>
   </Tab>
 
-  <Tab title="Multi-step pipeline">
+  <Tab title="Multi-step image enhancement">
     **Coordinator pattern with sequential processing**. Generates initial content with AI, applies style transfer or enhancement, upscales resolution, optimizes and compresses for delivery.
 
 <div align="center">
@@ -121,7 +121,7 @@ graph TB
 </div>
   </Tab>
 
-  <Tab title="Human-in-the-loop">
+  <Tab title="AI content with approval">
     **Supervisor pattern with approval gate**. Generates AI content, pauses execution with wait.for to allow human review, applies feedback if needed, publishes approved content.
 
 <div align="center">
