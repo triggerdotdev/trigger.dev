@@ -334,6 +334,16 @@
             ]
           },
           {
+            "group": "Use cases",
+            "pages": [
+              "guides/use-cases/overview",
+              "guides/use-cases/data-processing-etl",
+              "guides/use-cases/media-generation",
+              "guides/use-cases/media-processing",
+              "guides/use-cases/marketing"
+            ]
+          },
+          {
             "group": "Example projects",
             "pages": [
               "guides/example-projects/anchor-browser-web-scraper",
