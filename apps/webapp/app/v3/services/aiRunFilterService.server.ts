@@ -30,7 +30,7 @@ const AIFilterResponseSchema = z
 export interface QueryQueues {
   query(
     search: string | undefined,
-    type: "task" | "custom" | undefined,
+    type: "task" | "custom" | undefined
   ): Promise<{
     queues: string[];
   }>;
@@ -39,14 +39,14 @@ export interface QueryQueues {
 export interface QueryVersions {
   query(
     versionPrefix: string | undefined,
-    isCurrent: boolean | undefined,
+    isCurrent: boolean | undefined
   ): Promise<
     | {
-      versions: string[];
-    }
+        versions: string[];
+      }
     | {
-      version: string;
-    }
+        version: string;
+      }
   >;
 }
 
@@ -64,13 +64,13 @@ export interface QueryTasks {
 
 export type AIFilterResult =
   | {
-    success: true;
-    filters: TaskRunListSearchFilters;
-  }
+      success: true;
+      filters: TaskRunListSearchFilters;
+    }
   | {
-    success: false;
-    error: string;
-  };
+      success: false;
+      error: string;
+    };
 
 export class AIRunFilterService {
   constructor(
@@ -80,7 +80,7 @@ export class AIRunFilterService {
       queryQueues: QueryQueues;
       queryTasks: QueryTasks;
     },
-    private readonly model: LanguageModelV1 = openai("gpt-4o-mini"),
+    private readonly model: LanguageModelV1 = openai("gpt-4o-mini")
   ) {}
 
   async call(text: string, environmentId: string): Promise<AIFilterResult> {
@@ -92,9 +92,7 @@ export class AIRunFilterService {
           lookupTags: tool({
             description: "Look up available tags in the environment",
             parameters: z.object({
-              query: z.string().optional().describe(
-                "Optional search query to filter tags",
-              ),
+              query: z.string().optional().describe("Optional search query to filter tags"),
             }),
             execute: async ({ query }) => {
               return await this.queryFns.queryTags.query(query);
@@ -112,27 +110,22 @@ export class AIRunFilterService {
                 .string()
                 .optional()
                 .describe(
-                  "Optional version name to filter (e.g. 20250701.1), it uses contains to compare. Don't pass `latest` or `current`, the query has to be in the reverse date format specified.  Leave out to get all recent versions.",
+                  "Optional version name to filter (e.g. 20250701.1), it uses contains to compare. Don't pass `latest` or `current`, the query has to be in the reverse date format specified.  Leave out to get all recent versions."
                 ),
             }),
             execute: async ({ versionPrefix, isCurrent }) => {
-              return await this.queryFns.queryVersions.query(
-                versionPrefix,
-                isCurrent,
-              );
+              return await this.queryFns.queryVersions.query(versionPrefix, isCurrent);
             },
           }),
           lookupQueues: tool({
             description: "Look up available queues in the environment",
             parameters: z.object({
-              query: z.string().optional().describe(
-                "Optional search query to filter queues",
-              ),
+              query: z.string().optional().describe("Optional search query to filter queues"),
               type: z
                 .enum(["task", "custom"])
                 .optional()
                 .describe(
-                  "Filter by queue type, only do this if the user specifies it explicitly.",
+                  "Filter by queue type, only do this if the user specifies it explicitly."
                 ),
             }),
             execute: async ({ query, type }) => {
@@ -149,15 +142,12 @@ export class AIRunFilterService {
           }),
         },
         maxSteps: 5,
-        system:
-          `You are an AI assistant that converts natural language descriptions into structured filter parameters for a task run filtering system.
+        system: `You are an AI assistant that converts natural language descriptions into structured filter parameters for a task run filtering system.
   
   Available filter options:
   - statuses: Array of run statuses (PENDING, EXECUTING, COMPLETED_SUCCESSFULLY, COMPLETED_WITH_ERRORS, CANCELED, TIMED_OUT, CRASHED, etc.)
   - period: Time period string (e.g., "1h", "7d", "30d", "1y")
-  - from/to: ISO date string. Today's date is ${
-            new Date().toISOString()
-          }, if they only specify a day use the current month. If they don't specify a year use the current year. If they don't specify a time of day use midnight.
+  - from/to: ISO date string. Today's date is ${new Date().toISOString()}, if they only specify a day use the current month. If they don't specify a year use the current year. If they don't specify a time of day use midnight.
   - tags: Array of tag names to filter by. Use the lookupTags tool to get the tags.
   - tasks: Array of task identifiers to filter by. Use the lookupTasks tool to get the tasks.
   - machines: Array of machine presets (micro, small, small-2x, medium, large, xlarge, etc.)
@@ -169,7 +159,7 @@ export class AIRunFilterService {
   - scheduleId: Specific schedule ID to filter by
   
 
-  Common workflows to recognize:
+  Common patterns to recognize:
   - "failed runs" → statuses: ["COMPLETED_WITH_ERRORS", "CRASHED", "TIMED_OUT", "SYSTEM_FAILURE"].
   - "runs not dequeued yet" → statuses: ["PENDING", "PENDING_VERSION", "DELAYED"]
   - If they say "only failed" then only use "COMPLETED_WITH_ERRORS".
@@ -242,9 +232,7 @@ export class AIRunFilterService {
       }
 
       // Validate the filters against the schema to catch any issues
-      const validationResult = AIFilters.safeParse(
-        result.experimental_output.filters,
-      );
+      const validationResult = AIFilters.safeParse(result.experimental_output.filters);
       if (!validationResult.success) {
         logger.error("AI filter validation failed", {
           errors: validationResult.error.errors,
@@ -264,9 +252,7 @@ export class AIRunFilterService {
           from: validationResult.data.from
             ? new Date(validationResult.data.from).getTime()
             : undefined,
-          to: validationResult.data.to
-            ? new Date(validationResult.data.to).getTime()
-            : undefined,
+          to: validationResult.data.to ? new Date(validationResult.data.to).getTime() : undefined,
         },
       };
     } catch (error) {
