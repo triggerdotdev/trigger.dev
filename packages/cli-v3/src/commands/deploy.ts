@@ -28,7 +28,13 @@ import {
   printWarnings,
   saveLogs,
 } from "../deploy/logs.js";
-import { chalkError, cliLink, isLinksSupported, prettyError } from "../utilities/cliOutput.js";
+import {
+  chalkError,
+  cliLink,
+  isLinksSupported,
+  prettyError,
+  prettyWarning,
+} from "../utilities/cliOutput.js";
 import { loadDotEnvVars } from "../utilities/dotEnv.js";
 import { isDirectory } from "../utilities/fileSystem.js";
 import { setGithubActionsOutputAndEnvVars } from "../utilities/githubActions.js";
@@ -457,6 +463,17 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   logger.debug("Build result", buildResult);
 
   const warnings = checkLogsForWarnings(buildResult.logs);
+
+  const canShowLocalBuildHint = !isLocalBuild && !process.env.TRIGGER_LOCAL_BUILD_HINT_DISABLED;
+  const buildFailed = !warnings.ok || !buildResult.ok;
+
+  if (buildFailed && canShowLocalBuildHint) {
+    const providerStatus = await projectClient.client.getRemoteBuildProviderStatus();
+
+    if (providerStatus.success && providerStatus.data.status === "degraded") {
+      prettyWarning(providerStatus.data.message + "\n");
+    }
+  }
 
   if (!warnings.ok) {
     await failDeploy(
