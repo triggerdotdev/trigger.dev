@@ -439,6 +439,15 @@ export const InitializeDeploymentRequestBody = z.object({
 
 export type InitializeDeploymentRequestBody = z.infer<typeof InitializeDeploymentRequestBody>;
 
+export const RemoteBuildProviderStatusResponseBody = z.object({
+  status: z.enum(["operational", "degraded", "unknown"]),
+  message: z.string(),
+});
+
+export type RemoteBuildProviderStatusResponseBody = z.infer<
+  typeof RemoteBuildProviderStatusResponseBody
+>;
+
 export const GenerateRegistryCredentialsResponseBody = z.object({
   username: z.string(),
   password: z.string(),
