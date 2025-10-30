@@ -28,7 +28,13 @@ import {
   printWarnings,
   saveLogs,
 } from "../deploy/logs.js";
-import { chalkError, cliLink, isLinksSupported, prettyError } from "../utilities/cliOutput.js";
+import {
+  chalkError,
+  cliLink,
+  isLinksSupported,
+  prettyError,
+  prettyWarning,
+} from "../utilities/cliOutput.js";
 import { loadDotEnvVars } from "../utilities/dotEnv.js";
 import { isDirectory } from "../utilities/fileSystem.js";
 import { setGithubActionsOutputAndEnvVars } from "../utilities/githubActions.js";
@@ -128,9 +134,7 @@ export function configureDeployCommand(program: Command) {
         ).hideHelp()
       )
       // Local build options
-      .addOption(
-        new CommandOption("--force-local-build", "Force a local build of the image").hideHelp()
-      )
+      .addOption(new CommandOption("--force-local-build", "Force a local build of the image"))
       .addOption(new CommandOption("--push", "Push the image after local builds").hideHelp())
       .addOption(
         new CommandOption("--no-push", "Do not push the image after local builds").hideHelp()
@@ -457,6 +461,17 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   logger.debug("Build result", buildResult);
 
   const warnings = checkLogsForWarnings(buildResult.logs);
+
+  const canShowLocalBuildHint = !isLocalBuild && !process.env.TRIGGER_LOCAL_BUILD_HINT_DISABLED;
+  const buildFailed = !warnings.ok || !buildResult.ok;
+
+  if (buildFailed && canShowLocalBuildHint) {
+    const providerStatus = await projectClient.client.getRemoteBuildProviderStatus();
+
+    if (providerStatus.success && providerStatus.data.status === "degraded") {
+      prettyWarning(providerStatus.data.message + "\n");
+    }
+  }
 
   if (!warnings.ok) {
     await failDeploy(

@@ -22,7 +22,6 @@ import {
   PromoteDeploymentResponseBody,
   StartDeploymentIndexingRequestBody,
   StartDeploymentIndexingResponseBody,
-  TaskRunExecution,
   TriggerTaskRequestBody,
   TriggerTaskResponse,
   UpsertBranchRequestBody,
@@ -38,6 +37,7 @@ import {
   GetJWTResponse,
   ApiBranchListResponseBody,
   GenerateRegistryCredentialsResponseBody,
+  RemoteBuildProviderStatusResponseBody,
 } from "@trigger.dev/core/v3";
 import {
   WorkloadDebugLogRequestBody,
@@ -52,6 +52,7 @@ import { ApiResult, wrapZodFetch, zodfetchSSE } from "@trigger.dev/core/v3/zodfe
 import { EventSource } from "eventsource";
 import { z } from "zod";
 import { logger } from "./utilities/logger.js";
+import { VERSION } from "./version.js";
 
 export class CliApiClient {
   private engineURL: string;
@@ -324,6 +325,21 @@ export class CliApiClient {
         method: "POST",
         headers: this.getHeaders(),
         body: JSON.stringify(params),
+      }
+    );
+  }
+
+  async getRemoteBuildProviderStatus() {
+    return wrapZodFetch(
+      RemoteBuildProviderStatusResponseBody,
+      `${this.apiURL}/api/v1/remote-build-provider-status`,
+      {
+        method: "GET",
+        headers: {
+          ...this.getHeaders(),
+          // probably a good idea to add this to the other requests too
+          "x-trigger-cli-version": VERSION,
+        },
       }
     );
   }
