@@ -13,6 +13,7 @@ export type ConcurrencyResult = {
   extraConcurrency: number;
   extraAllocatedConcurrency: number;
   extraUnallocatedConcurrency: number;
+  maxQuota: number;
   concurrencyPricing: {
     stepSize: number;
     centsPerStep: number;
@@ -115,6 +116,7 @@ export class ManageConcurrencyPresenter extends BasePresenter {
       extraConcurrency,
       extraAllocatedConcurrency: extraAllocated,
       extraUnallocatedConcurrency: extraConcurrency - extraAllocated,
+      maxQuota: currentPlan.v3Subscription.addOns?.concurrentRuns?.quota ?? 0,
       environments: sortEnvironments(projectEnvironments).reverse(),
       concurrencyPricing: plans.addOnPricing.concurrency,
     };
