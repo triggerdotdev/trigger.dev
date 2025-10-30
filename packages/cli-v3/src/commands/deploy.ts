@@ -134,9 +134,7 @@ export function configureDeployCommand(program: Command) {
         ).hideHelp()
       )
       // Local build options
-      .addOption(
-        new CommandOption("--force-local-build", "Force a local build of the image").hideHelp()
-      )
+      .addOption(new CommandOption("--force-local-build", "Force a local build of the image"))
       .addOption(new CommandOption("--push", "Push the image after local builds").hideHelp())
       .addOption(
         new CommandOption("--no-push", "Do not push the image after local builds").hideHelp()
