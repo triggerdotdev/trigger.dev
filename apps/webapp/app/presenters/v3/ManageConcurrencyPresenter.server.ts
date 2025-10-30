@@ -117,7 +117,12 @@ export class ManageConcurrencyPresenter extends BasePresenter {
       extraAllocatedConcurrency: extraAllocated,
       extraUnallocatedConcurrency: extraConcurrency - extraAllocated,
       maxQuota: currentPlan.v3Subscription.addOns?.concurrentRuns?.quota ?? 0,
-      environments: sortEnvironments(projectEnvironments).reverse(),
+      environments: sortEnvironments(projectEnvironments, [
+        "PRODUCTION",
+        "STAGING",
+        "PREVIEW",
+        "DEVELOPMENT",
+      ]),
       concurrencyPricing: plans.addOnPricing.concurrency,
     };
   }

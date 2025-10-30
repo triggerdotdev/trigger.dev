@@ -146,7 +146,13 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     return json(submission);
   }
 
-  return redirectWithSuccessMessage(redirectPath, request, "Concurrency updated successfully");
+  return redirectWithSuccessMessage(
+    `${redirectPath}?success=true`,
+    request,
+    submission.value.action === "purchase"
+      ? "Concurrency updated successfully"
+      : "Requested extra concurrency, we'll get back to you soon."
+  );
 };
 
 export default function Page() {
@@ -283,13 +289,13 @@ function Upgradable({
                     <EnvironmentCombo environment={environment} />
                   </TableCell>
                   <TableCell alignment="right">{environment.planConcurrencyLimit}</TableCell>
-                  <TableCell alignment="right" className="text-text-bright">
+                  <TableCell alignment="right">
                     <div className="flex items-center justify-end">
                       <Input
                         type="number"
-                        variant="secondary-small"
+                        variant="outline/small"
                         className="text-right"
-                        containerClassName="w-16 bg-transparent"
+                        containerClassName="w-16"
                         fullWidth={false}
                         defaultValue={Math.max(
                           0,
@@ -381,7 +387,6 @@ function PurchaseConcurrencyModal({
 
   const [amountValue, setAmountValue] = useState(0);
   const navigation = useNavigation();
-  console.log(navigation);
   const isLoading = navigation.state !== "idle" && navigation.formMethod === "POST";
 
   const maximum = maxQuota - extraConcurrency;
@@ -422,10 +427,13 @@ function PurchaseConcurrencyModal({
             </Fieldset>
             {isAboveMaxQuota ? (
               <div className="flex flex-col pb-3">
+                <Paragraph variant="small" className="text-warning" spacing>
+                  Currently you can only have up to {maxQuota} extra concurrency. This request for{" "}
+                  {formatNumber(amountValue)} takes you to{" "}
+                  {formatNumber(extraConcurrency + amountValue)} extra concurrency.
+                </Paragraph>
                 <Paragraph variant="small" className="text-warning">
-                  Your Org’s total would be {formatNumber(extraConcurrency + amountValue)}{" "}
-                  concurrency. Send us a request to purchase {formatNumber(amountValue - maximum)}{" "}
-                  more, or reduce the amount to buy more today.
+                  Send a request below to lift your current limit. We'll get back to you soon.
                 </Paragraph>
               </div>
             ) : (
@@ -466,7 +474,7 @@ function PurchaseConcurrencyModal({
                     type="submit"
                     disabled={isLoading}
                   >
-                    {`Send request for ${formatNumber(amountValue - maximum)}`}
+                    {`Send request for ${formatNumber(extraConcurrency + amountValue)}`}
                   </Button>
                 </>
               ) : (

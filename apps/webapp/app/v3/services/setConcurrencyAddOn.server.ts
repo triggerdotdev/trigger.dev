@@ -3,6 +3,8 @@ import { BaseService } from "./baseService.server";
 import { tryCatch } from "@trigger.dev/core";
 import { setConcurrencyAddOn } from "~/services/platform.v3.server";
 import assertNever from "assert-never";
+import { sendToPlain } from "~/utils/plain.server";
+import { uiComponent } from "@team-plain/typescript-sdk";
 
 type Input = {
   userId: string;
@@ -80,11 +82,58 @@ export class SetConcurrencyAddOnService extends BaseService {
         }
       }
       case "quota-increase": {
+        const user = await this._replica.user.findFirst({
+          where: { id: userId },
+        });
+
+        if (!user) {
+          return {
+            success: false,
+            error: "No matching user found.",
+          };
+        }
+
+        const organization = await this._replica.organization.findFirst({
+          select: {
+            title: true,
+          },
+          where: { id: organizationId },
+        });
+
+        const [error, result] = await tryCatch(
+          sendToPlain({
+            userId,
+            email: user.email,
+            name: user.name ?? user.displayName ?? user.email,
+            title: `Concurrency quota request: ${totalExtraConcurrency}`,
+            components: [
+              uiComponent.text({
+                text: `Org: ${organization?.title} (${organizationId})`,
+              }),
+              uiComponent.divider({ spacingSize: "M" }),
+              uiComponent.text({
+                text: `Total concurrency (set this): ${totalExtraConcurrency}`,
+              }),
+              uiComponent.text({
+                text: `Current extra concurrency: ${currentConcurrency}`,
+              }),
+              uiComponent.text({
+                text: `Amount requested: ${amount}`,
+              }),
+            ],
+          })
+        );
+
+        if (error) {
+          return {
+            success: false,
+            error: error.message,
+          };
+        }
+
         return {
-          success: false,
-          error: "Quota increase is not supported yet.",
+          success: true,
         };
-        break;
       }
       default: {
         assertNever(action);
