@@ -2,7 +2,7 @@ import { json } from "@remix-run/node";
 import { err, fromPromise, fromSafePromise, ok } from "neverthrow";
 import z from "zod";
 import { logger } from "~/services/logger.server";
-import { type RemoteBuildProviderStatusResponseBody } from "../../../../packages/core/src/v3/schemas/api";
+import { type RemoteBuildProviderStatusResponseBody } from "@trigger.dev/core/v3/schemas";
 
 const DEPOT_STATUS_URL = "https://status.depot.dev/proxy/status.depot.dev";
 const FETCH_TIMEOUT_MS = 2000;
