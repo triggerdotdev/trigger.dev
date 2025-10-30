@@ -15,7 +15,7 @@ export async function loader() {
           {
             status: "degraded",
             message:
-              "Our remote build provider is currently facing issues. You can use the `--force-local-build` flag to build and deploy the image locally. Read more about local builds here: https://docs.trigger.dev/deploy/local-builds",
+              "Our remote build provider is currently facing issues. You can use the `--force-local-build` flag to build and deploy the image locally. Read more about local builds here: https://trigger.dev/docs/deployment/overview#local-builds",
           } satisfies RemoteBuildProviderStatusResponseBody,
           { status: 200 }
         );
