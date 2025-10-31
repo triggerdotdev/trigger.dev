@@ -1,23 +1,12 @@
-import { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { $replica } from "~/db.server";
-import { relayRealtimeStreams } from "~/services/realtime/relayRealtimeStreams.server";
+import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
 import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
 const ParamsSchema = z.object({
   runId: z.string(),
   streamId: z.string(),
 });
-
-export async function action({ request, params }: ActionFunctionArgs) {
-  const $params = ParamsSchema.parse(params);
-
-  if (!request.body) {
-    return new Response("No body provided", { status: 400 });
-  }
-
-  return relayRealtimeStreams.ingestData(request.body, $params.runId, $params.streamId);
-}
 
 export const loader = createLoaderApiRoute(
   {
@@ -51,12 +40,20 @@ export const loader = createLoaderApiRoute(
     },
   },
   async ({ params, request, resource: run, authentication }) => {
-    return relayRealtimeStreams.streamResponse(
+    // Get Last-Event-ID header for resuming from a specific position
+    const lastEventId = request.headers.get("Last-Event-ID") || undefined;
+
+    const realtimeStream = getRealtimeStreamInstance(
+      authentication.environment,
+      run.realtimeStreamsVersion
+    );
+
+    return realtimeStream.streamResponse(
       request,
       run.friendlyId,
       params.streamId,
-      authentication.environment,
-      request.signal
+      request.signal,
+      lastEventId
     );
   }
 );

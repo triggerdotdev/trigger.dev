@@ -5,7 +5,6 @@
   "sideEffects": false,
   "scripts": {
     "build": "run-s build:** && pnpm run upload:sourcemaps",
-    "build:db:seed": "esbuild --platform=node --bundle --minify --format=cjs ./prisma/seed.ts --outdir=prisma",
     "build:remix": "remix build --sourcemap",
     "build:server": "esbuild --platform=node --format=cjs ./server.ts --outdir=build --sourcemap",
     "build:sentry": "esbuild --platform=node --format=cjs ./sentry.server.ts --outdir=build --sourcemap",
@@ -16,10 +15,7 @@
     "start": "cross-env NODE_ENV=production node --max-old-space-size=8192 ./build/server.js",
     "start:local": "cross-env node --max-old-space-size=8192 ./build/server.js",
     "typecheck": "tsc --noEmit -p ./tsconfig.check.json",
-    "db:seed": "node prisma/seed.js",
-    "db:seed:local": "ts-node prisma/seed.ts",
-    "build:db:populate": "esbuild --platform=node --bundle --minify --format=cjs ./prisma/populate.ts --outdir=prisma",
-    "db:populate": "node prisma/populate.js --",
+    "db:seed": "tsx seed.mts",
     "upload:sourcemaps": "bash ./upload-sourcemaps.sh",
     "test": "vitest --no-file-parallelism",
     "eval:dev": "evalite watch"
@@ -279,8 +275,8 @@
     "supertest": "^7.0.0",
     "tailwind-scrollbar": "^3.0.1",
     "tailwindcss": "3.4.1",
-    "ts-node": "^10.7.0",
     "tsconfig-paths": "^3.14.1",
+    "tsx": "^4.20.6",
     "vite-tsconfig-paths": "^4.0.5"
   },
   "engines": {
