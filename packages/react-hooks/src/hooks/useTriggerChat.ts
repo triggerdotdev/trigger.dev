@@ -398,13 +398,16 @@ function subscribeToDataStreams(params: {
     if (subscribedStreams.has(stream)) continue;
 
     subscribedStreams.add(stream);
-    streamDataFromTrigger({
+    void streamDataFromTrigger({
       streamKey: stream,
       runId,
       baseURL,
       accessToken,
       runAbortController,
       controller,
+    }).catch((error) => {
+      controller.error(error);
+      runAbortController.abort();
     });
   }
 }
