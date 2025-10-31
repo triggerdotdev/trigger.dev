@@ -167,7 +167,7 @@ async function resolveConfig(
   const missingConfigFile = !result.configFile || result.configFile === "trigger.config";
 
   if (missingConfigFile) {
-    const err = new OutroCommandError(
+    throw new OutroCommandError(
       [
         "Couldn't find your trigger.config.ts file.",
         "",
@@ -176,8 +176,6 @@ async function resolveConfig(
         "Alternatively, you can initialize a new project using `npx trigger.dev@latest init`.",
       ].join("\n")
     );
-    err.stack = undefined;
-    throw err;
   }
 
   const config =
