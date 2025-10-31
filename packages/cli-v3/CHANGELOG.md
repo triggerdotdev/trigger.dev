@@ -1,5 +1,16 @@
 # trigger.dev
 
+## 4.0.6
+
+### Patch Changes
+
+- Added a hint about the `--force-local-build` flag on failed deployments due to upstream provider outages. ([#2646](https://github.com/triggerdotdev/trigger.dev/pull/2646))
+- Fixed misleading error message in the CLI when config file is missing ("maxDuration" is now required). A useful error message is now shown, including a hint about the `--config` flag. ([#2650](https://github.com/triggerdotdev/trigger.dev/pull/2650))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.6`
+  - `@trigger.dev/build@4.0.6`
+  - `@trigger.dev/schema-to-json@4.0.6`
+
 ## 4.0.5
 
 ### Patch Changes
