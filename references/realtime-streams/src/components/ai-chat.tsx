@@ -14,7 +14,7 @@ export function AIChat({ accessToken, runId }: { accessToken: string; runId: str
 }
 
 function AIChatStats({ accessToken, runId }: { accessToken: string; runId: string }) {
-  const { parts, error } = useRealtimeStream<UIMessageChunk>(runId, "chat", {
+  const { parts, error } = useRealtimeStream<UIMessageChunk>(runId, {
     accessToken,
     baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL,
     timeoutInSeconds: 600,
@@ -124,7 +124,7 @@ function AIChatStats({ accessToken, runId }: { accessToken: string; runId: strin
 }
 
 function AIChatFull({ accessToken, runId }: { accessToken: string; runId: string }) {
-  const { parts, error } = useRealtimeStream<UIMessageChunk>(runId, "chat", {
+  const { parts, error } = useRealtimeStream<UIMessageChunk>(runId, {
     accessToken,
     baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL,
     timeoutInSeconds: 600,

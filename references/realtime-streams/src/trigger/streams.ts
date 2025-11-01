@@ -113,7 +113,7 @@ export const streamsTask = task({
 
     const mockStream = createStreamFromGenerator(generator);
 
-    const { waitUntilComplete } = await streams.append("stream", mockStream);
+    const { waitUntilComplete } = await streams.append(mockStream);
 
     await setTimeout(1000);
 
