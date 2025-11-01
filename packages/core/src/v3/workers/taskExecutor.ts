@@ -182,6 +182,8 @@ export class TaskExecutor {
                   await this.#callOnStartFunctions(payload, ctx, initOutput, signal);
                 }
 
+                await this.#callOnStartAttemptFunctions(payload, ctx, signal);
+
                 try {
                   return await this.#callRun(payload, ctx, initOutput, signal);
                 } catch (error) {
@@ -777,7 +779,7 @@ export class TaskExecutor {
 
     return await runTimelineMetrics.measureMetric("trigger.dev/execution", "success", async () => {
       for (const hook of globalSuccessHooks) {
-        const [hookError] = await tryCatch(
+        await tryCatch(
           this._tracer.startActiveSpan(
             "onSuccess()",
             async (span) => {
@@ -799,14 +801,10 @@ export class TaskExecutor {
             }
           )
         );
-
-        if (hookError) {
-          throw hookError;
-        }
       }
 
       if (taskSuccessHook) {
-        const [hookError] = await tryCatch(
+        await tryCatch(
           this._tracer.startActiveSpan(
             "onSuccess()",
             async (span) => {
@@ -828,10 +826,6 @@ export class TaskExecutor {
             }
           )
         );
-
-        if (hookError) {
-          throw hookError;
-        }
       }
     });
   }
@@ -852,7 +846,7 @@ export class TaskExecutor {
 
     return await runTimelineMetrics.measureMetric("trigger.dev/execution", "failure", async () => {
       for (const hook of globalFailureHooks) {
-        const [hookError] = await tryCatch(
+        await tryCatch(
           this._tracer.startActiveSpan(
             "onFailure()",
             async (span) => {
@@ -874,14 +868,10 @@ export class TaskExecutor {
             }
           )
         );
-
-        if (hookError) {
-          throw hookError;
-        }
       }
 
       if (taskFailureHook) {
-        const [hookError] = await tryCatch(
+        await tryCatch(
           this._tracer.startActiveSpan(
             "onFailure()",
             async (span) => {
@@ -903,10 +893,6 @@ export class TaskExecutor {
             }
           )
         );
-
-        if (hookError) {
-          throw hookError;
-        }
       }
     });
   }
@@ -987,6 +973,70 @@ export class TaskExecutor {
         }
       }
     });
+  }
+
+  async #callOnStartAttemptFunctions(payload: unknown, ctx: TaskRunContext, signal: AbortSignal) {
+    const globalStartHooks = lifecycleHooks.getGlobalStartAttemptHooks();
+    const taskStartHook = lifecycleHooks.getTaskStartAttemptHook(this.task.id);
+
+    if (globalStartHooks.length === 0 && !taskStartHook) {
+      return;
+    }
+
+    return await runTimelineMetrics.measureMetric(
+      "trigger.dev/execution",
+      "startAttempt",
+      async () => {
+        for (const hook of globalStartHooks) {
+          const [hookError] = await tryCatch(
+            this._tracer.startActiveSpan(
+              "onStartAttempt()",
+              async (span) => {
+                await hook.fn({ payload, ctx, signal, task: this.task.id });
+              },
+              {
+                attributes: {
+                  [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStartAttempt",
+                  [SemanticInternalAttributes.COLLAPSED]: true,
+                  ...this.#lifecycleHookAccessoryAttributes(hook.name),
+                },
+              }
+            )
+          );
+
+          if (hookError) {
+            throw hookError;
+          }
+        }
+
+        if (taskStartHook) {
+          const [hookError] = await tryCatch(
+            this._tracer.startActiveSpan(
+              "onStartAttempt()",
+              async (span) => {
+                await taskStartHook({
+                  payload,
+                  ctx,
+                  signal,
+                  task: this.task.id,
+                });
+              },
+              {
+                attributes: {
+                  [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStartAttempt",
+                  [SemanticInternalAttributes.COLLAPSED]: true,
+                  ...this.#lifecycleHookAccessoryAttributes("task"),
+                },
+              }
+            )
+          );
+
+          if (hookError) {
+            throw hookError;
+          }
+        }
+      }
+    );
   }
 
   async #cleanupAndWaitUntil(
@@ -1297,7 +1347,7 @@ export class TaskExecutor {
 
     return await runTimelineMetrics.measureMetric("trigger.dev/execution", "complete", async () => {
       for (const hook of globalCompleteHooks) {
-        const [hookError] = await tryCatch(
+        await tryCatch(
           this._tracer.startActiveSpan(
             "onComplete()",
             async (span) => {
@@ -1319,14 +1369,10 @@ export class TaskExecutor {
             }
           )
         );
-
-        if (hookError) {
-          throw hookError;
-        }
       }
 
       if (taskCompleteHook) {
-        const [hookError] = await tryCatch(
+        await tryCatch(
           this._tracer.startActiveSpan(
             "onComplete()",
             async (span) => {
@@ -1348,10 +1394,6 @@ export class TaskExecutor {
             }
           )
         );
-
-        if (hookError) {
-          throw hookError;
-        }
       }
     });
   }

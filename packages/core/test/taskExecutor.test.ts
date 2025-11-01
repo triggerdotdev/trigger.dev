@@ -269,6 +269,91 @@ describe("TaskExecutor", () => {
     });
   });
 
+  test("should call onStartAttempt hooks in correct order with proper data", async () => {
+    const globalStartOrder: string[] = [];
+    const startPayloads: any[] = [];
+
+    // Register global init hook to provide init data
+    lifecycleHooks.registerGlobalInitHook({
+      id: "test-init",
+      fn: async () => {
+        return {
+          foo: "bar",
+        };
+      },
+    });
+
+    // Register two global start hooks
+    lifecycleHooks.registerGlobalStartAttemptHook({
+      id: "global-start-1",
+      fn: async ({ payload, ctx }) => {
+        console.log("Executing global start hook 1");
+        globalStartOrder.push("global-1");
+        startPayloads.push(payload);
+      },
+    });
+
+    lifecycleHooks.registerGlobalStartAttemptHook({
+      id: "global-start-2",
+      fn: async ({ payload, ctx }) => {
+        console.log("Executing global start hook 2");
+        globalStartOrder.push("global-2");
+        startPayloads.push(payload);
+      },
+    });
+
+    // Register task-specific start hook
+    lifecycleHooks.registerTaskStartAttemptHook("test-task", {
+      id: "task-start",
+      fn: async ({ payload, ctx }) => {
+        console.log("Executing task start hook");
+        globalStartOrder.push("task");
+        startPayloads.push(payload);
+      },
+    });
+
+    // Verify hooks are registered
+    const globalHooks = lifecycleHooks.getGlobalStartAttemptHooks();
+    console.log(
+      "Registered global hooks:",
+      globalHooks.map((h) => h.id)
+    );
+    const taskHook = lifecycleHooks.getTaskStartAttemptHook("test-task");
+    console.log("Registered task hook:", taskHook ? "yes" : "no");
+
+    const task = {
+      id: "test-task",
+      fns: {
+        run: async (payload: any, params: RunFnParams<any>) => {
+          return {
+            output: "test-output",
+            init: params.init,
+          };
+        },
+      },
+    };
+
+    const result = await executeTask(task, { test: "data" }, undefined);
+
+    // Verify hooks were called in correct order
+    expect(globalStartOrder).toEqual(["global-1", "global-2", "task"]);
+
+    // Verify each hook received the correct payload
+    startPayloads.forEach((payload) => {
+      expect(payload).toEqual({ test: "data" });
+    });
+
+    // Verify the final result
+    expect(result).toEqual({
+      result: {
+        ok: true,
+        id: "test-run-id",
+        output: '{"json":{"output":"test-output","init":{"foo":"bar"}}}',
+        outputType: "application/super+json",
+      },
+    });
+  });
+
   test("should call onFailure hooks with error when task fails", async () => {
     const globalFailureOrder: string[] = [];
     const failurePayloads: any[] = [];
@@ -1242,6 +1327,48 @@ describe("TaskExecutor", () => {
           stackTrace: expect.any(String),
         },
         skippedRetrying: false,
+      },
+    });
+  });
+
+  test("should NOT propagate errors from onSuccess hooks", async () => {
+    const executionOrder: string[] = [];
+    const expectedError = new Error("On success hook error");
+
+    // Register global on success hook that throws an error
+    lifecycleHooks.registerGlobalSuccessHook({
+      id: "global-success",
+      fn: async () => {
+        executionOrder.push("global-success");
+        throw expectedError;
+      },
+    });
+
+    const task = {
+      id: "test-task",
+      fns: {
+        run: async (payload: any, params: RunFnParams<any>) => {
+          executionOrder.push("run");
+          return {
+            output: "test-output",
+          };
+        },
+      },
+    };
+
+    // Expect that this does not throw an error
+    const result = await executeTask(task, { test: "data" }, undefined);
+
+    // Verify that run was called and on success hook was called
+    expect(executionOrder).toEqual(["run", "global-success"]);
+
+    // Verify the error result
+    expect(result).toEqual({
+      result: {
+        ok: true,
+        id: "test-run-id",
+        output: '{"json":{"output":"test-output"}}',
+        outputType: "application/super+json",
       },
     });
   });
