@@ -46,7 +46,6 @@ class AudioWaveformExtension implements BuildExtension {
       }-1-12_amd64.deb .`,
       `RUN dpkg -i audiowaveform_${opts.version}-1-12_amd64.deb || true`,
       `RUN rm audiowaveform*.deb`,
-      `RUN apt-get install -y --fix-broken`,
     ];
 
     context.addLayer({
