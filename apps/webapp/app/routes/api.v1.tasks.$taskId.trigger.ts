@@ -33,6 +33,7 @@ export const HeadersSchema = z.object({
   "x-trigger-client": z.string().nullish(),
   "x-trigger-engine-version": RunEngineVersionSchema.nullish(),
   "x-trigger-request-idempotency-key": z.string().nullish(),
+  "x-trigger-realtime-streams-version": z.string().nullish(),
   traceparent: z.string().optional(),
   tracestate: z.string().optional(),
 });
@@ -63,6 +64,7 @@ const { action, loader } = createActionApiRoute(
       "x-trigger-client": triggerClient,
       "x-trigger-engine-version": engineVersion,
       "x-trigger-request-idempotency-key": requestIdempotencyKey,
+      "x-trigger-realtime-streams-version": realtimeStreamsVersion,
     } = headers;
 
     const cachedResponse = await handleRequestIdempotency(requestIdempotencyKey, {
@@ -108,14 +110,7 @@ const { action, loader } = createActionApiRoute(
         options: body.options,
         isFromWorker,
         traceContext,
-      });
-
-      logger.debug("[otelContext]", {
-        taskId: params.taskId,
-        headers,
-        options: body.options,
-        isFromWorker,
-        traceContext,
+        realtimeStreamsVersion,
       });
 
       const idempotencyKeyExpiresAt = resolveIdempotencyKeyTTL(idempotencyKeyTTL);
@@ -131,6 +126,7 @@ const { action, loader } = createActionApiRoute(
           traceContext,
           spanParentAsLink: spanParentAsLink === 1,
           oneTimeUseToken,
+          realtimeStreamsVersion: realtimeStreamsVersion ?? undefined,
         },
         engineVersion ?? undefined
       );

@@ -32,6 +32,7 @@ import {
   WorkerToExecutorMessageCatalog,
   traceContext,
   heartbeats,
+  realtimeStreams,
 } from "@trigger.dev/core/v3";
 import { TriggerTracer } from "@trigger.dev/core/v3/tracer";
 import {
@@ -57,6 +58,7 @@ import {
   UsageTimeoutManager,
   StandardTraceContextManager,
   StandardHeartbeatsManager,
+  StandardRealtimeStreamsManager,
 } from "@trigger.dev/core/v3/workers";
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { readFile } from "node:fs/promises";
@@ -147,12 +149,19 @@ traceContext.setGlobalManager(standardTraceContextManager);
 
 const durableClock = new DurableClock();
 clock.setGlobalClock(durableClock);
-const runMetadataManager = new StandardMetadataManager(
-  apiClientManager.clientOrThrow(),
-  getEnvVar("TRIGGER_STREAM_URL", getEnvVar("TRIGGER_API_URL")) ?? "https://api.trigger.dev"
-);
+const runMetadataManager = new StandardMetadataManager(apiClientManager.clientOrThrow());
 runMetadata.setGlobalManager(runMetadataManager);
-const waitUntilManager = new StandardWaitUntilManager();
+
+const standardRealtimeStreamsManager = new StandardRealtimeStreamsManager(
+  apiClientManager.clientOrThrow(),
+  getEnvVar("TRIGGER_STREAM_URL", getEnvVar("TRIGGER_API_URL")) ?? "https://api.trigger.dev",
+  (getEnvVar("TRIGGER_STREAMS_DEBUG") === "1" || getEnvVar("TRIGGER_STREAMS_DEBUG") === "true") ??
+    false
+);
+realtimeStreams.setGlobalManager(standardRealtimeStreamsManager);
+
+const waitUntilTimeoutInMs = getNumberEnvVar("TRIGGER_WAIT_UNTIL_TIMEOUT_MS", 60_000);
+const waitUntilManager = new StandardWaitUntilManager(waitUntilTimeoutInMs);
 waitUntil.setGlobalManager(waitUntilManager);
 
 const triggerLogLevel = getEnvVar("TRIGGER_LOG_LEVEL");
@@ -316,6 +325,7 @@ function resetExecutionEnvironment() {
   devUsageManager.reset();
   usageTimeoutManager.reset();
   runMetadataManager.reset();
+  standardRealtimeStreamsManager.reset();
   waitUntilManager.reset();
   _sharedWorkerRuntime?.reset();
   durableClock.reset();
@@ -325,8 +335,8 @@ function resetExecutionEnvironment() {
 
   // Wait for all streams to finish before completing the run
   waitUntil.register({
-    requiresResolving: () => runMetadataManager.hasActiveStreams(),
-    promise: () => runMetadataManager.waitForAllStreams(),
+    requiresResolving: () => standardRealtimeStreamsManager.hasActiveStreams(),
+    promise: (timeoutInMs) => standardRealtimeStreamsManager.waitForAllStreams(timeoutInMs),
   });
 
   log(`[${new Date().toISOString()}] Reset execution environment`);

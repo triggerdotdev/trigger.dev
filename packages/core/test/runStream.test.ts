@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   RunSubscription,
+  SSEStreamPart,
   StreamSubscription,
   StreamSubscriptionFactory,
 } from "../src/v3/apiClient/runStream.js";
@@ -11,11 +12,15 @@ import type { SubscribeRunRawShape } from "../src/v3/schemas/api.js";
 class TestStreamSubscription implements StreamSubscription {
   constructor(private chunks: unknown[]) {}
 
-  async subscribe(): Promise<ReadableStream<unknown>> {
+  async subscribe(): Promise<ReadableStream<SSEStreamPart<unknown>>> {
     return new ReadableStream({
       start: async (controller) => {
-        for (const chunk of this.chunks) {
-          controller.enqueue(chunk);
+        for (let i = 0; i < this.chunks.length; i++) {
+          controller.enqueue({
+            id: `msg-${i}`,
+            chunk: this.chunks[i],
+            timestamp: Date.now() + i,
+          });
         }
         controller.close();
       },
@@ -94,6 +99,7 @@ describe("RunSubscription", () => {
         baseCostInCents: 0,
         isTest: false,
         runTags: [],
+        realtimeStreams: [],
       },
     ];
 
@@ -135,6 +141,7 @@ describe("RunSubscription", () => {
         payloadType: "application/json",
         output: JSON.stringify({ test: "output" }),
         outputType: "application/json",
+        realtimeStreams: [],
       },
     ];
 
@@ -174,6 +181,7 @@ describe("RunSubscription", () => {
         baseCostInCents: 0,
         isTest: false,
         runTags: [],
+        realtimeStreams: [],
       },
       {
         id: "123",
@@ -189,6 +197,7 @@ describe("RunSubscription", () => {
         baseCostInCents: 0,
         isTest: false,
         runTags: [],
+        realtimeStreams: [],
       },
     ];
 
@@ -239,10 +248,9 @@ describe("RunSubscription", () => {
         baseCostInCents: 0,
         isTest: false,
         runTags: [],
-        metadata: JSON.stringify({
-          $$streams: ["openai"],
-        }),
+        metadata: JSON.stringify({}),
         metadataType: "application/json",
+        realtimeStreams: ["openai"],
       },
     ];
 
@@ -307,10 +315,9 @@ describe("RunSubscription", () => {
         baseCostInCents: 0,
         isTest: false,
         runTags: [],
-        metadata: JSON.stringify({
-          $$streams: ["openai"],
-        }),
+        metadata: JSON.stringify({}),
         metadataType: "application/json",
+        realtimeStreams: ["openai"],
       },
       // Second run update with same stream key
       {
@@ -326,10 +333,9 @@ describe("RunSubscription", () => {
         baseCostInCents: 0,
         isTest: false,
         runTags: [],
-        metadata: JSON.stringify({
-          $$streams: ["openai"],
-        }),
+        metadata: JSON.stringify({}),
         metadataType: "application/json",
+        realtimeStreams: ["openai"],
       },
     ];
 
@@ -407,10 +413,9 @@ describe("RunSubscription", () => {
         baseCostInCents: 0,
         isTest: false,
         runTags: [],
-        metadata: JSON.stringify({
-          $$streams: ["openai", "anthropic"],
-        }),
+        metadata: JSON.stringify({}),
         metadataType: "application/json",
+        realtimeStreams: ["openai", "anthropic"],
       },
     ];
 

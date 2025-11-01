@@ -347,6 +347,7 @@ export class RunEngineTriggerTaskService {
                     createdAt: options.overrideCreatedAt,
                     bulkActionId: body.options?.bulkActionId,
                     planType,
+                    realtimeStreamsVersion: options.realtimeStreamsVersion,
                   },
                   this.prisma
                 );

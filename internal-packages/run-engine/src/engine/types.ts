@@ -148,6 +148,7 @@ export type TriggerParams = {
   createdAt?: Date;
   bulkActionId?: string;
   planType?: string;
+  realtimeStreamsVersion?: string;
 };
 
 export type EngineWorker = Worker<typeof workerCatalog>;

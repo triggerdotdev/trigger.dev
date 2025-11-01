@@ -33,6 +33,7 @@ export type TriggerTaskServiceOptions = {
   overrideCreatedAt?: Date;
   replayedFromTaskRunFriendlyId?: string;
   planType?: string;
+  realtimeStreamsVersion?: string;
 };
 
 export class OutOfEntitlementError extends Error {

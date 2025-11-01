@@ -80,6 +80,7 @@ import { createTimelineSpanEventsFromSpanEvents } from "~/utils/timelineSpanEven
 import { CompleteWaitpointForm } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.waitpoints.$waitpointFriendlyId.complete/route";
 import { requireUserId } from "~/services/session.server";
 import type { SpanOverride } from "~/v3/eventRepository/eventRepository.types";
+import { RealtimeStreamViewer } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.streams.$streamKey/route";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -213,8 +214,8 @@ function SpanBody({
   span = applySpanOverrides(span, spanOverrides);
 
   return (
-    <div className="grid h-full max-h-full grid-rows-[2.5rem_2rem_1fr] overflow-hidden bg-background-bright">
-      <div className="flex items-center justify-between gap-2 overflow-x-hidden px-3">
+    <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr] overflow-hidden bg-background-bright">
+      <div className="flex items-center justify-between gap-2 overflow-x-hidden border-b border-grid-bright px-3 pr-2">
         <div className="flex items-center gap-1 overflow-x-hidden">
           <RunIcon
             name={span.style?.icon}
@@ -228,25 +229,13 @@ function SpanBody({
         {runParam && closePanel && (
           <Button
             onClick={closePanel}
-            variant="minimal/medium"
-            LeadingIcon={ExitIcon}
+            variant="minimal/small"
+            TrailingIcon={ExitIcon}
             shortcut={{ key: "esc" }}
+            shortcutPosition="before-trailing-icon"
+            className="pl-1"
           />
         )}
-      </div>
-      <div className="h-fit overflow-x-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-        <TabContainer>
-          <TabButton
-            isActive={!tab || tab === "overview"}
-            layoutId="span-span"
-            onClick={() => {
-              replace({ tab: "overview" });
-            }}
-            shortcut={{ key: "o" }}
-          >
-            Overview
-          </TabButton>
-        </TabContainer>
       </div>
       <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
         <SpanEntity span={span} />
@@ -307,7 +296,7 @@ function RunBody({
 
   return (
     <div className="grid h-full max-h-full grid-rows-[2.5rem_2rem_1fr_3.25rem] overflow-hidden bg-background-bright">
-      <div className="flex items-center justify-between gap-2 overflow-x-hidden px-3">
+      <div className="flex items-center justify-between gap-2 overflow-x-hidden px-3 pr-2">
         <div className="flex items-center gap-1 overflow-x-hidden">
           <RunIcon
             name={run.isCached ? "task-cached" : "task"}
@@ -324,9 +313,11 @@ function RunBody({
         {runParam && closePanel && (
           <Button
             onClick={closePanel}
-            variant="minimal/medium"
-            LeadingIcon={ExitIcon}
+            variant="minimal/small"
+            TrailingIcon={ExitIcon}
             shortcut={{ key: "esc" }}
+            shortcutPosition="before-trailing-icon"
+            className="pl-1"
           />
         )}
       </div>
@@ -1075,6 +1066,9 @@ function SpanEntity({ span }: { span: Span }) {
             code={span.properties}
             maxLines={20}
             showLineNumbers={false}
+            showCopyButton
+            showTextWrapping
+            showOpenInModal
           />
         ) : null}
       </div>
@@ -1120,6 +1114,9 @@ function SpanEntity({ span }: { span: Span }) {
               code={span.properties}
               maxLines={20}
               showLineNumbers={false}
+              showCopyButton
+              showTextWrapping
+              showOpenInModal
             />
           ) : null}
         </div>
@@ -1144,6 +1141,15 @@ function SpanEntity({ span }: { span: Span }) {
             </div>
           )}
         </div>
+      );
+    }
+    case "realtime-stream": {
+      return (
+        <RealtimeStreamViewer
+          runId={span.entity.object.runId}
+          streamKey={span.entity.object.streamKey}
+          metadata={span.entity.object.metadata}
+        />
       );
     }
     default: {

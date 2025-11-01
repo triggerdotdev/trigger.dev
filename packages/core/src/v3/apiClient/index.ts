@@ -14,6 +14,7 @@ import {
   CompleteWaitpointTokenResponseBody,
   CreateEnvironmentVariableRequestBody,
   CreateScheduleOptions,
+  CreateStreamResponseBody,
   CreateUploadPayloadUrlResponseBody,
   CreateWaitpointTokenRequestBody,
   CreateWaitpointTokenResponseBody,
@@ -69,9 +70,11 @@ import {
   RunStreamCallback,
   RunSubscription,
   SSEStreamSubscriptionFactory,
+  SSEStreamSubscription,
   TaskRunShape,
   runShapeStream,
   RealtimeRunSkipColumns,
+  type SSEStreamPart,
 } from "./runStream.js";
 import {
   CreateEnvironmentVariableParams,
@@ -83,6 +86,8 @@ import {
   UpdateEnvironmentVariableParams,
 } from "./types.js";
 import { API_VERSION, API_VERSION_HEADER_NAME } from "./version.js";
+import { ApiClientConfiguration } from "../apiClientManager-api.js";
+import { getEnvVar } from "../utils/getEnv.js";
 
 export type CreateWaitpointTokenResponse = Prettify<
   CreateWaitpointTokenResponseBody & {
@@ -112,6 +117,7 @@ export type TriggerRequestOptions = ZodFetchOptions & {
 
 export type TriggerApiRequestOptions = ApiRequestOptions & {
   publicAccessToken?: TriggerJwtOptions;
+  clientConfig?: ApiClientConfiguration;
 };
 
 const DEFAULT_ZOD_FETCH_OPTIONS: ZodFetchOptions = {
@@ -124,7 +130,11 @@ const DEFAULT_ZOD_FETCH_OPTIONS: ZodFetchOptions = {
   },
 };
 
-export { isRequestOptions };
+export type ApiClientFutureFlags = {
+  unstable_v2RealtimeStreams?: boolean;
+};
+
+export { isRequestOptions, SSEStreamSubscription };
 export type {
   AnyRealtimeRun,
   AnyRunShape,
@@ -134,6 +144,7 @@ export type {
   RunStreamCallback,
   RunSubscription,
   TaskRunShape,
+  SSEStreamPart,
 };
 
 export * from "./getBranch.js";
@@ -145,18 +156,21 @@ export class ApiClient {
   public readonly baseUrl: string;
   public readonly accessToken: string;
   public readonly previewBranch?: string;
+  public readonly futureFlags: ApiClientFutureFlags;
   private readonly defaultRequestOptions: ZodFetchOptions;
 
   constructor(
     baseUrl: string,
     accessToken: string,
     previewBranch?: string,
-    requestOptions: ApiRequestOptions = {}
+    requestOptions: ApiRequestOptions = {},
+    futureFlags: ApiClientFutureFlags = {}
   ) {
     this.accessToken = accessToken;
     this.baseUrl = baseUrl.replace(/\/$/, "");
     this.previewBranch = previewBranch;
     this.defaultRequestOptions = mergeRequestOptions(DEFAULT_ZOD_FETCH_OPTIONS, requestOptions);
+    this.futureFlags = futureFlags;
   }
 
   get fetchClient(): typeof fetch {
@@ -1061,18 +1075,60 @@ export class ApiClient {
   async fetchStream<T>(
     runId: string,
     streamKey: string,
-    options?: { signal?: AbortSignal; baseUrl?: string }
+    options?: {
+      signal?: AbortSignal;
+      baseUrl?: string;
+      timeoutInSeconds?: number;
+      onComplete?: () => void;
+      onError?: (error: Error) => void;
+      lastEventId?: string;
+    }
   ): Promise<AsyncIterableStream<T>> {
     const streamFactory = new SSEStreamSubscriptionFactory(options?.baseUrl ?? this.baseUrl, {
       headers: this.getHeaders(),
       signal: options?.signal,
     });
 
-    const subscription = streamFactory.createSubscription(runId, streamKey);
+    const subscription = streamFactory.createSubscription(runId, streamKey, {
+      onComplete: options?.onComplete,
+      onError: options?.onError,
+      timeoutInSeconds: options?.timeoutInSeconds,
+      lastEventId: options?.lastEventId,
+    });
 
     const stream = await subscription.subscribe();
 
-    return stream as AsyncIterableStream<T>;
+    return stream.pipeThrough(
+      new TransformStream<SSEStreamPart, T>({
+        transform(chunk, controller) {
+          controller.enqueue(chunk.chunk as T);
+        },
+      })
+    );
+  }
+
+  async createStream(
+    runId: string,
+    target: string,
+    streamId: string,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      CreateStreamResponseBody,
+      `${this.baseUrl}/realtime/v1/streams/${runId}/${target}/${streamId}`,
+      {
+        method: "PUT",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    )
+      .withResponse()
+      .then(async ({ data, response }) => {
+        return {
+          ...data,
+          headers: Object.fromEntries(response.headers.entries()),
+        };
+      });
   }
 
   async generateJWTClaims(requestOptions?: ZodFetchOptions): Promise<Record<string, any>> {
@@ -1136,6 +1192,16 @@ export class ApiClient {
     }
 
     headers[API_VERSION_HEADER_NAME] = API_VERSION;
+
+    if (
+      this.futureFlags.unstable_v2RealtimeStreams ||
+      getEnvVar("TRIGGER_V2_REALTIME_STREAMS") === "1" ||
+      getEnvVar("TRIGGER_V2_REALTIME_STREAMS") === "true" ||
+      getEnvVar("TRIGGER_REALTIME_STREAMS_V2") === "1" ||
+      getEnvVar("TRIGGER_REALTIME_STREAMS_V2") === "true"
+    ) {
+      headers["x-trigger-realtime-streams-version"] = "v2";
+    }
 
     return headers;
   }
