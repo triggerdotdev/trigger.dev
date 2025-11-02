@@ -28,7 +28,7 @@ export const aiChatTask = task({
     const uiMessageStream = result.toUIMessageStream();
 
     // Append the stream to metadata
-    const { waitUntilComplete } = await streams.append("chat", uiMessageStream);
+    const { waitUntilComplete } = streams.pipe(uiMessageStream);
 
     // Wait for the stream to complete
     await waitUntilComplete();

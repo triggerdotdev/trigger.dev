@@ -4,7 +4,7 @@ import {
   ensureAsyncIterable,
 } from "../streams/asyncIterableStream.js";
 import {
-  RealtimeAppendStreamOptions,
+  RealtimePipeStreamOptions,
   RealtimeStreamInstance,
   RealtimeStreamsManager,
 } from "./types.js";
@@ -12,6 +12,7 @@ import { taskContext } from "../task-context-api.js";
 import { ApiClient } from "../apiClient/index.js";
 import { StreamsWriterV1 } from "./streamsWriterV1.js";
 import { StreamsWriterV2 } from "./streamsWriterV2.js";
+import { StreamInstance } from "./streamInstance.js";
 
 export class StandardRealtimeStreamsManager implements RealtimeStreamsManager {
   constructor(
@@ -29,11 +30,11 @@ export class StandardRealtimeStreamsManager implements RealtimeStreamsManager {
     this.activeStreams.clear();
   }
 
-  public async append<T>(
+  public pipe<T>(
     key: string,
     source: AsyncIterable<T> | ReadableStream<T>,
-    options?: RealtimeAppendStreamOptions
-  ): Promise<RealtimeStreamInstance<T>> {
+    options?: RealtimePipeStreamOptions
+  ): RealtimeStreamInstance<T> {
     // Normalize ReadableStream to AsyncIterable
     const asyncIterableSource = ensureAsyncIterable(source);
 
@@ -45,15 +46,6 @@ export class StandardRealtimeStreamsManager implements RealtimeStreamsManager {
       );
     }
 
-    const { version, headers } = await this.apiClient.createStream(
-      runId,
-      "self",
-      key,
-      options?.requestOptions
-    );
-
-    const parsedResponse = parseCreateStreamResponse(version, headers);
-
     // Create an AbortController for this stream
     const abortController = new AbortController();
     // Chain with user-provided signal if present
@@ -61,29 +53,18 @@ export class StandardRealtimeStreamsManager implements RealtimeStreamsManager {
       ? AbortSignal.any?.([options.signal, abortController.signal]) ?? abortController.signal
       : abortController.signal;
 
-    const streamInstance =
-      parsedResponse.version === "v1"
-        ? new StreamsWriterV1({
-            key,
-            runId,
-            source: asyncIterableSource,
-            baseUrl: this.baseUrl,
-            headers: this.apiClient.getHeaders(),
-            signal: combinedSignal,
-            version,
-            target: "self",
-          })
-        : new StreamsWriterV2({
-            basin: parsedResponse.basin,
-            stream: key,
-            accessToken: parsedResponse.accessToken,
-            source: asyncIterableSource,
-            signal: combinedSignal,
-            limiter: (await import("p-limit")).default,
-            debug: this.debug,
-            flushIntervalMs: parsedResponse.flushIntervalMs,
-            maxRetries: parsedResponse.maxRetries,
-          });
+    const streamInstance = new StreamInstance({
+      apiClient: this.apiClient,
+      baseUrl: this.baseUrl,
+      runId,
+      key,
+      source: asyncIterableSource,
+      headers: this.apiClient.getHeaders(),
+      signal: combinedSignal,
+      requestOptions: options?.requestOptions,
+      target: options?.target,
+      debug: this.debug,
+    });
 
     // Register this stream
     const streamInfo = { wait: () => streamInstance.wait(), abortController };
@@ -94,9 +75,7 @@ export class StandardRealtimeStreamsManager implements RealtimeStreamsManager {
 
     return {
       wait: () => streamInstance.wait(),
-      get stream(): AsyncIterableStream<T> {
-        return createAsyncIterableStreamFromAsyncIterable(streamInstance);
-      },
+      stream: streamInstance.stream,
     };
   }
 
@@ -140,7 +119,7 @@ export class StandardRealtimeStreamsManager implements RealtimeStreamsManager {
   }
 }
 
-function getRunIdForOptions(options?: RealtimeAppendStreamOptions): string | undefined {
+function getRunIdForOptions(options?: RealtimePipeStreamOptions): string | undefined {
   if (options?.target) {
     if (options.target === "parent") {
       return taskContext.ctx?.run?.parentTaskRunId;

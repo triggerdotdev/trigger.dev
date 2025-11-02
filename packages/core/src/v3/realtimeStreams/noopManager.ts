@@ -3,22 +3,22 @@ import {
   createAsyncIterableStreamFromAsyncIterable,
 } from "../streams/asyncIterableStream.js";
 import {
-  RealtimeAppendStreamOptions,
+  RealtimePipeStreamOptions,
   RealtimeStreamInstance,
   RealtimeStreamsManager,
 } from "./types.js";
 
 export class NoopRealtimeStreamsManager implements RealtimeStreamsManager {
-  public append<T>(
+  public pipe<T>(
     key: string,
     source: AsyncIterable<T> | ReadableStream<T>,
-    options?: RealtimeAppendStreamOptions
-  ): Promise<RealtimeStreamInstance<T>> {
-    return Promise.resolve({
+    options?: RealtimePipeStreamOptions
+  ): RealtimeStreamInstance<T> {
+    return {
       wait: () => Promise.resolve(),
       get stream(): AsyncIterableStream<T> {
         return createAsyncIterableStreamFromAsyncIterable(source);
       },
-    });
+    };
   }
 }

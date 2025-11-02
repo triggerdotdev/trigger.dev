@@ -319,7 +319,7 @@ export class StandardMetadataManager implements RunMetadataManager {
       return $value;
     }
 
-    const streamInstance = await realtimeStreams.append(key, value, {
+    const streamInstance = await realtimeStreams.pipe(key, value, {
       signal,
       target,
     });

@@ -230,14 +230,14 @@ async function refreshMetadata(requestOptions?: ApiRequestOptions): Promise<void
 }
 
 /**
- * @deprecated Use `streams.append()` instead.
+ * @deprecated Use `streams.pipe()` instead.
  */
 async function stream<T>(
   key: string,
   value: AsyncIterable<T> | ReadableStream<T>,
   signal?: AbortSignal
 ): Promise<AsyncIterable<T>> {
-  const streamInstance = await streams.append(key, value, {
+  const streamInstance = await streams.pipe(key, value, {
     signal,
   });
 
