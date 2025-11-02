@@ -63,37 +63,4 @@ export type TabsProps = {
   layoutId: string;
 };
 
-export function ClientTabsWithUnderline({ className, tabs, currentValue, layoutId }: TabsProps) {
-  return (
-    <TabsPrimitive.List
-      className={cn(`flex flex-row gap-x-6 border-b border-charcoal-700`, className)}
-    >
-      {tabs.map((tab, index) => {
-        const isActive = currentValue === tab.value;
-        return (
-          <TabsPrimitive.Trigger
-            key={tab.value}
-            value={tab.value}
-            className={cn(`group flex flex-col items-center`, className)}
-          >
-            <span
-              className={cn(
-                "text-sm transition duration-200",
-                isActive ? "text-indigo-500" : "text-charcoal-200"
-              )}
-            >
-              {tab.label}
-            </span>
-            {isActive ? (
-              <motion.div layoutId={layoutId} className="mt-1 h-0.5 w-full bg-indigo-500" />
-            ) : (
-              <div className="mt-1 h-0.5 w-full bg-charcoal-500 opacity-0 transition duration-200 group-hover:opacity-100" />
-            )}
-          </TabsPrimitive.Trigger>
-        );
-      })}
-    </TabsPrimitive.List>
-  );
-}
-
 export { ClientTabs, ClientTabsList, ClientTabsTrigger, ClientTabsContent };
