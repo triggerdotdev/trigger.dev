@@ -6,6 +6,7 @@ import {
   ApiDeploymentListOptions,
   ApiDeploymentListResponseItem,
   ApiDeploymentListSearchParams,
+  AppendToStreamResponseBody,
   BatchTaskRunExecutionResult,
   BatchTriggerTaskV3RequestBody,
   BatchTriggerTaskV3Response,
@@ -1129,6 +1130,25 @@ export class ApiClient {
           headers: Object.fromEntries(response.headers.entries()),
         };
       });
+  }
+
+  async appendToStream<TBody extends BodyInit>(
+    runId: string,
+    target: string,
+    streamId: string,
+    part: TBody,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      AppendToStreamResponseBody,
+      `${this.baseUrl}/realtime/v1/streams/${runId}/${target}/${streamId}/append`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: part,
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
   }
 
   async generateJWTClaims(requestOptions?: ZodFetchOptions): Promise<Record<string, any>> {

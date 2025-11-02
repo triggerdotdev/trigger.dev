@@ -1,7 +1,7 @@
 import { AnyZodFetchOptions } from "../apiClient/core.js";
 import { AsyncIterableStream } from "../streams/asyncIterableStream.js";
 
-export type RealtimePipeStreamOptions = {
+export type RealtimeStreamOperationOptions = {
   signal?: AbortSignal;
   target?: string;
   requestOptions?: AnyZodFetchOptions;
@@ -11,8 +11,14 @@ export interface RealtimeStreamsManager {
   pipe<T>(
     key: string,
     source: AsyncIterable<T> | ReadableStream<T>,
-    options?: RealtimePipeStreamOptions
+    options?: RealtimeStreamOperationOptions
   ): RealtimeStreamInstance<T>;
+
+  append<TPart extends BodyInit>(
+    key: string,
+    part: TPart,
+    options?: RealtimeStreamOperationOptions
+  ): Promise<void>;
 }
 
 export interface RealtimeStreamInstance<T> {

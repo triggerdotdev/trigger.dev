@@ -115,20 +115,9 @@ export const streamsTask = task({
 
     const { waitUntilComplete } = streams.pipe(mockStream);
 
-    await setTimeout(1000);
+    await waitUntilComplete();
 
-    // const stream = await streams.read(ctx.run.id, "stream", {
-    //   timeoutInSeconds: 10,
-    //   startIndex: 10,
-    // });
-
-    // let tokenCount = 0;
-    // for await (const chunk of stream) {
-    //   console.log(chunk);
-    //   tokenCount++;
-    // }
-
-    // await waitUntilComplete();
+    await streams.append(JSON.stringify({ complete: true }));
 
     logger.info("Stream completed", { scenario });
 

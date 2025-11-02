@@ -11,7 +11,6 @@ export type StreamInstanceOptions<T> = {
   runId: string;
   key: string;
   source: AsyncIterable<T>;
-  headers?: Record<string, string>;
   signal?: AbortSignal;
   requestOptions?: AnyZodFetchOptions;
   target?: "self" | "parent" | "root" | string;

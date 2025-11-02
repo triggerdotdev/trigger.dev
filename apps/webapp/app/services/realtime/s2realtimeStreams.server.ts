@@ -19,15 +19,13 @@ export type S2RealtimeStreamsOptions = {
   logLevel?: LogLevel;
 };
 
-type S2Record = {
-  headers?: [string, string][];
-  body: string;
-  seq_num?: number;
-  timestamp?: number;
-};
-
-type S2ReadResponse = { records: S2Record[] };
 type S2IssueAccessTokenResponse = { access_token: string };
+type S2AppendInput = { records: { body: string }[] };
+type S2AppendAck = {
+  start: { seq_num: number; timestamp: number };
+  end: { seq_num: number; timestamp: number };
+  tail: { seq_num: number; timestamp: number };
+};
 
 export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
   private readonly basin: string;
@@ -94,6 +92,14 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     throw new Error("S2 streams are written to S2 via the client, not from the server");
   }
 
+  async appendPart(part: string, runId: string, streamId: string): Promise<void> {
+    const s2Stream = this.toStreamName(runId, streamId);
+
+    await this.s2Append(s2Stream, {
+      records: [{ body: part }],
+    });
+  }
+
   getLastChunkIndex(runId: string, streamId: string, clientId: string): Promise<number> {
     throw new Error("S2 streams are written to S2 via the client, not from the server");
   }
@@ -123,6 +129,23 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
   }
 
   // ---------- Internals: S2 REST ----------
+  private async s2Append(stream: string, body: S2AppendInput): Promise<S2AppendAck> {
+    // POST /v1/streams/{stream}/records (JSON)
+    const res = await fetch(`${this.baseUrl}/streams/${encodeURIComponent(stream)}/records`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        "Content-Type": "application/json",
+        "S2-Format": "raw", // UTF-8 JSON encoding (no base64 overhead) when your data is text. :contentReference[oaicite:8]{index=8}
+      },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`S2 append failed: ${res.status} ${res.statusText} ${text}`);
+    }
+    return (await res.json()) as S2AppendAck;
+  }
 
   private async s2IssueAccessToken(id: string, runId: string, streamId: string): Promise<string> {
     // POST /v1/access-tokens
@@ -195,45 +218,6 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
       status: res.status,
       statusText: res.statusText,
     });
-  }
-
-  private async s2ReadOnce(
-    stream: string,
-    opts: {
-      seq_num?: number;
-      timestamp?: number;
-      tail_offset?: number;
-      clamp?: boolean;
-      count?: number;
-      bytes?: number;
-      until?: number;
-      wait?: number;
-    }
-  ): Promise<S2ReadResponse> {
-    // GET /v1/streams/{stream}/records?... (supports wait= for long-poll; linearizable reads). :contentReference[oaicite:9]{index=9}
-    const qs = new URLSearchParams();
-    if (opts.seq_num != null) qs.set("seq_num", String(opts.seq_num));
-    if (opts.timestamp != null) qs.set("timestamp", String(opts.timestamp));
-    if (opts.tail_offset != null) qs.set("tail_offset", String(opts.tail_offset));
-    if (opts.clamp != null) qs.set("clamp", String(opts.clamp));
-    if (opts.count != null) qs.set("count", String(opts.count));
-    if (opts.bytes != null) qs.set("bytes", String(opts.bytes));
-    if (opts.until != null) qs.set("until", String(opts.until));
-    if (opts.wait != null) qs.set("wait", String(opts.wait));
-
-    const res = await fetch(`${this.baseUrl}/streams/${encodeURIComponent(stream)}/records?${qs}`, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${this.token}`,
-        Accept: "application/json",
-        "S2-Format": "raw",
-      },
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(`S2 read failed: ${res.status} ${res.statusText} ${text}`);
-    }
-    return (await res.json()) as S2ReadResponse;
   }
 
   private parseLastEventId(lastEventId?: string): number | undefined {

@@ -1,18 +1,12 @@
+import { ApiClient } from "../apiClient/index.js";
+import { ensureAsyncIterable } from "../streams/asyncIterableStream.js";
+import { taskContext } from "../task-context-api.js";
+import { StreamInstance } from "./streamInstance.js";
 import {
-  AsyncIterableStream,
-  createAsyncIterableStreamFromAsyncIterable,
-  ensureAsyncIterable,
-} from "../streams/asyncIterableStream.js";
-import {
-  RealtimePipeStreamOptions,
   RealtimeStreamInstance,
+  RealtimeStreamOperationOptions,
   RealtimeStreamsManager,
 } from "./types.js";
-import { taskContext } from "../task-context-api.js";
-import { ApiClient } from "../apiClient/index.js";
-import { StreamsWriterV1 } from "./streamsWriterV1.js";
-import { StreamsWriterV2 } from "./streamsWriterV2.js";
-import { StreamInstance } from "./streamInstance.js";
 
 export class StandardRealtimeStreamsManager implements RealtimeStreamsManager {
   constructor(
@@ -33,7 +27,7 @@ export class StandardRealtimeStreamsManager implements RealtimeStreamsManager {
   public pipe<T>(
     key: string,
     source: AsyncIterable<T> | ReadableStream<T>,
-    options?: RealtimePipeStreamOptions
+    options?: RealtimeStreamOperationOptions
   ): RealtimeStreamInstance<T> {
     // Normalize ReadableStream to AsyncIterable
     const asyncIterableSource = ensureAsyncIterable(source);
@@ -59,7 +53,6 @@ export class StandardRealtimeStreamsManager implements RealtimeStreamsManager {
       runId,
       key,
       source: asyncIterableSource,
-      headers: this.apiClient.getHeaders(),
       signal: combinedSignal,
       requestOptions: options?.requestOptions,
       target: options?.target,
@@ -77,6 +70,32 @@ export class StandardRealtimeStreamsManager implements RealtimeStreamsManager {
       wait: () => streamInstance.wait(),
       stream: streamInstance.stream,
     };
+  }
+
+  public async append<TPart extends BodyInit>(
+    key: string,
+    part: TPart,
+    options?: RealtimeStreamOperationOptions
+  ): Promise<void> {
+    const runId = getRunIdForOptions(options);
+
+    if (!runId) {
+      throw new Error(
+        "Could not determine the target run ID for the realtime stream. Please specify a target run ID using the `target` option."
+      );
+    }
+
+    const result = await this.apiClient.appendToStream(
+      runId,
+      options?.target ?? "self",
+      key,
+      part,
+      options?.requestOptions
+    );
+
+    if (!result.ok) {
+      throw new Error(`Failed to append to stream: ${result.message ?? "Unknown error"}`);
+    }
   }
 
   public hasActiveStreams(): boolean {
@@ -119,7 +138,7 @@ export class StandardRealtimeStreamsManager implements RealtimeStreamsManager {
   }
 }
 
-function getRunIdForOptions(options?: RealtimePipeStreamOptions): string | undefined {
+function getRunIdForOptions(options?: RealtimeStreamOperationOptions): string | undefined {
   if (options?.target) {
     if (options.target === "parent") {
       return taskContext.ctx?.run?.parentTaskRunId;

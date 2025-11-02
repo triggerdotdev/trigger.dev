@@ -1310,3 +1310,9 @@ export const CreateStreamResponseBody = z.object({
   version: z.string(),
 });
 export type CreateStreamResponseBody = z.infer<typeof CreateStreamResponseBody>;
+
+export const AppendToStreamResponseBody = z.object({
+  ok: z.boolean(),
+  message: z.string().optional(),
+});
+export type AppendToStreamResponseBody = z.infer<typeof AppendToStreamResponseBody>;

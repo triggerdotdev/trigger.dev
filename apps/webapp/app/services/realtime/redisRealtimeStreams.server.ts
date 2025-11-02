@@ -334,6 +334,30 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
     }
   }
 
+  async appendPart(part: string, runId: string, streamId: string): Promise<void> {
+    const redis = new Redis(this.options.redis ?? {});
+    const streamKey = `stream:${runId}:${streamId}`;
+
+    await redis.xadd(
+      streamKey,
+      "MAXLEN",
+      "~",
+      String(env.REALTIME_STREAM_MAX_LENGTH),
+      "*",
+      "clientId",
+      "",
+      "chunkIndex",
+      "0",
+      "data",
+      part
+    );
+
+    // Set TTL for cleanup when stream is done
+    await redis.expire(streamKey, env.REALTIME_STREAM_TTL);
+
+    await redis.quit();
+  }
+
   async getLastChunkIndex(runId: string, streamId: string, clientId: string): Promise<number> {
     const redis = new Redis(this.options.redis ?? {});
     const streamKey = `stream:${runId}:${streamId}`;

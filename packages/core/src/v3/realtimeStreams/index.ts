@@ -1,7 +1,7 @@
 import { getGlobal, registerGlobal } from "../utils/globals.js";
 import { NoopRealtimeStreamsManager } from "./noopManager.js";
 import {
-  RealtimePipeStreamOptions,
+  RealtimeStreamOperationOptions,
   RealtimeStreamInstance,
   RealtimeStreamsManager,
 } from "./types.js";
@@ -34,8 +34,16 @@ export class RealtimeStreamsAPI implements RealtimeStreamsManager {
   public pipe<T>(
     key: string,
     source: AsyncIterable<T> | ReadableStream<T>,
-    options?: RealtimePipeStreamOptions
+    options?: RealtimeStreamOperationOptions
   ): RealtimeStreamInstance<T> {
     return this.#getManager().pipe(key, source, options);
+  }
+
+  public append<TPart extends BodyInit>(
+    key: string,
+    part: TPart,
+    options?: RealtimeStreamOperationOptions
+  ): Promise<void> {
+    return this.#getManager().append(key, part, options);
   }
 }

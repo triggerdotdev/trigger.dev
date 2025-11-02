@@ -2,7 +2,7 @@ import {
   type ApiRequestOptions,
   realtimeStreams,
   taskContext,
-  type RealtimePipeStreamOptions,
+  type RealtimeStreamOperationOptions,
   mergeRequestOptions,
   accessoryAttributes,
   SemanticInternalAttributes,
@@ -396,12 +396,77 @@ async function readStreamImpl<T>(
   });
 }
 
+/**
+ * Options for appending data to a realtime stream.
+ */
+export type AppendStreamOptions = {
+  /**
+   * The target run ID to append the stream to. Can be:
+   * - `"self"` - Pipe to the current run (default)
+   * - `"parent"` - Pipe to the parent run
+   * - `"root"` - Pipe to the root run
+   * - A specific run ID string
+   *
+   * If not provided and not called from within a task, an error will be thrown.
+   */
+  target?: string;
+  /**
+   * Additional request options for the API call.
+   */
+  requestOptions?: ApiRequestOptions;
+};
+
+function append<TPart extends BodyInit>(value: TPart, options?: AppendStreamOptions): Promise<void>;
+function append<TPart extends BodyInit>(
+  key: string,
+  value: TPart,
+  options?: AppendStreamOptions
+): Promise<void>;
+function append<TPart extends BodyInit>(
+  keyOrValue: string | TPart,
+  valueOrOptions?: TPart | AppendStreamOptions,
+  options?: AppendStreamOptions
+): Promise<void> {
+  if (typeof keyOrValue === "string" && typeof valueOrOptions === "string") {
+    return realtimeStreams.append(keyOrValue, valueOrOptions, options);
+  }
+
+  if (typeof keyOrValue === "string") {
+    if (isAppendStreamOptions(valueOrOptions)) {
+      return realtimeStreams.append(DEFAULT_STREAM_KEY, keyOrValue, valueOrOptions);
+    } else {
+      if (!valueOrOptions) {
+        return realtimeStreams.append(DEFAULT_STREAM_KEY, keyOrValue, options);
+      }
+
+      return realtimeStreams.append(keyOrValue, valueOrOptions, options);
+    }
+  } else {
+    if (isAppendStreamOptions(valueOrOptions)) {
+      return realtimeStreams.append(DEFAULT_STREAM_KEY, keyOrValue, valueOrOptions);
+    } else {
+      return realtimeStreams.append(DEFAULT_STREAM_KEY, keyOrValue, options);
+    }
+  }
+}
+
+function isAppendStreamOptions(val: unknown): val is AppendStreamOptions {
+  return (
+    typeof val === "object" &&
+    val !== null &&
+    !Array.isArray(val) &&
+    (("target" in val && typeof val.target === "string") ||
+      ("requestOptions" in val && typeof val.requestOptions === "object"))
+  );
+}
+
 export const streams = {
   pipe,
   read,
+  append,
 };
 
-function getRunIdForOptions(options?: RealtimePipeStreamOptions): string | undefined {
+function getRunIdForOptions(options?: RealtimeStreamOperationOptions): string | undefined {
   if (options?.target) {
     if (options.target === "parent") {
       return taskContext.ctx?.run?.parentTaskRunId;
