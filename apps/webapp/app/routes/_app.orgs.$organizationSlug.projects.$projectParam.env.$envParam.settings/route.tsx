@@ -584,12 +584,17 @@ export default function Page() {
                         previewEnvironmentEnabled={isPreviewEnvironmentEnabled}
                       />
                     ) : (
-                      <GitHubConnectionPrompt
-                        gitHubAppInstallations={githubAppInstallations ?? []}
-                        organizationSlug={organization.slug}
-                        projectSlug={project.slug}
-                        environmentSlug={environment.slug}
-                      />
+                      <div className="flex flex-col gap-2">
+                        <GitHubConnectionPrompt
+                          gitHubAppInstallations={githubAppInstallations ?? []}
+                          organizationSlug={organization.slug}
+                          projectSlug={project.slug}
+                          environmentSlug={environment.slug}
+                        />
+                        <Hint>
+                          Connect your GitHub repository to automatically deploy your changes.
+                        </Hint>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -908,8 +913,6 @@ export function GitHubConnectionPrompt({
             </span>
           </div>
         )}
-
-        <Hint>Connect your GitHub repository to automatically deploy your changes.</Hint>
       </InputGroup>
     </Fieldset>
   );
