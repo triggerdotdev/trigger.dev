@@ -1,9 +1,8 @@
 "use client";
 
-import * as React from "react";
 import * as TabsPrimitive from "@radix-ui/react-tabs";
+import * as React from "react";
 import { cn } from "~/utils/cn";
-import { motion } from "framer-motion";
 
 const ClientTabs = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.Root>,
@@ -63,4 +62,4 @@ export type TabsProps = {
   layoutId: string;
 };
 
-export { ClientTabs, ClientTabsList, ClientTabsTrigger, ClientTabsContent };
+export { ClientTabs, ClientTabsContent, ClientTabsList, ClientTabsTrigger };
