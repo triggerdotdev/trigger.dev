@@ -1,7 +1,7 @@
 import { NavLink } from "@remix-run/react";
 import { motion } from "framer-motion";
-import { ReactNode, useRef } from "react";
-import { ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { type ReactNode, useRef } from "react";
+import { type ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
 import { ShortcutKey } from "./ShortcutKey";
 
