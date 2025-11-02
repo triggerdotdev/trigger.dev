@@ -620,24 +620,129 @@ export type UseRealtimeStreamOptions<TPart> = UseApiClientOptions & {
 };
 
 /**
- * Hook to subscribe to realtime updates of a stream.
+ * Hook to subscribe to realtime updates of a stream with a specific stream key.
  *
- * @template TPart - The type of the part
- * @param {string} runId - The unique identifier of the run to subscribe to
- * @param {string} streamKey - The unique identifier of the stream to subscribe to
- * @param {UseRealtimeStreamOptions<TPart>} [options] - Configuration options for the subscription
- * @returns {UseRealtimeStreamInstance<TPart>} An object containing the current state of the stream, and error handling
+ * This hook automatically subscribes to a stream and updates the `parts` array as new data arrives.
+ * The stream subscription is automatically managed: it starts when the component mounts (or when
+ * `enabled` becomes `true`) and stops when the component unmounts or when `stop()` is called.
+ *
+ * @template TPart - The type of each chunk/part in the stream
+ * @param runId - The unique identifier of the run to subscribe to
+ * @param streamKey - The unique identifier of the stream to subscribe to. Use this overload
+ *   when you want to read from a specific stream key.
+ * @param options - Optional configuration for the stream subscription
+ * @returns An object containing:
+ *   - `parts`: An array of all stream chunks received so far (accumulates over time)
+ *   - `error`: Any error that occurred during subscription
+ *   - `stop`: A function to manually stop the subscription
  *
  * @example
- * ```ts
- * const { parts, error } = useRealtimeStream<string>('run-id-123', 'stream-key-123');
+ * ```tsx
+ * "use client";
+ * import { useRealtimeStream } from "@trigger.dev/react-hooks";
  *
- * for (const part of parts) {
- *   console.log(part);
+ * function StreamViewer({ runId }: { runId: string }) {
+ *   const { parts, error } = useRealtimeStream<string>(
+ *     runId,
+ *     "my-stream",
+ *     {
+ *       accessToken: process.env.NEXT_PUBLIC_TRIGGER_PUBLIC_KEY,
+ *     }
+ *   );
+ *
+ *   if (error) return <div>Error: {error.message}</div>;
+ *
+ *   // Parts array accumulates all chunks
+ *   const fullText = parts.join("");
+ *
+ *   return <div>{fullText}</div>;
  * }
+ * ```
+ *
+ * @example
+ * ```tsx
+ * // With custom options
+ * const { parts, error, stop } = useRealtimeStream<ChatChunk>(
+ *   runId,
+ *   "chat-stream",
+ *   {
+ *     accessToken: publicKey,
+ *     timeoutInSeconds: 120,
+ *     startIndex: 10, // Start from the 10th chunk
+ *     throttleInMs: 50, // Throttle updates to every 50ms
+ *     onData: (chunk) => {
+ *       console.log("New chunk received:", chunk);
+ *     },
+ *   }
+ * );
+ *
+ * // Manually stop the subscription
+ * <button onClick={stop}>Stop Stream</button>
  * ```
  */
 export function useRealtimeStream<TPart>(
+  runId: string,
+  streamKey: string,
+  options?: UseRealtimeStreamOptions<TPart>
+): UseRealtimeStreamInstance<TPart>;
+/**
+ * Hook to subscribe to realtime updates of a stream using the default stream key (`"default"`).
+ *
+ * This is a convenience overload that allows you to subscribe to the default stream without
+ * specifying a stream key. The stream will be accessed with the key `"default"`.
+ *
+ * @template TPart - The type of each chunk/part in the stream
+ * @param runId - The unique identifier of the run to subscribe to
+ * @param options - Optional configuration for the stream subscription
+ * @returns An object containing:
+ *   - `parts`: An array of all stream chunks received so far (accumulates over time)
+ *   - `error`: Any error that occurred during subscription
+ *   - `stop`: A function to manually stop the subscription
+ *
+ * @example
+ * ```tsx
+ * "use client";
+ * import { useRealtimeStream } from "@trigger.dev/react-hooks";
+ *
+ * function DefaultStreamViewer({ runId }: { runId: string }) {
+ *   // Subscribe to the default stream
+ *   const { parts, error } = useRealtimeStream<string>(runId, {
+ *     accessToken: process.env.NEXT_PUBLIC_TRIGGER_PUBLIC_KEY,
+ *   });
+ *
+ *   if (error) return <div>Error: {error.message}</div>;
+ *
+ *   const fullText = parts.join("");
+ *   return <div>{fullText}</div>;
+ * }
+ * ```
+ *
+ * @example
+ * ```tsx
+ * // Conditionally enable the stream
+ * const { parts } = useRealtimeStream<string>(runId, {
+ *   accessToken: publicKey,
+ *   enabled: !!runId && isStreaming, // Only subscribe when runId exists and isStreaming is true
+ * });
+ * ```
+ */
+export function useRealtimeStream<TPart>(
+  runId: string,
+  options?: UseRealtimeStreamOptions<TPart>
+): UseRealtimeStreamInstance<TPart>;
+export function useRealtimeStream<TPart>(
+  runId: string,
+  streamKeyOrOptions?: string | UseRealtimeStreamOptions<TPart>,
+  options?: UseRealtimeStreamOptions<TPart>
+): UseRealtimeStreamInstance<TPart> {
+  if (typeof streamKeyOrOptions === "string") {
+    return useRealtimeStreamImplementation(runId, streamKeyOrOptions, options);
+  } else {
+    return useRealtimeStreamImplementation(runId, "default", streamKeyOrOptions);
+  }
+}
+
+function useRealtimeStreamImplementation<TPart>(
   runId: string,
   streamKey: string,
   options?: UseRealtimeStreamOptions<TPart>
