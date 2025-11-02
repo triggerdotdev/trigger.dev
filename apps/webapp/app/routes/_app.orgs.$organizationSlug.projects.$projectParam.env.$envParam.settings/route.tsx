@@ -865,7 +865,7 @@ function ConnectGitHubRepoModal({
   );
 }
 
-function GitHubConnectionPrompt({
+export function GitHubConnectionPrompt({
   gitHubAppInstallations,
   organizationSlug,
   projectSlug,
