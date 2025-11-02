@@ -53,6 +53,7 @@ import { concurrencyPath, EnvironmentParamSchema, v3BillingPath } from "~/utils/
 import { SetConcurrencyAddOnService } from "~/v3/services/setConcurrencyAddOn.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { SpinnerWhite } from "~/components/primitives/Spinner";
+import { cn } from "~/utils/cn";
 
 export const meta: MetaFunction = () => {
   return [
@@ -235,6 +236,7 @@ function Upgradable({
             <PurchaseConcurrencyModal
               concurrencyPricing={concurrencyPricing}
               extraConcurrency={extraConcurrency}
+              extraUnallocatedConcurrency={extraUnallocatedConcurrency}
               maxQuota={maxQuota}
             />
           </div>
@@ -365,6 +367,7 @@ function NotUpgradable({ environments }: { environments: EnvironmentWithConcurre
 function PurchaseConcurrencyModal({
   concurrencyPricing,
   extraConcurrency,
+  extraUnallocatedConcurrency,
   maxQuota,
 }: {
   concurrencyPricing: {
@@ -372,6 +375,7 @@ function PurchaseConcurrencyModal({
     centsPerStep: number;
   };
   extraConcurrency: number;
+  extraUnallocatedConcurrency: number;
   maxQuota: number;
 }) {
   const lastSubmission = useActionData();
@@ -385,33 +389,40 @@ function PurchaseConcurrencyModal({
     shouldRevalidate: "onSubmit",
   });
 
-  const [amountValue, setAmountValue] = useState(0);
+  const [amountValue, setAmountValue] = useState(extraConcurrency);
   const navigation = useNavigation();
   const isLoading = navigation.state !== "idle" && navigation.formMethod === "POST";
 
-  const maximum = maxQuota - extraConcurrency;
-  const isAboveMaxQuota = amountValue > maximum;
+  const state = updateState({
+    value: amountValue,
+    existingValue: extraConcurrency,
+    quota: maxQuota,
+    extraUnallocatedConcurrency,
+  });
+  const changeClassName =
+    state === "decrease" ? "text-error" : state === "increase" ? "text-success" : undefined;
+
+  const title = extraConcurrency === 0 ? "Purchase extra concurrency" : "Add/remove concurrency";
 
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button variant="primary/small" LeadingIcon={PlusIcon}>
-          Purchase extra concurrency
-        </Button>
+        <Button variant="primary/small">{title}</Button>
       </DialogTrigger>
       <DialogContent>
-        <DialogHeader>Purchase extra concurrency</DialogHeader>
+        <DialogHeader>{title}</DialogHeader>
         <Form method="post" {...form.props}>
           <div className="flex flex-col gap-4 pt-2">
             <Paragraph variant="base/bright" spacing>
               You can purchase bundles of {concurrencyPricing.stepSize} concurrency for{" "}
-              {formatCurrency(concurrencyPricing.centsPerStep / 100, false)}/month. You’ll be billed
-              monthly, with changes available after a full billing cycle.
+              {formatCurrency(concurrencyPricing.centsPerStep / 100, false)}/month. Or you can
+              remove any extra concurrency after you have unallocated it from your environments
+              first.
             </Paragraph>
             <Fieldset>
               <InputGroup fullWidth>
                 <Label htmlFor="amount" className="text-text-dimmed">
-                  Extra concurrency to purchase
+                  Total extra concurrency
                 </Label>
                 <InputNumberStepper
                   {...conform.input(amount, { type: "number" })}
@@ -425,12 +436,20 @@ function PurchaseConcurrencyModal({
                 <FormError>{form.error}</FormError>
               </InputGroup>
             </Fieldset>
-            {isAboveMaxQuota ? (
+            {state === "need_to_increase_unallocated" ? (
               <div className="flex flex-col pb-3">
                 <Paragraph variant="small" className="text-warning" spacing>
-                  Currently you can only have up to {maxQuota} extra concurrency. This request for{" "}
-                  {formatNumber(amountValue)} takes you to{" "}
-                  {formatNumber(extraConcurrency + amountValue)} extra concurrency.
+                  You need to unallocate{" "}
+                  {formatNumber(extraConcurrency - amountValue - extraUnallocatedConcurrency)} more
+                  concurrency from your environments in order to remove{" "}
+                  {formatNumber(extraConcurrency - amountValue)} concurrency from your account.
+                </Paragraph>
+              </div>
+            ) : state === "above_quota" ? (
+              <div className="flex flex-col pb-3">
+                <Paragraph variant="small" className="text-warning" spacing>
+                  Currently you can only have up to {maxQuota} extra concurrency. This is a request
+                  for {formatNumber(amountValue)}.
                 </Paragraph>
                 <Paragraph variant="small" className="text-warning">
                   Send a request below to lift your current limit. We'll get back to you soon.
@@ -439,14 +458,16 @@ function PurchaseConcurrencyModal({
             ) : (
               <div className="flex flex-col pb-3">
                 <div className="grid grid-cols-2 border-b border-grid-dimmed pb-1">
-                  <Header3 className="font-normal text-text-dimmed">Summary</Header3>
-                  <Header3 className="justify-self-end font-normal text-text-dimmed">Total</Header3>
+                  <Header3 className="font-normal text-text-dimmed">Purchase</Header3>
+                  <Header3 className="justify-self-end font-normal text-text-dimmed">Cost</Header3>
                 </div>
                 <div className="grid grid-cols-2 pt-2">
-                  <Header3 className="pb-0 font-normal">{amountValue}</Header3>
-                  <Header3 className="justify-self-end font-normal">
+                  <Header3 className={cn("pb-0 font-normal", changeClassName)}>
+                    {formatNumber(amountValue - extraConcurrency)}
+                  </Header3>
+                  <Header3 className={cn("justify-self-end font-normal", changeClassName)}>
                     {formatCurrency(
-                      (amountValue * concurrencyPricing.centsPerStep) /
+                      ((amountValue - extraConcurrency) * concurrencyPricing.centsPerStep) /
                         concurrencyPricing.stepSize /
                         100,
                       false
@@ -455,7 +476,7 @@ function PurchaseConcurrencyModal({
                 </div>
                 <div className="grid grid-cols-2 text-xs">
                   <span className="text-text-dimmed">
-                    ({amountValue / concurrencyPricing.stepSize} bundles @{" "}
+                    ({(amountValue - extraConcurrency) / concurrencyPricing.stepSize} bundles @{" "}
                     {formatCurrency(concurrencyPricing.centsPerStep / 100, false)}/mth)
                   </span>
                   <span className="justify-self-end text-text-dimmed">/mth</span>
@@ -465,7 +486,7 @@ function PurchaseConcurrencyModal({
           </div>
           <FormButtons
             confirmButton={
-              isAboveMaxQuota ? (
+              state === "above_quota" ? (
                 <>
                   <input type="hidden" name="action" value="quota-increase" />
                   <Button
@@ -474,7 +495,19 @@ function PurchaseConcurrencyModal({
                     type="submit"
                     disabled={isLoading}
                   >
-                    {`Send request for ${formatNumber(extraConcurrency + amountValue)}`}
+                    {`Send request for ${formatNumber(amountValue)}`}
+                  </Button>
+                </>
+              ) : state === "decrease" || state === "need_to_increase_unallocated" ? (
+                <>
+                  <input type="hidden" name="action" value="purchase" />
+                  <Button
+                    variant="danger/medium"
+                    type="submit"
+                    disabled={isLoading || state === "need_to_increase_unallocated"}
+                    LeadingIcon={isLoading ? SpinnerWhite : undefined}
+                  >
+                    {`Remove ${formatNumber(extraConcurrency - amountValue)} concurrency`}
                   </Button>
                 </>
               ) : (
@@ -483,10 +516,10 @@ function PurchaseConcurrencyModal({
                   <Button
                     variant="primary/medium"
                     type="submit"
-                    disabled={isLoading}
+                    disabled={isLoading || state === "no_change"}
                     LeadingIcon={isLoading ? SpinnerWhite : undefined}
                   >
-                    Purchase
+                    {`Purchase ${formatNumber(amountValue - extraConcurrency)}`}
                   </Button>
                 </>
               )
@@ -503,4 +536,27 @@ function PurchaseConcurrencyModal({
       </DialogContent>
     </Dialog>
   );
+}
+
+function updateState({
+  value,
+  existingValue,
+  quota,
+  extraUnallocatedConcurrency,
+}: {
+  value: number;
+  existingValue: number;
+  quota: number;
+  extraUnallocatedConcurrency: number;
+}): "no_change" | "increase" | "decrease" | "above_quota" | "need_to_increase_unallocated" {
+  if (value === existingValue) return "no_change";
+  if (value < existingValue) {
+    const difference = existingValue - value;
+    if (difference > extraUnallocatedConcurrency) {
+      return "need_to_increase_unallocated";
+    }
+    return "decrease";
+  }
+  if (value > quota) return "above_quota";
+  return "increase";
 }

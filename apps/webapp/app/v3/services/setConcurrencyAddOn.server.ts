@@ -43,7 +43,7 @@ export class SetConcurrencyAddOnService extends BaseService {
     }
 
     const currentConcurrency = result.extraConcurrency;
-    const totalExtraConcurrency = currentConcurrency + amount;
+    const totalExtraConcurrency = amount;
 
     switch (action) {
       case "purchase": {
