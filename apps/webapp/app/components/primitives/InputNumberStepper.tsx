@@ -2,7 +2,7 @@ import { MinusIcon, PlusIcon } from "@heroicons/react/20/solid";
 import { type ChangeEvent, useRef } from "react";
 import { cn } from "~/utils/cn";
 
-type InputNumberStepperProps = JSX.IntrinsicElements["input"] & {
+type InputNumberStepperProps = Omit<JSX.IntrinsicElements["input"], "min" | "max" | "step"> & {
   step?: number;
   min?: number;
   max?: number;
