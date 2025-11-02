@@ -68,8 +68,15 @@ const { action } = createActionApiRoute(
         },
         select: {
           realtimeStreamsVersion: true,
+          completedAt: true,
         },
       });
+
+      if (updatedRun.completedAt) {
+        return new Response("Cannot initialize a realtime stream on a completed run", {
+          status: 400,
+        });
+      }
 
       const realtimeStream = getRealtimeStreamInstance(
         authentication.environment,
