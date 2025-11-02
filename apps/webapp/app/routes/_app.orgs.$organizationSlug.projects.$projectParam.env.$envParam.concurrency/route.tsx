@@ -448,36 +448,74 @@ function PurchaseConcurrencyModal({
             ) : state === "above_quota" ? (
               <div className="flex flex-col pb-3">
                 <Paragraph variant="small" className="text-warning" spacing>
-                  Currently you can only have up to {maxQuota} extra concurrency. This is a request
-                  for {formatNumber(amountValue)}.
-                </Paragraph>
-                <Paragraph variant="small" className="text-warning">
-                  Send a request below to lift your current limit. We'll get back to you soon.
+                  Currently you can only have up to {maxQuota} extra concurrency. Send a request
+                  below to lift your current limit. We'll get back to you soon.
                 </Paragraph>
               </div>
             ) : (
               <div className="flex flex-col pb-3">
                 <div className="grid grid-cols-2 border-b border-grid-dimmed pb-1">
-                  <Header3 className="font-normal text-text-dimmed">Purchase</Header3>
-                  <Header3 className="justify-self-end font-normal text-text-dimmed">Cost</Header3>
+                  <Header3 className="font-normal text-text-dimmed">Summary</Header3>
+                  <Header3 className="justify-self-end font-normal text-text-dimmed">Total</Header3>
+                </div>
+                <div className="grid grid-cols-2 pt-2">
+                  <Header3 className="pb-0 font-normal text-text-dimmed">
+                    <span className="text-text-bright">{formatNumber(extraConcurrency)}</span>{" "}
+                    current total
+                  </Header3>
+                  <Header3 className="justify-self-end font-normal text-text-bright">
+                    {formatCurrency(
+                      (extraConcurrency * concurrencyPricing.centsPerStep) /
+                        concurrencyPricing.stepSize /
+                        100,
+                      true
+                    )}
+                  </Header3>
+                </div>
+                <div className="grid grid-cols-2 text-xs">
+                  <span className="text-text-dimmed">
+                    ({extraConcurrency / concurrencyPricing.stepSize} bundles)
+                  </span>
+                  <span className="justify-self-end text-text-dimmed">/mth</span>
                 </div>
                 <div className="grid grid-cols-2 pt-2">
                   <Header3 className={cn("pb-0 font-normal", changeClassName)}>
+                    {state === "increase" ? "+" : null}
                     {formatNumber(amountValue - extraConcurrency)}
                   </Header3>
                   <Header3 className={cn("justify-self-end font-normal", changeClassName)}>
+                    {state === "increase" ? "+" : null}
                     {formatCurrency(
                       ((amountValue - extraConcurrency) * concurrencyPricing.centsPerStep) /
                         concurrencyPricing.stepSize /
                         100,
-                      false
+                      true
                     )}
                   </Header3>
                 </div>
                 <div className="grid grid-cols-2 text-xs">
                   <span className="text-text-dimmed">
                     ({(amountValue - extraConcurrency) / concurrencyPricing.stepSize} bundles @{" "}
-                    {formatCurrency(concurrencyPricing.centsPerStep / 100, false)}/mth)
+                    {formatCurrency(concurrencyPricing.centsPerStep / 100, true)}/mth)
+                  </span>
+                  <span className="justify-self-end text-text-dimmed">/mth</span>
+                </div>
+                <div className="grid grid-cols-2 pt-2">
+                  <Header3 className="pb-0 font-normal text-text-dimmed">
+                    <span className="text-text-bright">{formatNumber(amountValue)}</span> new total
+                  </Header3>
+                  <Header3 className="justify-self-end font-normal text-text-bright">
+                    {formatCurrency(
+                      (amountValue * concurrencyPricing.centsPerStep) /
+                        concurrencyPricing.stepSize /
+                        100,
+                      true
+                    )}
+                  </Header3>
+                </div>
+                <div className="grid grid-cols-2 text-xs">
+                  <span className="text-text-dimmed">
+                    ({amountValue / concurrencyPricing.stepSize} bundles)
                   </span>
                   <span className="justify-self-end text-text-dimmed">/mth</span>
                 </div>
@@ -519,7 +557,7 @@ function PurchaseConcurrencyModal({
                     disabled={isLoading || state === "no_change"}
                     LeadingIcon={isLoading ? SpinnerWhite : undefined}
                   >
-                    {`Purchase ${formatNumber(amountValue - extraConcurrency)}`}
+                    {`Purchase ${formatNumber(amountValue - extraConcurrency)} concurrency`}
                   </Button>
                 </>
               )
