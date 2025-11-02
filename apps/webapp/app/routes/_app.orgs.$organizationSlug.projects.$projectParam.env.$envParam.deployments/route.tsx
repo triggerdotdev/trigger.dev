@@ -363,7 +363,7 @@ export default function Page() {
                 <DeploymentsNoneDev />
               </MainCenteredContainer>
             ) : (
-              <MainCenteredContainer className="max-w-md">
+              <MainCenteredContainer className="max-w-prose">
                 <DeploymentsNone />
               </MainCenteredContainer>
             )}
