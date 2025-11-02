@@ -83,10 +83,13 @@ export class ManageConcurrencyPresenter extends BasePresenter {
         : 0;
       if (!limit) continue;
 
-      if (environment.maximumConcurrencyLimit > limit) {
+      // If it's not DEV and they've increased, track that
+      // You can't spend money to increase DEV concurrency
+      if (environment.type !== "DEVELOPMENT" && environment.maximumConcurrencyLimit > limit) {
         extraAllocatedConcurrency += environment.maximumConcurrencyLimit - limit;
       }
 
+      // We only want to show this project's environments
       if (environment.projectId === projectId) {
         if (environment.type === "DEVELOPMENT" && environment.orgMember?.userId !== userId) {
           continue;
