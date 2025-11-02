@@ -52,6 +52,7 @@ import {
 } from "./SetupCommands";
 import { StepContentContainer } from "./StepContentContainer";
 import { V4Badge } from "./V4Badge";
+import { GitHubConnectionPrompt } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.settings/route";
 
 export function HasNoTasksDev() {
   return (
@@ -266,44 +267,75 @@ export function TestHasNoTasks() {
 }
 
 export function DeploymentsNone() {
-  const organization = useOrganization();
-  const project = useProject();
   const environment = useEnvironment();
 
   return (
-    <InfoPanel
-      icon={ServerStackIcon}
-      iconClassName="text-deployments"
-      title="Deploy for the first time"
-      panelClassName="max-w-full"
-    >
-      <Paragraph spacing variant="small">
-        There are several ways to deploy your tasks. You can use the CLI or a Continuous Integration
-        service like GitHub Actions. Make sure you{" "}
-        <TextLink href={v3EnvironmentVariablesPath(organization, project, environment)}>
-          set your environment variables
-        </TextLink>{" "}
-        first.
-      </Paragraph>
-      <div className="flex gap-3">
-        <LinkButton
-          to={docsPath("v3/cli-deploy")}
-          variant="docs/medium"
-          LeadingIcon={BookOpenIcon}
-          className="inline-flex"
-        >
-          Deploy with the CLI
-        </LinkButton>
-        <LinkButton
-          to={docsPath("v3/github-actions")}
-          variant="docs/medium"
-          LeadingIcon={BookOpenIcon}
-          className="inline-flex"
-        >
-          Deploy with GitHub actions
-        </LinkButton>
+    <PackageManagerProvider>
+      <div className="mb-6 flex items-center justify-between border-b">
+        <div className="mb-2 flex items-center gap-2">
+          <ServerStackIcon className="-ml-1 size-8 text-deployments" />
+          <Header1>Deploy your tasks</Header1>
+        </div>
+        <div className="flex items-center">
+          <SimpleTooltip
+            button={
+              <LinkButton
+                variant="small-menu-item"
+                LeadingIcon={BookOpenIcon}
+                leadingIconClassName="text-blue-500"
+                to={docsPath("deployment/overview")}
+              />
+            }
+            content="Deploy docs"
+          />
+          <SimpleTooltip
+            button={
+              <LinkButton
+                variant="small-menu-item"
+                LeadingIcon={QuestionMarkCircleIcon}
+                leadingIconClassName="text-blue-500"
+                to={docsPath("troubleshooting#deployment")}
+              />
+            }
+            content="Troubleshooting docs"
+          />
+          <AskAI />
+        </div>
       </div>
-    </InfoPanel>
+      <StepNumber stepNumber="1a" title="Connect your GitHub repository" />
+      <StepContentContainer>
+        <Paragraph spacing>
+          Connect your GitHub repository to automatically deploy whenever you push.
+        </Paragraph>
+        <div className="w-fit">
+          <GitHubConnectionPrompt
+            gitHubAppInstallations={[]}
+            organizationSlug={""}
+            projectSlug={""}
+            environmentSlug={""}
+          />
+        </div>
+      </StepContentContainer>
+      <StepNumber stepNumber="1b" title="Or run the CLI 'deploy' command" />
+      <StepContentContainer>
+        <Paragraph spacing>
+          This will deploy your tasks to the {environmentFullTitle(environment)} environment. Read
+          the <TextLink to={docsPath("deployment/overview")}>full guide</TextLink>.
+        </Paragraph>
+        <TriggerDeployStep environment={environment} />
+      </StepContentContainer>
+      <StepNumber stepNumber="1c" title="Or deploy using GitHub Actions" />
+      <StepContentContainer>
+        <Paragraph spacing>
+          Read the <TextLink to={docsPath("github-actions")}>GitHub Actions guide</TextLink> to get
+          started.
+        </Paragraph>
+      </StepContentContainer>
+      <StepNumber stepNumber="2" title="Waiting for tasks to deploy" displaySpinner />
+      <StepContentContainer>
+        <Paragraph>This page will automatically refresh when your tasks are deployed.</Paragraph>
+      </StepContentContainer>
+    </PackageManagerProvider>
   );
 }
 
