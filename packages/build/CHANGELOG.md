@@ -1,5 +1,13 @@
 # @trigger.dev/build
 
+## 4.0.6
+
+### Patch Changes
+
+- Fix broken audiowaveform extension ([#2643](https://github.com/triggerdotdev/trigger.dev/pull/2643))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.6`
+
 ## 4.0.5
 
 ### Patch Changes
