@@ -1,5 +1,11 @@
 # internal-platform
 
+## 4.0.6
+
+### Patch Changes
+
+- Added a hint about the `--force-local-build` flag on failed deployments due to upstream provider outages. ([#2646](https://github.com/triggerdotdev/trigger.dev/pull/2646))
+
 ## 4.0.5
 
 ### Patch Changes
