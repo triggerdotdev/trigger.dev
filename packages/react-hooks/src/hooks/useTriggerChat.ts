@@ -490,39 +490,6 @@ async function streamDataFromTrigger(params: {
   }
 }
 
-function checkRequiredPeerDependencies() {
-  const requiredPackages = [
-    "@ai-sdk/react",
-    "ai",
-    "@electric-sql/client",
-    "eventsource-parser",
-  ];
-
-  const missing = requiredPackages.filter((pkg) => {
-    try {
-      require.resolve(pkg);
-      return false;
-    } catch {
-      return true;
-    }
-  });
-
-  if (!missing.length) return;
-
-  const packages = missing.join(" ");
-
-  throw new Error(
-    `useTriggerChat requires the following packages:\n${missing
-      .map((pkg) => `  - ${pkg}`)
-      .join("\n")}\n\n` +
-      `Install them with:\n` +
-      `  npm install ${packages}\n` +
-      `  yarn add ${packages}\n` +
-      `  pnpm add ${packages}\n` +
-      `  bun add ${packages}`,
-  );
-}
-
 type UseTriggerChatOptions = {
   transportOptions: TriggerChatTransportOptions;
 } & Omit<ChatInit<UIMessage>, "transport">;
@@ -610,7 +577,6 @@ type UseTriggerChatOptions = {
 export function useTriggerChat(
   options: UseTriggerChatOptions,
 ): UseChatHelpers<UIMessage> {
-  checkRequiredPeerDependencies();
   const { transportOptions, ...chatOptions } = options;
 
   return useChat({
