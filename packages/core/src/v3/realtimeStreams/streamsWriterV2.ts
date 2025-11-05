@@ -1,5 +1,6 @@
 import { S2, AppendRecord, BatchTransform } from "@s2-dev/streamstore";
 import { StreamsWriter } from "./types.js";
+import { nanoid } from "nanoid";
 
 export type StreamsWriterV2Options<T = any> = {
   basin: string;
@@ -140,7 +141,7 @@ export class StreamsWriterV2<T = any> implements StreamsWriter {
                 return;
               }
               // Convert each chunk to JSON string and wrap in AppendRecord
-              controller.enqueue(AppendRecord.make(JSON.stringify(chunk)));
+              controller.enqueue(AppendRecord.make(JSON.stringify({ data: chunk, id: nanoid(7) })));
             },
           })
         )

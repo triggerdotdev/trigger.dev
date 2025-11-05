@@ -259,6 +259,8 @@ export class SSEStreamSubscription implements StreamSubscription {
       // Reset retry count on successful connection
       this.retryCount = 0;
 
+      const seenIds = new Set<string>();
+
       const stream = response.body
         .pipeThrough(new TextDecoderStream())
         .pipeThrough(new EventSourceParserStream())
@@ -287,9 +289,15 @@ export class SSEStreamSubscription implements StreamSubscription {
                   for (const record of data.records) {
                     this.lastEventId = record.seq_num.toString();
 
+                    const parsedBody = safeParseJSON(record.body) as { data: unknown; id: string };
+                    if (seenIds.has(parsedBody.id)) {
+                      continue;
+                    }
+                    seenIds.add(parsedBody.id);
+
                     chunkController.enqueue({
                       id: record.seq_num.toString(),
-                      chunk: safeParseJSON(record.body),
+                      chunk: parsedBody.data,
                       timestamp: record.timestamp,
                     });
                   }
