@@ -1,11 +1,23 @@
-import { conform, useForm } from "@conform-to/react";
+import { conform, useFieldList, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { EnvelopeIcon, PlusIcon } from "@heroicons/react/20/solid";
+import {
+  EnvelopeIcon,
+  ExclamationTriangleIcon,
+  InformationCircleIcon,
+  PlusIcon,
+} from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
-import { Form, useActionData, useNavigation, type MetaFunction } from "@remix-run/react";
+import {
+  Form,
+  useActionData,
+  useNavigate,
+  useNavigation,
+  useSearchParams,
+  type MetaFunction,
+} from "@remix-run/react";
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
@@ -54,6 +66,8 @@ import { SetConcurrencyAddOnService } from "~/v3/services/setConcurrencyAddOn.se
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { SpinnerWhite } from "~/components/primitives/Spinner";
 import { cn } from "~/utils/cn";
+import { logger } from "~/services/logger.server";
+import { AllocateConcurrencyService } from "~/v3/services/allocateConcurrency.server";
 
 export const meta: MetaFunction = () => {
   return [
@@ -99,10 +113,22 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   return typedjson(result);
 };
 
-const FormSchema = z.object({
-  action: z.enum(["purchase", "quota-increase"]),
-  amount: z.coerce.number().min(1, "Amount must be greater than 0"),
-});
+const FormSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.enum(["purchase", "quota-increase"]),
+    amount: z.coerce.number().min(1, "Amount must be greater than 0"),
+  }),
+  z.object({
+    action: z.enum(["allocate"]),
+    // It will only update environments that are passed in
+    environments: z.array(
+      z.object({
+        id: z.string(),
+        amount: z.coerce.number().min(0, "Amount must be 0 or more"),
+      })
+    ),
+  }),
+]);
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -124,6 +150,34 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
   if (!submission.value || submission.intent !== "submit") {
     return json(submission);
+  }
+
+  if (submission.value.action === "allocate") {
+    const allocate = new AllocateConcurrencyService();
+    const [error, result] = await tryCatch(
+      allocate.call({
+        userId,
+        projectId: project.id,
+        organizationId: project.organizationId,
+        environments: submission.value.environments,
+      })
+    );
+
+    if (error) {
+      submission.error.amount = [error instanceof Error ? error.message : "Unknown error"];
+      return json(submission);
+    }
+
+    if (!result.success) {
+      submission.error.amount = [result.error];
+      return json(submission);
+    }
+
+    return redirectWithSuccessMessage(
+      `${redirectPath}?success=true`,
+      request,
+      "Concurrency allocated successfully"
+    );
   }
 
   const service = new SetConcurrencyAddOnService();
@@ -187,7 +241,7 @@ export default function Page() {
           </AdminDebugTooltip>
         </PageAccessories>
       </NavBar>
-      <PageBody scrollable={false}>
+      <PageBody scrollable={true}>
         <MainHorizontallyCenteredContainer>
           {canAddConcurrency ? (
             <Upgradable
@@ -209,7 +263,6 @@ export default function Page() {
 }
 
 function Upgradable({
-  canAddConcurrency,
   extraConcurrency,
   extraAllocatedConcurrency,
   extraUnallocatedConcurrency,
@@ -217,12 +270,36 @@ function Upgradable({
   concurrencyPricing,
   maxQuota,
 }: ConcurrencyResult) {
-  const organization = useOrganization();
+  const lastSubmission = useActionData();
+  const [form, { environments: formEnvironments }] = useForm({
+    id: "purchase-concurrency",
+    // TODO: type this
+    lastSubmission: lastSubmission as any,
+    onValidate({ formData }) {
+      return parse(formData, { schema: FormSchema });
+    },
+    shouldRevalidate: "onSubmit",
+  });
+
+  const navigation = useNavigation();
+  const isLoading = navigation.state !== "idle" && navigation.formMethod === "POST";
+
+  const [allocation, setAllocation] = useState(
+    new Map<string, number>(
+      environments
+        .filter((e) => e.type !== "DEVELOPMENT")
+        .map((e) => [e.id, Math.max(0, e.maximumConcurrencyLimit - e.planConcurrencyLimit)])
+    )
+  );
+
+  const allocated = Array.from(allocation.values()).reduce((e, acc) => e + acc, 0);
+  const unallocated = extraConcurrency - allocated;
+  const allocationModified = allocated !== extraAllocatedConcurrency;
 
   return (
     <div className="flex flex-col gap-3">
       <div className="border-b border-grid-dimmed pb-1">
-        <Header2>Your concurrency</Header2>
+        <Header2>Manage your concurrency</Header2>
       </div>
       <Paragraph variant="small">
         Concurrency limits determine how many runs you can execute at the same time. You can add
@@ -238,6 +315,7 @@ function Upgradable({
               extraConcurrency={extraConcurrency}
               extraUnallocatedConcurrency={extraUnallocatedConcurrency}
               maxQuota={maxQuota}
+              disabled={allocationModified}
             />
           </div>
           <Table>
@@ -250,23 +328,83 @@ function Upgradable({
               </TableRow>
               <TableRow>
                 <TableCell>Allocated concurrency</TableCell>
-                <TableCell alignment="right" className="text-text-bright">
-                  {extraAllocatedConcurrency}
+                <TableCell alignment="right" className={"text-text-bright"}>
+                  {allocationModified ? (
+                    <>
+                      <span className="text-text-dimmed line-through">
+                        {extraAllocatedConcurrency}
+                      </span>{" "}
+                      {allocated}
+                    </>
+                  ) : (
+                    allocated
+                  )}
                 </TableCell>
               </TableRow>
               <TableRow>
                 <TableCell>Unallocated concurrency</TableCell>
                 <TableCell
                   alignment="right"
-                  className={extraUnallocatedConcurrency > 0 ? "text-success" : "text-text-bright"}
+                  className={
+                    unallocated > 0
+                      ? "text-success"
+                      : unallocated < 0
+                      ? "text-error"
+                      : "text-text-bright"
+                  }
                 >
-                  {extraUnallocatedConcurrency}
+                  {allocationModified ? (
+                    <>
+                      <span className="text-text-dimmed line-through">
+                        {extraUnallocatedConcurrency}
+                      </span>{" "}
+                      {unallocated}
+                    </>
+                  ) : (
+                    unallocated
+                  )}
+                </TableCell>
+              </TableRow>
+              <TableRow className={allocationModified ? undefined : "after:bg-transparent"}>
+                <TableCell colSpan={2} className="py-0">
+                  <div className="flex h-10 items-center">
+                    {allocationModified ? (
+                      unallocated < 0 ? (
+                        <div className="flex items-center gap-1">
+                          <ExclamationTriangleIcon className="size-4 text-error" />
+                          <span className="text-error">
+                            You're trying to allocate more concurrency than your total purchased
+                            amount.
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex w-full items-center justify-between gap-3">
+                          <div className="flex items-center gap-1">
+                            <InformationCircleIcon className="size-4 text-text-bright" />
+                            <span>Save your changes or RESET</span>
+                          </div>
+                          <Button
+                            variant="primary/small"
+                            type="submit"
+                            form="allocate"
+                            disabled={unallocated < 0 || isLoading}
+                            LeadingIcon={isLoading ? SpinnerWhite : undefined}
+                          >
+                            Save
+                          </Button>
+                        </div>
+                      )
+                    ) : (
+                      <></>
+                    )}
+                  </div>
                 </TableCell>
               </TableRow>
             </TableBody>
           </Table>
         </div>
-        <div className="flex flex-col gap-2">
+        <Form className="flex flex-col gap-2" method="post" {...form.props} id="allocate">
+          <input type="hidden" name="action" value="allocate" />
           <div className="flex items-center pb-1">
             <Header3 className="grow">Concurrency allocation</Header3>
           </div>
@@ -285,7 +423,7 @@ function Upgradable({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {environments.map((environment) => (
+              {environments.map((environment, index) => (
                 <TableRow key={environment.id}>
                   <TableCell className="pl-0">
                     <EnvironmentCombo environment={environment} />
@@ -293,18 +431,34 @@ function Upgradable({
                   <TableCell alignment="right">{environment.planConcurrencyLimit}</TableCell>
                   <TableCell alignment="right">
                     <div className="flex items-center justify-end">
-                      <Input
-                        type="number"
-                        variant="outline/small"
-                        className="text-right"
-                        containerClassName="w-16"
-                        fullWidth={false}
-                        defaultValue={Math.max(
+                      {environment.type === "DEVELOPMENT" ? (
+                        Math.max(
                           0,
                           environment.maximumConcurrencyLimit - environment.planConcurrencyLimit
-                        )}
-                        min="0"
-                      />
+                        )
+                      ) : (
+                        <>
+                          <input
+                            type="hidden"
+                            name={`environments[${index}].id`}
+                            value={environment.id}
+                          />
+                          <Input
+                            name={`environments[${index}].amount`}
+                            type="number"
+                            variant="outline/small"
+                            className="text-right"
+                            containerClassName="w-16"
+                            fullWidth={false}
+                            value={allocation.get(environment.id)}
+                            onChange={(e) => {
+                              const value = e.target.value === "" ? 0 : Number(e.target.value);
+                              setAllocation(new Map(allocation).set(environment.id, value));
+                            }}
+                            min={0}
+                          />
+                        </>
+                      )}
                     </div>
                   </TableCell>
                   <TableCell alignment="right">{environment.maximumConcurrencyLimit}</TableCell>
@@ -312,7 +466,8 @@ function Upgradable({
               ))}
             </TableBody>
           </Table>
-        </div>
+          <FormError id={formEnvironments.errorId}>{formEnvironments.error}</FormError>
+        </Form>
       </div>
     </div>
   );
@@ -369,6 +524,7 @@ function PurchaseConcurrencyModal({
   extraConcurrency,
   extraUnallocatedConcurrency,
   maxQuota,
+  disabled,
 }: {
   concurrencyPricing: {
     stepSize: number;
@@ -377,6 +533,7 @@ function PurchaseConcurrencyModal({
   extraConcurrency: number;
   extraUnallocatedConcurrency: number;
   maxQuota: number;
+  disabled: boolean;
 }) {
   const lastSubmission = useActionData();
   const [form, { amount }] = useForm({
@@ -393,6 +550,21 @@ function PurchaseConcurrencyModal({
   const navigation = useNavigation();
   const isLoading = navigation.state !== "idle" && navigation.formMethod === "POST";
 
+  // Close the panel, when we've succeeded
+  // This is required because a redirect to the same path doesn't clear state
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const success = searchParams.get("success");
+    if (success) {
+      setOpen(false);
+      setSearchParams((s) => {
+        s.delete("success");
+        return s;
+      });
+    }
+  }, [searchParams.get("success")]);
+
   const state = updateState({
     value: amountValue,
     existingValue: extraConcurrency,
@@ -405,9 +577,17 @@ function PurchaseConcurrencyModal({
   const title = extraConcurrency === 0 ? "Purchase extra concurrency" : "Add/remove concurrency";
 
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="primary/small">{title}</Button>
+        <Button
+          variant="primary/small"
+          disabled={disabled}
+          onClick={() => {
+            setOpen(true);
+          }}
+        >
+          {title}
+        </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>{title}</DialogHeader>
@@ -428,6 +608,7 @@ function PurchaseConcurrencyModal({
                   {...conform.input(amount, { type: "number" })}
                   step={concurrencyPricing.stepSize}
                   min={0}
+                  max={undefined}
                   value={amountValue}
                   onChange={(e) => setAmountValue(Number(e.target.value))}
                   disabled={isLoading}
@@ -453,7 +634,7 @@ function PurchaseConcurrencyModal({
                 </Paragraph>
               </div>
             ) : (
-              <div className="flex flex-col pb-3">
+              <div className="flex flex-col pb-3 tabular-nums">
                 <div className="grid grid-cols-2 border-b border-grid-dimmed pb-1">
                   <Header3 className="font-normal text-text-dimmed">Summary</Header3>
                   <Header3 className="justify-self-end font-normal text-text-dimmed">Total</Header3>
