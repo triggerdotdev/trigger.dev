@@ -54,7 +54,6 @@ export class StreamInstance<T> implements StreamsWriter {
             accessToken: parsedResponse.accessToken,
             source: this.options.source,
             signal: this.options.signal,
-            limiter: (await import("p-limit")).default,
             debug: this.options.debug,
             flushIntervalMs: parsedResponse.flushIntervalMs,
             maxRetries: parsedResponse.maxRetries,

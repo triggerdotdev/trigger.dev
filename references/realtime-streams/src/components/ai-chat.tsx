@@ -1,7 +1,8 @@
 "use client";
 
+import { aiStream } from "@/app/streams";
 import { useRealtimeStream } from "@trigger.dev/react-hooks";
-import type { UIMessage, UIMessageChunk } from "ai";
+import type { UIMessage } from "ai";
 import { Streamdown } from "streamdown";
 
 export function AIChat({ accessToken, runId }: { accessToken: string; runId: string }) {
@@ -14,7 +15,7 @@ export function AIChat({ accessToken, runId }: { accessToken: string; runId: str
 }
 
 function AIChatStats({ accessToken, runId }: { accessToken: string; runId: string }) {
-  const { parts, error } = useRealtimeStream<UIMessageChunk>(runId, {
+  const { parts, error } = useRealtimeStream(aiStream, runId, {
     accessToken,
     baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL,
     timeoutInSeconds: 600,
@@ -124,7 +125,7 @@ function AIChatStats({ accessToken, runId }: { accessToken: string; runId: strin
 }
 
 function AIChatFull({ accessToken, runId }: { accessToken: string; runId: string }) {
-  const { parts, error } = useRealtimeStream<UIMessageChunk>(runId, {
+  const { parts, error } = useRealtimeStream(aiStream, runId, {
     accessToken,
     baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL,
     timeoutInSeconds: 600,

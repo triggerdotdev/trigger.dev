@@ -1,10 +1,7 @@
-import { logger, streams, task } from "@trigger.dev/sdk";
+import { aiStream } from "@/app/streams";
 import { openai } from "@ai-sdk/openai";
-import { convertToModelMessages, streamText, UIMessage, UIMessageChunk } from "ai";
-
-export type AI_STREAMS = {
-  chat: UIMessageChunk;
-};
+import { logger, streams, task } from "@trigger.dev/sdk";
+import { convertToModelMessages, streamText, UIMessage } from "ai";
 
 export type AIChatPayload = {
   messages: UIMessage[];
@@ -28,7 +25,7 @@ export const aiChatTask = task({
     const uiMessageStream = result.toUIMessageStream();
 
     // Append the stream to metadata
-    const { waitUntilComplete } = streams.pipe(uiMessageStream);
+    const { waitUntilComplete } = aiStream.pipe(uiMessageStream);
 
     // Wait for the stream to complete
     await waitUntilComplete();

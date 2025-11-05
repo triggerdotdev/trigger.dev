@@ -1,8 +1,9 @@
 "use client";
 
-import { useRealtimeRunWithStreams } from "@trigger.dev/react-hooks";
-import type { STREAMS, streamsTask, PerformanceChunk } from "@/trigger/streams";
-import { useEffect, useMemo, useState, useRef } from "react";
+import { demoStream } from "@/app/streams";
+import type { PerformanceChunk } from "@/trigger/streams";
+import { useRealtimeStream } from "@trigger.dev/react-hooks";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type ChunkLatency = {
   chunkIndex: number;
@@ -13,7 +14,7 @@ type ChunkLatency = {
 };
 
 export function PerformanceMonitor({ accessToken, runId }: { accessToken: string; runId: string }) {
-  const { run, streams, error } = useRealtimeRunWithStreams<typeof streamsTask, STREAMS>(runId, {
+  const { parts, error } = useRealtimeStream(demoStream, runId, {
     accessToken,
     baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL,
   });
@@ -25,10 +26,10 @@ export function PerformanceMonitor({ accessToken, runId }: { accessToken: string
 
   // Process new chunks only (append-only pattern)
   useEffect(() => {
-    if (!streams.stream || streams.stream.length === 0) return;
+    if (!parts || parts.length === 0) return;
 
     // Only process chunks we haven't seen yet
-    const newChunks = streams.stream.slice(processedCountRef.current);
+    const newChunks = parts.slice(processedCountRef.current);
     if (newChunks.length === 0) return;
 
     const now = Date.now();
@@ -57,9 +58,9 @@ export function PerformanceMonitor({ accessToken, runId }: { accessToken: string
 
     if (newLatencies.length > 0) {
       setChunkLatencies((prev) => [...prev, ...newLatencies]);
-      processedCountRef.current = streams.stream.length;
+      processedCountRef.current = parts.length;
     }
-  }, [streams.stream, chunkLatencies.length, firstChunkTime]);
+  }, [parts, chunkLatencies.length, firstChunkTime]);
 
   // Calculate statistics
   const stats = useMemo(() => {
@@ -118,37 +119,8 @@ export function PerformanceMonitor({ accessToken, runId }: { accessToken: string
     );
   }
 
-  if (!run) {
-    return (
-      <div className="bg-white rounded-lg shadow p-6">
-        <p className="text-gray-600">Loading run data...</p>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
-      {/* Status Card */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900">Run Status</h2>
-            <p className="text-sm text-gray-600 mt-1">{run.id}</p>
-          </div>
-          <span
-            className={`px-3 py-1 rounded-full text-sm font-semibold ${
-              run.status === "COMPLETED"
-                ? "bg-green-100 text-green-800"
-                : run.status === "EXECUTING"
-                ? "bg-blue-100 text-blue-800"
-                : "bg-gray-100 text-gray-800"
-            }`}
-          >
-            {run.status}
-          </span>
-        </div>
-      </div>
-
       {/* Metrics Grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <MetricCard label="Chunks Received" value={stats.count.toString()} suffix="chunks" />
@@ -173,7 +145,6 @@ export function PerformanceMonitor({ accessToken, runId }: { accessToken: string
           <StatItem label="Max Latency" value={`${stats.maxLatency.toFixed(0)} ms`} />
           <StatItem label="P50 (Median)" value={`${stats.p50.toFixed(0)} ms`} />
           <StatItem label="Total Chunks" value={stats.count.toString()} />
-          <StatItem label="Status" value={run.status} />
         </div>
       </div>
 

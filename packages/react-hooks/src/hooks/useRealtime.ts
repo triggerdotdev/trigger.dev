@@ -4,6 +4,8 @@ import {
   AnyTask,
   ApiClient,
   InferRunTypes,
+  InferStreamType,
+  RealtimeDefinedStream,
   RealtimeRun,
   RealtimeRunSkipColumns,
 } from "@trigger.dev/core/v3";
@@ -619,6 +621,11 @@ export type UseRealtimeStreamOptions<TPart> = UseApiClientOptions & {
   onData?: (data: TPart) => void;
 };
 
+export function useRealtimeStream<TDefinedStream extends RealtimeDefinedStream<any>>(
+  stream: TDefinedStream,
+  runId: string,
+  options?: UseRealtimeStreamOptions<InferStreamType<TDefinedStream>>
+): UseRealtimeStreamInstance<InferStreamType<TDefinedStream>>;
 /**
  * Hook to subscribe to realtime updates of a stream with a specific stream key.
  *
@@ -731,14 +738,36 @@ export function useRealtimeStream<TPart>(
   options?: UseRealtimeStreamOptions<TPart>
 ): UseRealtimeStreamInstance<TPart>;
 export function useRealtimeStream<TPart>(
-  runId: string,
-  streamKeyOrOptions?: string | UseRealtimeStreamOptions<TPart>,
+  runIdOrDefinedStream: string | RealtimeDefinedStream<TPart>,
+  streamKeyOrOptionsOrRunId?: string | UseRealtimeStreamOptions<TPart>,
   options?: UseRealtimeStreamOptions<TPart>
 ): UseRealtimeStreamInstance<TPart> {
-  if (typeof streamKeyOrOptions === "string") {
-    return useRealtimeStreamImplementation(runId, streamKeyOrOptions, options);
+  if (typeof runIdOrDefinedStream === "string") {
+    if (typeof streamKeyOrOptionsOrRunId === "string") {
+      return useRealtimeStreamImplementation(
+        runIdOrDefinedStream,
+        streamKeyOrOptionsOrRunId,
+        options
+      );
+    } else {
+      return useRealtimeStreamImplementation(
+        runIdOrDefinedStream,
+        "default",
+        streamKeyOrOptionsOrRunId
+      );
+    }
   } else {
-    return useRealtimeStreamImplementation(runId, "default", streamKeyOrOptions);
+    if (typeof streamKeyOrOptionsOrRunId === "string") {
+      return useRealtimeStreamImplementation(
+        streamKeyOrOptionsOrRunId,
+        runIdOrDefinedStream.id,
+        options
+      );
+    } else {
+      throw new Error(
+        "Invalid second argument to useRealtimeStream. When using a defined stream instance, the second argument to useRealtimeStream must be a run ID."
+      );
+    }
   }
 }
 

@@ -1596,8 +1596,8 @@ importers:
         specifier: 1.36.0
         version: 1.36.0
       '@s2-dev/streamstore':
-        specifier: ^0.15.13
-        version: 0.15.13
+        specifier: 0.17.1
+        version: 0.17.1(typescript@5.9.3)
       dequal:
         specifier: ^2.0.3
         version: 2.0.3
@@ -1688,7 +1688,7 @@ importers:
         version: 3.0.2
       ts-essentials:
         specifier: 10.0.1
-        version: 10.0.1(typescript@5.5.4)
+        version: 10.0.1(typescript@5.9.3)
       tshy:
         specifier: ^3.0.2
         version: 3.0.2
@@ -2845,7 +2845,7 @@ packages:
       '@ai-sdk/provider-utils': 1.0.22(zod@3.25.76)
       '@ai-sdk/ui-utils': 0.0.50(zod@3.25.76)
       swrv: 1.0.4(vue@3.5.16)
-      vue: 3.5.16(typescript@5.5.4)
+      vue: 3.5.16(typescript@5.9.3)
     transitivePeerDependencies:
       - zod
     dev: true
@@ -16104,18 +16104,13 @@ packages:
     resolution: {integrity: sha512-sXo/qW2/pAcmT43VoRKOJbDOfV3cYpq3szSVfIThQXNt+E4DfKj361vaAt3c88U5tPUxzEswam7GW48PJqtKAg==}
     dev: true
 
-  /@s2-dev/streamstore@0.15.13:
-    resolution: {integrity: sha512-TvksO2/fg7yATf9oxWdG1rYOFhPcyDbQLI58e9J4TRch4WSIOPrNVpXB7/JPHj2dWAM/N6uhcQ81VcNn1TCK/A==}
-    hasBin: true
+  /@s2-dev/streamstore@0.17.1(typescript@5.9.3):
+    resolution: {integrity: sha512-jPg9+VZbwVnpjfBXUM07X5DaNZMCUjSmsgvMiw0HS5WFsO2uPbLwIbkdZO1lOuS+Zc90oLIHruxiQQH+z3b5Jg==}
     peerDependencies:
-      '@modelcontextprotocol/sdk': '>=1.5.0 <1.10.0'
-    peerDependenciesMeta:
-      '@modelcontextprotocol/sdk':
-        optional: true
+      typescript: ^5.9.3
     dependencies:
-      jsonpath-rfc9535: 1.1.0
-      uuid: 9.0.1
-      zod: 3.25.76
+      '@protobuf-ts/runtime': 2.11.1
+      typescript: 5.9.3
     dev: false
 
   /@s2-dev/streamstore@0.17.3(typescript@5.9.3):
@@ -19641,7 +19636,7 @@ packages:
     dependencies:
       '@vue/compiler-ssr': 3.5.16
       '@vue/shared': 3.5.16
-      vue: 3.5.16(typescript@5.5.4)
+      vue: 3.5.16(typescript@5.9.3)
     dev: true
 
   /@vue/shared@3.5.16:
@@ -26699,11 +26694,6 @@ packages:
   /jsonpath-plus@7.2.0:
     resolution: {integrity: sha512-zBfiUPM5nD0YZSBT/o/fbCUlCcepMIdP0CJZxM1+KgA4f2T206f6VAg9e7mX35+KlMaIc5qXW34f3BnwJ3w+RA==}
     engines: {node: '>=12.0.0'}
-    dev: false
-
-  /jsonpath-rfc9535@1.1.0:
-    resolution: {integrity: sha512-Bj8ldGo67FNvj5nNsxGN7frkUcHZWqszNkfBOvfxOM1+WUa5J0PiGaflroTKOjGo2JQhOC1DZUaTv4tGzBaQLQ==}
-    engines: {node: '>=20'}
     dev: false
 
   /jsonpointer@5.0.1:
@@ -33778,7 +33768,7 @@ packages:
     peerDependencies:
       vue: '>=3.2.26 < 4'
     dependencies:
-      vue: 3.5.16(typescript@5.5.4)
+      vue: 3.5.16(typescript@5.9.3)
     dev: true
 
   /sync-content@2.0.1:
@@ -34452,6 +34442,17 @@ packages:
         optional: true
     dependencies:
       typescript: 5.5.4
+    dev: true
+
+  /ts-essentials@10.0.1(typescript@5.9.3):
+    resolution: {integrity: sha512-HPH+H2bkkO8FkMDau+hFvv7KYozzned9Zr1Urn7rRPXMF4mZmCKOq+u4AI1AAW+2bofIOXTuSdKo9drQuni2dQ==}
+    peerDependencies:
+      typescript: '>=4.5.0'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+    dependencies:
+      typescript: 5.9.3
     dev: true
 
   /ts-expose-internals-conditionally@1.0.0-empty.0:
@@ -35770,7 +35771,7 @@ packages:
     resolution: {integrity: sha512-AyFQ0EVmsOZOlAnxoFOGOq1SQDWAB7C6aqMGS23svWAllfOaxbuFvcT8D1i8z3Gyn8fraVeZNNmN6e9bxxXkKw==}
     dev: false
 
-  /vue@3.5.16(typescript@5.5.4):
+  /vue@3.5.16(typescript@5.9.3):
     resolution: {integrity: sha512-rjOV2ecxMd5SiAmof2xzh2WxntRcigkX/He4YFJ6WdRvVUrbt6DxC1Iujh10XLl8xCDRDtGKMeO3D+pRQ1PP9w==}
     peerDependencies:
       typescript: '*'
@@ -35783,7 +35784,7 @@ packages:
       '@vue/runtime-dom': 3.5.16
       '@vue/server-renderer': 3.5.16(vue@3.5.16)
       '@vue/shared': 3.5.16
-      typescript: 5.5.4
+      typescript: 5.9.3
     dev: true
 
   /w3c-keyname@2.2.6:

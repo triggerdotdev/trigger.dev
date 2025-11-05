@@ -2,9 +2,10 @@
 
 import { useRealtimeStream } from "@trigger.dev/react-hooks";
 import { Streamdown } from "streamdown";
+import { demoStream } from "@/app/streams";
 
 export function Streams({ accessToken, runId }: { accessToken: string; runId: string }) {
-  const { parts, error } = useRealtimeStream<string>(runId, {
+  const { parts, error } = useRealtimeStream(demoStream, runId, {
     accessToken,
     baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL,
     onData: (data) => {

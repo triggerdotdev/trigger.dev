@@ -8,53 +8,16 @@ import {
   SemanticInternalAttributes,
   apiClientManager,
   AsyncIterableStream,
+  WriterStreamOptions,
+  PipeStreamOptions,
+  PipeStreamResult,
+  ReadStreamOptions,
+  AppendStreamOptions,
+  RealtimeDefinedStream,
+  InferStreamType,
 } from "@trigger.dev/core/v3";
 import { tracer } from "./tracer.js";
 import { SpanStatusCode } from "@opentelemetry/api";
-
-/**
- * Options for appending data to a realtime stream.
- */
-export type PipeStreamOptions = {
-  /**
-   * An AbortSignal that can be used to cancel the stream operation.
-   * If the signal is aborted, the stream will be closed.
-   */
-  signal?: AbortSignal;
-  /**
-   * The target run ID to pipe the stream to. Can be:
-   * - `"self"` - Pipe to the current run (default)
-   * - `"parent"` - Pipe to the parent run
-   * - `"root"` - Pipe to the root run
-   * - A specific run ID string
-   *
-   * If not provided and not called from within a task, an error will be thrown.
-   */
-  target?: string;
-  /**
-   * Additional request options for the API call.
-   */
-  requestOptions?: ApiRequestOptions;
-};
-
-/**
- * The result of piping data to a realtime stream.
- *
- * @template T - The type of data chunks in the stream
- */
-export type PipeStreamResult<T> = {
-  /**
-   * The original stream that was piped. You can consume this stream in your task
-   * to process the data locally while it's also being piped to the realtime stream.
-   */
-  stream: AsyncIterableStream<T>;
-  /**
-   * A function that returns a promise which resolves when all data has been piped
-   * to the realtime stream. Use this to wait for the stream to complete before
-   * finishing your task.
-   */
-  waitUntilComplete: () => Promise<void>;
-};
 
 const DEFAULT_STREAM_KEY = "default";
 
@@ -227,33 +190,6 @@ function pipe<T>(
 }
 
 /**
- * Options for reading data from a realtime stream.
- */
-export type ReadStreamOptions = {
-  /**
-   * An AbortSignal that can be used to cancel the stream reading operation.
-   * If the signal is aborted, the stream will be closed.
-   */
-  signal?: AbortSignal;
-  /**
-   * The number of seconds to wait for new data to be available.
-   * If no data arrives within the timeout, the stream will be closed.
-   *
-   * @default 60 seconds
-   */
-  timeoutInSeconds?: number;
-
-  /**
-   * The index to start reading from (1-based).
-   * If not provided, the stream will start from the beginning.
-   * Use this to resume reading from a specific position.
-   *
-   * @default 0 (start from beginning)
-   */
-  startIndex?: number;
-};
-
-/**
  * Reads data from a realtime stream using the default stream key (`"default"`).
  *
  * This is a convenience overload that allows you to read from the default stream without
@@ -301,7 +237,7 @@ function read<T>(runId: string, options?: ReadStreamOptions): Promise<AsyncItera
  *
  * @example
  * ```ts
- * import { streams } from "@trigger.dev/sdk/v3";
+ * import { streams } from "@trigger.dev/sdk";
  *
  * // Read from a specific stream key
  * const stream = await streams.read<string>(runId, "my-custom-stream");
@@ -396,26 +332,6 @@ async function readStreamImpl<T>(
   });
 }
 
-/**
- * Options for appending data to a realtime stream.
- */
-export type AppendStreamOptions = {
-  /**
-   * The target run ID to append the stream to. Can be:
-   * - `"self"` - Pipe to the current run (default)
-   * - `"parent"` - Pipe to the parent run
-   * - `"root"` - Pipe to the root run
-   * - A specific run ID string
-   *
-   * If not provided and not called from within a task, an error will be thrown.
-   */
-  target?: string;
-  /**
-   * Additional request options for the API call.
-   */
-  requestOptions?: ApiRequestOptions;
-};
-
 function append<TPart extends BodyInit>(value: TPart, options?: AppendStreamOptions): Promise<void>;
 function append<TPart extends BodyInit>(
   key: string,
@@ -460,10 +376,38 @@ function isAppendStreamOptions(val: unknown): val is AppendStreamOptions {
   );
 }
 
+function writer<TPart>(options: WriterStreamOptions<TPart>) {}
+
+export type RealtimeDefineStreamOptions = {
+  id: string;
+};
+
+function define<TPart>(opts: RealtimeDefineStreamOptions): RealtimeDefinedStream<TPart> {
+  return {
+    id: opts.id,
+    pipe(value, options) {
+      return pipe(opts.id, value, options);
+    },
+    read(runId, options) {
+      return read(runId, opts.id, options);
+    },
+    append(value, options) {
+      return append(opts.id, value as BodyInit, options);
+    },
+    writer(options) {
+      return writer(options);
+    },
+  };
+}
+
+export type { InferStreamType };
+
 export const streams = {
   pipe,
   read,
   append,
+  writer,
+  define,
 };
 
 function getRunIdForOptions(options?: RealtimeStreamOperationOptions): string | undefined {

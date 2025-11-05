@@ -1,8 +1,9 @@
-import { logger, streams, task } from "@trigger.dev/sdk";
+import { demoStream } from "@/app/streams";
+import { logger, task } from "@trigger.dev/sdk";
 import { setTimeout } from "timers/promises";
 
 export type STREAMS = {
-  stream: string;
+  demo: string;
 };
 
 export type PerformanceChunk = {
@@ -99,7 +100,7 @@ export const streamsTask = task({
       }
       case "performance": {
         const chunkCount = payload.chunkCount ?? 500;
-        const chunkIntervalMs = payload.chunkIntervalMs ?? 50;
+        const chunkIntervalMs = payload.chunkIntervalMs ?? 10;
         generator = generatePerformanceStream(chunkCount, chunkIntervalMs);
         scenarioDescription = `Performance scenario: ${chunkCount} chunks with ${chunkIntervalMs}ms intervals`;
         break;
@@ -113,11 +114,28 @@ export const streamsTask = task({
 
     const mockStream = createStreamFromGenerator(generator);
 
-    const { waitUntilComplete } = streams.pipe(mockStream);
+    const { waitUntilComplete } = demoStream.pipe(mockStream);
 
     await waitUntilComplete();
 
-    await streams.append(JSON.stringify({ complete: true }));
+    // await demoStream.append(JSON.stringify({ complete: true }));
+
+    // demoStream.writer({
+    //   execute: ({ write, merge }) => {
+    //     write(JSON.stringify({ step: "one" }));
+    //     write(JSON.stringify({ step: "two" }));
+    //     write(JSON.stringify({ step: "three" }));
+    //     merge(
+    //       new ReadableStream({
+    //         start(controller) {
+    //           controller.enqueue(JSON.stringify({ step: "four" }));
+    //           controller.enqueue(JSON.stringify({ step: "five" }));
+    //           controller.close();
+    //         },
+    //       })
+    //     );
+    //   },
+    // });
 
     logger.info("Stream completed", { scenario });
 
