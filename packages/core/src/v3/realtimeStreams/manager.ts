@@ -1,5 +1,5 @@
 import { ApiClient } from "../apiClient/index.js";
-import { ensureAsyncIterable } from "../streams/asyncIterableStream.js";
+import { ensureAsyncIterable, ensureReadableStream } from "../streams/asyncIterableStream.js";
 import { taskContext } from "../task-context-api.js";
 import { StreamInstance } from "./streamInstance.js";
 import {
@@ -30,7 +30,7 @@ export class StandardRealtimeStreamsManager implements RealtimeStreamsManager {
     options?: RealtimeStreamOperationOptions
   ): RealtimeStreamInstance<T> {
     // Normalize ReadableStream to AsyncIterable
-    const asyncIterableSource = ensureAsyncIterable(source);
+    const readableStreamSource = ensureReadableStream(source);
 
     const runId = getRunIdForOptions(options);
 
@@ -52,7 +52,7 @@ export class StandardRealtimeStreamsManager implements RealtimeStreamsManager {
       baseUrl: this.baseUrl,
       runId,
       key,
-      source: asyncIterableSource,
+      source: readableStreamSource,
       signal: combinedSignal,
       requestOptions: options?.requestOptions,
       target: options?.target,

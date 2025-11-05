@@ -10,7 +10,7 @@ export type StreamInstanceOptions<T> = {
   baseUrl: string;
   runId: string;
   key: string;
-  source: AsyncIterable<T>;
+  source: ReadableStream<T>;
   signal?: AbortSignal;
   requestOptions?: AnyZodFetchOptions;
   target?: "self" | "parent" | "root" | string;

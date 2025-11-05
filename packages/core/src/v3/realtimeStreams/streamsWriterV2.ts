@@ -5,7 +5,7 @@ export type StreamsWriterV2Options<T = any> = {
   basin: string;
   stream: string;
   accessToken: string;
-  source: AsyncIterable<T>;
+  source: ReadableStream<T>;
   signal?: AbortSignal;
   flushIntervalMs?: number; // Used as lingerDuration for BatchTransform (default 200ms)
   maxRetries?: number; // Not used with appendSession, kept for compatibility
@@ -81,7 +81,7 @@ export class StreamsWriterV2<T = any> implements StreamsWriter {
       });
     }
 
-    const [serverStream, consumerStream] = this.createTeeStreams();
+    const [serverStream, consumerStream] = this.options.source.tee();
     this.serverStream = serverStream;
     this.consumerStream = consumerStream;
 
@@ -109,31 +109,6 @@ export class StreamsWriterV2<T = any> implements StreamsWriter {
     }
 
     this.log("[S2MetadataStream] Abort cleanup complete");
-  }
-
-  private createTeeStreams() {
-    const readableSource = new ReadableStream<T>({
-      start: async (controller) => {
-        try {
-          let count = 0;
-
-          for await (const value of this.options.source) {
-            if (this.aborted) {
-              controller.error(new Error("Stream aborted"));
-              return;
-            }
-            controller.enqueue(value);
-            count++;
-          }
-
-          controller.close();
-        } catch (error) {
-          controller.error(error);
-        }
-      },
-    });
-
-    return readableSource.tee();
   }
 
   private async initializeServerStream(): Promise<void> {
@@ -171,7 +146,7 @@ export class StreamsWriterV2<T = any> implements StreamsWriter {
         )
         .pipeThrough(
           new BatchTransform({
-            lingerDuration: this.flushIntervalMs,
+            lingerDurationMillis: this.flushIntervalMs,
           })
         )
         .pipeTo(session.writable);

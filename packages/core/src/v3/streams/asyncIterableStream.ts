@@ -133,3 +133,26 @@ export function ensureAsyncIterable<T>(
     },
   };
 }
+
+export function ensureReadableStream<T>(
+  input: AsyncIterable<T> | ReadableStream<T>
+): ReadableStream<T> {
+  if ("getReader" in input) {
+    return input as ReadableStream<T>;
+  }
+
+  return new ReadableStream<T>({
+    async start(controller) {
+      const iterator = input[Symbol.asyncIterator]();
+
+      while (true) {
+        const { done, value } = await iterator.next();
+        if (done) {
+          break;
+        }
+        controller.enqueue(value);
+      }
+      controller.close();
+    },
+  });
+}

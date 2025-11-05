@@ -18,7 +18,8 @@
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "shiki": "^3.13.0",
-    "streamdown": "^1.4.0"
+    "streamdown": "^1.4.0",
+    "zod": "3.25.76"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

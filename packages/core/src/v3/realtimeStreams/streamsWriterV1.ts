@@ -8,7 +8,7 @@ export type StreamsWriterV1Options<T> = {
   baseUrl: string;
   runId: string;
   key: string;
-  source: AsyncIterable<T>;
+  source: ReadableStream<T>;
   headers?: Record<string, string>;
   signal?: AbortSignal;
   version?: string;
@@ -43,7 +43,7 @@ export class StreamsWriterV1<T> implements StreamsWriter {
   private streamComplete = false;
 
   constructor(private options: StreamsWriterV1Options<T>) {
-    const [serverStream, consumerStream] = this.createTeeStreams();
+    const [serverStream, consumerStream] = this.options.source.tee();
     this.serverStream = serverStream;
     this.consumerStream = consumerStream;
     this.maxRetries = options.maxRetries ?? 10;
@@ -58,23 +58,6 @@ export class StreamsWriterV1<T> implements StreamsWriter {
 
   private generateClientId(): string {
     return randomBytes(4).toString("hex");
-  }
-
-  private createTeeStreams() {
-    const readableSource = new ReadableStream<T>({
-      start: async (controller) => {
-        try {
-          for await (const value of this.options.source) {
-            controller.enqueue(value);
-          }
-          controller.close();
-        } catch (error) {
-          controller.error(error);
-        }
-      },
-    });
-
-    return readableSource.tee();
   }
 
   private startBuffering(): void {
@@ -131,10 +114,10 @@ export class StreamsWriterV1<T> implements StreamsWriter {
         if (this.isRetryableError(error)) {
           if (this.retryCount < this.maxRetries) {
             this.retryCount++;
-            
+
             // Clean up the current request to avoid socket leaks
             req.destroy();
-            
+
             const delayMs = this.calculateBackoffDelay();
 
             await this.delay(delayMs);
@@ -157,10 +140,10 @@ export class StreamsWriterV1<T> implements StreamsWriter {
         // Timeout is retryable
         if (this.retryCount < this.maxRetries) {
           this.retryCount++;
-          
+
           // Clean up the current request to avoid socket leaks
           req.destroy();
-          
+
           const delayMs = this.calculateBackoffDelay();
 
           await this.delay(delayMs);
@@ -182,13 +165,13 @@ export class StreamsWriterV1<T> implements StreamsWriter {
         if (res.statusCode && this.isRetryableStatusCode(res.statusCode)) {
           if (this.retryCount < this.maxRetries) {
             this.retryCount++;
-            
+
             // Drain and destroy the response and request to avoid socket leaks
             // We need to consume the response before destroying it
             res.resume(); // Start draining the response
             res.destroy(); // Destroy the response to free the socket
             req.destroy(); // Destroy the request as well
-            
+
             const delayMs = this.calculateBackoffDelay();
 
             await this.delay(delayMs);
@@ -391,7 +374,7 @@ export class StreamsWriterV1<T> implements StreamsWriter {
         if (this.isRetryableError(error) && attempt < maxHeadRetries) {
           // Clean up the current request to avoid socket leaks
           req.destroy();
-          
+
           await this.delay(1000 * (attempt + 1)); // Simple linear backoff
           const result = await this.queryServerLastChunkIndex(attempt + 1);
           resolve(result);
@@ -424,7 +407,7 @@ export class StreamsWriterV1<T> implements StreamsWriter {
             res.resume();
             res.destroy();
             req.destroy();
-            
+
             await this.delay(1000 * (attempt + 1));
             const result = await this.queryServerLastChunkIndex(attempt + 1);
             resolve(result);
