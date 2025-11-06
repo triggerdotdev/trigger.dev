@@ -39,54 +39,52 @@ Start by creating a new Trigger.dev task that takes in a Sequin change event as 
   In your `src/trigger/tasks` directory, create a new file called `create-embedding-for-post.ts` and add the following code:
 
   <CodeGroup>
-  ```ts trigger/create-embedding-for-post.ts
-  import { task } from "@trigger.dev/sdk";
-  import { OpenAI } from "openai";
-  import { upsertEmbedding } from "../util";
+```ts trigger/create-embedding-for-post.ts
+import { task } from "@trigger.dev/sdk";
+import { OpenAI } from "openai";
+import { upsertEmbedding } from "../util";
 
 const openai = new OpenAI({
-apiKey: process.env.OPENAI_API_KEY,
+  apiKey: process.env.OPENAI_API_KEY,
 });
 
 export const createEmbeddingForPost = task({
-id: "create-embedding-for-post",
-run: async (payload: {
-record: {
-id: number;
-title: string;
-body: string;
-author: string;
-createdAt: string;
-embedding: string | null;
-},
-metadata: {
-table_schema: string,
-table_name: string,
-consumer: {
-id: string;
-name: string;
-};
-};
-}) => {
-// Create an embedding using the title and body of payload.record
-const content = `${payload.record.title}\n\n${payload.record.body}`;
-const embedding = (await openai.embeddings.create({
-model: "text-embedding-ada-002",
-input: content,
-})).data[0].embedding;
-
-      // Upsert the embedding in the database. See utils.ts for the implementation -> ->
-      await upsertEmbedding(embedding, payload.record.id);
-
-      // Return the updated record
-      return {
-        ...payload.record,
-        embedding: JSON.stringify(embedding),
+  id: "create-embedding-for-post",
+  run: async (payload: {
+    record: {
+      id: number;
+      title: string;
+      body: string;
+      author: string;
+      createdAt: string;
+      embedding: string | null;
+    },
+    metadata: {
+      table_schema: string,
+      table_name: string,
+      consumer: {
+        id: string;
+        name: string;
       };
-    }
+    };
+  }) => {
+    // Create an embedding using the title and body of payload.record
+    const content = `${payload.record.title}\n\n${payload.record.body}`;
+    const embedding = (await openai.embeddings.create({
+      model: "text-embedding-ada-002",
+      input: content,
+    })).data[0].embedding;
 
+    // Upsert the embedding in the database. See utils.ts for the implementation -> ->
+    await upsertEmbedding(embedding, payload.record.id);
+
+    // Return the updated record
+    return {
+      ...payload.record,
+      embedding: JSON.stringify(embedding),
+    };
+  }
 });
-
 ````
 
 ```ts utils.ts
