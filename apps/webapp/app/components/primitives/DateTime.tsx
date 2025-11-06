@@ -13,6 +13,7 @@ type DateTimeProps = {
   includeTime?: boolean;
   showTimezone?: boolean;
   showTooltip?: boolean;
+  hideDate?: boolean;
   previousDate?: Date | string | null; // Add optional previous date for comparison
 };
 
@@ -184,7 +185,7 @@ function formatSmartDateTime(date: Date, timeZone: string, locales: string[]): s
 // Format time only
 function formatTimeOnly(date: Date, timeZone: string, locales: string[]): string {
   return new Intl.DateTimeFormat(locales, {
-    hour: "numeric",
+    hour: "2-digit",
     minute: "numeric",
     second: "numeric",
     timeZone,
@@ -198,6 +199,7 @@ export const DateTimeAccurate = ({
   timeZone = "UTC",
   previousDate = null,
   showTooltip = true,
+  hideDate = false,
 }: DateTimeProps) => {
   const locales = useLocales();
   const [localTimeZone, setLocalTimeZone] = useState<string>("UTC");
@@ -214,7 +216,9 @@ export const DateTimeAccurate = ({
   }, []);
 
   // Smart formatting based on whether date changed
-  const formattedDateTime = realPrevDate
+  const formattedDateTime = hideDate
+    ? formatTimeOnly(realDate, localTimeZone, locales)
+    : realPrevDate
     ? isSameDay(realDate, realPrevDate)
       ? formatTimeOnly(realDate, localTimeZone, locales)
       : formatDateTimeAccurate(realDate, localTimeZone, locales)
