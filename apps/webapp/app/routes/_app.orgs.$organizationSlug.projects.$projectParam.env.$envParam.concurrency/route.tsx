@@ -270,6 +270,11 @@ function initialAllocation(environments: ConcurrencyResult["environments"]) {
   );
 }
 
+function allocationTotal(environments: ConcurrencyResult["environments"]) {
+  const allocation = initialAllocation(environments);
+  return Array.from(allocation.values()).reduce((e, acc) => e + acc, 0);
+}
+
 function Upgradable({
   extraConcurrency,
   extraAllocatedConcurrency,
@@ -294,9 +299,11 @@ function Upgradable({
 
   const [allocation, setAllocation] = useState(initialAllocation(environments));
 
-  const allocated = Array.from(allocation.values()).reduce((e, acc) => e + acc, 0);
-  const unallocated = extraConcurrency - allocated;
-  const allocationModified = allocated !== extraAllocatedConcurrency;
+  const allocatedInProject = Array.from(allocation.values()).reduce((e, acc) => e + acc, 0);
+  const initialAllocationInProject = allocationTotal(environments);
+  const unallocated = extraConcurrency - allocatedInProject;
+  const changeInAllocation = allocatedInProject - initialAllocationInProject;
+  const allocationModified = changeInAllocation !== 0;
 
   return (
     <div className="flex flex-col gap-3">
@@ -336,10 +343,10 @@ function Upgradable({
                       <span className="text-text-dimmed line-through">
                         {extraAllocatedConcurrency}
                       </span>{" "}
-                      {allocated}
+                      {extraAllocatedConcurrency + changeInAllocation}
                     </>
                   ) : (
-                    allocated
+                    extraAllocatedConcurrency
                   )}
                 </TableCell>
               </TableRow>
@@ -360,10 +367,10 @@ function Upgradable({
                       <span className="text-text-dimmed line-through">
                         {extraUnallocatedConcurrency}
                       </span>{" "}
-                      {unallocated}
+                      {extraUnallocatedConcurrency - changeInAllocation}
                     </>
                   ) : (
-                    unallocated
+                    extraUnallocatedConcurrency
                   )}
                 </TableCell>
               </TableRow>
