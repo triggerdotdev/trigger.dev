@@ -331,13 +331,13 @@ function Upgradable({
             <TableBody>
               <TableRow>
                 <TableCell className="pl-0 text-text-bright">Extra concurrency purchased</TableCell>
-                <TableCell alignment="right" className="text-text-bright">
+                <TableCell alignment="right" className="tabular-nums text-text-bright">
                   {extraConcurrency}
                 </TableCell>
               </TableRow>
               <TableRow>
                 <TableCell>Allocated concurrency</TableCell>
-                <TableCell alignment="right" className={"text-text-bright"}>
+                <TableCell alignment="right" className={"tabular-nums text-text-bright"}>
                   {allocationModified ? (
                     <>
                       <span className="text-text-dimmed line-through">
@@ -354,13 +354,14 @@ function Upgradable({
                 <TableCell>Unallocated concurrency</TableCell>
                 <TableCell
                   alignment="right"
-                  className={
+                  className={cn(
+                    "tabular-nums",
                     unallocated > 0
                       ? "text-success"
                       : unallocated < 0
                       ? "text-error"
                       : "text-text-bright"
-                  }
+                  )}
                 >
                   {allocationModified ? (
                     <>
