@@ -262,6 +262,14 @@ export default function Page() {
   );
 }
 
+function initialAllocation(environments: ConcurrencyResult["environments"]) {
+  return new Map<string, number>(
+    environments
+      .filter((e) => e.type !== "DEVELOPMENT")
+      .map((e) => [e.id, Math.max(0, e.maximumConcurrencyLimit - e.planConcurrencyLimit)])
+  );
+}
+
 function Upgradable({
   extraConcurrency,
   extraAllocatedConcurrency,
@@ -284,13 +292,7 @@ function Upgradable({
   const navigation = useNavigation();
   const isLoading = navigation.state !== "idle" && navigation.formMethod === "POST";
 
-  const [allocation, setAllocation] = useState(
-    new Map<string, number>(
-      environments
-        .filter((e) => e.type !== "DEVELOPMENT")
-        .map((e) => [e.id, Math.max(0, e.maximumConcurrencyLimit - e.planConcurrencyLimit)])
-    )
-  );
+  const [allocation, setAllocation] = useState(initialAllocation(environments));
 
   const allocated = Array.from(allocation.values()).reduce((e, acc) => e + acc, 0);
   const unallocated = extraConcurrency - allocated;
@@ -380,8 +382,19 @@ function Upgradable({
                       ) : (
                         <div className="flex w-full items-center justify-between gap-3">
                           <div className="flex items-center gap-1">
-                            <InformationCircleIcon className="size-4 text-text-bright" />
-                            <span>Save your changes or RESET</span>
+                            <InformationCircleIcon className="size-4 text-text-dimmed" />
+                            <span>
+                              Save your changes or{" "}
+                              <button
+                                className="inline text-indigo-500 hover:text-indigo-300"
+                                onClick={() => {
+                                  setAllocation(initialAllocation(environments));
+                                }}
+                              >
+                                reset
+                              </button>
+                              .
+                            </span>
                           </div>
                           <Button
                             variant="primary/small"
