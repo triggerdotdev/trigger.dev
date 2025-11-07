@@ -164,12 +164,12 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     );
 
     if (error) {
-      submission.error.amount = [error instanceof Error ? error.message : "Unknown error"];
+      submission.error.environments = [error instanceof Error ? error.message : "Unknown error"];
       return json(submission);
     }
 
     if (!result.success) {
-      submission.error.amount = [result.error];
+      submission.error.environments = [result.error];
       return json(submission);
     }
 
@@ -324,7 +324,7 @@ function Upgradable({
               extraConcurrency={extraConcurrency}
               extraUnallocatedConcurrency={extraUnallocatedConcurrency}
               maxQuota={maxQuota}
-              disabled={allocationModified}
+              disabled={unallocated < 0 ? false : allocationModified}
             />
           </div>
           <Table>
@@ -423,6 +423,7 @@ function Upgradable({
               </TableRow>
             </TableBody>
           </Table>
+          <FormError id={formEnvironments.id}>{formEnvironments.error}</FormError>
         </div>
         <Form className="flex flex-col gap-2" method="post" {...form.props} id="allocate">
           <input type="hidden" name="action" value="allocate" />
@@ -489,7 +490,6 @@ function Upgradable({
               ))}
             </TableBody>
           </Table>
-          <FormError id={formEnvironments.errorId}>{formEnvironments.error}</FormError>
         </Form>
       </div>
     </div>
