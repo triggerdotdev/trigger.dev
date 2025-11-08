@@ -1,5 +1,6 @@
 import { AnyZodFetchOptions, ApiRequestOptions } from "../apiClient/core.js";
 import { AsyncIterableStream } from "../streams/asyncIterableStream.js";
+import { Prettify } from "../types/utils.js";
 
 export type RealtimeStreamOperationOptions = {
   signal?: AbortSignal;
@@ -134,9 +135,11 @@ export type AppendStreamOptions = {
   requestOptions?: ApiRequestOptions;
 };
 
-export type WriterStreamOptions<TPart> = {
-  execute: (options: {
-    write: (part: TPart) => void;
-    merge(stream: ReadableStream<TPart>): void;
-  }) => Promise<void> | void;
-};
+export type WriterStreamOptions<TPart> = Prettify<
+  PipeStreamOptions & {
+    execute: (options: {
+      write: (part: TPart) => void;
+      merge(stream: ReadableStream<TPart>): void;
+    }) => Promise<void> | void;
+  }
+>;

@@ -118,24 +118,7 @@ export const streamsTask = task({
 
     await waitUntilComplete();
 
-    // await demoStream.append(JSON.stringify({ complete: true }));
-
-    // demoStream.writer({
-    //   execute: ({ write, merge }) => {
-    //     write(JSON.stringify({ step: "one" }));
-    //     write(JSON.stringify({ step: "two" }));
-    //     write(JSON.stringify({ step: "three" }));
-    //     merge(
-    //       new ReadableStream({
-    //         start(controller) {
-    //           controller.enqueue(JSON.stringify({ step: "four" }));
-    //           controller.enqueue(JSON.stringify({ step: "five" }));
-    //           controller.close();
-    //         },
-    //       })
-    //     );
-    //   },
-    // });
+    await streamsChildTask.triggerAndWait({});
 
     logger.info("Stream completed", { scenario });
 
@@ -143,6 +126,29 @@ export const streamsTask = task({
       scenario,
       scenarioDescription,
     };
+  },
+});
+
+export const streamsChildTask = task({
+  id: "streams-child",
+  run: async (payload: any, { ctx }) => {
+    demoStream.writer({
+      execute: ({ write, merge }) => {
+        write(JSON.stringify({ step: "one" }));
+        write(JSON.stringify({ step: "two" }));
+        write(JSON.stringify({ step: "three" }));
+        merge(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(JSON.stringify({ step: "four" }));
+              controller.enqueue(JSON.stringify({ step: "five" }));
+              controller.close();
+            },
+          })
+        );
+      },
+      target: ctx.run.rootTaskRunId,
+    });
   },
 });
 

@@ -32,6 +32,8 @@ function AIChatStats({ accessToken, runId }: { accessToken: string; runId: strin
     );
   }
 
+  console.log(parts);
+
   // Calculate statistics
   const stats = {
     totalChunks: parts.length,

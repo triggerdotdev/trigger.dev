@@ -1,7 +1,14 @@
 import { aiStream } from "@/app/streams";
 import { openai } from "@ai-sdk/openai";
 import { logger, streams, task } from "@trigger.dev/sdk";
-import { convertToModelMessages, readUIMessageStream, streamText, tool, UIMessage } from "ai";
+import {
+  convertToModelMessages,
+  readUIMessageStream,
+  stepCountIs,
+  streamText,
+  tool,
+  UIMessage,
+} from "ai";
 import { z } from "zod/v4";
 
 export type AIChatPayload = {
@@ -20,6 +27,7 @@ export const aiChatTask = task({
       model: openai("gpt-4o"),
       system: "You are a helpful assistant.",
       messages: convertToModelMessages(payload.messages),
+      stopWhen: stepCountIs(20),
       tools: {
         getCommonUseCases: tool({
           description: "Get common use cases",

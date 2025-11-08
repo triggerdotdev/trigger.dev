@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createServer, Server, IncomingMessage, ServerResponse } from "node:http";
 import { AddressInfo } from "node:net";
 import { StreamsWriterV1 } from "../src/v3/realtimeStreams/streamsWriterV1.js";
+import { ensureReadableStream } from "../src/v3/streams/asyncIterableStream.js";
 
 type RequestHandler = (req: IncomingMessage, res: ServerResponse) => void;
 
@@ -71,7 +72,7 @@ describe("StreamsWriterV1", () => {
       baseUrl,
       runId: "run_123",
       key: "test-stream",
-      source: generateChunks(),
+      source: ensureReadableStream(generateChunks()),
     });
 
     await metadataStream.wait();
@@ -99,7 +100,7 @@ describe("StreamsWriterV1", () => {
       baseUrl,
       runId: "run_123",
       key: "test-stream",
-      source: generateChunks(),
+      source: ensureReadableStream(generateChunks()),
       clientId: "custom-client-123",
     });
 
@@ -142,7 +143,7 @@ describe("StreamsWriterV1", () => {
       baseUrl,
       runId: "run_123",
       key: "test-stream",
-      source: generateChunks(),
+      source: ensureReadableStream(generateChunks()),
     });
 
     await metadataStream.wait();
@@ -191,7 +192,7 @@ describe("StreamsWriterV1", () => {
       baseUrl,
       runId: "run_123",
       key: "test-stream",
-      source: generateChunks(),
+      source: ensureReadableStream(generateChunks()),
     });
 
     await metadataStream.wait();
@@ -235,7 +236,7 @@ describe("StreamsWriterV1", () => {
       baseUrl,
       runId: "run_123",
       key: "test-stream",
-      source: generateChunks(),
+      source: ensureReadableStream(generateChunks()),
     });
 
     await metadataStream.wait();
@@ -278,7 +279,7 @@ describe("StreamsWriterV1", () => {
       baseUrl,
       runId: "run_123",
       key: "test-stream",
-      source: generateChunks(),
+      source: ensureReadableStream(generateChunks()),
       maxBufferSize: 100, // Small buffer for testing
     });
 
@@ -323,7 +324,7 @@ describe("StreamsWriterV1", () => {
       baseUrl,
       runId: "run_123",
       key: "test-stream",
-      source: generateChunks(),
+      source: ensureReadableStream(generateChunks()),
       maxRetries: 3, // Low retry count for faster test
     });
 
@@ -370,7 +371,7 @@ describe("StreamsWriterV1", () => {
         baseUrl,
         runId: "run_123",
         key: "test-stream",
-        source: generateChunks(),
+        source: ensureReadableStream(generateChunks()),
       });
 
       await metadataStream.wait();
@@ -418,7 +419,7 @@ describe("StreamsWriterV1", () => {
       baseUrl,
       runId: "run_123",
       key: "test-stream",
-      source: generateChunks(),
+      source: ensureReadableStream(generateChunks()),
     });
 
     await metadataStream.wait();
@@ -459,7 +460,7 @@ describe("StreamsWriterV1", () => {
       baseUrl,
       runId: "run_123",
       key: "test-stream",
-      source: generateChunks(),
+      source: ensureReadableStream(generateChunks()),
     });
 
     await metadataStream.wait();
@@ -482,7 +483,7 @@ describe("StreamsWriterV1", () => {
       baseUrl,
       runId: "run_123",
       key: "test-stream",
-      source: generateChunks(),
+      source: ensureReadableStream(generateChunks()),
     });
 
     await metadataStream.wait();
@@ -532,7 +533,7 @@ describe("StreamsWriterV1", () => {
       baseUrl,
       runId: "run_123",
       key: "test-stream",
-      source: generateChunks(),
+      source: ensureReadableStream(generateChunks()),
       maxBufferSize: 100, // Large enough to hold all chunks
     });
 
@@ -591,7 +592,7 @@ describe("StreamsWriterV1", () => {
       baseUrl,
       runId: "run_123",
       key: "test-stream",
-      source: generateChunks(),
+      source: ensureReadableStream(generateChunks()),
     });
 
     await metadataStream.wait();
@@ -641,7 +642,7 @@ describe("StreamsWriterV1", () => {
       baseUrl,
       runId: "run_123",
       key: "test-stream",
-      source: generateChunks(),
+      source: ensureReadableStream(generateChunks()),
       maxBufferSize: 50, // Small buffer - will overflow
     });
 
@@ -663,7 +664,7 @@ describe("StreamsWriterV1", () => {
       baseUrl,
       runId: "run_123",
       key: "test-stream",
-      source: generateChunks(),
+      source: ensureReadableStream(generateChunks()),
     });
 
     // Consumer reads from the stream
@@ -701,7 +702,7 @@ describe("StreamsWriterV1", () => {
       baseUrl,
       runId: "run_123",
       key: "test-stream",
-      source: generateChunks(),
+      source: ensureReadableStream(generateChunks()),
     });
 
     await expect(metadataStream.wait()).rejects.toThrow("HTTP error! status: 400");
@@ -743,7 +744,7 @@ describe("StreamsWriterV1", () => {
       baseUrl,
       runId: "run_123",
       key: "test-stream",
-      source: generateChunks(),
+      source: ensureReadableStream(generateChunks()),
     });
 
     await metadataStream.wait();
@@ -774,7 +775,7 @@ describe("StreamsWriterV1", () => {
       baseUrl,
       runId: "run_123",
       key: "test-stream",
-      source: generateChunks(),
+      source: ensureReadableStream(generateChunks()),
       signal: abortController.signal,
     });
 
@@ -798,7 +799,7 @@ describe("StreamsWriterV1", () => {
       baseUrl,
       runId: "run_123",
       key: "test-stream",
-      source: generateChunks(),
+      source: ensureReadableStream(generateChunks()),
     });
 
     await metadataStream.wait();
@@ -824,7 +825,7 @@ describe("StreamsWriterV1", () => {
       baseUrl,
       runId: "run_123",
       key: "test-stream",
-      source: generateChunks(),
+      source: ensureReadableStream(generateChunks()),
     });
 
     await metadataStream.wait();
@@ -865,7 +866,7 @@ describe("StreamsWriterV1", () => {
       baseUrl,
       runId: "run_123",
       key: "test-stream",
-      source: generateChunks(),
+      source: ensureReadableStream(generateChunks()),
     });
 
     await metadataStream.wait();
@@ -915,7 +916,7 @@ describe("StreamsWriterV1", () => {
         baseUrl,
         runId: "run_123",
         key: "test-stream",
-        source: generateChunks(),
+        source: ensureReadableStream(generateChunks()),
       });
 
       await metadataStream.wait();
@@ -961,7 +962,7 @@ describe("StreamsWriterV1", () => {
       baseUrl,
       runId: "run_123",
       key: "test-stream",
-      source: generateChunks(),
+      source: ensureReadableStream(generateChunks()),
       maxBufferSize: 50, // Small buffer
     });
 

@@ -125,6 +125,20 @@ function pipe<T>(
     value = keyOrValue;
     opts = valueOrOptions as PipeStreamOptions | undefined;
   }
+
+  return pipeInternal(key, value, opts, "streams.pipe()");
+}
+
+/**
+ * Internal pipe implementation that allows customizing the span name.
+ * This is used by both the public `pipe` method and the `writer` method.
+ */
+function pipeInternal<T>(
+  key: string,
+  value: AsyncIterable<T> | ReadableStream<T>,
+  opts: PipeStreamOptions | undefined,
+  spanName: string
+): PipeStreamResult<T> {
   const runId = getRunIdForOptions(opts);
 
   if (!runId) {
@@ -133,7 +147,7 @@ function pipe<T>(
     );
   }
 
-  const span = tracer.startSpan("streams.pipe()", {
+  const span = tracer.startSpan(spanName, {
     attributes: {
       key,
       runId,
@@ -376,7 +390,74 @@ function isAppendStreamOptions(val: unknown): val is AppendStreamOptions {
   );
 }
 
-function writer<TPart>(options: WriterStreamOptions<TPart>) {}
+function writer<TPart>(key: string, options: WriterStreamOptions<TPart>) {
+  let controller!: ReadableStreamDefaultController<TPart>;
+
+  const ongoingStreamPromises: Promise<void>[] = [];
+
+  const stream = new ReadableStream({
+    start(controllerArg) {
+      controller = controllerArg;
+    },
+  });
+
+  function safeEnqueue(data: TPart) {
+    try {
+      controller.enqueue(data);
+    } catch (error) {
+      // suppress errors when the stream has been closed
+    }
+  }
+
+  try {
+    const result = options.execute({
+      write(part) {
+        safeEnqueue(part);
+      },
+      merge(streamArg) {
+        ongoingStreamPromises.push(
+          (async () => {
+            const reader = streamArg.getReader();
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              safeEnqueue(value);
+            }
+          })().catch((error) => {
+            console.error(error);
+          })
+        );
+      },
+    });
+
+    if (result) {
+      ongoingStreamPromises.push(
+        result.catch((error) => {
+          console.error(error);
+        })
+      );
+    }
+  } catch (error) {
+    console.error(error);
+  }
+
+  const waitForStreams: Promise<void> = new Promise(async (resolve) => {
+    while (ongoingStreamPromises.length > 0) {
+      await ongoingStreamPromises.shift();
+    }
+    resolve();
+  });
+
+  waitForStreams.finally(() => {
+    try {
+      controller.close();
+    } catch (error) {
+      // suppress errors when the stream has been closed
+    }
+  });
+
+  return pipeInternal(key, stream, options, "streams.writer()");
+}
 
 export type RealtimeDefineStreamOptions = {
   id: string;
@@ -395,7 +476,7 @@ function define<TPart>(opts: RealtimeDefineStreamOptions): RealtimeDefinedStream
       return append(opts.id, value as BodyInit, options);
     },
     writer(options) {
-      return writer(options);
+      return writer(opts.id, options);
     },
   };
 }
