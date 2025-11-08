@@ -65,3 +65,13 @@ apps/**/public/build
 /packages/python/src/package.json
 .claude
 .mcp.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.mypy_cache/
+.pytest_cache/
+.venv/
+build/

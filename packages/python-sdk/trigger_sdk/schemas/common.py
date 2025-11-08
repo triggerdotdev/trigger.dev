@@ -80,6 +80,11 @@ class DeploymentInfo(BaseModel):
     version: str
 
 
+class BatchInfo(BaseModel):
+    """Batch execution context"""
+    id: str
+
+
 class TaskRunExecution(BaseModel):
     """
     Complete task execution context.
@@ -94,6 +99,7 @@ class TaskRunExecution(BaseModel):
 
     # Optional fields for progressive expansion
     # TODO: Make these required once coordinator integration is complete
+    batch: Optional[BatchInfo] = None
     queue: Optional[QueueInfo] = None
     organization: Optional[OrganizationInfo] = None
     project: Optional[ProjectInfo] = None
