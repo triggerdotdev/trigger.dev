@@ -23,6 +23,7 @@ import { SnapshotManager, SnapshotState } from "./snapshot.js";
 import type { SupervisorSocket } from "./controller.js";
 import { RunNotifier } from "./notifier.js";
 import { TaskRunProcessProvider } from "./taskRunProcessProvider.js";
+import { PythonTaskRunner } from "../../python/index.js";
 
 class ExecutionAbortError extends Error {
   constructor(message: string) {
@@ -609,6 +610,31 @@ export class RunExecution {
 
     const taskRunEnv = this.currentTaskRunEnv ?? envVars;
 
+    // Check if this is a Python task - use PythonTaskRunner instead of TaskRunProcess
+    if (this.opts.workerManifest.runtime === "python") {
+      this.sendDebugLog("executing Python task", { taskId: execution.task.id });
+
+      const pythonRunner = new PythonTaskRunner();
+      const completion = await pythonRunner.executeTask({
+        ...execution,
+        worker: {
+          runtime: "python",
+          manifestPath: this.env.TRIGGER_WORKER_MANIFEST_PATH,
+        },
+      });
+
+      this.sendDebugLog("completed Python run attempt", { attemptSuccess: completion.ok });
+
+      const [completionError] = await tryCatch(this.complete({ completion }));
+
+      if (completionError) {
+        this.sendDebugLog("failed to complete Python run", { error: completionError.message });
+      }
+
+      return;
+    }
+
+    // Node.js/Bun execution path
     if (!this.taskRunProcess || this.taskRunProcess.isBeingKilled) {
       this.sendDebugLog("getting new task run process", { runId: execution.run.id });
       this.taskRunProcess = await this.taskRunProcessProvider.getProcess({

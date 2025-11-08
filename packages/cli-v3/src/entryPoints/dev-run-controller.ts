@@ -21,6 +21,7 @@ import { join } from "node:path";
 import { BackgroundWorker } from "../dev/backgroundWorker.js";
 import { eventBus } from "../utilities/eventBus.js";
 import { TaskRunProcessPool } from "../dev/taskRunProcessPool.js";
+import { PythonTaskRunner } from "../python/index.js";
 
 type DevRunControllerOptions = {
   runFriendlyId: string;
@@ -597,7 +598,65 @@ export class DevRunController {
 
     this.isCompletingRun = false;
 
-    // Get process from pool instead of creating new one
+    // Check if this is a Python task - use PythonTaskRunner instead of TaskRunProcess
+    if (this.opts.worker.manifest.runtime === "python") {
+      logger.debug("Executing Python task", { taskId: execution.task.id });
+
+      const pythonRunner = new PythonTaskRunner();
+      const completion = await pythonRunner.executeTask({
+        ...execution,
+        worker: {
+          runtime: "python",
+          manifestPath: join(this.opts.worker.build.outputPath, "index.json"),
+        },
+      });
+
+      logger.debug("Completed Python run", completion);
+
+      this.isCompletingRun = true;
+
+      if (!this.runFriendlyId || !this.snapshotFriendlyId) {
+        logger.debug("executeRun: Missing run ID or snapshot ID after Python execution", {
+          runId: this.runFriendlyId,
+          snapshotId: this.snapshotFriendlyId,
+        });
+
+        this.runFinished();
+        return;
+      }
+
+      const completionResult = await this.httpClient.dev.completeRunAttempt(
+        this.runFriendlyId,
+        this.snapshotFriendlyId,
+        {
+          completion,
+        }
+      );
+
+      if (!completionResult.success) {
+        logger.debug("Failed to submit Python completion", {
+          error: completionResult.error,
+        });
+
+        this.runFinished();
+        return;
+      }
+
+      logger.debug("Python attempt completion submitted", completionResult.data.result);
+
+      try {
+        await this.handleCompletionResult(completion, completionResult.data.result, execution);
+      } catch (error) {
+        logger.debug("Failed to handle Python completion result", { error });
+
+        this.runFinished();
+        return;
+      }
+
+      return;
+    }
+
+    // Get process from pool instead of creating new one (Node.js/Bun)
     const { taskRunProcess, isReused } = await this.opts.taskRunProcessPool.getProcess(
       this.opts.worker.manifest,
       {

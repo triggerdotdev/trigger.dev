@@ -35,15 +35,8 @@ export function execPathForRuntime(runtime: BuildRuntime): string {
       }
 
       return join(homedir(), ".bun", "bin", "bun");
-    case "python": {
-      // Check for custom Python path
-      if (typeof process.env.PYTHON_BIN_PATH === "string") {
-        return process.env.PYTHON_BIN_PATH;
-      }
-
-      // Default to python3 in PATH
+    case "python":
       return "python3";
-    }
     default:
       throw new Error(`Unsupported runtime ${runtime}`);
   }

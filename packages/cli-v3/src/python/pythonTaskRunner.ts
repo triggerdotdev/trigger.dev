@@ -18,12 +18,19 @@ export class PythonTaskRunner {
   async executeTask(execution: TaskRunExecution): Promise<TaskRunExecutionResult> {
     const workerScript = path.join(__dirname, "../entryPoints/python/managed-run-worker.py");
 
+    // Determine PYTHONPATH - use env var if set, otherwise use relative path for dev
+    const pythonPath = process.env.TRIGGER_PYTHON_SDK_PATH
+      ? process.env.TRIGGER_PYTHON_SDK_PATH
+      : path.join(__dirname, "../../../python-sdk");
+
     const pythonProcess = new PythonProcess({
       workerScript,
       env: {
         TRIGGER_MANIFEST_PATH: execution.worker.manifestPath,
-        // Add SDK path for dev mode (assumes SDK is in packages/python-sdk)
-        PYTHONPATH: path.join(__dirname, "../../../python-sdk"),
+        // Add SDK path for dev mode (in production, SDK is installed via pip)
+        ...(process.env.TRIGGER_PYTHON_SDK_PATH || process.env.NODE_ENV !== "production"
+          ? { PYTHONPATH: pythonPath }
+          : {}),
         // Add trace context, env vars, etc.
       },
     });
