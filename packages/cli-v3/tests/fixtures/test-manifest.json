@@ -1,0 +1,7 @@
+{
+  "tasks": [
+    {
+      "filePath": "packages/cli-v3/tests/python/test-task.py"
+    }
+  ]
+}
