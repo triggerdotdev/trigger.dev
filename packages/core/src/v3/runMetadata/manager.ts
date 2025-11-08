@@ -303,7 +303,15 @@ export class StandardMetadataManager implements RunMetadataManager {
   }
 
   public async fetchStream<T>(key: string, signal?: AbortSignal): Promise<AsyncIterableStream<T>> {
-    throw new Error("This needs to use the new realtime streams API");
+    if (!this.runId) {
+      throw new Error("Run ID is not set. fetchStream() can only be used inside a task.");
+    }
+
+    return await this.apiClient.fetchStream(this.runId, key, {
+      signal,
+      timeoutInSeconds: 60,
+      lastEventId: undefined,
+    });
   }
 
   private async doStream<T>(
@@ -319,7 +327,7 @@ export class StandardMetadataManager implements RunMetadataManager {
       return $value;
     }
 
-    const streamInstance = await realtimeStreams.pipe(key, value, {
+    const streamInstance = realtimeStreams.pipe(key, value, {
       signal,
       target,
     });
