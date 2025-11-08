@@ -68,6 +68,7 @@ export const BuildManifest = z.object({
       exclude: z.array(z.string()).optional(),
     })
     .optional(),
+  requirementsContent: z.string().optional(), // For Python: requirements.txt content
 });
 
 export type BuildManifest = z.infer<typeof BuildManifest>;

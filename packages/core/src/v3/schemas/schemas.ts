@@ -199,6 +199,7 @@ export type TaskMetadata = z.infer<typeof TaskMetadata>;
 export const TaskFile = z.object({
   entry: z.string(),
   out: z.string(),
+  filePath: z.string().optional(), // For Python: relative path to source file
 });
 
 export type TaskFile = z.infer<typeof TaskFile>;

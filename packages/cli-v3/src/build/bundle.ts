@@ -3,7 +3,8 @@ import { DEFAULT_RUNTIME, ResolvedConfig } from "@trigger.dev/core/v3/build";
 import { BuildManifest, BuildTarget, TaskFile } from "@trigger.dev/core/v3/schemas";
 import * as esbuild from "esbuild";
 import { createHash } from "node:crypto";
-import { join, relative, resolve } from "node:path";
+import path, { join, relative, resolve } from "node:path";
+import fs from "fs-extra";
 import { createFile } from "../utilities/fileSystem.js";
 import { logger } from "../utilities/logger.js";
 import { resolveFileSources } from "../utilities/sourceFiles.js";
@@ -26,6 +27,7 @@ import {
 import { buildPlugins } from "./plugins.js";
 import { cliLink, prettyError } from "../utilities/cliOutput.js";
 import { SkipLoggingError } from "../cli/common.js";
+import { bundlePython, createBuildManifestFromPythonBundle } from "./pythonBundler.js";
 
 export interface BundleOptions {
   target: BuildTarget;
@@ -64,6 +66,11 @@ export class BundleError extends Error {
 
 export async function bundleWorker(options: BundleOptions): Promise<BundleResult> {
   const { resolvedConfig } = options;
+
+  // Handle Python runtime
+  if (resolvedConfig.runtime === "python") {
+    return bundlePythonWorker(options);
+  }
 
   let currentContext: esbuild.BuildContext | undefined;
 
@@ -404,4 +411,91 @@ export async function createBuildManifestFromBundle({
   }
 
   return copyManifestToDir(buildManifest, destination, workerDir);
+}
+
+/**
+ * Bundle Python worker - entry point for Python runtime.
+ * This is the Python equivalent of bundleWorker for Node.js.
+ */
+async function bundlePythonWorker(options: BundleOptions): Promise<BundleResult> {
+  const { resolvedConfig, destination, cwd, target } = options;
+
+  const entryPointManager = await createEntryPointManager(
+    resolvedConfig.dirs,
+    resolvedConfig,
+    options.target,
+    typeof options.watch === "boolean" ? options.watch : false,
+    async (newEntryPoints) => {
+      // TODO: Implement proper watch mode for Python (file copying + manifest regeneration)
+      logger.debug("Python entry points changed, rebuilding");
+    }
+  );
+
+  if (entryPointManager.entryPoints.length === 0) {
+    const errorMessageBody = `
+      Dirs config:
+      ${resolvedConfig.dirs.join("\n- ")}
+
+      Search patterns:
+      ${entryPointManager.patterns.join("\n- ")}
+
+      Possible solutions:
+      1. Check if the directory paths in your config are correct
+      2. Verify that your files match the search patterns
+      3. Update your trigger.config.ts runtime to "python"
+    `.replace(/^ {6}/gm, "");
+
+    prettyError(
+      "No Python task files found",
+      errorMessageBody,
+      cliLink("View the config docs", "https://trigger.dev/docs/config/config-file")
+    );
+
+    throw new SkipLoggingError();
+  }
+
+  // Bundle Python files
+  logger.debug("Starting Python bundle", {
+    entryPoints: entryPointManager.entryPoints.length,
+  });
+
+  const bundleResult = await bundlePython({
+    entryPoints: entryPointManager.entryPoints,
+    outputDir: destination,
+    projectDir: cwd,
+    requirementsFile: process.env.TRIGGER_REQUIREMENTS_FILE,
+    config: resolvedConfig,
+    target,
+  });
+
+  // Create complete BuildManifest
+  const buildManifest = await createBuildManifestFromPythonBundle(bundleResult, {
+    outputDir: destination,
+    projectDir: cwd,
+    config: resolvedConfig,
+    target,
+  });
+
+  // Write manifest to output
+  const manifestPath = join(destination, "build-manifest.json");
+  await fs.writeJson(manifestPath, buildManifest, { spaces: 2 });
+
+  // Convert to BundleResult
+  const pythonBundleResult: BundleResult = {
+    contentHash: buildManifest.contentHash,
+    files: buildManifest.files,
+    configPath: buildManifest.configPath,
+    metafile: {} as esbuild.Metafile, // Empty for Python
+    loaderEntryPoint: undefined,
+    runWorkerEntryPoint: buildManifest.runWorkerEntryPoint,
+    runControllerEntryPoint: undefined,
+    indexWorkerEntryPoint: buildManifest.indexWorkerEntryPoint,
+    indexControllerEntryPoint: undefined,
+    initEntryPoint: undefined,
+    stop: async () => {
+      await entryPointManager.stop();
+    },
+  };
+
+  return pythonBundleResult;
 }
