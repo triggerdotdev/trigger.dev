@@ -94,6 +94,11 @@ export async function downloadPacketFromObjectStore(
     logger.debug("Downloading from object store", { url: url.href });
 
     async function fetchWithRetry(url:string,retries =3,delay=500):Promise<Response>{
+      
+       if (!r2) {
+      throw new Error("Object store credentials are not set");
+    }
+
        for(let attempt =1; attempt<=retries;attempt++){
         try {
           const response = await r2.fetch(url);
