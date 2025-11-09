@@ -5,14 +5,27 @@ These schemas match TypeScript message types in:
 packages/core/src/v3/schemas/messages.ts
 """
 
-from typing import Any, Dict, Literal, Union
+from typing import Any, Dict, Literal, Union, Optional
 from pydantic import BaseModel, Field
+from enum import IntEnum
 
 from trigger_sdk.schemas.common import (
     TaskRunSuccessfulExecutionResult,
     TaskRunFailedExecutionResult,
     TaskRunExecution,
 )
+
+
+# ============================================================================
+# Logging
+# ============================================================================
+
+class LogLevel(IntEnum):
+    """Log level enum matching proto definition"""
+    DEBUG = 0
+    INFO = 1
+    WARN = 2
+    ERROR = 3
 
 
 # ============================================================================
@@ -74,12 +87,28 @@ class IndexTasksCompleteMessage(BaseModel):
     tasks: list[Dict[str, Any]]  # List of TaskResource as dicts
 
 
+class LogMessage(BaseModel):
+    """
+    Log message from worker to coordinator.
+
+    Sent to report log entries from the Python worker.
+    """
+    type: Literal["LOG"] = "LOG"
+    version: Literal["v1"] = "v1"
+    level: LogLevel
+    message: str
+    logger: str  # Logger name (e.g., "trigger")
+    timestamp: str  # ISO 8601 timestamp
+    exception: Optional[str] = None  # Stack trace (for errors)
+
+
 # Discriminated union of all worker messages
 WorkerMessage = Union[
     TaskRunCompletedMessage,
     TaskRunFailedMessage,
     TaskHeartbeatMessage,
     IndexTasksCompleteMessage,
+    LogMessage,
 ]
 
 

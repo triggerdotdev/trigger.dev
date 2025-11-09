@@ -5,12 +5,13 @@ Python Run Worker
 Executes a single Python task.
 
 Flow:
-1. Receive EXECUTE_TASK_RUN message from stdin
-2. Set up execution context (trace context, env vars, etc.)
-3. Import task file and get task from registry
-4. Execute task with payload
-5. Send TASK_RUN_COMPLETED or TASK_RUN_FAILED_TO_RUN message
-6. Handle heartbeat and cancellation
+1. Connect to coordinator via gRPC
+2. Receive EXECUTE_TASK_RUN message
+3. Set up execution context (trace context, env vars, etc.)
+4. Import task file and get task from registry
+5. Execute task with payload
+6. Send TASK_RUN_COMPLETED or TASK_RUN_FAILED_TO_RUN message
+7. Handle heartbeat and cancellation
 """
 
 import sys
@@ -25,14 +26,14 @@ from typing import Optional
 
 # Import SDK (assumes it's installed via pip)
 from trigger_sdk.task import TASK_REGISTRY, Task
-from trigger_sdk.ipc import StdioIpcConnection
+from trigger_sdk.ipc import GrpcIpcConnection
 from trigger_sdk.context import TaskContext, set_current_context, clear_current_context
 from trigger_sdk.logger import logger
 from trigger_sdk.schemas import ExecuteTaskRunMessage
 
 
 # Global state
-ipc: Optional[StdioIpcConnection] = None
+ipc: Optional[GrpcIpcConnection] = None
 current_task: Optional[asyncio.Task] = None
 cancelled = False
 
@@ -40,11 +41,13 @@ cancelled = False
 def signal_handler(signum, frame):
     """Handle termination signals"""
     global cancelled
-    logger.warn(f"Received signal {signum}, cancelling task")
     cancelled = True
 
     if current_task and not current_task.done():
+        logger.debug(f"Received signal {signum}, cancelling task")
         current_task.cancel()
+    else:
+        logger.debug(f"Received signal {signum}, shutting down")
 
 
 def import_task_file(file_path: str) -> bool:
@@ -106,7 +109,7 @@ async def execute_task_run(message: ExecuteTaskRunMessage):
         logger.error(f"Failed to parse payload JSON: {e}")
         raise ValueError(f"Invalid payload JSON: {e}")
 
-    logger.info(f"Executing task {task_id} from {task_file}")
+    logger.debug(f"Executing task {task_id} from {task_file}")
 
     # Track start time for usage metrics
     import time
@@ -134,7 +137,7 @@ async def execute_task_run(message: ExecuteTaskRunMessage):
         )
         set_current_context(context)
 
-        logger.info(f"Starting task execution (attempt {context.attempt.number})")
+        logger.debug(f"Starting task execution (attempt {context.attempt.number})")
 
         # Start heartbeat with run_id parameter
         heartbeat_task = asyncio.create_task(heartbeat_loop(run_id))
@@ -147,12 +150,16 @@ async def execute_task_run(message: ExecuteTaskRunMessage):
             # Calculate duration
             duration_ms = int((time.time() - start_time) * 1000)
 
-            logger.info("Task completed successfully")
+            logger.debug("Task completed successfully")
             await ipc.send_completed(
                 id=run_id,
                 output=result,
                 usage={"durationMs": duration_ms}
             )
+
+            # Wait for message to flush before exiting
+            await ipc.flush()
+            ipc.stop()
 
         finally:
             # Stop heartbeat
@@ -172,6 +179,10 @@ async def execute_task_run(message: ExecuteTaskRunMessage):
             usage={"durationMs": duration_ms}
         )
 
+        # Wait for message to flush before exiting
+        await ipc.flush()
+        ipc.stop()
+
     except Exception as e:
         duration_ms = int((time.time() - start_time) * 1000)
         logger.error(f"Task execution failed: {e}", exception=traceback.format_exc())
@@ -181,6 +192,10 @@ async def execute_task_run(message: ExecuteTaskRunMessage):
             usage={"durationMs": duration_ms}
         )
 
+        # Wait for message to flush before exiting
+        await ipc.flush()
+        ipc.stop()
+
     finally:
         clear_current_context()
         current_task = None
@@ -189,7 +204,7 @@ async def execute_task_run(message: ExecuteTaskRunMessage):
 async def handle_cancel(message):
     """Handle cancellation message"""
     global current_task
-    logger.info("Received CANCEL message")
+    logger.debug("Received CANCEL message")
     signal_handler(signal.SIGTERM, None)
 
 
@@ -197,14 +212,17 @@ async def main():
     """Main run worker loop"""
     global ipc, cancelled
 
-    logger.info("Python run worker starting")
+    logger.debug("Python run worker starting")
 
     # Set up signal handlers
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
 
-    # Create IPC connection
-    ipc = StdioIpcConnection()
+    # Create gRPC IPC connection
+    ipc = GrpcIpcConnection()
+
+    # Configure logger to use gRPC
+    logger.set_ipc_connection(ipc)
 
     # Register message handlers
     ipc.on("EXECUTE_TASK_RUN", execute_task_run)
@@ -214,19 +232,19 @@ async def main():
     try:
         await ipc.start_listening()
     except asyncio.CancelledError:
-        logger.info("Run worker cancelled")
+        logger.debug("Run worker cancelled")
     except Exception as e:
         logger.error(f"Run worker failed: {e}", exception=traceback.format_exc())
         sys.exit(1)
 
-    logger.info("Run worker stopped")
+    logger.debug("Run worker stopped")
 
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.info("Run worker interrupted")
+        logger.debug("Run worker interrupted")
         sys.exit(0)
     except Exception as e:
         logger.error(f"Run worker failed: {e}", exception=traceback.format_exc())

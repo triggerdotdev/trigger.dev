@@ -67,8 +67,54 @@ export class BackgroundWorker {
         logger.debug(data);
       },
       handleStderr(data) {
-        if (!data.includes("Debugger attached")) {
-          prettyError(data.toString());
+        if (data.includes("Debugger attached")) {
+          return;
+        }
+
+        // For Python workers, parse JSON logs and route based on level
+        // Split by newlines since multiple logs can come in one chunk
+        const lines = data.toString().split("\n");
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+
+          try {
+            const log = JSON.parse(trimmed);
+            // Validate log has required structured fields
+            if (
+              log &&
+              typeof log === "object" &&
+              typeof log.level === "string" &&
+              typeof log.message === "string"
+            ) {
+              // Python structured logs - route based on level
+              switch (log.level) {
+                case "ERROR":
+                  prettyError(trimmed);
+                  break;
+                case "WARN":
+                case "WARNING":
+                  logger.warn(log.message, log);
+                  break;
+                case "INFO":
+                  logger.info(log.message, log);
+                  break;
+                case "DEBUG":
+                  logger.debug(log.message, log);
+                  break;
+                default:
+                  // Unknown level, treat as debug
+                  logger.debug(trimmed);
+              }
+            } else {
+              // Valid JSON but not a structured log, treat as error
+              prettyError(trimmed);
+            }
+          } catch (error) {
+            // Not valid JSON, treat as error
+            prettyError(trimmed);
+          }
         }
       },
     });

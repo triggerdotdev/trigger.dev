@@ -42,7 +42,7 @@ export interface PythonBundleResult {
 export async function bundlePython(options: PythonBundleOptions): Promise<PythonBundleResult> {
   const { entryPoints, outputDir, projectDir, requirementsFile, config, target } = options;
 
-  logger.info("Bundling Python tasks", {
+  logger.debug("Bundling Python tasks", {
     entryPoints: entryPoints.length,
     outputDir,
     projectDir,
@@ -99,7 +99,7 @@ export async function bundlePython(options: PythonBundleOptions): Promise<Python
     // Copy requirements.txt to output
     await copyFile(reqPath, path.join(outputDir, "requirements.txt"));
 
-    logger.info("Copied requirements.txt", {
+    logger.debug("Copied requirements.txt", {
       path: reqPath,
       dependencies: parseRequirementsTxt(requirementsContent).length,
     });
@@ -112,7 +112,7 @@ export async function bundlePython(options: PythonBundleOptions): Promise<Python
     requirementsContent,
   };
 
-  logger.info("Python bundle complete", {
+  logger.debug("Python bundle complete", {
     files: entries.length,
     requirements: requirementsContent ? parseRequirementsTxt(requirementsContent).length : 0,
     outputDir,

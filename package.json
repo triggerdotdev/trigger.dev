@@ -34,6 +34,8 @@
     "check-exports": "turbo run check-exports",
     "clean": "turbo run clean",
     "clean:node_modules": "find . -name 'node_modules' -type d -prune -exec rm -rf '{}' +",
+    "clean:python": "find . -name '*.pyc' -delete && find . -name '__pycache__' -type d -exec rm -rf '{}' + 2>/dev/null || true",
+    "clean:all": "pnpm run clean && pnpm run clean:python",
     "typecheck": "turbo run typecheck",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",

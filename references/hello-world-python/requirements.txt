@@ -1,3 +1,6 @@
 pydantic>=2.0.0
 requests[security]>=2.28.0
 httpx==0.24.1
+grpcio>=1.68.0
+grpcio-tools>=1.68.0
+protobuf>=6.31.1

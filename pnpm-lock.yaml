@@ -1309,6 +1309,12 @@ importers:
       '@depot/cli':
         specifier: 0.0.1-cli.2.80.0
         version: 0.0.1-cli.2.80.0
+      '@grpc/grpc-js':
+        specifier: ^1.12.4
+        version: 1.12.6
+      '@grpc/proto-loader':
+        specifier: ^0.7.15
+        version: 0.7.15
       '@modelcontextprotocol/sdk':
         specifier: ^1.17.0
         version: 1.17.1(supports-color@10.0.0)
@@ -2240,6 +2246,8 @@ importers:
       trigger.dev:
         specifier: workspace:*
         version: link:../../packages/cli-v3
+
+  references/hello-world-python: {}
 
   references/init-shell:
     devDependencies:
@@ -7554,11 +7562,11 @@ packages:
     resolution: {integrity: sha512-JXUj6PI0oqqzTGvKtzOkxtpsyPRNsrmhh41TtIz/zEB6J+AUiZZ0dxWzcMwO9Ns5rmSPuMdghlTbUuqIM48d3Q==}
     engines: {node: '>=12.10.0'}
     dependencies:
-      '@grpc/proto-loader': 0.7.13
+      '@grpc/proto-loader': 0.7.15
       '@js-sdsl/ordered-map': 4.4.2
 
-  /@grpc/proto-loader@0.7.13:
-    resolution: {integrity: sha512-AiXO/bfe9bmxBjxxtYxFAXGZvMaN5s8kO+jBHAJCON8rJoB5YS/D6X7ZNc6XQkuHNmyl4CYaMI1fJ/Gn27RGGw==}
+  /@grpc/proto-loader@0.7.15:
+    resolution: {integrity: sha512-tMXdRCfYVixjuFK+Hk0Q1s38gV9zDiDJfWL3h1rv4Qc39oILCu1TRTDt7+fGUI8K4G1Fj125Hx/ru3azECWTyQ==}
     engines: {node: '>=6'}
     hasBin: true
     dependencies:
@@ -21854,7 +21862,7 @@ packages:
     dependencies:
       '@balena/dockerignore': 1.0.2
       '@grpc/grpc-js': 1.12.6
-      '@grpc/proto-loader': 0.7.13
+      '@grpc/proto-loader': 0.7.15
       docker-modem: 5.0.6
       protobufjs: 7.3.2
       tar-fs: 2.1.3

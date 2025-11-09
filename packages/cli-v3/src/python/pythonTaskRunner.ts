@@ -14,6 +14,66 @@ import { logger } from "../utilities/logger.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+/**
+ * Convert protobuf completion message (snake_case) to TypeScript result (camelCase)
+ */
+function protoCompletionToResult(
+  completion: any,
+  runId: string,
+  isSuccess: boolean
+): TaskRunExecutionResult {
+  if (isSuccess) {
+    return {
+      ok: true,
+      id: runId,
+      output: completion.output,
+      outputType: completion.output_type || "application/json",
+      usage: {
+        durationMs: parseInt(completion.usage?.duration_ms || "0"),
+      },
+    };
+  } else {
+    return {
+      ok: false,
+      id: runId,
+      error: completion.error,
+      usage: {
+        durationMs: parseInt(completion.usage?.duration_ms || "0"),
+      },
+    };
+  }
+}
+
+/**
+ * Convert TypeScript execution (camelCase) to protobuf message (snake_case)
+ */
+function executionToProtoMessage(execution: TaskRunExecution) {
+  return {
+    execute_task_run: {
+      type: "EXECUTE_TASK_RUN",
+      version: "v1",
+      execution: {
+        task: {
+          id: execution.task.id,
+          file_path: execution.task.filePath,
+        },
+        run: {
+          id: execution.run.id,
+          payload: JSON.stringify(execution.run.payload), // CRITICAL: Must be JSON string
+          payload_type: execution.run.payloadType || "application/json",
+          tags: execution.run.tags || [],
+          is_test: execution.run.isTest || false,
+        },
+        attempt: {
+          id: String(execution.attempt.id),
+          number: execution.attempt.number,
+          started_at: execution.attempt.startedAt?.toISOString() || new Date().toISOString(),
+        },
+      },
+    },
+  };
+}
+
 export class PythonTaskRunner {
   async executeTask(execution: TaskRunExecution): Promise<TaskRunExecutionResult> {
     const workerScript = path.join(__dirname, "../entryPoints/python/managed-run-worker.py");
@@ -36,7 +96,20 @@ export class PythonTaskRunner {
     });
 
     try {
-      const ipc = await pythonProcess.start();
+      const grpcServer = await pythonProcess.start();
+
+      // Wait for worker to connect
+      const connectionId = await new Promise<string>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error("Worker failed to connect via gRPC"));
+        }, 10000);
+
+        grpcServer.once("connection", (connId: string) => {
+          clearTimeout(timeout);
+          logger.debug("Python worker connected", { connectionId: connId });
+          resolve(connId);
+        });
+      });
 
       // Wait for completion or failure
       const result = await new Promise<TaskRunExecutionResult>((resolve, reject) => {
@@ -44,65 +117,22 @@ export class PythonTaskRunner {
           reject(new Error("Task execution timeout"));
         }, execution.run.maxDuration ?? 300000);
 
-        ipc.on("TASK_RUN_COMPLETED", (message: any) => {
+        grpcServer.on("TASK_RUN_COMPLETED", (message: any) => {
           clearTimeout(timeout);
-          resolve({
-            ok: true,
-            id: execution.run.id,
-            output: message.completion.output,
-            outputType: message.completion.outputType,
-            usage: message.completion.usage,
-          });
+          resolve(protoCompletionToResult(message.completion, execution.run.id, true));
         });
 
-        ipc.on("TASK_RUN_FAILED_TO_RUN", (message: any) => {
+        grpcServer.on("TASK_RUN_FAILED_TO_RUN", (message: any) => {
           clearTimeout(timeout);
-          resolve({
-            ok: false,
-            id: execution.run.id,
-            error: message.completion.error,
-            usage: message.completion.usage,
-          });
+          resolve(protoCompletionToResult(message.completion, execution.run.id, false));
         });
 
-        ipc.on("TASK_HEARTBEAT", () => {
+        grpcServer.on("TASK_HEARTBEAT", () => {
           logger.debug("Received heartbeat from Python task");
         });
 
-        ipc.on("exit", (code: number | null) => {
-          clearTimeout(timeout);
-          if (code !== 0) {
-            reject(new Error(`Python worker exited with code ${code}`));
-          }
-        });
-
-        // Send execution message
-        ipc.send({
-          type: "EXECUTE_TASK_RUN",
-          version: "v1",
-          execution: {
-            task: {
-              id: execution.task.id,
-              filePath: execution.task.filePath,
-              exportName: execution.task.exportName,
-            },
-            run: {
-              id: execution.run.id,
-              payload: JSON.stringify(execution.run.payload), // CRITICAL: Must be JSON string
-              payloadType: execution.run.payloadType,
-              traceContext: execution.run.traceContext,
-              tags: execution.run.tags,
-              isTest: execution.run.isTest,
-            },
-            attempt: {
-              id: execution.attempt.id,
-              number: execution.attempt.number,
-              startedAt: execution.attempt.startedAt,
-              backgroundWorkerId: execution.attempt.backgroundWorkerId,
-              backgroundWorkerTaskId: execution.attempt.backgroundWorkerTaskId,
-            },
-          },
-        });
+        // Send execution message via gRPC
+        grpcServer.sendToWorker(connectionId, executionToProtoMessage(execution));
       });
 
       return result;

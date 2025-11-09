@@ -10,6 +10,8 @@ requires-python = ">=3.10"
 dependencies = [
     "pydantic>=2.0.0",
     "typing-extensions>=4.5.0",
+    "grpcio>=1.68.0",
+    "grpcio-tools>=1.68.0",
 ]
 
 [project.optional-dependencies]

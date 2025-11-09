@@ -22,7 +22,6 @@ from typing import Dict, List, Any
 
 # Import SDK (assumes it's installed via pip)
 from trigger_sdk.task import TASK_REGISTRY
-from trigger_sdk.ipc import StdioIpcConnection
 from trigger_sdk.schemas import IndexTasksCompleteMessage, TaskResource
 from trigger_sdk.logger import logger
 
@@ -112,11 +111,11 @@ def collect_task_metadata() -> List[Dict[str, Any]]:
 
 async def main():
     """Main indexing workflow"""
-    logger.info("Python index worker starting")
+    logger.debug("Python index worker starting")
 
     # Load manifest
     manifest = load_manifest()
-    logger.info(f"Loaded manifest with {len(manifest.get('files', []))} task files")
+    logger.debug(f"Loaded manifest with {len(manifest.get('files', []))} task files")
 
     # Import all task files
     task_files = manifest.get("files", [])
@@ -127,11 +126,11 @@ async def main():
         if file_path and import_task_file(file_path):
             success_count += 1
 
-    logger.info(f"Imported {success_count}/{len(task_files)} task files")
+    logger.debug(f"Imported {success_count}/{len(task_files)} task files")
 
     # Collect task metadata
     tasks = collect_task_metadata()
-    logger.info(f"Found {len(tasks)} tasks")
+    logger.debug(f"Found {len(tasks)} tasks")
 
     # Build WorkerManifest format (matching TypeScript expectations)
     worker_manifest = {
@@ -142,9 +141,7 @@ async def main():
         "runtime": manifest.get("runtime", "python"),
     }
 
-    # Send INDEX_COMPLETE message (matching TypeScript schema)
-    # Note: We send raw JSON to stdout instead of using Pydantic message
-    # because the TypeScript IPC format is different
+    # Send INDEX_COMPLETE message via stdout (for stdio-based communication)
     index_complete_msg = {
         "type": "INDEX_COMPLETE",
         "version": "v1",
@@ -157,14 +154,14 @@ async def main():
     sys.stdout.write(json.dumps(index_complete_msg) + "\n")
     sys.stdout.flush()
 
-    logger.info("Indexing complete")
+    logger.debug("Indexing complete")
 
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.info("Index worker interrupted")
+        logger.debug("Index worker interrupted")
         sys.exit(0)
     except Exception as e:
         logger.error(f"Index worker failed: {e}", exception=traceback.format_exc())

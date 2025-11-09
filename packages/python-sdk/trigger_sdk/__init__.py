@@ -2,7 +2,7 @@
 
 from trigger_sdk.task import task, Task, TASK_REGISTRY
 from trigger_sdk.types import TaskConfig, RetryConfig, QueueConfig
-from trigger_sdk.ipc import IpcConnection, StdioIpcConnection
+from trigger_sdk.ipc import IpcConnection, GrpcIpcConnection
 from trigger_sdk.schemas.messages import WorkerMessage, CoordinatorMessage
 from trigger_sdk.schemas.common import TaskRunExecution
 from trigger_sdk.context import TaskContext, get_current_context
@@ -20,7 +20,7 @@ __all__ = [
     "QueueConfig",
     # IPC layer
     "IpcConnection",
-    "StdioIpcConnection",
+    "GrpcIpcConnection",
     # Message types
     "WorkerMessage",
     "CoordinatorMessage",

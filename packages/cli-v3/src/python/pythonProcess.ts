@@ -1,12 +1,12 @@
 /**
  * Python worker process management.
  *
- * Spawns Python workers and manages their lifecycle.
+ * Spawns Python workers and manages their lifecycle using gRPC.
  */
 
 import { spawn, ChildProcess } from "child_process";
 import { BuildRuntime } from "@trigger.dev/core/v3";
-import { StdioIpcConnection } from "./stdioIpc.js";
+import { GrpcWorkerServer } from "../ipc/grpcServer.js";
 import { logger } from "../utilities/logger.js";
 import { execPathForRuntime } from "@trigger.dev/core/v3/build";
 
@@ -19,17 +19,27 @@ export interface PythonProcessOptions {
 
 export class PythonProcess {
   private process: ChildProcess | undefined;
-  private ipc: StdioIpcConnection | undefined;
+  private grpcServer: GrpcWorkerServer | undefined;
 
   constructor(private options: PythonProcessOptions) {}
 
-  async start(): Promise<StdioIpcConnection> {
+  async start(): Promise<GrpcWorkerServer> {
     const pythonBinary = execPathForRuntime(this.options.runtime ?? "python");
+
+    // Start gRPC server
+    this.grpcServer = new GrpcWorkerServer({
+      transport: "tcp", // Use TCP for dev mode (easier debugging)
+      tcpPort: 0, // Random available port
+    });
+
+    const grpcAddress = await this.grpcServer.start();
+    logger.debug("Started gRPC server for Python worker", { address: grpcAddress });
 
     logger.debug("Starting Python worker process", {
       binary: pythonBinary,
       script: this.options.workerScript,
       cwd: this.options.cwd,
+      grpcAddress,
     });
 
     this.process = spawn(
@@ -43,24 +53,107 @@ export class PythonProcess {
         env: {
           ...process.env,
           ...this.options.env,
-          // Ensure unbuffered output
           PYTHONUNBUFFERED: "1",
+          TRIGGER_GRPC_ADDRESS: grpcAddress,
         },
         stdio: ["pipe", "pipe", "pipe"],
       }
     );
 
-    this.ipc = new StdioIpcConnection({
-      process: this.process,
-      handleStderr: true,
+    // Handle spawn errors (e.g., Python binary not found, permission denied)
+    this.process.on("error", (error) => {
+      logger.error("Failed to spawn Python worker process", {
+        error: error.message,
+        binary: pythonBinary,
+        script: this.options.workerScript,
+      });
+      // Common issues and helpful messages
+      if (error.message.includes("ENOENT")) {
+        logger.error(
+          `Python binary not found at '${pythonBinary}'. ` +
+          `Please ensure Python is installed and in your PATH, or set PYTHON_PATH environment variable.`
+        );
+      } else if (error.message.includes("EACCES")) {
+        logger.error(
+          `Permission denied executing '${pythonBinary}'. ` +
+          `Please check file permissions.`
+        );
+      }
     });
 
-    // Forward logs
-    this.ipc.on("log", (logData) => {
-      logger.debug("Python worker log", logData);
+    // Forward stderr logs from Python process
+    this.process.stderr?.on("data", (data) => {
+      const output = data.toString().trim();
+      if (!output) return;
+
+      // Try to parse as structured JSON log
+      const lines = output.split("\n");
+      for (const line of lines) {
+        if (!line.trim()) continue;
+
+        try {
+          const logEntry = JSON.parse(line);
+          if (logEntry.level && logEntry.message) {
+            // Handle structured log with appropriate level
+            const level = logEntry.level.toLowerCase();
+            const logData = {
+              message: logEntry.message,
+              ...(logEntry.logger && { logger: logEntry.logger }),
+              ...(logEntry.exception && { exception: logEntry.exception }),
+            };
+
+            switch (level) {
+              case "debug":
+                logger.debug("Python worker", logData);
+                break;
+              case "info":
+                logger.info("Python worker", logData);
+                break;
+              case "warn":
+              case "warning":
+                logger.warn("Python worker", logData);
+                break;
+              case "error":
+              case "critical":
+                logger.error("Python worker", logData);
+                if (logEntry.exception) {
+                  console.error(`[Python] ${logEntry.message}\n${logEntry.exception}`);
+                }
+                break;
+              default:
+                logger.info("Python worker", logData);
+            }
+          } else {
+            // JSON but not structured log format
+            logger.info("Python worker", { output: line });
+          }
+        } catch {
+          // Not JSON, treat as regular stderr
+          logger.error("Python worker stderr", { output: line });
+          console.error(`[Python stderr] ${line}`);
+        }
+      }
     });
 
-    return this.ipc;
+    // Forward stdout logs from Python process
+    this.process.stdout?.on("data", (data) => {
+      const output = data.toString().trim();
+      if (output) {
+        logger.info("Python worker stdout", { output });
+        console.log(`[Python stdout] ${output}`);
+      }
+    });
+
+    // Handle process exit
+    this.process.on("exit", (code, signal) => {
+      if (code === 0) {
+        logger.debug("Python worker exited", { code, signal });
+      } else {
+        logger.error("Python worker exited", { code, signal });
+      }
+    });
+
+    return this.grpcServer;
   }
 
   async kill(signal: NodeJS.Signals = "SIGTERM"): Promise<void> {
@@ -85,8 +178,10 @@ export class PythonProcess {
   }
 
   async cleanup(): Promise<void> {
-    this.ipc?.close();
     await this.kill();
+    if (this.grpcServer) {
+      await this.grpcServer.stop();
+    }
   }
 
   get pid(): number | undefined {
