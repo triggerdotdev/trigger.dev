@@ -77,6 +77,7 @@ export function formatDateTime(
     minute: includeTime ? "numeric" : undefined,
     second: includeTime && includeSeconds ? "numeric" : undefined,
     timeZone,
+    hour12: false,
   }).format(date);
 }
 
@@ -179,6 +180,7 @@ function formatSmartDateTime(date: Date, timeZone: string, locales: string[]): s
     timeZone,
     // @ts-ignore fractionalSecondDigits works in most modern browsers
     fractionalSecondDigits: 3,
+    hour12: false,
   }).format(date);
 }
 
@@ -191,6 +193,7 @@ function formatTimeOnly(date: Date, timeZone: string, locales: string[]): string
     timeZone,
     // @ts-ignore fractionalSecondDigits works in most modern browsers
     fractionalSecondDigits: 3,
+    hour12: false,
   }).format(date);
 }
 
@@ -255,6 +258,7 @@ function formatDateTimeAccurate(date: Date, timeZone: string, locales: string[])
     timeZone,
     // @ts-ignore fractionalSecondDigits works in most modern browsers
     fractionalSecondDigits: 3,
+    hour12: false,
   }).format(date);
 
   return formattedDateTime;
@@ -282,6 +286,7 @@ function formatDateTimeShort(date: Date, timeZone: string, locales: string[]): s
     timeZone,
     // @ts-ignore fractionalSecondDigits works in most modern browsers
     fractionalSecondDigits: 3,
+    hour12: false,
   }).format(date);
 
   return formattedDateTime;
