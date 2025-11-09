@@ -245,7 +245,14 @@ export default function Page() {
               </Property.Item>
               <Property.Item>
                 <Property.Label>Logs</Property.Label>
-                <LogsDisplay logs={logs} isStreaming={isStreaming} streamError={streamError} />
+                <LogsDisplay
+                  logs={logs}
+                  isStreaming={isStreaming}
+                  streamError={streamError}
+                  initialCollapsed={(
+                    ["PENDING", "DEPLOYED", "TIMED_OUT"] satisfies (typeof deployment.status)[]
+                  ).includes(deployment.status)}
+                />
               </Property.Item>
               {deployment.canceledAt && (
                 <Property.Item>
@@ -425,6 +432,10 @@ function LogsDisplay({
   const [mouseOver, setMouseOver] = useState(false);
   const [collapsed, setCollapsed] = useState(initialCollapsed);
   const logsContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setCollapsed(initialCollapsed);
+  }, [initialCollapsed]);
 
   // auto-scroll log container to bottom when new logs arrive
   useEffect(() => {
