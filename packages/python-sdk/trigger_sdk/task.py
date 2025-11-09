@@ -88,11 +88,14 @@ def task(
     retry_config = RetryConfig(**retry) if isinstance(retry, dict) else retry
     queue_config = QueueConfig(**queue) if isinstance(queue, dict) else queue
 
+    # Convert max_duration from seconds to milliseconds (TypeScript expects ms)
+    max_duration_ms = max_duration * 1000 if max_duration is not None else None
+
     config = TaskConfig(
         id=id,
         retry=retry_config,
         queue=queue_config,
-        maxDuration=max_duration,
+        maxDuration=max_duration_ms,
     )
 
     def decorator(fn: Callable[..., Any]) -> Task:

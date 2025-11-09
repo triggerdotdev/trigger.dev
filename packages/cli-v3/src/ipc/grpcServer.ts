@@ -140,8 +140,13 @@ export class GrpcWorkerServer extends EventEmitter {
       ...(logMessage.exception && { exception: logMessage.exception }),
     };
 
+    // Normalize log level to number (protobuf sends enum as string name)
+    const level = typeof logMessage.level === 'string'
+      ? LogLevel[logMessage.level as keyof typeof LogLevel]
+      : logMessage.level;
+
     // Route to appropriate log level
-    switch (logMessage.level) {
+    switch (level) {
       case LogLevel.DEBUG:
         logger.debug('Python worker', logData);
         break;
@@ -158,7 +163,7 @@ export class GrpcWorkerServer extends EventEmitter {
         }
         break;
       default:
-        logger.info('Python worker', logData);
+        logger.warn('Python worker (unknown log level)', { ...logData, receivedLevel: logMessage.level });
     }
   }
 

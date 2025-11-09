@@ -113,9 +113,17 @@ export class PythonTaskRunner {
 
       // Wait for completion or failure
       const result = await new Promise<TaskRunExecutionResult>((resolve, reject) => {
+        // execution.run.maxDuration is in SECONDS from the platform, convert to milliseconds
+        const maxDurationMs = execution.run.maxDuration
+          ? execution.run.maxDuration * 1000
+          : 300000;
+        logger.debug(`Setting task timeout to ${maxDurationMs}ms (${maxDurationMs/1000}s)`, {
+          maxDuration: execution.run.maxDuration,
+          runId: execution.run.id,
+        });
         const timeout = setTimeout(() => {
           reject(new Error("Task execution timeout"));
-        }, execution.run.maxDuration ?? 300000);
+        }, maxDurationMs);
 
         grpcServer.on("TASK_RUN_COMPLETED", (message: any) => {
           clearTimeout(timeout);

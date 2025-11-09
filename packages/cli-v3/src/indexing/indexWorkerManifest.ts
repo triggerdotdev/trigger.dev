@@ -50,6 +50,7 @@ export async function indexWorkerManifest({
         TRIGGER_BUILD_MANIFEST_PATH: buildManifestPath,
         NODE_OPTIONS: nodeOptions,
         TRIGGER_INDEXING: "1",
+        PYTHONDONTWRITEBYTECODE: "1", // Disable .pyc files in dev to avoid stale cache
       },
       execPath: execPathForRuntime(runtime),
     });

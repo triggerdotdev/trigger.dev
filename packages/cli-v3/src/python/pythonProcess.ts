@@ -54,6 +54,7 @@ export class PythonProcess {
           ...process.env,
           ...this.options.env,
           PYTHONUNBUFFERED: "1",
+          PYTHONDONTWRITEBYTECODE: "1", // Disable .pyc files in dev to avoid stale cache
           TRIGGER_GRPC_ADDRESS: grpcAddress,
         },
         stdio: ["pipe", "pipe", "pipe"],

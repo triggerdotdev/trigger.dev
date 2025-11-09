@@ -24,7 +24,7 @@ class TaskConfig(BaseModel):
     id: str
     retry: Optional[RetryConfig] = None
     queue: Optional[QueueConfig] = None
-    maxDuration: Optional[int] = None  # seconds
+    maxDuration: Optional[int] = None  # milliseconds (converted from seconds in decorator)
 
 
 class TaskMetadata(BaseModel):

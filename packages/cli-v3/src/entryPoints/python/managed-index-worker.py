@@ -99,7 +99,9 @@ def collect_task_metadata() -> List[Dict[str, Any]]:
             if task_meta.queue:
                 task_dict["queue"] = task_meta.queue.model_dump()
             if task_meta.maxDuration is not None:
+                # Already in milliseconds from task decorator
                 task_dict["maxDuration"] = task_meta.maxDuration
+                logger.debug(f"Task {task_id} maxDuration: {task_meta.maxDuration}ms")
 
             tasks.append(task_dict)
             logger.debug(f"Collected task: {task_id}")
