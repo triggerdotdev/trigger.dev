@@ -1,7 +1,7 @@
 {
-  "tasks": [
+  "files": [
     {
-      "filePath": "packages/cli-v3/tests/python/test-task.py"
+      "filePath": "/Users/beydogan/dev/trigger.dev/packages/cli-v3/tests/python/test-task.py"
     }
   ]
 }

@@ -108,7 +108,26 @@ export async function indexWorkerManifest({
     });
 
     child.stdout?.on("data", (data) => {
-      handleStdout?.(data.toString());
+      const output = data.toString();
+      handleStdout?.(output);
+
+      // For Python runtime, parse JSON messages from stdout
+      if (runtime === "python") {
+        const lines = output.split("\n").filter((line: string) => line.trim());
+        for (const line of lines) {
+          try {
+            const parsed = JSON.parse(line);
+            // Check if this is an IPC message (not a log)
+            if (parsed.type && parsed.version) {
+              const message = parseMessageFromCatalog(parsed, indexerToWorkerMessages);
+              // Trigger the same handler as IPC messages
+              child.emit("message", message);
+            }
+          } catch {
+            // Not JSON or not a message, ignore (probably a log)
+          }
+        }
+      }
     });
 
     child.stderr?.on("data", (data) => {

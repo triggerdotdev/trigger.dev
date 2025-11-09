@@ -625,11 +625,12 @@ const BASE_IMAGE: Record<BuildRuntime, string> = {
   node: "node:21.7.3-bookworm-slim@sha256:dfc05dee209a1d7adf2ef189bd97396daad4e97c6eaa85778d6f75205ba1b0fb",
   "node-22":
     "node:22.16.0-bookworm-slim@sha256:048ed02c5fd52e86fda6fbd2f6a76cf0d4492fd6c6fee9e2c463ed5108da0e34",
+  python: "python:3.12-slim-bookworm@sha256:5dc6f84b5e2d9abc9a5f654ede91c47eec11c2ae3f82db452c5f5c61d5803c8d",
 };
 
 const DEFAULT_PACKAGES = ["busybox", "ca-certificates", "dumb-init", "git", "openssl"];
 
-export async function generateContainerfile(options: GenerateContainerfileOptions) {
+export async function generateContainerfile(options: GenerateContainerfileOptions): Promise<string> {
   switch (options.runtime) {
     case "node":
     case "node-22": {
@@ -637,6 +638,12 @@ export async function generateContainerfile(options: GenerateContainerfileOption
     }
     case "bun": {
       return await generateBunContainerfile(options);
+    }
+    case "python": {
+      throw new Error("Python Containerfile generation not implemented yet (Task 08)");
+    }
+    default: {
+      throw new Error(`Unsupported runtime: ${options.runtime}`);
     }
   }
 }

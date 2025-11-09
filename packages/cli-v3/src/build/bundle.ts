@@ -4,7 +4,7 @@ import { BuildManifest, BuildTarget, TaskFile } from "@trigger.dev/core/v3/schem
 import * as esbuild from "esbuild";
 import { createHash } from "node:crypto";
 import path, { join, relative, resolve } from "node:path";
-import fs from "fs-extra";
+import { writeFile } from "node:fs/promises";
 import { createFile } from "../utilities/fileSystem.js";
 import { logger } from "../utilities/logger.js";
 import { resolveFileSources } from "../utilities/sourceFiles.js";
@@ -471,14 +471,13 @@ async function bundlePythonWorker(options: BundleOptions): Promise<BundleResult>
   // Create complete BuildManifest
   const buildManifest = await createBuildManifestFromPythonBundle(bundleResult, {
     outputDir: destination,
-    projectDir: cwd,
     config: resolvedConfig,
     target,
   });
 
   // Write manifest to output
   const manifestPath = join(destination, "build-manifest.json");
-  await fs.writeJson(manifestPath, buildManifest, { spaces: 2 });
+  await writeFile(manifestPath, JSON.stringify(buildManifest, null, 2));
 
   // Convert to BundleResult
   const pythonBundleResult: BundleResult = {

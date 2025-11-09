@@ -5,7 +5,7 @@
  */
 
 import path from "path";
-import fs from "fs-extra";
+import { readFile, copyFile, mkdir, access } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import type { BuildManifest, BuildTarget } from "@trigger.dev/core/v3";
 import type { ResolvedConfig } from "@trigger.dev/core/v3/build";
@@ -13,6 +13,7 @@ import { logger } from "../utilities/logger.js";
 import { parseRequirementsTxt } from "./pythonDependencies.js";
 import { VERSION } from "../version.js";
 import { CORE_VERSION } from "@trigger.dev/core/v3";
+import { sourceDir } from "../sourceDir.js";
 
 export interface PythonBundleOptions {
   entryPoints: string[]; // Absolute paths to Python files
@@ -48,7 +49,7 @@ export async function bundlePython(options: PythonBundleOptions): Promise<Python
   });
 
   // Create output directory
-  await fs.ensureDir(outputDir);
+  await mkdir(outputDir, { recursive: true });
 
   // Copy Python files to output
   const entries: PythonBundleResult["entries"] = [];
@@ -59,13 +60,13 @@ export async function bundlePython(options: PythonBundleOptions): Promise<Python
       const outputPath = path.join(outputDir, relativePath);
 
       // Ensure output directory exists
-      await fs.ensureDir(path.dirname(outputPath));
+      await mkdir(path.dirname(outputPath), { recursive: true });
 
       // Read file content
-      const content = await fs.readFile(entryPoint, "utf-8");
+      const content = await readFile(entryPoint, "utf-8");
 
       // Copy file
-      await fs.copyFile(entryPoint, outputPath);
+      await copyFile(entryPoint, outputPath);
 
       // Calculate content hash
       const contentHash = createHash("md5").update(content).digest("hex");
@@ -91,17 +92,18 @@ export async function bundlePython(options: PythonBundleOptions): Promise<Python
   let requirementsContent: string | undefined;
   const reqPath = requirementsFile || path.join(projectDir, "requirements.txt");
 
-  if (await fs.pathExists(reqPath)) {
-    requirementsContent = await fs.readFile(reqPath, "utf-8");
+  try {
+    await access(reqPath);
+    requirementsContent = await readFile(reqPath, "utf-8");
 
     // Copy requirements.txt to output
-    await fs.copyFile(reqPath, path.join(outputDir, "requirements.txt"));
+    await copyFile(reqPath, path.join(outputDir, "requirements.txt"));
 
     logger.info("Copied requirements.txt", {
       path: reqPath,
       dependencies: parseRequirementsTxt(requirementsContent).length,
     });
-  } else {
+  } catch {
     logger.warn("No requirements.txt found, Python tasks may have missing dependencies");
   }
 
@@ -176,10 +178,9 @@ export async function createBuildManifestFromPythonBundle(
     files,
     sources,
     outputPath: outputDir,
-    // Python entry points - these are relative paths to Python scripts
-    // The runtime will resolve them from the CLI package
-    runWorkerEntryPoint: "entryPoints/python/managed-run-worker.py",
-    indexWorkerEntryPoint: "entryPoints/python/managed-index-worker.py",
+    // Python entry points - absolute paths to Python scripts in CLI package
+    runWorkerEntryPoint: path.join(sourceDir, "entryPoints/python/managed-run-worker.py"),
+    indexWorkerEntryPoint: path.join(sourceDir, "entryPoints/python/managed-index-worker.py"),
     configPath: config.configFile || "trigger.config.ts",
     build: {},
     deploy: {

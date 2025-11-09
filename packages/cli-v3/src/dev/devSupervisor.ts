@@ -1,4 +1,5 @@
 import { setTimeout as awaitTimeout } from "node:timers/promises";
+import path from "node:path";
 import {
   BuildManifest,
   CreateBackgroundWorkerRequestBody,
@@ -27,6 +28,7 @@ import { resolveLocalEnvVars } from "../utilities/localEnvVars.js";
 import type { Metafile } from "esbuild";
 import { TaskRunProcessPool } from "./taskRunProcessPool.js";
 import { tryCatch } from "@trigger.dev/core/utils";
+import { sourceDir } from "../sourceDir.js";
 
 export type WorkerRuntimeOptions = {
   name: string | undefined;
@@ -454,7 +456,7 @@ class DevSupervisor implements WorkerRuntime {
       ","
     );
 
-    return {
+    const baseEnv = {
       ...resolveLocalEnvVars(
         this.options.args.envFile,
         environmentVariablesResponse.success ? environmentVariablesResponse.data.variables : {}
@@ -468,6 +470,20 @@ class DevSupervisor implements WorkerRuntime {
       }),
       OTEL_IMPORT_HOOK_INCLUDES,
     };
+
+    // Add PYTHONPATH for Python runtime (points to python-sdk for dev mode)
+    if (this.options.config.runtime === "python") {
+      // sourceDir = /Users/.../packages/cli-v3/dist/esm/
+      // python-sdk = /Users/.../packages/python-sdk/
+      const pythonSdkPath = path.join(sourceDir, "../../../python-sdk");
+
+      return {
+        ...baseEnv,
+        PYTHONPATH: pythonSdkPath,
+      };
+    }
+
+    return baseEnv;
   }
 
   async #registerWorker(worker: BackgroundWorker) {

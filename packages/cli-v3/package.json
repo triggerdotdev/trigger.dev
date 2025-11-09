@@ -72,7 +72,8 @@
   "scripts": {
     "clean": "rimraf dist .tshy .tshy-build .turbo",
     "typecheck": "tsc -p tsconfig.src.json --noEmit",
-    "build": "tshy && pnpm run update-version",
+    "build": "tshy && pnpm run update-version && pnpm run copy-python",
+    "copy-python": "mkdir -p dist/esm/entryPoints/python && cp src/entryPoints/python/*.py dist/esm/entryPoints/python/",
     "dev": "tshy --watch",
     "test": "vitest",
     "test:e2e": "vitest --run -c ./e2e/vitest.config.ts",

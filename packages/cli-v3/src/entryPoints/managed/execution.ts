@@ -611,17 +611,11 @@ export class RunExecution {
     const taskRunEnv = this.currentTaskRunEnv ?? envVars;
 
     // Check if this is a Python task - use PythonTaskRunner instead of TaskRunProcess
-    if (this.opts.workerManifest.runtime === "python") {
+    if (this.workerManifest.runtime === "python") {
       this.sendDebugLog("executing Python task", { taskId: execution.task.id });
 
       const pythonRunner = new PythonTaskRunner();
-      const completion = await pythonRunner.executeTask({
-        ...execution,
-        worker: {
-          runtime: "python",
-          manifestPath: this.env.TRIGGER_WORKER_MANIFEST_PATH,
-        },
-      });
+      const completion = await pythonRunner.executeTask(execution);
 
       this.sendDebugLog("completed Python run attempt", { attemptSuccess: completion.ok });
 

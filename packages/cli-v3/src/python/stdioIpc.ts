@@ -54,9 +54,12 @@ const TaskHeartbeatSchema = z.object({
 });
 
 const IndexCompleteSchema = z.object({
-  type: z.literal("INDEX_TASKS_COMPLETE"),
+  type: z.literal("INDEX_COMPLETE"),
   version: z.literal("v1"),
-  tasks: z.array(z.record(z.any())),
+  payload: z.object({
+    manifest: z.record(z.any()),
+    importErrors: z.array(z.any()),
+  }),
 });
 
 const WorkerMessageSchema = z.discriminatedUnion("type", [

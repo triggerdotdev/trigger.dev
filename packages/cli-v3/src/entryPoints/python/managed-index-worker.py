@@ -29,7 +29,7 @@ from trigger_sdk.logger import logger
 
 def load_manifest() -> Dict[str, Any]:
     """Load build manifest from file or environment"""
-    manifest_path = os.getenv("TRIGGER_MANIFEST_PATH", "./build-manifest.json")
+    manifest_path = os.getenv("TRIGGER_BUILD_MANIFEST_PATH", "./build-manifest.json")
 
     try:
         with open(manifest_path, "r") as f:
@@ -86,18 +86,23 @@ def collect_task_metadata() -> List[Dict[str, Any]]:
             # Get task metadata
             task_meta = task.get_metadata()
 
-            # Convert to TaskResource schema
-            # Note: Convert retry/queue to dicts to handle schema differences
-            task_resource = TaskResource(
-                id=task_meta.id,
-                filePath=task_meta.filePath,
-                exportName=task_meta.exportName,
-                retry=task_meta.retry.model_dump() if task_meta.retry else None,
-                queue=task_meta.queue.model_dump() if task_meta.queue else None,
-                maxDuration=task_meta.maxDuration,
-            )
+            # Build task dict with required and optional fields
+            task_dict = {
+                "id": task_meta.id,
+                "filePath": task_meta.filePath,
+                "exportName": task_meta.exportName,
+                "entryPoint": task_meta.filePath,  # Required by TypeScript schema
+            }
 
-            tasks.append(task_resource.model_dump())
+            # Add optional fields only if they have values
+            if task_meta.retry:
+                task_dict["retry"] = task_meta.retry.model_dump()
+            if task_meta.queue:
+                task_dict["queue"] = task_meta.queue.model_dump()
+            if task_meta.maxDuration is not None:
+                task_dict["maxDuration"] = task_meta.maxDuration
+
+            tasks.append(task_dict)
             logger.debug(f"Collected task: {task_id}")
         except Exception as e:
             logger.error(f"Failed to get metadata for task {task_id}: {e}")
@@ -111,10 +116,10 @@ async def main():
 
     # Load manifest
     manifest = load_manifest()
-    logger.info(f"Loaded manifest with {len(manifest.get('tasks', []))} task files")
+    logger.info(f"Loaded manifest with {len(manifest.get('files', []))} task files")
 
     # Import all task files
-    task_files = manifest.get("tasks", [])
+    task_files = manifest.get("files", [])
     success_count = 0
 
     for task_file in task_files:
@@ -128,10 +133,29 @@ async def main():
     tasks = collect_task_metadata()
     logger.info(f"Found {len(tasks)} tasks")
 
-    # Send INDEX_TASKS_COMPLETE message
-    ipc = StdioIpcConnection()
-    message = IndexTasksCompleteMessage(tasks=tasks)
-    await ipc.send(message)
+    # Build WorkerManifest format (matching TypeScript expectations)
+    worker_manifest = {
+        "configPath": manifest.get("configPath", "trigger.config.ts"),
+        "tasks": tasks,
+        "incompatiblePackages": [],
+        "workerEntryPoint": manifest.get("runWorkerEntryPoint", ""),
+        "runtime": manifest.get("runtime", "python"),
+    }
+
+    # Send INDEX_COMPLETE message (matching TypeScript schema)
+    # Note: We send raw JSON to stdout instead of using Pydantic message
+    # because the TypeScript IPC format is different
+    index_complete_msg = {
+        "type": "INDEX_COMPLETE",
+        "version": "v1",
+        "payload": {
+            "manifest": worker_manifest,
+            "importErrors": [],
+        }
+    }
+
+    sys.stdout.write(json.dumps(index_complete_msg) + "\n")
+    sys.stdout.flush()
 
     logger.info("Indexing complete")
 

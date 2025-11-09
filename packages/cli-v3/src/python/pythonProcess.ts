@@ -66,19 +66,21 @@ export class PythonProcess {
   async kill(signal: NodeJS.Signals = "SIGTERM"): Promise<void> {
     if (!this.process) return;
 
+    const process = this.process;
+
     return new Promise((resolve) => {
       const timeout = setTimeout(() => {
         logger.warn("Python worker did not exit gracefully, forcing kill");
-        this.process?.kill("SIGKILL");
+        process.kill("SIGKILL");
         resolve();
       }, 5000);
 
-      this.process.once("exit", () => {
+      process.once("exit", () => {
         clearTimeout(timeout);
         resolve();
       });
 
-      this.process.kill(signal);
+      process.kill(signal);
     });
   }
 

@@ -21,12 +21,12 @@ export class PythonTaskRunner {
     // Determine PYTHONPATH - use env var if set, otherwise use relative path for dev
     const pythonPath = process.env.TRIGGER_PYTHON_SDK_PATH
       ? process.env.TRIGGER_PYTHON_SDK_PATH
-      : path.join(__dirname, "../../../python-sdk");
+      : path.join(__dirname, "../../../../python-sdk");
 
     const pythonProcess = new PythonProcess({
       workerScript,
       env: {
-        TRIGGER_MANIFEST_PATH: execution.worker.manifestPath,
+        TRIGGER_MANIFEST_PATH: process.env.TRIGGER_WORKER_MANIFEST_PATH || "",
         // Add SDK path for dev mode (in production, SDK is installed via pip)
         ...(process.env.TRIGGER_PYTHON_SDK_PATH || process.env.NODE_ENV !== "production"
           ? { PYTHONPATH: pythonPath }
@@ -42,12 +42,13 @@ export class PythonTaskRunner {
       const result = await new Promise<TaskRunExecutionResult>((resolve, reject) => {
         const timeout = setTimeout(() => {
           reject(new Error("Task execution timeout"));
-        }, execution.task.maxDuration ?? 300000);
+        }, execution.run.maxDuration ?? 300000);
 
         ipc.on("TASK_RUN_COMPLETED", (message: any) => {
           clearTimeout(timeout);
           resolve({
             ok: true,
+            id: execution.run.id,
             output: message.completion.output,
             outputType: message.completion.outputType,
             usage: message.completion.usage,
@@ -58,6 +59,7 @@ export class PythonTaskRunner {
           clearTimeout(timeout);
           resolve({
             ok: false,
+            id: execution.run.id,
             error: message.completion.error,
             usage: message.completion.usage,
           });
@@ -88,7 +90,7 @@ export class PythonTaskRunner {
               id: execution.run.id,
               payload: JSON.stringify(execution.run.payload), // CRITICAL: Must be JSON string
               payloadType: execution.run.payloadType,
-              context: execution.run.context,
+              traceContext: execution.run.traceContext,
               tags: execution.run.tags,
               isTest: execution.run.isTest,
             },

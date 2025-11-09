@@ -603,13 +603,7 @@ export class DevRunController {
       logger.debug("Executing Python task", { taskId: execution.task.id });
 
       const pythonRunner = new PythonTaskRunner();
-      const completion = await pythonRunner.executeTask({
-        ...execution,
-        worker: {
-          runtime: "python",
-          manifestPath: join(this.opts.worker.build.outputPath, "index.json"),
-        },
-      });
+      const completion = await pythonRunner.executeTask(execution);
 
       logger.debug("Completed Python run", completion);
 

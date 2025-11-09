@@ -30,15 +30,17 @@ export function parseRequirementsTxt(content: string): PythonDependency[] {
     if (match) {
       const [, name, extras, operator, version] = match;
 
-      dependencies.push({
-        name: name.trim(),
-        extras: extras?.split(",").map((e) => e.trim()),
-        version: version ? `${operator}${version.trim()}` : undefined,
-      });
+      if (name) {
+        dependencies.push({
+          name: name.trim(),
+          extras: extras?.split(",").map((e) => e.trim()),
+          version: version ? `${operator}${version.trim()}` : undefined,
+        });
+      }
     } else {
       // Try simple package name (reusing the same regex pattern)
       const simpleMatch = trimmed.match(/^([A-Za-z_][A-Za-z0-9_-]*)/);
-      if (simpleMatch) {
+      if (simpleMatch?.[1]) {
         dependencies.push({
           name: simpleMatch[1],
         });
@@ -76,7 +78,7 @@ export function validateRequirementsTxt(content: string): { valid: boolean; erro
   const errors: string[] = [];
 
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
+    const line = lines[i]?.trim();
 
     // Skip empty lines and comments
     if (!line || line.startsWith("#")) continue;

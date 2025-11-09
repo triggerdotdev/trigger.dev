@@ -16,7 +16,7 @@ describe("Python IPC", () => {
     const pythonProcess = new PythonProcess({
       workerScript: indexWorker,
       env: {
-        TRIGGER_MANIFEST_PATH: manifestPath,
+        TRIGGER_BUILD_MANIFEST_PATH: manifestPath,
         PYTHONPATH: path.join(__dirname, "../../python-sdk"),
       },
     });
@@ -26,7 +26,7 @@ describe("Python IPC", () => {
     const result = await new Promise((resolve, reject) => {
       const timeout = setTimeout(() => reject(new Error("Timeout")), 10000);
 
-      ipc.on("INDEX_TASKS_COMPLETE", (message: any) => {
+      ipc.on("INDEX_COMPLETE", (message: any) => {
         clearTimeout(timeout);
         resolve(message);
       });
@@ -44,8 +44,8 @@ describe("Python IPC", () => {
       });
     });
 
-    expect(result).toHaveProperty("tasks");
-    expect((result as any).tasks.length).toBeGreaterThan(0);
+    expect(result).toHaveProperty("payload");
+    expect((result as any).payload.manifest.tasks.length).toBeGreaterThan(0);
 
     await pythonProcess.cleanup();
   });
