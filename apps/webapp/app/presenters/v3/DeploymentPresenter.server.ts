@@ -3,7 +3,7 @@ import {
   ExternalBuildData,
   prepareDeploymentError,
 } from "@trigger.dev/core/v3";
-import { RuntimeEnvironment, type WorkerDeployment } from "@trigger.dev/database";
+import { type RuntimeEnvironment, type WorkerDeployment } from "@trigger.dev/database";
 import { type PrismaClient, prisma } from "~/db.server";
 import { type Organization } from "~/models/organization.server";
 import { type Project } from "~/models/project.server";
@@ -11,6 +11,8 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { type User } from "~/models/user.server";
 import { getUsername } from "~/utils/username";
 import { processGitMetadata } from "./BranchesPresenter.server";
+import { S2 } from "@s2-dev/streamstore";
+import { env } from "~/env.server";
 
 export type ErrorData = {
   name: string;
@@ -43,6 +45,7 @@ export class DeploymentPresenter {
       select: {
         id: true,
         organizationId: true,
+        externalRef: true,
       },
       where: {
         slug: projectSlug,
@@ -142,7 +145,27 @@ export class DeploymentPresenter {
       ? ExternalBuildData.safeParse(deployment.externalBuildData)
       : undefined;
 
+    const s2 = new S2({ accessToken: env.S2_ACCESS_TOKEN });
+    const projectS2AccessToken = await s2.accessTokens.issue({
+      id: `${project.externalRef}-${new Date().getTime()}`,
+      expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(), // 1 hour
+      scope: {
+        ops: ["read"],
+        basins: {
+          exact: env.S2_DEPLOYMENT_LOGS_BASIN_NAME,
+        },
+        streams: {
+          prefix: `projects/${project.externalRef}/deployments/`,
+        },
+      },
+    });
+
     return {
+      s2Logs: {
+        basin: env.S2_DEPLOYMENT_LOGS_BASIN_NAME,
+        stream: `projects/${project.externalRef}/deployments/${deployment.shortCode}`,
+        accessToken: projectS2AccessToken.access_token,
+      },
       deployment: {
         id: deployment.id,
         shortCode: deployment.shortCode,

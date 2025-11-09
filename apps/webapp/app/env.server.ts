@@ -1201,6 +1201,9 @@ const EnvironmentSchema = z
     EVENT_LOOP_MONITOR_UTILIZATION_SAMPLE_RATE: z.coerce.number().default(0.05),
 
     VERY_SLOW_QUERY_THRESHOLD_MS: z.coerce.number().int().optional(),
+
+    S2_ACCESS_TOKEN: z.string(),
+    S2_DEPLOYMENT_LOGS_BASIN_NAME: z.string(),
   })
   .and(GithubAppEnvSchema);
 
