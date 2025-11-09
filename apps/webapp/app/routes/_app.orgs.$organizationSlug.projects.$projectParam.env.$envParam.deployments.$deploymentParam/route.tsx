@@ -3,7 +3,7 @@ import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { useEffect, useState, useRef, useCallback } from "react";
 import { S2, S2Error } from "@s2-dev/streamstore";
-import { Clipboard, ClipboardCheck } from "lucide-react";
+import { Clipboard, ClipboardCheck, ChevronDown, ChevronUp } from "lucide-react";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { GitMetadata } from "~/components/GitMetadata";
 import { RuntimeIcon } from "~/components/RuntimeIcon";
@@ -410,15 +410,20 @@ export default function Page() {
   );
 }
 
-type LogsDisplayProps = {
+function LogsDisplay({
+  logs,
+  isStreaming,
+  streamError,
+  initialCollapsed = false,
+}: {
   logs: LogEntry[];
   isStreaming: boolean;
   streamError: string | null;
-};
-
-function LogsDisplay({ logs, isStreaming, streamError }: LogsDisplayProps) {
+  initialCollapsed?: boolean;
+}) {
   const [copied, setCopied] = useState(false);
   const [mouseOver, setMouseOver] = useState(false);
+  const [collapsed, setCollapsed] = useState(initialCollapsed);
   const logsContainerRef = useRef<HTMLDivElement>(null);
 
   // auto-scroll log container to bottom when new logs arrive
@@ -473,78 +478,115 @@ function LogsDisplay({ logs, isStreaming, streamError }: LogsDisplayProps) {
           </div>
         </div>
         {logs.length > 0 && (
-          <TooltipProvider>
-            <Tooltip open={copied || mouseOver} disableHoverableContent>
-              <TooltipTrigger
-                onClick={onCopyLogs}
-                onMouseEnter={() => setMouseOver(true)}
-                onMouseLeave={() => setMouseOver(false)}
-                className={cn(
-                  "transition-colors duration-100 focus-custom hover:cursor-pointer",
-                  copied ? "text-success" : "text-text-dimmed hover:text-text-bright"
-                )}
-              >
-                {copied ? <ClipboardCheck className="size-4" /> : <Clipboard className="size-4" />}
-              </TooltipTrigger>
-              <TooltipContent side="left" className="text-xs">
-                {copied ? "Copied" : "Copy"}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <div className="flex items-center gap-3">
+            <TooltipProvider>
+              <Tooltip open={copied || mouseOver} disableHoverableContent>
+                <TooltipTrigger
+                  onClick={onCopyLogs}
+                  onMouseEnter={() => setMouseOver(true)}
+                  onMouseLeave={() => setMouseOver(false)}
+                  className={cn(
+                    "transition-colors duration-100 focus-custom hover:cursor-pointer",
+                    copied ? "text-success" : "text-text-dimmed hover:text-text-bright"
+                  )}
+                >
+                  <div className="size-4 shrink-0">
+                    {copied ? (
+                      <ClipboardCheck className="size-full" />
+                    ) : (
+                      <Clipboard className="size-full" />
+                    )}
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="left" className="text-xs">
+                  {copied ? "Copied" : "Copy"}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
+            <TooltipProvider>
+              <Tooltip disableHoverableContent>
+                <TooltipTrigger
+                  onClick={() => setCollapsed(!collapsed)}
+                  className={cn(
+                    "transition-colors duration-100 focus-custom hover:cursor-pointer",
+                    "text-text-dimmed hover:text-text-bright"
+                  )}
+                >
+                  {collapsed ? (
+                    <ChevronDown className="size-4" />
+                  ) : (
+                    <ChevronUp className="size-4" />
+                  )}
+                </TooltipTrigger>
+                <TooltipContent side="left" className="text-xs">
+                  {collapsed ? "Expand" : "Collapse"}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
         )}
       </div>
 
-      <div
-        ref={logsContainerRef}
-        className="h-64 grow overflow-x-auto overflow-y-scroll font-mono text-xs scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
-      >
-        <div className="flex w-fit min-w-full flex-col">
-          {logs.length === 0 && (
-            <div className="flex gap-x-2.5 border-l-2 border-transparent px-2.5 py-1">
-              {streamError ? (
-                <span className="text-error">Failed fetching logs</span>
-              ) : (
-                <span className="text-text-dimmed">
-                  {isStreaming ? "Waiting for logs..." : "No logs yet"}
-                </span>
-              )}
-            </div>
+      <div className="relative">
+        <div
+          ref={logsContainerRef}
+          className={cn(
+            "grow overflow-x-auto overflow-y-scroll font-mono text-xs transition-all duration-200 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+            collapsed ? "h-16" : "h-64"
           )}
-          {logs.map((log, index) => {
-            return (
-              <div
-                key={index}
-                className={cn(
-                  "flex w-full gap-x-2.5 border-l-2 px-2.5 py-1",
-                  log.level === "error" && "border-error/60 bg-error/15 hover:bg-error/25",
-                  log.level === "warn" && "border-warning/60 bg-warning/20 hover:bg-warning/30",
-                  log.level === "info" && "border-transparent hover:bg-charcoal-750"
+        >
+          <div className="flex w-fit min-w-full flex-col">
+            {logs.length === 0 && (
+              <div className="flex gap-x-2.5 border-l-2 border-transparent px-2.5 py-1">
+                {streamError ? (
+                  <span className="text-error">Failed fetching logs</span>
+                ) : (
+                  <span className="text-text-dimmed">
+                    {isStreaming ? "Waiting for logs..." : "No logs yet"}
+                  </span>
                 )}
-              >
-                <span
-                  className={cn(
-                    "select-none whitespace-nowrap py-px",
-                    log.level === "error" && "text-error/80",
-                    log.level === "warn" && "text-warning/70",
-                    log.level === "info" && "text-text-dimmed"
-                  )}
-                >
-                  <DateTimeAccurate date={log.timestamp} hideDate />
-                </span>
-                <span
-                  className={cn(
-                    "whitespace-nowrap",
-                    log.level === "error" && "text-error",
-                    log.level === "warn" && "text-warning",
-                    log.level === "info" && "text-text-bright"
-                  )}
-                >
-                  {log.message}
-                </span>
               </div>
-            );
-          })}
+            )}
+            {logs.map((log, index) => {
+              return (
+                <div
+                  key={index}
+                  className={cn(
+                    "flex w-full gap-x-2.5 border-l-2 px-2.5 py-1",
+                    log.level === "error" && "border-error/60 bg-error/15 hover:bg-error/25",
+                    log.level === "warn" && "border-warning/60 bg-warning/20 hover:bg-warning/30",
+                    log.level === "info" && "border-transparent hover:bg-charcoal-750"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "select-none whitespace-nowrap py-px",
+                      log.level === "error" && "text-error/80",
+                      log.level === "warn" && "text-warning/70",
+                      log.level === "info" && "text-text-dimmed"
+                    )}
+                  >
+                    <DateTimeAccurate date={log.timestamp} hideDate />
+                  </span>
+                  <span
+                    className={cn(
+                      "whitespace-nowrap",
+                      log.level === "error" && "text-error",
+                      log.level === "warn" && "text-warning",
+                      log.level === "info" && "text-text-bright"
+                    )}
+                  >
+                    {log.message}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
         </div>
+        {collapsed && (
+          <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-charcoal-800/90 to-transparent" />
+        )}
       </div>
     </div>
   );
