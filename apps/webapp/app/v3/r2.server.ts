@@ -93,39 +93,51 @@ export async function downloadPacketFromObjectStore(
 
     logger.debug("Downloading from object store", { url: url.href });
 
-    async function fetchWithRetry(url:string,retries =3,delay=500):Promise<Response>{
-      
-       if (!r2) {
-      throw new Error("Object store credentials are not set");
-    }
+   
+    async function fetchWithRetry(url: string, retries = 3, delay = 500): Promise<Response> {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const response = await r2.fetch(url);
+      if (response.ok) return response;
 
-       for(let attempt =1; attempt<=retries;attempt++){
-        try {
-          const response = await r2.fetch(url);
-          if(response.ok) return response;
+      if (response.status >= 400 && response.status < 500) {
+        throw new Error(`Client error (non-retryable): ${response.statusText}`);
+      }
 
-          // only retry on transient server/network errors
-         if(response.status >= 500 && response.status<600 ){
-          throw new Error(`Server Error : ${response.statusText}`);
-         }
-
-         // for other non server errors 
-         throw new Error(`non-retryable error :${response.statusText}`);
-
-        } catch (error:any) {
-          if(attempt == retries) throw error;
-          logger.warn(`Retrying object Download (attempt: ${attempt}) out of ${retries}`,{
-            url,
-            error:error.message,
-          });
-          await new Promise((res)=>setTimeout(res,delay*attempt));
+      if (response.status >= 500 && response.status < 600) {
+        if (attempt === retries) {
+          throw new Error(`Server error after ${retries} attempts: ${response.statusText}`);
         }
-       }
 
-       throw new Error(`Failed to fetch ${url} after ${retries} retries`);
+        logger.warn(`Retrying object download (attempt ${attempt}/${retries})`, {
+          url,
+          status: response.status,
+          error: response.statusText,
+        });
 
+        await new Promise((res) => setTimeout(res, delay * attempt));
+        continue;
+      }
+
+      throw new Error(`Unexpected status ${response.status}: ${response.statusText}`);
+    } catch (error: unknown) {
+      if (attempt === retries) throw error;
+
+      const errorMessage = error instanceof Error ? error.message : String(error);
+
+      logger.warn(`Network error, retrying (attempt ${attempt}/${retries})`, {
+        url,
+        error: errorMessage,
+      });
+
+      await new Promise((res) => setTimeout(res, delay * attempt));
     }
-    const response = await fetchWithRetry(url.toString());
+  }
+
+  throw new Error(`Failed to fetch ${url} after ${retries} retries`);
+}
+
+    const response = await  fetchWithRetry(url.toString());
 
     const data = await response.text();
 
