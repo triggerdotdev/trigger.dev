@@ -94,14 +94,22 @@ export async function downloadPacketFromObjectStore(
     logger.debug("Downloading from object store", { url: url.href });
 
    
-    async function fetchWithRetry(url: string, retries = 3, delay = 500): Promise<Response> {
+   class NonRetryableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "NonRetryableError";
+  }
+}
+
+async function fetchWithRetry(url: string, retries = 3, delay = 500): Promise<Response> {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       const response = await r2.fetch(url);
+
       if (response.ok) return response;
 
       if (response.status >= 400 && response.status < 500) {
-        throw new Error(`Client error (non-retryable): ${response.statusText}`);
+        throw new NonRetryableError(`Client error: ${response.statusText}`);
       }
 
       if (response.status >= 500 && response.status < 600) {
@@ -119,8 +127,12 @@ export async function downloadPacketFromObjectStore(
         continue;
       }
 
-      throw new Error(`Unexpected status ${response.status}: ${response.statusText}`);
+      throw new NonRetryableError(`Unexpected status ${response.status}: ${response.statusText}`);
     } catch (error: unknown) {
+      if (error instanceof NonRetryableError) {
+        throw error;
+      }
+
       if (attempt === retries) throw error;
 
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -136,6 +148,7 @@ export async function downloadPacketFromObjectStore(
 
   throw new Error(`Failed to fetch ${url} after ${retries} retries`);
 }
+
 
     const response = await  fetchWithRetry(url.toString());
 
