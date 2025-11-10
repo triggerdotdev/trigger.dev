@@ -132,7 +132,7 @@ const DEFAULT_ZOD_FETCH_OPTIONS: ZodFetchOptions = {
 };
 
 export type ApiClientFutureFlags = {
-  unstable_v2RealtimeStreams?: boolean;
+  v2RealtimeStreams?: boolean;
 };
 
 export { isRequestOptions, SSEStreamSubscription };
@@ -1214,7 +1214,7 @@ export class ApiClient {
     headers[API_VERSION_HEADER_NAME] = API_VERSION;
 
     if (
-      this.futureFlags.unstable_v2RealtimeStreams ||
+      this.futureFlags.v2RealtimeStreams ||
       getEnvVar("TRIGGER_V2_REALTIME_STREAMS") === "1" ||
       getEnvVar("TRIGGER_V2_REALTIME_STREAMS") === "true" ||
       getEnvVar("TRIGGER_REALTIME_STREAMS_V2") === "1" ||

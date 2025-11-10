@@ -1,5 +1,6 @@
 import { json } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core/utils";
+import { nanoid } from "nanoid";
 import { z } from "zod";
 import { $replica, prisma } from "~/db.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
@@ -96,8 +97,10 @@ const { action } = createActionApiRoute(
       targetRun.realtimeStreamsVersion
     );
 
+    const partId = request.headers.get("X-Part-Id") ?? nanoid(7);
+
     const [appendError] = await tryCatch(
-      realtimeStream.appendPart(part, targetId, params.streamId)
+      realtimeStream.appendPart(part, partId, targetId, params.streamId)
     );
 
     if (appendError) {

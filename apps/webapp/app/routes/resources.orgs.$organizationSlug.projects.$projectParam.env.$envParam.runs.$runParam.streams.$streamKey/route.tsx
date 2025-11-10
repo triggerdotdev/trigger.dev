@@ -118,8 +118,6 @@ export function RealtimeStreamViewer({
   const [mouseOver, setMouseOver] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  console.log("chunks.length", chunks.length);
-
   const getCompactText = useCallback(() => {
     return chunks
       .map((chunk) => {

@@ -92,12 +92,16 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     throw new Error("S2 streams are written to S2 via the client, not from the server");
   }
 
-  async appendPart(part: string, runId: string, streamId: string): Promise<void> {
+  async appendPart(part: string, partId: string, runId: string, streamId: string): Promise<void> {
     const s2Stream = this.toStreamName(runId, streamId);
 
-    await this.s2Append(s2Stream, {
-      records: [{ body: part }],
+    this.logger.info(`S2 appending to stream`, { part, stream: s2Stream });
+
+    const result = await this.s2Append(s2Stream, {
+      records: [{ body: JSON.stringify({ data: part, id: partId }) }],
     });
+
+    this.logger.info(`S2 append result`, { result });
   }
 
   getLastChunkIndex(runId: string, streamId: string, clientId: string): Promise<number> {
@@ -115,6 +119,8 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
   ): Promise<Response> {
     const s2Stream = this.toStreamName(runId, streamId);
     const startSeq = this.parseLastEventId(options?.lastEventId);
+
+    this.logger.info(`S2 streaming records from stream`, { stream: s2Stream, startSeq });
 
     // Request SSE stream from S2 and return it directly
     const s2Response = await this.s2StreamRecords(s2Stream, {

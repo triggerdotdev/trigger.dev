@@ -334,7 +334,7 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
     }
   }
 
-  async appendPart(part: string, runId: string, streamId: string): Promise<void> {
+  async appendPart(part: string, partId: string, runId: string, streamId: string): Promise<void> {
     const redis = new Redis(this.options.redis ?? {});
     const streamKey = `stream:${runId}:${streamId}`;
 

@@ -13,7 +13,7 @@ export interface StreamIngestor {
     resumeFromChunk?: number
   ): Promise<Response>;
 
-  appendPart(part: string, runId: string, streamId: string): Promise<void>;
+  appendPart(part: string, partId: string, runId: string, streamId: string): Promise<void>;
 
   getLastChunkIndex(runId: string, streamId: string, clientId: string): Promise<number>;
 }

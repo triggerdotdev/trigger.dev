@@ -593,7 +593,8 @@ export interface Task<TIdentifier extends string, TInput = void, TOutput = any> 
    */
   triggerAndWait: (
     payload: TInput,
-    options?: TriggerAndWaitOptions
+    options?: TriggerAndWaitOptions,
+    requestOptions?: TriggerApiRequestOptions
   ) => TaskRunPromise<TIdentifier, TOutput>;
 
   /**

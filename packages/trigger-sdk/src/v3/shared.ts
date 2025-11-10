@@ -185,7 +185,7 @@ export function createTask<
         params.queue?.name
       );
     },
-    triggerAndWait: (payload, options) => {
+    triggerAndWait: (payload, options, requestOptions) => {
       return new TaskRunPromise<TIdentifier, TOutput>((resolve, reject) => {
         triggerAndWait_internal<TIdentifier, TInput, TOutput>(
           "triggerAndWait()",
@@ -195,7 +195,8 @@ export function createTask<
           {
             queue: params.queue?.name,
             ...options,
-          }
+          },
+          requestOptions
         )
           .then((result) => {
             resolve(result);

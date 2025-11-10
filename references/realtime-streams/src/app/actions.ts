@@ -14,7 +14,7 @@ export async function triggerStreamTask(
   const config = useDurableStreams
     ? {
         future: {
-          unstable_v2RealtimeStreams: true,
+          v2RealtimeStreams: true,
         },
       }
     : undefined;
@@ -52,7 +52,7 @@ export async function triggerAIChatTask(messages: UIMessage[]) {
     {
       clientConfig: {
         future: {
-          unstable_v2RealtimeStreams: true,
+          v2RealtimeStreams: true,
         },
       },
     }

@@ -358,25 +358,80 @@ function append<TPart extends BodyInit>(
   options?: AppendStreamOptions
 ): Promise<void> {
   if (typeof keyOrValue === "string" && typeof valueOrOptions === "string") {
-    return realtimeStreams.append(keyOrValue, valueOrOptions, options);
+    return appendInternal(keyOrValue, valueOrOptions, options);
   }
 
   if (typeof keyOrValue === "string") {
     if (isAppendStreamOptions(valueOrOptions)) {
-      return realtimeStreams.append(DEFAULT_STREAM_KEY, keyOrValue, valueOrOptions);
+      return appendInternal(DEFAULT_STREAM_KEY, keyOrValue, valueOrOptions);
     } else {
       if (!valueOrOptions) {
-        return realtimeStreams.append(DEFAULT_STREAM_KEY, keyOrValue, options);
+        return appendInternal(DEFAULT_STREAM_KEY, keyOrValue, options);
       }
 
-      return realtimeStreams.append(keyOrValue, valueOrOptions, options);
+      return appendInternal(keyOrValue, valueOrOptions, options);
     }
   } else {
     if (isAppendStreamOptions(valueOrOptions)) {
-      return realtimeStreams.append(DEFAULT_STREAM_KEY, keyOrValue, valueOrOptions);
+      return appendInternal(DEFAULT_STREAM_KEY, keyOrValue, valueOrOptions);
     } else {
-      return realtimeStreams.append(DEFAULT_STREAM_KEY, keyOrValue, options);
+      return appendInternal(DEFAULT_STREAM_KEY, keyOrValue, options);
     }
+  }
+}
+
+async function appendInternal<TPart extends BodyInit>(
+  key: string,
+  part: TPart,
+  options?: AppendStreamOptions
+): Promise<void> {
+  const runId = getRunIdForOptions(options);
+
+  if (!runId) {
+    throw new Error(
+      "Could not determine the target run ID for the realtime stream. Please specify a target run ID using the `target` option or use this function from inside a task."
+    );
+  }
+
+  const span = tracer.startSpan("streams.append()", {
+    attributes: {
+      key,
+      runId,
+      [SemanticInternalAttributes.ENTITY_TYPE]: "realtime-stream",
+      [SemanticInternalAttributes.ENTITY_ID]: `${runId}:${key}`,
+      [SemanticInternalAttributes.STYLE_ICON]: "streams",
+      ...accessoryAttributes({
+        items: [
+          {
+            text: key,
+            variant: "normal",
+          },
+        ],
+        style: "codepath",
+      }),
+    },
+  });
+
+  try {
+    await realtimeStreams.append(key, part, options);
+    span.end();
+  } catch (error) {
+    // if the error is a signal abort error, we need to end the span but not record an exception
+    if (error instanceof Error && error.name === "AbortError") {
+      span.end();
+      throw error;
+    }
+
+    if (error instanceof Error || typeof error === "string") {
+      span.recordException(error);
+    } else {
+      span.recordException(String(error));
+    }
+
+    span.setStatus({ code: SpanStatusCode.ERROR });
+    span.end();
+
+    throw error;
   }
 }
 
@@ -390,7 +445,121 @@ function isAppendStreamOptions(val: unknown): val is AppendStreamOptions {
   );
 }
 
-function writer<TPart>(key: string, options: WriterStreamOptions<TPart>) {
+/**
+ * Writes data to a realtime stream using the default stream key (`"default"`).
+ *
+ * This is a convenience overload that allows you to write to the default stream without
+ * specifying a stream key. The stream will be created/accessed with the key `"default"`.
+ *
+ * @template TPart - The type of data chunks in the stream
+ * @param options - The options for writing to the stream
+ * @returns A promise that resolves to an object containing:
+ *   - `stream`: The original stream (can be consumed in your task)
+ *   - `waitUntilComplete`: A function that returns a promise resolving when the stream is fully sent
+ *
+ * @example
+ * ```ts
+ * import { streams } from "@trigger.dev/sdk";
+ *
+ * // Write to the default stream
+ * const { waitUntilComplete } = await streams.writer({
+ *   execute: ({ write, merge }) => {
+ *     write("chunk 1");
+ *     write("chunk 2");
+ *     write("chunk 3");
+ *   },
+ * });
+ *
+ * // Wait for all chunks to be written
+ * await waitUntilComplete();
+ * ```
+ *
+ * @example
+ * ```ts
+ * // Write to a specific stream key
+ * const { waitUntilComplete } = await streams.writer("my-custom-stream", {
+ *   execute: ({ write, merge }) => {
+ *     write("chunk 1");
+ *     write("chunk 2");
+ *     write("chunk 3");
+ *   },
+ * });
+ *
+ * // Wait for all chunks to be written
+ * await waitUntilComplete();
+ * ```
+ *
+ * @example
+ * ```ts
+ * // Write to a parent run
+ * await streams.writer("output", {
+ *   execute: ({ write, merge }) => {
+ *     write("chunk 1");
+ *     write("chunk 2");
+ *     write("chunk 3");
+ *   },
+ * });
+ *
+ * // Wait for all chunks to be written
+ * await waitUntilComplete();
+ * ```
+ *
+ * @example
+ * ```ts
+ * // Write to a specific stream key
+ * await streams.writer("my-custom-stream", {
+ *   execute: ({ write, merge }) => {
+ *     write("chunk 1");
+ *     write("chunk 2");
+ *     write("chunk 3");
+ *   },
+ * });
+ *
+ * // Wait for all chunks to be written
+ * await waitUntilComplete();
+ * ```
+ */
+function writer<TPart>(options: WriterStreamOptions<TPart>): PipeStreamResult<TPart>;
+/**
+ * Writes data to a realtime stream with a specific stream key.
+ *
+ * @template TPart - The type of data chunks in the stream
+ * @param key - The unique identifier of the stream to write to. Defaults to `"default"` if not provided.
+ * @param options - The options for writing to the stream
+ * @returns A promise that resolves to an object containing:
+ *   - `stream`: The original stream (can be consumed in your task)
+ *   - `waitUntilComplete`: A function that returns a promise resolving when the stream is fully sent
+ *
+ * @example
+ * ```ts
+ * import { streams } from "@trigger.dev/sdk";
+ *
+ * // Write to a specific stream key
+ * const { waitUntilComplete } = await streams.writer("my-custom-stream", {
+ *   execute: ({ write, merge }) => {
+ *     write("chunk 1");
+ *     write("chunk 2");
+ *     write("chunk 3");
+ *   },
+ * });
+ *
+ * // Wait for all chunks to be written
+ * await waitUntilComplete();
+ * ```
+ */
+function writer<TPart>(key: string, options: WriterStreamOptions<TPart>): PipeStreamResult<TPart>;
+function writer<TPart>(
+  keyOrOptions: string | WriterStreamOptions<TPart>,
+  valueOrOptions?: WriterStreamOptions<TPart>
+): PipeStreamResult<TPart> {
+  if (typeof keyOrOptions === "string") {
+    return writerInternal(keyOrOptions, valueOrOptions!);
+  }
+
+  return writerInternal(DEFAULT_STREAM_KEY, keyOrOptions);
+}
+
+function writerInternal<TPart>(key: string, options: WriterStreamOptions<TPart>) {
   let controller!: ReadableStreamDefaultController<TPart>;
 
   const ongoingStreamPromises: Promise<void>[] = [];

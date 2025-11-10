@@ -39,7 +39,7 @@ export type RealtimeDefinedStream<TPart> = {
   ) => PipeStreamResult<TPart>;
   read: (runId: string, options?: ReadStreamOptions) => Promise<AsyncIterableStream<TPart>>;
   append: (value: TPart, options?: AppendStreamOptions) => Promise<void>;
-  writer: (options: WriterStreamOptions<TPart>) => void;
+  writer: (options: WriterStreamOptions<TPart>) => PipeStreamResult<TPart>;
 };
 
 export type InferStreamType<T> = T extends RealtimeDefinedStream<infer TPart> ? TPart : unknown;
