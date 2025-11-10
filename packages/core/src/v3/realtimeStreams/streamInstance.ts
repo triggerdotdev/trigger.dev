@@ -77,6 +77,7 @@ export class StreamInstance<T> implements StreamsWriter {
 
         while (true) {
           if (self.options.signal?.aborted) {
+            controller.close();
             break;
           }
 

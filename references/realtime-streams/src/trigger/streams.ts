@@ -569,7 +569,7 @@ const streamWriterTesterTask = task({
 
     const chunks = [];
 
-    for await (const chunk of await streams.read(ctx.run.id, { timeoutInSeconds: 5 })) {
+    for await (const chunk of await streams.read<string>(ctx.run.id, { timeoutInSeconds: 5 })) {
       chunks.push(chunk);
     }
 
