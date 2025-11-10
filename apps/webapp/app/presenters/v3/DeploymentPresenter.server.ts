@@ -145,27 +145,32 @@ export class DeploymentPresenter {
       ? ExternalBuildData.safeParse(deployment.externalBuildData)
       : undefined;
 
-    const s2 = new S2({ accessToken: env.S2_ACCESS_TOKEN });
-    const projectS2AccessToken = await s2.accessTokens.issue({
-      id: `${project.externalRef}-${new Date().getTime()}`,
-      expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(), // 1 hour
-      scope: {
-        ops: ["read"],
-        basins: {
-          exact: env.S2_DEPLOYMENT_LOGS_BASIN_NAME,
+    let s2Logs = undefined;
+    if (env.S2_ENABLED === "1") {
+      const s2 = new S2({ accessToken: env.S2_ACCESS_TOKEN });
+      const projectS2AccessToken = await s2.accessTokens.issue({
+        id: `${project.externalRef}-${new Date().getTime()}`,
+        expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(), // 1 hour
+        scope: {
+          ops: ["read"],
+          basins: {
+            exact: env.S2_DEPLOYMENT_LOGS_BASIN_NAME,
+          },
+          streams: {
+            prefix: `projects/${project.externalRef}/deployments/`,
+          },
         },
-        streams: {
-          prefix: `projects/${project.externalRef}/deployments/`,
-        },
-      },
-    });
+      });
 
-    return {
-      s2Logs: {
+      s2Logs = {
         basin: env.S2_DEPLOYMENT_LOGS_BASIN_NAME,
         stream: `projects/${project.externalRef}/deployments/${deployment.shortCode}`,
         accessToken: projectS2AccessToken.access_token,
-      },
+      };
+    }
+
+    return {
+      s2Logs,
       deployment: {
         id: deployment.id,
         shortCode: deployment.shortCode,

@@ -80,11 +80,14 @@ export default function Page() {
   const location = useLocation();
   const page = new URLSearchParams(location.search).get("page");
 
+  const logsDisabled = s2Logs === undefined;
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isStreaming, setIsStreaming] = useState(true);
   const [streamError, setStreamError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (logsDisabled) return;
+
     const abortController = new AbortController();
 
     setLogs([]);
@@ -150,7 +153,7 @@ export default function Page() {
     return () => {
       abortController.abort();
     };
-  }, [s2Logs.basin, s2Logs.stream]);
+  }, [s2Logs?.basin, s2Logs?.stream]);
 
   return (
     <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr] overflow-hidden bg-background-bright">
@@ -243,17 +246,19 @@ export default function Page() {
                   />
                 </Property.Value>
               </Property.Item>
-              <Property.Item>
-                <Property.Label>Logs</Property.Label>
-                <LogsDisplay
-                  logs={logs}
-                  isStreaming={isStreaming}
-                  streamError={streamError}
-                  initialCollapsed={(
-                    ["PENDING", "DEPLOYED", "TIMED_OUT"] satisfies (typeof deployment.status)[]
-                  ).includes(deployment.status)}
-                />
-              </Property.Item>
+              {!logsDisabled && (
+                <Property.Item>
+                  <Property.Label>Logs</Property.Label>
+                  <LogsDisplay
+                    logs={logs}
+                    isStreaming={isStreaming}
+                    streamError={streamError}
+                    initialCollapsed={(
+                      ["PENDING", "DEPLOYED", "TIMED_OUT"] satisfies (typeof deployment.status)[]
+                    ).includes(deployment.status)}
+                  />
+                </Property.Item>
+              )}
               {deployment.canceledAt && (
                 <Property.Item>
                   <Property.Label>Canceled at</Property.Label>
