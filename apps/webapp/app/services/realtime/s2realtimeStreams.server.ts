@@ -95,13 +95,13 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
   async appendPart(part: string, partId: string, runId: string, streamId: string): Promise<void> {
     const s2Stream = this.toStreamName(runId, streamId);
 
-    this.logger.info(`S2 appending to stream`, { part, stream: s2Stream });
+    this.logger.debug(`S2 appending to stream`, { part, stream: s2Stream });
 
     const result = await this.s2Append(s2Stream, {
       records: [{ body: JSON.stringify({ data: part, id: partId }) }],
     });
 
-    this.logger.info(`S2 append result`, { result });
+    this.logger.debug(`S2 append result`, { result });
   }
 
   getLastChunkIndex(runId: string, streamId: string, clientId: string): Promise<number> {
