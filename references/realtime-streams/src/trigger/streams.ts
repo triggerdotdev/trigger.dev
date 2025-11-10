@@ -308,7 +308,7 @@ export const streamsTesterTask = task({
       .triggerAndWait(
         { streamsVersion: "v1" },
         {},
-        { clientConfig: { future: { v2RealtimeStreams: true } } }
+        { clientConfig: { future: { v2RealtimeStreams: false } } }
       )
       .unwrap();
 
@@ -318,7 +318,7 @@ export const streamsTesterTask = task({
       .triggerAndWait(
         { streamsVersion: "v2" },
         {},
-        { clientConfig: { future: { v2RealtimeStreams: false } } }
+        { clientConfig: { future: { v2RealtimeStreams: true } } }
       )
       .unwrap();
 
