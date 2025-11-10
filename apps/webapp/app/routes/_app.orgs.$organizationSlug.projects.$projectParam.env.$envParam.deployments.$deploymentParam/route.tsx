@@ -92,6 +92,7 @@ export default function Page() {
 
     setLogs([]);
     setStreamError(null);
+    setIsStreaming(true);
 
     const streamLogs = async () => {
       try {
