@@ -5,22 +5,7 @@ import { type ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKey
 import { cn } from "~/utils/cn";
 import { ShortcutKey } from "./ShortcutKey";
 
-const variants = {
-  underline: {
-    base: "bg-charcoal-700",
-    active: "text-text-bright hover:bg-charcoal-750/50",
-  },
-  "pipe-divider": {
-    base: "bg-charcoal-700/50",
-    active: "text-text-bright bg-charcoal-700 rounded-[2px] border border-charcoal-600/50",
-  },
-  segmented: {
-    base: "bg-charcoal-700/50",
-    active: "text-text-bright bg-charcoal-700 rounded-[2px] border border-charcoal-600/50",
-  },
-};
-
-export type Variants = keyof typeof variants;
+export type Variants = "underline" | "pipe-divider" | "segmented";
 
 export type TabsProps = {
   tabs: {
