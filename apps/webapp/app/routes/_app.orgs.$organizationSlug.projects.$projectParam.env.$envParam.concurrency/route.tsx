@@ -301,8 +301,8 @@ function Upgradable({
 
   const allocatedInProject = Array.from(allocation.values()).reduce((e, acc) => e + acc, 0);
   const initialAllocationInProject = allocationTotal(environments);
-  const unallocated = extraConcurrency - allocatedInProject;
   const changeInAllocation = allocatedInProject - initialAllocationInProject;
+  const unallocated = extraUnallocatedConcurrency - changeInAllocation;
   const allocationModified = changeInAllocation !== 0;
 
   return (

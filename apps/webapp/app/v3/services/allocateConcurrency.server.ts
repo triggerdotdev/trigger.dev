@@ -38,9 +38,16 @@ export class AllocateConcurrencyService extends BaseService {
       };
     }
 
-    const totalExtra = environments.reduce((acc, e) => e.amount + acc, 0);
+    const previousExtra = result.environments.reduce(
+      (acc, e) => Math.max(0, e.maximumConcurrencyLimit - e.planConcurrencyLimit) + acc,
+      0
+    );
+    const newExtra = environments.reduce((acc, e) => e.amount + acc, 0);
+    const change = newExtra - previousExtra;
 
-    if (totalExtra > result.extraUnallocatedConcurrency) {
+    const totalExtra = result.extraAllocatedConcurrency + change;
+
+    if (change > result.extraUnallocatedConcurrency) {
       return {
         success: false,
         error: `You don't have enough unallocated concurrency available. You requested ${totalExtra} but only have ${result.extraUnallocatedConcurrency}.`,
