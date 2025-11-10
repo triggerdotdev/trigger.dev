@@ -610,11 +610,13 @@ function writerInternal<TPart>(key: string, options: WriterStreamOptions<TPart>)
     console.error(error);
   }
 
-  const waitForStreams: Promise<void> = new Promise(async (resolve) => {
-    while (ongoingStreamPromises.length > 0) {
-      await ongoingStreamPromises.shift();
-    }
-    resolve();
+  const waitForStreams: Promise<void> = new Promise((resolve, reject) => {
+    (async () => {
+      while (ongoingStreamPromises.length > 0) {
+        await ongoingStreamPromises.shift();
+      }
+      resolve();
+    })().catch(reject);
   });
 
   waitForStreams.finally(() => {
