@@ -25,6 +25,27 @@ const GithubAppEnvSchema = z.preprocess(
   ])
 );
 
+// eventually we can make all S2 env vars required once the S2 OSS version is out
+const S2EnvSchema = z.preprocess(
+  (val) => {
+    const obj = val as any;
+    if (!obj || !obj.S2_ENABLED) {
+      return { ...obj, S2_ENABLED: "0" };
+    }
+    return obj;
+  },
+  z.discriminatedUnion("S2_ENABLED", [
+    z.object({
+      S2_ENABLED: z.literal("1"),
+      S2_ACCESS_TOKEN: z.string(),
+      S2_DEPLOYMENT_LOGS_BASIN_NAME: z.string(),
+    }),
+    z.object({
+      S2_ENABLED: z.literal("0"),
+    }),
+  ])
+);
+
 const EnvironmentSchema = z
   .object({
     NODE_ENV: z.union([z.literal("development"), z.literal("production"), z.literal("test")]),
@@ -1202,7 +1223,8 @@ const EnvironmentSchema = z
 
     VERY_SLOW_QUERY_THRESHOLD_MS: z.coerce.number().int().optional(),
   })
-  .and(GithubAppEnvSchema);
+  .and(GithubAppEnvSchema)
+  .and(S2EnvSchema);
 
 export type Environment = z.infer<typeof EnvironmentSchema>;
 export const env = EnvironmentSchema.parse(process.env);

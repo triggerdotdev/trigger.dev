@@ -372,7 +372,7 @@ export default function Page() {
           {deploymentParam && (
             <>
               <ResizableHandle id="deployments-handle" />
-              <ResizablePanel id="deployments-inspector" min="400px" max="700px">
+              <ResizablePanel id="deployments-inspector" min="500px" max="800px">
                 <Outlet />
               </ResizablePanel>
             </>
