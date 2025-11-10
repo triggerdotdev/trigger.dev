@@ -141,12 +141,14 @@ export class DeploymentPresenter {
       },
     });
 
+    const gitMetadata = processGitMetadata(deployment.git);
+
     const externalBuildData = deployment.externalBuildData
       ? ExternalBuildData.safeParse(deployment.externalBuildData)
       : undefined;
 
     let s2Logs = undefined;
-    if (env.S2_ENABLED === "1") {
+    if (env.S2_ENABLED === "1" && gitMetadata?.source === "trigger_github_app") {
       const s2 = new S2({ accessToken: env.S2_ACCESS_TOKEN });
       const projectS2AccessToken = await s2.accessTokens.issue({
         id: `${project.externalRef}-${new Date().getTime()}`,
@@ -206,7 +208,7 @@ export class DeploymentPresenter {
         errorData: DeploymentPresenter.prepareErrorData(deployment.errorData),
         isBuilt: !!deployment.builtAt,
         type: deployment.type,
-        git: processGitMetadata(deployment.git),
+        git: gitMetadata,
       },
     };
   }
