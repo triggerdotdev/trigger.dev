@@ -11,13 +11,11 @@ import { Tabs } from "~/components/primitives/Tabs";
 
 export default function Story() {
   return (
-    <div className="flex items-start justify-center gap-20 pt-20">
-      <div className="flex flex-col gap-4">
+    <div className="flex items-start justify-center gap-20 px-16 pt-20">
+      <div className="flex w-full max-w-2xl flex-col gap-4">
         <div className="flex h-fit flex-col">
           <div className="flex flex-col gap-2">
-            <Header1 spacing className="font-mono">
-              {"<Tabs/>"} (updates the URL)
-            </Header1>
+            <Header1 spacing>{"<Tabs/>"} (updates the URL)</Header1>
             <Paragraph>Variant="underline"</Paragraph>
           </div>
           <Tabs
@@ -58,10 +56,10 @@ export default function Story() {
           <Outlet />
         </div>
       </div>
-      <div className="flex flex-col gap-4">
+      <div className="flex w-full max-w-2xl flex-col gap-4">
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
-            <Header1 className="font-mono">{"<ClientTabs/>"}</Header1>
+            <Header1 spacing>{"<ClientTabs/>"}</Header1>
             <Paragraph>Variant="underline"</Paragraph>
           </div>
           <ClientTabs defaultValue="tab-1">
@@ -72,31 +70,43 @@ export default function Story() {
                   variant="underline"
                   layoutId="client-tabs-underline"
                 >
-                  Tab 1
+                  First tab
                 </ClientTabsTrigger>
                 <ClientTabsTrigger
                   value={"tab-2"}
                   variant="underline"
                   layoutId="client-tabs-underline"
                 >
-                  Tab 2
+                  Second tab
                 </ClientTabsTrigger>
                 <ClientTabsTrigger
                   value={"tab-3"}
                   variant="underline"
                   layoutId="client-tabs-underline"
                 >
-                  Tab 3
+                  Third tab
                 </ClientTabsTrigger>
               </ClientTabsList>
             </div>
-            <ClientTabsContent value={"tab-1"}>Tab 1</ClientTabsContent>
-            <ClientTabsContent value={"tab-2"}>Tab 2</ClientTabsContent>
-            <ClientTabsContent value={"tab-3"}>Tab 3</ClientTabsContent>
+            <ClientTabsContent value={"tab-1"}>
+              <div className="flex items-center justify-center rounded bg-charcoal-700/50 py-8">
+                <h1 className="text-5xl">1</h1>
+              </div>
+            </ClientTabsContent>
+            <ClientTabsContent value={"tab-2"}>
+              <div className="flex items-center justify-center rounded bg-charcoal-700/50 py-8">
+                <h1 className="text-5xl">2</h1>
+              </div>
+            </ClientTabsContent>
+            <ClientTabsContent value={"tab-3"}>
+              <div className="flex items-center justify-center rounded bg-charcoal-700/50 py-8">
+                <h1 className="text-5xl">3</h1>
+              </div>
+            </ClientTabsContent>
           </ClientTabs>
         </div>
         <div>
-          <Paragraph>Variant="segmented"</Paragraph>
+          <Paragraph spacing>Variant="segmented"</Paragraph>
           <ClientTabs defaultValue="tab-1">
             <div className="flex items-center gap-4">
               <ClientTabsList variant="segmented">
@@ -105,48 +115,72 @@ export default function Story() {
                   variant="segmented"
                   layoutId="client-tabs-segmented"
                 >
-                  Tab 1
+                  First tab
                 </ClientTabsTrigger>
                 <ClientTabsTrigger
                   value={"tab-2"}
                   variant="segmented"
                   layoutId="client-tabs-segmented"
                 >
-                  Tab 2
+                  Second tab
                 </ClientTabsTrigger>
                 <ClientTabsTrigger
                   value={"tab-3"}
                   variant="segmented"
                   layoutId="client-tabs-segmented"
                 >
-                  Tab 3
+                  Third tab
                 </ClientTabsTrigger>
               </ClientTabsList>
             </div>
-            <ClientTabsContent value={"tab-1"}>Tab 1</ClientTabsContent>
-            <ClientTabsContent value={"tab-2"}>Tab 2</ClientTabsContent>
-            <ClientTabsContent value={"tab-3"}>Tab 3</ClientTabsContent>
+            <ClientTabsContent value={"tab-1"}>
+              <div className="flex items-center justify-center rounded bg-charcoal-700/50 py-8">
+                <h1 className="text-5xl">1</h1>
+              </div>
+            </ClientTabsContent>
+            <ClientTabsContent value={"tab-2"}>
+              <div className="flex items-center justify-center rounded bg-charcoal-700/50 py-8">
+                <h1 className="text-5xl">2</h1>
+              </div>
+            </ClientTabsContent>
+            <ClientTabsContent value={"tab-3"}>
+              <div className="flex items-center justify-center rounded bg-charcoal-700/50 py-8">
+                <h1 className="text-5xl">3</h1>
+              </div>
+            </ClientTabsContent>
           </ClientTabs>
         </div>
         <div>
-          <Paragraph>Variant="pipe-divider"</Paragraph>
+          <Paragraph spacing>Variant="pipe-divider"</Paragraph>
           <ClientTabs defaultValue="tab-1">
             <div className="flex items-center gap-4">
               <ClientTabsList variant="pipe-divider">
                 <ClientTabsTrigger value={"tab-1"} variant="pipe-divider">
-                  Tab 1
+                  First tab
                 </ClientTabsTrigger>
                 <ClientTabsTrigger value={"tab-2"} variant="pipe-divider">
-                  Tab 2
+                  Second tab
                 </ClientTabsTrigger>
                 <ClientTabsTrigger value={"tab-3"} variant="pipe-divider">
-                  Tab 3
+                  Third tab
                 </ClientTabsTrigger>
               </ClientTabsList>
             </div>
-            <ClientTabsContent value={"tab-1"}>Tab 1</ClientTabsContent>
-            <ClientTabsContent value={"tab-2"}>Tab 2</ClientTabsContent>
-            <ClientTabsContent value={"tab-3"}>Tab 3</ClientTabsContent>
+            <ClientTabsContent value={"tab-1"}>
+              <div className="flex items-center justify-center rounded bg-charcoal-700/50 py-8">
+                <h1 className="text-5xl">1</h1>
+              </div>
+            </ClientTabsContent>
+            <ClientTabsContent value={"tab-2"}>
+              <div className="flex items-center justify-center rounded bg-charcoal-700/50 py-8">
+                <h1 className="text-5xl">2</h1>
+              </div>
+            </ClientTabsContent>
+            <ClientTabsContent value={"tab-3"}>
+              <div className="flex items-center justify-center rounded bg-charcoal-700/50 py-8">
+                <h1 className="text-5xl">3</h1>
+              </div>
+            </ClientTabsContent>
           </ClientTabs>
         </div>
       </div>
