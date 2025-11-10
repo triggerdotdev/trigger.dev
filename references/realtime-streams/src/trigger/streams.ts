@@ -1,5 +1,5 @@
 import { demoStream } from "@/app/streams";
-import { logger, task } from "@trigger.dev/sdk";
+import { logger, metadata, task } from "@trigger.dev/sdk";
 import { setTimeout } from "timers/promises";
 
 export type STREAMS = {
@@ -46,8 +46,6 @@ export type StreamPayload = {
 export const streamsTask = task({
   id: "streams",
   run: async (payload: StreamPayload = {}, { ctx }) => {
-    await setTimeout(1000);
-
     const scenario = payload.scenario ?? "continuous";
     logger.info("Starting stream scenario", { scenario });
 
@@ -118,7 +116,89 @@ export const streamsTask = task({
 
     await waitUntilComplete();
 
-    await streamsChildTask.triggerAndWait({});
+    logger.info("Stream completed", { scenario });
+
+    return {
+      scenario,
+      scenarioDescription,
+    };
+  },
+});
+
+export const metadataStreamsTask = task({
+  id: "metadata-streams",
+  run: async (payload: StreamPayload = {}, { ctx }) => {
+    const scenario = payload.scenario ?? "continuous";
+    logger.info("Starting stream scenario", { scenario });
+
+    let generator: AsyncGenerator<string>;
+    let scenarioDescription: string;
+
+    switch (scenario) {
+      case "stall": {
+        const stallDurationMs = payload.stallDurationMs ?? 3 * 60 * 1000; // Default 3 minutes
+        const includePing = payload.includePing ?? false;
+        generator = generateLLMTokenStream(includePing, stallDurationMs);
+        scenarioDescription = `Stall scenario: ${stallDurationMs / 1000}s with ${
+          includePing ? "ping tokens" : "no pings"
+        }`;
+        break;
+      }
+      case "continuous": {
+        const durationSec = payload.durationSec ?? 45;
+        const intervalMs = payload.intervalMs ?? 10;
+        generator = generateContinuousTokenStream(durationSec, intervalMs);
+        scenarioDescription = `Continuous scenario: ${durationSec}s with ${intervalMs}ms intervals`;
+        break;
+      }
+      case "burst": {
+        const burstCount = payload.burstCount ?? 10;
+        const tokensPerBurst = payload.tokensPerBurst ?? 20;
+        const burstIntervalMs = payload.burstIntervalMs ?? 5;
+        const pauseBetweenBurstsMs = payload.pauseBetweenBurstsMs ?? 2000;
+        generator = generateBurstTokenStream(
+          burstCount,
+          tokensPerBurst,
+          burstIntervalMs,
+          pauseBetweenBurstsMs
+        );
+        scenarioDescription = `Burst scenario: ${burstCount} bursts of ${tokensPerBurst} tokens`;
+        break;
+      }
+      case "slow-steady": {
+        const durationMin = payload.durationMin ?? 5;
+        const tokenIntervalSec = payload.tokenIntervalSec ?? 5;
+        generator = generateSlowSteadyTokenStream(durationMin, tokenIntervalSec);
+        scenarioDescription = `Slow steady scenario: ${durationMin}min with ${tokenIntervalSec}s intervals`;
+        break;
+      }
+      case "markdown": {
+        const tokenDelayMs = payload.tokenDelayMs ?? 15;
+        generator = generateMarkdownTokenStream(tokenDelayMs);
+        scenarioDescription = `Markdown scenario: generating formatted content with ${tokenDelayMs}ms delays`;
+        break;
+      }
+      case "performance": {
+        const chunkCount = payload.chunkCount ?? 500;
+        const chunkIntervalMs = payload.chunkIntervalMs ?? 10;
+        generator = generatePerformanceStream(chunkCount, chunkIntervalMs);
+        scenarioDescription = `Performance scenario: ${chunkCount} chunks with ${chunkIntervalMs}ms intervals`;
+        break;
+      }
+      default: {
+        throw new Error(`Unknown scenario: ${scenario}`);
+      }
+    }
+
+    logger.info("Starting stream", { scenarioDescription });
+
+    const mockStream = createStreamFromGenerator(generator);
+
+    const stream = await metadata.stream("demo", mockStream);
+
+    for await (const chunk of stream) {
+      logger.info("Received chunk", { chunk });
+    }
 
     logger.info("Stream completed", { scenario });
 

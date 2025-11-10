@@ -1,6 +1,7 @@
 import { BoltIcon, BoltSlashIcon } from "@heroicons/react/20/solid";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { type SSEStreamPart, SSEStreamSubscription } from "@trigger.dev/core/v3";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { Clipboard, ClipboardCheck } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import simplur from "simplur";
@@ -117,6 +118,8 @@ export function RealtimeStreamViewer({
   const [mouseOver, setMouseOver] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  console.log("chunks.length", chunks.length);
+
   const getCompactText = useCallback(() => {
     return chunks
       .map((chunk) => {
@@ -207,6 +210,14 @@ export function RealtimeStreamViewer({
   const lastLineNumber = firstLineNumber + chunks.length - 1;
   const maxLineNumberWidth = (chunks.length > 0 ? lastLineNumber : firstLineNumber).toString()
     .length;
+
+  // Virtual rendering for list view
+  const rowVirtualizer = useVirtualizer({
+    count: chunks.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 28,
+    overscan: 5,
+  });
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -360,16 +371,33 @@ export function RealtimeStreamViewer({
 
         {chunks.length > 0 && viewMode === "list" && (
           <div className="font-mono text-xs leading-tight">
-            {chunks.map((chunk, index) => (
-              <StreamChunkLine
-                key={index}
-                chunk={chunk}
-                lineNumber={firstLineNumber + index}
-                maxLineNumberWidth={maxLineNumberWidth}
+            <div
+              style={{
+                height: `${rowVirtualizer.getTotalSize()}px`,
+                width: "100%",
+                position: "relative",
+              }}
+            >
+              {rowVirtualizer.getVirtualItems().map((virtualItem) => (
+                <StreamChunkLine
+                  key={virtualItem.key}
+                  chunk={chunks[virtualItem.index]}
+                  lineNumber={firstLineNumber + virtualItem.index}
+                  maxLineNumberWidth={maxLineNumberWidth}
+                  size={virtualItem.size}
+                  start={virtualItem.start}
+                />
+              ))}
+              {/* Sentinel element for IntersectionObserver */}
+              <div
+                ref={bottomRef}
+                className="h-px"
+                style={{
+                  position: "absolute",
+                  top: `${rowVirtualizer.getTotalSize()}px`,
+                }}
               />
-            ))}
-            {/* Sentinel element for IntersectionObserver */}
-            <div ref={bottomRef} className="h-px" />
+            </div>
           </div>
         )}
 
@@ -402,10 +430,14 @@ function StreamChunkLine({
   chunk,
   lineNumber,
   maxLineNumberWidth,
+  size,
+  start,
 }: {
   chunk: StreamChunk;
   lineNumber: number;
   maxLineNumberWidth: number;
+  size: number;
+  start: number;
 }) {
   const formattedData =
     typeof chunk.data === "string" ? chunk.data : JSON.stringify(chunk.data, null, 2);
@@ -421,7 +453,17 @@ function StreamChunkLine({
   const timestamp = `${timeString}.${milliseconds}`;
 
   return (
-    <div className="group flex w-full gap-3 py-1 hover:bg-charcoal-800">
+    <div
+      className="group flex w-full gap-3 py-1 hover:bg-charcoal-800"
+      style={{
+        position: "absolute",
+        top: 0,
+        left: 0,
+        width: "100%",
+        height: `${size}px`,
+        transform: `translateY(${start}px)`,
+      }}
+    >
       {/* Line number */}
       <div
         className="flex-none select-none pl-2 text-right text-charcoal-500"
