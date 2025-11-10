@@ -584,7 +584,7 @@ function LogsDisplay({
                       log.level === "info" && "text-text-dimmed"
                     )}
                   >
-                    <DateTimeAccurate date={log.timestamp} hideDate />
+                    <DateTimeAccurate date={log.timestamp} hideDate hour12={false} />
                   </span>
                   <span
                     className={cn(
