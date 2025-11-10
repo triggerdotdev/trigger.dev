@@ -1,6 +1,7 @@
 import {
   DeploymentErrorData,
   ExternalBuildData,
+  logger,
   prepareDeploymentError,
 } from "@trigger.dev/core/v3";
 import { type RuntimeEnvironment, type WorkerDeployment } from "@trigger.dev/database";
@@ -13,6 +14,21 @@ import { getUsername } from "~/utils/username";
 import { processGitMetadata } from "./BranchesPresenter.server";
 import { S2 } from "@s2-dev/streamstore";
 import { env } from "~/env.server";
+import { createRedisClient } from "~/redis.server";
+import { tryCatch } from "@trigger.dev/core";
+
+const S2_TOKEN_KEY_PREFIX = "s2-token:project:";
+
+const s2TokenRedis = createRedisClient("s2-token-cache", {
+  host: env.CACHE_REDIS_HOST,
+  port: env.CACHE_REDIS_PORT,
+  username: env.CACHE_REDIS_USERNAME,
+  password: env.CACHE_REDIS_PASSWORD,
+  tlsDisabled: env.CACHE_REDIS_TLS_DISABLED === "true",
+  clusterMode: env.CACHE_REDIS_CLUSTER_MODE_ENABLED === "1",
+});
+
+const s2 = env.S2_ENABLED === "1" ? new S2({ accessToken: env.S2_ACCESS_TOKEN }) : undefined;
 
 export type ErrorData = {
   name: string;
@@ -149,26 +165,17 @@ export class DeploymentPresenter {
 
     let s2Logs = undefined;
     if (env.S2_ENABLED === "1" && gitMetadata?.source === "trigger_github_app") {
-      const s2 = new S2({ accessToken: env.S2_ACCESS_TOKEN });
-      const projectS2AccessToken = await s2.accessTokens.issue({
-        id: `${project.externalRef}-${new Date().getTime()}`,
-        expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(), // 1 hour
-        scope: {
-          ops: ["read"],
-          basins: {
-            exact: env.S2_DEPLOYMENT_LOGS_BASIN_NAME,
-          },
-          streams: {
-            prefix: `projects/${project.externalRef}/deployments/`,
-          },
-        },
-      });
+      const [error, accessToken] = await tryCatch(this.getS2AccessToken(project.externalRef));
 
-      s2Logs = {
-        basin: env.S2_DEPLOYMENT_LOGS_BASIN_NAME,
-        stream: `projects/${project.externalRef}/deployments/${deployment.shortCode}`,
-        accessToken: projectS2AccessToken.access_token,
-      };
+      if (error) {
+        logger.error("Failed getting S2 access token", { error });
+      } else {
+        s2Logs = {
+          basin: env.S2_DEPLOYMENT_LOGS_BASIN_NAME,
+          stream: `projects/${project.externalRef}/deployments/${deployment.shortCode}`,
+          accessToken,
+        };
+      }
     }
 
     return {
@@ -211,6 +218,41 @@ export class DeploymentPresenter {
         git: gitMetadata,
       },
     };
+  }
+
+  private async getS2AccessToken(projectRef: string): Promise<string> {
+    if (env.S2_ENABLED !== "1" || !s2) {
+      throw new Error("Failed getting S2 access token: S2 is not enabled");
+    }
+
+    const redisKey = `${S2_TOKEN_KEY_PREFIX}${projectRef}`;
+    const cachedToken = await s2TokenRedis.get(redisKey);
+
+    if (cachedToken) {
+      return cachedToken;
+    }
+
+    const { access_token: accessToken } = await s2.accessTokens.issue({
+      id: `${projectRef}-${new Date().getTime()}`,
+      expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(), // 1 hour
+      scope: {
+        ops: ["read"],
+        basins: {
+          exact: env.S2_DEPLOYMENT_LOGS_BASIN_NAME,
+        },
+        streams: {
+          prefix: `projects/${projectRef}/deployments/`,
+        },
+      },
+    });
+
+    await s2TokenRedis.setex(
+      redisKey,
+      59 * 60, // slightly shorter than the token validity period
+      accessToken
+    );
+
+    return accessToken;
   }
 
   public static prepareErrorData(errorData: WorkerDeployment["errorData"]): ErrorData | undefined {

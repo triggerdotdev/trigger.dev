@@ -153,7 +153,7 @@ export default function Page() {
     return () => {
       abortController.abort();
     };
-  }, [s2Logs?.basin, s2Logs?.stream]);
+  }, [s2Logs?.basin, s2Logs?.stream, s2Logs?.accessToken]);
 
   return (
     <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr] overflow-hidden bg-background-bright">
