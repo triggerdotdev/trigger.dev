@@ -1,5 +1,6 @@
 ---
-"@trigger.dev/sdk": patch
+"@trigger.dev/sdk": minor
+"@trigger.dev/react-hooks": minor
 ---
 
-gracefully recover from ECONNRESET errors when sending stream data from tasks to the server
+Realtime streams v2

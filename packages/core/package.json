@@ -189,7 +189,6 @@
     "humanize-duration": "^3.27.3",
     "jose": "^5.4.0",
     "nanoid": "3.3.8",
-    "p-limit": "^6.2.0",
     "prom-client": "^15.1.0",
     "socket.io": "4.7.4",
     "socket.io-client": "4.7.5",
