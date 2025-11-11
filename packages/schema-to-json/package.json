@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/schema-to-json",
-  "version": "4.0.6",
+  "version": "4.0.7",
   "description": "Convert various schema validation libraries to JSON Schema",
   "license": "MIT",
   "publishConfig": {

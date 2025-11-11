@@ -1,5 +1,15 @@
 # trigger.dev
 
+## 4.0.7
+
+### Patch Changes
+
+- Fix for the MCP tool that gets run logs to help debugging ([#2653](https://github.com/triggerdotdev/trigger.dev/pull/2653))
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.7`
+  - `@trigger.dev/core@4.0.7`
+  - `@trigger.dev/schema-to-json@4.0.7`
+
 ## 4.0.6
 
 ### Patch Changes
