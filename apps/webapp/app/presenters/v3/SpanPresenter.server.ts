@@ -19,6 +19,7 @@ import { WaitpointPresenter } from "./WaitpointPresenter.server";
 import { engine } from "~/v3/runEngine.server";
 import { resolveEventRepositoryForStore } from "~/v3/eventRepository/index.server";
 import { IEventRepository, SpanDetail } from "~/v3/eventRepository/eventRepository.types";
+import { safeJsonParse } from "~/utils/json";
 
 type Result = Awaited<ReturnType<SpanPresenter["call"]>>;
 export type Span = NonNullable<NonNullable<Result>["span"]>;
@@ -547,6 +548,41 @@ export class SpanPresenter extends BasePresenter {
             type: "attempt" as const,
             object: {
               isWarmStart,
+            },
+          },
+        };
+      }
+      case "realtime-stream": {
+        if (!span.entity.id) {
+          logger.error(`SpanPresenter: No realtime stream id`, {
+            spanId,
+            realtimeStreamId: span.entity.id,
+          });
+          return { ...data, entity: null };
+        }
+
+        const [runId, streamKey] = span.entity.id.split(":");
+
+        if (!runId || !streamKey) {
+          logger.error(`SpanPresenter: Invalid realtime stream id`, {
+            spanId,
+            realtimeStreamId: span.entity.id,
+          });
+          return { ...data, entity: null };
+        }
+
+        const metadata = span.entity.metadata
+          ? (safeJsonParse(span.entity.metadata) as Record<string, unknown> | undefined)
+          : undefined;
+
+        return {
+          ...data,
+          entity: {
+            type: "realtime-stream" as const,
+            object: {
+              runId,
+              streamKey,
+              metadata,
             },
           },
         };

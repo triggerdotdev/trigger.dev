@@ -431,6 +431,7 @@ export class RunAttemptSystem {
                   traceContext: true,
                   priorityMs: true,
                   batchId: true,
+                  realtimeStreamsVersion: true,
                   runtimeEnvironment: {
                     select: {
                       id: true,
@@ -595,6 +596,7 @@ export class RunAttemptSystem {
                 updatedRun.runtimeEnvironment.type !== "DEVELOPMENT"
                   ? updatedRun.workerQueue
                   : undefined,
+              realtimeStreamsVersion: updatedRun.realtimeStreamsVersion ?? undefined,
             },
             task,
             queue,

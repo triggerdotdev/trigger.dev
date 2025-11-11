@@ -181,6 +181,7 @@
     "@opentelemetry/sdk-trace-base": "2.0.1",
     "@opentelemetry/sdk-trace-node": "2.0.1",
     "@opentelemetry/semantic-conventions": "1.36.0",
+    "@s2-dev/streamstore": "0.17.3",
     "dequal": "^2.0.3",
     "eventsource": "^3.0.5",
     "eventsource-parser": "^3.0.0",

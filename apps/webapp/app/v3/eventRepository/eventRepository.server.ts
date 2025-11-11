@@ -783,6 +783,7 @@ export class EventRepository implements IEventRepository {
           SemanticInternalAttributes.ENTITY_TYPE
         ),
         id: rehydrateAttribute<string>(spanEvent.properties, SemanticInternalAttributes.ENTITY_ID),
+        metadata: undefined,
       };
 
       return {

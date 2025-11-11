@@ -29,6 +29,7 @@ export const SemanticInternalAttributes = {
   SPAN: "$span",
   ENTITY_TYPE: "$entity.type",
   ENTITY_ID: "$entity.id",
+  ENTITY_METADATA: "$entity.metadata",
   OUTPUT: "$output",
   OUTPUT_TYPE: "$mime_type_output",
   STYLE: "$style",

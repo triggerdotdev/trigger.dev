@@ -13,11 +13,6 @@
         ".cache"
       ]
     },
-    "build:db:seed": {
-      "outputs": [
-        "prisma/seed.js"
-      ]
-    },
     "webapp#start": {
       "dependsOn": [
         "^build"
@@ -43,7 +38,7 @@
     "db:seed": {
       "cache": false,
       "dependsOn": [
-        "build:db:seed"
+        "build"
       ]
     },
     "db:studio": {

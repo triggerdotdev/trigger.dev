@@ -424,19 +424,24 @@ export class ClickhouseEventRepository implements IEventRepository {
 
   private extractEntityFromAttributes(
     attributes: Attributes
-  ): { entityType: string; entityId?: string } | undefined {
+  ): { entityType: string; entityId?: string; entityMetadata?: string } | undefined {
     if (!attributes || typeof attributes !== "object") {
       return undefined;
     }
 
     const entityType = attributes[SemanticInternalAttributes.ENTITY_TYPE];
     const entityId = attributes[SemanticInternalAttributes.ENTITY_ID];
+    const entityMetadata = attributes[SemanticInternalAttributes.ENTITY_METADATA];
 
     if (typeof entityType !== "string") {
       return undefined;
     }
 
-    return { entityType, entityId: entityId as string | undefined };
+    return {
+      entityType,
+      entityId: entityId as string | undefined,
+      entityMetadata: entityMetadata as string | undefined,
+    };
   }
 
   private addToBatch(events: TaskEventV1Input[] | TaskEventV1Input) {
@@ -1101,6 +1106,7 @@ export class ClickhouseEventRepository implements IEventRepository {
           entity: {
             type: undefined,
             id: undefined,
+            metadata: undefined,
           },
           metadata: {},
         };
@@ -1140,6 +1146,12 @@ export class ClickhouseEventRepository implements IEventRepository {
         span.entity = {
           id: parsedMetadata.entity.entityId,
           type: parsedMetadata.entity.entityType,
+          metadata:
+            "entityMetadata" in parsedMetadata.entity &&
+            parsedMetadata.entity.entityMetadata &&
+            typeof parsedMetadata.entity.entityMetadata === "string"
+              ? parsedMetadata.entity.entityMetadata
+              : undefined,
         };
       }
 
