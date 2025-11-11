@@ -1417,4 +1417,108 @@ describe("RedisRealtimeStreams", () => {
       await redis.quit();
     }
   );
+
+  redisTest(
+    "Should handle chunks split mid-line (regression test)",
+    { timeout: 30_000 },
+    async ({ redisOptions }) => {
+      const redis = new Redis(redisOptions);
+      const redisRealtimeStreams = new RedisRealtimeStreams({
+        redis: redisOptions,
+      });
+
+      const runId = "run_split_test";
+      const streamId = "test-split-stream";
+
+      // Simulate what happens in production: a JSON line split across multiple network chunks
+      // This reproduces the issue where we see partial chunks like:
+      // - "{\"timestamp\":"
+      // - "1762880245493,\"chunkIndex\":780,\"data\":\"Chunk 781/1000\"}"
+      const fullLine = JSON.stringify({
+        timestamp: 1762880245493,
+        chunkIndex: 780,
+        data: "Chunk 781/1000",
+      });
+
+      // Split the line at an arbitrary position (in the middle of the JSON)
+      const splitPoint = 16; // Splits after '{"timestamp":'
+      const chunk1 = fullLine.substring(0, splitPoint);
+      const chunk2 = fullLine.substring(splitPoint);
+
+      // Create a ReadableStream that sends split chunks
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(chunk1));
+          controller.enqueue(encoder.encode(chunk2 + "\n")); // Add newline at end
+          controller.close();
+        },
+      });
+
+      // Ingest the split data
+      await redisRealtimeStreams.ingestData(stream, runId, streamId, "client1");
+
+      // Now consume the stream and verify we get the complete line, not split chunks
+      const abortController = new AbortController();
+      const response = await redisRealtimeStreams.streamResponse(
+        new Request("http://localhost/test"),
+        runId,
+        streamId,
+        abortController.signal
+      );
+
+      const reader = response.body!.getReader();
+      const decoder = new TextDecoder();
+      let receivedData = "";
+
+      // Read all chunks from the response
+      const readTimeout = setTimeout(() => {
+        abortController.abort();
+      }, 5000);
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          receivedData += decoder.decode(value, { stream: true });
+
+          // Once we have data, we can stop
+          if (receivedData.includes("data: ")) {
+            break;
+          }
+        }
+      } finally {
+        clearTimeout(readTimeout);
+        abortController.abort();
+        reader.releaseLock();
+      }
+
+      // Parse the SSE data
+      const lines = receivedData.split("\n").filter((line) => line.startsWith("data: "));
+
+      // We should receive exactly ONE complete line, not two partial lines
+      expect(lines.length).toBe(1);
+
+      // Extract the data (remove "data: " prefix)
+      const dataLine = lines[0].substring(6);
+
+      // Verify it's the complete, valid JSON
+      expect(dataLine).toBe(fullLine);
+
+      // Verify it parses correctly as JSON
+      const parsed = JSON.parse(dataLine) as {
+        timestamp: number;
+        chunkIndex: number;
+        data: string;
+      };
+      expect(parsed.timestamp).toBe(1762880245493);
+      expect(parsed.chunkIndex).toBe(780);
+      expect(parsed.data).toBe("Chunk 781/1000");
+
+      // Cleanup
+      await redis.del(`stream:${runId}:${streamId}`);
+      await redis.quit();
+    }
+  );
 });
