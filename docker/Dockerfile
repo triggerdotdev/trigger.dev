@@ -85,7 +85,6 @@ COPY --from=production-deps --chown=node:node /triggerdotdev .
 COPY --from=builder --chown=node:node /triggerdotdev/apps/webapp/build/server.js ./apps/webapp/build/server.js
 COPY --from=builder --chown=node:node /triggerdotdev/apps/webapp/build ./apps/webapp/build
 COPY --from=builder --chown=node:node /triggerdotdev/apps/webapp/public ./apps/webapp/public
-COPY --from=builder --chown=node:node /triggerdotdev/apps/webapp/prisma/seed.js ./apps/webapp/prisma/seed.js
 COPY --from=builder --chown=node:node /triggerdotdev/scripts ./scripts
 
 # Goose and schemas
