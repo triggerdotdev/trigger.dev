@@ -137,7 +137,10 @@ export default function Page() {
       } catch (error) {
         if (abortController.signal.aborted) return;
 
-        const isNotFoundError = error instanceof S2Error && error.code === "stream_not_found";
+        const isNotFoundError =
+          error instanceof S2Error &&
+          error.code &&
+          ["permission_denied", "stream_not_found"].includes(error.code);
         if (isNotFoundError) return;
 
         console.error("Failed to stream logs:", error);

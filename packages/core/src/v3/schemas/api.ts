@@ -1267,9 +1267,9 @@ export type ApiBranchListResponseBody = z.infer<typeof ApiBranchListResponseBody
 export const RetrieveRunTraceSpanSchema = z.object({
   id: z.string(),
   parentId: z.string().optional(),
-  message: z.string(),
+  runId: z.string(),
   data: z.object({
-    runId: z.string(),
+    message: z.string(),
     taskSlug: z.string().optional(),
     taskPath: z.string().optional(),
     events: z.array(z.any()).optional(),
@@ -1279,7 +1279,6 @@ export const RetrieveRunTraceSpanSchema = z.object({
     isPartial: z.boolean(),
     isCancelled: z.boolean(),
     level: z.string(),
-    environmentType: z.string(),
     workerVersion: z.string().optional(),
     queueName: z.string().optional(),
     machinePreset: z.string().optional(),
