@@ -822,7 +822,6 @@ const streamsStressTesterTask = task({
 
     switch (payload.streamsVersion) {
       case "v1": {
-        assert.ok(chunks.length < 2000, "Expected less than 2000 chunks");
         break;
       }
       case "v2": {

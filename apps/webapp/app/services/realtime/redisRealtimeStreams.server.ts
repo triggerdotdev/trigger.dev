@@ -204,20 +204,52 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
       },
     })
       .pipeThrough(
-        // Transform 1: Split data content by newlines, preserving metadata
-        new TransformStream<StreamChunk, StreamChunk & { line?: string }>({
-          transform(chunk, controller) {
-            if (chunk.type === "ping") {
-              controller.enqueue(chunk);
-            } else if (chunk.type === "data" || chunk.type === "legacy-data") {
-              // Split data by newlines, emit separate chunks with same metadata
-              const lines = chunk.data.split("\n").filter((line) => line.trim().length > 0);
-              for (const line of lines) {
-                controller.enqueue({ ...chunk, line });
+        // Transform 1: Buffer partial lines across Redis entries
+        (() => {
+          let buffer = "";
+          let lastRedisId = "0";
+
+          return new TransformStream<StreamChunk, StreamChunk & { line: string }>({
+            transform(chunk, controller) {
+              if (chunk.type === "ping") {
+                controller.enqueue(chunk as any);
+              } else if (chunk.type === "data" || chunk.type === "legacy-data") {
+                // Buffer partial lines: accumulate until we see newlines
+                buffer += chunk.data;
+
+                // Split on newlines
+                const lines = buffer.split("\n");
+
+                // The last element might be incomplete, hold it back in buffer
+                buffer = lines.pop() || "";
+
+                // Emit complete lines with the Redis ID of the chunk that completed them
+                for (const line of lines) {
+                  if (line.trim().length > 0) {
+                    controller.enqueue({
+                      ...chunk,
+                      line,
+                    });
+                  }
+                }
+
+                // Update last Redis ID for next iteration
+                lastRedisId = chunk.redisId;
               }
-            }
-          },
-        })
+            },
+            flush(controller) {
+              // On stream end, emit any leftover buffered text
+              if (buffer.trim().length > 0) {
+                controller.enqueue({
+                  type: "data",
+                  redisId: lastRedisId,
+                  data: "",
+                  line: buffer.trim(),
+                });
+              }
+            },
+          });
+        })()
       )
       .pipeThrough(
         // Transform 2: Format as SSE
