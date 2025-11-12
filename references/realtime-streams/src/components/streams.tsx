@@ -4,12 +4,20 @@ import { useRealtimeStream } from "@trigger.dev/react-hooks";
 import { Streamdown } from "streamdown";
 import { demoStream } from "@/app/streams";
 
-export function Streams({ accessToken, runId }: { accessToken: string; runId: string }) {
+export function Streams({
+  accessToken,
+  runId,
+  isMarkdown,
+}: {
+  accessToken: string;
+  runId: string;
+  isMarkdown: boolean;
+}) {
   const { parts, error } = useRealtimeStream(demoStream, runId, {
     accessToken,
     baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL,
     onData: (data) => {
-      console.log(data);
+      // console.log(data);
     },
     timeoutInSeconds: 600,
   });
@@ -26,7 +34,7 @@ export function Streams({ accessToken, runId }: { accessToken: string; runId: st
         <span className="font-semibold">Run:</span> {runId}
       </div>
       <div className="prose prose-sm max-w-none text-gray-900">
-        <Streamdown isAnimating={true}>{stream}</Streamdown>
+        {isMarkdown ? <Streamdown isAnimating={true}>{stream}</Streamdown> : stream}
       </div>
     </div>
   );

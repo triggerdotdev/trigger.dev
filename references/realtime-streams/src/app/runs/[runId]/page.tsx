@@ -6,10 +6,11 @@ export default function RunPage({
   searchParams,
 }: {
   params: { runId: string };
-  searchParams: { accessToken?: string };
+  searchParams: { accessToken?: string; isMarkdown?: string };
 }) {
   const { runId } = params;
   const accessToken = searchParams.accessToken;
+  const isMarkdown = searchParams.isMarkdown === "true";
 
   if (!accessToken) {
     return (
@@ -49,7 +50,7 @@ export default function RunPage({
         </div>
 
         <div className="w-full border border-gray-200 rounded-lg p-6 bg-white">
-          <Streams accessToken={accessToken} runId={runId} />
+          <Streams accessToken={accessToken} runId={runId} isMarkdown={isMarkdown} />
         </div>
       </main>
     </div>

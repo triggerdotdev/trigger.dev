@@ -199,8 +199,11 @@ export function RealtimeStreamViewer({
 
   // Auto-scroll to bottom when new chunks arrive, if we're at the bottom
   useEffect(() => {
-    if (isAtBottom && bottomRef.current) {
-      bottomRef.current.scrollIntoView({ behavior: "instant", block: "end" });
+    if (isAtBottom && scrollRef.current) {
+      // Preserve horizontal scroll position while scrolling to bottom vertically
+      const currentScrollLeft = scrollRef.current.scrollLeft;
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      scrollRef.current.scrollLeft = currentScrollLeft;
     }
   }, [chunks, isAtBottom]);
 
@@ -340,7 +343,7 @@ export function RealtimeStreamViewer({
       {/* Content */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto bg-charcoal-900 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        className="flex-1 overflow-x-auto overflow-y-auto bg-charcoal-900 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
       >
         {error && (
           <div className="border-b border-error/20 bg-error/10 p-3">
@@ -372,8 +375,8 @@ export function RealtimeStreamViewer({
             <div
               style={{
                 height: `${rowVirtualizer.getTotalSize()}px`,
-                width: "100%",
                 position: "relative",
+                minWidth: "100%",
               }}
             >
               {rowVirtualizer.getVirtualItems().map((virtualItem) => (
@@ -452,12 +455,11 @@ function StreamChunkLine({
 
   return (
     <div
-      className="group flex w-full gap-3 py-1 hover:bg-charcoal-800"
+      className="group flex gap-3 py-1 hover:bg-charcoal-800"
       style={{
         position: "absolute",
         top: 0,
         left: 0,
-        width: "100%",
         height: `${size}px`,
         transform: `translateY(${start}px)`,
       }}
@@ -471,10 +473,10 @@ function StreamChunkLine({
       </div>
 
       {/* Timestamp */}
-      <div className="flex-none select-none text-charcoal-500">{timestamp}</div>
+      <div className="flex-none select-none pl-1 text-charcoal-500">{timestamp}</div>
 
       {/* Content */}
-      <div className="min-w-0 flex-1 break-all text-text-bright">{formattedData}</div>
+      <div className="whitespace-nowrap text-text-bright">{formattedData}</div>
     </div>
   );
 }
