@@ -1226,6 +1226,10 @@ const EnvironmentSchema = z
 
     REALTIME_STREAMS_S2_BASIN: z.string().optional(),
     REALTIME_STREAMS_S2_ACCESS_TOKEN: z.string().optional(),
+    REALTIME_STREAMS_S2_ACCESS_TOKEN_EXPIRATION_IN_MS: z.coerce
+      .number()
+      .int()
+      .default(60_000 * 60 * 24), // 1 day
     REALTIME_STREAMS_S2_LOG_LEVEL: z
       .enum(["log", "error", "warn", "info", "debug"])
       .default("info"),
