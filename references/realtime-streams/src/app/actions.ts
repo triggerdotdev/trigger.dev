@@ -31,12 +31,14 @@ export async function triggerStreamTask(
     }
   );
 
-  console.log("Triggered run:", handle.id);
-
   // Redirect to custom path or default run page
   const path = redirectPath
-    ? `${redirectPath}/${handle.id}?accessToken=${handle.publicAccessToken}`
-    : `/runs/${handle.id}?accessToken=${handle.publicAccessToken}`;
+    ? `${redirectPath}/${handle.id}?accessToken=${handle.publicAccessToken}&isMarkdown=${
+        scenario === "markdown" ? "true" : "false"
+      }`
+    : `/runs/${handle.id}?accessToken=${handle.publicAccessToken}&isMarkdown=${
+        scenario === "markdown" ? "true" : "false"
+      }`;
 
   redirect(path);
 }
