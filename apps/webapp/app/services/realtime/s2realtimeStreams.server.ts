@@ -1,4 +1,5 @@
 // app/realtime/S2RealtimeStreams.ts
+import type { UnkeyCache } from "@internal/cache";
 import { StreamIngestor, StreamResponder, StreamResponseOptions } from "./types";
 import { Logger, LogLevel } from "@trigger.dev/core/logger";
 import { randomUUID } from "node:crypto";
@@ -17,6 +18,12 @@ export type S2RealtimeStreamsOptions = {
 
   logger?: Logger;
   logLevel?: LogLevel;
+
+  accessTokenExpirationInMs?: number;
+
+  cache?: UnkeyCache<{
+    accessToken: string;
+  }>;
 };
 
 type S2IssueAccessTokenResponse = { access_token: string };
@@ -41,6 +48,12 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
   private readonly logger: Logger;
   private readonly level: LogLevel;
 
+  private readonly accessTokenExpirationInMs: number;
+
+  private readonly cache?: UnkeyCache<{
+    accessToken: string;
+  }>;
+
   constructor(opts: S2RealtimeStreamsOptions) {
     this.basin = opts.basin;
     this.baseUrl = `https://${this.basin}.b.aws.s2.dev/v1`;
@@ -54,14 +67,13 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
 
     this.logger = opts.logger ?? new Logger("S2RealtimeStreams", opts.logLevel ?? "info");
     this.level = opts.logLevel ?? "info";
+
+    this.cache = opts.cache;
+    this.accessTokenExpirationInMs = opts.accessTokenExpirationInMs ?? 60_000 * 60 * 24; // 1 day
   }
 
   private toStreamName(runId: string, streamId: string): string {
-    return `${this.toStreamPrefix(runId)}${streamId}`;
-  }
-
-  private toStreamPrefix(runId: string): string {
-    return `${this.streamPrefix}/runs/${runId}/`;
+    return `${this.streamPrefix}/runs/${runId}/${streamId}`;
   }
 
   async initializeStream(
@@ -70,11 +82,12 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
   ): Promise<{ responseHeaders?: Record<string, string> }> {
     const id = randomUUID();
 
-    const accessToken = await this.s2IssueAccessToken(id, runId, streamId);
+    const accessToken = await this.getS2AccessToken(id);
 
     return {
       responseHeaders: {
         "X-S2-Access-Token": accessToken,
+        "X-S2-Stream-Name": `/runs/${runId}/${streamId}`,
         "X-S2-Basin": this.basin,
         "X-S2-Flush-Interval-Ms": this.flushIntervalMs.toString(),
         "X-S2-Max-Retries": this.maxRetries.toString(),
@@ -153,7 +166,23 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     return (await res.json()) as S2AppendAck;
   }
 
-  private async s2IssueAccessToken(id: string, runId: string, streamId: string): Promise<string> {
+  private async getS2AccessToken(id: string): Promise<string> {
+    if (!this.cache) {
+      return this.s2IssueAccessToken(id);
+    }
+
+    const result = await this.cache.accessToken.swr(this.streamPrefix, async () => {
+      return this.s2IssueAccessToken(id);
+    });
+
+    if (!result.val) {
+      throw new Error("Failed to get S2 access token");
+    }
+
+    return result.val;
+  }
+
+  private async s2IssueAccessToken(id: string): Promise<string> {
     // POST /v1/access-tokens
     const res = await fetch(`https://aws.s2.dev/v1/access-tokens`, {
       method: "POST",
@@ -169,10 +198,10 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
           },
           ops: ["append", "create-stream"],
           streams: {
-            prefix: this.toStreamPrefix(runId),
+            prefix: this.streamPrefix,
           },
         },
-        expires_at: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(), // 1 day
+        expires_at: new Date(Date.now() + this.accessTokenExpirationInMs).toISOString(),
         auto_prefix_streams: true,
       }),
     });

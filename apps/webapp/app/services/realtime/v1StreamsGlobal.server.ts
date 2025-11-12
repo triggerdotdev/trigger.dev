@@ -1,9 +1,16 @@
+import {
+  createCache,
+  createMemoryStore,
+  DefaultStatefulContext,
+  Namespace,
+  RedisCacheStore,
+} from "@internal/cache";
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
-import { RedisRealtimeStreams } from "./redisRealtimeStreams.server";
 import { AuthenticatedEnvironment } from "../apiAuth.server";
-import { StreamIngestor, StreamResponder } from "./types";
+import { RedisRealtimeStreams } from "./redisRealtimeStreams.server";
 import { S2RealtimeStreams } from "./s2realtimeStreams.server";
+import { StreamIngestor, StreamResponder } from "./types";
 
 function initializeRedisRealtimeStreams() {
   return new RedisRealtimeStreams({
@@ -44,9 +51,43 @@ export function getRealtimeStreamInstance(
         flushIntervalMs: env.REALTIME_STREAMS_S2_FLUSH_INTERVAL_MS,
         maxRetries: env.REALTIME_STREAMS_S2_MAX_RETRIES,
         s2WaitSeconds: env.REALTIME_STREAMS_S2_WAIT_SECONDS,
+        accessTokenExpirationInMs: env.REALTIME_STREAMS_S2_ACCESS_TOKEN_EXPIRATION_IN_MS,
+        cache: s2RealtimeStreamsCache,
       });
     }
 
     throw new Error("Realtime streams v2 is required for this run but S2 configuration is missing");
   }
+}
+
+const s2RealtimeStreamsCache = singleton(
+  "s2RealtimeStreamsCache",
+  initializeS2RealtimeStreamsCache
+);
+
+function initializeS2RealtimeStreamsCache() {
+  const ctx = new DefaultStatefulContext();
+  const redisCacheStore = new RedisCacheStore({
+    name: "s2-realtime-streams-cache",
+    connection: {
+      port: env.REALTIME_STREAMS_REDIS_PORT,
+      host: env.REALTIME_STREAMS_REDIS_HOST,
+      username: env.REALTIME_STREAMS_REDIS_USERNAME,
+      password: env.REALTIME_STREAMS_REDIS_PASSWORD,
+      enableAutoPipelining: true,
+      ...(env.REALTIME_STREAMS_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
+      keyPrefix: "s2-realtime-streams-cache:",
+    },
+    useModernCacheKeyBuilder: true,
+  });
+
+  const memoryStore = createMemoryStore(5000, 0.001);
+
+  return createCache({
+    accessToken: new Namespace<string>(ctx, {
+      stores: [memoryStore, redisCacheStore],
+      fresh: Math.floor(env.REALTIME_STREAMS_S2_ACCESS_TOKEN_EXPIRATION_IN_MS / 2),
+      stale: Math.floor(env.REALTIME_STREAMS_S2_ACCESS_TOKEN_EXPIRATION_IN_MS),
+    }),
+  });
 }

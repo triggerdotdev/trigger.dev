@@ -381,7 +381,7 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
       "chunkIndex",
       "0",
       "data",
-      part
+      JSON.stringify(part) + "\n"
     );
 
     // Set TTL for cleanup when stream is done
