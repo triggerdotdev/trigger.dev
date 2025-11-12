@@ -87,7 +87,7 @@ function initializeS2RealtimeStreamsCache() {
     accessToken: new Namespace<string>(ctx, {
       stores: [memoryStore, redisCacheStore],
       fresh: Math.floor(env.REALTIME_STREAMS_S2_ACCESS_TOKEN_EXPIRATION_IN_MS / 2),
-      stale: Math.floor(env.REALTIME_STREAMS_S2_ACCESS_TOKEN_EXPIRATION_IN_MS),
+      stale: Math.floor(env.REALTIME_STREAMS_S2_ACCESS_TOKEN_EXPIRATION_IN_MS / 2 + 60_000),
     }),
   });
 }
