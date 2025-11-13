@@ -21,10 +21,11 @@ import { Label } from "~/components/primitives/Label";
 import { ButtonSpinner } from "~/components/primitives/Spinner";
 import { prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
-import { redirectWithSuccessMessage } from "~/models/message.server";
-import { createProject } from "~/models/project.server";
+import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
+import { createProject, ExceededProjectLimitError } from "~/models/project.server";
 import { requireUserId } from "~/services/session.server";
 import {
+  newProjectPath,
   OrganizationParamsSchema,
   organizationPath,
   selectPlanPath,
@@ -114,8 +115,29 @@ export const action: ActionFunction = async ({ request, params }) => {
       request,
       `${submission.value.projectName} created`
     );
-  } catch (error: any) {
-    return json({ errors: { body: error.message } }, { status: 400 });
+  } catch (error) {
+    if (error instanceof ExceededProjectLimitError) {
+      return redirectWithErrorMessage(
+        newProjectPath({ slug: organizationSlug }),
+        request,
+        error.message,
+        {
+          title: "Failed to create project",
+          action: {
+            label: "Request more projects",
+            variant: "secondary/small",
+            action: { type: "help", feedbackType: "help" },
+          },
+        }
+      );
+    }
+
+    return redirectWithErrorMessage(
+      newProjectPath({ slug: organizationSlug }),
+      request,
+      error instanceof Error ? error.message : "Something went wrong",
+      { ephemeral: false }
+    );
   }
 };
 

@@ -521,7 +521,10 @@ export async function getEntitlement(
   }
 }
 
-export async function projectCreated(organization: Organization, project: Project) {
+export async function projectCreated(
+  organization: Pick<Organization, "id" | "maximumConcurrencyLimit">,
+  project: Project
+) {
   if (!isCloud()) {
     await createEnvironment({ organization, project, type: "STAGING" });
     await createEnvironment({
