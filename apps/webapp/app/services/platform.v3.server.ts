@@ -1,4 +1,4 @@
-import { MachinePresetName } from "@trigger.dev/core/v3";
+import { MachinePresetName, tryCatch } from "@trigger.dev/core/v3";
 import type { Organization, Project, RuntimeEnvironmentType } from "@trigger.dev/database";
 import {
   BillingClient,
@@ -344,62 +344,58 @@ export async function setPlan(
   opts?: { invalidateBillingCache?: (orgId: string) => void }
 ) {
   if (!client) {
-    throw redirectWithErrorMessage(callerPath, request, "Error setting plan");
+    return redirectWithErrorMessage(callerPath, request, "Error setting plan", {
+      ephemeral: false,
+    });
   }
 
-  try {
-    const result = await client.setPlan(organization.id, plan);
+  const [error, result] = await tryCatch(client.setPlan(organization.id, plan));
 
-    if (!result) {
-      throw redirectWithErrorMessage(callerPath, request, "Error setting plan");
+  if (error) {
+    return redirectWithErrorMessage(callerPath, request, error.message, { ephemeral: false });
+  }
+
+  if (!result) {
+    return redirectWithErrorMessage(callerPath, request, "Error setting plan", {
+      ephemeral: false,
+    });
+  }
+
+  if (!result.success) {
+    return redirectWithErrorMessage(callerPath, request, result.error, { ephemeral: false });
+  }
+
+  switch (result.action) {
+    case "free_connect_required": {
+      return redirect(result.connectUrl);
     }
-
-    if (!result.success) {
-      throw redirectWithErrorMessage(callerPath, request, result.error);
-    }
-
-    switch (result.action) {
-      case "free_connect_required": {
-        return redirect(result.connectUrl);
-      }
-      case "free_connected": {
-        if (result.accepted) {
-          // Invalidate billing cache since plan changed
-          opts?.invalidateBillingCache?.(organization.id);
-          return redirect(newProjectPath(organization, "You're on the Free plan."));
-        } else {
-          return redirectWithErrorMessage(
-            callerPath,
-            request,
-            "Free tier unlock failed, your GitHub account is too new."
-          );
-        }
-      }
-      case "create_subscription_flow_start": {
-        return redirect(result.checkoutUrl);
-      }
-      case "updated_subscription": {
-        // Invalidate billing cache since subscription changed
+    case "free_connected": {
+      if (result.accepted) {
+        // Invalidate billing cache since plan changed
         opts?.invalidateBillingCache?.(organization.id);
-        return redirectWithSuccessMessage(
+        return redirect(newProjectPath(organization, "You're on the Free plan."));
+      } else {
+        return redirectWithErrorMessage(
           callerPath,
           request,
-          "Subscription updated successfully."
+          "Free tier unlock failed, your GitHub account is too new.",
+          { ephemeral: false }
         );
       }
-      case "canceled_subscription": {
-        // Invalidate billing cache since subscription was canceled
-        opts?.invalidateBillingCache?.(organization.id);
-        return redirectWithSuccessMessage(callerPath, request, "Subscription canceled.");
-      }
     }
-  } catch (e) {
-    logger.error("Error setting plan", { organizationId: organization.id, error: e });
-    throw redirectWithErrorMessage(
-      callerPath,
-      request,
-      e instanceof Error ? e.message : "Error setting plan"
-    );
+    case "create_subscription_flow_start": {
+      return redirect(result.checkoutUrl);
+    }
+    case "updated_subscription": {
+      // Invalidate billing cache since subscription changed
+      opts?.invalidateBillingCache?.(organization.id);
+      return redirectWithSuccessMessage(callerPath, request, "Subscription updated successfully.");
+    }
+    case "canceled_subscription": {
+      // Invalidate billing cache since subscription was canceled
+      opts?.invalidateBillingCache?.(organization.id);
+      return redirectWithSuccessMessage(callerPath, request, "Subscription canceled.");
+    }
   }
 }
 
