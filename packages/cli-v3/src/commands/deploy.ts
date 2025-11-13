@@ -64,6 +64,7 @@ const DeployCommandOptions = CommonCommandOptions.extend({
   envFile: z.string().optional(),
   // Local build options
   forceLocalBuild: z.boolean().optional(),
+  useRegistryCache: z.boolean().default(false),
   network: z.enum(["default", "none", "host"]).optional(),
   push: z.boolean().optional(),
   builder: z.string().default("trigger"),
@@ -114,9 +115,17 @@ export function configureDeployCommand(program: Command) {
     )
       .addOption(
         new CommandOption(
+          "--use-registry-cache",
+          "Use the registry cache when building the image. The registry must be supported as a cache storage backend."
+        ).hideHelp()
+      )
+      .addOption(
+        new CommandOption(
           "--no-cache",
           "Do not use the cache when building the image. This will slow down the build process but can be useful if you are experiencing issues with the cache."
-        ).hideHelp()
+        )
+          .conflicts("useRegistryCache")
+          .hideHelp()
       )
       .addOption(
         new CommandOption("--load", "Load the built image into your local docker").hideHelp()
@@ -418,6 +427,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
   const buildResult = await buildImage({
     isLocalBuild,
+    useRegistryCache: options.useRegistryCache,
     noCache: options.noCache,
     deploymentId: deployment.id,
     deploymentVersion: deployment.version,
