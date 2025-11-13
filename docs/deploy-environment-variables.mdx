@@ -234,3 +234,52 @@ You can now use the `client` object to make authenticated requests to Google API
 </Step>
 
 </Steps>
+
+## Using `.env.production` or dotenvx with Trigger.dev
+
+Trigger.dev does not automatically load `.env.production` files or dotenvx files during deploys.  
+To use these files in your Trigger.dev environment:
+
+### Option 1 — Manually add your environment variables
+
+1. Open your `.env.production` (or `.env`) file  
+2. Copy the full contents  
+3. Go to your Trigger.dev project → **Environment Variables**  
+4. Click **Add variables**  
+5. Paste the contents directly into the editor
+
+Trigger.dev will automatically parse and create each key/value pair.
+
+This is the simplest way to bring dotenvx or `.env.production` variables into your Trigger.dev environment.
+
+### Option 2 — Sync variables automatically using `syncEnvVars`
+
+If you'd prefer an automated flow, you can use the `syncEnvVars` build extension to programmatically load and return your variables:
+
+```ts
+import { defineConfig } from "@trigger.dev/sdk";
+import { syncEnvVars } from "@trigger.dev/build/extensions/core";
+import dotenvx from "@dotenvx/dotenvx";
+import { readFileSync } from "fs";
+
+export default defineConfig({
+  project: "<project id>",
+  build: {
+    extensions: [
+      syncEnvVars(async () => {
+        const envContent = readFileSync(".env.production", "utf-8");
+        const parsed = dotenvx.parse(envContent);
+        return parsed ?? {};
+      }),
+    ],
+  },
+});
+```
+
+This will read your .env.production file using dotenvx and sync the variables to Trigger.dev during every deploy.
+
+**Summary**
+
+- Trigger.dev does not automatically detect .env.production or dotenvx files
+- You can paste them manually into the dashboard
+- Or sync them automatically using a build extension
