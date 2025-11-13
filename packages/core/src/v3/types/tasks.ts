@@ -13,6 +13,7 @@ import {
   OnSuccessHookFunction,
   OnWaitHookFunction,
   OnCancelHookFunction,
+  OnStartAttemptHookFunction,
 } from "../lifecycleHooks/types.js";
 import { RunTags } from "../schemas/api.js";
 import {
@@ -108,6 +109,13 @@ export type InitFnParams = Prettify<{
 }>;
 
 export type StartFnParams = Prettify<{
+  ctx: Context;
+  init?: InitOutput;
+  /** Abort signal that is aborted when a task run exceeds it's maxDuration or if the task run is cancelled. Can be used to automatically cancel downstream requests */
+  signal: AbortSignal;
+}>;
+
+export type StartAttemptFnParams = Prettify<{
   ctx: Context;
   init?: InitOutput;
   /** Abort signal that is aborted when a task run exceeds it's maxDuration or if the task run is cancelled. Can be used to automatically cancel downstream requests */
@@ -328,8 +336,17 @@ type CommonTaskOptions<
 
   /**
    * onStart is called the first time a task is executed in a run (not before every retry)
+   *
+   * @deprecated Use onStartAttempt instead
    */
   onStart?: OnStartHookFunction<TPayload, TInitOutput>;
+
+  /**
+   * onStartAttempt is called before each attempt of a task is executed.
+   *
+   * You can detect the first attempt by checking `ctx.attempt.number === 1`.
+   */
+  onStartAttempt?: OnStartAttemptHookFunction<TPayload>;
 
   /**
    * onSuccess is called after the run function has successfully completed.
@@ -913,6 +930,7 @@ export type TaskMetadataWithFunctions = TaskMetadata & {
     onSuccess?: (payload: any, output: any, params: SuccessFnParams<any>) => Promise<void>;
     onFailure?: (payload: any, error: unknown, params: FailureFnParams<any>) => Promise<void>;
     onStart?: (payload: any, params: StartFnParams) => Promise<void>;
+    onStartAttempt?: (payload: any, params: StartAttemptFnParams) => Promise<void>;
     parsePayload?: AnySchemaParseFn;
   };
   schema?: TaskSchema;

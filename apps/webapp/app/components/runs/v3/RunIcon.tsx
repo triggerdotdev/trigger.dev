@@ -98,6 +98,7 @@ export function RunIcon({ name, className, spanName }: TaskIconProps) {
       return <RunFunctionIcon className={cn(className, "text-text-dimmed")} />;
     case "task-hook-init":
     case "task-hook-onStart":
+    case "task-hook-onStartAttempt":
     case "task-hook-onSuccess":
     case "task-hook-onWait":
     case "task-hook-onResume":

@@ -16,6 +16,7 @@ import {
 } from "~/v3/services/batchTriggerV3.server";
 import { OutOfEntitlementError } from "~/v3/services/triggerTask.server";
 import { HeadersSchema } from "./api.v1.tasks.$taskId.trigger";
+import { determineRealtimeStreamsVersion } from "~/services/realtime/v1StreamsGlobal.server";
 
 const { action, loader } = createActionApiRoute(
   {
@@ -69,6 +70,7 @@ const { action, loader } = createActionApiRoute(
       "x-trigger-client": triggerClient,
       "x-trigger-engine-version": engineVersion,
       "batch-processing-strategy": batchProcessingStrategy,
+      "x-trigger-realtime-streams-version": realtimeStreamsVersion,
       traceparent,
       tracestate,
     } = headers;
@@ -107,6 +109,9 @@ const { action, loader } = createActionApiRoute(
         traceContext,
         spanParentAsLink: spanParentAsLink === 1,
         oneTimeUseToken,
+        realtimeStreamsVersion: determineRealtimeStreamsVersion(
+          realtimeStreamsVersion ?? undefined
+        ),
       });
 
       const $responseHeaders = await responseHeaders(

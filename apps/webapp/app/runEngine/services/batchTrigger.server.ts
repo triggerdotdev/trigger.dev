@@ -47,6 +47,7 @@ export type BatchTriggerTaskServiceOptions = {
   traceContext?: Record<string, string | undefined | Record<string, string | undefined>>;
   spanParentAsLink?: boolean;
   oneTimeUseToken?: string;
+  realtimeStreamsVersion?: "v1" | "v2";
 };
 
 /**
@@ -708,6 +709,7 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
         batchIndex: currentIndex,
         skipChecks: true, // Skip entitlement and queue checks since we already validated at batch/chunk level
         planType, // Pass planType from batch-level entitlement check
+        realtimeStreamsVersion: options?.realtimeStreamsVersion,
       },
       "V2"
     );

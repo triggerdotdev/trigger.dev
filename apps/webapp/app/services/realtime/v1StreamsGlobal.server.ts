@@ -60,6 +60,22 @@ export function getRealtimeStreamInstance(
   }
 }
 
+export function determineRealtimeStreamsVersion(streamVersion?: string): "v1" | "v2" {
+  if (!streamVersion) {
+    return env.REALTIME_STREAMS_DEFAULT_VERSION;
+  }
+
+  if (
+    streamVersion === "v2" &&
+    env.REALTIME_STREAMS_S2_BASIN &&
+    env.REALTIME_STREAMS_S2_ACCESS_TOKEN
+  ) {
+    return "v2";
+  }
+
+  return "v1";
+}
+
 const s2RealtimeStreamsCache = singleton(
   "s2RealtimeStreamsCache",
   initializeS2RealtimeStreamsCache
