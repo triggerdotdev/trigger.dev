@@ -1828,7 +1828,7 @@ components:
           example: ["user_5df987al13", "org_c6b7dycmxw"]
           items:
             type: string
-            description: A tag must be between 1 and 64 characters, a run can have up to 5 tags attached to it.
+            description: A tag must be between 1 and 128 characters, a run can have up to 10 tags attached to it.
         costInCents:
           type: number
           example: 0.00292
@@ -2005,7 +2005,7 @@ components:
           example: ["user_5df987al13", "org_c6b7dycmxw"]
           items:
             type: string
-            description: A tag must be between 1 and 64 characters, a run can have up to 5 tags attached to it.
+            description: A tag must be between 1 and 128 characters, a run can have up to 10 tags attached to it.
         metadata:
           type: object
           description: The metadata of the run. See [Metadata](/runs/metadata) for more information.
