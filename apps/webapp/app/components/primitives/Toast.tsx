@@ -1,17 +1,15 @@
 import { EnvelopeIcon, ExclamationCircleIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { CheckCircleIcon } from "@heroicons/react/24/solid";
-import { Toaster, toast } from "sonner";
-import { useTypedLoaderData } from "remix-typedjson";
-import { type loader } from "~/root";
+import { useSearchParams } from "@remix-run/react";
 import { useEffect } from "react";
-import { Paragraph } from "./Paragraph";
-import { cn } from "~/utils/cn";
+import { useTypedLoaderData } from "remix-typedjson";
+import { Toaster, toast } from "sonner";
 import { type ToastMessageAction } from "~/models/message.server";
-import { Header2, Header3 } from "./Headers";
+import { type loader } from "~/root";
+import { cn } from "~/utils/cn";
 import { Button, LinkButton } from "./Buttons";
-import { Feedback } from "../Feedback";
-import assertNever from "assert-never";
-import { assertExhaustive } from "@trigger.dev/core";
+import { Header2 } from "./Headers";
+import { Paragraph } from "./Paragraph";
 
 const defaultToastDuration = 5000;
 const permanentToastDuration = 60 * 60 * 24 * 1000;
@@ -78,14 +76,14 @@ export function ToastUI({
           <ExclamationCircleIcon className="mt-1 size-4 min-w-4 text-error" />
         )}
         <div className="flex flex-col">
-          {title && <Header2 className="pt-1">{title}</Header2>}
-          <Paragraph variant="small/dimmed" className="py-1">
+          {title && <Header2 className="pt-0">{title}</Header2>}
+          <Paragraph variant="small/dimmed" className="pb-1 pt-0.5">
             {message}
           </Paragraph>
-          <Action action={action} toastId={t} />
+          <Action action={action} toastId={t} className="my-2" />
         </div>
         <button
-          className="hover:bg-midnight-800 ms-auto rounded p-2 text-text-dimmed transition hover:text-text-bright"
+          className="hover:bg-midnight-800 -mr-1 -mt-1 ms-auto rounded p-2 text-text-dimmed transition hover:text-text-bright"
           onClick={() => toast.dismiss(t)}
         >
           <XMarkIcon className="size-4" />
@@ -95,37 +93,48 @@ export function ToastUI({
   );
 }
 
-function Action({ action, toastId }: { action?: ToastMessageAction; toastId: string }) {
+function Action({
+  action,
+  toastId,
+  className,
+}: {
+  action?: ToastMessageAction;
+  toastId: string;
+  className?: string;
+}) {
+  const [_, setSearchParams] = useSearchParams();
+
   if (!action) return null;
 
   switch (action.action.type) {
     case "link": {
       return (
-        <LinkButton variant={action.variant ?? "secondary/small"} to={action.action.path}>
+        <LinkButton
+          className={className}
+          variant={action.variant ?? "secondary/small"}
+          to={action.action.path}
+        >
           {action.label}
         </LinkButton>
       );
     }
     case "help": {
+      const feedbackType = action.action.feedbackType;
       return (
-        <Feedback
-          button={
-            <Button
-              variant={action.variant ?? "secondary/small"}
-              LeadingIcon={EnvelopeIcon}
-              onClick={(e) => {
-                e.preventDefault();
-                toast.dismiss(toastId);
-              }}
-            >
-              {action.label}
-            </Button>
-          }
-        />
+        <Button
+          className={className}
+          variant={action.variant ?? "secondary/small"}
+          LeadingIcon={EnvelopeIcon}
+          onClick={() => {
+            setSearchParams({
+              feedbackPanel: feedbackType,
+            });
+            toast.dismiss(toastId);
+          }}
+        >
+          {action.label}
+        </Button>
       );
-    }
-    default: {
-      return null;
     }
   }
 }

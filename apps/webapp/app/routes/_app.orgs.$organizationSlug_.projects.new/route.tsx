@@ -8,6 +8,7 @@ import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { z } from "zod";
 import { BackgroundWrapper } from "~/components/BackgroundWrapper";
+import { Feedback } from "~/components/Feedback";
 import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
@@ -213,6 +214,7 @@ export default function Page() {
               </Fieldset>
             </Form>
           </div>
+          <Feedback button={<></>} />
         </MainCenteredContainer>
       </BackgroundWrapper>
     </AppContainer>

@@ -2,7 +2,7 @@ import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { InformationCircleIcon, ArrowUpCircleIcon } from "@heroicons/react/20/solid";
 import { EnvelopeIcon } from "@heroicons/react/24/solid";
-import { Form, useActionData, useLocation, useNavigation } from "@remix-run/react";
+import { Form, useActionData, useLocation, useNavigation, useSearchParams } from "@remix-run/react";
 import { type ReactNode, useEffect, useState } from "react";
 import { type FeedbackType, feedbackTypeLabel, schema } from "~/routes/resources.feedback";
 import { Button } from "./primitives/Buttons";
@@ -23,10 +23,12 @@ import { DialogClose } from "@radix-ui/react-dialog";
 type FeedbackProps = {
   button: ReactNode;
   defaultValue?: FeedbackType;
+  onOpenChange?: (open: boolean) => void;
 };
 
-export function Feedback({ button, defaultValue = "bug" }: FeedbackProps) {
+export function Feedback({ button, defaultValue = "bug", onOpenChange }: FeedbackProps) {
   const [open, setOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
   const lastSubmission = useActionData();
   const navigation = useNavigation();
@@ -52,8 +54,26 @@ export function Feedback({ button, defaultValue = "bug" }: FeedbackProps) {
     }
   }, [navigation, form]);
 
+  // Handle URL param functionality
+  useEffect(() => {
+    const open = searchParams.get("feedbackPanel");
+    if (open) {
+      setType(open as FeedbackType);
+      setOpen(true);
+      // Clone instead of mutating in place
+      const next = new URLSearchParams(searchParams);
+      next.delete("feedbackPanel");
+      setSearchParams(next);
+    }
+  }, [searchParams]);
+
+  const handleOpenChange = (value: boolean) => {
+    setOpen(value);
+    onOpenChange?.(value);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>{button}</DialogTrigger>
       <DialogContent>
         <DialogHeader>Contact us</DialogHeader>

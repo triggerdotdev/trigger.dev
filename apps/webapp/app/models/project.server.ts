@@ -63,7 +63,7 @@ export async function createProject(
 
   if (projectCount >= organization.maximumProjectCount) {
     throw new ExceededProjectLimitError(
-      `Organization ${organization.slug} has reached the maximum number of projects (${organization.maximumProjectCount}). You can request more by contacting help in the bottom-left.`
+      `This organization has reached the maximum number of projects (${organization.maximumProjectCount}).`
     );
   }
 
