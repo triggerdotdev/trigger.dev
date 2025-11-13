@@ -264,7 +264,14 @@ export const myTask = task({
 
 ### stream
 
-Capture a stream of values and make the stream available when using Realtime. See our [Realtime streams](/realtime/react-hooks/streams) documentation for more information.
+<Note>
+  As of SDK version **4.1.0**, `metadata.stream()` has been replaced by [Realtime Streams
+  v2](/tasks/streams). We recommend using the new `streams.pipe()` API for better reliability,
+  unlimited stream length, and improved developer experience. The examples below are provided for
+  backward compatibility.
+</Note>
+
+Capture a stream of values and make the stream available when using Realtime. See our [Realtime Streams v2](/tasks/streams) documentation for the recommended approach.
 
 ```ts
 import { task, metadata } from "@trigger.dev/sdk";
@@ -435,14 +442,14 @@ metadata.parent.append("logs", "Step 1 complete");
 metadata.parent.remove("logs", "Step 1 complete");
 metadata.parent.increment("progress", 0.4);
 metadata.parent.decrement("otherProgress", 0.1);
-metadata.parent.stream("llm", readableStream);
+metadata.parent.stream("llm", readableStream); // Use streams.pipe() instead (v4.1+)
 
 metadata.root.set("progress", 0.5);
 metadata.root.append("logs", "Step 1 complete");
 metadata.root.remove("logs", "Step 1 complete");
 metadata.root.increment("progress", 0.4);
 metadata.root.decrement("otherProgress", 0.1);
-metadata.root.stream("llm", readableStream);
+metadata.root.stream("llm", readableStream); // Use streams.pipe() instead (v4.1+)
 ```
 
 You can also chain the update methods together:

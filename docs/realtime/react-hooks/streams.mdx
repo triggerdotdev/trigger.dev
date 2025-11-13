@@ -7,13 +7,161 @@ description: Subscribe to real-time streams from your tasks in React components
 These hooks allow you to consume real-time streams from your tasks. Streams are useful for displaying AI/LLM outputs as they're generated, or any other real-time data from your tasks.
 
 <Note>
-  To learn how to emit streams from your tasks, see our [backend streams
-  documentation](/realtime/backend/streams).
+  To learn how to emit streams from your tasks, see our [Realtime Streams](/tasks/streams)
+  documentation.
 </Note>
+
+## useRealtimeStream (Recommended)
+
+<Note>
+  Available in SDK version **4.1.0 or later**. This is the recommended way to consume streams in
+  your React components.
+</Note>
+
+The `useRealtimeStream` hook allows you to subscribe to a specific stream by its run ID and stream key. This hook is designed to work seamlessly with [defined streams](/tasks/streams#defining-typed-streams-recommended) for full type safety.
+
+### Basic Usage
+
+```tsx
+"use client";
+
+import { useRealtimeStream } from "@trigger.dev/react-hooks";
+
+export function StreamViewer({
+  runId,
+  publicAccessToken,
+}: {
+  runId: string;
+  publicAccessToken: string;
+}) {
+  const { parts, error } = useRealtimeStream<string>(runId, "ai-output", {
+    accessToken: publicAccessToken,
+  });
+
+  if (error) return <div>Error: {error.message}</div>;
+  if (!parts) return <div>Loading...</div>;
+
+  return (
+    <div>
+      {parts.map((part, i) => (
+        <span key={i}>{part}</span>
+      ))}
+    </div>
+  );
+}
+```
+
+### With Defined Streams
+
+The recommended approach is to use defined streams for full type safety:
+
+```tsx
+"use client";
+
+import { useRealtimeStream } from "@trigger.dev/react-hooks";
+import { aiStream } from "@/app/streams";
+
+export function StreamViewer({
+  runId,
+  publicAccessToken,
+}: {
+  runId: string;
+  publicAccessToken: string;
+}) {
+  // Pass the defined stream directly - full type safety!
+  const { parts, error } = useRealtimeStream(aiStream, runId, {
+    accessToken: publicAccessToken,
+    timeoutInSeconds: 600,
+    onData: (chunk) => {
+      console.log("New chunk:", chunk); // chunk is typed!
+    },
+  });
+
+  if (error) return <div>Error: {error.message}</div>;
+  if (!parts) return <div>Loading...</div>;
+
+  return (
+    <div>
+      {parts.map((part, i) => (
+        <span key={i}>{part}</span>
+      ))}
+    </div>
+  );
+}
+```
+
+### Streaming AI Responses
+
+Here's a complete example showing how to display streaming AI responses:
+
+```tsx
+"use client";
+
+import { useRealtimeStream } from "@trigger.dev/react-hooks";
+import { aiStream } from "@/trigger/streams";
+import { Streamdown } from "streamdown";
+
+export function AIStreamViewer({
+  runId,
+  publicAccessToken,
+}: {
+  runId: string;
+  publicAccessToken: string;
+}) {
+  const { parts, error } = useRealtimeStream(aiStream, runId, {
+    accessToken: publicAccessToken,
+    timeoutInSeconds: 300,
+  });
+
+  if (error) return <div>Error: {error.message}</div>;
+  if (!parts) return <div>Loading stream...</div>;
+
+  const text = parts.join("");
+
+  return (
+    <div className="prose">
+      <Streamdown isAnimating={true}>{text}</Streamdown>
+    </div>
+  );
+}
+```
+
+### Options
+
+The `useRealtimeStream` hook accepts the following options:
+
+```tsx
+const { parts, error } = useRealtimeStream(streamOrRunId, streamKeyOrOptions, {
+  accessToken: "pk_...", // Required: Public access token
+  baseURL: "https://api.trigger.dev", // Optional: Custom API URL
+  timeoutInSeconds: 60, // Optional: Timeout (default: 60)
+  startIndex: 0, // Optional: Start from specific chunk
+  throttleInMs: 16, // Optional: Throttle updates (default: 16ms)
+  onData: (chunk) => {}, // Optional: Callback for each chunk
+});
+```
+
+### Using Default Stream
+
+You can omit the stream key to use the default stream:
+
+```tsx
+const { parts, error } = useRealtimeStream<string>(runId, {
+  accessToken: publicAccessToken,
+});
+```
+
+For more information on defining and using streams, see the [Realtime Streams v2](/tasks/streams) documentation.
 
 ## useRealtimeRunWithStreams
 
-The `useRealtimeRunWithStreams` hook allows you to subscribe to a run by its ID and also receive any streams that are emitted by the task.
+<Note>
+  For new projects, we recommend using `useRealtimeStream` instead (available in SDK 4.1.0+). This
+  hook is still supported for backward compatibility and use cases where you need to subscribe to
+  both the run and all its streams at once.
+</Note>
+
+The `useRealtimeRunWithStreams` hook allows you to subscribe to a run by its ID and also receive any streams that are emitted by the task. This is useful when you need to access both the run metadata and multiple streams simultaneously.
 
 ```tsx
 "use client"; // This is needed for Next.js App Router or other RSC frameworks
@@ -115,9 +263,9 @@ export function MyComponent({
 }
 ```
 
-## Streaming AI responses
+### Streaming AI responses with useRealtimeRunWithStreams
 
-Here's a more complete example showing how to display streaming OpenAI responses:
+Here's an example showing how to display streaming OpenAI responses using `useRealtimeRunWithStreams`:
 
 ```tsx
 import { useRealtimeRunWithStreams } from "@trigger.dev/react-hooks";
@@ -143,9 +291,9 @@ function MyComponent({ runId, publicAccessToken }: { runId: string; publicAccess
 }
 ```
 
-## AI SDK with tools
+### AI SDK with tools
 
-When using the AI SDK with tools, you can access tool calls and results:
+When using the AI SDK with tools with `useRealtimeRunWithStreams`, you can access tool calls and results:
 
 ```tsx
 import { useRealtimeRunWithStreams } from "@trigger.dev/react-hooks";
@@ -186,11 +334,9 @@ function MyComponent({ runId, publicAccessToken }: { runId: string; publicAccess
 }
 ```
 
-## Common options
+### Throttling updates
 
-### experimental_throttleInMs
-
-The `*withStreams` variants of the Realtime hooks accept an `experimental_throttleInMs` option to throttle the updates from the server. This can be useful if you are getting too many updates and want to reduce the number of updates.
+The `useRealtimeRunWithStreams` hook accepts an `experimental_throttleInMs` option to throttle the updates from the server. This can be useful if you are getting too many updates and want to reduce the number of updates.
 
 ```tsx
 import { useRealtimeRunWithStreams } from "@trigger.dev/react-hooks";
@@ -219,3 +365,5 @@ export function MyComponent({
 ```
 
 All other options (accessToken, baseURL, enabled, id) work the same as the other realtime hooks.
+
+For the newer `useRealtimeStream` hook, use the `throttleInMs` option instead (see [options above](#options)).
