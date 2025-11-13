@@ -11,6 +11,7 @@ import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { ApiAuthenticationResultSuccess, getOneTimeUseToken } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { determineRealtimeStreamsVersion } from "~/services/realtime/v1StreamsGlobal.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
 import {
@@ -126,7 +127,9 @@ const { action, loader } = createActionApiRoute(
           traceContext,
           spanParentAsLink: spanParentAsLink === 1,
           oneTimeUseToken,
-          realtimeStreamsVersion: realtimeStreamsVersion ?? undefined,
+          realtimeStreamsVersion: determineRealtimeStreamsVersion(
+            realtimeStreamsVersion ?? undefined
+          ),
         },
         engineVersion ?? undefined
       );

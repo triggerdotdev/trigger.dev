@@ -11,10 +11,10 @@ export async function triggerStreamTask(
   redirectPath?: string,
   useDurableStreams?: boolean
 ) {
-  const config = useDurableStreams
+  const config = !useDurableStreams
     ? {
         future: {
-          v2RealtimeStreams: true,
+          v2RealtimeStreams: false,
         },
       }
     : undefined;
@@ -45,20 +45,9 @@ export async function triggerStreamTask(
 
 export async function triggerAIChatTask(messages: UIMessage[]) {
   // Trigger the AI chat task
-  const handle = await tasks.trigger<typeof aiChatTask>(
-    "ai-chat",
-    {
-      messages,
-    },
-    {},
-    {
-      clientConfig: {
-        future: {
-          v2RealtimeStreams: true,
-        },
-      },
-    }
-  );
+  const handle = await tasks.trigger<typeof aiChatTask>("ai-chat", {
+    messages,
+  });
 
   console.log("Triggered AI chat run:", handle.id);
 
