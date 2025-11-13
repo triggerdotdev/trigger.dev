@@ -49,7 +49,7 @@ services:
 
   electric:
     container_name: electric
-    image: electricsql/electric:1.1.14@sha256:784495364583e0675c29f62d3f45ae76ee6e65ea5ad5eec7ae10293f5e439c89
+    image: electricsql/electric:1.2.4@sha256:20da3d0b0e74926c5623392db67fd56698b9e374c4aeb6cb5cadeb8fea171c36
     restart: always
     environment:
       DATABASE_URL: postgresql://postgres:postgres@database:5432/postgres?sslmode=disable
@@ -64,7 +64,7 @@ services:
 
   electric-shard-1:
     container_name: electric-shard-1
-    image: electricsql/electric:1.1.14@sha256:784495364583e0675c29f62d3f45ae76ee6e65ea5ad5eec7ae10293f5e439c89
+    image: electricsql/electric:1.2.4@sha256:20da3d0b0e74926c5623392db67fd56698b9e374c4aeb6cb5cadeb8fea171c36
     restart: always
     environment:
       DATABASE_URL: postgresql://postgres:postgres@database:5432/postgres?sslmode=disable

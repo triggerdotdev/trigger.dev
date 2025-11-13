@@ -36,7 +36,7 @@ services:
 
   electric:
     container_name: electric-dev
-    image: electricsql/electric:1.0.0-beta.15@sha256:4ae0f895753b82684aa31ea1c708e9e86d0a9bca355acb7270dcb24062520810
+    image: electricsql/electric:1.2.4@sha256:20da3d0b0e74926c5623392db67fd56698b9e374c4aeb6cb5cadeb8fea171c36
     restart: always
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/postgres?sslmode=disable

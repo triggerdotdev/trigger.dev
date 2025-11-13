@@ -110,7 +110,8 @@ webapp:
     defaultOrgExecutionConcurrencyLimit: 300
 
   # Resources
-  resources: {}
+  resources:
+    {}
     # Example resource configuration:
     # limits:
     #   cpu: 1000m
@@ -124,7 +125,8 @@ webapp:
     postgres: true # Set to false to disable DATABASE_HOST env var (overrides postgres.external.connectivityCheck)
 
   # Extra environment variables for webapp
-  extraEnvVars: []
+  extraEnvVars:
+    []
     # - name: CUSTOM_VAR
     #   value: "custom-value"
     # - name: SECRET_VAR
@@ -138,7 +140,8 @@ webapp:
     #   value: "/etc/ssl/certs/postgres-ca.crt"
 
   # Extra volumes for the webapp pod
-  extraVolumes: []
+  extraVolumes:
+    []
     # - name: config-volume
     #   configMap:
     #     name: my-config
@@ -155,7 +158,8 @@ webapp:
     #         path: postgres-ca.crt
 
   # Extra volume mounts for the webapp container
-  extraVolumeMounts: []
+  extraVolumeMounts:
+    []
     # - name: config-volume
     #   mountPath: /etc/config
     #   readOnly: true
@@ -244,7 +248,8 @@ webapp:
         paths:
           - path: /
             pathType: Prefix
-    tls: []
+    tls:
+      []
       # - secretName: trigger-tls
       #   hosts:
       #     - trigger.local
@@ -317,7 +322,8 @@ supervisor:
     role:
       name: ""
   # Extra environment variables for Supervisor
-  extraEnvVars: []
+  extraEnvVars:
+    []
     # - name: CUSTOM_VAR
     #   value: "custom-value"
 
@@ -465,7 +471,7 @@ electric:
   image:
     registry: docker.io
     repository: electricsql/electric
-    tag: "1.0.24"
+    tag: "1.2.4"
     pullPolicy: IfNotPresent
   config:
     insecure: true
@@ -514,7 +520,8 @@ electric:
     url: "" # For example: "http://electric:3000"
 
   # Extra environment variables for Electric
-  extraEnvVars: []
+  extraEnvVars:
+    []
     # - name: CUSTOM_VAR
     #   value: "custom-value"
 
@@ -735,7 +742,8 @@ registry:
     successThreshold: 1
 
   # Extra environment variables for Registry
-  extraEnvVars: []
+  extraEnvVars:
+    []
     # - name: CUSTOM_VAR
     #   value: "custom-value"
 
@@ -761,7 +769,8 @@ registry:
         paths:
           - path: /
             pathType: Prefix
-    tls: []
+    tls:
+      []
       # - secretName: registry-tls
       #   hosts:
       #     - registry.local
@@ -783,7 +792,8 @@ telemetry:
 
 # Extra Kubernetes manifests
 # This allows you to add additional Kubernetes resources that will be deployed with the chart
-extraManifests: []
+extraManifests:
+  []
   # - apiVersion: v1
   #   kind: ConfigMap
   #   metadata:
