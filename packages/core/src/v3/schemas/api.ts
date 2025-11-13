@@ -373,17 +373,24 @@ export type StartDeploymentIndexingResponseBody = z.infer<
 export const FinalizeDeploymentRequestBody = z.object({
   skipPromotion: z.boolean().optional(),
   imageDigest: z.string().optional(),
+  skipPushToRegistry: z.boolean().optional(),
 });
 
 export type FinalizeDeploymentRequestBody = z.infer<typeof FinalizeDeploymentRequestBody>;
 
-export const StartDeploymentRequestBody = z.object({
+export const ProgressDeploymentRequestBody = z.object({
   contentHash: z.string().optional(),
   gitMeta: GitMeta.optional(),
   runtime: z.string().optional(),
 });
 
-export type StartDeploymentRequestBody = z.infer<typeof StartDeploymentRequestBody>;
+export type ProgressDeploymentRequestBody = z.infer<typeof ProgressDeploymentRequestBody>;
+
+export const CancelDeploymentRequestBody = z.object({
+  reason: z.string().max(200, "Reason must be less than 200 characters").optional(),
+});
+
+export type CancelDeploymentRequestBody = z.infer<typeof CancelDeploymentRequestBody>;
 
 export const ExternalBuildData = z.object({
   buildId: z.string(),
@@ -432,6 +439,26 @@ export const InitializeDeploymentRequestBody = z.object({
 
 export type InitializeDeploymentRequestBody = z.infer<typeof InitializeDeploymentRequestBody>;
 
+export const RemoteBuildProviderStatusResponseBody = z.object({
+  status: z.enum(["operational", "degraded", "unknown"]),
+  message: z.string(),
+});
+
+export type RemoteBuildProviderStatusResponseBody = z.infer<
+  typeof RemoteBuildProviderStatusResponseBody
+>;
+
+export const GenerateRegistryCredentialsResponseBody = z.object({
+  username: z.string(),
+  password: z.string(),
+  expiresAt: z.string(),
+  repositoryUri: z.string(),
+});
+
+export type GenerateRegistryCredentialsResponseBody = z.infer<
+  typeof GenerateRegistryCredentialsResponseBody
+>;
+
 export const DeploymentErrorData = z.object({
   name: z.string(),
   message: z.string(),
@@ -465,6 +492,7 @@ export const GetDeploymentResponseBody = z.object({
   id: z.string(),
   status: z.enum([
     "PENDING",
+    "INSTALLING",
     "BUILDING",
     "DEPLOYING",
     "DEPLOYED",
@@ -968,6 +996,7 @@ export const SubscribeRunRawShape = z.object({
   outputType: z.string().nullish(),
   runTags: z.array(z.string()).nullish().default([]),
   error: TaskRunError.nullish(),
+  realtimeStreams: z.array(z.string()).nullish().default([]),
 });
 
 export type SubscribeRunRawShape = z.infer<typeof SubscribeRunRawShape>;
@@ -1239,9 +1268,9 @@ export type ApiBranchListResponseBody = z.infer<typeof ApiBranchListResponseBody
 export const RetrieveRunTraceSpanSchema = z.object({
   id: z.string(),
   parentId: z.string().optional(),
-  message: z.string(),
+  runId: z.string(),
   data: z.object({
-    runId: z.string(),
+    message: z.string(),
     taskSlug: z.string().optional(),
     taskPath: z.string().optional(),
     events: z.array(z.any()).optional(),
@@ -1251,7 +1280,6 @@ export const RetrieveRunTraceSpanSchema = z.object({
     isPartial: z.boolean(),
     isCancelled: z.boolean(),
     level: z.string(),
-    environmentType: z.string(),
     workerVersion: z.string().optional(),
     queueName: z.string().optional(),
     machinePreset: z.string().optional(),
@@ -1277,3 +1305,14 @@ export const RetrieveRunTraceResponseBody = z.object({
 });
 
 export type RetrieveRunTraceResponseBody = z.infer<typeof RetrieveRunTraceResponseBody>;
+
+export const CreateStreamResponseBody = z.object({
+  version: z.string(),
+});
+export type CreateStreamResponseBody = z.infer<typeof CreateStreamResponseBody>;
+
+export const AppendToStreamResponseBody = z.object({
+  ok: z.boolean(),
+  message: z.string().optional(),
+});
+export type AppendToStreamResponseBody = z.infer<typeof AppendToStreamResponseBody>;

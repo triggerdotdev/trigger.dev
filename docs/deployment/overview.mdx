@@ -182,6 +182,25 @@ TRIGGER_SECRET_KEY="tr_stg_abcd123"
 
 Currently, we only support two environments: `prod` and `staging`. Multiple environments are on our roadmap which you can track [here](https://feedback.trigger.dev/p/more-environments).
 
+## Local builds
+
+By default we use a remote build provider to speed up builds. However, you can also force the build to happen locally on your machine using the `--force-local-build` flag:
+
+```bash
+npx trigger.dev deploy --force-local-build
+```
+
+<Tip>
+  Deploying with local builds can be a useful fallback in cases where our remote build provider is experiencing availability issues.
+</Tip>
+
+### System requirements
+
+To use local builds, you need the following tools installed on your machine:
+
+- Docker ([installation guide](https://docs.docker.com/get-started/get-docker))
+- Docker Buildx ([installation guide](https://github.com/docker/buildx#installing))
+
 ## Environment variables
 
 To add custom environment variables to your deployed tasks, you need to add them to your project in the Trigger.dev dashboard, or automatically sync them using our [syncEnvVars](/config/config-file#syncenvvars) or [syncVercelEnvVars](/config/config-file#syncvercelenvvars) build extensions.
@@ -213,6 +232,8 @@ You can run the deploy command with `--log-level debug` at the end. This will pr
 #### `Failed to build project image: Error building image`
 
 There should be a link below the error message to the full build logs on your machine. Take a look at these to see what went wrong. Join [our Discord](https://trigger.dev/discord) and you share it privately with us if you can't figure out what's going wrong. Do NOT share these publicly as the verbose logs might reveal private information about your project.
+
+Sometimes these errors are caused by upstream availability issues with our remote build provider. In this case, you can try deploying with a local build using the `--force-local-build` flag. Refer to the [Local builds](#local-builds) section for more information.
 
 #### `Deployment encountered an error`
 

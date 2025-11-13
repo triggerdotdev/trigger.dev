@@ -2,6 +2,9 @@ global:
   imageRegistry: ""
   imagePullSecrets: []
   storageClass: ""
+  security:
+    # Required when using bitnami legacy images
+    allowInsecureImages: true
 
 nameOverride: ""
 fullnameOverride: ""
@@ -45,6 +48,22 @@ webapp:
     tag: "" # Defaults to Chart.appVersion when empty
     pullPolicy: IfNotPresent
 
+  # Init container for shared directory setup
+  volumePermissions:
+    image:
+      registry: docker.io
+      repository: busybox
+      tag: "1.35"
+      pullPolicy: IfNotPresent
+
+  # Sidecar for token syncing
+  tokenSyncer:
+    image:
+      registry: docker.io
+      repository: bitnamilegacy/kubectl
+      tag: "1.28"
+      pullPolicy: IfNotPresent
+
   # Origin configuration
   appOrigin: "http://localhost:3040"
   loginOrigin: "http://localhost:3040"
@@ -69,6 +88,8 @@ webapp:
   nodeSelector: {}
   tolerations: []
   affinity: {}
+  # Topology Spread Constraints for pod assignment spread across your cluster among failure-domains. Evaluated as a template
+  topologySpreadConstraints: []
 
   logLevel: "info"
   gracefulShutdownTimeout: 1000
@@ -89,8 +110,7 @@ webapp:
     defaultOrgExecutionConcurrencyLimit: 300
 
   # Resources
-  resources:
-    {}
+  resources: {}
     # Example resource configuration:
     # limits:
     #   cpu: 1000m
@@ -104,8 +124,7 @@ webapp:
     postgres: true # Set to false to disable DATABASE_HOST env var (overrides postgres.external.connectivityCheck)
 
   # Extra environment variables for webapp
-  extraEnvVars:
-    []
+  extraEnvVars: []
     # - name: CUSTOM_VAR
     #   value: "custom-value"
     # - name: SECRET_VAR
@@ -119,8 +138,7 @@ webapp:
     #   value: "/etc/ssl/certs/postgres-ca.crt"
 
   # Extra volumes for the webapp pod
-  extraVolumes:
-    []
+  extraVolumes: []
     # - name: config-volume
     #   configMap:
     #     name: my-config
@@ -137,8 +155,7 @@ webapp:
     #         path: postgres-ca.crt
 
   # Extra volume mounts for the webapp container
-  extraVolumeMounts:
-    []
+  extraVolumeMounts: []
     # - name: config-volume
     #   mountPath: /etc/config
     #   readOnly: true
@@ -227,8 +244,7 @@ webapp:
         paths:
           - path: /
             pathType: Prefix
-    tls:
-      []
+    tls: []
       # - secretName: trigger-tls
       #   hosts:
       #     - trigger.local
@@ -301,8 +317,7 @@ supervisor:
     role:
       name: ""
   # Extra environment variables for Supervisor
-  extraEnvVars:
-    []
+  extraEnvVars: []
     # - name: CUSTOM_VAR
     #   value: "custom-value"
 
@@ -359,6 +374,11 @@ supervisor:
 postgres:
   deploy: true
 
+  image:
+    # Use bitnami legacy repo
+    repository: bitnamilegacy/postgresql
+    # image: docker.io/bitnamilegacy/postgresql:17.5.0-debian-12-r12
+
   # Bitnami PostgreSQL chart configuration (when deploy: true)
   auth:
     enablePostgresUser: true
@@ -408,6 +428,11 @@ postgres:
 # Subchart: https://github.com/bitnami/charts/tree/main/bitnami/redis
 redis:
   deploy: true
+
+  image:
+    # Use bitnami legacy repo
+    repository: bitnamilegacy/redis
+    # image: docker.io/bitnamilegacy/redis:8.0.2-debian-12-r4
 
   # Bitnami Redis chart configuration (when deploy: true)
   auth:
@@ -489,8 +514,7 @@ electric:
     url: "" # For example: "http://electric:3000"
 
   # Extra environment variables for Electric
-  extraEnvVars:
-    []
+  extraEnvVars: []
     # - name: CUSTOM_VAR
     #   value: "custom-value"
 
@@ -498,6 +522,11 @@ electric:
 # Subchart: https://github.com/bitnami/charts/tree/main/bitnami/clickhouse
 clickhouse:
   deploy: true
+
+  image:
+    # Use bitnami legacy repo
+    repository: bitnamilegacy/clickhouse
+    # image: docker.io/bitnamilegacy/clickhouse:25.6.1-debian-12-r0
 
   # TLS/Secure connection configuration
   secure: false # Set to true to use HTTPS and secure connections
@@ -517,6 +546,12 @@ clickhouse:
   persistence:
     enabled: true
     size: 10Gi
+
+  ## ClickHouse resource requests and limits
+  ## ref: http://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/
+  ## @param resourcesPreset Set container resources according to one common preset (allowed values: none, nano, micro, small, medium, large, xlarge, 2xlarge). This is ignored if resources is set (resources is recommended for production).
+  ## More information: https://github.com/bitnami/charts/blob/main/bitnami/common/templates/_resources.tpl#L15
+  resourcesPreset: "xlarge"
   resources: {}
 
   # External ClickHouse connection (when deploy: false)
@@ -560,6 +595,17 @@ s3:
   # Set to false to use external S3-compatible storage
   # Set to true to deploy internal MinIO (default)
   deploy: true
+
+  image:
+    # Use bitnami legacy repo
+    repository: bitnamilegacy/minio
+    # image: docker.io/bitnamilegacy/minio:2025.6.13-debian-12-r0
+
+  # MinIO Console (Browser UI) configuration
+  console:
+    image:
+      repository: bitnamilegacy/minio-object-browser
+      # image: docker.io/bitnamilegacy/minio-object-browser:2025.1.10-debian-12-r1
 
   # Bitnami MinIO chart configuration (when deploy: true)
   # MinIO provides S3-compatible storage when deployed internally
@@ -689,8 +735,7 @@ registry:
     successThreshold: 1
 
   # Extra environment variables for Registry
-  extraEnvVars:
-    []
+  extraEnvVars: []
     # - name: CUSTOM_VAR
     #   value: "custom-value"
 
@@ -716,8 +761,7 @@ registry:
         paths:
           - path: /
             pathType: Prefix
-    tls:
-      []
+    tls: []
       # - secretName: registry-tls
       #   hosts:
       #     - registry.local
@@ -739,8 +783,7 @@ telemetry:
 
 # Extra Kubernetes manifests
 # This allows you to add additional Kubernetes resources that will be deployed with the chart
-extraManifests:
-  []
+extraManifests: []
   # - apiVersion: v1
   #   kind: ConfigMap
   #   metadata:

@@ -111,7 +111,7 @@
               "deployment/atomic-deployment",
               {
                 "group": "Deployment integrations",
-                "pages": ["vercel-integration"]
+                "pages": ["github-integration", "vercel-integration"]
               }
             ]
           },
@@ -331,6 +331,16 @@
                   "guides/examples/stripe-webhook"
                 ]
               }
+            ]
+          },
+          {
+            "group": "Use cases",
+            "pages": [
+              "guides/use-cases/overview",
+              "guides/use-cases/data-processing-etl",
+              "guides/use-cases/media-generation",
+              "guides/use-cases/media-processing",
+              "guides/use-cases/marketing"
             ]
           },
           {

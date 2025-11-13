@@ -1,5 +1,6 @@
 import {
   createCache,
+  createMemoryStore,
   DefaultStatefulContext,
   MemoryStore,
   Namespace,
@@ -125,8 +126,7 @@ export class RunAttemptSystem {
     this.delayedRunSystem = options.delayedRunSystem;
 
     const ctx = new DefaultStatefulContext();
-    // TODO: use an LRU cache for memory store
-    const memory = new MemoryStore({ persistentMap: new Map() });
+    const memory = createMemoryStore(5000, 0.001);
     const redisCacheStore = new RedisCacheStore({
       name: "run-attempt-system",
       connection: {
@@ -431,6 +431,7 @@ export class RunAttemptSystem {
                   traceContext: true,
                   priorityMs: true,
                   batchId: true,
+                  realtimeStreamsVersion: true,
                   runtimeEnvironment: {
                     select: {
                       id: true,
@@ -444,6 +445,7 @@ export class RunAttemptSystem {
                   parentTaskRunId: true,
                   rootTaskRunId: true,
                   workerQueue: true,
+                  taskEventStore: true,
                 },
               });
 
@@ -594,6 +596,7 @@ export class RunAttemptSystem {
                 updatedRun.runtimeEnvironment.type !== "DEVELOPMENT"
                   ? updatedRun.workerQueue
                   : undefined,
+              realtimeStreamsVersion: updatedRun.realtimeStreamsVersion ?? undefined,
             },
             task,
             queue,
@@ -996,6 +999,7 @@ export class RunAttemptSystem {
                   updatedAt: run.updatedAt,
                   error: completion.error,
                   createdAt: run.createdAt,
+                  taskEventStore: run.taskEventStore,
                 },
                 organization: {
                   id: run.runtimeEnvironment.organizationId,
@@ -1140,6 +1144,7 @@ export class RunAttemptSystem {
     runnerId,
     checkpointId,
     completedWaitpoints,
+    batchId,
     tx,
   }: {
     run: TaskRun;
@@ -1159,6 +1164,7 @@ export class RunAttemptSystem {
       id: string;
       index?: number;
     }[];
+    batchId?: string;
   }): Promise<{ wasRequeued: boolean } & ExecutionResult> {
     const prisma = tx ?? this.$.prisma;
 
@@ -1207,6 +1213,7 @@ export class RunAttemptSystem {
         runnerId,
         checkpointId,
         completedWaitpoints,
+        batchId,
       });
 
       return {
@@ -1476,6 +1483,8 @@ export class RunAttemptSystem {
     return startSpan(this.$.tracer, "permanentlyFailRun", async (span) => {
       const status = runStatusFromError(error, latestSnapshot.environmentType);
 
+      const truncatedError = this.#truncateTaskRunError(error);
+
       //run permanently failed
       const run = await prisma.taskRun.update({
         where: {
@@ -1484,7 +1493,7 @@ export class RunAttemptSystem {
         data: {
           status,
           completedAt: failedAt,
-          error,
+          error: truncatedError,
         },
         select: {
           id: true,
@@ -1546,7 +1555,7 @@ export class RunAttemptSystem {
 
       await this.waitpointSystem.completeWaitpoint({
         id: run.associatedWaitpoint.id,
-        output: { value: JSON.stringify(error), isError: true },
+        output: { value: JSON.stringify(truncatedError), isError: true },
       });
 
       this.$.eventBus.emit("runFailed", {
@@ -1892,6 +1901,19 @@ export class RunAttemptSystem {
       });
     }
   }
+
+  #truncateTaskRunError(error: TaskRunError): TaskRunError {
+    if (error.type !== "BUILT_IN_ERROR") {
+      return error;
+    }
+
+    return {
+      type: "BUILT_IN_ERROR",
+      name: truncateString(error.name, 1024),
+      message: truncateString(error.message, 1024 * 16), // 16kb
+      stackTrace: truncateString(error.stackTrace, 1024 * 16), // 16kb
+    };
+  }
 }
 
 export function safeParseGitMeta(git: unknown): GitMeta | undefined {
@@ -1900,4 +1922,12 @@ export function safeParseGitMeta(git: unknown): GitMeta | undefined {
     return parsed.data;
   }
   return undefined;
+}
+
+function truncateString(str: string | undefined, maxLength: number): string {
+  if (!str) {
+    return "";
+  }
+
+  return str.slice(0, maxLength);
 }

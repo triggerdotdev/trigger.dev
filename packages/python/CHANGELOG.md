@@ -1,5 +1,50 @@
 # @trigger.dev/python
 
+## 4.0.7
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.7`
+  - `@trigger.dev/core@4.0.7`
+  - `@trigger.dev/sdk@4.0.7`
+
+## 4.0.6
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.6`
+  - `@trigger.dev/build@4.0.6`
+  - `@trigger.dev/sdk@4.0.6`
+
+## 4.0.5
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.5`
+  - `@trigger.dev/build@4.0.5`
+  - `@trigger.dev/sdk@4.0.5`
+
+## 4.0.4
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.4`
+  - `@trigger.dev/core@4.0.4`
+  - `@trigger.dev/sdk@4.0.4`
+
+## 4.0.3
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.3`
+  - `@trigger.dev/sdk@4.0.3`
+  - `@trigger.dev/build@4.0.3`
+
 ## 4.0.2
 
 ### Patch Changes

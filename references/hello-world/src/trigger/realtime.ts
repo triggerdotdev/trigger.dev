@@ -1,4 +1,4 @@
-import { logger, runs, task } from "@trigger.dev/sdk";
+import { logger, metadata, runs, task } from "@trigger.dev/sdk";
 import { helloWorldTask } from "./example.js";
 import { setTimeout } from "timers/promises";
 
@@ -59,3 +59,70 @@ export const realtimeUpToDateTask = task({
     };
   },
 });
+
+export const realtimeStreamsTask = task({
+  id: "realtime-streams",
+  run: async () => {
+    const mockStream = createStreamFromGenerator(generateMockData(5 * 60 * 1000));
+
+    const stream = await metadata.stream("mock-data", mockStream);
+
+    for await (const chunk of stream) {
+      logger.info("Received chunk", { chunk });
+    }
+
+    return {
+      message: "Hello, world!",
+    };
+  },
+});
+
+export const realtimeStreamsV2Task = task({
+  id: "realtime-streams-v2",
+  run: async () => {
+    const mockStream1 = createStreamFromGenerator(generateMockData(5 * 60 * 1000));
+
+    await metadata.stream("mock-data", mockStream1);
+
+    await setTimeout(10000); // Offset by 10 seconds
+
+    const mockStream2 = createStreamFromGenerator(generateMockData(5 * 60 * 1000));
+    const stream2 = await metadata.stream("mock-data", mockStream2);
+
+    for await (const chunk of stream2) {
+      logger.info("Received chunk", { chunk });
+    }
+
+    return {
+      message: "Hello, world!",
+    };
+  },
+});
+
+async function* generateMockData(durationMs: number = 5 * 60 * 1000) {
+  const chunkInterval = 1000;
+  const totalChunks = Math.floor(durationMs / chunkInterval);
+
+  for (let i = 0; i < totalChunks; i++) {
+    await setTimeout(chunkInterval);
+
+    yield JSON.stringify({
+      chunk: i + 1,
+      timestamp: new Date().toISOString(),
+      data: `Mock data chunk ${i + 1}`,
+    }) + "\n";
+  }
+}
+
+// Convert to ReadableStream
+function createStreamFromGenerator(generator: AsyncGenerator<string>) {
+  return new ReadableStream({
+    async start(controller) {
+      for await (const chunk of generator) {
+        controller.enqueue(chunk);
+      }
+
+      controller.close();
+    },
+  });
+}

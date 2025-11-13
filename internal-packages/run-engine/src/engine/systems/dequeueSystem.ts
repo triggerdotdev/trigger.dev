@@ -143,6 +143,15 @@ export class DequeueSystem {
         const orgId = message.message.orgId;
         const runId = message.messageId;
 
+        this.$.logger.info("DequeueSystem.dequeueFromWorkerQueue dequeued message", {
+          runId,
+          orgId,
+          environmentId: message.message.environmentId,
+          environmentType: message.message.environmentType,
+          workerQueueLength: message.workerQueueLength ?? 0,
+          workerQueue,
+        });
+
         span.setAttribute("run_id", runId);
         span.setAttribute("org_id", orgId);
         span.setAttribute("environment_id", message.message.environmentId);

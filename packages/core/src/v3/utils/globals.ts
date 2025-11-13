@@ -3,6 +3,7 @@ import { Clock } from "../clock/clock.js";
 import { HeartbeatsManager } from "../heartbeats/types.js";
 import { LifecycleHooksManager } from "../lifecycleHooks/types.js";
 import { LocalsManager } from "../locals/types.js";
+import { RealtimeStreamsManager } from "../realtimeStreams/types.js";
 import { ResourceCatalog } from "../resource-catalog/catalog.js";
 import { RunMetadataManager } from "../runMetadata/types.js";
 import type { RuntimeManager } from "../runtime/manager.js";
@@ -70,4 +71,5 @@ type TriggerDotDevGlobalAPI = {
   ["locals"]?: LocalsManager;
   ["trace-context"]?: TraceContextManager;
   ["heartbeats"]?: HeartbeatsManager;
+  ["realtime-streams"]?: RealtimeStreamsManager;
 };

@@ -1,5 +1,66 @@
 # trigger.dev
 
+## 4.0.7
+
+### Patch Changes
+
+- Fix for the MCP tool that gets run logs to help debugging ([#2653](https://github.com/triggerdotdev/trigger.dev/pull/2653))
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.7`
+  - `@trigger.dev/core@4.0.7`
+  - `@trigger.dev/schema-to-json@4.0.7`
+
+## 4.0.6
+
+### Patch Changes
+
+- Added a hint about the `--force-local-build` flag on failed deployments due to upstream provider outages. ([#2646](https://github.com/triggerdotdev/trigger.dev/pull/2646))
+- Fixed misleading error message in the CLI when config file is missing ("maxDuration" is now required). A useful error message is now shown, including a hint about the `--config` flag. ([#2650](https://github.com/triggerdotdev/trigger.dev/pull/2650))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.6`
+  - `@trigger.dev/build@4.0.6`
+  - `@trigger.dev/schema-to-json@4.0.6`
+
+## 4.0.5
+
+### Patch Changes
+
+- Stop failing attempt spans when a run is cancelled ([#2530](https://github.com/triggerdotdev/trigger.dev/pull/2530))
+- Move max duration handling into the parent process ([#2637](https://github.com/triggerdotdev/trigger.dev/pull/2637))
+- Added INSTALLING status to the deployment status enum. ([#2544](https://github.com/triggerdotdev/trigger.dev/pull/2544))
+- Fix SIGTERM handling during warm start long poll ([#2593](https://github.com/triggerdotdev/trigger.dev/pull/2593))
+- Added support for deployments with local builds. ([#2628](https://github.com/triggerdotdev/trigger.dev/pull/2628))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.5`
+  - `@trigger.dev/build@4.0.5`
+  - `@trigger.dev/schema-to-json@4.0.5`
+
+## 4.0.4
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/schema-to-json@4.0.4`
+  - `@trigger.dev/build@4.0.4`
+  - `@trigger.dev/core@4.0.4`
+
+## 4.0.3
+
+### Patch Changes
+
+- Improves our schema to JSON Schema conversion, fixes zod 4 and a few other schema libraries, also correctly sets the dependencies ([#2483](https://github.com/triggerdotdev/trigger.dev/pull/2483))
+- Add the mcpName property to the CLI package.json to allow publishing our MCP server to the Anthropic MCP registry ([#2510](https://github.com/triggerdotdev/trigger.dev/pull/2510))
+- Added new CLI command to list and view environment variables ([#2485](https://github.com/triggerdotdev/trigger.dev/pull/2485))
+- Attach to existing deployment for deployments triggered in the build server. If `TRIGGER_EXISTING_DEPLOYMENT_ID` env var is set, the `deploy` command now skips the deployment initialization. ([#2501](https://github.com/triggerdotdev/trigger.dev/pull/2501))
+- - Reduce restore times by 5s due to immediate polling ([#2516](https://github.com/triggerdotdev/trigger.dev/pull/2516))
+  - Fix `s is not a function` and surface underlying error messages
+- Reduce restore recovery time and fix deprecated runner false positives ([#2523](https://github.com/triggerdotdev/trigger.dev/pull/2523))
+- Added the heartbeats.yield utility to allow tasks that do continuous CPU-heavy work to heartbeat and continue running ([#2489](https://github.com/triggerdotdev/trigger.dev/pull/2489))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.3`
+  - `@trigger.dev/build@4.0.3`
+  - `@trigger.dev/schema-to-json@4.0.3`
+
 ## 4.0.2
 
 ### Patch Changes

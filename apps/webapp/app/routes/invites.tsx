@@ -1,6 +1,6 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { ActionFunction, LoaderFunctionArgs, json, redirect } from "@remix-run/node";
+import { type ActionFunction, type LoaderFunctionArgs, json, redirect } from "@remix-run/node";
 import { Form, useActionData } from "@remix-run/react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -36,7 +36,7 @@ const schema = z.object({
 });
 
 export const action: ActionFunction = async ({ request }) => {
-  const userId = await requireUserId(request);
+  const user = await requireUser(request);
 
   const formData = await request.formData();
   const submission = parse(formData, { schema });
@@ -49,7 +49,7 @@ export const action: ActionFunction = async ({ request }) => {
     if (submission.intent === "accept") {
       const { remainingInvites, organization } = await acceptInvite({
         inviteId: submission.value.inviteId,
-        userId,
+        user: { id: user.id, email: user.email },
       });
 
       if (remainingInvites.length === 0) {
@@ -64,7 +64,7 @@ export const action: ActionFunction = async ({ request }) => {
     } else if (submission.intent === "decline") {
       const { remainingInvites, organization } = await declineInvite({
         inviteId: submission.value.inviteId,
-        userId,
+        user: { id: user.id, email: user.email },
       });
       if (remainingInvites.length === 0) {
         return redirectWithSuccessMessage(

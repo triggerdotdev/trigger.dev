@@ -25,6 +25,27 @@ const GithubAppEnvSchema = z.preprocess(
   ])
 );
 
+// eventually we can make all S2 env vars required once the S2 OSS version is out
+const S2EnvSchema = z.preprocess(
+  (val) => {
+    const obj = val as any;
+    if (!obj || !obj.S2_ENABLED) {
+      return { ...obj, S2_ENABLED: "0" };
+    }
+    return obj;
+  },
+  z.discriminatedUnion("S2_ENABLED", [
+    z.object({
+      S2_ENABLED: z.literal("1"),
+      S2_ACCESS_TOKEN: z.string(),
+      S2_DEPLOYMENT_LOGS_BASIN_NAME: z.string(),
+    }),
+    z.object({
+      S2_ENABLED: z.literal("0"),
+    }),
+  ])
+);
+
 const EnvironmentSchema = z
   .object({
     NODE_ENV: z.union([z.literal("development"), z.literal("production"), z.literal("test")]),
@@ -59,6 +80,7 @@ const EnvironmentSchema = z
     ADMIN_EMAILS: z.string().refine(isValidRegex, "ADMIN_EMAILS must be a valid regex.").optional(),
     REMIX_APP_PORT: z.string().optional(),
     LOGIN_ORIGIN: z.string().default("http://localhost:3030"),
+    LOGIN_RATE_LIMITS_ENABLED: BoolEnv.default(true),
     APP_ORIGIN: z.string().default("http://localhost:3030"),
     API_ORIGIN: z.string().optional(),
     STREAM_ORIGIN: z.string().optional(),
@@ -197,6 +219,7 @@ const EnvironmentSchema = z
       .string()
       .default(process.env.REDIS_TLS_DISABLED ?? "false"),
     REALTIME_STREAMS_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
+    REALTIME_STREAMS_INACTIVITY_TIMEOUT_MS: z.coerce.number().int().default(60000), // 1 minute
 
     REALTIME_MAXIMUM_CREATED_AT_FILTER_AGE_IN_MS: z.coerce
       .number()
@@ -492,6 +515,7 @@ const EnvironmentSchema = z
     CENTS_PER_RUN: z.coerce.number().default(0),
 
     EVENT_LOOP_MONITOR_ENABLED: z.string().default("1"),
+    RESOURCE_MONITOR_ENABLED: z.string().default("0"),
     MAXIMUM_LIVE_RELOADING_EVENTS: z.coerce.number().int().default(1000),
     MAXIMUM_TRACE_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(25_000),
     MAXIMUM_TRACE_DETAILED_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(10_000),
@@ -752,8 +776,8 @@ const EnvironmentSchema = z
     /** The max number of runs per API call that we'll dequeue in DEV */
     DEV_DEQUEUE_MAX_RUNS_PER_PULL: z.coerce.number().int().default(10),
 
-    /** The maximum concurrent local run processes executing at once in dev */
-    DEV_MAX_CONCURRENT_RUNS: z.coerce.number().int().default(25),
+    /** The maximum concurrent local run processes executing at once in dev. This is a hard limit */
+    DEV_MAX_CONCURRENT_RUNS: z.coerce.number().int().optional(),
 
     /** The CLI should connect to this for dev runs */
     DEV_ENGINE_URL: z.string().default(process.env.APP_ORIGIN ?? "http://localhost:3030"),
@@ -1028,8 +1052,9 @@ const EnvironmentSchema = z
     TASK_EVENT_PARTITIONING_ENABLED: z.string().default("0"),
     TASK_EVENT_PARTITIONED_WINDOW_IN_SECONDS: z.coerce.number().int().default(60), // 1 minute
 
-    QUEUE_SSE_AUTORELOAD_INTERVAL_MS: z.coerce.number().int().default(5_000),
-    QUEUE_SSE_AUTORELOAD_TIMEOUT_MS: z.coerce.number().int().default(60_000),
+    DEPLOYMENTS_AUTORELOAD_POLL_INTERVAL_MS: z.coerce.number().int().default(5_000),
+    BULK_ACTION_AUTORELOAD_POLL_INTERVAL_MS: z.coerce.number().int().default(1_000),
+    QUEUES_AUTORELOAD_POLL_INTERVAL_MS: z.coerce.number().int().default(5_000),
 
     SLACK_BOT_TOKEN: z.string().optional(),
     SLACK_SIGNUP_REASON_CHANNEL_ID: z.string().optional(),
@@ -1099,6 +1124,7 @@ const EnvironmentSchema = z
     RUN_REPLICATION_INSERT_BASE_DELAY_MS: z.coerce.number().int().default(100),
     RUN_REPLICATION_INSERT_MAX_DELAY_MS: z.coerce.number().int().default(2000),
     RUN_REPLICATION_INSERT_STRATEGY: z.enum(["insert", "insert_async"]).default("insert"),
+    RUN_REPLICATION_DISABLE_PAYLOAD_INSERT: z.string().default("0"),
 
     // Clickhouse
     CLICKHOUSE_URL: z.string(),
@@ -1107,6 +1133,27 @@ const EnvironmentSchema = z
     CLICKHOUSE_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(10),
     CLICKHOUSE_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
     CLICKHOUSE_COMPRESSION_REQUEST: z.string().default("1"),
+
+    EVENTS_CLICKHOUSE_URL: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.CLICKHOUSE_URL),
+    EVENTS_CLICKHOUSE_KEEP_ALIVE_ENABLED: z.string().default("1"),
+    EVENTS_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().optional(),
+    EVENTS_CLICKHOUSE_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(10),
+    EVENTS_CLICKHOUSE_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
+    EVENTS_CLICKHOUSE_COMPRESSION_REQUEST: z.string().default("1"),
+    EVENTS_CLICKHOUSE_BATCH_SIZE: z.coerce.number().int().default(1000),
+    EVENTS_CLICKHOUSE_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
+    EVENTS_CLICKHOUSE_INSERT_STRATEGY: z.enum(["insert", "insert_async"]).default("insert"),
+    EVENTS_CLICKHOUSE_WAIT_FOR_ASYNC_INSERT: z.string().default("1"),
+    EVENTS_CLICKHOUSE_ASYNC_INSERT_MAX_DATA_SIZE: z.coerce.number().int().default(10485760),
+    EVENTS_CLICKHOUSE_ASYNC_INSERT_BUSY_TIMEOUT_MS: z.coerce.number().int().default(5000),
+    EVENT_REPOSITORY_CLICKHOUSE_ROLLOUT_PERCENT: z.coerce.number().optional(),
+    EVENT_REPOSITORY_DEFAULT_STORE: z.enum(["postgres", "clickhouse"]).default("postgres"),
+    EVENTS_CLICKHOUSE_MAX_TRACE_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(25_000),
+    EVENTS_CLICKHOUSE_MAX_TRACE_DETAILED_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(5_000),
+    EVENTS_CLICKHOUSE_MAX_LIVE_RELOADING_SETTING: z.coerce.number().int().default(2000),
 
     // Bootstrap
     TRIGGER_BOOTSTRAP_ENABLED: z.string().default("0"),
@@ -1176,8 +1223,23 @@ const EnvironmentSchema = z
     EVENT_LOOP_MONITOR_UTILIZATION_SAMPLE_RATE: z.coerce.number().default(0.05),
 
     VERY_SLOW_QUERY_THRESHOLD_MS: z.coerce.number().int().optional(),
+
+    REALTIME_STREAMS_S2_BASIN: z.string().optional(),
+    REALTIME_STREAMS_S2_ACCESS_TOKEN: z.string().optional(),
+    REALTIME_STREAMS_S2_ACCESS_TOKEN_EXPIRATION_IN_MS: z.coerce
+      .number()
+      .int()
+      .default(60_000 * 60 * 24), // 1 day
+    REALTIME_STREAMS_S2_LOG_LEVEL: z
+      .enum(["log", "error", "warn", "info", "debug"])
+      .default("info"),
+    REALTIME_STREAMS_S2_FLUSH_INTERVAL_MS: z.coerce.number().int().default(100),
+    REALTIME_STREAMS_S2_MAX_RETRIES: z.coerce.number().int().default(10),
+    REALTIME_STREAMS_S2_WAIT_SECONDS: z.coerce.number().int().default(60),
+    WAIT_UNTIL_TIMEOUT_MS: z.coerce.number().int().default(600_000),
   })
-  .and(GithubAppEnvSchema);
+  .and(GithubAppEnvSchema)
+  .and(S2EnvSchema);
 
 export type Environment = z.infer<typeof EnvironmentSchema>;
 export const env = EnvironmentSchema.parse(process.env);

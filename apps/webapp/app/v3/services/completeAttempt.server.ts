@@ -1,4 +1,4 @@
-import { Attributes } from "@opentelemetry/api";
+import { tryCatch } from "@trigger.dev/core/utils";
 import {
   MachinePresetName,
   TaskRunContext,
@@ -21,18 +21,17 @@ import { PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { safeJsonParse } from "~/utils/json";
 import { marqs } from "~/v3/marqs/index.server";
-import { createExceptionPropertiesFromError, eventRepository } from "../eventRepository.server";
 import { FailedTaskRunRetryHelper } from "../failedTaskRun.server";
 import { socketIo } from "../handleSocketIo.server";
-import { getTaskEventStoreTableForRun } from "../taskEventStore.server";
+import { createExceptionPropertiesFromError } from "../eventRepository/common.server";
 import { FAILED_RUN_STATUSES, isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
 import { BaseService } from "./baseService.server";
 import { CancelAttemptService } from "./cancelAttempt.server";
 import { CreateCheckpointService } from "./createCheckpoint.server";
 import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
 import { RetryAttemptService } from "./retryAttempt.server";
+import { resolveEventRepositoryForStore } from "../eventRepository/index.server";
 
 type FoundAttempt = Awaited<ReturnType<typeof findAttempt>>;
 
@@ -164,26 +163,21 @@ export class CompleteAttemptService extends BaseService {
       env,
     });
 
-    // Now we need to "complete" the task run event/span
-    await eventRepository.completeEvent(
-      getTaskEventStoreTableForRun(taskRunAttempt.taskRun),
-      taskRunAttempt.taskRun.spanId,
-      taskRunAttempt.taskRun.createdAt,
-      taskRunAttempt.taskRun.completedAt ?? undefined,
-      {
+    const eventRepository = resolveEventRepositoryForStore(taskRunAttempt.taskRun.taskEventStore);
+
+    const [completeSuccessfulRunEventError] = await tryCatch(
+      eventRepository.completeSuccessfulRunEvent({
+        run: taskRunAttempt.taskRun,
         endTime: new Date(),
-        attributes: {
-          isError: false,
-          output:
-            completion.outputType === "application/store" || completion.outputType === "text/plain"
-              ? completion.output
-              : completion.output
-              ? (safeJsonParse(completion.output) as Attributes)
-              : undefined,
-          outputType: completion.outputType,
-        },
-      }
+      })
     );
+
+    if (completeSuccessfulRunEventError) {
+      logger.error("[CompleteAttemptService] Failed to complete successful run event", {
+        error: completeSuccessfulRunEventError,
+        runId: taskRunAttempt.taskRunId,
+      });
+    }
 
     return "COMPLETED";
   }
@@ -322,28 +316,22 @@ export class CompleteAttemptService extends BaseService {
       exitRun(taskRunAttempt.taskRunId);
     }
 
-    // Now we need to "complete" the task run event/span
-    await eventRepository.completeEvent(
-      getTaskEventStoreTableForRun(taskRunAttempt.taskRun),
-      taskRunAttempt.taskRun.spanId,
-      taskRunAttempt.taskRun.createdAt,
-      taskRunAttempt.taskRun.completedAt ?? undefined,
-      {
+    const eventRepository = resolveEventRepositoryForStore(taskRunAttempt.taskRun.taskEventStore);
+
+    const [completeFailedRunEventError] = await tryCatch(
+      eventRepository.completeFailedRunEvent({
+        run: taskRunAttempt.taskRun,
         endTime: failedAt,
-        attributes: {
-          isError: true,
-        },
-        events: [
-          {
-            name: "exception",
-            time: failedAt,
-            properties: {
-              exception: createExceptionPropertiesFromError(sanitizedError),
-            },
-          },
-        ],
-      }
+        exception: createExceptionPropertiesFromError(sanitizedError),
+      })
     );
+
+    if (completeFailedRunEventError) {
+      logger.error("[CompleteAttemptService] Failed to complete failed run event", {
+        error: completeFailedRunEventError,
+        runId: taskRunAttempt.taskRunId,
+      });
+    }
 
     await this._prisma.taskRun.update({
       where: {
@@ -385,64 +373,43 @@ export class CompleteAttemptService extends BaseService {
       return "COMPLETED";
     }
 
-    const inProgressEvents = await eventRepository.queryIncompleteEvents(
-      getTaskEventStoreTableForRun(taskRunAttempt.taskRun),
-      {
-        runId: taskRunAttempt.taskRun.friendlyId,
-      },
-      taskRunAttempt.taskRun.createdAt,
-      taskRunAttempt.taskRun.completedAt ?? undefined
-    );
-
     // Handle in-progress events
     switch (status) {
       case "CRASHED": {
-        logger.debug("[CompleteAttemptService] Crashing in-progress events", {
-          inProgressEvents: inProgressEvents.map((event) => event.id),
-        });
-
-        await Promise.all(
-          inProgressEvents.map((event) => {
-            return eventRepository.crashEvent({
-              event,
-              crashedAt: failedAt,
-              exception: createExceptionPropertiesFromError(sanitizedError),
-            });
+        const [createAttemptFailedEventError] = await tryCatch(
+          eventRepository.createAttemptFailedRunEvent({
+            run: taskRunAttempt.taskRun,
+            endTime: failedAt,
+            attemptNumber: taskRunAttempt.number,
+            exception: createExceptionPropertiesFromError(sanitizedError),
           })
         );
+
+        if (createAttemptFailedEventError) {
+          logger.error("[CompleteAttemptService] Failed to create attempt failed run event", {
+            error: createAttemptFailedEventError,
+            runId: taskRunAttempt.taskRunId,
+          });
+        }
 
         break;
       }
       case "SYSTEM_FAILURE": {
-        logger.debug("[CompleteAttemptService] Failing in-progress events", {
-          inProgressEvents: inProgressEvents.map((event) => event.id),
-        });
-
-        await Promise.all(
-          inProgressEvents.map((event) => {
-            return eventRepository.completeEvent(
-              getTaskEventStoreTableForRun(taskRunAttempt.taskRun),
-              event.spanId,
-              taskRunAttempt.taskRun.createdAt,
-              taskRunAttempt.taskRun.completedAt ?? undefined,
-              {
-                endTime: failedAt,
-                attributes: {
-                  isError: true,
-                },
-                events: [
-                  {
-                    name: "exception",
-                    time: failedAt,
-                    properties: {
-                      exception: createExceptionPropertiesFromError(sanitizedError),
-                    },
-                  },
-                ],
-              }
-            );
+        const [createAttemptFailedEventError] = await tryCatch(
+          eventRepository.createAttemptFailedRunEvent({
+            run: taskRunAttempt.taskRun,
+            endTime: failedAt,
+            attemptNumber: taskRunAttempt.number,
+            exception: createExceptionPropertiesFromError(sanitizedError),
           })
         );
+
+        if (createAttemptFailedEventError) {
+          logger.error("[CompleteAttemptService] Failed to create attempt failed run event", {
+            error: createAttemptFailedEventError,
+            runId: taskRunAttempt.taskRunId,
+          });
+        }
       }
     }
 
@@ -571,6 +538,8 @@ export class CompleteAttemptService extends BaseService {
   }) {
     const retryAt = new Date(executionRetry.timestamp);
 
+    const eventRepository = resolveEventRepositoryForStore(taskRunAttempt.taskRun.taskEventStore);
+
     // Retry the task run
     await eventRepository.recordEvent(
       `Retry #${execution.attempt.number} delay${oomMachine ? " after OOM" : ""}`,
@@ -590,8 +559,6 @@ export class CompleteAttemptService extends BaseService {
           style: {
             icon: "schedule-attempt",
           },
-          queueId: taskRunAttempt.queueId,
-          queueName: taskRunAttempt.taskRun.queue,
         },
         context: taskRunAttempt.taskRun.traceContext as Record<string, string | undefined>,
         spanIdSeed: `retry-${taskRunAttempt.number + 1}`,

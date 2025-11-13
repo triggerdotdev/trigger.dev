@@ -4,7 +4,7 @@ import { DeleteProjectService } from "~/services/deleteProject.server";
 import { BranchTrackingConfigSchema, type BranchTrackingConfig } from "~/v3/github";
 import { checkGitHubBranchExists } from "~/services/gitHub.server";
 import { errAsync, fromPromise, okAsync, ResultAsync } from "neverthrow";
-import { BuildSettings } from "~/v3/buildSettings";
+import { type BuildSettings } from "~/v3/buildSettings";
 
 export class ProjectSettingsService {
   #prismaClient: PrismaClient;
@@ -82,7 +82,7 @@ export class ProjectSettingsService {
         (error) => ({ type: "other" as const, cause: error })
       );
 
-    const createConnectedRepo = (defaultBranch: string) =>
+    const createConnectedRepo = (defaultBranch: string, previewDeploymentsEnabled: boolean) =>
       fromPromise(
         this.#prismaClient.connectedGithubRepository.create({
           data: {
@@ -90,23 +90,25 @@ export class ProjectSettingsService {
             repositoryId: repositoryId,
             branchTracking: {
               prod: { branch: defaultBranch },
-              staging: { branch: defaultBranch },
+              staging: {},
             } satisfies BranchTrackingConfig,
-            previewDeploymentsEnabled: true,
+            previewDeploymentsEnabled,
           },
         }),
         (error) => ({ type: "other" as const, cause: error })
       );
 
-    return ResultAsync.combine([getRepository(), findExistingConnection()]).andThen(
-      ([repository, existingConnection]) => {
-        if (existingConnection) {
-          return errAsync({ type: "project_already_has_connected_repository" as const });
-        }
-
-        return createConnectedRepo(repository.defaultBranch);
+    return ResultAsync.combine([
+      getRepository(),
+      findExistingConnection(),
+      this.isPreviewEnvironmentEnabled(projectId),
+    ]).andThen(([repository, existingConnection, previewEnvironmentEnabled]) => {
+      if (existingConnection) {
+        return errAsync({ type: "project_already_has_connected_repository" as const });
       }
-    );
+
+      return createConnectedRepo(repository.defaultBranch, previewEnvironmentEnabled);
+    });
   }
 
   disconnectGitHubRepo(projectId: string) {
@@ -208,7 +210,11 @@ export class ProjectSettingsService {
       return okAsync(stagingBranch);
     };
 
-    const updateConnectedRepo = () =>
+    const updateConnectedRepo = (data: {
+      productionBranch: string | undefined;
+      stagingBranch: string | undefined;
+      previewDeploymentsEnabled: boolean | undefined;
+    }) =>
       fromPromise(
         this.#prismaClient.connectedGithubRepository.update({
           where: {
@@ -216,10 +222,10 @@ export class ProjectSettingsService {
           },
           data: {
             branchTracking: {
-              prod: productionBranch ? { branch: productionBranch } : {},
-              staging: stagingBranch ? { branch: stagingBranch } : {},
+              prod: data.productionBranch ? { branch: data.productionBranch } : {},
+              staging: data.stagingBranch ? { branch: data.stagingBranch } : {},
             } satisfies BranchTrackingConfig,
-            previewDeploymentsEnabled: previewDeploymentsEnabled,
+            previewDeploymentsEnabled: data.previewDeploymentsEnabled,
           },
         }),
         (error) => ({ type: "other" as const, cause: error })
@@ -240,8 +246,14 @@ export class ProjectSettingsService {
             fullRepoName: connectedRepo.repository.fullName,
             oldStagingBranch: connectedRepo.branchTracking?.staging?.branch,
           }),
+          this.isPreviewEnvironmentEnabled(projectId),
         ]);
       })
+      .map(([productionBranch, stagingBranch, previewEnvironmentEnabled]) => ({
+        productionBranch,
+        stagingBranch,
+        previewDeploymentsEnabled: previewDeploymentsEnabled && previewEnvironmentEnabled,
+      }))
       .andThen(updateConnectedRepo);
   }
 
@@ -295,5 +307,23 @@ export class ProjectSettingsService {
         organizationId: project.organizationId,
       });
     });
+  }
+
+  private isPreviewEnvironmentEnabled(projectId: string) {
+    return fromPromise(
+      this.#prismaClient.runtimeEnvironment.findFirst({
+        select: {
+          id: true,
+        },
+        where: {
+          projectId: projectId,
+          slug: "preview",
+        },
+      }),
+      (error) => ({
+        type: "other" as const,
+        cause: error,
+      })
+    ).map((previewEnvironment) => previewEnvironment !== null);
   }
 }

@@ -40,6 +40,10 @@ export const v3SpanParamsSchema = v3RunParamsSchema.extend({
   spanParam: z.string(),
 });
 
+export const v3RunStreamParamsSchema = v3RunParamsSchema.extend({
+  streamKey: z.string(),
+});
+
 export const v3DeploymentParams = EnvironmentParamSchema.extend({
   deploymentParam: z.string(),
 });

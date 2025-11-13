@@ -202,6 +202,8 @@ model Organization {
   apiRateLimiterConfig      Json?
   realtimeRateLimiterConfig Json?
 
+  featureFlags Json?
+
   projects                 Project[]
   members                  OrgMember[]
   invites                  OrgMemberInvite[]
@@ -209,7 +211,6 @@ model Organization {
   organizationAccessTokens OrganizationAccessToken[]
   workerGroups             WorkerInstanceGroup[]
   workerInstances          WorkerInstance[]
-  executionSnapshots       TaskRunExecutionSnapshot[]
   githubAppInstallations   GithubAppInstallation[]
 }
 
@@ -326,7 +327,6 @@ model RuntimeEnvironment {
   taskRunCheckpoints   TaskRunCheckpoint[]
   waitpoints           Waitpoint[]
   workerInstances      WorkerInstance[]
-  executionSnapshots   TaskRunExecutionSnapshot[]
   waitpointTags        WaitpointTag[]
   BulkActionGroup      BulkActionGroup[]
 
@@ -391,7 +391,6 @@ model Project {
   waitpoints                Waitpoint[]
   taskRunWaitpoints         TaskRunWaitpoint[]
   taskRunCheckpoints        TaskRunCheckpoint[]
-  executionSnapshots        TaskRunExecutionSnapshot[]
   waitpointTags             WaitpointTag[]
   connectedGithubRepository ConnectedGithubRepository?
 
@@ -750,6 +749,11 @@ model TaskRun {
 
   maxDurationInSeconds Int?
 
+  /// The version of the realtime streams implementation used by the run
+  realtimeStreamsVersion String   @default("v1")
+  /// Store the stream keys that are being used by the run
+  realtimeStreams        String[] @default([])
+
   @@unique([oneTimeUseToken])
   @@unique([runtimeEnvironmentId, taskIdentifier, idempotencyKey])
   // Finding child runs
@@ -898,21 +902,15 @@ model TaskRunExecutionSnapshot {
 
   // Batch
   batchId String?
-  batch   BatchTaskRun? @relation(fields: [batchId], references: [id])
 
   /// This is the current run attempt number. Users can define how many attempts they want for a run.
   attemptNumber Int?
 
   /// Environment
   environmentId   String
-  environment     RuntimeEnvironment     @relation(fields: [environmentId], references: [id])
   environmentType RuntimeEnvironmentType
-
-  projectId String
-  project   Project @relation(fields: [projectId], references: [id])
-
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id])
+  projectId       String
+  organizationId  String
 
   /// Waitpoints that have been completed for this execution
   completedWaitpoints Waitpoint[] @relation("completedWaitpoints")
@@ -926,8 +924,6 @@ model TaskRunExecutionSnapshot {
 
   /// Worker
   workerId String?
-  worker   WorkerInstance? @relation(fields: [workerId], references: [id])
-
   runnerId String?
 
   createdAt DateTime @default(now())
@@ -1148,8 +1144,6 @@ model WorkerInstance {
 
   workerGroup   WorkerInstanceGroup @relation(fields: [workerGroupId], references: [id])
   workerGroupId String
-
-  TaskRunExecutionSnapshot TaskRunExecutionSnapshot[]
 
   organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String?
@@ -1493,8 +1487,15 @@ model TaskQueue {
   runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   runtimeEnvironmentId String
 
-  concurrencyLimit Int?
-  rateLimit        Json?
+  /// Represents the current concurrency limit for the queue
+  concurrencyLimit             Int?
+  /// When the concurrency limit was overridden
+  concurrencyLimitOverriddenAt DateTime?
+  /// Who overrode the concurrency limit (will be null if overridden via the API)
+  concurrencyLimitOverriddenBy String?
+  /// If concurrencyLimit is overridden, this is the overridden value
+  concurrencyLimitBase         Int?
+  rateLimit                    Json?
 
   paused Boolean @default(false)
 
@@ -1541,13 +1542,11 @@ model BatchTaskRun {
   batchVersion String   @default("v1")
 
   //engine v2
-  /// Snapshots that reference this batch
-  executionSnapshots TaskRunExecutionSnapshot[]
   /// Specific run blockers,
-  runsBlocked        TaskRunWaitpoint[]
+  runsBlocked TaskRunWaitpoint[]
   /// Waitpoints that are blocked by this batch.
   /// When a Batch is created it blocks execution of the associated parent run (for andWait)
-  waitpoints         Waitpoint[]
+  waitpoints  Waitpoint[]
 
   // This is for v3 batches
   /// sealed is set to true once no more items can be added to the batch
@@ -1764,12 +1763,16 @@ model WorkerDeployment {
   triggeredBy   User?   @relation(fields: [triggeredById], references: [id], onDelete: SetNull, onUpdate: Cascade)
   triggeredById String?
 
-  startedAt  DateTime?
-  builtAt    DateTime?
-  deployedAt DateTime?
+  startedAt   DateTime?
+  installedAt DateTime?
+  builtAt     DateTime?
+  deployedAt  DateTime?
 
   failedAt  DateTime?
   errorData Json?
+
+  canceledAt     DateTime?
+  canceledReason String?
 
   // This is GitMeta type
   git Json?
@@ -1787,6 +1790,7 @@ model WorkerDeployment {
 
 enum WorkerDeploymentStatus {
   PENDING
+  INSTALLING
   /// This is the status when the image is being built
   BUILDING
   /// This is the status when the image is built and we are waiting for the indexing to finish

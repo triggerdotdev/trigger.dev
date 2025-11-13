@@ -10,13 +10,16 @@ import {
 import { AttemptId, getMaxDuration, parseTraceparent } from "@trigger.dev/core/v3/isomorphic";
 import { RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { logger } from "~/services/logger.server";
-import { eventRepository, rehydrateAttribute } from "~/v3/eventRepository.server";
+import { rehydrateAttribute } from "~/v3/eventRepository/eventRepository.server";
 import { machinePresetFromRun } from "~/v3/machinePresets.server";
 import { getTaskEventStoreTableForRun, type TaskEventStoreTable } from "~/v3/taskEventStore.server";
 import { isFailedRunStatus, isFinalRunStatus } from "~/v3/taskStatus";
 import { BasePresenter } from "./basePresenter.server";
 import { WaitpointPresenter } from "./WaitpointPresenter.server";
 import { engine } from "~/v3/runEngine.server";
+import { resolveEventRepositoryForStore } from "~/v3/eventRepository/index.server";
+import { IEventRepository, SpanDetail } from "~/v3/eventRepository/eventRepository.types";
+import { safeJsonParse } from "~/utils/json";
 
 type Result = Awaited<ReturnType<SpanPresenter["call"]>>;
 export type Span = NonNullable<NonNullable<Result>["span"]>;
@@ -24,14 +27,16 @@ export type SpanRun = NonNullable<NonNullable<Result>["run"]>;
 type FindRunResult = NonNullable<
   Awaited<ReturnType<InstanceType<typeof SpanPresenter>["findRun"]>>
 >;
-type GetSpanResult = NonNullable<Awaited<ReturnType<(typeof eventRepository)["getSpan"]>>>;
+type GetSpanResult = SpanDetail;
 
 export class SpanPresenter extends BasePresenter {
   public async call({
+    userId,
     projectSlug,
     spanId,
     runFriendlyId,
   }: {
+    userId: string;
     projectSlug: string;
     spanId: string;
     runFriendlyId: string;
@@ -39,6 +44,13 @@ export class SpanPresenter extends BasePresenter {
     const project = await this._replica.project.findFirst({
       where: {
         slug: projectSlug,
+        organization: {
+          members: {
+            some: {
+              userId,
+            },
+          },
+        },
       },
     });
 
@@ -57,6 +69,7 @@ export class SpanPresenter extends BasePresenter {
       },
       where: {
         friendlyId: runFriendlyId,
+        projectId: project.id,
       },
     });
 
@@ -66,14 +79,18 @@ export class SpanPresenter extends BasePresenter {
 
     const { traceId } = parentRun;
 
+    const eventRepository = resolveEventRepositoryForStore(parentRun.taskEventStore);
+
     const eventStore = getTaskEventStoreTableForRun(parentRun);
 
     const run = await this.getRun({
       eventStore,
       traceId,
+      eventRepository,
       spanId,
       createdAt: parentRun.createdAt,
       completedAt: parentRun.completedAt,
+      environmentId: parentRun.runtimeEnvironmentId,
     });
     if (run) {
       return {
@@ -82,15 +99,15 @@ export class SpanPresenter extends BasePresenter {
       };
     }
 
-    //get the run
     const span = await this.#getSpan({
       eventStore,
-      traceId,
       spanId,
+      traceId,
       environmentId: parentRun.runtimeEnvironmentId,
       projectId: parentRun.projectId,
       createdAt: parentRun.createdAt,
       completedAt: parentRun.completedAt,
+      eventRepository,
     });
 
     if (!span) {
@@ -105,30 +122,31 @@ export class SpanPresenter extends BasePresenter {
 
   async getRun({
     eventStore,
+    environmentId,
     traceId,
+    eventRepository,
     spanId,
     createdAt,
     completedAt,
   }: {
     eventStore: TaskEventStoreTable;
+    environmentId: string;
     traceId: string;
+    eventRepository: IEventRepository;
     spanId: string;
     createdAt: Date;
     completedAt: Date | null;
   }) {
-    const span = await eventRepository.getSpan(
+    const originalRunId = await eventRepository.getSpanOriginalRunId(
       eventStore,
+      environmentId,
       spanId,
       traceId,
       createdAt,
       completedAt ?? undefined
     );
 
-    if (!span) {
-      return;
-    }
-
-    const run = await this.findRun({ span, spanId });
+    const run = await this.findRun({ originalRunId, spanId, environmentId });
 
     if (!run) {
       return;
@@ -251,8 +269,9 @@ export class SpanPresenter extends BasePresenter {
       engine: run.engine,
       region,
       workerQueue: run.workerQueue,
+      traceId: run.traceId,
       spanId: run.spanId,
-      isCached: !!span.originalRun,
+      isCached: !!originalRunId,
       machinePreset: machine?.name,
       externalTraceId,
     };
@@ -287,7 +306,15 @@ export class SpanPresenter extends BasePresenter {
     };
   }
 
-  async findRun({ span, spanId }: { span: GetSpanResult; spanId: string }) {
+  async findRun({
+    originalRunId,
+    spanId,
+    environmentId,
+  }: {
+    originalRunId?: string;
+    spanId: string;
+    environmentId: string;
+  }) {
     const run = await this._replica.taskRun.findFirst({
       select: {
         id: true,
@@ -397,12 +424,14 @@ export class SpanPresenter extends BasePresenter {
           },
         },
       },
-      where: span.originalRun
+      where: originalRunId
         ? {
-            friendlyId: span.originalRun,
+            friendlyId: originalRunId,
+            runtimeEnvironmentId: environmentId,
           }
         : {
             spanId,
+            runtimeEnvironmentId: environmentId,
           },
     });
 
@@ -411,6 +440,7 @@ export class SpanPresenter extends BasePresenter {
 
   async #getSpan({
     eventStore,
+    eventRepository,
     traceId,
     spanId,
     environmentId,
@@ -418,6 +448,7 @@ export class SpanPresenter extends BasePresenter {
     createdAt,
     completedAt,
   }: {
+    eventRepository: IEventRepository;
     traceId: string;
     spanId: string;
     environmentId: string;
@@ -428,12 +459,14 @@ export class SpanPresenter extends BasePresenter {
   }) {
     const span = await eventRepository.getSpan(
       eventStore,
+      environmentId,
       spanId,
       traceId,
       createdAt,
       completedAt ?? undefined,
       { includeDebugLogs: true }
     );
+
     if (!span) {
       return;
     }
@@ -445,11 +478,7 @@ export class SpanPresenter extends BasePresenter {
         spanId: true,
         createdAt: true,
         number: true,
-        lockedToVersion: {
-          select: {
-            version: true,
-          },
-        },
+        taskVersion: true,
       },
       where: {
         parentSpanId: spanId,
@@ -457,11 +486,21 @@ export class SpanPresenter extends BasePresenter {
     });
 
     const data = {
-      ...span,
+      spanId: span.spanId,
+      parentId: span.parentId,
+      message: span.message,
+      isError: span.isError,
+      isPartial: span.isPartial,
+      isCancelled: span.isCancelled,
+      level: span.level,
+      startTime: span.startTime,
+      duration: span.duration,
       events: span.events,
+      style: span.style,
       properties: span.properties ? JSON.stringify(span.properties, null, 2) : undefined,
+      entity: span.entity,
+      metadata: span.metadata,
       triggeredRuns,
-      showActionBar: span.show?.actions === true,
     };
 
     switch (span.entity.type) {
@@ -509,6 +548,41 @@ export class SpanPresenter extends BasePresenter {
             type: "attempt" as const,
             object: {
               isWarmStart,
+            },
+          },
+        };
+      }
+      case "realtime-stream": {
+        if (!span.entity.id) {
+          logger.error(`SpanPresenter: No realtime stream id`, {
+            spanId,
+            realtimeStreamId: span.entity.id,
+          });
+          return { ...data, entity: null };
+        }
+
+        const [runId, streamKey] = span.entity.id.split(":");
+
+        if (!runId || !streamKey) {
+          logger.error(`SpanPresenter: Invalid realtime stream id`, {
+            spanId,
+            realtimeStreamId: span.entity.id,
+          });
+          return { ...data, entity: null };
+        }
+
+        const metadata = span.entity.metadata
+          ? (safeJsonParse(span.entity.metadata) as Record<string, unknown> | undefined)
+          : undefined;
+
+        return {
+          ...data,
+          entity: {
+            type: "realtime-stream" as const,
+            object: {
+              runId,
+              streamKey,
+              metadata,
             },
           },
         };

@@ -106,11 +106,18 @@ export class ManagedRunController {
         message: "Received SIGTERM, stopping worker",
       });
 
-      // Disable warm starts
+      // Disable warm starts - prevents new warm start requests
       this.warmStartEnabled = false;
 
-      // ..now we wait for any active runs to finish
-      // SIGKILL will handle the rest, nothing to do here
+      // Abort any ongoing warm start long poll - immediately stops waiting for next run
+      // This prevents the scenario where:
+      // 1. SIGTERM kills a prepared child process
+      // 2. Warm start poll returns a new run
+      // 3. Controller tries to use the dead child process
+      this.warmStartClient?.abort();
+
+      // Now we wait for any active runs to finish gracefully
+      // SIGKILL will handle forced termination after termination grace period
     });
   }
 
@@ -461,19 +468,6 @@ export class ManagedRunController {
         runId: this.runFriendlyId,
         message: "Socket connected to supervisor",
       });
-
-      // This should handle the case where we reconnect after being restored
-      if (
-        this.runFriendlyId &&
-        this.snapshotFriendlyId &&
-        this.runFriendlyId !== this.env.TRIGGER_RUN_ID
-      ) {
-        this.sendDebugLog({
-          runId: this.runFriendlyId,
-          message: "Subscribing to notifications for in-progress run",
-        });
-        this.subscribeToRunNotifications(this.runFriendlyId, this.snapshotFriendlyId);
-      }
     });
 
     socket.on("connect_error", (error) => {
@@ -514,7 +508,7 @@ export class ManagedRunController {
           supervisorApiUrl: this.env.TRIGGER_SUPERVISOR_API_URL,
         };
 
-        await this.currentExecution.processEnvOverrides("socket disconnected", true);
+        const result = await this.currentExecution.processEnvOverrides("socket disconnected", true);
 
         const newEnv = {
           workerInstanceName: this.env.TRIGGER_WORKER_INSTANCE_NAME,
@@ -527,6 +521,43 @@ export class ManagedRunController {
           message: "Socket disconnected from supervisor - processed env overrides",
           properties: { reason, ...parseDescription(), currentEnv, newEnv },
         });
+
+        if (!result) {
+          return;
+        }
+
+        // If runner ID changed, we detected a restore
+        if (result.runnerIdChanged) {
+          this.sendDebugLog({
+            runId: this.runFriendlyId,
+            message: "Runner ID changed - restore detected",
+            properties: {
+              supervisorChanged: result.supervisorChanged,
+            },
+          });
+
+          if (!result.supervisorChanged) {
+            return;
+          }
+
+          // Only reconnect WebSocket if supervisor URL actually changed
+          this.sendDebugLog({
+            runId: this.runFriendlyId,
+            message: "Supervisor URL changed - creating new socket connection",
+          });
+
+          // First disconnect the old socket to avoid conflicts
+          socket.removeAllListeners();
+          socket.disconnect();
+
+          // Create a new socket with the updated URL and headers
+          this.socket = this.createSupervisorSocket();
+
+          // Re-subscribe to notifications if we have an active execution
+          if (this.runFriendlyId && this.snapshotFriendlyId) {
+            this.subscribeToRunNotifications(this.runFriendlyId, this.snapshotFriendlyId);
+          }
+        }
 
         return;
       }

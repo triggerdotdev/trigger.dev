@@ -7,10 +7,6 @@ secrets:
   magicLinkSecret: "YOUR_32_CHAR_HEX_SECRET_HERE_002"
   encryptionKey: "YOUR_32_CHAR_HEX_SECRET_HERE_003"
   managedWorkerSecret: "YOUR_32_CHAR_HEX_SECRET_HERE_004"
-  # Object store credentials (customize for your setup)
-  objectStore:
-    accessKeyId: "your-access-key"
-    secretAccessKey: "your-secret-key"
 
 # Production webapp configuration
 webapp:
@@ -82,19 +78,24 @@ clickhouse:
     enabled: true
     size: 100Gi
     storageClass: "fast-ssd"
+  # ClickHouse can be very resource intensive, so we recommend setting limits and requests accordingly
+  # Note: not doing this can cause OOM crashes which will cause issues across many different
   resources:
     limits:
-      cpu: 1000m
-      memory: 2Gi
+      cpu: 4000m
+      memory: 16Gi
     requests:
-      cpu: 500m
-      memory: 1Gi
+      cpu: 2000m
+      memory: 8Gi
 
 # Production S3-compatible object storage
 s3:
   auth:
     rootUser: "admin"
     rootPassword: "your-strong-s3-password"
+    # Webapp credentials for S3 access (can be different from root)
+    accessKeyId: "your-access-key"
+    secretAccessKey: "your-secret-key"
   persistence:
     enabled: true
     size: 500Gi
@@ -140,14 +141,22 @@ supervisor:
 # Example: Use external PostgreSQL instead
 # postgres:
 #   deploy: false
-#   external:
-#     host: "your-postgres-host.rds.amazonaws.com"
-#     port: 5432
-#     database: "trigger"
-#     username: "trigger_user"
-#     password: "your-db-password"
-#     schema: "public"
+#   connection:
 #     sslMode: "require"  # Use 'require' or 'verify-full' for production
+#   external:
+#     # Database URL configuration - simplified approach using URLs
+#     databaseUrl: "postgresql://trigger_user:your-db-password@your-postgres-host.rds.amazonaws.com:5432/trigger?schema=public&sslmode=require"
+#     directUrl: ""  # Optional: Direct URL for migrations (if not set, databaseUrl will be used)
+#     #
+#     # Optional: Connectivity check configuration during webapp startup
+#     connectivityCheck:
+#       host: "your-postgres-host.rds.amazonaws.com:5432"
+#     #
+#     # Secure credential management (recommended for production)
+#     # existingSecret: "postgres-credentials"  # Name of existing secret containing DATABASE_URL
+#     # secretKeys:
+#     #   databaseUrlKey: "postgres-database-url"  # Key in existing secret
+#     #   directUrlKey: "postgres-direct-url"  # Key in existing secret (optional)
 
 # Example: Use external Redis instead
 # redis:
@@ -155,7 +164,13 @@ supervisor:
 #   external:
 #     host: "your-redis-cluster.cache.amazonaws.com"
 #     port: 6379
-#     password: "your-redis-password"
+#     password: "your-redis-password"  # Optional - ignored if existingSecret is set
+#     tls:
+#       enabled: true  # Set to true for Redis instances requiring TLS (e.g., AWS ElastiCache)
+#     #
+#     # Secure credential management (recommended for production)
+#     # existingSecret: "redis-credentials"  # Name of existing secret containing password
+#     # existingSecretPasswordKey: "redis-password"  # Key in existing secret containing password
 
 # Example: Use external ClickHouse instead
 # clickhouse:
@@ -165,5 +180,22 @@ supervisor:
 #     httpPort: 8443  # Use 8443 for HTTPS
 #     nativePort: 9440  # Use 9440 for secure native connections
 #     username: "trigger_user"
-#     password: "your-clickhouse-password"
+#     password: "your-clickhouse-password"  # Optional - ignored if existingSecret is set
 #     secure: true  # Use true for TLS/secure connections
+#     #
+#     # Secure credential management (recommended for production)
+#     # existingSecret: "clickhouse-credentials"  # Name of existing secret containing password
+#     # existingSecretKey: "clickhouse-password"  # Key in existing secret containing password
+
+# Example: Use external S3-compatible storage instead
+# s3:
+#   deploy: false
+#   external:
+#     endpoint: "https://s3.amazonaws.com"  # or your S3-compatible endpoint
+#     accessKeyId: "your-access-key"
+#     secretAccessKey: "your-secret-key"
+#     #
+#     # Secure credential management (recommended for production)
+#     # existingSecret: "s3-credentials"  # Name of existing secret containing S3 credentials
+#     # existingSecretAccessKeyIdKey: "access-key-id"  # Key in existing secret containing access key ID
+#     # existingSecretSecretAccessKeyKey: "secret-access-key"  # Key in existing secret containing secret access key

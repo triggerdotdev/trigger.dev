@@ -4,7 +4,8 @@ volumes:
   database-data:
   database-data-alt:
   redis-data:
-  clickhouse:
+  clickhouse-data:
+  clickhouse-logs:
 
 networks:
   app_network:
@@ -48,11 +49,12 @@ services:
 
   electric:
     container_name: electric
-    image: electricsql/electric:1.0.22@sha256:1b151dc8a6fd5292fba70cbc744e25bd3a1e42db5fc89b7e479b7b939980a0e2
+    image: electricsql/electric:1.1.14@sha256:784495364583e0675c29f62d3f45ae76ee6e65ea5ad5eec7ae10293f5e439c89
     restart: always
     environment:
       DATABASE_URL: postgresql://postgres:postgres@database:5432/postgres?sslmode=disable
       ELECTRIC_INSECURE: true
+      ELECTRIC_ENABLE_INTEGRATION_TESTING: true
     networks:
       - app_network
     ports:
@@ -62,7 +64,7 @@ services:
 
   electric-shard-1:
     container_name: electric-shard-1
-    image: electricsql/electric:1.0.22@sha256:1b151dc8a6fd5292fba70cbc744e25bd3a1e42db5fc89b7e479b7b939980a0e2
+    image: electricsql/electric:1.1.14@sha256:784495364583e0675c29f62d3f45ae76ee6e65ea5ad5eec7ae10293f5e439c89
     restart: always
     environment:
       DATABASE_URL: postgresql://postgres:postgres@database:5432/postgres?sslmode=disable
@@ -76,17 +78,23 @@ services:
       - database
 
   clickhouse:
-    image: bitnami/clickhouse:latest
+    image: clickhouse/clickhouse-server:25.6.2
     restart: always
     container_name: clickhouse
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
     environment:
-      CLICKHOUSE_ADMIN_USER: default
-      CLICKHOUSE_ADMIN_PASSWORD: password
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: password
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
     ports:
       - "8123:8123"
       - "9000:9000"
     volumes:
-      - clickhouse:/bitnami/clickhouse
+      - clickhouse-data:/var/lib/clickhouse
+      - clickhouse-logs:/var/log/clickhouse-server
     networks:
       - app_network
     healthcheck:
@@ -105,10 +113,10 @@ services:
           "--query",
           "SELECT 1",
         ]
-      interval: 3s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
+      interval: "3s"
+      timeout: "5s"
+      retries: "5"
+      start_period: "10s"
 
   clickhouse_migrator:
     build:
@@ -132,6 +140,29 @@ services:
       VITE_CLICKHOUSE_PASS: "password"
     networks:
       - app_network
+
+  toxiproxy:
+    container_name: toxiproxy
+    image: ghcr.io/shopify/toxiproxy:latest
+    restart: always
+    volumes:
+      - ./config/toxiproxy.json:/config/toxiproxy.json
+    ports:
+      - "30303:30303" # Proxied webapp port
+      - "8474:8474" # Toxiproxy API port
+    networks:
+      - app_network
+    command: ["-host", "0.0.0.0", "-config", "/config/toxiproxy.json"]
+
+  nginx-h2:
+    image: nginx:1.27
+    container_name: nginx-h2
+    restart: unless-stopped
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./config/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./config/certs:/etc/nginx/certs:ro
 
   # otel-collector:
   #   container_name: otel-collector

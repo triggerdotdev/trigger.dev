@@ -6,9 +6,12 @@ import { networkInterfaces } from "os";
 import { join } from "path";
 import { safeReadJSONFile } from "../utilities/fileSystem.js";
 import { readFileSync } from "fs";
+
 import { isLinux } from "std-env";
 import { z } from "zod";
 import { assertExhaustive } from "../utilities/assertExhaustive.js";
+import { tryCatch } from "@trigger.dev/core";
+import { CliApiClient } from "../apiClient.js";
 
 export interface BuildImageOptions {
   // Common options
@@ -19,6 +22,7 @@ export interface BuildImageOptions {
 
   // Local build options
   push?: boolean;
+  authenticateToRegistry?: boolean;
   network?: string;
   builder: string;
 
@@ -37,6 +41,7 @@ export interface BuildImageOptions {
   extraCACerts?: string;
   apiUrl: string;
   apiKey: string;
+  apiClient: CliApiClient;
   branchName?: string;
   buildEnvVars?: Record<string, string | undefined>;
   onLog?: (log: string) => void;
@@ -51,6 +56,7 @@ export async function buildImage(options: BuildImageOptions): Promise<BuildImage
     imagePlatform,
     noCache,
     push,
+    authenticateToRegistry,
     load,
     authAccessToken,
     imageTag,
@@ -66,6 +72,7 @@ export async function buildImage(options: BuildImageOptions): Promise<BuildImage
     extraCACerts,
     apiUrl,
     apiKey,
+    apiClient,
     branchName,
     buildEnvVars,
     network,
@@ -84,11 +91,13 @@ export async function buildImage(options: BuildImageOptions): Promise<BuildImage
       contentHash,
       projectRef,
       push,
+      authenticateToRegistry,
       load,
       noCache,
       extraCACerts,
       apiUrl,
       apiKey,
+      apiClient,
       branchName,
       buildEnvVars,
       network,
@@ -292,8 +301,10 @@ interface SelfHostedBuildImageOptions {
   projectRef: string;
   imagePlatform: string;
   push?: boolean;
+  authenticateToRegistry?: boolean;
   apiUrl: string;
   apiKey: string;
+  apiClient: CliApiClient;
   branchName?: string;
   noCache?: boolean;
   extraCACerts?: string;
@@ -305,7 +316,7 @@ interface SelfHostedBuildImageOptions {
 }
 
 async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<BuildImageResults> {
-  const { builder, imageTag } = options;
+  const { builder, imageTag, deploymentId, apiClient } = options;
 
   // Ensure multi-platform build is supported on the local machine
   let builderExists = false;
@@ -414,6 +425,64 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
 
   await ensureQemuRegistered(options.imagePlatform);
 
+  const errors: string[] = [];
+
+  let cloudRegistryHost: string | undefined;
+  if (push && options.authenticateToRegistry) {
+    cloudRegistryHost =
+      process.env.TRIGGER_DOCKER_REGISTRY ?? extractRegistryHostFromImageTag(imageTag);
+
+    if (!cloudRegistryHost) {
+      return {
+        ok: false as const,
+        error: "Failed to extract registry host from image tag",
+        logs: "",
+      };
+    }
+
+    const [credentialsError, credentials] = await tryCatch(
+      getDockerUsernameAndPassword(apiClient, deploymentId)
+    );
+
+    if (credentialsError) {
+      return {
+        ok: false as const,
+        error: `Failed to get docker credentials: ${credentialsError.message}`,
+        logs: "",
+      };
+    }
+
+    logger.debug(`Logging in to docker registry: ${cloudRegistryHost}`);
+
+    const loginProcess = x(
+      "docker",
+      ["login", "--username", credentials.username, "--password-stdin", cloudRegistryHost],
+      {
+        nodeOptions: {
+          cwd: options.cwd,
+        },
+      }
+    );
+
+    loginProcess.process?.stdin?.write(credentials.password);
+    loginProcess.process?.stdin?.end();
+
+    for await (const line of loginProcess) {
+      errors.push(line);
+      logger.debug(line);
+    }
+
+    if (loginProcess.exitCode !== 0) {
+      return {
+        ok: false as const,
+        error: `Failed to login to registry: ${cloudRegistryHost}`,
+        logs: extractLogs(errors),
+      };
+    }
+
+    options.onLog?.(`Successfully logged in to ${cloudRegistryHost}`);
+  }
+
   const args = [
     "buildx",
     "build",
@@ -453,17 +522,16 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
     "--progress",
     "plain",
     "-t",
-    options.imageTag,
+    imageTag,
     ".", // The build context
   ].filter(Boolean) as string[];
 
   logger.debug(`docker ${args.join(" ")}`, { cwd: options.cwd });
 
-  const errors: string[] = [];
-
-  // Build the image
   const buildProcess = x("docker", args, {
-    nodeOptions: { cwd: options.cwd },
+    nodeOptions: {
+      cwd: options.cwd,
+    },
   });
 
   for await (const line of buildProcess) {
@@ -474,6 +542,11 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
   }
 
   if (buildProcess.exitCode !== 0) {
+    if (cloudRegistryHost) {
+      logger.debug(`Logging out from docker registry: ${cloudRegistryHost}`);
+      await x("docker", ["logout", cloudRegistryHost]);
+    }
+
     return {
       ok: false as const,
       error: "Error building image",
@@ -517,6 +590,11 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
   if (imageSizeBytes) {
     // Convert to MB and log
     options.onLog?.(`Image size: ${(imageSizeBytes / (1024 * 1024)).toFixed(2)} MB`);
+  }
+
+  if (cloudRegistryHost) {
+    logger.debug(`Logging out from docker registry: ${cloudRegistryHost}`);
+    await x("docker", ["logout", cloudRegistryHost]);
   }
 
   return {
@@ -838,6 +916,43 @@ function getAddHost(apiUrl: string) {
   }
 
   return;
+}
+
+function extractRegistryHostFromImageTag(imageTag: string): string | undefined {
+  const host = imageTag.split("/")[0];
+
+  if (!host || !host.includes(".")) {
+    return undefined;
+  }
+
+  return host;
+}
+
+async function getDockerUsernameAndPassword(
+  apiClient: CliApiClient,
+  deploymentId: string
+): Promise<{ username: string; password: string }> {
+  if (process.env.TRIGGER_DOCKER_USERNAME && process.env.TRIGGER_DOCKER_PASSWORD) {
+    return {
+      username: process.env.TRIGGER_DOCKER_USERNAME,
+      password: process.env.TRIGGER_DOCKER_PASSWORD,
+    };
+  }
+
+  const result = await apiClient.generateRegistryCredentials(deploymentId);
+
+  if (!result.success) {
+    logger.debug("Failed to generate registry credentials", {
+      error: result.error,
+      deploymentId,
+    });
+    throw new Error("Failed to generate registry credentials");
+  }
+
+  return {
+    username: result.data.username,
+    password: result.data.password,
+  };
 }
 
 function isQemuRegistered() {

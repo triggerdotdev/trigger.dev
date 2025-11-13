@@ -14,6 +14,7 @@ import {
   useActionData,
   useNavigation,
   useNavigate,
+  useSearchParams,
 } from "@remix-run/react";
 import { type ActionFunction, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -49,8 +50,6 @@ import {
   redirectBackWithSuccessMessage,
   redirectWithErrorMessage,
   redirectWithSuccessMessage,
-  getSession,
-  commitSession,
 } from "~/models/message.server";
 import { ProjectSettingsService } from "~/services/projectSettings.server";
 import { logger } from "~/services/logger.server";
@@ -61,6 +60,8 @@ import {
   githubAppInstallPath,
   EnvironmentParamSchema,
   v3ProjectSettingsPath,
+  docsPath,
+  v3BillingPath,
 } from "~/utils/pathBuilder";
 import React, { useEffect, useState } from "react";
 import { Select, SelectItem } from "~/components/primitives/Select";
@@ -78,6 +79,7 @@ import { TextLink } from "~/components/primitives/TextLink";
 import { cn } from "~/utils/cn";
 import { ProjectSettingsPresenter } from "~/services/projectSettingsPresenter.server";
 import { type BuildSettings } from "~/v3/buildSettings";
+import { InfoIconTooltip } from "~/components/primitives/Tooltip";
 
 export const meta: MetaFunction = () => {
   return [
@@ -123,22 +125,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const { gitHubApp, buildSettings } = resultOrFail.value;
 
-  const session = await getSession(request.headers.get("Cookie"));
-  const openGitHubRepoConnectionModal = session.get("gitHubAppInstalled") === true;
-  const headers = new Headers({
-    "Set-Cookie": await commitSession(session),
+  return typedjson({
+    githubAppEnabled: gitHubApp.enabled,
+    githubAppInstallations: gitHubApp.installations,
+    connectedGithubRepository: gitHubApp.connectedRepository,
+    isPreviewEnvironmentEnabled: gitHubApp.isPreviewEnvironmentEnabled,
+    buildSettings,
   });
-
-  return typedjson(
-    {
-      githubAppEnabled: gitHubApp.enabled,
-      githubAppInstallations: gitHubApp.installations,
-      connectedGithubRepository: gitHubApp.connectedRepository,
-      openGitHubRepoConnectionModal,
-      buildSettings,
-    },
-    { headers }
-  );
 };
 
 const ConnectGitHubRepoFormSchema = z.object({
@@ -167,14 +160,6 @@ const UpdateBuildSettingsFormSchema = z.object({
     .refine((val) => !val || val.length <= 255, {
       message: "Config file path must not exceed 255 characters",
     }),
-  installDirectory: z
-    .string()
-    .trim()
-    .optional()
-    .transform((val) => (val ? val.replace(/^\/+/, "") : val))
-    .refine((val) => !val || val.length <= 255, {
-      message: "Install directory must not exceed 255 characters",
-    }),
   installCommand: z
     .string()
     .trim()
@@ -184,6 +169,16 @@ const UpdateBuildSettingsFormSchema = z.object({
     })
     .refine((val) => !val || val.length <= 500, {
       message: "Install command must not exceed 500 characters",
+    }),
+  preBuildCommand: z
+    .string()
+    .trim()
+    .optional()
+    .refine((val) => !val || !val.includes("\n"), {
+      message: "Pre-build command must be a single line",
+    })
+    .refine((val) => !val || val.length <= 500, {
+      message: "Pre-build command must not exceed 500 characters",
     }),
 });
 
@@ -412,11 +407,11 @@ export const action: ActionFunction = async ({ request, params }) => {
       });
     }
     case "update-build-settings": {
-      const { installDirectory, installCommand, triggerConfigFilePath } = submission.value;
+      const { installCommand, preBuildCommand, triggerConfigFilePath } = submission.value;
 
       const resultOrFail = await projectSettingsService.updateBuildSettings(projectId, {
-        installDirectory: installDirectory || undefined,
         installCommand: installCommand || undefined,
+        preBuildCommand: preBuildCommand || undefined,
         triggerConfigFilePath: triggerConfigFilePath || undefined,
       });
 
@@ -448,8 +443,8 @@ export default function Page() {
     githubAppInstallations,
     connectedGithubRepository,
     githubAppEnabled,
-    openGitHubRepoConnectionModal,
     buildSettings,
+    isPreviewEnvironmentEnabled,
   } = useTypedLoaderData<typeof loader>();
   const project = useProject();
   const organization = useOrganization();
@@ -577,14 +572,16 @@ export default function Page() {
                   <Header2 spacing>Git settings</Header2>
                   <div className="w-full rounded-sm border border-grid-dimmed p-4">
                     {connectedGithubRepository ? (
-                      <ConnectedGitHubRepoForm connectedGitHubRepo={connectedGithubRepository} />
+                      <ConnectedGitHubRepoForm
+                        connectedGitHubRepo={connectedGithubRepository}
+                        previewEnvironmentEnabled={isPreviewEnvironmentEnabled}
+                      />
                     ) : (
                       <GitHubConnectionPrompt
                         gitHubAppInstallations={githubAppInstallations ?? []}
                         organizationSlug={organization.slug}
                         projectSlug={project.slug}
                         environmentSlug={environment.slug}
-                        openGitHubRepoConnectionModal={openGitHubRepoConnectionModal}
                       />
                     )}
                   </div>
@@ -667,7 +664,6 @@ function ConnectGitHubRepoModal({
   organizationSlug,
   projectSlug,
   environmentSlug,
-  open = false,
 }: {
   gitHubAppInstallations: GitHubAppInstallation[];
   organizationSlug: string;
@@ -675,7 +671,7 @@ function ConnectGitHubRepoModal({
   environmentSlug: string;
   open?: boolean;
 }) {
-  const [isModalOpen, setIsModalOpen] = useState(open);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const lastSubmission = useActionData() as any;
   const navigate = useNavigate();
 
@@ -702,6 +698,17 @@ function ConnectGitHubRepoModal({
       });
     },
   });
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams);
+
+    if (params.get("openGithubRepoModal") === "1") {
+      setIsModalOpen(true);
+      params.delete("openGithubRepoModal");
+      setSearchParams(params);
+    }
+  }, [searchParams, setSearchParams]);
 
   useEffect(() => {
     if (lastSubmission && "success" in lastSubmission && lastSubmission.success === true) {
@@ -759,11 +766,11 @@ function ConnectGitHubRepoModal({
                         navigate(
                           githubAppInstallPath(
                             organizationSlug,
-                            v3ProjectSettingsPath(
+                            `${v3ProjectSettingsPath(
                               { slug: organizationSlug },
                               { slug: projectSlug },
                               { slug: environmentSlug }
-                            )
+                            )}?openGithubRepoModal=1`
                           )
                         );
                       }}
@@ -856,13 +863,11 @@ function GitHubConnectionPrompt({
   organizationSlug,
   projectSlug,
   environmentSlug,
-  openGitHubRepoConnectionModal = false,
 }: {
   gitHubAppInstallations: GitHubAppInstallation[];
   organizationSlug: string;
   projectSlug: string;
   environmentSlug: string;
-  openGitHubRepoConnectionModal?: boolean;
 }) {
   return (
     <Fieldset>
@@ -871,11 +876,11 @@ function GitHubConnectionPrompt({
           <LinkButton
             to={githubAppInstallPath(
               organizationSlug,
-              v3ProjectSettingsPath(
+              `${v3ProjectSettingsPath(
                 { slug: organizationSlug },
                 { slug: projectSlug },
                 { slug: environmentSlug }
-              )
+              )}?openGithubRepoModal=1`
             )}
             variant={"secondary/medium"}
             LeadingIcon={OctoKitty}
@@ -890,7 +895,6 @@ function GitHubConnectionPrompt({
               organizationSlug={organizationSlug}
               projectSlug={projectSlug}
               environmentSlug={environmentSlug}
-              open={openGitHubRepoConnectionModal}
             />
             <span className="flex items-center gap-1 text-xs text-text-dimmed">
               <CheckCircleIcon className="size-4 text-success" /> GitHub app is installed
@@ -913,11 +917,14 @@ type ConnectedGitHubRepo = {
 
 function ConnectedGitHubRepoForm({
   connectedGitHubRepo,
+  previewEnvironmentEnabled,
 }: {
   connectedGitHubRepo: ConnectedGitHubRepo;
+  previewEnvironmentEnabled?: boolean;
 }) {
   const lastSubmission = useActionData() as any;
   const navigation = useNavigation();
+  const organization = useOrganization();
 
   const [hasGitSettingsChanges, setHasGitSettingsChanges] = useState(false);
   const [gitSettingsValues, setGitSettingsValues] = useState({
@@ -1013,10 +1020,10 @@ function ConnectedGitHubRepoForm({
         <Fieldset>
           <InputGroup fullWidth>
             <Hint>
-              Every commit on the selected tracking branch creates a deployment in the corresponding
+              Every push to the selected tracking branch creates a deployment in the corresponding
               environment.
             </Hint>
-            <div className="grid grid-cols-[120px_1fr] gap-3">
+            <div className="mt-1 grid grid-cols-[120px_1fr] gap-3">
               <div className="flex items-center gap-1.5">
                 <EnvironmentIcon environment={{ type: "PRODUCTION" }} className="size-4" />
                 <span className={`text-sm ${environmentTextClassName({ type: "PRODUCTION" })}`}>
@@ -1064,19 +1071,34 @@ function ConnectedGitHubRepoForm({
                   {environmentFullTitle({ type: "PREVIEW" })}
                 </span>
               </div>
-              <Switch
-                name="previewDeploymentsEnabled"
-                defaultChecked={connectedGitHubRepo.previewDeploymentsEnabled}
-                variant="small"
-                label="create preview deployments for pull requests"
-                labelPosition="right"
-                onCheckedChange={(checked) => {
-                  setGitSettingsValues((prev) => ({
-                    ...prev,
-                    previewDeploymentsEnabled: checked,
-                  }));
-                }}
-              />
+              <div className="flex items-center gap-1.5">
+                <Switch
+                  name="previewDeploymentsEnabled"
+                  disabled={!previewEnvironmentEnabled}
+                  defaultChecked={
+                    connectedGitHubRepo.previewDeploymentsEnabled && previewEnvironmentEnabled
+                  }
+                  variant="small"
+                  label="Create preview deployments for pull requests"
+                  labelPosition="right"
+                  onCheckedChange={(checked) => {
+                    setGitSettingsValues((prev) => ({
+                      ...prev,
+                      previewDeploymentsEnabled: checked,
+                    }));
+                  }}
+                />
+                {!previewEnvironmentEnabled && (
+                  <InfoIconTooltip
+                    content={
+                      <span className="text-xs">
+                        <TextLink to={v3BillingPath(organization)}>Upgrade</TextLink> your plan to
+                        enable preview branches
+                      </span>
+                    }
+                  />
+                )}
+              </div>
             </div>
             <FormError>{fields.productionBranch?.error}</FormError>
             <FormError>{fields.stagingBranch?.error}</FormError>
@@ -1110,14 +1132,14 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
 
   const [hasBuildSettingsChanges, setHasBuildSettingsChanges] = useState(false);
   const [buildSettingsValues, setBuildSettingsValues] = useState({
-    installDirectory: buildSettings?.installDirectory || "",
+    preBuildCommand: buildSettings?.preBuildCommand || "",
     installCommand: buildSettings?.installCommand || "",
     triggerConfigFilePath: buildSettings?.triggerConfigFilePath || "",
   });
 
   useEffect(() => {
     const hasChanges =
-      buildSettingsValues.installDirectory !== (buildSettings?.installDirectory || "") ||
+      buildSettingsValues.preBuildCommand !== (buildSettings?.preBuildCommand || "") ||
       buildSettingsValues.installCommand !== (buildSettings?.installCommand || "") ||
       buildSettingsValues.triggerConfigFilePath !== (buildSettings?.triggerConfigFilePath || "");
     setHasBuildSettingsChanges(hasChanges);
@@ -1167,7 +1189,7 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
           <Input
             {...conform.input(fields.installCommand, { type: "text" })}
             defaultValue={buildSettings?.installCommand || ""}
-            placeholder="e.g., `npm install`, or `bun install`"
+            placeholder="e.g., `npm install`, `pnpm install`, or `bun install`"
             onChange={(e) => {
               setBuildSettingsValues((prev) => ({
                 ...prev,
@@ -1175,26 +1197,30 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
               }));
             }}
           />
-          <Hint>Command to install your project dependencies. Auto-detected by default.</Hint>
+          <Hint>
+            Command to install your project dependencies. This will be run from the root directory
+            of your repo. Auto-detected by default.
+          </Hint>
           <FormError id={fields.installCommand.errorId}>{fields.installCommand.error}</FormError>
         </InputGroup>
         <InputGroup fullWidth>
-          <Label htmlFor={fields.installDirectory.id}>Install directory</Label>
+          <Label htmlFor={fields.preBuildCommand.id}>Pre-build command</Label>
           <Input
-            {...conform.input(fields.installDirectory, { type: "text" })}
-            defaultValue={buildSettings?.installDirectory || ""}
-            placeholder=""
+            {...conform.input(fields.preBuildCommand, { type: "text" })}
+            defaultValue={buildSettings?.preBuildCommand || ""}
+            placeholder="e.g., `npm run prisma:generate`"
             onChange={(e) => {
               setBuildSettingsValues((prev) => ({
                 ...prev,
-                installDirectory: e.target.value,
+                preBuildCommand: e.target.value,
               }));
             }}
           />
-          <Hint>The directory where the install command is run in. Auto-detected by default.</Hint>
-          <FormError id={fields.installDirectory.errorId}>
-            {fields.installDirectory.error}
-          </FormError>
+          <Hint>
+            Any command that needs to run before we build and deploy your project. This will be run
+            from the root directory of your repo.
+          </Hint>
+          <FormError id={fields.preBuildCommand.errorId}>{fields.preBuildCommand.error}</FormError>
         </InputGroup>
         <FormError>{buildSettingsForm.error}</FormError>
         <FormButtons

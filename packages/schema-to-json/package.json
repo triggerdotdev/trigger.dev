@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/schema-to-json",
-  "version": "4.0.2",
+  "version": "4.0.7",
   "description": "Convert various schema validation libraries to JSON Schema",
   "license": "MIT",
   "publishConfig": {
@@ -60,19 +60,13 @@
   },
   "peerDependencies": {
     "arktype": ">=2.0.0",
-    "effect": ">=3.0.0",
     "runtypes": ">=5.0.0",
     "superstruct": ">=0.14.2",
     "@sinclair/typebox": ">=0.34.30",
-    "valibot": ">=0.41.0",
-    "yup": ">=1.0.0",
-    "zod": "^3.25.76 || ^4"
+    "valibot": ">=0.41.0"
   },
   "peerDependenciesMeta": {
     "arktype": {
-      "optional": true
-    },
-    "effect": {
       "optional": true
     },
     "runtypes": {
@@ -85,12 +79,6 @@
       "optional": true
     },
     "valibot": {
-      "optional": true
-    },
-    "yup": {
-      "optional": true
-    },
-    "zod": {
       "optional": true
     }
   },

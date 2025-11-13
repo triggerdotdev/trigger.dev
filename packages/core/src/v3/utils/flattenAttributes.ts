@@ -239,7 +239,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export function unflattenAttributes(
-  obj: Attributes
+  obj: Attributes,
+  filteredKeys?: string[]
 ): Record<string, unknown> | string | number | boolean | null | undefined {
   if (typeof obj !== "object" || obj === null || Array.isArray(obj)) {
     return obj;
@@ -261,6 +262,10 @@ export function unflattenAttributes(
   const result: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(obj)) {
+    if (filteredKeys?.includes(key)) {
+      continue;
+    }
+
     const parts = key.split(".").reduce(
       (acc, part) => {
         if (part.startsWith("[") && part.endsWith("]")) {

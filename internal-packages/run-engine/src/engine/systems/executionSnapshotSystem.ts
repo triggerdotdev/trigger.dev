@@ -216,10 +216,11 @@ export async function getExecutionSnapshotsSince(
       completedWaitpoints: true,
       checkpoint: true,
     },
-    orderBy: { createdAt: "asc" },
+    orderBy: { createdAt: "desc" },
+    take: 50,
   });
 
-  return snapshots.map(enhanceExecutionSnapshot);
+  return snapshots.reverse().map(enhanceExecutionSnapshot);
 }
 
 export class ExecutionSnapshotSystem {
@@ -374,12 +375,10 @@ export class ExecutionSnapshotSystem {
       });
     }
 
-    //update the snapshot heartbeat time
-    await prisma.taskRunExecutionSnapshot.update({
-      where: { id: latestSnapshot.id },
-      data: {
-        lastHeartbeatAt: new Date(),
-      },
+    this.$.logger.info("heartbeatRun snapshot heartbeat updated", {
+      id: latestSnapshot.id,
+      runId: latestSnapshot.runId,
+      lastHeartbeatAt: new Date(),
     });
 
     //extending the heartbeat

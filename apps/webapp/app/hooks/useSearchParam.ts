@@ -33,12 +33,7 @@ export function useSearchParams() {
   const value = useCallback(
     (param: string) => {
       const search = new URLSearchParams(location.search);
-      const val = search.get(param) ?? undefined;
-      if (val === undefined) {
-        return val;
-      }
-
-      return decodeURIComponent(val);
+      return search.get(param) ?? undefined;
     },
     [location]
   );
@@ -46,8 +41,7 @@ export function useSearchParams() {
   const values = useCallback(
     (param: string) => {
       const search = new URLSearchParams(location.search);
-      const all = search.getAll(param);
-      return all.map((v) => decodeURIComponent(v));
+      return search.getAll(param);
     },
     [location]
   );

@@ -274,6 +274,11 @@ export class KubernetesWorkloadManager implements WorkloadManager {
       restartPolicy: "Never",
       automountServiceAccountToken: false,
       imagePullSecrets: this.getImagePullSecrets(),
+      ...(env.KUBERNETES_SCHEDULER_NAME
+        ? {
+            schedulerName: env.KUBERNETES_SCHEDULER_NAME,
+          }
+        : {}),
       ...(env.KUBERNETES_WORKER_NODETYPE_LABEL
         ? {
             nodeSelector: {
@@ -302,6 +307,7 @@ export class KubernetesWorkloadManager implements WorkloadManager {
       envtype: this.#envTypeToLabelValue(opts.envType),
       org: opts.orgId,
       project: opts.projectId,
+      machine: opts.machine.name,
     };
   }
 

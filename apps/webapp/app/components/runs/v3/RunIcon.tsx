@@ -20,6 +20,7 @@ import { TriggerIcon } from "~/assets/icons/TriggerIcon";
 import { PythonLogoIcon } from "~/assets/icons/PythonLogoIcon";
 import { TraceIcon } from "~/assets/icons/TraceIcon";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
+import { StreamsIcon } from "~/assets/icons/StreamsIcon";
 
 type TaskIconProps = {
   name: string | undefined;
@@ -108,6 +109,8 @@ export function RunIcon({ name, className, spanName }: TaskIconProps) {
     case "task-hook-onFailure":
     case "task-hook-catchError":
       return <FunctionIcon className={cn(className, "text-error")} />;
+    case "streams":
+        return <StreamsIcon className={cn(className, "text-text-dimmed")} />;
   }
 
   return <InformationCircleIcon className={cn(className, "text-text-dimmed")} />;

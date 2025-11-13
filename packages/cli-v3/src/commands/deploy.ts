@@ -28,7 +28,13 @@ import {
   printWarnings,
   saveLogs,
 } from "../deploy/logs.js";
-import { chalkError, cliLink, isLinksSupported, prettyError } from "../utilities/cliOutput.js";
+import {
+  chalkError,
+  cliLink,
+  isLinksSupported,
+  prettyError,
+  prettyWarning,
+} from "../utilities/cliOutput.js";
 import { loadDotEnvVars } from "../utilities/dotEnv.js";
 import { isDirectory } from "../utilities/fileSystem.js";
 import { setGithubActionsOutputAndEnvVars } from "../utilities/githubActions.js";
@@ -57,6 +63,7 @@ const DeployCommandOptions = CommonCommandOptions.extend({
   noCache: z.boolean().default(false),
   envFile: z.string().optional(),
   // Local build options
+  forceLocalBuild: z.boolean().optional(),
   network: z.enum(["default", "none", "host"]).optional(),
   push: z.boolean().optional(),
   builder: z.string().default("trigger"),
@@ -127,6 +134,7 @@ export function configureDeployCommand(program: Command) {
         ).hideHelp()
       )
       // Local build options
+      .addOption(new CommandOption("--force-local-build", "Force a local build of the image"))
       .addOption(new CommandOption("--push", "Push the image after local builds").hideHelp())
       .addOption(
         new CommandOption("--no-push", "Do not push the image after local builds").hideHelp()
@@ -320,7 +328,9 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     },
     envVars.TRIGGER_EXISTING_DEPLOYMENT_ID
   );
-  const isLocalBuild = !deployment.externalBuildData;
+  const isLocalBuild = options.forceLocalBuild || !deployment.externalBuildData;
+  // Would be best to actually store this separately in the deployment object. This is an okay proxy for now.
+  const remoteBuildExplicitlySkipped = options.forceLocalBuild && !!deployment.externalBuildData;
 
   // Fail fast if we know local builds will fail
   if (isLocalBuild) {
@@ -391,8 +401,10 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
   const $spinner = spinner();
 
-  const buildSuffix = isLocalBuild ? " (local)" : "";
-  const deploySuffix = isLocalBuild ? " (local build)" : "";
+  const buildSuffix =
+    isLocalBuild && !process.env.TRIGGER_LOCAL_BUILD_LABEL_DISABLED ? " (local)" : "";
+  const deploySuffix =
+    isLocalBuild && !process.env.TRIGGER_LOCAL_BUILD_LABEL_DISABLED ? " (local build)" : "";
 
   if (isCI) {
     log.step(`Building version ${version}\n`);
@@ -420,6 +432,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     projectRef: resolvedConfig.project,
     apiUrl: projectClient.client.apiURL,
     apiKey: projectClient.client.accessToken!,
+    apiClient: projectClient.client,
     branchName: branch,
     authAccessToken: authorization.auth.accessToken,
     compilationPath: destination.path,
@@ -442,11 +455,23 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     network: options.network,
     builder: options.builder,
     push: options.push,
+    authenticateToRegistry: remoteBuildExplicitlySkipped,
   });
 
   logger.debug("Build result", buildResult);
 
   const warnings = checkLogsForWarnings(buildResult.logs);
+
+  const canShowLocalBuildHint = !isLocalBuild && !process.env.TRIGGER_LOCAL_BUILD_HINT_DISABLED;
+  const buildFailed = !warnings.ok || !buildResult.ok;
+
+  if (buildFailed && canShowLocalBuildHint) {
+    const providerStatus = await projectClient.client.getRemoteBuildProviderStatus();
+
+    if (providerStatus.success && providerStatus.data.status === "degraded") {
+      prettyWarning(providerStatus.data.message + "\n");
+    }
+  }
 
   if (!warnings.ok) {
     await failDeploy(
@@ -525,6 +550,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     {
       imageDigest: buildResult.digest,
       skipPromotion: options.skipPromotion,
+      skipPushToRegistry: remoteBuildExplicitlySkipped,
     },
     (logMessage) => {
       if (isCI) {
@@ -676,6 +702,7 @@ async function failDeploy(
 
     switch (serverDeployment.status) {
       case "PENDING":
+      case "INSTALLING":
       case "DEPLOYING":
       case "BUILDING": {
         await doOutputLogs();

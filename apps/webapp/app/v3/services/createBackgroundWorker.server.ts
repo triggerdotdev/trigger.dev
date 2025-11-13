@@ -359,7 +359,7 @@ async function createWorkerQueue(
 ) {
   let queueName = sanitizeQueueName(queue.name);
 
-  const concurrencyLimit =
+  const baseConcurrencyLimit =
     typeof queue.concurrencyLimit === "number"
       ? Math.max(
           Math.min(
@@ -373,24 +373,26 @@ async function createWorkerQueue(
 
   const taskQueue = await upsertWorkerQueueRecord(
     queueName,
-    concurrencyLimit ?? null,
+    baseConcurrencyLimit ?? null,
     orderableName,
     queueType,
     worker,
     prisma
   );
 
+  const newConcurrencyLimit = taskQueue.concurrencyLimit;
+
   if (!taskQueue.paused) {
-    if (typeof concurrencyLimit === "number") {
+    if (typeof newConcurrencyLimit === "number") {
       logger.debug("createWorkerQueue: updating concurrency limit", {
         workerId: worker.id,
         taskQueue,
         orgId: environment.organizationId,
         projectId: environment.projectId,
         environmentId: environment.id,
-        concurrencyLimit,
+        concurrencyLimit: newConcurrencyLimit,
       });
-      await updateQueueConcurrencyLimits(environment, taskQueue.name, concurrencyLimit);
+      await updateQueueConcurrencyLimits(environment, taskQueue.name, newConcurrencyLimit);
     } else {
       logger.debug("createWorkerQueue: removing concurrency limit", {
         workerId: worker.id,
@@ -398,7 +400,7 @@ async function createWorkerQueue(
         orgId: environment.organizationId,
         projectId: environment.projectId,
         environmentId: environment.id,
-        concurrencyLimit,
+        concurrencyLimit: newConcurrencyLimit,
       });
       await removeQueueConcurrencyLimits(environment, taskQueue.name);
     }
@@ -455,6 +457,8 @@ async function upsertWorkerQueueRecord(
         },
       });
     } else {
+      const hasOverride = taskQueue.concurrencyLimitOverriddenAt !== null;
+
       taskQueue = await prisma.taskQueue.update({
         where: {
           id: taskQueue.id,
@@ -463,7 +467,9 @@ async function upsertWorkerQueueRecord(
           workers: { connect: { id: worker.id } },
           version: "V2",
           orderableName,
-          concurrencyLimit,
+          // If overridden, keep current limit and update base; otherwise update limit normally
+          concurrencyLimit: hasOverride ? undefined : concurrencyLimit,
+          concurrencyLimitBase: hasOverride ? concurrencyLimit : undefined,
         },
       });
     }

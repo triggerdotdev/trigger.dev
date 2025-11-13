@@ -3,7 +3,7 @@ import { prisma } from "~/db.server";
 import { BranchTrackingConfigSchema } from "~/v3/github";
 import { env } from "~/env.server";
 import { findProjectBySlug } from "~/models/project.server";
-import { err, fromPromise, ok, okAsync } from "neverthrow";
+import { err, fromPromise, ok, ResultAsync } from "neverthrow";
 import { BuildSettingsSchema } from "~/v3/buildSettings";
 
 export class ProjectSettingsPresenter {
@@ -20,33 +20,31 @@ export class ProjectSettingsPresenter {
       fromPromise(findProjectBySlug(organizationSlug, projectSlug, userId), (error) => ({
         type: "other" as const,
         cause: error,
-      })).andThen((project) => {
-        if (!project) {
-          return err({ type: "project_not_found" as const });
-        }
-        return ok(project);
-      });
+      }))
+        .andThen((project) => {
+          if (!project) {
+            return err({ type: "project_not_found" as const });
+          }
+          return ok(project);
+        })
+        .map((project) => {
+          const buildSettingsOrFailure = BuildSettingsSchema.safeParse(project.buildSettings);
+          const buildSettings = buildSettingsOrFailure.success
+            ? buildSettingsOrFailure.data
+            : undefined;
+          return { ...project, buildSettings };
+        });
 
     if (!githubAppEnabled) {
-      return getProject().andThen((project) => {
-        if (!project) {
-          return err({ type: "project_not_found" as const });
-        }
-
-        const buildSettingsOrFailure = BuildSettingsSchema.safeParse(project.buildSettings);
-        const buildSettings = buildSettingsOrFailure.success
-          ? buildSettingsOrFailure.data
-          : undefined;
-
-        return ok({
-          gitHubApp: {
-            enabled: false,
-            connectedRepository: undefined,
-            installations: undefined,
-          },
-          buildSettings,
-        });
-      });
+      return getProject().map(({ buildSettings }) => ({
+        gitHubApp: {
+          enabled: false,
+          connectedRepository: undefined,
+          installations: undefined,
+          isPreviewEnvironmentEnabled: undefined,
+        },
+        buildSettings,
+      }));
     }
 
     const findConnectedGithubRepository = (projectId: string) =>
@@ -54,6 +52,12 @@ export class ProjectSettingsPresenter {
         this.#prismaClient.connectedGithubRepository.findFirst({
           where: {
             projectId,
+            repository: {
+              installation: {
+                deletedAt: null,
+                suspendedAt: null,
+              },
+            },
           },
           select: {
             branchTracking: true,
@@ -130,37 +134,39 @@ export class ProjectSettingsPresenter {
         })
       );
 
+    const isPreviewEnvironmentEnabled = (projectId: string) =>
+      fromPromise(
+        this.#prismaClient.runtimeEnvironment.findFirst({
+          select: {
+            id: true,
+          },
+          where: {
+            projectId: projectId,
+            slug: "preview",
+          },
+        }),
+        (error) => ({
+          type: "other" as const,
+          cause: error,
+        })
+      ).map((previewEnvironment) => previewEnvironment !== null);
+
     return getProject().andThen((project) =>
-      findConnectedGithubRepository(project.id).andThen((connectedGithubRepository) => {
-        const buildSettingsOrFailure = BuildSettingsSchema.safeParse(project.buildSettings);
-        const buildSettings = buildSettingsOrFailure.success
-          ? buildSettingsOrFailure.data
-          : undefined;
-
-        if (connectedGithubRepository) {
-          return okAsync({
-            gitHubApp: {
-              enabled: true,
-              connectedRepository: connectedGithubRepository,
-              // skip loading installations if there is a connected repository
-              // a project can have only a single connected repository
-              installations: undefined,
-            },
-            buildSettings,
-          });
-        }
-
-        return listGithubAppInstallations(project.organizationId).map((githubAppInstallations) => {
-          return {
-            gitHubApp: {
-              enabled: true,
-              connectedRepository: undefined,
-              installations: githubAppInstallations,
-            },
-            buildSettings,
-          };
-        });
-      })
+      ResultAsync.combine([
+        isPreviewEnvironmentEnabled(project.id),
+        findConnectedGithubRepository(project.id),
+        listGithubAppInstallations(project.organizationId),
+      ]).map(
+        ([isPreviewEnvironmentEnabled, connectedGithubRepository, githubAppInstallations]) => ({
+          gitHubApp: {
+            enabled: true,
+            connectedRepository: connectedGithubRepository,
+            installations: githubAppInstallations,
+            isPreviewEnvironmentEnabled,
+          },
+          buildSettings: project.buildSettings,
+        })
+      )
     );
   }
 }

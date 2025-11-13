@@ -97,6 +97,7 @@ import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { SpanView } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.spans.$spanParam/route";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { CopyableText } from "~/components/primitives/CopyableText";
+import type { SpanOverride } from "~/v3/eventRepository/eventRepository.types";
 
 const resizableSettings = {
   parent: {
@@ -142,7 +143,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const [error, result] = await tryCatch(
     presenter.call({
       userId,
-      organizationSlug,
       showDeletedLogs: !!impersonationId,
       projectSlug: projectParam,
       runFriendlyId: runParam,
@@ -172,7 +172,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   return json({
     run: result.run,
     trace: result.trace,
-    maximumLiveReloadingSetting: env.MAXIMUM_LIVE_RELOADING_EVENTS,
+    maximumLiveReloadingSetting: result.maximumLiveReloadingSetting,
     resizable: {
       parent,
       tree,
@@ -302,7 +302,8 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: Loade
     return <></>;
   }
 
-  const { events, duration, rootSpanStatus, rootStartedAt, queuedDuration } = trace;
+  const { events, duration, rootSpanStatus, rootStartedAt, queuedDuration, overridesBySpanId } =
+    trace;
   const shouldLiveReload = events.length <= maximumLiveReloadingSetting;
 
   const changeToSpan = useDebounce((selectedSpan: string) => {
@@ -323,6 +324,8 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: Loade
     }
     // WARNING Don't put the revalidator in the useEffect deps array or bad things will happen
   }, [streamedEvents]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const spanOverrides = selectedSpanId ? overridesBySpanId?.[selectedSpanId] : undefined;
 
   return (
     <div className={cn("grid h-full max-h-full grid-cols-1 overflow-hidden")}>
@@ -372,6 +375,7 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: Loade
             <SpanView
               runParam={run.friendlyId}
               spanId={selectedSpanId}
+              spanOverrides={spanOverrides as SpanOverride | undefined}
               closePanel={() => replaceSearchParam("span")}
             />
           </ResizablePanel>

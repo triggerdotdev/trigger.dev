@@ -1,12 +1,12 @@
-import type { CreatableEvent } from "../eventRepository.server";
+import type { CreateEventInput } from "../eventRepository/eventRepository.types";
 
-export function enrichCreatableEvents(events: CreatableEvent[]) {
+export function enrichCreatableEvents(events: CreateEventInput[]) {
   return events.map((event) => {
     return enrichCreatableEvent(event);
   });
 }
 
-function enrichCreatableEvent(event: CreatableEvent): CreatableEvent {
+function enrichCreatableEvent(event: CreateEventInput): CreateEventInput {
   const message = formatPythonStyle(event.message, event.properties);
 
   event.message = message;
@@ -15,9 +15,13 @@ function enrichCreatableEvent(event: CreatableEvent): CreatableEvent {
   return event;
 }
 
-function enrichStyle(event: CreatableEvent) {
+function enrichStyle(event: CreateEventInput) {
   const baseStyle = event.style ?? {};
   const props = event.properties;
+
+  if (!props) {
+    return baseStyle;
+  }
 
   // Direct property access and early returns
   // GenAI System check
@@ -66,7 +70,7 @@ function formatPythonStyle(template: string, values: Record<string, any>): strin
   return template.replace(/\{([^}]+?)(?:!r)?\}/g, (match, key) => {
     const hasRepr = match.endsWith("!r}");
     const actualKey = hasRepr ? key : key;
-    const value = values[actualKey];
+    const value = values?.[actualKey];
 
     if (value === undefined) {
       return match;

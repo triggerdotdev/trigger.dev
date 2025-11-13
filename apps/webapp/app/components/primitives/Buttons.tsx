@@ -276,7 +276,7 @@ export function ButtonContent(props: ButtonContentPropsType) {
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>{buttonContent}</TooltipTrigger>
-          <TooltipContent className="text-dimmed flex items-center gap-3 py-1.5 pl-2.5 pr-3 text-xs">
+          <TooltipContent className="flex items-center gap-3 py-1.5 pl-2.5 pr-3 text-xs text-text-bright">
             {tooltip} {shortcut && renderShortcutKey()}
           </TooltipContent>
         </Tooltip>
@@ -298,19 +298,17 @@ export const Button = forwardRef<HTMLButtonElement, ButtonPropsType>(
     const innerRef = useRef<HTMLButtonElement>(null);
     useImperativeHandle(ref, () => innerRef.current as HTMLButtonElement);
 
-    if (props.shortcut) {
-      useShortcutKeys({
-        shortcut: props.shortcut,
-        action: (e) => {
-          if (innerRef.current) {
-            innerRef.current.click();
-            e.preventDefault();
-            e.stopPropagation();
-          }
-        },
-        disabled,
-      });
-    }
+    useShortcutKeys({
+      shortcut: props.shortcut,
+      action: (e) => {
+        if (innerRef.current) {
+          innerRef.current.click();
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      },
+      disabled: disabled || !props.shortcut,
+    });
 
     return (
       <button
@@ -345,16 +343,16 @@ export const LinkButton = ({
   ...props
 }: LinkPropsType) => {
   const innerRef = useRef<HTMLAnchorElement>(null);
-  if (props.shortcut) {
-    useShortcutKeys({
-      shortcut: props.shortcut,
-      action: () => {
-        if (innerRef.current) {
-          innerRef.current.click();
-        }
-      },
-    });
-  }
+  
+  useShortcutKeys({
+    shortcut: props.shortcut,
+    action: () => {
+      if (innerRef.current) {
+        innerRef.current.click();
+      }
+    },
+    disabled: disabled || !props.shortcut,
+  });
 
   if (disabled) {
     return (

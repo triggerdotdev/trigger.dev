@@ -99,7 +99,13 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
 
   constructor(private options: FairDequeuingStrategyOptions) {
     const ctx = new DefaultStatefulContext();
-    const memory = new MemoryStore({ persistentMap: new Map() });
+    const memory = new MemoryStore({
+      persistentMap: new Map(),
+      unstableEvictOnSet: {
+        frequency: 0.01,
+        maxItems: 500,
+      },
+    });
 
     this._cache = createCache({
       concurrencyLimit: new Namespace<number>(ctx, {

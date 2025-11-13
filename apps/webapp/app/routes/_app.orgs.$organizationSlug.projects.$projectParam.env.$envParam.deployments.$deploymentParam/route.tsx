@@ -1,10 +1,12 @@
 import { Link, useLocation } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { useEffect, useState, useRef, useCallback } from "react";
+import { S2, S2Error } from "@s2-dev/streamstore";
+import { Clipboard, ClipboardCheck, ChevronDown, ChevronUp } from "lucide-react";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { GitMetadata } from "~/components/GitMetadata";
 import { RuntimeIcon } from "~/components/RuntimeIcon";
-import { UserAvatar } from "~/components/UserProfilePhoto";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { Badge } from "~/components/primitives/Badge";
@@ -23,10 +25,15 @@ import {
 } from "~/components/primitives/Table";
 import { DeploymentError } from "~/components/runs/v3/DeploymentError";
 import { DeploymentStatus } from "~/components/runs/v3/DeploymentStatus";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "~/components/primitives/Tooltip";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { useUser } from "~/hooks/useUser";
 import { DeploymentPresenter } from "~/presenters/v3/DeploymentPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
@@ -41,7 +48,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   try {
     const presenter = new DeploymentPresenter();
-    const { deployment } = await presenter.call({
+    const { deployment, s2Logs } = await presenter.call({
       userId,
       organizationSlug,
       projectSlug: projectParam,
@@ -49,7 +56,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       deploymentShortCode: deploymentParam,
     });
 
-    return typedjson({ deployment });
+    return typedjson({ deployment, s2Logs });
   } catch (error) {
     console.error(error);
     throw new Response(undefined, {
@@ -59,14 +66,98 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 };
 
+type LogEntry = {
+  message: string;
+  timestamp: Date;
+  level: "info" | "error" | "warn";
+};
+
 export default function Page() {
-  const { deployment } = useTypedLoaderData<typeof loader>();
+  const { deployment, s2Logs } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
   const location = useLocation();
-  const user = useUser();
   const page = new URLSearchParams(location.search).get("page");
+
+  const logsDisabled = s2Logs === undefined;
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [isStreaming, setIsStreaming] = useState(true);
+  const [streamError, setStreamError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (logsDisabled) return;
+
+    const abortController = new AbortController();
+
+    setLogs([]);
+    setStreamError(null);
+    setIsStreaming(true);
+
+    const streamLogs = async () => {
+      try {
+        const s2 = new S2({ accessToken: s2Logs.accessToken });
+        const basin = s2.basin(s2Logs.basin);
+        const stream = basin.stream(s2Logs.stream);
+
+        const readSession = await stream.readSession(
+          {
+            seq_num: 0,
+            wait: 60,
+            as: "bytes",
+          },
+          { signal: abortController.signal }
+        );
+
+        const decoder = new TextDecoder();
+
+        for await (const record of readSession) {
+          try {
+            const headers: Record<string, string> = {};
+
+            if (record.headers) {
+              for (const [nameBytes, valueBytes] of record.headers) {
+                headers[decoder.decode(nameBytes)] = decoder.decode(valueBytes);
+              }
+            }
+            const level = (headers["level"]?.toLowerCase() as LogEntry["level"]) ?? "info";
+
+            setLogs((prevLogs) => [
+              ...prevLogs,
+              {
+                timestamp: new Date(record.timestamp),
+                message: decoder.decode(record.body),
+                level,
+              },
+            ]);
+          } catch (err) {
+            console.error("Failed to parse log record:", err);
+          }
+        }
+      } catch (error) {
+        if (abortController.signal.aborted) return;
+
+        const isNotFoundError =
+          error instanceof S2Error &&
+          error.code &&
+          ["permission_denied", "stream_not_found"].includes(error.code);
+        if (isNotFoundError) return;
+
+        console.error("Failed to stream logs:", error);
+        setStreamError("Failed to stream logs");
+      } finally {
+        if (!abortController.signal.aborted) {
+          setIsStreaming(false);
+        }
+      }
+    };
+
+    streamLogs();
+
+    return () => {
+      abortController.abort();
+    };
+  }, [s2Logs?.basin, s2Logs?.stream, s2Logs?.accessToken]);
 
   return (
     <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr] overflow-hidden bg-background-bright">
@@ -132,7 +223,11 @@ export default function Page() {
                 <Property.Label>Deploy</Property.Label>
                 <Property.Value className="flex items-center gap-2">
                   <span>{deployment.shortCode}</span>
-                  {deployment.label && <Badge variant="outline-rounded">{deployment.label}</Badge>}
+                  {deployment.label && (
+                    <Badge variant="extra-small" className="capitalize">
+                      {deployment.label}
+                    </Badge>
+                  )}
                 </Property.Value>
               </Property.Item>
               <Property.Item>
@@ -155,6 +250,35 @@ export default function Page() {
                   />
                 </Property.Value>
               </Property.Item>
+              {!logsDisabled && (
+                <Property.Item>
+                  <Property.Label>Logs</Property.Label>
+                  <LogsDisplay
+                    logs={logs}
+                    isStreaming={isStreaming}
+                    streamError={streamError}
+                    initialCollapsed={(
+                      ["PENDING", "DEPLOYED", "TIMED_OUT"] satisfies (typeof deployment.status)[]
+                    ).includes(deployment.status)}
+                  />
+                </Property.Item>
+              )}
+              {deployment.canceledAt && (
+                <Property.Item>
+                  <Property.Label>Canceled at</Property.Label>
+                  <Property.Value>
+                    <>
+                      <DateTimeAccurate date={deployment.canceledAt} /> UTC
+                    </>
+                  </Property.Value>
+                </Property.Item>
+              )}
+              {deployment.canceledReason && (
+                <Property.Item>
+                  <Property.Label>Cancelation reason</Property.Label>
+                  <Property.Value>{deployment.canceledReason}</Property.Value>
+                </Property.Item>
+              )}
               <Property.Item>
                 <Property.Label>Tasks</Property.Label>
                 <Property.Value>{deployment.tasks ? deployment.tasks.length : "–"}</Property.Value>
@@ -191,6 +315,18 @@ export default function Page() {
                   {deployment.startedAt ? (
                     <>
                       <DateTimeAccurate date={deployment.startedAt} /> UTC
+                    </>
+                  ) : (
+                    "–"
+                  )}
+                </Property.Value>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>Installed at</Property.Label>
+                <Property.Value>
+                  {deployment.installedAt ? (
+                    <>
+                      <DateTimeAccurate date={deployment.installedAt} /> UTC
                     </>
                   ) : (
                     "–"
@@ -285,6 +421,192 @@ export default function Page() {
             </div>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function LogsDisplay({
+  logs,
+  isStreaming,
+  streamError,
+  initialCollapsed = false,
+}: {
+  logs: LogEntry[];
+  isStreaming: boolean;
+  streamError: string | null;
+  initialCollapsed?: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+  const [mouseOver, setMouseOver] = useState(false);
+  const [collapsed, setCollapsed] = useState(initialCollapsed);
+  const logsContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setCollapsed(initialCollapsed);
+  }, [initialCollapsed]);
+
+  // auto-scroll log container to bottom when new logs arrive
+  useEffect(() => {
+    if (logsContainerRef.current) {
+      logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight;
+    }
+  }, [logs]);
+
+  const onCopyLogs = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const logsText = logs.map((log) => log.message).join("\n");
+      navigator.clipboard.writeText(logsText);
+      setCopied(true);
+      setTimeout(() => {
+        setCopied(false);
+      }, 1500);
+    },
+    [logs]
+  );
+
+  const errorCount = logs.filter((log) => log.level === "error").length;
+  const warningCount = logs.filter((log) => log.level === "warn").length;
+
+  return (
+    <div className="mt-1.5 overflow-hidden rounded-md border border-grid-bright">
+      <div className="flex items-center justify-between border-b border-grid-dimmed px-3 py-2">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1.5">
+            <div
+              className={cn(
+                "h-2 w-2 rounded-full",
+                errorCount > 0 ? "bg-error/80" : "bg-charcoal-600"
+              )}
+            />
+            <Paragraph variant="extra-small/dimmed/mono" className="w-[ch-10]">
+              {`${errorCount} ${errorCount === 1 ? "error" : "errors"}`}
+            </Paragraph>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div
+              className={cn(
+                "h-2 w-2 rounded-full",
+                warningCount > 0 ? "bg-warning/80" : "bg-charcoal-600"
+              )}
+            />
+            <Paragraph variant="extra-small/dimmed/mono">
+              {`${warningCount} ${warningCount === 1 ? "warning" : "warnings"}`}
+            </Paragraph>
+          </div>
+        </div>
+        {logs.length > 0 && (
+          <div className="flex items-center gap-3">
+            <TooltipProvider>
+              <Tooltip open={copied || mouseOver} disableHoverableContent>
+                <TooltipTrigger
+                  onClick={onCopyLogs}
+                  onMouseEnter={() => setMouseOver(true)}
+                  onMouseLeave={() => setMouseOver(false)}
+                  className={cn(
+                    "transition-colors duration-100 focus-custom hover:cursor-pointer",
+                    copied ? "text-success" : "text-text-dimmed hover:text-text-bright"
+                  )}
+                >
+                  <div className="size-4 shrink-0">
+                    {copied ? (
+                      <ClipboardCheck className="size-full" />
+                    ) : (
+                      <Clipboard className="size-full" />
+                    )}
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="left" className="text-xs">
+                  {copied ? "Copied" : "Copy"}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
+            <TooltipProvider>
+              <Tooltip disableHoverableContent>
+                <TooltipTrigger
+                  onClick={() => setCollapsed(!collapsed)}
+                  className={cn(
+                    "transition-colors duration-100 focus-custom hover:cursor-pointer",
+                    "text-text-dimmed hover:text-text-bright"
+                  )}
+                >
+                  {collapsed ? (
+                    <ChevronDown className="size-4" />
+                  ) : (
+                    <ChevronUp className="size-4" />
+                  )}
+                </TooltipTrigger>
+                <TooltipContent side="left" className="text-xs">
+                  {collapsed ? "Expand" : "Collapse"}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+        )}
+      </div>
+
+      <div className="relative">
+        <div
+          ref={logsContainerRef}
+          className={cn(
+            "grow overflow-x-auto overflow-y-scroll font-mono text-xs transition-all duration-200 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+            collapsed ? "h-16" : "h-64"
+          )}
+        >
+          <div className="flex w-fit min-w-full flex-col">
+            {logs.length === 0 && (
+              <div className="flex gap-x-2.5 border-l-2 border-transparent px-2.5 py-1">
+                {streamError ? (
+                  <span className="text-error">Failed fetching logs</span>
+                ) : (
+                  <span className="text-text-dimmed">
+                    {isStreaming ? "Waiting for logs..." : "No logs yet"}
+                  </span>
+                )}
+              </div>
+            )}
+            {logs.map((log, index) => {
+              return (
+                <div
+                  key={index}
+                  className={cn(
+                    "flex w-full gap-x-2.5 border-l-2 px-2.5 py-1",
+                    log.level === "error" && "border-error/60 bg-error/15 hover:bg-error/25",
+                    log.level === "warn" && "border-warning/60 bg-warning/20 hover:bg-warning/30",
+                    log.level === "info" && "border-transparent hover:bg-charcoal-750"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "select-none whitespace-nowrap py-px",
+                      log.level === "error" && "text-error/80",
+                      log.level === "warn" && "text-warning/70",
+                      log.level === "info" && "text-text-dimmed"
+                    )}
+                  >
+                    <DateTimeAccurate date={log.timestamp} hideDate hour12={false} />
+                  </span>
+                  <span
+                    className={cn(
+                      "whitespace-nowrap",
+                      log.level === "error" && "text-error",
+                      log.level === "warn" && "text-warning",
+                      log.level === "info" && "text-text-bright"
+                    )}
+                  >
+                    {log.message}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        {collapsed && (
+          <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-charcoal-800/90 to-transparent" />
+        )}
       </div>
     </div>
   );

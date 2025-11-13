@@ -79,36 +79,44 @@ class MockTriggerTaskValidator implements TriggerTaskValidator {
 class MockTraceEventConcern implements TraceEventConcern {
   async traceRun<T>(
     request: TriggerTaskRequest,
-    callback: (span: TracedEventSpan) => Promise<T>
+    parentStore: string | undefined,
+    callback: (span: TracedEventSpan, store: string) => Promise<T>
   ): Promise<T> {
-    return await callback({
-      traceId: "test",
-      spanId: "test",
-      traceContext: {},
-      traceparent: undefined,
-      setAttribute: () => {},
-      failWithError: () => {},
-    });
+    return await callback(
+      {
+        traceId: "test",
+        spanId: "test",
+        traceContext: {},
+        traceparent: undefined,
+        setAttribute: () => {},
+        failWithError: () => {},
+      },
+      "test"
+    );
   }
 
   async traceIdempotentRun<T>(
     request: TriggerTaskRequest,
+    parentStore: string | undefined,
     options: {
       existingRun: TaskRun;
       idempotencyKey: string;
       incomplete: boolean;
       isError: boolean;
     },
-    callback: (span: TracedEventSpan) => Promise<T>
+    callback: (span: TracedEventSpan, store: string) => Promise<T>
   ): Promise<T> {
-    return await callback({
-      traceId: "test",
-      spanId: "test",
-      traceContext: {},
-      traceparent: undefined,
-      setAttribute: () => {},
-      failWithError: () => {},
-    });
+    return await callback(
+      {
+        traceId: "test",
+        spanId: "test",
+        traceContext: {},
+        traceparent: undefined,
+        setAttribute: () => {},
+        failWithError: () => {},
+      },
+      "test"
+    );
   }
 }
 

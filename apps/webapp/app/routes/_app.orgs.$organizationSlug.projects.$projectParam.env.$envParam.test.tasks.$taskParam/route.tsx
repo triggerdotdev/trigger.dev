@@ -73,6 +73,8 @@ import { DeleteTaskRunTemplateData, RunTemplateData } from "~/v3/taskRunTemplate
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { DialogClose, DialogDescription } from "@radix-ui/react-dialog";
 import { FormButtons } from "~/components/primitives/FormButtons";
+import { $replica } from "~/db.server";
+import { clickhouseClient } from "~/services/clickhouseInstance.server";
 
 type FormAction = "create-template" | "delete-template" | "run-scheduled" | "run-standard";
 
@@ -96,7 +98,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     });
   }
 
-  const presenter = new TestTaskPresenter();
+  const presenter = new TestTaskPresenter($replica, clickhouseClient);
   try {
     const result = await presenter.call({
       userId,

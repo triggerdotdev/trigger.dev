@@ -238,7 +238,7 @@ function formatSpan(
   const duration = formatDuration(span.data.duration);
   const startTime = formatDateTime(span.data.startTime);
 
-  lines.push(`${indent}${prefix} ${span.message} ${statusIndicator}`);
+  lines.push(`${indent}${prefix} ${span.data.message} ${statusIndicator}`);
   lines.push(`${indent}   Duration: ${duration}`);
   lines.push(`${indent}   Started: ${startTime}`);
 

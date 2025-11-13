@@ -1,16 +1,16 @@
-import { type Prisma, type TaskRun } from "@trigger.dev/database";
+import { type Prisma } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { logger } from "~/services/logger.server";
-import { eventRepository } from "../eventRepository.server";
 import { socketIo } from "../handleSocketIo.server";
 import { devPubSub } from "../marqs/devPubSub.server";
 import { CANCELLABLE_ATTEMPT_STATUSES, isCancellableRunStatus } from "../taskStatus";
 import { BaseService } from "./baseService.server";
 import { CancelAttemptService } from "./cancelAttempt.server";
 import { CancelTaskAttemptDependenciesService } from "./cancelTaskAttemptDependencies.server";
-import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
-import { getTaskEventStoreTableForRun } from "../taskEventStore.server";
 import { CancelableTaskRun } from "./cancelTaskRun.server";
+import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
+import { tryCatch } from "@trigger.dev/core/utils";
+import { resolveEventRepositoryForStore } from "../eventRepository/index.server";
 
 type ExtendedTaskRun = Prisma.TaskRunGetPayload<{
   include: {
@@ -92,6 +92,7 @@ export class CancelTaskRunServiceV1 extends BaseService {
         },
         runtimeEnvironment: true,
         lockedToVersion: true,
+        project: true,
       },
       attemptStatus: "CANCELED",
       error: {
@@ -100,21 +101,22 @@ export class CancelTaskRunServiceV1 extends BaseService {
       },
     });
 
-    const inProgressEvents = await eventRepository.queryIncompleteEvents(
-      getTaskEventStoreTableForRun(taskRun),
-      {
-        runId: taskRun.friendlyId,
-      },
-      taskRun.createdAt,
-      taskRun.completedAt ?? undefined
+    const eventRepository = resolveEventRepositoryForStore(cancelledTaskRun.taskEventStore);
+
+    const [cancelRunEventError] = await tryCatch(
+      eventRepository.cancelRunEvent({
+        reason: opts.reason,
+        run: cancelledTaskRun,
+        cancelledAt: opts.cancelledAt,
+      })
     );
 
-    logger.debug("Cancelling in-progress events", {
-      inProgressEvents: inProgressEvents.map((event) => event.id),
-      eventCount: inProgressEvents.length,
-    });
-
-    await eventRepository.cancelEvents(inProgressEvents, opts.cancelledAt, opts.reason);
+    if (cancelRunEventError) {
+      logger.error("[CancelTaskRunServiceV1] Failed to cancel run event", {
+        error: cancelRunEventError,
+        runId: cancelledTaskRun.id,
+      });
+    }
 
     // Cancel any in progress attempts
     if (opts.cancelAttempts) {

@@ -1,12 +1,12 @@
-import { EventSourceParserStream } from "eventsource-parser/stream";
+import { EventSourceMessage, EventSourceParserStream } from "eventsource-parser/stream";
 import { DeserializedJson } from "../../schemas/json.js";
 import { createJsonErrorObject } from "../errors.js";
-import {
-  RunStatus,
-  SubscribeRealtimeStreamChunkRawShape,
-  SubscribeRunRawShape,
-} from "../schemas/api.js";
+import { RunStatus, SubscribeRunRawShape } from "../schemas/api.js";
 import { SerializedError } from "../schemas/common.js";
+import {
+  AsyncIterableStream,
+  createAsyncIterableReadable,
+} from "../streams/asyncIterableStream.js";
 import { AnyRunTypes, AnyTask, InferRunTypes } from "../types/tasks.js";
 import { getEnvVar } from "../utils/getEnv.js";
 import {
@@ -16,11 +16,7 @@ import {
 } from "../utils/ioSerialization.js";
 import { ApiError } from "./errors.js";
 import { ApiClient } from "./index.js";
-import { LineTransformStream, zodShapeStream } from "./stream.js";
-import {
-  AsyncIterableStream,
-  createAsyncIterableReadable,
-} from "../streams/asyncIterableStream.js";
+import { zodShapeStream } from "./stream.js";
 
 export type RunShape<TRunTypes extends AnyRunTypes> = TRunTypes extends AnyRunTypes
   ? {
@@ -52,6 +48,7 @@ export type RunShape<TRunTypes extends AnyRunTypes> = TRunTypes extends AnyRunTy
       isFailed: boolean;
       isSuccess: boolean;
       isCancelled: boolean;
+      realtimeStreams: string[];
     }
   : never;
 
@@ -156,97 +153,260 @@ export function runShapeStream<TRunTypes extends AnyRunTypes>(
 
 // First, define interfaces for the stream handling
 export interface StreamSubscription {
-  subscribe(): Promise<ReadableStream<unknown>>;
+  subscribe(): Promise<ReadableStream<SSEStreamPart<unknown>>>;
 }
 
+export type CreateStreamSubscriptionOptions = {
+  baseUrl?: string;
+  onComplete?: () => void;
+  onError?: (error: Error) => void;
+  timeoutInSeconds?: number;
+  lastEventId?: string;
+};
+
 export interface StreamSubscriptionFactory {
-  createSubscription(runId: string, streamKey: string, baseUrl?: string): StreamSubscription;
+  createSubscription(
+    runId: string,
+    streamKey: string,
+    options?: CreateStreamSubscriptionOptions
+  ): StreamSubscription;
 }
+
+export type SSEStreamPart<TChunk = unknown> = {
+  id: string;
+  chunk: TChunk;
+  timestamp: number;
+};
 
 // Real implementation for production
 export class SSEStreamSubscription implements StreamSubscription {
+  private lastEventId: string | undefined;
+  private retryCount = 0;
+  private maxRetries = 5;
+  private retryDelayMs = 1000;
+
   constructor(
     private url: string,
-    private options: { headers?: Record<string, string>; signal?: AbortSignal }
-  ) {}
+    private options: {
+      headers?: Record<string, string>;
+      signal?: AbortSignal;
+      onComplete?: () => void;
+      onError?: (error: Error) => void;
+      timeoutInSeconds?: number;
+      lastEventId?: string;
+    }
+  ) {
+    this.lastEventId = options.lastEventId;
+  }
 
-  async subscribe(): Promise<ReadableStream<unknown>> {
-    return fetch(this.url, {
-      headers: {
+  async subscribe(): Promise<ReadableStream<SSEStreamPart>> {
+    const self = this;
+
+    return new ReadableStream({
+      async start(controller) {
+        await self.connectStream(controller);
+      },
+      cancel(reason) {
+        self.options.onComplete?.();
+      },
+    });
+  }
+
+  private async connectStream(
+    controller: ReadableStreamDefaultController<SSEStreamPart>
+  ): Promise<void> {
+    try {
+      const headers: Record<string, string> = {
         Accept: "text/event-stream",
         ...this.options.headers,
-      },
-      signal: this.options.signal,
-    }).then((response) => {
+      };
+
+      // Include Last-Event-ID header if we're resuming
+      if (this.lastEventId) {
+        headers["Last-Event-ID"] = this.lastEventId;
+      }
+
+      if (this.options.timeoutInSeconds) {
+        headers["Timeout-Seconds"] = this.options.timeoutInSeconds.toString();
+      }
+
+      const response = await fetch(this.url, {
+        headers,
+        signal: this.options.signal,
+      });
+
       if (!response.ok) {
-        throw ApiError.generate(
+        const error = ApiError.generate(
           response.status,
           {},
           "Could not subscribe to stream",
           Object.fromEntries(response.headers)
         );
+
+        this.options.onError?.(error);
+        throw error;
       }
 
       if (!response.body) {
-        throw new Error("No response body");
+        const error = new Error("No response body");
+
+        this.options.onError?.(error);
+        throw error;
       }
 
-      return response.body
+      const streamVersion = response.headers.get("X-Stream-Version") ?? "v1";
+
+      // Reset retry count on successful connection
+      this.retryCount = 0;
+
+      const seenIds = new Set<string>();
+
+      const stream = response.body
         .pipeThrough(new TextDecoderStream())
         .pipeThrough(new EventSourceParserStream())
         .pipeThrough(
-          new TransformStream({
-            transform(chunk, controller) {
-              controller.enqueue(safeParseJSON(chunk.data));
+          new TransformStream<EventSourceMessage, SSEStreamPart>({
+            transform: (chunk, chunkController) => {
+              if (streamVersion === "v1") {
+                // Track the last event ID for resume support
+                if (chunk.id) {
+                  this.lastEventId = chunk.id;
+                }
+
+                const timestamp = parseRedisStreamIdTimestamp(chunk.id);
+
+                chunkController.enqueue({
+                  id: chunk.id ?? "unknown",
+                  chunk: safeParseJSON(chunk.data),
+                  timestamp,
+                });
+              } else {
+                if (chunk.event === "batch") {
+                  const data = safeParseJSON(chunk.data) as {
+                    records: Array<{ body: string; seq_num: number; timestamp: number }>;
+                  };
+
+                  for (const record of data.records) {
+                    this.lastEventId = record.seq_num.toString();
+
+                    const parsedBody = safeParseJSON(record.body) as { data: unknown; id: string };
+                    if (seenIds.has(parsedBody.id)) {
+                      continue;
+                    }
+                    seenIds.add(parsedBody.id);
+
+                    chunkController.enqueue({
+                      id: record.seq_num.toString(),
+                      chunk: parsedBody.data,
+                      timestamp: record.timestamp,
+                    });
+                  }
+                }
+              }
             },
           })
         );
-    });
+
+      const reader = stream.getReader();
+
+      try {
+        let chunkCount = 0;
+        while (true) {
+          const { done, value } = await reader.read();
+
+          if (done) {
+            reader.releaseLock();
+            controller.close();
+            this.options.onComplete?.();
+            return;
+          }
+
+          if (this.options.signal?.aborted) {
+            reader.cancel();
+            reader.releaseLock();
+            controller.close();
+            this.options.onComplete?.();
+            return;
+          }
+
+          chunkCount++;
+          controller.enqueue(value);
+        }
+      } catch (error) {
+        reader.releaseLock();
+        throw error;
+      }
+    } catch (error) {
+      if (this.options.signal?.aborted) {
+        // Don't retry if aborted
+        controller.close();
+        this.options.onComplete?.();
+        return;
+      }
+
+      // Retry on error
+      await this.retryConnection(controller, error as Error);
+    }
+  }
+
+  private async retryConnection(
+    controller: ReadableStreamDefaultController,
+    error?: Error
+  ): Promise<void> {
+    if (this.options.signal?.aborted) {
+      controller.close();
+      this.options.onComplete?.();
+      return;
+    }
+
+    if (this.retryCount >= this.maxRetries) {
+      const finalError = error || new Error("Max retries reached");
+      controller.error(finalError);
+      this.options.onError?.(finalError);
+      return;
+    }
+
+    this.retryCount++;
+    const delay = this.retryDelayMs * Math.pow(2, this.retryCount - 1);
+
+    // Wait before retrying
+    await new Promise((resolve) => setTimeout(resolve, delay));
+
+    if (this.options.signal?.aborted) {
+      controller.close();
+      this.options.onComplete?.();
+      return;
+    }
+
+    // Reconnect
+    await this.connectStream(controller);
   }
 }
 
 export class SSEStreamSubscriptionFactory implements StreamSubscriptionFactory {
   constructor(
     private baseUrl: string,
-    private options: { headers?: Record<string, string>; signal?: AbortSignal }
+    private options: {
+      headers?: Record<string, string>;
+      signal?: AbortSignal;
+    }
   ) {}
 
-  createSubscription(runId: string, streamKey: string, baseUrl?: string): StreamSubscription {
+  createSubscription(
+    runId: string,
+    streamKey: string,
+    options?: CreateStreamSubscriptionOptions
+  ): StreamSubscription {
     if (!runId || !streamKey) {
       throw new Error("runId and streamKey are required");
     }
 
-    const url = `${baseUrl ?? this.baseUrl}/realtime/v1/streams/${runId}/${streamKey}`;
-    return new SSEStreamSubscription(url, this.options);
-  }
-}
+    const url = `${options?.baseUrl ?? this.baseUrl}/realtime/v1/streams/${runId}/${streamKey}`;
 
-// Real implementation for production
-export class ElectricStreamSubscription implements StreamSubscription {
-  constructor(
-    private url: string,
-    private options: { headers?: Record<string, string>; signal?: AbortSignal }
-  ) {}
-
-  async subscribe(): Promise<ReadableStream<unknown>> {
-    return zodShapeStream(SubscribeRealtimeStreamChunkRawShape, this.url, this.options)
-      .stream.pipeThrough(
-        new TransformStream({
-          transform(chunk, controller) {
-            controller.enqueue(chunk.value);
-          },
-        })
-      )
-      .pipeThrough(new LineTransformStream())
-      .pipeThrough(
-        new TransformStream({
-          transform(chunk, controller) {
-            for (const line of chunk) {
-              controller.enqueue(safeParseJSON(line));
-            }
-          },
-        })
-      );
+    return new SSEStreamSubscription(url, {
+      ...this.options,
+      ...options,
+    });
   }
 }
 
@@ -325,13 +485,11 @@ export class RunSubscription<TRunTypes extends AnyRunTypes> {
             run,
           });
 
+          const streams = getStreamsFromRunShape(run);
+
           // Check for stream metadata
-          if (
-            run.metadata &&
-            "$$streams" in run.metadata &&
-            Array.isArray(run.metadata.$$streams)
-          ) {
-            for (const streamKey of run.metadata.$$streams) {
+          if (streams.length > 0) {
+            for (const streamKey of streams) {
               if (typeof streamKey !== "string") {
                 continue;
               }
@@ -342,39 +500,33 @@ export class RunSubscription<TRunTypes extends AnyRunTypes> {
                 const subscription = this.options.streamFactory.createSubscription(
                   run.id,
                   streamKey,
-                  this.options.client?.baseUrl
+                  {
+                    baseUrl: this.options.client?.baseUrl,
+                  }
                 );
 
                 // Start stream processing in the background
-                subscription
-                  .subscribe()
-                  .then((stream) => {
-                    stream
-                      .pipeThrough(
-                        new TransformStream({
-                          transform(chunk, controller) {
-                            controller.enqueue({
-                              type: streamKey,
-                              chunk: chunk as TStreams[typeof streamKey],
-                              run,
-                            });
-                          },
-                        })
-                      )
-                      .pipeTo(
-                        new WritableStream({
-                          write(chunk) {
-                            controller.enqueue(chunk);
-                          },
-                        })
-                      )
-                      .catch((error) => {
-                        console.error(`Error in stream ${streamKey}:`, error);
-                      });
-                  })
-                  .catch((error) => {
-                    console.error(`Error subscribing to stream ${streamKey}:`, error);
-                  });
+                subscription.subscribe().then((stream) => {
+                  stream
+                    .pipeThrough(
+                      new TransformStream({
+                        transform(chunk, controller) {
+                          controller.enqueue({
+                            type: streamKey,
+                            chunk: chunk.chunk as TStreams[typeof streamKey],
+                            run,
+                          });
+                        },
+                      })
+                    )
+                    .pipeTo(
+                      new WritableStream({
+                        write(chunk) {
+                          controller.enqueue(chunk);
+                        },
+                      })
+                    );
+                });
               }
             }
           }
@@ -443,6 +595,7 @@ export class RunSubscription<TRunTypes extends AnyRunTypes> {
       error: row.error ? createJsonErrorObject(row.error) : undefined,
       isTest: row.isTest ?? false,
       metadata,
+      realtimeStreams: row.realtimeStreams ?? [],
       ...booleanHelpersFromRunStatus(status),
     } as RunShape<TRunTypes>;
   }
@@ -592,4 +745,35 @@ if (isSafari()) {
 
   // @ts-ignore-error
   ReadableStream.prototype[Symbol.asyncIterator] ??= ReadableStream.prototype.values;
+}
+
+function getStreamsFromRunShape(run: AnyRunShape): string[] {
+  const metadataStreams =
+    run.metadata &&
+    "$$streams" in run.metadata &&
+    Array.isArray(run.metadata.$$streams) &&
+    run.metadata.$$streams.length > 0 &&
+    run.metadata.$$streams.every((stream) => typeof stream === "string")
+      ? run.metadata.$$streams
+      : undefined;
+
+  if (metadataStreams) {
+    return metadataStreams;
+  }
+
+  return run.realtimeStreams;
+}
+
+// Redis stream IDs are in the format: <timestamp>-<sequence>
+function parseRedisStreamIdTimestamp(id?: string): number {
+  if (!id) {
+    return Date.now();
+  }
+
+  const timestamp = parseInt(id.split("-")[0] as string, 10);
+  if (isNaN(timestamp)) {
+    return Date.now();
+  }
+
+  return timestamp;
 }

@@ -1,13 +1,27 @@
-import { AuthenticatedEnvironment } from "../apiAuth.server";
-
 // Interface for stream ingestion
 export interface StreamIngestor {
+  initializeStream(
+    runId: string,
+    streamId: string
+  ): Promise<{ responseHeaders?: Record<string, string> }>;
+
   ingestData(
     stream: ReadableStream<Uint8Array>,
     runId: string,
-    streamId: string
+    streamId: string,
+    clientId: string,
+    resumeFromChunk?: number
   ): Promise<Response>;
+
+  appendPart(part: string, partId: string, runId: string, streamId: string): Promise<void>;
+
+  getLastChunkIndex(runId: string, streamId: string, clientId: string): Promise<number>;
 }
+
+export type StreamResponseOptions = {
+  timeoutInSeconds?: number;
+  lastEventId?: string;
+};
 
 // Interface for stream response
 export interface StreamResponder {
@@ -15,7 +29,7 @@ export interface StreamResponder {
     request: Request,
     runId: string,
     streamId: string,
-    environment: AuthenticatedEnvironment,
-    signal: AbortSignal
+    signal: AbortSignal,
+    options?: StreamResponseOptions
   ): Promise<Response>;
 }

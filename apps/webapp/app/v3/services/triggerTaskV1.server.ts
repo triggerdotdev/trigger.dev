@@ -1,9 +1,8 @@
 import {
   IOPacket,
   packetRequiresOffloading,
-  SemanticInternalAttributes,
-  taskRunErrorToString,
   taskRunErrorEnhancer,
+  taskRunErrorToString,
   TriggerTaskRequestBody,
 } from "@trigger.dev/core/v3";
 import {
@@ -12,6 +11,7 @@ import {
   stringifyDuration,
 } from "@trigger.dev/core/v3/isomorphic";
 import { Prisma } from "@trigger.dev/database";
+import { z } from "zod";
 import { env } from "~/env.server";
 import { createTag, MAX_TAGS_PER_RUN } from "~/models/taskRunTag.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
@@ -22,7 +22,7 @@ import { parseDelay } from "~/utils/delays";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
 import { handleMetadataPacket } from "~/utils/packets";
 import { marqs } from "~/v3/marqs/index.server";
-import { eventRepository } from "../eventRepository.server";
+import { getV3EventRepository } from "../eventRepository/index.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { findCurrentWorkerFromEnvironment } from "../models/workerDeployment.server";
 import { guardQueueSizeLimitsForEnv } from "../queueSizeLimits.server";
@@ -33,6 +33,7 @@ import { startActiveSpan } from "../tracer.server";
 import { clampMaxDuration } from "../utils/maxDuration";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { EnqueueDelayedRunService } from "./enqueueDelayedRun.server";
+import { enqueueRun } from "./enqueueRun.server";
 import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
 import {
   MAX_ATTEMPTS,
@@ -40,9 +41,6 @@ import {
   TriggerTaskServiceOptions,
   TriggerTaskServiceResult,
 } from "./triggerTask.server";
-import { getTaskEventStore } from "../taskEventStore.server";
-import { enqueueRun } from "./enqueueRun.server";
-import { z } from "zod";
 
 // This is here for backwords compatibility for v3 users
 const QueueOptions = z.object({
@@ -181,6 +179,7 @@ export class TriggerTaskServiceV1 extends BaseService {
                   depth: true,
                   queueTimestamp: true,
                   queue: true,
+                  taskEventStore: true,
                 },
               },
             },
@@ -218,6 +217,7 @@ export class TriggerTaskServiceV1 extends BaseService {
                   taskIdentifier: true,
                   rootTaskRunId: true,
                   depth: true,
+                  taskEventStore: true,
                 },
               },
             },
@@ -239,6 +239,7 @@ export class TriggerTaskServiceV1 extends BaseService {
                       depth: true,
                       queueTimestamp: true,
                       queue: true,
+                      taskEventStore: true,
                     },
                   },
                 },
@@ -290,26 +291,26 @@ export class TriggerTaskServiceV1 extends BaseService {
           })
         : undefined;
 
+      const { repository, store } = await getV3EventRepository(
+        dependentAttempt?.taskRun.taskEventStore ??
+          parentAttempt?.taskRun.taskEventStore ??
+          dependentBatchRun?.dependentTaskAttempt?.taskRun.taskEventStore
+      );
+
       try {
-        const result = await eventRepository.traceEvent(
+        const result = await repository.traceEvent(
           taskId,
           {
             context: options.traceContext,
             spanParentAsLink: options.spanParentAsLink,
-            parentAsLinkType: options.parentAsLinkType,
             kind: "SERVER",
             environment,
             taskSlug: taskId,
             attributes: {
-              properties: {
-                [SemanticInternalAttributes.SHOW_ACTIONS]: true,
-              },
+              properties: {},
               style: {
                 icon: options.customIcon ?? "task",
               },
-              runIsTest: body.options?.test ?? false,
-              batchId: options.batchId,
-              idempotencyKey,
             },
             incomplete: true,
             immediate: true,
@@ -340,7 +341,6 @@ export class TriggerTaskServiceV1 extends BaseService {
                   queueName = sanitizeQueueName(`task/${taskId}`);
                 }
 
-                event.setAttribute("queueName", queueName);
                 span.setAttribute("queueName", queueName);
 
                 //upsert tags
@@ -405,7 +405,7 @@ export class TriggerTaskServiceV1 extends BaseService {
                     queuedAt: delayUntil ? undefined : new Date(),
                     queueTimestamp,
                     maxAttempts: body.options?.maxAttempts,
-                    taskEventStore: getTaskEventStore(),
+                    taskEventStore: store,
                     ttl,
                     tags:
                       tagIds.length === 0
