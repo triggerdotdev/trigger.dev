@@ -90,6 +90,7 @@ import type {
   TriggerAndWaitOptions,
   TriggerApiRequestOptions,
   TriggerOptions,
+  AnyOnStartAttemptHookFunction,
 } from "@trigger.dev/core/v3";
 
 export type {
@@ -1585,6 +1586,12 @@ function registerTaskLifecycleHooks<
   if (params.onStart) {
     lifecycleHooks.registerTaskStartHook(taskId, {
       fn: params.onStart as AnyOnStartHookFunction,
+    });
+  }
+
+  if (params.onStartAttempt) {
+    lifecycleHooks.registerTaskStartAttemptHook(taskId, {
+      fn: params.onStartAttempt as AnyOnStartAttemptHookFunction,
     });
   }
 
