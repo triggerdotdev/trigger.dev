@@ -260,14 +260,16 @@ If you'd prefer an automated flow, you can use the `syncEnvVars` build extension
 import { defineConfig } from "@trigger.dev/sdk";
 import { syncEnvVars } from "@trigger.dev/build/extensions/core";
 import dotenvx from "@dotenvx/dotenvx";
+import { readFileSync } from "fs";
 
 export default defineConfig({
   project: "<project id>",
   build: {
     extensions: [
       syncEnvVars(async () => {
-        const output = await dotenvx({ env: ".env.production" });
-        return output.parsed ?? {};
+        const envContent = readFileSync(".env.production", "utf-8");
+        const parsed = dotenvx.parse(envContent);
+        return parsed ?? {};
       }),
     ],
   },
