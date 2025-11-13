@@ -1213,13 +1213,17 @@ export class ApiClient {
 
     headers[API_VERSION_HEADER_NAME] = API_VERSION;
 
+    const streamFlag = this.futureFlags.v2RealtimeStreams ?? true;
+
     if (
-      this.futureFlags.v2RealtimeStreams ||
-      getEnvVar("TRIGGER_V2_REALTIME_STREAMS") === "1" ||
-      getEnvVar("TRIGGER_V2_REALTIME_STREAMS") === "true" ||
-      getEnvVar("TRIGGER_REALTIME_STREAMS_V2") === "1" ||
-      getEnvVar("TRIGGER_REALTIME_STREAMS_V2") === "true"
+      streamFlag === false ||
+      getEnvVar("TRIGGER_V2_REALTIME_STREAMS") === "0" ||
+      getEnvVar("TRIGGER_V2_REALTIME_STREAMS") === "false" ||
+      getEnvVar("TRIGGER_REALTIME_STREAMS_V2") === "0" ||
+      getEnvVar("TRIGGER_REALTIME_STREAMS_V2") === "false"
     ) {
+      headers["x-trigger-realtime-streams-version"] = "v1";
+    } else {
       headers["x-trigger-realtime-streams-version"] = "v2";
     }
 

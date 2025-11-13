@@ -9,6 +9,7 @@ import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { BatchTriggerV3Service } from "~/v3/services/batchTriggerV3.server";
 import { HeadersSchema } from "./api.v1.tasks.$taskId.trigger";
+import { determineRealtimeStreamsVersion } from "~/services/realtime/v1StreamsGlobal.server";
 
 const ParamsSchema = z.object({
   taskId: z.string(),
@@ -40,6 +41,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     "trigger-version": triggerVersion,
     "x-trigger-span-parent-as-link": spanParentAsLink,
     "x-trigger-worker": isFromWorker,
+    "x-trigger-realtime-streams-version": realtimeStreamsVersion,
     traceparent,
     tracestate,
   } = headers.data;
@@ -100,6 +102,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       triggerVersion: triggerVersion ?? undefined,
       traceContext,
       spanParentAsLink: spanParentAsLink === 1,
+      realtimeStreamsVersion: determineRealtimeStreamsVersion(realtimeStreamsVersion ?? undefined),
     });
 
     if (!result) {

@@ -1236,6 +1236,7 @@ const EnvironmentSchema = z
     REALTIME_STREAMS_S2_FLUSH_INTERVAL_MS: z.coerce.number().int().default(100),
     REALTIME_STREAMS_S2_MAX_RETRIES: z.coerce.number().int().default(10),
     REALTIME_STREAMS_S2_WAIT_SECONDS: z.coerce.number().int().default(60),
+    REALTIME_STREAMS_DEFAULT_VERSION: z.enum(["v1", "v2"]).default("v1"),
     WAIT_UNTIL_TIMEOUT_MS: z.coerce.number().int().default(600_000),
   })
   .and(GithubAppEnvSchema)

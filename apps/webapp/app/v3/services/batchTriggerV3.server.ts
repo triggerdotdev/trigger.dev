@@ -56,6 +56,7 @@ export type BatchTriggerTaskServiceOptions = {
   traceContext?: Record<string, string | undefined>;
   spanParentAsLink?: boolean;
   oneTimeUseToken?: string;
+  realtimeStreamsVersion?: "v1" | "v2";
 };
 
 type RunItemData = {
@@ -851,6 +852,7 @@ export class BatchTriggerV3Service extends BaseService {
         batchId: batch.friendlyId,
         skipChecks: true,
         runFriendlyId: task.runId,
+        realtimeStreamsVersion: options?.realtimeStreamsVersion,
       }
     );
 
