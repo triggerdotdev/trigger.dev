@@ -1,5 +1,15 @@
 # trigger.dev
 
+## 4.1.0
+
+### Patch Changes
+
+- Added external cache support for local image builds ([#2682](https://github.com/triggerdotdev/trigger.dev/pull/2682))
+- Updated dependencies:
+  - `@trigger.dev/build@4.1.0`
+  - `@trigger.dev/core@4.1.0`
+  - `@trigger.dev/schema-to-json@4.1.0`
+
 ## 4.0.7
 
 ### Patch Changes

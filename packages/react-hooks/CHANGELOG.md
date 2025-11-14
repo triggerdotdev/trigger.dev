@@ -1,5 +1,16 @@
 # @trigger.dev/react-hooks
 
+## 4.1.0
+
+### Minor Changes
+
+- Realtime streams v2 ([#2632](https://github.com/triggerdotdev/trigger.dev/pull/2632))
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.1.0`
+
 ## 4.0.7
 
 ### Patch Changes
