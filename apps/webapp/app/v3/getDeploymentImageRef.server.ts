@@ -213,7 +213,14 @@ async function createEcrRepository({
   const result = await ecr.send(
     new CreateRepositoryCommand({
       repositoryName,
-      imageTagMutability: "IMMUTABLE",
+      imageTagMutability: "IMMUTABLE_WITH_EXCLUSION",
+      imageTagMutabilityExclusionFilters: [
+        {
+          // only the `cache` tag will be mutable, all other tags will be immutable
+          filter: "cache",
+          filterType: undefined,
+        },
+      ],
       encryptionConfiguration: {
         encryptionType: "AES256",
       },
