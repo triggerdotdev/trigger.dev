@@ -83,6 +83,84 @@ We have a complete set of SDK functions (and REST API) you can use to directly m
 | [envvars.update()](/management/envvars/update)     | Update a single environment variable                        |
 | [envvars.del()](/management/envvars/delete)        | Delete a single environment variable                        |
 
+#### Initial load from .env file
+
+To initially load environment variables from a `.env` file into your Trigger.dev cloud environment, you can use `envvars.upload()`. This is useful for one-time bulk imports when setting up a new project or environment.
+
+```ts
+import { envvars } from "@trigger.dev/sdk";
+import { readFileSync } from "fs";
+import { parse } from "dotenv";
+
+// Read and parse your .env file
+const envContent = readFileSync(".env.production", "utf-8");
+const parsed = parse(envContent);
+
+// Upload to Trigger.dev (replace with your project ref and environment slug)
+await envvars.upload("proj_your_project_ref", "prod", {
+  variables: parsed,
+  override: false, // Set to true to override existing variables
+});
+```
+
+When called inside a task, you can omit the project ref and environment slug as they'll be automatically inferred from the task context:
+
+```ts
+import { envvars, task } from "@trigger.dev/sdk";
+import { readFileSync } from "fs";
+import { parse } from "dotenv";
+
+export const setupEnvVars = task({
+  id: "setup-env-vars",
+  run: async () => {
+    const envContent = readFileSync(".env.production", "utf-8");
+    const parsed = parse(envContent);
+
+    // projectRef and environment slug are automatically inferred from ctx
+    await envvars.upload({
+      variables: parsed,
+      override: false,
+    });
+  },
+});
+```
+
+<Note>
+This is different from `syncEnvVars` which automatically syncs variables during every deploy. Use `envvars.upload()` for one-time initial loads, and `syncEnvVars` for ongoing synchronization.
+</Note>
+
+#### Getting the current environment
+
+When using `envvars.retrieve()` inside a task, you can access the current environment information from the task context (`ctx`). The `envvars.retrieve()` function doesn't return the environment, but you can get it from `ctx.environment`:
+
+```ts
+import { envvars, task } from "@trigger.dev/sdk";
+
+export const myTask = task({
+  id: "my-task",
+  run: async (payload, { ctx }) => {
+    // Get the current environment information
+    const currentEnv = ctx.environment.slug; // e.g., "dev", "prod", "staging"
+    const envType = ctx.environment.type; // e.g., "DEVELOPMENT", "PRODUCTION", "STAGING", "PREVIEW"
+
+    // Retrieve an environment variable
+    // When called inside a task, projectRef and slug are automatically inferred
+    const apiKey = await envvars.retrieve("API_KEY");
+
+    console.log(`Retrieved API_KEY from environment: ${currentEnv} (${envType})`);
+    console.log(`Value: ${apiKey.value}`);
+  },
+});
+```
+
+The context object provides:
+- `ctx.environment.slug` - The environment slug (e.g., "dev", "prod")
+- `ctx.environment.type` - The environment type ("DEVELOPMENT", "PRODUCTION", "STAGING", or "PREVIEW")
+- `ctx.environment.id` - The environment ID
+- `ctx.project.ref` - The project reference
+
+For more information about the context object, see the [Context documentation](/context).
+
 ### Sync env vars from another service
 
 You could use the SDK functions above but it's much easier to use our `syncEnvVars` build extension in your `trigger.config` file.
