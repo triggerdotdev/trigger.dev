@@ -1,7 +1,7 @@
 {
   "name": "trigger.dev",
   "description": "Trigger.dev coding agent rules",
-  "currentVersion": "4.0.0",
+  "currentVersion": "4.1.0",
   "versions": {
     "4.0.0": {
       "options": [
@@ -39,6 +39,55 @@
           "title": "Realtime",
           "label": "How to use realtime in your Trigger.dev tasks and your frontend",
           "path": "4.0.0/realtime.md",
+          "tokens": 1700
+        },
+        {
+          "name": "claude-code-agent",
+          "title": "Claude Code Agent",
+          "label": "An expert Trigger.dev developer as a Claude Code subagent",
+          "path": "4.0.0/claude-code-agent.md",
+          "tokens": 2700,
+          "client": "claude-code",
+          "installStrategy": "claude-code-subagent"
+        }
+      ]
+    },
+    "4.1.0": {
+      "options": [
+        {
+          "name": "basic",
+          "title": "Basic tasks",
+          "label": "Only the most important rules for writing basic Trigger.dev tasks",
+          "path": "4.0.0/basic-tasks.md",
+          "tokens": 1200
+        },
+        {
+          "name": "advanced-tasks",
+          "title": "Advanced tasks",
+          "label": "Comprehensive rules to help you write advanced Trigger.dev tasks",
+          "path": "4.0.0/advanced-tasks.md",
+          "tokens": 3000
+        },
+        {
+          "name": "config",
+          "title": "Configuring Trigger.dev",
+          "label": "Configure your Trigger.dev project with a trigger.config.ts file",
+          "path": "4.1.0/config.md",
+          "tokens": 1900,
+          "applyTo": "**/trigger.config.ts"
+        },
+        {
+          "name": "scheduled-tasks",
+          "title": "Scheduled Tasks",
+          "label": "How to write and use scheduled Trigger.dev tasks",
+          "path": "4.0.0/scheduled-tasks.md",
+          "tokens": 780
+        },
+        {
+          "name": "realtime",
+          "title": "Realtime",
+          "label": "How to use realtime in your Trigger.dev tasks and your frontend",
+          "path": "4.1.0/realtime.md",
           "tokens": 1700
         },
         {
