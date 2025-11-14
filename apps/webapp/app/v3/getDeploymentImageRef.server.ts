@@ -219,7 +219,7 @@ async function createEcrRepository({
         {
           // only the `cache` tag will be mutable, all other tags will be immutable
           filter: "cache",
-          filterType: undefined,
+          filterType: "WILDCARD",
         },
       ],
       encryptionConfiguration: {
