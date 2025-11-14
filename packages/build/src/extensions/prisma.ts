@@ -6,7 +6,8 @@ import { cp, readdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
 export type PrismaExtensionOptions = {
-  schema: string;
+  schema?: string;
+  config?: string;
   migrate?: boolean;
   version?: string;
   /**
@@ -75,7 +76,7 @@ export class PrismaExtension implements BuildExtension {
     }
 
     // Resolve the path to the prisma schema, relative to the config.directory
-    this._resolvedSchemaPath = resolve(context.workingDir, this.options.schema);
+    this._resolvedSchemaPath = resolve(context.workingDir, this.options.schema!);
 
     context.logger.debug(`Resolved the prisma schema to: ${this._resolvedSchemaPath}`);
 
@@ -114,7 +115,7 @@ export class PrismaExtension implements BuildExtension {
 
     const usingSchemaFolder = dirname(this._resolvedSchemaPath).endsWith("schema");
 
-    const commands: string[] = [];
+    let commands: string[] = [];
 
     let prismaDir: string | undefined;
 
@@ -224,9 +225,10 @@ export class PrismaExtension implements BuildExtension {
 
       await cp(migrationsDir, migrationsDestinationPath, { recursive: true });
 
-      commands.push(
-        `${binaryForRuntime(manifest.runtime)} node_modules/prisma/build/index.js migrate deploy`
-      );
+      commands = [
+        `${binaryForRuntime(manifest.runtime)} node_modules/prisma/build/index.js migrate deploy`,
+        ...commands,
+      ];
     }
 
     env.DATABASE_URL = manifest.deploy.env?.DATABASE_URL;
