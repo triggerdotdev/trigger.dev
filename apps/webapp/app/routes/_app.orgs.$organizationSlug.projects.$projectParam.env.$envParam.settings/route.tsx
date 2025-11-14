@@ -30,6 +30,7 @@ import {
   PageContainer,
 } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
@@ -180,6 +181,10 @@ const UpdateBuildSettingsFormSchema = z.object({
     .refine((val) => !val || val.length <= 500, {
       message: "Pre-build command must not exceed 500 characters",
     }),
+  useNativeBuildServer: z
+    .string()
+    .optional()
+    .transform((val) => val === "on"),
 });
 
 type UpdateBuildSettingsFormSchema = z.infer<typeof UpdateBuildSettingsFormSchema>;
@@ -407,12 +412,14 @@ export const action: ActionFunction = async ({ request, params }) => {
       });
     }
     case "update-build-settings": {
-      const { installCommand, preBuildCommand, triggerConfigFilePath } = submission.value;
+      const { installCommand, preBuildCommand, triggerConfigFilePath, useNativeBuildServer } =
+        submission.value;
 
       const resultOrFail = await projectSettingsService.updateBuildSettings(projectId, {
         installCommand: installCommand || undefined,
         preBuildCommand: preBuildCommand || undefined,
         triggerConfigFilePath: triggerConfigFilePath || undefined,
+        useNativeBuildServer: useNativeBuildServer,
       });
 
       if (resultOrFail.isErr()) {
@@ -1135,13 +1142,15 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
     preBuildCommand: buildSettings?.preBuildCommand || "",
     installCommand: buildSettings?.installCommand || "",
     triggerConfigFilePath: buildSettings?.triggerConfigFilePath || "",
+    useNativeBuildServer: buildSettings?.useNativeBuildServer || false,
   });
 
   useEffect(() => {
     const hasChanges =
       buildSettingsValues.preBuildCommand !== (buildSettings?.preBuildCommand || "") ||
       buildSettingsValues.installCommand !== (buildSettings?.installCommand || "") ||
-      buildSettingsValues.triggerConfigFilePath !== (buildSettings?.triggerConfigFilePath || "");
+      buildSettingsValues.triggerConfigFilePath !== (buildSettings?.triggerConfigFilePath || "") ||
+      buildSettingsValues.useNativeBuildServer !== (buildSettings?.useNativeBuildServer || false);
     setHasBuildSettingsChanges(hasChanges);
   }, [buildSettingsValues, buildSettings]);
 
@@ -1222,6 +1231,30 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
           </Hint>
           <FormError id={fields.preBuildCommand.errorId}>{fields.preBuildCommand.error}</FormError>
         </InputGroup>
+        <div className="border-t border-grid-dimmed pt-4">
+          <InputGroup>
+            <CheckboxWithLabel
+              id={fields.useNativeBuildServer.id}
+              {...conform.input(fields.useNativeBuildServer, { type: "checkbox" })}
+              label="Use native build server"
+              variant="simple/small"
+              defaultChecked={buildSettings?.useNativeBuildServer || false}
+              onChange={(isChecked) => {
+                setBuildSettingsValues((prev) => ({
+                  ...prev,
+                  useNativeBuildServer: isChecked,
+                }));
+              }}
+            />
+            <Hint>
+              Native build server builds do not rely on external build providers and will become the
+              default in the future. Version 4.1.0 or newer is required.
+            </Hint>
+            <FormError id={fields.useNativeBuildServer.errorId}>
+              {fields.useNativeBuildServer.error}
+            </FormError>
+          </InputGroup>
+        </div>
         <FormError>{buildSettingsForm.error}</FormError>
         <FormButtons
           confirmButton={
