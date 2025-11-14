@@ -6,6 +6,7 @@ import {
   type Tag,
   RepositoryNotFoundException,
   GetAuthorizationTokenCommand,
+  PutLifecyclePolicyCommand,
 } from "@aws-sdk/client-ecr";
 import { STSClient, AssumeRoleCommand } from "@aws-sdk/client-sts";
 import { tryCatch } from "@trigger.dev/core";
@@ -233,6 +234,30 @@ async function createEcrRepository({
     logger.error("Failed to create ECR repository", { repositoryName, result });
     throw new Error(`Failed to create ECR repository: ${repositoryName}`);
   }
+
+  // When the `cache` tag is mutated, the old cache images are untagged.
+  // This policy matches those images and expires them to avoid bloating the repository.
+  await ecr.send(
+    new PutLifecyclePolicyCommand({
+      repositoryName: result.repository.repositoryName,
+      registryId: result.repository.registryId,
+      lifecyclePolicyText: JSON.stringify({
+        rules: [
+          {
+            rulePriority: 1,
+            description: "Expire untagged images older than 3 days",
+            selection: {
+              tagStatus: "untagged",
+              countType: "sinceImagePushed",
+              countUnit: "days",
+              countNumber: 3,
+            },
+            action: { type: "expire" },
+          },
+        ],
+      }),
+    })
+  );
 
   return result.repository;
 }
