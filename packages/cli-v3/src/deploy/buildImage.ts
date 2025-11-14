@@ -16,6 +16,7 @@ import { CliApiClient } from "../apiClient.js";
 export interface BuildImageOptions {
   // Common options
   isLocalBuild: boolean;
+  useRegistryCache?: boolean;
   imagePlatform: string;
   noCache?: boolean;
   load?: boolean;
@@ -53,6 +54,7 @@ export interface BuildImageOptions {
 export async function buildImage(options: BuildImageOptions): Promise<BuildImageResults> {
   const {
     isLocalBuild,
+    useRegistryCache,
     imagePlatform,
     noCache,
     push,
@@ -94,6 +96,7 @@ export async function buildImage(options: BuildImageOptions): Promise<BuildImage
       authenticateToRegistry,
       load,
       noCache,
+      useRegistryCache,
       extraCACerts,
       apiUrl,
       apiKey,
@@ -307,6 +310,7 @@ interface SelfHostedBuildImageOptions {
   apiClient: CliApiClient;
   branchName?: string;
   noCache?: boolean;
+  useRegistryCache?: boolean;
   extraCACerts?: string;
   buildEnvVars?: Record<string, string | undefined>;
   network?: string;
@@ -316,7 +320,7 @@ interface SelfHostedBuildImageOptions {
 }
 
 async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<BuildImageResults> {
-  const { builder, imageTag, deploymentId, apiClient } = options;
+  const { builder, imageTag, deploymentId, apiClient, useRegistryCache } = options;
 
   // Ensure multi-platform build is supported on the local machine
   let builderExists = false;
@@ -483,6 +487,8 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
     options.onLog?.(`Successfully logged in to ${cloudRegistryHost}`);
   }
 
+  const projectCacheRef = getProjectCacheRefFromImageTag(imageTag);
+
   const args = [
     "buildx",
     "build",
@@ -491,6 +497,14 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
     "-f",
     "Containerfile",
     options.noCache ? "--no-cache" : undefined,
+    ...(useRegistryCache
+      ? [
+          "--cache-to",
+          `type=registry,mode=max,image-manifest=true,oci-mediatypes=true,ref=${projectCacheRef}`,
+          "--cache-from",
+          `type=registry,ref=${projectCacheRef}`,
+        ]
+      : []),
     "--platform",
     options.imagePlatform,
     options.network ? `--network=${options.network}` : undefined,
@@ -926,6 +940,11 @@ function extractRegistryHostFromImageTag(imageTag: string): string | undefined {
   }
 
   return host;
+}
+
+function getProjectCacheRefFromImageTag(imageTag: string): string {
+  const lastColonIndex = imageTag.lastIndexOf(":");
+  return `${imageTag.substring(0, lastColonIndex)}:cache`;
 }
 
 async function getDockerUsernameAndPassword(
