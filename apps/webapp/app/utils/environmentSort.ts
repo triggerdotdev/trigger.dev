@@ -12,10 +12,14 @@ type SortType = {
   userName?: string | null;
 };
 
-export function sortEnvironments<T extends SortType>(environments: T[]): T[] {
+export function sortEnvironments<T extends SortType>(
+  environments: T[],
+  sortOrder?: RuntimeEnvironmentType[]
+): T[] {
+  const order = sortOrder ?? environmentSortOrder;
   return environments.sort((a, b) => {
-    const aIndex = environmentSortOrder.indexOf(a.type);
-    const bIndex = environmentSortOrder.indexOf(b.type);
+    const aIndex = order.indexOf(a.type);
+    const bIndex = order.indexOf(b.type);
 
     const difference = aIndex - bIndex;
 

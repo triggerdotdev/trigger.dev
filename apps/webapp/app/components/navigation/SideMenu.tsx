@@ -24,6 +24,7 @@ import { Link, useNavigation } from "@remix-run/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import simplur from "simplur";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
+import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 import { RunsIconExtraSmall } from "~/assets/icons/RunsIcon";
 import { TaskIconSmall } from "~/assets/icons/TaskIcon";
@@ -43,6 +44,7 @@ import {
   accountPath,
   adminPath,
   branchesPath,
+  concurrencyPath,
   logoutPath,
   newOrganizationPath,
   newProjectPath,
@@ -122,6 +124,7 @@ export function SideMenu({
   const { isConnected } = useDevPresence();
   const isFreeUser = currentPlan?.v3Subscription?.isPaying === false;
   const isAdmin = useHasAdminAccess();
+  const { isManagedCloud } = useFeatures();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -313,6 +316,15 @@ export function SideMenu({
               data-action="preview-branches"
               badge={<V4Badge />}
             />
+            {isManagedCloud && (
+              <SideMenuItem
+                name="Concurrency"
+                icon={ConcurrencyIcon}
+                activeIconColor="text-amber-500"
+                to={concurrencyPath(organization, project, environment)}
+                data-action="concurrency"
+              />
+            )}
             <SideMenuItem
               name="Regions"
               icon={GlobeAmericasIcon}

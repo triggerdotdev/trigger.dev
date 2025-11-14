@@ -1,21 +1,24 @@
-import type { Organization, Project } from "@trigger.dev/database";
+import { MachinePresetName, tryCatch } from "@trigger.dev/core/v3";
+import type { Organization, Project, RuntimeEnvironmentType } from "@trigger.dev/database";
 import {
   BillingClient,
-  type Limits,
-  type SetPlanBody,
-  type UsageSeriesParams,
-  type UsageResult,
   defaultMachine as defaultMachineFromPlatform,
   machines as machinesFromPlatform,
-  type MachineCode,
-  type UpdateBillingAlertsRequest,
   type BillingAlertsResult,
+  type Limits,
+  type MachineCode,
   type ReportUsageResult,
-  type ReportUsagePlan,
+  type SetPlanBody,
+  type UpdateBillingAlertsRequest,
+  type UsageResult,
+  type UsageSeriesParams,
+  type CurrentPlan,
 } from "@trigger.dev/platform";
 import { createCache, DefaultStatefulContext, Namespace } from "@unkey/cache";
 import { MemoryStore } from "@unkey/cache/stores";
+import { existsSync, readFileSync } from "node:fs";
 import { redirect } from "remix-typedjson";
+import { z } from "zod";
 import { env } from "~/env.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { createEnvironment } from "~/models/organization.server";
@@ -23,9 +26,7 @@ import { logger } from "~/services/logger.server";
 import { newProjectPath, organizationBillingPath } from "~/utils/pathBuilder";
 import { singleton } from "~/utils/singleton";
 import { RedisCacheStore } from "./unkey/redisCacheStore.server";
-import { existsSync, readFileSync } from "node:fs";
-import { z } from "zod";
-import { MachinePresetName } from "@trigger.dev/core/v3";
+import { $replica } from "~/db.server";
 
 function initializeClient() {
   if (isCloud() && process.env.BILLING_API_URL && process.env.BILLING_API_KEY) {
@@ -254,6 +255,52 @@ export async function getLimit(orgId: string, limit: keyof Limits, fallback: num
   return fallback;
 }
 
+export async function getDefaultEnvironmentConcurrencyLimit(
+  organizationId: string,
+  environmentType: RuntimeEnvironmentType
+): Promise<number> {
+  if (!client) {
+    const org = await $replica.organization.findFirst({
+      where: {
+        id: organizationId,
+      },
+      select: {
+        maximumConcurrencyLimit: true,
+      },
+    });
+    if (!org) throw new Error("Organization not found");
+    return org.maximumConcurrencyLimit;
+  }
+
+  const result = await client.currentPlan(organizationId);
+  if (!result.success) throw new Error("Error getting current plan");
+
+  const limit = getDefaultEnvironmentLimitFromPlan(environmentType, result);
+  if (!limit) throw new Error("No plan found");
+
+  return limit;
+}
+
+export function getDefaultEnvironmentLimitFromPlan(
+  environmentType: RuntimeEnvironmentType,
+  plan: CurrentPlan
+): number | undefined {
+  if (!plan.v3Subscription?.plan) return undefined;
+
+  switch (environmentType) {
+    case "DEVELOPMENT":
+      return plan.v3Subscription.plan.limits.concurrentRuns.development;
+    case "STAGING":
+      return plan.v3Subscription.plan.limits.concurrentRuns.staging;
+    case "PREVIEW":
+      return plan.v3Subscription.plan.limits.concurrentRuns.preview;
+    case "PRODUCTION":
+      return plan.v3Subscription.plan.limits.concurrentRuns.production;
+    default:
+      return plan.v3Subscription.plan.limits.concurrentRuns.number;
+  }
+}
+
 export async function getCachedLimit(orgId: string, limit: keyof Limits, fallback: number) {
   return platformCache.limits.swr(`${orgId}:${limit}`, async () => {
     return getLimit(orgId, limit, fallback);
@@ -297,62 +344,74 @@ export async function setPlan(
   opts?: { invalidateBillingCache?: (orgId: string) => void }
 ) {
   if (!client) {
-    throw redirectWithErrorMessage(callerPath, request, "Error setting plan");
+    return redirectWithErrorMessage(callerPath, request, "Error setting plan", {
+      ephemeral: false,
+    });
   }
 
-  try {
-    const result = await client.setPlan(organization.id, plan);
+  const [error, result] = await tryCatch(client.setPlan(organization.id, plan));
 
-    if (!result) {
-      throw redirectWithErrorMessage(callerPath, request, "Error setting plan");
+  if (error) {
+    return redirectWithErrorMessage(callerPath, request, error.message, { ephemeral: false });
+  }
+
+  if (!result) {
+    return redirectWithErrorMessage(callerPath, request, "Error setting plan", {
+      ephemeral: false,
+    });
+  }
+
+  if (!result.success) {
+    return redirectWithErrorMessage(callerPath, request, result.error, { ephemeral: false });
+  }
+
+  switch (result.action) {
+    case "free_connect_required": {
+      return redirect(result.connectUrl);
     }
-
-    if (!result.success) {
-      throw redirectWithErrorMessage(callerPath, request, result.error);
-    }
-
-    switch (result.action) {
-      case "free_connect_required": {
-        return redirect(result.connectUrl);
-      }
-      case "free_connected": {
-        if (result.accepted) {
-          // Invalidate billing cache since plan changed
-          opts?.invalidateBillingCache?.(organization.id);
-          return redirect(newProjectPath(organization, "You're on the Free plan."));
-        } else {
-          return redirectWithErrorMessage(
-            callerPath,
-            request,
-            "Free tier unlock failed, your GitHub account is too new."
-          );
-        }
-      }
-      case "create_subscription_flow_start": {
-        return redirect(result.checkoutUrl);
-      }
-      case "updated_subscription": {
-        // Invalidate billing cache since subscription changed
+    case "free_connected": {
+      if (result.accepted) {
+        // Invalidate billing cache since plan changed
         opts?.invalidateBillingCache?.(organization.id);
-        return redirectWithSuccessMessage(
+        return redirect(newProjectPath(organization, "You're on the Free plan."));
+      } else {
+        return redirectWithErrorMessage(
           callerPath,
           request,
-          "Subscription updated successfully."
+          "Free tier unlock failed, your GitHub account is too new.",
+          { ephemeral: false }
         );
       }
-      case "canceled_subscription": {
-        // Invalidate billing cache since subscription was canceled
-        opts?.invalidateBillingCache?.(organization.id);
-        return redirectWithSuccessMessage(callerPath, request, "Subscription canceled.");
-      }
     }
+    case "create_subscription_flow_start": {
+      return redirect(result.checkoutUrl);
+    }
+    case "updated_subscription": {
+      // Invalidate billing cache since subscription changed
+      opts?.invalidateBillingCache?.(organization.id);
+      return redirectWithSuccessMessage(callerPath, request, "Subscription updated successfully.");
+    }
+    case "canceled_subscription": {
+      // Invalidate billing cache since subscription was canceled
+      opts?.invalidateBillingCache?.(organization.id);
+      return redirectWithSuccessMessage(callerPath, request, "Subscription canceled.");
+    }
+  }
+}
+
+export async function setConcurrencyAddOn(organizationId: string, amount: number) {
+  if (!client) return undefined;
+
+  try {
+    const result = await client.setAddOn(organizationId, { type: "concurrency", amount });
+    if (!result.success) {
+      logger.error("Error setting concurrency add on - no success", { error: result.error });
+      return undefined;
+    }
+    return result;
   } catch (e) {
-    logger.error("Error setting plan", { organizationId: organization.id, error: e });
-    throw redirectWithErrorMessage(
-      callerPath,
-      request,
-      e instanceof Error ? e.message : "Error setting plan"
-    );
+    logger.error("Error setting concurrency add on - caught error", { error: e });
+    return undefined;
   }
 }
 
@@ -462,7 +521,10 @@ export async function getEntitlement(
   }
 }
 
-export async function projectCreated(organization: Organization, project: Project) {
+export async function projectCreated(
+  organization: Pick<Organization, "id" | "maximumConcurrencyLimit">,
+  project: Project
+) {
   if (!isCloud()) {
     await createEnvironment({ organization, project, type: "STAGING" });
     await createEnvironment({

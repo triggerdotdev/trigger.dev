@@ -68,11 +68,18 @@ import { EnvironmentQueuePresenter } from "~/presenters/v3/EnvironmentQueuePrese
 import { QueueListPresenter } from "~/presenters/v3/QueueListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { docsPath, EnvironmentParamSchema, v3BillingPath, v3RunsPath } from "~/utils/pathBuilder";
+import {
+  concurrencyPath,
+  docsPath,
+  EnvironmentParamSchema,
+  v3BillingPath,
+  v3RunsPath,
+} from "~/utils/pathBuilder";
 import { concurrencySystem } from "~/v3/services/concurrencySystemInstance.server";
 import { PauseEnvironmentService } from "~/v3/services/pauseEnvironment.server";
 import { PauseQueueService } from "~/v3/services/pauseQueue.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
 
 const SearchParamsSchema = z.object({
   query: z.string().optional(),
@@ -406,18 +413,14 @@ export default function Page() {
               accessory={
                 plan ? (
                   plan?.v3Subscription?.plan?.limits.concurrentRuns.canExceed ? (
-                    <Feedback
-                      button={
-                        <Button
-                          variant="tertiary/small"
-                          LeadingIcon={ChatBubbleLeftEllipsisIcon}
-                          leadingIconClassName="text-indigo-500"
-                        >
-                          Increase limit…
-                        </Button>
-                      }
-                      defaultValue="concurrency"
-                    />
+                    <LinkButton
+                      to={concurrencyPath(organization, project, env)}
+                      variant="tertiary/small"
+                      LeadingIcon={ConcurrencyIcon}
+                      leadingIconClassName="text-amber-500"
+                    >
+                      Increase limit
+                    </LinkButton>
                   ) : (
                     <LinkButton
                       to={v3BillingPath(organization, "Upgrade your plan for more concurrency")}

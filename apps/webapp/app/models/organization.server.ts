@@ -12,7 +12,7 @@ import { prisma, type PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
 import { featuresForUrl } from "~/features.server";
 import { createApiKeyForEnv, createPkApiKeyForEnv, envSlug } from "./api-key.server";
-
+import { getDefaultEnvironmentConcurrencyLimit } from "~/services/platform.v3.server";
 export type { Organization };
 
 const nanoid = customAlphabet("1234567890abcdef", 4);
@@ -96,6 +96,8 @@ export async function createEnvironment({
   const pkApiKey = createPkApiKeyForEnv(type);
   const shortcode = createShortcode().join("-");
 
+  const limit = await getDefaultEnvironmentConcurrencyLimit(organization.id, type);
+
   return await prismaClient.runtimeEnvironment.create({
     data: {
       slug,
@@ -103,7 +105,7 @@ export async function createEnvironment({
       pkApiKey,
       shortcode,
       autoEnableInternalSources: type !== "DEVELOPMENT",
-      maximumConcurrencyLimit: organization.maximumConcurrencyLimit / 3,
+      maximumConcurrencyLimit: limit,
       organization: {
         connect: {
           id: organization.id,

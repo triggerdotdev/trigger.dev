@@ -153,7 +153,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     }
   }
 
-  return setPlan(organization, request, form.callerPath, payload, {
+  return await setPlan(organization, request, form.callerPath, payload, {
     invalidateBillingCache: engine.invalidateBillingCache.bind(engine),
   });
 }

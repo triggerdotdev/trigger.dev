@@ -8,6 +8,7 @@ import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { z } from "zod";
 import { BackgroundWrapper } from "~/components/BackgroundWrapper";
+import { Feedback } from "~/components/Feedback";
 import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
@@ -21,10 +22,11 @@ import { Label } from "~/components/primitives/Label";
 import { ButtonSpinner } from "~/components/primitives/Spinner";
 import { prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
-import { redirectWithSuccessMessage } from "~/models/message.server";
-import { createProject } from "~/models/project.server";
+import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
+import { createProject, ExceededProjectLimitError } from "~/models/project.server";
 import { requireUserId } from "~/services/session.server";
 import {
+  newProjectPath,
   OrganizationParamsSchema,
   organizationPath,
   selectPlanPath,
@@ -114,8 +116,29 @@ export const action: ActionFunction = async ({ request, params }) => {
       request,
       `${submission.value.projectName} created`
     );
-  } catch (error: any) {
-    return json({ errors: { body: error.message } }, { status: 400 });
+  } catch (error) {
+    if (error instanceof ExceededProjectLimitError) {
+      return redirectWithErrorMessage(
+        newProjectPath({ slug: organizationSlug }),
+        request,
+        error.message,
+        {
+          title: "Failed to create project",
+          action: {
+            label: "Request more projects",
+            variant: "secondary/small",
+            action: { type: "help", feedbackType: "help" },
+          },
+        }
+      );
+    }
+
+    return redirectWithErrorMessage(
+      newProjectPath({ slug: organizationSlug }),
+      request,
+      error instanceof Error ? error.message : "Something went wrong",
+      { ephemeral: false }
+    );
   }
 };
 
@@ -191,6 +214,7 @@ export default function Page() {
               </Fieldset>
             </Form>
           </div>
+          <Feedback button={<></>} />
         </MainCenteredContainer>
       </BackgroundWrapper>
     </AppContainer>

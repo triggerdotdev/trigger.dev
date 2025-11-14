@@ -154,6 +154,10 @@ const stories: Story[] = [
     slug: "simple-form",
   },
   {
+    name: "Stepper",
+    slug: "stepper",
+  },
+  {
     name: "Textarea",
     slug: "textarea",
   },
