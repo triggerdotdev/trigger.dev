@@ -33,6 +33,18 @@ const DEFAULT_IGNORE_PATTERNS = [
   "**/*.spec.cjs",
 ];
 
+const PYTHON_IGNORE_PATTERNS = [
+  "**/__pycache__/**",
+  "**/venv/**",
+  "**/.venv/**",
+  "**/.pytest_cache/**",
+  "**/.mypy_cache/**",
+  "**/*.test.py",
+  "**/*.spec.py",
+  "**/test_*.py",
+  "**/tests/**",
+];
+
 export async function createEntryPointManager(
   dirs: string[],
   config: ResolvedConfig,
@@ -40,17 +52,27 @@ export async function createEntryPointManager(
   watch: boolean,
   onEntryPointsChange?: (entryPoints: string[]) => Promise<void>
 ): Promise<EntryPointManager> {
+  // Determine file extension patterns based on runtime
+  const fileExtensions =
+    config.runtime === "python"
+      ? ["*.py"]
+      : ["*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}"];
+
   // Patterns to match files
-  const patterns = dirs.flatMap((dir) => [
-    `${
-      isDynamicPattern(dir)
-        ? `${dir}/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}`
-        : `${escapePath(dir)}/**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}`
-    }`,
-  ]);
+  const patterns = dirs.flatMap((dir) =>
+    fileExtensions.map((ext) =>
+      isDynamicPattern(dir) ? `${dir}/${ext}` : `${escapePath(dir)}/**/${ext}`
+    )
+  );
 
   // Patterns to ignore
   let ignorePatterns = config.ignorePatterns ?? DEFAULT_IGNORE_PATTERNS;
+
+  // Add Python-specific ignore patterns if runtime is python
+  if (config.runtime === "python") {
+    ignorePatterns = ignorePatterns.concat(PYTHON_IGNORE_PATTERNS);
+  }
+
   ignorePatterns = ignorePatterns.concat([
     "**/node_modules/**",
     "**/.git/**",
