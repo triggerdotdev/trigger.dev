@@ -42,7 +42,13 @@ export class AllocateConcurrencyService extends BaseService {
       (acc, e) => Math.max(0, e.maximumConcurrencyLimit - e.planConcurrencyLimit) + acc,
       0
     );
-    const newExtra = environments.reduce((acc, e) => e.amount + acc, 0);
+    const requested = new Map(environments.map((e) => [e.id, e.amount]));
+    const newExtra = result.environments.reduce((acc, env) => {
+      const targetExtra = requested.has(env.id)
+        ? Math.max(0, requested.get(env.id)!)
+        : Math.max(0, env.maximumConcurrencyLimit - env.planConcurrencyLimit);
+      return acc + targetExtra;
+    }, 0);
     const change = newExtra - previousExtra;
 
     const totalExtra = result.extraAllocatedConcurrency + change;
