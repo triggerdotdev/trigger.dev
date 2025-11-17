@@ -115,7 +115,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
 const FormSchema = z.discriminatedUnion("action", [
   z.object({
-    action: z.enum(["purchase", "quota-increase"]),
+    action: z.enum(["purchase"]),
+    amount: z.coerce.number().min(0, "Amount must be 0 or more"),
+  }),
+  z.object({
+    action: z.enum(["quota-increase"]),
     amount: z.coerce.number().min(1, "Amount must be greater than 0"),
   }),
   z.object({
