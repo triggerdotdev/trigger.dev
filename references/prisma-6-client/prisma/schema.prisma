@@ -5,10 +5,10 @@
 // Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
 
 generator client {
-  provider        = "prisma-client-js"
+  provider        = "prisma-client"
   output          = "../src/generated/prisma"
-  previewFeatures = ["typedSql"]
-  binaryTargets   = ["native", "linux-arm64-openssl-3.0.x"]
+  engineType      = "client"
+  previewFeatures = ["views"]
 }
 
 datasource db {
@@ -23,6 +23,14 @@ model User {
   name      String?
   avatarUrl String?
 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Product {
+  id        Int      @id @default(autoincrement())
+  name      String
+  price     Int
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

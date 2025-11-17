@@ -19,7 +19,8 @@ export default defineConfig({
   build: {
     extensions: [
       prismaExtension({
-        schema: "./prisma/schema.prisma",
+        mode: "legacy",
+        schema: "./prisma",
         directUrlEnvVarName: "DATABASE_URL_UNPOOLED",
         migrate: true,
         typedSql: true,

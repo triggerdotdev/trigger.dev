@@ -4,15 +4,16 @@
   "type": "module",
   "devDependencies": {
     "trigger.dev": "workspace:*",
-    "prisma": "6.14.0"
+    "prisma": "6.19.0"
   },
   "dependencies": {
     "@trigger.dev/build": "workspace:*",
     "@trigger.dev/sdk": "workspace:*",
-    "@prisma/client": "6.14.0"
+    "@prisma/client": "6.19.0"
   },
   "scripts": {
     "dev": "trigger dev",
-    "deploy": "trigger deploy"
+    "deploy": "trigger deploy",
+    "generate": "prisma generate --sql"
   }
 }

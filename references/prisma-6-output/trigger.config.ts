@@ -19,10 +19,9 @@ export default defineConfig({
   build: {
     extensions: [
       prismaExtension({
-        schema: "prisma/schema.prisma",
-        migrate: true,
-        typedSql: true,
-        directUrlEnvVarName: "DATABASE_URL_UNPOOLED",
+        mode: "engine-only",
+        version: "6.19.0",
+        binaryTarget: "linux-arm64-openssl-3.0.x",
       }),
     ],
   },

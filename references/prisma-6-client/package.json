@@ -1,17 +1,16 @@
 {
-  "name": "references-prisma-7",
+  "name": "references-prisma-6-client",
   "private": true,
   "type": "module",
   "devDependencies": {
-    "prisma": "6.20.0-integration-next.8",
-    "trigger.dev": "workspace:*"
+    "trigger.dev": "workspace:*",
+    "prisma": "6.16.0"
   },
   "dependencies": {
-    "@prisma/client": "6.20.0-integration-next.8",
-    "@prisma/adapter-pg": "6.20.0-integration-next.8",
     "@trigger.dev/build": "workspace:*",
     "@trigger.dev/sdk": "workspace:*",
-    "dotenv": "^17.2.3"
+    "@prisma/client": "6.16.0",
+    "@prisma/adapter-pg": "6.16.0"
   },
   "scripts": {
     "dev": "trigger dev",

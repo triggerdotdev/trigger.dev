@@ -13,6 +13,7 @@
   },
   "scripts": {
     "dev": "trigger dev",
-    "deploy": "trigger deploy"
+    "deploy": "trigger deploy",
+    "generate": "prisma generate --sql"
   }
 }
