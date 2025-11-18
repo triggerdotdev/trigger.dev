@@ -1275,6 +1275,9 @@ importers:
 
   packages/build:
     dependencies:
+      '@prisma/config':
+        specifier: ^6.10.0
+        version: 6.19.0
       '@trigger.dev/core':
         specifier: workspace:4.1.0
         version: link:../core
@@ -2411,6 +2414,25 @@ importers:
       prisma:
         specifier: 6.16.0
         version: 6.16.0(typescript@5.5.4)
+      trigger.dev:
+        specifier: workspace:*
+        version: link:../../packages/cli-v3
+
+  references/prisma-6-config:
+    dependencies:
+      '@prisma/client':
+        specifier: 6.19.0
+        version: 6.19.0(prisma@6.19.0)(typescript@5.5.4)
+      '@trigger.dev/build':
+        specifier: workspace:*
+        version: link:../../packages/build
+      '@trigger.dev/sdk':
+        specifier: workspace:*
+        version: link:../../packages/trigger-sdk
+    devDependencies:
+      prisma:
+        specifier: 6.19.0
+        version: 6.19.0(typescript@5.5.4)
       trigger.dev:
         specifier: workspace:*
         version: link:../../packages/cli-v3

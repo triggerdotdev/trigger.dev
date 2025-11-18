@@ -4,9 +4,20 @@
 
 The `prismaExtension` has been completely redesigned to support multiple Prisma versions and deployment strategies. This update introduces **three distinct modes** to handle the evolving Prisma ecosystem, from legacy setups to the upcoming Prisma 7.
 
+**Highlights:**
+
+- 🎯 Three modes: Legacy, Engine-Only, and Modern
+- 🎉 **NEW:** Support for `prisma.config.ts` files (Legacy Mode)
+- 🔍 **NEW:** Enhanced version detection with filesystem fallback
+- ✅ Multi-file schema support (Prisma 6.7+)
+- ✅ TypedSQL support (Prisma 5.19+)
+- ✅ Migration support with automatic path detection
+
 ## Breaking Changes
 
 ⚠️ **MIGRATION REQUIRED**: The `prismaExtension` now requires an explicit `mode` parameter. Existing configurations without a `mode` will need to be updated.
+
+**Note:** All other existing options remain backward compatible. The new `configFile` option is optional and doesn't affect existing setups using the `schema` option.
 
 ### Before (Old API)
 
@@ -50,10 +61,12 @@ extensions: [
 - Automatic `prisma generate` during deployment
 - Supports single-file schemas (`prisma/schema.prisma`)
 - Supports multi-file schemas (Prisma 6.7+, directory-based schemas)
+- **NEW:** Supports Prisma config files (`prisma.config.ts`) via `@prisma/config` package
 - Migration support with `migrate: true`
 - TypedSQL support with `typedSql: true`
 - Custom generator selection
-- Handles Prisma client versioning automatically
+- Handles Prisma client versioning automatically (with filesystem fallback detection)
+- Automatic extraction of schema and migrations paths from config files
 
 **Schema Configuration:**
 
@@ -118,7 +131,8 @@ prismaExtension({
 generator client {
   provider      = "prisma-client-js"
   output        = "../src/generated/prisma"
-  binaryTargets = ["native", "linux-arm64-openssl-3.0.x"]
+  // Ensure the "debian-openssl-3.0.x" binary target is included for deployment to the trigger.dev cloud
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
@@ -140,15 +154,14 @@ prismaExtension({
 prismaExtension({
   mode: "engine-only",
   version: "6.19.0",
-  binaryTarget: "linux-arm64-openssl-3.0.x", // Default: "debian-openssl-3.0.x"
 });
 ```
 
 **Important Notes:**
 
 - You **must** run `prisma generate` yourself (typically in a prebuild script)
-- Your schema **must** include the correct `binaryTargets` for deployment
-- The extension sets `PRISMA_QUERY_ENGINE_LIBRARY` and `PRISMA_QUERY_ENGINE_SCHEMA_ENGINE` environment variables
+- Your schema **must** include the correct `binaryTargets` for deployment to the trigger.dev cloud. The binary target is `debian-openssl-3.0.x`.
+- The extension sets `PRISMA_QUERY_ENGINE_LIBRARY` and `PRISMA_QUERY_ENGINE_SCHEMA_ENGINE` environment variables to the correct paths for the binary targets.
 
 **package.json Example:**
 
@@ -178,7 +191,7 @@ prismaExtension({
 - Designed for the new Prisma architecture
 - Zero configuration required
 - Automatically marks `@prisma/client` as external
-- Works with Prisma 7 beta releases
+- Works with Prisma 7 beta releases & Prisma 7 when released
 - You manage client generation (like engine-only mode)
 
 **Schema Configuration (Prisma 6.16+ with engineType):**
@@ -241,7 +254,7 @@ export default defineConfig({
 
 - You **must** run `prisma generate` yourself
 - Requires Prisma 6.16.0+ or Prisma 7 beta
-- The new `prisma-client` provider generates plain TypeScript (no Rust binaries in some configurations)
+- The new `prisma-client` provider generates plain TypeScript (no Rust binaries)
 - Requires database adapters (e.g., `@prisma/adapter-pg` for PostgreSQL)
 
 **Tested Versions:**
@@ -308,6 +321,68 @@ prismaExtension({
 | 6.7+             | Legacy                | Multi-file schema support                    |
 | 6.16+            | Engine-Only or Modern | Modern mode requires `engineType = "client"` |
 | 6.20+ (7.0 beta) | Modern                | Prisma 7 with new architecture               |
+
+---
+
+## Prisma Config File Support (Prisma 6+)
+
+**NEW:** Legacy Mode now supports loading configuration from a `prisma.config.ts` file using the official `@prisma/config` package.
+
+**Use when:** You want to use Prisma's new config file format (Prisma 6+) to centralize your Prisma configuration.
+
+**Benefits:**
+
+- Single source of truth for Prisma configuration
+- Automatic extraction of schema location and migrations path
+- Type-safe configuration with TypeScript
+- Works seamlessly with Prisma 7's config-first approach
+
+**prisma.config.ts:**
+
+```ts
+import { defineConfig, env } from "prisma/config";
+import "dotenv/config";
+
+export default defineConfig({
+  schema: "prisma/schema.prisma",
+  migrations: {
+    path: "prisma/migrations",
+  },
+  datasource: {
+    url: env("DATABASE_URL"),
+    directUrl: env("DATABASE_URL_UNPOOLED"),
+  },
+});
+```
+
+**trigger.config.ts:**
+
+```ts
+import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
+
+prismaExtension({
+  mode: "legacy",
+  configFile: "./prisma.config.ts", // ← Use config file instead of schema
+  migrate: true,
+  directUrlEnvVarName: "DATABASE_URL_UNPOOLED", // For migrations
+});
+```
+
+**What gets extracted:**
+
+- `schema` - The schema file or directory path
+- `migrations.path` - The migrations directory path (if specified)
+
+**Note:** Either `schema` or `configFile` must be specified, but not both.
+
+**When to use which:**
+
+| Use `schema` option          | Use `configFile` option           |
+| ---------------------------- | --------------------------------- |
+| Standard Prisma setup        | Using Prisma 6+ with config files |
+| Single or multi-file schemas | Preparing for Prisma 7            |
+| No `prisma.config.ts` file   | Centralized configuration needed  |
+| Simple setup                 | Want migrations path in config    |
 
 ---
 
@@ -390,11 +465,19 @@ Migrations are supported in **Legacy Mode** only.
 **Extension Configuration:**
 
 ```ts
+// Using schema option
 prismaExtension({
   mode: "legacy",
   schema: "prisma/schema.prisma",
   migrate: true, // ← Run migrations on deployment
   directUrlEnvVarName: "DATABASE_URL_UNPOOLED", // For connection pooling
+});
+
+// Using configFile option
+prismaExtension({
+  mode: "legacy",
+  configFile: "./prisma.config.ts", // ← Migrations path extracted from config
+  migrate: true,
 });
 ```
 
@@ -404,22 +487,34 @@ prismaExtension({
 2. Runs `prisma migrate deploy` before generating the client
 3. Uses the `directUrlEnvVarName` for unpooled connections (required for migrations)
 
+**NEW:** When using `configFile`, the migrations path is automatically extracted from your `prisma.config.ts`:
+
+```ts
+// prisma.config.ts
+export default defineConfig({
+  schema: "prisma/schema.prisma",
+  migrations: {
+    path: "prisma/migrations", // ← Automatically used by the extension
+  },
+});
+```
+
 ---
 
 ## Binary Targets and Deployment
 
 ### Trigger.dev Cloud
 
-The default binary target is `linux-arm64-openssl-3.0.x` for Trigger.dev Cloud deployments.
+The default binary target is `debian-openssl-3.0.x` for Trigger.dev Cloud deployments.
 
 **Legacy Mode:** Handled automatically ✅
 
-**Engine-Only Mode:** Specify in schema
+**Engine-Only Mode:** Specify in schema like so:
 
 ```prisma
 generator client {
   provider      = "prisma-client-js"
-  binaryTargets = ["native", "linux-arm64-openssl-3.0.x"]
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 ```
 
@@ -427,13 +522,13 @@ generator client {
 
 ### Self-Hosted / Local Deployment
 
-For local deployments (e.g., Docker on macOS), you may need a different binary target:
+For local deployments (e.g., Docker on macOS), you may need a different binary target like so:
 
 ```ts
 prismaExtension({
   mode: "engine-only",
   version: "6.19.0",
-  binaryTarget: "darwin-arm64", // For macOS ARM64
+  binaryTarget: "linux-arm64-openssl-3.0.x", // For macOS ARM64
 });
 ```
 
@@ -482,7 +577,21 @@ prismaExtension({
 
 ### "Could not determine @prisma/client version"
 
-**Legacy Mode:** Ensure `@prisma/client` is in your dependencies and used in your code.
+**NEW:** The extension now includes improved version detection that tries multiple strategies:
+
+1. Check if `@prisma/client` is imported in your code (externals)
+2. Use the `version` option if specified
+3. **NEW:** Detect from filesystem by looking for `@prisma/client` or `prisma` in `node_modules`
+
+**Legacy Mode:** The extension will automatically detect the version from your installed packages. If it still fails, specify the version explicitly:
+
+```ts
+prismaExtension({
+  mode: "legacy",
+  schema: "prisma/schema.prisma",
+  version: "6.19.0", // ← Add explicit version
+});
+```
 
 **Engine-Only Mode:** Specify the version explicitly:
 
@@ -515,6 +624,33 @@ prismaExtension({
   typedSql: true, // ← Required for TypedSQL
 });
 ```
+
+### "Config file not found" or Config Loading Errors
+
+**Legacy Mode with configFile:** Ensure the config file path is correct:
+
+```ts
+prismaExtension({
+  mode: "legacy",
+  configFile: "./prisma.config.ts", // Path relative to project root
+  migrate: true,
+});
+```
+
+**Requirements:**
+
+- The config file must exist at the specified path
+- Your project must have the `prisma` package installed (Prisma 6+)
+- The config file must have a default export
+- The config must specify a `schema` path
+
+**Debugging:** Use `--log-level debug` in your `trigger deploy` command to see detailed logs:
+
+```ts
+npx trigger.dev@latest deploy --log-level debug
+```
+
+Then grep for `[PrismaExtension]` in your build logs to see detailed information about config loading, schema resolution, and migrations setup.
 
 ---
 
@@ -625,7 +761,89 @@ prismaExtension({
 
 ---
 
-### Example 3: Custom Output Path (Engine-Only Mode)
+### Example 3: Using Prisma Config File (Legacy Mode)
+
+**NEW:** Use a `prisma.config.ts` file to centralize your Prisma configuration.
+
+**prisma.config.ts:**
+
+```ts
+import { defineConfig, env } from "prisma/config";
+import "dotenv/config";
+
+export default defineConfig({
+  schema: "prisma/schema.prisma",
+  migrations: {
+    path: "prisma/migrations",
+  },
+  datasource: {
+    url: env("DATABASE_URL"),
+    directUrl: env("DATABASE_URL_UNPOOLED"),
+  },
+});
+```
+
+**prisma/schema.prisma:**
+
+```prisma
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["typedSql"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+model User {
+  id        String  @id @default(cuid())
+  email     String  @unique
+  name      String?
+}
+```
+
+**trigger.config.ts:**
+
+```ts
+import { defineConfig } from "@trigger.dev/sdk";
+import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
+
+export default defineConfig({
+  project: process.env.TRIGGER_PROJECT_REF!,
+  build: {
+    extensions: [
+      prismaExtension({
+        mode: "legacy",
+        configFile: "./prisma.config.ts", // ← Load from config file
+        migrate: true,
+        typedSql: true,
+        // schema and migrations path are extracted from prisma.config.ts
+      }),
+    ],
+  },
+});
+```
+
+**src/db.ts:**
+
+```ts
+import { PrismaClient } from "@prisma/client";
+export * as sql from "@prisma/client/sql";
+
+export const db = new PrismaClient({
+  datasources: {
+    db: {
+      url: process.env.DATABASE_URL,
+    },
+  },
+});
+```
+
+---
+
+### Example 4: Custom Output Path (Engine-Only Mode)
 
 **prisma/schema.prisma:**
 
@@ -681,7 +899,7 @@ export const db = new PrismaClient({
 
 ---
 
-### Example 4: Prisma 7 Beta (Modern Mode)
+### Example 5: Prisma 7 Beta (Modern Mode)
 
 **prisma/schema.prisma:**
 
@@ -759,7 +977,8 @@ export const db = new PrismaClient({ adapter });
 ```ts
 type PrismaLegacyModeExtensionOptions = {
   mode: "legacy";
-  schema: string; // Path to schema file or directory
+  schema?: string; // Path to schema file or directory
+  configFile?: string; // Path to prisma.config.ts (alternative to schema)
   migrate?: boolean; // Run migrations during build
   version?: string; // Override detected version
   typedSql?: boolean; // Enable TypedSQL support
@@ -767,6 +986,14 @@ type PrismaLegacyModeExtensionOptions = {
   directUrlEnvVarName?: string; // Custom direct URL env var name
 };
 ```
+
+**Note:** Either `schema` or `configFile` must be specified, but not both.
+
+**Config File Support:**
+
+- When `configFile` is specified, the extension uses `@prisma/config` to load the config
+- Automatically extracts `schema` path and `migrations.path` from the config file
+- Requires Prisma 6+ with config file support
 
 ### Engine-Only Mode Options
 
@@ -799,13 +1026,3 @@ type PrismaEngineModernModeExtensionOptions = {
 - [Trigger.dev Prisma Guide](https://trigger.dev/docs/guides/frameworks/prisma)
 
 ---
-
-## Summary
-
-The new `prismaExtension` provides three modes to support the full spectrum of Prisma usage:
-
-1. **Legacy Mode** - Full-featured mode for Prisma 6 and earlier
-2. **Engine-Only Mode** - Minimal mode for custom setups
-3. **Modern Mode** - Future-ready mode for Prisma 6.16+ and Prisma 7
-
-Choose the mode that best fits your Prisma setup and deployment requirements.
