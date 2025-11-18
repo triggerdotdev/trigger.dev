@@ -396,6 +396,8 @@ export function prismaExtension(options: PrismaExtensionOptions): BuildExtension
       return new PrismaEngineOnlyModeExtension(options);
     case "modern":
       return new PrismaEngineModernModeExtension(options);
+    default:
+      return new PrismaLegacyModeExtension(options);
   }
 }
 
