@@ -16,6 +16,6 @@
   "scripts": {
     "dev": "trigger dev",
     "deploy": "trigger deploy",
-    "generate": "prisma generate"
+    "prisma:generate": "prisma generate"
   }
 }

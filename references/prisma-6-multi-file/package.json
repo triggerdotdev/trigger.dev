@@ -14,7 +14,7 @@
   "scripts": {
     "dev": "trigger dev",
     "deploy": "trigger deploy",
-    "generate": "prisma generate --sql"
+    "prisma:generate": "prisma generate --sql"
   },
   "prisma": {
     "schema": "./prisma"
