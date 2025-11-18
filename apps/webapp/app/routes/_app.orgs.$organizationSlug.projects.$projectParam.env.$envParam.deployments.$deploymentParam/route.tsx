@@ -84,6 +84,7 @@ export default function Page() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isStreaming, setIsStreaming] = useState(true);
   const [streamError, setStreamError] = useState<string | null>(null);
+  const isPending = deployment.status === "PENDING";
 
   useEffect(() => {
     if (logsDisabled) return;
@@ -157,7 +158,7 @@ export default function Page() {
     return () => {
       abortController.abort();
     };
-  }, [s2Logs?.basin, s2Logs?.stream, s2Logs?.accessToken]);
+  }, [s2Logs?.basin, s2Logs?.stream, s2Logs?.accessToken, isPending]);
 
   return (
     <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr] overflow-hidden bg-background-bright">
