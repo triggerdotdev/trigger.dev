@@ -5,6 +5,7 @@ import { prisma } from "~/db.server";
 import {
   authenticateRequest,
   authenticatedEnvironmentForAuthentication,
+  branchNameFromRequest,
 } from "~/services/apiAuth.server";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 
@@ -30,7 +31,8 @@ export async function action({ params, request }: ActionFunctionArgs) {
   const environment = await authenticatedEnvironmentForAuthentication(
     authenticationResult,
     parsedParams.data.projectRef,
-    parsedParams.data.slug
+    parsedParams.data.slug,
+    branchNameFromRequest(request)
   );
 
   // Find the environment variable
@@ -106,7 +108,8 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   const environment = await authenticatedEnvironmentForAuthentication(
     authenticationResult,
     parsedParams.data.projectRef,
-    parsedParams.data.slug
+    parsedParams.data.slug,
+    branchNameFromRequest(request)
   );
 
   // Find the environment variable

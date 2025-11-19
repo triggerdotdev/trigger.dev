@@ -5,6 +5,7 @@ import { env as processEnv } from "~/env.server";
 import {
   authenticatedEnvironmentForAuthentication,
   authenticateRequest,
+  branchNameFromRequest,
 } from "~/services/apiAuth.server";
 
 const ParamsSchema = z.object({
@@ -32,7 +33,8 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   const environment = await authenticatedEnvironmentForAuthentication(
     authenticationResult,
     projectRef,
-    env
+    env,
+    branchNameFromRequest(request)
   );
 
   const result: GetProjectEnvResponse = {

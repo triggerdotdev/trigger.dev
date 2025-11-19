@@ -29,7 +29,7 @@ export function isValidGitBranchName(branch: string): boolean {
   return true;
 }
 
-export function sanitizeBranchName(ref: string): string | null {
+export function sanitizeBranchName(ref: string | undefined): string | null {
   if (!ref) return null;
   if (ref.startsWith("refs/heads/")) return ref.substring("refs/heads/".length);
   if (ref.startsWith("refs/remotes/")) return ref.substring("refs/remotes/".length);
