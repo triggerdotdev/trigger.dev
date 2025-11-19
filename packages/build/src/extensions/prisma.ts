@@ -112,7 +112,12 @@ export class PrismaExtension implements BuildExtension {
 
     context.logger.debug(`PrismaExtension is generating the Prisma client for version ${version}`);
 
-    const usingSchemaFolder = dirname(this._resolvedSchemaPath).endsWith("schema");
+    // Auto-detect schema folder by checking for multiple .prisma files
+    const schemaDir = dirname(this._resolvedSchemaPath);
+    const prismaFilesInDir = await readdir(schemaDir)
+      .then((files) => files.filter((file) => file.endsWith(".prisma")))
+      .catch(() => []);
+    const usingSchemaFolder = prismaFilesInDir.length > 1;
 
     const commands: string[] = [];
 
@@ -155,13 +160,11 @@ export class PrismaExtension implements BuildExtension {
     }
 
     if (usingSchemaFolder) {
-      const schemaDir = dirname(this._resolvedSchemaPath);
-
       prismaDir = dirname(schemaDir);
 
       context.logger.debug(`Using the schema folder: ${schemaDir}`);
 
-      // Find all the files in schemaDir that end with .prisma (excluding the schema.prisma file)
+      // Find all the files in schemaDir that end with .prisma
       const prismaFiles = await readdir(schemaDir).then((files) =>
         files.filter((file) => file.endsWith(".prisma"))
       );
@@ -183,10 +186,14 @@ export class PrismaExtension implements BuildExtension {
         await cp(source, destination);
       }
 
+      // Prisma 6.6+ requires --schema flag for schema folders
+      const [major, minor] = version.split(".").map(Number);
+      const requiresSchemaFlag = major > 6 || (major === 6 && minor >= 6);
+
       commands.push(
-        `${binaryForRuntime(
-          manifest.runtime
-        )} node_modules/prisma/build/index.js generate ${generatorFlags.join(" ")}` // Don't add the --schema flag or this will fail
+        `${binaryForRuntime(manifest.runtime)} node_modules/prisma/build/index.js generate${
+          requiresSchemaFlag ? " --schema=./prisma/schema" : ""
+        } ${generatorFlags.join(" ")}`
       );
     } else {
       prismaDir = dirname(this._resolvedSchemaPath);
