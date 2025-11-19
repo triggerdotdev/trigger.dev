@@ -239,6 +239,7 @@ async function _workerBuildCommand(dir: string, options: WorkersBuildCommandOpti
     userId: authorization.userId,
     selfHosted: options.local,
     type: "UNMANAGED",
+    isNativeBuild: false,
   });
 
   if (!deploymentResponse.success) {

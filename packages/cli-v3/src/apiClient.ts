@@ -1,5 +1,7 @@
 import {
   CreateAuthorizationCodeResponseSchema,
+  CreateArtifactRequestBody,
+  CreateArtifactResponseBody,
   CreateBackgroundWorkerRequestBody,
   CreateBackgroundWorkerResponse,
   DevConfigResponseBody,
@@ -358,6 +360,18 @@ export class CliApiClient {
         body: "{}",
       }
     );
+  }
+
+  async createArtifact(body: CreateArtifactRequestBody) {
+    if (!this.accessToken) {
+      throw new Error("createArtifact: No access token");
+    }
+
+    return wrapZodFetch(CreateArtifactResponseBody, `${this.apiURL}/api/v1/artifacts`, {
+      method: "POST",
+      headers: this.getHeaders(),
+      body: JSON.stringify(body),
+    });
   }
 
   async initializeDeployment(body: InitializeDeploymentRequestBody) {

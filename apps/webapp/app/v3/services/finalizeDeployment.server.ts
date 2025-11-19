@@ -1,5 +1,5 @@
-import { FinalizeDeploymentRequestBody } from "@trigger.dev/core/v3/schemas";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import type { FinalizeDeploymentRequestBody } from "@trigger.dev/core/v3/schemas";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { socketIo } from "../handleSocketIo.server";
 import { updateEnvConcurrencyLimits } from "../runQueue.server";
@@ -9,6 +9,7 @@ import { ChangeCurrentDeploymentService } from "./changeCurrentDeployment.server
 import { projectPubSub } from "./projectPubSub.server";
 import { FailDeploymentService } from "./failDeployment.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
+import { DeploymentService } from "./deployment.server";
 import { engine } from "../runEngine.server";
 import { tryCatch } from "@trigger.dev/core";
 
@@ -76,6 +77,20 @@ export class FinalizeDeploymentService extends BaseService {
         imageReference: imageDigest ? `${deployment.imageReference}@${imageDigest}` : undefined,
       },
     });
+
+    const deploymentService = new DeploymentService();
+    await deploymentService
+      .appendToEventLog(authenticatedEnv.project, finalizedDeployment, [
+        {
+          type: "finalized",
+          data: {
+            result: "succeeded",
+          },
+        },
+      ])
+      .orTee((error) => {
+        logger.error("Failed to append finalized deployment event to event log", { error });
+      });
 
     await TimeoutDeploymentService.dequeue(deployment.id, this._prisma);
 

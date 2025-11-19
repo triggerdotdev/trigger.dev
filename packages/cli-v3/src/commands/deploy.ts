@@ -1,21 +1,29 @@
-import { intro, log, outro } from "@clack/prompts";
+import { intro, log, outro, taskLog } from "@clack/prompts";
 import { getBranch, prepareDeploymentError, tryCatch } from "@trigger.dev/core/v3";
 import {
   InitializeDeploymentRequestBody,
   InitializeDeploymentResponseBody,
+  DeploymentEvent,
+  GitMeta,
+  DeploymentFinalizedEvent,
 } from "@trigger.dev/core/v3/schemas";
 import { Command, Option as CommandOption } from "commander";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { isCI } from "std-env";
 import { x } from "tinyexec";
 import { z } from "zod";
+import chalk from "chalk";
 import { CliApiClient } from "../apiClient.js";
 import { buildWorker } from "../build/buildWorker.js";
 import { resolveAlwaysExternal } from "../build/externals.js";
+import { createContextArchive, getArchiveSize } from "../deploy/archiveContext.js";
+import { S2 } from "@s2-dev/streamstore";
+import { mkdir, readFile, unlink } from "node:fs/promises";
 import {
   CommonCommandOptions,
   commonOptions,
   handleTelemetry,
+  OutroCommandError,
   SkipLoggingError,
   wrapCommandAction,
 } from "../cli/common.js";
@@ -30,6 +38,8 @@ import {
 } from "../deploy/logs.js";
 import {
   chalkError,
+  chalkGrey,
+  chalkWarning,
   cliLink,
   isLinksSupported,
   prettyError,
@@ -68,6 +78,7 @@ const DeployCommandOptions = CommonCommandOptions.extend({
   network: z.enum(["default", "none", "host"]).optional(),
   push: z.boolean().optional(),
   builder: z.string().default("trigger"),
+  nativeBuildServer: z.boolean().default(false),
 });
 
 type DeployCommandOptions = z.infer<typeof DeployCommandOptions>;
@@ -159,6 +170,12 @@ export function configureDeployCommand(program: Command) {
           "--builder <builder>",
           "The builder to use when building locally"
         ).hideHelp()
+      )
+      .addOption(
+        new CommandOption(
+          "--native-build-server",
+          "Use the native build server for building the image"
+        )
       )
       .action(async (path, options) => {
         await handleTelemetry(async () => {
@@ -280,6 +297,18 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     throw new Error("Failed to get project client");
   }
 
+  if (options.nativeBuildServer) {
+    await handleNativeBuildServerDeploy({
+      apiClient: projectClient.client,
+      config: resolvedConfig,
+      dashboardUrl: authorization.dashboardUrl,
+      options,
+      userId: authorization.auth.tokenType === "personal" ? authorization.userId : undefined,
+      gitMeta,
+    });
+    return;
+  }
+
   const serverEnvVars = await projectClient.client.getEnvironmentVariables(resolvedConfig.project);
   loadDotEnvVars(resolvedConfig.workingDir, options.envFile);
 
@@ -334,6 +363,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
       gitMeta,
       type: features.run_engine_v2 ? "MANAGED" : "V1",
       runtime: buildManifest.runtime,
+      isNativeBuild: false,
     },
     envVars.TRIGGER_EXISTING_DEPLOYMENT_ID
   );
@@ -827,6 +857,382 @@ async function initializeOrAttachDeployment(
   return newDeploymentOrError.data;
 }
 
+async function handleNativeBuildServerDeploy({
+  apiClient,
+  options,
+  config,
+  dashboardUrl,
+  userId,
+  gitMeta,
+}: {
+  apiClient: CliApiClient;
+  config: Awaited<ReturnType<typeof loadConfig>>;
+  dashboardUrl: string;
+  options: DeployCommandOptions;
+  userId?: string;
+  gitMeta?: GitMeta;
+}) {
+  const tmpDir = join(config.workingDir, ".trigger", "tmp");
+  await mkdir(tmpDir, { recursive: true });
+
+  const archivePath = join(tmpDir, `deploy-${Date.now()}.tar.gz`);
+
+  const $deploymentSpinner = spinner();
+  $deploymentSpinner.start("Preparing deployment files");
+
+  await createContextArchive(config.workspaceDir, archivePath);
+
+  const archiveSize = await getArchiveSize(archivePath);
+  const sizeMB = (archiveSize / 1024 / 1024).toFixed(2);
+  $deploymentSpinner.message(`Deployment files ready (${sizeMB} MB)`);
+
+  const artifactResult = await apiClient.createArtifact({
+    type: "deployment_context",
+    contentType: "application/gzip",
+    contentLength: archiveSize,
+  });
+
+  if (!artifactResult.success) {
+    $deploymentSpinner.stop("Failed to upload deployment files");
+    throw new Error(`Failed to create deployment artifact: ${artifactResult.error}`);
+  }
+
+  const { artifactKey, uploadUrl, uploadFields } = artifactResult.data;
+
+  logger.debug("Artifact created", { artifactKey });
+
+  $deploymentSpinner.message("Uploading deployment files");
+
+  const [readError, fileBuffer] = await tryCatch(readFile(archivePath));
+
+  if (readError) {
+    $deploymentSpinner.stop("Failed to read deployment archive");
+    throw new Error(`Failed to read archive: ${readError.message}`);
+  }
+
+  const formData = new FormData();
+
+  for (const [key, value] of Object.entries(uploadFields)) {
+    formData.append(key, value);
+  }
+
+  const blob = new Blob([new Uint8Array(fileBuffer)], { type: "application/gzip" });
+  formData.append("file", blob, "deployment.tar.gz");
+
+  const [uploadError, uploadResponse] = await tryCatch(
+    fetch(uploadUrl, {
+      method: "POST",
+      body: formData,
+    })
+  );
+
+  if (uploadError || !uploadResponse?.ok) {
+    $deploymentSpinner.stop("Failed to upload deployment files");
+    throw new Error(
+      `Failed to upload archive: ${uploadError?.message} ${uploadResponse?.status} ${uploadResponse?.statusText}`
+    );
+  }
+
+  $deploymentSpinner.stop("Deployment files uploaded");
+
+  const [unlinkError] = await tryCatch(unlink(archivePath));
+  if (unlinkError) {
+    logger.debug("Failed to delete deployment artifact file", { archivePath, error: unlinkError });
+  }
+
+  const initializeDeploymentResult = await apiClient.initializeDeployment({
+    contentHash: "-",
+    userId,
+    gitMeta,
+    type: config.features.run_engine_v2 ? "MANAGED" : "V1",
+    runtime: config.runtime,
+    isNativeBuild: true,
+    artifactKey,
+    skipPromotion: options.skipPromotion,
+  });
+
+  if (!initializeDeploymentResult.success) {
+    throw new Error(`Failed to initialize deployment: ${initializeDeploymentResult.error}`);
+  }
+
+  const deployment = initializeDeploymentResult.data;
+
+  const rawDeploymentLink = `${dashboardUrl}/projects/v3/${config.project}/deployments/${deployment.shortCode}`;
+  const rawTestLink = `${dashboardUrl}/projects/v3/${config.project}/test?environment=${
+    options.env === "prod" ? "prod" : "stg"
+  }`;
+
+  setGithubActionsOutputAndEnvVars({
+    envVars: {
+      TRIGGER_DEPLOYMENT_VERSION: deployment.version,
+      TRIGGER_VERSION: deployment.version,
+      TRIGGER_DEPLOYMENT_SHORT_CODE: deployment.shortCode,
+      TRIGGER_DEPLOYMENT_URL: rawDeploymentLink,
+      TRIGGER_TEST_URL: rawTestLink,
+    },
+    outputs: {
+      deploymentVersion: deployment.version,
+      workerVersion: deployment.version,
+      deploymentShortCode: deployment.shortCode,
+      deploymentUrl: rawDeploymentLink,
+      testUrl: rawTestLink,
+      needsPromotion: options.skipPromotion ? "true" : "false",
+    },
+  });
+
+  const { eventStream } = deployment;
+
+  if (!eventStream) {
+    log.warn(`Failed streaming build logs, open the deployment in the dashboard to view the logs`);
+
+    if (!isLinksSupported) {
+      log.info(`View deployment: ${rawDeploymentLink}`);
+    }
+
+    outro(
+      `Version ${deployment.version} is being deployed ${
+        isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
+      }`
+    );
+
+    process.exit(0);
+  }
+
+  const exposedDeploymentLink = isLinksSupported
+    ? cliLink(chalk.bold(rawDeploymentLink), rawDeploymentLink)
+    : chalk.bold(rawDeploymentLink);
+  log.info(`View deployment: ${exposedDeploymentLink}`);
+
+  const $queuedSpinner = spinner({
+    cancelMessage:
+      "Disconnecting from the build server log stream. If you intended to cancel the deployment instead, you can do that in the dashboard.",
+  });
+  $queuedSpinner.start("Build queued");
+
+  const abortController = new AbortController();
+  let deploymentLog: ReturnType<typeof taskLog> | undefined;
+
+  const s2 = new S2({ accessToken: eventStream.s2.accessToken });
+  const basin = s2.basin(eventStream.s2.basin);
+  const stream = basin.stream(eventStream.s2.stream);
+
+  const [readSessionError, readSession] = await tryCatch(
+    stream.readSession(
+      {
+        seq_num: 0,
+        wait: 60 * 20, // 20 minutes
+        as: "bytes",
+      },
+      { signal: abortController.signal }
+    )
+  );
+
+  if (readSessionError) {
+    $queuedSpinner.stop("Failed to query build progress");
+    log.warn(`Failed streaming build logs, open the deployment in the dashboard to view the logs`);
+
+    outro(
+      `Version ${deployment.version} is being deployed ${
+        isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
+      }`
+    );
+
+    return;
+  }
+
+  const decoder = new TextDecoder();
+  let finalDeploymentEvent: DeploymentFinalizedEvent["data"] | undefined;
+  let queuedSpinnerStopped = false;
+
+  for await (const record of readSession) {
+    const decoded = decoder.decode(record.body);
+    const result = DeploymentEventFromString.safeParse(decoded);
+    if (!result.success) {
+      logger.debug("Failed to parse deployment event, skipping", {
+        error: result.error,
+        record: decoded,
+      });
+      continue;
+    }
+
+    const event = result.data;
+
+    switch (event.type) {
+      case "log": {
+        if (record.seq_num === 0) {
+          $queuedSpinner.stop("Build started");
+          queuedSpinnerStopped = true;
+          deploymentLog = taskLog({
+            title: "Deployment in progress...",
+            retainLog: true,
+            limit: isCI ? undefined : 20,
+          });
+        }
+
+        const formattedTimestamp = chalkGrey(
+          new Date(record.timestamp).toLocaleTimeString("en-US", {
+            hour12: false,
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+            fractionalSecondDigits: 3,
+          })
+        );
+
+        const { level, message } = event.data;
+        const formattedMessage =
+          level === "error"
+            ? chalk.bold.hex("#B91C1C")(message)
+            : level === "warn"
+            ? chalkWarning(message)
+            : level === "debug"
+            ? chalkGrey(message)
+            : message;
+
+        deploymentLog?.message(`${formattedTimestamp} ${formattedMessage}`);
+        break;
+      }
+      case "finalized": {
+        finalDeploymentEvent = event.data;
+        abortController.abort(); // stop the stream
+        break;
+      }
+      default: {
+        event satisfies never;
+        logger.debug("Unknown deployment event, skipping", { event });
+        continue;
+      }
+    }
+  }
+
+  if (!queuedSpinnerStopped && !finalDeploymentEvent) {
+    // unlikely that it happens in practice, only in rare corner cases
+    // the timeout would kick in earlier if the build server fails to dequeue the build
+
+    $queuedSpinner.stop("Log stream stopped");
+
+    log.error("Failed dequeueing build, please try again shortly");
+
+    throw new OutroCommandError(
+      `Version ${deployment.version} ${
+        isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
+      }`
+    );
+  }
+
+  if (!finalDeploymentEvent) {
+    deploymentLog?.error(
+      "Stopped receiving updates from the build server, please check the deployment status in the dashboard"
+    );
+
+    if (!isLinksSupported) {
+      log.info(`View deployment: ${rawDeploymentLink}`);
+    }
+
+    throw new OutroCommandError(
+      `Version ${deployment.version} ${
+        isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
+      }`
+    );
+  }
+
+  switch (finalDeploymentEvent.result) {
+    case "succeeded": {
+      queuedSpinnerStopped
+        ? deploymentLog?.success("Deployment completed successfully")
+        : $queuedSpinner.stop("Deployment completed successfully");
+
+      if (finalDeploymentEvent.message) {
+        log.success(finalDeploymentEvent.message);
+      }
+
+      if (!isLinksSupported) {
+        log.info(`Test tasks: ${rawTestLink}`);
+      }
+
+      outro(
+        `Version ${deployment.version} was deployed ${
+          isLinksSupported
+            ? `| ${cliLink("Test tasks", rawTestLink)} | ${cliLink(
+                "View deployment",
+                rawDeploymentLink
+              )}`
+            : ""
+        }`
+      );
+      process.exit(0);
+    }
+    case "failed": {
+      queuedSpinnerStopped
+        ? deploymentLog?.error("Deployment failed")
+        : $queuedSpinner.stop("Deployment failed");
+
+      if (finalDeploymentEvent.message) {
+        log.error(chalk.bold(chalkError(finalDeploymentEvent.message)));
+      }
+      throw new OutroCommandError(
+        `Version ${deployment.version} deployment failed ${
+          isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
+        }`
+      );
+    }
+    case "timed_out": {
+      queuedSpinnerStopped
+        ? deploymentLog?.error("Deployment timed out")
+        : $queuedSpinner.stop("Deployment timed out");
+
+      if (finalDeploymentEvent.message) {
+        log.error(chalk.bold(chalkError(finalDeploymentEvent.message)));
+      }
+      throw new OutroCommandError(
+        `Version ${deployment.version} deployment timed out ${
+          isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
+        }`
+      );
+    }
+    case "canceled": {
+      queuedSpinnerStopped
+        ? deploymentLog?.error("Deployment was canceled")
+        : $queuedSpinner.stop("Deployment was canceled");
+
+      if (finalDeploymentEvent.message) {
+        log.error(chalk.bold(chalkError(finalDeploymentEvent.message)));
+      }
+      throw new OutroCommandError(
+        `Version ${deployment.version} deployment canceled ${
+          isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
+        }`
+      );
+    }
+    default: {
+      // This case is only relevant in case we extend the enum in the future.
+      // New enum values will not be treated as errors in older cli versions.
+      queuedSpinnerStopped
+        ? deploymentLog?.success("Log stream finished")
+        : $queuedSpinner.stop("Log stream finished");
+      if (finalDeploymentEvent.message) {
+        log.message(finalDeploymentEvent.message);
+      }
+
+      if (!isLinksSupported) {
+        log.info(`Test tasks: ${rawTestLink}`);
+      }
+
+      outro(
+        `Version ${deployment.version} ${
+          isLinksSupported
+            ? `| ${cliLink("Test tasks", rawTestLink)} | ${cliLink(
+                "View deployment",
+                rawDeploymentLink
+              )}`
+            : ""
+        }`
+      );
+      process.exit(0);
+    }
+  }
+}
+
 export function verifyDirectory(dir: string, projectPath: string) {
   if (dir !== "." && !isDirectory(projectPath)) {
     if (dir === "staging" || dir === "prod" || dir === "preview") {
@@ -844,3 +1250,15 @@ export function verifyDirectory(dir: string, projectPath: string) {
     throw new Error(`Directory "${dir}" not found at ${projectPath}`);
   }
 }
+
+const DeploymentEventFromString = z
+  .string()
+  .transform((s, ctx) => {
+    try {
+      return JSON.parse(s);
+    } catch {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Invalid JSON" });
+      return z.NEVER;
+    }
+  })
+  .pipe(DeploymentEvent);
