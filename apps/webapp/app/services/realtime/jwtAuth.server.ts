@@ -39,8 +39,6 @@ export async function validatePublicJwtKey(token: string): Promise<ValidatePubli
     environment.parentEnvironment?.apiKey ?? environment.apiKey
   );
 
-  logger.debug("validateJWT result", { result });
-
   if (!result.ok) {
     switch (result.code) {
       case "ERR_JWT_EXPIRED": {
