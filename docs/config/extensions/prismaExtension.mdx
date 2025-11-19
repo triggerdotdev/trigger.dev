@@ -271,7 +271,7 @@ export default defineConfig({
 
 **Important notes:**
 
-- You **must** run `prisma generate` yourself
+- You **must** run `prisma generate` yourself.
 - Requires Prisma 6.16.0+ or Prisma 7 beta
 - The new `prisma-client` provider generates plain TypeScript (no Rust binaries)
 - Requires database adapters (e.g., `@prisma/adapter-pg` for PostgreSQL)
@@ -304,17 +304,6 @@ prismaExtension({
 });
 ```
 
-### From managing your own Prisma setup
-
-If you previously handled Prisma generation yourself and just needed engine binaries, use engine-only mode:
-
-```ts
-prismaExtension({
-  mode: "engine-only",
-  version: "6.19.0", // Match your @prisma/client version
-});
-```
-
 ### Preparing for Prisma 7
 
 If you want to adopt the new Prisma architecture, use modern mode:
@@ -328,6 +317,30 @@ prismaExtension({
   mode: "modern",
 });
 ```
+
+### Manage your own prisma generate step
+
+When using `modern` and `engine-only` modes, you'll need to ensure that you run `prisma generate` yourself before deploying your project.
+
+#### Github Actions
+
+If you are deploying your project using GitHub Actions, you can add a step to your workflow to run `prisma generate` before deploying your project, for example:
+
+```yaml
+steps:
+  - name: Generate Prisma client
+    run: npx prisma@6.19.0 generate
+  - name: Deploy Trigger.dev
+    run: npx trigger.dev@4.1.1 deploy
+    env:
+      TRIGGER_ACCESS_TOKEN: ${{ secrets.TRIGGER_ACCESS_TOKEN }}
+```
+
+#### Trigger.dev Github integration
+
+If you are using the [Trigger.dev Github integration](/github-integration), you can configure a pre-build command to run `prisma generate` before deploying your project. Navigate to your project's settings page and configure the pre-build command to run `prisma generate`, for example:
+
+![Pre-build command](/images/pre-build-command-prisma-generate.png)
 
 ---
 
