@@ -236,8 +236,6 @@ async function authenticateApiKeyWithFailure(
     case "PUBLIC_JWT": {
       const validationResults = await validatePublicJwtKey(result.apiKey);
 
-      logger.debug("validatePublicJwtKey", { validationResults });
-
       if (!validationResults.ok) {
         return validationResults;
       }

@@ -103,18 +103,6 @@ const { action, loader } = createActionApiRoute(
 
       const oneTimeUseToken = await getOneTimeUseToken(authentication);
 
-      logger.debug("Triggering task", {
-        taskId: params.taskId,
-        idempotencyKey,
-        idempotencyKeyTTL,
-        triggerVersion,
-        headers,
-        options: body.options,
-        isFromWorker,
-        traceContext,
-        realtimeStreamsVersion,
-      });
-
       const idempotencyKeyExpiresAt = resolveIdempotencyKeyTTL(idempotencyKeyTTL);
 
       const result = await service.call(
@@ -142,11 +130,6 @@ const { action, loader } = createActionApiRoute(
       await saveRequestIdempotency(requestIdempotencyKey, "trigger", result.run.id);
 
       const $responseHeaders = await responseHeaders(result.run, authentication);
-
-      logger.debug("responseHeaders authentication", {
-        authentication,
-        responseHeaders: $responseHeaders,
-      });
 
       return json(
         {
