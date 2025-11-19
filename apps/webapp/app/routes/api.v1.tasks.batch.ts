@@ -17,6 +17,7 @@ import {
 import { OutOfEntitlementError } from "~/v3/services/triggerTask.server";
 import { HeadersSchema } from "./api.v1.tasks.$taskId.trigger";
 import { determineRealtimeStreamsVersion } from "~/services/realtime/v1StreamsGlobal.server";
+import { extractJwtSigningSecretKey } from "~/services/realtime/jwtAuth.server";
 
 const { action, loader } = createActionApiRoute(
   {
@@ -163,7 +164,7 @@ async function responseHeaders(
     };
 
     const jwt = await generateJWT({
-      secretKey: environment.apiKey,
+      secretKey: extractJwtSigningSecretKey(environment),
       payload: claims,
       expirationTime: "1h",
     });
