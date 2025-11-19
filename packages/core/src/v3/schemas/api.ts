@@ -414,6 +414,23 @@ export const UpsertBranchResponseBody = z.object({
 
 export type UpsertBranchResponseBody = z.infer<typeof UpsertBranchResponseBody>;
 
+export const CreateArtifactRequestBody = z.object({
+  type: z.enum(["deployment_context"]).default("deployment_context"),
+  contentType: z.string().default("application/gzip"),
+  contentLength: z.number().optional(),
+});
+
+export type CreateArtifactRequestBody = z.infer<typeof CreateArtifactRequestBody>;
+
+export const CreateArtifactResponseBody = z.object({
+  artifactKey: z.string(),
+  uploadUrl: z.string(),
+  uploadFields: z.record(z.string()),
+  expiresAt: z.string().datetime(),
+});
+
+export type CreateArtifactResponseBody = z.infer<typeof CreateArtifactResponseBody>;
+
 export const InitializeDeploymentResponseBody = z.object({
   id: z.string(),
   contentHash: z.string(),
@@ -422,20 +439,52 @@ export const InitializeDeploymentResponseBody = z.object({
   imageTag: z.string(),
   imagePlatform: z.string(),
   externalBuildData: ExternalBuildData.optional().nullable(),
+  eventStream: z
+    .object({
+      s2: z.object({
+        basin: z.string(),
+        stream: z.string(),
+        accessToken: z.string(),
+      }),
+    })
+    .optional(),
 });
 
 export type InitializeDeploymentResponseBody = z.infer<typeof InitializeDeploymentResponseBody>;
 
-export const InitializeDeploymentRequestBody = z.object({
-  contentHash: z.string(),
-  userId: z.string().optional(),
-  /** @deprecated This is now determined by the webapp. This is only used to warn users with old CLI versions. */
-  selfHosted: z.boolean().optional(),
-  gitMeta: GitMeta.optional(),
-  type: z.enum(["MANAGED", "UNMANAGED", "V1"]).optional(),
-  runtime: z.string().optional(),
-  initialStatus: z.enum(["PENDING", "BUILDING"]).optional(),
-});
+export const InitializeDeploymentRequestBody = z
+  .object({
+    contentHash: z.string(),
+    userId: z.string().optional(),
+    /** @deprecated This is now determined by the webapp. This is only used to warn users with old CLI versions. */
+    selfHosted: z.boolean().optional(),
+    gitMeta: GitMeta.optional(),
+    type: z.enum(["MANAGED", "UNMANAGED", "V1"]).optional(),
+    runtime: z.string().optional(),
+    initialStatus: z.enum(["PENDING", "BUILDING"]).optional(),
+  })
+  .and(
+    z.preprocess(
+      (val) => {
+        const obj = val as any;
+        if (!obj || !obj.isNativeBuild) {
+          return { ...obj, isNativeBuild: false };
+        }
+        return obj;
+      },
+      z.discriminatedUnion("isNativeBuild", [
+        z.object({
+          isNativeBuild: z.literal(true),
+          skipPromotion: z.boolean(),
+          artifactKey: z.string(),
+          configFilePath: z.string().optional(),
+        }),
+        z.object({
+          isNativeBuild: z.literal(false),
+        }),
+      ])
+    )
+  );
 
 export type InitializeDeploymentRequestBody = z.infer<typeof InitializeDeploymentRequestBody>;
 
@@ -529,6 +578,33 @@ export const GetLatestDeploymentResponseBody = GetDeploymentResponseBody.omit({
   worker: true,
 });
 export type GetLatestDeploymentResponseBody = z.infer<typeof GetLatestDeploymentResponseBody>;
+
+export const DeploymentLogEvent = z.object({
+  type: z.literal("log"),
+  data: z.object({
+    level: z.enum(["debug", "info", "warn", "error"]).optional().default("info"),
+    message: z.string(),
+  }),
+});
+
+const anyString = z.custom<string & {}>((v) => typeof v === "string");
+
+export const DeploymentFinalizedEvent = z.object({
+  type: z.literal("finalized"),
+  data: z.object({
+    result: z.enum(["succeeded", "failed", "timed_out", "canceled"]).or(anyString),
+    message: z.string().optional(),
+  }),
+});
+
+export const DeploymentEvent = z.discriminatedUnion("type", [
+  DeploymentLogEvent,
+  DeploymentFinalizedEvent,
+]);
+
+export type DeploymentEvent = z.infer<typeof DeploymentEvent>;
+export type DeploymentLogEvent = z.infer<typeof DeploymentLogEvent>;
+export type DeploymentFinalizedEvent = z.infer<typeof DeploymentFinalizedEvent>;
 
 export const CreateUploadPayloadUrlResponseBody = z.object({
   presignedUrl: z.string(),

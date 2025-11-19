@@ -37,7 +37,7 @@ function truncateMessage(msg: string, maxLength?: number): string {
   return truncated + "...";
 }
 
-const wrappedClackSpinner = () => {
+const wrappedClackSpinner = (options: { cancelMessage?: string }) => {
   let currentMessage = "";
   let isActive = false;
 
@@ -47,7 +47,7 @@ const wrappedClackSpinner = () => {
     }
   };
 
-  const spinner = clackSpinner();
+  const spinner = clackSpinner(options);
 
   return {
     start: (msg?: string): void => {
@@ -100,4 +100,5 @@ const ballmerSpinner = () => ({
 
 // This will become unecessary with the next clack release, the bug was fixed here:
 // https://github.com/natemoo-re/clack/pull/182
-export const spinner = () => (isWindows ? ballmerSpinner() : wrappedClackSpinner());
+export const spinner = (options: { cancelMessage?: string } = {}) =>
+  isWindows ? ballmerSpinner() : wrappedClackSpinner(options);

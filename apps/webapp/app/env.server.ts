@@ -345,6 +345,12 @@ const EnvironmentSchema = z
     OBJECT_STORE_SECRET_ACCESS_KEY: z.string().optional(),
     OBJECT_STORE_REGION: z.string().optional(),
     OBJECT_STORE_SERVICE: z.string().default("s3"),
+
+    ARTIFACTS_OBJECT_STORE_BUCKET: z.string(),
+    ARTIFACTS_OBJECT_STORE_BASE_URL: z.string().optional(),
+    ARTIFACTS_OBJECT_STORE_ACCESS_KEY_ID: z.string().optional(),
+    ARTIFACTS_OBJECT_STORE_SECRET_ACCESS_KEY: z.string().optional(),
+    ARTIFACTS_OBJECT_STORE_REGION: z.string().optional(),
     EVENTS_BATCH_SIZE: z.coerce.number().int().default(100),
     EVENTS_BATCH_INTERVAL: z.coerce.number().int().default(1000),
     EVENTS_DEFAULT_LOG_RETENTION: z.coerce.number().int().default(7),

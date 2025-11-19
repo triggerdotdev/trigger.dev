@@ -37,7 +37,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const service = new InitializeDeploymentService();
 
   try {
-    const { deployment, imageRef } = await service.call(authenticatedEnv, body.data);
+    const { deployment, imageRef, eventStream } = await service.call(authenticatedEnv, body.data);
 
     const responseBody: InitializeDeploymentResponseBody = {
       id: deployment.friendlyId,
@@ -48,6 +48,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         deployment.externalBuildData as InitializeDeploymentResponseBody["externalBuildData"],
       imageTag: imageRef,
       imagePlatform: deployment.imagePlatform,
+      eventStream,
     };
 
     return json(responseBody, { status: 200 });

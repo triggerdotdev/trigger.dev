@@ -81,7 +81,7 @@
     "inspector": "npx @modelcontextprotocol/inspector dist/esm/index.js mcp --log-file .mcp.log --api-url http://localhost:3030"
   },
   "dependencies": {
-    "@clack/prompts": "0.11.0",
+    "@clack/prompts": "1.0.0-alpha.6",
     "@depot/cli": "0.0.1-cli.2.80.0",
     "@modelcontextprotocol/sdk": "^1.17.0",
     "@opentelemetry/api": "1.9.0",
@@ -95,6 +95,7 @@
     "@trigger.dev/build": "workspace:4.1.2",
     "@trigger.dev/core": "workspace:4.1.2",
     "@trigger.dev/schema-to-json": "workspace:4.1.2",
+    "@s2-dev/streamstore": "^0.17.6",
     "ansi-escapes": "^7.0.0",
     "braces": "^3.0.3",
     "c12": "^1.11.1",
@@ -112,6 +113,7 @@
     "git-last-commit": "^1.0.1",
     "gradient-string": "^2.0.2",
     "has-flag": "^5.0.1",
+    "ignore": "^7.0.5",
     "import-in-the-middle": "1.11.0",
     "import-meta-resolve": "^4.1.0",
     "ini": "^5.0.0",
@@ -135,6 +137,7 @@
     "std-env": "^3.7.0",
     "strip-ansi": "^7.1.0",
     "supports-color": "^10.0.0",
+    "tar": "^7.4.3",
     "tiny-invariant": "^1.2.0",
     "tinyexec": "^0.3.1",
     "tinyglobby": "^0.2.10",
