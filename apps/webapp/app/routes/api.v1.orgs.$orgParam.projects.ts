@@ -4,6 +4,7 @@ import {
   CreateProjectRequestBody,
   GetProjectResponseBody,
   GetProjectsResponseBody,
+  tryCatch,
 } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { prisma } from "~/db.server";
@@ -99,12 +100,18 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const project = await createProject({
-    organizationSlug: organization.slug,
-    name: parsedBody.data.name,
-    userId: authenticationResult.userId,
-    version: "v3",
-  });
+  const [error, project] = await tryCatch(
+    createProject({
+      organizationSlug: organization.slug,
+      name: parsedBody.data.name,
+      userId: authenticationResult.userId,
+      version: "v3",
+    })
+  );
+
+  if (error) {
+    return json({ error: error.message }, { status: 400 });
+  }
 
   const result: GetProjectResponseBody = {
     id: project.id,

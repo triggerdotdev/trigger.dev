@@ -204,6 +204,8 @@ model Organization {
 
   featureFlags Json?
 
+  maximumProjectCount Int @default(10)
+
   projects                 Project[]
   members                  OrgMember[]
   invites                  OrgMemberInvite[]

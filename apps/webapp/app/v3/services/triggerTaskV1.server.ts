@@ -476,8 +476,7 @@ export class TriggerTaskServiceV1 extends BaseService {
                       ? Math.max(
                           Math.min(
                             body.options.queue.concurrencyLimit,
-                            environment.maximumConcurrencyLimit,
-                            environment.organization.maximumConcurrencyLimit
+                            environment.maximumConcurrencyLimit
                           ),
                           0
                         )
