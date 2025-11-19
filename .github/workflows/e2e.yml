@@ -36,7 +36,7 @@ jobs:
       - name: ⎔ Setup node
         uses: buildjet/setup-node@v4
         with:
-          node-version: 20.11.1
+          node-version: 20.19.0
 
       - name: 📥 Download deps
         run: pnpm install --frozen-lockfile --filter trigger.dev...
