@@ -495,7 +495,9 @@ export async function authenticatedEnvironmentForAuthentication(
         throw json({ error: "Project not found" }, { status: 404 });
       }
 
-      if (!branch) {
+      const sanitizedBranch = sanitizeBranchName(branch);
+
+      if (!sanitizedBranch) {
         const environment = await prisma.runtimeEnvironment.findFirst({
           where: {
             projectId: project.id,
@@ -524,8 +526,8 @@ export async function authenticatedEnvironmentForAuthentication(
       const environment = await prisma.runtimeEnvironment.findFirst({
         where: {
           projectId: project.id,
-          slug: slug,
-          branchName: sanitizeBranchName(branch),
+          type: "PREVIEW",
+          branchName: sanitizedBranch,
           archivedAt: null,
         },
         include: {
@@ -572,7 +574,9 @@ export async function authenticatedEnvironmentForAuthentication(
         throw json({ error: "Project not found" }, { status: 404 });
       }
 
-      if (!branch) {
+      const sanitizedBranch = sanitizeBranchName(branch);
+
+      if (!sanitizedBranch) {
         const environment = await prisma.runtimeEnvironment.findFirst({
           where: {
             projectId: project.id,
@@ -594,8 +598,8 @@ export async function authenticatedEnvironmentForAuthentication(
       const environment = await prisma.runtimeEnvironment.findFirst({
         where: {
           projectId: project.id,
-          slug: slug,
-          branchName: sanitizeBranchName(branch),
+          type: "PREVIEW",
+          branchName: sanitizedBranch,
           archivedAt: null,
         },
         include: {
