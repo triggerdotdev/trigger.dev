@@ -109,7 +109,7 @@ pnpm i
 
 ```sh
 cd references/hello-world
-cp .env.example .env
+cp ../../.env.example .env
 pnpm exec trigger login -a http://localhost:3030
 ```
 
