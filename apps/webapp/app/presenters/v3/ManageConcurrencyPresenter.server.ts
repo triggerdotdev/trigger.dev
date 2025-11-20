@@ -63,9 +63,15 @@ export class ManageConcurrencyPresenter extends BasePresenter {
             userId: true,
           },
         },
+        project: {
+          select: {
+            deletedAt: true,
+          },
+        },
       },
       where: {
         organizationId,
+        archivedAt: null,
       },
     });
 
@@ -77,6 +83,9 @@ export class ManageConcurrencyPresenter extends BasePresenter {
     for (const environment of environments) {
       // Don't count parent environments
       if (environment.isBranchableEnvironment) continue;
+
+      // Don't count deleted projects
+      if (environment.project.deletedAt) continue;
 
       const limit = currentPlan
         ? getDefaultEnvironmentLimitFromPlan(environment.type, currentPlan)
