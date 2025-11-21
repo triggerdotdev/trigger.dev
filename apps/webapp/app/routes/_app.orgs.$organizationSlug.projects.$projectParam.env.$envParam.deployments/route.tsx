@@ -359,7 +359,7 @@ export default function Page() {
                 </div>
               </div>
             ) : environment.type === "DEVELOPMENT" ? (
-              <MainCenteredContainer className="max-w-md">
+              <MainCenteredContainer className="max-w-prose">
                 <DeploymentsNoneDev />
               </MainCenteredContainer>
             ) : (
