@@ -93,11 +93,64 @@ export async function downloadPacketFromObjectStore(
 
     logger.debug("Downloading from object store", { url: url.href });
 
-    const response = await r2.fetch(url.toString());
+   
+   class NonRetryableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "NonRetryableError";
+  }
+}
 
-    if (!response.ok) {
-      throw new Error(`Failed to download input from ${url}: ${response.statusText}`);
+async function fetchWithRetry(url: string, retries = 3, delay = 500): Promise<Response> {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const response = await r2.fetch(url);
+
+      if (response.ok) return response;
+
+      if (response.status >= 400 && response.status < 500) {
+        throw new NonRetryableError(`Client error: ${response.statusText}`);
+      }
+
+      if (response.status >= 500 && response.status < 600) {
+        if (attempt === retries) {
+          throw new Error(`Server error after ${retries} attempts: ${response.statusText}`);
+        }
+
+        logger.warn(`Retrying object download (attempt ${attempt}/${retries})`, {
+          url,
+          status: response.status,
+          error: response.statusText,
+        });
+
+        await new Promise((res) => setTimeout(res, delay * attempt));
+        continue;
+      }
+
+      throw new NonRetryableError(`Unexpected status ${response.status}: ${response.statusText}`);
+    } catch (error: unknown) {
+      if (error instanceof NonRetryableError) {
+        throw error;
+      }
+
+      if (attempt === retries) throw error;
+
+      const errorMessage = error instanceof Error ? error.message : String(error);
+
+      logger.warn(`Network error, retrying (attempt ${attempt}/${retries})`, {
+        url,
+        error: errorMessage,
+      });
+
+      await new Promise((res) => setTimeout(res, delay * attempt));
     }
+  }
+
+  throw new Error(`Failed to fetch ${url} after ${retries} retries`);
+}
+
+
+    const response = await  fetchWithRetry(url.toString());
 
     const data = await response.text();
 
