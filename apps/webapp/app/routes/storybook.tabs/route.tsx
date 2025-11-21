@@ -13,7 +13,7 @@ export default function Story() {
   return (
     <div className="flex items-start justify-center gap-20 px-16 pt-20">
       <div className="flex w-full max-w-2xl flex-col gap-4">
-        <div className="flex h-fit flex-col">
+        <div className="flex h-fit flex-col gap-2">
           <div className="flex flex-col gap-2">
             <Header1 spacing>{"<Tabs/>"} (updates the URL)</Header1>
             <Paragraph>Variant="underline"</Paragraph>
@@ -57,7 +57,7 @@ export default function Story() {
         </div>
       </div>
       <div className="flex w-full max-w-2xl flex-col gap-4">
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-2">
           <div className="flex flex-col gap-2">
             <Header1 spacing>{"<ClientTabs/>"}</Header1>
             <Paragraph>Variant="underline"</Paragraph>
