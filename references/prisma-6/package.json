@@ -3,13 +3,14 @@
   "private": true,
   "type": "module",
   "devDependencies": {
-    "trigger.dev": "workspace:*",
-    "prisma": "6.14.0"
+    "prisma": "6.14.0",
+    "prisma-generator-ts-enums": "^1.1.0",
+    "trigger.dev": "workspace:*"
   },
   "dependencies": {
+    "@prisma/client": "6.14.0",
     "@trigger.dev/build": "workspace:*",
-    "@trigger.dev/sdk": "workspace:*",
-    "@prisma/client": "6.14.0"
+    "@trigger.dev/sdk": "workspace:*"
   },
   "scripts": {
     "dev": "trigger dev",
