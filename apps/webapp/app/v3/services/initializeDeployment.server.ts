@@ -207,13 +207,6 @@ export class InitializeDeploymentService extends BaseService {
           git: payload.gitMeta ?? undefined,
           runtime: payload.runtime ?? undefined,
           startedAt: initialStatus === "BUILDING" ? new Date() : undefined,
-          buildServerMetadata: payload.isNativeBuild
-            ? {
-                artifactKey: payload.artifactKey,
-                skipPromotion: payload.skipPromotion,
-                isNativeBuild: true,
-              }
-            : undefined,
         },
       });
 
