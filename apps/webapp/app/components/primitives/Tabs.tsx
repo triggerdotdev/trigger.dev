@@ -85,7 +85,7 @@ export function TabLink({
                     "text-sm transition duration-200",
                     active
                       ? "text-text-bright"
-                      : "text-text-dimmed transition hover:text-text-bright"
+                      : "text-text-dimmed transition group-hover:text-text-bright"
                   )}
                 >
                   {children}
