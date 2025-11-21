@@ -264,15 +264,11 @@ class DevSupervisor implements WorkerRuntime {
       return;
     }
 
-    //get relevant versions
-    //ignore deprecated and the latest worker
-    const oldWorkerIds = this.#getActiveOldWorkers();
-
     try {
       //todo later we should track available resources and machines used, and pass them in here (it supports it)
       const result = await this.options.client.dev.dequeue({
         currentWorker: this.latestWorkerId,
-        oldWorkers: oldWorkerIds,
+        oldWorkers: [], // This isn't even used on the server side, so we can just pass an empty array
       });
 
       if (!result.success) {
@@ -285,10 +281,6 @@ class DevSupervisor implements WorkerRuntime {
 
       //no runs, try again later
       if (result.data.dequeuedMessages.length === 0) {
-        // logger.debug(`No dequeue runs for versions`, {
-        //   oldWorkerIds,
-        //   latestWorkerId: this.latestWorkerId,
-        // });
         setTimeout(() => this.#dequeueRuns(), this.config.dequeueIntervalWithoutRun);
         return;
       }
@@ -599,42 +591,9 @@ class DevSupervisor implements WorkerRuntime {
     this.socket.emit("run:unsubscribe", { version: "1", runFriendlyIds: [friendlyId] });
   }
 
-  #getActiveOldWorkers() {
-    return Array.from(this.workers.values())
-      .filter((worker) => {
-        //exclude the latest
-        if (worker.serverWorker?.id === this.latestWorkerId) {
-          return false;
-        }
-
-        //if it's deprecated AND there are no executing runs, then filter it out
-        if (worker.deprecated && worker.serverWorker?.id) {
-          return this.#workerHasInProgressRuns(worker.serverWorker.id);
-        }
-
-        return true;
-      })
-      .map((worker) => worker.serverWorker?.id)
-      .filter((id): id is string => id !== undefined);
-  }
-
-  #workerHasInProgressRuns(friendlyId: string) {
-    for (const controller of this.runControllers.values()) {
-      logger.debug("[DevSupervisor] Checking controller", {
-        controllerFriendlyId: controller.workerFriendlyId,
-        friendlyId,
-      });
-      if (controller.workerFriendlyId === friendlyId) {
-        return true;
-      }
-    }
-
-    return false;
-  }
-
   /** Deletes the worker if there are no active runs, after a delay */
   async #tryDeleteWorker(friendlyId: string) {
-    await awaitTimeout(1_000);
+    await awaitTimeout(5_000);
     this.#deleteWorker(friendlyId);
   }
 
@@ -651,13 +610,6 @@ class DevSupervisor implements WorkerRuntime {
     if (worker.serverWorker?.version) {
       this.taskRunProcessPool?.deprecateVersion(worker.serverWorker?.version);
     }
-
-    if (this.#workerHasInProgressRuns(friendlyId)) {
-      return;
-    }
-
-    worker.stop();
-    this.workers.delete(friendlyId);
   }
 }
 
