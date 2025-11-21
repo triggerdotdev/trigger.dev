@@ -592,7 +592,7 @@ function DeploymentOnboardingSteps() {
 
   return (
     <PackageManagerProvider>
-      <div className="mb-6 flex items-center justify-between border-b">
+      <div className="mb-2 flex items-center justify-between border-b">
         <div className="mb-2 flex items-center gap-2">
           <EnvironmentIcon environment={environment} className="-ml-1 size-8" />
           <Header1>Deploy your tasks to {environmentFullTitle(environment)}</Header1>
@@ -624,13 +624,17 @@ function DeploymentOnboardingSteps() {
         </div>
       </div>
       <ClientTabs defaultValue="github">
-        <div className="flex items-center gap-4">
-          <ClientTabsList>
-            <ClientTabsTrigger value={"github"}>GitHub</ClientTabsTrigger>
-            <ClientTabsTrigger value={"cli"}>CLI</ClientTabsTrigger>
-            <ClientTabsTrigger value={"github-actions"}>GitHub Actions</ClientTabsTrigger>
-          </ClientTabsList>
-        </div>
+        <ClientTabsList variant="segmented" className="mb-6">
+          <ClientTabsTrigger value={"github"} variant="segmented" layoutId="deploy-tabs">
+            GitHub
+          </ClientTabsTrigger>
+          <ClientTabsTrigger value={"cli"} variant="segmented" layoutId="deploy-tabs">
+            CLI
+          </ClientTabsTrigger>
+          <ClientTabsTrigger value={"github-actions"} variant="segmented" layoutId="deploy-tabs">
+            GitHub Actions
+          </ClientTabsTrigger>
+        </ClientTabsList>
         <ClientTabsContent value={"github"}>
           <StepNumber stepNumber="1" title="Connect your GitHub repository" />
           <StepContentContainer>
