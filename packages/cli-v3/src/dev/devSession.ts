@@ -148,14 +148,6 @@ export async function startDevSession({
         if (bundled) {
           eventBus.emit("rebuildStarted", "dev");
         }
-
-        const outdir = b.initialOptions.outdir;
-        if (outdir && existsSync(outdir)) {
-          logger.debug("Removing outdir", { outdir });
-
-          rmSync(outdir, { recursive: true, force: true });
-          mkdirSync(outdir, { recursive: true });
-        }
       });
       b.onEnd(async (result: esbuild.BuildResult) => {
         const errors = result.errors;
