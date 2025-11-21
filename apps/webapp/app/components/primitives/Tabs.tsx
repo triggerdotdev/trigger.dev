@@ -209,7 +209,11 @@ export function TabButton({
           {shortcut && <ShortcutKey className={cn("")} shortcut={shortcut} variant={"small"} />}
         </div>
         {isActive ? (
-          <motion.div layoutId={layoutId} className="mt-1 h-0.5 w-full bg-indigo-500" />
+          <motion.div
+            layoutId={layoutId}
+            transition={{ type: "spring", stiffness: 500, damping: 30 }}
+            className="mt-1 h-0.5 w-full bg-indigo-500"
+          />
         ) : (
           <div className="mt-1 h-0.5 w-full bg-charcoal-500 opacity-0 transition duration-200 group-hover:opacity-100" />
         )}
