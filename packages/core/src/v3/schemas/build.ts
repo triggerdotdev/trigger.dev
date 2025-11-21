@@ -13,7 +13,7 @@ export const BuildTarget = z.enum(["dev", "deploy", "unmanaged"]);
 
 export type BuildTarget = z.infer<typeof BuildTarget>;
 
-export const BuildRuntime = z.enum(["node", "node-22", "bun"]);
+export const BuildRuntime = z.enum(["node", "node-22", "bun", "python"]);
 
 export type BuildRuntime = z.infer<typeof BuildRuntime>;
 
@@ -68,6 +68,7 @@ export const BuildManifest = z.object({
       exclude: z.array(z.string()).optional(),
     })
     .optional(),
+  requirementsContent: z.string().optional(), // For Python: requirements.txt content
 });
 
 export type BuildManifest = z.infer<typeof BuildManifest>;

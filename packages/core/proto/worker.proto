@@ -1,0 +1,254 @@
+syntax = "proto3";
+
+package trigger.worker.v1;
+
+// ===========================================================================
+// Common Types (matching trigger_sdk/schemas/common.py)
+// ===========================================================================
+
+message TaskInfo {
+  string id = 1;
+  string file_path = 2;
+}
+
+message RunInfo {
+  string id = 1;
+  string payload = 2;  // JSON-serialized
+  string payload_type = 3;
+  repeated string tags = 4;
+  bool is_test = 5;
+}
+
+message AttemptInfo {
+  string id = 1;
+  int32 number = 2;
+  string started_at = 3;  // ISO 8601 timestamp
+}
+
+message OrganizationInfo {
+  string id = 1;
+  string slug = 2;
+  string name = 3;
+}
+
+message ProjectInfo {
+  string id = 1;
+  string ref = 2;
+  string slug = 3;
+  string name = 4;
+}
+
+enum EnvironmentType {
+  PRODUCTION = 0;
+  STAGING = 1;
+  DEVELOPMENT = 2;
+  PREVIEW = 3;
+}
+
+message EnvironmentInfo {
+  string id = 1;
+  string slug = 2;
+  EnvironmentType type = 3;
+}
+
+message QueueInfo {
+  string id = 1;
+  string name = 2;
+}
+
+message DeploymentInfo {
+  string id = 1;
+  string short_code = 2;
+  string version = 3;
+}
+
+message BatchInfo {
+  string id = 1;
+}
+
+message TaskRunExecution {
+  // Essential fields (always present)
+  TaskInfo task = 1;
+  RunInfo run = 2;
+  AttemptInfo attempt = 3;
+
+  // Optional fields for progressive expansion
+  BatchInfo batch = 4;
+  QueueInfo queue = 5;
+  OrganizationInfo organization = 6;
+  ProjectInfo project = 7;
+  EnvironmentInfo environment = 8;
+  DeploymentInfo deployment = 9;
+}
+
+message TaskRunExecutionUsage {
+  int64 duration_ms = 1;
+}
+
+message TaskRunExecutionRetry {
+  int64 timestamp = 1;  // Unix timestamp
+  int64 delay = 2;  // Delay in milliseconds
+}
+
+// ===========================================================================
+// Error Types (matching trigger_sdk/schemas/errors.py)
+// ===========================================================================
+
+enum TaskRunErrorCode {
+  COULD_NOT_IMPORT_TASK = 0;
+  TASK_EXECUTION_FAILED = 1;
+  TASK_RUN_CANCELLED = 2;
+  MAX_DURATION_EXCEEDED = 3;
+  TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE = 4;
+  TASK_INPUT_ERROR = 5;
+  TASK_OUTPUT_ERROR = 6;
+  INTERNAL_ERROR = 7;
+}
+
+message TaskRunBuiltInError {
+  string name = 1;  // Exception class name
+  string message = 2;
+  string stack_trace = 3;
+}
+
+message TaskRunInternalError {
+  TaskRunErrorCode code = 1;
+  string message = 2;
+  string stack_trace = 3;
+}
+
+message TaskRunStringError {
+  string raw = 1;
+}
+
+message TaskRunError {
+  oneof error {
+    TaskRunBuiltInError built_in_error = 1;
+    TaskRunInternalError internal_error = 2;
+    TaskRunStringError string_error = 3;
+  }
+}
+
+// ===========================================================================
+// Execution Results (matching trigger_sdk/schemas/common.py)
+// ===========================================================================
+
+message TaskRunSuccessfulExecutionResult {
+  string id = 1;  // Run ID
+  string output = 2;  // JSON-serialized output (optional)
+  string output_type = 3;
+  TaskRunExecutionUsage usage = 4;
+  string task_identifier = 5;  // For backwards compatibility (optional)
+}
+
+message TaskRunFailedExecutionResult {
+  string id = 1;  // Run ID
+  TaskRunError error = 2;
+  TaskRunExecutionRetry retry = 3;
+  bool skipped_retrying = 4;
+  TaskRunExecutionUsage usage = 5;
+  string task_identifier = 6;  // For backwards compatibility (optional)
+}
+
+// ===========================================================================
+// Logging (Worker → Coordinator)
+// ===========================================================================
+
+enum LogLevel {
+  DEBUG = 0;
+  INFO = 1;
+  WARN = 2;
+  ERROR = 3;
+}
+
+message LogMessage {
+  string type = 1;  // Always "LOG"
+  string version = 2;  // Always "v1"
+  LogLevel level = 3;
+  string message = 4;
+  string logger = 5;  // Logger name (e.g., "trigger")
+  string timestamp = 6;  // ISO 8601 timestamp
+  string exception = 7;  // Stack trace (optional, for errors)
+}
+
+// ===========================================================================
+// Worker → Coordinator Messages (matching trigger_sdk/schemas/messages.py)
+// ===========================================================================
+
+message TaskRunCompletedMessage {
+  string type = 1;  // Always "TASK_RUN_COMPLETED"
+  string version = 2;  // Always "v1"
+  TaskRunSuccessfulExecutionResult completion = 3;
+}
+
+message TaskRunFailedMessage {
+  string type = 1;  // Always "TASK_RUN_FAILED_TO_RUN"
+  string version = 2;  // Always "v1"
+  TaskRunFailedExecutionResult completion = 3;
+}
+
+message TaskHeartbeatMessage {
+  string type = 1;  // Always "TASK_HEARTBEAT"
+  string version = 2;  // Always "v1"
+  string id = 3;  // Run or attempt ID
+}
+
+message TaskMetadata {
+  // Flexible structure for task catalog
+  // Using map for JSON-like structure
+  map<string, string> fields = 1;
+}
+
+message IndexTasksCompleteMessage {
+  string type = 1;  // Always "INDEX_TASKS_COMPLETE"
+  string version = 2;  // Always "v1"
+  repeated TaskMetadata tasks = 3;
+}
+
+message WorkerMessage {
+  oneof message {
+    TaskRunCompletedMessage task_run_completed = 1;
+    TaskRunFailedMessage task_run_failed = 2;
+    TaskHeartbeatMessage task_heartbeat = 3;
+    IndexTasksCompleteMessage index_tasks_complete = 4;
+    LogMessage log = 5;
+  }
+}
+
+// ===========================================================================
+// Coordinator → Worker Messages (matching trigger_sdk/schemas/messages.py)
+// ===========================================================================
+
+message ExecuteTaskRunMessage {
+  string type = 1;  // Always "EXECUTE_TASK_RUN"
+  string version = 2;  // Always "v1"
+  TaskRunExecution execution = 3;
+}
+
+message CancelMessage {
+  string type = 1;  // Always "CANCEL"
+  string version = 2;  // Always "v1"
+}
+
+message FlushMessage {
+  string type = 1;  // Always "FLUSH"
+  string version = 2;  // Always "v1"
+}
+
+message CoordinatorMessage {
+  oneof message {
+    ExecuteTaskRunMessage execute_task_run = 1;
+    CancelMessage cancel = 2;
+    FlushMessage flush = 3;
+  }
+}
+
+// ===========================================================================
+// Bidirectional Streaming Service
+// ===========================================================================
+
+service WorkerService {
+  // Bidirectional streaming RPC for worker-coordinator communication
+  // Worker and coordinator both send and receive messages over same connection
+  rpc Connect(stream WorkerMessage) returns (stream CoordinatorMessage);
+}
