@@ -1,5 +1,6 @@
 import { defineConfig } from "@trigger.dev/sdk";
 import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
+import { additionalPackages } from "@trigger.dev/build/extensions/core";
 
 export default defineConfig({
   project: process.env.TRIGGER_PROJECT_REF!,
@@ -18,6 +19,9 @@ export default defineConfig({
   machine: "small-1x",
   build: {
     extensions: [
+      additionalPackages({
+        packages: ["prisma-generator-ts-enums@1.1.0"],
+      }),
       prismaExtension({
         mode: "legacy",
         schema: "prisma/schema.prisma",
