@@ -589,6 +589,8 @@ export function BulkActionsNone() {
 
 function DeploymentOnboardingSteps() {
   const environment = useEnvironment();
+  const organization = useOrganization();
+  const project = useProject();
 
   return (
     <PackageManagerProvider>
@@ -644,9 +646,9 @@ function DeploymentOnboardingSteps() {
             <div className="w-fit">
               <GitHubConnectionPrompt
                 gitHubAppInstallations={[]}
-                organizationSlug={""}
-                projectSlug={""}
-                environmentSlug={""}
+                organizationSlug={organization.slug}
+                projectSlug={project.slug}
+                environmentSlug={environment.slug}
               />
             </div>
           </StepContentContainer>
