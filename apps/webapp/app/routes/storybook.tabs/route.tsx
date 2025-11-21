@@ -142,31 +142,29 @@ export default function Story() {
         <div>
           <Paragraph spacing>Variant="segmented"</Paragraph>
           <ClientTabs defaultValue="tab-1">
-            <div className="flex items-center gap-4">
-              <ClientTabsList variant="segmented">
-                <ClientTabsTrigger
-                  value={"tab-1"}
-                  variant="segmented"
-                  layoutId="client-tabs-segmented"
-                >
-                  First tab
-                </ClientTabsTrigger>
-                <ClientTabsTrigger
-                  value={"tab-2"}
-                  variant="segmented"
-                  layoutId="client-tabs-segmented"
-                >
-                  Second tab
-                </ClientTabsTrigger>
-                <ClientTabsTrigger
-                  value={"tab-3"}
-                  variant="segmented"
-                  layoutId="client-tabs-segmented"
-                >
-                  Third tab
-                </ClientTabsTrigger>
-              </ClientTabsList>
-            </div>
+            <ClientTabsList variant="segmented">
+              <ClientTabsTrigger
+                value={"tab-1"}
+                variant="segmented"
+                layoutId="client-tabs-segmented"
+              >
+                First tab
+              </ClientTabsTrigger>
+              <ClientTabsTrigger
+                value={"tab-2"}
+                variant="segmented"
+                layoutId="client-tabs-segmented"
+              >
+                Second tab
+              </ClientTabsTrigger>
+              <ClientTabsTrigger
+                value={"tab-3"}
+                variant="segmented"
+                layoutId="client-tabs-segmented"
+              >
+                Third tab
+              </ClientTabsTrigger>
+            </ClientTabsList>
             <ClientTabsContent value={"tab-1"}>
               <div className="flex items-center justify-center rounded bg-charcoal-700/50 py-8">
                 <h1 className="text-5xl">1</h1>
