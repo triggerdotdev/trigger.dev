@@ -229,46 +229,52 @@ export function DeploymentsNoneDev() {
   const environment = useEnvironment();
 
   return (
-    <div className="space-y-8">
-      <InfoPanel
-        icon={ServerStackIcon}
-        iconClassName="text-deployments"
-        title="Deploying tasks"
-        panelClassName="max-w-full"
-      >
-        <Paragraph spacing variant="small">
+    <>
+      <div className="mb-6 flex items-center justify-between border-b">
+        <div className="mb-2 flex items-center gap-2">
+          <EnvironmentIcon environment={environment} className="-ml-1 size-8" />
+          <Header1>Deploy your tasks</Header1>
+        </div>
+        <div className="flex items-center">
+          <SimpleTooltip
+            button={
+              <LinkButton
+                variant="small-menu-item"
+                LeadingIcon={BookOpenIcon}
+                leadingIconClassName="text-blue-500"
+                to={docsPath("deployment/overview")}
+              />
+            }
+            content="Deploy docs"
+          />
+          <SimpleTooltip
+            button={
+              <LinkButton
+                variant="small-menu-item"
+                LeadingIcon={QuestionMarkCircleIcon}
+                leadingIconClassName="text-blue-500"
+                to={docsPath("troubleshooting#deployment")}
+              />
+            }
+            content="Troubleshooting docs"
+          />
+          <AskAI />
+        </div>
+      </div>
+      <StepNumber stepNumber="→" title="Switch to a deployed environment" />
+      <StepContentContainer className="mb-4 flex flex-col gap-4">
+        <Paragraph>
           This is the Development environment. When you're ready to deploy your tasks, switch to a
           different environment.
         </Paragraph>
-        <Paragraph spacing variant="small">
-          There are several ways to deploy your tasks. You can use the CLI or a Continuous
-          Integration service like GitHub Actions. Make sure you{" "}
-          <TextLink href={v3EnvironmentVariablesPath(organization, project, environment)}>
-            set your environment variables
-          </TextLink>{" "}
-          first.
-        </Paragraph>
-        <div className="flex gap-3">
-          <LinkButton
-            to={docsPath("v3/cli-deploy")}
-            variant="docs/medium"
-            LeadingIcon={BookOpenIcon}
-            className="inline-flex"
-          >
-            Deploy with the CLI
-          </LinkButton>
-          <LinkButton
-            to={docsPath("v3/github-actions")}
-            variant="docs/medium"
-            LeadingIcon={BookOpenIcon}
-            className="inline-flex"
-          >
-            Deploy with GitHub actions
-          </LinkButton>
-        </div>
-      </InfoPanel>
-      <SwitcherPanel />
-    </div>
+        <EnvironmentSelector
+          organization={organization}
+          project={project}
+          environment={environment}
+          className="w-fit border border-charcoal-600 bg-secondary hover:border-charcoal-550 hover:bg-charcoal-600"
+        />
+      </StepContentContainer>
+    </>
   );
 }
 
