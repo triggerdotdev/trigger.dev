@@ -57,7 +57,7 @@ const Env = z.object({
   RESOURCE_MONITOR_OVERRIDE_MEMORY_TOTAL_GB: z.coerce.number().optional(),
 
   // Docker settings
-  DOCKER_API_VERSION: z.string().default("v1.41"),
+  DOCKER_API_VERSION: z.string().optional(),
   DOCKER_PLATFORM: z.string().optional(), // e.g. linux/amd64, linux/arm64
   DOCKER_STRIP_IMAGE_DIGEST: BoolEnv.default(true),
   DOCKER_REGISTRY_USERNAME: z.string().optional(),
