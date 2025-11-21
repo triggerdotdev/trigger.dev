@@ -1,11 +1,6 @@
 {
   "$schema": "https://unpkg.com/@changesets/config@2.2.0/schema.json",
-  "changelog": [
-    "@remix-run/changelog-github",
-    {
-      "repo": "triggerdotdev/trigger.dev"
-    }
-  ],
+  "changelog": "@changesets/cli/changelog",
   "commit": false,
   "fixed": [["@trigger.dev/*", "trigger.dev"]],
   "linked": [],
