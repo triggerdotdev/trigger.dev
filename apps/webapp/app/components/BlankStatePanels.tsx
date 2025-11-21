@@ -637,7 +637,7 @@ function DeploymentOnboardingSteps() {
             GitHub
           </ClientTabsTrigger>
           <ClientTabsTrigger value={"cli"} variant="segmented" layoutId="deploy-tabs">
-            CLI
+            Manual
           </ClientTabsTrigger>
           <ClientTabsTrigger value={"github-actions"} variant="segmented" layoutId="deploy-tabs">
             GitHub Actions
@@ -647,7 +647,8 @@ function DeploymentOnboardingSteps() {
           <StepNumber stepNumber="1" title="Connect your GitHub repository" />
           <StepContentContainer>
             <Paragraph spacing>
-              Connect your GitHub repository to automatically deploy whenever you push.
+              Deploy automatically with every push. Read the{" "}
+              <TextLink to={docsPath("github-integration")}>full guide</TextLink>.
             </Paragraph>
             <div className="w-fit">
               <GitHubConnectionPrompt
