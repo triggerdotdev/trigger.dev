@@ -105,6 +105,40 @@ export default function Story() {
             </ClientTabsContent>
           </ClientTabs>
         </div>
+
+        <div>
+          <Paragraph spacing>Variant="pipe-divider"</Paragraph>
+          <ClientTabs defaultValue="tab-1">
+            <div className="flex items-center gap-4">
+              <ClientTabsList variant="pipe-divider">
+                <ClientTabsTrigger value={"tab-1"} variant="pipe-divider">
+                  First tab
+                </ClientTabsTrigger>
+                <ClientTabsTrigger value={"tab-2"} variant="pipe-divider">
+                  Second tab
+                </ClientTabsTrigger>
+                <ClientTabsTrigger value={"tab-3"} variant="pipe-divider">
+                  Third tab
+                </ClientTabsTrigger>
+              </ClientTabsList>
+            </div>
+            <ClientTabsContent value={"tab-1"}>
+              <div className="flex items-center justify-center rounded bg-charcoal-700/50 py-8">
+                <h1 className="text-5xl">1</h1>
+              </div>
+            </ClientTabsContent>
+            <ClientTabsContent value={"tab-2"}>
+              <div className="flex items-center justify-center rounded bg-charcoal-700/50 py-8">
+                <h1 className="text-5xl">2</h1>
+              </div>
+            </ClientTabsContent>
+            <ClientTabsContent value={"tab-3"}>
+              <div className="flex items-center justify-center rounded bg-charcoal-700/50 py-8">
+                <h1 className="text-5xl">3</h1>
+              </div>
+            </ClientTabsContent>
+          </ClientTabs>
+        </div>
         <div>
           <Paragraph spacing>Variant="segmented"</Paragraph>
           <ClientTabs defaultValue="tab-1">
@@ -129,39 +163,6 @@ export default function Story() {
                   variant="segmented"
                   layoutId="client-tabs-segmented"
                 >
-                  Third tab
-                </ClientTabsTrigger>
-              </ClientTabsList>
-            </div>
-            <ClientTabsContent value={"tab-1"}>
-              <div className="flex items-center justify-center rounded bg-charcoal-700/50 py-8">
-                <h1 className="text-5xl">1</h1>
-              </div>
-            </ClientTabsContent>
-            <ClientTabsContent value={"tab-2"}>
-              <div className="flex items-center justify-center rounded bg-charcoal-700/50 py-8">
-                <h1 className="text-5xl">2</h1>
-              </div>
-            </ClientTabsContent>
-            <ClientTabsContent value={"tab-3"}>
-              <div className="flex items-center justify-center rounded bg-charcoal-700/50 py-8">
-                <h1 className="text-5xl">3</h1>
-              </div>
-            </ClientTabsContent>
-          </ClientTabs>
-        </div>
-        <div>
-          <Paragraph spacing>Variant="pipe-divider"</Paragraph>
-          <ClientTabs defaultValue="tab-1">
-            <div className="flex items-center gap-4">
-              <ClientTabsList variant="pipe-divider">
-                <ClientTabsTrigger value={"tab-1"} variant="pipe-divider">
-                  First tab
-                </ClientTabsTrigger>
-                <ClientTabsTrigger value={"tab-2"} variant="pipe-divider">
-                  Second tab
-                </ClientTabsTrigger>
-                <ClientTabsTrigger value={"tab-3"} variant="pipe-divider">
                   Third tab
                 </ClientTabsTrigger>
               </ClientTabsList>
