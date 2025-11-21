@@ -1,1 +1,0 @@
-ALTER TABLE "public"."WorkerDeployment" ADD COLUMN     "buildServerMetadata" JSONB;

@@ -1749,7 +1749,6 @@ model WorkerDeployment {
   imagePlatform  String  @default("linux/amd64")
 
   externalBuildData   Json?
-  buildServerMetadata Json?
 
   status WorkerDeploymentStatus @default(PENDING)
   type   WorkerDeploymentType   @default(V1)
