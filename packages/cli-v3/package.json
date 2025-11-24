@@ -81,7 +81,7 @@
     "inspector": "npx @modelcontextprotocol/inspector dist/esm/index.js mcp --log-file .mcp.log --api-url http://localhost:3030"
   },
   "dependencies": {
-    "@clack/prompts": "1.0.0-alpha.6",
+    "@clack/prompts": "0.11.0",
     "@depot/cli": "0.0.1-cli.2.80.0",
     "@modelcontextprotocol/sdk": "^1.17.0",
     "@opentelemetry/api": "1.9.0",
