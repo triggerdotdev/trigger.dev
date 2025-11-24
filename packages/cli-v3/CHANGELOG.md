@@ -1,5 +1,16 @@
 # trigger.dev
 
+## 4.1.2
+
+### Patch Changes
+
+- - dev runs will no longer get stuck in DEQUEUED status ([#2699](https://github.com/triggerdotdev/trigger.dev/pull/2699))
+  - prevent an ENOENT "System failure" in some dev runs when making the first change after running the dev CLI.
+- Updated dependencies:
+  - `@trigger.dev/build@4.1.2`
+  - `@trigger.dev/core@4.1.2`
+  - `@trigger.dev/schema-to-json@4.1.2`
+
 ## 4.1.1
 
 ### Patch Changes
