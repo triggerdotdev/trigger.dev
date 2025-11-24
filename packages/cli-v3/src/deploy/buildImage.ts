@@ -686,6 +686,7 @@ async function generateBunContainerfile(options: GenerateContainerfileOptions) {
     parseGenerateOptions(options);
 
   return `# syntax=docker/dockerfile:1
+# check=skip=SecretsUsedInArgOrEnv
 FROM ${baseImage} AS base
 
 ${baseInstructions}
@@ -791,6 +792,7 @@ async function generateNodeContainerfile(options: GenerateContainerfileOptions) 
     parseGenerateOptions(options);
 
   return `# syntax=docker/dockerfile:1
+# check=skip=SecretsUsedInArgOrEnv
 FROM ${baseImage} AS base
 
 ${baseInstructions}
