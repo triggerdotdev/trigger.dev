@@ -8,7 +8,7 @@ import {
   DeploymentFinalizedEvent,
 } from "@trigger.dev/core/v3/schemas";
 import { Command, Option as CommandOption } from "commander";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { isCI } from "std-env";
 import { x } from "tinyexec";
 import { z } from "zod";
@@ -947,6 +947,11 @@ async function handleNativeBuildServerDeploy({
 
   $deploymentSpinner.message("Deployment files uploaded");
 
+  const configFilePath =
+    config.configFile !== undefined
+      ? relative(config.workspaceDir, config.configFile).replace(/\\/g, "/")
+      : undefined;
+
   const initializeDeploymentResult = await apiClient.initializeDeployment({
     contentHash: "-",
     userId,
@@ -956,6 +961,7 @@ async function handleNativeBuildServerDeploy({
     isNativeBuild: true,
     artifactKey,
     skipPromotion: options.skipPromotion,
+    configFilePath,
   });
 
   if (!initializeDeploymentResult.success) {
