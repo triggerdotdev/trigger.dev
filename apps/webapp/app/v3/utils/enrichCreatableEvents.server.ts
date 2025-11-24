@@ -1,3 +1,4 @@
+import { accessoryAttributes, flattenAttributes } from "@trigger.dev/core/v3";
 import type { CreateEventInput } from "../eventRepository/eventRepository.types";
 
 export function enrichCreatableEvents(events: CreateEventInput[]) {
@@ -21,6 +22,30 @@ function enrichStyle(event: CreateEventInput) {
 
   if (!props) {
     return baseStyle;
+  }
+
+  if (event.message === "prisma:client:operation") {
+    const operationName = props["name"];
+
+    if (typeof operationName === "string") {
+      return {
+        ...baseStyle,
+        ...flattenAttributes(
+          {
+            items: [
+              {
+                text: operationName,
+                variant: "normal",
+              },
+            ],
+            style: "codepath",
+          },
+          "accessory"
+        ),
+      };
+    }
+
+    return { ...baseStyle };
   }
 
   // Direct property access and early returns
