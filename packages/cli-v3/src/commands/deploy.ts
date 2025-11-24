@@ -1092,7 +1092,7 @@ async function handleNativeBuildServerDeploy({
       case "log": {
         if (record.seq_num === 0) {
           $queuedSpinner.stop("Build started");
-          log.message("", { symbol: undefined });
+          console.log("│");
           queuedSpinnerStopped = true;
         }
 
@@ -1116,7 +1116,13 @@ async function handleNativeBuildServerDeploy({
             ? chalkGrey(message)
             : message;
 
-        log.message(`${formattedTimestamp} ${formattedMessage}`, { symbol: undefined });
+        // We use console.log here instead of clack's logger as the current version does not support changing the line spacing.
+        // And the logs look verbose with the default spacing.
+        // We cannot upgrade because the newer versions introduced some weird issues with the spinner.
+        // Ideally, we'd use clack's `taskLog` to only show the recent n lines of logs as they are streamed, but that also seems brittle
+        // and has some issues with cursor movements/clearing lines that it shouldn't clear.
+        // We can revisit this on future versions of `@clack/prompts`.
+        console.log(`│  ${formattedTimestamp}  ${formattedMessage}`);
         break;
       }
       case "finalized": {
