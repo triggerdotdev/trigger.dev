@@ -1279,7 +1279,7 @@ importers:
         specifier: ^6.10.0
         version: 6.19.0
       '@trigger.dev/core':
-        specifier: workspace:4.1.1
+        specifier: workspace:4.1.2
         version: link:../core
       mlly:
         specifier: ^1.7.1
@@ -1352,13 +1352,13 @@ importers:
         specifier: 1.36.0
         version: 1.36.0
       '@trigger.dev/build':
-        specifier: workspace:4.1.1
+        specifier: workspace:4.1.2
         version: link:../build
       '@trigger.dev/core':
-        specifier: workspace:4.1.1
+        specifier: workspace:4.1.2
         version: link:../core
       '@trigger.dev/schema-to-json':
-        specifier: workspace:4.1.1
+        specifier: workspace:4.1.2
         version: link:../schema-to-json
       ansi-escapes:
         specifier: ^7.0.0
@@ -1708,7 +1708,7 @@ importers:
   packages/python:
     dependencies:
       '@trigger.dev/core':
-        specifier: workspace:4.1.1
+        specifier: workspace:4.1.2
         version: link:../core
       tinyexec:
         specifier: ^0.3.2
@@ -1718,10 +1718,10 @@ importers:
         specifier: ^0.15.4
         version: 0.15.4
       '@trigger.dev/build':
-        specifier: workspace:4.1.1
+        specifier: workspace:4.1.2
         version: link:../build
       '@trigger.dev/sdk':
-        specifier: workspace:4.1.1
+        specifier: workspace:4.1.2
         version: link:../trigger-sdk
       '@types/node':
         specifier: 20.14.14
@@ -1745,7 +1745,7 @@ importers:
   packages/react-hooks:
     dependencies:
       '@trigger.dev/core':
-        specifier: workspace:^4.1.1
+        specifier: workspace:^4.1.2
         version: link:../core
       react:
         specifier: ^18.0 || ^19.0 || ^19.0.0-rc
@@ -1779,7 +1779,7 @@ importers:
   packages/redis-worker:
     dependencies:
       '@trigger.dev/core':
-        specifier: workspace:4.1.1
+        specifier: workspace:4.1.2
         version: link:../core
       cron-parser:
         specifier: ^4.9.0
@@ -1822,7 +1822,7 @@ importers:
   packages/rsc:
     dependencies:
       '@trigger.dev/core':
-        specifier: workspace:^4.1.1
+        specifier: workspace:^4.1.2
         version: link:../core
       mlly:
         specifier: ^1.7.1
@@ -1838,7 +1838,7 @@ importers:
         specifier: ^0.15.4
         version: 0.15.4
       '@trigger.dev/build':
-        specifier: workspace:^4.1.1
+        specifier: workspace:^4.1.2
         version: link:../build
       '@types/node':
         specifier: ^20.14.14
@@ -1914,7 +1914,7 @@ importers:
         specifier: 1.36.0
         version: 1.36.0
       '@trigger.dev/core':
-        specifier: workspace:4.1.1
+        specifier: workspace:4.1.2
         version: link:../core
       chalk:
         specifier: ^5.2.0
