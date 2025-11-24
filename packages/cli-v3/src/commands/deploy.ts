@@ -1061,12 +1061,8 @@ async function handleNativeBuildServerDeploy({
       case "log": {
         if (record.seq_num === 0) {
           $queuedSpinner.stop("Build started");
+          log.message("", { symbol: undefined, spacing: 0 });
           queuedSpinnerStopped = true;
-          deploymentLog = taskLog({
-            title: "Deployment in progress...",
-            retainLog: true,
-            limit: isCI ? undefined : 20,
-          });
         }
 
         const formattedTimestamp = chalkGrey(
@@ -1082,14 +1078,14 @@ async function handleNativeBuildServerDeploy({
         const { level, message } = event.data;
         const formattedMessage =
           level === "error"
-            ? chalk.bold.hex("#B91C1C")(message)
+            ? chalk.bold(chalkError(message))
             : level === "warn"
             ? chalkWarning(message)
             : level === "debug"
             ? chalkGrey(message)
             : message;
 
-        deploymentLog?.message(`${formattedTimestamp} ${formattedMessage}`);
+        log.message(`${formattedTimestamp} ${formattedMessage}`, { symbol: undefined, spacing: 0 });
         break;
       }
       case "finalized": {
@@ -1121,7 +1117,7 @@ async function handleNativeBuildServerDeploy({
   }
 
   if (!finalDeploymentEvent) {
-    deploymentLog?.error(
+    log.error(
       "Stopped receiving updates from the build server, please check the deployment status in the dashboard"
     );
 
@@ -1139,7 +1135,7 @@ async function handleNativeBuildServerDeploy({
   switch (finalDeploymentEvent.result) {
     case "succeeded": {
       queuedSpinnerStopped
-        ? deploymentLog?.success("Deployment completed successfully")
+        ? log.success("Deployment completed successfully")
         : $queuedSpinner.stop("Deployment completed successfully");
 
       if (finalDeploymentEvent.message) {
@@ -1164,7 +1160,7 @@ async function handleNativeBuildServerDeploy({
     }
     case "failed": {
       queuedSpinnerStopped
-        ? deploymentLog?.error("Deployment failed")
+        ? log.error("Deployment failed")
         : $queuedSpinner.stop("Deployment failed");
 
       if (finalDeploymentEvent.message) {
@@ -1178,7 +1174,7 @@ async function handleNativeBuildServerDeploy({
     }
     case "timed_out": {
       queuedSpinnerStopped
-        ? deploymentLog?.error("Deployment timed out")
+        ? log.error("Deployment timed out")
         : $queuedSpinner.stop("Deployment timed out");
 
       if (finalDeploymentEvent.message) {
@@ -1192,7 +1188,7 @@ async function handleNativeBuildServerDeploy({
     }
     case "canceled": {
       queuedSpinnerStopped
-        ? deploymentLog?.error("Deployment was canceled")
+        ? log.error("Deployment was canceled")
         : $queuedSpinner.stop("Deployment was canceled");
 
       if (finalDeploymentEvent.message) {
@@ -1208,7 +1204,7 @@ async function handleNativeBuildServerDeploy({
       // This case is only relevant in case we extend the enum in the future.
       // New enum values will not be treated as errors in older cli versions.
       queuedSpinnerStopped
-        ? deploymentLog?.success("Log stream finished")
+        ? log.success("Log stream finished")
         : $queuedSpinner.stop("Log stream finished");
       if (finalDeploymentEvent.message) {
         log.message(finalDeploymentEvent.message);
