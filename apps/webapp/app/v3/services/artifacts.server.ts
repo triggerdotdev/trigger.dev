@@ -61,6 +61,12 @@ export class ArtifactsService extends BaseService {
   }
 
   private createPresignedPost(key: string, sizeLimit: number, contentLength?: number) {
+    if (!this.bucket) {
+      return errAsync({
+        type: "artifacts_bucket_not_configured" as const,
+      });
+    }
+
     const ttlSeconds = 300; // 5 minutes
     const expiresAt = new Date(Date.now() + ttlSeconds * 1000);
 

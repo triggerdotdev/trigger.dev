@@ -63,10 +63,15 @@ export async function action({ request }: ActionFunctionArgs) {
             logger.error("Failed to create presigned POST", { error });
             return json({ error: "Failed to generate artifact upload URL" }, { status: 500 });
           }
-          default:
+          case "artifacts_bucket_not_configured": {
+            logger.error("Artifacts bucket not configured", { error });
+            return json({ error: "Internal server error" }, { status: 500 });
+          }
+          default: {
             error satisfies never;
             logger.error("Failed creating artifact", { error });
             return json({ error: "Internal server error" }, { status: 500 });
+          }
         }
       }
     );
