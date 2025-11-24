@@ -453,9 +453,9 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   const $spinner = spinner({ plain: options.plain });
 
   const buildSuffix =
-    isLocalBuild && !process.env.TRIGGER_LOCAL_BUILD_LABEL_DISABLED ? " (local)" : "";
+    isLocalBuild && process.env.TRIGGER_LOCAL_BUILD_LABEL_DISABLED !== "1" ? " (local)" : "";
   const deploySuffix =
-    isLocalBuild && !process.env.TRIGGER_LOCAL_BUILD_LABEL_DISABLED ? " (local build)" : "";
+    isLocalBuild && process.env.TRIGGER_LOCAL_BUILD_LABEL_DISABLED !== "1" ? " (local build)" : "";
 
   if (options.plain) {
     $spinner.start(`Building version ${version}${buildSuffix}`);
@@ -516,7 +516,8 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
   const warnings = checkLogsForWarnings(buildResult.logs);
 
-  const canShowLocalBuildHint = !isLocalBuild && !process.env.TRIGGER_LOCAL_BUILD_HINT_DISABLED;
+  const canShowLocalBuildHint =
+    !isLocalBuild && process.env.TRIGGER_LOCAL_BUILD_HINT_DISABLED !== "1";
   const buildFailed = !warnings.ok || !buildResult.ok;
 
   if (buildFailed && canShowLocalBuildHint) {
@@ -651,7 +652,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
       `Version ${version} deployed with ${taskCount} detected task${taskCount === 1 ? "" : "s"}`
     );
 
-    if (!process.env.TRIGGER_DEPLOYMENT_LINK_OUTPUT_DISABLED) {
+    if (process.env.TRIGGER_DEPLOYMENT_LINK_OUTPUT_DISABLED !== "1") {
       console.log(`Deployment: ${rawDeploymentLink}`);
       console.log(`Test: ${rawTestLink}`);
     }
@@ -1177,6 +1178,12 @@ async function handleNativeBuildServerDeploy({
 
       if (finalDeploymentEvent.message) {
         log.success(finalDeploymentEvent.message);
+      }
+
+      if (options.skipPromotion) {
+        log.info(
+          `This deployment was not automatically promoted. You can promote in the dashboard or via the promote command, e.g, \`npx trigger.dev promote ${deployment.version}\`.`
+        );
       }
 
       if (!isLinksSupported) {
