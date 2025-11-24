@@ -1038,10 +1038,7 @@ async function handleNativeBuildServerDeploy({
     return process.exit(0);
   }
 
-  const $queuedSpinner = spinner({
-    cancelMessage:
-      "Disconnecting from the build server log stream. If you intended to cancel the deployment instead, you can do that in the dashboard.",
-  });
+  const $queuedSpinner = spinner();
   $queuedSpinner.start("Build queued");
 
   const abortController = new AbortController();
