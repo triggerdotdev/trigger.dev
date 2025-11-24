@@ -79,6 +79,7 @@ const DeployCommandOptions = CommonCommandOptions.extend({
   push: z.boolean().optional(),
   builder: z.string().default("trigger"),
   nativeBuildServer: z.boolean().default(false),
+  detach: z.boolean().default(false),
 });
 
 type DeployCommandOptions = z.infer<typeof DeployCommandOptions>;
@@ -176,6 +177,12 @@ export function configureDeployCommand(program: Command) {
           "--native-build-server",
           "Use the native build server for building the image"
         )
+      )
+      .addOption(
+        new CommandOption(
+          "--detach",
+          "Return immediately after the deployment is queued, do not wait for the build to complete. Implies using the native build server."
+        ).implies({ nativeBuildServer: true })
       )
       .action(async (path, options) => {
         await handleTelemetry(async () => {
@@ -988,6 +995,11 @@ async function handleNativeBuildServerDeploy({
     },
   });
 
+  if (options.detach) {
+    outro(`Version ${deployment.version} is being deployed`);
+    return;
+  }
+
   const { eventStream } = deployment;
 
   if (!eventStream) {
@@ -995,7 +1007,7 @@ async function handleNativeBuildServerDeploy({
 
     outro(`Version ${deployment.version} is being deployed`);
 
-    process.exit(0);
+    return process.exit(0);
   }
 
   const $queuedSpinner = spinner({
@@ -1031,7 +1043,7 @@ async function handleNativeBuildServerDeploy({
       }`
     );
 
-    return;
+    return process.exit(0);
   }
 
   const decoder = new TextDecoder();
@@ -1150,7 +1162,7 @@ async function handleNativeBuildServerDeploy({
             : ""
         }`
       );
-      process.exit(0);
+      return process.exit(0);
     }
     case "failed": {
       queuedSpinnerStopped
@@ -1218,7 +1230,7 @@ async function handleNativeBuildServerDeploy({
             : ""
         }`
       );
-      process.exit(0);
+      return process.exit(0);
     }
   }
 }
