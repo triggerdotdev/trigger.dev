@@ -1203,13 +1203,19 @@ async function handleNativeBuildServerDeploy({
       return process.exit(0);
     }
     case "failed": {
-      queuedSpinnerStopped
-        ? log.error("Deployment failed")
-        : $queuedSpinner.stop("Deployment failed");
-
-      if (finalDeploymentEvent.message) {
-        log.error(chalk.bold(chalkError(finalDeploymentEvent.message)));
+      if (!queuedSpinnerStopped) {
+        $queuedSpinner.stop("Deployment failed");
       }
+
+      log.error(
+        chalk.bold(
+          chalkError(
+            "Deployment failed" +
+              (finalDeploymentEvent.message ? `: ${finalDeploymentEvent.message}` : "")
+          )
+        )
+      );
+
       throw new OutroCommandError(
         `Version ${deployment.version} deployment failed ${
           isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
@@ -1217,13 +1223,19 @@ async function handleNativeBuildServerDeploy({
       );
     }
     case "timed_out": {
-      queuedSpinnerStopped
-        ? log.error("Deployment timed out")
-        : $queuedSpinner.stop("Deployment timed out");
-
-      if (finalDeploymentEvent.message) {
-        log.error(chalk.bold(chalkError(finalDeploymentEvent.message)));
+      if (!queuedSpinnerStopped) {
+        $queuedSpinner.stop("Deployment timed out");
       }
+
+      log.error(
+        chalk.bold(
+          chalkError(
+            "Deployment timed out" +
+              (finalDeploymentEvent.message ? `: ${finalDeploymentEvent.message}` : "")
+          )
+        )
+      );
+
       throw new OutroCommandError(
         `Version ${deployment.version} deployment timed out ${
           isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
@@ -1231,13 +1243,19 @@ async function handleNativeBuildServerDeploy({
       );
     }
     case "canceled": {
-      queuedSpinnerStopped
-        ? log.error("Deployment was canceled")
-        : $queuedSpinner.stop("Deployment was canceled");
-
-      if (finalDeploymentEvent.message) {
-        log.error(chalk.bold(chalkError(finalDeploymentEvent.message)));
+      if (!queuedSpinnerStopped) {
+        $queuedSpinner.stop("Deployment was canceled");
       }
+
+      log.error(
+        chalk.bold(
+          chalkError(
+            "Deployment was canceled" +
+              (finalDeploymentEvent.message ? `: ${finalDeploymentEvent.message}` : "")
+          )
+        )
+      );
+
       throw new OutroCommandError(
         `Version ${deployment.version} deployment canceled ${
           isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
