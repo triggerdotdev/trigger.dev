@@ -1,4 +1,4 @@
-import { intro, log, outro, taskLog } from "@clack/prompts";
+import { intro, log, outro } from "@clack/prompts";
 import { getBranch, prepareDeploymentError, tryCatch } from "@trigger.dev/core/v3";
 import {
   InitializeDeploymentRequestBody,
@@ -1092,7 +1092,7 @@ async function handleNativeBuildServerDeploy({
       case "log": {
         if (record.seq_num === 0) {
           $queuedSpinner.stop("Build started");
-          log.message("", { symbol: undefined, spacing: 0 });
+          log.message("", { symbol: undefined });
           queuedSpinnerStopped = true;
         }
 
@@ -1116,7 +1116,7 @@ async function handleNativeBuildServerDeploy({
             ? chalkGrey(message)
             : message;
 
-        log.message(`${formattedTimestamp} ${formattedMessage}`, { symbol: undefined, spacing: 0 });
+        log.message(`${formattedTimestamp} ${formattedMessage}`, { symbol: undefined });
         break;
       }
       case "finalized": {

@@ -112,5 +112,5 @@ const plainSpinner = () => ({
 
 // This will become unecessary with the next clack release, the bug was fixed here:
 // https://github.com/natemoo-re/clack/pull/182
-export const spinner = (options?: { plain?: boolean } = {}) =>
+export const spinner = (options: { plain?: boolean } = { plain: false }) =>
   options.plain ? plainSpinner() : isWindows ? ballmerSpinner() : wrappedClackSpinner();
