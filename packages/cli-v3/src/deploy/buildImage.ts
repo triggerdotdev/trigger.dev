@@ -484,7 +484,7 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
       };
     }
 
-    options.onLog?.(`Successfully logged in to ${cloudRegistryHost}`);
+    options.onLog?.(`Successfully logged in to the remote registry`);
   }
 
   const projectCacheRef = getProjectCacheRefFromImageTag(imageTag);

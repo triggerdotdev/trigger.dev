@@ -933,12 +933,12 @@ async function handleNativeBuildServerDeploy({
     );
   }
 
-  $deploymentSpinner.stop("Deployment files uploaded");
-
   const [unlinkError] = await tryCatch(unlink(archivePath));
   if (unlinkError) {
     logger.debug("Failed to delete deployment artifact file", { archivePath, error: unlinkError });
   }
+
+  $deploymentSpinner.message("Deployment files uploaded");
 
   const initializeDeploymentResult = await apiClient.initializeDeployment({
     contentHash: "-",
@@ -952,7 +952,9 @@ async function handleNativeBuildServerDeploy({
   });
 
   if (!initializeDeploymentResult.success) {
-    throw new Error(`Failed to initialize deployment: ${initializeDeploymentResult.error}`);
+    $deploymentSpinner.stop("Failed to initialize deployment");
+    log.error(chalk.bold(chalkError(initializeDeploymentResult.error)));
+    throw new OutroCommandError(`Deployment failed`);
   }
 
   const deployment = initializeDeploymentResult.data;
@@ -961,6 +963,12 @@ async function handleNativeBuildServerDeploy({
   const rawTestLink = `${dashboardUrl}/projects/v3/${config.project}/test?environment=${
     options.env === "prod" ? "prod" : "stg"
   }`;
+
+  const exposedDeploymentLink = isLinksSupported
+    ? cliLink(chalk.bold(rawDeploymentLink), rawDeploymentLink)
+    : chalk.bold(rawDeploymentLink);
+  $deploymentSpinner.stop("Deployment initialized");
+  log.info(`View deployment: ${exposedDeploymentLink}`);
 
   setGithubActionsOutputAndEnvVars({
     envVars: {
@@ -985,23 +993,10 @@ async function handleNativeBuildServerDeploy({
   if (!eventStream) {
     log.warn(`Failed streaming build logs, open the deployment in the dashboard to view the logs`);
 
-    if (!isLinksSupported) {
-      log.info(`View deployment: ${rawDeploymentLink}`);
-    }
-
-    outro(
-      `Version ${deployment.version} is being deployed ${
-        isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
-      }`
-    );
+    outro(`Version ${deployment.version} is being deployed`);
 
     process.exit(0);
   }
-
-  const exposedDeploymentLink = isLinksSupported
-    ? cliLink(chalk.bold(rawDeploymentLink), rawDeploymentLink)
-    : chalk.bold(rawDeploymentLink);
-  log.info(`View deployment: ${exposedDeploymentLink}`);
 
   const $queuedSpinner = spinner({
     cancelMessage:
@@ -1010,7 +1005,6 @@ async function handleNativeBuildServerDeploy({
   $queuedSpinner.start("Build queued");
 
   const abortController = new AbortController();
-  let deploymentLog: ReturnType<typeof taskLog> | undefined;
 
   const s2 = new S2({ accessToken: eventStream.s2.accessToken });
   const basin = s2.basin(eventStream.s2.basin);
