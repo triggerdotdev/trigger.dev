@@ -455,9 +455,6 @@ class DevSupervisor implements WorkerRuntime {
       TRIGGER_API_URL: this.options.client.apiURL,
       TRIGGER_SECRET_KEY: this.options.client.accessToken!,
       OTEL_EXPORTER_OTLP_COMPRESSION: "none",
-      OTEL_RESOURCE_ATTRIBUTES: JSON.stringify({
-        [SemanticInternalAttributes.PROJECT_DIR]: this.options.config.workingDir,
-      }),
       OTEL_IMPORT_HOOK_INCLUDES,
     };
   }

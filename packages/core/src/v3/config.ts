@@ -12,6 +12,7 @@ import type {
 import type { LogLevel } from "./logger/taskLogger.js";
 import type { MachinePresetName } from "./schemas/common.js";
 import { LogRecordExporter } from "@opentelemetry/sdk-logs";
+import type { Resource } from "@opentelemetry/resources";
 
 export type CompatibilityFlag = "run_engine_v2";
 
@@ -107,6 +108,13 @@ export type TriggerConfig = {
      * @see https://trigger.dev/docs/config/config-file#exporters
      */
     logExporters?: Array<LogRecordExporter>;
+
+    /**
+     * Resource to use for OpenTelemetry. This is useful if you want to add custom resources to your tasks.
+     *
+     * @see https://trigger.dev/docs/config/config-file#resource
+     */
+    resource?: Resource;
   };
 
   /**

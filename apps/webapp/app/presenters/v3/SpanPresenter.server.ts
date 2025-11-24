@@ -497,7 +497,18 @@ export class SpanPresenter extends BasePresenter {
       duration: span.duration,
       events: span.events,
       style: span.style,
-      properties: span.properties ? JSON.stringify(span.properties, null, 2) : undefined,
+      properties:
+        span.properties &&
+        typeof span.properties === "object" &&
+        Object.keys(span.properties).length > 0
+          ? JSON.stringify(span.properties, null, 2)
+          : undefined,
+      resourceProperties:
+        span.resourceProperties &&
+        typeof span.resourceProperties === "object" &&
+        Object.keys(span.resourceProperties).length > 0
+          ? JSON.stringify(span.resourceProperties, null, 2)
+          : undefined,
       entity: span.entity,
       metadata: span.metadata,
       triggeredRuns,

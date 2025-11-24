@@ -209,6 +209,7 @@ async function doBootstrap() {
       logExporters: config.telemetry?.logExporters ?? [],
       diagLogLevel: (env.TRIGGER_OTEL_LOG_LEVEL as TracingDiagnosticLogLevel) ?? "none",
       forceFlushTimeoutMillis: 30_000,
+      resource: config.telemetry?.resource,
     });
 
     const otelTracer: Tracer = tracingSDK.getTracer("trigger-dev-worker", VERSION);

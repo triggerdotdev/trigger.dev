@@ -204,6 +204,24 @@ function convertLogsToCreateableEvents(
 
   const resourceProperties = extractEventProperties(resourceAttributes);
 
+  const userDefinedResourceAttributes = truncateAttributes(
+    convertKeyValueItemsToMap(resourceAttributes ?? [], [], undefined, [
+      SemanticInternalAttributes.USAGE,
+      SemanticInternalAttributes.SPAN,
+      SemanticInternalAttributes.METADATA,
+      SemanticInternalAttributes.STYLE,
+      SemanticInternalAttributes.METRIC_EVENTS,
+      SemanticInternalAttributes.TRIGGER,
+      "process",
+      "sdk",
+      "service",
+      "ctx",
+      "cli",
+      "cloud",
+    ]),
+    spanAttributeValueLengthLimit
+  );
+
   const taskEventStore =
     extractStringAttribute(resourceAttributes, [SemanticInternalAttributes.TASK_EVENT_STORE]) ??
     env.EVENT_REPOSITORY_DEFAULT_STORE;
@@ -249,6 +267,7 @@ function convertLogsToCreateableEvents(
           status: logLevelToEventStatus(log.severityNumber),
           startTime: log.timeUnixNano,
           properties,
+          resourceProperties: userDefinedResourceAttributes,
           style: convertKeyValueItemsToMap(
             pickAttributes(log.attributes ?? [], SemanticInternalAttributes.STYLE),
             []
@@ -284,6 +303,24 @@ function convertSpansToCreateableEvents(
   const resourceAttributes = resourceSpan.resource?.attributes ?? [];
 
   const resourceProperties = extractEventProperties(resourceAttributes);
+
+  const userDefinedResourceAttributes = truncateAttributes(
+    convertKeyValueItemsToMap(resourceAttributes ?? [], [], undefined, [
+      SemanticInternalAttributes.USAGE,
+      SemanticInternalAttributes.SPAN,
+      SemanticInternalAttributes.METADATA,
+      SemanticInternalAttributes.STYLE,
+      SemanticInternalAttributes.METRIC_EVENTS,
+      SemanticInternalAttributes.TRIGGER,
+      "process",
+      "sdk",
+      "service",
+      "ctx",
+      "cli",
+      "cloud",
+    ]),
+    spanAttributeValueLengthLimit
+  );
 
   const taskEventStore =
     extractStringAttribute(resourceAttributes, [SemanticInternalAttributes.TASK_EVENT_STORE]) ??
@@ -336,6 +373,7 @@ function convertSpansToCreateableEvents(
           events: spanEventsToEventEvents(span.events ?? []),
           duration: span.endTimeUnixNano - span.startTimeUnixNano,
           properties,
+          resourceProperties: userDefinedResourceAttributes,
           style: convertKeyValueItemsToMap(
             pickAttributes(span.attributes ?? [], SemanticInternalAttributes.STYLE),
             []

@@ -184,7 +184,10 @@ export class ClickhouseEventRepository implements IEventRepository {
         message: event.message,
         kind: this.createEventToTaskEventV1InputKind(event),
         status: this.createEventToTaskEventV1InputStatus(event),
-        attributes: this.createEventToTaskEventV1InputAttributes(event.properties),
+        attributes: this.createEventToTaskEventV1InputAttributes(
+          event.properties,
+          event.resourceProperties
+        ),
         metadata: this.createEventToTaskEventV1InputMetadata(event),
         expires_at: convertDateToClickhouseDateTime(
           new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) // 1 year
@@ -392,7 +395,24 @@ export class ClickhouseEventRepository implements IEventRepository {
     return "OK";
   }
 
-  private createEventToTaskEventV1InputAttributes(attributes: Attributes): Record<string, unknown> {
+  private createEventToTaskEventV1InputAttributes(
+    attributes: Attributes,
+    resourceAttributes?: Attributes
+  ): Record<string, unknown> {
+    if (!attributes && !resourceAttributes) {
+      return {};
+    }
+
+    return {
+      ...this.createAttributesToInputAttributes(attributes),
+      ...this.createAttributesToInputAttributes(resourceAttributes, "$resource"),
+    };
+  }
+
+  private createAttributesToInputAttributes(
+    attributes: Attributes | undefined,
+    key?: string
+  ): Record<string, unknown> {
     if (!attributes) {
       return {};
     }
@@ -406,6 +426,12 @@ export class ClickhouseEventRepository implements IEventRepository {
     const unflattenedAttributes = unflattenAttributes(publicAttributes);
 
     if (unflattenedAttributes && typeof unflattenedAttributes === "object") {
+      if (key) {
+        return {
+          [key]: unflattenedAttributes,
+        };
+      }
+
       return {
         ...unflattenedAttributes,
       };
@@ -1103,6 +1129,7 @@ export class ClickhouseEventRepository implements IEventRepository {
           events: [],
           style: {},
           properties: undefined,
+          resourceProperties: undefined,
           entity: {
             type: undefined,
             id: undefined,
@@ -1177,8 +1204,19 @@ export class ClickhouseEventRepository implements IEventRepository {
         }
       }
 
-      if (!span.properties && typeof record.attributes_text === "string") {
-        span.properties = this.#parseAttributes(record.attributes_text);
+      if (
+        (span.properties == null ||
+          (typeof span.properties === "object" && Object.keys(span.properties).length === 0)) &&
+        typeof record.attributes_text === "string"
+      ) {
+        const parsedAttributes = this.#parseAttributes(record.attributes_text);
+        const resourceAttributes = parsedAttributes["$resource"];
+
+        // Remove the $resource key from the attributes
+        delete parsedAttributes["$resource"];
+
+        span.properties = parsedAttributes;
+        span.resourceProperties = resourceAttributes as Record<string, unknown> | undefined;
       }
     }
 
