@@ -80,6 +80,7 @@ const DeployCommandOptions = CommonCommandOptions.extend({
   builder: z.string().default("trigger"),
   nativeBuildServer: z.boolean().default(false),
   detach: z.boolean().default(false),
+  plain: z.boolean().default(false),
 });
 
 type DeployCommandOptions = z.infer<typeof DeployCommandOptions>;
@@ -184,6 +185,7 @@ export function configureDeployCommand(program: Command) {
           "Return immediately after the deployment is queued, do not wait for the build to complete. Implies using the native build server."
         ).implies({ nativeBuildServer: true })
       )
+      .addOption(new CommandOption("--plain", "Plain output").hideHelp())
       .action(async (path, options) => {
         await handleTelemetry(async () => {
           await printStandloneInitialBanner(true);
@@ -200,7 +202,9 @@ export async function deployCommand(dir: string, options: unknown) {
 }
 
 async function _deployCommand(dir: string, options: DeployCommandOptions) {
-  intro(`Deploying project${options.skipPromotion ? " (without promotion)" : ""}`);
+  if (!options.plain) {
+    intro(`Deploying project${options.skipPromotion ? " (without promotion)" : ""}`);
+  }
 
   if (!options.skipUpdateCheck) {
     await updateTriggerPackages(dir, { ...options }, true, true);
@@ -215,6 +219,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     embedded: true,
     defaultApiUrl: options.apiUrl,
     profile: options.profile,
+    silent: options.plain,
   });
 
   if (!authorization.ok) {
@@ -321,7 +326,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
   const destination = getTmpDir(resolvedConfig.workingDir, "build", options.dryRun);
 
-  const $buildSpinner = spinner();
+  const $buildSpinner = spinner({ plain: options.plain });
 
   const forcedExternals = await resolveAlwaysExternal(projectClient.client);
 
@@ -337,13 +342,13 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
       rewritePaths: true,
       envVars: serverEnvVars.success ? serverEnvVars.data.variables : {},
       forcedExternals,
+      plain: options.plain,
       listener: {
         onBundleStart() {
           $buildSpinner.start("Building trigger code");
         },
         onBundleComplete(result) {
           $buildSpinner.stop("Successfully built code");
-
           logger.debug("Bundle result", result);
         },
       },
@@ -403,7 +408,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     const vars = numberOfEnvVars === 1 ? "var" : "vars";
 
     if (!options.skipSyncEnvVars) {
-      const $spinner = spinner();
+      const $spinner = spinner({ plain: options.plain });
       $spinner.start(`Syncing ${numberOfEnvVars} env ${vars} with the server`);
 
       const uploadResult = await syncEnvVarsWithServer(
@@ -445,14 +450,16 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   const deploymentLink = cliLink("View deployment", rawDeploymentLink);
   const testLink = cliLink("Test tasks", rawTestLink);
 
-  const $spinner = spinner();
+  const $spinner = spinner({ plain: options.plain });
 
   const buildSuffix =
     isLocalBuild && !process.env.TRIGGER_LOCAL_BUILD_LABEL_DISABLED ? " (local)" : "";
   const deploySuffix =
     isLocalBuild && !process.env.TRIGGER_LOCAL_BUILD_LABEL_DISABLED ? " (local build)" : "";
 
-  if (isCI) {
+  if (options.plain) {
+    $spinner.start(`Building version ${version}${buildSuffix}`);
+  } else if (isCI) {
     log.step(`Building version ${version}\n`);
   } else {
     if (isLinksSupported) {
@@ -485,7 +492,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     compilationPath: destination.path,
     buildEnvVars: buildManifest.build.env,
     onLog: (logMessage) => {
-      if (isCI) {
+      if (options.plain || isCI) {
         console.log(logMessage);
         return;
       }
@@ -582,7 +589,9 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     throw new SkipLoggingError(errorData?.message ?? "Failed to get deployment with worker");
   }
 
-  if (isCI) {
+  if (options.plain) {
+    $spinner.message(`Deploying version ${version}${deploySuffix}`);
+  } else if (isCI) {
     log.step(`Deploying version ${version}${deploySuffix}\n`);
   } else {
     if (isLinksSupported) {
@@ -600,7 +609,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
       skipPushToRegistry: remoteBuildExplicitlySkipped,
     },
     (logMessage) => {
-      if (isCI) {
+      if (options.plain || isCI) {
         console.log(logMessage);
         return;
       }
@@ -627,7 +636,9 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     throw new SkipLoggingError("Failed to finalize deployment");
   }
 
-  if (isCI) {
+  if (options.plain) {
+    console.log(`Successfully deployed version ${version}${deploySuffix}`);
+  } else if (isCI) {
     log.step(`Successfully deployed version ${version}${deploySuffix}`);
   } else {
     $spinner.stop(`Successfully deployed version ${version}${deploySuffix}`);
@@ -635,18 +646,29 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
   const taskCount = deploymentWithWorker.worker?.tasks.length ?? 0;
 
-  outro(
-    `Version ${version} deployed with ${taskCount} detected task${taskCount === 1 ? "" : "s"} ${
-      isLinksSupported ? `| ${deploymentLink} | ${testLink}` : ""
-    }`
-  );
+  if (options.plain) {
+    console.log(
+      `Version ${version} deployed with ${taskCount} detected task${taskCount === 1 ? "" : "s"}`
+    );
 
-  if (!isLinksSupported) {
-    console.log("View deployment");
-    console.log(rawDeploymentLink);
-    console.log(); // new line
-    console.log("Test tasks");
-    console.log(rawTestLink);
+    if (!process.env.TRIGGER_DEPLOYMENT_LINK_OUTPUT_DISABLED) {
+      console.log(`Deployment: ${rawDeploymentLink}`);
+      console.log(`Test: ${rawTestLink}`);
+    }
+  } else {
+    outro(
+      `Version ${version} deployed with ${taskCount} detected task${taskCount === 1 ? "" : "s"} ${
+        isLinksSupported ? `| ${deploymentLink} | ${testLink}` : ""
+      }`
+    );
+
+    if (!isLinksSupported) {
+      console.log("View deployment");
+      console.log(rawDeploymentLink);
+      console.log(); // new line
+      console.log("Test tasks");
+      console.log(rawTestLink);
+    }
   }
 
   if (options.saveLogs) {
