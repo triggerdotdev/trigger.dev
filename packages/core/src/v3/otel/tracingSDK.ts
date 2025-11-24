@@ -10,7 +10,12 @@ import { TraceState } from "@opentelemetry/core";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { registerInstrumentations, type Instrumentation } from "@opentelemetry/instrumentation";
-import { detectResources, processDetector, resourceFromAttributes } from "@opentelemetry/resources";
+import {
+  detectResources,
+  processDetector,
+  Resource,
+  resourceFromAttributes,
+} from "@opentelemetry/resources";
 import {
   BatchLogRecordProcessor,
   LogRecordExporter,
@@ -64,6 +69,7 @@ export type TracingSDKConfig = {
   exporters?: SpanExporter[];
   logExporters?: LogRecordExporter[];
   diagLogLevel?: TracingDiagnosticLogLevel;
+  resource?: Resource;
 };
 
 const idGenerator = new RandomIdGenerator();
@@ -84,6 +90,10 @@ export class TracingSDK {
       ? JSON.parse(envResourceAttributesSerialized)
       : {};
 
+    const customEnvResourceAttributes = parseOtelResourceAttributes(
+      getEnvVar("CUSTOM_OTEL_RESOURCE_ATTRIBUTES")
+    );
+
     const commonResources = detectResources({
       detectors: [processDetector],
     })
@@ -99,7 +109,9 @@ export class TracingSDK {
         })
       )
       .merge(resourceFromAttributes(envResourceAttributes))
-      .merge(resourceFromAttributes(taskContext.resourceAttributes));
+      .merge(resourceFromAttributes(customEnvResourceAttributes))
+      .merge(resourceFromAttributes(taskContext.resourceAttributes))
+      .merge(config.resource ?? resourceFromAttributes({}));
 
     const spanExporter = new OTLPTraceExporter({
       url: `${config.url}/v1/traces`,
@@ -488,4 +500,75 @@ function isTraceFlagSampled(traceFlags?: number): boolean {
   }
 
   return (traceFlags & TraceFlags.SAMPLED) === TraceFlags.SAMPLED;
+}
+
+function isPrintableAscii(str: string): boolean {
+  // printable ASCII: 0x20 (space) .. 0x7E (~)
+  for (let i = 0; i < str.length; i++) {
+    const code = str.charCodeAt(i);
+    if (code < 0x20 || code > 0x7e) return false;
+  }
+  return true;
+}
+
+function isValid(name: string | undefined): boolean {
+  if (!name) return false;
+  return typeof name === "string" && name.length <= 255 && isPrintableAscii(name);
+}
+
+function isValidAndNotEmpty(name: string | undefined): boolean {
+  if (!name) return false;
+  return isValid(name) && name.length > 0;
+}
+
+export function parseOtelResourceAttributes(
+  rawEnvAttributes: string | undefined | null
+): Record<string, string> {
+  if (!rawEnvAttributes) return {};
+
+  const COMMA = ",";
+  const KV = "=";
+  const attributes: Record<string, string> = {};
+
+  // use negative limit to support trailing empty attribute
+  const rawAttributes = rawEnvAttributes.split(COMMA, -1);
+  for (const rawAttribute of rawAttributes) {
+    const keyValuePair = rawAttribute.split(KV, -1);
+    if (keyValuePair.length !== 2) {
+      // skip invalid pair
+      continue;
+    }
+    let [key, value] = keyValuePair;
+    key = key?.trim();
+    // trim and remove surrounding double quotes
+    value = value?.trim().replace(/^"|"$/g, "");
+
+    if (!value || !key) {
+      continue;
+    }
+
+    if (!isValidAndNotEmpty(key)) {
+      throw new Error(
+        `Attribute key should be a ASCII string with a length greater than 0 and not exceed 255 characters.`
+      );
+    }
+    if (!isValid(value)) {
+      throw new Error(
+        `Attribute value should be a ASCII string with a length not exceed 255 characters.`
+      );
+    }
+
+    // decode percent-encoding (deployment%20name -> deployment name)
+    try {
+      attributes[key] = decodeURIComponent(value);
+    } catch (e: unknown) {
+      // decodeURIComponent can throw for malformed sequences; rethrow or handle
+      if (e instanceof Error) {
+        throw new Error(`Failed to decode attribute value for key ${key}: ${e.message}`);
+      }
+      throw new Error(`Failed to decode attribute value for key ${key}`);
+    }
+  }
+
+  return attributes;
 }

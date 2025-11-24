@@ -1071,6 +1071,17 @@ function SpanEntity({ span }: { span: Span }) {
             showOpenInModal
           />
         ) : null}
+        {span.resourceProperties !== undefined ? (
+          <CodeBlock
+            rowTitle="Resource properties"
+            code={span.resourceProperties}
+            maxLines={20}
+            showLineNumbers={false}
+            showCopyButton
+            showTextWrapping
+            showOpenInModal
+          />
+        ) : null}
       </div>
     );
   }

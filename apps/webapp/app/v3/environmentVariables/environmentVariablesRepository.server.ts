@@ -825,11 +825,15 @@ export async function resolveVariablesForEnvironment(
   runtimeEnvironment: RuntimeEnvironmentForEnvRepo,
   parentEnvironment?: RuntimeEnvironmentForEnvRepo
 ) {
-  const projectSecrets = await environmentVariablesRepository.getEnvironmentVariables(
+  let projectSecrets = await environmentVariablesRepository.getEnvironmentVariables(
     runtimeEnvironment.projectId,
     runtimeEnvironment.id,
     parentEnvironment?.id
   );
+
+  projectSecrets = renameVariables(projectSecrets, {
+    OTEL_RESOURCE_ATTRIBUTES: "CUSTOM_OTEL_RESOURCE_ATTRIBUTES",
+  });
 
   const overridableTriggerVariables = await resolveOverridableTriggerVariables(runtimeEnvironment);
 
@@ -851,6 +855,15 @@ export async function resolveVariablesForEnvironment(
   ]);
 
   return result;
+}
+
+function renameVariables(variables: EnvironmentVariable[], renameMap: Record<string, string>) {
+  return variables.map((variable) => {
+    return {
+      ...variable,
+      key: renameMap[variable.key] ?? variable.key,
+    };
+  });
 }
 
 async function resolveOverridableTriggerVariables(
