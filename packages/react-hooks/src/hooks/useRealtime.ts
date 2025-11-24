@@ -404,6 +404,8 @@ export function useRealtimeRunsWithTag<TTask extends AnyTask>(
   tag: string | string[],
   options?: UseRealtimeRunsWithTagOptions
 ): UseRealtimeRunsInstance<TTask> {
+  const normalizedTag = (Array.isArray(tag) ? tag : [tag]).join("-");
+
   const hookId = useId();
   const idKey = options?.id ?? hookId;
 
@@ -466,7 +468,7 @@ export function useRealtimeRunsWithTag<TTask extends AnyTask>(
         abortControllerRef.current = null;
       }
     }
-  }, [tag, mutateRuns, runsRef, abortControllerRef, apiClient, setError]);
+  }, [normalizedTag, mutateRuns, runsRef, abortControllerRef, apiClient, setError]);
 
   useEffect(() => {
     if (typeof options?.enabled === "boolean" && !options.enabled) {
@@ -478,7 +480,7 @@ export function useRealtimeRunsWithTag<TTask extends AnyTask>(
     return () => {
       stop();
     };
-  }, [tag, stop, options?.enabled]);
+  }, [normalizedTag, stop, options?.enabled]);
 
   return { runs: runs ?? [], error, stop };
 }
