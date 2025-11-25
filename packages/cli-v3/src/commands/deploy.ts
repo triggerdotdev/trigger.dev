@@ -74,6 +74,7 @@ const DeployCommandOptions = CommonCommandOptions.extend({
   envFile: z.string().optional(),
   // Local build options
   forceLocalBuild: z.boolean().optional(),
+  localBuild: z.boolean().optional(),
   useRegistryCache: z.boolean().default(false),
   network: z.enum(["default", "none", "host"]).optional(),
   push: z.boolean().optional(),
@@ -156,7 +157,12 @@ export function configureDeployCommand(program: Command) {
         ).hideHelp()
       )
       // Local build options
-      .addOption(new CommandOption("--force-local-build", "Force a local build of the image"))
+      .addOption(
+        new CommandOption("--force-local-build", "Deprecated alias for --local-build").implies({
+          localBuild: true,
+        })
+      )
+      .addOption(new CommandOption("--local-build", "Build the deployment image locally"))
       .addOption(new CommandOption("--push", "Push the image after local builds").hideHelp())
       .addOption(
         new CommandOption("--no-push", "Do not push the image after local builds").hideHelp()
@@ -379,9 +385,9 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     },
     envVars.TRIGGER_EXISTING_DEPLOYMENT_ID
   );
-  const isLocalBuild = options.forceLocalBuild || !deployment.externalBuildData;
+  const isLocalBuild = options.localBuild || !deployment.externalBuildData;
   // Would be best to actually store this separately in the deployment object. This is an okay proxy for now.
-  const remoteBuildExplicitlySkipped = options.forceLocalBuild && !!deployment.externalBuildData;
+  const remoteBuildExplicitlySkipped = options.localBuild && !!deployment.externalBuildData;
 
   // Fail fast if we know local builds will fail
   if (isLocalBuild) {
