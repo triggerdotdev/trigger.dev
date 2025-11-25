@@ -18,6 +18,7 @@ import { isWindows } from "std-env";
 import { pathToFileURL } from "node:url";
 import { logger } from "../utilities/logger.js";
 import { SdkVersionExtractor } from "./plugins.js";
+import { spinner } from "../utilities/windows.js";
 
 export type BuildWorkerEventListener = {
   onBundleStart?: () => void;
@@ -34,6 +35,7 @@ export type BuildWorkerOptions = {
   envVars?: Record<string, string>;
   rewritePaths?: boolean;
   forcedExternals?: string[];
+  plain?: boolean;
 };
 
 export async function buildWorker(options: BuildWorkerOptions) {
@@ -48,7 +50,21 @@ export async function buildWorker(options: BuildWorkerOptions) {
     resolvedConfig,
     options.forcedExternals
   );
-  const buildContext = createBuildContext(options.target, resolvedConfig);
+  const buildContext = createBuildContext(options.target, resolvedConfig, {
+    logger: options.plain
+      ? {
+          debug: (...args) => console.log(...args),
+          log: (...args) => console.log(...args),
+          warn: (...args) => console.log(...args),
+          progress: (message) => console.log(message),
+          spinner: (message) => {
+            const $spinner = spinner({ plain: true });
+            $spinner.start(message);
+            return $spinner;
+          },
+        }
+      : undefined,
+  });
   buildContext.prependExtension(externalsExtension);
   await notifyExtensionOnBuildStart(buildContext);
   const pluginsFromExtensions = resolvePluginsForContext(buildContext);

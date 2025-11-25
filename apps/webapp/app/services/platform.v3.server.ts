@@ -591,6 +591,31 @@ export async function generateRegistryCredentials(
   return result;
 }
 
+export async function enqueueBuild(
+  projectId: string,
+  deploymentId: string,
+  artifactKey: string,
+  options: {
+    skipPromotion?: boolean;
+    configFilePath?: string;
+  }
+) {
+  if (!client) return undefined;
+  const result = await client.enqueueBuild(projectId, { deploymentId, artifactKey, options });
+  if (!result.success) {
+    logger.error("Error enqueuing build", {
+      error: result.error,
+      projectId,
+      deploymentId,
+      artifactKey,
+      options,
+    });
+    throw new Error("Failed to enqueue build");
+  }
+
+  return result;
+}
+
 function isCloud(): boolean {
   const acceptableHosts = [
     "https://cloud.trigger.dev",
