@@ -7,12 +7,6 @@ packages:
   - "!packages/cli-v3/e2e/**"
 
 minimumReleaseAge: 1440
-
-ignoreScripts: true
-
-allowedScripts:
-  - "@prisma/client"
-
 preferOffline: true
 
 linkWorkspacePackages: false
