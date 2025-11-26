@@ -74,7 +74,7 @@
     "dev": "tshy --watch",
     "test": "vitest",
     "test:e2e": "vitest --run -c ./e2e/vitest.config.ts",
-    "update-version": "node ../../scripts/updateVersion.ts",
+    "update-version": "node ../../scripts/updateVersion.mjs",
     "install-mcp": "./install-mcp.sh",
     "inspector": "npx @modelcontextprotocol/inspector dist/esm/index.js mcp --log-file .mcp.log --api-url http://localhost:3030"
   },

@@ -37,7 +37,7 @@
     "dev": "tshy --watch",
     "typecheck": "tsc -p tsconfig.src.json --noEmit",
     "test": "vitest",
-    "update-version": "node ../../scripts/updateVersion.ts",
+    "update-version": "node ../../scripts/updateVersion.mjs",
     "check-exports": "attw --pack ."
   },
   "dependencies": {

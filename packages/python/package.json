@@ -41,7 +41,7 @@
     "build": "tshy && pnpm run update-version",
     "dev": "tshy --watch",
     "typecheck": "tsc --noEmit -p tsconfig.src.json",
-    "update-version": "node ../../scripts/updateVersion.ts",
+    "update-version": "node ../../scripts/updateVersion.mjs",
     "check-exports": "attw --pack ."
   },
   "dependencies": {

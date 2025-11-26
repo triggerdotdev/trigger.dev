@@ -25,7 +25,7 @@ async function updateVersion() {
   );
 }
 
-async function updatePlaceholderInFile(filePath: string, version: string) {
+async function updatePlaceholderInFile(filePath, version) {
   try {
     const fileContents = await fs.readFile(filePath, "utf-8");
     const updatedContents = fileContents.replace("0.0.0", version);
@@ -37,3 +37,4 @@ updateVersion().catch((e) => {
   console.error(e);
   process.exit(1);
 });
+

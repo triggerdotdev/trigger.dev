@@ -158,7 +158,7 @@
   "sideEffects": false,
   "scripts": {
     "clean": "rimraf dist .tshy .tshy-build .turbo",
-    "update-version": "node ../../scripts/updateVersion.ts",
+    "update-version": "node ../../scripts/updateVersion.mjs",
     "build": "tshy && pnpm run update-version",
     "dev": "tshy --watch",
     "typecheck": "tsc --noEmit -p tsconfig.src.json",

@@ -33,7 +33,7 @@
     "build": "tshy && pnpm run update-version",
     "dev": "tshy --watch",
     "typecheck": "tsc --noEmit",
-    "update-version": "node ../../scripts/updateVersion.ts",
+    "update-version": "node ../../scripts/updateVersion.mjs",
     "check-exports": "attw --pack ."
   },
   "dependencies": {
