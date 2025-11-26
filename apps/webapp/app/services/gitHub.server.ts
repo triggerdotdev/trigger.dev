@@ -113,7 +113,7 @@ async function fetchInstallationRepositories(octokit: Octokit, installationId: n
 
   for await (const { data } of iterator) {
     pageCount++;
-    allRepos.push(...data);
+    allRepos.push(...data.repositories);
 
     if (maxPages && pageCount >= maxPages) {
       logger.warn("GitHub installation repository fetch truncated", {

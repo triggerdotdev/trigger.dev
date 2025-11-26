@@ -20,7 +20,7 @@
     "zod": "3.25.76"
   },
   "devDependencies": {
-    "@types/nodemailer": "~6.4.17",
+    "@types/nodemailer": "6.4.17",
     "@types/react": "18.2.69"
   },
   "engines": {

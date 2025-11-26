@@ -163,7 +163,7 @@
     "openai": "4.33.1",
     "p-limit": "6.2.0",
     "p-map": "6.0.0",
-    "p-retry": "4.6.1",
+    "p-retry": "4.6.2",
     "parse-duration": "2.1.0",
     "posthog-js": "1.93.3",
     "posthog-node": "4.17.1",
@@ -278,7 +278,8 @@
     "tailwindcss": "3.4.1",
     "tsconfig-paths": "~3.14.1",
     "tsx": "~4.20.6",
-    "vite-tsconfig-paths": "~4.0.5"
+    "vite-tsconfig-paths": "~4.0.5",
+    "typescript": "5.5.4"
   },
   "engines": {
     "node": ">=18.19.0 || >=20.6.0"
