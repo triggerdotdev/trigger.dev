@@ -15,7 +15,7 @@ branch are tagged into a release periodically.
 ### Prerequisites
 
 - [Node.js](https://nodejs.org/en) version 24.11.1
-- [pnpm package manager](https://pnpm.io/installation) version 10.16.0
+- [pnpm package manager](https://pnpm.io/installation) version 10.23.0
 - [Docker](https://www.docker.com/get-started/)
 - [protobuf](https://github.com/protocolbuffers/protobuf)
 
