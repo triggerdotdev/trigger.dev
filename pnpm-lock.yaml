@@ -1632,8 +1632,8 @@ importers:
         specifier: ~3.8.1
         version: 3.8.1
       superjson:
-        specifier: ~2.2.1
-        version: 2.2.5
+        specifier: 2.2.1
+        version: 2.2.1
       tinyexec:
         specifier: ~0.3.2
         version: 0.3.2
