@@ -27,15 +27,15 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@types/node": "^20",
-    "rimraf": "^3.0.2",
-    "ts-proto": "^1.167.3"
+    "@types/node": "~20",
+    "rimraf": "~3.0.2",
+    "ts-proto": "~1.167.3"
   },
   "engines": {
     "node": ">=18.0.0"
   },
   "dependencies": {
-    "long": "^5.2.3",
-    "protobufjs": "^7.2.6"
+    "long": "~5.2.3",
+    "protobufjs": "~7.2.6"
   }
 }

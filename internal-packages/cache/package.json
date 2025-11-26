@@ -8,9 +8,9 @@
   "dependencies": {
     "@internal/redis": "workspace:*",
     "@trigger.dev/core": "workspace:*",
-    "@unkey/cache": "^1.5.0",
-    "@unkey/error": "^0.2.0",
-    "superjson": "^2.2.1"
+    "@unkey/cache": "~1.5.0",
+    "@unkey/error": "~0.2.0",
+    "superjson": "~2.2.1"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

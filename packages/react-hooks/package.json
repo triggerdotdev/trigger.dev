@@ -33,24 +33,22 @@
     "build": "tshy && pnpm run update-version",
     "dev": "tshy --watch",
     "typecheck": "tsc --noEmit",
-    "update-version": "tsx ../../scripts/updateVersion.ts",
+    "update-version": "node ../../scripts/updateVersion.ts",
     "check-exports": "attw --pack ."
   },
   "dependencies": {
     "@trigger.dev/core": "workspace:^4.1.2",
-    "swr": "^2.2.5"
+    "swr": "~2.2.5"
   },
   "devDependencies": {
-    "@arethetypeswrong/cli": "^0.15.4",
+    "@arethetypeswrong/cli": "~0.15.4",
     "@types/react": "*",
     "@types/react-dom": "*",
-    "rimraf": "^3.0.2",
-    "tshy": "^3.0.2",
-    "tsx": "4.17.0"
+    "rimraf": "~3.0.2"
   },
   "peerDependencies": {
-    "react": "^18.0 || ^19.0 || ^19.0.0-rc",
-    "react-dom": "^18.0 || ^19.0 || ^19.0.0-rc"
+    "react": "~18.0 || ^19.0 || ^19.0.0-rc",
+    "react-dom": "~18.0 || ^19.0 || ^19.0.0-rc"
   },
   "engines": {
     "node": ">=18.20.0"

@@ -37,26 +37,25 @@
     "dev": "tshy --watch",
     "typecheck": "tsc -p tsconfig.src.json --noEmit",
     "test": "vitest",
-    "update-version": "tsx ../../scripts/updateVersion.ts",
+    "update-version": "node ../../scripts/updateVersion.ts",
     "check-exports": "attw --pack ."
   },
   "dependencies": {
     "@trigger.dev/core": "workspace:*",
-    "zod-to-json-schema": "^3.24.0",
-    "@sodaru/yup-to-json-schema": "^2",
+    "zod-to-json-schema": "~3.24.0",
+    "@sodaru/yup-to-json-schema": "~2",
     "zod": "3.25.76",
-    "effect": "^3"
+    "effect": "~3"
   },
   "devDependencies": {
-    "arktype": "^2.0.0",
-    "runtypes": "^6.7.0",
-    "superstruct": "^2.0.2",
-    "tshy": "^3.0.2",
-    "@sinclair/typebox": "^0.34.3",
-    "valibot": "^1.1.0",
-    "yup": "^1.7.0",
+    "arktype": "~2.0.0",
+    "runtypes": "~6.7.0",
+    "superstruct": "~2.0.2",
+    "@sinclair/typebox": "~0.34.3",
+    "valibot": "~1.1.0",
+    "yup": "~1.7.0",
     "rimraf": "6.0.1",
-    "@arethetypeswrong/cli": "^0.15.4"
+    "@arethetypeswrong/cli": "~0.15.4"
   },
   "peerDependencies": {
     "arktype": ">=2.0.0",

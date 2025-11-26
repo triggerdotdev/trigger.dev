@@ -53,12 +53,12 @@ jobs:
       - name: ⎔ Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 8.15.5
+          version: 10.16.0
 
       - name: ⎔ Setup node
         uses: buildjet/setup-node@v4
         with:
-          node-version: 20.19.0
+          node-version: 24.11.1
           cache: "pnpm"
 
       # ..to avoid rate limits when pulling images
@@ -111,12 +111,12 @@ jobs:
       - name: ⎔ Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 8.15.5
+          version: 10.16.0
 
       - name: ⎔ Setup node
         uses: buildjet/setup-node@v4
         with:
-          node-version: 20.19.0
+          node-version: 24.11.1
           # no cache enabled, we're not installing deps
 
       - name: Download blob reports from GitHub Actions Artifacts

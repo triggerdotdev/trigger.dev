@@ -1,6 +1,6 @@
 ## Repo Overview
 
-This is a pnpm 8.15.5 monorepo that uses turborepo @turbo.json. The following workspaces are relevant
+This is a pnpm 10.16.0 monorepo that uses turborepo @turbo.json. The following workspaces are relevant
 
 ## Apps
 

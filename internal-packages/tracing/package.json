@@ -8,7 +8,7 @@
   "dependencies": {
     "@opentelemetry/api": "1.9.0",
     "@opentelemetry/api-logs": "0.52.1",
-    "@opentelemetry/semantic-conventions": "^1.27.0",
+    "@opentelemetry/semantic-conventions": "~1.27.0",
     "@trigger.dev/core": "workspace:*"
   },
   "scripts": {

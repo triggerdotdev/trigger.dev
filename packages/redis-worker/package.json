@@ -24,20 +24,19 @@
   },
   "dependencies": {
     "@trigger.dev/core": "workspace:4.1.2",
-    "lodash.omit": "^4.5.0",
-    "nanoid": "^5.0.7",
-    "p-limit": "^6.2.0",
+    "lodash.omit": "~4.5.0",
+    "nanoid": "~5.0.7",
+    "p-limit": "~6.2.0",
     "zod": "3.25.76",
-    "cron-parser": "^4.9.0"
+    "cron-parser": "~4.9.0"
   },
   "devDependencies": {
     "@internal/redis": "workspace:*",
     "@internal/testcontainers": "workspace:*",
     "@internal/tracing": "workspace:*",
-    "@types/lodash.omit": "^4.5.7",
+    "@types/lodash.omit": "~4.5.7",
     "rimraf": "6.0.1",
-    "tsup": "^8.4.0",
-    "tsx": "4.17.0"
+    "tsup": "~8.4.0"
   },
   "engines": {
     "node": ">=18.20.0"

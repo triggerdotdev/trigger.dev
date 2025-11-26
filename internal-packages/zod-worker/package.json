@@ -9,11 +9,11 @@
     "@trigger.dev/core": "workspace:*",
     "@trigger.dev/database": "workspace:*",
     "graphile-worker": "0.16.6",
-    "lodash.omit": "^4.5.0",
+    "lodash.omit": "~4.5.0",
     "zod": "3.25.76"
   },
   "devDependencies": {
-    "@types/lodash.omit": "^4.5.7",
+    "@types/lodash.omit": "~4.5.7",
     "@types/pg": "8.6.6"
   },
   "scripts": {

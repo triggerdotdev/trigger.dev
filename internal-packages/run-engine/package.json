@@ -26,16 +26,16 @@
     "@trigger.dev/core": "workspace:*",
     "@trigger.dev/database": "workspace:*",
     "@internal/cache": "workspace:*",
-    "assert-never": "^1.2.1",
+    "assert-never": "~1.2.1",
     "nanoid": "3.3.8",
     "redlock": "5.0.0-beta.2",
-    "seedrandom": "^3.0.5",
+    "seedrandom": "~3.0.5",
     "zod": "3.25.76",
-    "p-map": "^6.0.0"
+    "p-map": "~6.0.0"
   },
   "devDependencies": {
     "@internal/testcontainers": "workspace:*",
-    "@types/seedrandom": "^3.0.8",
+    "@types/seedrandom": "~3.0.8",
     "rimraf": "6.0.1"
   },
   "scripts": {

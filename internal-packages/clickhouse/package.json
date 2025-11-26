@@ -6,7 +6,7 @@
   "types": "./dist/src/index.d.ts",
   "type": "module",
   "dependencies": {
-    "@clickhouse/client": "^1.12.1",
+    "@clickhouse/client": "~1.12.1",
     "@internal/tracing": "workspace:*",
     "@trigger.dev/core": "workspace:*",
     "zod": "3.25.76",

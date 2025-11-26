@@ -6,7 +6,7 @@
   "types": "./src/index.ts",
   "type": "module",
   "dependencies": {
-    "ioredis": "^5.3.2",
+    "ioredis": "~5.3.2",
     "@trigger.dev/core": "workspace:*"
   },
   "scripts": {
