@@ -1276,8 +1276,8 @@ importers:
   packages/build:
     dependencies:
       '@prisma/config':
-        specifier: ~6.10.0
-        version: 6.10.1
+        specifier: 6.19.0
+        version: 6.19.0(magicast@0.3.5)
       '@trigger.dev/core':
         specifier: workspace:4.1.2
         version: link:../core
@@ -2396,7 +2396,7 @@ importers:
     dependencies:
       '@prisma/client':
         specifier: 6.19.0
-        version: 6.19.0(prisma@6.19.0(magicast@0.3.5)(typescript@5.9.3))(typescript@5.9.3)
+        version: 6.19.0(prisma@6.19.0(typescript@5.9.3))(typescript@5.9.3)
       '@trigger.dev/build':
         specifier: workspace:*
         version: link:../../packages/build
@@ -2406,7 +2406,7 @@ importers:
     devDependencies:
       prisma:
         specifier: 6.19.0
-        version: 6.19.0(magicast@0.3.5)(typescript@5.9.3)
+        version: 6.19.0(typescript@5.9.3)
       trigger.dev:
         specifier: workspace:*
         version: link:../../packages/cli-v3
@@ -2434,7 +2434,7 @@ importers:
     dependencies:
       '@prisma/client':
         specifier: 6.19.0
-        version: 6.19.0(prisma@6.19.0(magicast@0.3.5)(typescript@5.9.3))(typescript@5.9.3)
+        version: 6.19.0(prisma@6.19.0(typescript@5.9.3))(typescript@5.9.3)
       '@trigger.dev/build':
         specifier: workspace:*
         version: link:../../packages/build
@@ -2444,7 +2444,7 @@ importers:
     devDependencies:
       prisma:
         specifier: 6.19.0
-        version: 6.19.0(magicast@0.3.5)(typescript@5.9.3)
+        version: 6.19.0(typescript@5.9.3)
       trigger.dev:
         specifier: workspace:*
         version: link:../../packages/cli-v3
@@ -6685,9 +6685,6 @@ packages:
         optional: true
       typescript:
         optional: true
-
-  '@prisma/config@6.10.1':
-    resolution: {integrity: sha512-kz4/bnqrOrzWo8KzYguN0cden4CzLJJ+2VSpKtF8utHS3l1JS0Lhv6BLwpOX6X9yNreTbZQZwewb+/BMPDCIYQ==}
 
   '@prisma/config@6.14.0':
     resolution: {integrity: sha512-IwC7o5KNNGhmblLs23swnfBjADkacBb7wvyDXUWLwuvUQciKJZqyecU0jw0d7JRkswrj+XTL8fdr0y2/VerKQQ==}
@@ -13995,10 +13992,6 @@ packages:
 
   jiti@1.21.7:
     resolution: {integrity: sha512-/imKNG4EbWNrVjoNC/1H5/9GFy+tqjGBHCaSsN+P2RnPqjsLmv6UD3Ej+Kj8nBWaRAwyk7kK5ZUc+OEatnTR3A==}
-    hasBin: true
-
-  jiti@2.4.2:
-    resolution: {integrity: sha512-rg9zJN+G4n2nfJl5MW3BMygZX56zKPNVEYYqq7adpmMh4Jn2QNEwhvQlFy6jPVdcod7txZtKHWnyZiA3a0zP7A==}
     hasBin: true
 
   jiti@2.6.1:
@@ -24324,9 +24317,9 @@ snapshots:
       prisma: 6.16.0(magicast@0.3.5)(typescript@5.9.3)
       typescript: 5.9.3
 
-  '@prisma/client@6.19.0(prisma@6.19.0(magicast@0.3.5)(typescript@5.9.3))(typescript@5.9.3)':
+  '@prisma/client@6.19.0(prisma@6.19.0(typescript@5.9.3))(typescript@5.9.3)':
     optionalDependencies:
-      prisma: 6.19.0(magicast@0.3.5)(typescript@5.9.3)
+      prisma: 6.19.0(typescript@5.9.3)
       typescript: 5.9.3
 
   '@prisma/client@6.20.0-integration-next.8(prisma@6.20.0-integration-next.8(@types/react@19.2.7)(magicast@0.3.5)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(typescript@5.9.3))(typescript@5.9.3)':
@@ -24335,10 +24328,6 @@ snapshots:
     optionalDependencies:
       prisma: 6.20.0-integration-next.8(@types/react@19.2.7)(magicast@0.3.5)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(typescript@5.9.3)
       typescript: 5.9.3
-
-  '@prisma/config@6.10.1':
-    dependencies:
-      jiti: 2.4.2
 
   '@prisma/config@6.14.0(magicast@0.3.5)':
     dependencies:
@@ -33546,8 +33535,6 @@ snapshots:
 
   jiti@1.21.7: {}
 
-  jiti@2.4.2: {}
-
   jiti@2.6.1: {}
 
   joi@17.13.3:
@@ -36227,7 +36214,7 @@ snapshots:
     transitivePeerDependencies:
       - magicast
 
-  prisma@6.19.0(magicast@0.3.5)(typescript@5.9.3):
+  prisma@6.19.0(typescript@5.9.3):
     dependencies:
       '@prisma/config': 6.19.0(magicast@0.3.5)
       '@prisma/engines': 6.19.0
