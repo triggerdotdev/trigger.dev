@@ -98,7 +98,6 @@
       "@sentry/cli",
       "@swc/core",
       "better-sqlite3",
-      "bufferutil",
       "cpu-features",
       "esbuild",
       "lefthook",
