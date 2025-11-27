@@ -66,7 +66,7 @@
     "vite-tsconfig-paths": "^4.0.5",
     "vitest": "3.1.4"
   },
-  "packageManager": "pnpm@8.15.5",
+  "packageManager": "pnpm@10.23.0",
   "dependencies": {
     "@changesets/cli": "2.26.2",
     "@remix-run/changelog-github": "^0.0.5",
@@ -89,6 +89,24 @@
       "form-data@^3": "3.0.4",
       "form-data@^4": "4.0.4",
       "axios@1.9.0": ">=1.12.0"
-    }
+    },
+    "onlyBuiltDependencies": [
+      "@depot/cli",
+      "@fingerprintjs/fingerprintjs-pro-react",
+      "@prisma/client",
+      "@prisma/engines",
+      "@sentry/cli",
+      "@swc/core",
+      "better-sqlite3",
+      "bufferutil",
+      "cpu-features",
+      "esbuild",
+      "lefthook",
+      "prisma",
+      "protobufjs",
+      "sharp",
+      "ssh2",
+      "turbo"
+    ]
   }
 }
