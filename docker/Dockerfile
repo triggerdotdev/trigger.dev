@@ -8,7 +8,7 @@ FROM ${NODE_IMAGE} AS pruner
 WORKDIR /triggerdotdev
 
 COPY --chown=node:node . .
-RUN npx -q turbo@1.10.9 prune --scope=webapp --docker
+RUN npx -q turbo@2.5.4 prune --scope=webapp --docker
 RUN find . -name "node_modules" -type d -prune -exec rm -rf '{}' +
 
 # Base strategy to have layer caching
@@ -19,34 +19,34 @@ COPY --chown=node:node .gitignore .gitignore
 COPY --from=pruner --chown=node:node /triggerdotdev/out/json/ .
 COPY --from=pruner --chown=node:node /triggerdotdev/out/pnpm-lock.yaml ./pnpm-lock.yaml
 COPY --from=pruner --chown=node:node /triggerdotdev/out/pnpm-workspace.yaml ./pnpm-workspace.yaml
+COPY --chown=node:node patches ./patches
 
 ## Dev deps
 FROM base AS dev-deps
 WORKDIR /triggerdotdev
-# Corepack is used to install pnpm
-RUN corepack enable
-ENV NODE_ENV development
-RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpm install --ignore-scripts --no-frozen-lockfile
+# Corepack is used to install pnpm with the exact version from packageManager
+RUN corepack enable && corepack prepare pnpm@10.23.0 --activate
+ENV NODE_ENV=development
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpm install --no-frozen-lockfile
+# Generate Prisma client here where all deps are installed
+COPY --from=pruner --chown=node:node /triggerdotdev/internal-packages/database/prisma/schema.prisma /triggerdotdev/internal-packages/database/prisma/schema.prisma
+RUN pnpx prisma@6.14.0 generate --schema /triggerdotdev/internal-packages/database/prisma/schema.prisma
 
 ## Production deps
 FROM base AS production-deps
 WORKDIR /triggerdotdev
-# Corepack is used to install pnpm
-RUN corepack enable
-ENV NODE_ENV production
+# Corepack is used to install pnpm with the exact version from packageManager
+RUN corepack enable && corepack prepare pnpm@10.23.0 --activate
+ENV NODE_ENV=production
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpm install --prod --no-frozen-lockfile
-COPY --from=pruner --chown=node:node /triggerdotdev/internal-packages/database/prisma/schema.prisma /triggerdotdev/internal-packages/database/prisma/schema.prisma
-# RUN pnpm add @prisma/client@6.14.0 -w
-ENV NPM_CONFIG_IGNORE_WORKSPACE_ROOT_CHECK true
-RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpx prisma@6.14.0 generate --schema /triggerdotdev/internal-packages/database/prisma/schema.prisma
 
 ## Builder (builds the webapp)
 FROM base AS builder
 # This is needed for the sentry-cli binary while building the webapp
 RUN apt-get update && apt-get install -y openssl dumb-init ca-certificates
 WORKDIR /triggerdotdev
-# Corepack is used to install pnpm
-RUN corepack enable
+# Corepack is used to install pnpm with the exact version from packageManager
+RUN corepack enable && corepack prepare pnpm@10.23.0 --activate
 
 ARG SENTRY_RELEASE
 ARG SENTRY_ORG
@@ -77,11 +77,13 @@ RUN --mount=type=secret,id=sentry_auth_token \
 FROM ${NODE_IMAGE} AS runner
 RUN apt-get update && apt-get install -y openssl netcat-openbsd ca-certificates
 WORKDIR /triggerdotdev
-ENV NODE_ENV production
+ENV NODE_ENV=production
 
 COPY --from=base /usr/bin/dumb-init /usr/bin/dumb-init
 COPY --from=pruner --chown=node:node /triggerdotdev/out/full/ .
 COPY --from=production-deps --chown=node:node /triggerdotdev .
+# Copy generated Prisma client from dev-deps
+COPY --from=dev-deps --chown=node:node /triggerdotdev/internal-packages/database/generated ./internal-packages/database/generated
 COPY --from=builder --chown=node:node /triggerdotdev/apps/webapp/build/server.js ./apps/webapp/build/server.js
 COPY --from=builder --chown=node:node /triggerdotdev/apps/webapp/build ./apps/webapp/build
 COPY --from=builder --chown=node:node /triggerdotdev/apps/webapp/public ./apps/webapp/public
@@ -104,11 +106,11 @@ ENV BUILD_APP_VERSION=${BUILD_APP_VERSION} \
 EXPOSE 3000
 
 # Add global pnpm shims and install pnpm during build (root user)
-RUN corepack enable && corepack prepare --activate
+RUN corepack enable && corepack prepare pnpm@10.23.0 --activate
 
 USER node
 
 # Ensure pnpm is installed during build and not silently downloaded at runtime (node user)
-RUN corepack prepare --activate
+RUN corepack prepare pnpm@10.23.0 --activate
 
 CMD ["./scripts/entrypoint.sh"]

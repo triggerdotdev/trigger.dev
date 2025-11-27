@@ -5,3 +5,12 @@ packages:
   - "references/*"
   - "docs"
   - "!packages/cli-v3/e2e/**"
+
+minimumReleaseAge: 4320
+preferOffline: true
+
+linkWorkspacePackages: false
+publicHoistPattern:
+  - "*prisma*"
+preferWorkspacePackages: true
+sideEffectsCache: false

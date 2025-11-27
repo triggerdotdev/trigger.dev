@@ -19,7 +19,7 @@ jobs:
       - name: ⎔ Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 8.15.5
+          version: 10.23.0
 
       - name: ⎔ Setup node
         uses: buildjet/setup-node@v4
