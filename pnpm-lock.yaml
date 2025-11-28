@@ -696,11 +696,16 @@ importers:
       remix-auth-github:
         specifier: ^1.6.0
 <<<<<<< ours
+<<<<<<< ours
         version: 1.6.0(@remix-run/server-runtime@2.1.0(typescript@5.9.3))(remix-auth@3.6.0(@remix-run/react@2.1.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.9.3))(@remix-run/server-runtime@2.1.0(typescript@5.9.3)))
 ||||||| ancestor
         version: 1.6.0(@remix-run/server-runtime@2.1.0(typescript@5.5.4))(remix-auth@3.6.0(@remix-run/react@2.1.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4))(@remix-run/server-runtime@2.1.0(typescript@5.5.4)))
 =======
 <<<<<<< ours
+||||||| ancestor
+=======
+<<<<<<< ours
+>>>>>>> theirs
         version: 1.6.0(@remix-run/server-runtime@2.1.0(typescript@5.5.4))(remix-auth@3.6.0(@remix-run/react@2.1.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4))(@remix-run/server-runtime@2.1.0(typescript@5.5.4)))
 >>>>>>> theirs
       remix-auth-google:
@@ -715,6 +720,15 @@ importers:
         version: 1.6.0(@remix-run/server-runtime@2.1.0(typescript@5.9.3))(remix-auth@3.6.0(@remix-run/react@2.1.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.9.3))(@remix-run/server-runtime@2.1.0(typescript@5.9.3)))
 =======
         version: 1.6.0(@remix-run/server-runtime@2.1.0(typescript@5.5.4))(remix-auth@3.6.0(@remix-run/react@2.1.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4))(@remix-run/server-runtime@2.1.0(typescript@5.5.4)))
+>>>>>>> theirs
+<<<<<<< ours
+>>>>>>> theirs
+||||||| ancestor
+=======
+||||||| ancestor
+        version: 1.6.0(@remix-run/server-runtime@2.1.0(typescript@5.5.4))(remix-auth@3.6.0(@remix-run/react@2.1.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4))(@remix-run/server-runtime@2.1.0(typescript@5.5.4)))
+=======
+        version: 1.6.0(@remix-run/server-runtime@2.1.0(typescript@5.9.3))(remix-auth@3.6.0(@remix-run/react@2.1.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.9.3))(@remix-run/server-runtime@2.1.0(typescript@5.9.3)))
 >>>>>>> theirs
 >>>>>>> theirs
       remix-typedjson:
@@ -1286,8 +1300,11 @@ importers:
       '@trigger.dev/core':
         specifier: workspace:*
         version: link:../../packages/core
-    devDependencies:
       antlr4ts:
+        specifier: 0.5.0-alpha.4
+        version: 0.5.0-alpha.4
+    devDependencies:
+      antlr4ts-cli:
         specifier: 0.5.0-alpha.4
         version: 0.5.0-alpha.4
 
@@ -11418,6 +11435,10 @@ packages:
   ansi-styles@6.2.1:
     resolution: {integrity: sha512-bN798gFfQX+viw3R7yrGWRqnrN2oRkEkUjjl4JNn4E8GxxbjtG3FbrEIIY3l8/hrwUwIeCZvi4QuOTP4MErVug==}
     engines: {node: '>=12'}
+
+  antlr4ts-cli@0.5.0-alpha.4:
+    resolution: {integrity: sha512-lVPVBTA2CVHRYILSKilL6Jd4hAumhSZZWA7UbQNQrmaSSj7dPmmYaN4bOmZG79cOy0lS00i4LY68JZZjZMWVrw==}
+    hasBin: true
 
   antlr4ts@0.5.0-alpha.4:
     resolution: {integrity: sha512-WPQDt1B74OfPv/IMS2ekXAKkTZIHl88uMetg6q3OTqgFxZ/dxDXI0EWLyZid/1Pe6hTftyg5N7gel5wNAGxXyQ==}
@@ -29025,8 +29046,13 @@ snapshots:
   '@rushstack/eslint-patch@1.2.0': {}
 
 <<<<<<< ours
+<<<<<<< ours
   '@s2-dev/streamstore@0.17.3(typescript@5.9.3)':
 ||||||| ancestor
+||||||| ancestor
+=======
+<<<<<<< ours
+>>>>>>> theirs
   '@s2-dev/streamstore@0.17.3(typescript@5.5.4)':
 =======
 <<<<<<< ours
@@ -29042,13 +29068,24 @@ snapshots:
 =======
   '@s2-dev/streamstore@0.17.3(typescript@5.5.4)':
 >>>>>>> theirs
+||||||| ancestor
+  '@s2-dev/streamstore@0.17.3(typescript@5.5.4)':
+=======
+  '@s2-dev/streamstore@0.17.3(typescript@5.9.3)':
+>>>>>>> theirs
     dependencies:
       '@protobuf-ts/runtime': 2.11.1
+<<<<<<< ours
 <<<<<<< ours
 ||||||| ancestor
       typescript: 5.9.3
 =======
       typescript: 5.5.4
+>>>>>>> theirs
+||||||| ancestor
+      typescript: 5.5.4
+=======
+      typescript: 5.9.3
 >>>>>>> theirs
 
   '@sec-ant/readable-stream@0.4.1': {}
@@ -31872,6 +31909,8 @@ snapshots:
 
   ansi-styles@6.2.1: {}
 
+  antlr4ts-cli@0.5.0-alpha.4: {}
+
   antlr4ts@0.5.0-alpha.4: {}
 
   any-promise@1.3.0: {}
@@ -32830,6 +32869,7 @@ snapshots:
       layout-base: 2.0.1
 
 <<<<<<< ours
+<<<<<<< ours
 ||||||| ancestor
   cosmiconfig@8.3.6(typescript@5.5.4):
     dependencies:
@@ -32842,6 +32882,10 @@ snapshots:
 
 =======
 <<<<<<< ours
+||||||| ancestor
+=======
+<<<<<<< ours
+>>>>>>> theirs
   cosmiconfig@8.3.6(typescript@5.5.4):
     dependencies:
       import-fresh: 3.3.0
@@ -32862,6 +32906,22 @@ snapshots:
     optionalDependencies:
       typescript: 5.5.4
 
+>>>>>>> theirs
+<<<<<<< ours
+>>>>>>> theirs
+||||||| ancestor
+=======
+||||||| ancestor
+  cosmiconfig@8.3.6(typescript@5.5.4):
+    dependencies:
+      import-fresh: 3.3.0
+      js-yaml: 4.1.0
+      parse-json: 5.2.0
+      path-type: 4.0.0
+    optionalDependencies:
+      typescript: 5.5.4
+
+=======
 >>>>>>> theirs
 >>>>>>> theirs
   cosmiconfig@8.3.6(typescript@5.9.3):
@@ -35185,6 +35245,7 @@ snapshots:
       - supports-color
       - typescript
 
+<<<<<<< ours
   graphile-worker@0.16.6(patch_hash=798129c99ed02177430fc90a1fdef800ec94e5fd1d491b931297dc52f4c98ab1)(typescript@5.5.4):
     dependencies:
       '@graphile/logger': 0.2.0
@@ -35201,6 +35262,25 @@ snapshots:
       - supports-color
       - typescript
 
+>>>>>>> theirs
+||||||| ancestor
+  graphile-worker@0.16.6(patch_hash=798129c99ed02177430fc90a1fdef800ec94e5fd1d491b931297dc52f4c98ab1)(typescript@5.5.4):
+    dependencies:
+      '@graphile/logger': 0.2.0
+      '@types/debug': 4.1.12
+      '@types/pg': 8.11.6
+      cosmiconfig: 8.3.6(typescript@5.5.4)
+      graphile-config: 0.0.1-beta.8
+      json5: 2.2.3
+      pg: 8.11.5
+      tslib: 2.6.2
+      yargs: 17.7.2
+    transitivePeerDependencies:
+      - pg-native
+      - supports-color
+      - typescript
+
+=======
 >>>>>>> theirs
   graphile-worker@0.16.6(patch_hash=798129c99ed02177430fc90a1fdef800ec94e5fd1d491b931297dc52f4c98ab1)(typescript@5.9.3):
     dependencies:
@@ -39595,11 +39675,16 @@ snapshots:
       - supports-color
 
 <<<<<<< ours
+<<<<<<< ours
   remix-auth-google@2.0.0(@remix-run/server-runtime@2.1.0(typescript@5.9.3))(remix-auth@3.6.0(@remix-run/react@2.1.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.9.3))(@remix-run/server-runtime@2.1.0(typescript@5.9.3))):
 ||||||| ancestor
   remix-auth-google@2.0.0(@remix-run/server-runtime@2.1.0(typescript@5.5.4))(remix-auth@3.6.0(@remix-run/react@2.1.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4))(@remix-run/server-runtime@2.1.0(typescript@5.5.4))):
 =======
 <<<<<<< ours
+||||||| ancestor
+=======
+<<<<<<< ours
+>>>>>>> theirs
   remix-auth-google@2.0.0(@remix-run/server-runtime@2.1.0(typescript@5.5.4))(remix-auth@3.6.0(@remix-run/react@2.1.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4))(@remix-run/server-runtime@2.1.0(typescript@5.5.4))):
 ||||||| ancestor
   remix-auth-oauth2@1.11.0(@remix-run/server-runtime@2.1.0(typescript@5.9.3))(remix-auth@3.6.0(@remix-run/react@2.1.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.9.3))(@remix-run/server-runtime@2.1.0(typescript@5.9.3))):
@@ -39625,9 +39710,27 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+<<<<<<< ours
   remix-auth-oauth2@1.11.0(@remix-run/server-runtime@2.1.0(typescript@5.9.3))(remix-auth@3.6.0(@remix-run/react@2.1.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.9.3))(@remix-run/server-runtime@2.1.0(typescript@5.9.3))):
+||||||| ancestor
+  remix-auth-oauth2@1.11.0(@remix-run/server-runtime@2.1.0(typescript@5.5.4))(remix-auth@3.6.0(@remix-run/react@2.1.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4))(@remix-run/server-runtime@2.1.0(typescript@5.5.4))):
+=======
+  remix-auth-oauth2@1.11.0(@remix-run/server-runtime@2.1.0(typescript@5.5.4))(remix-auth@3.6.0(@remix-run/react@2.1.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4))(@remix-run/server-runtime@2.1.0(typescript@5.5.4))):
+||||||| ancestor
+  remix-auth-oauth2@1.11.0(@remix-run/server-runtime@2.1.0(typescript@5.5.4))(remix-auth@3.6.0(@remix-run/react@2.1.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4))(@remix-run/server-runtime@2.1.0(typescript@5.5.4))):
+=======
+  remix-auth-oauth2@1.11.0(@remix-run/server-runtime@2.1.0(typescript@5.9.3))(remix-auth@3.6.0(@remix-run/react@2.1.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.9.3))(@remix-run/server-runtime@2.1.0(typescript@5.9.3))):
+>>>>>>> theirs
+>>>>>>> theirs
     dependencies:
+<<<<<<< ours
       '@remix-run/server-runtime': 2.1.0(typescript@5.9.3)
+||||||| ancestor
+      '@remix-run/server-runtime': 2.1.0(typescript@5.5.4)
+=======
+<<<<<<< ours
+      '@remix-run/server-runtime': 2.1.0(typescript@5.5.4)
+>>>>>>> theirs
       debug: 4.4.1(supports-color@10.0.0)
 <<<<<<< ours
       remix-auth: 3.6.0(@remix-run/react@2.1.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.9.3))(@remix-run/server-runtime@2.1.0(typescript@5.9.3))
@@ -39641,8 +39744,23 @@ snapshots:
       remix-auth: 3.6.0(@remix-run/react@2.1.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.9.3))(@remix-run/server-runtime@2.1.0(typescript@5.9.3))
 =======
       '@remix-run/server-runtime': 2.1.0(typescript@5.5.4)
+||||||| ancestor
+      '@remix-run/server-runtime': 2.1.0(typescript@5.5.4)
+=======
+      '@remix-run/server-runtime': 2.1.0(typescript@5.9.3)
+>>>>>>> theirs
       debug: 4.4.0
+<<<<<<< ours
       remix-auth: 3.6.0(@remix-run/react@2.1.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4))(@remix-run/server-runtime@2.1.0(typescript@5.5.4))
+>>>>>>> theirs
+<<<<<<< ours
+>>>>>>> theirs
+||||||| ancestor
+=======
+||||||| ancestor
+      remix-auth: 3.6.0(@remix-run/react@2.1.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4))(@remix-run/server-runtime@2.1.0(typescript@5.5.4))
+=======
+      remix-auth: 3.6.0(@remix-run/react@2.1.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.9.3))(@remix-run/server-runtime@2.1.0(typescript@5.9.3))
 >>>>>>> theirs
 >>>>>>> theirs
     transitivePeerDependencies:
@@ -41857,6 +41975,7 @@ snapshots:
       - typescript
 
 <<<<<<< ours
+<<<<<<< ours
   vite-tsconfig-paths@4.0.5(typescript@5.9.3):
     dependencies:
       debug: 4.3.7(supports-color@10.0.0)
@@ -41869,6 +41988,10 @@ snapshots:
 ||||||| ancestor
 =======
 <<<<<<< ours
+||||||| ancestor
+=======
+<<<<<<< ours
+>>>>>>> theirs
 ||||||| ancestor
   vite-tsconfig-paths@4.0.5(typescript@5.9.3):
     dependencies:
@@ -41891,6 +42014,18 @@ snapshots:
       terser: 5.44.1
 
 =======
+||||||| ancestor
+=======
+  vite-tsconfig-paths@4.0.5(typescript@5.9.3):
+    dependencies:
+      debug: 4.3.7(supports-color@10.0.0)
+      globrex: 0.1.2
+      tsconfck: 2.1.2(typescript@5.9.3)
+    transitivePeerDependencies:
+      - supports-color
+      - typescript
+
+>>>>>>> theirs
   vite@4.1.4(@types/node@20.14.14)(terser@5.44.1):
     dependencies:
       esbuild: 0.16.17
