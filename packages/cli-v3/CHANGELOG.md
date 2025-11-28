@@ -1,5 +1,15 @@
 # trigger.dev
 
+## 4.1.3
+
+### Patch Changes
+
+- feat: add ability to set custom resource properties through trigger.config.ts or via the OTEL_RESOURCE_ATTRIBUTES env var ([#2704](https://github.com/triggerdotdev/trigger.dev/pull/2704))
+- Updated dependencies:
+  - `@trigger.dev/build@4.1.3`
+  - `@trigger.dev/core@4.1.3`
+  - `@trigger.dev/schema-to-json@4.1.3`
+
 ## 4.1.2
 
 ### Patch Changes
