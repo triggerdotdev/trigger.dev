@@ -6,13 +6,15 @@
   "types": "./src/index.ts",
   "type": "module",
   "dependencies": {
-    "@trigger.dev/core": "workspace:*"
+    "@trigger.dev/core": "workspace:*",
+    "antlr4ts": "0.5.0-alpha.4"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "grammar:build": "antlr4 -Dlanguage=TypeScript -visitor -o src/generated src/grammar/*.g4"
+    "grammar:build": "pnpm grammar:build:typescript",
+    "grammar:build:typescript": "cat src/grammar/TSQLLexer.typescript.g4 > src/grammar/TSQLLexer.g4 && tail -n +2 src/grammar/TSQLLexer.common.g4 |sed s/isOpeningTag/self.isOpeningTag/ >> src/grammar/TSQLLexer.g4 && antlr4ts src/grammar/TSQLLexer.g4 && rm src/grammar/TSQLLexer.g4 && antlr4ts -visitor -no-listener -Dlanguage=TypeScript src/grammar/TSQLParser.g4"
   },
   "devDependencies": {
-    "antlr4ts": "0.5.0-alpha.4"
+    "antlr4ts-cli": "0.5.0-alpha.4"
   }
 }
