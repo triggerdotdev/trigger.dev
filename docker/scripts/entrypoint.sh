@@ -10,7 +10,7 @@ echo "Running prisma migrations"
 pnpm --filter @trigger.dev/database db:migrate:deploy
 echo "Prisma migrations done"
 
-if [ -n "$CLICKHOUSE_URL" ]; then
+if [ -n "$CLICKHOUSE_URL" ] && [ "$SKIP_CLICKHOUSE_MIGRATIONS" != "1" ]; then
   # Run ClickHouse migrations
   echo "Running ClickHouse migrations..."
   export GOOSE_DRIVER=clickhouse
@@ -30,6 +30,8 @@ if [ -n "$CLICKHOUSE_URL" ]; then
   export GOOSE_MIGRATION_DIR=/triggerdotdev/internal-packages/clickhouse/schema
   /usr/local/bin/goose up
   echo "ClickHouse migrations complete."
+elif [ "$SKIP_CLICKHOUSE_MIGRATIONS" = "1" ]; then
+  echo "SKIP_CLICKHOUSE_MIGRATIONS=1, skipping ClickHouse migrations."
 else
   echo "CLICKHOUSE_URL not set, skipping ClickHouse migrations."
 fi
