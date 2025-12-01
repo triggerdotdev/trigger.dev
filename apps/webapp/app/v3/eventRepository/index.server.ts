@@ -127,6 +127,13 @@ export async function recordRunDebugLog(
       error?: unknown;
     }
 > {
+  if (env.EVENT_REPOSITORY_DEBUG_LOGS_DISABLED) {
+    // drop debug events silently
+    return {
+      success: true,
+    };
+  }
+
   return recordRunEvent(runId, message, {
     ...options,
     attributes: {
