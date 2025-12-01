@@ -4,6 +4,7 @@ import type {
   TaskEventDetailsV1Result,
   TaskEventSummaryV1Result,
   TaskEventV1Input,
+  TaskEventV2Input,
 } from "@internal/clickhouse";
 import { Attributes, startSpan, trace, Tracer } from "@internal/tracing";
 import { createJsonErrorObject } from "@trigger.dev/core/v3/errors";
@@ -72,6 +73,12 @@ export type ClickhouseEventRepositoryConfig = {
   maximumTraceSummaryViewCount?: number;
   maximumTraceDetailedSummaryViewCount?: number;
   maximumLiveReloadingSetting?: number;
+  /**
+   * The version of the ClickHouse task_events table to use.
+   * - "v1": Uses task_events_v1 (partitioned by start_time)
+   * - "v2": Uses task_events_v2 (partitioned by inserted_at to avoid "too many parts" errors)
+   */
+  version?: "v1" | "v2";
 };
 
 /**
@@ -81,13 +88,15 @@ export type ClickhouseEventRepositoryConfig = {
 export class ClickhouseEventRepository implements IEventRepository {
   private _clickhouse: ClickHouse;
   private _config: ClickhouseEventRepositoryConfig;
-  private readonly _flushScheduler: DynamicFlushScheduler<TaskEventV1Input>;
+  private readonly _flushScheduler: DynamicFlushScheduler<TaskEventV1Input | TaskEventV2Input>;
   private _tracer: Tracer;
+  private _version: "v1" | "v2";
 
   constructor(config: ClickhouseEventRepositoryConfig) {
     this._clickhouse = config.clickhouse;
     this._config = config;
     this._tracer = config.tracer ?? trace.getTracer("clickhouseEventRepo", "0.0.1");
+    this._version = config.version ?? "v1";
 
     this._flushScheduler = new DynamicFlushScheduler({
       batchSize: config.batchSize ?? 1000,
@@ -99,31 +108,42 @@ export class ClickhouseEventRepository implements IEventRepository {
       memoryPressureThreshold: 10000,
       loadSheddingThreshold: 10000,
       loadSheddingEnabled: false,
-      isDroppableEvent: (event: TaskEventV1Input) => {
+      isDroppableEvent: (event: TaskEventV1Input | TaskEventV2Input) => {
         // Only drop LOG events during load shedding
         return event.kind === "DEBUG_EVENT";
       },
     });
   }
 
+  get version() {
+    return this._version;
+  }
+
   get maximumLiveReloadingSetting() {
     return this._config.maximumLiveReloadingSetting ?? 1000;
   }
 
-  async #flushBatch(flushId: string, events: TaskEventV1Input[]) {
+  async #flushBatch(flushId: string, events: (TaskEventV1Input | TaskEventV2Input)[]) {
     await startSpan(this._tracer, "flushBatch", async (span) => {
       span.setAttribute("flush_id", flushId);
       span.setAttribute("event_count", events.length);
+      span.setAttribute("version", this._version);
 
       const firstEvent = events[0];
 
       if (firstEvent) {
         logger.debug("ClickhouseEventRepository.flushBatch first event", {
           event: firstEvent,
+          version: this._version,
         });
       }
 
-      const [insertError, insertResult] = await this._clickhouse.taskEvents.insert(events, {
+      const insertFn =
+        this._version === "v2"
+          ? this._clickhouse.taskEventsV2.insert
+          : this._clickhouse.taskEvents.insert;
+
+      const [insertError, insertResult] = await insertFn(events, {
         params: {
           clickhouse_settings: this.#getClickhouseInsertSettings(),
         },
@@ -136,6 +156,7 @@ export class ClickhouseEventRepository implements IEventRepository {
       logger.info("ClickhouseEventRepository.flushBatch Inserted batch into clickhouse", {
         events: events.length,
         insertResult,
+        version: this._version,
       });
 
       this.#publishToRedis(events);
@@ -155,7 +176,7 @@ export class ClickhouseEventRepository implements IEventRepository {
     }
   }
 
-  async #publishToRedis(events: TaskEventV1Input[]) {
+  async #publishToRedis(events: (TaskEventV1Input | TaskEventV2Input)[]) {
     if (events.length === 0) return;
     await tracePubSub.publish(events.map((e) => e.trace_id));
   }
@@ -960,7 +981,10 @@ export class ClickhouseEventRepository implements IEventRepository {
   ): Promise<TraceSummary | undefined> {
     const startCreatedAtWithBuffer = new Date(startCreatedAt.getTime() - 1000);
 
-    const queryBuilder = this._clickhouse.taskEvents.traceSummaryQueryBuilder();
+    const queryBuilder =
+      this._version === "v2"
+        ? this._clickhouse.taskEventsV2.traceSummaryQueryBuilder()
+        : this._clickhouse.taskEvents.traceSummaryQueryBuilder();
 
     queryBuilder.where("environment_id = {environmentId: String}", { environmentId });
     queryBuilder.where("trace_id = {traceId: String}", { traceId });
@@ -972,6 +996,14 @@ export class ClickhouseEventRepository implements IEventRepository {
       queryBuilder.where("start_time <= {endCreatedAt: String}", {
         endCreatedAt: convertDateToNanoseconds(endCreatedAt).toString(),
       });
+    }
+
+    // For v2, add inserted_at filtering for partition pruning
+    if (this._version === "v2") {
+      queryBuilder.where("inserted_at >= {insertedAtStart: DateTime64(3)}", {
+        insertedAtStart: convertDateToClickhouseDateTime(startCreatedAtWithBuffer),
+      });
+      // No upper bound on inserted_at - we want all events inserted up to now
     }
 
     if (options?.includeDebugLogs === false) {
@@ -1058,7 +1090,10 @@ export class ClickhouseEventRepository implements IEventRepository {
   ): Promise<SpanDetail | undefined> {
     const startCreatedAtWithBuffer = new Date(startCreatedAt.getTime() - 1000);
 
-    const queryBuilder = this._clickhouse.taskEvents.spanDetailsQueryBuilder();
+    const queryBuilder =
+      this._version === "v2"
+        ? this._clickhouse.taskEventsV2.spanDetailsQueryBuilder()
+        : this._clickhouse.taskEvents.spanDetailsQueryBuilder();
 
     queryBuilder.where("environment_id = {environmentId: String}", { environmentId });
     queryBuilder.where("trace_id = {traceId: String}", { traceId });
@@ -1070,6 +1105,13 @@ export class ClickhouseEventRepository implements IEventRepository {
     if (endCreatedAt) {
       queryBuilder.where("start_time <= {endCreatedAt: String}", {
         endCreatedAt: convertDateToNanoseconds(endCreatedAt).toString(),
+      });
+    }
+
+    // For v2, add inserted_at filtering for partition pruning
+    if (this._version === "v2") {
+      queryBuilder.where("inserted_at >= {insertedAtStart: DateTime64(3)}", {
+        insertedAtStart: convertDateToClickhouseDateTime(startCreatedAtWithBuffer),
       });
     }
 
@@ -1477,7 +1519,10 @@ export class ClickhouseEventRepository implements IEventRepository {
   ): Promise<TraceDetailedSummary | undefined> {
     const startCreatedAtWithBuffer = new Date(startCreatedAt.getTime() - 1000);
 
-    const queryBuilder = this._clickhouse.taskEvents.traceDetailedSummaryQueryBuilder();
+    const queryBuilder =
+      this._version === "v2"
+        ? this._clickhouse.taskEventsV2.traceDetailedSummaryQueryBuilder()
+        : this._clickhouse.taskEvents.traceDetailedSummaryQueryBuilder();
 
     queryBuilder.where("environment_id = {environmentId: String}", { environmentId });
     queryBuilder.where("trace_id = {traceId: String}", { traceId });
@@ -1488,6 +1533,13 @@ export class ClickhouseEventRepository implements IEventRepository {
     if (endCreatedAt) {
       queryBuilder.where("start_time <= {endCreatedAt: String}", {
         endCreatedAt: convertDateToNanoseconds(endCreatedAt).toString(),
+      });
+    }
+
+    // For v2, add inserted_at filtering for partition pruning
+    if (this._version === "v2") {
+      queryBuilder.where("inserted_at >= {insertedAtStart: DateTime64(3)}", {
+        insertedAtStart: convertDateToClickhouseDateTime(startCreatedAtWithBuffer),
       });
     }
 
@@ -1675,7 +1727,10 @@ export class ClickhouseEventRepository implements IEventRepository {
   ): Promise<RunPreparedEvent[]> {
     const startCreatedAtWithBuffer = new Date(startCreatedAt.getTime() - 1000);
 
-    const queryBuilder = this._clickhouse.taskEvents.traceSummaryQueryBuilder();
+    const queryBuilder =
+      this._version === "v2"
+        ? this._clickhouse.taskEventsV2.traceSummaryQueryBuilder()
+        : this._clickhouse.taskEvents.traceSummaryQueryBuilder();
 
     queryBuilder.where("environment_id = {environmentId: String}", { environmentId });
     queryBuilder.where("trace_id = {traceId: String}", { traceId });
@@ -1687,6 +1742,13 @@ export class ClickhouseEventRepository implements IEventRepository {
     if (endCreatedAt) {
       queryBuilder.where("start_time <= {endCreatedAt: String}", {
         endCreatedAt: convertDateToNanoseconds(endCreatedAt).toString(),
+      });
+    }
+
+    // For v2, add inserted_at filtering for partition pruning
+    if (this._version === "v2") {
+      queryBuilder.where("inserted_at >= {insertedAtStart: DateTime64(3)}", {
+        insertedAtStart: convertDateToClickhouseDateTime(startCreatedAtWithBuffer),
       });
     }
 
