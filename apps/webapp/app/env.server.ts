@@ -1149,8 +1149,14 @@ const EnvironmentSchema = z
     EVENTS_CLICKHOUSE_WAIT_FOR_ASYNC_INSERT: z.string().default("1"),
     EVENTS_CLICKHOUSE_ASYNC_INSERT_MAX_DATA_SIZE: z.coerce.number().int().default(10485760),
     EVENTS_CLICKHOUSE_ASYNC_INSERT_BUSY_TIMEOUT_MS: z.coerce.number().int().default(5000),
+    EVENTS_CLICKHOUSE_START_TIME_MAX_AGE_MS: z.coerce
+      .number()
+      .int()
+      .default(60_000 * 5), // 5 minutes
     EVENT_REPOSITORY_CLICKHOUSE_ROLLOUT_PERCENT: z.coerce.number().optional(),
-    EVENT_REPOSITORY_DEFAULT_STORE: z.enum(["postgres", "clickhouse", "clickhouse_v2"]).default("postgres"),
+    EVENT_REPOSITORY_DEFAULT_STORE: z
+      .enum(["postgres", "clickhouse", "clickhouse_v2"])
+      .default("postgres"),
     EVENT_REPOSITORY_DEBUG_LOGS_DISABLED: BoolEnv.default(false),
     EVENTS_CLICKHOUSE_MAX_TRACE_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(25_000),
     EVENTS_CLICKHOUSE_MAX_TRACE_DETAILED_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(5_000),
