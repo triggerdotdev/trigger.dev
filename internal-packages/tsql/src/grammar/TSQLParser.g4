@@ -51,7 +51,7 @@ kvPairList: kvPair (COMMA kvPair)* COMMA?;
 
 
 // SELECT statement
-select: (selectSetStmt | selectStmt | TSQLxTagElement) SEMICOLON? EOF;
+select: (selectSetStmt | selectStmt | tSQLxTagElement) SEMICOLON? EOF;
 
 selectStmtWithParens: selectStmt | LPAREN selectSetStmt RPAREN | placeholder;
 
@@ -161,7 +161,7 @@ columnExpr
     | identifier (LPAREN columnExprs=columnExprList? RPAREN)? LPAREN DISTINCT? columnArgList=columnExprList? RPAREN                                 # ColumnExprFunction
     | columnExpr LPAREN selectSetStmt RPAREN                                              # ColumnExprCallSelect
     | columnExpr LPAREN columnExprList? RPAREN                                            # ColumnExprCall
-    | TSQLxTagElement                                                                    # ColumnExprTagElement
+    | tSQLxTagElement                                                                    # ColumnExprTagElement
     | templateString                                                                      # ColumnExprTemplateString
     | literal                                                                             # ColumnExprLiteral
 
@@ -224,18 +224,16 @@ columnLambdaExpr:
     ARROW (columnExpr | block)
     ;
 
-TSQLxChildElement
-    : TSQLxTagElement
-    | TSQLxText
+tSQLxChildElement
+    : tSQLxTagElement
+    | TSQLX_TEXT_TEXT
     | LBRACE columnExpr RBRACE;
 
-TSQLxText : TSQLX_TEXT_TEXT ;
-
-TSQLxTagElement
-    : LT identifier TSQLxTagAttribute* SLASH_GT                                          
-    | LT identifier TSQLxTagAttribute* GT TSQLxChildElement* LT_SLASH identifier GT     
+tSQLxTagElement
+    : LT identifier tSQLxTagAttribute* SLASH_GT                                          
+    | LT identifier tSQLxTagAttribute* GT tSQLxChildElement* LT_SLASH identifier GT     
     ;
-TSQLxTagAttribute
+tSQLxTagAttribute
     :   identifier EQ_SINGLE string
     |   identifier EQ_SINGLE LBRACE columnExpr RBRACE
     |   identifier
@@ -260,7 +258,7 @@ tableExpr
     | tableFunctionExpr                  # TableExprFunction
     | LPAREN selectSetStmt RPAREN      # TableExprSubquery
     | tableExpr (alias | AS identifier)  # TableExprAlias
-    | TSQLxTagElement                   # TableExprTag
+    | tSQLxTagElement                   # TableExprTag
     | placeholder                        # TableExprPlaceholder
     ;
 tableFunctionExpr: identifier LPAREN tableArgList? RPAREN;
