@@ -906,6 +906,8 @@ export type UpdateEnvironmentVariableRequestBody = z.infer<
 export const ImportEnvironmentVariablesRequestBody = z.object({
   variables: z.record(z.string()),
   parentVariables: z.record(z.string()).optional(),
+  secrets: z.record(z.boolean()).optional(),
+  parentSecrets: z.record(z.boolean()).optional(),
   override: z.boolean().optional(),
 });
 

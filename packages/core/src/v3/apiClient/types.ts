@@ -13,6 +13,18 @@ export interface ImportEnvironmentVariablesParams {
    * To specify the variables, you can pass them in as a record of key-value pairs. e.g. `{ "key1": "value1", "key2": "value2" }`
    */
   variables: Record<string, string>;
+  /**
+   * Optional parent variables to be imported. These are used when dealing with branch environments.
+   */
+  parentVariables?: Record<string, string>;
+  /**
+   * Optional map of which variables should be marked as secrets. The keys should match the keys in `variables`.
+   */
+  secrets?: Record<string, boolean>;
+  /**
+   * Optional map of which parent variables should be marked as secrets. The keys should match the keys in `parentVariables`.
+   */
+  parentSecrets?: Record<string, boolean>;
   override?: boolean;
 }
 
