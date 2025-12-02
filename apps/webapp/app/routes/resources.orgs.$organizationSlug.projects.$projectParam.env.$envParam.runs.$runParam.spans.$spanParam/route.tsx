@@ -815,6 +815,10 @@ function RunBody({
                       <Property.Label>Span ID</Property.Label>
                       <Property.Value>{run.spanId}</Property.Value>
                     </Property.Item>
+                    <Property.Item>
+                      <Property.Label>Task event store</Property.Label>
+                      <Property.Value>{run.taskEventStore}</Property.Value>
+                    </Property.Item>
                   </div>
                 )}
               </Property.Table>

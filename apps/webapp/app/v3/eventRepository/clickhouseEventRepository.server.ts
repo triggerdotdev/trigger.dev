@@ -1039,7 +1039,7 @@ export class ClickhouseEventRepository implements IEventRepository {
     endCreatedAt?: Date,
     options?: { includeDebugLogs?: boolean }
   ): Promise<TraceSummary | undefined> {
-    const startCreatedAtWithBuffer = new Date(startCreatedAt.getTime() - 1000);
+    const startCreatedAtWithBuffer = new Date(startCreatedAt.getTime() - 60_000);
     const endCreatedAtWithBuffer = endCreatedAt
       ? new Date(endCreatedAt.getTime() + 60_000)
       : undefined;
