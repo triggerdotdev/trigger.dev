@@ -314,7 +314,9 @@ class ExternalSpanExporterWrapper {
       | { traceId: string; spanId: string; traceFlags: number; tracestate?: string }
       | undefined
   ) {
-    this._isExternallySampled = isTraceFlagSampled(externalTraceContext?.traceFlags);
+    this._isExternallySampled = externalTraceContext
+      ? isTraceFlagSampled(externalTraceContext.traceFlags)
+      : !!externalTraceId;
   }
 
   private transformSpan(span: ReadableSpan): ReadableSpan | undefined {
@@ -396,7 +398,9 @@ class ExternalLogRecordExporterWrapper {
       | { traceId: string; spanId: string; tracestate?: string; traceFlags: number }
       | undefined
   ) {
-    this._isExternallySampled = isTraceFlagSampled(externalTraceContext?.traceFlags);
+    this._isExternallySampled = externalTraceContext
+      ? isTraceFlagSampled(externalTraceContext.traceFlags)
+      : !!externalTraceId;
   }
 
   export(logs: any[], resultCallback: (result: any) => void): void {
@@ -416,15 +420,16 @@ class ExternalLogRecordExporterWrapper {
   }
 
   transformLogRecord(logRecord: ReadableLogRecord): ReadableLogRecord {
-    // If there's no spanContext, or if the externalTraceId is not set, return the original logRecord.
-    if (!logRecord.spanContext || !this.externalTraceId || !this.externalTraceContext) {
-      return logRecord;
-    }
-
     // Capture externalTraceId for use within the proxy's scope.
+    // Use externalTraceContext.traceId if available, otherwise fall back to generated externalTraceId
     const externalTraceId = this.externalTraceContext
       ? this.externalTraceContext.traceId
       : this.externalTraceId;
+
+    // If there's no spanContext, or if the externalTraceId is not set, return the original logRecord.
+    if (!logRecord.spanContext || !externalTraceId) {
+      return logRecord;
+    }
 
     return new Proxy(logRecord, {
       get(target, prop, receiver) {
