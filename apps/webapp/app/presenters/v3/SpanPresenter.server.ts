@@ -273,6 +273,7 @@ export class SpanPresenter extends BasePresenter {
       spanId: run.spanId,
       isCached: !!originalRunId,
       machinePreset: machine?.name,
+      taskEventStore: run.taskEventStore,
       externalTraceId,
     };
   }
