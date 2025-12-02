@@ -20,7 +20,7 @@ export async function createFile(
  * Sanitizes a hash to be safe for use as a filename.
  * esbuild's hashes are base64-encoded and may contain `/` and `+` characters.
  */
-function sanitizeHashForFilename(hash: string): string {
+export function sanitizeHashForFilename(hash: string): string {
   return hash.replace(/\//g, "_").replace(/\+/g, "-");
 }
 
@@ -57,14 +57,32 @@ export async function createFileWithStore(
   // Check if content already exists in store by hash
   if (fsSync.existsSync(storePath)) {
     // Create hardlink from build path to store path
-    await fsModule.link(storePath, filePath);
+    // Fall back to copy if hardlink fails (e.g., on Windows or cross-device)
+    try {
+      await fsModule.link(storePath, filePath);
+    } catch (linkError) {
+      try {
+        await fsModule.copyFile(storePath, filePath);
+      } catch (copyError) {
+        throw linkError; // Rethrow original error if copy also fails
+      }
+    }
     return filePath;
   }
 
   // Write to store first (using hash as filename)
   await fsModule.writeFile(storePath, contents);
   // Create hardlink in build directory (with original filename)
-  await fsModule.link(storePath, filePath);
+  // Fall back to copy if hardlink fails (e.g., on Windows or cross-device)
+  try {
+    await fsModule.link(storePath, filePath);
+  } catch (linkError) {
+    try {
+      await fsModule.copyFile(storePath, filePath);
+    } catch (copyError) {
+      throw linkError; // Rethrow original error if copy also fails
+    }
+  }
 
   return filePath;
 }

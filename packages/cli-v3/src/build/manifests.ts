@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { logger } from "../utilities/logger.js";
+import { sanitizeHashForFilename } from "../utilities/fileSystem.js";
 
 export async function copyManifestToDir(
   manifest: BuildManifest,
@@ -45,14 +46,6 @@ export async function copyManifestToDir(
   updatedManifest.outputPath = destination;
 
   return updatedManifest;
-}
-
-/**
- * Sanitizes a hash to be safe for use as a filename.
- * esbuild's hashes are base64-encoded and may contain `/` and `+` characters.
- */
-function sanitizeHashForFilename(hash: string): string {
-  return hash.replace(/\//g, "_").replace(/\+/g, "-");
 }
 
 /**
@@ -99,7 +92,16 @@ async function copyDirWithStore(
 
       if (existsSync(storePath)) {
         // Create hardlink to store file
-        await link(storePath, destPath);
+        // Fall back to copy if hardlink fails (e.g., on Windows or cross-device)
+        try {
+          await link(storePath, destPath);
+        } catch (linkError) {
+          try {
+            await cp(storePath, destPath);
+          } catch (copyError) {
+            throw linkError; // Rethrow original error if copy also fails
+          }
+        }
       } else {
         // File wasn't in the store - copy normally
         await cp(sourcePath, destPath);
