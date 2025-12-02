@@ -5,7 +5,7 @@ WORKDIR /app
 FROM node-22-alpine AS pruner
 
 COPY --chown=node:node . .
-RUN npx -q turbo@1.10.9 prune --scope=supervisor --docker
+RUN npx -q turbo@2.5.4 prune --scope=supervisor --docker
 
 FROM node-22-alpine AS base
 
@@ -16,7 +16,7 @@ COPY --from=pruner --chown=node:node /app/out/json/ .
 COPY --from=pruner --chown=node:node /app/out/pnpm-lock.yaml ./pnpm-lock.yaml
 COPY --from=pruner --chown=node:node /app/out/pnpm-workspace.yaml ./pnpm-workspace.yaml
 
-RUN corepack enable && corepack prepare --activate
+RUN corepack enable && corepack prepare pnpm@10.23.0 --activate
 
 FROM base AS deps-fetcher
 RUN apk add --no-cache python3-dev py3-setuptools make g++ gcc linux-headers
@@ -37,7 +37,7 @@ COPY --chown=node:node scripts/updateVersion.ts scripts/updateVersion.ts
 
 RUN pnpm run generate && \
   pnpm run --filter supervisor... build&& \
-  pnpm deploy --filter=supervisor --prod /prod/supervisor
+  pnpm deploy --legacy --filter=supervisor --prod /prod/supervisor
 
 FROM base AS runner
 

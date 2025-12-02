@@ -30,7 +30,7 @@ export const helloWorldTask = task({
       logger.debug("some log", { span });
     });
 
-    await setTimeout(payload.sleepFor ?? 180_000);
+    await setTimeout(payload.sleepFor ?? 5_000);
 
     if (payload.throwError) {
       throw new Error("Forced error to cause a retry");

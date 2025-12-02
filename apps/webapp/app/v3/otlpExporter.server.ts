@@ -17,7 +17,10 @@ import {
 } from "@trigger.dev/otlp-importer";
 import { logger } from "~/services/logger.server";
 import { ClickhouseEventRepository } from "./eventRepository/clickhouseEventRepository.server";
-import { clickhouseEventRepository } from "./eventRepository/clickhouseEventRepositoryInstance.server";
+import {
+  clickhouseEventRepository,
+  clickhouseEventRepositoryV2,
+} from "./eventRepository/clickhouseEventRepositoryInstance.server";
 import { generateSpanId } from "./eventRepository/common.server";
 import { EventRepository, eventRepository } from "./eventRepository/eventRepository.server";
 import type {
@@ -38,6 +41,7 @@ class OTLPExporter {
   constructor(
     private readonly _eventRepository: EventRepository,
     private readonly _clickhouseEventRepository: ClickhouseEventRepository,
+    private readonly _clickhouseEventRepositoryV2: ClickhouseEventRepository,
     private readonly _verbose: boolean,
     private readonly _spanAttributeValueLengthLimit: number
   ) {
@@ -109,6 +113,10 @@ class OTLPExporter {
   #getEventRepositoryForStore(store: string): IEventRepository {
     if (store === "clickhouse") {
       return this._clickhouseEventRepository;
+    }
+
+    if (store === "clickhouse_v2") {
+      return this._clickhouseEventRepositoryV2;
     }
 
     return this._eventRepository;
@@ -886,6 +894,7 @@ function initializeOTLPExporter() {
   return new OTLPExporter(
     eventRepository,
     clickhouseEventRepository,
+    clickhouseEventRepositoryV2,
     process.env.OTLP_EXPORTER_VERBOSE === "1",
     process.env.SERVER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT
       ? parseInt(process.env.SERVER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT, 10)

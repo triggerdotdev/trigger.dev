@@ -15,9 +15,13 @@ import {
 } from "./taskRuns.js";
 import {
   getSpanDetailsQueryBuilder,
+  getSpanDetailsQueryBuilderV2,
   getTraceDetailedSummaryQueryBuilder,
+  getTraceDetailedSummaryQueryBuilderV2,
   getTraceSummaryQueryBuilder,
+  getTraceSummaryQueryBuilderV2,
   insertTaskEvents,
+  insertTaskEventsV2,
 } from "./taskEvents.js";
 import { Logger, type LogLevel } from "@trigger.dev/core/logger";
 import type { Agent as HttpAgent } from "http";
@@ -169,6 +173,15 @@ export class ClickHouse {
       traceSummaryQueryBuilder: getTraceSummaryQueryBuilder(this.reader),
       traceDetailedSummaryQueryBuilder: getTraceDetailedSummaryQueryBuilder(this.reader),
       spanDetailsQueryBuilder: getSpanDetailsQueryBuilder(this.reader),
+    };
+  }
+
+  get taskEventsV2() {
+    return {
+      insert: insertTaskEventsV2(this.writer),
+      traceSummaryQueryBuilder: getTraceSummaryQueryBuilderV2(this.reader),
+      traceDetailedSummaryQueryBuilder: getTraceDetailedSummaryQueryBuilderV2(this.reader),
+      spanDetailsQueryBuilder: getSpanDetailsQueryBuilderV2(this.reader),
     };
   }
 }
