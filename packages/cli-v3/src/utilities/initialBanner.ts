@@ -11,8 +11,8 @@ import {
 } from "./configFiles.js";
 import { CLOUD_API_URL } from "../consts.js";
 
-function getProfileInfo() {
-  const currentProfile = readAuthConfigCurrentProfileName();
+function getProfileInfo(profileName?: string) {
+  const currentProfile = profileName ?? readAuthConfigCurrentProfileName();
   const profile = readAuthConfigProfile(currentProfile);
 
   if (currentProfile === DEFFAULT_PROFILE || !profile) {
@@ -24,8 +24,8 @@ function getProfileInfo() {
   }`;
 }
 
-export async function printInitialBanner(performUpdateCheck = true) {
-  const profileInfo = getProfileInfo();
+export async function printInitialBanner(performUpdateCheck = true, profile?: string) {
+  const profileInfo = getProfileInfo(profile);
 
   const text = `\n${logo()} ${chalkGrey(`(${VERSION})`)}${
     profileInfo ? chalkGrey(` | ${profileInfo}`) : ""
@@ -62,8 +62,8 @@ After installation, run Trigger.dev with \`npx trigger.dev\`.`
   }
 }
 
-export async function printStandloneInitialBanner(performUpdateCheck = true) {
-  const profileInfo = getProfileInfo();
+export async function printStandloneInitialBanner(performUpdateCheck = true, profile?: string) {
+  const profileInfo = getProfileInfo(profile);
   const profileText = profileInfo ? chalkGrey(` | ${profileInfo}`) : "";
 
   let versionText = `\n${logo()} ${chalkGrey(`(${VERSION})`)}`;

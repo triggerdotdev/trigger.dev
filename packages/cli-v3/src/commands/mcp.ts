@@ -58,7 +58,7 @@ export function configureMcpCommand(program: Command) {
 
 export async function mcpCommand(options: McpCommandOptions) {
   if (process.stdout.isTTY) {
-    await printStandloneInitialBanner(true);
+    await printStandloneInitialBanner(true, options.profile);
 
     intro("Welcome to the Trigger.dev MCP server install wizard 🧙");
 

@@ -205,7 +205,7 @@ async function startDev(options: StartDevOptions) {
       logger.loggerLevel = options.logLevel;
     }
 
-    await printStandloneInitialBanner(true);
+    await printStandloneInitialBanner(true, options.profile);
 
     let displayedUpdateMessage = false;
 
