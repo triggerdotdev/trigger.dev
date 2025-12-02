@@ -16,6 +16,59 @@ export async function createFile(
   return path;
 }
 
+/**
+ * Sanitizes a hash to be safe for use as a filename.
+ * esbuild's hashes are base64-encoded and may contain `/` and `+` characters.
+ */
+function sanitizeHashForFilename(hash: string): string {
+  return hash.replace(/\//g, "_").replace(/\+/g, "-");
+}
+
+/**
+ * Creates a file using a content-addressable store for deduplication.
+ * Files are stored by their content hash, so identical content is only stored once.
+ * The build directory gets a hardlink to the stored file.
+ *
+ * @param filePath - The destination path for the file
+ * @param contents - The file contents to write
+ * @param storeDir - The shared store directory for deduplication
+ * @param contentHash - The content hash (e.g., from esbuild's outputFile.hash)
+ * @returns The destination file path
+ */
+export async function createFileWithStore(
+  filePath: string,
+  contents: string | NodeJS.ArrayBufferView,
+  storeDir: string,
+  contentHash: string
+): Promise<string> {
+  // Sanitize hash to be filesystem-safe (base64 can contain / and +)
+  const safeHash = sanitizeHashForFilename(contentHash);
+  // Store files by their content hash for true content-addressable storage
+  const storePath = pathModule.join(storeDir, safeHash);
+
+  // Ensure build directory exists
+  await fsModule.mkdir(pathModule.dirname(filePath), { recursive: true });
+
+  // Remove existing file at destination if it exists (hardlinks fail on existing files)
+  if (fsSync.existsSync(filePath)) {
+    await fsModule.unlink(filePath);
+  }
+
+  // Check if content already exists in store by hash
+  if (fsSync.existsSync(storePath)) {
+    // Create hardlink from build path to store path
+    await fsModule.link(storePath, filePath);
+    return filePath;
+  }
+
+  // Write to store first (using hash as filename)
+  await fsModule.writeFile(storePath, contents);
+  // Create hardlink in build directory (with original filename)
+  await fsModule.link(storePath, filePath);
+
+  return filePath;
+}
+
 export function isDirectory(configPath: string) {
   try {
     return fs.statSync(configPath).isDirectory();

@@ -20,7 +20,12 @@ import { createExternalsBuildExtension, resolveAlwaysExternal } from "../build/e
 import { type DevCommandOptions } from "../commands/dev.js";
 import { eventBus } from "../utilities/eventBus.js";
 import { logger } from "../utilities/logger.js";
-import { clearTmpDirs, EphemeralDirectory, getTmpDir } from "../utilities/tempDirectories.js";
+import {
+  clearTmpDirs,
+  EphemeralDirectory,
+  getStoreDir,
+  getTmpDir,
+} from "../utilities/tempDirectories.js";
 import { startDevOutput } from "./devOutput.js";
 import { startWorkerRuntime } from "./devSupervisor.js";
 import { startMcpServer, stopMcpServer } from "./mcpServer.js";
@@ -53,6 +58,8 @@ export async function startDevSession({
 }: DevSessionOptions): Promise<DevSessionInstance> {
   clearTmpDirs(rawConfig.workingDir);
   const destination = getTmpDir(rawConfig.workingDir, "build", keepTmpFiles);
+  // Create shared store directory for deduplicating chunk files across rebuilds
+  const storeDir = getStoreDir(rawConfig.workingDir);
 
   const runtime = await startWorkerRuntime({
     name,
@@ -102,6 +109,7 @@ export async function startDevSession({
       workerDir: workerDir?.path,
       environment: "dev",
       target: "dev",
+      storeDir,
     });
 
     logger.debug("Created build manifest from bundle", { buildManifest });
@@ -131,7 +139,13 @@ export async function startDevSession({
   }
 
   async function updateBuild(build: esbuild.BuildResult, workerDir: EphemeralDirectory) {
-    const bundle = await getBundleResultFromBuild("dev", rawConfig.workingDir, rawConfig, build);
+    const bundle = await getBundleResultFromBuild(
+      "dev",
+      rawConfig.workingDir,
+      rawConfig,
+      build,
+      storeDir
+    );
 
     if (bundle) {
       await updateBundle({ ...bundle, stop: undefined }, workerDir);
@@ -190,6 +204,7 @@ export async function startDevSession({
         jsxFactory: rawConfig.build.jsx.factory,
         jsxFragment: rawConfig.build.jsx.fragment,
         jsxAutomatic: rawConfig.build.jsx.automatic,
+        storeDir,
       });
 
       await updateBundle(bundleResult);

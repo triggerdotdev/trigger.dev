@@ -68,6 +68,8 @@ export const BuildManifest = z.object({
       exclude: z.array(z.string()).optional(),
     })
     .optional(),
+  /** Maps output file paths to their content hashes for deduplication during dev */
+  outputHashes: z.record(z.string()).optional(),
 });
 
 export type BuildManifest = z.infer<typeof BuildManifest>;
