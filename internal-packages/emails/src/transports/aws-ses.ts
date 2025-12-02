@@ -1,7 +1,7 @@
 import { render } from "@react-email/render";
 import { EmailError, MailMessage, MailTransport, PlainTextMailMessage } from "./index";
 import nodemailer from "nodemailer"
-import * as awsSes from "@aws-sdk/client-ses"
+import { SESv2Client, SendEmailCommand } from "@aws-sdk/client-sesv2"
 
 export type AwsSesMailTransportOptions = {
   type: 'aws-ses',
@@ -11,13 +11,10 @@ export class AwsSesMailTransport implements MailTransport {
   #client: nodemailer.Transporter;
 
   constructor(options: AwsSesMailTransportOptions) {
-    const ses = new awsSes.SESClient()
+    const sesClient = new SESv2Client()
 
     this.#client = nodemailer.createTransport({
-      SES: {
-        aws: awsSes,
-        ses
-      }
+      SES: { sesClient, SendEmailCommand }
     })
   }
 
