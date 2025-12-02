@@ -3,9 +3,9 @@ import { getBranch, prepareDeploymentError, tryCatch } from "@trigger.dev/core/v
 import {
   InitializeDeploymentRequestBody,
   InitializeDeploymentResponseBody,
-  DeploymentEvent,
   GitMeta,
   DeploymentFinalizedEvent,
+  DeploymentEventFromString,
 } from "@trigger.dev/core/v3/schemas";
 import { Command, Option as CommandOption } from "commander";
 import { join, relative, resolve } from "node:path";
@@ -1314,15 +1314,3 @@ export function verifyDirectory(dir: string, projectPath: string) {
     throw new Error(`Directory "${dir}" not found at ${projectPath}`);
   }
 }
-
-const DeploymentEventFromString = z
-  .string()
-  .transform((s, ctx) => {
-    try {
-      return JSON.parse(s);
-    } catch {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Invalid JSON" });
-      return z.NEVER;
-    }
-  })
-  .pipe(DeploymentEvent);

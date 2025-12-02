@@ -606,6 +606,18 @@ export type DeploymentEvent = z.infer<typeof DeploymentEvent>;
 export type DeploymentLogEvent = z.infer<typeof DeploymentLogEvent>;
 export type DeploymentFinalizedEvent = z.infer<typeof DeploymentFinalizedEvent>;
 
+export const DeploymentEventFromString = z
+  .string()
+  .transform((s, ctx) => {
+    try {
+      return JSON.parse(s);
+    } catch {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Invalid JSON" });
+      return z.NEVER;
+    }
+  })
+  .pipe(DeploymentEvent);
+
 export const CreateUploadPayloadUrlResponseBody = z.object({
   presignedUrl: z.string(),
 });
