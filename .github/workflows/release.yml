@@ -82,6 +82,14 @@ jobs:
           package_version=$(echo '${{ steps.changesets.outputs.publishedPackages }}' | jq -r '.[0].version')
           echo "package_version=${package_version}" >> "$GITHUB_OUTPUT"
 
+      # this triggers the publish workflow for the docker images
+      - name: 🏷️ Create and push docker tag
+        if: steps.changesets.outputs.published == 'true'
+        run: |
+          set -e
+          git tag "v.docker.${{ steps.get_version.outputs.package_version }}"
+          git push origin "v.docker.${{ steps.get_version.outputs.package_version }}"
+
       - name: Update PR title with version
         if: steps.changesets.outputs.published != 'true'
         env:
