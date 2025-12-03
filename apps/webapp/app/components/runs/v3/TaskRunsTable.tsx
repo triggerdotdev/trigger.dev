@@ -31,7 +31,7 @@ import {
   type NextRunListItem,
 } from "~/presenters/v3/NextRunListPresenter.server";
 import { formatCurrencyAccurate } from "~/utils/numberFormatter";
-import { docsPath, v3RunSpanPath, v3TestPath } from "~/utils/pathBuilder";
+import { docsPath, v3RunSpanPath, v3TestPath,v3TestTaskPath } from "~/utils/pathBuilder";
 import { DateTime } from "../../primitives/DateTime";
 import { Paragraph } from "../../primitives/Paragraph";
 import { Spinner } from "../../primitives/Spinner";
@@ -565,6 +565,8 @@ function BlankState({ isLoading, filters }: Pick<RunsTableProps, "isLoading" | "
   if (isLoading) return <TableBlankRow colSpan={15}></TableBlankRow>;
 
   const { tasks, from, to, ...otherFilters } = filters;
+  const singleTaskFromFilters = filters.tasks.length === 1 ? filters.tasks[0] : null;
+  const testPath = singleTaskFromFilters ? v3TestTaskPath(organization, project, environment, {taskIdentifier: singleTaskFromFilters}) : v3TestPath(organization, project, environment);
 
   if (
     filters.tasks.length === 1 &&
@@ -579,7 +581,7 @@ function BlankState({ isLoading, filters }: Pick<RunsTableProps, "isLoading" | "
         </Paragraph>
         <div className="mt-6 flex items-center justify-center gap-2">
           <LinkButton
-            to={v3TestPath(organization, project, environment)}
+            to={testPath}
             variant="tertiary/medium"
             LeadingIcon={BeakerIcon}
             className="inline-flex"
@@ -620,7 +622,7 @@ function BlankState({ isLoading, filters }: Pick<RunsTableProps, "isLoading" | "
           <LinkButton
             LeadingIcon={BeakerIcon}
             variant="tertiary/medium"
-            to={v3TestPath(organization, project, environment)}
+            to={testPath}
           >
             Run a test
           </LinkButton>
