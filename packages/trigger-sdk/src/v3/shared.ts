@@ -28,7 +28,6 @@ import {
   TaskRunExecutionResult,
   TaskRunPromise,
 } from "@trigger.dev/core/v3";
-import { PollOptions, runs } from "./runs.js";
 import { tracer } from "./tracer.js";
 
 import type {
@@ -115,6 +114,10 @@ export type {
   TaskPayload,
   TaskRunResult,
   TriggerOptions,
+  TaskWithSchema,
+  TaskWithSchemaOptions,
+  TaskSchema,
+  TaskOptionsWithSchema,
 };
 
 export { SubtaskUnwrapError, TaskRunPromise };
