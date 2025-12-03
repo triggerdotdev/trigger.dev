@@ -39,6 +39,10 @@ import type {
   TriggerOptions,
   TaskRunResult,
   TaskFromIdentifier,
+  TaskWithSchemaOptions,
+  TaskSchema,
+  TaskWithSchema,
+  TaskOptionsWithSchema,
 } from "./shared.js";
 
 export type {
@@ -56,6 +60,10 @@ export type {
   TriggerOptions,
   TaskRunResult,
   TaskFromIdentifier,
+  TaskWithSchemaOptions,
+  TaskSchema,
+  TaskWithSchema,
+  TaskOptionsWithSchema,
 };
 
 export type * from "./hooks.js";
