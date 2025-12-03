@@ -89,6 +89,8 @@ jobs:
         run: |
           PR_NUMBER=$(gh pr list --head changeset-release/main --json number --jq '.[0].number')
           if [ -n "$PR_NUMBER" ]; then
-            VERSION=$(jq -r '.version' packages/cli-v3/package.json)
+            git fetch origin changeset-release/main
+            # we arbitrarily reference the version of the cli package here; it is the same for all package releases
+            VERSION=$(git show origin/changeset-release/main:packages/cli-v3/package.json | jq -r '.version')
             gh pr edit "$PR_NUMBER" --title "chore: release v$VERSION"
           fi
