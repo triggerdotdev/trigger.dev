@@ -58,3 +58,15 @@ export function clearTmpDirs(projectRoot: string | undefined) {
     // This sometimes fails on Windows with EBUSY
   }
 }
+
+/**
+ * Gets the shared store directory for content-addressable build outputs.
+ * This directory persists across rebuilds and is used to deduplicate
+ * identical chunk files between build versions.
+ */
+export function getStoreDir(projectRoot: string | undefined): string {
+  projectRoot ??= process.cwd();
+  const storeDir = path.join(projectRoot, ".trigger", "tmp", "store");
+  fs.mkdirSync(storeDir, { recursive: true });
+  return storeDir;
+}
