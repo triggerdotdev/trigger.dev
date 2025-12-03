@@ -96,3 +96,14 @@ jobs:
         run: |
           package_version=$(echo '${{ steps.changesets.outputs.publishedPackages }}' | jq -r '.[0].version')
           echo "package_version=${package_version}" >> "$GITHUB_OUTPUT"
+
+      - name: Update PR title with version
+        if: steps.changesets.outputs.published != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER=$(gh pr list --head changeset-release/main --json number --jq '.[0].number')
+          if [ -n "$PR_NUMBER" ]; then
+            VERSION=$(jq -r '.version' packages/cli-v3/package.json)
+            gh pr edit "$PR_NUMBER" --title "chore: release v$VERSION"
+          fi
