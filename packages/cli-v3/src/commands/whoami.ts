@@ -56,7 +56,7 @@ export function configureWhoamiCommand(program: Command) {
       )
   ).action(async (options) => {
     await handleTelemetry(async () => {
-      await printInitialBanner(false);
+      await printInitialBanner(false, options.profile);
       await whoAmICommand(options);
     });
   });

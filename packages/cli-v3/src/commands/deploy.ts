@@ -194,7 +194,7 @@ export function configureDeployCommand(program: Command) {
       .addOption(new CommandOption("--plain", "Plain output").hideHelp())
       .action(async (path, options) => {
         await handleTelemetry(async () => {
-          await printStandloneInitialBanner(true);
+          await printStandloneInitialBanner(true, options.profile);
           await deployCommand(path, options);
         });
       })

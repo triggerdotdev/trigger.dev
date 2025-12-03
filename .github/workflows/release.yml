@@ -1,8 +1,5 @@
 name: 🦋 Changesets Release
 
-permissions:
-  contents: write
-
 on:
   push:
     branches:
@@ -25,6 +22,7 @@ jobs:
       contents: write
       packages: write
       pull-requests: write
+      id-token: write
     if: github.repository == 'triggerdotdev/trigger.dev'
     outputs:
       published: ${{ steps.changesets.outputs.published }}
@@ -59,11 +57,6 @@ jobs:
       - name: 🔎 Type check
         run: pnpm run typecheck --filter "@trigger.dev/*" --filter "trigger.dev"
 
-      - name: 🔐 Setup npm auth
-        run: |
-          echo "registry=https://registry.npmjs.org" >> ~/.npmrc
-          echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" >> ~/.npmrc
-
         # This action has two responsibilities. The first time the workflow runs
         # (initial push to the `main` branch) it will create a new branch and
         # then open a PR with the related changes for the new version. After the
@@ -75,20 +68,12 @@ jobs:
         uses: changesets/action@v1
         with:
           version: pnpm run changeset:version
-          commit: "chore: Update version for release"
-          title: "chore: Update version for release"
+          commit: "chore: release packages"
+          title: "chore: release packages"
           publish: pnpm run changeset:release
           createGithubReleases: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      # - name: 🚀 PR / Publish (mock)
-      #   if: ${{ env.ACT }}
-      #   id: changesets
-      #   run: |
-      #     echo "published=true" >> "$GITHUB_OUTPUT"
-      #     echo "publishedPackages=[{\"name\": \"@xx/xx\", \"version\": \"1.2.0\"}, {\"name\": \"@xx/xy\", \"version\": \"0.8.9\"}]" >> "$GITHUB_OUTPUT"
 
       - name: 📦 Get package version
         if: steps.changesets.outputs.published == 'true'
@@ -96,3 +81,63 @@ jobs:
         run: |
           package_version=$(echo '${{ steps.changesets.outputs.publishedPackages }}' | jq -r '.[0].version')
           echo "package_version=${package_version}" >> "$GITHUB_OUTPUT"
+
+      # this triggers the publish workflow for the docker images
+      - name: 🏷️ Create and push docker tag
+        if: steps.changesets.outputs.published == 'true'
+        run: |
+          set -e
+          git tag "v.docker.${{ steps.get_version.outputs.package_version }}"
+          git push origin "v.docker.${{ steps.get_version.outputs.package_version }}"
+
+      - name: Update PR title with version
+        if: steps.changesets.outputs.published != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER=$(gh pr list --head changeset-release/main --json number --jq '.[0].number')
+          if [ -n "$PR_NUMBER" ]; then
+            git fetch origin changeset-release/main
+            # we arbitrarily reference the version of the cli package here; it is the same for all package releases
+            VERSION=$(git show origin/changeset-release/main:packages/cli-v3/package.json | jq -r '.version')
+            gh pr edit "$PR_NUMBER" --title "chore: release v$VERSION"
+          fi
+
+  update-lockfile:
+    name: Update lockfile on release PR
+    runs-on: ubuntu-latest
+    needs: release
+    if: needs.release.outputs.published != 'true'
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout release branch
+        uses: actions/checkout@v4
+        with:
+          ref: changeset-release/main
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.23.0
+
+      - name: Setup node
+        uses: buildjet/setup-node@v4
+        with:
+          node-version: 20.19.0
+
+      - name: Install and update lockfile
+        run: pnpm install
+
+      - name: Commit and push lockfile
+        run: |
+          set -e
+          if git diff --quiet pnpm-lock.yaml; then
+            echo "No lockfile changes"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add pnpm-lock.yaml
+            git commit -m "chore: update lockfile for release"
+            git push origin changeset-release/main
+          fi

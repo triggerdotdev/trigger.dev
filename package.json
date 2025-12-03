@@ -62,7 +62,7 @@
     "tsx": "^3.7.1",
     "turbo": "^1.10.3",
     "typescript": "5.5.4",
-    "vite": "^4.1.1",
+    "vite": "^5.4.21",
     "vite-tsconfig-paths": "^4.0.5",
     "vitest": "3.1.4"
   },
@@ -88,7 +88,9 @@
       "form-data@^2": "2.5.4",
       "form-data@^3": "3.0.4",
       "form-data@^4": "4.0.4",
-      "axios@1.9.0": ">=1.12.0"
+      "axios@1.9.0": ">=1.12.0",
+      "js-yaml@>=3.0.0 <3.14.2": "3.14.2",
+      "js-yaml@>=4.0.0 <4.1.1": "4.1.1"
     },
     "onlyBuiltDependencies": [
       "@depot/cli",
