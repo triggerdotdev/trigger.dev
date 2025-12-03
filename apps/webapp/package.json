@@ -118,7 +118,7 @@
     "@trigger.dev/core": "workspace:*",
     "@trigger.dev/database": "workspace:*",
     "@trigger.dev/otlp-importer": "workspace:*",
-    "@trigger.dev/platform": "0.0.0-prerelease-20251121183112",
+    "@trigger.dev/platform": "1.0.21",
     "@trigger.dev/redis-worker": "workspace:*",
     "@trigger.dev/sdk": "workspace:*",
     "@types/pg": "8.6.6",
