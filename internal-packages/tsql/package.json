@@ -12,7 +12,9 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "grammar:build": "pnpm grammar:build:typescript",
-    "grammar:build:typescript": "cat src/grammar/TSQLLexer.typescript.g4 > src/grammar/TSQLLexer.g4 && tail -n +2 src/grammar/TSQLLexer.common.g4 |sed s/isOpeningTag/self.isOpeningTag/ >> src/grammar/TSQLLexer.g4 && antlr4ts src/grammar/TSQLLexer.g4 && rm src/grammar/TSQLLexer.g4 && antlr4ts -visitor -no-listener -Dlanguage=TypeScript src/grammar/TSQLParser.g4"
+    "grammar:build:typescript": "cat src/grammar/TSQLLexer.typescript.g4 > src/grammar/TSQLLexer.g4 && tail -n +2 src/grammar/TSQLLexer.common.g4 |sed s/isOpeningTag/self.isOpeningTag/ >> src/grammar/TSQLLexer.g4 && antlr4ts src/grammar/TSQLLexer.g4 && rm src/grammar/TSQLLexer.g4 && antlr4ts -visitor -no-listener -Dlanguage=TypeScript src/grammar/TSQLParser.g4",
+    "test": "vitest --sequence.concurrent=false --no-file-parallelism",
+    "test:coverage": "vitest --sequence.concurrent=false --no-file-parallelism --coverage.enabled"
   },
   "devDependencies": {
     "antlr4ts-cli": "0.5.0-alpha.4"
