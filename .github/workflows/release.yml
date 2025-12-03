@@ -127,7 +127,7 @@ jobs:
           node-version: 20.19.0
 
       - name: Install and update lockfile
-        run: pnpm install
+        run: pnpm install --no-frozen-lockfile
 
       - name: Commit and push lockfile
         run: |
