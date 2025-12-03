@@ -94,3 +94,41 @@ jobs:
             VERSION=$(git show origin/changeset-release/main:packages/cli-v3/package.json | jq -r '.version')
             gh pr edit "$PR_NUMBER" --title "chore: release v$VERSION"
           fi
+
+  update-lockfile:
+    name: Update lockfile on release PR
+    runs-on: ubuntu-latest
+    needs: release
+    if: needs.release.outputs.published != 'true'
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout release branch
+        uses: actions/checkout@v4
+        with:
+          ref: changeset-release/main
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.23.0
+
+      - name: Setup node
+        uses: buildjet/setup-node@v4
+        with:
+          node-version: 20.19.0
+
+      - name: Install and update lockfile
+        run: pnpm install
+
+      - name: Commit and push lockfile
+        run: |
+          if git diff --quiet pnpm-lock.yaml; then
+            echo "No lockfile changes"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add pnpm-lock.yaml
+            git commit -m "chore: update lockfile for release"
+            git push
+          fi
