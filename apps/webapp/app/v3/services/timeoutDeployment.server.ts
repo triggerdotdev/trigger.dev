@@ -2,8 +2,9 @@ import { logger } from "~/services/logger.server";
 import { BaseService } from "./baseService.server";
 import { commonWorker } from "../commonWorker.server";
 import { PerformDeploymentAlertsService } from "./alerts/performDeploymentAlerts.server";
-import { PrismaClientOrTransaction } from "~/db.server";
+import { type PrismaClientOrTransaction } from "~/db.server";
 import { workerQueue } from "~/services/worker.server";
+import { DeploymentService } from "./deployment.server";
 
 export class TimeoutDeploymentService extends BaseService {
   public async call(id: string, fromStatus: string, errorMessage: string) {
@@ -12,7 +13,11 @@ export class TimeoutDeploymentService extends BaseService {
         id,
       },
       include: {
-        environment: true,
+        environment: {
+          include: {
+            project: true,
+          },
+        },
       },
     });
 
@@ -29,7 +34,7 @@ export class TimeoutDeploymentService extends BaseService {
       return;
     }
 
-    await this._prisma.workerDeployment.update({
+    const timedOutDeployment = await this._prisma.workerDeployment.update({
       where: {
         id: deployment.id,
       },
@@ -39,6 +44,21 @@ export class TimeoutDeploymentService extends BaseService {
         errorData: { message: errorMessage, name: "TimeoutError" },
       },
     });
+
+    const deploymentService = new DeploymentService();
+    await deploymentService
+      .appendToEventLog(deployment.environment.project, timedOutDeployment, [
+        {
+          type: "finalized",
+          data: {
+            result: "timed_out",
+            message: errorMessage,
+          },
+        },
+      ])
+      .orTee((error) => {
+        logger.error("Failed to append timed out deployment event to event log", { error });
+      });
 
     await PerformDeploymentAlertsService.enqueue(deployment.id);
   }

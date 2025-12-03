@@ -484,7 +484,7 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
       };
     }
 
-    options.onLog?.(`Successfully logged in to ${cloudRegistryHost}`);
+    options.onLog?.(`Successfully logged in to the remote registry`);
   }
 
   const projectCacheRef = getProjectCacheRefFromImageTag(imageTag);
@@ -686,6 +686,7 @@ async function generateBunContainerfile(options: GenerateContainerfileOptions) {
     parseGenerateOptions(options);
 
   return `# syntax=docker/dockerfile:1
+# check=skip=SecretsUsedInArgOrEnv
 FROM ${baseImage} AS base
 
 ${baseInstructions}
@@ -791,6 +792,7 @@ async function generateNodeContainerfile(options: GenerateContainerfileOptions) 
     parseGenerateOptions(options);
 
   return `# syntax=docker/dockerfile:1
+# check=skip=SecretsUsedInArgOrEnv
 FROM ${baseImage} AS base
 
 ${baseInstructions}

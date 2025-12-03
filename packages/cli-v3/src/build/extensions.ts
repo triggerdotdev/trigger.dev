@@ -1,4 +1,5 @@
 import {
+  type BuildLogger,
   BuildContext,
   BuildExtension,
   BuildLayer,
@@ -9,7 +10,8 @@ import { BuildManifest, BuildTarget } from "@trigger.dev/core/v3/schemas";
 import * as esbuild from "esbuild";
 import { logger } from "../utilities/logger.js";
 import { resolveModule } from "./resolveModule.js";
-import { log, spinner } from "@clack/prompts";
+import { log } from "@clack/prompts";
+import { spinner } from "../utilities/windows.js";
 
 export interface InternalBuildContext extends BuildContext {
   getLayers(): BuildLayer[];
@@ -54,11 +56,24 @@ export async function notifyExtensionOnBuildComplete(
 
 export function createBuildContext(
   target: BuildTarget,
-  config: ResolvedConfig
+  config: ResolvedConfig,
+  options?: { logger?: BuildLogger }
 ): InternalBuildContext {
   const layers: BuildLayer[] = [];
   const registeredPlugins: RegisteredPlugin[] = [];
   const extensions: BuildExtension[] = config.build.extensions ?? [];
+
+  const buildLogger = options?.logger ?? {
+    debug: (...args) => logger.debug(...args),
+    log: (...args) => logger.log(...args),
+    warn: (...args) => logger.warn(...args),
+    progress: (message) => log.message(message),
+    spinner: (message) => {
+      const $spinner = spinner();
+      $spinner.start(message);
+      return $spinner;
+    },
+  };
 
   return {
     target,
@@ -99,17 +114,7 @@ export function createBuildContext(
     prependExtension(extension) {
       extensions.unshift(extension);
     },
-    logger: {
-      debug: (...args) => logger.debug(...args),
-      log: (...args) => logger.log(...args),
-      warn: (...args) => logger.warn(...args),
-      progress: (message) => log.message(message),
-      spinner: (message) => {
-        const $spinner = spinner();
-        $spinner.start(message);
-        return $spinner;
-      },
-    },
+    logger: buildLogger,
   };
 }
 

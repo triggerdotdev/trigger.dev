@@ -1,7 +1,8 @@
 import { PerformDeploymentAlertsService } from "./alerts/performDeploymentAlerts.server";
 import { BaseService } from "./baseService.server";
 import { logger } from "~/services/logger.server";
-import { WorkerDeploymentStatus } from "@trigger.dev/database";
+import { type WorkerDeploymentStatus } from "@trigger.dev/database";
+import { DeploymentService } from "./deployment.server";
 
 const FINAL_DEPLOYMENT_STATUSES: WorkerDeploymentStatus[] = [
   "CANCELED",
@@ -31,6 +32,13 @@ export class DeploymentIndexFailed extends BaseService {
         : {
             id: maybeFriendlyId,
           },
+      include: {
+        environment: {
+          include: {
+            project: true,
+          },
+        },
+      },
     });
 
     if (!deployment) {
@@ -65,6 +73,21 @@ export class DeploymentIndexFailed extends BaseService {
         errorData: error,
       },
     });
+
+    const deploymentService = new DeploymentService();
+    await deploymentService
+      .appendToEventLog(deployment.environment.project, failedDeployment, [
+        {
+          type: "finalized",
+          data: {
+            result: "failed",
+            message: error.message,
+          },
+        },
+      ])
+      .orTee((error) => {
+        logger.error("Failed to append failed deployment event to event log", { error });
+      });
 
     await PerformDeploymentAlertsService.enqueue(failedDeployment.id);
 

@@ -40,6 +40,7 @@ import { cn } from "~/utils/cn";
 import { v3DeploymentParams, v3DeploymentsPath, v3RunsPath } from "~/utils/pathBuilder";
 import { capitalizeWord } from "~/utils/string";
 import { UserTag } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.deployments/route";
+import { DeploymentEventFromString } from "@trigger.dev/core/v3/schemas";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -48,7 +49,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   try {
     const presenter = new DeploymentPresenter();
-    const { deployment, s2Logs } = await presenter.call({
+    const { deployment, eventStream } = await presenter.call({
       userId,
       organizationSlug,
       projectSlug: projectParam,
@@ -56,7 +57,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       deploymentShortCode: deploymentParam,
     });
 
-    return typedjson({ deployment, s2Logs });
+    return typedjson({ deployment, eventStream });
   } catch (error) {
     console.error(error);
     throw new Response(undefined, {
@@ -69,18 +70,18 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 type LogEntry = {
   message: string;
   timestamp: Date;
-  level: "info" | "error" | "warn";
+  level: "info" | "error" | "warn" | "debug";
 };
 
 export default function Page() {
-  const { deployment, s2Logs } = useTypedLoaderData<typeof loader>();
+  const { deployment, eventStream } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
   const location = useLocation();
   const page = new URLSearchParams(location.search).get("page");
 
-  const logsDisabled = s2Logs === undefined;
+  const logsDisabled = eventStream === undefined;
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isStreaming, setIsStreaming] = useState(true);
   const [streamError, setStreamError] = useState<string | null>(null);
@@ -97,9 +98,9 @@ export default function Page() {
 
     const streamLogs = async () => {
       try {
-        const s2 = new S2({ accessToken: s2Logs.accessToken });
-        const basin = s2.basin(s2Logs.basin);
-        const stream = basin.stream(s2Logs.stream);
+        const s2 = new S2({ accessToken: eventStream.s2.accessToken });
+        const basin = s2.basin(eventStream.s2.basin);
+        const stream = basin.stream(eventStream.s2.stream);
 
         const readSession = await stream.readSession(
           {
@@ -113,27 +114,49 @@ export default function Page() {
         const decoder = new TextDecoder();
 
         for await (const record of readSession) {
-          try {
-            const headers: Record<string, string> = {};
+          const decoded = decoder.decode(record.body);
+          const result = DeploymentEventFromString.safeParse(decoded);
 
-            if (record.headers) {
-              for (const [nameBytes, valueBytes] of record.headers) {
-                headers[decoder.decode(nameBytes)] = decoder.decode(valueBytes);
+          if (!result.success) {
+            // fallback to the previous format in s2 logs for compatibility
+            try {
+              const headers: Record<string, string> = {};
+
+              if (record.headers) {
+                for (const [nameBytes, valueBytes] of record.headers) {
+                  headers[decoder.decode(nameBytes)] = decoder.decode(valueBytes);
+                }
               }
-            }
-            const level = (headers["level"]?.toLowerCase() as LogEntry["level"]) ?? "info";
+              const level = (headers["level"]?.toLowerCase() as LogEntry["level"]) ?? "info";
 
-            setLogs((prevLogs) => [
-              ...prevLogs,
-              {
-                timestamp: new Date(record.timestamp),
-                message: decoder.decode(record.body),
-                level,
-              },
-            ]);
-          } catch (err) {
-            console.error("Failed to parse log record:", err);
+              setLogs((prevLogs) => [
+                ...prevLogs,
+                {
+                  timestamp: new Date(record.timestamp),
+                  message: decoded,
+                  level,
+                },
+              ]);
+            } catch (err) {
+              console.error("Failed to parse log record:", err);
+            }
+
+            continue;
           }
+
+          const event = result.data;
+          if (event.type !== "log") {
+            continue;
+          }
+
+          setLogs((prevLogs) => [
+            ...prevLogs,
+            {
+              timestamp: new Date(record.timestamp),
+              message: event.data.message,
+              level: event.data.level,
+            },
+          ]);
         }
       } catch (error) {
         if (abortController.signal.aborted) return;
@@ -158,7 +181,7 @@ export default function Page() {
     return () => {
       abortController.abort();
     };
-  }, [s2Logs?.basin, s2Logs?.stream, s2Logs?.accessToken, isPending]);
+  }, [eventStream?.s2?.basin, eventStream?.s2?.stream, eventStream?.s2?.accessToken, isPending]);
 
   return (
     <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr] overflow-hidden bg-background-bright">

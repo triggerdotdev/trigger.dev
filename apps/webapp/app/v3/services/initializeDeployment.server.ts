@@ -11,6 +11,8 @@ import { TimeoutDeploymentService } from "./timeoutDeployment.server";
 import { getDeploymentImageRef } from "../getDeploymentImageRef.server";
 import { tryCatch } from "@trigger.dev/core";
 import { getRegistryConfig } from "../registryConfig.server";
+import { DeploymentService } from "./deployment.server";
+import { errAsync } from "neverthrow";
 
 const nanoid = customAlphabet("1234567890abcdefghijklmnopqrstuvwxyz", 8);
 
@@ -90,7 +92,7 @@ export class InitializeDeploymentService extends BaseService {
       // For the `PENDING` initial status, defer the creation of the Depot build until the deployment is started.
       // This helps avoid Depot token expiration issues.
       const externalBuildData =
-        payload.initialStatus === "PENDING"
+        payload.initialStatus === "PENDING" || payload.isNativeBuild
           ? undefined
           : await createRemoteImageBuild(environment.project);
 
@@ -136,9 +138,43 @@ export class InitializeDeploymentService extends BaseService {
 
       const { imageRef, isEcr, repoCreated } = imageRefResult;
 
-      // we keep using `BUILDING` as the initial status if not explicitly set
-      // to avoid changing the behavior for deployments not created in the build server
-      const initialStatus = payload.initialStatus ?? "BUILDING";
+      // We keep using `BUILDING` as the initial status if not explicitly set
+      // to avoid changing the behavior for deployments not created in the build server.
+      // Native builds always start in the `PENDING` status.
+      const initialStatus =
+        payload.initialStatus ?? (payload.isNativeBuild ? "PENDING" : "BUILDING");
+
+      const deploymentService = new DeploymentService();
+      const s2StreamOrFail = await deploymentService
+        .createEventStream(environment.project, { shortCode: deploymentShortCode })
+        .andThen(({ basin, stream }) =>
+          deploymentService.getEventStreamAccessToken(environment.project).map((accessToken) => ({
+            basin,
+            stream,
+            accessToken,
+          }))
+        );
+
+      if (s2StreamOrFail.isErr()) {
+        logger.error(
+          "Failed to create S2 event stream on deployment initialization, continuing without logs stream",
+          {
+            environmentId: environment.id,
+            projectId: environment.projectId,
+            error: s2StreamOrFail.error,
+          }
+        );
+      }
+
+      const eventStream = s2StreamOrFail.isOk()
+        ? {
+            s2: {
+              basin: s2StreamOrFail.value.basin,
+              stream: s2StreamOrFail.value.stream,
+              accessToken: s2StreamOrFail.value.accessToken,
+            },
+          }
+        : undefined;
 
       logger.debug("Creating deployment", {
         environmentId: environment.id,
@@ -150,6 +186,8 @@ export class InitializeDeploymentService extends BaseService {
         isEcr,
         repoCreated,
         initialStatus,
+        artifactKey: payload.isNativeBuild ? payload.artifactKey : undefined,
+        isNativeBuild: payload.isNativeBuild,
       });
 
       const deployment = await this._prisma.workerDeployment.create({
@@ -182,9 +220,45 @@ export class InitializeDeploymentService extends BaseService {
         new Date(Date.now() + timeoutMs)
       );
 
+      if (payload.isNativeBuild) {
+        const result = await deploymentService
+          .enqueueBuild(environment, deployment, payload.artifactKey, {
+            skipPromotion: payload.skipPromotion,
+            configFilePath: payload.configFilePath,
+          })
+          .orElse((error) => {
+            logger.error("Failed to enqueue build", {
+              environmentId: environment.id,
+              projectId: environment.projectId,
+              deploymentId: deployment.id,
+              error: error.cause,
+            });
+
+            return deploymentService
+              .cancelDeployment(environment, deployment.friendlyId, {
+                canceledReason: "Failed to enqueue build, please try again shortly.",
+              })
+              .orTee((cancelError) =>
+                logger.error("Failed to cancel deployment after failed build enqueue", {
+                  environmentId: environment.id,
+                  projectId: environment.projectId,
+                  deploymentId: deployment.id,
+                  error: cancelError,
+                })
+              )
+              .andThen(() => errAsync(error))
+              .orElse(() => errAsync(error));
+          });
+
+        if (result.isErr()) {
+          throw Error("Failed to enqueue build");
+        }
+      }
+
       return {
         deployment,
         imageRef,
+        eventStream,
       };
     });
   }

@@ -1,13 +1,26 @@
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { BaseService } from "./baseService.server";
-import { errAsync, fromPromise, okAsync } from "neverthrow";
-import { type WorkerDeployment } from "@trigger.dev/database";
-import { logger, type GitMeta } from "@trigger.dev/core/v3";
+import { errAsync, fromPromise, okAsync, type ResultAsync } from "neverthrow";
+import { type WorkerDeployment, type Project } from "@trigger.dev/database";
+import { logger, type GitMeta, type DeploymentEvent } from "@trigger.dev/core/v3";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
 import { env } from "~/env.server";
 import { createRemoteImageBuild } from "../remoteImageBuilder.server";
 import { FINAL_DEPLOYMENT_STATUSES } from "./failDeployment.server";
-import { generateRegistryCredentials } from "~/services/platform.v3.server";
+import { enqueueBuild, generateRegistryCredentials } from "~/services/platform.v3.server";
+import { AppendRecord, S2 } from "@s2-dev/streamstore";
+import { createRedisClient } from "~/redis.server";
+
+const S2_TOKEN_KEY_PREFIX = "s2-token:read:deployment-event-stream:project:";
+const s2TokenRedis = createRedisClient("s2-token-cache", {
+  host: env.CACHE_REDIS_HOST,
+  port: env.CACHE_REDIS_PORT,
+  username: env.CACHE_REDIS_USERNAME,
+  password: env.CACHE_REDIS_PASSWORD,
+  tlsDisabled: env.CACHE_REDIS_TLS_DISABLED === "true",
+  clusterMode: env.CACHE_REDIS_CLUSTER_MODE_ENABLED === "1",
+});
+const s2 = env.S2_ENABLED === "1" ? new S2({ accessToken: env.S2_ACCESS_TOKEN }) : undefined;
 
 export class DeploymentService extends BaseService {
   /**
@@ -22,35 +35,11 @@ export class DeploymentService extends BaseService {
    * @param friendlyId The friendly deployment ID.
    * @param updates Optional deployment details to persist.
    */
-
   public progressDeployment(
     authenticatedEnv: AuthenticatedEnvironment,
     friendlyId: string,
     updates: Partial<Pick<WorkerDeployment, "contentHash" | "runtime"> & { git: GitMeta }>
   ) {
-    const getDeployment = () =>
-      fromPromise(
-        this._prisma.workerDeployment.findFirst({
-          where: {
-            friendlyId,
-            environmentId: authenticatedEnv.id,
-          },
-          select: {
-            status: true,
-            id: true,
-          },
-        }),
-        (error) => ({
-          type: "other" as const,
-          cause: error,
-        })
-      ).andThen((deployment) => {
-        if (!deployment) {
-          return errAsync({ type: "deployment_not_found" as const });
-        }
-        return okAsync(deployment);
-      });
-
     const validateDeployment = (deployment: Pick<WorkerDeployment, "id" | "status">) => {
       if (deployment.status !== "PENDING" && deployment.status !== "INSTALLING") {
         logger.warn(
@@ -134,7 +123,7 @@ export class DeploymentService extends BaseService {
         })
       );
 
-    return getDeployment()
+    return this.getDeployment(authenticatedEnv.projectId, friendlyId)
       .andThen(validateDeployment)
       .andThen((deployment) => {
         if (deployment.status === "PENDING") {
@@ -160,30 +149,11 @@ export class DeploymentService extends BaseService {
     friendlyId: string,
     data?: Partial<Pick<WorkerDeployment, "canceledReason">>
   ) {
-    const getDeployment = () =>
-      fromPromise(
-        this._prisma.workerDeployment.findFirst({
-          where: {
-            friendlyId,
-            projectId: authenticatedEnv.projectId,
-          },
-          select: {
-            status: true,
-            id: true,
-          },
-        }),
-        (error) => ({
-          type: "other" as const,
-          cause: error,
-        })
-      ).andThen((deployment) => {
-        if (!deployment) {
-          return errAsync({ type: "deployment_not_found" as const });
-        }
-        return okAsync(deployment);
-      });
-
-    const validateDeployment = (deployment: Pick<WorkerDeployment, "id" | "status">) => {
+    const validateDeployment = (
+      deployment: Pick<WorkerDeployment, "id" | "status" | "shortCode"> & {
+        environment: { project: { externalRef: string } };
+      }
+    ) => {
       if (FINAL_DEPLOYMENT_STATUSES.includes(deployment.status)) {
         logger.warn("Attempted cancelling deployment in a final state", {
           deployment,
@@ -194,7 +164,11 @@ export class DeploymentService extends BaseService {
       return okAsync(deployment);
     };
 
-    const cancelDeployment = (deployment: Pick<WorkerDeployment, "id">) =>
+    const cancelDeployment = (
+      deployment: Pick<WorkerDeployment, "id" | "shortCode"> & {
+        environment: { project: { externalRef: string } };
+      }
+    ) =>
       fromPromise(
         this._prisma.workerDeployment.updateMany({
           where: {
@@ -217,7 +191,7 @@ export class DeploymentService extends BaseService {
         if (result.count === 0) {
           return errAsync({ type: "deployment_cannot_be_cancelled" as const });
         }
-        return okAsync({ id: deployment.id });
+        return okAsync({ deployment });
       });
 
     const deleteTimeout = (deployment: Pick<WorkerDeployment, "id">) =>
@@ -226,9 +200,25 @@ export class DeploymentService extends BaseService {
         cause: error,
       }));
 
-    return getDeployment()
+    return this.getDeployment(authenticatedEnv.projectId, friendlyId)
       .andThen(validateDeployment)
       .andThen(cancelDeployment)
+      .andThen(({ deployment }) =>
+        this.appendToEventLog(deployment.environment.project, deployment, [
+          {
+            type: "finalized",
+            data: {
+              result: "canceled",
+              message: data?.canceledReason ?? undefined,
+            },
+          },
+        ])
+          .orElse((error) => {
+            logger.error("Failed to append event to deployment event log", { error });
+            return okAsync(deployment);
+          })
+          .map(() => deployment)
+      )
       .andThen(deleteTimeout)
       .map(() => undefined);
   }
@@ -296,6 +286,142 @@ export class DeploymentService extends BaseService {
       .andThen(generateCredentials);
   }
 
+  public enqueueBuild(
+    authenticatedEnv: Pick<AuthenticatedEnvironment, "projectId">,
+    deployment: Pick<WorkerDeployment, "friendlyId">,
+    artifactKey: string,
+    options: {
+      skipPromotion?: boolean;
+      configFilePath?: string;
+    }
+  ) {
+    return fromPromise(
+      enqueueBuild(authenticatedEnv.projectId, deployment.friendlyId, artifactKey, options),
+      (error) => ({
+        type: "failed_to_enqueue_build" as const,
+        cause: error,
+      })
+    );
+  }
+
+  public appendToEventLog(
+    project: Pick<Project, "externalRef">,
+    deployment: Pick<WorkerDeployment, "shortCode">,
+    events: DeploymentEvent[]
+  ): ResultAsync<
+    undefined,
+    { type: "s2_is_disabled" } | { type: "failed_to_append_to_event_log"; cause: unknown }
+  > {
+    if (env.S2_ENABLED !== "1" || !s2) {
+      return errAsync({ type: "s2_is_disabled" as const });
+    }
+
+    const basin = s2.basin(env.S2_DEPLOYMENT_LOGS_BASIN_NAME);
+    const stream = basin.stream(
+      `projects/${project.externalRef}/deployments/${deployment.shortCode}`
+    );
+
+    return fromPromise(
+      stream.append(events.map((event) => AppendRecord.make(JSON.stringify(event)))),
+      (error) => ({
+        type: "failed_to_append_to_event_log" as const,
+        cause: error,
+      })
+    ).map(() => undefined);
+  }
+
+  public createEventStream(
+    project: Pick<Project, "externalRef">,
+    deployment: Pick<WorkerDeployment, "shortCode">
+  ): ResultAsync<
+    { basin: string; stream: string },
+    { type: "s2_is_disabled" } | { type: "failed_to_create_event_stream"; cause: unknown }
+  > {
+    if (env.S2_ENABLED !== "1" || !s2) {
+      return errAsync({ type: "s2_is_disabled" as const });
+    }
+    const basin = s2.basin(env.S2_DEPLOYMENT_LOGS_BASIN_NAME);
+
+    return fromPromise(
+      basin.streams.create({
+        stream: `projects/${project.externalRef}/deployments/${deployment.shortCode}`,
+      }),
+      (error) => ({
+        type: "failed_to_create_event_stream" as const,
+        cause: error,
+      })
+    ).map(({ name }) => ({
+      basin: basin.name,
+      stream: name,
+    }));
+  }
+
+  public getEventStreamAccessToken(
+    project: Pick<Project, "externalRef">
+  ): ResultAsync<string, { type: "s2_is_disabled" } | { type: "other"; cause: unknown }> {
+    if (env.S2_ENABLED !== "1" || !s2) {
+      return errAsync({ type: "s2_is_disabled" as const });
+    }
+    const basinName = env.S2_DEPLOYMENT_LOGS_BASIN_NAME;
+    const redisKey = `${S2_TOKEN_KEY_PREFIX}${project.externalRef}`;
+
+    const getTokenFromCache = () =>
+      fromPromise(s2TokenRedis.get(redisKey), (error) => ({
+        type: "other" as const,
+        cause: error,
+      })).andThen((cachedToken) => {
+        if (!cachedToken) {
+          return errAsync({ type: "s2_token_cache_not_found" as const });
+        }
+        return okAsync(cachedToken);
+      });
+
+    const issueS2Token = () =>
+      fromPromise(
+        s2.accessTokens.issue({
+          id: `${project.externalRef}-${new Date().getTime()}`,
+          expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(), // 1 hour
+          scope: {
+            ops: ["read"],
+            basins: {
+              exact: basinName,
+            },
+            streams: {
+              prefix: `projects/${project.externalRef}/deployments/`,
+            },
+          },
+        }),
+        (error) => ({
+          type: "other" as const,
+          cause: error,
+        })
+      ).map(({ access_token }) => access_token);
+
+    const cacheToken = (token: string) =>
+      fromPromise(
+        s2TokenRedis.setex(
+          redisKey,
+          59 * 60, // slightly shorter than the token validity period
+          token
+        ),
+        (error) => ({
+          type: "other" as const,
+          cause: error,
+        })
+      );
+
+    return getTokenFromCache()
+      .orElse(issueS2Token)
+      .andThen((token) =>
+        cacheToken(token)
+          .map(() => token)
+          .orElse((error) => {
+            logger.error("Failed to cache S2 token", { error });
+            return okAsync(token); // ignore the cache error
+          })
+      );
+  }
+
   private getDeployment(projectId: string, friendlyId: string) {
     return fromPromise(
       this._prisma.workerDeployment.findFirst({
@@ -307,6 +433,16 @@ export class DeploymentService extends BaseService {
           status: true,
           id: true,
           imageReference: true,
+          shortCode: true,
+          environment: {
+            include: {
+              project: {
+                select: {
+                  externalRef: true,
+                },
+              },
+            },
+          },
         },
       }),
       (error) => ({

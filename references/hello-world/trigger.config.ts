@@ -26,7 +26,6 @@ export default defineConfig({
     extensions: [
       lightpanda(),
       syncEnvVars(async (ctx) => {
-        console.log("syncEnvVars", { environment: ctx.environment, branch: ctx.branch });
         return [
           { name: "SYNC_ENV", value: ctx.environment },
           { name: "BRANCH", value: ctx.branch ?? "NO_BRANCH" },

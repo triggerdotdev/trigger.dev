@@ -163,23 +163,25 @@ export class DeploymentPresenter {
       ? ExternalBuildData.safeParse(deployment.externalBuildData)
       : undefined;
 
-    let s2Logs = undefined;
+    let eventStream = undefined;
     if (env.S2_ENABLED === "1" && gitMetadata?.source === "trigger_github_app") {
       const [error, accessToken] = await tryCatch(this.getS2AccessToken(project.externalRef));
 
       if (error) {
         logger.error("Failed getting S2 access token", { error });
       } else {
-        s2Logs = {
-          basin: env.S2_DEPLOYMENT_LOGS_BASIN_NAME,
-          stream: `projects/${project.externalRef}/deployments/${deployment.shortCode}`,
-          accessToken,
+        eventStream = {
+          s2: {
+            basin: env.S2_DEPLOYMENT_LOGS_BASIN_NAME,
+            stream: `projects/${project.externalRef}/deployments/${deployment.shortCode}`,
+            accessToken,
+          },
         };
       }
     }
 
     return {
-      s2Logs,
+      eventStream,
       deployment: {
         id: deployment.id,
         shortCode: deployment.shortCode,

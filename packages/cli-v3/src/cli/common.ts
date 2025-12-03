@@ -69,6 +69,7 @@ export async function wrapCommandAction<T extends z.AnyZodObject, TResult>(
       // do nothing
     } else if (e instanceof OutroCommandError) {
       outro(e.message ?? "Operation cancelled");
+      process.exit(1);
     } else if (e instanceof SkipCommandError) {
       // do nothing
     } else if (e instanceof BundleError) {
