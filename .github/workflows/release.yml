@@ -1,8 +1,5 @@
 name: 🦋 Changesets Release
 
-permissions:
-  contents: write
-
 on:
   push:
     branches:
@@ -60,11 +57,6 @@ jobs:
       - name: 🔎 Type check
         run: pnpm run typecheck --filter "@trigger.dev/*" --filter "trigger.dev"
 
-      - name: 🔐 Setup npm auth
-        run: |
-          echo "registry=https://registry.npmjs.org" >> ~/.npmrc
-          echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" >> ~/.npmrc
-
         # This action has two responsibilities. The first time the workflow runs
         # (initial push to the `main` branch) it will create a new branch and
         # then open a PR with the related changes for the new version. After the
@@ -76,20 +68,12 @@ jobs:
         uses: changesets/action@v1
         with:
           version: pnpm run changeset:version
-          commit: "chore: Update version for release"
-          title: "chore: Update version for release"
+          commit: "chore: release packages"
+          title: "chore: release packages"
           publish: pnpm run changeset:release
           createGithubReleases: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      # - name: 🚀 PR / Publish (mock)
-      #   if: ${{ env.ACT }}
-      #   id: changesets
-      #   run: |
-      #     echo "published=true" >> "$GITHUB_OUTPUT"
-      #     echo "publishedPackages=[{\"name\": \"@xx/xx\", \"version\": \"1.2.0\"}, {\"name\": \"@xx/xy\", \"version\": \"0.8.9\"}]" >> "$GITHUB_OUTPUT"
 
       - name: 📦 Get package version
         if: steps.changesets.outputs.published == 'true'
