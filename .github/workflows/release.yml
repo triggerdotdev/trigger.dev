@@ -25,6 +25,7 @@ jobs:
       contents: write
       packages: write
       pull-requests: write
+      id-token: write
     if: github.repository == 'triggerdotdev/trigger.dev'
     outputs:
       published: ${{ steps.changesets.outputs.published }}
