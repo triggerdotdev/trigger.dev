@@ -19,6 +19,14 @@ To sync environment variables, you just need to add our build extension to your 
   the project with the environment variables you want to sync.
 </Note>
 
+<Note>
+  When running the build from a Vercel build environment (e.g., during a Vercel deployment), the
+  environment variable values will be read from `process.env` instead of fetching them from the
+  Vercel API. This is determined by checking if the `VERCEL` environment variable is present. The
+  API is still used to determine which environment variables are configured for your project, but
+  the actual values come from the local environment.
+</Note>
+
 ```ts trigger.config.ts
 import { defineConfig } from "@trigger.dev/sdk";
 import { syncVercelEnvVars } from "@trigger.dev/build/extensions/core";

@@ -80,6 +80,14 @@ The `syncVercelEnvVars` build extension syncs environment variables from your Ve
   the project with the environment variables you want to sync.
 </Note>
 
+<Note>
+  When running the build from a Vercel build environment (e.g., during a Vercel deployment), the
+  environment variable values will be read from `process.env` instead of fetching them from the
+  Vercel API. This is determined by checking if the `VERCEL` environment variable is present. The
+  API is still used to determine which environment variables are configured for your project, but
+  the actual values come from the local environment.
+</Note>
+
 ```ts
 import { defineConfig } from "@trigger.dev/sdk";
 import { syncVercelEnvVars } from "@trigger.dev/build/extensions/core";
@@ -114,3 +122,71 @@ export default defineConfig({
   },
 });
 ```
+
+### syncNeonEnvVars
+
+The `syncNeonEnvVars` build extension syncs environment variables from your Neon database project to Trigger.dev. It automatically detects branches and builds the appropriate database connection strings for your environment.
+
+<Note>
+  You need to set the `NEON_ACCESS_TOKEN` and `NEON_PROJECT_ID` environment variables, or pass them
+  as arguments to the `syncNeonEnvVars` build extension. You can generate a `NEON_ACCESS_TOKEN` in
+  your Neon [dashboard](https://console.neon.tech/app/settings/api-keys).
+</Note>
+
+<Note>
+  When running the build from a Vercel environment (determined by checking if the `VERCEL`
+  environment variable is present), this extension is skipped entirely. This is because Neon's
+  Vercel integration already handles environment variable synchronization in Vercel environments.
+</Note>
+
+<Note>
+  This extension is skipped for `prod` environments. It is designed to sync branch-specific
+  database connections for preview/staging/dev environments.
+</Note>
+
+```ts
+import { defineConfig } from "@trigger.dev/sdk";
+import { syncNeonEnvVars } from "@trigger.dev/build/extensions/core";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  build: {
+    // This will automatically use the NEON_ACCESS_TOKEN and NEON_PROJECT_ID environment variables
+    extensions: [syncNeonEnvVars()],
+  },
+});
+```
+
+Or you can pass in the token and project ID as arguments:
+
+```ts
+import { defineConfig } from "@trigger.dev/sdk";
+import { syncNeonEnvVars } from "@trigger.dev/build/extensions/core";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  build: {
+    extensions: [
+      syncNeonEnvVars({
+        projectId: "your-neon-project-id",
+        neonAccessToken: "your-neon-access-token",
+        branch: "your-branch-name", // optional, defaults to ctx.branch
+        databaseName: "your-database-name", // optional, defaults to the first database
+        roleName: "your-role-name", // optional, defaults to the database owner
+        envVarPrefix: "MY_PREFIX_", // optional, prefix for all synced env vars
+      }),
+    ],
+  },
+});
+```
+
+The extension syncs the following environment variables (with optional prefix):
+
+- `DATABASE_URL` - Pooled connection string
+- `DATABASE_URL_UNPOOLED` - Direct connection string
+- `POSTGRES_URL`, `POSTGRES_URL_NO_SSL`, `POSTGRES_URL_NON_POOLING`
+- `POSTGRES_PRISMA_URL` - Connection string optimized for Prisma
+- `POSTGRES_HOST`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DATABASE`
+- `PGHOST`, `PGHOST_UNPOOLED`, `PGUSER`, `PGPASSWORD`, `PGDATABASE`
