@@ -52,9 +52,22 @@ export async function action({ request }: ActionFunctionArgs) {
         switch (error.type) {
           case "artifact_size_exceeds_limit": {
             logger.warn("Artifact size exceeds limit", { error });
+            const sizeMB = parseFloat((error.contentLength / (1024 * 1024)).toFixed(1));
+            const limitMB = parseFloat((error.sizeLimit / (1024 * 1024)).toFixed(1));
+
+            let errorMessage;
+
+            switch (body.data.type) {
+              case "deployment_context":
+                errorMessage = `Artifact size (${sizeMB} MB) exceeds the allowed limit of ${limitMB} MB. Make sure you are in the correct directory of your Trigger.dev project. Reach out to us if you are seeing this error consistently.`;
+                break;
+              default:
+                body.data.type satisfies never;
+                errorMessage = `Artifact size (${sizeMB} MB) exceeds the allowed limit of ${limitMB} MB`;
+            }
             return json(
               {
-                error: `Artifact size (${error.contentLength} bytes) exceeds the allowed limit of ${error.sizeLimit} bytes`,
+                error: errorMessage,
               },
               { status: 400 }
             );
