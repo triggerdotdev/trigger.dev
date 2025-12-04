@@ -233,6 +233,7 @@ export class TaskRunProcess {
     });
 
     this._child.on("exit", this.#handleExit.bind(this));
+    this._child.on("error", this.#handleError.bind(this));
     this._child.stdout?.on("data", this.#handleLog.bind(this));
     this._child.stderr?.on("data", this.#handleStdErr.bind(this));
 
@@ -319,6 +320,10 @@ export class TaskRunProcess {
     }
 
     this._ipc?.send("RESOLVE_WAITPOINT", { waitpoint });
+  }
+
+  #handleError(error: Error) {
+    logger.debug("child process error", { error, pid: this.pid });
   }
 
   async #handleExit(code: number | null, signal: NodeJS.Signals | null) {
