@@ -299,7 +299,7 @@ All email addresses can sign up and log in this way. If you would like to restri
 
 ```bash
 # every email that does not match this regex will be rejected
-WHITELISTED_EMAILS="authorized@yahoo\.com|authorized@gmail\.com"
+WHITELISTED_EMAILS="^(authorized@yahoo\.com|authorized@gmail\.com)$"
 ```
 
 This will apply to all auth methods including magic link and GitHub OAuth.

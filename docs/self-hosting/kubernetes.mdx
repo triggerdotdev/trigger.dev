@@ -476,7 +476,7 @@ webapp:
 webapp:
   extraEnvVars:
     - name: WHITELISTED_EMAILS
-      value: "user1@company\\.com|user2@company\\.com"
+      value: "^(user1@company\\.com|user2@company\\.com)$"
 ```
 
 ## Version locking

@@ -313,7 +313,7 @@ All email addresses can sign up and log in this way. If you would like to restri
 
 ```bash
 # every email that does not match this regex will be rejected
-WHITELISTED_EMAILS="authorized@yahoo\.com|authorized@gmail\.com"
+WHITELISTED_EMAILS="^(authorized@yahoo\.com|authorized@gmail\.com)$"
 ```
 
 It's currently impossible to restrict GitHub OAuth logins by account name or email like above, so this method is _not recommended_ for self-hosted instances. It's also very easy to lock yourself out of your own instance.
