@@ -32,6 +32,7 @@ export function syncVercelEnvVars(options?: {
       process.env.VERCEL_PREVIEW_BRANCH ??
       ctx.env.VERCEL_PREVIEW_BRANCH ??
       ctx.branch;
+    const isVercelEnv = !!(ctx.env.VERCEL);
 
     if (!projectId) {
       throw new Error(
@@ -81,15 +82,19 @@ export function syncVercelEnvVars(options?: {
 
       const filteredEnvs: EnvVar[] = data.envs
         .filter((env: VercelEnvVar) => {
-          if (!env.value) return false;
           if (!env.target.includes(vercelEnvironment)) return false;
           if (isBranchable && env.gitBranch && env.gitBranch !== branch) return false;
+          // When running in Vercel, prefer process.env but fall back to API value
+          const value = isVercelEnv ? (process.env[env.key] ?? env.value) : env.value;
+          if (!value) return false;
           return true;
         })
         .map((env: VercelEnvVar) => {
+          // When running in Vercel, prefer process.env but fall back to API value
+          const value = isVercelEnv ? (process.env[env.key] ?? env.value) : env.value;
           return {
             name: env.key,
-            value: env.value,
+            value,
             isParentEnv: isBranchable && !env.gitBranch,
           };
         });
