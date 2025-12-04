@@ -85,7 +85,18 @@ The `syncVercelEnvVars` build extension syncs environment variables from your Ve
   environment variable values will be read from `process.env` instead of fetching them from the
   Vercel API. This is determined by checking if the `VERCEL` environment variable is present. The
   API is still used to determine which environment variables are configured for your project, but
-  the actual values come from the local environment.
+  the actual values come from the local environment. Reading values from `process.env` allows the
+  extension to use values that Vercel integrations (such as the Neon integration) set per preview
+  deployment in the "Provisioning Integrations" phase that happens just before the Vercel build
+  starts.
+</Note>
+
+<Note>
+  If you have the Neon database Vercel integration installed and are running builds outside of the
+  Vercel environment, we recommend using `syncNeonEnvVars` in addition to `syncVercelEnvVars` for your
+  database environment variables. This ensures that the correct database connection strings are used for your 
+  selected environment and current branch, as `syncVercelEnvVars` may not accurately reflect
+  branch-specific database credentials when run locally.
 </Note>
 
 ```ts
@@ -140,8 +151,16 @@ The `syncNeonEnvVars` build extension syncs environment variables from your Neon
 </Note>
 
 <Note>
+  If you have the Neon database Vercel integration installed and are running builds outside of the
+  Vercel environment, we recommend using `syncNeonEnvVars` in addition to `syncVercelEnvVars` for your
+  database environment variables. This ensures that the correct database connection strings are used for your 
+  selected environment and current branch, as `syncVercelEnvVars` may not accurately reflect
+  branch-specific database credentials when run locally.
+</Note>
+
+<Note>
   This extension is skipped for `prod` environments. It is designed to sync branch-specific
-  database connections for preview/staging/dev environments.
+  database connections for preview/staging environments.
 </Note>
 
 ```ts

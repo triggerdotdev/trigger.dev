@@ -132,6 +132,11 @@ export function syncNeonEnvVars(options?: {
       );
     }
 
+    if (environment === "development") {
+      // Skip syncing for development environment
+      return [];
+    }
+
     try {
       // Step 1: Search for the branch in Neon
       const branchSearchParams = new URLSearchParams({ search: branch });
