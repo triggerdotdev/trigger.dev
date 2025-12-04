@@ -410,16 +410,16 @@ export class DeploymentService extends BaseService {
         })
       );
 
-    return getTokenFromCache()
-      .orElse(issueS2Token)
-      .andThen((token) =>
+    return getTokenFromCache().orElse(() =>
+      issueS2Token().andThen((token) =>
         cacheToken(token)
           .map(() => token)
           .orElse((error) => {
             logger.error("Failed to cache S2 token", { error });
             return okAsync(token); // ignore the cache error
           })
-      );
+      )
+    );
   }
 
   private getDeployment(projectId: string, friendlyId: string) {

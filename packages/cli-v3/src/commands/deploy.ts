@@ -929,8 +929,9 @@ async function handleNativeBuildServerDeploy({
   });
 
   if (!artifactResult.success) {
-    $deploymentSpinner.stop("Failed to upload deployment files");
-    throw new Error(`Failed to create deployment artifact: ${artifactResult.error}`);
+    $deploymentSpinner.stop("Failed creating deployment artifact");
+    log.error(chalk.bold(chalkError(artifactResult.error)));
+    throw new OutroCommandError(`Deployment failed`);
   }
 
   const { artifactKey, uploadUrl, uploadFields } = artifactResult.data;
@@ -942,8 +943,9 @@ async function handleNativeBuildServerDeploy({
   const [readError, fileBuffer] = await tryCatch(readFile(archivePath));
 
   if (readError) {
-    $deploymentSpinner.stop("Failed to read deployment archive");
-    throw new Error(`Failed to read archive: ${readError.message}`);
+    $deploymentSpinner.stop("Failed reading deployment archive");
+    log.error(chalk.bold(chalkError(readError.message)));
+    throw new OutroCommandError(`Deployment failed`);
   }
 
   const formData = new FormData();
@@ -964,9 +966,14 @@ async function handleNativeBuildServerDeploy({
 
   if (uploadError || !uploadResponse?.ok) {
     $deploymentSpinner.stop("Failed to upload deployment files");
-    throw new Error(
-      `Failed to upload archive: ${uploadError?.message} ${uploadResponse?.status} ${uploadResponse?.statusText}`
+    log.error(
+      chalk.bold(
+        chalkError(
+          `${uploadError?.message} (${uploadResponse?.statusText} ${uploadResponse?.status})`
+        )
+      )
     );
+    throw new OutroCommandError(`Deployment failed`);
   }
 
   const [unlinkError] = await tryCatch(unlink(archivePath));
