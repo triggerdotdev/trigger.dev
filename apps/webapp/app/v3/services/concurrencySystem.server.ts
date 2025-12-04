@@ -173,6 +173,11 @@ function resetQueueConcurrencyLimit(db: PrismaClientOrTransaction, queue: TaskQu
 }
 
 function syncQueueConcurrencyToEngine(environment: AuthenticatedEnvironment, queue: TaskQueue) {
+  if (queue.paused) {
+    // Queue is paused, don't update Redis limits - keep at 0
+    return okAsync(queue);
+  }
+
   if (typeof queue.concurrencyLimit === "number") {
     return fromPromise(
       updateQueueConcurrencyLimits(environment, queue.name, queue.concurrencyLimit),
