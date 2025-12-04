@@ -1,5 +1,6 @@
 import type { Prisma, User } from "@trigger.dev/database";
 import type { GitHubProfile } from "remix-auth-github";
+import type { GoogleProfile } from "remix-auth-google";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import {
@@ -20,7 +21,14 @@ type FindOrCreateGithub = {
   authenticationExtraParams: Record<string, unknown>;
 };
 
-type FindOrCreateUser = FindOrCreateMagicLink | FindOrCreateGithub;
+type FindOrCreateGoogle = {
+  authenticationMethod: "GOOGLE";
+  email: User["email"];
+  authenticationProfile: GoogleProfile;
+  authenticationExtraParams: Record<string, unknown>;
+};
+
+type FindOrCreateUser = FindOrCreateMagicLink | FindOrCreateGithub | FindOrCreateGoogle;
 
 type LoggedInUser = {
   user: User;
@@ -34,6 +42,9 @@ export async function findOrCreateUser(input: FindOrCreateUser): Promise<LoggedI
     }
     case "MAGIC_LINK": {
       return findOrCreateMagicLinkUser(input);
+    }
+    case "GOOGLE": {
+      return findOrCreateGoogleUser(input);
     }
   }
 }
@@ -153,6 +164,103 @@ export async function findOrCreateGithubUser({
       authIdentifier,
       email,
       authenticationMethod: "GITHUB",
+    },
+  });
+
+  return {
+    user,
+    isNewUser: !existingUser,
+  };
+}
+
+export async function findOrCreateGoogleUser({
+  email,
+  authenticationProfile,
+  authenticationExtraParams,
+}: FindOrCreateGoogle): Promise<LoggedInUser> {
+  assertEmailAllowed(email);
+
+  const name = authenticationProfile._json.name;
+  let avatarUrl: string | undefined = undefined;
+  if (authenticationProfile.photos[0]) {
+    avatarUrl = authenticationProfile.photos[0].value;
+  }
+  const displayName = authenticationProfile.displayName;
+  const authProfile = authenticationProfile
+    ? (authenticationProfile as unknown as Prisma.JsonObject)
+    : undefined;
+  const authExtraParams = authenticationExtraParams
+    ? (authenticationExtraParams as unknown as Prisma.JsonObject)
+    : undefined;
+
+  const authIdentifier = `google:${authenticationProfile.id}`;
+
+  const existingUser = await prisma.user.findUnique({
+    where: {
+      authIdentifier,
+    },
+  });
+
+  const existingEmailUser = await prisma.user.findUnique({
+    where: {
+      email,
+    },
+  });
+
+  if (existingEmailUser && !existingUser) {
+    // Link existing email account to Google auth
+    const user = await prisma.user.update({
+      where: {
+        email,
+      },
+      data: {
+        authenticationMethod: "GOOGLE",
+        authenticationProfile: authProfile,
+        authenticationExtraParams: authExtraParams,
+        avatarUrl,
+        authIdentifier,
+      },
+    });
+
+    return {
+      user,
+      isNewUser: false,
+    };
+  }
+
+  if (existingEmailUser && existingUser) {
+    // User already linked to Google, update profile info
+    const user = await prisma.user.update({
+      where: {
+        id: existingUser.id,
+      },
+      data: {
+        avatarUrl,
+        authenticationProfile: authProfile,
+        authenticationExtraParams: authExtraParams,
+      },
+    });
+
+    return {
+      user,
+      isNewUser: false,
+    };
+  }
+
+  const user = await prisma.user.upsert({
+    where: {
+      authIdentifier,
+    },
+    update: {},
+    create: {
+      authenticationProfile: authProfile,
+      authenticationExtraParams: authExtraParams,
+      name,
+      avatarUrl,
+      displayName,
+      authIdentifier,
+      email,
+      authenticationMethod: "GOOGLE",
     },
   });
 

@@ -5,7 +5,7 @@ import { getSession, redirectWithErrorMessage } from "~/models/message.server";
 import { authenticator } from "~/services/auth.server";
 import { setLastAuthMethodHeader } from "~/services/lastAuthMethod.server";
 import { commitSession } from "~/services/sessionStorage.server";
-import { redirectCookie } from "./auth.github";
+import { redirectCookie } from "./auth.google";
 import { sanitizeRedirectPath } from "~/utils";
 
 export let loader: LoaderFunction = async ({ request }) => {
@@ -13,7 +13,7 @@ export let loader: LoaderFunction = async ({ request }) => {
   const redirectValue = await redirectCookie.parse(cookie);
   const redirectTo = sanitizeRedirectPath(redirectValue);
 
-  const auth = await authenticator.authenticate("github", request, {
+  const auth = await authenticator.authenticate("google", request, {
     failureRedirect: "/login", // If auth fails, the failureRedirect will be thrown as a Response
   });
 
@@ -44,7 +44,7 @@ export let loader: LoaderFunction = async ({ request }) => {
 
     const headers = new Headers();
     headers.append("Set-Cookie", await commitSession(session));
-    headers.append("Set-Cookie", await setLastAuthMethodHeader("github"));
+    headers.append("Set-Cookie", await setLastAuthMethodHeader("google"));
 
     return redirect("/login/mfa", { headers });
   }
@@ -54,7 +54,8 @@ export let loader: LoaderFunction = async ({ request }) => {
 
   const headers = new Headers();
   headers.append("Set-Cookie", await commitSession(session));
-  headers.append("Set-Cookie", await setLastAuthMethodHeader("github"));
+  headers.append("Set-Cookie", await setLastAuthMethodHeader("google"));
 
   return redirect(redirectTo, { headers });
 };
+
