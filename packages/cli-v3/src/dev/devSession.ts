@@ -1,6 +1,5 @@
 import { ResolvedConfig } from "@trigger.dev/core/v3/build";
 import * as esbuild from "esbuild";
-import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { CliApiClient } from "../apiClient.js";
 import {
   BundleResult,
@@ -59,7 +58,7 @@ export async function startDevSession({
   clearTmpDirs(rawConfig.workingDir);
   const destination = getTmpDir(rawConfig.workingDir, "build", keepTmpFiles);
   // Create shared store directory for deduplicating chunk files across rebuilds
-  const storeDir = getStoreDir(rawConfig.workingDir);
+  const storeDir = getStoreDir(rawConfig.workingDir, keepTmpFiles);
 
   const runtime = await startWorkerRuntime({
     name,

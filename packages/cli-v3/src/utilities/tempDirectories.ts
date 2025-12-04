@@ -63,10 +63,23 @@ export function clearTmpDirs(projectRoot: string | undefined) {
  * Gets the shared store directory for content-addressable build outputs.
  * This directory persists across rebuilds and is used to deduplicate
  * identical chunk files between build versions.
+ * Automatically cleaned up when the process exits.
  */
-export function getStoreDir(projectRoot: string | undefined): string {
+export function getStoreDir(projectRoot: string | undefined, keep: boolean = false): string {
   projectRoot ??= process.cwd();
   const storeDir = path.join(projectRoot, ".trigger", "tmp", "store");
   fs.mkdirSync(storeDir, { recursive: true });
+
+  // Register exit handler to clean up the store directory
+  if (!keep && !process.env.KEEP_TMP_DIRS) {
+    onExit(() => {
+      try {
+        fs.rmSync(storeDir, { recursive: true, force: true });
+      } catch (e) {
+        // This sometimes fails on Windows with EBUSY
+      }
+    });
+  }
+
   return storeDir;
 }
