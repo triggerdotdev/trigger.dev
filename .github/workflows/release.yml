@@ -193,6 +193,8 @@ jobs:
 
       - name: Snapshot version
         run: pnpm exec changeset version --snapshot ${{ github.event.inputs.tag }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Clean
         run: pnpm run clean --filter "@trigger.dev/*" --filter "trigger.dev"
