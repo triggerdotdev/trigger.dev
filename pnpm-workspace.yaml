@@ -9,6 +9,8 @@ packages:
 minimumReleaseAge: 4320
 minimumReleaseAgeExclude:
   - "@trigger.dev/platform"
+  - "next"
+  - "@next/*"
 preferOffline: true
 
 linkWorkspacePackages: false
