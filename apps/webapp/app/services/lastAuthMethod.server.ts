@@ -1,4 +1,5 @@
 import { createCookie } from "@remix-run/node";
+import { env } from "~/env.server";
 
 export type LastAuthMethod = "github" | "google" | "email";
 
@@ -7,7 +8,7 @@ export const lastAuthMethodCookie = createCookie("last-auth-method", {
   maxAge: 60 * 60 * 24 * 365, // 1 year
   httpOnly: true,
   sameSite: "lax",
-  secure: process.env.NODE_ENV === "production",
+  secure: env.NODE_ENV === "production",
 });
 
 export async function getLastAuthMethod(request: Request): Promise<LastAuthMethod | null> {
