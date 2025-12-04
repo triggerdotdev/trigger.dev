@@ -137,6 +137,11 @@ jobs:
         with:
           node-version: 20.19.0
 
+      # npm v11.5.1 or newer is required for OIDC support
+      # https://github.blog/changelog/2025-07-31-npm-trusted-publishing-with-oidc-is-generally-available/#whats-new
+      - name: Setup npm 11.x for OIDC
+        run: npm install -g npm@11.6.4
+
       - name: Install and update lockfile
         run: pnpm install --no-frozen-lockfile
 
@@ -184,6 +189,11 @@ jobs:
         with:
           node-version: 20.19.0
           cache: "pnpm"
+
+      # npm v11.5.1 or newer is required for OIDC support
+      # https://github.blog/changelog/2025-07-31-npm-trusted-publishing-with-oidc-is-generally-available/#whats-new
+      - name: Setup npm 11.x for OIDC
+        run: npm install -g npm@11.6.4
 
       - name: Download deps
         run: pnpm install --frozen-lockfile
