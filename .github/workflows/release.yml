@@ -9,6 +9,17 @@ on:
       - "**.md"
       - ".github/CODEOWNERS"
       - ".github/ISSUE_TEMPLATE/**"
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "The ref (branch, tag, or SHA) to checkout and release from"
+        required: true
+        type: string
+      tag:
+        description: "The npm dist-tag for the prerelease (e.g., 'v4-prerelease')"
+        required: true
+        type: string
+        default: "v4-prerelease"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -23,38 +34,38 @@ jobs:
       packages: write
       pull-requests: write
       id-token: write
-    if: github.repository == 'triggerdotdev/trigger.dev'
+    if: github.repository == 'triggerdotdev/trigger.dev' && github.event_name != 'workflow_dispatch'
     outputs:
       published: ${{ steps.changesets.outputs.published }}
       published_packages: ${{ steps.changesets.outputs.publishedPackages }}
       published_package_version: ${{ steps.get_version.outputs.package_version }}
     steps:
-      - name: ⬇️ Checkout repo
+      - name: Checkout repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: ⎔ Setup pnpm
+      - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 10.23.0
 
-      - name: ⎔ Setup node
+      - name: Setup node
         uses: buildjet/setup-node@v4
         with:
           node-version: 20.19.0
           cache: "pnpm"
 
-      - name: 📥 Download deps
+      - name: Download deps
         run: pnpm install --frozen-lockfile
 
-      - name: 📀 Generate Prisma Client
+      - name: Generate Prisma Client
         run: pnpm run generate
 
-      - name: 🏗️ Build
+      - name: Build
         run: pnpm run build --filter "@trigger.dev/*" --filter "trigger.dev"
 
-      - name: 🔎 Type check
+      - name: Type check
         run: pnpm run typecheck --filter "@trigger.dev/*" --filter "trigger.dev"
 
         # This action has two responsibilities. The first time the workflow runs
@@ -62,7 +73,7 @@ jobs:
         # then open a PR with the related changes for the new version. After the
         # PR is merged, the workflow will run again and this action will build +
         # publish to npm.
-      - name: 🚀 PR / Publish
+      - name: Publish
         if: ${{ !env.ACT }}
         id: changesets
         uses: changesets/action@v1
@@ -75,7 +86,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 📦 Get package version
+      - name: Get package version
         if: steps.changesets.outputs.published == 'true'
         id: get_version
         run: |
@@ -83,7 +94,7 @@ jobs:
           echo "package_version=${package_version}" >> "$GITHUB_OUTPUT"
 
       # this triggers the publish workflow for the docker images
-      - name: 🏷️ Create and push docker tag
+      - name: Create and push docker tag
         if: steps.changesets.outputs.published == 'true'
         run: |
           set -e
@@ -141,3 +152,55 @@ jobs:
             git commit -m "chore: update lockfile for release"
             git push origin changeset-release/main
           fi
+
+  prerelease:
+    name: 🚀 Prerelease
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    if: github.repository == 'triggerdotdev/trigger.dev' && github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.inputs.ref }}
+
+      - name: Validate ref is on main
+        run: |
+          if ! git merge-base --is-ancestor ${{ github.event.inputs.ref }} origin/main; then
+            echo "Error: ref must be an ancestor of main (i.e., already merged)"
+            exit 1
+          fi
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.23.0
+
+      - name: Setup node
+        uses: buildjet/setup-node@v4
+        with:
+          node-version: 20.19.0
+          cache: "pnpm"
+
+      - name: Download deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma Client
+        run: pnpm run generate
+
+      - name: Snapshot version
+        run: pnpm exec changeset version --snapshot ${{ github.event.inputs.tag }}
+
+      - name: Clean
+        run: pnpm run clean --filter "@trigger.dev/*" --filter "trigger.dev"
+
+      - name: Build
+        run: pnpm run build --filter "@trigger.dev/*" --filter "trigger.dev"
+
+      - name: Publish prerelease
+        run: pnpm exec changeset publish --no-git-tag --snapshot --tag ${{ github.event.inputs.tag }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
