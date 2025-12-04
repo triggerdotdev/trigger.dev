@@ -74,6 +74,10 @@ function buildNeonEnvVarMappings(options: {
 
 export function syncNeonEnvVars(options?: {
   projectId?: string;
+  /**
+   * Neon API access token for authentication.
+   * It's recommended to use the NEON_ACCESS_TOKEN environment variable instead of hardcoding this value.
+   */
   neonAccessToken?: string;
   branch?: string;
   databaseName?: string;

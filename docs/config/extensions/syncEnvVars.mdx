@@ -126,7 +126,7 @@ export default defineConfig({
     extensions: [
       syncVercelEnvVars({
         projectId: "your-vercel-project-id",
-        vercelAccessToken: "your-vercel-access-token",
+        vercelAccessToken: "your-vercel-access-token", // optional, we recommend to keep it as env variable
         vercelTeamId: "your-vercel-team-id", // optional
       }),
     ],
@@ -190,7 +190,7 @@ export default defineConfig({
     extensions: [
       syncNeonEnvVars({
         projectId: "your-neon-project-id",
-        neonAccessToken: "your-neon-access-token",
+        neonAccessToken: "your-neon-access-token", // optional, we recommend to keep it as env variable
         branch: "your-branch-name", // optional, defaults to ctx.branch
         databaseName: "your-database-name", // optional, defaults to the first database
         roleName: "your-role-name", // optional, defaults to the database owner
