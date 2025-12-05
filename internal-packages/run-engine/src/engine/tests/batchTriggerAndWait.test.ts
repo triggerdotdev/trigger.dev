@@ -3,8 +3,9 @@ import { trace } from "@internal/tracing";
 import { expect, describe } from "vitest";
 import { RunEngine } from "../index.js";
 import { setTimeout } from "node:timers/promises";
-import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
+import { generateFriendlyId, BatchId } from "@trigger.dev/core/v3/isomorphic";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
+import type { CompleteBatchResult, BatchItem } from "../../batch-queue/types.js";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -571,6 +572,638 @@ describe("RunEngine batchTriggerAndWait", () => {
           "EXECUTING_WITH_WAITPOINTS"
         );
         expect(parentAfterTriggerAndWait.batch).toBeUndefined();
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "batchTriggerAndWait v2 - all runs created and completed successfully",
+    async ({ prisma, redisOptions }) => {
+      // Create environment
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 20,
+        },
+        queue: {
+          redis: redisOptions,
+          masterQueueConsumersDisabled: true,
+          processWorkerQueueDebounceMs: 50,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+        batchQueue: {
+          redis: redisOptions,
+          drr: {
+            quantum: 5,
+            maxDeficit: 50,
+          },
+          consumerCount: 1,
+          consumerIntervalMs: 50,
+        },
+      });
+
+      // Track created runs
+      const createdRuns: Array<{ index: number; runId: string }> = [];
+      let completionResult: CompleteBatchResult | null = null;
+
+      // Set up batch processing callback - creates runs via engine.trigger
+      engine.setBatchProcessItemCallback(async ({ batchId, itemIndex, item, meta }) => {
+        try {
+          const friendlyId = generateFriendlyId("run");
+          const run = await engine.trigger(
+            {
+              number: itemIndex + 1,
+              friendlyId,
+              environment: authenticatedEnvironment,
+              taskIdentifier: item.task,
+              payload:
+                typeof item.payload === "string" ? item.payload : JSON.stringify(item.payload),
+              payloadType: item.payloadType ?? "application/json",
+              context: {},
+              traceContext: {},
+              traceId: `t${batchId}${itemIndex}`,
+              spanId: `s${batchId}${itemIndex}`,
+              workerQueue: "main",
+              queue: `task/${item.task}`,
+              isTest: false,
+              tags: [],
+              resumeParentOnCompletion: meta.resumeParentOnCompletion,
+              parentTaskRunId: meta.parentRunId,
+              batch: { id: batchId, index: itemIndex },
+            },
+            prisma
+          );
+
+          createdRuns.push({ index: itemIndex, runId: run.id });
+          return { success: true as const, runId: friendlyId };
+        } catch (error) {
+          return {
+            success: false as const,
+            error: error instanceof Error ? error.message : String(error),
+            errorCode: "TRIGGER_ERROR",
+          };
+        }
+      });
+
+      // Set up completion callback
+      engine.setBatchCompletionCallback(async (result) => {
+        completionResult = result;
+
+        // Update batch in database
+        await prisma.batchTaskRun.update({
+          where: { id: result.batchId },
+          data: {
+            status: result.failedRunCount > 0 ? "PARTIAL_FAILED" : "PENDING",
+            runIds: result.runIds,
+            successfulRunCount: result.successfulRunCount,
+            failedRunCount: result.failedRunCount,
+          },
+        });
+
+        // Try to complete the batch (this will check if all runs are done)
+        await engine.tryCompleteBatch({ batchId: result.batchId });
+      });
+
+      try {
+        const parentTask = "parent-task";
+        const childTask = "child-task";
+
+        // Create background worker
+        await setupBackgroundWorker(engine, authenticatedEnvironment, [parentTask, childTask]);
+
+        // Create a batch record with v2 version
+        const { id: batchId, friendlyId: batchFriendlyId } = BatchId.generate();
+        const batch = await prisma.batchTaskRun.create({
+          data: {
+            id: batchId,
+            friendlyId: batchFriendlyId,
+            runtimeEnvironmentId: authenticatedEnvironment.id,
+            status: "PROCESSING",
+            runCount: 2,
+            batchVersion: "runengine:v2",
+          },
+        });
+
+        // Trigger the parent run
+        const parentRun = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_parent",
+            environment: authenticatedEnvironment,
+            taskIdentifier: parentTask,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t_parent",
+            spanId: "s_parent",
+            workerQueue: "main",
+            queue: `task/${parentTask}`,
+            isTest: false,
+            tags: [],
+          },
+          prisma
+        );
+
+        // Dequeue parent
+        await setTimeout(500);
+        const dequeued = await engine.dequeueFromWorkerQueue({
+          consumerId: "test_12345",
+          workerQueue: "main",
+        });
+        expect(dequeued.length).toBe(1);
+
+        // Start parent attempt
+        const initialExecutionData = await engine.getRunExecutionData({ runId: parentRun.id });
+        assertNonNullable(initialExecutionData);
+        await engine.startRunAttempt({
+          runId: parentRun.id,
+          snapshotId: initialExecutionData.snapshot.id,
+        });
+
+        // Block parent using the batch
+        await engine.blockRunWithCreatedBatch({
+          runId: parentRun.id,
+          batchId: batch.id,
+          environmentId: authenticatedEnvironment.id,
+          projectId: authenticatedEnvironment.projectId,
+          organizationId: authenticatedEnvironment.organizationId,
+        });
+
+        const afterBlockedByBatch = await engine.getRunExecutionData({ runId: parentRun.id });
+        assertNonNullable(afterBlockedByBatch);
+        expect(afterBlockedByBatch.snapshot.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
+
+        // Enqueue batch items to BatchQueue
+        const batchItems: BatchItem[] = [
+          { task: childTask, payload: '{"item": 0}', payloadType: "application/json" },
+          { task: childTask, payload: '{"item": 1}', payloadType: "application/json" },
+        ];
+
+        await engine.enqueueBatchToQueue({
+          batchId: batch.id,
+          friendlyId: batch.friendlyId,
+          environmentId: authenticatedEnvironment.id,
+          environmentType: authenticatedEnvironment.type,
+          organizationId: authenticatedEnvironment.organizationId,
+          projectId: authenticatedEnvironment.projectId,
+          items: batchItems,
+          parentRunId: parentRun.id,
+          resumeParentOnCompletion: true,
+        });
+
+        // Wait for BatchQueue consumers to process items AND database to be updated
+        await vi.waitFor(
+          async () => {
+            expect(createdRuns.length).toBe(2);
+            expect(completionResult).not.toBeNull();
+            // Also wait for the database update to complete
+            const batchRecord = await prisma.batchTaskRun.findUnique({
+              where: { id: batch.id },
+            });
+            expect(batchRecord?.successfulRunCount).toBe(2);
+          },
+          { timeout: 10000 }
+        );
+
+        // Verify completion result (type assertion needed due to async closure)
+        const finalResult = completionResult!;
+        expect(finalResult.batchId).toBe(batch.id);
+        expect(finalResult.successfulRunCount).toBe(2);
+        expect(finalResult.failedRunCount).toBe(0);
+        expect(finalResult.failures).toHaveLength(0);
+
+        // Verify batch record updated
+        const batchAfterProcessing = await prisma.batchTaskRun.findUnique({
+          where: { id: batch.id },
+        });
+        expect(batchAfterProcessing?.successfulRunCount).toBe(2);
+        expect(batchAfterProcessing?.failedRunCount).toBe(0);
+
+        // Parent should still be waiting for runs to complete
+        const parentAfterProcessing = await engine.getRunExecutionData({ runId: parentRun.id });
+        assertNonNullable(parentAfterProcessing);
+        expect(parentAfterProcessing.snapshot.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
+
+        // Now complete the child runs
+        for (const { runId } of createdRuns) {
+          // Dequeue and start child
+          await setTimeout(300);
+          const dequeuedChild = await engine.dequeueFromWorkerQueue({
+            consumerId: "test_12345",
+            workerQueue: "main",
+          });
+
+          if (dequeuedChild.length === 0) continue;
+
+          const childAttempt = await engine.startRunAttempt({
+            runId: dequeuedChild[0].run.id,
+            snapshotId: dequeuedChild[0].snapshot.id,
+          });
+
+          // Complete the child
+          await engine.completeRunAttempt({
+            runId: childAttempt.run.id,
+            snapshotId: childAttempt.snapshot.id,
+            completion: {
+              id: runId,
+              ok: true,
+              output: '{"result":"success"}',
+              outputType: "application/json",
+            },
+          });
+        }
+
+        // Wait for parent to be unblocked (use waitFor since tryCompleteBatch runs as background job)
+        await vi.waitFor(
+          async () => {
+            const waitpoints = await prisma.taskRunWaitpoint.findMany({
+              where: { taskRunId: parentRun.id },
+            });
+            expect(waitpoints.length).toBe(0);
+          },
+          { timeout: 10000 }
+        );
+
+        // Parent should now be executing
+        const parentAfterCompletion = await engine.getRunExecutionData({ runId: parentRun.id });
+        assertNonNullable(parentAfterCompletion);
+        expect(parentAfterCompletion.snapshot.executionStatus).toBe("EXECUTING");
+        expect(parentAfterCompletion.completedWaitpoints.length).toBe(3); // 2 run waitpoints + 1 batch waitpoint
+
+        // Wait for batch to be marked COMPLETED (runs in background)
+        await vi.waitFor(
+          async () => {
+            const batchRecord = await prisma.batchTaskRun.findUnique({
+              where: { id: batch.id },
+            });
+            expect(batchRecord?.status).toBe("COMPLETED");
+          },
+          { timeout: 10000 }
+        );
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "batchTriggerAndWait v2 - some runs fail to be created, remaining runs complete successfully",
+    async ({ prisma, redisOptions }) => {
+      // Create environment
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 20,
+        },
+        queue: {
+          redis: redisOptions,
+          masterQueueConsumersDisabled: true,
+          processWorkerQueueDebounceMs: 50,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+        batchQueue: {
+          redis: redisOptions,
+          drr: {
+            quantum: 5,
+            maxDeficit: 50,
+          },
+          consumerCount: 1,
+          consumerIntervalMs: 50,
+        },
+      });
+
+      // Track created runs and failures
+      const createdRuns: Array<{ index: number; runId: string }> = [];
+      let completionResult: CompleteBatchResult | null = null;
+      const failingIndices = [1]; // Index 1 will fail to be triggered
+
+      // Set up batch processing callback - simulates some items failing
+      engine.setBatchProcessItemCallback(async ({ batchId, itemIndex, item, meta }) => {
+        // Simulate failure for specific indices
+        if (failingIndices.includes(itemIndex)) {
+          return {
+            success: false as const,
+            error: "Simulated trigger failure",
+            errorCode: "SIMULATED_FAILURE",
+          };
+        }
+
+        try {
+          const friendlyId = generateFriendlyId("run");
+          const run = await engine.trigger(
+            {
+              number: itemIndex + 1,
+              friendlyId,
+              environment: authenticatedEnvironment,
+              taskIdentifier: item.task,
+              payload:
+                typeof item.payload === "string" ? item.payload : JSON.stringify(item.payload),
+              payloadType: item.payloadType ?? "application/json",
+              context: {},
+              traceContext: {},
+              traceId: `t${batchId}${itemIndex}`,
+              spanId: `s${batchId}${itemIndex}`,
+              workerQueue: "main",
+              queue: `task/${item.task}`,
+              isTest: false,
+              tags: [],
+              resumeParentOnCompletion: meta.resumeParentOnCompletion,
+              parentTaskRunId: meta.parentRunId,
+              batch: { id: batchId, index: itemIndex },
+            },
+            prisma
+          );
+
+          createdRuns.push({ index: itemIndex, runId: run.id });
+          return { success: true as const, runId: friendlyId };
+        } catch (error) {
+          return {
+            success: false as const,
+            error: error instanceof Error ? error.message : String(error),
+            errorCode: "TRIGGER_ERROR",
+          };
+        }
+      });
+
+      // Set up completion callback
+      engine.setBatchCompletionCallback(async (result) => {
+        completionResult = result;
+
+        // Determine status: PARTIAL_FAILED if some failed
+        const status =
+          result.failedRunCount > 0 && result.successfulRunCount === 0
+            ? "ABORTED"
+            : result.failedRunCount > 0
+            ? "PARTIAL_FAILED"
+            : "PENDING";
+
+        // Update batch in database
+        await prisma.batchTaskRun.update({
+          where: { id: result.batchId },
+          data: {
+            status,
+            runIds: result.runIds,
+            successfulRunCount: result.successfulRunCount,
+            failedRunCount: result.failedRunCount,
+          },
+        });
+
+        // Create error records for failures
+        for (const failure of result.failures) {
+          await prisma.batchTaskRunError.create({
+            data: {
+              batchTaskRunId: result.batchId,
+              index: failure.index,
+              taskIdentifier: failure.taskIdentifier,
+              payload: failure.payload,
+              options: failure.options ? JSON.parse(JSON.stringify(failure.options)) : undefined,
+              error: failure.error,
+              errorCode: failure.errorCode,
+            },
+          });
+        }
+
+        // Try to complete the batch (only if not aborted)
+        if (status !== "ABORTED") {
+          await engine.tryCompleteBatch({ batchId: result.batchId });
+        }
+      });
+
+      try {
+        const parentTask = "parent-task";
+        const childTask = "child-task";
+
+        // Create background worker
+        await setupBackgroundWorker(engine, authenticatedEnvironment, [parentTask, childTask]);
+
+        // Create a batch record with v2 version
+        const { id: batchId, friendlyId: batchFriendlyId } = BatchId.generate();
+        const batch = await prisma.batchTaskRun.create({
+          data: {
+            id: batchId,
+            friendlyId: batchFriendlyId,
+            runtimeEnvironmentId: authenticatedEnvironment.id,
+            status: "PROCESSING",
+            runCount: 3, // 3 items, 1 will fail
+            batchVersion: "runengine:v2",
+          },
+        });
+
+        // Trigger the parent run
+        const parentRun = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: generateFriendlyId("run"),
+            environment: authenticatedEnvironment,
+            taskIdentifier: parentTask,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "tparentpartial",
+            spanId: "sparentpartial",
+            workerQueue: "main",
+            queue: `task/${parentTask}`,
+            isTest: false,
+            tags: [],
+          },
+          prisma
+        );
+
+        // Dequeue parent
+        await setTimeout(500);
+        const dequeued = await engine.dequeueFromWorkerQueue({
+          consumerId: "test_12345",
+          workerQueue: "main",
+        });
+        expect(dequeued.length).toBe(1);
+
+        // Start parent attempt
+        const initialExecutionData = await engine.getRunExecutionData({ runId: parentRun.id });
+        assertNonNullable(initialExecutionData);
+        await engine.startRunAttempt({
+          runId: parentRun.id,
+          snapshotId: initialExecutionData.snapshot.id,
+        });
+
+        // Block parent using the batch
+        await engine.blockRunWithCreatedBatch({
+          runId: parentRun.id,
+          batchId: batch.id,
+          environmentId: authenticatedEnvironment.id,
+          projectId: authenticatedEnvironment.projectId,
+          organizationId: authenticatedEnvironment.organizationId,
+        });
+
+        const afterBlockedByBatch = await engine.getRunExecutionData({ runId: parentRun.id });
+        assertNonNullable(afterBlockedByBatch);
+        expect(afterBlockedByBatch.snapshot.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
+
+        // Enqueue batch items to BatchQueue (3 items, index 1 will fail)
+        const batchItems: BatchItem[] = [
+          { task: childTask, payload: '{"item": 0}', payloadType: "application/json" },
+          { task: childTask, payload: '{"item": 1}', payloadType: "application/json" }, // Will fail
+          { task: childTask, payload: '{"item": 2}', payloadType: "application/json" },
+        ];
+
+        await engine.enqueueBatchToQueue({
+          batchId: batch.id,
+          friendlyId: batch.friendlyId,
+          environmentId: authenticatedEnvironment.id,
+          environmentType: authenticatedEnvironment.type,
+          organizationId: authenticatedEnvironment.organizationId,
+          projectId: authenticatedEnvironment.projectId,
+          items: batchItems,
+          parentRunId: parentRun.id,
+          resumeParentOnCompletion: true,
+        });
+
+        // Wait for BatchQueue consumers to process items AND database to be updated
+        await vi.waitFor(
+          async () => {
+            expect(completionResult).not.toBeNull();
+            // Also wait for the database update to complete
+            const batchRecord = await prisma.batchTaskRun.findUnique({
+              where: { id: batch.id },
+            });
+            expect(batchRecord?.status).toBe("PARTIAL_FAILED");
+          },
+          { timeout: 10000 }
+        );
+
+        // Verify completion result (type assertion needed due to async closure)
+        const finalResult = completionResult!;
+        expect(finalResult.batchId).toBe(batch.id);
+        expect(finalResult.successfulRunCount).toBe(2); // 2 succeeded
+        expect(finalResult.failedRunCount).toBe(1); // 1 failed
+        expect(finalResult.failures).toHaveLength(1);
+        expect(finalResult.failures[0].index).toBe(1);
+        expect(finalResult.failures[0].error).toBe("Simulated trigger failure");
+        expect(finalResult.failures[0].errorCode).toBe("SIMULATED_FAILURE");
+
+        // Verify batch record updated with PARTIAL_FAILED status
+        const batchAfterProcessing = await prisma.batchTaskRun.findUnique({
+          where: { id: batch.id },
+          include: { errors: true },
+        });
+        expect(batchAfterProcessing?.status).toBe("PARTIAL_FAILED");
+        expect(batchAfterProcessing?.successfulRunCount).toBe(2);
+        expect(batchAfterProcessing?.failedRunCount).toBe(1);
+        expect(batchAfterProcessing?.errors).toHaveLength(1);
+        expect(batchAfterProcessing?.errors[0].index).toBe(1);
+        expect(batchAfterProcessing?.errors[0].error).toBe("Simulated trigger failure");
+
+        // Only 2 runs should have been created (indices 0 and 2)
+        expect(createdRuns.length).toBe(2);
+        expect(createdRuns.map((r) => r.index).sort()).toEqual([0, 2]);
+
+        // Parent should still be waiting for the created runs to complete
+        const parentAfterProcessing = await engine.getRunExecutionData({ runId: parentRun.id });
+        assertNonNullable(parentAfterProcessing);
+        expect(parentAfterProcessing.snapshot.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
+
+        // Now complete the successfully created child runs
+        for (const { runId } of createdRuns) {
+          // Dequeue and start child
+          await setTimeout(300);
+          const dequeuedChild = await engine.dequeueFromWorkerQueue({
+            consumerId: "test_12345",
+            workerQueue: "main",
+          });
+
+          if (dequeuedChild.length === 0) continue;
+
+          const childAttempt = await engine.startRunAttempt({
+            runId: dequeuedChild[0].run.id,
+            snapshotId: dequeuedChild[0].snapshot.id,
+          });
+
+          // Complete the child
+          await engine.completeRunAttempt({
+            runId: childAttempt.run.id,
+            snapshotId: childAttempt.snapshot.id,
+            completion: {
+              id: runId,
+              ok: true,
+              output: '{"result":"success"}',
+              outputType: "application/json",
+            },
+          });
+        }
+
+        // Wait for parent to be unblocked (use waitFor since tryCompleteBatch runs as background job)
+        await vi.waitFor(
+          async () => {
+            const waitpoints = await prisma.taskRunWaitpoint.findMany({
+              where: { taskRunId: parentRun.id },
+            });
+            expect(waitpoints.length).toBe(0);
+          },
+          { timeout: 10000 }
+        );
+
+        // Parent should now be executing (resumed even though some runs failed to trigger)
+        const parentAfterCompletion = await engine.getRunExecutionData({ runId: parentRun.id });
+        assertNonNullable(parentAfterCompletion);
+        expect(parentAfterCompletion.snapshot.executionStatus).toBe("EXECUTING");
+
+        // Should have 3 completed waitpoints: 2 run waitpoints + 1 batch waitpoint
+        // (even though 1 run failed to trigger, the batch waitpoint is still completed)
+        expect(parentAfterCompletion.completedWaitpoints.length).toBe(3);
+
+        // Wait for batch to be marked COMPLETED (runs in background)
+        await vi.waitFor(
+          async () => {
+            const batchRecord = await prisma.batchTaskRun.findUnique({
+              where: { id: batch.id },
+            });
+            expect(batchRecord?.status).toBe("COMPLETED");
+          },
+          { timeout: 10000 }
+        );
       } finally {
         await engine.quit();
       }

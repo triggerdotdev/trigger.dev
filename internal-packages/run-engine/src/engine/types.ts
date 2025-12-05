@@ -14,6 +14,7 @@ import { MinimalAuthenticatedEnvironment } from "../shared/index.js";
 import { LockRetryConfig } from "./locking.js";
 import { workerCatalog } from "./workerCatalog.js";
 import { type BillingPlan } from "./billingCache.js";
+import type { DRRConfig } from "../batch-queue/types.js";
 
 export type RunEngineOptions = {
   prisma: PrismaClient;
@@ -67,6 +68,12 @@ export type RunEngineOptions = {
   };
   cache?: {
     redis: RedisOptions;
+  };
+  batchQueue?: {
+    redis: RedisOptions;
+    drr?: Partial<DRRConfig>;
+    consumerCount?: number;
+    consumerIntervalMs?: number;
   };
   /** If not set then checkpoints won't ever be used */
   retryWarmStartThresholdMs?: number;

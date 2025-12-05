@@ -6,8 +6,23 @@ import { RunEngineBatchTriggerService } from "~/runEngine/services/batchTrigger.
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 import { BatchTriggerV3Service } from "./services/batchTriggerV3.server";
+// Import engine to ensure it's initialized (which initializes BatchQueue for v2 batches)
+import { engine } from "./runEngine.server";
 
+/**
+ * Legacy batch trigger worker for processing v3 and run engine v1 batches.
+ *
+ * NOTE: Run Engine v2 batches (batchVersion: "runengine:v2") use the new BatchQueue
+ * system with Deficit Round Robin scheduling, which is encapsulated within the RunEngine.
+ * See runEngine.server.ts for the configuration.
+ *
+ * This worker is kept for backwards compatibility with:
+ * - v3 batches (batchVersion: "v3") - handled by BatchTriggerV3Service
+ * - Run Engine v1 batches (batchVersion: "runengine:v1") - handled by RunEngineBatchTriggerService
+ */
 function initializeWorker() {
+  // Ensure the engine (and its BatchQueue) is initialized
+  void engine;
   const redisOptions = {
     keyPrefix: "batch-trigger:worker:",
     host: env.BATCH_TRIGGER_WORKER_REDIS_HOST,

@@ -20,6 +20,7 @@ import {
   PrismaClient,
   PrismaClientOrTransaction,
   PrismaReplicaClient,
+  RuntimeEnvironmentType,
   TaskRun,
   TaskRunExecutionSnapshot,
   Waitpoint,
@@ -27,6 +28,14 @@ import {
 import { Worker } from "@trigger.dev/redis-worker";
 import { assertNever } from "assert-never";
 import { EventEmitter } from "node:events";
+import { BatchQueue } from "../batch-queue/index.js";
+import type {
+  BatchItem,
+  CompleteBatchResult,
+  EnqueueBatchOptions,
+  ProcessBatchItemCallback,
+  BatchCompletionCallback,
+} from "../batch-queue/types.js";
 import { FairQueueSelectionStrategy } from "../run-queue/fairQueueSelectionStrategy.js";
 import { RunQueue } from "../run-queue/index.js";
 import { RunQueueFullKeyProducer } from "../run-queue/keyProducer.js";
@@ -72,6 +81,7 @@ export class RunEngine {
   private meter: Meter;
   private heartbeatTimeouts: HeartbeatTimeouts;
   private repairSnapshotTimeoutMs: number;
+  private batchQueue?: BatchQueue;
 
   prisma: PrismaClient;
   readOnlyPrisma: PrismaReplicaClient;
@@ -307,6 +317,37 @@ export class RunEngine {
       resources,
       waitpointSystem: this.waitpointSystem,
     });
+
+    // Initialize BatchQueue for DRR-based batch processing (if configured)
+    if (options.batchQueue) {
+      // Only start consumers if worker is not disabled (same as main worker)
+      const startConsumers = !options.worker.disabled;
+
+      this.batchQueue = new BatchQueue({
+        redis: {
+          host: options.batchQueue.redis.host ?? "localhost",
+          port: options.batchQueue.redis.port ?? 6379,
+          username: options.batchQueue.redis.username,
+          password: options.batchQueue.redis.password,
+          keyPrefix: `${options.batchQueue.redis.keyPrefix ?? ""}batch-queue:`,
+          enableAutoPipelining: options.batchQueue.redis.enableAutoPipelining ?? true,
+          tls: options.batchQueue.redis.tls !== undefined,
+        },
+        drr: {
+          quantum: options.batchQueue.drr?.quantum ?? 5,
+          maxDeficit: options.batchQueue.drr?.maxDeficit ?? 50,
+        },
+        consumerCount: options.batchQueue.consumerCount ?? 2,
+        consumerIntervalMs: options.batchQueue.consumerIntervalMs ?? 100,
+        startConsumers,
+      });
+
+      this.logger.info("BatchQueue initialized", {
+        consumerCount: options.batchQueue.consumerCount ?? 2,
+        drrQuantum: options.batchQueue.drr?.quantum ?? 5,
+        consumersEnabled: startConsumers,
+      });
+    }
 
     this.runAttemptSystem = new RunAttemptSystem({
       resources,
@@ -917,6 +958,60 @@ export class RunEngine {
 
   async tryCompleteBatch({ batchId }: { batchId: string }): Promise<void> {
     return this.batchSystem.scheduleCompleteBatch({ batchId });
+  }
+
+  // ============================================================================
+  // BatchQueue methods (DRR-based batch processing)
+  // ============================================================================
+
+  /**
+   * Check if the BatchQueue is enabled and available.
+   */
+  isBatchQueueEnabled(): boolean {
+    return this.batchQueue !== undefined;
+  }
+
+  /**
+   * Enqueue a batch to the BatchQueue for DRR-based processing.
+   * Throws if BatchQueue is not enabled.
+   */
+  async enqueueBatchToQueue(options: EnqueueBatchOptions): Promise<void> {
+    if (!this.batchQueue) {
+      throw new Error("BatchQueue is not enabled. Configure batchQueue in RunEngine options.");
+    }
+    return this.batchQueue.enqueueBatch(options);
+  }
+
+  /**
+   * Set the callback for processing batch items.
+   * This is called for each item dequeued from the batch queue.
+   */
+  setBatchProcessItemCallback(callback: ProcessBatchItemCallback): void {
+    if (!this.batchQueue) {
+      throw new Error("BatchQueue is not enabled. Configure batchQueue in RunEngine options.");
+    }
+    this.batchQueue.onProcessItem(callback);
+  }
+
+  /**
+   * Set the callback for batch completion.
+   * This is called when all items in a batch have been processed.
+   */
+  setBatchCompletionCallback(callback: BatchCompletionCallback): void {
+    if (!this.batchQueue) {
+      throw new Error("BatchQueue is not enabled. Configure batchQueue in RunEngine options.");
+    }
+    this.batchQueue.onBatchComplete(callback);
+  }
+
+  /**
+   * Get the remaining count of items in a batch.
+   */
+  async getBatchQueueRemainingCount(batchId: string): Promise<number> {
+    if (!this.batchQueue) {
+      throw new Error("BatchQueue is not enabled. Configure batchQueue in RunEngine options.");
+    }
+    return this.batchQueue.getBatchRemainingCount(batchId);
   }
 
   async getWaitpoint({

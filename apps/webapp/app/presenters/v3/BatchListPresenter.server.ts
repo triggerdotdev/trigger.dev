@@ -195,7 +195,7 @@ WHERE
           throw new Error(`Environment not found for Batch ${batch.id}`);
         }
 
-        const hasFinished = batch.status !== "PENDING";
+        const hasFinished = batch.status !== "PENDING" && batch.status !== "PROCESSING";
 
         return {
           id: batch.id,
