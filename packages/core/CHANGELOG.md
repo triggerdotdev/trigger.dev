@@ -1,5 +1,12 @@
 # internal-platform
 
+## 4.2.0
+
+### Patch Changes
+
+- fix: prevent ERR_IPC_CHANNEL_CLOSED errors from causing an unhandled exception on TaskRunProcess ([#2743](https://github.com/triggerdotdev/trigger.dev/pull/2743))
+- Added support for native build server builds in the deploy command (`--native-build-server`) ([#2702](https://github.com/triggerdotdev/trigger.dev/pull/2702))
+
 ## 4.1.2
 
 ## 4.1.1

@@ -1,5 +1,24 @@
 # trigger.dev
 
+## 4.2.0
+
+### Minor Changes
+
+- feat(cli): upgrade bun deployments to v1.3.3 ([#2756](https://github.com/triggerdotdev/trigger.dev/pull/2756))
+
+### Patch Changes
+
+- fix(otel): exported logs and spans will now have matching trace IDs ([#2724](https://github.com/triggerdotdev/trigger.dev/pull/2724))
+- The `--force-local-build` flag is now renamed to just `--local-build` ([#2702](https://github.com/triggerdotdev/trigger.dev/pull/2702))
+- fix(cli): header will always print the correct profile ([#2728](https://github.com/triggerdotdev/trigger.dev/pull/2728))
+- feat: add ability to set custom resource properties through trigger.config.ts or via the OTEL_RESOURCE_ATTRIBUTES env var ([#2704](https://github.com/triggerdotdev/trigger.dev/pull/2704))
+- feat(cli): implements content-addressable store for the dev CLI build outputs, reducing disk usage ([#2725](https://github.com/triggerdotdev/trigger.dev/pull/2725))
+- Added support for native build server builds in the deploy command (`--native-build-server`) ([#2702](https://github.com/triggerdotdev/trigger.dev/pull/2702))
+- Updated dependencies:
+  - `@trigger.dev/build@4.2.0`
+  - `@trigger.dev/core@4.2.0`
+  - `@trigger.dev/schema-to-json@4.2.0`
+
 ## 4.1.2
 
 ### Patch Changes
