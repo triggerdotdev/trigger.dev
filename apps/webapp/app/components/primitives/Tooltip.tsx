@@ -6,7 +6,7 @@ import { cn } from "~/utils/cn";
 const variantClasses = {
   basic:
     "bg-background-bright border border-grid-bright rounded px-3 py-2 text-sm text-text-bright shadow-md fade-in-50",
-  dark: "bg-background-dimmed border border-grid-bright rounded px-3 py-2 text-sm text-text-bright shadow-md fade-in-50",
+  dark: "bg-background-dimmed border border-grid-bright rounded px-3 py-2 text-sm text-text-bright shadow-md fade-in-50"
 };
 
 type Variant = keyof typeof variantClasses;
@@ -64,6 +64,8 @@ function SimpleTooltip({
   buttonStyle,
   asChild = false,
   sideOffset,
+  open,
+  onOpenChange,
 }: {
   button: React.ReactNode;
   content: React.ReactNode;
@@ -76,10 +78,12 @@ function SimpleTooltip({
   buttonStyle?: React.CSSProperties;
   asChild?: boolean;
   sideOffset?: number;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   return (
     <TooltipProvider disableHoverableContent={disableHoverableContent}>
-      <Tooltip>
+      <Tooltip open={open} onOpenChange={onOpenChange}>
         <TooltipTrigger
           tabIndex={-1}
           className={cn("h-fit", buttonClassName)}
