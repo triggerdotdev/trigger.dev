@@ -342,7 +342,10 @@ async function getEcrRepository({
 
     return result.repositories[0];
   } catch (error) {
-    if (error instanceof RepositoryNotFoundException) {
+    if (
+      error instanceof RepositoryNotFoundException ||
+      (error instanceof Error && error.message?.includes("does not exist"))
+    ) {
       logger.debug("ECR repository not found: RepositoryNotFoundException", {
         repositoryName,
         region,
