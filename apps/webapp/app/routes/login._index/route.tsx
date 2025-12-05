@@ -2,6 +2,7 @@ import { EnvelopeIcon } from "@heroicons/react/20/solid";
 import type { LoaderFunctionArgs, MetaFunction } from "@remix-run/node";
 import { Form } from "@remix-run/react";
 import { GitHubLightIcon } from "@trigger.dev/companyicons";
+import { motion, useReducedMotion } from "framer-motion";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { LoginPageLayout } from "~/components/LoginPageLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
@@ -41,10 +42,22 @@ function GoogleIcon({ className }: { className?: string }) {
 }
 
 function LastUsedBadge() {
+  const shouldReduceMotion = useReducedMotion();
+
   return (
-    <span className="absolute -right-2 -top-2.5 z-10 rounded border border-charcoal-750 bg-charcoal-800 px-2 py-1 text-[11px] font-medium text-blue-400">
-      Last used
-    </span>
+    <div className="absolute -right-[4.6rem] top-1/2 z-10 -translate-y-1/2 shadow-md">
+      <motion.div
+        className="relative inline-flex flex-col items-center rounded border border-charcoal-700 bg-charcoal-800 px-2 py-1 text-center text-[10px] font-medium uppercase text-blue-500"
+        initial={shouldReduceMotion ? undefined : { opacity: 0, x: 4 }}
+        animate={shouldReduceMotion ? undefined : { opacity: 1, x: 0 }}
+        transition={shouldReduceMotion ? undefined : { duration: 0.8, ease: "easeOut" }}
+      >
+        <span className="pointer-events-none absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2">
+          <span className="block h-2 w-2 rotate-45 border-b border-l border-charcoal-700 bg-charcoal-800" />
+        </span>
+        Last used
+      </motion.div>
+    </div>
   );
 }
 
