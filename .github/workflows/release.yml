@@ -92,7 +92,7 @@ jobs:
           git tag "v.docker.${{ steps.get_version.outputs.package_version }}"
           git push origin "v.docker.${{ steps.get_version.outputs.package_version }}"
 
-  # The prerelease job needs to be on the same workflow file to a limitation related to how npm verifies OIDC claims.
+  # The prerelease job needs to be on the same workflow file due to a limitation related to how npm verifies OIDC claims.
   prerelease:
     name: 🧪 Prerelease
     runs-on: ubuntu-latest
