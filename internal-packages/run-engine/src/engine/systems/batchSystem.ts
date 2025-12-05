@@ -44,6 +44,9 @@ export class BatchSystem {
           runtimeEnvironmentId: true,
           processingJobsCount: true,
           runCount: true,
+          batchVersion: true,
+          successfulRunCount: true,
+          failedRunCount: true,
         },
         where: {
           id: batchId,
@@ -60,11 +63,26 @@ export class BatchSystem {
         return;
       }
 
-      if (batch.processingJobsCount < batch.runCount) {
-        this.$.logger.debug("#tryCompleteBatch: Not all runs are created yet", {
+      // Check if all runs are created (or accounted for with failures)
+      // v2 batches use successfulRunCount + failedRunCount, v1 uses processingJobsCount
+      const isV2Batch = batch.batchVersion === "runengine:v2";
+      
+      let processedRunCount: number;
+      if (isV2Batch) {
+        // For v2 batches, we need to count both successful and failed runs
+        const successfulCount = batch.successfulRunCount ?? 0;
+        const failedCount = batch.failedRunCount ?? 0;
+        processedRunCount = successfulCount + failedCount;
+      } else {
+        processedRunCount = batch.processingJobsCount;
+      }
+
+      if (processedRunCount < batch.runCount) {
+        this.$.logger.debug("#tryCompleteBatch: Not all runs are processed yet", {
           batchId,
-          processingJobsCount: batch.processingJobsCount,
+          processedRunCount,
           runCount: batch.runCount,
+          isV2Batch,
         });
         return;
       }

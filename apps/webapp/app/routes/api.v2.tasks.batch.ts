@@ -7,6 +7,7 @@ import {
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { RunEngineBatchTriggerService } from "~/runEngine/services/batchTrigger.server";
+import { RunEngineBatchTriggerServiceV2 } from "~/runEngine/services/batchTriggerV2.server";
 import { AuthenticatedEnvironment, getOneTimeUseToken } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
@@ -20,6 +21,7 @@ import { OutOfEntitlementError } from "~/v3/services/triggerTask.server";
 import { HeadersSchema } from "./api.v1.tasks.$taskId.trigger";
 import { determineRealtimeStreamsVersion } from "~/services/realtime/v1StreamsGlobal.server";
 import { extractJwtSigningSecretKey } from "~/services/realtime/jwtAuth.server";
+import { engine } from "~/v3/runEngine.server";
 
 const { action, loader } = createActionApiRoute(
   {
@@ -110,6 +112,68 @@ const { action, loader } = createActionApiRoute(
       ? { traceparent, tracestate }
       : { external: { traceparent, tracestate } };
 
+    // Use the new V2 service with DRR-based BatchQueue if enabled, otherwise fall back to V1
+    const useBatchQueueV2 = engine.isBatchQueueEnabled();
+
+    logger.debug("Batch trigger service selection", {
+      useBatchQueueV2,
+      batchProcessingStrategy,
+    });
+
+    if (useBatchQueueV2) {
+      // V2: Uses Redis-based BatchQueue with DRR fair scheduling
+      const serviceV2 = new RunEngineBatchTriggerServiceV2();
+
+      serviceV2.onBatchTaskRunCreated.attachOnce(async (batch) => {
+        await saveRequestIdempotency(requestIdempotencyKey, "batch-trigger", batch.id);
+      });
+
+      try {
+        const batch = await serviceV2.call(authentication.environment, body, {
+          triggerVersion: triggerVersion ?? undefined,
+          traceContext,
+          spanParentAsLink: spanParentAsLink === 1,
+          oneTimeUseToken,
+          realtimeStreamsVersion: determineRealtimeStreamsVersion(
+            realtimeStreamsVersion ?? undefined
+          ),
+          idempotencyKey: requestIdempotencyKey ?? undefined,
+        });
+
+        const $responseHeaders = await responseHeaders(
+          batch,
+          authentication.environment,
+          triggerClient
+        );
+
+        return json(batch, {
+          status: 202,
+          headers: $responseHeaders,
+        });
+      } catch (error) {
+        logger.error("Batch trigger error (V2)", {
+          error: {
+            message: (error as Error).message,
+            stack: (error as Error).stack,
+          },
+        });
+
+        if (error instanceof ServiceValidationError) {
+          return json({ error: error.message }, { status: 422 });
+        } else if (error instanceof OutOfEntitlementError) {
+          return json({ error: error.message }, { status: 422 });
+        } else if (error instanceof Error) {
+          return json(
+            { error: error.message },
+            { status: 500, headers: { "x-should-retry": "false" } }
+          );
+        }
+
+        return json({ error: "Something went wrong" }, { status: 500 });
+      }
+    }
+
+    // V1: Legacy batch trigger service
     const service = new RunEngineBatchTriggerService(batchProcessingStrategy ?? undefined);
 
     service.onBatchTaskRunCreated.attachOnce(async (batch) => {

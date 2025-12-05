@@ -1569,6 +1569,16 @@ model BatchTaskRun {
   /// optional token that can be used to authenticate the task run
   oneTimeUseToken String?
 
+  // Run Engine v2 batch queue fields
+  /// When processing started (status changed to PROCESSING)
+  processingStartedAt DateTime?
+  /// Count of successfully created runs
+  successfulRunCount  Int?
+  /// Count of failed run creations
+  failedRunCount      Int?
+  /// Detailed failure records
+  errors              BatchTaskRunError[]
+
   ///all the below properties are engine v1 only
   items                  BatchTaskRunItem[]
   taskIdentifier         String?
@@ -1588,7 +1598,9 @@ model BatchTaskRun {
 
 enum BatchTaskRunStatus {
   PENDING
+  PROCESSING
   COMPLETED
+  PARTIAL_FAILED
   ABORTED
 }
 
@@ -1621,6 +1633,30 @@ enum BatchTaskRunItemStatus {
   FAILED
   CANCELED
   COMPLETED
+}
+
+/// Track individual run creation failures in batch processing (Run Engine v2)
+model BatchTaskRunError {
+  id             String       @id @default(cuid())
+  batchTaskRun   BatchTaskRun @relation(fields: [batchTaskRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  batchTaskRunId String
+
+  /// Which item in the batch (0-based index)
+  index          Int
+  /// The task identifier that was being triggered
+  taskIdentifier String
+  /// The payload that failed (JSON, may be truncated)
+  payload        String?
+  /// The options that were used
+  options        Json?
+  /// Error message
+  error          String
+  /// Error code if available
+  errorCode      String?
+
+  createdAt DateTime @default(now())
+
+  @@index([batchTaskRunId])
 }
 
 model EnvironmentVariable {

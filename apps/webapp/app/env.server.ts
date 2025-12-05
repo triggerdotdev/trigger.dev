@@ -931,6 +931,12 @@ const EnvironmentSchema = z
       .default(process.env.REDIS_TLS_DISABLED ?? "false"),
     BATCH_TRIGGER_WORKER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
 
+    // BatchQueue DRR settings (Run Engine v2)
+    BATCH_QUEUE_DRR_QUANTUM: z.coerce.number().int().optional(),
+    BATCH_QUEUE_MAX_DEFICIT: z.coerce.number().int().optional(),
+    BATCH_QUEUE_CONSUMER_COUNT: z.coerce.number().int().optional(),
+    BATCH_QUEUE_CONSUMER_INTERVAL_MS: z.coerce.number().int().optional(),
+
     ADMIN_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
     ADMIN_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),
     ADMIN_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(10),
