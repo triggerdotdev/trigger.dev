@@ -198,12 +198,12 @@ async function remoteBuildImage(options: DepotBuildImageOptions): Promise<BuildI
     "-f",
     "Containerfile",
     options.noCache ? "--no-cache" : undefined,
-    options.useZstd
+    ...(options.useZstd
       ? [
           "--output",
           `compression=zstd${options.compressionLevel ? `,level=${options.compressionLevel}` : ""}`,
         ]
-      : undefined,
+      : []),
     "--platform",
     options.imagePlatform,
     options.load ? "--load" : undefined,
