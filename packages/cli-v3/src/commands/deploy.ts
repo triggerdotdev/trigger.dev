@@ -83,6 +83,9 @@ const DeployCommandOptions = CommonCommandOptions.extend({
   nativeBuildServer: z.boolean().default(false),
   detach: z.boolean().default(false),
   plain: z.boolean().default(false),
+  useZstd: z.boolean().default(true),
+  useZstdCache: z.boolean().default(true),
+  compressionLevel: z.number().optional(),
 });
 
 type DeployCommandOptions = z.infer<typeof DeployCommandOptions>;
@@ -155,6 +158,24 @@ export function configureDeployCommand(program: Command) {
         new CommandOption(
           "--save-logs",
           "If provided, will save logs even for successful builds"
+        ).hideHelp()
+      )
+      .addOption(
+        new CommandOption(
+          "--use-zstd",
+          "Use zstd compression when building the image. This will reduce image size and speed up pull times."
+        ).hideHelp()
+      )
+      .addOption(
+        new CommandOption(
+          "--use-zstd-cache",
+          "Use zstd compression for the build cache. This will reduce cache size and speed up build times."
+        ).hideHelp()
+      )
+      .addOption(
+        new CommandOption(
+          "--compression-level <level>",
+          "The compression level to use when building the image. The default is 3."
         ).hideHelp()
       )
       // Local build options
@@ -499,6 +520,9 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     authAccessToken: authorization.auth.accessToken,
     compilationPath: destination.path,
     buildEnvVars: buildManifest.build.env,
+    useZstd: options.useZstd,
+    useZstdCache: options.useZstdCache,
+    compressionLevel: options.compressionLevel,
     onLog: (logMessage) => {
       if (options.plain || isCI) {
         console.log(logMessage);

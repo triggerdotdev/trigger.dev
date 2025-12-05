@@ -20,6 +20,9 @@ export interface BuildImageOptions {
   imagePlatform: string;
   noCache?: boolean;
   load?: boolean;
+  useZstd?: boolean;
+  useZstdCache?: boolean;
+  compressionLevel?: number;
 
   // Local build options
   push?: boolean;
@@ -79,6 +82,9 @@ export async function buildImage(options: BuildImageOptions): Promise<BuildImage
     buildEnvVars,
     network,
     builder,
+    useZstd,
+    useZstdCache,
+    compressionLevel,
     onLog,
   } = options;
 
@@ -105,6 +111,9 @@ export async function buildImage(options: BuildImageOptions): Promise<BuildImage
       buildEnvVars,
       network,
       builder,
+      useZstd,
+      useZstdCache,
+      compressionLevel,
       onLog,
     });
   }
@@ -134,6 +143,8 @@ export async function buildImage(options: BuildImageOptions): Promise<BuildImage
     apiKey,
     branchName,
     buildEnvVars,
+    useZstd,
+    compressionLevel,
     onLog,
   });
 }
@@ -157,6 +168,8 @@ export interface DepotBuildImageOptions {
   noCache?: boolean;
   extraCACerts?: string;
   buildEnvVars?: Record<string, string | undefined>;
+  useZstd?: boolean;
+  compressionLevel?: number;
   onLog?: (log: string) => void;
 }
 
@@ -185,6 +198,12 @@ async function remoteBuildImage(options: DepotBuildImageOptions): Promise<BuildI
     "-f",
     "Containerfile",
     options.noCache ? "--no-cache" : undefined,
+    options.useZstd
+      ? [
+          "--output",
+          `compression=zstd${options.compressionLevel ? `,level=${options.compressionLevel}` : ""}`,
+        ]
+      : undefined,
     "--platform",
     options.imagePlatform,
     options.load ? "--load" : undefined,
@@ -316,11 +335,23 @@ interface SelfHostedBuildImageOptions {
   network?: string;
   builder: string;
   load?: boolean;
+  useZstd?: boolean;
+  useZstdCache?: boolean;
+  compressionLevel?: number;
   onLog?: (log: string) => void;
 }
 
 async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<BuildImageResults> {
-  const { builder, imageTag, deploymentId, apiClient, useRegistryCache } = options;
+  const {
+    builder,
+    imageTag,
+    deploymentId,
+    apiClient,
+    useRegistryCache,
+    useZstd,
+    useZstdCache,
+    compressionLevel,
+  } = options;
 
   // Ensure multi-platform build is supported on the local machine
   let builderExists = false;
@@ -500,10 +531,15 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
     ...(useRegistryCache
       ? [
           "--cache-to",
-          `type=registry,mode=max,image-manifest=true,oci-mediatypes=true,ref=${projectCacheRef}`,
+          `type=registry,mode=max,image-manifest=true,oci-mediatypes=true,ref=${projectCacheRef}${
+            useZstdCache ? ",compression=zstd" : ""
+          }`,
           "--cache-from",
           `type=registry,ref=${projectCacheRef}`,
         ]
+      : []),
+    ...(useZstd
+      ? ["--output", `compression=zstd${compressionLevel ? `,level=${compressionLevel}` : ""}`]
       : []),
     "--platform",
     options.imagePlatform,
