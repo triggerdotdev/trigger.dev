@@ -408,7 +408,7 @@ export const NavLinkButton = ({ to, className, target, ...props }: NavLinkPropsT
   return (
     <NavLink
       to={to}
-      className={cn("group/button outline-none", props.fullWidth ? "w-full" : "")}
+      className={cn("group/button outline-none display-block", props.fullWidth ? "w-full" : "")}
       target={target}
     >
       {({ isActive, isPending }) => (

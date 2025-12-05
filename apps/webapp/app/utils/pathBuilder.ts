@@ -316,7 +316,7 @@ export function v3RunSpanPath(
   searchParams?: URLSearchParams
 ) {
   searchParams = searchParams ?? new URLSearchParams();
-  searchParams.set("span", encodeURIComponent(span.spanId));
+  searchParams.set("span", span.spanId);
   return `${v3RunPath(organization, project, environment, run, searchParams)}`;
 }
 

@@ -290,13 +290,13 @@ export default function Page() {
             to: v3RunsPath(organization, project, environment, filters),
             text: "Runs",
           }}
-          title={<CopyableText value={run.friendlyId} variant="text-below"/>}
-          actions={
-            tableState && (<div className="flex">
+          title={<>
+          <CopyableText value={run.friendlyId} variant="text-below" className="font-mono"/>
+          {tableState && (<div className="flex">
               <PreviousRunButton to={previousRunPath} />
               <NextRunButton to={nextRunPath} />
-            </div>)
-          }
+            </div>)}
+          </>}
         />
         {environment.type === "DEVELOPMENT" && <DevDisconnectedBanner isConnected={isConnected} />}
         <PageAccessories>
@@ -1547,8 +1547,7 @@ function KeyboardShortcuts({
   );
 }
 
-function AdjacentRunsShortcuts({
-}) {
+function AdjacentRunsShortcuts() {
   return (<div className="flex items-center gap-0.5">
       <ShortcutKey shortcut={{ key: "[" }} variant="medium" className="ml-0 mr-0 px-1" />
       <ShortcutKey shortcut={{ key: "]" }} variant="medium" className="ml-0 mr-0 px-1" />
@@ -1604,7 +1603,7 @@ function NumberShortcuts({ toggleLevel }: { toggleLevel: (depth: number) => void
   return (
     <div className="flex items-center gap-0.5">
       <span className={cn(variants.medium, "ml-0 mr-0")}>0</span>
-      <span className="text-[0.75rem] text-text-dimmed">–</span>
+      <span className="text-[0.65rem] text-text-dimmed">–</span>
       <span className={cn(variants.medium, "ml-0 mr-0")}>9</span>
       <Paragraph variant="extra-small" className="ml-1.5 whitespace-nowrap">
         Toggle level
@@ -1723,6 +1722,7 @@ function PreviousRunButton({ to }: { to: string | null }) {
         onClick={(e) => !to && e.preventDefault()}
         shortcut={{ key: "[" }}
         tooltip="Previous Run"
+        disabled={!to}
       />
     </div>
   );
@@ -1742,6 +1742,7 @@ function NextRunButton({ to }: { to: string | null }) {
         onClick={(e) => !to && e.preventDefault()}
         shortcut={{ key: "]" }}
         tooltip="Next Run"
+        disabled={!to}
       />
     </div>
   );

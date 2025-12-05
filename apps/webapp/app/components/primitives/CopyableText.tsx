@@ -3,6 +3,7 @@ import { useState } from "react";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { useCopy } from "~/hooks/useCopy";
 import { cn } from "~/utils/cn";
+import { Button } from "./Buttons";
 
 export function CopyableText({
   value,
@@ -20,9 +21,9 @@ export function CopyableText({
   const [isHovered, setIsHovered] = useState(false);
   const { copy, copied } = useCopy(copyValue ?? value);
 
-  variant = variant ?? "icon-right";
+  const resolvedVariant = variant ?? "icon-right";
 
-  if (variant === "icon-right") {
+  if (resolvedVariant === "icon-right") {
     return (
       <span
         className={cn("group relative inline-flex h-6 items-center", className)}
@@ -65,22 +66,23 @@ export function CopyableText({
     );
   }
 
-  if (variant === "text-below") {
+  if (resolvedVariant === "text-below") {
     return (
       <SimpleTooltip
         button={
-          <span
+          <Button
+            variant="minimal/small"
             onClick={(e) => { 
               e.stopPropagation();
               copy(); 
             }}
             className={cn(
-              "cursor-pointer text-text-bright transition-colors hover:text-white",
+              "cursor-pointer bg-transparent py-0 px-1 text-left text-text-bright transition-colors hover:text-white hover:bg-transparent",
               className
             )}
           >
-            {value}
-          </span>
+            <span className="text-text-white">{value}</span>
+          </Button>
         }
         content={copied ? "Copied" : "Click to copy"}
         className="font-sans px-2 py-1"
