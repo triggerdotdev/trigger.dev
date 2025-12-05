@@ -72,9 +72,6 @@ jobs:
         id: changesets
         uses: changesets/action@v1
         with:
-          version: pnpm run changeset:version
-          commit: "chore: release packages"
-          title: "chore: release packages"
           publish: pnpm run changeset:release
           createGithubReleases: true
         env:
