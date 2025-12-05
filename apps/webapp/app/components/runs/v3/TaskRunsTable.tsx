@@ -83,7 +83,7 @@ export function TaskRunsTable({
   const { has, hasAll, select, deselect, toggle } = useSelectedItems(allowSelection);
   const { isManagedCloud } = useFeatures();
   const location = useOptimisticLocation();
-  const tableStateParam = encodeURIComponent(location.search);
+  const tableStateParam = encodeURIComponent(location.search ? `${location.search}&rt=1` : "rt=1");
 
   const showCompute = isManagedCloud;
 

@@ -2,6 +2,7 @@ import {
   ArrowUturnLeftIcon,
   BoltSlashIcon,
   BookOpenIcon,
+  ChevronUpIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   InformationCircleIcon,
@@ -20,9 +21,9 @@ import {
   nanosecondsToMilliseconds,
   tryCatch,
 } from "@trigger.dev/core/v3";
-import type { RuntimeEnvironmentType } from "@trigger.dev/database";
+import type { $Enums, RuntimeEnvironmentType } from "@trigger.dev/database";
 import { motion } from "framer-motion";
-import { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { redirect } from "remix-typedjson";
 import { MoveToTopIcon } from "~/assets/icons/MoveToTopIcon";
@@ -68,7 +69,6 @@ import {
   eventBorderClassName,
 } from "~/components/runs/v3/SpanTitle";
 import { TaskRunStatusIcon, runStatusClassNameColor } from "~/components/runs/v3/TaskRunStatus";
-import { env } from "~/env.server";
 import { useDebounce } from "~/hooks/useDebounce";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useEventSource } from "~/hooks/useEventSource";
@@ -88,6 +88,7 @@ import {
   docsPath,
   v3BillingPath,
   v3RunParamsSchema,
+  v3RunPath,
   v3RunRedirectPath,
   v3RunSpanPath,
   v3RunStreamingPath,
@@ -99,6 +100,11 @@ import { useSearchParams } from "~/hooks/useSearchParam";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import type { SpanOverride } from "~/v3/eventRepository/eventRepository.types";
 import { getRunFiltersFromSearchParams } from "~/components/runs/v3/RunFilters";
+import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
+import { $replica } from "~/db.server";
+import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { findProjectBySlug } from "~/models/project.server";
+import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 
 const resizableSettings = {
   parent: {
@@ -170,6 +176,82 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const parent = await getResizableSnapshot(request, resizableSettings.parent.autosaveId);
   const tree = await getResizableSnapshot(request, resizableSettings.tree.autosaveId);
 
+  // Load runs list data from tableState if present
+  let runsList: {
+    runs: Array<{ friendlyId: string }>;
+    pagination: { next?: string; previous?: string };
+    prevPageLastRun?: { friendlyId: string; cursor: string };
+    nextPageFirstRun?: { friendlyId: string; cursor: string };
+  } | null = null;
+  const tableStateParam = url.searchParams.get("tableState");
+  if (tableStateParam) {
+    try {
+      const tableStateSearchParams = new URLSearchParams(decodeURIComponent(tableStateParam));
+      const filters = getRunFiltersFromSearchParams(tableStateSearchParams);
+
+      const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+      const environment = await findEnvironmentBySlug(project?.id ?? "", envParam, userId);
+
+      if (project && environment) {
+        const runsListPresenter = new NextRunListPresenter($replica, clickhouseClient);
+        const currentPageResult = await runsListPresenter.call(project.organizationId, environment.id, {
+          userId,
+          projectId: project.id,
+          ...filters,
+          pageSize: 25, // Load enough runs to provide navigation context
+        });
+        
+        runsList = {
+          runs: currentPageResult.runs,
+          pagination: currentPageResult.pagination,
+        };
+
+        // Check if the current run is at the boundary and preload adjacent page if needed
+        const currentRunIndex = currentPageResult.runs.findIndex((r) => r.friendlyId === runParam);
+        
+        // If current run is first in list and there's a previous page, load the last run from prev page
+        if (currentRunIndex === 0 && currentPageResult.pagination.previous) {
+          const prevPageResult = await runsListPresenter.call(project.organizationId, environment.id, {
+            userId,
+            projectId: project.id,
+            ...filters,
+            cursor: currentPageResult.pagination.previous,
+            direction: "backward",
+            pageSize: 1, // We only need the last run from the previous page
+          });
+          if (prevPageResult.runs.length > 0) {
+            runsList.prevPageLastRun = {
+              friendlyId: prevPageResult.runs[0].friendlyId,
+              cursor: currentPageResult.pagination.previous,
+            };
+          }
+        }
+
+        // If current run is last in list and there's a next page, load the first run from next page
+        if (currentRunIndex === currentPageResult.runs.length - 1 && currentPageResult.pagination.next) {
+          const nextPageResult = await runsListPresenter.call(project.organizationId, environment.id, {
+            userId,
+            projectId: project.id,
+            ...filters,
+            cursor: currentPageResult.pagination.next,
+            direction: "forward",
+            pageSize: 1, // We only need the first run from the next page
+          });
+          if (nextPageResult.runs.length > 0) {
+            runsList.nextPageFirstRun = {
+              friendlyId: nextPageResult.runs[0].friendlyId,
+              cursor: currentPageResult.pagination.next,
+            };
+          }
+        }
+      }
+    } catch (error) {
+      // If there's an error parsing or loading runs list, just ignore it
+      // and don't include the runsList in the response
+      console.error("Error loading runs list from tableState:", error);
+    }
+  }
+
   return json({
     run: result.run,
     trace: result.trace,
@@ -178,13 +260,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       parent,
       tree,
     },
+    runsList,
   });
 };
 
 type LoaderData = SerializeFrom<typeof loader>;
 
 export default function Page() {
-  const { run, trace, resizable, maximumLiveReloadingSetting } = useLoaderData<typeof loader>();
+  const { run, trace, resizable, maximumLiveReloadingSetting, runsList } = useLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -193,9 +276,11 @@ export default function Page() {
     isCompleted: run.completedAt !== null,
   });
   const { value } = useSearchParams();
-  const params = decodeURIComponent(value("tableState") ?? "");
-  const searchParams = new URLSearchParams(params);
-  const filters = getRunFiltersFromSearchParams(searchParams);
+  const tableState = decodeURIComponent(value("tableState") ?? "");
+  const tableStateSearchParams = new URLSearchParams(tableState);
+  const filters = getRunFiltersFromSearchParams(tableStateSearchParams);
+
+  const [previousRunPath, nextRunPath] = useAdjacentRunPaths({organization, project, environment, tableStateSearchParams, run, runsList});
 
   return (
     <>
@@ -206,6 +291,12 @@ export default function Page() {
             text: "Runs",
           }}
           title={<CopyableText value={run.friendlyId} variant="text-below"/>}
+          actions={
+            tableState && (<div className="flex">
+              <PreviousRunButton to={previousRunPath} />
+              <NextRunButton to={nextRunPath} />
+            </div>)
+          }
         />
         {environment.type === "DEVELOPMENT" && <DevDisconnectedBanner isConnected={isConnected} />}
         <PageAccessories>
@@ -282,6 +373,7 @@ export default function Page() {
             trace={trace}
             maximumLiveReloadingSetting={maximumLiveReloadingSetting}
             resizable={resizable}
+            runsList={runsList}
           />
         ) : (
           <NoLogsView
@@ -289,6 +381,7 @@ export default function Page() {
             trace={trace}
             maximumLiveReloadingSetting={maximumLiveReloadingSetting}
             resizable={resizable}
+            runsList={runsList}
           />
         )}
       </PageBody>
@@ -1437,6 +1530,7 @@ function KeyboardShortcuts({
   return (
     <>
       <ArrowKeyShortcuts />
+      <AdjacentRunsShortcuts />
       <ShortcutWithAction
         shortcut={{ key: "e" }}
         action={() => expandAllBelowDepth(0)}
@@ -1451,6 +1545,17 @@ function KeyboardShortcuts({
       <ShortcutWithAction shortcut={{ key: "Q" }} title="Queue time" action={() => {}} />
     </>
   );
+}
+
+function AdjacentRunsShortcuts({
+}) {
+  return (<div className="flex items-center gap-0.5">
+      <ShortcutKey shortcut={{ key: "[" }} variant="medium" className="ml-0 mr-0 px-1" />
+      <ShortcutKey shortcut={{ key: "]" }} variant="medium" className="ml-0 mr-0 px-1" />
+      <Paragraph variant="extra-small" className="ml-1.5 whitespace-nowrap">
+        Adjacent runs
+      </Paragraph>
+    </div>);
 }
 
 function ArrowKeyShortcuts() {
@@ -1531,3 +1636,114 @@ function SearchField({ onChange }: { onChange: (value: string) => void }) {
     />
   );
 }
+
+function useAdjacentRunPaths({
+  organization,
+  project,
+  environment,
+  tableStateSearchParams,
+  run,
+  runsList,
+}: {
+  organization: { slug: string };
+  project: { slug: string };
+  environment: { slug: string };
+  tableStateSearchParams: URLSearchParams;
+  run: { friendlyId: string };
+  runsList: {
+    runs: Array<{ friendlyId: string }>;
+    pagination: { next?: string; previous?: string };
+    prevPageLastRun?: { friendlyId: string; cursor: string };
+    nextPageFirstRun?: { friendlyId: string; cursor: string };
+  } | null;
+}): [string | null, string | null] {
+  return React.useMemo(() => {
+    if (!runsList || runsList.runs.length === 0) {
+      return [null, null];
+    }
+
+    const currentIndex = runsList.runs.findIndex((r) => r.friendlyId === run.friendlyId);
+    
+    if (currentIndex === -1) {
+      return [null, null];
+    }
+
+    // Determine previous run: use prevPageLastRun if at first position, otherwise use previous run in list
+    let previousRun: { friendlyId: string } | null = null;
+    const previousRunTableState = new URLSearchParams(tableStateSearchParams.toString());
+    if (currentIndex > 0) {
+      previousRun = runsList.runs[currentIndex - 1];
+    } else if (runsList.prevPageLastRun) {
+      previousRun = runsList.prevPageLastRun;
+      // Update tableState with the new cursor for the previous page
+      previousRunTableState.set("cursor", runsList.prevPageLastRun.cursor);
+      previousRunTableState.set("direction", "backward");
+    }
+
+    // Determine next run: use nextPageFirstRun if at last position, otherwise use next run in list
+    let nextRun: { friendlyId: string } | null = null;
+    const nextRunTableState = new URLSearchParams(tableStateSearchParams.toString());
+    if (currentIndex < runsList.runs.length - 1) {
+      nextRun = runsList.runs[currentIndex + 1];
+    } else if (runsList.nextPageFirstRun) {
+      nextRun = runsList.nextPageFirstRun;
+      // Update tableState with the new cursor for the next page
+      nextRunTableState.set("cursor", runsList.nextPageFirstRun.cursor);
+      nextRunTableState.set("direction", "forward");
+    }
+
+    const previousURLSearchParams = new URLSearchParams();
+    previousURLSearchParams.set("tableState", previousRunTableState.toString());
+    const previousRunPath = previousRun
+      ? v3RunPath(organization, project, environment, previousRun, previousURLSearchParams)
+      : null;
+
+    const nextURLSearchParams = new URLSearchParams();
+    nextURLSearchParams.set("tableState", nextRunTableState.toString());
+    const nextRunPath = nextRun
+      ? v3RunPath(organization, project, environment, nextRun, nextURLSearchParams)
+      : null;
+
+    return [previousRunPath, nextRunPath];
+  }, [organization, project, environment, tableStateSearchParams, run.friendlyId, runsList]);
+}
+
+
+function PreviousRunButton({ to }: { to: string | null }) {
+  return (
+    <div className={cn("peer/prev order-1", !to && "pointer-events-none")}>
+      <LinkButton
+        to={to ? to : '#'}
+        variant={"minimal/small"}
+        LeadingIcon={ChevronUpIcon}
+        className={cn(
+          "flex items-center rounded-r-none border-r-0 pl-2 pr-[0.5625rem]",
+          !to && "cursor-not-allowed opacity-50"
+        )}
+        onClick={(e) => !to && e.preventDefault()}
+        shortcut={{ key: "[" }}
+        tooltip="Previous Run"
+      />
+    </div>
+  );
+}
+
+function NextRunButton({ to }: { to: string | null }) {
+  return (
+    <div className={cn("peer/next order-3", !to && "pointer-events-none")}>
+      <LinkButton
+        to={to ? to : '#'}
+        variant={"minimal/small"}
+        TrailingIcon={ChevronDownIcon}
+        className={cn(
+          "flex items-center rounded-l-none border-l-0 pl-[0.5625rem] pr-2",
+          !to && "cursor-not-allowed opacity-50"
+        )}
+        onClick={(e) => !to && e.preventDefault()}
+        shortcut={{ key: "]" }}
+        tooltip="Next Run"
+      />
+    </div>
+  );
+}
+

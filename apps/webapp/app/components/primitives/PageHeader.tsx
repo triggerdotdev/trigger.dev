@@ -36,9 +36,10 @@ type PageTitleProps = {
     to: string;
     text: string;
   };
+  actions?: ReactNode;
 };
 
-export function PageTitle({ title, backButton }: PageTitleProps) {
+export function PageTitle({ title, backButton, actions }: PageTitleProps) {
   return (
     <div className="flex items-center gap-2">
       {backButton && (
@@ -53,6 +54,7 @@ export function PageTitle({ title, backButton }: PageTitleProps) {
         </div>
       )}
       <Header2 className="flex items-center gap-1">{title}</Header2>
+      {actions && <div className="ml-auto">{actions}</div>}
     </div>
   );
 }
