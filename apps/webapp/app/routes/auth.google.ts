@@ -12,7 +12,7 @@ export let action: ActionFunction = async ({ request }) => {
 
   try {
     // call authenticate as usual, in successRedirect use returnTo or a fallback
-    return await authenticator.authenticate("github", request, {
+    return await authenticator.authenticate("google", request, {
       successRedirect: safeRedirect,
       failureRedirect: "/login",
     });
@@ -29,9 +29,10 @@ export let action: ActionFunction = async ({ request }) => {
   }
 };
 
-export const redirectCookie = createCookie("redirect-to", {
+export const redirectCookie = createCookie("google-redirect-to", {
   maxAge: 60 * 60, // 1 hour
   httpOnly: true,
   sameSite: "lax",
   secure: env.NODE_ENV === "production",
 });
+

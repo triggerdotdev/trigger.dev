@@ -94,6 +94,8 @@ const EnvironmentSchema = z
     TRIGGER_TELEMETRY_DISABLED: z.string().optional(),
     AUTH_GITHUB_CLIENT_ID: z.string().optional(),
     AUTH_GITHUB_CLIENT_SECRET: z.string().optional(),
+    AUTH_GOOGLE_CLIENT_ID: z.string().optional(),
+    AUTH_GOOGLE_CLIENT_SECRET: z.string().optional(),
     EMAIL_TRANSPORT: z.enum(["resend", "smtp", "aws-ses"]).optional(),
     FROM_EMAIL: z.string().optional(),
     REPLY_TO_EMAIL: z.string().optional(),
