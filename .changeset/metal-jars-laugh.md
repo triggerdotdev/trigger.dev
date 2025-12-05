@@ -2,4 +2,4 @@
 "trigger.dev": minor
 ---
 
-feat(bun): upgrade to v1.3.3
+feat(cli): upgrade bun deployments to v1.3.3
