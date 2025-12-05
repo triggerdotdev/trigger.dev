@@ -23,15 +23,15 @@ function LastUsedBadge() {
   const shouldReduceMotion = useReducedMotion();
 
   return (
-    <div className="absolute -right-[4.6rem] top-1/2 z-10 -translate-y-1/2 shadow-md">
+    <div className="absolute -right-5 top-1 z-10 -translate-y-1/2 shadow-md md:-right-[4.6rem] md:top-1/2">
       <motion.div
-        className="relative inline-flex flex-col items-center rounded border border-charcoal-700 bg-charcoal-800 px-2 py-1 text-center text-[10px] font-medium uppercase text-blue-500"
+        className="relative rounded border border-charcoal-700 bg-charcoal-800 px-2 py-1 text-center text-xxs font-medium uppercase text-blue-500"
         initial={shouldReduceMotion ? undefined : { opacity: 0, x: 4 }}
         animate={shouldReduceMotion ? undefined : { opacity: 1, x: 0 }}
         transition={shouldReduceMotion ? undefined : { duration: 0.8, ease: "easeOut" }}
       >
         <span className="pointer-events-none absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2">
-          <span className="block h-2 w-2 rotate-45 border-b border-l border-charcoal-700 bg-charcoal-800" />
+          <span className="hidden h-2 w-2 rotate-45 border-b border-l border-charcoal-700 bg-charcoal-800 md:block" />
         </span>
         Last used
       </motion.div>
