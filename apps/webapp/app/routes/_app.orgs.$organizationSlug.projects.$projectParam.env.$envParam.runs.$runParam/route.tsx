@@ -205,7 +205,7 @@ export default function Page() {
             to: v3RunsPath(organization, project, environment, filters),
             text: "Runs",
           }}
-          title={<CopyableText value={run.friendlyId} />}
+          title={<CopyableText value={run.friendlyId} variant="text-below"/>}
         />
         {environment.type === "DEVELOPMENT" && <DevDisconnectedBanner isConnected={isConnected} />}
         <PageAccessories>
