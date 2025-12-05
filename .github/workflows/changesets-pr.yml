@@ -1,4 +1,4 @@
-name: 🦋 Changeset PR
+name: 🦋 Changesets PR
 
 on:
   push:
