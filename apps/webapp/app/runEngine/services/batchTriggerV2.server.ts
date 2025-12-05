@@ -122,7 +122,7 @@ export class RunEngineBatchTriggerServiceV2 extends WithRunEngine {
           const batchItems: BatchItem[] = body.items.map((item) => ({
             task: item.task,
             payload: item.payload,
-            payloadType: (item as { payloadType?: string }).payloadType,
+            payloadType: item.options?.payloadType ?? "application/json",
             options: item.options as Record<string, unknown> | undefined,
           }));
 

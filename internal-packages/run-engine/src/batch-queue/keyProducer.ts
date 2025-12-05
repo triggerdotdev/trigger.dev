@@ -9,6 +9,7 @@ const constants = {
   QUEUE_PART: "queue",
   RUNS_PART: "runs",
   FAILURES_PART: "failures",
+  PROCESSED_COUNT_PART: "processed",
 } as const;
 
 /**
@@ -22,6 +23,7 @@ const constants = {
  * - batch:{batchId}:meta - Per-batch metadata
  * - batch:{batchId}:runs - Per-batch successful runs (list of runIds)
  * - batch:{batchId}:failures - Per-batch failures (list of failure JSON)
+ * - batch:{batchId}:processed - Per-batch processed count (atomic counter)
  */
 export class BatchQueueFullKeyProducer implements BatchQueueKeyProducer {
   /**
@@ -78,6 +80,14 @@ export class BatchQueueFullKeyProducer implements BatchQueueKeyProducer {
    */
   batchFailuresKey(batchId: string): string {
     return [constants.BATCH_PART, batchId, constants.FAILURES_PART].join(":");
+  }
+
+  /**
+   * Key for a batch's processed count.
+   * Atomic counter tracking how many items have been processed (success or failure).
+   */
+  batchProcessedCountKey(batchId: string): string {
+    return [constants.BATCH_PART, batchId, constants.PROCESSED_COUNT_PART].join(":");
   }
 
   /**

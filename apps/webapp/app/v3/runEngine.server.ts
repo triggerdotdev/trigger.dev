@@ -160,23 +160,26 @@ function createRunEngine() {
     },
     // BatchQueue with DRR scheduling for fair batch processing
     // Consumers are controlled by options.worker.disabled (same as main worker)
-    batchQueue: env.BATCH_TRIGGER_WORKER_ENABLED === "true" ? {
-      redis: {
-        keyPrefix: "engine:",
-        port: env.BATCH_TRIGGER_WORKER_REDIS_PORT ?? undefined,
-        host: env.BATCH_TRIGGER_WORKER_REDIS_HOST ?? undefined,
-        username: env.BATCH_TRIGGER_WORKER_REDIS_USERNAME ?? undefined,
-        password: env.BATCH_TRIGGER_WORKER_REDIS_PASSWORD ?? undefined,
-        enableAutoPipelining: true,
-        ...(env.BATCH_TRIGGER_WORKER_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
-      },
-      drr: {
-        quantum: env.BATCH_QUEUE_DRR_QUANTUM,
-        maxDeficit: env.BATCH_QUEUE_MAX_DEFICIT,
-      },
-      consumerCount: env.BATCH_QUEUE_CONSUMER_COUNT,
-      consumerIntervalMs: env.BATCH_QUEUE_CONSUMER_INTERVAL_MS,
-    } : undefined,
+    batchQueue:
+      env.BATCH_TRIGGER_WORKER_ENABLED === "true"
+        ? {
+            redis: {
+              keyPrefix: "engine:",
+              port: env.BATCH_TRIGGER_WORKER_REDIS_PORT ?? undefined,
+              host: env.BATCH_TRIGGER_WORKER_REDIS_HOST ?? undefined,
+              username: env.BATCH_TRIGGER_WORKER_REDIS_USERNAME ?? undefined,
+              password: env.BATCH_TRIGGER_WORKER_REDIS_PASSWORD ?? undefined,
+              enableAutoPipelining: true,
+              ...(env.BATCH_TRIGGER_WORKER_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
+            },
+            drr: {
+              quantum: env.BATCH_QUEUE_DRR_QUANTUM,
+              maxDeficit: env.BATCH_QUEUE_MAX_DEFICIT,
+            },
+            consumerCount: env.BATCH_QUEUE_CONSUMER_COUNT,
+            consumerIntervalMs: env.BATCH_QUEUE_CONSUMER_INTERVAL_MS,
+          }
+        : undefined,
   });
 
   // Set up BatchQueue callbacks if enabled
@@ -185,6 +188,31 @@ function createRunEngine() {
   }
 
   return engine;
+}
+
+/**
+ * Normalize the payload from BatchQueue.
+ * The payload might be a JSON string if the SDK sent it pre-serialized.
+ * If it's a JSON string and payloadType is "application/json", parse it
+ * to avoid double-stringification in DefaultPayloadProcessor.
+ */
+function normalizePayload(payload: unknown, payloadType?: string): unknown {
+  // Only normalize for JSON payloads
+  if (payloadType !== "application/json" && payloadType !== undefined) {
+    return payload;
+  }
+
+  // If payload is a string, try to parse it as JSON
+  if (typeof payload === "string") {
+    try {
+      return JSON.parse(payload);
+    } catch {
+      // If it's not valid JSON, return as-is
+      return payload;
+    }
+  }
+
+  return payload;
 }
 
 /**
@@ -197,6 +225,9 @@ function setupBatchQueueCallbacks(engine: RunEngine) {
     try {
       const triggerTaskService = new TriggerTaskService();
 
+      // Normalize payload to avoid double-stringification
+      const payload = normalizePayload(item.payload, item.payloadType);
+
       const result = await triggerTaskService.call(
         item.task,
         {
@@ -208,7 +239,7 @@ function setupBatchQueueCallbacks(engine: RunEngine) {
           project: { id: meta.projectId },
         } as AuthenticatedEnvironment,
         {
-          payload: item.payload,
+          payload,
           options: {
             ...(item.options as Record<string, unknown>),
             payloadType: item.payloadType,
