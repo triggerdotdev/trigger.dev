@@ -1,5 +1,13 @@
 # @trigger.dev/react-hooks
 
+## 4.2.0
+
+### Patch Changes
+
+- fix: prevent infinite useEffect when passing an array of tags to useRealtimeRunsWithTag ([#2705](https://github.com/triggerdotdev/trigger.dev/pull/2705))
+- Updated dependencies:
+  - `@trigger.dev/core@4.2.0`
+
 ## 4.1.2
 
 ### Patch Changes

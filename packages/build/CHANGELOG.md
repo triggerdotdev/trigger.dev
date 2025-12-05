@@ -1,5 +1,13 @@
 # @trigger.dev/build
 
+## 4.2.0
+
+### Patch Changes
+
+- syncVercelEnvVars to skip API and read env vars directly from env.process for Vercel build environments. New syncNeonEnvVars build extension for syncing environment variablesfrom Neon database projects to Trigger.dev. The extension automatically detects branches and builds appropriate PostgreSQL connection strings for non-production, non-dev environments (staging, preview). ([#2729](https://github.com/triggerdotdev/trigger.dev/pull/2729))
+- Updated dependencies:
+  - `@trigger.dev/core@4.2.0`
+
 ## 4.1.2
 
 ### Patch Changes
