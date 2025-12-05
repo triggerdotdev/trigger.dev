@@ -288,15 +288,17 @@ export function v3RunPath(
   organization: OrgForPath,
   project: ProjectForPath,
   environment: EnvironmentForPath,
-  run: v3RunForPath
+  run: v3RunForPath,
+  searchParams?: URLSearchParams
 ) {
-  return `${v3RunsPath(organization, project, environment)}/${run.friendlyId}`;
+  const query = searchParams ? `?${searchParams.toString()}` : "";
+  return `${v3RunsPath(organization, project, environment)}/${run.friendlyId}${query}`;
 }
 
 export function v3RunRedirectPath(
   organization: OrgForPath,
   project: ProjectForPath,
-  run: v3RunForPath
+  run: v3RunForPath,
 ) {
   return `${v3ProjectPath(organization, project)}/runs/${run.friendlyId}`;
 }
@@ -310,9 +312,12 @@ export function v3RunSpanPath(
   project: ProjectForPath,
   environment: EnvironmentForPath,
   run: v3RunForPath,
-  span: v3SpanForPath
+  span: v3SpanForPath,
+  searchParams?: URLSearchParams
 ) {
-  return `${v3RunPath(organization, project, environment, run)}?span=${span.spanId}`;
+  searchParams = searchParams ?? new URLSearchParams();
+  searchParams.set("span", encodeURIComponent(span.spanId));
+  return `${v3RunPath(organization, project, environment, run, searchParams)}`;
 }
 
 export function v3RunStreamingPath(

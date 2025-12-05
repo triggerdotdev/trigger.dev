@@ -98,6 +98,7 @@ import { SpanView } from "../resources.orgs.$organizationSlug.projects.$projectP
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import type { SpanOverride } from "~/v3/eventRepository/eventRepository.types";
+import { getRunFiltersFromSearchParams } from "~/components/runs/v3/RunFilters";
 
 const resizableSettings = {
   parent: {
@@ -191,13 +192,17 @@ export default function Page() {
     logCount: trace?.events.length ?? 0,
     isCompleted: run.completedAt !== null,
   });
+  const { value } = useSearchParams();
+  const params = decodeURIComponent(value("tableState") ?? "");
+  const searchParams = new URLSearchParams(params);
+  const filters = getRunFiltersFromSearchParams(searchParams);
 
   return (
     <>
       <NavBar>
         <PageTitle
           backButton={{
-            to: v3RunsPath(organization, project, environment),
+            to: v3RunsPath(organization, project, environment, filters),
             text: "Runs",
           }}
           title={<CopyableText value={run.friendlyId} />}
