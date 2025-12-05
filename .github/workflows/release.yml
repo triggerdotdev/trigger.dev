@@ -1,4 +1,4 @@
-name: 🚀 Release npm packages
+name: 🦋 Changesets Release
 
 on:
   pull_request:
@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   release:
-    name: 🦋 Changesets Release
+    name: 🚀 Release npm packages
     runs-on: ubuntu-latest
     environment: npm-publish
     permissions:
