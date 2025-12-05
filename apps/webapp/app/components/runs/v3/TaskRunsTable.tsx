@@ -55,6 +55,7 @@ import {
   filterableTaskRunStatuses,
   TaskRunStatusCombo,
 } from "./TaskRunStatus";
+import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 
 type RunsTableProps = {
   total: number;
@@ -81,6 +82,8 @@ export function TaskRunsTable({
   const checkboxes = useRef<(HTMLInputElement | null)[]>([]);
   const { has, hasAll, select, deselect, toggle } = useSelectedItems(allowSelection);
   const { isManagedCloud } = useFeatures();
+  const location = useOptimisticLocation();
+  const tableStateParam = encodeURIComponent(location.search);
 
   const showCompute = isManagedCloud;
 
@@ -293,16 +296,20 @@ export function TaskRunsTable({
           <BlankState isLoading={isLoading} filters={filters} />
         ) : (
           runs.map((run, index) => {
+            const searchParams = new URLSearchParams();
+            if (tableStateParam) {
+              searchParams.set("tableState", tableStateParam);
+            }
             const path = v3RunSpanPath(organization, project, run.environment, run, {
               spanId: run.spanId,
-            });
+            }, searchParams);
             return (
               <TableRow key={run.id}>
                 {allowSelection && (
                   <TableCell className="pl-3 pr-0">
                     <Checkbox
                       checked={has(run.friendlyId)}
-                      onChange={(element) => {
+                      onChange={() => {
                         toggle(run.friendlyId);
                       }}
                       ref={(r) => {
