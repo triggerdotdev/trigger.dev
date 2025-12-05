@@ -247,11 +247,19 @@ export async function findOrCreateGoogleUser({
     };
   }
 
+  // When the IDP user (Google) already exists, the "update" path will be taken and the email will be updated
+  // It's not possible that the email is already taken by a different user because that would have been handled
+  // by one of the if statements above.
   const user = await prisma.user.upsert({
     where: {
       authIdentifier,
     },
-    update: {},
+    update: {
+      email,
+      displayName,
+      name,
+      avatarUrl,
+    },
     create: {
       authenticationProfile: authProfile,
       authenticationExtraParams: authExtraParams,
