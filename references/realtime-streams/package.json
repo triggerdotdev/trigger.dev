@@ -14,7 +14,7 @@
     "@trigger.dev/react-hooks": "workspace:*",
     "@trigger.dev/sdk": "workspace:*",
     "ai": "^5.0.76",
-    "next": "15.5.6",
+    "next": "15.5.7",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "shiki": "^3.13.0",
