@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: npm-publish
     permissions:
-      contents: read
+      contents: write
       packages: write
       id-token: write
     if: |
