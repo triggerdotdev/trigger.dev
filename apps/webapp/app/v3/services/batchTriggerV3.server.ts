@@ -849,7 +849,7 @@ export class BatchTriggerV3Service extends BaseService {
         triggerVersion: options?.triggerVersion,
         traceContext: options?.traceContext,
         spanParentAsLink: options?.spanParentAsLink,
-        batchId: batch.friendlyId,
+        batchId: batch.id,
         skipChecks: true,
         runFriendlyId: task.runId,
         realtimeStreamsVersion: options?.realtimeStreamsVersion,
