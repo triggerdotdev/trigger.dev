@@ -7,13 +7,21 @@ on:
       - main
   workflow_dispatch:
     inputs:
-      ref:
-        description: "The ref (branch, tag, or SHA) to checkout and release from"
+      type:
+        description: "Select release type"
         required: true
+        type: choice
+        options:
+          - release
+          - prerelease
+        default: "prerelease"
+      prerelease_ref:
+        description: "The ref (branch, tag, or SHA) to checkout and release from (prerelease only)"
+        required: false
         type: string
-      tag:
+      prerelease_tag:
         description: "The npm dist-tag for the prerelease (e.g., 'v4-prerelease')"
-        required: true
+        required: false
         type: string
         default: "prerelease"
 
@@ -32,9 +40,10 @@ jobs:
       id-token: write
     if: |
       github.repository == 'triggerdotdev/trigger.dev' &&
-      github.event_name != 'workflow_dispatch' &&
-      github.event.pull_request.merged == true &&
-      startsWith(github.event.pull_request.head.ref, 'changeset-release/')
+      (
+        (github.event_name == 'workflow_dispatch' && github.event.inputs.type == 'release') ||
+        (github.event_name == 'pull_request' && github.event.pull_request.merged == true && github.event.pull_request.head.ref == 'changeset-release/main')
+      )
     outputs:
       published: ${{ steps.changesets.outputs.published }}
       published_packages: ${{ steps.changesets.outputs.publishedPackages }}
@@ -44,6 +53,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: main
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -105,17 +115,17 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    if: github.repository == 'triggerdotdev/trigger.dev' && github.event_name == 'workflow_dispatch'
+    if: github.repository == 'triggerdotdev/trigger.dev' && github.event_name == 'workflow_dispatch' && github.event.inputs.type == 'prerelease'
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event.inputs.ref }}
+          ref: ${{ github.event.inputs.prerelease_ref }}
 
       - name: Validate ref is on main
         run: |
-          if ! git merge-base --is-ancestor ${{ github.event.inputs.ref }} origin/main; then
+          if ! git merge-base --is-ancestor ${{ github.event.inputs.prerelease_ref }} origin/main; then
             echo "Error: ref must be an ancestor of main (i.e., already merged)"
             exit 1
           fi
@@ -143,7 +153,7 @@ jobs:
         run: pnpm run generate
 
       - name: Snapshot version
-        run: pnpm exec changeset version --snapshot ${{ github.event.inputs.tag }}
+        run: pnpm exec changeset version --snapshot ${{ github.event.inputs.prerelease_tag }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -154,6 +164,6 @@ jobs:
         run: pnpm run build --filter "@trigger.dev/*" --filter "trigger.dev"
 
       - name: Publish prerelease
-        run: pnpm exec changeset publish --no-git-tag --snapshot --tag ${{ github.event.inputs.tag }}
+        run: pnpm exec changeset publish --no-git-tag --snapshot --tag ${{ github.event.inputs.prerelease_tag }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
