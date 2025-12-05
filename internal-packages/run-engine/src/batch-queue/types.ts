@@ -152,6 +152,8 @@ export interface BatchQueueKeyProducer {
   batchRunsKey(batchId: string): string;
   /** Key for a batch's failure list */
   batchFailuresKey(batchId: string): string;
+  /** Key for a batch's processed count (atomic counter) */
+  batchProcessedCountKey(batchId: string): string;
 
   // Master queue member utilities
   /** Create a master queue member value: "{envId}:{batchId}" */

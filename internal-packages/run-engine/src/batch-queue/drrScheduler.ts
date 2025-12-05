@@ -174,15 +174,30 @@ export class DRRScheduler {
   }
 
   /**
-   * Record a successful run for a batch.
+   * Record a successful run for a batch and increment processed count.
+   * Returns the new processed count.
    */
-  async recordSuccess(batchId: string, runId: string): Promise<void> {
+  async recordSuccess(batchId: string, runId: string): Promise<number> {
     const runsKey = this.keys.batchRunsKey(batchId);
-    await this.redis.rpush(runsKey, runId);
+    const processedKey = this.keys.batchProcessedCountKey(batchId);
+
+    // Use a pipeline to atomically record and increment
+    const pipeline = this.redis.pipeline();
+    pipeline.rpush(runsKey, runId);
+    pipeline.incr(processedKey);
+
+    const results = await pipeline.exec();
+    // incr result is the second command, returns [error, value]
+    const incrResult = results?.[1];
+    if (incrResult?.[0]) {
+      throw incrResult[0];
+    }
+    return incrResult?.[1] as number;
   }
 
   /**
-   * Record a failure for a batch item.
+   * Record a failure for a batch item and increment processed count.
+   * Returns the new processed count.
    */
   async recordFailure(
     batchId: string,
@@ -194,13 +209,26 @@ export class DRRScheduler {
       error: string;
       errorCode?: string;
     }
-  ): Promise<void> {
+  ): Promise<number> {
     const failuresKey = this.keys.batchFailuresKey(batchId);
+    const processedKey = this.keys.batchProcessedCountKey(batchId);
     const failureRecord = {
       ...failure,
       timestamp: Date.now(),
     };
-    await this.redis.rpush(failuresKey, JSON.stringify(failureRecord));
+
+    // Use a pipeline to atomically record and increment
+    const pipeline = this.redis.pipeline();
+    pipeline.rpush(failuresKey, JSON.stringify(failureRecord));
+    pipeline.incr(processedKey);
+
+    const results = await pipeline.exec();
+    // incr result is the second command, returns [error, value]
+    const incrResult = results?.[1];
+    if (incrResult?.[0]) {
+      throw incrResult[0];
+    }
+    return incrResult?.[1] as number;
   }
 
   /**
@@ -240,6 +268,7 @@ export class DRRScheduler {
       this.keys.batchMetaKey(batchId),
       this.keys.batchRunsKey(batchId),
       this.keys.batchFailuresKey(batchId),
+      this.keys.batchProcessedCountKey(batchId),
     ];
     await this.redis.del(...keys);
   }

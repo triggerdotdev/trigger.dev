@@ -278,6 +278,8 @@ export class BatchQueue {
 
   /**
    * Process a single dequeued item.
+   * Uses processed count (not isBatchComplete from dequeue) to determine when to finalize.
+   * This prevents race conditions when multiple consumers process items concurrently.
    */
   async #processItem(dequeued: {
     envId: string;
@@ -288,12 +290,14 @@ export class BatchQueue {
     isBatchComplete: boolean;
     envHasMoreBatches: boolean;
   }): Promise<void> {
-    const { batchId, itemIndex, item, meta, isBatchComplete } = dequeued;
+    const { batchId, itemIndex, item, meta } = dequeued;
 
     if (!this.processItemCallback) {
       this.logger.error("No process item callback set", { batchId, itemIndex });
       return;
     }
+
+    let processedCount: number;
 
     try {
       const result = await this.processItemCallback({
@@ -305,16 +309,18 @@ export class BatchQueue {
       });
 
       if (result.success) {
-        await this.scheduler.recordSuccess(batchId, result.runId);
+        processedCount = await this.scheduler.recordSuccess(batchId, result.runId);
         this.logger.debug("Batch item processed successfully", {
           batchId,
           itemIndex,
           runId: result.runId,
+          processedCount,
+          expectedCount: meta.runCount,
         });
       } else {
         const payloadStr =
           typeof item.payload === "string" ? item.payload : JSON.stringify(item.payload);
-        await this.scheduler.recordFailure(batchId, {
+        processedCount = await this.scheduler.recordFailure(batchId, {
           index: itemIndex,
           taskIdentifier: item.task,
           payload: payloadStr?.substring(0, 1000), // Truncate large payloads
@@ -326,13 +332,15 @@ export class BatchQueue {
           batchId,
           itemIndex,
           error: result.error,
+          processedCount,
+          expectedCount: meta.runCount,
         });
       }
     } catch (error) {
       // Unexpected error during processing
       const payloadStr =
         typeof item.payload === "string" ? item.payload : JSON.stringify(item.payload);
-      await this.scheduler.recordFailure(batchId, {
+      processedCount = await this.scheduler.recordFailure(batchId, {
         index: itemIndex,
         taskIdentifier: item.task,
         payload: payloadStr?.substring(0, 1000),
@@ -344,11 +352,19 @@ export class BatchQueue {
         batchId,
         itemIndex,
         error: error instanceof Error ? error.message : String(error),
+        processedCount,
+        expectedCount: meta.runCount,
       });
     }
 
-    // If batch is complete, finalize it
-    if (isBatchComplete) {
+    // Check if all items have been processed using atomic counter
+    // This is safe even with multiple concurrent consumers
+    if (processedCount === meta.runCount) {
+      this.logger.debug("All items processed, finalizing batch", {
+        batchId,
+        processedCount,
+        expectedCount: meta.runCount,
+      });
       await this.#finalizeBatch(batchId, meta);
     }
   }
