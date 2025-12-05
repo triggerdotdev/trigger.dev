@@ -635,7 +635,7 @@ export type GenerateContainerfileOptions = {
 };
 
 const BASE_IMAGE: Record<BuildRuntime, string> = {
-  bun: "imbios/bun-node:1.2.20-20-slim@sha256:a20d1f90ee079b80dffc0041cf8a73aa05cdb135e3b3aff1ba3eba91608dba22",
+  bun: "imbios/bun-node:1.3.3-20-slim@sha256:59d84856a7e31eec83afedadb542f7306f672343b8b265c70d733404a6e8834b",
   node: "node:21.7.3-bookworm-slim@sha256:dfc05dee209a1d7adf2ef189bd97396daad4e97c6eaa85778d6f75205ba1b0fb",
   "node-22":
     "node:22.16.0-bookworm-slim@sha256:048ed02c5fd52e86fda6fbd2f6a76cf0d4492fd6c6fee9e2c463ed5108da0e34",
