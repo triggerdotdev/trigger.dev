@@ -143,7 +143,7 @@ export default function LoginPage() {
                 >
                   <Button
                     type="submit"
-                    variant="primary/extra-large"
+                    variant="secondary/extra-large"
                     fullWidth
                     data-action="continue with github"
                   >
@@ -163,7 +163,7 @@ export default function LoginPage() {
                 >
                   <Button
                     type="submit"
-                    variant="primary/extra-large"
+                    variant="secondary/extra-large"
                     fullWidth
                     data-action="continue with google"
                   >
