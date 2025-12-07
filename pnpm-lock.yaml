@@ -449,9 +449,6 @@ importers:
       '@socket.io/redis-adapter':
         specifier: ^8.3.0
         version: 8.3.0(socket.io-adapter@2.5.4(bufferutil@4.0.9))
-      '@splinetool/react-spline':
-        specifier: ^2.2.6
-        version: 2.2.6(@splinetool/runtime@1.11.2)(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
       '@tabler/icons-react':
         specifier: ^2.39.0
         version: 2.47.0(react@18.2.0)
@@ -9911,16 +9908,6 @@ packages:
   '@sodaru/yup-to-json-schema@2.0.1':
     resolution: {integrity: sha512-lWb0Wiz8KZ9ip/dY1eUqt7fhTPmL24p6Hmv5Fd9pzlzAdw/YNcWZr+tiCT4oZ4Zyxzi9+1X4zv82o7jYvcFxYA==}
 
-  '@splinetool/react-spline@2.2.6':
-    resolution: {integrity: sha512-y9L2VEbnC6FNZZu8XMmWM9YTTTWal6kJVfP05Amf0QqDNzCSumKsJxZyGUODvuCmiAvy0PfIfEsiVKnSxvhsDw==}
-    peerDependencies:
-      '@splinetool/runtime': '*'
-      react: '>=17.0.0'
-      react-dom: '>=17.0.0'
-
-  '@splinetool/runtime@1.11.2':
-    resolution: {integrity: sha512-rFz3KOQQRHQGzWBvPKRZcI7fZe5qxNYX1FmmCqzsbJkAU/hJdifaxpyN4xESpbkdta6s7riSmoz5lmPGIpZRRQ==}
-
   '@standard-schema/spec@1.0.0':
     resolution: {integrity: sha512-m2bOd0f2RT9k8QJx1JN85cZYyH1RqFBdlwtkSlf4tBDYLCiiZnv1fIIwacK6cqwXavOydf0NPToMQgpKq+dVlA==}
 
@@ -16237,10 +16224,6 @@ packages:
     resolution: {integrity: sha512-IF4PcGgzAr6XXSff26Sk/+P4KZFJVuHAJZj3wgO3vX2bMdNVp/QXTP3P7CEm9V1IdG8lDLY3HhiqpsE/nOwpPw==}
     engines: {node: ^10.13.0 || >=12.0.0}
 
-  on-change@4.0.2:
-    resolution: {integrity: sha512-cMtCyuJmTx/bg2HCpHo3ZLeF7FZnBOapLqZHr2AlLeJ5Ul0Zu2mUJJz051Fdwu/Et2YW04ZD+TtU+gVy0ACNCA==}
-    engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
-
   on-exit-leak-free@2.1.2:
     resolution: {integrity: sha512-0eJJY6hXLGf1udHwfNftBqH+g73EU4B504nZeKpz1sYRKafAghwxEJunB2O7rDZkL4PGfsMVnTXZ2EjibbqcsA==}
     engines: {node: '>=14.0.0'}
@@ -17367,9 +17350,6 @@ packages:
       '@types/react': '>=18'
       react: '>=18'
 
-  react-merge-refs@2.1.1:
-    resolution: {integrity: sha512-jLQXJ/URln51zskhgppGJ2ub7b2WFKGq3cl3NYKtlHoTG+dN2q7EzWrn3hN3EgPsTMvpR9tpq5ijdp7YwFZkag==}
-
   react-popper@2.3.0:
     resolution: {integrity: sha512-e1hj8lL3uM+sgSR4Lxzn5h1GxBlpa4CQz0XLF8kx4MDrDRWY0Ena4c97PUeSX9i5W3UAfDP0z0FXCTQkoXUl3Q==}
     peerDependencies:
@@ -17946,9 +17926,6 @@ packages:
 
   sembear@0.5.2:
     resolution: {integrity: sha512-Ij1vCAdFgWABd7zTg50Xw1/p0JgESNxuLlneEAsmBrKishA06ulTTL/SHGmNy2Zud7+rKrHTKNI6moJsn1ppAQ==}
-
-  semver-compare@1.0.0:
-    resolution: {integrity: sha512-YM3/ITh2MJ5MtzaM429anh+x2jiLVjqILF4m4oyQB18W7Ggea7BfqdH/wGMK7dDiMghv/6WG7znWMwUDzJiXow==}
 
   semver@5.7.1:
     resolution: {integrity: sha512-sauaDf/PZdVgrLTNYHRtpXa1iRiKcaebiKQ1BJdpQlWH2lCvexQdX55snPFyK7QzpudqbCI0qXFfOasHdyNDGQ==}
@@ -30067,19 +30044,6 @@ snapshots:
 
   '@sodaru/yup-to-json-schema@2.0.1': {}
 
-  '@splinetool/react-spline@2.2.6(@splinetool/runtime@1.11.2)(react-dom@18.2.0(react@18.2.0))(react@18.2.0)':
-    dependencies:
-      '@splinetool/runtime': 1.11.2
-      lodash.debounce: 4.0.8
-      react: 18.2.0
-      react-dom: 18.2.0(react@18.2.0)
-      react-merge-refs: 2.1.1
-
-  '@splinetool/runtime@1.11.2':
-    dependencies:
-      on-change: 4.0.2
-      semver-compare: 1.0.0
-
   '@standard-schema/spec@1.0.0': {}
 
   '@stricli/auto-complete@1.2.0':
@@ -37550,8 +37514,6 @@ snapshots:
   oidc-token-hash@5.0.3:
     optional: true
 
-  on-change@4.0.2: {}
-
   on-exit-leak-free@2.1.2: {}
 
   on-finished@2.3.0:
@@ -38898,8 +38860,6 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  react-merge-refs@2.1.1: {}
-
   react-popper@2.3.0(@popperjs/core@2.11.8)(react-dom@18.2.0(react@18.2.0))(react@18.2.0):
     dependencies:
       '@popperjs/core': 2.11.8
@@ -39642,8 +39602,6 @@ snapshots:
     dependencies:
       '@types/semver': 6.2.3
       semver: 6.3.1
-
-  semver-compare@1.0.0: {}
 
   semver@5.7.1: {}
 
