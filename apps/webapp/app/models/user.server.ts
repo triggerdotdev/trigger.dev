@@ -9,6 +9,19 @@ import {
 } from "~/services/dashboardPreferences.server";
 export type { User } from "@trigger.dev/database";
 import { assertEmailAllowed } from "~/utils/email";
+import { logger } from "~/services/logger.server";
+
+export class AuthConflictError extends Error {
+  constructor(
+    message: string,
+    public readonly existingEmailUserId: string,
+    public readonly existingAuthUserId: string
+  ) {
+    super(message);
+    this.name = "AuthConflictError";
+  }
+}
+
 type FindOrCreateMagicLink = {
   authenticationMethod: "MAGIC_LINK";
   email: string;
@@ -208,13 +221,12 @@ export async function findOrCreateGoogleUser({
   });
 
   if (existingEmailUser && !existingUser) {
-    // Link existing email account to Google auth
+    // Link existing email account to Google auth, preserving original authenticationMethod
     const user = await prisma.user.update({
       where: {
         email,
       },
       data: {
-        authenticationMethod: "GOOGLE",
         authenticationProfile: authProfile,
         authenticationExtraParams: authExtraParams,
         avatarUrl,
@@ -229,12 +241,34 @@ export async function findOrCreateGoogleUser({
   }
 
   if (existingEmailUser && existingUser) {
-    // User already linked to Google, update profile info
+    // Check if email user and auth user are the same
+    if (existingEmailUser.id !== existingUser.id) {
+      // Different users: email is taken by one user, Google auth belongs to another
+      logger.error(
+        `Google auth conflict: Google ID ${authenticationProfile.id} belongs to user ${existingUser.id} but email ${email} is taken by user ${existingEmailUser.id}`,
+        {
+          email,
+          existingEmailUserId: existingEmailUser.id,
+          existingAuthUserId: existingUser.id,
+          authIdentifier,
+        }
+      );
+
+      return {
+        user: existingUser,
+        isNewUser: false,
+      };
+    }
+
+    // Same user: update all profile fields
     const user = await prisma.user.update({
       where: {
         id: existingUser.id,
       },
       data: {
+        email,
+        displayName,
+        name,
         avatarUrl,
         authenticationProfile: authProfile,
         authenticationExtraParams: authExtraParams,
