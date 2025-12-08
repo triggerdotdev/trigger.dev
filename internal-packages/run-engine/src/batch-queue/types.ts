@@ -86,38 +86,6 @@ export type BatchItemFailure = z.infer<typeof BatchItemFailure>;
 // ============================================================================
 
 /**
- * State for a single environment in the DRR scheduler
- */
-export type DRREnvironmentState = {
-  /** Environment ID */
-  envId: string;
-  /** Current deficit (accumulated credits) */
-  deficit: number;
-  /** Last time this env was served */
-  lastServedAt: number;
-};
-
-/**
- * Result of a DRR dequeue operation
- */
-export type DRRDequeueResult = {
-  /** Environment ID that was selected */
-  envId: string;
-  /** Batch ID that was selected */
-  batchId: string;
-  /** Item index that was dequeued */
-  itemIndex: number;
-  /** The item payload */
-  item: BatchItem;
-  /** Batch metadata */
-  meta: BatchMeta;
-  /** Whether this was the last item in the batch */
-  isBatchComplete: boolean;
-  /** Whether this environment has more batches */
-  envHasMoreBatches: boolean;
-};
-
-/**
  * Configuration for the DRR scheduler
  */
 export type DRRConfig = {
@@ -126,45 +94,6 @@ export type DRRConfig = {
   /** Maximum accumulated deficit (prevents starvation) */
   maxDeficit: number;
 };
-
-// ============================================================================
-// Batch Queue Key Producer Interface
-// ============================================================================
-
-/**
- * Interface for generating Redis keys for the batch queue system
- */
-export interface BatchQueueKeyProducer {
-  // Master queue keys (DRR scheduling)
-  /** Key for the master queue sorted set (members are "{envId}:{batchId}") */
-  masterQueueKey(): string;
-  /** Key for DRR deficit hash (per-env deficit counters) */
-  deficitHashKey(): string;
-
-  // Per-batch keys
-  /** Key for a batch's item queue (sorted set of pending indices) */
-  batchQueueKey(batchId: string): string;
-  /** Key for a batch's items hash (index -> payload JSON) */
-  batchItemsKey(batchId: string): string;
-  /** Key for a batch's metadata hash */
-  batchMetaKey(batchId: string): string;
-  /** Key for a batch's successful runs list */
-  batchRunsKey(batchId: string): string;
-  /** Key for a batch's failure list */
-  batchFailuresKey(batchId: string): string;
-  /** Key for a batch's processed count (atomic counter) */
-  batchProcessedCountKey(batchId: string): string;
-
-  // Master queue member utilities
-  /** Create a master queue member value: "{envId}:{batchId}" */
-  masterQueueMember(envId: string, batchId: string): string;
-  /** Parse a master queue member to extract envId and batchId */
-  parseMasterQueueMember(member: string): { envId: string; batchId: string };
-
-  // Utility methods
-  /** Extract batch ID from a batch queue key */
-  batchIdFromKey(key: string): string;
-}
 
 // ============================================================================
 // Batch Queue Options and Results
@@ -251,6 +180,10 @@ export type BatchQueueOptions = {
     warn: (message: string, context?: Record<string, unknown>) => void;
     error: (message: string, context?: Record<string, unknown>) => void;
   };
+  /** OpenTelemetry tracer for distributed tracing */
+  tracer?: import("@internal/tracing").Tracer;
+  /** OpenTelemetry meter for metrics */
+  meter?: import("@internal/tracing").Meter;
 };
 
 /**
@@ -263,8 +196,7 @@ export type ProcessBatchItemCallback = (params: {
   item: BatchItem;
   meta: BatchMeta;
 }) => Promise<
-  | { success: true; runId: string }
-  | { success: false; error: string; errorCode?: string }
+  { success: true; runId: string } | { success: false; error: string; errorCode?: string }
 >;
 
 /**
@@ -272,3 +204,22 @@ export type ProcessBatchItemCallback = (params: {
  */
 export type BatchCompletionCallback = (result: CompleteBatchResult) => Promise<void>;
 
+// ============================================================================
+// FairQueue Payload Schema
+// ============================================================================
+
+/**
+ * Payload schema for FairQueue messages.
+ * Contains all data needed to process a single batch item.
+ */
+export const BatchItemPayload = z.object({
+  /** Batch internal ID */
+  batchId: z.string(),
+  /** Batch friendly ID */
+  friendlyId: z.string(),
+  /** Index of this item in the batch (0-based) */
+  itemIndex: z.number(),
+  /** The actual item data */
+  item: BatchItem,
+});
+export type BatchItemPayload = z.infer<typeof BatchItemPayload>;

@@ -1,45 +1,90 @@
-import { createRedisClient, type Redis, type RedisOptions } from "@internal/redis";
+import type { RedisOptions } from "@internal/redis";
+import type { Counter, Histogram, Meter } from "@internal/tracing";
+import {
+  FairQueue,
+  DRRScheduler,
+  CallbackFairQueueKeyProducer,
+  type FairQueueOptions,
+} from "@trigger.dev/redis-worker";
 import { Logger } from "@trigger.dev/core/logger";
-import { setInterval } from "node:timers/promises";
-import { DRRScheduler } from "./drrScheduler.js";
-import { BatchQueueFullKeyProducer } from "./keyProducer.js";
 import type {
+  BatchCompletionCallback,
   BatchItem,
+  BatchItemPayload,
   BatchMeta,
-  BatchQueueKeyProducer,
   BatchQueueOptions,
   CompleteBatchResult,
   EnqueueBatchOptions,
   ProcessBatchItemCallback,
-  BatchCompletionCallback,
 } from "./types.js";
+import { BatchItemPayload as BatchItemPayloadSchema } from "./types.js";
+import { BatchCompletionTracker } from "./completionTracker.js";
 
 export type { BatchQueueOptions, EnqueueBatchOptions, CompleteBatchResult } from "./types.js";
-export { BatchQueueFullKeyProducer } from "./keyProducer.js";
+export { BatchCompletionTracker } from "./completionTracker.js";
 
 /**
  * BatchQueue manages batch trigger processing with fair scheduling using
  * Deficit Round Robin (DRR) algorithm.
  *
+ * This implementation uses FairQueue from @trigger.dev/redis-worker internally
+ * for message queueing and fair scheduling. Batch completion tracking is handled
+ * separately via BatchCompletionTracker.
+ *
  * Key features:
- * - Two-level queue: master queue (environments) -> batch queues (items)
- * - DRR ensures fair processing across environments
+ * - Fair processing across environments via DRR
  * - Atomic operations using Lua scripts
  * - Graceful error handling with per-item failure tracking
+ * - Each batch becomes a FairQueue "queue" (queueId = batchId, tenantId = envId)
+ * - OpenTelemetry metrics for observability
  */
 export class BatchQueue {
-  private redis: Redis;
-  private keys: BatchQueueKeyProducer;
-  private scheduler: DRRScheduler;
+  private fairQueue: FairQueue<typeof BatchItemPayloadSchema>;
+  private completionTracker: BatchCompletionTracker;
   private logger: Logger;
-  private abortController: AbortController;
-  private consumerLoops: Promise<void>[] = [];
-  private isRunning = false;
 
   private processItemCallback?: ProcessBatchItemCallback;
   private completionCallback?: BatchCompletionCallback;
 
+  // Metrics
+  private batchesEnqueuedCounter?: Counter;
+  private itemsProcessedCounter?: Counter;
+  private itemsFailedCounter?: Counter;
+  private batchCompletedCounter?: Counter;
+  private batchProcessingDurationHistogram?: Histogram;
+
   constructor(private options: BatchQueueOptions) {
+    this.logger = options.logger
+      ? new Logger("BatchQueue", "info")
+      : new Logger("BatchQueue", "info");
+
+    // Initialize metrics if meter is provided
+    if (options.meter) {
+      this.#initializeMetrics(options.meter);
+    }
+
+    // Create key producer that extracts envId as tenantId from batchId
+    // Queue IDs are formatted as: env:{envId}:batch:{batchId}
+    const keyProducer = new CallbackFairQueueKeyProducer({
+      prefix: "batch",
+      extractTenantId: (queueId: string) => {
+        // Format: env:{envId}:batch:{batchId}
+        const parts = queueId.split(":");
+        if (parts.length >= 2 && parts[0] === "env" && parts[1]) {
+          return parts[1];
+        }
+        return queueId;
+      },
+      extractGroupId: (groupName: string, queueId: string) => {
+        const parts = queueId.split(":");
+        if (groupName === "env" && parts.length >= 2 && parts[0] === "env" && parts[1]) {
+          return parts[1];
+        }
+        return "";
+      },
+    });
+
+    // Create DRR scheduler
     const redisOptions: RedisOptions = {
       host: options.redis.host,
       port: options.redis.port,
@@ -50,32 +95,66 @@ export class BatchQueue {
       ...(options.redis.tls ? { tls: {} } : {}),
     };
 
-    this.redis = createRedisClient(redisOptions, {
-      onError: (error) => {
-        this.logger.error("BatchQueue Redis error", { error: String(error) });
-      },
-    });
-
-    this.keys = new BatchQueueFullKeyProducer();
-    this.logger = new Logger("BatchQueue", "info");
-    this.abortController = new AbortController();
-
-    this.scheduler = new DRRScheduler({
+    const scheduler = new DRRScheduler({
       redis: redisOptions,
-      keys: this.keys,
-      config: options.drr,
+      keys: keyProducer,
+      quantum: options.drr.quantum,
+      maxDeficit: options.drr.maxDeficit,
       logger: {
         debug: (msg, ctx) => this.logger.debug(msg, ctx),
         error: (msg, ctx) => this.logger.error(msg, ctx),
       },
     });
 
-    this.#registerCommands();
+    // Create FairQueue with telemetry
+    const fairQueueOptions: FairQueueOptions<typeof BatchItemPayloadSchema> = {
+      redis: redisOptions,
+      keys: keyProducer,
+      scheduler,
+      payloadSchema: BatchItemPayloadSchema,
+      validateOnEnqueue: false, // We control the payload
+      shardCount: 1, // Batches don't need sharding
+      consumerCount: options.consumerCount,
+      consumerIntervalMs: options.consumerIntervalMs,
+      visibilityTimeoutMs: 60_000, // 1 minute for batch item processing
+      startConsumers: false, // We control when to start
+      cooloff: {
+        enabled: true,
+        threshold: 5,
+        periodMs: 5_000,
+      },
+      // No retry for batch items - failures are recorded and batch completes
+      // Omit retry config entirely to disable retry and DLQ
+      logger: this.logger,
+      tracer: options.tracer,
+      meter: options.meter,
+      name: "batch-queue",
+    };
+
+    this.fairQueue = new FairQueue(fairQueueOptions);
+
+    // Create completion tracker
+    this.completionTracker = new BatchCompletionTracker({
+      redis: redisOptions,
+      logger: {
+        debug: (msg, ctx) => this.logger.debug(msg, ctx),
+        error: (msg, ctx) => this.logger.error(msg, ctx),
+      },
+    });
+
+    // Set up message handler
+    this.fairQueue.onMessage(async (ctx) => {
+      await this.#handleMessage(ctx);
+    });
 
     if (options.startConsumers !== false) {
       this.start();
     }
   }
+
+  // ============================================================================
+  // Public API - Callbacks
+  // ============================================================================
 
   /**
    * Set the callback for processing batch items.
@@ -93,11 +172,18 @@ export class BatchQueue {
     this.completionCallback = callback;
   }
 
+  // ============================================================================
+  // Public API - Enqueueing
+  // ============================================================================
+
   /**
    * Enqueue a new batch for processing.
    *
-   * This stores all batch data in Redis and adds the batch to the processing queue.
-   * The batch will be processed by the DRR scheduler consumers.
+   * This stores batch metadata in the completion tracker and enqueues
+   * all items as messages to the FairQueue.
+   *
+   * Note: If FairQueue enqueue fails after metadata is stored, we clean up
+   * the orphaned metadata to prevent leaks.
    */
   async enqueueBatch(options: EnqueueBatchOptions): Promise<void> {
     const now = Date.now();
@@ -122,20 +208,50 @@ export class BatchQueue {
       planType: options.planType,
     };
 
-    // Master queue member is "{envId}:{batchId}"
-    const masterQueueMember = this.keys.masterQueueMember(options.environmentId, options.batchId);
+    // Store metadata in completion tracker first
+    await this.completionTracker.storeMeta(options.batchId, meta);
 
-    // Use Lua script to atomically enqueue the batch
-    await this.redis.enqueueBatch(
-      this.keys.batchQueueKey(options.batchId),
-      this.keys.batchItemsKey(options.batchId),
-      this.keys.batchMetaKey(options.batchId),
-      this.keys.masterQueueKey(),
-      masterQueueMember,
-      now.toString(),
-      JSON.stringify(meta),
-      ...options.items.flatMap((item, index) => [index.toString(), JSON.stringify(item)])
-    );
+    // Create queue ID in format: env:{envId}:batch:{batchId}
+    const queueId = this.#makeQueueId(options.environmentId, options.batchId);
+
+    // Build messages for FairQueue
+    const messages = options.items.map((item, index) => ({
+      payload: {
+        batchId: options.batchId,
+        friendlyId: options.friendlyId,
+        itemIndex: index,
+        item,
+      } satisfies BatchItemPayload,
+      timestamp: now + index, // Ensure ordering by index
+    }));
+
+    try {
+      // Enqueue all items as messages
+      await this.fairQueue.enqueueBatch({
+        queueId,
+        tenantId: options.environmentId,
+        messages,
+        metadata: {
+          batchId: options.batchId,
+          friendlyId: options.friendlyId,
+          envId: options.environmentId,
+        },
+      });
+    } catch (error) {
+      // Clean up orphaned metadata on failure
+      this.logger.error("Failed to enqueue batch, cleaning up metadata", {
+        batchId: options.batchId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      await this.completionTracker.cleanup(options.batchId);
+      throw error;
+    }
+
+    // Record metric
+    this.batchesEnqueuedCounter?.add(1, {
+      envId: options.environmentId,
+      itemCount: options.items.length,
+    });
 
     this.logger.debug("Batch enqueued", {
       batchId: options.batchId,
@@ -145,51 +261,82 @@ export class BatchQueue {
     });
   }
 
+  // ============================================================================
+  // Public API - Query
+  // ============================================================================
+
   /**
    * Get batch metadata.
    */
   async getBatchMeta(batchId: string): Promise<BatchMeta | null> {
-    return this.scheduler.getBatchMeta(batchId);
+    return this.completionTracker.getMeta(batchId);
   }
 
   /**
    * Get the number of remaining items in a batch.
    */
   async getBatchRemainingCount(batchId: string): Promise<number> {
-    const queueKey = this.keys.batchQueueKey(batchId);
-    return await this.redis.zcard(queueKey);
+    const meta = await this.completionTracker.getMeta(batchId);
+    if (!meta) return 0;
+
+    const processedCount = await this.completionTracker.getProcessedCount(batchId);
+    return Math.max(0, meta.runCount - processedCount);
   }
 
   /**
    * Get the successful runs for a batch.
    */
   async getBatchRuns(batchId: string): Promise<string[]> {
-    return this.scheduler.getSuccessfulRuns(batchId);
+    return this.completionTracker.getSuccessfulRuns(batchId);
   }
 
   /**
    * Get the failures for a batch.
    */
   async getBatchFailures(batchId: string): Promise<CompleteBatchResult["failures"]> {
-    return this.scheduler.getFailures(batchId);
+    return this.completionTracker.getFailures(batchId);
   }
+
+  /**
+   * Get the live processed count for a batch from Redis.
+   * This is useful for displaying real-time progress in the UI.
+   */
+  async getBatchProcessedCount(batchId: string): Promise<number> {
+    return this.completionTracker.getProcessedCount(batchId);
+  }
+
+  /**
+   * Get the live progress for a batch from Redis.
+   * Returns success count, failure count, and processed count.
+   * This is useful for displaying real-time progress in the UI.
+   */
+  async getBatchProgress(batchId: string): Promise<{
+    successCount: number;
+    failureCount: number;
+    processedCount: number;
+  }> {
+    const [successfulRuns, failures, processedCount] = await Promise.all([
+      this.completionTracker.getSuccessfulRuns(batchId),
+      this.completionTracker.getFailures(batchId),
+      this.completionTracker.getProcessedCount(batchId),
+    ]);
+
+    return {
+      successCount: successfulRuns.length,
+      failureCount: failures.length,
+      processedCount,
+    };
+  }
+
+  // ============================================================================
+  // Public API - Lifecycle
+  // ============================================================================
 
   /**
    * Start the consumer loops.
    */
   start(): void {
-    if (this.isRunning) {
-      return;
-    }
-
-    this.isRunning = true;
-    this.abortController = new AbortController();
-
-    for (let i = 0; i < this.options.consumerCount; i++) {
-      const loop = this.#runConsumerLoop(i);
-      this.consumerLoops.push(loop);
-    }
-
+    this.fairQueue.start();
     this.logger.info("BatchQueue consumers started", {
       consumerCount: this.options.consumerCount,
       intervalMs: this.options.consumerIntervalMs,
@@ -201,16 +348,7 @@ export class BatchQueue {
    * Stop the consumer loops gracefully.
    */
   async stop(): Promise<void> {
-    if (!this.isRunning) {
-      return;
-    }
-
-    this.isRunning = false;
-    this.abortController.abort();
-
-    await Promise.allSettled(this.consumerLoops);
-    this.consumerLoops = [];
-
+    await this.fairQueue.stop();
     this.logger.info("BatchQueue consumers stopped");
   }
 
@@ -218,82 +356,77 @@ export class BatchQueue {
    * Close the BatchQueue and all Redis connections.
    */
   async close(): Promise<void> {
-    await this.stop();
-    await this.scheduler.close();
-    await this.redis.quit();
+    await this.fairQueue.close();
+    await this.completionTracker.close();
   }
 
-  /**
-   * Run a consumer loop that processes batches using DRR scheduling.
-   */
-  async #runConsumerLoop(consumerId: number): Promise<void> {
-    const loopId = `consumer-${consumerId}`;
+  // ============================================================================
+  // Private - Metrics Initialization
+  // ============================================================================
 
-    try {
-      for await (const _ of setInterval(this.options.consumerIntervalMs, null, {
-        signal: this.abortController.signal,
-      })) {
-        if (!this.processItemCallback) {
-          this.logger.debug("No process item callback set, skipping iteration", { loopId });
-          continue;
-        }
-
-        try {
-          await this.#processIteration(loopId);
-        } catch (error) {
-          this.logger.error("Error in consumer iteration", {
-            loopId,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
-      }
-    } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") {
-        this.logger.debug("Consumer loop aborted", { loopId });
-        return;
-      }
-      throw error;
-    }
-  }
-
-  /**
-   * Process a single DRR iteration.
-   */
-  async #processIteration(loopId: string): Promise<void> {
-    const dequeued = await this.scheduler.performDRRIteration();
-
-    if (dequeued.length === 0) {
-      return;
-    }
-
-    this.logger.debug("DRR iteration dequeued items", {
-      loopId,
-      itemCount: dequeued.length,
+  #initializeMetrics(meter: Meter): void {
+    this.batchesEnqueuedCounter = meter.createCounter("batch_queue.batches_enqueued", {
+      description: "Number of batches enqueued",
+      unit: "batches",
     });
 
-    for (const result of dequeued) {
-      await this.#processItem(result);
-    }
+    this.itemsProcessedCounter = meter.createCounter("batch_queue.items_processed", {
+      description: "Number of batch items successfully processed",
+      unit: "items",
+    });
+
+    this.itemsFailedCounter = meter.createCounter("batch_queue.items_failed", {
+      description: "Number of batch items that failed processing",
+      unit: "items",
+    });
+
+    this.batchCompletedCounter = meter.createCounter("batch_queue.batches_completed", {
+      description: "Number of batches completed",
+      unit: "batches",
+    });
+
+    this.batchProcessingDurationHistogram = meter.createHistogram(
+      "batch_queue.batch_processing_duration",
+      {
+        description: "Duration from batch creation to completion",
+        unit: "ms",
+      }
+    );
   }
 
-  /**
-   * Process a single dequeued item.
-   * Uses processed count (not isBatchComplete from dequeue) to determine when to finalize.
-   * This prevents race conditions when multiple consumers process items concurrently.
-   */
-  async #processItem(dequeued: {
-    envId: string;
-    batchId: string;
-    itemIndex: number;
-    item: BatchItem;
-    meta: BatchMeta;
-    isBatchComplete: boolean;
-    envHasMoreBatches: boolean;
+  // ============================================================================
+  // Private - Message Handling
+  // ============================================================================
+
+  async #handleMessage(ctx: {
+    message: {
+      id: string;
+      queueId: string;
+      payload: BatchItemPayload;
+      timestamp: number;
+      attempt: number;
+    };
+    queue: { id: string; tenantId: string };
+    consumerId: string;
+    heartbeat: () => Promise<boolean>;
+    complete: () => Promise<void>;
+    release: () => Promise<void>;
+    fail: (error?: Error) => Promise<void>;
   }): Promise<void> {
-    const { batchId, itemIndex, item, meta } = dequeued;
+    const { batchId, friendlyId, itemIndex, item } = ctx.message.payload;
 
     if (!this.processItemCallback) {
       this.logger.error("No process item callback set", { batchId, itemIndex });
+      // Still complete the message to avoid blocking
+      await ctx.complete();
+      return;
+    }
+
+    // Get batch metadata
+    const meta = await this.completionTracker.getMeta(batchId);
+    if (!meta) {
+      this.logger.error("Batch metadata not found", { batchId, itemIndex });
+      await ctx.complete();
       return;
     }
 
@@ -302,14 +435,16 @@ export class BatchQueue {
     try {
       const result = await this.processItemCallback({
         batchId,
-        friendlyId: meta.friendlyId,
+        friendlyId,
         itemIndex,
         item,
         meta,
       });
 
       if (result.success) {
-        processedCount = await this.scheduler.recordSuccess(batchId, result.runId);
+        // Pass itemIndex for idempotency - prevents double-counting on redelivery
+        processedCount = await this.completionTracker.recordSuccess(batchId, result.runId, itemIndex);
+        this.itemsProcessedCounter?.add(1, { envId: meta.environmentId });
         this.logger.debug("Batch item processed successfully", {
           batchId,
           itemIndex,
@@ -320,7 +455,7 @@ export class BatchQueue {
       } else {
         const payloadStr =
           typeof item.payload === "string" ? item.payload : JSON.stringify(item.payload);
-        processedCount = await this.scheduler.recordFailure(batchId, {
+        processedCount = await this.completionTracker.recordFailure(batchId, {
           index: itemIndex,
           taskIdentifier: item.task,
           payload: payloadStr?.substring(0, 1000), // Truncate large payloads
@@ -328,6 +463,7 @@ export class BatchQueue {
           error: result.error,
           errorCode: result.errorCode,
         });
+        this.itemsFailedCounter?.add(1, { envId: meta.environmentId, errorCode: result.errorCode });
         this.logger.error("Batch item processing failed", {
           batchId,
           itemIndex,
@@ -340,7 +476,7 @@ export class BatchQueue {
       // Unexpected error during processing
       const payloadStr =
         typeof item.payload === "string" ? item.payload : JSON.stringify(item.payload);
-      processedCount = await this.scheduler.recordFailure(batchId, {
+      processedCount = await this.completionTracker.recordFailure(batchId, {
         index: itemIndex,
         taskIdentifier: item.task,
         payload: payloadStr?.substring(0, 1000),
@@ -348,6 +484,7 @@ export class BatchQueue {
         error: error instanceof Error ? error.message : String(error),
         errorCode: "UNEXPECTED_ERROR",
       });
+      this.itemsFailedCounter?.add(1, { envId: meta.environmentId, errorCode: "UNEXPECTED_ERROR" });
       this.logger.error("Unexpected error processing batch item", {
         batchId,
         itemIndex,
@@ -357,8 +494,15 @@ export class BatchQueue {
       });
     }
 
+    // Complete the FairQueue message (no retry for batch items)
+    // This must happen after recording success/failure to ensure the counter
+    // is updated before the message is considered done
+    await ctx.complete();
+
     // Check if all items have been processed using atomic counter
-    // This is safe even with multiple concurrent consumers
+    // This is safe even with multiple concurrent consumers because
+    // the processedCount is atomically incremented and we only trigger
+    // finalization when we see the exact final count
     if (processedCount === meta.runCount) {
       this.logger.debug("All items processed, finalizing batch", {
         batchId,
@@ -373,22 +517,26 @@ export class BatchQueue {
    * Finalize a completed batch: gather results and call completion callback.
    */
   async #finalizeBatch(batchId: string, meta: BatchMeta): Promise<void> {
-    const runIds = await this.scheduler.getSuccessfulRuns(batchId);
-    const failures = await this.scheduler.getFailures(batchId);
+    const result = await this.completionTracker.getCompletionResult(batchId);
 
-    const result: CompleteBatchResult = {
-      batchId,
-      runIds,
-      successfulRunCount: runIds.length,
-      failedRunCount: failures.length,
-      failures,
-    };
+    // Record metrics
+    this.batchCompletedCounter?.add(1, {
+      envId: meta.environmentId,
+      hasFailures: result.failedRunCount > 0,
+    });
+
+    const processingDuration = Date.now() - meta.createdAt;
+    this.batchProcessingDurationHistogram?.record(processingDuration, {
+      envId: meta.environmentId,
+      itemCount: meta.runCount,
+    });
 
     this.logger.info("Batch completed", {
       batchId,
       friendlyId: meta.friendlyId,
       successfulRunCount: result.successfulRunCount,
       failedRunCount: result.failedRunCount,
+      processingDurationMs: processingDuration,
     });
 
     if (this.completionCallback) {
@@ -403,60 +551,18 @@ export class BatchQueue {
     }
 
     // Clean up Redis keys for this batch
-    await this.scheduler.cleanupBatch(batchId);
+    await this.completionTracker.cleanup(batchId);
   }
 
-  #registerCommands() {
-    // Atomic enqueue of a batch with all its items
-    this.redis.defineCommand("enqueueBatch", {
-      numberOfKeys: 4,
-      lua: `
-local batchQueueKey = KEYS[1]
-local batchItemsKey = KEYS[2]
-local batchMetaKey = KEYS[3]
-local masterQueueKey = KEYS[4]
+  // ============================================================================
+  // Private - Helpers
+  // ============================================================================
 
-local masterQueueMember = ARGV[1]
-local now = tonumber(ARGV[2])
-local metaJson = ARGV[3]
-
--- Store batch metadata
-redis.call('SET', batchMetaKey, metaJson)
-
--- Store items in hash and add to queue
--- Items are passed as pairs: [index1, item1, index2, item2, ...]
-for i = 4, #ARGV, 2 do
-  local itemIndex = ARGV[i]
-  local itemJson = ARGV[i + 1]
-  
-  -- Add to items hash
-  redis.call('HSET', batchItemsKey, itemIndex, itemJson)
-  
-  -- Add to queue sorted set (score = index for ordered processing)
-  redis.call('ZADD', batchQueueKey, tonumber(itemIndex), itemIndex)
-end
-
--- Add batch to master queue (member is "{envId}:{batchId}", scored by creation time)
-redis.call('ZADD', masterQueueKey, now, masterQueueMember)
-
-return 1
-      `,
-    });
-  }
-}
-
-// Extend Redis interface to include our custom command
-declare module "@internal/redis" {
-  interface RedisCommander<Context> {
-    enqueueBatch(
-      batchQueueKey: string,
-      batchItemsKey: string,
-      batchMetaKey: string,
-      masterQueueKey: string,
-      masterQueueMember: string,
-      now: string,
-      metaJson: string,
-      ...itemPairs: string[]
-    ): Promise<number>;
+  /**
+   * Create a queue ID from environment ID and batch ID.
+   * Format: env:{envId}:batch:{batchId}
+   */
+  #makeQueueId(envId: string, batchId: string): string {
+    return `env:${envId}:batch:${batchId}`;
   }
 }
