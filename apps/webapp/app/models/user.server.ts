@@ -293,6 +293,8 @@ export async function findOrCreateGoogleUser({
       displayName,
       name,
       avatarUrl,
+      authenticationProfile: authProfile,
+      authenticationExtraParams: authExtraParams,
     },
     create: {
       authenticationProfile: authProfile,
