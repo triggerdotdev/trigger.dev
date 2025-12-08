@@ -21,7 +21,7 @@ import {
   nanosecondsToMilliseconds,
   tryCatch,
 } from "@trigger.dev/core/v3";
-import type { $Enums, RuntimeEnvironmentType } from "@trigger.dev/database";
+import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { motion } from "framer-motion";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
@@ -280,7 +280,7 @@ export default function Page() {
   const tableStateSearchParams = new URLSearchParams(tableState);
   const filters = getRunFiltersFromSearchParams(tableStateSearchParams);
 
-  const [previousRunPath, nextRunPath] = useAdjacentRunPaths({organization, project, environment, tableStateSearchParams, run, runsList});
+  const [previousRunPath, nextRunPath] = useAdjacentRunPaths({organization, project, environment, tableState, run, runsList});
 
   return (
     <>
@@ -1640,14 +1640,14 @@ function useAdjacentRunPaths({
   organization,
   project,
   environment,
-  tableStateSearchParams,
+  tableState,
   run,
   runsList,
 }: {
   organization: { slug: string };
   project: { slug: string };
   environment: { slug: string };
-  tableStateSearchParams: URLSearchParams;
+  tableState: string;
   run: { friendlyId: string };
   runsList: {
     runs: Array<{ friendlyId: string }>;
@@ -1669,7 +1669,7 @@ function useAdjacentRunPaths({
 
     // Determine previous run: use prevPageLastRun if at first position, otherwise use previous run in list
     let previousRun: { friendlyId: string } | null = null;
-    const previousRunTableState = new URLSearchParams(tableStateSearchParams.toString());
+    const previousRunTableState = new URLSearchParams(tableState);
     if (currentIndex > 0) {
       previousRun = runsList.runs[currentIndex - 1];
     } else if (runsList.prevPageLastRun) {
@@ -1681,7 +1681,7 @@ function useAdjacentRunPaths({
 
     // Determine next run: use nextPageFirstRun if at last position, otherwise use next run in list
     let nextRun: { friendlyId: string } | null = null;
-    const nextRunTableState = new URLSearchParams(tableStateSearchParams.toString());
+    const nextRunTableState = new URLSearchParams(tableState);
     if (currentIndex < runsList.runs.length - 1) {
       nextRun = runsList.runs[currentIndex + 1];
     } else if (runsList.nextPageFirstRun) {
@@ -1704,7 +1704,7 @@ function useAdjacentRunPaths({
       : null;
 
     return [previousRunPath, nextRunPath];
-  }, [organization, project, environment, tableStateSearchParams, run.friendlyId, runsList]);
+  }, [organization, project, environment, tableState, run.friendlyId, runsList]);
 }
 
 

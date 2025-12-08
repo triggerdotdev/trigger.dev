@@ -81,7 +81,7 @@ export function CopyableText({
               className
             )}
           >
-            <span className="text-text-white">{value}</span>
+            <span>{value}</span>
           </Button>
         }
         content={copied ? "Copied" : "Click to copy"}

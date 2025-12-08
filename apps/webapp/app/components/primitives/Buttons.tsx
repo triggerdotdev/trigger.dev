@@ -372,7 +372,7 @@ export const LinkButton = ({
       <ExtLink
         href={to.toString()}
         ref={innerRef}
-        className={cn("group/button focus-custom", props.fullWidth ? "w-full" : "")}
+        className={cn("group/button block focus-custom", props.fullWidth ? "w-full" : "")}
         onClick={onClick}
         onMouseDown={onMouseDown}
         onMouseEnter={onMouseEnter}
@@ -387,7 +387,7 @@ export const LinkButton = ({
       <Link
         to={to}
         ref={innerRef}
-        className={cn("group/button focus-custom", props.fullWidth ? "w-full" : "")}
+        className={cn("group/button block focus-custom", props.fullWidth ? "w-full" : "")}
         onClick={onClick}
         onMouseDown={onMouseDown}
         onMouseEnter={onMouseEnter}
@@ -408,7 +408,7 @@ export const NavLinkButton = ({ to, className, target, ...props }: NavLinkPropsT
   return (
     <NavLink
       to={to}
-      className={cn("group/button outline-none display-block", props.fullWidth ? "w-full" : "")}
+      className={cn("group/button outline-none block", props.fullWidth ? "w-full" : "")}
       target={target}
     >
       {({ isActive, isPending }) => (
