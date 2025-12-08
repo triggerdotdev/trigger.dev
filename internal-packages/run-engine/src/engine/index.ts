@@ -340,6 +340,8 @@ export class RunEngine {
         consumerCount: options.batchQueue.consumerCount ?? 2,
         consumerIntervalMs: options.batchQueue.consumerIntervalMs ?? 100,
         startConsumers,
+        tracer: options.tracer,
+        meter: options.meter,
       });
 
       this.logger.info("BatchQueue initialized", {
@@ -1012,6 +1014,23 @@ export class RunEngine {
       throw new Error("BatchQueue is not enabled. Configure batchQueue in RunEngine options.");
     }
     return this.batchQueue.getBatchRemainingCount(batchId);
+  }
+
+  /**
+   * Get the live progress for a batch from Redis.
+   * Returns success count, failure count, and processed count.
+   * This is useful for displaying real-time progress in the UI without
+   * hitting the database.
+   */
+  async getBatchQueueProgress(batchId: string): Promise<{
+    successCount: number;
+    failureCount: number;
+    processedCount: number;
+  } | null> {
+    if (!this.batchQueue) {
+      return null;
+    }
+    return this.batchQueue.getBatchProgress(batchId);
   }
 
   async getWaitpoint({

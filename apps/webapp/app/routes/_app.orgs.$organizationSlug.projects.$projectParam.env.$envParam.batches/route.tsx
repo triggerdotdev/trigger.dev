@@ -1,10 +1,6 @@
-import {
-  ArrowPathRoundedSquareIcon,
-  ArrowRightIcon,
-  ExclamationCircleIcon,
-} from "@heroicons/react/20/solid";
+import { ArrowRightIcon, ExclamationCircleIcon } from "@heroicons/react/20/solid";
 import { BookOpenIcon } from "@heroicons/react/24/solid";
-import { type MetaFunction, useLocation, useNavigation } from "@remix-run/react";
+import { type MetaFunction, Outlet, useNavigation, useParams } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDuration } from "@trigger.dev/core/v3/utils/durations";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -12,12 +8,15 @@ import { BatchesNone } from "~/components/BlankStatePanels";
 import { ListPagination } from "~/components/ListPagination";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
-import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { PopoverMenuItem } from "~/components/primitives/Popover";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "~/components/primitives/Resizable";
 import { Spinner } from "~/components/primitives/Spinner";
 import {
   Table,
@@ -36,7 +35,6 @@ import {
   BatchStatusCombo,
   descriptionForBatchStatus,
 } from "~/components/runs/v3/BatchStatus";
-import { CheckBatchCompletionDialog } from "~/components/runs/v3/CheckBatchCompletionDialog";
 import { LiveTimer } from "~/components/runs/v3/LiveTimer";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -44,13 +42,14 @@ import { useProject } from "~/hooks/useProject";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
-import {
-  type BatchList,
-  type BatchListItem,
-  BatchListPresenter,
-} from "~/presenters/v3/BatchListPresenter.server";
+import { type BatchList, BatchListPresenter } from "~/presenters/v3/BatchListPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { docsPath, EnvironmentParamSchema, v3BatchRunsPath } from "~/utils/pathBuilder";
+import {
+  docsPath,
+  EnvironmentParamSchema,
+  v3BatchPath,
+  v3BatchRunsPath,
+} from "~/utils/pathBuilder";
 
 export const meta: MetaFunction = () => {
   return [
@@ -101,6 +100,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 export default function Page() {
   const { batches, hasFilters, hasAnyBatches, filters, pagination } =
     useTypedLoaderData<typeof loader>();
+  const { batchParam } = useParams();
+  const isShowingInspector = batchParam !== undefined;
 
   return (
     <PageContainer>
@@ -123,22 +124,34 @@ export default function Page() {
             <BatchesNone />
           </MainCenteredContainer>
         ) : (
-          <div className="grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden">
-            <div className="flex items-start justify-between gap-x-2 p-2">
-              <BatchFilters hasFilters={hasFilters} />
-              <div className="flex items-center justify-end gap-x-2">
-                <ListPagination list={{ pagination }} />
-              </div>
-            </div>
+          <ResizablePanelGroup orientation="horizontal" className="max-h-full">
+            <ResizablePanel id="batches-main" min={"100px"}>
+              <div className="grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden">
+                <div className="flex items-start justify-between gap-x-2 p-2">
+                  <BatchFilters hasFilters={hasFilters} />
+                  <div className="flex items-center justify-end gap-x-2">
+                    <ListPagination list={{ pagination }} />
+                  </div>
+                </div>
 
-            <BatchesTable
-              batches={batches}
-              filters={filters}
-              hasFilters={hasFilters}
-              pagination={pagination}
-              hasAnyBatches={hasAnyBatches}
-            />
-          </div>
+                <BatchesTable
+                  batches={batches}
+                  filters={filters}
+                  hasFilters={hasFilters}
+                  pagination={pagination}
+                  hasAnyBatches={hasAnyBatches}
+                />
+              </div>
+            </ResizablePanel>
+            {isShowingInspector && (
+              <>
+                <ResizableHandle id="batches-handle" />
+                <ResizablePanel id="batches-inspector" min="100px" default="500px">
+                  <Outlet />
+                </ResizablePanel>
+              </>
+            )}
+          </ResizablePanelGroup>
         )}
       </PageBody>
     </PageContainer>
@@ -151,6 +164,7 @@ function BatchesTable({ batches, hasFilters, filters }: BatchList) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
+  const { batchParam } = useParams();
 
   return (
     <Table className="max-h-full overflow-y-auto">
@@ -195,15 +209,18 @@ function BatchesTable({ batches, hasFilters, filters }: BatchList) {
             </div>
           </TableBlankRow>
         ) : (
-          batches.map((batch, index) => {
-            const path = v3BatchRunsPath(organization, project, environment, batch);
+          batches.map((batch) => {
+            const inspectorPath = v3BatchPath(organization, project, environment, batch);
+            const runsPath = v3BatchRunsPath(organization, project, environment, batch);
+            const isSelected = batchParam === batch.friendlyId;
+
             return (
-              <TableRow key={batch.id}>
-                <TableCell to={path} isTabbableCell>
+              <TableRow key={batch.id} className={isSelected ? "bg-grid-dimmed" : undefined}>
+                <TableCell to={inspectorPath} isTabbableCell>
                   {batch.friendlyId}
                 </TableCell>
 
-                <TableCell to={path}>
+                <TableCell to={inspectorPath}>
                   {batch.batchVersion === "v1" ? (
                     <SimpleTooltip
                       content="Upgrade to the latest SDK for batch statuses to appear."
@@ -223,8 +240,12 @@ function BatchesTable({ batches, hasFilters, filters }: BatchList) {
                     />
                   )}
                 </TableCell>
-                <TableCell to={path}>{batch.runCount}</TableCell>
-                <TableCell to={path} className="w-[1%]" actionClassName="pr-0 tabular-nums">
+                <TableCell to={inspectorPath}>{batch.runCount}</TableCell>
+                <TableCell
+                  to={inspectorPath}
+                  className="w-[1%]"
+                  actionClassName="pr-0 tabular-nums"
+                >
                   {batch.finishedAt ? (
                     formatDuration(new Date(batch.createdAt), new Date(batch.finishedAt), {
                       style: "short",
@@ -233,13 +254,13 @@ function BatchesTable({ batches, hasFilters, filters }: BatchList) {
                     <LiveTimer startTime={new Date(batch.createdAt)} />
                   )}
                 </TableCell>
-                <TableCell to={path}>
+                <TableCell to={inspectorPath}>
                   <DateTime date={batch.createdAt} />
                 </TableCell>
-                <TableCell to={path}>
+                <TableCell to={inspectorPath}>
                   {batch.finishedAt ? <DateTime date={batch.finishedAt} /> : "–"}
                 </TableCell>
-                <BatchActionsCell batch={batch} path={path} />
+                <BatchActionsCell runsPath={runsPath} />
               </TableRow>
             );
           })
@@ -257,48 +278,14 @@ function BatchesTable({ batches, hasFilters, filters }: BatchList) {
   );
 }
 
-function BatchActionsCell({ batch, path }: { batch: BatchListItem; path: string }) {
-  const location = useLocation();
-
-  if (batch.hasFinished || batch.environment.type === "DEVELOPMENT") {
-    return <TableCell to={path}>{""}</TableCell>;
-  }
-
+function BatchActionsCell({ runsPath }: { runsPath: string }) {
   return (
     <TableCellMenu
       isSticky
-      popoverContent={
-        <>
-          <PopoverMenuItem
-            to={path}
-            icon={ArrowRightIcon}
-            leadingIconClassName="text-blue-500"
-            title="View batch"
-          />
-          {!batch.hasFinished && (
-            <Dialog>
-              <DialogTrigger
-                asChild
-                className="size-6 rounded-sm p-1 text-text-dimmed transition hover:bg-charcoal-700 hover:text-text-bright"
-              >
-                <Button
-                  variant="small-menu-item"
-                  LeadingIcon={ArrowPathRoundedSquareIcon}
-                  leadingIconClassName="text-success"
-                  fullWidth
-                  textAlignLeft
-                  className="w-full px-1.5 py-[0.9rem]"
-                >
-                  Try and resume
-                </Button>
-              </DialogTrigger>
-              <CheckBatchCompletionDialog
-                batchId={batch.id}
-                redirectPath={`${location.pathname}${location.search}`}
-              />
-            </Dialog>
-          )}
-        </>
+      hiddenButtons={
+        <LinkButton to={runsPath} variant="minimal/small" LeadingIcon={ArrowRightIcon}>
+          View runs
+        </LinkButton>
       }
     />
   );
