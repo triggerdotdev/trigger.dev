@@ -30,6 +30,21 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  show-release-summary:
+    name: 📋 Release Summary
+    runs-on: ubuntu-latest
+    if: |
+      github.repository == 'triggerdotdev/trigger.dev' &&
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.head.ref == 'changeset-release/main'
+    steps:
+      - name: Show release summary
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          echo "$PR_BODY" | sed -n '/^# Releases/,$p' >> $GITHUB_STEP_SUMMARY
+
   release:
     name: 🚀 Release npm packages
     runs-on: ubuntu-latest
