@@ -1248,7 +1248,7 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
             />
             <Hint>
               Native build server builds do not rely on external build providers and will become the
-              default in the future. Version 4.1.3 or newer is required.
+              default in the future. Version 4.2.0 or newer is required.
             </Hint>
             <FormError id={fields.useNativeBuildServer.errorId}>
               {fields.useNativeBuildServer.error}
