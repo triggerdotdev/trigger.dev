@@ -7,12 +7,15 @@ import {
   ApiDeploymentListResponseItem,
   ApiDeploymentListSearchParams,
   AppendToStreamResponseBody,
+  BatchItemNDJSON,
   BatchTaskRunExecutionResult,
   BatchTriggerTaskV3RequestBody,
   BatchTriggerTaskV3Response,
   CanceledRunResponse,
   CompleteWaitpointTokenRequestBody,
   CompleteWaitpointTokenResponseBody,
+  CreateBatchRequestBody,
+  CreateBatchResponse,
   CreateEnvironmentVariableRequestBody,
   CreateScheduleOptions,
   CreateStreamResponseBody,
@@ -34,6 +37,7 @@ import {
   RetrieveRunResponse,
   RetrieveRunTraceResponseBody,
   ScheduleObject,
+  StreamBatchItemsResponse,
   TaskRunExecutionResult,
   TriggerTaskRequestBody,
   TriggerTaskResponse,
@@ -92,6 +96,12 @@ import { getEnvVar } from "../utils/getEnv.js";
 
 export type CreateWaitpointTokenResponse = Prettify<
   CreateWaitpointTokenResponseBody & {
+    publicAccessToken: string;
+  }
+>;
+
+export type CreateBatchApiResponse = Prettify<
+  CreateBatchResponse & {
     publicAccessToken: string;
   }
 >;
@@ -320,6 +330,102 @@ export class ApiClient {
           publicAccessToken: jwt,
         };
       });
+  }
+
+  /**
+   * Phase 1 of 2-phase batch API: Create a batch
+   *
+   * Creates a new batch and returns its ID. For batchTriggerAndWait,
+   * the parent run is blocked immediately on batch creation.
+   *
+   * @param body - The batch creation parameters
+   * @param requestOptions - Optional request options
+   * @returns The created batch with ID and metadata
+   */
+  createBatch(body: CreateBatchRequestBody, requestOptions?: TriggerRequestOptions) {
+    return zodfetch(
+      CreateBatchResponse,
+      `${this.baseUrl}/api/v3/batches`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    )
+      .withResponse()
+      .then(async ({ data, response }) => {
+        const claimsHeader = response.headers.get("x-trigger-jwt-claims");
+        const claims = claimsHeader ? JSON.parse(claimsHeader) : undefined;
+
+        const jwt = await generateJWT({
+          secretKey: this.accessToken,
+          payload: {
+            ...claims,
+            scopes: [`read:batch:${data.id}`],
+          },
+          expirationTime: requestOptions?.publicAccessToken?.expirationTime ?? "1h",
+        });
+
+        return {
+          ...data,
+          publicAccessToken: jwt,
+        };
+      });
+  }
+
+  /**
+   * Phase 2 of 2-phase batch API: Stream batch items
+   *
+   * Streams batch items as NDJSON to the server. Each item is enqueued
+   * as it arrives. The batch is automatically sealed when the stream completes.
+   *
+   * @param batchId - The batch ID from createBatch
+   * @param items - Array or async iterable of batch items
+   * @param requestOptions - Optional request options
+   * @returns Summary of items accepted and deduplicated
+   */
+  async streamBatchItems(
+    batchId: string,
+    items: BatchItemNDJSON[] | AsyncIterable<BatchItemNDJSON>,
+    requestOptions?: ApiRequestOptions
+  ): Promise<StreamBatchItemsResponse> {
+    const headers = this.#getHeaders(false);
+    headers["Content-Type"] = "application/x-ndjson";
+
+    // Create NDJSON stream from items
+    const stream = createNdjsonStream(items);
+
+    const response = await fetch(`${this.baseUrl}/api/v3/batches/${batchId}/items`, {
+      method: "POST",
+      headers,
+      body: stream,
+      // @ts-expect-error - duplex is required for streaming body but not in types
+      duplex: "half",
+    });
+
+    if (!response.ok) {
+      const errText = await response.text().catch((e) => (e as Error).message);
+      let errJSON: Object | undefined;
+      try {
+        errJSON = JSON.parse(errText) as Object;
+      } catch {
+        // ignore
+      }
+      const errMessage = errJSON ? undefined : errText;
+      const responseHeaders = Object.fromEntries(response.headers.entries());
+
+      throw ApiError.generate(response.status, errJSON, errMessage, responseHeaders);
+    }
+
+    const result = await response.json();
+    const parsed = StreamBatchItemsResponse.safeParse(result);
+
+    if (!parsed.success) {
+      throw new Error(`Invalid response from server: ${parsed.error.message}`);
+    }
+
+    return parsed.data;
   }
 
   createUploadPayloadUrl(filename: string, requestOptions?: ZodFetchOptions) {
@@ -1409,6 +1515,49 @@ function createSearchQueryForListWaitpointTokens(
   }
 
   return searchParams;
+}
+
+/**
+ * Creates a ReadableStream that emits NDJSON (newline-delimited JSON) from items.
+ * Handles both arrays and async iterables for streaming large batches.
+ */
+function createNdjsonStream(
+  items: BatchItemNDJSON[] | AsyncIterable<BatchItemNDJSON>
+): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+
+  // Check if items is an array
+  if (Array.isArray(items)) {
+    let index = 0;
+    return new ReadableStream({
+      pull(controller) {
+        if (index >= items.length) {
+          controller.close();
+          return;
+        }
+
+        const item = items[index++];
+        const line = JSON.stringify(item) + "\n";
+        controller.enqueue(encoder.encode(line));
+      },
+    });
+  }
+
+  // Handle async iterable
+  const iterator = items[Symbol.asyncIterator]();
+  return new ReadableStream({
+    async pull(controller) {
+      const { value, done } = await iterator.next();
+
+      if (done) {
+        controller.close();
+        return;
+      }
+
+      const line = JSON.stringify(value) + "\n";
+      controller.enqueue(encoder.encode(line));
+    },
+  });
 }
 
 export function mergeRequestOptions(

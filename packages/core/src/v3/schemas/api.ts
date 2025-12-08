@@ -314,6 +314,75 @@ export const BatchTriggerTaskV3Response = z.object({
 
 export type BatchTriggerTaskV3Response = z.infer<typeof BatchTriggerTaskV3Response>;
 
+// ============================================================================
+// 2-Phase Batch API (v3) - Streaming NDJSON Support
+// ============================================================================
+
+/**
+ * Phase 1: Create batch request body
+ * Creates the batch record and optionally blocks parent run for batchTriggerAndWait
+ */
+export const CreateBatchRequestBody = z.object({
+  /** Expected number of items in the batch */
+  runCount: z.number().int().positive(),
+  /** Parent run ID for batchTriggerAndWait (friendly ID) */
+  parentRunId: z.string().optional(),
+  /** Whether to resume parent on completion (true for batchTriggerAndWait) */
+  resumeParentOnCompletion: z.boolean().optional(),
+  /** Idempotency key for the batch */
+  idempotencyKey: z.string().optional(),
+});
+
+export type CreateBatchRequestBody = z.infer<typeof CreateBatchRequestBody>;
+
+/**
+ * Phase 1: Create batch response
+ */
+export const CreateBatchResponse = z.object({
+  /** The batch ID (friendly ID) */
+  id: z.string(),
+  /** The expected run count */
+  runCount: z.number(),
+  /** Whether this response came from a cached/idempotent batch */
+  isCached: z.boolean(),
+  /** The idempotency key if provided */
+  idempotencyKey: z.string().optional(),
+});
+
+export type CreateBatchResponse = z.infer<typeof CreateBatchResponse>;
+
+/**
+ * Phase 2: Individual item in the NDJSON stream
+ * Each line in the NDJSON body should match this schema
+ */
+export const BatchItemNDJSON = z.object({
+  /** Zero-based index of this item (used for idempotency and ordering) */
+  index: z.number().int().nonnegative(),
+  /** The task identifier to trigger */
+  task: z.string(),
+  /** The payload for this task run */
+  payload: z.unknown().optional(),
+  /** Options for this specific item */
+  options: z.record(z.unknown()).optional(),
+});
+
+export type BatchItemNDJSON = z.infer<typeof BatchItemNDJSON>;
+
+/**
+ * Phase 2: Stream items response
+ * Returned after the NDJSON stream completes
+ */
+export const StreamBatchItemsResponse = z.object({
+  /** The batch ID */
+  id: z.string(),
+  /** Number of items successfully accepted */
+  itemsAccepted: z.number(),
+  /** Number of items that were deduplicated (already enqueued) */
+  itemsDeduplicated: z.number(),
+});
+
+export type StreamBatchItemsResponse = z.infer<typeof StreamBatchItemsResponse>;
+
 export const BatchTriggerTaskResponse = z.object({
   batchId: z.string(),
   runs: z.string().array(),

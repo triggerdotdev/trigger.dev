@@ -100,9 +100,10 @@ export type DRRConfig = {
 // ============================================================================
 
 /**
- * Options for enqueueing a batch
+ * Options for initializing a batch (Phase 1 of 2-phase batch API).
+ * Items are streamed separately via enqueueBatchItem().
  */
-export type EnqueueBatchOptions = {
+export type InitializeBatchOptions = {
   /** The batch ID (internal format) */
   batchId: string;
   /** The friendly batch ID */
@@ -115,8 +116,8 @@ export type EnqueueBatchOptions = {
   organizationId: string;
   /** Project ID */
   projectId: string;
-  /** The batch items */
-  items: BatchItem[];
+  /** Expected number of items in the batch */
+  runCount: number;
   /** Optional parent run ID (for triggerAndWait) */
   parentRunId?: string;
   /** Whether to resume parent on completion */
