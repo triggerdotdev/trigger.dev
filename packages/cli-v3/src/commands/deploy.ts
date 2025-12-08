@@ -896,9 +896,32 @@ async function initializeOrAttachDeployment(
 }
 
 function getTriggeredVia(): DeploymentTriggeredVia {
+  // Check specific CI providers first (most specific to least specific)
   if (isGitHubActions()) {
     return "cli:github_actions";
   }
+  if (process.env.GITLAB_CI === "true") {
+    return "cli:gitlab_ci";
+  }
+  if (process.env.CIRCLECI === "true") {
+    return "cli:circleci";
+  }
+  if (process.env.JENKINS_URL) {
+    return "cli:jenkins";
+  }
+  if (process.env.TF_BUILD === "True") {
+    return "cli:azure_pipelines";
+  }
+  if (process.env.BITBUCKET_BUILD_NUMBER) {
+    return "cli:bitbucket_pipelines";
+  }
+  if (process.env.TRAVIS === "true") {
+    return "cli:travis_ci";
+  }
+  if (process.env.BUILDKITE === "true") {
+    return "cli:buildkite";
+  }
+  // Fallback for other/unknown CI environments
   if (isCI) {
     return "cli:ci_other";
   }
