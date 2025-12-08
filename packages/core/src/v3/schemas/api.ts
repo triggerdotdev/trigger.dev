@@ -403,7 +403,7 @@ export type ExternalBuildData = z.infer<typeof ExternalBuildData>;
 const anyString = z.custom<string & {}>((v) => typeof v === "string");
 
 export const DeploymentTriggeredVia = z
-  .enum(["cli:manual", "cli:ci", "cli:github_actions", "git_integration:github", "dashboard"])
+  .enum(["cli:manual", "cli:ci_other", "cli:github_actions", "git_integration:github", "dashboard"])
   .or(anyString);
 
 export type DeploymentTriggeredVia = z.infer<typeof DeploymentTriggeredVia>;

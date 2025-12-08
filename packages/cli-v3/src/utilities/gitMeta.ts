@@ -105,7 +105,7 @@ function errorToString(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-function isGitHubActions() {
+export function isGitHubActions() {
   // GH Actions CI sets these env variables
   return (
     process.env.GITHUB_ACTIONS === "true" &&
