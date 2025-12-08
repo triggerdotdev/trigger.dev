@@ -400,6 +400,37 @@ export const ExternalBuildData = z.object({
 
 export type ExternalBuildData = z.infer<typeof ExternalBuildData>;
 
+const anyString = z.custom<string & {}>((v) => typeof v === "string");
+
+export const DeploymentTriggeredVia = z
+  .enum([
+    "cli:manual",
+    "cli:ci_other",
+    "cli:github_actions",
+    "cli:gitlab_ci",
+    "cli:circleci",
+    "cli:jenkins",
+    "cli:azure_pipelines",
+    "cli:bitbucket_pipelines",
+    "cli:travis_ci",
+    "cli:buildkite",
+    "git_integration:github",
+    "dashboard",
+  ])
+  .or(anyString);
+
+export type DeploymentTriggeredVia = z.infer<typeof DeploymentTriggeredVia>;
+
+export const BuildServerMetadata = z.object({
+  buildId: z.string().optional(),
+  isNativeBuild: z.boolean().optional(),
+  artifactKey: z.string().optional(),
+  skipPromotion: z.boolean().optional(),
+  configFilePath: z.string().optional(),
+});
+
+export type BuildServerMetadata = z.infer<typeof BuildServerMetadata>;
+
 export const UpsertBranchRequestBody = z.object({
   git: GitMeta.optional(),
   env: z.enum(["preview"]),
@@ -462,6 +493,8 @@ export const InitializeDeploymentRequestBody = z
     type: z.enum(["MANAGED", "UNMANAGED", "V1"]).optional(),
     runtime: z.string().optional(),
     initialStatus: z.enum(["PENDING", "BUILDING"]).optional(),
+    triggeredVia: DeploymentTriggeredVia.optional(),
+    buildId: z.string().optional(),
   })
   .and(
     z.preprocess(
@@ -586,8 +619,6 @@ export const DeploymentLogEvent = z.object({
     message: z.string(),
   }),
 });
-
-const anyString = z.custom<string & {}>((v) => typeof v === "string");
 
 export const DeploymentFinalizedEvent = z.object({
   type: z.literal("finalized"),

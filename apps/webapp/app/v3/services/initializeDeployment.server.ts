@@ -1,4 +1,4 @@
-import { type InitializeDeploymentRequestBody } from "@trigger.dev/core/v3";
+import { BuildServerMetadata, type InitializeDeploymentRequestBody } from "@trigger.dev/core/v3";
 import { customAlphabet } from "nanoid";
 import { env } from "~/env.server";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
@@ -190,6 +190,21 @@ export class InitializeDeploymentService extends BaseService {
         isNativeBuild: payload.isNativeBuild,
       });
 
+      const buildServerMetadata: BuildServerMetadata | undefined =
+        payload.isNativeBuild || payload.buildId
+          ? {
+              buildId: payload.buildId,
+              ...(payload.isNativeBuild
+                ? {
+                    isNativeBuild: payload.isNativeBuild,
+                    artifactKey: payload.artifactKey,
+                    skipPromotion: payload.skipPromotion,
+                    configFilePath: payload.configFilePath,
+                  }
+                : {}),
+            }
+          : undefined;
+
       const deployment = await this._prisma.workerDeployment.create({
         data: {
           friendlyId: generateFriendlyId("deployment"),
@@ -200,12 +215,14 @@ export class InitializeDeploymentService extends BaseService {
           environmentId: environment.id,
           projectId: environment.projectId,
           externalBuildData,
+          buildServerMetadata,
           triggeredById: triggeredBy?.id,
           type: payload.type,
           imageReference: imageRef,
           imagePlatform: env.DEPLOY_IMAGE_PLATFORM,
           git: payload.gitMeta ?? undefined,
           runtime: payload.runtime ?? undefined,
+          triggeredVia: payload.triggeredVia ?? undefined,
           startedAt: initialStatus === "BUILDING" ? new Date() : undefined,
         },
       });
