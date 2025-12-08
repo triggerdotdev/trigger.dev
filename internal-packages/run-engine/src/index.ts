@@ -11,7 +11,7 @@ export type { AuthenticatedEnvironment } from "./shared/index.js";
 export { BatchQueue, BatchCompletionTracker } from "./batch-queue/index.js";
 export type {
   BatchQueueOptions,
-  EnqueueBatchOptions,
+  InitializeBatchOptions,
   CompleteBatchResult,
   BatchItem,
   BatchMeta,

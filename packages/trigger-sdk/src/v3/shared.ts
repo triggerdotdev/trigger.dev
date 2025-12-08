@@ -53,6 +53,7 @@ import type {
   BatchByTaskItem,
   BatchByTaskResult,
   BatchItem,
+  BatchItemNDJSON,
   BatchResult,
   BatchRunHandle,
   BatchRunHandleFromTypes,
@@ -572,69 +573,72 @@ export async function batchTriggerById<TTask extends AnyTask>(
 ): Promise<BatchRunHandleFromTypes<InferRunTypes<TTask>>> {
   const apiClient = apiClientManager.clientOrThrow(requestOptions?.clientConfig);
 
-  const response = await apiClient.batchTriggerV3(
-    {
-      items: await Promise.all(
-        items.map(async (item, index) => {
-          const taskMetadata = resourceCatalog.getTask(item.id);
+  // Prepare items as BatchItemNDJSON
+  const ndJsonItems: BatchItemNDJSON[] = await Promise.all(
+    items.map(async (item, index) => {
+      const taskMetadata = resourceCatalog.getTask(item.id);
 
-          const parsedPayload = taskMetadata?.fns.parsePayload
-            ? await taskMetadata?.fns.parsePayload(item.payload)
-            : item.payload;
+      const parsedPayload = taskMetadata?.fns.parsePayload
+        ? await taskMetadata?.fns.parsePayload(item.payload)
+        : item.payload;
 
-          const payloadPacket = await stringifyIO(parsedPayload);
+      const payloadPacket = await stringifyIO(parsedPayload);
 
-          const batchItemIdempotencyKey = await makeIdempotencyKey(
-            flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
-          );
+      const batchItemIdempotencyKey = await makeIdempotencyKey(
+        flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
+      );
 
-          return {
-            task: item.id,
-            payload: payloadPacket.data,
-            options: {
-              queue: item.options?.queue ? { name: item.options.queue } : undefined,
-              concurrencyKey: item.options?.concurrencyKey,
-              test: taskContext.ctx?.run.isTest,
-              payloadType: payloadPacket.dataType,
-              delay: item.options?.delay,
-              ttl: item.options?.ttl,
-              tags: item.options?.tags,
-              maxAttempts: item.options?.maxAttempts,
-              metadata: item.options?.metadata,
-              maxDuration: item.options?.maxDuration,
-              idempotencyKey:
-                (await makeIdempotencyKey(item.options?.idempotencyKey)) ?? batchItemIdempotencyKey,
-              idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
-              machine: item.options?.machine,
-              priority: item.options?.priority,
-              region: item.options?.region,
-              lockToVersion: item.options?.version ?? getEnvVar("TRIGGER_VERSION"),
-            },
-          } satisfies BatchTriggerTaskV2RequestBody["items"][0];
-        })
-      ),
-      parentRunId: taskContext.ctx?.run.id,
+      return {
+        index,
+        task: item.id,
+        payload: payloadPacket.data,
+        options: {
+          queue: item.options?.queue ? { name: item.options.queue } : undefined,
+          concurrencyKey: item.options?.concurrencyKey,
+          test: taskContext.ctx?.run.isTest,
+          payloadType: payloadPacket.dataType,
+          delay: item.options?.delay,
+          ttl: item.options?.ttl,
+          tags: item.options?.tags,
+          maxAttempts: item.options?.maxAttempts,
+          metadata: item.options?.metadata,
+          maxDuration: item.options?.maxDuration,
+          idempotencyKey:
+            (await makeIdempotencyKey(item.options?.idempotencyKey)) ?? batchItemIdempotencyKey,
+          idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
+          machine: item.options?.machine,
+          priority: item.options?.priority,
+          region: item.options?.region,
+          lockToVersion: item.options?.version ?? getEnvVar("TRIGGER_VERSION"),
+        },
+      };
+    })
+  );
+
+  // Execute 2-phase batch
+  const response = await tracer.startActiveSpan(
+    "batch.trigger()",
+    async (span) => {
+      const result = await executeBatchTwoPhase(
+        apiClient,
+        ndJsonItems,
+        {
+          parentRunId: taskContext.ctx?.run.id,
+          idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
+        },
+        requestOptions
+      );
+
+      span.setAttribute("batchId", result.id);
+      span.setAttribute("runCount", result.runCount);
+
+      return result;
     },
     {
-      spanParentAsLink: true,
-      processingStrategy: options?.triggerSequentially ? "sequential" : undefined,
-    },
-    {
-      name: "batch.trigger()",
-      tracer,
-      icon: "trigger",
-      onResponseBody(body, span) {
-        if (body && typeof body === "object" && !Array.isArray(body)) {
-          if ("id" in body && typeof body.id === "string") {
-            span.setAttribute("batchId", body.id);
-          }
-
-          if ("runCount" in body && typeof body.runCount === "number") {
-            span.setAttribute("runCount", body.runCount);
-          }
-        }
+      kind: SpanKind.PRODUCER,
+      attributes: {
+        [SemanticInternalAttributes.STYLE_ICON]: "trigger",
       },
-      ...requestOptions,
     }
   );
 
@@ -737,56 +741,59 @@ export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
 
   const apiClient = apiClientManager.clientOrThrow(requestOptions?.clientConfig);
 
+  // Prepare items as BatchItemNDJSON
+  const ndJsonItems: BatchItemNDJSON[] = await Promise.all(
+    items.map(async (item, index) => {
+      const taskMetadata = resourceCatalog.getTask(item.id);
+
+      const parsedPayload = taskMetadata?.fns.parsePayload
+        ? await taskMetadata?.fns.parsePayload(item.payload)
+        : item.payload;
+
+      const payloadPacket = await stringifyIO(parsedPayload);
+
+      const batchItemIdempotencyKey = await makeIdempotencyKey(
+        flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
+      );
+
+      return {
+        index,
+        task: item.id,
+        payload: payloadPacket.data,
+        options: {
+          lockToVersion: taskContext.worker?.version,
+          queue: item.options?.queue ? { name: item.options.queue } : undefined,
+          concurrencyKey: item.options?.concurrencyKey,
+          test: taskContext.ctx?.run.isTest,
+          payloadType: payloadPacket.dataType,
+          delay: item.options?.delay,
+          ttl: item.options?.ttl,
+          tags: item.options?.tags,
+          maxAttempts: item.options?.maxAttempts,
+          metadata: item.options?.metadata,
+          maxDuration: item.options?.maxDuration,
+          idempotencyKey:
+            (await makeIdempotencyKey(item.options?.idempotencyKey)) ?? batchItemIdempotencyKey,
+          idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
+          machine: item.options?.machine,
+          priority: item.options?.priority,
+          region: item.options?.region,
+        },
+      };
+    })
+  );
+
   return await tracer.startActiveSpan(
     "batch.triggerAndWait()",
     async (span) => {
-      const response = await apiClient.batchTriggerV3(
+      // Execute 2-phase batch
+      const response = await executeBatchTwoPhase(
+        apiClient,
+        ndJsonItems,
         {
-          items: await Promise.all(
-            items.map(async (item, index) => {
-              const taskMetadata = resourceCatalog.getTask(item.id);
-
-              const parsedPayload = taskMetadata?.fns.parsePayload
-                ? await taskMetadata?.fns.parsePayload(item.payload)
-                : item.payload;
-
-              const payloadPacket = await stringifyIO(parsedPayload);
-
-              const batchItemIdempotencyKey = await makeIdempotencyKey(
-                flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
-              );
-
-              return {
-                task: item.id,
-                payload: payloadPacket.data,
-                options: {
-                  lockToVersion: taskContext.worker?.version,
-                  queue: item.options?.queue ? { name: item.options.queue } : undefined,
-                  concurrencyKey: item.options?.concurrencyKey,
-                  test: taskContext.ctx?.run.isTest,
-                  payloadType: payloadPacket.dataType,
-                  delay: item.options?.delay,
-                  ttl: item.options?.ttl,
-                  tags: item.options?.tags,
-                  maxAttempts: item.options?.maxAttempts,
-                  metadata: item.options?.metadata,
-                  maxDuration: item.options?.maxDuration,
-                  idempotencyKey:
-                    (await makeIdempotencyKey(item.options?.idempotencyKey)) ??
-                    batchItemIdempotencyKey,
-                  idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
-                  machine: item.options?.machine,
-                  priority: item.options?.priority,
-                  region: item.options?.region,
-                },
-              } satisfies BatchTriggerTaskV2RequestBody["items"][0];
-            })
-          ),
           parentRunId: ctx.run.id,
           resumeParentOnCompletion: true,
-        },
-        {
-          processingStrategy: options?.triggerSequentially ? "sequential" : undefined,
+          idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
         },
         requestOptions
       );
@@ -902,69 +909,72 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
 ): Promise<BatchTasksRunHandleFromTypes<TTasks>> {
   const apiClient = apiClientManager.clientOrThrow(requestOptions?.clientConfig);
 
-  const response = await apiClient.batchTriggerV3(
-    {
-      items: await Promise.all(
-        items.map(async (item, index) => {
-          const taskMetadata = resourceCatalog.getTask(item.task.id);
+  // Prepare items as BatchItemNDJSON
+  const ndJsonItems: BatchItemNDJSON[] = await Promise.all(
+    items.map(async (item, index) => {
+      const taskMetadata = resourceCatalog.getTask(item.task.id);
 
-          const parsedPayload = taskMetadata?.fns.parsePayload
-            ? await taskMetadata?.fns.parsePayload(item.payload)
-            : item.payload;
+      const parsedPayload = taskMetadata?.fns.parsePayload
+        ? await taskMetadata?.fns.parsePayload(item.payload)
+        : item.payload;
 
-          const payloadPacket = await stringifyIO(parsedPayload);
+      const payloadPacket = await stringifyIO(parsedPayload);
 
-          const batchItemIdempotencyKey = await makeIdempotencyKey(
-            flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
-          );
+      const batchItemIdempotencyKey = await makeIdempotencyKey(
+        flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
+      );
 
-          return {
-            task: item.task.id,
-            payload: payloadPacket.data,
-            options: {
-              queue: item.options?.queue ? { name: item.options.queue } : undefined,
-              concurrencyKey: item.options?.concurrencyKey,
-              test: taskContext.ctx?.run.isTest,
-              payloadType: payloadPacket.dataType,
-              delay: item.options?.delay,
-              ttl: item.options?.ttl,
-              tags: item.options?.tags,
-              maxAttempts: item.options?.maxAttempts,
-              metadata: item.options?.metadata,
-              maxDuration: item.options?.maxDuration,
-              idempotencyKey:
-                (await makeIdempotencyKey(item.options?.idempotencyKey)) ?? batchItemIdempotencyKey,
-              idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
-              machine: item.options?.machine,
-              priority: item.options?.priority,
-              region: item.options?.region,
-              lockToVersion: item.options?.version ?? getEnvVar("TRIGGER_VERSION"),
-            },
-          } satisfies BatchTriggerTaskV2RequestBody["items"][0];
-        })
-      ),
-      parentRunId: taskContext.ctx?.run.id,
+      return {
+        index,
+        task: item.task.id,
+        payload: payloadPacket.data,
+        options: {
+          queue: item.options?.queue ? { name: item.options.queue } : undefined,
+          concurrencyKey: item.options?.concurrencyKey,
+          test: taskContext.ctx?.run.isTest,
+          payloadType: payloadPacket.dataType,
+          delay: item.options?.delay,
+          ttl: item.options?.ttl,
+          tags: item.options?.tags,
+          maxAttempts: item.options?.maxAttempts,
+          metadata: item.options?.metadata,
+          maxDuration: item.options?.maxDuration,
+          idempotencyKey:
+            (await makeIdempotencyKey(item.options?.idempotencyKey)) ?? batchItemIdempotencyKey,
+          idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
+          machine: item.options?.machine,
+          priority: item.options?.priority,
+          region: item.options?.region,
+          lockToVersion: item.options?.version ?? getEnvVar("TRIGGER_VERSION"),
+        },
+      };
+    })
+  );
+
+  // Execute 2-phase batch
+  const response = await tracer.startActiveSpan(
+    "batch.triggerByTask()",
+    async (span) => {
+      const result = await executeBatchTwoPhase(
+        apiClient,
+        ndJsonItems,
+        {
+          parentRunId: taskContext.ctx?.run.id,
+          idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
+        },
+        requestOptions
+      );
+
+      span.setAttribute("batchId", result.id);
+      span.setAttribute("runCount", result.runCount);
+
+      return result;
     },
     {
-      spanParentAsLink: true,
-      processingStrategy: options?.triggerSequentially ? "sequential" : undefined,
-    },
-    {
-      name: "batch.triggerByTask()",
-      tracer,
-      icon: "trigger",
-      onResponseBody(body, span) {
-        if (body && typeof body === "object" && !Array.isArray(body)) {
-          if ("id" in body && typeof body.id === "string") {
-            span.setAttribute("batchId", body.id);
-          }
-
-          if ("runCount" in body && typeof body.runCount === "number") {
-            span.setAttribute("runCount", body.runCount);
-          }
-        }
+      kind: SpanKind.PRODUCER,
+      attributes: {
+        [SemanticInternalAttributes.STYLE_ICON]: "trigger",
       },
-      ...requestOptions,
     }
   );
 
@@ -1069,56 +1079,59 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
 
   const apiClient = apiClientManager.clientOrThrow(requestOptions?.clientConfig);
 
+  // Prepare items as BatchItemNDJSON
+  const ndJsonItems: BatchItemNDJSON[] = await Promise.all(
+    items.map(async (item, index) => {
+      const taskMetadata = resourceCatalog.getTask(item.task.id);
+
+      const parsedPayload = taskMetadata?.fns.parsePayload
+        ? await taskMetadata?.fns.parsePayload(item.payload)
+        : item.payload;
+
+      const payloadPacket = await stringifyIO(parsedPayload);
+
+      const batchItemIdempotencyKey = await makeIdempotencyKey(
+        flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
+      );
+
+      return {
+        index,
+        task: item.task.id,
+        payload: payloadPacket.data,
+        options: {
+          lockToVersion: taskContext.worker?.version,
+          queue: item.options?.queue ? { name: item.options.queue } : undefined,
+          concurrencyKey: item.options?.concurrencyKey,
+          test: taskContext.ctx?.run.isTest,
+          payloadType: payloadPacket.dataType,
+          delay: item.options?.delay,
+          ttl: item.options?.ttl,
+          tags: item.options?.tags,
+          maxAttempts: item.options?.maxAttempts,
+          metadata: item.options?.metadata,
+          maxDuration: item.options?.maxDuration,
+          idempotencyKey:
+            (await makeIdempotencyKey(item.options?.idempotencyKey)) ?? batchItemIdempotencyKey,
+          idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
+          machine: item.options?.machine,
+          priority: item.options?.priority,
+          region: item.options?.region,
+        },
+      };
+    })
+  );
+
   return await tracer.startActiveSpan(
     "batch.triggerByTaskAndWait()",
     async (span) => {
-      const response = await apiClient.batchTriggerV3(
+      // Execute 2-phase batch
+      const response = await executeBatchTwoPhase(
+        apiClient,
+        ndJsonItems,
         {
-          items: await Promise.all(
-            items.map(async (item, index) => {
-              const taskMetadata = resourceCatalog.getTask(item.task.id);
-
-              const parsedPayload = taskMetadata?.fns.parsePayload
-                ? await taskMetadata?.fns.parsePayload(item.payload)
-                : item.payload;
-
-              const payloadPacket = await stringifyIO(parsedPayload);
-
-              const batchItemIdempotencyKey = await makeIdempotencyKey(
-                flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
-              );
-
-              return {
-                task: item.task.id,
-                payload: payloadPacket.data,
-                options: {
-                  lockToVersion: taskContext.worker?.version,
-                  queue: item.options?.queue ? { name: item.options.queue } : undefined,
-                  concurrencyKey: item.options?.concurrencyKey,
-                  test: taskContext.ctx?.run.isTest,
-                  payloadType: payloadPacket.dataType,
-                  delay: item.options?.delay,
-                  ttl: item.options?.ttl,
-                  tags: item.options?.tags,
-                  maxAttempts: item.options?.maxAttempts,
-                  metadata: item.options?.metadata,
-                  maxDuration: item.options?.maxDuration,
-                  idempotencyKey:
-                    (await makeIdempotencyKey(item.options?.idempotencyKey)) ??
-                    batchItemIdempotencyKey,
-                  idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
-                  machine: item.options?.machine,
-                  priority: item.options?.priority,
-                  region: item.options?.region,
-                },
-              } satisfies BatchTriggerTaskV2RequestBody["items"][0];
-            })
-          ),
           parentRunId: ctx.run.id,
           resumeParentOnCompletion: true,
-        },
-        {
-          processingStrategy: options?.triggerSequentially ? "sequential" : undefined,
+          idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
         },
         requestOptions
       );
@@ -1146,6 +1159,47 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
       },
     }
   );
+}
+
+/**
+ * Helper function that executes a 2-phase batch trigger:
+ * 1. Creates the batch record with expected run count
+ * 2. Streams items as NDJSON to the server
+ *
+ * @internal
+ */
+async function executeBatchTwoPhase(
+  apiClient: ReturnType<typeof apiClientManager.clientOrThrow>,
+  items: BatchItemNDJSON[],
+  options: {
+    parentRunId?: string;
+    resumeParentOnCompletion?: boolean;
+    idempotencyKey?: string;
+  },
+  requestOptions?: TriggerApiRequestOptions
+): Promise<{ id: string; runCount: number; publicAccessToken: string }> {
+  // Phase 1: Create batch
+  const batch = await apiClient.createBatch(
+    {
+      runCount: items.length,
+      parentRunId: options.parentRunId,
+      resumeParentOnCompletion: options.resumeParentOnCompletion,
+      idempotencyKey: options.idempotencyKey,
+    },
+    requestOptions
+  );
+
+  // If the batch was cached (idempotent replay), skip streaming items
+  if (!batch.isCached) {
+    // Phase 2: Stream items
+    await apiClient.streamBatchItems(batch.id, items, requestOptions);
+  }
+
+  return {
+    id: batch.id,
+    runCount: batch.runCount,
+    publicAccessToken: batch.publicAccessToken,
+  };
 }
 
 async function trigger_internal<TRunTypes extends AnyRunTypes>(
@@ -1220,69 +1274,81 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
 
   const ctx = taskContext.ctx;
 
-  const response = await apiClient.batchTriggerV3(
+  // Prepare items as BatchItemNDJSON
+  const ndJsonItems: BatchItemNDJSON[] = await Promise.all(
+    items.map(async (item, index) => {
+      const parsedPayload = parsePayload ? await parsePayload(item.payload) : item.payload;
+
+      const payloadPacket = await stringifyIO(parsedPayload);
+
+      const batchItemIdempotencyKey = await makeIdempotencyKey(
+        flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
+      );
+
+      return {
+        index,
+        task: taskIdentifier,
+        payload: payloadPacket.data,
+        options: {
+          queue: item.options?.queue
+            ? { name: item.options.queue }
+            : queue
+            ? { name: queue }
+            : undefined,
+          concurrencyKey: item.options?.concurrencyKey,
+          test: taskContext.ctx?.run.isTest,
+          payloadType: payloadPacket.dataType,
+          delay: item.options?.delay,
+          ttl: item.options?.ttl,
+          tags: item.options?.tags,
+          maxAttempts: item.options?.maxAttempts,
+          metadata: item.options?.metadata,
+          maxDuration: item.options?.maxDuration,
+          idempotencyKey:
+            (await makeIdempotencyKey(item.options?.idempotencyKey)) ?? batchItemIdempotencyKey,
+          idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
+          machine: item.options?.machine,
+          priority: item.options?.priority,
+          region: item.options?.region,
+          lockToVersion: item.options?.version ?? getEnvVar("TRIGGER_VERSION"),
+        },
+      };
+    })
+  );
+
+  // Execute 2-phase batch
+  const response = await tracer.startActiveSpan(
+    name,
+    async (span) => {
+      const result = await executeBatchTwoPhase(
+        apiClient,
+        ndJsonItems,
+        {
+          parentRunId: ctx?.run.id,
+          idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
+        },
+        requestOptions
+      );
+
+      span.setAttribute("batchId", result.id);
+      span.setAttribute("runCount", result.runCount);
+
+      return result;
+    },
     {
-      items: await Promise.all(
-        items.map(async (item, index) => {
-          const parsedPayload = parsePayload ? await parsePayload(item.payload) : item.payload;
-
-          const payloadPacket = await stringifyIO(parsedPayload);
-
-          const batchItemIdempotencyKey = await makeIdempotencyKey(
-            flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
-          );
-
-          return {
-            task: taskIdentifier,
-            payload: payloadPacket.data,
-            options: {
-              queue: item.options?.queue
-                ? { name: item.options.queue }
-                : queue
-                ? { name: queue }
-                : undefined,
-              concurrencyKey: item.options?.concurrencyKey,
-              test: taskContext.ctx?.run.isTest,
-              payloadType: payloadPacket.dataType,
-              delay: item.options?.delay,
-              ttl: item.options?.ttl,
-              tags: item.options?.tags,
-              maxAttempts: item.options?.maxAttempts,
-              metadata: item.options?.metadata,
-              maxDuration: item.options?.maxDuration,
-              idempotencyKey:
-                (await makeIdempotencyKey(item.options?.idempotencyKey)) ?? batchItemIdempotencyKey,
-              idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
-              machine: item.options?.machine,
-              priority: item.options?.priority,
-              region: item.options?.region,
-              lockToVersion: item.options?.version ?? getEnvVar("TRIGGER_VERSION"),
+      kind: SpanKind.PRODUCER,
+      attributes: {
+        [SemanticInternalAttributes.STYLE_ICON]: "trigger",
+        ...accessoryAttributes({
+          items: [
+            {
+              text: taskIdentifier,
+              variant: "normal",
             },
-          } satisfies BatchTriggerTaskV2RequestBody["items"][0];
-        })
-      ),
-      parentRunId: ctx?.run.id,
-    },
-    {
-      spanParentAsLink: true,
-      processingStrategy: options?.triggerSequentially ? "sequential" : undefined,
-    },
-    {
-      name,
-      tracer,
-      icon: "trigger",
-      onResponseBody(body, span) {
-        if (body && typeof body === "object" && !Array.isArray(body)) {
-          if ("id" in body && typeof body.id === "string") {
-            span.setAttribute("batchId", body.id);
-          }
-
-          if ("runCount" in body && Array.isArray(body.runCount)) {
-            span.setAttribute("runCount", body.runCount);
-          }
-        }
+          ],
+          style: "codepath",
+        }),
       },
-      ...requestOptions,
     }
   );
 
@@ -1391,56 +1457,59 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
 
   const apiClient = apiClientManager.clientOrThrow(requestOptions?.clientConfig);
 
+  // Prepare items as BatchItemNDJSON
+  const ndJsonItems: BatchItemNDJSON[] = await Promise.all(
+    items.map(async (item, index) => {
+      const parsedPayload = parsePayload ? await parsePayload(item.payload) : item.payload;
+
+      const payloadPacket = await stringifyIO(parsedPayload);
+
+      const batchItemIdempotencyKey = await makeIdempotencyKey(
+        flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
+      );
+
+      return {
+        index,
+        task: id,
+        payload: payloadPacket.data,
+        options: {
+          lockToVersion: taskContext.worker?.version,
+          queue: item.options?.queue
+            ? { name: item.options.queue }
+            : queue
+            ? { name: queue }
+            : undefined,
+          concurrencyKey: item.options?.concurrencyKey,
+          test: taskContext.ctx?.run.isTest,
+          payloadType: payloadPacket.dataType,
+          delay: item.options?.delay,
+          ttl: item.options?.ttl,
+          tags: item.options?.tags,
+          maxAttempts: item.options?.maxAttempts,
+          metadata: item.options?.metadata,
+          maxDuration: item.options?.maxDuration,
+          idempotencyKey:
+            (await makeIdempotencyKey(item.options?.idempotencyKey)) ?? batchItemIdempotencyKey,
+          idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
+          machine: item.options?.machine,
+          priority: item.options?.priority,
+          region: item.options?.region,
+        },
+      };
+    })
+  );
+
   return await tracer.startActiveSpan(
     name,
     async (span) => {
-      const response = await apiClient.batchTriggerV3(
+      // Execute 2-phase batch
+      const response = await executeBatchTwoPhase(
+        apiClient,
+        ndJsonItems,
         {
-          items: await Promise.all(
-            items.map(async (item, index) => {
-              const parsedPayload = parsePayload ? await parsePayload(item.payload) : item.payload;
-
-              const payloadPacket = await stringifyIO(parsedPayload);
-
-              const batchItemIdempotencyKey = await makeIdempotencyKey(
-                flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
-              );
-
-              return {
-                task: id,
-                payload: payloadPacket.data,
-                options: {
-                  lockToVersion: taskContext.worker?.version,
-                  queue: item.options?.queue
-                    ? { name: item.options.queue }
-                    : queue
-                    ? { name: queue }
-                    : undefined,
-                  concurrencyKey: item.options?.concurrencyKey,
-                  test: taskContext.ctx?.run.isTest,
-                  payloadType: payloadPacket.dataType,
-                  delay: item.options?.delay,
-                  ttl: item.options?.ttl,
-                  tags: item.options?.tags,
-                  maxAttempts: item.options?.maxAttempts,
-                  metadata: item.options?.metadata,
-                  maxDuration: item.options?.maxDuration,
-                  idempotencyKey:
-                    (await makeIdempotencyKey(item.options?.idempotencyKey)) ??
-                    batchItemIdempotencyKey,
-                  idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
-                  machine: item.options?.machine,
-                  priority: item.options?.priority,
-                  region: item.options?.region,
-                },
-              } satisfies BatchTriggerTaskV2RequestBody["items"][0];
-            })
-          ),
-          resumeParentOnCompletion: true,
           parentRunId: ctx.run.id,
-        },
-        {
-          processingStrategy: options?.triggerSequentially ? "sequential" : undefined,
+          resumeParentOnCompletion: true,
+          idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
         },
         requestOptions
       );

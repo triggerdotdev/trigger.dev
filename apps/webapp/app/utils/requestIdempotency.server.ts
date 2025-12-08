@@ -4,7 +4,7 @@ import { logger } from "~/services/logger.server";
 import { requestIdempotency } from "~/services/requestIdempotencyInstance.server";
 import { startActiveSpan } from "~/v3/tracer.server";
 
-type RequestIdempotencyType = "batch-trigger" | "trigger";
+type RequestIdempotencyType = "batch-trigger" | "trigger" | "create-batch";
 
 export type IdempotencyConfig<T, R> = {
   requestType: RequestIdempotencyType;

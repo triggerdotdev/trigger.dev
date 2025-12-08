@@ -1,8 +1,7 @@
 import { redisTest } from "@internal/testcontainers";
 import { describe, expect, vi } from "vitest";
 import { BatchQueue } from "../index.js";
-import type { CompleteBatchResult } from "../types.js";
-import type { EnqueueBatchOptions } from "../types.js";
+import type { CompleteBatchResult, InitializeBatchOptions, BatchItem } from "../types.js";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -27,11 +26,11 @@ describe("BatchQueue", () => {
     });
   }
 
-  function createEnqueueOptions(
+  function createInitOptions(
     batchId: string,
     envId: string,
-    itemCount: number
-  ): EnqueueBatchOptions {
+    runCount: number
+  ): InitializeBatchOptions {
     return {
       batchId,
       friendlyId: `friendly_${batchId}`,
@@ -39,23 +38,38 @@ describe("BatchQueue", () => {
       environmentType: "DEVELOPMENT",
       organizationId: "org123",
       projectId: "proj123",
-      items: Array.from({ length: itemCount }, (_, i) => ({
-        task: `task-${i}`,
-        payload: JSON.stringify({ index: i }),
-        payloadType: "application/json",
-        options: { tags: [`tag-${i}`] },
-      })),
+      runCount,
     };
   }
 
-  describe("enqueueBatch", () => {
-    redisTest("should enqueue a batch successfully", async ({ redisContainer }) => {
+  function createBatchItems(count: number): BatchItem[] {
+    return Array.from({ length: count }, (_, i) => ({
+      task: `task-${i}`,
+      payload: JSON.stringify({ index: i }),
+      payloadType: "application/json",
+      options: { tags: [`tag-${i}`] },
+    }));
+  }
+
+  async function enqueueItems(
+    queue: BatchQueue,
+    batchId: string,
+    envId: string,
+    items: BatchItem[]
+  ): Promise<void> {
+    for (let i = 0; i < items.length; i++) {
+      await queue.enqueueBatchItem(batchId, envId, i, items[i]);
+    }
+  }
+
+  describe("initializeBatch + enqueueBatchItem (2-phase API)", () => {
+    redisTest("should initialize a batch successfully", async ({ redisContainer }) => {
       const queue = createBatchQueue(redisContainer);
       try {
-        const options = createEnqueueOptions("batch1", "env1", 5);
-        await queue.enqueueBatch(options);
+        const options = createInitOptions("batch1", "env1", 5);
+        await queue.initializeBatch(options);
 
-        // Verify batch was enqueued
+        // Verify batch metadata was stored
         const meta = await queue.getBatchMeta("batch1");
         expect(meta).not.toBeNull();
         expect(meta?.batchId).toBe("batch1");
@@ -66,11 +80,12 @@ describe("BatchQueue", () => {
       }
     });
 
-    redisTest("should track remaining count", async ({ redisContainer }) => {
+    redisTest("should enqueue items and track remaining count", async ({ redisContainer }) => {
       const queue = createBatchQueue(redisContainer);
       try {
-        const options = createEnqueueOptions("batch1", "env1", 10);
-        await queue.enqueueBatch(options);
+        await queue.initializeBatch(createInitOptions("batch1", "env1", 10));
+        const items = createBatchItems(10);
+        await enqueueItems(queue, "batch1", "env1", items);
 
         const count = await queue.getBatchRemainingCount("batch1");
         expect(count).toBe(10);
@@ -82,9 +97,13 @@ describe("BatchQueue", () => {
     redisTest("should enqueue multiple batches", async ({ redisContainer }) => {
       const queue = createBatchQueue(redisContainer);
       try {
-        await queue.enqueueBatch(createEnqueueOptions("batch1", "env1", 5));
-        await queue.enqueueBatch(createEnqueueOptions("batch2", "env1", 3));
-        await queue.enqueueBatch(createEnqueueOptions("batch3", "env2", 7));
+        await queue.initializeBatch(createInitOptions("batch1", "env1", 5));
+        await queue.initializeBatch(createInitOptions("batch2", "env1", 3));
+        await queue.initializeBatch(createInitOptions("batch3", "env2", 7));
+
+        await enqueueItems(queue, "batch1", "env1", createBatchItems(5));
+        await enqueueItems(queue, "batch2", "env1", createBatchItems(3));
+        await enqueueItems(queue, "batch3", "env2", createBatchItems(7));
 
         expect(await queue.getBatchRemainingCount("batch1")).toBe(5);
         expect(await queue.getBatchRemainingCount("batch2")).toBe(3);
@@ -97,14 +116,14 @@ describe("BatchQueue", () => {
     redisTest("should store batch metadata correctly", async ({ redisContainer }) => {
       const queue = createBatchQueue(redisContainer);
       try {
-        const options: EnqueueBatchOptions = {
+        const options: InitializeBatchOptions = {
           batchId: "batch1",
           friendlyId: "batch_abc123",
           environmentId: "env1",
           environmentType: "PRODUCTION",
           organizationId: "org456",
           projectId: "proj789",
-          items: [{ task: "my-task", payload: '{"data": true}' }],
+          runCount: 1,
           parentRunId: "run_parent",
           resumeParentOnCompletion: true,
           triggerVersion: "1.0.0",
@@ -113,7 +132,11 @@ describe("BatchQueue", () => {
           planType: "paid",
         };
 
-        await queue.enqueueBatch(options);
+        await queue.initializeBatch(options);
+        await queue.enqueueBatchItem("batch1", "env1", 0, {
+          task: "my-task",
+          payload: '{"data": true}',
+        });
 
         const meta = await queue.getBatchMeta("batch1");
         expect(meta).not.toBeNull();
@@ -127,6 +150,29 @@ describe("BatchQueue", () => {
         expect(meta?.spanParentAsLink).toBe(true);
         expect(meta?.idempotencyKey).toBe("idem123");
         expect(meta?.planType).toBe("paid");
+      } finally {
+        await queue.close();
+      }
+    });
+
+    redisTest("should deduplicate items with same index", async ({ redisContainer }) => {
+      const queue = createBatchQueue(redisContainer);
+      try {
+        await queue.initializeBatch(createInitOptions("batch1", "env1", 2));
+
+        const item: BatchItem = { task: "task-0", payload: '{"index": 0}' };
+
+        // First enqueue should succeed
+        const result1 = await queue.enqueueBatchItem("batch1", "env1", 0, item);
+        expect(result1.enqueued).toBe(true);
+
+        // Second enqueue with same index should be deduplicated
+        const result2 = await queue.enqueueBatchItem("batch1", "env1", 0, item);
+        expect(result2.enqueued).toBe(false);
+
+        // Different index should succeed
+        const result3 = await queue.enqueueBatchItem("batch1", "env1", 1, item);
+        expect(result3.enqueued).toBe(true);
       } finally {
         await queue.close();
       }
@@ -150,8 +196,9 @@ describe("BatchQueue", () => {
           completionResult = result;
         });
 
-        // Enqueue a small batch
-        await queue.enqueueBatch(createEnqueueOptions("batch1", "env1", 3));
+        // Initialize and enqueue a small batch
+        await queue.initializeBatch(createInitOptions("batch1", "env1", 3));
+        await enqueueItems(queue, "batch1", "env1", createBatchItems(3));
 
         // Wait for processing
         await vi.waitFor(
@@ -166,10 +213,10 @@ describe("BatchQueue", () => {
         expect(processedItems.map((p) => p.itemIndex).sort()).toEqual([0, 1, 2]);
 
         // Verify completion result
-        expect(completionResult?.batchId).toBe("batch1");
-        expect(completionResult?.successfulRunCount).toBe(3);
-        expect(completionResult?.failedRunCount).toBe(0);
-        expect(completionResult?.runIds).toEqual(["run_0", "run_1", "run_2"]);
+        expect(completionResult!.batchId).toBe("batch1");
+        expect(completionResult!.successfulRunCount).toBe(3);
+        expect(completionResult!.failedRunCount).toBe(0);
+        expect(completionResult!.runIds).toEqual(["run_0", "run_1", "run_2"]);
       } finally {
         await queue.close();
       }
@@ -192,7 +239,8 @@ describe("BatchQueue", () => {
           completionResult = result;
         });
 
-        await queue.enqueueBatch(createEnqueueOptions("batch1", "env1", 3));
+        await queue.initializeBatch(createInitOptions("batch1", "env1", 3));
+        await enqueueItems(queue, "batch1", "env1", createBatchItems(3));
 
         await vi.waitFor(
           () => {
@@ -202,12 +250,12 @@ describe("BatchQueue", () => {
         );
 
         // Verify mixed results
-        expect(completionResult?.successfulRunCount).toBe(2);
-        expect(completionResult?.failedRunCount).toBe(1);
-        expect(completionResult?.failures).toHaveLength(1);
-        expect(completionResult?.failures[0].index).toBe(1);
-        expect(completionResult?.failures[0].error).toBe("Task failed");
-        expect(completionResult?.failures[0].errorCode).toBe("TASK_ERROR");
+        expect(completionResult!.successfulRunCount).toBe(2);
+        expect(completionResult!.failedRunCount).toBe(1);
+        expect(completionResult!.failures).toHaveLength(1);
+        expect(completionResult!.failures[0].index).toBe(1);
+        expect(completionResult!.failures[0].error).toBe("Task failed");
+        expect(completionResult!.failures[0].errorCode).toBe("TASK_ERROR");
       } finally {
         await queue.close();
       }
@@ -230,7 +278,8 @@ describe("BatchQueue", () => {
           completionResult = result;
         });
 
-        await queue.enqueueBatch(createEnqueueOptions("batch1", "env1", 2));
+        await queue.initializeBatch(createInitOptions("batch1", "env1", 2));
+        await enqueueItems(queue, "batch1", "env1", createBatchItems(2));
 
         await vi.waitFor(
           () => {
@@ -240,9 +289,9 @@ describe("BatchQueue", () => {
         );
 
         // Exception should be recorded as failure
-        expect(completionResult?.failedRunCount).toBe(1);
-        expect(completionResult?.failures[0].error).toBe("Unexpected error");
-        expect(completionResult?.failures[0].errorCode).toBe("UNEXPECTED_ERROR");
+        expect(completionResult!.failedRunCount).toBe(1);
+        expect(completionResult!.failures[0].error).toBe("Unexpected error");
+        expect(completionResult!.failures[0].errorCode).toBe("UNEXPECTED_ERROR");
       } finally {
         await queue.close();
       }
@@ -267,44 +316,48 @@ describe("BatchQueue", () => {
       }
     });
 
-    redisTest("should process items only when consumers are started", async ({ redisContainer }) => {
-      const queue = createBatchQueue(redisContainer, { startConsumers: false });
-      const processedItems: number[] = [];
-      let completionCalled = false;
+    redisTest(
+      "should process items only when consumers are started",
+      async ({ redisContainer }) => {
+        const queue = createBatchQueue(redisContainer, { startConsumers: false });
+        const processedItems: number[] = [];
+        let completionCalled = false;
 
-      try {
-        queue.onProcessItem(async ({ itemIndex }) => {
-          processedItems.push(itemIndex);
-          return { success: true, runId: `run_${itemIndex}` };
-        });
+        try {
+          queue.onProcessItem(async ({ itemIndex }) => {
+            processedItems.push(itemIndex);
+            return { success: true, runId: `run_${itemIndex}` };
+          });
 
-        queue.onBatchComplete(async () => {
-          completionCalled = true;
-        });
+          queue.onBatchComplete(async () => {
+            completionCalled = true;
+          });
 
-        // Enqueue batch without starting consumers
-        await queue.enqueueBatch(createEnqueueOptions("batch1", "env1", 3));
+          // Enqueue batch without starting consumers
+          await queue.initializeBatch(createInitOptions("batch1", "env1", 3));
+          await enqueueItems(queue, "batch1", "env1", createBatchItems(3));
 
-        // Wait a bit - nothing should be processed
-        await new Promise((resolve) => setTimeout(resolve, 200));
-        expect(processedItems).toHaveLength(0);
+          // Wait a bit - nothing should be processed
+          await new Promise((resolve) => setTimeout(resolve, 200));
+          expect(processedItems).toHaveLength(0);
 
-        // Now start consumers
-        queue.start();
+          // Now start consumers
+          queue.start();
 
-        // Wait for processing
-        await vi.waitFor(
-          () => {
-            expect(completionCalled).toBe(true);
-          },
-          { timeout: 5000 }
-        );
+          // Wait for processing
+          await vi.waitFor(
+            () => {
+              expect(completionCalled).toBe(true);
+            },
+            { timeout: 5000 }
+          );
 
-        expect(processedItems).toHaveLength(3);
-      } finally {
-        await queue.close();
+          expect(processedItems).toHaveLength(3);
+        } finally {
+          await queue.close();
+        }
       }
-    });
+    );
   });
 
   describe("fair scheduling (DRR)", () => {
@@ -325,9 +378,11 @@ describe("BatchQueue", () => {
             completedBatches.push(result.batchId);
           });
 
-          // Enqueue batches for two environments
-          await queue.enqueueBatch(createEnqueueOptions("batch1", "env1", 20));
-          await queue.enqueueBatch(createEnqueueOptions("batch2", "env2", 20));
+          // Initialize and enqueue batches for two environments
+          await queue.initializeBatch(createInitOptions("batch1", "env1", 20));
+          await queue.initializeBatch(createInitOptions("batch2", "env2", 20));
+          await enqueueItems(queue, "batch1", "env1", createBatchItems(20));
+          await enqueueItems(queue, "batch2", "env2", createBatchItems(20));
 
           // Wait for both to complete
           await vi.waitFor(
@@ -358,11 +413,14 @@ describe("BatchQueue", () => {
           return { success: true, runId: `run_${Date.now()}` };
         });
 
-        // Enqueue env1 with many items first
-        await queue.enqueueBatch(createEnqueueOptions("batch1", "env1", 30));
+        // Initialize and enqueue env1 with many items first
+        await queue.initializeBatch(createInitOptions("batch1", "env1", 30));
+        await enqueueItems(queue, "batch1", "env1", createBatchItems(30));
+
         // Small delay then enqueue env2
         await new Promise((resolve) => setTimeout(resolve, 50));
-        await queue.enqueueBatch(createEnqueueOptions("batch2", "env2", 10));
+        await queue.initializeBatch(createInitOptions("batch2", "env2", 10));
+        await enqueueItems(queue, "batch2", "env2", createBatchItems(10));
 
         // Wait for env2 batch to complete
         await vi.waitFor(
@@ -398,7 +456,8 @@ describe("BatchQueue", () => {
           completionResult = result;
         });
 
-        await queue.enqueueBatch(createEnqueueOptions("batch1", "env1", 5));
+        await queue.initializeBatch(createInitOptions("batch1", "env1", 5));
+        await enqueueItems(queue, "batch1", "env1", createBatchItems(5));
 
         await vi.waitFor(
           () => {
@@ -409,63 +468,67 @@ describe("BatchQueue", () => {
 
         // Verify completion result contains all runs
         // Note: After completion, batch data is cleaned up from Redis
-        expect(completionResult?.batchId).toBe("batch1");
-        expect(completionResult?.successfulRunCount).toBe(5);
-        expect(completionResult?.failedRunCount).toBe(0);
-        expect(completionResult?.runIds).toHaveLength(5);
-        expect(completionResult?.runIds).toContain("run_0");
-        expect(completionResult?.runIds).toContain("run_4");
+        expect(completionResult!.batchId).toBe("batch1");
+        expect(completionResult!.successfulRunCount).toBe(5);
+        expect(completionResult!.failedRunCount).toBe(0);
+        expect(completionResult!.runIds).toHaveLength(5);
+        expect(completionResult!.runIds).toContain("run_0");
+        expect(completionResult!.runIds).toContain("run_4");
       } finally {
         await queue.close();
       }
     });
 
-    redisTest("should track failures with details in completion result", async ({ redisContainer }) => {
-      const queue = createBatchQueue(redisContainer, { startConsumers: true });
-      let completionResult: CompleteBatchResult | null = null;
+    redisTest(
+      "should track failures with details in completion result",
+      async ({ redisContainer }) => {
+        const queue = createBatchQueue(redisContainer, { startConsumers: true });
+        let completionResult: CompleteBatchResult | null = null;
 
-      try {
-        queue.onProcessItem(async ({ itemIndex, item }) => {
-          if (itemIndex % 2 === 0) {
-            return {
-              success: false,
-              error: `Error on ${item.task}`,
-              errorCode: "VALIDATION_ERROR",
-            };
+        try {
+          queue.onProcessItem(async ({ itemIndex, item }) => {
+            if (itemIndex % 2 === 0) {
+              return {
+                success: false,
+                error: `Error on ${item.task}`,
+                errorCode: "VALIDATION_ERROR",
+              };
+            }
+            return { success: true, runId: `run_${itemIndex}` };
+          });
+
+          queue.onBatchComplete(async (result) => {
+            completionResult = result;
+          });
+
+          await queue.initializeBatch(createInitOptions("batch1", "env1", 4));
+          await enqueueItems(queue, "batch1", "env1", createBatchItems(4));
+
+          await vi.waitFor(
+            () => {
+              expect(completionResult).not.toBeNull();
+            },
+            { timeout: 5000 }
+          );
+
+          // Verify completion result has failure details
+          // Note: After completion, batch data is cleaned up from Redis
+          expect(completionResult!.batchId).toBe("batch1");
+          expect(completionResult!.successfulRunCount).toBe(2); // Items 1 and 3 succeeded
+          expect(completionResult!.failedRunCount).toBe(2); // Items 0 and 2 failed
+          expect(completionResult!.failures).toHaveLength(2);
+
+          for (const failure of completionResult!.failures) {
+            expect(failure.errorCode).toBe("VALIDATION_ERROR");
+            expect(failure.taskIdentifier).toMatch(/^task-\d+$/);
+            expect(failure.error).toMatch(/^Error on task-\d+$/);
+            expect([0, 2]).toContain(failure.index); // Even indices failed
           }
-          return { success: true, runId: `run_${itemIndex}` };
-        });
-
-        queue.onBatchComplete(async (result) => {
-          completionResult = result;
-        });
-
-        await queue.enqueueBatch(createEnqueueOptions("batch1", "env1", 4));
-
-        await vi.waitFor(
-          () => {
-            expect(completionResult).not.toBeNull();
-          },
-          { timeout: 5000 }
-        );
-
-        // Verify completion result has failure details
-        // Note: After completion, batch data is cleaned up from Redis
-        expect(completionResult?.batchId).toBe("batch1");
-        expect(completionResult?.successfulRunCount).toBe(2); // Items 1 and 3 succeeded
-        expect(completionResult?.failedRunCount).toBe(2); // Items 0 and 2 failed
-        expect(completionResult?.failures).toHaveLength(2);
-        
-        for (const failure of completionResult?.failures ?? []) {
-          expect(failure.errorCode).toBe("VALIDATION_ERROR");
-          expect(failure.taskIdentifier).toMatch(/^task-\d+$/);
-          expect(failure.error).toMatch(/^Error on task-\d+$/);
-          expect([0, 2]).toContain(failure.index); // Even indices failed
+        } finally {
+          await queue.close();
         }
-      } finally {
-        await queue.close();
       }
-    });
+    );
 
     redisTest("should preserve order of successful runs", async ({ redisContainer }) => {
       const queue = createBatchQueue(redisContainer, { startConsumers: true });
@@ -480,7 +543,8 @@ describe("BatchQueue", () => {
           completionResult = result;
         });
 
-        await queue.enqueueBatch(createEnqueueOptions("batch1", "env1", 10));
+        await queue.initializeBatch(createInitOptions("batch1", "env1", 10));
+        await enqueueItems(queue, "batch1", "env1", createBatchItems(10));
 
         await vi.waitFor(
           () => {
@@ -490,9 +554,17 @@ describe("BatchQueue", () => {
         );
 
         // Runs should be in order since items are processed sequentially
-        expect(completionResult?.runIds).toEqual([
-          "run_0", "run_1", "run_2", "run_3", "run_4",
-          "run_5", "run_6", "run_7", "run_8", "run_9"
+        expect(completionResult!.runIds).toEqual([
+          "run_0",
+          "run_1",
+          "run_2",
+          "run_3",
+          "run_4",
+          "run_5",
+          "run_6",
+          "run_7",
+          "run_8",
+          "run_9",
         ]);
       } finally {
         await queue.close();
@@ -500,4 +572,3 @@ describe("BatchQueue", () => {
     });
   });
 });
-

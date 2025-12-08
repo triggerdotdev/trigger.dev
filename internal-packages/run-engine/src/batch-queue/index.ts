@@ -14,13 +14,13 @@ import type {
   BatchMeta,
   BatchQueueOptions,
   CompleteBatchResult,
-  EnqueueBatchOptions,
+  InitializeBatchOptions,
   ProcessBatchItemCallback,
 } from "./types.js";
 import { BatchItemPayload as BatchItemPayloadSchema } from "./types.js";
 import { BatchCompletionTracker } from "./completionTracker.js";
 
-export type { BatchQueueOptions, EnqueueBatchOptions, CompleteBatchResult } from "./types.js";
+export type { BatchQueueOptions, InitializeBatchOptions, CompleteBatchResult } from "./types.js";
 export { BatchCompletionTracker } from "./completionTracker.js";
 
 /**
@@ -173,19 +173,18 @@ export class BatchQueue {
   }
 
   // ============================================================================
-  // Public API - Enqueueing
+  // Public API - Enqueueing (2-Phase API)
   // ============================================================================
 
   /**
-   * Enqueue a new batch for processing.
+   * Initialize a batch for 2-phase processing (Phase 1).
    *
-   * This stores batch metadata in the completion tracker and enqueues
-   * all items as messages to the FairQueue.
+   * This stores batch metadata in the completion tracker WITHOUT enqueueing
+   * any items. Items are streamed separately via enqueueBatchItem().
    *
-   * Note: If FairQueue enqueue fails after metadata is stored, we clean up
-   * the orphaned metadata to prevent leaks.
+   * Use this for the v3 streaming batch API where items are sent via NDJSON stream.
    */
-  async enqueueBatch(options: EnqueueBatchOptions): Promise<void> {
+  async initializeBatch(options: InitializeBatchOptions): Promise<void> {
     const now = Date.now();
 
     // Prepare batch metadata
@@ -196,7 +195,7 @@ export class BatchQueue {
       environmentType: options.environmentType,
       organizationId: options.organizationId,
       projectId: options.projectId,
-      runCount: options.items.length,
+      runCount: options.runCount,
       createdAt: now,
       parentRunId: options.parentRunId,
       resumeParentOnCompletion: options.resumeParentOnCompletion,
@@ -208,57 +207,95 @@ export class BatchQueue {
       planType: options.planType,
     };
 
-    // Store metadata in completion tracker first
+    // Store metadata in completion tracker
     await this.completionTracker.storeMeta(options.batchId, meta);
-
-    // Create queue ID in format: env:{envId}:batch:{batchId}
-    const queueId = this.#makeQueueId(options.environmentId, options.batchId);
-
-    // Build messages for FairQueue
-    const messages = options.items.map((item, index) => ({
-      payload: {
-        batchId: options.batchId,
-        friendlyId: options.friendlyId,
-        itemIndex: index,
-        item,
-      } satisfies BatchItemPayload,
-      timestamp: now + index, // Ensure ordering by index
-    }));
-
-    try {
-      // Enqueue all items as messages
-      await this.fairQueue.enqueueBatch({
-        queueId,
-        tenantId: options.environmentId,
-        messages,
-        metadata: {
-          batchId: options.batchId,
-          friendlyId: options.friendlyId,
-          envId: options.environmentId,
-        },
-      });
-    } catch (error) {
-      // Clean up orphaned metadata on failure
-      this.logger.error("Failed to enqueue batch, cleaning up metadata", {
-        batchId: options.batchId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      await this.completionTracker.cleanup(options.batchId);
-      throw error;
-    }
 
     // Record metric
     this.batchesEnqueuedCounter?.add(1, {
       envId: options.environmentId,
-      itemCount: options.items.length,
+      itemCount: options.runCount,
+      streaming: true,
     });
 
-    this.logger.debug("Batch enqueued", {
+    this.logger.debug("Batch initialized for streaming", {
       batchId: options.batchId,
       friendlyId: options.friendlyId,
       envId: options.environmentId,
-      itemCount: options.items.length,
+      runCount: options.runCount,
     });
+  }
+
+  /**
+   * Enqueue a single item to an existing batch (Phase 2).
+   *
+   * This is used for streaming batch item ingestion in the v3 API.
+   * Returns whether the item was enqueued (true) or deduplicated (false).
+   *
+   * @param batchId - The batch ID (internal format)
+   * @param envId - The environment ID (needed for queue routing)
+   * @param itemIndex - Zero-based index of this item
+   * @param item - The batch item to enqueue
+   * @returns Object with enqueued status
+   */
+  async enqueueBatchItem(
+    batchId: string,
+    envId: string,
+    itemIndex: number,
+    item: BatchItem
+  ): Promise<{ enqueued: boolean }> {
+    // Get batch metadata to verify it exists and get friendlyId
+    const meta = await this.completionTracker.getMeta(batchId);
+    if (!meta) {
+      throw new Error(`Batch ${batchId} not found or not initialized`);
+    }
+
+    // Atomically check and mark as enqueued for idempotency
+    const isNewItem = await this.completionTracker.markItemEnqueued(batchId, itemIndex);
+    if (!isNewItem) {
+      // Item was already enqueued, deduplicate
+      this.logger.debug("Batch item deduplicated", { batchId, itemIndex });
+      return { enqueued: false };
+    }
+
+    // Create queue ID in format: env:{envId}:batch:{batchId}
+    const queueId = this.#makeQueueId(envId, batchId);
+
+    // Build message payload
+    const payload: BatchItemPayload = {
+      batchId,
+      friendlyId: meta.friendlyId,
+      itemIndex,
+      item,
+    };
+
+    // Enqueue single message
+    await this.fairQueue.enqueue({
+      queueId,
+      tenantId: envId,
+      payload,
+      timestamp: meta.createdAt + itemIndex, // Preserve ordering by index
+      metadata: {
+        batchId,
+        friendlyId: meta.friendlyId,
+        envId,
+      },
+    });
+
+    this.logger.debug("Batch item enqueued", {
+      batchId,
+      itemIndex,
+      task: item.task,
+    });
+
+    return { enqueued: true };
+  }
+
+  /**
+   * Get the count of items that have been enqueued for a batch.
+   * Useful for progress tracking during streaming ingestion.
+   */
+  async getEnqueuedCount(batchId: string): Promise<number> {
+    return this.completionTracker.getEnqueuedCount(batchId);
   }
 
   // ============================================================================
@@ -443,7 +480,11 @@ export class BatchQueue {
 
       if (result.success) {
         // Pass itemIndex for idempotency - prevents double-counting on redelivery
-        processedCount = await this.completionTracker.recordSuccess(batchId, result.runId, itemIndex);
+        processedCount = await this.completionTracker.recordSuccess(
+          batchId,
+          result.runId,
+          itemIndex
+        );
         this.itemsProcessedCounter?.add(1, { envId: meta.environmentId });
         this.logger.debug("Batch item processed successfully", {
           batchId,

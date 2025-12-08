@@ -1,12 +1,8 @@
 import { json } from "@remix-run/server-runtime";
-import {
-  BatchTriggerTaskV3RequestBody,
-  BatchTriggerTaskV3Response,
-  generateJWT,
-} from "@trigger.dev/core/v3";
+import { CreateBatchRequestBody, CreateBatchResponse, generateJWT } from "@trigger.dev/core/v3";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
-import { RunEngineBatchTriggerService } from "~/runEngine/services/batchTrigger.server";
+import { CreateBatchService } from "~/runEngine/services/createBatch.server";
 import { AuthenticatedEnvironment, getOneTimeUseToken } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
@@ -15,41 +11,60 @@ import {
   saveRequestIdempotency,
 } from "~/utils/requestIdempotency.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
-import { BatchProcessingStrategy } from "~/v3/services/batchTriggerV3.server";
 import { OutOfEntitlementError } from "~/v3/services/triggerTask.server";
 import { HeadersSchema } from "./api.v1.tasks.$taskId.trigger";
 import { determineRealtimeStreamsVersion } from "~/services/realtime/v1StreamsGlobal.server";
 import { extractJwtSigningSecretKey } from "~/services/realtime/jwtAuth.server";
+import { engine } from "~/v3/runEngine.server";
 
+/**
+ * Phase 1 of 2-phase batch API: Create a batch.
+ *
+ * POST /api/v3/batches
+ *
+ * Creates a batch record and optionally blocks the parent run for batchTriggerAndWait.
+ * Items are streamed separately via POST /api/v3/batches/:batchId/items
+ */
 const { action, loader } = createActionApiRoute(
   {
-    headers: HeadersSchema.extend({
-      "batch-processing-strategy": BatchProcessingStrategy.nullish(),
-    }),
-    body: BatchTriggerTaskV3RequestBody,
+    headers: HeadersSchema,
+    body: CreateBatchRequestBody,
     allowJWT: true,
-    maxContentLength: env.BATCH_TASK_PAYLOAD_MAXIMUM_SIZE,
+    maxContentLength: 65_536, // 64KB is plenty for the batch metadata
     authorization: {
       action: "batchTrigger",
-      resource: (_, __, ___, body) => ({
-        tasks: Array.from(new Set(body.items.map((i) => i.task))),
+      resource: () => ({
+        // No specific tasks to authorize at batch creation time
+        // Tasks are validated when items are streamed
+        tasks: [],
       }),
       superScopes: ["write:tasks", "admin"],
     },
     corsStrategy: "all",
   },
-  async ({ body, headers, params, authentication }) => {
-    if (!body.items.length) {
-      return json({ error: "Batch cannot be triggered with no items" }, { status: 400 });
+  async ({ body, headers, authentication }) => {
+    // Validate runCount
+    if (body.runCount <= 0) {
+      return json({ error: "runCount must be a positive integer" }, { status: 400 });
     }
 
-    // Check the there are fewer than MAX_BATCH_V2_TRIGGER_ITEMS items
-    if (body.items.length > env.MAX_BATCH_V2_TRIGGER_ITEMS) {
+    // Check runCount against limit
+    if (body.runCount > env.STREAMING_BATCH_MAX_ITEMS) {
       return json(
         {
-          error: `Batch size of ${body.items.length} is too large. Maximum allowed batch size is ${env.MAX_BATCH_V2_TRIGGER_ITEMS}.`,
+          error: `Batch runCount of ${body.runCount} exceeds maximum allowed of ${env.STREAMING_BATCH_MAX_ITEMS}.`,
         },
         { status: 400 }
+      );
+    }
+
+    // Verify BatchQueue is enabled
+    if (!engine.isBatchQueueEnabled()) {
+      return json(
+        {
+          error: "Streaming batch API is not available. BatchQueue is not enabled.",
+        },
+        { status: 503 }
       );
     }
 
@@ -58,9 +73,6 @@ const { action, loader } = createActionApiRoute(
       "x-trigger-span-parent-as-link": spanParentAsLink,
       "x-trigger-worker": isFromWorker,
       "x-trigger-client": triggerClient,
-      "x-trigger-engine-version": engineVersion,
-      "batch-processing-strategy": batchProcessingStrategy,
-      "x-trigger-request-idempotency-key": requestIdempotencyKey,
       "x-trigger-realtime-streams-version": realtimeStreamsVersion,
       traceparent,
       tracestate,
@@ -68,19 +80,22 @@ const { action, loader } = createActionApiRoute(
 
     const oneTimeUseToken = await getOneTimeUseToken(authentication);
 
-    logger.debug("Batch trigger request", {
+    logger.debug("Create batch request", {
+      runCount: body.runCount,
+      parentRunId: body.parentRunId,
+      resumeParentOnCompletion: body.resumeParentOnCompletion,
+      idempotencyKey: body.idempotencyKey,
       triggerVersion,
-      spanParentAsLink,
       isFromWorker,
       triggerClient,
-      traceparent,
-      tracestate,
-      batchProcessingStrategy,
-      requestIdempotencyKey,
     });
 
-    const cachedResponse = await handleRequestIdempotency(requestIdempotencyKey, {
-      requestType: "batch-trigger",
+    // Handle idempotency for the batch creation
+    const cachedResponse = await handleRequestIdempotency<
+      { friendlyId: string; runCount: number },
+      CreateBatchResponse
+    >(body.idempotencyKey, {
+      requestType: "create-batch",
       findCachedEntity: async (cachedRequestId) => {
         return await prisma.batchTaskRun.findFirst({
           where: {
@@ -96,8 +111,9 @@ const { action, loader } = createActionApiRoute(
       buildResponse: (cachedBatch) => ({
         id: cachedBatch.friendlyId,
         runCount: cachedBatch.runCount,
+        isCached: true,
       }),
-      buildResponseHeaders: async (responseBody, cachedEntity) => {
+      buildResponseHeaders: async (responseBody) => {
         return await responseHeaders(responseBody, authentication.environment, triggerClient);
       },
     });
@@ -110,12 +126,10 @@ const { action, loader } = createActionApiRoute(
       ? { traceparent, tracestate }
       : { external: { traceparent, tracestate } };
 
-    // Note: SDK v4.1+ uses the 2-phase batch API (POST /api/v3/batches + streaming items)
-    // This endpoint is for backwards compatibility with older SDK versions
-    const service = new RunEngineBatchTriggerService(batchProcessingStrategy ?? undefined);
+    const service = new CreateBatchService();
 
     service.onBatchTaskRunCreated.attachOnce(async (batch) => {
-      await saveRequestIdempotency(requestIdempotencyKey, "batch-trigger", batch.id);
+      await saveRequestIdempotency(body.idempotencyKey, "create-batch", batch.id);
     });
 
     try {
@@ -140,7 +154,7 @@ const { action, loader } = createActionApiRoute(
         headers: $responseHeaders,
       });
     } catch (error) {
-      logger.error("Batch trigger error", {
+      logger.error("Create batch error", {
         error: {
           message: (error as Error).message,
           stack: (error as Error).stack,
@@ -164,7 +178,7 @@ const { action, loader } = createActionApiRoute(
 );
 
 async function responseHeaders(
-  batch: BatchTriggerTaskV3Response,
+  batch: CreateBatchResponse,
   environment: AuthenticatedEnvironment,
   triggerClient?: string | null
 ): Promise<Record<string, string>> {
@@ -177,7 +191,7 @@ async function responseHeaders(
     const claims = {
       sub: environment.id,
       pub: true,
-      scopes: [`read:batch:${batch.id}`],
+      scopes: [`read:batch:${batch.id}`, `write:batch:${batch.id}`],
     };
 
     const jwt = await generateJWT({

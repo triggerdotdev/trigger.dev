@@ -537,6 +537,10 @@ const EnvironmentSchema = z
     MAX_BATCH_V2_TRIGGER_ITEMS: z.coerce.number().int().default(500),
     MAX_BATCH_AND_WAIT_V2_TRIGGER_ITEMS: z.coerce.number().int().default(500),
 
+    // 2-phase batch API settings
+    STREAMING_BATCH_MAX_ITEMS: z.coerce.number().int().default(1_000), // Max items in streaming batch
+    STREAMING_BATCH_ITEM_MAXIMUM_SIZE: z.coerce.number().int().default(512_000), // 512KB max per NDJSON line
+
     REALTIME_STREAM_VERSION: z.enum(["v1", "v2"]).default("v1"),
     REALTIME_STREAM_MAX_LENGTH: z.coerce.number().int().default(1000),
     REALTIME_STREAM_TTL: z.coerce

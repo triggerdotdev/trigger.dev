@@ -10,6 +10,7 @@ const RUNS_SUFFIX = "runs";
 const FAILURES_SUFFIX = "failures";
 const PROCESSED_SUFFIX = "processed";
 const PROCESSED_ITEMS_SUFFIX = "processed_items";
+const ENQUEUED_ITEMS_SUFFIX = "enqueued_items";
 
 /**
  * BatchCompletionTracker handles batch metadata storage and completion tracking.
@@ -71,6 +72,10 @@ export class BatchCompletionTracker {
 
   private processedItemsKey(batchId: string): string {
     return `${KEY_PREFIX}:${batchId}:${PROCESSED_ITEMS_SUFFIX}`;
+  }
+
+  private enqueuedItemsKey(batchId: string): string {
+    return `${KEY_PREFIX}:${batchId}:${ENQUEUED_ITEMS_SUFFIX}`;
   }
 
   // ============================================================================
@@ -218,6 +223,39 @@ export class BatchCompletionTracker {
   }
 
   // ============================================================================
+  // Enqueue Tracking (for 2-phase batch API)
+  // ============================================================================
+
+  /**
+   * Check if an item index has already been enqueued.
+   * Used for idempotency in the streaming batch items endpoint.
+   */
+  async isItemEnqueued(batchId: string, itemIndex: number): Promise<boolean> {
+    const enqueuedKey = this.enqueuedItemsKey(batchId);
+    const result = await this.redis.sismember(enqueuedKey, itemIndex.toString());
+    return result === 1;
+  }
+
+  /**
+   * Mark an item index as enqueued atomically.
+   * Returns true if the item was newly added (not a duplicate).
+   * Returns false if the item was already enqueued (deduplicated).
+   */
+  async markItemEnqueued(batchId: string, itemIndex: number): Promise<boolean> {
+    const enqueuedKey = this.enqueuedItemsKey(batchId);
+    const added = await this.redis.sadd(enqueuedKey, itemIndex.toString());
+    return added === 1;
+  }
+
+  /**
+   * Get the count of enqueued items for a batch.
+   */
+  async getEnqueuedCount(batchId: string): Promise<number> {
+    const enqueuedKey = this.enqueuedItemsKey(batchId);
+    return await this.redis.scard(enqueuedKey);
+  }
+
+  // ============================================================================
   // Completion Operations
   // ============================================================================
 
@@ -250,6 +288,7 @@ export class BatchCompletionTracker {
       this.failuresKey(batchId),
       this.processedCountKey(batchId),
       this.processedItemsKey(batchId),
+      this.enqueuedItemsKey(batchId),
     ];
 
     await this.redis.del(...keys);

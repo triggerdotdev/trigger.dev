@@ -756,23 +756,28 @@ describe("RunEngine batchTriggerAndWait", () => {
         assertNonNullable(afterBlockedByBatch);
         expect(afterBlockedByBatch.snapshot.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
 
-        // Enqueue batch items to BatchQueue
-        const batchItems: BatchItem[] = [
-          { task: childTask, payload: '{"item": 0}', payloadType: "application/json" },
-          { task: childTask, payload: '{"item": 1}', payloadType: "application/json" },
-        ];
-
-        await engine.enqueueBatchToQueue({
+        // Initialize batch metadata in Redis (Phase 1)
+        await engine.initializeBatch({
           batchId: batch.id,
           friendlyId: batch.friendlyId,
           environmentId: authenticatedEnvironment.id,
           environmentType: authenticatedEnvironment.type,
           organizationId: authenticatedEnvironment.organizationId,
           projectId: authenticatedEnvironment.projectId,
-          items: batchItems,
+          runCount: 2,
           parentRunId: parentRun.id,
           resumeParentOnCompletion: true,
         });
+
+        // Enqueue batch items (Phase 2)
+        const batchItems: BatchItem[] = [
+          { task: childTask, payload: '{"item": 0}', payloadType: "application/json" },
+          { task: childTask, payload: '{"item": 1}', payloadType: "application/json" },
+        ];
+
+        for (let i = 0; i < batchItems.length; i++) {
+          await engine.enqueueBatchItem(batch.id, authenticatedEnvironment.id, i, batchItems[i]);
+        }
 
         // Wait for BatchQueue consumers to process items AND database to be updated
         await vi.waitFor(
@@ -1082,24 +1087,29 @@ describe("RunEngine batchTriggerAndWait", () => {
         assertNonNullable(afterBlockedByBatch);
         expect(afterBlockedByBatch.snapshot.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
 
-        // Enqueue batch items to BatchQueue (3 items, index 1 will fail)
-        const batchItems: BatchItem[] = [
-          { task: childTask, payload: '{"item": 0}', payloadType: "application/json" },
-          { task: childTask, payload: '{"item": 1}', payloadType: "application/json" }, // Will fail
-          { task: childTask, payload: '{"item": 2}', payloadType: "application/json" },
-        ];
-
-        await engine.enqueueBatchToQueue({
+        // Initialize batch metadata in Redis (Phase 1)
+        await engine.initializeBatch({
           batchId: batch.id,
           friendlyId: batch.friendlyId,
           environmentId: authenticatedEnvironment.id,
           environmentType: authenticatedEnvironment.type,
           organizationId: authenticatedEnvironment.organizationId,
           projectId: authenticatedEnvironment.projectId,
-          items: batchItems,
+          runCount: 3,
           parentRunId: parentRun.id,
           resumeParentOnCompletion: true,
         });
+
+        // Enqueue batch items (Phase 2) - index 1 will fail
+        const batchItems: BatchItem[] = [
+          { task: childTask, payload: '{"item": 0}', payloadType: "application/json" },
+          { task: childTask, payload: '{"item": 1}', payloadType: "application/json" }, // Will fail
+          { task: childTask, payload: '{"item": 2}', payloadType: "application/json" },
+        ];
+
+        for (let i = 0; i < batchItems.length; i++) {
+          await engine.enqueueBatchItem(batch.id, authenticatedEnvironment.id, i, batchItems[i]);
+        }
 
         // Wait for BatchQueue consumers to process items AND database to be updated
         await vi.waitFor(

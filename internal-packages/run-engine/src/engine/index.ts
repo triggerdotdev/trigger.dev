@@ -32,7 +32,7 @@ import { BatchQueue } from "../batch-queue/index.js";
 import type {
   BatchItem,
   CompleteBatchResult,
-  EnqueueBatchOptions,
+  InitializeBatchOptions,
   ProcessBatchItemCallback,
   BatchCompletionCallback,
 } from "../batch-queue/types.js";
@@ -974,17 +974,6 @@ export class RunEngine {
   }
 
   /**
-   * Enqueue a batch to the BatchQueue for DRR-based processing.
-   * Throws if BatchQueue is not enabled.
-   */
-  async enqueueBatchToQueue(options: EnqueueBatchOptions): Promise<void> {
-    if (!this.batchQueue) {
-      throw new Error("BatchQueue is not enabled. Configure batchQueue in RunEngine options.");
-    }
-    return this.batchQueue.enqueueBatch(options);
-  }
-
-  /**
    * Set the callback for processing batch items.
    * This is called for each item dequeued from the batch queue.
    */
@@ -1031,6 +1020,60 @@ export class RunEngine {
       return null;
     }
     return this.batchQueue.getBatchProgress(batchId);
+  }
+
+  // ============================================================================
+  // Batch Queue - 2-Phase API (v3)
+  // ============================================================================
+
+  /**
+   * Initialize a batch for 2-phase processing (Phase 1).
+   *
+   * This stores batch metadata in Redis WITHOUT enqueueing any items.
+   * Items are streamed separately via enqueueBatchItem().
+   *
+   * Use this for the v3 streaming batch API where items are sent via NDJSON stream.
+   */
+  async initializeBatch(options: InitializeBatchOptions): Promise<void> {
+    if (!this.batchQueue) {
+      throw new Error("BatchQueue is not enabled. Configure batchQueue in RunEngine options.");
+    }
+    return this.batchQueue.initializeBatch(options);
+  }
+
+  /**
+   * Enqueue a single item to an existing batch (Phase 2).
+   *
+   * This is used for streaming batch item ingestion in the v3 API.
+   * Returns whether the item was enqueued (true) or deduplicated (false).
+   *
+   * @param batchId - The batch ID (internal format)
+   * @param envId - The environment ID (needed for queue routing)
+   * @param itemIndex - Zero-based index of this item
+   * @param item - The batch item to enqueue
+   * @returns Object with enqueued status
+   */
+  async enqueueBatchItem(
+    batchId: string,
+    envId: string,
+    itemIndex: number,
+    item: BatchItem
+  ): Promise<{ enqueued: boolean }> {
+    if (!this.batchQueue) {
+      throw new Error("BatchQueue is not enabled. Configure batchQueue in RunEngine options.");
+    }
+    return this.batchQueue.enqueueBatchItem(batchId, envId, itemIndex, item);
+  }
+
+  /**
+   * Get the count of items that have been enqueued for a batch.
+   * Useful for progress tracking during streaming ingestion.
+   */
+  async getBatchEnqueuedCount(batchId: string): Promise<number> {
+    if (!this.batchQueue) {
+      return 0;
+    }
+    return this.batchQueue.getEnqueuedCount(batchId);
   }
 
   async getWaitpoint({

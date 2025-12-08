@@ -1,10 +1,7 @@
-import {
-  type BatchTriggerTaskV3RequestBody,
-  type BatchTriggerTaskV3Response,
-} from "@trigger.dev/core/v3";
+import { type CreateBatchRequestBody, type CreateBatchResponse } from "@trigger.dev/core/v3";
 import { BatchId, RunId } from "@trigger.dev/core/v3/isomorphic";
 import { type BatchTaskRun, Prisma } from "@trigger.dev/database";
-import { type BatchItem, type EnqueueBatchOptions } from "@internal/run-engine";
+import type { InitializeBatchOptions } from "@internal/run-engine";
 import { Evt } from "evt";
 import { prisma, type PrismaClientOrTransaction } from "~/db.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
@@ -13,31 +10,27 @@ import { DefaultQueueManager } from "../concerns/queues.server";
 import { DefaultTriggerTaskValidator } from "../validators/triggerTaskValidator";
 import { ServiceValidationError, WithRunEngine } from "../../v3/services/baseService.server";
 
-export type BatchTriggerTaskServiceOptions = {
+export type CreateBatchServiceOptions = {
   triggerVersion?: string;
   traceContext?: Record<string, string | undefined | Record<string, string | undefined>>;
   spanParentAsLink?: boolean;
   oneTimeUseToken?: string;
   realtimeStreamsVersion?: "v1" | "v2";
-  idempotencyKey?: string;
 };
 
 /**
- * Run Engine v2 Batch Trigger Service using Redis-based BatchQueue with DRR scheduling.
+ * Create Batch Service (Phase 1 of 2-phase batch API).
  *
- * This service:
- * 1. Creates BatchTaskRun in Postgres with status=PROCESSING
- * 2. Enqueues all items to BatchQueue (via RunEngine)
+ * This service handles Phase 1 of the streaming batch API:
+ * 1. Validates entitlement and queue limits
+ * 2. Creates BatchTaskRun in Postgres with status=PENDING, expectedCount set
  * 3. For batchTriggerAndWait: blocks the parent run immediately
- * 4. Returns immediately - BatchQueue consumers handle run creation
+ * 4. Initializes batch metadata in Redis
+ * 5. Returns batch ID - items are streamed separately via Phase 2
  *
- * The BatchQueue uses Deficit Round Robin scheduling to ensure fair processing
- * across environments, preventing any single environment from monopolizing workers.
- *
- * NOTE: BatchQueue callbacks are set up in the RunEngine initialization (runEngine.server.ts),
- * not in this service.
+ * The batch is NOT sealed until Phase 2 completes.
  */
-export class RunEngineBatchTriggerServiceV2 extends WithRunEngine {
+export class CreateBatchService extends WithRunEngine {
   public onBatchTaskRunCreated: Evt<BatchTaskRun> = new Evt();
   private readonly queueConcern: DefaultQueueManager;
   private readonly validator: DefaultTriggerTaskValidator;
@@ -50,21 +43,23 @@ export class RunEngineBatchTriggerServiceV2 extends WithRunEngine {
   }
 
   /**
-   * Trigger a batch of tasks.
+   * Create a batch for 2-phase processing.
+   * Items will be streamed separately via the StreamBatchItemsService.
    */
   public async call(
     environment: AuthenticatedEnvironment,
-    body: BatchTriggerTaskV3RequestBody,
-    options: BatchTriggerTaskServiceOptions = {}
-  ): Promise<BatchTriggerTaskV3Response> {
+    body: CreateBatchRequestBody,
+    options: CreateBatchServiceOptions = {}
+  ): Promise<CreateBatchResponse> {
     try {
-      return await this.traceWithEnv<BatchTriggerTaskV3Response>(
-        "call()",
+      return await this.traceWithEnv<CreateBatchResponse>(
+        "createBatch()",
         environment,
         async (span) => {
           const { id, friendlyId } = BatchId.generate();
 
           span.setAttribute("batchId", friendlyId);
+          span.setAttribute("runCount", body.runCount);
 
           // Validate entitlement
           const entitlementValidation = await this.validator.validateEntitlement({
@@ -77,31 +72,34 @@ export class RunEngineBatchTriggerServiceV2 extends WithRunEngine {
 
           const planType = entitlementValidation.plan?.type;
 
-          // Validate queue limits for the total batch size
+          // Validate queue limits for the expected batch size
           const queueSizeGuard = await this.queueConcern.validateQueueLimits(
             environment,
-            body.items.length
+            body.runCount
           );
 
           if (!queueSizeGuard.ok) {
             throw new ServiceValidationError(
-              `Cannot trigger ${body.items.length} tasks as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`
+              `Cannot create batch with ${body.runCount} items as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`
             );
           }
 
-          // Create BatchTaskRun in Postgres with PROCESSING status
+          // Create BatchTaskRun in Postgres with PENDING status
+          // The batch will be sealed (status -> PROCESSING) when items are streamed
           const batch = await this._prisma.batchTaskRun.create({
             data: {
               id,
               friendlyId,
               runtimeEnvironmentId: environment.id,
-              status: "PROCESSING",
-              runCount: body.items.length,
+              status: "PENDING",
+              runCount: body.runCount,
+              expectedCount: body.runCount,
               runIds: [],
-              batchVersion: "runengine:v2",
+              batchVersion: "runengine:v2", // 2-phase streaming batch API
               oneTimeUseToken: options.oneTimeUseToken,
-              idempotencyKey: options.idempotencyKey,
-              processingStartedAt: new Date(),
+              idempotencyKey: body.idempotencyKey,
+              // Not sealed yet - will be sealed when items stream completes
+              sealed: false,
             },
           });
 
@@ -118,53 +116,46 @@ export class RunEngineBatchTriggerServiceV2 extends WithRunEngine {
             });
           }
 
-          // Convert body items to BatchItem format
-          const batchItems: BatchItem[] = body.items.map((item) => ({
-            task: item.task,
-            payload: item.payload,
-            payloadType: item.options?.payloadType ?? "application/json",
-            options: item.options as Record<string, unknown> | undefined,
-          }));
-
-          // Enqueue to BatchQueue (Redis)
-          const enqueueOptions: EnqueueBatchOptions = {
+          // Initialize batch metadata in Redis (without items)
+          const initOptions: InitializeBatchOptions = {
             batchId: id,
             friendlyId,
             environmentId: environment.id,
             environmentType: environment.type,
             organizationId: environment.organizationId,
             projectId: environment.projectId,
-            items: batchItems,
+            runCount: body.runCount,
             parentRunId: body.parentRunId,
             resumeParentOnCompletion: body.resumeParentOnCompletion,
             triggerVersion: options.triggerVersion,
             traceContext: options.traceContext as Record<string, unknown> | undefined,
             spanParentAsLink: options.spanParentAsLink,
             realtimeStreamsVersion: options.realtimeStreamsVersion,
-            idempotencyKey: options.idempotencyKey,
+            idempotencyKey: body.idempotencyKey,
             planType,
           };
 
-          await this._engine.enqueueBatchToQueue(enqueueOptions);
+          await this._engine.initializeBatch(initOptions);
 
-          logger.debug("Batch enqueued to BatchQueue", {
+          logger.debug("Batch created for streaming", {
             batchId: friendlyId,
-            itemCount: body.items.length,
+            runCount: body.runCount,
             envId: environment.id,
+            parentRunId: body.parentRunId,
           });
 
           return {
             id: friendlyId,
+            runCount: body.runCount,
             isCached: false,
-            idempotencyKey: options.idempotencyKey,
-            runCount: body.items.length,
+            idempotencyKey: body.idempotencyKey,
           };
         }
       );
     } catch (error) {
       // Handle Prisma unique constraint violations
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
-        logger.debug("RunEngineBatchTriggerV2: Prisma error", {
+        logger.debug("CreateBatchService: Prisma error", {
           code: error.code,
           message: error.message,
           meta: error.meta,
@@ -180,11 +171,11 @@ export class RunEngineBatchTriggerServiceV2 extends WithRunEngine {
             target[0].includes("oneTimeUseToken")
           ) {
             throw new ServiceValidationError(
-              "Cannot batch trigger with a one-time use token as it has already been used."
+              "Cannot create batch with a one-time use token as it has already been used."
             );
           } else {
             throw new ServiceValidationError(
-              "Cannot batch trigger as it has already been triggered with the same idempotency key."
+              "Cannot create batch as it has already been created with the same idempotency key."
             );
           }
         }
