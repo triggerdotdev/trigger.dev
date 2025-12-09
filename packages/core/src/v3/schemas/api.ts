@@ -1219,6 +1219,14 @@ export const RetrieveBatchV2Response = z.object({
   updatedAt: z.coerce.date(),
   runCount: z.number(),
   runs: z.array(z.string()),
+  processingErrors: z.array(
+    z.object({
+      index: z.number(),
+      taskIdentifier: z.string(),
+      error: z.string(),
+      errorCode: z.string().optional(),
+    })
+  ),
 });
 
 export type RetrieveBatchV2Response = z.infer<typeof RetrieveBatchV2Response>;

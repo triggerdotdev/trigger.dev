@@ -8,13 +8,29 @@ import { RuntimeEnvironmentType } from "@trigger.dev/database";
 /**
  * A single item in a batch trigger request.
  * Kept permissive to accept various input formats from the API.
+ *
+ * Payload handling:
+ * - For small payloads: `payload` contains the actual data, `payloadType` is "application/json" (default)
+ * - For large payloads (offloaded to R2): `payload` is the R2 path string, `payloadType` is "application/store"
+ *
+ * When `payloadType` is "application/store", the payload is an R2 object path (e.g., "batch_xxx/item_0/payload.json")
+ * that will be resolved by the run engine when the task executes.
  */
 export const BatchItem = z.object({
   /** The task identifier to trigger */
   task: z.string(),
-  /** The payload for this item */
+  /**
+   * The payload for this item.
+   * - If payloadType is "application/json": Contains the actual payload data
+   * - If payloadType is "application/store": Contains the R2 path to the offloaded payload
+   */
   payload: z.unknown().optional(),
-  /** The payload type */
+  /**
+   * The payload type.
+   * - "application/json" (default): Payload is inline JSON data
+   * - "application/store": Payload is an R2 object path (large payload was offloaded)
+   * - Other types supported for non-JSON payloads
+   */
   payloadType: z.string().optional(),
   /** Options for this specific item - stored as JSON */
   options: z.record(z.unknown()).optional(),
@@ -61,14 +77,22 @@ export const BatchMeta = z.object({
 export type BatchMeta = z.infer<typeof BatchMeta>;
 
 /**
- * A failure record for an item that failed to create a run
+ * A failure record for an item that failed to create a run.
+ *
+ * Payload handling:
+ * - For small payloads: Contains the full payload as a JSON string
+ * - For large payloads (offloaded to R2): Contains the R2 path string
  */
 export const BatchItemFailure = z.object({
   /** Index of the item in the batch */
   index: z.number(),
   /** The task identifier */
   taskIdentifier: z.string(),
-  /** The payload (may be truncated) */
+  /**
+   * The payload that failed.
+   * - For inline payloads: The full payload as a JSON string
+   * - For offloaded payloads: The R2 path (e.g., "batch_xxx/item_0/payload.json")
+   */
   payload: z.string().optional(),
   /** The options that were used */
   options: z.record(z.unknown()).optional(),

@@ -81,7 +81,7 @@ export class RunEngine {
   private meter: Meter;
   private heartbeatTimeouts: HeartbeatTimeouts;
   private repairSnapshotTimeoutMs: number;
-  private batchQueue?: BatchQueue;
+  private batchQueue: BatchQueue;
 
   prisma: PrismaClient;
   readOnlyPrisma: PrismaReplicaClient;
@@ -319,37 +319,35 @@ export class RunEngine {
     });
 
     // Initialize BatchQueue for DRR-based batch processing (if configured)
-    if (options.batchQueue) {
-      // Only start consumers if worker is not disabled (same as main worker)
-      const startConsumers = !options.worker.disabled;
+    // Only start consumers if worker is not disabled (same as main worker)
+    const startConsumers = !options.worker.disabled;
 
-      this.batchQueue = new BatchQueue({
-        redis: {
-          host: options.batchQueue.redis.host ?? "localhost",
-          port: options.batchQueue.redis.port ?? 6379,
-          username: options.batchQueue.redis.username,
-          password: options.batchQueue.redis.password,
-          keyPrefix: `${options.batchQueue.redis.keyPrefix ?? ""}batch-queue:`,
-          enableAutoPipelining: options.batchQueue.redis.enableAutoPipelining ?? true,
-          tls: options.batchQueue.redis.tls !== undefined,
-        },
-        drr: {
-          quantum: options.batchQueue.drr?.quantum ?? 5,
-          maxDeficit: options.batchQueue.drr?.maxDeficit ?? 50,
-        },
-        consumerCount: options.batchQueue.consumerCount ?? 2,
-        consumerIntervalMs: options.batchQueue.consumerIntervalMs ?? 100,
-        startConsumers,
-        tracer: options.tracer,
-        meter: options.meter,
-      });
+    this.batchQueue = new BatchQueue({
+      redis: {
+        host: options.batchQueue?.redis.host ?? "localhost",
+        port: options.batchQueue?.redis.port ?? 6379,
+        username: options.batchQueue?.redis.username,
+        password: options.batchQueue?.redis.password,
+        keyPrefix: `${options.batchQueue?.redis.keyPrefix ?? ""}batch-queue:`,
+        enableAutoPipelining: options.batchQueue?.redis.enableAutoPipelining ?? true,
+        tls: options.batchQueue?.redis.tls !== undefined,
+      },
+      drr: {
+        quantum: options.batchQueue?.drr?.quantum ?? 5,
+        maxDeficit: options.batchQueue?.drr?.maxDeficit ?? 50,
+      },
+      consumerCount: options.batchQueue?.consumerCount ?? 2,
+      consumerIntervalMs: options.batchQueue?.consumerIntervalMs ?? 100,
+      startConsumers,
+      tracer: options.tracer,
+      meter: options.meter,
+    });
 
-      this.logger.info("BatchQueue initialized", {
-        consumerCount: options.batchQueue.consumerCount ?? 2,
-        drrQuantum: options.batchQueue.drr?.quantum ?? 5,
-        consumersEnabled: startConsumers,
-      });
-    }
+    this.logger.info("BatchQueue initialized", {
+      consumerCount: options.batchQueue?.consumerCount ?? 2,
+      drrQuantum: options.batchQueue?.drr?.quantum ?? 5,
+      consumersEnabled: startConsumers,
+    });
 
     this.runAttemptSystem = new RunAttemptSystem({
       resources,
@@ -978,9 +976,6 @@ export class RunEngine {
    * This is called for each item dequeued from the batch queue.
    */
   setBatchProcessItemCallback(callback: ProcessBatchItemCallback): void {
-    if (!this.batchQueue) {
-      throw new Error("BatchQueue is not enabled. Configure batchQueue in RunEngine options.");
-    }
     this.batchQueue.onProcessItem(callback);
   }
 
@@ -989,9 +984,6 @@ export class RunEngine {
    * This is called when all items in a batch have been processed.
    */
   setBatchCompletionCallback(callback: BatchCompletionCallback): void {
-    if (!this.batchQueue) {
-      throw new Error("BatchQueue is not enabled. Configure batchQueue in RunEngine options.");
-    }
     this.batchQueue.onBatchComplete(callback);
   }
 
@@ -999,9 +991,6 @@ export class RunEngine {
    * Get the remaining count of items in a batch.
    */
   async getBatchQueueRemainingCount(batchId: string): Promise<number> {
-    if (!this.batchQueue) {
-      throw new Error("BatchQueue is not enabled. Configure batchQueue in RunEngine options.");
-    }
     return this.batchQueue.getBatchRemainingCount(batchId);
   }
 
@@ -1016,9 +1005,6 @@ export class RunEngine {
     failureCount: number;
     processedCount: number;
   } | null> {
-    if (!this.batchQueue) {
-      return null;
-    }
     return this.batchQueue.getBatchProgress(batchId);
   }
 
@@ -1035,9 +1021,6 @@ export class RunEngine {
    * Use this for the v3 streaming batch API where items are sent via NDJSON stream.
    */
   async initializeBatch(options: InitializeBatchOptions): Promise<void> {
-    if (!this.batchQueue) {
-      throw new Error("BatchQueue is not enabled. Configure batchQueue in RunEngine options.");
-    }
     return this.batchQueue.initializeBatch(options);
   }
 
@@ -1059,9 +1042,6 @@ export class RunEngine {
     itemIndex: number,
     item: BatchItem
   ): Promise<{ enqueued: boolean }> {
-    if (!this.batchQueue) {
-      throw new Error("BatchQueue is not enabled. Configure batchQueue in RunEngine options.");
-    }
     return this.batchQueue.enqueueBatchItem(batchId, envId, itemIndex, item);
   }
 
@@ -1070,9 +1050,6 @@ export class RunEngine {
    * Useful for progress tracking during streaming ingestion.
    */
   async getBatchEnqueuedCount(batchId: string): Promise<number> {
-    if (!this.batchQueue) {
-      return 0;
-    }
     return this.batchQueue.getEnqueuedCount(batchId);
   }
 

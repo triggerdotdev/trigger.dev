@@ -9,6 +9,7 @@ import { prisma, type PrismaClientOrTransaction } from "~/db.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { ServiceValidationError, WithRunEngine } from "../../v3/services/baseService.server";
+import { BatchPayloadProcessor } from "../concerns/batchPayloads.server";
 
 export type StreamBatchItemsServiceOptions = {
   maxItemBytes: number;
@@ -28,8 +29,11 @@ export type StreamBatchItemsServiceOptions = {
  * providing backpressure through the async iterator pattern.
  */
 export class StreamBatchItemsService extends WithRunEngine {
+  private readonly payloadProcessor: BatchPayloadProcessor;
+
   constructor(protected readonly _prisma: PrismaClientOrTransaction = prisma) {
     super({ prisma });
+    this.payloadProcessor = new BatchPayloadProcessor();
   }
 
   /**
@@ -108,11 +112,23 @@ export class StreamBatchItemsService extends WithRunEngine {
             );
           }
 
-          // Convert to BatchItem format
+          // Get the original payload type
+          const originalPayloadType = (item.options?.payloadType as string) ?? "application/json";
+
+          // Process payload - offload to R2 if it exceeds threshold
+          const processedPayload = await this.payloadProcessor.process(
+            item.payload,
+            originalPayloadType,
+            batchId,
+            item.index,
+            environment
+          );
+
+          // Convert to BatchItem format with potentially offloaded payload
           const batchItem: BatchItem = {
             task: item.task,
-            payload: item.payload,
-            payloadType: (item.options?.payloadType as string) ?? "application/json",
+            payload: processedPayload.payload,
+            payloadType: processedPayload.payloadType,
             options: item.options,
           };
 

@@ -123,12 +123,14 @@ export class BatchCompletionTracker {
     const processedKey = this.processedCountKey(batchId);
 
     // Use Lua script for atomic idempotent recording
+    // Runs are stored in a sorted set with itemIndex as score to preserve ordering
     const result = await this.redis.recordSuccessIdempotent(
       processedItemsKey,
       runsKey,
       processedKey,
       itemIndex !== undefined ? itemIndex.toString() : runId, // Use itemIndex as idempotency key if provided
-      runId
+      runId,
+      itemIndex !== undefined ? itemIndex.toString() : "0" // Score for sorted set ordering
     );
 
     const processedCount = parseInt(result, 10);
@@ -184,11 +186,12 @@ export class BatchCompletionTracker {
   // ============================================================================
 
   /**
-   * Get all successful run IDs for a batch.
+   * Get all successful run IDs for a batch, ordered by original item index.
    */
   async getSuccessfulRuns(batchId: string): Promise<string[]> {
     const runsKey = this.runsKey(batchId);
-    return await this.redis.lrange(runsKey, 0, -1);
+    // Use ZRANGE to get runs ordered by their item index (score)
+    return await this.redis.zrange(runsKey, 0, -1);
   }
 
   /**
@@ -314,6 +317,7 @@ export class BatchCompletionTracker {
   #registerCommands(): void {
     // Atomic idempotent success recording
     // Returns the current processed count (whether incremented or not)
+    // Uses ZADD to store runs in a sorted set ordered by item index
     this.redis.defineCommand("recordSuccessIdempotent", {
       numberOfKeys: 3,
       lua: `
@@ -322,13 +326,14 @@ local runsKey = KEYS[2]
 local processedKey = KEYS[3]
 local itemKey = ARGV[1]
 local runId = ARGV[2]
+local itemScore = tonumber(ARGV[3]) or 0
 
 -- Check if already processed (SADD returns 0 if member already exists)
 local added = redis.call('SADD', processedItemsKey, itemKey)
 
 if added == 1 then
-  -- New item, record the success
-  redis.call('RPUSH', runsKey, runId)
+  -- New item, record the success in sorted set with item index as score
+  redis.call('ZADD', runsKey, itemScore, runId)
   redis.call('INCR', processedKey)
 end
 
@@ -374,7 +379,8 @@ declare module "@internal/redis" {
       runsKey: string,
       processedKey: string,
       itemKey: string,
-      runId: string
+      runId: string,
+      itemScore: string
     ): Promise<string>;
 
     recordFailureIdempotent(

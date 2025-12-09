@@ -528,6 +528,7 @@ const EnvironmentSchema = z
     MAXIMUM_TRACE_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(25_000),
     MAXIMUM_TRACE_DETAILED_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(10_000),
     TASK_PAYLOAD_OFFLOAD_THRESHOLD: z.coerce.number().int().default(524_288), // 512KB
+    BATCH_PAYLOAD_OFFLOAD_THRESHOLD: z.coerce.number().int().optional(), // Defaults to TASK_PAYLOAD_OFFLOAD_THRESHOLD if not set
     TASK_PAYLOAD_MAXIMUM_SIZE: z.coerce.number().int().default(3_145_728), // 3MB
     BATCH_TASK_PAYLOAD_MAXIMUM_SIZE: z.coerce.number().int().default(1_000_000), // 1MB
     TASK_RUN_METADATA_MAXIMUM_SIZE: z.coerce.number().int().default(262_144), // 256KB
@@ -539,7 +540,7 @@ const EnvironmentSchema = z
 
     // 2-phase batch API settings
     STREAMING_BATCH_MAX_ITEMS: z.coerce.number().int().default(1_000), // Max items in streaming batch
-    STREAMING_BATCH_ITEM_MAXIMUM_SIZE: z.coerce.number().int().default(512_000), // 512KB max per NDJSON line
+    STREAMING_BATCH_ITEM_MAXIMUM_SIZE: z.coerce.number().int().default(3_145_728),
 
     REALTIME_STREAM_VERSION: z.enum(["v1", "v2"]).default("v1"),
     REALTIME_STREAM_MAX_LENGTH: z.coerce.number().int().default(1000),
