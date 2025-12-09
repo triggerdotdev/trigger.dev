@@ -1571,13 +1571,15 @@ model BatchTaskRun {
 
   // Run Engine v2 batch queue fields
   /// When processing started (status changed to PROCESSING)
-  processingStartedAt DateTime?
+  processingStartedAt   DateTime?
+  /// When processing completed (all items processed)
+  processingCompletedAt DateTime?
   /// Count of successfully created runs
-  successfulRunCount  Int?
+  successfulRunCount    Int?
   /// Count of failed run creations
-  failedRunCount      Int?
+  failedRunCount        Int?
   /// Detailed failure records
-  errors              BatchTaskRunError[]
+  errors                BatchTaskRunError[]
 
   ///all the below properties are engine v1 only
   items                  BatchTaskRunItem[]

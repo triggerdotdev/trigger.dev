@@ -24,6 +24,7 @@ export class BatchPresenter extends BasePresenter {
         updatedAt: true,
         completedAt: true,
         processingStartedAt: true,
+        processingCompletedAt: true,
         successfulRunCount: true,
         failedRunCount: true,
         idempotencyKey: true,
@@ -96,6 +97,7 @@ export class BatchPresenter extends BasePresenter {
       updatedAt: batch.updatedAt.toISOString(),
       completedAt: batch.completedAt?.toISOString(),
       processingStartedAt: batch.processingStartedAt?.toISOString(),
+      processingCompletedAt: batch.processingCompletedAt?.toISOString(),
       finishedAt: batch.completedAt
         ? batch.completedAt.toISOString()
         : hasFinished

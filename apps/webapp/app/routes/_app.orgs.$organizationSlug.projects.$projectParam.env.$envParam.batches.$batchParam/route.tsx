@@ -189,6 +189,14 @@ export default function Page() {
                   </Property.Value>
                 </Property.Item>
               )}
+              {batch.processingCompletedAt && (
+                <Property.Item>
+                  <Property.Label>Processing completed</Property.Label>
+                  <Property.Value>
+                    <DateTime date={batch.processingCompletedAt} />
+                  </Property.Value>
+                </Property.Item>
+              )}
               <Property.Item>
                 <Property.Label>Finished</Property.Label>
                 <Property.Value>
