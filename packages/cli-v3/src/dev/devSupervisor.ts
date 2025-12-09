@@ -138,11 +138,26 @@ class DevSupervisor implements WorkerRuntime {
     //start an SSE connection for presence
     this.disconnectPresence = await this.#startPresenceConnection();
 
+    // Handle SIGTERM to gracefully stop all run controllers
+    process.on("SIGTERM", this.#handleSigterm);
+
     //start dequeuing
     await this.#dequeueRuns();
   }
 
+  #handleSigterm = async () => {
+    logger.debug("[DevSupervisor] Received SIGTERM, stopping all run controllers");
+
+    const stopPromises = Array.from(this.runControllers.values()).map((controller) =>
+      controller.stop()
+    );
+
+    await Promise.allSettled(stopPromises);
+  };
+
   async shutdown(): Promise<void> {
+    process.off("SIGTERM", this.#handleSigterm);
+
     this.disconnectPresence?.();
     try {
       this.socket?.close();

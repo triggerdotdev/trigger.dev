@@ -122,14 +122,8 @@ export class DevRunController {
         logger.debug("[DevRunController] Failed to poll for snapshot", { error });
       },
     });
-
-    process.on("SIGTERM", this.sigterm.bind(this));
   }
 
-  private async sigterm() {
-    logger.debug("[DevRunController] Received SIGTERM, stopping worker");
-    await this.stop();
-  }
 
   // This should only be used when we're already executing a run. Attempt number changes are not allowed.
   private updateRunPhase(run: Run, snapshot: Snapshot) {
@@ -855,8 +849,6 @@ export class DevRunController {
 
   async stop() {
     logger.debug("[DevRunController] Shutting down");
-
-    process.off("SIGTERM", this.sigterm);
 
     if (this.taskRunProcess && !this.taskRunProcess.isBeingKilled) {
       try {
