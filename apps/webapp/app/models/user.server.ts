@@ -11,17 +11,6 @@ export type { User } from "@trigger.dev/database";
 import { assertEmailAllowed } from "~/utils/email";
 import { logger } from "~/services/logger.server";
 
-export class AuthConflictError extends Error {
-  constructor(
-    message: string,
-    public readonly existingEmailUserId: string,
-    public readonly existingAuthUserId: string
-  ) {
-    super(message);
-    this.name = "AuthConflictError";
-  }
-}
-
 type FindOrCreateMagicLink = {
   authenticationMethod: "MAGIC_LINK";
   email: string;

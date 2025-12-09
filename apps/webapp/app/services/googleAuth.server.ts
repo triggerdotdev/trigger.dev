@@ -20,7 +20,7 @@ export function addGoogleStrategy(
     async ({ extraParams, profile }) => {
       const emails = profile.emails;
 
-      if (!emails) {
+      if (!emails?.length) {
         throw new Error("Google login requires an email address");
       }
 
@@ -52,4 +52,3 @@ export function addGoogleStrategy(
 
   authenticator.use(googleStrategy);
 }
-
