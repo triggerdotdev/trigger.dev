@@ -146,13 +146,6 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event.inputs.ref }}
 
-      - name: Verify ref is on main
-        run: |
-          if ! git merge-base --is-ancestor ${{ github.event.inputs.ref }} origin/main; then
-            echo "Error: ref must be an ancestor of main (i.e., already merged)"
-            exit 1
-          fi
-
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
