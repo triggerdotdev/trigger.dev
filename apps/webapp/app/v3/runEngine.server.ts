@@ -312,6 +312,7 @@ function setupBatchQueueCallbacks(engine: RunEngine) {
           successfulRunCount,
           failedRunCount,
           completedAt: status === "ABORTED" ? new Date() : undefined,
+          processingCompletedAt: new Date(),
         },
       });
 

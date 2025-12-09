@@ -1,4 +1,4 @@
-import { batch, task } from "@trigger.dev/sdk/v3";
+import { batch, logger, task } from "@trigger.dev/sdk/v3";
 import { setTimeout } from "timers/promises";
 
 export const batchTriggerAndWait = task({
@@ -207,11 +207,17 @@ export const largePayloadBatch = task({
     }
 
     // Trigger the batch - large payloads are automatically offloaded to R2
-    const result = await largePayloadTask.batchTriggerAndWait(generateLargeItems());
+    const result = await largePayloadTask.batchTrigger(generateLargeItems());
+
+    await setTimeout(5000);
+
+    const myBatch = await batch.retrieve(result.batchId);
+
+    logger.info("batch", { myBatch });
 
     return {
-      batchId: result.id,
-      runCount: result.runs.length,
+      batchId: result.batchId,
+      runCount: result.runCount,
       payloadSizeKB: sizeKB,
       note: `Each payload was ~${sizeKB}KB. Payloads over 512KB are offloaded to R2.`,
     };
