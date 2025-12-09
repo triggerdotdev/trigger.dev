@@ -2,8 +2,8 @@
   "compilerOptions": {
     "target": "ES2019",
     "lib": ["ES2019", "DOM", "DOM.Iterable", "DOM.AsyncIterable"],
-    "module": "Node16",
-    "moduleResolution": "Node16",
+    "module": "ESNext",
+    "moduleResolution": "node",
     "moduleDetection": "force",
     "verbatimModuleSyntax": false,
     "types": ["vitest/globals"],
@@ -16,7 +16,9 @@
     "strict": true,
     "paths": {
       "@trigger.dev/core": ["../../packages/core/src/index"],
-      "@trigger.dev/core/*": ["../../packages/core/src/*"]
+      "@trigger.dev/core/*": ["../../packages/core/src/*"],
+      "@internal/clickhouse": ["../clickhouse/src/index"],
+      "@internal/clickhouse/*": ["../clickhouse/src/*"]
     }
   },
   "exclude": ["node_modules"]

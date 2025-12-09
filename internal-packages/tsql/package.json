@@ -6,8 +6,10 @@
   "types": "./src/index.ts",
   "type": "module",
   "dependencies": {
+    "@internal/clickhouse": "workspace:*",
     "@trigger.dev/core": "workspace:*",
-    "antlr4ts": "0.5.0-alpha.4"
+    "antlr4ts": "0.5.0-alpha.4",
+    "zod": "3.25.76"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
