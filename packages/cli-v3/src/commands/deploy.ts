@@ -6,6 +6,7 @@ import {
   GitMeta,
   DeploymentFinalizedEvent,
   DeploymentEventFromString,
+  DeploymentTriggeredVia,
 } from "@trigger.dev/core/v3/schemas";
 import { Command, Option as CommandOption } from "commander";
 import { join, relative, resolve } from "node:path";
@@ -48,7 +49,7 @@ import {
 import { loadDotEnvVars } from "../utilities/dotEnv.js";
 import { isDirectory } from "../utilities/fileSystem.js";
 import { setGithubActionsOutputAndEnvVars } from "../utilities/githubActions.js";
-import { createGitMeta } from "../utilities/gitMeta.js";
+import { createGitMeta, isGitHubActions } from "../utilities/gitMeta.js";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { resolveLocalEnvVars } from "../utilities/localEnvVars.js";
 import { logger } from "../utilities/logger.js";
@@ -382,6 +383,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
       type: features.run_engine_v2 ? "MANAGED" : "V1",
       runtime: buildManifest.runtime,
       isNativeBuild: false,
+      triggeredVia: getTriggeredVia(),
     },
     envVars.TRIGGER_EXISTING_DEPLOYMENT_ID
   );
@@ -893,6 +895,40 @@ async function initializeOrAttachDeployment(
   return newDeploymentOrError.data;
 }
 
+function getTriggeredVia(): DeploymentTriggeredVia {
+  // Check specific CI providers first (most specific to least specific)
+  if (isGitHubActions()) {
+    return "cli:github_actions";
+  }
+  if (process.env.GITLAB_CI === "true") {
+    return "cli:gitlab_ci";
+  }
+  if (process.env.CIRCLECI === "true") {
+    return "cli:circleci";
+  }
+  if (process.env.JENKINS_URL) {
+    return "cli:jenkins";
+  }
+  if (process.env.TF_BUILD === "True") {
+    return "cli:azure_pipelines";
+  }
+  if (process.env.BITBUCKET_BUILD_NUMBER) {
+    return "cli:bitbucket_pipelines";
+  }
+  if (process.env.TRAVIS === "true") {
+    return "cli:travis_ci";
+  }
+  if (process.env.BUILDKITE === "true") {
+    return "cli:buildkite";
+  }
+  // Fallback for other/unknown CI environments
+  if (isCI) {
+    return "cli:ci_other";
+  }
+
+  return "cli:manual";
+}
+
 async function handleNativeBuildServerDeploy({
   apiClient,
   options,
@@ -998,6 +1034,7 @@ async function handleNativeBuildServerDeploy({
     artifactKey,
     skipPromotion: options.skipPromotion,
     configFilePath,
+    triggeredVia: getTriggeredVia(),
   });
 
   if (!initializeDeploymentResult.success) {

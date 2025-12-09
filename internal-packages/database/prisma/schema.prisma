@@ -91,6 +91,7 @@ model InvitationCode {
 enum AuthenticationMethod {
   GITHUB
   MAGIC_LINK
+  GOOGLE
 }
 
 /// Used to generate PersonalAccessTokens, they're one-time use
@@ -1749,6 +1750,7 @@ model WorkerDeployment {
   imagePlatform  String  @default("linux/amd64")
 
   externalBuildData   Json?
+  buildServerMetadata Json?
 
   status WorkerDeploymentStatus @default(PENDING)
   type   WorkerDeploymentType   @default(V1)
@@ -1764,6 +1766,7 @@ model WorkerDeployment {
 
   triggeredBy   User?   @relation(fields: [triggeredById], references: [id], onDelete: SetNull, onUpdate: Cascade)
   triggeredById String?
+  triggeredVia  String?
 
   startedAt   DateTime?
   installedAt DateTime?

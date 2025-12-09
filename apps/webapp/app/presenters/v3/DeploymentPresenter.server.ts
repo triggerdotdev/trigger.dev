@@ -1,4 +1,5 @@
 import {
+  BuildServerMetadata,
   DeploymentErrorData,
   ExternalBuildData,
   prepareDeploymentError,
@@ -154,17 +155,23 @@ export class DeploymentPresenter {
             avatarUrl: true,
           },
         },
+        buildServerMetadata: true,
       },
     });
 
     const gitMetadata = processGitMetadata(deployment.git);
-
     const externalBuildData = deployment.externalBuildData
       ? ExternalBuildData.safeParse(deployment.externalBuildData)
       : undefined;
+    const buildServerMetadata = deployment.buildServerMetadata
+      ? BuildServerMetadata.safeParse(deployment.buildServerMetadata)
+      : undefined;
 
     let eventStream = undefined;
-    if (env.S2_ENABLED === "1" && gitMetadata?.source === "trigger_github_app") {
+    if (
+      env.S2_ENABLED === "1" &&
+      (buildServerMetadata || gitMetadata?.source === "trigger_github_app")
+    ) {
       const [error, accessToken] = await tryCatch(this.getS2AccessToken(project.externalRef));
 
       if (error) {
