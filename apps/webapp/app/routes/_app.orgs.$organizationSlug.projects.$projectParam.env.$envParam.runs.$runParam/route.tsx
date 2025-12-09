@@ -23,7 +23,7 @@ import {
 } from "@trigger.dev/core/v3";
 import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { motion } from "framer-motion";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { redirect } from "remix-typedjson";
 import { MoveToTopIcon } from "~/assets/icons/MoveToTopIcon";
@@ -105,6 +105,7 @@ import { $replica } from "~/db.server";
 import { clickhouseClient } from "~/services/clickhouseInstance.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
+import { logger } from "~/services/logger.server";
 
 const resizableSettings = {
   parent: {
@@ -137,6 +138,101 @@ const resizableSettings = {
 };
 
 type TraceEvent = NonNullable<SerializeFrom<typeof loader>["trace"]>["events"][0];
+
+type RunsListNavigation = {
+  runs: Array<{ friendlyId: string }>;
+  pagination: { next?: string; previous?: string };
+  prevPageLastRun?: { friendlyId: string; cursor: string };
+  nextPageFirstRun?: { friendlyId: string; cursor: string };
+};
+
+async function getRunsListFromTableState({
+  tableStateParam,
+  organizationSlug,
+  projectParam,
+  envParam,
+  runParam,
+  userId,
+}: {
+  tableStateParam: string | null;
+  organizationSlug: string;
+  projectParam: string;
+  envParam: string;
+  runParam: string;
+  userId: string;
+}): Promise<RunsListNavigation | null> {
+  if (!tableStateParam) {
+    return null;
+  }
+
+  try {
+    const tableStateSearchParams = new URLSearchParams(decodeURIComponent(tableStateParam));
+    const filters = getRunFiltersFromSearchParams(tableStateSearchParams);
+
+    const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+    const environment = await findEnvironmentBySlug(project?.id ?? "", envParam, userId);
+
+    if (!project || !environment) {
+      return null;
+    }
+
+    const runsListPresenter = new NextRunListPresenter($replica, clickhouseClient);
+    const currentPageResult = await runsListPresenter.call(project.organizationId, environment.id, {
+      userId,
+      projectId: project.id,
+      ...filters,
+      pageSize: 25, // Load enough runs to provide navigation context
+    });
+
+    const runsList: RunsListNavigation = {
+      runs: currentPageResult.runs,
+      pagination: currentPageResult.pagination,
+    };
+
+    const currentRunIndex = currentPageResult.runs.findIndex((r) => r.friendlyId === runParam);
+
+    if (currentRunIndex === 0 && currentPageResult.pagination.previous) {
+      const prevPageResult = await runsListPresenter.call(project.organizationId, environment.id, {
+        userId,
+        projectId: project.id,
+        ...filters,
+        cursor: currentPageResult.pagination.previous,
+        direction: "backward",
+        pageSize: 1, // We only need the last run from the previous page
+      });
+
+      if (prevPageResult.runs.length > 0) {
+        runsList.prevPageLastRun = {
+          friendlyId: prevPageResult.runs[0].friendlyId,
+          cursor: currentPageResult.pagination.previous,
+        };
+      }
+    }
+
+    if (currentRunIndex === currentPageResult.runs.length - 1 && currentPageResult.pagination.next) {
+      const nextPageResult = await runsListPresenter.call(project.organizationId, environment.id, {
+        userId,
+        projectId: project.id,
+        ...filters,
+        cursor: currentPageResult.pagination.next,
+        direction: "forward",
+        pageSize: 1, // We only need the first run from the next page
+      });
+
+      if (nextPageResult.runs.length > 0) {
+        runsList.nextPageFirstRun = {
+          friendlyId: nextPageResult.runs[0].friendlyId,
+          cursor: currentPageResult.pagination.next,
+        };
+      }
+    }
+
+    return runsList;
+  } catch (error) {
+    logger.error("Error loading runs list from tableState:", { error });
+    return null;
+  }
+}
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -176,81 +272,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const parent = await getResizableSnapshot(request, resizableSettings.parent.autosaveId);
   const tree = await getResizableSnapshot(request, resizableSettings.tree.autosaveId);
 
-  // Load runs list data from tableState if present
-  let runsList: {
-    runs: Array<{ friendlyId: string }>;
-    pagination: { next?: string; previous?: string };
-    prevPageLastRun?: { friendlyId: string; cursor: string };
-    nextPageFirstRun?: { friendlyId: string; cursor: string };
-  } | null = null;
-  const tableStateParam = url.searchParams.get("tableState");
-  if (tableStateParam) {
-    try {
-      const tableStateSearchParams = new URLSearchParams(decodeURIComponent(tableStateParam));
-      const filters = getRunFiltersFromSearchParams(tableStateSearchParams);
-
-      const project = await findProjectBySlug(organizationSlug, projectParam, userId);
-      const environment = await findEnvironmentBySlug(project?.id ?? "", envParam, userId);
-
-      if (project && environment) {
-        const runsListPresenter = new NextRunListPresenter($replica, clickhouseClient);
-        const currentPageResult = await runsListPresenter.call(project.organizationId, environment.id, {
-          userId,
-          projectId: project.id,
-          ...filters,
-          pageSize: 25, // Load enough runs to provide navigation context
-        });
-        
-        runsList = {
-          runs: currentPageResult.runs,
-          pagination: currentPageResult.pagination,
-        };
-
-        // Check if the current run is at the boundary and preload adjacent page if needed
-        const currentRunIndex = currentPageResult.runs.findIndex((r) => r.friendlyId === runParam);
-        
-        // If current run is first in list and there's a previous page, load the last run from prev page
-        if (currentRunIndex === 0 && currentPageResult.pagination.previous) {
-          const prevPageResult = await runsListPresenter.call(project.organizationId, environment.id, {
-            userId,
-            projectId: project.id,
-            ...filters,
-            cursor: currentPageResult.pagination.previous,
-            direction: "backward",
-            pageSize: 1, // We only need the last run from the previous page
-          });
-          if (prevPageResult.runs.length > 0) {
-            runsList.prevPageLastRun = {
-              friendlyId: prevPageResult.runs[0].friendlyId,
-              cursor: currentPageResult.pagination.previous,
-            };
-          }
-        }
-
-        // If current run is last in list and there's a next page, load the first run from next page
-        if (currentRunIndex === currentPageResult.runs.length - 1 && currentPageResult.pagination.next) {
-          const nextPageResult = await runsListPresenter.call(project.organizationId, environment.id, {
-            userId,
-            projectId: project.id,
-            ...filters,
-            cursor: currentPageResult.pagination.next,
-            direction: "forward",
-            pageSize: 1, // We only need the first run from the next page
-          });
-          if (nextPageResult.runs.length > 0) {
-            runsList.nextPageFirstRun = {
-              friendlyId: nextPageResult.runs[0].friendlyId,
-              cursor: currentPageResult.pagination.next,
-            };
-          }
-        }
-      }
-    } catch (error) {
-      // If there's an error parsing or loading runs list, just ignore it
-      // and don't include the runsList in the response
-      console.error("Error loading runs list from tableState:", error);
-    }
-  }
+  const runsList = await getRunsListFromTableState({
+    tableStateParam: url.searchParams.get("tableState"),
+    organizationSlug,
+    projectParam,
+    envParam,
+    runParam,
+    userId,
+  });
 
   return json({
     run: result.run,
@@ -372,16 +401,10 @@ export default function Page() {
             run={run}
             trace={trace}
             maximumLiveReloadingSetting={maximumLiveReloadingSetting}
-            resizable={resizable}
-            runsList={runsList}
           />
         ) : (
           <NoLogsView
             run={run}
-            trace={trace}
-            maximumLiveReloadingSetting={maximumLiveReloadingSetting}
-            resizable={resizable}
-            runsList={runsList}
           />
         )}
       </PageBody>
@@ -389,7 +412,7 @@ export default function Page() {
   );
 }
 
-function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: LoaderData) {
+function TraceView({ run, trace, maximumLiveReloadingSetting }: Pick<LoaderData, "run" | "trace" | "maximumLiveReloadingSetting">) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -483,7 +506,7 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: Loade
   );
 }
 
-function NoLogsView({ run, resizable }: LoaderData) {
+function NoLogsView({ run }: Pick<LoaderData, "run">) {
   const plan = useCurrentPlan();
   const organization = useOrganization();
 
@@ -1649,14 +1672,9 @@ function useAdjacentRunPaths({
   environment: { slug: string };
   tableState: string;
   run: { friendlyId: string };
-  runsList: {
-    runs: Array<{ friendlyId: string }>;
-    pagination: { next?: string; previous?: string };
-    prevPageLastRun?: { friendlyId: string; cursor: string };
-    nextPageFirstRun?: { friendlyId: string; cursor: string };
-  } | null;
+  runsList: RunsListNavigation | null;
 }): [string | null, string | null] {
-  return React.useMemo(() => {
+  return useMemo(() => {
     if (!runsList || runsList.runs.length === 0) {
       return [null, null];
     }
