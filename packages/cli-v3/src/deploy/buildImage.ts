@@ -20,9 +20,10 @@ export interface BuildImageOptions {
   imagePlatform: string;
   noCache?: boolean;
   load?: boolean;
-  useZstd?: boolean;
-  useZstdCache?: boolean;
+  compression?: "zstd" | "gzip";
+  cacheCompression?: "zstd" | "gzip";
   compressionLevel?: number;
+  forceCompression?: boolean;
 
   // Local build options
   push?: boolean;
@@ -82,9 +83,10 @@ export async function buildImage(options: BuildImageOptions): Promise<BuildImage
     buildEnvVars,
     network,
     builder,
-    useZstd,
-    useZstdCache,
+    compression,
+    cacheCompression,
     compressionLevel,
+    forceCompression,
     onLog,
   } = options;
 
@@ -111,9 +113,10 @@ export async function buildImage(options: BuildImageOptions): Promise<BuildImage
       buildEnvVars,
       network,
       builder,
-      useZstd,
-      useZstdCache,
+      compression,
+      cacheCompression,
       compressionLevel,
+      forceCompression,
       onLog,
     });
   }
@@ -143,8 +146,9 @@ export async function buildImage(options: BuildImageOptions): Promise<BuildImage
     apiKey,
     branchName,
     buildEnvVars,
-    useZstd,
+    compression,
     compressionLevel,
+    forceCompression,
     onLog,
   });
 }
@@ -168,8 +172,9 @@ export interface DepotBuildImageOptions {
   noCache?: boolean;
   extraCACerts?: string;
   buildEnvVars?: Record<string, string | undefined>;
-  useZstd?: boolean;
+  compression?: "zstd" | "gzip";
   compressionLevel?: number;
+  forceCompression?: boolean;
   onLog?: (log: string) => void;
 }
 
@@ -193,17 +198,19 @@ async function remoteBuildImage(options: DepotBuildImageOptions): Promise<BuildI
     .filter(([key, value]) => value)
     .flatMap(([key, value]) => ["--build-arg", `${key}=${value}`]);
 
+  const outputOptions = getOutputOptions({
+    imageTag: undefined, // This is already handled via the --save flag
+    push: true, // We always push the image to the registry
+    compression: options.compression,
+    compressionLevel: options.compressionLevel,
+    forceCompression: options.forceCompression,
+  });
+
   const args = [
     "build",
     "-f",
     "Containerfile",
     options.noCache ? "--no-cache" : undefined,
-    ...(options.useZstd
-      ? [
-          "--output",
-          `compression=zstd${options.compressionLevel ? `,level=${options.compressionLevel}` : ""}`,
-        ]
-      : []),
     "--platform",
     options.imagePlatform,
     options.load ? "--load" : undefined,
@@ -233,6 +240,8 @@ async function remoteBuildImage(options: DepotBuildImageOptions): Promise<BuildI
     "plain",
     ".",
     "--save",
+    "--output",
+    outputOptions.join(","),
   ].filter(Boolean) as string[];
 
   logger.debug(`depot ${args.join(" ")}`, { cwd: options.cwd });
@@ -335,9 +344,10 @@ interface SelfHostedBuildImageOptions {
   network?: string;
   builder: string;
   load?: boolean;
-  useZstd?: boolean;
-  useZstdCache?: boolean;
+  compression?: "zstd" | "gzip";
+  cacheCompression?: "zstd" | "gzip";
   compressionLevel?: number;
+  forceCompression?: boolean;
   onLog?: (log: string) => void;
 }
 
@@ -348,9 +358,10 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
     deploymentId,
     apiClient,
     useRegistryCache,
-    useZstd,
-    useZstdCache,
+    compression,
+    cacheCompression,
     compressionLevel,
+    forceCompression,
   } = options;
 
   // Ensure multi-platform build is supported on the local machine
@@ -520,6 +531,14 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
 
   const projectCacheRef = getProjectCacheRefFromImageTag(imageTag);
 
+  const outputOptions = getOutputOptions({
+    imageTag,
+    push,
+    compression,
+    compressionLevel,
+    forceCompression,
+  });
+
   const args = [
     "buildx",
     "build",
@@ -532,20 +551,18 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
       ? [
           "--cache-to",
           `type=registry,mode=max,image-manifest=true,oci-mediatypes=true,ref=${projectCacheRef}${
-            useZstdCache ? ",compression=zstd" : ""
+            cacheCompression === "zstd" ? ",compression=zstd" : ""
           }`,
           "--cache-from",
           `type=registry,ref=${projectCacheRef}`,
         ]
       : []),
-    ...(useZstd
-      ? ["--output", `compression=zstd${compressionLevel ? `,level=${compressionLevel}` : ""}`]
-      : []),
+    "--output",
+    outputOptions.join(","),
     "--platform",
     options.imagePlatform,
     options.network ? `--network=${options.network}` : undefined,
     addHost ? `--add-host=${addHost}` : undefined,
-    push ? "--push" : undefined,
     load ? "--load" : undefined,
     "--provenance",
     "false",
@@ -1107,4 +1124,44 @@ function shouldLoad(load?: boolean, push?: boolean) {
       assertExhaustive(load);
     }
   }
+}
+
+function getOutputOptions({
+  imageTag,
+  push,
+  compression,
+  compressionLevel,
+  forceCompression,
+}: {
+  imageTag?: string;
+  push?: boolean;
+  compression?: "zstd" | "gzip";
+  compressionLevel?: number;
+  forceCompression?: boolean;
+}): string[] {
+  // Always use OCI media types for compatibility
+  const outputOptions: string[] = ["type=image", "oci-mediatypes=true"];
+
+  if (imageTag) {
+    outputOptions.push(`name=${imageTag}`);
+  }
+
+  if (push) {
+    outputOptions.push("push=true");
+  }
+
+  // Only add compression args when using zstd (gzip is the default, no args needed)
+  if (compression === "zstd") {
+    outputOptions.push("compression=zstd");
+
+    if (compressionLevel !== undefined) {
+      outputOptions.push(`compression-level=${compressionLevel}`);
+    }
+  }
+
+  if (forceCompression) {
+    outputOptions.push("force-compression=true");
+  }
+
+  return outputOptions;
 }

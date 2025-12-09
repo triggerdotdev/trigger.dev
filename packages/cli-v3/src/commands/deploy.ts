@@ -71,7 +71,7 @@ const DeployCommandOptions = CommonCommandOptions.extend({
   saveLogs: z.boolean().default(false),
   skipUpdateCheck: z.boolean().default(false),
   skipPromotion: z.boolean().default(false),
-  noCache: z.boolean().default(false),
+  cache: z.boolean().default(true),
   envFile: z.string().optional(),
   // Local build options
   forceLocalBuild: z.boolean().optional(),
@@ -83,9 +83,10 @@ const DeployCommandOptions = CommonCommandOptions.extend({
   nativeBuildServer: z.boolean().default(false),
   detach: z.boolean().default(false),
   plain: z.boolean().default(false),
-  useZstd: z.boolean().default(true),
-  useZstdCache: z.boolean().default(true),
+  compression: z.enum(["zstd", "gzip"]).default("zstd"),
+  cacheCompression: z.enum(["zstd", "gzip"]).default("zstd"),
   compressionLevel: z.number().optional(),
+  forceCompression: z.boolean().default(true),
 });
 
 type DeployCommandOptions = z.infer<typeof DeployCommandOptions>;
@@ -162,20 +163,36 @@ export function configureDeployCommand(program: Command) {
       )
       .addOption(
         new CommandOption(
-          "--use-zstd",
-          "Use zstd compression when building the image. This will reduce image size and speed up pull times."
-        ).hideHelp()
+          "--compression <algorithm>",
+          "Compression algorithm for image layers: zstd or gzip (default: zstd)"
+        )
+          .choices(["zstd", "gzip"])
+          .hideHelp()
       )
       .addOption(
         new CommandOption(
-          "--use-zstd-cache",
-          "Use zstd compression for the build cache. This will reduce cache size and speed up build times."
-        ).hideHelp()
+          "--cache-compression <algorithm>",
+          "Compression algorithm for build cache: zstd or gzip (default: zstd)"
+        )
+          .choices(["zstd", "gzip"])
+          .hideHelp()
       )
       .addOption(
         new CommandOption(
           "--compression-level <level>",
-          "The compression level to use when building the image. The default is 3."
+          "The compression level to use when building the image."
+        ).hideHelp()
+      )
+      .addOption(
+        new CommandOption(
+          "--force-compression",
+          "Force recompression of all layers. Enabled by default when using zstd."
+        ).hideHelp()
+      )
+      .addOption(
+        new CommandOption(
+          "--no-force-compression",
+          "Disable forced recompression of layers."
         ).hideHelp()
       )
       // Local build options
@@ -501,7 +518,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   const buildResult = await buildImage({
     isLocalBuild,
     useRegistryCache: options.useRegistryCache,
-    noCache: options.noCache,
+    noCache: !options.cache,
     deploymentId: deployment.id,
     deploymentVersion: deployment.version,
     imageTag: deployment.imageTag,
@@ -520,9 +537,10 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     authAccessToken: authorization.auth.accessToken,
     compilationPath: destination.path,
     buildEnvVars: buildManifest.build.env,
-    useZstd: options.useZstd,
-    useZstdCache: options.useZstdCache,
+    compression: options.compression,
+    cacheCompression: options.cacheCompression,
     compressionLevel: options.compressionLevel,
+    forceCompression: options.forceCompression,
     onLog: (logMessage) => {
       if (options.plain || isCI) {
         console.log(logMessage);
