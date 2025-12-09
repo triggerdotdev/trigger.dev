@@ -661,6 +661,7 @@ export async function batchTriggerById<TTask extends AnyTask>(
           {
             parentRunId: taskContext.ctx?.run.id,
             idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
+            spanParentAsLink: true, // Fire-and-forget: child runs get separate trace IDs
           },
           requestOptions
         );
@@ -700,6 +701,7 @@ export async function batchTriggerById<TTask extends AnyTask>(
           {
             parentRunId: taskContext.ctx?.run.id,
             idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
+            spanParentAsLink: true, // Fire-and-forget: child runs get separate trace IDs
           },
           requestOptions
         );
@@ -915,6 +917,7 @@ export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
             parentRunId: ctx.run.id,
             resumeParentOnCompletion: true,
             idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
+            spanParentAsLink: false, // Waiting: child runs share parent's trace ID
           },
           requestOptions
         );
@@ -958,6 +961,7 @@ export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
             parentRunId: ctx.run.id,
             resumeParentOnCompletion: true,
             idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
+            spanParentAsLink: false, // Waiting: child runs share parent's trace ID
           },
           requestOptions
         );
@@ -1171,6 +1175,7 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
           {
             parentRunId: taskContext.ctx?.run.id,
             idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
+            spanParentAsLink: true, // Fire-and-forget: child runs get separate trace IDs
           },
           requestOptions
         );
@@ -1213,6 +1218,7 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
           {
             parentRunId: taskContext.ctx?.run.id,
             idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
+            spanParentAsLink: true, // Fire-and-forget: child runs get separate trace IDs
           },
           requestOptions
         );
@@ -1430,6 +1436,7 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
             parentRunId: ctx.run.id,
             resumeParentOnCompletion: true,
             idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
+            spanParentAsLink: false, // Waiting: child runs share parent's trace ID
           },
           requestOptions
         );
@@ -1476,6 +1483,7 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
             parentRunId: ctx.run.id,
             resumeParentOnCompletion: true,
             idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
+            spanParentAsLink: false, // Waiting: child runs share parent's trace ID
           },
           requestOptions
         );
@@ -1511,6 +1519,12 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
  * 1. Creates the batch record with expected run count
  * 2. Streams items as NDJSON to the server
  *
+ * @param apiClient - The API client instance
+ * @param items - Array of batch items
+ * @param options - Batch options including trace context settings
+ * @param options.spanParentAsLink - If true, child runs will have separate trace IDs with a link to parent.
+ *                                   Use true for batchTrigger (fire-and-forget), false for batchTriggerAndWait.
+ * @param requestOptions - Optional request options
  * @internal
  */
 async function executeBatchTwoPhase(
@@ -1520,6 +1534,7 @@ async function executeBatchTwoPhase(
     parentRunId?: string;
     resumeParentOnCompletion?: boolean;
     idempotencyKey?: string;
+    spanParentAsLink?: boolean;
   },
   requestOptions?: TriggerApiRequestOptions
 ): Promise<{ id: string; runCount: number; publicAccessToken: string }> {
@@ -1531,6 +1546,7 @@ async function executeBatchTwoPhase(
       resumeParentOnCompletion: options.resumeParentOnCompletion,
       idempotencyKey: options.idempotencyKey,
     },
+    { spanParentAsLink: options.spanParentAsLink },
     requestOptions
   );
 
@@ -1551,6 +1567,12 @@ async function executeBatchTwoPhase(
  * Execute a streaming 2-phase batch trigger where items are streamed from an AsyncIterable.
  * Unlike executeBatchTwoPhase, this doesn't know the count upfront.
  *
+ * @param apiClient - The API client instance
+ * @param items - AsyncIterable of batch items
+ * @param options - Batch options including trace context settings
+ * @param options.spanParentAsLink - If true, child runs will have separate trace IDs with a link to parent.
+ *                                   Use true for batchTrigger (fire-and-forget), false for batchTriggerAndWait.
+ * @param requestOptions - Optional request options
  * @internal
  */
 async function executeBatchTwoPhaseStreaming(
@@ -1560,6 +1582,7 @@ async function executeBatchTwoPhaseStreaming(
     parentRunId?: string;
     resumeParentOnCompletion?: boolean;
     idempotencyKey?: string;
+    spanParentAsLink?: boolean;
   },
   requestOptions?: TriggerApiRequestOptions
 ): Promise<{ id: string; runCount: number; publicAccessToken: string }> {
@@ -2066,6 +2089,7 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
           {
             parentRunId: ctx?.run.id,
             idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
+            spanParentAsLink: true, // Fire-and-forget: child runs get separate trace IDs
           },
           requestOptions
         );
@@ -2120,6 +2144,7 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
           {
             parentRunId: ctx?.run.id,
             idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
+            spanParentAsLink: true, // Fire-and-forget: child runs get separate trace IDs
           },
           requestOptions
         );
@@ -2310,6 +2335,7 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
             parentRunId: ctx.run.id,
             resumeParentOnCompletion: true,
             idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
+            spanParentAsLink: false, // Waiting: child runs share parent's trace ID
           },
           requestOptions
         );
@@ -2371,6 +2397,7 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
             parentRunId: ctx.run.id,
             resumeParentOnCompletion: true,
             idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
+            spanParentAsLink: false, // Waiting: child runs share parent's trace ID
           },
           requestOptions
         );

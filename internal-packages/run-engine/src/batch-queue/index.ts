@@ -494,12 +494,14 @@ export class BatchQueue {
           expectedCount: meta.runCount,
         });
       } else {
+        // For offloaded payloads (payloadType: "application/store"), payload is already an R2 path
+        // For inline payloads, store the full payload - it's under the offload threshold anyway
         const payloadStr =
           typeof item.payload === "string" ? item.payload : JSON.stringify(item.payload);
         processedCount = await this.completionTracker.recordFailure(batchId, {
           index: itemIndex,
           taskIdentifier: item.task,
-          payload: payloadStr?.substring(0, 1000), // Truncate large payloads
+          payload: payloadStr,
           options: item.options as Record<string, unknown>,
           error: result.error,
           errorCode: result.errorCode,
@@ -515,12 +517,13 @@ export class BatchQueue {
       }
     } catch (error) {
       // Unexpected error during processing
+      // For offloaded payloads, payload is an R2 path; for inline payloads, store full payload
       const payloadStr =
         typeof item.payload === "string" ? item.payload : JSON.stringify(item.payload);
       processedCount = await this.completionTracker.recordFailure(batchId, {
         index: itemIndex,
         taskIdentifier: item.task,
-        payload: payloadStr?.substring(0, 1000),
+        payload: payloadStr,
         options: item.options as Record<string, unknown>,
         error: error instanceof Error ? error.message : String(error),
         errorCode: "UNEXPECTED_ERROR",

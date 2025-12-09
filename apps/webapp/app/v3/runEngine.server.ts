@@ -160,26 +160,23 @@ function createRunEngine() {
     },
     // BatchQueue with DRR scheduling for fair batch processing
     // Consumers are controlled by options.worker.disabled (same as main worker)
-    batchQueue:
-      env.BATCH_TRIGGER_WORKER_ENABLED === "true"
-        ? {
-            redis: {
-              keyPrefix: "engine:",
-              port: env.BATCH_TRIGGER_WORKER_REDIS_PORT ?? undefined,
-              host: env.BATCH_TRIGGER_WORKER_REDIS_HOST ?? undefined,
-              username: env.BATCH_TRIGGER_WORKER_REDIS_USERNAME ?? undefined,
-              password: env.BATCH_TRIGGER_WORKER_REDIS_PASSWORD ?? undefined,
-              enableAutoPipelining: true,
-              ...(env.BATCH_TRIGGER_WORKER_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
-            },
-            drr: {
-              quantum: env.BATCH_QUEUE_DRR_QUANTUM,
-              maxDeficit: env.BATCH_QUEUE_MAX_DEFICIT,
-            },
-            consumerCount: env.BATCH_QUEUE_CONSUMER_COUNT,
-            consumerIntervalMs: env.BATCH_QUEUE_CONSUMER_INTERVAL_MS,
-          }
-        : undefined,
+    batchQueue: {
+      redis: {
+        keyPrefix: "engine:",
+        port: env.BATCH_TRIGGER_WORKER_REDIS_PORT ?? undefined,
+        host: env.BATCH_TRIGGER_WORKER_REDIS_HOST ?? undefined,
+        username: env.BATCH_TRIGGER_WORKER_REDIS_USERNAME ?? undefined,
+        password: env.BATCH_TRIGGER_WORKER_REDIS_PASSWORD ?? undefined,
+        enableAutoPipelining: true,
+        ...(env.BATCH_TRIGGER_WORKER_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
+      },
+      drr: {
+        quantum: env.BATCH_QUEUE_DRR_QUANTUM,
+        maxDeficit: env.BATCH_QUEUE_MAX_DEFICIT,
+      },
+      consumerCount: env.BATCH_QUEUE_CONSUMER_COUNT,
+      consumerIntervalMs: env.BATCH_QUEUE_CONSUMER_INTERVAL_MS,
+    },
   });
 
   // Set up BatchQueue callbacks if enabled
@@ -192,17 +189,24 @@ function createRunEngine() {
 
 /**
  * Normalize the payload from BatchQueue.
- * The payload might be a JSON string if the SDK sent it pre-serialized.
- * If it's a JSON string and payloadType is "application/json", parse it
- * to avoid double-stringification in DefaultPayloadProcessor.
+ *
+ * Handles different payload types:
+ * - "application/store": Already offloaded to R2, payload is the path - pass through as-is
+ * - "application/json": May be a pre-serialized JSON string - parse to avoid double-stringification
+ * - Other types: Pass through as-is
+ *
+ * @param payload - The raw payload from the batch item
+ * @param payloadType - The payload type (e.g., "application/json", "application/store")
  */
 function normalizePayload(payload: unknown, payloadType?: string): unknown {
-  // Only normalize for JSON payloads
+  // For non-JSON payloads (including application/store for R2-offloaded payloads),
+  // return as-is - no normalization needed
   if (payloadType !== "application/json" && payloadType !== undefined) {
     return payload;
   }
 
-  // If payload is a string, try to parse it as JSON
+  // For JSON payloads, if payload is a string, try to parse it
+  // This handles pre-serialized JSON from the SDK
   if (typeof payload === "string") {
     try {
       return JSON.parse(payload);
@@ -218,6 +222,11 @@ function normalizePayload(payload: unknown, payloadType?: string): unknown {
 /**
  * Set up the BatchQueue processing callbacks.
  * These handle creating runs from batch items and completing batches.
+ *
+ * Payload handling:
+ * - If payloadType is "application/store", the payload is an R2 path (already offloaded)
+ * - DefaultPayloadProcessor in TriggerTaskService will pass it through without re-offloading
+ * - The run engine will download from R2 when the task executes
  */
 function setupBatchQueueCallbacks(engine: RunEngine) {
   // Item processing callback - creates a run for each batch item
@@ -225,7 +234,7 @@ function setupBatchQueueCallbacks(engine: RunEngine) {
     try {
       const triggerTaskService = new TriggerTaskService();
 
-      // Normalize payload to avoid double-stringification
+      // Normalize payload - for application/store (R2 paths), this passes through as-is
       const payload = normalizePayload(item.payload, item.payloadType);
 
       const result = await triggerTaskService.call(

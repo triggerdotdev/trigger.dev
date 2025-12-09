@@ -38,10 +38,7 @@ export const loader = createLoaderApiRoute(
       updatedAt: batch.updatedAt,
       runCount: batch.runCount,
       runs: batch.runIds,
-      // Include error details for PARTIAL_FAILED batches
-      successfulRunCount: batch.successfulRunCount ?? undefined,
-      failedRunCount: batch.failedRunCount ?? undefined,
-      errors:
+      processingErrors:
         batch.errors.length > 0
           ? batch.errors.map((err) => ({
               index: err.index,

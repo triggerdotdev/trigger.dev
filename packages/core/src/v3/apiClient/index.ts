@@ -339,16 +339,22 @@ export class ApiClient {
    * the parent run is blocked immediately on batch creation.
    *
    * @param body - The batch creation parameters
+   * @param clientOptions - Options for trace context handling
+   * @param clientOptions.spanParentAsLink - If true, child runs will have separate trace IDs with a link to parent
    * @param requestOptions - Optional request options
    * @returns The created batch with ID and metadata
    */
-  createBatch(body: CreateBatchRequestBody, requestOptions?: TriggerRequestOptions) {
+  createBatch(
+    body: CreateBatchRequestBody,
+    clientOptions?: ClientTriggerOptions,
+    requestOptions?: TriggerRequestOptions
+  ) {
     return zodfetch(
       CreateBatchResponse,
       `${this.baseUrl}/api/v3/batches`,
       {
         method: "POST",
-        headers: this.#getHeaders(false),
+        headers: this.#getHeaders(clientOptions?.spanParentAsLink ?? false),
         body: JSON.stringify(body),
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)

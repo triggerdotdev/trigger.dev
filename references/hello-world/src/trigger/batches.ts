@@ -154,6 +154,136 @@ export const simpleTask = task({
   },
 });
 
+// ============================================================================
+// Large Payload Examples (R2 Offloading)
+// ============================================================================
+
+/**
+ * Helper to generate a large string payload.
+ * Default threshold for R2 offloading is 512KB (BATCH_PAYLOAD_OFFLOAD_THRESHOLD).
+ *
+ * @param sizeInKB - Size of the payload in kilobytes
+ */
+function generateLargePayload(sizeInKB: number): string {
+  // Each character is 1 byte in ASCII, so we generate sizeInKB * 1024 characters
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  const targetSize = sizeInKB * 1024;
+  let result = "";
+
+  while (result.length < targetSize) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+
+  return result;
+}
+
+/**
+ * Example: Batch trigger with large payloads that get offloaded to R2
+ *
+ * When a batch item's payload exceeds BATCH_PAYLOAD_OFFLOAD_THRESHOLD (default 512KB),
+ * it's automatically uploaded to R2 object storage. Only a reference path is stored
+ * in Redis, reducing memory usage and allowing larger payloads.
+ *
+ * The task receives the full payload - the offloading is transparent.
+ */
+export const largePayloadBatch = task({
+  id: "large-payload-batch",
+  maxDuration: 300,
+  machine: "large-2x",
+  run: async (payload: { count: number; payloadSizeKB: number }) => {
+    // Default to 600KB to exceed the 512KB threshold
+    const sizeKB = payload.payloadSizeKB || 600;
+
+    async function* generateLargeItems() {
+      for (let i = 0; i < payload.count; i++) {
+        yield {
+          payload: {
+            index: i,
+            // This large data will be offloaded to R2
+            largeData: generateLargePayload(sizeKB),
+          },
+        };
+      }
+    }
+
+    // Trigger the batch - large payloads are automatically offloaded to R2
+    const result = await largePayloadTask.batchTriggerAndWait(generateLargeItems());
+
+    return {
+      batchId: result.id,
+      runCount: result.runs.length,
+      payloadSizeKB: sizeKB,
+      note: `Each payload was ~${sizeKB}KB. Payloads over 512KB are offloaded to R2.`,
+    };
+  },
+});
+
+/**
+ * Example: Batch triggerAndWait with large payloads
+ *
+ * Same as above but waits for results.
+ */
+export const largePayloadBatchAndWait = task({
+  id: "large-payload-batch-and-wait",
+  maxDuration: 600,
+  run: async (payload: { count: number; payloadSizeKB: number }) => {
+    const sizeKB = payload.payloadSizeKB || 600;
+
+    async function* generateLargeItems() {
+      for (let i = 0; i < payload.count; i++) {
+        yield {
+          payload: {
+            index: i,
+            largeData: generateLargePayload(sizeKB),
+          },
+        };
+      }
+    }
+
+    // Trigger and wait - large payloads are offloaded, results are returned
+    const results = await largePayloadTask.batchTriggerAndWait(generateLargeItems());
+
+    const successCount = results.runs.filter((r) => r.ok).length;
+    const outputs = results.runs.filter((r) => r.ok).map((r) => (r.ok ? r.output : null));
+
+    return {
+      successCount,
+      outputs,
+      payloadSizeKB: sizeKB,
+    };
+  },
+});
+
+type LargePayload = {
+  index: number;
+  largeData: string;
+};
+
+/**
+ * Task that receives large payloads.
+ * The payload is transparently downloaded from R2 if it was offloaded.
+ */
+export const largePayloadTask = task({
+  id: "large-payload-task",
+  retry: {
+    maxAttempts: 2,
+  },
+  machine: "small-1x",
+  run: async (payload: LargePayload) => {
+    // The large payload is available here - R2 download is transparent
+    const payloadSizeBytes = payload.largeData.length;
+    const payloadSizeKB = Math.round(payloadSizeBytes / 1024);
+
+    await setTimeout(500);
+
+    return {
+      index: payload.index,
+      receivedSizeKB: payloadSizeKB,
+      preview: payload.largeData.substring(0, 50) + "...",
+    };
+  },
+});
+
 type Payload = {
   waitSeconds: number;
   error?: string;
