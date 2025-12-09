@@ -1,31 +1,31 @@
 import type { Authenticator } from "remix-auth";
-import { GitHubStrategy } from "remix-auth-github";
+import { GoogleStrategy } from "remix-auth-google";
 import { env } from "~/env.server";
 import { findOrCreateUser } from "~/models/user.server";
 import type { AuthUser } from "./authUser";
 import { logger } from "./logger.server";
 import { postAuthentication } from "./postAuth.server";
 
-export function addGitHubStrategy(
+export function addGoogleStrategy(
   authenticator: Authenticator<AuthUser>,
   clientID: string,
   clientSecret: string
 ) {
-  const gitHubStrategy = new GitHubStrategy(
+  const googleStrategy = new GoogleStrategy(
     {
       clientID,
       clientSecret,
-      callbackURL: `${env.LOGIN_ORIGIN}/auth/github/callback`,
+      callbackURL: `${env.LOGIN_ORIGIN}/auth/google/callback`,
     },
     async ({ extraParams, profile }) => {
       const emails = profile.emails;
 
       if (!emails?.length) {
-        throw new Error("GitHub login requires an email address");
+        throw new Error("Google login requires an email address");
       }
 
       try {
-        logger.debug("GitHub login", {
+        logger.debug("Google login", {
           emails,
           profile,
           extraParams,
@@ -33,22 +33,22 @@ export function addGitHubStrategy(
 
         const { user, isNewUser } = await findOrCreateUser({
           email: emails[0].value,
-          authenticationMethod: "GITHUB",
+          authenticationMethod: "GOOGLE",
           authenticationProfile: profile,
           authenticationExtraParams: extraParams,
         });
 
-        await postAuthentication({ user, isNewUser, loginMethod: "GITHUB" });
+        await postAuthentication({ user, isNewUser, loginMethod: "GOOGLE" });
 
         return {
           userId: user.id,
         };
       } catch (error) {
-        logger.error("GitHub login failed", { error: JSON.stringify(error) });
+        logger.error("Google login failed", { error: JSON.stringify(error) });
         throw error;
       }
     }
   );
 
-  authenticator.use(gitHubStrategy);
+  authenticator.use(googleStrategy);
 }
