@@ -1189,7 +1189,13 @@ export const SubscribeRunRawShape = z.object({
 
 export type SubscribeRunRawShape = z.infer<typeof SubscribeRunRawShape>;
 
-export const BatchStatus = z.enum(["PENDING", "COMPLETED"]);
+export const BatchStatus = z.enum([
+  "PENDING",
+  "PROCESSING",
+  "COMPLETED",
+  "PARTIAL_FAILED",
+  "ABORTED",
+]);
 
 export type BatchStatus = z.infer<typeof BatchStatus>;
 
