@@ -199,10 +199,7 @@ export function TabButton({
       <>
         <div className="flex items-center gap-1">
           <span
-            className={cn(
-              "text-sm transition duration-200",
-              isActive ? "text-text-bright" : "text-text-bright"
-            )}
+            className={"text-sm transition duration-200 text-text-bright"}
           >
             {props.children}
           </span>
