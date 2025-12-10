@@ -52,15 +52,13 @@ import {
 } from "./SetupCommands";
 import { StepContentContainer } from "./StepContentContainer";
 import { V4Badge } from "./V4Badge";
-import { GitHubConnectionPrompt } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.settings/route";
-import SegmentedControl from "./primitives/SegmentedControl";
-import { useState } from "react";
 import {
   ClientTabs,
   ClientTabsContent,
   ClientTabsList,
   ClientTabsTrigger,
 } from "./primitives/ClientTabs";
+import { GitHubSettingsPanel } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.github";
 
 export function HasNoTasksDev() {
   return (
@@ -651,11 +649,11 @@ function DeploymentOnboardingSteps() {
               <TextLink to={docsPath("github-integration")}>full guide</TextLink>.
             </Paragraph>
             <div className="w-fit">
-              <GitHubConnectionPrompt
-                gitHubAppInstallations={[]}
+              <GitHubSettingsPanel
                 organizationSlug={organization.slug}
                 projectSlug={project.slug}
                 environmentSlug={environment.slug}
+                billingPath={v3BillingPath({ slug: organization.slug })}              
               />
             </div>
           </StepContentContainer>
