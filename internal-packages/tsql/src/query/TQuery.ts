@@ -3,6 +3,7 @@ import { TSQLLexer } from "../grammar/TSQLLexer.js";
 import { TSQLParser } from "../grammar/TSQLParser.js";
 import { ClickHouseQueryVisitor } from "./ClickHouseQueryVisitor.js";
 import type { ClickHouse } from "@internal/clickhouse";
+import { ClickhouseQueryBuilder } from "@internal/clickhouse/client/queryBuilder.js";
 import { z } from "zod";
 
 export interface TQueryOptions {
@@ -43,80 +44,51 @@ export class TQuery {
     // Parse as a SELECT statement
     const tree = parser.select();
 
-    // Convert AST to ClickHouse SQL
+    // Convert AST to QueryConfig
     const visitor = new ClickHouseQueryVisitor();
-    let clickhouseQuery = visitor.visit(tree);
+    const queryConfig = visitor.visit(tree);
 
-    // Add WHERE clauses for scoping
-    clickhouseQuery = this.addScopingWhereClauses(clickhouseQuery);
+    // Use ClickhouseQueryBuilder to build the query
+    const queryBuilder = new ClickhouseQueryBuilder(
+      "tsql-query",
+      queryConfig.baseQuery,
+      this.clickhouseReader.reader,
+      schema
+    );
 
-    // Execute the query using ClickHouse client
-    const queryFunction = this.clickhouseReader.reader.query({
-      name: "tsql-query",
-      query: clickhouseQuery,
-      params: z.object({
-        organizationId: z.string(),
-        projectId: z.string(),
-        environmentId: z.string(),
-      }),
-      schema,
-    });
-
-    return await queryFunction({
-      organizationId: this.organizationId,
-      projectId: this.projectId,
-      environmentId: this.environmentId,
-    });
-  }
-
-  /**
-   * Add WHERE clauses for organization_id, project_id, and environment_id
-   * If the query already has a WHERE clause, we add AND conditions
-   */
-  private addScopingWhereClauses(query: string): string {
-    const scopingConditions = [
-      "organization_id = {organizationId: String}",
-      "project_id = {projectId: String}",
-      "environment_id = {environmentId: String}",
-    ].join(" AND ");
-
-    const upperQuery = query.toUpperCase();
-
-    // Check if query already has a WHERE clause
-    const whereIndex = upperQuery.indexOf(" WHERE ");
-    if (whereIndex !== -1) {
-      // Find the end of the WHERE clause (before GROUP BY, HAVING, ORDER BY, LIMIT, etc.)
-      const groupByIndex = upperQuery.indexOf(" GROUP BY ", whereIndex);
-      const havingIndex = upperQuery.indexOf(" HAVING ", whereIndex);
-      const orderByIndex = upperQuery.indexOf(" ORDER BY ", whereIndex);
-      const limitIndex = upperQuery.indexOf(" LIMIT ", whereIndex);
-
-      let whereEndIndex = query.length;
-      if (groupByIndex !== -1) whereEndIndex = Math.min(whereEndIndex, groupByIndex);
-      if (havingIndex !== -1) whereEndIndex = Math.min(whereEndIndex, havingIndex);
-      if (orderByIndex !== -1) whereEndIndex = Math.min(whereEndIndex, orderByIndex);
-      if (limitIndex !== -1) whereEndIndex = Math.min(whereEndIndex, limitIndex);
-
-      // Insert AND conditions before the end of WHERE clause
-      const beforeWhereEnd = query.substring(0, whereEndIndex);
-      const afterWhereEnd = query.substring(whereEndIndex);
-      return `${beforeWhereEnd} AND ${scopingConditions}${afterWhereEnd}`;
-    } else {
-      // Add WHERE clause before GROUP BY, HAVING, ORDER BY, LIMIT, etc.
-      const groupByIndex = upperQuery.indexOf(" GROUP BY ");
-      const havingIndex = upperQuery.indexOf(" HAVING ");
-      const orderByIndex = upperQuery.indexOf(" ORDER BY ");
-      const limitIndex = upperQuery.indexOf(" LIMIT ");
-
-      let insertIndex = query.length;
-      if (groupByIndex !== -1) insertIndex = Math.min(insertIndex, groupByIndex);
-      if (havingIndex !== -1) insertIndex = Math.min(insertIndex, havingIndex);
-      if (orderByIndex !== -1) insertIndex = Math.min(insertIndex, orderByIndex);
-      if (limitIndex !== -1) insertIndex = Math.min(insertIndex, limitIndex);
-
-      return `${query.substring(0, insertIndex)} WHERE ${scopingConditions}${query.substring(
-        insertIndex
-      )}`;
+    // Add existing WHERE clauses from the TSQL query
+    for (const whereClause of queryConfig.whereClauses) {
+      queryBuilder.where(whereClause.clause, whereClause.params);
     }
+
+    // Add scoping WHERE clauses
+    queryBuilder
+      .where("organization_id = {organizationId: String}", {
+        organizationId: this.organizationId,
+      })
+      .where("project_id = {projectId: String}", {
+        projectId: this.projectId,
+      })
+      .where("environment_id = {environmentId: String}", {
+        environmentId: this.environmentId,
+      });
+
+    // Add GROUP BY if present
+    if (queryConfig.groupBy) {
+      queryBuilder.groupBy(queryConfig.groupBy);
+    }
+
+    // Add ORDER BY if present
+    if (queryConfig.orderBy) {
+      queryBuilder.orderBy(queryConfig.orderBy);
+    }
+
+    // Add LIMIT if present
+    if (queryConfig.limit !== undefined) {
+      queryBuilder.limit(queryConfig.limit);
+    }
+
+    // Execute the query
+    return await queryBuilder.execute();
   }
 }
