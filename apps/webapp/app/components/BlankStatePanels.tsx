@@ -52,6 +52,13 @@ import {
 } from "./SetupCommands";
 import { StepContentContainer } from "./StepContentContainer";
 import { V4Badge } from "./V4Badge";
+import {
+  ClientTabs,
+  ClientTabsContent,
+  ClientTabsList,
+  ClientTabsTrigger,
+} from "./primitives/ClientTabs";
+import { GitHubSettingsPanel } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.github";
 
 export function HasNoTasksDev() {
   return (
@@ -93,62 +100,7 @@ export function HasNoTasksDev() {
 }
 
 export function HasNoTasksDeployed({ environment }: { environment: MinimumEnvironment }) {
-  return (
-    <PackageManagerProvider>
-      <div>
-        <div className="mb-6 flex items-center justify-between border-b">
-          <div className="mb-2 flex items-center gap-2">
-            <EnvironmentIcon environment={environment} className="-ml-1 size-8" />
-            <Header1>Deploy your tasks to {environmentFullTitle(environment)}</Header1>
-          </div>
-          <div className="flex items-center">
-            <SimpleTooltip
-              button={
-                <LinkButton
-                  variant="small-menu-item"
-                  LeadingIcon={BookOpenIcon}
-                  leadingIconClassName="text-blue-500"
-                  to={docsPath("deployment/overview")}
-                />
-              }
-              content="Deploy docs"
-            />
-            <SimpleTooltip
-              button={
-                <LinkButton
-                  variant="small-menu-item"
-                  LeadingIcon={QuestionMarkCircleIcon}
-                  leadingIconClassName="text-blue-500"
-                  to={docsPath("troubleshooting#deployment")}
-                />
-              }
-              content="Troubleshooting docs"
-            />
-            <AskAI />
-          </div>
-        </div>
-        <StepNumber stepNumber="1a" title="Run the CLI 'deploy' command" />
-        <StepContentContainer>
-          <Paragraph spacing>
-            This will deploy your tasks to the {environmentFullTitle(environment)} environment. Read
-            the <TextLink to={docsPath("deployment/overview")}>full guide</TextLink>.
-          </Paragraph>
-          <TriggerDeployStep environment={environment} />
-        </StepContentContainer>
-        <StepNumber stepNumber="1b" title="Or deploy using GitHub Actions" />
-        <StepContentContainer>
-          <Paragraph spacing>
-            Read the <TextLink to={docsPath("github-actions")}>GitHub Actions guide</TextLink> to
-            get started.
-          </Paragraph>
-        </StepContentContainer>
-        <StepNumber stepNumber="2" title="Waiting for tasks to deploy" displaySpinner />
-        <StepContentContainer>
-          <Paragraph>This page will automatically refresh when your tasks are deployed.</Paragraph>
-        </StepContentContainer>
-      </div>
-    </PackageManagerProvider>
-  );
+  return <DeploymentOnboardingSteps />;
 }
 
 export function SchedulesNoPossibleTaskPanel() {
@@ -266,45 +218,7 @@ export function TestHasNoTasks() {
 }
 
 export function DeploymentsNone() {
-  const organization = useOrganization();
-  const project = useProject();
-  const environment = useEnvironment();
-
-  return (
-    <InfoPanel
-      icon={ServerStackIcon}
-      iconClassName="text-deployments"
-      title="Deploy for the first time"
-      panelClassName="max-w-full"
-    >
-      <Paragraph spacing variant="small">
-        There are several ways to deploy your tasks. You can use the CLI or a Continuous Integration
-        service like GitHub Actions. Make sure you{" "}
-        <TextLink href={v3EnvironmentVariablesPath(organization, project, environment)}>
-          set your environment variables
-        </TextLink>{" "}
-        first.
-      </Paragraph>
-      <div className="flex gap-3">
-        <LinkButton
-          to={docsPath("v3/cli-deploy")}
-          variant="docs/medium"
-          LeadingIcon={BookOpenIcon}
-          className="inline-flex"
-        >
-          Deploy with the CLI
-        </LinkButton>
-        <LinkButton
-          to={docsPath("v3/github-actions")}
-          variant="docs/medium"
-          LeadingIcon={BookOpenIcon}
-          className="inline-flex"
-        >
-          Deploy with GitHub actions
-        </LinkButton>
-      </div>
-    </InfoPanel>
-  );
+  return <DeploymentOnboardingSteps />;
 }
 
 export function DeploymentsNoneDev() {
@@ -313,46 +227,52 @@ export function DeploymentsNoneDev() {
   const environment = useEnvironment();
 
   return (
-    <div className="space-y-8">
-      <InfoPanel
-        icon={ServerStackIcon}
-        iconClassName="text-deployments"
-        title="Deploying tasks"
-        panelClassName="max-w-full"
-      >
-        <Paragraph spacing variant="small">
+    <>
+      <div className="mb-6 flex items-center justify-between border-b">
+        <div className="mb-2 flex items-center gap-2">
+          <EnvironmentIcon environment={environment} className="-ml-1 size-8" />
+          <Header1>Deploy your tasks</Header1>
+        </div>
+        <div className="flex items-center">
+          <SimpleTooltip
+            button={
+              <LinkButton
+                variant="small-menu-item"
+                LeadingIcon={BookOpenIcon}
+                leadingIconClassName="text-blue-500"
+                to={docsPath("deployment/overview")}
+              />
+            }
+            content="Deploy docs"
+          />
+          <SimpleTooltip
+            button={
+              <LinkButton
+                variant="small-menu-item"
+                LeadingIcon={QuestionMarkCircleIcon}
+                leadingIconClassName="text-blue-500"
+                to={docsPath("troubleshooting#deployment")}
+              />
+            }
+            content="Troubleshooting docs"
+          />
+          <AskAI />
+        </div>
+      </div>
+      <StepNumber stepNumber="→" title="Switch to a deployed environment" />
+      <StepContentContainer className="mb-4 flex flex-col gap-4">
+        <Paragraph>
           This is the Development environment. When you're ready to deploy your tasks, switch to a
           different environment.
         </Paragraph>
-        <Paragraph spacing variant="small">
-          There are several ways to deploy your tasks. You can use the CLI or a Continuous
-          Integration service like GitHub Actions. Make sure you{" "}
-          <TextLink href={v3EnvironmentVariablesPath(organization, project, environment)}>
-            set your environment variables
-          </TextLink>{" "}
-          first.
-        </Paragraph>
-        <div className="flex gap-3">
-          <LinkButton
-            to={docsPath("v3/cli-deploy")}
-            variant="docs/medium"
-            LeadingIcon={BookOpenIcon}
-            className="inline-flex"
-          >
-            Deploy with the CLI
-          </LinkButton>
-          <LinkButton
-            to={docsPath("v3/github-actions")}
-            variant="docs/medium"
-            LeadingIcon={BookOpenIcon}
-            className="inline-flex"
-          >
-            Deploy with GitHub actions
-          </LinkButton>
-        </div>
-      </InfoPanel>
-      <SwitcherPanel />
-    </div>
+        <EnvironmentSelector
+          organization={organization}
+          project={project}
+          environment={environment}
+          className="w-fit border border-charcoal-600 bg-secondary hover:border-charcoal-550 hover:bg-charcoal-600"
+        />
+      </StepContentContainer>
+    </>
   );
 }
 
@@ -668,5 +588,101 @@ export function BulkActionsNone() {
         </div>
       </StepContentContainer>
     </div>
+  );
+}
+
+function DeploymentOnboardingSteps() {
+  const environment = useEnvironment();
+  const organization = useOrganization();
+  const project = useProject();
+
+  return (
+    <PackageManagerProvider>
+      <div className="mb-2 flex items-center justify-between border-b">
+        <div className="mb-2 flex items-center gap-2">
+          <EnvironmentIcon environment={environment} className="-ml-1 size-8" />
+          <Header1>Deploy your tasks to {environmentFullTitle(environment)}</Header1>
+        </div>
+        <div className="flex items-center">
+          <SimpleTooltip
+            button={
+              <LinkButton
+                variant="small-menu-item"
+                LeadingIcon={BookOpenIcon}
+                leadingIconClassName="text-blue-500"
+                to={docsPath("deployment/overview")}
+              />
+            }
+            content="Deploy docs"
+          />
+          <SimpleTooltip
+            button={
+              <LinkButton
+                variant="small-menu-item"
+                LeadingIcon={QuestionMarkCircleIcon}
+                leadingIconClassName="text-blue-500"
+                to={docsPath("troubleshooting#deployment")}
+              />
+            }
+            content="Troubleshooting docs"
+          />
+          <AskAI />
+        </div>
+      </div>
+      <ClientTabs defaultValue="github">
+        <ClientTabsList variant="segmented" className="mb-6">
+          <ClientTabsTrigger value={"github"} variant="segmented" layoutId="deploy-tabs">
+            GitHub
+          </ClientTabsTrigger>
+          <ClientTabsTrigger value={"cli"} variant="segmented" layoutId="deploy-tabs">
+            Manual
+          </ClientTabsTrigger>
+          <ClientTabsTrigger value={"github-actions"} variant="segmented" layoutId="deploy-tabs">
+            GitHub Actions
+          </ClientTabsTrigger>
+        </ClientTabsList>
+        <ClientTabsContent value={"github"}>
+          <StepNumber stepNumber="1" title="Connect your GitHub repository" />
+          <StepContentContainer>
+            <Paragraph spacing>
+              Deploy automatically with every push. Read the{" "}
+              <TextLink to={docsPath("github-integration")}>full guide</TextLink>.
+            </Paragraph>
+            <div className="w-fit">
+              <GitHubSettingsPanel
+                organizationSlug={organization.slug}
+                projectSlug={project.slug}
+                environmentSlug={environment.slug}
+                billingPath={v3BillingPath({ slug: organization.slug })}              
+              />
+            </div>
+          </StepContentContainer>
+        </ClientTabsContent>
+        <ClientTabsContent value={"cli"}>
+          <StepNumber stepNumber="1" title="Run the CLI 'deploy' command" />
+          <StepContentContainer>
+            <Paragraph spacing>
+              This will deploy your tasks to the {environmentFullTitle(environment)} environment.
+              Read the <TextLink to={docsPath("deployment/overview")}>full guide</TextLink>.
+            </Paragraph>
+            <TriggerDeployStep environment={environment} />
+          </StepContentContainer>
+        </ClientTabsContent>
+        <ClientTabsContent value={"github-actions"}>
+          <StepNumber stepNumber="1" title="Deploy using GitHub Actions" />
+          <StepContentContainer>
+            <Paragraph spacing>
+              Read the <TextLink to={docsPath("github-actions")}>GitHub Actions guide</TextLink> to
+              get started.
+            </Paragraph>
+          </StepContentContainer>
+        </ClientTabsContent>
+      </ClientTabs>
+
+      <StepNumber stepNumber="2" title="Waiting for tasks to deploy" displaySpinner />
+      <StepContentContainer>
+        <Paragraph>This page will automatically refresh when your tasks are deployed.</Paragraph>
+      </StepContentContainer>
+    </PackageManagerProvider>
   );
 }
