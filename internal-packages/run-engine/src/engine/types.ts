@@ -8,7 +8,11 @@ import {
   TriggerTraceContext,
 } from "@trigger.dev/core/v3";
 import { PrismaClient, PrismaReplicaClient } from "@trigger.dev/database";
-import { Worker, type WorkerConcurrencyOptions } from "@trigger.dev/redis-worker";
+import {
+  Worker,
+  type WorkerConcurrencyOptions,
+  type GlobalRateLimiter,
+} from "@trigger.dev/redis-worker";
 import { FairQueueSelectionStrategyOptions } from "../run-queue/fairQueueSelectionStrategy.js";
 import { MinimalAuthenticatedEnvironment } from "../shared/index.js";
 import { LockRetryConfig } from "./locking.js";
@@ -74,6 +78,10 @@ export type RunEngineOptions = {
     drr?: Partial<DRRConfig>;
     consumerCount?: number;
     consumerIntervalMs?: number;
+    /** Default processing concurrency per environment when no specific limit is set */
+    defaultConcurrency?: number;
+    /** Optional global rate limiter to limit processing across all consumers */
+    globalRateLimiter?: GlobalRateLimiter;
   };
   /** If not set then checkpoints won't ever be used */
   retryWarmStartThresholdMs?: number;

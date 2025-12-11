@@ -203,6 +203,9 @@ model Organization {
   apiRateLimiterConfig      Json?
   realtimeRateLimiterConfig Json?
 
+  batchRateLimitConfig        Json?
+  batchQueueConcurrencyConfig Json?
+
   featureFlags Json?
 
   maximumProjectCount Int @default(10)

@@ -180,11 +180,12 @@ export class StreamBatchItemsService extends WithRunEngine {
           },
         });
 
-        logger.debug("Batch sealed after streaming items", {
+        logger.info("Batch sealed and ready for processing", {
           batchId: batchFriendlyId,
           itemsAccepted,
           itemsDeduplicated,
           totalEnqueued: enqueuedCount,
+          envId: environment.id,
         });
 
         span.setAttribute("itemsAccepted", itemsAccepted);

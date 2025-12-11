@@ -104,8 +104,24 @@ export class DRRScheduler extends BaseScheduler {
       (t) => !t.isAtCapacity && t.deficit >= 1
     );
 
+    // Log tenants blocked by capacity
+    const blockedTenants = tenantData.filter((t) => t.isAtCapacity);
+    if (blockedTenants.length > 0) {
+      this.logger.debug("DRR: tenants blocked by concurrency", {
+        blockedCount: blockedTenants.length,
+        blockedTenants: blockedTenants.map((t) => t.tenantId),
+      });
+    }
+
     // Sort by deficit (highest first for fairness)
     eligibleTenants.sort((a, b) => b.deficit - a.deficit);
+
+    this.logger.debug("DRR: queue selection complete", {
+      totalQueues: queues.length,
+      totalTenants: tenantIds.length,
+      eligibleTenants: eligibleTenants.length,
+      topTenantDeficit: eligibleTenants[0]?.deficit,
+    });
 
     // Convert to TenantQueues format
     return eligibleTenants.map((t) => ({

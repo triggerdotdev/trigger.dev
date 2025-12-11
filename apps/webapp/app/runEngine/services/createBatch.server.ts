@@ -9,6 +9,7 @@ import { logger } from "~/services/logger.server";
 import { DefaultQueueManager } from "../concerns/queues.server";
 import { DefaultTriggerTaskValidator } from "../validators/triggerTaskValidator";
 import { ServiceValidationError, WithRunEngine } from "../../v3/services/baseService.server";
+import { BatchRateLimitExceededError, getBatchLimits } from "../concerns/batchLimits.server";
 
 export type CreateBatchServiceOptions = {
   triggerVersion?: string;
@@ -70,7 +71,21 @@ export class CreateBatchService extends WithRunEngine {
             throw entitlementValidation.error;
           }
 
-          const planType = entitlementValidation.plan?.type;
+          // Get batch limits for this organization
+          const { config, rateLimiter } = await getBatchLimits(environment.organization);
+
+          // Check rate limit BEFORE creating the batch
+          // This prevents burst creation of batches that exceed the rate limit
+          const rateResult = await rateLimiter.limit(environment.id, body.runCount);
+
+          if (!rateResult.success) {
+            throw new BatchRateLimitExceededError(
+              rateResult.limit,
+              rateResult.remaining,
+              new Date(rateResult.reset),
+              body.runCount
+            );
+          }
 
           // Validate queue limits for the expected batch size
           const queueSizeGuard = await this.queueConcern.validateQueueLimits(
@@ -132,16 +147,19 @@ export class CreateBatchService extends WithRunEngine {
             spanParentAsLink: options.spanParentAsLink,
             realtimeStreamsVersion: options.realtimeStreamsVersion,
             idempotencyKey: body.idempotencyKey,
-            planType,
+            processingConcurrency: config.processingConcurrency,
           };
 
           await this._engine.initializeBatch(initOptions);
 
-          logger.debug("Batch created for streaming", {
+          logger.info("Batch created", {
             batchId: friendlyId,
             runCount: body.runCount,
             envId: environment.id,
+            projectId: environment.projectId,
             parentRunId: body.parentRunId,
+            resumeParentOnCompletion: body.resumeParentOnCompletion,
+            processingConcurrency: config.processingConcurrency,
           });
 
           return {

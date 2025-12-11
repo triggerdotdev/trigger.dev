@@ -81,16 +81,12 @@ export class ConcurrencyManager {
     );
 
     // Use Lua script for atomic multi-group reservation
+    // Pass keys as KEYS array so ioredis applies keyPrefix correctly
     const keys = groupData.map((g) => g.key);
     const limits = groupData.map((g) => g.limit.toString());
 
-    // Args order: numGroups, messageId, ...keys, ...limits
-    const result = await this.redis.reserveConcurrency(
-      keys.length.toString(),
-      messageId,
-      ...keys,
-      ...limits
-    );
+    // Args order: messageId, ...limits (keys are passed separately)
+    const result = await this.redis.reserveConcurrency(keys.length, keys, messageId, ...limits);
 
     return result === 1;
   }
@@ -201,18 +197,18 @@ export class ConcurrencyManager {
 
   #registerCommands(): void {
     // Atomic multi-group reservation
-    // Keys: concurrency set keys for each group
-    // Args: messageId, then limits for each group
+    // KEYS: concurrency set keys for each group (keyPrefix is applied by ioredis)
+    // ARGV[1]: messageId
+    // ARGV[2..n]: limits for each group (in same order as KEYS)
     this.redis.defineCommand("reserveConcurrency", {
-      numberOfKeys: 0, // Will pass number of keys in ARGV
       lua: `
-local numGroups = tonumber(ARGV[1])
-local messageId = ARGV[2]
+local numGroups = #KEYS
+local messageId = ARGV[1]
 
 -- Check all groups first
 for i = 1, numGroups do
-  local key = ARGV[2 + i]  -- Keys start at ARGV[3]
-  local limit = tonumber(ARGV[2 + numGroups + i])  -- Limits come after keys
+  local key = KEYS[i]
+  local limit = tonumber(ARGV[1 + i])  -- Limits start at ARGV[2]
   local current = redis.call('SCARD', key)
   
   if current >= limit then
@@ -222,7 +218,7 @@ end
 
 -- All groups have capacity, add message to all
 for i = 1, numGroups do
-  local key = ARGV[2 + i]
+  local key = KEYS[i]
   redis.call('SADD', key, messageId)
 end
 
@@ -235,7 +231,11 @@ return 1
 // Extend Redis interface for custom commands
 declare module "@internal/redis" {
   interface RedisCommander<Context> {
-    reserveConcurrency(...args: string[]): Promise<number>;
+    reserveConcurrency(
+      numKeys: number,
+      keys: string[],
+      messageId: string,
+      ...limits: string[]
+    ): Promise<number>;
   }
 }
-

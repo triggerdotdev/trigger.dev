@@ -5,6 +5,22 @@ import type { z } from "zod";
 import type { RetryStrategy } from "./retry.js";
 
 // ============================================================================
+// Global Rate Limiter
+// ============================================================================
+
+/**
+ * Interface for a global rate limiter that limits processing across all consumers.
+ * When configured, consumers will check this before processing each message.
+ */
+export interface GlobalRateLimiter {
+  /**
+   * Check if processing is allowed under the rate limit.
+   * @returns Object with allowed flag and optional resetAt timestamp (ms since epoch)
+   */
+  limit(): Promise<{ allowed: boolean; resetAt?: number }>;
+}
+
+// ============================================================================
 // Core Queue Types
 // ============================================================================
 
@@ -361,6 +377,10 @@ export interface FairQueueOptions<TPayloadSchema extends z.ZodTypeAny = z.ZodUnk
   meter?: Meter;
   /** Name for metrics/tracing (default: "fairqueue") */
   name?: string;
+
+  // Global rate limiting
+  /** Optional global rate limiter to limit processing across all consumers */
+  globalRateLimiter?: GlobalRateLimiter;
 }
 
 // ============================================================================
