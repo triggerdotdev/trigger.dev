@@ -193,11 +193,11 @@ async function remoteBuildImage(options: DepotBuildImageOptions): Promise<BuildI
     "--metadata-file",
     "metadata.json",
     "--build-arg",
+    `SOURCE_DATE_EPOCH=0`,
+    "--build-arg",
     `TRIGGER_PROJECT_ID=${options.projectId}`,
     "--build-arg",
     `TRIGGER_DEPLOYMENT_ID=${options.deploymentId}`,
-    "--build-arg",
-    `TRIGGER_DEPLOYMENT_VERSION=${options.deploymentVersion}`,
     "--build-arg",
     `TRIGGER_CONTENT_HASH=${options.contentHash}`,
     "--build-arg",
@@ -210,6 +210,8 @@ async function remoteBuildImage(options: DepotBuildImageOptions): Promise<BuildI
     `TRIGGER_SECRET_KEY=${options.apiKey}`,
     ...(buildArgs || []),
     ...(options.extraCACerts ? ["--build-arg", `NODE_EXTRA_CA_CERTS=${options.extraCACerts}`] : []),
+    "--output",
+    "type=image,rewrite-timestamp=true",
     "--progress",
     "plain",
     ".",
@@ -509,18 +511,16 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
     options.imagePlatform,
     options.network ? `--network=${options.network}` : undefined,
     addHost ? `--add-host=${addHost}` : undefined,
-    push ? "--push" : undefined,
-    load ? "--load" : undefined,
     "--provenance",
     "false",
     "--metadata-file",
     "metadata.json",
     "--build-arg",
+    `SOURCE_DATE_EPOCH=0`,
+    "--build-arg",
     `TRIGGER_PROJECT_ID=${options.projectId}`,
     "--build-arg",
     `TRIGGER_DEPLOYMENT_ID=${options.deploymentId}`,
-    "--build-arg",
-    `TRIGGER_DEPLOYMENT_VERSION=${options.deploymentVersion}`,
     "--build-arg",
     `TRIGGER_CONTENT_HASH=${options.contentHash}`,
     "--build-arg",
@@ -533,10 +533,12 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
     `TRIGGER_SECRET_KEY=${options.apiKey}`,
     ...(buildArgs || []),
     ...(options.extraCACerts ? ["--build-arg", `NODE_EXTRA_CA_CERTS=${options.extraCACerts}`] : []),
+    "--output",
+    `type=image,name=${imageTag},rewrite-timestamp=true${push ? ",push=true" : ""}${
+      load ? ",load=true" : ""
+    }`,
     "--progress",
     "plain",
-    "-t",
-    imageTag,
     ".", // The build context
   ].filter(Boolean) as string[];
 
@@ -761,15 +763,11 @@ USER bun
 WORKDIR /app
 
 ARG TRIGGER_PROJECT_ID
-ARG TRIGGER_DEPLOYMENT_ID
-ARG TRIGGER_DEPLOYMENT_VERSION
 ARG TRIGGER_CONTENT_HASH
 ARG TRIGGER_PROJECT_REF
 ARG NODE_EXTRA_CA_CERTS
 
 ENV TRIGGER_PROJECT_ID=\${TRIGGER_PROJECT_ID} \
-    TRIGGER_DEPLOYMENT_ID=\${TRIGGER_DEPLOYMENT_ID} \
-    TRIGGER_DEPLOYMENT_VERSION=\${TRIGGER_DEPLOYMENT_VERSION} \
     TRIGGER_CONTENT_HASH=\${TRIGGER_CONTENT_HASH} \
     TRIGGER_PROJECT_REF=\${TRIGGER_PROJECT_REF} \
     UV_USE_IO_URING=0 \
@@ -875,15 +873,11 @@ USER node
 WORKDIR /app
 
 ARG TRIGGER_PROJECT_ID
-ARG TRIGGER_DEPLOYMENT_ID
-ARG TRIGGER_DEPLOYMENT_VERSION
 ARG TRIGGER_CONTENT_HASH
 ARG TRIGGER_PROJECT_REF
 ARG NODE_EXTRA_CA_CERTS
 
 ENV TRIGGER_PROJECT_ID=\${TRIGGER_PROJECT_ID} \
-    TRIGGER_DEPLOYMENT_ID=\${TRIGGER_DEPLOYMENT_ID} \
-    TRIGGER_DEPLOYMENT_VERSION=\${TRIGGER_DEPLOYMENT_VERSION} \
     TRIGGER_CONTENT_HASH=\${TRIGGER_CONTENT_HASH} \
     TRIGGER_PROJECT_REF=\${TRIGGER_PROJECT_REF} \
     UV_USE_IO_URING=0 \
