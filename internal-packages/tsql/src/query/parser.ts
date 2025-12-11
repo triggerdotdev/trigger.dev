@@ -130,6 +130,7 @@ import {
   ArithmeticOperationOp,
   ArrayAccess,
   Array as ArrayExpression,
+  AST,
   BetweenExpr,
   Block,
   Call,
@@ -157,6 +158,7 @@ import {
   Not,
   Or,
   OrderExpr,
+  ParseResult,
   Placeholder,
   Program,
   RatioExpr,
@@ -223,7 +225,7 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     this.start = start;
   }
 
-  visit(ctx: ParserRuleContext): any {
+  visit(ctx: ParserRuleContext): ParseResult {
     const start = getTokenStart(ctx.start);
     const stop = getTokenStop(ctx.stop);
     const end = stop !== undefined ? stop + 1 : undefined;
@@ -311,7 +313,7 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     return this.visitChildren(ctx);
   }
 
-  visitExpression(ctx: ExpressionContext): Expr {
+  visitExpression(ctx: ExpressionContext): Expression {
     return this.visitChildren(ctx);
   }
 
@@ -319,14 +321,14 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     const expr = ctx.expression();
     return {
       name: this.visitIdentifier(ctx.identifier()),
-      expr: expr ? this.visit(expr) : undefined,
+      expr: expr ? this.visitExpression(expr) : undefined,
     };
   }
 
   visitVarAssignment(ctx: VarAssignmentContext): VariableAssignment {
     return {
-      left: this.visit(ctx.expression(0)),
-      right: this.visit(ctx.expression(1)),
+      left: this.visitExpression(ctx.expression(0)),
+      right: this.visitExpression(ctx.expression(1)),
     };
   }
 
@@ -336,21 +338,21 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
 
   visitExprStmt(ctx: ExprStmtContext): ExprStatement {
     return {
-      expr: this.visit(ctx.expression()),
+      expr: this.visitExpression(ctx.expression()),
     };
   }
 
   visitReturnStmt(ctx: ReturnStmtContext): ReturnStatement {
     const expr = ctx.expression();
     return {
-      expr: expr ? this.visit(expr) : undefined,
+      expr: expr ? this.visitExpression(expr) : undefined,
     };
   }
 
   visitThrowStmt(ctx: ThrowStmtContext): ThrowStatement {
     const expr = ctx.expression();
     return {
-      expr: expr ? this.visit(expr) : undefined,
+      expr: expr ? this.visitExpression(expr) : undefined,
     };
   }
 
@@ -358,10 +360,13 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     const catchVar = ctx._catchVar;
     const catchType = ctx._catchType;
     const catchStmt = ctx._catchStmt;
+    if (!catchStmt) {
+      throw new SyntaxError("Catch statement is required");
+    }
     return [
-      catchVar ? this.visit(catchVar) : null,
-      catchType ? this.visit(catchType) : null,
-      catchStmt ? this.visit(catchStmt) : undefined,
+      catchVar ? this.visitIdentifier(catchVar) : null,
+      catchType ? this.visitIdentifier(catchType) : null,
+      this.visitBlock(catchStmt),
     ];
   }
 
@@ -369,36 +374,47 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     const tryStmt = ctx._tryStmt;
     const catchBlocks = ctx.catchBlock();
     const finallyStmt = ctx._finallyStmt;
+    if (!tryStmt) {
+      throw new SyntaxError("Try statement is required");
+    }
     return {
-      try_stmt: tryStmt ? this.visit(tryStmt) : undefined,
-      catches: catchBlocks.map((c: CatchBlockContext) => this.visit(c)),
-      finally_stmt: finallyStmt ? this.visit(finallyStmt) : undefined,
+      try_stmt: this.visitBlock(tryStmt),
+      catches: catchBlocks.map((c: CatchBlockContext) => this.visitCatchBlock(c)),
+      finally_stmt: finallyStmt ? this.visitBlock(finallyStmt) : undefined,
     };
   }
 
   visitIfStmt(ctx: IfStmtContext): IfStatement {
     return {
-      expr: this.visit(ctx.expression()),
-      then: this.visit(ctx.statement(0)),
-      else_: ctx.statement(1) ? this.visit(ctx.statement(1)) : undefined,
+      expr: this.visitExpression(ctx.expression()),
+      then: this.visitStatement(ctx.statement(0)),
+      else_: ctx.statement(1) ? this.visitStatement(ctx.statement(1)) : undefined,
     };
   }
 
   visitWhileStmt(ctx: WhileStmtContext): WhileStatement {
+    const statement = ctx.statement();
+    if (!statement) {
+      throw new SyntaxError("While statement body is required");
+    }
     return {
-      expr: this.visit(ctx.expression()),
-      body: ctx.statement() ? this.visit(ctx.statement()) : undefined,
+      expr: this.visitExpression(ctx.expression()),
+      body: this.visitStatement(statement),
     };
   }
 
   visitForInStmt(ctx: ForInStmtContext): ForInStatement {
     const firstIdentifier = this.visitIdentifier(ctx.identifier(0));
     const secondIdentifier = ctx.identifier(1) ? this.visitIdentifier(ctx.identifier(1)) : null;
+    const statement = ctx.statement();
+    if (!statement) {
+      throw new SyntaxError("For in statement body is required");
+    }
     return {
       valueVar: secondIdentifier ?? firstIdentifier,
       keyVar: secondIdentifier ? firstIdentifier : undefined,
-      expr: this.visit(ctx.expression()),
-      body: this.visit(ctx.statement()),
+      expr: this.visitExpression(ctx.expression()),
+      body: this.visitStatement(statement),
     };
   }
 
@@ -408,30 +424,40 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     const increment =
       ctx._incrementVarDeclr || ctx._incrementVarAssignment || ctx._incrementExpression;
 
+    const statement = ctx.statement();
+    if (!statement) {
+      throw new SyntaxError("For statement body is required");
+    }
     return {
-      initializer: initializer ? this.visit(initializer) : undefined,
-      condition: ctx._condition ? this.visit(ctx._condition) : undefined,
-      increment: increment ? this.visit(increment) : undefined,
-      body: this.visit(ctx.statement()),
+      initializer: initializer ? this.visitVarDecl(initializer) : undefined,
+      condition: this.visitExpression(ctx._condition),
+      increment: this.visitVarDecl(increment),
+      body: this.visitStatement(statement),
     };
   }
 
   visitFuncStmt(ctx: FuncStmtContext): Function {
     const params = ctx.identifierList();
+
     return {
       name: this.visitIdentifier(ctx.identifier()),
-      params: params ? this.visit(params) : [],
-      body: this.visit(ctx.block()),
+      params: params ? this.visitIdentifierList(params) : [],
+      body: this.visitBlock(ctx.block()),
     };
   }
 
-  visitKvPairList(ctx: KvPairListContext): [Expr, Expr][] {
-    return ctx.kvPair().map((kv: any) => this.visit(kv));
+  visitKvPairList(ctx: KvPairListContext): [Expression, Expression][] {
+    return ctx
+      .kvPair()
+      .map((kv: any) => [
+        this.visitExpression(kv.expression(0)),
+        this.visitExpression(kv.expression(1)),
+      ]);
   }
 
-  visitKvPair(ctx: KvPairContext): [Expr, Expr] {
+  visitKvPair(ctx: KvPairContext): [Expression, Expression] {
     const exprs = ctx.expression();
-    return [this.visit(exprs[0]), this.visit(exprs[1])];
+    return [this.visitExpression(exprs[0]), this.visitExpression(exprs[1])];
   }
 
   visitIdentifierList(ctx: IdentifierListContext): string[] {
@@ -450,18 +476,24 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
 
   // SELECT statements
   visitSelect(ctx: SelectContext): SelectQuery | SelectSetQuery | HogQLXTag {
-    const statement = ctx.selectSetStmt() || ctx.selectStmt() || ctx.tSQLxTagElement();
-    if (!statement) {
-      throw new SyntaxError(
-        "Select statement must be either a select set statement, a select statement, or a tSQLx tag element"
-      );
+    const selectSetStmt = ctx.selectSetStmt();
+    const selectStmt = ctx.selectStmt();
+    const tSQLxTagElement = ctx.tSQLxTagElement();
+    if (selectSetStmt) {
+      return this.visitSelectSetStmt(selectSetStmt);
+    } else if (selectStmt) {
+      return this.visitSelectStmt(selectStmt);
+    } else if (tSQLxTagElement) {
+      return this.visitHogqlxTagElementNested(tSQLxTagElement);
     }
-    return this.visit(statement);
+    throw new SyntaxError(
+      "Select statement must be either a select set statement, a select statement, or a tSQLx tag element"
+    );
   }
 
   visitSelectSetStmt(ctx: SelectSetStmtContext): SelectQuery | SelectSetQuery {
     const selectQueries: SelectSetNode[] = [];
-    const initialQuery = this.visit(ctx.selectStmtWithParens());
+    const initialQuery = this.visitSelectStmtWithParens(ctx.selectStmtWithParens());
 
     for (const subsequent of ctx.subsequentSelectSetClause()) {
       let unionType: SetOperator;
@@ -480,7 +512,7 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
           "Set operator must be one of UNION ALL, UNION DISTINCT, INTERSECT, INTERSECT DISTINCT, and EXCEPT"
         );
       }
-      const selectQuery = this.visit(subsequent.selectStmtWithParens());
+      const selectQuery = this.visitSelectStmtWithParens(subsequent.selectStmtWithParens());
       selectQueries.push({
         select_query: selectQuery,
         set_operator: unionType,
@@ -500,13 +532,19 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
   visitSelectStmtWithParens(
     ctx: SelectStmtWithParensContext
   ): SelectQuery | SelectSetQuery | Placeholder {
-    const statement = ctx.selectStmt() || ctx.selectSetStmt() || ctx.placeholder();
-    if (!statement) {
-      throw new SyntaxError(
-        "Select statement must be either a select statement, a select set statement, or a placeholder"
-      );
+    const selectStmt = ctx.selectStmt();
+    const selectSetStmt = ctx.selectSetStmt();
+    const placeholder = ctx.placeholder();
+    if (selectStmt) {
+      return this.visitSelectStmt(selectStmt);
+    } else if (selectSetStmt) {
+      return this.visitSelectSetStmt(selectSetStmt);
+    } else if (placeholder) {
+      return this.visitPlaceholder(placeholder);
     }
-    return this.visit(statement);
+    throw new SyntaxError(
+      "Select statement must be either a select statement, a select set statement, or a placeholder"
+    );
   }
 
   visitSelectStmt(ctx: SelectStmtContext): SelectQuery {
@@ -521,8 +559,8 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     const limitByClause = ctx.limitByClause();
     const selectQuery: SelectQuery = {
       expression_type: "select_query",
-      ctes: withClause ? this.visit(withClause) : undefined,
-      select: columnExprList ? this.visit(columnExprList) : [],
+      ctes: withClause ? this.visitWithClause(withClause) : undefined,
+      select: columnExprList ? this.visitColumnExprList(columnExprList) : [],
       distinct: ctx.DISTINCT() ? true : undefined,
       select_from: fromClause ? this.visit(fromClause) : undefined,
       where: whereClause ? this.visit(whereClause) : undefined,
@@ -865,8 +903,8 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
   }
 
   // Column expressions
-  visitColumnExprList(ctx: ColumnExprListContext): Expr[] {
-    return ctx.columnExpr().map((c: any) => this.visit(c));
+  visitColumnExprList(ctx: ColumnExprListContext): Expression[] {
+    return ctx.columnExpr().map((c: any) => this.visitWithExprColumn(c));
   }
 
   visitColumnExprTernaryOp(ctx: ColumnExprTernaryOpContext): Call {
@@ -1248,7 +1286,7 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
   }
 
   visitWithExprColumn(ctx: WithExprColumnContext): CTE {
-    const expr = this.visit(ctx.columnExpr());
+    const expr = this.visitColumnExpr(ctx.columnExpr());
     const name = this.visitIdentifier(ctx.identifier());
     return { expression_type: "cte", name, expr, cte_type: "column" };
   }
@@ -1548,7 +1586,7 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
   }
 
   visitPlaceholder(ctx: PlaceholderContext): Placeholder {
-    return { expression_type: "placeholder", expr: this.visit(ctx.columnExpr()) };
+    return { expression_type: "placeholder", expr: this.visitCol(ctx.columnExpr()) };
   }
 
   visitColumnExprTemplateString(ctx: ColumnExprTemplateStringContext): Expr {

@@ -38,7 +38,7 @@ describe("TSQLParseTreeConverter", () => {
 
       expect(ast).toBeDefined();
       console.log(ast);
-      expect("select" in ast).toBe(true);
+      expect(ast.expression_type).toBe("select_query");
       const selectQuery = ast as SelectQuery;
       expect(selectQuery.select).toBeDefined();
       expect(selectQuery.select_from).toBeDefined();
