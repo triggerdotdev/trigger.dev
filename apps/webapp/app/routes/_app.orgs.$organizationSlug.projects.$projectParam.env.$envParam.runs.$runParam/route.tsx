@@ -23,7 +23,7 @@ import {
 } from "@trigger.dev/core/v3";
 import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { motion } from "framer-motion";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { redirect } from "remix-typedjson";
 import { MoveToTopIcon } from "~/assets/icons/MoveToTopIcon";
@@ -320,7 +320,7 @@ export default function Page() {
             text: "Runs",
           }}
           title={<>
-          <CopyableText value={run.friendlyId} variant="text-below" className="font-mono"/>
+          <CopyableText value={run.friendlyId} variant="text-below" className="font-mono px-0 py-0 pb-[2px]"/>
           {tableState && (<div className="flex">
               <PreviousRunButton to={previousRunPath} />
               <NextRunButton to={nextRunPath} />
@@ -1674,55 +1674,53 @@ function useAdjacentRunPaths({
   run: { friendlyId: string };
   runsList: RunsListNavigation | null;
 }): [string | null, string | null] {
-  return useMemo(() => {
-    if (!runsList || runsList.runs.length === 0) {
-      return [null, null];
-    }
+  if (!runsList || runsList.runs.length === 0) {
+    return [null, null];
+  }
 
-    const currentIndex = runsList.runs.findIndex((r) => r.friendlyId === run.friendlyId);
-    
-    if (currentIndex === -1) {
-      return [null, null];
-    }
+  const currentIndex = runsList.runs.findIndex((r) => r.friendlyId === run.friendlyId);
+  
+  if (currentIndex === -1) {
+    return [null, null];
+  }
 
-    // Determine previous run: use prevPageLastRun if at first position, otherwise use previous run in list
-    let previousRun: { friendlyId: string } | null = null;
-    const previousRunTableState = new URLSearchParams(tableState);
-    if (currentIndex > 0) {
-      previousRun = runsList.runs[currentIndex - 1];
-    } else if (runsList.prevPageLastRun) {
-      previousRun = runsList.prevPageLastRun;
-      // Update tableState with the new cursor for the previous page
-      previousRunTableState.set("cursor", runsList.prevPageLastRun.cursor);
-      previousRunTableState.set("direction", "backward");
-    }
+  // Determine previous run: use prevPageLastRun if at first position, otherwise use previous run in list
+  let previousRun: { friendlyId: string } | null = null;
+  const previousRunTableState = new URLSearchParams(tableState);
+  if (currentIndex > 0) {
+    previousRun = runsList.runs[currentIndex - 1];
+  } else if (runsList.prevPageLastRun) {
+    previousRun = runsList.prevPageLastRun;
+    // Update tableState with the new cursor for the previous page
+    previousRunTableState.set("cursor", runsList.prevPageLastRun.cursor);
+    previousRunTableState.set("direction", "backward");
+  }
 
-    // Determine next run: use nextPageFirstRun if at last position, otherwise use next run in list
-    let nextRun: { friendlyId: string } | null = null;
-    const nextRunTableState = new URLSearchParams(tableState);
-    if (currentIndex < runsList.runs.length - 1) {
-      nextRun = runsList.runs[currentIndex + 1];
-    } else if (runsList.nextPageFirstRun) {
-      nextRun = runsList.nextPageFirstRun;
-      // Update tableState with the new cursor for the next page
-      nextRunTableState.set("cursor", runsList.nextPageFirstRun.cursor);
-      nextRunTableState.set("direction", "forward");
-    }
+  // Determine next run: use nextPageFirstRun if at last position, otherwise use next run in list
+  let nextRun: { friendlyId: string } | null = null;
+  const nextRunTableState = new URLSearchParams(tableState);
+  if (currentIndex < runsList.runs.length - 1) {
+    nextRun = runsList.runs[currentIndex + 1];
+  } else if (runsList.nextPageFirstRun) {
+    nextRun = runsList.nextPageFirstRun;
+    // Update tableState with the new cursor for the next page
+    nextRunTableState.set("cursor", runsList.nextPageFirstRun.cursor);
+    nextRunTableState.set("direction", "forward");
+  }
 
-    const previousURLSearchParams = new URLSearchParams();
-    previousURLSearchParams.set("tableState", previousRunTableState.toString());
-    const previousRunPath = previousRun
-      ? v3RunPath(organization, project, environment, previousRun, previousURLSearchParams)
-      : null;
+  const previousURLSearchParams = new URLSearchParams();
+  previousURLSearchParams.set("tableState", previousRunTableState.toString());
+  const previousRunPath = previousRun
+    ? v3RunPath(organization, project, environment, previousRun, previousURLSearchParams)
+    : null;
 
-    const nextURLSearchParams = new URLSearchParams();
-    nextURLSearchParams.set("tableState", nextRunTableState.toString());
-    const nextRunPath = nextRun
-      ? v3RunPath(organization, project, environment, nextRun, nextURLSearchParams)
-      : null;
+  const nextURLSearchParams = new URLSearchParams();
+  nextURLSearchParams.set("tableState", nextRunTableState.toString());
+  const nextRunPath = nextRun
+    ? v3RunPath(organization, project, environment, nextRun, nextURLSearchParams)
+    : null;
 
-    return [previousRunPath, nextRunPath];
-  }, [organization, project, environment, tableState, run.friendlyId, runsList]);
+  return [previousRunPath, nextRunPath];
 }
 
 
