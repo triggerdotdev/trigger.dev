@@ -324,6 +324,17 @@ export function v3RunStreamingPath(
   return `${v3RunPath(organization, project, environment, run)}/stream`;
 }
 
+export function v3RunIdempotencyKeyResetPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath,
+  run: v3RunForPath
+) {
+  return `/resources/orgs/${organizationParam(organization)}/projects/${projectParam(
+    project
+  )}/env/${environmentParam(environment)}/runs/${run.friendlyId}/idempotencyKey/reset`;
+}
+
 export function v3SchedulesPath(
   organization: OrgForPath,
   project: ProjectForPath,

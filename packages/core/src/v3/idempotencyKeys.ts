@@ -1,3 +1,4 @@
+import { apiClientManager } from "./apiClientManager-api.js";
 import { taskContext } from "./task-context-api.js";
 import { IdempotencyKey } from "./types/idempotencyKeys.js";
 import { digestSHA256 } from "./utils/crypto.js";
@@ -131,4 +132,14 @@ type AttemptKeyMaterial = {
 /** Creates a unique key for each attempt. */
 export function attemptKey(ctx: AttemptKeyMaterial): string {
   return `${ctx.run.id}-${ctx.attempt.number}`;
+}
+
+/** Resets an idempotency key, effectively deleting it from the associated task.*/
+export async function resetIdempotencyKey(
+  taskIdentifier: string,
+  idempotencyKey: string
+): Promise<{ id: string }> {
+  const client = apiClientManager.clientOrThrow();
+
+  return client.resetIdempotencyKey(taskIdentifier, idempotencyKey);
 }
