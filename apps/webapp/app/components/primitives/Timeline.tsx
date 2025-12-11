@@ -1,11 +1,11 @@
 import {
-  Component,
   ComponentPropsWithoutRef,
   Fragment,
   ReactNode,
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useRef,
   useState,
 } from "react";
@@ -19,27 +19,76 @@ const MousePositionContext = createContext<MousePosition | undefined>(undefined)
 export function MousePositionProvider({ children }: { children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<MousePosition | undefined>(undefined);
+  const lastClient = useRef<{ clientX: number; clientY: number } | null>(null);
+  const rafId = useRef<number | null>(null);
+
+  const computeFromClient = useCallback((clientX: number, clientY: number) => {
+    if (!ref.current) {
+      setPosition(undefined);
+      return;
+    }
+
+    const { top, left, width, height } = ref.current.getBoundingClientRect();
+    const x = (clientX - left) / width;
+    const y = (clientY - top) / height;
+
+    if (x < 0 || x > 1 || y < 0 || y > 1) {
+      setPosition(undefined);
+      return;
+    }
+
+    setPosition({ x, y });
+  }, []);
 
   const handleMouseMove = useCallback(
     (e: React.MouseEvent) => {
-      if (!ref.current) {
-        setPosition(undefined);
-        return;
-      }
-
-      const { top, left, width, height } = ref.current.getBoundingClientRect();
-      const x = (e.clientX - left) / width;
-      const y = (e.clientY - top) / height;
-
-      if (x < 0 || x > 1 || y < 0 || y > 1) {
-        setPosition(undefined);
-        return;
-      }
-
-      setPosition({ x, y });
+      lastClient.current = { clientX: e.clientX, clientY: e.clientY };
+      computeFromClient(e.clientX, e.clientY);
     },
-    [ref.current]
+    [computeFromClient]
   );
+
+  // Recalculate the relative position when the container resizes or the window/ancestors scroll.
+  useEffect(() => {
+    if (!ref.current) return;
+
+    const ro = new ResizeObserver(() => {
+      const lc = lastClient.current;
+      if (lc) computeFromClient(lc.clientX, lc.clientY);
+    });
+    ro.observe(ref.current);
+
+    const onRecalc = () => {
+      const lc = lastClient.current;
+      if (lc) computeFromClient(lc.clientX, lc.clientY);
+    };
+
+    window.addEventListener("resize", onRecalc);
+    // Use capture to catch scroll on any ancestor that impacts bounding rect
+    window.addEventListener("scroll", onRecalc, true);
+
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", onRecalc);
+      window.removeEventListener("scroll", onRecalc, true);
+    };
+  }, [computeFromClient]);
+
+  useEffect(() => {
+    if (position === undefined || !lastClient.current) return;
+
+    const tick = () => {
+      const lc = lastClient.current;
+      if (lc) computeFromClient(lc.clientX, lc.clientY);
+      rafId.current = requestAnimationFrame(tick);
+    };
+
+    rafId.current = requestAnimationFrame(tick);
+    return () => {
+      if (rafId.current !== null) cancelAnimationFrame(rafId.current);
+      rafId.current = null;
+    };
+  }, [position, computeFromClient]);
 
   return (
     <div
