@@ -6,7 +6,7 @@ export function buildManifestToJSON(manifest: BuildManifest): BuildManifest {
   return {
     ...rest,
     // sort externals for deterministic builds
-    externals: externals?.slice().sort((a, b) => a.name.localeCompare(b.name)),
+    externals: externals?.slice().sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)),
     deploy: {},
     build: {},
   };
