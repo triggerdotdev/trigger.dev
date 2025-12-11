@@ -456,7 +456,7 @@ export class ApiClient {
   ) {
     return zodfetch(
       ResetIdempotencyKeyResponse,
-      `${this.baseUrl}/api/v1/idempotency-keys/${encodeURIComponent(idempotencyKey)}/reset`,
+      `${this.baseUrl}/api/v1/idempotencyKeys/${encodeURIComponent(idempotencyKey)}/reset`,
       {
         method: "POST",
         headers: this.#getHeaders(false),

@@ -1,4 +1,5 @@
 import { json } from "@remix-run/server-runtime";
+import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { z } from "zod";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { ResetIdempotencyKeyService } from "~/v3/services/resetIdempotencyKey.server";
@@ -27,13 +28,19 @@ export const { action } = createActionApiRoute(
     const service = new ResetIdempotencyKeyService();
 
     try {
-      const result = await service.call(params.key, body.taskIdentifier, authentication.environment);
+      const result = await service.call(
+        params.key,
+        body.taskIdentifier,
+        authentication.environment
+      );
       return json(result, { status: 200 });
     } catch (error) {
-      if (error instanceof Error) {
-        return json({ error: error.message }, { status: 404 });
+      if (error instanceof ServiceValidationError) {
+        return json({ error: error.message }, { status: error.status ?? 400 });
       }
+
       return json({ error: "Internal Server Error" }, { status: 500 });
     }
+
   }
 );
