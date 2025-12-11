@@ -1764,6 +1764,7 @@ function PreviousRunButton({ to }: { to: string | null }) {
         shortcut={{ key: "[" }}
         tooltip="Previous Run"
         disabled={!to}
+        replace
       />
     </div>
   );
@@ -1784,6 +1785,7 @@ function NextRunButton({ to }: { to: string | null }) {
         shortcut={{ key: "]" }}
         tooltip="Next Run"
         disabled={!to}
+        replace
       />
     </div>
   );

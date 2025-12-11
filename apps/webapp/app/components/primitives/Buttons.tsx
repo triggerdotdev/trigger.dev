@@ -331,7 +331,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonPropsType>(
 type LinkPropsType = Pick<
   LinkProps,
   "to" | "target" | "onClick" | "onMouseDown" | "onMouseEnter" | "onMouseLeave" | "download"
-> & { disabled?: boolean } & React.ComponentProps<typeof ButtonContent>;
+> & { disabled?: boolean; replace?: boolean } & React.ComponentProps<typeof ButtonContent>;
 export const LinkButton = ({
   to,
   onClick,
@@ -340,6 +340,7 @@ export const LinkButton = ({
   onMouseLeave,
   download,
   disabled = false,
+  replace,
   ...props
 }: LinkPropsType) => {
   const innerRef = useRef<HTMLAnchorElement>(null);
@@ -387,6 +388,7 @@ export const LinkButton = ({
       <Link
         to={to}
         ref={innerRef}
+        replace={replace}
         className={cn("group/button block focus-custom", props.fullWidth ? "w-full" : "")}
         onClick={onClick}
         onMouseDown={onMouseDown}
