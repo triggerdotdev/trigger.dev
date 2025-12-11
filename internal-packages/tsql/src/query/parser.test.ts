@@ -13,6 +13,7 @@ import type {
   ArithmeticOperation,
   Alias,
   JoinExpr,
+  HogQLXTag,
 } from "./ast.js";
 import { ArithmeticOperationOp, CompareOperationOp } from "./ast.js";
 import { SyntaxError } from "./errors.js";
@@ -32,10 +33,11 @@ function parseAndConvert(input: string) {
 
 describe("TSQLParseTreeConverter", () => {
   describe("SELECT statements", () => {
-    it("should convert a simple SELECT statement", () => {
+    it.only("should convert a simple SELECT statement", () => {
       const ast = parseAndConvert("SELECT * FROM users");
 
       expect(ast).toBeDefined();
+      console.log(ast);
       expect("select" in ast).toBe(true);
       const selectQuery = ast as SelectQuery;
       expect(selectQuery.select).toBeDefined();

@@ -110,7 +110,14 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     const end = stop !== undefined ? stop + 1 : undefined;
     try {
       const node = this.visitChildren(ctx);
-      if (node && typeof node === "object" && "start" in node && this.start !== undefined) {
+      // Only set position if node is a valid object and we have position info
+      if (
+        node &&
+        typeof node === "object" &&
+        node !== null &&
+        "start" in node &&
+        this.start !== undefined
+      ) {
         node.start = start;
         node.end = end;
       }
@@ -132,42 +139,12 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
 
   /**
    * Visit a parse tree node, dispatching to the appropriate visitor method.
-   * Uses type guards to safely handle ParseTree, ParserRuleContext, TerminalNode, and ErrorNode.
+   * Uses the accept method for proper double dispatch, which handles ErrorNode vs TerminalNode correctly.
    */
   private visitParseTree(node: ParseTree): any {
-    // ErrorNode extends TerminalNode, so check ErrorNode first
-    if (this.isErrorNode(node)) {
-      return this.visitErrorNode(node);
-    }
-    if (this.isTerminalNode(node)) {
-      return this.visitTerminal(node);
-    }
-    if (this.isParserRuleContext(node)) {
-      return this.visit(node);
-    }
-    // Fallback: use accept method for double dispatch
+    // Use accept method for double dispatch - this will call the correct visit method
+    // based on the actual runtime type of the node
     return node.accept(this);
-  }
-
-  /**
-   * Type guard to check if a ParseTree is an ErrorNode.
-   */
-  private isErrorNode(node: ParseTree): node is ErrorNode {
-    return "symbol" in node && node.symbol !== undefined;
-  }
-
-  /**
-   * Type guard to check if a ParseTree is a TerminalNode.
-   */
-  private isTerminalNode(node: ParseTree): node is TerminalNode {
-    return "symbol" in node && !("ruleIndex" in node);
-  }
-
-  /**
-   * Type guard to check if a ParseTree is a ParserRuleContext.
-   */
-  private isParserRuleContext(node: ParseTree): node is ParserRuleContext {
-    return "ruleIndex" in node && "start" in node;
   }
 
   visitChildren(ctx: ParserRuleContext): any {
@@ -788,14 +765,16 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     } else {
       throw new NotImplementedError(`Unsupported ColumnExprPrecedence1: ${ctx.getText()}`);
     }
-    const left = this.visit(ctx.left);
-    const right = this.visit(ctx.right);
+    // Use columnExpr() method to get left and right operands
+    const left = this.visit(ctx.columnExpr(0));
+    const right = this.visit(ctx.columnExpr(1));
     return { left, right, op };
   }
 
   visitColumnExprPrecedence2(ctx: any): ArithmeticOperation | Call {
-    const left = this.visit(ctx.left);
-    const right = this.visit(ctx.right);
+    // Use columnExpr() method to get left and right operands
+    const left = this.visit(ctx.columnExpr(0));
+    const right = this.visit(ctx.columnExpr(1));
 
     if (ctx.PLUS()) {
       return { left, right, op: ArithmeticOperationOp.Add };
@@ -822,8 +801,9 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
   }
 
   visitColumnExprPrecedence3(ctx: any): CompareOperation {
-    const left = this.visit(ctx.left);
-    const right = this.visit(ctx.right);
+    // Use columnExpr() method to get left and right operands
+    const left = this.visit(ctx.columnExpr(0));
+    const right = this.visit(ctx.columnExpr(1));
 
     let op: CompareOperationOp;
     if (ctx.EQ_SINGLE() || ctx.EQ_DOUBLE()) {
@@ -1140,12 +1120,15 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
 
   visitTableIdentifier(ctx: any): string[] {
     const nested = ctx.nestedIdentifier() ? this.visit(ctx.nestedIdentifier()) : [];
+    // Ensure nested is always an array
+    const nestedArray = Array.isArray(nested) ? nested : nested ? [nested] : [];
 
     if (ctx.databaseIdentifier()) {
-      return [this.visit(ctx.databaseIdentifier()), ...nested];
+      const dbId = this.visit(ctx.databaseIdentifier());
+      return [dbId, ...nestedArray];
     }
 
-    return nested;
+    return nestedArray;
   }
 
   visitTableArgList(ctx: any): Expr[] {
@@ -1157,6 +1140,12 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
   }
 
   visitNumberLiteral(ctx: any): Constant {
+    // NumberLiteralContext is a ParserRuleContext, use getText() to get the text
+    if (!ctx || typeof ctx.getText !== "function") {
+      throw new SyntaxError(
+        "Invalid number literal context - expected ParserRuleContext with getText()"
+      );
+    }
     const text = ctx.getText().toLowerCase();
     if (
       text.includes(".") ||
@@ -1175,8 +1164,13 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
       return { value: null };
     }
     if (ctx.STRING_LITERAL()) {
-      const text = parseStringLiteralCtx(ctx);
+      // STRING_LITERAL() returns a TerminalNode, which has getText()
+      const stringLiteral = ctx.STRING_LITERAL();
+      const text = parseStringLiteralCtx(stringLiteral);
       return { value: text };
+    }
+    if (ctx.numberLiteral()) {
+      return this.visitNumberLiteral(ctx.numberLiteral());
     }
     return this.visitChildren(ctx);
   }
@@ -1193,14 +1187,45 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
   }
 
   visitIdentifier(ctx: any): string {
-    let text = ctx.getText();
-    if (
-      text.length >= 2 &&
-      ((text.startsWith("`") && text.endsWith("`")) || (text.startsWith('"') && text.endsWith('"')))
-    ) {
-      text = parseStringLiteralText(text);
+    // IdentifierContext is a ParserRuleContext that has IDENTIFIER() method returning TerminalNode
+    // If ctx has IDENTIFIER() method, extract the terminal node
+    if (ctx.IDENTIFIER && typeof ctx.IDENTIFIER === "function") {
+      const terminalNode = ctx.IDENTIFIER();
+      if (terminalNode) {
+        // TerminalNode has getText() at runtime but types don't expose it
+        // Use symbol.text as fallback
+        let text = (terminalNode as any).getText?.() || terminalNode.symbol?.text || "";
+        if (
+          text.length >= 2 &&
+          ((text.startsWith("`") && text.endsWith("`")) ||
+            (text.startsWith('"') && text.endsWith('"')))
+        ) {
+          text = parseStringLiteralText(text);
+        }
+        return text;
+      }
     }
-    return text;
+    // Fallback: if it's a ParserRuleContext, use getText()
+    if (typeof ctx.getText === "function") {
+      let text = ctx.getText();
+      if (
+        text.length >= 2 &&
+        ((text.startsWith("`") && text.endsWith("`")) ||
+          (text.startsWith('"') && text.endsWith('"')))
+      ) {
+        text = parseStringLiteralText(text);
+      }
+      return text;
+    }
+    // If it's already a string
+    if (typeof ctx === "string") {
+      return ctx;
+    }
+    // Try to get text from symbol if it's a TerminalNode
+    if (ctx.symbol && ctx.symbol.text) {
+      return ctx.symbol.text;
+    }
+    throw new SyntaxError("Invalid identifier context");
   }
 
   visitColumnExprNullish(ctx: any): Call {
