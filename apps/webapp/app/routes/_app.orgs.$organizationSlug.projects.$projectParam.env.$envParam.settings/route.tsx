@@ -1,35 +1,18 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import {
-  CheckCircleIcon,
-  ExclamationTriangleIcon,
-  FolderIcon,
-  TrashIcon,
-  LockClosedIcon,
-  PlusIcon,
-} from "@heroicons/react/20/solid";
-import {
-  Form,
-  type MetaFunction,
-  useActionData,
-  useNavigation,
-  useNavigate,
-  useSearchParams,
-} from "@remix-run/react";
+import { ExclamationTriangleIcon, FolderIcon, TrashIcon } from "@heroicons/react/20/solid";
+import { Form, type MetaFunction, useActionData, useNavigation } from "@remix-run/react";
 import { type ActionFunction, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { InlineCode } from "~/components/code/InlineCode";
-import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
-import { DialogClose } from "@radix-ui/react-dialog";
-import { OctoKitty } from "~/components/GitHubLoginButton";
 import {
   MainHorizontallyCenteredContainer,
   PageBody,
   PageContainer,
 } from "~/components/layout/AppLayout";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Button } from "~/components/primitives/Buttons";
 import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { Fieldset } from "~/components/primitives/Fieldset";
@@ -55,32 +38,12 @@ import {
 import { ProjectSettingsService } from "~/services/projectSettings.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
-import {
-  organizationPath,
-  v3ProjectPath,
-  githubAppInstallPath,
-  EnvironmentParamSchema,
-  v3ProjectSettingsPath,
-  docsPath,
-  v3BillingPath,
-} from "~/utils/pathBuilder";
+import { organizationPath, v3ProjectPath, EnvironmentParamSchema, v3BillingPath } from "~/utils/pathBuilder";
 import React, { useEffect, useState } from "react";
-import { Select, SelectItem } from "~/components/primitives/Select";
-import { Switch } from "~/components/primitives/Switch";
-import { type BranchTrackingConfig } from "~/v3/github";
-import {
-  EnvironmentIcon,
-  environmentFullTitle,
-  environmentTextClassName,
-} from "~/components/environments/EnvironmentLabel";
-import { GitBranchIcon } from "lucide-react";
 import { useEnvironment } from "~/hooks/useEnvironment";
-import { DateTime } from "~/components/primitives/DateTime";
-import { TextLink } from "~/components/primitives/TextLink";
-import { cn } from "~/utils/cn";
 import { ProjectSettingsPresenter } from "~/services/projectSettingsPresenter.server";
 import { type BuildSettings } from "~/v3/buildSettings";
-import { InfoIconTooltip } from "~/components/primitives/Tooltip";
+import { GitHubSettingsPanel } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.github";
 
 export const meta: MetaFunction = () => {
   return [
@@ -128,28 +91,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   return typedjson({
     githubAppEnabled: gitHubApp.enabled,
-    githubAppInstallations: gitHubApp.installations,
-    connectedGithubRepository: gitHubApp.connectedRepository,
-    isPreviewEnvironmentEnabled: gitHubApp.isPreviewEnvironmentEnabled,
     buildSettings,
   });
 };
-
-const ConnectGitHubRepoFormSchema = z.object({
-  action: z.literal("connect-repo"),
-  installationId: z.string(),
-  repositoryId: z.string(),
-});
-
-const UpdateGitSettingsFormSchema = z.object({
-  action: z.literal("update-git-settings"),
-  productionBranch: z.string().trim().optional(),
-  stagingBranch: z.string().trim().optional(),
-  previewDeploymentsEnabled: z
-    .string()
-    .optional()
-    .transform((val) => val === "on"),
-});
 
 const UpdateBuildSettingsFormSchema = z.object({
   action: z.literal("update-build-settings"),
@@ -220,12 +164,7 @@ export function createSchema(
         }
       }),
     }),
-    ConnectGitHubRepoFormSchema,
-    UpdateGitSettingsFormSchema,
     UpdateBuildSettingsFormSchema,
-    z.object({
-      action: z.literal("disconnect-repo"),
-    }),
   ]);
 }
 
@@ -260,7 +199,7 @@ export const action: ActionFunction = async ({ request, params }) => {
     return json({ errors: { body: membershipResultOrFail.error.type } }, { status: 404 });
   }
 
-  const { projectId, organizationId } = membershipResultOrFail.value;
+  const { projectId } = membershipResultOrFail.value;
 
   switch (submission.value.action) {
     case "rename": {
@@ -316,101 +255,6 @@ export const action: ActionFunction = async ({ request, params }) => {
         "Project deleted"
       );
     }
-    case "disconnect-repo": {
-      const resultOrFail = await projectSettingsService.disconnectGitHubRepo(projectId);
-
-      if (resultOrFail.isErr()) {
-        switch (resultOrFail.error.type) {
-          case "other":
-          default: {
-            resultOrFail.error.type satisfies "other";
-
-            logger.error("Failed to disconnect GitHub repository", {
-              error: resultOrFail.error,
-            });
-            return redirectBackWithErrorMessage(request, "Failed to disconnect GitHub repository");
-          }
-        }
-      }
-
-      return redirectBackWithSuccessMessage(request, "GitHub repository disconnected successfully");
-    }
-    case "update-git-settings": {
-      const { productionBranch, stagingBranch, previewDeploymentsEnabled } = submission.value;
-
-      const resultOrFail = await projectSettingsService.updateGitSettings(
-        projectId,
-        productionBranch,
-        stagingBranch,
-        previewDeploymentsEnabled
-      );
-
-      if (resultOrFail.isErr()) {
-        switch (resultOrFail.error.type) {
-          case "github_app_not_enabled": {
-            return redirectBackWithErrorMessage(request, "GitHub app is not enabled");
-          }
-          case "connected_gh_repository_not_found": {
-            return redirectBackWithErrorMessage(request, "Connected GitHub repository not found");
-          }
-          case "production_tracking_branch_not_found": {
-            return redirectBackWithErrorMessage(request, "Production tracking branch not found");
-          }
-          case "staging_tracking_branch_not_found": {
-            return redirectBackWithErrorMessage(request, "Staging tracking branch not found");
-          }
-          case "other":
-          default: {
-            resultOrFail.error.type satisfies "other";
-
-            logger.error("Failed to update Git settings", {
-              error: resultOrFail.error,
-            });
-            return redirectBackWithErrorMessage(request, "Failed to update Git settings");
-          }
-        }
-      }
-
-      return redirectBackWithSuccessMessage(request, "Git settings updated successfully");
-    }
-    case "connect-repo": {
-      const { repositoryId, installationId } = submission.value;
-
-      const resultOrFail = await projectSettingsService.connectGitHubRepo(
-        projectId,
-        organizationId,
-        repositoryId,
-        installationId
-      );
-
-      if (resultOrFail.isErr()) {
-        switch (resultOrFail.error.type) {
-          case "gh_repository_not_found": {
-            return redirectBackWithErrorMessage(request, "GitHub repository not found");
-          }
-          case "project_already_has_connected_repository": {
-            return redirectBackWithErrorMessage(
-              request,
-              "Project already has a connected repository"
-            );
-          }
-          case "other":
-          default: {
-            resultOrFail.error.type satisfies "other";
-
-            logger.error("Failed to connect GitHub repository", {
-              error: resultOrFail.error,
-            });
-            return redirectBackWithErrorMessage(request, "Failed to connect GitHub repository");
-          }
-        }
-      }
-
-      return json({
-        ...submission,
-        success: true,
-      });
-    }
     case "update-build-settings": {
       const { installCommand, preBuildCommand, triggerConfigFilePath, useNativeBuildServer } =
         submission.value;
@@ -446,13 +290,7 @@ export const action: ActionFunction = async ({ request, params }) => {
 };
 
 export default function Page() {
-  const {
-    githubAppInstallations,
-    connectedGithubRepository,
-    githubAppEnabled,
-    buildSettings,
-    isPreviewEnvironmentEnabled,
-  } = useTypedLoaderData<typeof loader>();
+  const { githubAppEnabled, buildSettings } = useTypedLoaderData<typeof loader>();
   const project = useProject();
   const organization = useOrganization();
   const environment = useEnvironment();
@@ -578,19 +416,12 @@ export default function Page() {
                 <div>
                   <Header2 spacing>Git settings</Header2>
                   <div className="w-full rounded-sm border border-grid-dimmed p-4">
-                    {connectedGithubRepository ? (
-                      <ConnectedGitHubRepoForm
-                        connectedGitHubRepo={connectedGithubRepository}
-                        previewEnvironmentEnabled={isPreviewEnvironmentEnabled}
-                      />
-                    ) : (
-                      <GitHubConnectionPrompt
-                        gitHubAppInstallations={githubAppInstallations ?? []}
-                        organizationSlug={organization.slug}
-                        projectSlug={project.slug}
-                        environmentSlug={environment.slug}
-                      />
-                    )}
+                    <GitHubSettingsPanel
+                      organizationSlug={organization.slug}
+                      projectSlug={project.slug}
+                      environmentSlug={environment.slug}
+                      billingPath={v3BillingPath({ slug: organization.slug })}
+                    />
                   </div>
                 </div>
 
@@ -647,489 +478,6 @@ export default function Page() {
         </MainHorizontallyCenteredContainer>
       </PageBody>
     </PageContainer>
-  );
-}
-
-type GitHubRepository = {
-  id: string;
-  name: string;
-  fullName: string;
-  private: boolean;
-  htmlUrl: string;
-};
-
-type GitHubAppInstallation = {
-  id: string;
-  appInstallationId: bigint;
-  targetType: string;
-  accountHandle: string;
-  repositories: GitHubRepository[];
-};
-
-function ConnectGitHubRepoModal({
-  gitHubAppInstallations,
-  organizationSlug,
-  projectSlug,
-  environmentSlug,
-}: {
-  gitHubAppInstallations: GitHubAppInstallation[];
-  organizationSlug: string;
-  projectSlug: string;
-  environmentSlug: string;
-  open?: boolean;
-}) {
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const lastSubmission = useActionData() as any;
-  const navigate = useNavigate();
-
-  const [selectedInstallation, setSelectedInstallation] = useState<
-    GitHubAppInstallation | undefined
-  >(gitHubAppInstallations.at(0));
-
-  const [selectedRepository, setSelectedRepository] = useState<GitHubRepository | undefined>(
-    undefined
-  );
-
-  const navigation = useNavigation();
-  const isConnectRepositoryLoading =
-    navigation.formData?.get("action") === "connect-repo" &&
-    (navigation.state === "submitting" || navigation.state === "loading");
-
-  const [form, { installationId, repositoryId }] = useForm({
-    id: "connect-repo",
-    lastSubmission: lastSubmission,
-    shouldRevalidate: "onSubmit",
-    onValidate({ formData }) {
-      return parse(formData, {
-        schema: ConnectGitHubRepoFormSchema,
-      });
-    },
-  });
-
-  const [searchParams, setSearchParams] = useSearchParams();
-  useEffect(() => {
-    const params = new URLSearchParams(searchParams);
-
-    if (params.get("openGithubRepoModal") === "1") {
-      setIsModalOpen(true);
-      params.delete("openGithubRepoModal");
-      setSearchParams(params);
-    }
-  }, [searchParams, setSearchParams]);
-
-  useEffect(() => {
-    if (lastSubmission && "success" in lastSubmission && lastSubmission.success === true) {
-      setIsModalOpen(false);
-    }
-  }, [lastSubmission]);
-
-  return (
-    <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-      <DialogTrigger asChild>
-        <Button type="button" variant={"secondary/medium"} LeadingIcon={OctoKitty}>
-          Connect GitHub repo
-        </Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>Connect GitHub repository</DialogHeader>
-        <div className="mt-2 flex flex-col gap-4">
-          <Form method="post" {...form.props} className="w-full">
-            <Paragraph className="mb-3">
-              Choose a GitHub repository to connect to your project.
-            </Paragraph>
-            <Fieldset className="max-w-full gap-y-3">
-              <InputGroup className="max-w-full">
-                <Label htmlFor={installationId.id}>Account</Label>
-                <Select
-                  name={installationId.name}
-                  id={installationId.id}
-                  value={selectedInstallation?.id}
-                  defaultValue={gitHubAppInstallations.at(0)?.id}
-                  setValue={(value) => {
-                    if (Array.isArray(value)) return;
-                    const installation = gitHubAppInstallations.find((i) => i.id === value);
-                    setSelectedInstallation(installation);
-                    setSelectedRepository(undefined);
-                  }}
-                  items={gitHubAppInstallations}
-                  variant="tertiary/small"
-                  placeholder="Select account"
-                  dropdownIcon
-                  text={selectedInstallation ? selectedInstallation.accountHandle : undefined}
-                >
-                  {[
-                    ...gitHubAppInstallations.map((installation) => (
-                      <SelectItem
-                        key={installation.id}
-                        value={installation.id}
-                        icon={<OctoKitty className="size-3 text-text-dimmed" />}
-                      >
-                        {installation.accountHandle}
-                      </SelectItem>
-                    )),
-                    <SelectItem
-                      onClick={(e) => {
-                        e.preventDefault();
-                        navigate(
-                          githubAppInstallPath(
-                            organizationSlug,
-                            `${v3ProjectSettingsPath(
-                              { slug: organizationSlug },
-                              { slug: projectSlug },
-                              { slug: environmentSlug }
-                            )}?openGithubRepoModal=1`
-                          )
-                        );
-                      }}
-                      key="new-account"
-                      icon={<PlusIcon className="size-3 text-text-dimmed" />}
-                    >
-                      Add account
-                    </SelectItem>,
-                  ]}
-                </Select>
-                <FormError id={installationId.errorId}>{installationId.error}</FormError>
-              </InputGroup>
-              <InputGroup className="max-w-full">
-                <Label htmlFor={repositoryId.id}>Repository</Label>
-                <Select
-                  name={repositoryId.name}
-                  id={repositoryId.id}
-                  value={selectedRepository ? selectedRepository.id : undefined}
-                  setValue={(value) => {
-                    if (Array.isArray(value)) return;
-                    const repository = selectedInstallation?.repositories.find(
-                      (r) => r.id === value
-                    );
-                    setSelectedRepository(repository);
-                  }}
-                  variant="tertiary/small"
-                  placeholder="Select repository"
-                  heading="Filter repositories"
-                  dropdownIcon
-                  items={selectedInstallation?.repositories ?? []}
-                  filter={{ keys: ["name"] }}
-                  disabled={!selectedInstallation || selectedInstallation.repositories.length === 0}
-                  text={selectedRepository ? selectedRepository.name : null}
-                >
-                  {(matches) =>
-                    matches.map((repo) => (
-                      <SelectItem key={repo.id} value={repo.id}>
-                        <div className="flex items-center gap-1">
-                          {repo.name}
-                          {repo.private && <LockClosedIcon className="size-3 text-text-dimmed" />}
-                        </div>
-                      </SelectItem>
-                    ))
-                  }
-                </Select>
-                <Hint className={cn("invisible", selectedInstallation && "visible")}>
-                  Configure repository access in{" "}
-                  <TextLink
-                    target="_blank"
-                    rel="noreferrer noopener"
-                    to={`https://github.com/settings/installations/${selectedInstallation?.appInstallationId}`}
-                  >
-                    GitHub
-                  </TextLink>
-                  .
-                </Hint>
-                <FormError id={repositoryId.errorId}>{repositoryId.error}</FormError>
-              </InputGroup>
-              <FormError>{form.error}</FormError>
-              <FormButtons
-                confirmButton={
-                  <Button
-                    type="submit"
-                    name="action"
-                    value="connect-repo"
-                    variant="primary/medium"
-                    LeadingIcon={isConnectRepositoryLoading ? SpinnerWhite : undefined}
-                    leadingIconClassName="text-white"
-                    disabled={isConnectRepositoryLoading}
-                  >
-                    Connect repository
-                  </Button>
-                }
-                cancelButton={
-                  <DialogClose asChild>
-                    <Button variant="tertiary/medium">Cancel</Button>
-                  </DialogClose>
-                }
-              />
-            </Fieldset>
-          </Form>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function GitHubConnectionPrompt({
-  gitHubAppInstallations,
-  organizationSlug,
-  projectSlug,
-  environmentSlug,
-}: {
-  gitHubAppInstallations: GitHubAppInstallation[];
-  organizationSlug: string;
-  projectSlug: string;
-  environmentSlug: string;
-}) {
-  return (
-    <Fieldset>
-      <InputGroup fullWidth>
-        {gitHubAppInstallations.length === 0 && (
-          <LinkButton
-            to={githubAppInstallPath(
-              organizationSlug,
-              `${v3ProjectSettingsPath(
-                { slug: organizationSlug },
-                { slug: projectSlug },
-                { slug: environmentSlug }
-              )}?openGithubRepoModal=1`
-            )}
-            variant={"secondary/medium"}
-            LeadingIcon={OctoKitty}
-          >
-            Install GitHub app
-          </LinkButton>
-        )}
-        {gitHubAppInstallations.length !== 0 && (
-          <div className="flex items-center gap-3">
-            <ConnectGitHubRepoModal
-              gitHubAppInstallations={gitHubAppInstallations}
-              organizationSlug={organizationSlug}
-              projectSlug={projectSlug}
-              environmentSlug={environmentSlug}
-            />
-            <span className="flex items-center gap-1 text-xs text-text-dimmed">
-              <CheckCircleIcon className="size-4 text-success" /> GitHub app is installed
-            </span>
-          </div>
-        )}
-
-        <Hint>Connect your GitHub repository to automatically deploy your changes.</Hint>
-      </InputGroup>
-    </Fieldset>
-  );
-}
-
-type ConnectedGitHubRepo = {
-  branchTracking: BranchTrackingConfig | undefined;
-  previewDeploymentsEnabled: boolean;
-  createdAt: Date;
-  repository: GitHubRepository;
-};
-
-function ConnectedGitHubRepoForm({
-  connectedGitHubRepo,
-  previewEnvironmentEnabled,
-}: {
-  connectedGitHubRepo: ConnectedGitHubRepo;
-  previewEnvironmentEnabled?: boolean;
-}) {
-  const lastSubmission = useActionData() as any;
-  const navigation = useNavigation();
-  const organization = useOrganization();
-
-  const [hasGitSettingsChanges, setHasGitSettingsChanges] = useState(false);
-  const [gitSettingsValues, setGitSettingsValues] = useState({
-    productionBranch: connectedGitHubRepo.branchTracking?.prod?.branch || "",
-    stagingBranch: connectedGitHubRepo.branchTracking?.staging?.branch || "",
-    previewDeploymentsEnabled: connectedGitHubRepo.previewDeploymentsEnabled,
-  });
-
-  useEffect(() => {
-    const hasChanges =
-      gitSettingsValues.productionBranch !==
-        (connectedGitHubRepo.branchTracking?.prod?.branch || "") ||
-      gitSettingsValues.stagingBranch !==
-        (connectedGitHubRepo.branchTracking?.staging?.branch || "") ||
-      gitSettingsValues.previewDeploymentsEnabled !== connectedGitHubRepo.previewDeploymentsEnabled;
-    setHasGitSettingsChanges(hasChanges);
-  }, [gitSettingsValues, connectedGitHubRepo]);
-
-  const [gitSettingsForm, fields] = useForm({
-    id: "update-git-settings",
-    lastSubmission: lastSubmission,
-    shouldRevalidate: "onSubmit",
-    onValidate({ formData }) {
-      return parse(formData, {
-        schema: UpdateGitSettingsFormSchema,
-      });
-    },
-  });
-
-  const isGitSettingsLoading =
-    navigation.formData?.get("action") === "update-git-settings" &&
-    (navigation.state === "submitting" || navigation.state === "loading");
-
-  return (
-    <>
-      <div className="mb-4 flex items-center justify-between rounded-sm border bg-grid-dimmed p-2">
-        <div className="flex items-center gap-2">
-          <OctoKitty className="size-4" />
-          <a
-            href={connectedGitHubRepo.repository.htmlUrl}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="max-w-52 truncate text-sm text-text-bright hover:underline"
-          >
-            {connectedGitHubRepo.repository.fullName}
-          </a>
-          {connectedGitHubRepo.repository.private && (
-            <LockClosedIcon className="size-3 text-text-dimmed" />
-          )}
-          <span className="text-xs text-text-dimmed">
-            <DateTime
-              date={connectedGitHubRepo.createdAt}
-              includeTime={false}
-              includeSeconds={false}
-              showTimezone={false}
-              showTooltip={false}
-            />
-          </span>
-        </div>
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button variant="minimal/small">Disconnect</Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-md">
-            <DialogHeader>Disconnect GitHub repository</DialogHeader>
-            <div className="flex flex-col gap-3 pt-3">
-              <Paragraph className="mb-1">
-                Are you sure you want to disconnect{" "}
-                <span className="font-semibold">{connectedGitHubRepo.repository.fullName}</span>?
-                This will stop automatic deployments from GitHub.
-              </Paragraph>
-              <FormButtons
-                confirmButton={
-                  <Form method="post">
-                    <input type="hidden" name="action" value="disconnect-repo" />
-                    <Button type="submit" variant="danger/medium">
-                      Disconnect repository
-                    </Button>
-                  </Form>
-                }
-                cancelButton={
-                  <DialogClose asChild>
-                    <Button variant="tertiary/medium">Cancel</Button>
-                  </DialogClose>
-                }
-              />
-            </div>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      <Form method="post" {...gitSettingsForm.props}>
-        <Fieldset>
-          <InputGroup fullWidth>
-            <Hint>
-              Every push to the selected tracking branch creates a deployment in the corresponding
-              environment.
-            </Hint>
-            <div className="mt-1 grid grid-cols-[120px_1fr] gap-3">
-              <div className="flex items-center gap-1.5">
-                <EnvironmentIcon environment={{ type: "PRODUCTION" }} className="size-4" />
-                <span className={`text-sm ${environmentTextClassName({ type: "PRODUCTION" })}`}>
-                  {environmentFullTitle({ type: "PRODUCTION" })}
-                </span>
-              </div>
-              <Input
-                {...conform.input(fields.productionBranch, { type: "text" })}
-                defaultValue={connectedGitHubRepo.branchTracking?.prod?.branch}
-                placeholder="none"
-                variant="tertiary"
-                className="font-mono"
-                icon={GitBranchIcon}
-                onChange={(e) => {
-                  setGitSettingsValues((prev) => ({
-                    ...prev,
-                    productionBranch: e.target.value,
-                  }));
-                }}
-              />
-              <div className="flex items-center gap-1.5">
-                <EnvironmentIcon environment={{ type: "STAGING" }} className="size-4" />
-                <span className={`text-sm ${environmentTextClassName({ type: "STAGING" })}`}>
-                  {environmentFullTitle({ type: "STAGING" })}
-                </span>
-              </div>
-              <Input
-                {...conform.input(fields.stagingBranch, { type: "text" })}
-                defaultValue={connectedGitHubRepo.branchTracking?.staging?.branch}
-                placeholder="none"
-                variant="tertiary"
-                className="font-mono"
-                icon={GitBranchIcon}
-                onChange={(e) => {
-                  setGitSettingsValues((prev) => ({
-                    ...prev,
-                    stagingBranch: e.target.value,
-                  }));
-                }}
-              />
-
-              <div className="flex items-center gap-1.5">
-                <EnvironmentIcon environment={{ type: "PREVIEW" }} className="size-4" />
-                <span className={`text-sm ${environmentTextClassName({ type: "PREVIEW" })}`}>
-                  {environmentFullTitle({ type: "PREVIEW" })}
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <Switch
-                  name="previewDeploymentsEnabled"
-                  disabled={!previewEnvironmentEnabled}
-                  defaultChecked={
-                    connectedGitHubRepo.previewDeploymentsEnabled && previewEnvironmentEnabled
-                  }
-                  variant="small"
-                  label="Create preview deployments for pull requests"
-                  labelPosition="right"
-                  onCheckedChange={(checked) => {
-                    setGitSettingsValues((prev) => ({
-                      ...prev,
-                      previewDeploymentsEnabled: checked,
-                    }));
-                  }}
-                />
-                {!previewEnvironmentEnabled && (
-                  <InfoIconTooltip
-                    content={
-                      <span className="text-xs">
-                        <TextLink to={v3BillingPath(organization)}>Upgrade</TextLink> your plan to
-                        enable preview branches
-                      </span>
-                    }
-                  />
-                )}
-              </div>
-            </div>
-            <FormError>{fields.productionBranch?.error}</FormError>
-            <FormError>{fields.stagingBranch?.error}</FormError>
-            <FormError>{fields.previewDeploymentsEnabled?.error}</FormError>
-            <FormError>{gitSettingsForm.error}</FormError>
-          </InputGroup>
-
-          <FormButtons
-            confirmButton={
-              <Button
-                type="submit"
-                name="action"
-                value="update-git-settings"
-                variant="secondary/small"
-                disabled={isGitSettingsLoading || !hasGitSettingsChanges}
-                LeadingIcon={isGitSettingsLoading ? SpinnerWhite : undefined}
-              >
-                Save
-              </Button>
-            }
-          />
-        </Fieldset>
-      </Form>
-    </>
   );
 }
 
