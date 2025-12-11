@@ -295,6 +295,8 @@ export type SetOperator =
   | "INTERSECT DISTINCT"
   | "EXCEPT";
 
+export type ParseResult = Expression | Declaration | string;
+
 // Declaration and Statement types
 export interface Declaration extends AST {}
 
@@ -319,7 +321,7 @@ export interface ReturnStatement extends Statement {
 }
 
 export interface ThrowStatement extends Statement {
-  expr: Expression;
+  expr?: Expression;
 }
 
 export interface TryCatchStatement extends Statement {
@@ -342,7 +344,7 @@ export interface WhileStatement extends Statement {
 export interface ForStatement extends Statement {
   initializer?: VariableDeclaration | VariableAssignment | Expression;
   condition?: Expression;
-  increment?: Expression;
+  increment?: VariableDeclaration;
   body: Statement;
 }
 
