@@ -960,25 +960,42 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       return;
     }
 
-    // Process one message from each selected queue
+    // Process messages from each selected tenant
+    // For fairness, process up to available concurrency slots per tenant
     for (const { tenantId, queues } of tenantQueues) {
-      for (const queueId of queues) {
-        // Check cooloff
-        if (this.cooloffEnabled && this.#isInCooloff(queueId)) {
-          continue;
+      // Get available concurrency for this tenant
+      let availableSlots = 1; // Default to 1 for backwards compatibility
+      if (this.concurrencyManager) {
+        const [current, limit] = await Promise.all([
+          this.concurrencyManager.getCurrentConcurrency("tenant", tenantId),
+          this.concurrencyManager.getConcurrencyLimit("tenant", tenantId),
+        ]);
+        availableSlots = Math.max(1, limit - current);
+      }
+
+      // Process up to availableSlots messages from this tenant's queues
+      let slotsUsed = 0;
+      queueLoop: for (const queueId of queues) {
+        while (slotsUsed < availableSlots) {
+          // Check cooloff
+          if (this.cooloffEnabled && this.#isInCooloff(queueId)) {
+            break; // Try next queue
+          }
+
+          const processed = await this.#processOneMessage(loopId, queueId, tenantId, shardId);
+
+          if (processed) {
+            await this.scheduler.recordProcessed?.(tenantId, queueId);
+            this.#resetCooloff(queueId);
+            slotsUsed++;
+          } else {
+            this.#incrementCooloff(queueId);
+            break; // Queue empty or blocked, try next queue
+          }
         }
-
-        const processed = await this.#processOneMessage(loopId, queueId, tenantId, shardId);
-
-        if (processed) {
-          await this.scheduler.recordProcessed?.(tenantId, queueId);
-          this.#resetCooloff(queueId);
-        } else {
-          this.#incrementCooloff(queueId);
+        if (slotsUsed >= availableSlots) {
+          break queueLoop;
         }
-
-        // Only process one message per queue per iteration for fairness
-        break;
       }
     }
   }
