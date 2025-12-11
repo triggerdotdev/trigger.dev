@@ -45,9 +45,43 @@ export interface UnknownType extends ConstantType {
   data_type: "unknown";
 }
 
+export type Expression =
+  | CTE
+  | Alias
+  | ArithmeticOperation
+  | And
+  | Or
+  | CompareOperation
+  | Not
+  | BetweenExpr
+  | OrderExpr
+  | ArrayAccess
+  | Array
+  | Dict
+  | TupleAccess
+  | Tuple
+  | Lambda
+  | Constant
+  | Field
+  | Placeholder
+  | Call
+  | ExprCall
+  | JoinConstraint
+  | JoinExpr
+  | WindowFrameExpr
+  | WindowExpr
+  | WindowFunction
+  | LimitByExpr
+  | SelectQuery
+  | SelectSetQuery
+  | RatioExpr
+  | SampleExpr
+  | HogQLXTag;
+
 export interface CTE extends Expr {
+  expression_type: "cte";
   name: string;
-  expr: Expr;
+  expr: Expression;
   cte_type: "column" | "subquery";
 }
 
@@ -186,7 +220,7 @@ export interface FieldTraverserType extends Type {
 
 export interface ExpressionFieldType extends Type {
   name: string;
-  expr: Expr;
+  expr: Expression;
   table_type: TableOrSelectType;
   isolate_scope?: boolean;
 }
@@ -265,27 +299,27 @@ export type SetOperator =
 export interface Declaration extends AST {}
 
 export interface VariableAssignment extends Declaration {
-  left: Expr;
-  right: Expr;
+  left: Expression;
+  right: Expression;
 }
 
 export interface VariableDeclaration extends Declaration {
   name: string;
-  expr?: Expr;
+  expr?: Expression;
 }
 
 export interface Statement extends Declaration {}
 
 export interface ExprStatement extends Statement {
-  expr?: Expr;
+  expr?: Expression;
 }
 
 export interface ReturnStatement extends Statement {
-  expr?: Expr;
+  expr?: Expression;
 }
 
 export interface ThrowStatement extends Statement {
-  expr: Expr;
+  expr: Expression;
 }
 
 export interface TryCatchStatement extends Statement {
@@ -295,27 +329,27 @@ export interface TryCatchStatement extends Statement {
 }
 
 export interface IfStatement extends Statement {
-  expr: Expr;
+  expr: Expression;
   then: Statement;
   else_?: Statement;
 }
 
 export interface WhileStatement extends Statement {
-  expr: Expr;
+  expr: Expression;
   body: Statement;
 }
 
 export interface ForStatement extends Statement {
-  initializer?: VariableDeclaration | VariableAssignment | Expr;
-  condition?: Expr;
-  increment?: Expr;
+  initializer?: VariableDeclaration | VariableAssignment | Expression;
+  condition?: Expression;
+  increment?: Expression;
   body: Statement;
 }
 
 export interface ForInStatement extends Statement {
   keyVar?: string;
   valueVar: string;
-  expr: Expr;
+  expr: Expression;
   body: Statement;
 }
 
@@ -335,120 +369,141 @@ export interface Program extends AST {
 
 // Expression types
 export interface Alias extends Expr {
+  expression_type: "alias";
   alias: string;
-  expr: Expr;
+  expr: Expression;
   hidden?: boolean;
   from_asterisk?: boolean;
 }
 
 export interface ArithmeticOperation extends Expr {
-  left: Expr;
-  right: Expr;
+  expression_type: "arithmetic_operation";
+  left: Expression;
+  right: Expression;
   op: ArithmeticOperationOp;
 }
 
 export interface And extends Expr {
+  expression_type: "and";
   type?: ConstantType;
-  exprs: Expr[];
+  exprs: Expression[];
 }
 
 export interface Or extends Expr {
-  exprs: Expr[];
+  expression_type: "or";
+  exprs: Expression[];
   type?: ConstantType;
 }
 
 export interface CompareOperation extends Expr {
-  left: Expr;
-  right: Expr;
+  expression_type: "compare_operation";
+  left: Expression;
+  right: Expression;
   op: CompareOperationOp;
   type?: ConstantType;
 }
 
 export interface Not extends Expr {
-  expr: Expr;
+  expression_type: "not";
+  expr: Expression;
   type?: ConstantType;
 }
 
 export interface BetweenExpr extends Expr {
-  expr: Expr;
-  low: Expr;
-  high: Expr;
+  expression_type: "between_expr";
+  expr: Expression;
+  low: Expression;
+  high: Expression;
   negated?: boolean;
   type?: ConstantType;
 }
 
 export interface OrderExpr extends Expr {
-  expr: Expr;
+  expression_type: "order_expr";
+  expr: Expression;
   order?: "ASC" | "DESC";
 }
 
 export interface ArrayAccess extends Expr {
-  array: Expr;
-  property: Expr;
+  expression_type: "array_access";
+  array: Expression;
+  property: Expression;
   nullish?: boolean;
 }
 
 export interface Array extends Expr {
-  exprs: Expr[];
+  expression_type: "array";
+  exprs: Expression[];
 }
 
 export interface Dict extends Expr {
-  items: [Expr, Expr][];
+  expression_type: "dict";
+  items: [Expression, Expression][];
 }
 
 export interface TupleAccess extends Expr {
-  tuple: Expr;
+  expression_type: "tuple_access";
+  tuple: Expression;
   index: number;
   nullish?: boolean;
 }
 
 export interface Tuple extends Expr {
-  exprs: Expr[];
+  expression_type: "tuple";
+  exprs: Expression[];
 }
 
 export interface Lambda extends Expr {
+  expression_type: "lambda";
   args: string[];
-  expr: Expr | Block;
+  expr: Expression | Block;
 }
 
 export interface Constant extends Expr {
+  expression_type: "constant";
   value: any;
 }
 
 export interface Field extends Expr {
+  expression_type: "field";
   chain: (string | number)[];
   from_asterisk?: boolean;
 }
 
 export interface Placeholder extends Expr {
-  expr: Expr;
+  expression_type: "placeholder";
+  expr: Expression;
   // Computed properties
   chain?: (string | number)[] | null;
   field?: string | null;
 }
 
 export interface Call extends Expr {
+  expression_type: "call";
   name: string;
-  args: Expr[];
-  params?: Expr[];
+  args: Expression[];
+  params?: Expression[];
   distinct?: boolean;
 }
 
 export interface ExprCall extends Expr {
-  expr: Expr;
-  args: Expr[];
+  expression_type: "expr_call";
+  expr: Expression;
+  args: Expression[];
 }
 
 export interface JoinConstraint extends Expr {
-  expr: Expr;
+  expression_type: "join_constraint";
+  expr: Expression;
   constraint_type: "ON" | "USING";
 }
 
 export interface JoinExpr extends Expr {
+  expression_type: "join_expr";
   type?: TableOrSelectType;
   join_type?: string;
   table?: SelectQuery | SelectSetQuery | Placeholder | HogQLXTag | Field;
-  table_args?: Expr[];
+  table_args?: Expression[];
   alias?: string;
   table_final?: boolean;
   constraint?: JoinConstraint;
@@ -457,12 +512,14 @@ export interface JoinExpr extends Expr {
 }
 
 export interface WindowFrameExpr extends Expr {
+  expression_type: "window_frame_expr";
   frame_type?: "CURRENT ROW" | "PRECEDING" | "FOLLOWING";
   frame_value?: number;
 }
 
 export interface WindowExpr extends Expr {
-  partition_by?: Expr[];
+  expression_type: "window_expr";
+  partition_by?: Expression[];
   order_by?: OrderExpr[];
   frame_method?: "ROWS" | "RANGE";
   frame_start?: WindowFrameExpr;
@@ -470,37 +527,40 @@ export interface WindowExpr extends Expr {
 }
 
 export interface WindowFunction extends Expr {
+  expression_type: "window_function";
   name: string;
-  args?: Expr[];
-  exprs?: Expr[];
+  args?: Expression[];
+  exprs?: Expression[];
   over_expr?: WindowExpr;
   over_identifier?: string;
 }
 
 export interface LimitByExpr extends Expr {
-  n: Expr;
-  exprs: Expr[];
-  offset_value?: Expr;
+  expression_type: "limit_by_expr";
+  n: Expression;
+  exprs: Expression[];
+  offset_value?: Expression;
 }
 
 export interface SelectQuery extends Expr {
+  expression_type: "select_query";
   type?: SelectQueryType;
   ctes?: Record<string, CTE>;
-  select: Expr[];
+  select: Expression[];
   distinct?: boolean;
   select_from?: JoinExpr;
   array_join_op?: string;
-  array_join_list?: Expr[];
+  array_join_list?: Expression[];
   window_exprs?: Record<string, WindowExpr>;
-  where?: Expr;
-  prewhere?: Expr;
-  having?: Expr;
-  group_by?: Expr[];
+  where?: Expression;
+  prewhere?: Expression;
+  having?: Expression;
+  group_by?: Expression[];
   order_by?: OrderExpr[];
-  limit?: Expr;
+  limit?: Expression;
   limit_by?: LimitByExpr;
   limit_with_ties?: boolean;
-  offset?: Expr;
+  offset?: Expression;
   settings?: HogQLQuerySettings;
   view_name?: string;
 }
@@ -511,6 +571,7 @@ export interface SelectSetNode extends AST {
 }
 
 export interface SelectSetQuery extends Expr {
+  expression_type: "select_set_query";
   type?: SelectSetQueryType;
   initial_select_query: SelectQuery | SelectSetQuery;
   subsequent_select_queries: SelectSetNode[];
@@ -529,11 +590,13 @@ export namespace SelectSetQuery {
 }
 
 export interface RatioExpr extends Expr {
+  expression_type: "ratio_expr";
   left: Constant;
   right?: Constant;
 }
 
 export interface SampleExpr extends Expr {
+  expression_type: "sample_expr";
   sample_value: RatioExpr;
   offset_value?: RatioExpr;
 }
@@ -544,6 +607,7 @@ export interface HogQLXAttribute extends AST {
 }
 
 export interface HogQLXTag extends Expr {
+  expression_type: "hogqlx_tag";
   kind: string;
   attributes: HogQLXAttribute[];
   // Equivalent to to_dict() method
@@ -557,12 +621,17 @@ export function createEmptySelectQuery(columns?: Record<string, FieldOrTable>): 
   }
 
   return {
+    expression_type: "select_query",
     select: Object.entries(columns).map(([column, field]) => ({
+      expression_type: "alias" as const,
       alias: column,
-      expr: { value: (field as DatabaseField).default_value?.() ?? null } as Constant,
-    })) as Alias[],
-    where: { value: false } as Constant,
-  } as SelectQuery;
+      expr: {
+        expression_type: "constant",
+        value: (field as DatabaseField).default_value?.() ?? null,
+      } as Constant,
+    })),
+    where: { expression_type: "constant", value: false } as Constant,
+  };
 }
 
 // Add static method equivalent for SelectQuery.empty()

@@ -520,6 +520,7 @@ export class PropertySwapper extends CloningVisitor {
 
   private createToTimeZoneCall(node: Field): Call {
     return {
+      expression_type: "call",
       name: "toTimeZone",
       args: [node, this.createConstant(this.timezone)],
       type: {
@@ -534,6 +535,7 @@ export class PropertySwapper extends CloningVisitor {
 
   private createToDateTimeCall(node: Field): Call {
     return {
+      expression_type: "call",
       name: "toDateTime",
       args: [node],
       start: node.start,
@@ -543,6 +545,7 @@ export class PropertySwapper extends CloningVisitor {
 
   private createToFloatCall(node: Field): Call {
     return {
+      expression_type: "call",
       name: "toFloat",
       args: [node],
       start: node.start,
@@ -552,6 +555,7 @@ export class PropertySwapper extends CloningVisitor {
 
   private createToBoolCall(node: Field): Call {
     return {
+      expression_type: "call",
       name: "toBool",
       args: [
         {
@@ -578,6 +582,7 @@ export class PropertySwapper extends CloningVisitor {
 
   private createConstant(value: any): Constant {
     return {
+      expression_type: "constant",
       value,
     };
   }
