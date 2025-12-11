@@ -1,16 +1,135 @@
 import { ParserRuleContext } from "antlr4ts/ParserRuleContext";
+import { Token } from "antlr4ts/Token";
+import { ErrorNode } from "antlr4ts/tree/ErrorNode";
 import { ParseTree } from "antlr4ts/tree/ParseTree";
 import { TerminalNode } from "antlr4ts/tree/TerminalNode";
-import { ErrorNode } from "antlr4ts/tree/ErrorNode";
-import { Token } from "antlr4ts/Token";
+import {
+  AliasContext,
+  BlockContext,
+  CatchBlockContext,
+  ColumnExprAliasContext,
+  ColumnExprAndContext,
+  ColumnExprArrayAccessContext,
+  ColumnExprArrayContext,
+  ColumnExprAsteriskContext,
+  ColumnExprBetweenContext,
+  ColumnExprCallContext,
+  ColumnExprCallSelectContext,
+  ColumnExprCaseContext,
+  ColumnExprDictContext,
+  ColumnExprFunctionContext,
+  ColumnExprIdentifierContext,
+  ColumnExprIntervalContext,
+  ColumnExprIsNullContext,
+  ColumnExprListContext,
+  ColumnExprLiteralContext,
+  ColumnExprNegateContext,
+  ColumnExprNotContext,
+  ColumnExprNullArrayAccessContext,
+  ColumnExprNullishContext,
+  ColumnExprNullPropertyAccessContext,
+  ColumnExprNullTupleAccessContext,
+  ColumnExprOrContext,
+  ColumnExprParensContext,
+  ColumnExprPrecedence1Context,
+  ColumnExprPrecedence2Context,
+  ColumnExprPrecedence3Context,
+  ColumnExprPropertyAccessContext,
+  ColumnExprSubqueryContext,
+  ColumnExprTemplateStringContext,
+  ColumnExprTernaryOpContext,
+  ColumnExprTupleAccessContext,
+  ColumnExprTupleContext,
+  ColumnExprWinFunctionContext,
+  ColumnExprWinFunctionTargetContext,
+  ColumnIdentifierContext,
+  ColumnLambdaExprContext,
+  DatabaseIdentifierContext,
+  DeclarationContext,
+  EmptyStmtContext,
+  ExpressionContext,
+  ExprStmtContext,
+  ForInStmtContext,
+  ForStmtContext,
+  FrameBetweenContext,
+  FrameStartContext,
+  FromClauseContext,
+  FullTemplateStringContext,
+  FuncStmtContext,
+  GroupByClauseContext,
+  HavingClauseContext,
+  IdentifierContext,
+  IdentifierListContext,
+  IfStmtContext,
+  JoinConstraintClauseContext,
+  JoinExprCrossOpContext,
+  JoinExprOpContext,
+  JoinExprParensContext,
+  JoinExprTableContext,
+  JoinOpFullContext,
+  JoinOpInnerContext,
+  JoinOpLeftRightContext,
+  KvPairContext,
+  KvPairListContext,
+  LimitByClauseContext,
+  LimitExprContext,
+  LiteralContext,
+  NestedIdentifierContext,
+  NumberLiteralContext,
+  OrderByClauseContext,
+  OrderExprContext,
+  OrderExprListContext,
+  PlaceholderContext,
+  PrewhereClauseContext,
+  ProgramContext,
+  RatioExprContext,
+  ReturnStmtContext,
+  SampleClauseContext,
+  SelectContext,
+  SelectSetStmtContext,
+  SelectStmtContext,
+  SelectStmtWithParensContext,
+  StatementContext,
+  StringContentsContext,
+  StringContentsFullContext,
+  StringContext,
+  TableArgListContext,
+  TableExprAliasContext,
+  TableExprFunctionContext,
+  TableExprIdentifierContext,
+  TableExprPlaceholderContext,
+  TableExprSubqueryContext,
+  TableExprTagContext,
+  TableFunctionExprContext,
+  TableIdentifierContext,
+  TemplateStringContext,
+  ThrowStmtContext,
+  TryCatchStmtContext,
+  TSQLxChildElementContext,
+  TSQLxTagAttributeContext,
+  TSQLxTagElementContext,
+  VarAssignmentContext,
+  VarDeclContext,
+  WhereClauseContext,
+  WhileStmtContext,
+  WindowExprContext,
+  WinFrameBoundContext,
+  WinFrameClauseContext,
+  WinOrderByClauseContext,
+  WinPartitionByClauseContext,
+  WithClauseContext,
+  WithExprColumnContext,
+  WithExprListContext,
+  WithExprSubqueryContext,
+} from "../grammar/TSQLParser.js";
 import { TSQLParserVisitor } from "../grammar/TSQLParserVisitor.js";
 import {
   Alias,
   And,
   ArithmeticOperation,
   ArithmeticOperationOp,
-  Array as ArrayExpression,
   ArrayAccess,
+  Array as ArrayExpression,
   BetweenExpr,
   Block,
   Call,
@@ -18,22 +137,26 @@ import {
   CompareOperationOp,
   Constant,
   CTE,
+  Declaration,
   Dict,
   Expr,
   ExprCall,
+  Expression,
   ExprStatement,
   Field,
   ForInStatement,
   ForStatement,
   Function,
+  HogQLXAttribute,
+  HogQLXTag,
   IfStatement,
   JoinConstraint,
   JoinExpr,
   Lambda,
   LimitByExpr,
   Not,
-  OrderExpr,
   Or,
+  OrderExpr,
   Placeholder,
   Program,
   RatioExpr,
@@ -54,38 +177,10 @@ import {
   WindowExpr,
   WindowFrameExpr,
   WindowFunction,
-  HogQLXAttribute,
-  HogQLXTag,
-  Declaration,
-  Expression,
-  AST,
 } from "./ast";
 import { RESERVED_KEYWORDS } from "./constants";
-import { SyntaxError, BaseHogQLError, NotImplementedError } from "./errors";
-import type { HogQLTimings } from "./timings";
-import { parseStringLiteralCtx, parseStringLiteralText, parseStringTextCtx } from "./parse_string";
-import {
-  CatchBlockContext,
-  DeclarationContext,
-  ExprContext,
-  ExpressionContext,
-  ExprStmtContext,
-  ForInStmtContext,
-  ForStmtContext,
-  FuncStmtContext,
-  IdentifierListContext,
-  IfStmtContext,
-  KvPairContext,
-  KvPairListContext,
-  ProgramContext,
-  ReturnStmtContext,
-  StatementContext,
-  ThrowStmtContext,
-  TryCatchStmtContext,
-  VarAssignmentContext,
-  VarDeclContext,
-  WhileStmtContext,
-} from "../grammar/TSQLParser.js";
+import { BaseHogQLError, NotImplementedError, SyntaxError } from "./errors";
+import { parseStringLiteralText } from "./parse_string";
 
 /**
  * Token with position information.
@@ -343,22 +438,28 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     return ctx.identifier().map((ident: any) => this.visitIdentifier(ident));
   }
 
-  visitEmptyStmt(ctx: any): ExprStatement {
+  visitEmptyStmt(ctx: EmptyStmtContext): ExprStatement {
     return { expr: undefined };
   }
 
-  visitBlock(ctx: any): Block {
+  visitBlock(ctx: BlockContext): Block {
     const declarations: Declaration[] = [];
     // Implement based on your parser structure
     throw new NotImplementedError("visitBlock not implemented");
   }
 
   // SELECT statements
-  visitSelect(ctx: any): SelectQuery | SelectSetQuery | HogQLXTag {
-    return this.visit(ctx.selectSetStmt() || ctx.selectStmt() || ctx.hogqlxTagElement());
+  visitSelect(ctx: SelectContext): SelectQuery | SelectSetQuery | HogQLXTag {
+    const statement = ctx.selectSetStmt() || ctx.selectStmt() || ctx.tSQLxTagElement();
+    if (!statement) {
+      throw new SyntaxError(
+        "Select statement must be either a select set statement, a select statement, or a tSQLx tag element"
+      );
+    }
+    return this.visit(statement);
   }
 
-  visitSelectSetStmt(ctx: any): SelectQuery | SelectSetQuery {
+  visitSelectSetStmt(ctx: SelectSetStmtContext): SelectQuery | SelectSetQuery {
     const selectQueries: SelectSetNode[] = [];
     const initialQuery = this.visit(ctx.selectStmtWithParens());
 
@@ -396,36 +497,54 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     };
   }
 
-  visitSelectStmtWithParens(ctx: any): SelectQuery | SelectSetQuery | Placeholder {
-    return this.visit(ctx.selectStmt() || ctx.selectSetStmt() || ctx.placeholder());
+  visitSelectStmtWithParens(
+    ctx: SelectStmtWithParensContext
+  ): SelectQuery | SelectSetQuery | Placeholder {
+    const statement = ctx.selectStmt() || ctx.selectSetStmt() || ctx.placeholder();
+    if (!statement) {
+      throw new SyntaxError(
+        "Select statement must be either a select statement, a select set statement, or a placeholder"
+      );
+    }
+    return this.visit(statement);
   }
 
-  visitSelectStmt(ctx: any): SelectQuery {
+  visitSelectStmt(ctx: SelectStmtContext): SelectQuery {
+    const withClause = ctx.withClause();
+    const columnExprList = ctx.columnExprList();
+    const fromClause = ctx.fromClause();
+    const whereClause = ctx.whereClause();
+    const prewhereClause = ctx.prewhereClause();
+    const havingClause = ctx.havingClause();
+    const groupByClause = ctx.groupByClause();
+    const orderByClause = ctx.orderByClause();
+    const limitByClause = ctx.limitByClause();
     const selectQuery: SelectQuery = {
       expression_type: "select_query",
-      ctes: ctx.withClause() ? this.visit(ctx.withClause()) : undefined,
-      select: ctx.columnExprList() ? this.visit(ctx.columnExprList()) : [],
+      ctes: withClause ? this.visit(withClause) : undefined,
+      select: columnExprList ? this.visit(columnExprList) : [],
       distinct: ctx.DISTINCT() ? true : undefined,
-      select_from: ctx.fromClause() ? this.visit(ctx.fromClause()) : undefined,
-      where: ctx.whereClause() ? this.visit(ctx.whereClause()) : undefined,
-      prewhere: ctx.prewhereClause() ? this.visit(ctx.prewhereClause()) : undefined,
-      having: ctx.havingClause() ? this.visit(ctx.havingClause()) : undefined,
-      group_by: ctx.groupByClause() ? this.visit(ctx.groupByClause()) : undefined,
-      order_by: ctx.orderByClause() ? this.visit(ctx.orderByClause()) : undefined,
-      limit_by: ctx.limitByClause() ? this.visit(ctx.limitByClause()) : undefined,
+      select_from: fromClause ? this.visit(fromClause) : undefined,
+      where: whereClause ? this.visit(whereClause) : undefined,
+      prewhere: prewhereClause ? this.visit(prewhereClause) : undefined,
+      having: havingClause ? this.visit(havingClause) : undefined,
+      group_by: groupByClause ? this.visit(groupByClause) : undefined,
+      order_by: orderByClause ? this.visit(orderByClause) : undefined,
+      limit_by: limitByClause ? this.visit(limitByClause) : undefined,
     };
 
-    if (ctx.windowClause()) {
+    const windowClause = ctx.windowClause();
+    if (windowClause) {
       selectQuery.window_exprs = {};
-      const windowClause = ctx.windowClause();
       for (let index = 0; index < windowClause.windowExpr().length; index++) {
         const name = this.visit(windowClause.identifier()[index]);
         selectQuery.window_exprs![name] = this.visit(windowClause.windowExpr()[index]);
       }
     }
 
-    if (ctx.limitAndOffsetClause()) {
-      const limitAndOffsetClause = ctx.limitAndOffsetClause();
+    const limitAndOffsetClause = ctx.limitAndOffsetClause();
+    const offsetOnlyClause = ctx.offsetOnlyClause();
+    if (limitAndOffsetClause) {
       selectQuery.limit = this.visit(limitAndOffsetClause.columnExpr(0));
       if (limitAndOffsetClause.columnExpr(1)) {
         selectQuery.offset = this.visit(limitAndOffsetClause.columnExpr(1));
@@ -433,12 +552,12 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
       if (limitAndOffsetClause.WITH() && limitAndOffsetClause.TIES()) {
         selectQuery.limit_with_ties = true;
       }
-    } else if (ctx.offsetOnlyClause()) {
-      selectQuery.offset = this.visit(ctx.offsetOnlyClause().columnExpr());
+    } else if (offsetOnlyClause) {
+      selectQuery.offset = this.visit(offsetOnlyClause.columnExpr());
     }
 
-    if (ctx.arrayJoinClause()) {
-      const arrayJoinClause = ctx.arrayJoinClause();
+    const arrayJoinClause = ctx.arrayJoinClause();
+    if (arrayJoinClause) {
       if (!selectQuery.select_from) {
         throw new SyntaxError("Using ARRAY JOIN without a FROM clause is not permitted");
       }
@@ -472,35 +591,39 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     return selectQuery;
   }
 
-  visitWithClause(ctx: any): Record<string, CTE> {
+  visitWithClause(ctx: WithClauseContext): Record<string, CTE> {
     return this.visit(ctx.withExprList());
   }
 
-  visitFromClause(ctx: any): JoinExpr {
+  visitFromClause(ctx: FromClauseContext): JoinExpr {
     return this.visit(ctx.joinExpr());
   }
 
-  visitPrewhereClause(ctx: any): Expr {
+  visitPrewhereClause(ctx: PrewhereClauseContext): Expr {
     return this.visit(ctx.columnExpr());
   }
 
-  visitWhereClause(ctx: any): Expr {
+  visitWhereClause(ctx: WhereClauseContext): Expr {
     return this.visit(ctx.columnExpr());
   }
 
-  visitGroupByClause(ctx: any): Expr[] {
-    return this.visit(ctx.columnExprList());
+  visitGroupByClause(ctx: GroupByClauseContext): Expr[] {
+    const columnExprList = ctx.columnExprList();
+    if (!columnExprList) {
+      throw new SyntaxError("GROUP BY clause must have a column expression list");
+    }
+    return this.visit(columnExprList);
   }
 
-  visitHavingClause(ctx: any): Expr {
+  visitHavingClause(ctx: HavingClauseContext): Expr {
     return this.visit(ctx.columnExpr());
   }
 
-  visitOrderByClause(ctx: any): OrderExpr[] {
+  visitOrderByClause(ctx: OrderByClauseContext): OrderExpr[] {
     return this.visit(ctx.orderExprList());
   }
 
-  visitLimitByClause(ctx: any): LimitByExpr {
+  visitLimitByClause(ctx: LimitByClauseContext): LimitByExpr {
     const limitExpr = this.visit(ctx.limitExpr());
 
     // If limitExpr is a tuple (n, offset), split it
@@ -523,7 +646,7 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     };
   }
 
-  visitLimitExpr(ctx: any): Expr | [Expr, Expr] {
+  visitLimitExpr(ctx: LimitExprContext): Expr | [Expr, Expr] {
     const n = this.visit(ctx.columnExpr(0));
 
     // Check if we have an offset (second expression)
@@ -541,12 +664,13 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
   }
 
   // JOIN expressions
-  visitJoinExprOp(ctx: any): JoinExpr {
+  visitJoinExprOp(ctx: JoinExprOpContext): JoinExpr {
     const join1: JoinExpr = this.visit(ctx.joinExpr(0));
     const join2: JoinExpr = this.visit(ctx.joinExpr(1));
 
-    if (ctx.joinOp()) {
-      join2.join_type = `${this.visit(ctx.joinOp())} JOIN`;
+    const joinOp = ctx.joinOp();
+    if (joinOp) {
+      join2.join_type = `${this.visit(joinOp)} JOIN`;
     } else {
       join2.join_type = "JOIN";
     }
@@ -561,8 +685,9 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     return join1;
   }
 
-  visitJoinExprTable(ctx: any): JoinExpr {
-    const sample = ctx.sampleClause() ? this.visit(ctx.sampleClause()) : undefined;
+  visitJoinExprTable(ctx: JoinExprTableContext): JoinExpr {
+    const sampleClause = ctx.sampleClause();
+    const sample = sampleClause ? this.visit(sampleClause) : undefined;
     const table = this.visit(ctx.tableExpr());
     const tableFinal = ctx.FINAL() ? true : undefined;
     if ("table" in table) {
@@ -580,11 +705,11 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     };
   }
 
-  visitJoinExprParens(ctx: any): JoinExpr {
+  visitJoinExprParens(ctx: JoinExprParensContext): JoinExpr {
     return this.visit(ctx.joinExpr());
   }
 
-  visitJoinExprCrossOp(ctx: any): JoinExpr {
+  visitJoinExprCrossOp(ctx: JoinExprCrossOpContext): JoinExpr {
     const join1: JoinExpr = this.visit(ctx.joinExpr(0));
     const join2: JoinExpr = this.visit(ctx.joinExpr(1));
     join2.join_type = "CROSS JOIN";
@@ -596,7 +721,7 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     return join1;
   }
 
-  visitJoinOpInner(ctx: any): string {
+  visitJoinOpInner(ctx: JoinOpInnerContext): string {
     const tokens: string[] = [];
     if (ctx.ALL()) tokens.push("ALL");
     if (ctx.ANY()) tokens.push("ANY");
@@ -605,7 +730,7 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     return tokens.join(" ");
   }
 
-  visitJoinOpLeftRight(ctx: any): string {
+  visitJoinOpLeftRight(ctx: JoinOpLeftRightContext): string {
     const tokens: string[] = [];
     if (ctx.LEFT()) tokens.push("LEFT");
     if (ctx.RIGHT()) tokens.push("RIGHT");
@@ -618,7 +743,7 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     return tokens.join(" ");
   }
 
-  visitJoinOpFull(ctx: any): string {
+  visitJoinOpFull(ctx: JoinOpFullContext): string {
     const tokens: string[] = [];
     if (ctx.FULL()) tokens.push("FULL");
     if (ctx.OUTER()) tokens.push("OUTER");
@@ -627,7 +752,7 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     return tokens.join(" ");
   }
 
-  visitJoinConstraintClause(ctx: any): JoinConstraint {
+  visitJoinConstraintClause(ctx: JoinConstraintClauseContext): JoinConstraint {
     const columnExprList = this.visit(ctx.columnExprList());
     if (columnExprList.length !== 1) {
       throw new NotImplementedError("Unsupported: JOIN ... ON with multiple expressions");
@@ -639,7 +764,7 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     };
   }
 
-  visitSampleClause(ctx: any): SampleExpr {
+  visitSampleClause(ctx: SampleClauseContext): SampleExpr {
     const ratioExpressions = ctx.ratioExpr();
     const sampleRatioExpr = this.visit(ratioExpressions[0]);
     const offsetRatioExpr =
@@ -652,11 +777,11 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     };
   }
 
-  visitOrderExprList(ctx: any): OrderExpr[] {
+  visitOrderExprList(ctx: OrderExprListContext): OrderExpr[] {
     return ctx.orderExpr().map((expr: any) => this.visit(expr));
   }
 
-  visitOrderExpr(ctx: any): OrderExpr {
+  visitOrderExpr(ctx: OrderExprContext): OrderExpr {
     const order = ctx.DESC() || ctx.DESCENDING() ? "DESC" : "ASC";
     return {
       expression_type: "order_expr",
@@ -665,9 +790,10 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     };
   }
 
-  visitRatioExpr(ctx: any): RatioExpr {
-    if (ctx.placeholder()) {
-      return this.visit(ctx.placeholder());
+  visitRatioExpr(ctx: RatioExprContext): RatioExpr {
+    const placeholder = ctx.placeholder();
+    if (placeholder) {
+      return this.visit(placeholder);
     }
 
     const numberLiterals = ctx.numberLiteral();
@@ -681,67 +807,69 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     };
   }
 
-  visitWindowExpr(ctx: any): WindowExpr {
+  visitWindowExpr(ctx: WindowExprContext): WindowExpr {
     const frame = ctx.winFrameClause();
     const visitedFrame = frame ? this.visit(frame) : undefined;
+    const partitionByClause = ctx.winPartitionByClause();
+    const orderByClause = ctx.winOrderByClause();
     return {
       expression_type: "window_expr",
-      partition_by: ctx.winPartitionByClause() ? this.visit(ctx.winPartitionByClause()) : undefined,
-      order_by: ctx.winOrderByClause() ? this.visit(ctx.winOrderByClause()) : undefined,
+      partition_by: partitionByClause ? this.visit(partitionByClause) : undefined,
+      order_by: orderByClause ? this.visit(orderByClause) : undefined,
       frame_method: frame && frame.RANGE() ? "RANGE" : frame && frame.ROWS() ? "ROWS" : undefined,
       frame_start: Array.isArray(visitedFrame) ? visitedFrame[0] : visitedFrame,
       frame_end: Array.isArray(visitedFrame) ? visitedFrame[1] : undefined,
     };
   }
 
-  visitWinPartitionByClause(ctx: any): Expr[] {
+  visitWinPartitionByClause(ctx: WinPartitionByClauseContext): Expr[] {
     return this.visit(ctx.columnExprList());
   }
 
-  visitWinOrderByClause(ctx: any): OrderExpr[] {
+  visitWinOrderByClause(ctx: WinOrderByClauseContext): OrderExpr[] {
     return this.visit(ctx.orderExprList());
   }
 
-  visitWinFrameClause(ctx: any): WindowFrameExpr | [WindowFrameExpr, WindowFrameExpr] {
+  visitWinFrameClause(
+    ctx: WinFrameClauseContext
+  ): WindowFrameExpr | [WindowFrameExpr, WindowFrameExpr] {
     return this.visit(ctx.winFrameExtend());
   }
 
-  visitFrameStart(ctx: any): WindowFrameExpr {
+  visitFrameStart(ctx: FrameStartContext): WindowFrameExpr {
     return this.visit(ctx.winFrameBound());
   }
 
-  visitFrameBetween(ctx: any): [WindowFrameExpr, WindowFrameExpr] {
+  visitFrameBetween(ctx: FrameBetweenContext): [WindowFrameExpr, WindowFrameExpr] {
     return [this.visit(ctx.winFrameBound(0)), this.visit(ctx.winFrameBound(1))];
   }
 
-  visitWinFrameBound(ctx: any): WindowFrameExpr {
+  visitWinFrameBound(ctx: WinFrameBoundContext): WindowFrameExpr {
     if (ctx.PRECEDING()) {
+      const numberLiteral = ctx.numberLiteral();
       return {
         expression_type: "window_frame_expr",
         frame_type: "PRECEDING",
-        frame_value: ctx.numberLiteral()
-          ? (this.visit(ctx.numberLiteral()) as Constant).value
-          : undefined,
+        frame_value: numberLiteral ? (this.visit(numberLiteral) as Constant).value : undefined,
       };
     }
     if (ctx.FOLLOWING()) {
+      const numberLiteral = ctx.numberLiteral();
       return {
         expression_type: "window_frame_expr",
         frame_type: "FOLLOWING",
-        frame_value: ctx.numberLiteral()
-          ? (this.visit(ctx.numberLiteral()) as Constant).value
-          : undefined,
+        frame_value: numberLiteral ? (this.visit(numberLiteral) as Constant).value : undefined,
       };
     }
     return { expression_type: "window_frame_expr", frame_type: "CURRENT ROW" };
   }
 
   // Column expressions
-  visitColumnExprList(ctx: any): Expr[] {
+  visitColumnExprList(ctx: ColumnExprListContext): Expr[] {
     return ctx.columnExpr().map((c: any) => this.visit(c));
   }
 
-  visitColumnExprTernaryOp(ctx: any): Call {
+  visitColumnExprTernaryOp(ctx: ColumnExprTernaryOpContext): Call {
     return {
       expression_type: "call",
       name: "if",
@@ -753,12 +881,14 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     };
   }
 
-  visitColumnExprAlias(ctx: any): Alias {
+  visitColumnExprAlias(ctx: ColumnExprAliasContext): Alias {
     let alias: string;
-    if (ctx.identifier()) {
-      alias = this.visitIdentifier(ctx.identifier());
-    } else if (ctx.STRING_LITERAL()) {
-      alias = parseStringLiteralCtx(ctx.STRING_LITERAL());
+    const identifier = ctx.identifier();
+    const stringLiteral = ctx.STRING_LITERAL();
+    if (identifier) {
+      alias = this.visitIdentifier(identifier);
+    } else if (stringLiteral) {
+      alias = parseStringLiteralText(stringLiteral.text);
     } else {
       throw new SyntaxError("Must specify an alias");
     }
@@ -773,7 +903,7 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     return { expression_type: "alias", expr, alias };
   }
 
-  visitColumnExprNegate(ctx: any): ArithmeticOperation {
+  visitColumnExprNegate(ctx: ColumnExprNegateContext): ArithmeticOperation {
     return {
       expression_type: "arithmetic_operation",
       op: ArithmeticOperationOp.Sub,
@@ -782,29 +912,31 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     };
   }
 
-  visitColumnExprDict(ctx: any): Dict {
+  visitColumnExprDict(ctx: ColumnExprDictContext): Dict {
+    const kvPairList = ctx.kvPairList();
     return {
       expression_type: "dict",
-      items: ctx.kvPairList() ? this.visit(ctx.kvPairList()) : [],
+      items: kvPairList ? this.visit(kvPairList) : [],
     };
   }
 
-  visitColumnExprSubquery(ctx: any): SelectQuery | SelectSetQuery {
+  visitColumnExprSubquery(ctx: ColumnExprSubqueryContext): SelectQuery | SelectSetQuery {
     return this.visit(ctx.selectSetStmt());
   }
 
-  visitColumnExprLiteral(ctx: any): Expr {
+  visitColumnExprLiteral(ctx: ColumnExprLiteralContext): Expr {
     return this.visitChildren(ctx);
   }
 
-  visitColumnExprArray(ctx: any): ArrayExpression {
+  visitColumnExprArray(ctx: ColumnExprArrayContext): ArrayExpression {
+    const columnExprList = ctx.columnExprList();
     return {
       expression_type: "array",
-      exprs: ctx.columnExprList() ? this.visit(ctx.columnExprList()) : [],
+      exprs: columnExprList ? this.visit(columnExprList) : [],
     };
   }
 
-  visitColumnExprPrecedence1(ctx: any): ArithmeticOperation {
+  visitColumnExprPrecedence1(ctx: ColumnExprPrecedence1Context): ArithmeticOperation {
     let op: ArithmeticOperationOp;
     if (ctx.SLASH()) {
       op = ArithmeticOperationOp.Div;
@@ -813,7 +945,7 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     } else if (ctx.PERCENT()) {
       op = ArithmeticOperationOp.Mod;
     } else {
-      throw new NotImplementedError(`Unsupported ColumnExprPrecedence1: ${ctx.getText()}`);
+      throw new NotImplementedError(`Unsupported ColumnExprPrecedence1: ${ctx.text}`);
     }
     // Use columnExpr() method to get left and right operands
     const left = this.visit(ctx.columnExpr(0));
@@ -821,7 +953,7 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     return { expression_type: "arithmetic_operation", left, right, op };
   }
 
-  visitColumnExprPrecedence2(ctx: any): ArithmeticOperation | Call {
+  visitColumnExprPrecedence2(ctx: ColumnExprPrecedence2Context): ArithmeticOperation | Call {
     // Use columnExpr() method to get left and right operands
     const left = this.visit(ctx.columnExpr(0));
     const right = this.visit(ctx.columnExpr(1));
@@ -856,11 +988,11 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
 
       return { expression_type: "call", name: "concat", args };
     } else {
-      throw new NotImplementedError(`Unsupported ColumnExprPrecedence2: ${ctx.getText()}`);
+      throw new NotImplementedError(`Unsupported ColumnExprPrecedence2: ${ctx.text}`);
     }
   }
 
-  visitColumnExprPrecedence3(ctx: any): CompareOperation {
+  visitColumnExprPrecedence3(ctx: ColumnExprPrecedence3Context): CompareOperation {
     // Use columnExpr() method to get left and right operands
     const left = this.visit(ctx.columnExpr(0));
     const right = this.visit(ctx.columnExpr(1));
@@ -897,13 +1029,13 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
         op = ctx.NOT() ? CompareOperationOp.NotIn : CompareOperationOp.In;
       }
     } else {
-      throw new NotImplementedError(`Unsupported ColumnExprPrecedence3: ${ctx.getText()}`);
+      throw new NotImplementedError(`Unsupported ColumnExprPrecedence3: ${ctx.text}`);
     }
 
     return { expression_type: "compare_operation", left, right, op };
   }
 
-  visitColumnExprInterval(ctx: any): Call {
+  visitColumnExprInterval(ctx: ColumnExprIntervalContext): Call {
     let name: string;
     const interval = ctx.interval();
     if (interval.SECOND()) {
@@ -923,13 +1055,13 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     } else if (interval.YEAR()) {
       name = "toIntervalYear";
     } else {
-      throw new NotImplementedError(`Unsupported interval type: ${interval.getText()}`);
+      throw new NotImplementedError(`Unsupported interval type: ${interval.text}`);
     }
 
     return { expression_type: "call", name, args: [this.visit(ctx.columnExpr())] };
   }
 
-  visitColumnExprIsNull(ctx: any): CompareOperation {
+  visitColumnExprIsNull(ctx: ColumnExprIsNullContext): CompareOperation {
     return {
       expression_type: "compare_operation",
       left: this.visit(ctx.columnExpr()),
@@ -938,38 +1070,38 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     };
   }
 
-  visitColumnExprTuple(ctx: any): Tuple {
+  visitColumnExprTuple(ctx: ColumnExprTupleContext): Tuple {
     return {
       expression_type: "tuple",
       exprs: ctx.columnExprList() ? this.visit(ctx.columnExprList()) : [],
     };
   }
 
-  visitColumnExprArrayAccess(ctx: any): ArrayAccess {
+  visitColumnExprArrayAccess(ctx: ColumnExprArrayAccessContext): ArrayAccess {
     const object: Expression = this.visit(ctx.columnExpr(0));
     const property: Expression = this.visit(ctx.columnExpr(1));
     return { expression_type: "array_access", array: object, property };
   }
 
-  visitColumnExprNullArrayAccess(ctx: any): ArrayAccess {
+  visitColumnExprNullArrayAccess(ctx: ColumnExprNullArrayAccessContext): ArrayAccess {
     const object: Expression = this.visit(ctx.columnExpr(0));
     const property: Expression = this.visit(ctx.columnExpr(1));
     return { expression_type: "array_access", array: object, property, nullish: true };
   }
 
-  visitColumnExprPropertyAccess(ctx: any): ArrayAccess {
+  visitColumnExprPropertyAccess(ctx: ColumnExprPropertyAccessContext): ArrayAccess {
     const object = this.visit(ctx.columnExpr());
     const property = { value: this.visitIdentifier(ctx.identifier()) } as Constant;
     return { expression_type: "array_access", array: object, property };
   }
 
-  visitColumnExprNullPropertyAccess(ctx: any): ArrayAccess {
+  visitColumnExprNullPropertyAccess(ctx: ColumnExprNullPropertyAccessContext): ArrayAccess {
     const object = this.visit(ctx.columnExpr());
     const property = { value: this.visitIdentifier(ctx.identifier()) } as Constant;
     return { expression_type: "array_access", array: object, property, nullish: true };
   }
 
-  visitColumnExprBetween(ctx: any): BetweenExpr {
+  visitColumnExprBetween(ctx: ColumnExprBetweenContext): BetweenExpr {
     return {
       expression_type: "between_expr",
       expr: this.visit(ctx.columnExpr(0)),
@@ -979,11 +1111,11 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     };
   }
 
-  visitColumnExprParens(ctx: any): Expr {
+  visitColumnExprParens(ctx: ColumnExprParensContext): Expr {
     return this.visit(ctx.columnExpr());
   }
 
-  visitColumnExprAnd(ctx: any): And {
+  visitColumnExprAnd(ctx: ColumnExprAndContext): And {
     let left = this.visit(ctx.columnExpr(0));
     const leftArray = "exprs" in left ? left.exprs : [left];
 
@@ -993,7 +1125,7 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     return { expression_type: "and", exprs: [...leftArray, ...rightArray] };
   }
 
-  visitColumnExprOr(ctx: any): Or {
+  visitColumnExprOr(ctx: ColumnExprOrContext): Or {
     let left = this.visit(ctx.columnExpr(0));
     const leftArray = "exprs" in left ? left.exprs : [left];
 
@@ -1003,21 +1135,21 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     return { expression_type: "or", exprs: [...leftArray, ...rightArray] };
   }
 
-  visitColumnExprTupleAccess(ctx: any): TupleAccess {
+  visitColumnExprTupleAccess(ctx: ColumnExprTupleAccessContext): TupleAccess {
     const tuple = this.visit(ctx.columnExpr());
-    const index = parseInt(ctx.DECIMAL_LITERAL().getText());
+    const index = parseInt(ctx.DECIMAL_LITERAL().text);
     return { expression_type: "tuple_access", tuple, index };
   }
 
-  visitColumnExprNullTupleAccess(ctx: any): TupleAccess {
+  visitColumnExprNullTupleAccess(ctx: ColumnExprNullTupleAccessContext): TupleAccess {
     const tuple = this.visit(ctx.columnExpr());
-    const index = parseInt(ctx.DECIMAL_LITERAL().getText());
+    const index = parseInt(ctx.DECIMAL_LITERAL().text);
     return { expression_type: "tuple_access", tuple, index, nullish: true };
   }
 
-  visitColumnExprCase(ctx: any): Call {
+  visitColumnExprCase(ctx: ColumnExprCaseContext): Call {
     const columns = ctx.columnExpr().map((column: any) => this.visit(column));
-    if (ctx.caseExpr) {
+    if (ctx._caseExpr) {
       const args: Expression[] = [
         columns[0],
         { expression_type: "array", exprs: [] },
@@ -1037,67 +1169,70 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     }
   }
 
-  visitColumnExprNot(ctx: any): Not {
+  visitColumnExprNot(ctx: ColumnExprNotContext): Not {
     return { expression_type: "not", expr: this.visit(ctx.columnExpr()) };
   }
 
-  visitColumnExprWinFunctionTarget(ctx: any): WindowFunction {
+  visitColumnExprWinFunctionTarget(ctx: ColumnExprWinFunctionTargetContext): WindowFunction {
     return {
       expression_type: "window_function",
       name: this.visitIdentifier(ctx.identifier(0)),
-      exprs: ctx.columnExprs ? this.visit(ctx.columnExprs) : [],
-      args: ctx.columnArgList ? this.visit(ctx.columnArgList) : [],
+      exprs: ctx._columnExprs ? this.visit(ctx._columnExprs) : [],
+      args: ctx._columnArgList ? this.visit(ctx._columnArgList) : [],
       over_identifier: this.visitIdentifier(ctx.identifier(1)),
     };
   }
 
-  visitColumnExprWinFunction(ctx: any): WindowFunction {
+  visitColumnExprWinFunction(ctx: ColumnExprWinFunctionContext): WindowFunction {
     return {
       expression_type: "window_function",
       name: this.visitIdentifier(ctx.identifier()),
-      exprs: ctx.columnExprs ? this.visit(ctx.columnExprs) : [],
-      args: ctx.columnArgList ? this.visit(ctx.columnArgList) : [],
+      exprs: ctx._columnExprs ? this.visit(ctx._columnExprs) : [],
+      args: ctx._columnArgList ? this.visit(ctx._columnArgList) : [],
       over_expr: ctx.windowExpr() ? this.visit(ctx.windowExpr()) : undefined,
     };
   }
 
-  visitColumnExprIdentifier(ctx: any): Expr {
+  visitColumnExprIdentifier(ctx: ColumnExprIdentifierContext): Expr {
     return this.visit(ctx.columnIdentifier());
   }
 
-  visitColumnExprFunction(ctx: any): Call {
+  visitColumnExprFunction(ctx: ColumnExprFunctionContext): Call {
     const name = this.visitIdentifier(ctx.identifier());
 
-    let parameters: Expression[] | undefined = ctx.columnExprs
-      ? this.visit(ctx.columnExprs)
+    let parameters: Expression[] | undefined = ctx._columnExprs
+      ? this.visit(ctx._columnExprs)
       : undefined;
     // two sets of parameters fn()(), return an empty list for the first even if no parameters
     if (ctx.LPAREN && ctx.LPAREN().length > 1 && parameters === undefined) {
       parameters = [];
     }
 
-    const args: Expression[] = ctx.columnArgList ? this.visit(ctx.columnArgList) : [];
+    const args: Expression[] = ctx._columnArgList ? this.visit(ctx._columnArgList) : [];
     const distinct = ctx.DISTINCT() ? true : false;
     return { expression_type: "call", name, params: parameters, args, distinct };
   }
 
-  visitColumnExprAsterisk(ctx: any): Field {
-    if (ctx.tableIdentifier()) {
-      const table = this.visit(ctx.tableIdentifier());
+  visitColumnExprAsterisk(ctx: ColumnExprAsteriskContext): Field {
+    const tableIdentifier = ctx.tableIdentifier();
+    if (tableIdentifier) {
+      const table = this.visit(tableIdentifier);
       return { expression_type: "field", chain: [...table, "*"] };
     }
     return { expression_type: "field", chain: ["*"] };
   }
 
-  visitColumnLambdaExpr(ctx: any): Lambda {
+  visitColumnLambdaExpr(ctx: ColumnLambdaExprContext): Lambda {
+    const columnExpr = ctx.columnExpr();
+    const block = ctx.block();
     return {
       expression_type: "lambda",
       args: ctx.identifier().map((identifier: any) => this.visitIdentifier(identifier)),
-      expr: ctx.columnExpr() ? this.visit(ctx.columnExpr()) : this.visit(ctx.block()),
+      expr: columnExpr ? this.visit(columnExpr) : block ? this.visit(block) : undefined,
     };
   }
 
-  visitWithExprList(ctx: any): Record<string, CTE> {
+  visitWithExprList(ctx: WithExprListContext): Record<string, CTE> {
     const ctes: Record<string, CTE> = {};
     for (const expr of ctx.withExpr()) {
       const cte = this.visit(expr);
@@ -1106,28 +1241,32 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     return ctes;
   }
 
-  visitWithExprSubquery(ctx: any): CTE {
+  visitWithExprSubquery(ctx: WithExprSubqueryContext): CTE {
     const subquery = this.visit(ctx.selectSetStmt());
     const name = this.visitIdentifier(ctx.identifier());
     return { expression_type: "cte", name, expr: subquery, cte_type: "subquery" };
   }
 
-  visitWithExprColumn(ctx: any): CTE {
+  visitWithExprColumn(ctx: WithExprColumnContext): CTE {
     const expr = this.visit(ctx.columnExpr());
     const name = this.visitIdentifier(ctx.identifier());
     return { expression_type: "cte", name, expr, cte_type: "column" };
   }
 
-  visitColumnIdentifier(ctx: any): Expression {
-    if (ctx.placeholder()) {
-      return this.visit(ctx.placeholder());
+  visitColumnIdentifier(ctx: ColumnIdentifierContext): Expression {
+    const placeholder = ctx.placeholder();
+    if (placeholder) {
+      return this.visit(placeholder);
     }
 
-    const table = ctx.tableIdentifier() ? this.visit(ctx.tableIdentifier()) : [];
-    const nested = ctx.nestedIdentifier() ? this.visit(ctx.nestedIdentifier()) : [];
+    const tableIdentifier = ctx.tableIdentifier();
+    const table = tableIdentifier ? this.visit(tableIdentifier) : [];
+
+    const nestedIdentifier = ctx.nestedIdentifier();
+    const nested = nestedIdentifier ? this.visit(nestedIdentifier) : [];
 
     if (table.length === 0 && nested.length > 0) {
-      const text = ctx.getText().toLowerCase();
+      const text = ctx.text.toLowerCase();
       if (text === "true") {
         return { expression_type: "constant", value: true };
       }
@@ -1140,25 +1279,29 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     return { expression_type: "field", chain: [...table, ...nested] };
   }
 
-  visitNestedIdentifier(ctx: any): string[] {
+  visitNestedIdentifier(ctx: NestedIdentifierContext): string[] {
     return ctx.identifier().map((identifier: any) => this.visitIdentifier(identifier));
   }
 
-  visitTableExprIdentifier(ctx: any): Field {
+  visitTableExprIdentifier(ctx: TableExprIdentifierContext): Field {
     const chain = this.visit(ctx.tableIdentifier());
     return { expression_type: "field", chain };
   }
 
-  visitTableExprSubquery(ctx: any): SelectQuery | SelectSetQuery {
+  visitTableExprSubquery(ctx: TableExprSubqueryContext): SelectQuery | SelectSetQuery {
     return this.visit(ctx.selectSetStmt());
   }
 
-  visitTableExprPlaceholder(ctx: any): Placeholder {
+  visitTableExprPlaceholder(ctx: TableExprPlaceholderContext): Placeholder {
     return this.visit(ctx.placeholder());
   }
 
-  visitTableExprAlias(ctx: any): JoinExpr {
-    const alias: string = this.visit(ctx.alias() || ctx.identifier());
+  visitTableExprAlias(ctx: TableExprAliasContext): JoinExpr {
+    const exp = ctx.alias() || ctx.identifier();
+    if (!exp) {
+      throw new SyntaxError("Must specify an alias");
+    }
+    const alias: string = this.visit(exp);
     if (RESERVED_KEYWORDS.includes(alias.toLowerCase() as any)) {
       throw new SyntaxError(
         `"${alias}" cannot be an alias or identifier, as it's a reserved keyword`
@@ -1172,17 +1315,18 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     return { expression_type: "join_expr", table, alias };
   }
 
-  visitTableExprFunction(ctx: any): JoinExpr {
+  visitTableExprFunction(ctx: TableExprFunctionContext): JoinExpr {
     return this.visit(ctx.tableFunctionExpr());
   }
 
-  visitTableExprTag(ctx: any): HogQLXTag {
-    return this.visit(ctx.hogqlxTagElement());
+  visitTableExprTag(ctx: TableExprTagContext): HogQLXTag {
+    return this.visit(ctx.tSQLxTagElement());
   }
 
-  visitTableFunctionExpr(ctx: any): JoinExpr {
+  visitTableFunctionExpr(ctx: TableFunctionExprContext): JoinExpr {
     const name = this.visitIdentifier(ctx.identifier());
-    const args = ctx.tableArgList() ? this.visit(ctx.tableArgList()) : [];
+    const tableArgList = ctx.tableArgList();
+    const args = tableArgList ? this.visit(tableArgList) : [];
     return {
       expression_type: "join_expr",
       table: { expression_type: "field", chain: [name] },
@@ -1190,35 +1334,30 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     };
   }
 
-  visitTableIdentifier(ctx: any): string[] {
+  visitTableIdentifier(ctx: TableIdentifierContext): string[] {
     const nested = ctx.nestedIdentifier() ? this.visit(ctx.nestedIdentifier()) : [];
     // Ensure nested is always an array
     const nestedArray = Array.isArray(nested) ? nested : nested ? [nested] : [];
 
-    if (ctx.databaseIdentifier()) {
-      const dbId = this.visit(ctx.databaseIdentifier());
+    const databaseIdentifier = ctx.databaseIdentifier();
+    if (databaseIdentifier) {
+      const dbId = this.visit(databaseIdentifier);
       return [dbId, ...nestedArray];
     }
 
     return nestedArray;
   }
 
-  visitTableArgList(ctx: any): Expression[] {
+  visitTableArgList(ctx: TableArgListContext): Expression[] {
     return ctx.columnExpr().map((arg: any) => this.visit(arg));
   }
 
-  visitDatabaseIdentifier(ctx: any): string {
+  visitDatabaseIdentifier(ctx: DatabaseIdentifierContext): string {
     return this.visitIdentifier(ctx.identifier());
   }
 
-  visitNumberLiteral(ctx: any): Constant {
-    // NumberLiteralContext is a ParserRuleContext, use getText() to get the text
-    if (!ctx || typeof ctx.getText !== "function") {
-      throw new SyntaxError(
-        "Invalid number literal context - expected ParserRuleContext with getText()"
-      );
-    }
-    const text = ctx.getText().toLowerCase();
+  visitNumberLiteral(ctx: NumberLiteralContext): Constant {
+    const text = ctx.text.toLowerCase();
     if (
       text.includes(".") ||
       text.includes("e") ||
@@ -1231,24 +1370,27 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     return { expression_type: "constant", value: parseInt(text) };
   }
 
-  visitLiteral(ctx: any): Constant {
+  visitLiteral(ctx: LiteralContext): Constant {
     if (ctx.NULL_SQL()) {
       return { expression_type: "constant", value: null };
     }
-    if (ctx.STRING_LITERAL()) {
+
+    const stringLiteral = ctx.STRING_LITERAL();
+    if (stringLiteral) {
       // STRING_LITERAL() returns a TerminalNode, which has getText()
-      const stringLiteral = ctx.STRING_LITERAL();
-      const text = parseStringLiteralCtx(stringLiteral);
+      const text = parseStringLiteralText(stringLiteral.text);
       return { expression_type: "constant", value: text };
     }
-    if (ctx.numberLiteral()) {
-      return this.visitNumberLiteral(ctx.numberLiteral());
+
+    const numberLiteral = ctx.numberLiteral();
+    if (numberLiteral) {
+      return this.visitNumberLiteral(numberLiteral);
     }
     return this.visitChildren(ctx);
   }
 
-  visitAlias(ctx: any): string {
-    let text = ctx.getText();
+  visitAlias(ctx: AliasContext): string {
+    let text = ctx.text;
     if (
       text.length >= 2 &&
       ((text.startsWith("`") && text.endsWith("`")) || (text.startsWith('"') && text.endsWith('"')))
@@ -1258,7 +1400,7 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     return text;
   }
 
-  visitIdentifier(ctx: any): string {
+  visitIdentifier(ctx: IdentifierContext): string {
     // IdentifierContext is a ParserRuleContext that has IDENTIFIER() method returning TerminalNode
     // If ctx has IDENTIFIER() method, extract the terminal node
     if (ctx.IDENTIFIER && typeof ctx.IDENTIFIER === "function") {
@@ -1277,30 +1419,23 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
         return text;
       }
     }
-    // Fallback: if it's a ParserRuleContext, use getText()
-    if (typeof ctx.getText === "function") {
-      let text = ctx.getText();
-      if (
-        text.length >= 2 &&
-        ((text.startsWith("`") && text.endsWith("`")) ||
-          (text.startsWith('"') && text.endsWith('"')))
-      ) {
-        text = parseStringLiteralText(text);
-      }
-      return text;
-    }
+
     // If it's already a string
     if (typeof ctx === "string") {
       return ctx;
     }
-    // Try to get text from symbol if it's a TerminalNode
-    if (ctx.symbol && ctx.symbol.text) {
-      return ctx.symbol.text;
+    // Fallback: if it's a ParserRuleContext, use getText()
+    let text = ctx.text;
+    if (
+      text.length >= 2 &&
+      ((text.startsWith("`") && text.endsWith("`")) || (text.startsWith('"') && text.endsWith('"')))
+    ) {
+      text = parseStringLiteralText(text);
     }
-    throw new SyntaxError("Invalid identifier context");
+    return text;
   }
 
-  visitColumnExprNullish(ctx: any): Call {
+  visitColumnExprNullish(ctx: ColumnExprNullishContext): Call {
     return {
       expression_type: "call",
       name: "ifNull",
@@ -1308,15 +1443,16 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     };
   }
 
-  visitColumnExprCall(ctx: any): ExprCall {
+  visitColumnExprCall(ctx: ColumnExprCallContext): ExprCall {
+    const columnExprList = ctx.columnExprList();
     return {
       expression_type: "expr_call",
       expr: this.visit(ctx.columnExpr()),
-      args: ctx.columnExprList() ? this.visit(ctx.columnExprList()) : [],
+      args: columnExprList ? this.visit(columnExprList) : [],
     };
   }
 
-  visitColumnExprCallSelect(ctx: any): Call | ExprCall {
+  visitColumnExprCallSelect(ctx: ColumnExprCallSelectContext): Call | ExprCall {
     const expr = this.visit(ctx.columnExpr());
     if ("chain" in expr && expr.chain.length === 1) {
       return {
@@ -1332,29 +1468,31 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     };
   }
 
-  visitHogqlxChildElement(ctx: any): Expr | HogQLXTag {
-    if (ctx.hogqlxTagElement()) {
-      return this.visit(ctx.hogqlxTagElement());
+  visitHogqlxChildElement(ctx: TSQLxChildElementContext): Expr | HogQLXTag {
+    const tSQLxTagElement = ctx.tSQLxTagElement();
+    if (tSQLxTagElement) {
+      return this.visit(tSQLxTagElement);
     }
-    if (ctx.hogqlxText()) {
-      return this.visit(ctx.hogqlxText());
+    if (ctx.TSQLX_TEXT_TEXT()) {
+      return this.visitHogqlxText(ctx);
     }
-    return this.visit(ctx.columnExpr());
+    return this.visit(ctx.columnExpr()!);
   }
 
-  visitHogqlxText(ctx: any): Constant {
-    return { expression_type: "constant", value: ctx.HOGQLX_TEXT_TEXT().getText() };
+  visitHogqlxText(ctx: TSQLxChildElementContext): Constant {
+    const text = ctx.TSQLX_TEXT_TEXT();
+    return { expression_type: "constant", value: text ? text.text : "" };
   }
 
-  visitHogqlxTagElementClosed(ctx: any): HogQLXTag {
-    const kind = this.visitIdentifier(ctx.identifier());
-    const attributes = ctx.hogqlxTagAttribute()
-      ? ctx.hogqlxTagAttribute().map((a: any) => this.visit(a))
+  visitHogqlxTagElementClosed(ctx: TSQLxTagElementContext): HogQLXTag {
+    const kind = this.visitIdentifier(ctx.identifier()[0]);
+    const attributes = ctx.tSQLxTagAttribute()
+      ? ctx.tSQLxTagAttribute().map((a: any) => this.visit(a))
       : [];
     return { expression_type: "hogqlx_tag", kind, attributes };
   }
 
-  visitHogqlxTagElementNested(ctx: any): HogQLXTag {
+  visitHogqlxTagElementNested(ctx: TSQLxTagElementContext): HogQLXTag {
     const opening = this.visitIdentifier(ctx.identifier(0));
     const closing = this.visitIdentifier(ctx.identifier(1));
     if (opening !== closing) {
@@ -1363,13 +1501,13 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
       );
     }
 
-    const attributes = ctx.hogqlxTagAttribute()
-      ? ctx.hogqlxTagAttribute().map((a: any) => this.visit(a))
+    const attributes = ctx.tSQLxTagAttribute()
+      ? ctx.tSQLxTagAttribute().map((a: any) => this.visit(a))
       : [];
 
     // ── collect child nodes, discarding pure-indentation whitespace ──
     const keptChildren: Expression[] = [];
-    for (const element of ctx.hogqlxChildElement()) {
+    for (const element of ctx.tSQLxChildElement()) {
       const child = this.visit(element);
 
       if ("value" in child && typeof child.value === "string") {
@@ -1396,33 +1534,40 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     return { expression_type: "hogqlx_tag", kind: opening, attributes };
   }
 
-  visitHogqlxTagAttribute(ctx: any): HogQLXAttribute {
+  visitHogqlxTagAttribute(ctx: TSQLxTagAttributeContext): HogQLXAttribute {
     const name = this.visitIdentifier(ctx.identifier());
-    if (ctx.columnExpr()) {
-      return { name, value: this.visit(ctx.columnExpr()) };
-    } else if (ctx.string()) {
-      return { name, value: this.visit(ctx.string()) };
+    const columnExpr = ctx.columnExpr();
+    const string = ctx.string();
+    if (columnExpr) {
+      return { name, value: this.visit(columnExpr) };
+    } else if (string) {
+      return { name, value: this.visit(string) };
     } else {
       return { name, value: { value: true } as Constant };
     }
   }
 
-  visitPlaceholder(ctx: any): Placeholder {
+  visitPlaceholder(ctx: PlaceholderContext): Placeholder {
     return { expression_type: "placeholder", expr: this.visit(ctx.columnExpr()) };
   }
 
-  visitColumnExprTemplateString(ctx: any): Expr {
+  visitColumnExprTemplateString(ctx: ColumnExprTemplateStringContext): Expr {
     return this.visit(ctx.templateString());
   }
 
-  visitString(ctx: any): Constant | Expr {
-    if (ctx.STRING_LITERAL()) {
-      return { expression_type: "constant", value: parseStringLiteralCtx(ctx.STRING_LITERAL()) };
+  visitString(ctx: StringContext): Constant | Expr {
+    const stringLiteral = ctx.STRING_LITERAL();
+    if (stringLiteral) {
+      return { expression_type: "constant", value: parseStringLiteralText(stringLiteral.text) };
     }
-    return this.visit(ctx.templateString());
+    const templateString = ctx.templateString();
+    if (templateString) {
+      return this.visit(templateString);
+    }
+    return { expression_type: "constant", value: "" };
   }
 
-  visitTemplateString(ctx: any): Constant | Call {
+  visitTemplateString(ctx: TemplateStringContext): Constant | Call {
     const pieces: Expression[] = [];
     for (const chunk of ctx.stringContents()) {
       pieces.push(this.visit(chunk));
@@ -1442,7 +1587,7 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     return { expression_type: "call", name: "concat", args: pieces };
   }
 
-  visitFullTemplateString(ctx: any): Constant | Call {
+  visitFullTemplateString(ctx: FullTemplateStringContext): Constant | Call {
     const pieces: Expression[] = [];
     for (const chunk of ctx.stringContentsFull()) {
       pieces.push(this.visit(chunk));
@@ -1462,23 +1607,27 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     return { expression_type: "call", name: "concat", args: pieces };
   }
 
-  visitStringContents(ctx: any): Constant | Expression {
-    if (ctx.STRING_TEXT()) {
-      return { expression_type: "constant", value: parseStringTextCtx(ctx.STRING_TEXT(), true) };
-    } else if (ctx.columnExpr()) {
-      return this.visit(ctx.columnExpr());
+  visitStringContents(ctx: StringContentsContext): Constant | Expression {
+    const stringText = ctx.STRING_TEXT();
+    const columnExpr = ctx.columnExpr();
+    if (stringText) {
+      return { expression_type: "constant", value: parseStringLiteralText(stringText.text) };
+    } else if (columnExpr) {
+      return this.visit(columnExpr);
     }
     return { expression_type: "constant", value: "" };
   }
 
-  visitStringContentsFull(ctx: any): Constant | Expression {
-    if (ctx.FULL_STRING_TEXT()) {
+  visitStringContentsFull(ctx: StringContentsFullContext): Constant | Expression {
+    const fullStringText = ctx.FULL_STRING_TEXT();
+    const columnExpr = ctx.columnExpr();
+    if (fullStringText) {
       return {
         expression_type: "constant",
-        value: parseStringTextCtx(ctx.FULL_STRING_TEXT(), false),
+        value: parseStringLiteralText(fullStringText.text),
       };
-    } else if (ctx.columnExpr()) {
-      return this.visit(ctx.columnExpr());
+    } else if (columnExpr) {
+      return this.visit(columnExpr);
     }
     return { expression_type: "constant", value: "" };
   }
