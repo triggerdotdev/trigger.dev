@@ -338,6 +338,8 @@ export class RunEngine {
       },
       consumerCount: options.batchQueue?.consumerCount ?? 2,
       consumerIntervalMs: options.batchQueue?.consumerIntervalMs ?? 100,
+      defaultConcurrency: options.batchQueue?.defaultConcurrency ?? 10,
+      globalRateLimiter: options.batchQueue?.globalRateLimiter,
       startConsumers,
       tracer: options.tracer,
       meter: options.meter,
@@ -346,6 +348,7 @@ export class RunEngine {
     this.logger.info("BatchQueue initialized", {
       consumerCount: options.batchQueue?.consumerCount ?? 2,
       drrQuantum: options.batchQueue?.drr?.quantum ?? 5,
+      defaultConcurrency: options.batchQueue?.defaultConcurrency ?? 10,
       consumersEnabled: startConsumers,
     });
 

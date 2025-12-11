@@ -1,4 +1,4 @@
-import type { RedisOptions } from "@internal/redis";
+import { createRedisClient, type Redis, type RedisOptions } from "@internal/redis";
 import type { Counter, Histogram, Meter } from "@internal/tracing";
 import {
   FairQueue,
@@ -38,25 +38,33 @@ export { BatchCompletionTracker } from "./completionTracker.js";
  * - Each batch becomes a FairQueue "queue" (queueId = batchId, tenantId = envId)
  * - OpenTelemetry metrics for observability
  */
+// Redis key for environment concurrency limits
+const ENV_CONCURRENCY_KEY_PREFIX = "batch:env_concurrency";
+
 export class BatchQueue {
   private fairQueue: FairQueue<typeof BatchItemPayloadSchema>;
   private completionTracker: BatchCompletionTracker;
   private logger: Logger;
+  private concurrencyRedis: import("@internal/redis").Redis;
+  private defaultConcurrency: number;
 
   private processItemCallback?: ProcessBatchItemCallback;
   private completionCallback?: BatchCompletionCallback;
 
   // Metrics
   private batchesEnqueuedCounter?: Counter;
+  private itemsEnqueuedCounter?: Counter;
   private itemsProcessedCounter?: Counter;
   private itemsFailedCounter?: Counter;
   private batchCompletedCounter?: Counter;
   private batchProcessingDurationHistogram?: Histogram;
+  private itemQueueTimeHistogram?: Histogram;
 
   constructor(private options: BatchQueueOptions) {
     this.logger = options.logger
       ? new Logger("BatchQueue", "info")
       : new Logger("BatchQueue", "info");
+    this.defaultConcurrency = options.defaultConcurrency ?? 10;
 
     // Initialize metrics if meter is provided
     if (options.meter) {
@@ -77,7 +85,8 @@ export class BatchQueue {
       },
       extractGroupId: (groupName: string, queueId: string) => {
         const parts = queueId.split(":");
-        if (groupName === "env" && parts.length >= 2 && parts[0] === "env" && parts[1]) {
+        // Extract envId for the "tenant" concurrency group
+        if (groupName === "tenant" && parts.length >= 2 && parts[0] === "env" && parts[1]) {
           return parts[1];
         }
         return "";
@@ -95,6 +104,9 @@ export class BatchQueue {
       ...(options.redis.tls ? { tls: {} } : {}),
     };
 
+    // Create a separate Redis client for concurrency lookups
+    this.concurrencyRedis = createRedisClient(redisOptions);
+
     const scheduler = new DRRScheduler({
       redis: redisOptions,
       keys: keyProducer,
@@ -106,7 +118,7 @@ export class BatchQueue {
       },
     });
 
-    // Create FairQueue with telemetry
+    // Create FairQueue with telemetry and environment-based concurrency limiting
     const fairQueueOptions: FairQueueOptions<typeof BatchItemPayloadSchema> = {
       redis: redisOptions,
       keys: keyProducer,
@@ -123,6 +135,22 @@ export class BatchQueue {
         threshold: 5,
         periodMs: 5_000,
       },
+      // Concurrency group based on tenant (environment)
+      // This limits how many batch items can be processed concurrently per environment
+      // Items wait in queue until capacity frees up
+      // Note: Must use "tenant" as the group name - this is what FairQueue expects
+      concurrencyGroups: [
+        {
+          name: "tenant",
+          extractGroupId: (queue) => queue.tenantId, // tenantId = envId
+          defaultLimit: this.defaultConcurrency,
+          getLimit: async (envId: string) => {
+            return this.getEnvConcurrency(envId);
+          },
+        },
+      ],
+      // Optional global rate limiter to limit max items/sec across all consumers
+      globalRateLimiter: options.globalRateLimiter,
       // No retry for batch items - failures are recorded and batch completes
       // Omit retry config entirely to disable retry and DLQ
       logger: this.logger,
@@ -138,6 +166,7 @@ export class BatchQueue {
       redis: redisOptions,
       logger: {
         debug: (msg, ctx) => this.logger.debug(msg, ctx),
+        info: (msg, ctx) => this.logger.info(msg, ctx),
         error: (msg, ctx) => this.logger.error(msg, ctx),
       },
     });
@@ -146,6 +175,10 @@ export class BatchQueue {
     this.fairQueue.onMessage(async (ctx) => {
       await this.#handleMessage(ctx);
     });
+
+    // Register telemetry gauge callbacks for observable metrics
+    // Note: observedTenants is not provided since tenant list is dynamic
+    this.fairQueue.registerTelemetryGauges();
 
     if (options.startConsumers !== false) {
       this.start();
@@ -204,11 +237,17 @@ export class BatchQueue {
       spanParentAsLink: options.spanParentAsLink,
       realtimeStreamsVersion: options.realtimeStreamsVersion,
       idempotencyKey: options.idempotencyKey,
-      planType: options.planType,
+      processingConcurrency: options.processingConcurrency,
     };
 
     // Store metadata in completion tracker
     await this.completionTracker.storeMeta(options.batchId, meta);
+
+    // Store per-environment concurrency limit if provided
+    // This is used by the ConcurrencyManager to limit concurrent processing
+    if (options.processingConcurrency !== undefined) {
+      await this.storeEnvConcurrency(options.environmentId, options.processingConcurrency);
+    }
 
     // Record metric
     this.batchesEnqueuedCounter?.add(1, {
@@ -222,6 +261,7 @@ export class BatchQueue {
       friendlyId: options.friendlyId,
       envId: options.environmentId,
       runCount: options.runCount,
+      processingConcurrency: options.processingConcurrency,
     });
   }
 
@@ -280,6 +320,9 @@ export class BatchQueue {
         envId,
       },
     });
+
+    // Record metric
+    this.itemsEnqueuedCounter?.add(1, { envId });
 
     this.logger.debug("Batch item enqueued", {
       batchId,
@@ -395,6 +438,42 @@ export class BatchQueue {
   async close(): Promise<void> {
     await this.fairQueue.close();
     await this.completionTracker.close();
+    await this.concurrencyRedis.quit();
+  }
+
+  // ============================================================================
+  // Private - Environment Concurrency Management
+  // ============================================================================
+
+  /**
+   * Store the concurrency limit for an environment.
+   * This is called when a batch is initialized with a specific concurrency limit.
+   * The limit expires after 24 hours to prevent stale data.
+   */
+  private async storeEnvConcurrency(envId: string, concurrency: number): Promise<void> {
+    const key = `${ENV_CONCURRENCY_KEY_PREFIX}:${envId}`;
+    // Set with 24 hour expiry - batches should complete well before this
+    await this.concurrencyRedis.set(key, concurrency.toString(), "EX", 86400);
+
+    this.logger.debug("Stored environment concurrency limit", { envId, concurrency });
+  }
+
+  /**
+   * Get the concurrency limit for an environment.
+   * Returns the stored limit or the default if not set.
+   */
+  private async getEnvConcurrency(envId: string): Promise<number> {
+    const key = `${ENV_CONCURRENCY_KEY_PREFIX}:${envId}`;
+    const stored = await this.concurrencyRedis.get(key);
+
+    if (stored) {
+      const limit = parseInt(stored, 10);
+      if (!isNaN(limit) && limit > 0) {
+        return limit;
+      }
+    }
+
+    return this.defaultConcurrency;
   }
 
   // ============================================================================
@@ -429,6 +508,16 @@ export class BatchQueue {
         unit: "ms",
       }
     );
+
+    this.itemsEnqueuedCounter = meter.createCounter("batch_queue.items_enqueued", {
+      description: "Number of batch items enqueued",
+      unit: "items",
+    });
+
+    this.itemQueueTimeHistogram = meter.createHistogram("batch_queue.item_queue_time", {
+      description: "Time from item enqueue to processing start",
+      unit: "ms",
+    });
   }
 
   // ============================================================================
@@ -451,6 +540,20 @@ export class BatchQueue {
     fail: (error?: Error) => Promise<void>;
   }): Promise<void> {
     const { batchId, friendlyId, itemIndex, item } = ctx.message.payload;
+
+    // Record queue time metric (time from enqueue to processing)
+    const queueTimeMs = Date.now() - ctx.message.timestamp;
+    this.itemQueueTimeHistogram?.record(queueTimeMs, { envId: ctx.queue.tenantId });
+
+    this.logger.debug("Processing batch item", {
+      batchId,
+      friendlyId,
+      itemIndex,
+      task: item.task,
+      consumerId: ctx.consumerId,
+      attempt: ctx.message.attempt,
+      queueTimeMs,
+    });
 
     if (!this.processItemCallback) {
       this.logger.error("No process item callback set", { batchId, itemIndex });

@@ -1,7 +1,9 @@
 import { RunEngine, type CompleteBatchResult } from "@internal/run-engine";
 import { BatchTaskRunStatus, Prisma } from "@trigger.dev/database";
+import { SpanKind } from "@opentelemetry/api";
 import { $replica, prisma } from "~/db.server";
 import { env } from "~/env.server";
+import { createBatchGlobalRateLimiter } from "~/runEngine/concerns/batchGlobalRateLimiter.server";
 import { defaultMachine, getCurrentPlan } from "~/services/platform.v3.server";
 import { singleton } from "~/utils/singleton";
 import { allMachines } from "./machinePresets.server";
@@ -176,6 +178,13 @@ function createRunEngine() {
       },
       consumerCount: env.BATCH_QUEUE_CONSUMER_COUNT,
       consumerIntervalMs: env.BATCH_QUEUE_CONSUMER_INTERVAL_MS,
+      // Default processing concurrency when no specific limit is set
+      // This is overridden per-batch based on the plan type at batch creation
+      defaultConcurrency: env.BATCH_CONCURRENCY_PAID, // Use paid plan default as baseline
+      // Optional global rate limiter - limits max items/sec processed across all consumers
+      globalRateLimiter: env.BATCH_QUEUE_GLOBAL_RATE_LIMIT
+        ? createBatchGlobalRateLimiter(env.BATCH_QUEUE_GLOBAL_RATE_LIMIT)
+        : undefined,
     },
   });
 
@@ -231,61 +240,85 @@ function normalizePayload(payload: unknown, payloadType?: string): unknown {
 function setupBatchQueueCallbacks(engine: RunEngine) {
   // Item processing callback - creates a run for each batch item
   engine.setBatchProcessItemCallback(async ({ batchId, friendlyId, itemIndex, item, meta }) => {
-    try {
-      const triggerTaskService = new TriggerTaskService();
-
-      // Normalize payload - for application/store (R2 paths), this passes through as-is
-      const payload = normalizePayload(item.payload, item.payloadType);
-
-      const result = await triggerTaskService.call(
-        item.task,
-        {
-          id: meta.environmentId,
-          type: meta.environmentType,
-          organizationId: meta.organizationId,
-          projectId: meta.projectId,
-          organization: { id: meta.organizationId },
-          project: { id: meta.projectId },
-        } as AuthenticatedEnvironment,
-        {
-          payload,
-          options: {
-            ...(item.options as Record<string, unknown>),
-            payloadType: item.payloadType,
-            parentRunId: meta.parentRunId,
-            resumeParentOnCompletion: meta.resumeParentOnCompletion,
-            parentBatch: batchId,
-          },
+    return tracer.startActiveSpan(
+      "batch.processItem",
+      {
+        kind: SpanKind.INTERNAL,
+        attributes: {
+          "batch.id": friendlyId,
+          "batch.item_index": itemIndex,
+          "batch.task": item.task,
+          "batch.environment_id": meta.environmentId,
+          "batch.parent_run_id": meta.parentRunId ?? "",
         },
-        {
-          triggerVersion: meta.triggerVersion,
-          traceContext: meta.traceContext as Record<string, unknown> | undefined,
-          spanParentAsLink: meta.spanParentAsLink,
-          batchId,
-          batchIndex: itemIndex,
-          skipChecks: true, // Already validated at batch level
-          planType: meta.planType,
-          realtimeStreamsVersion: meta.realtimeStreamsVersion,
-        },
-        "V2"
-      );
+      },
+      async (span) => {
+        try {
+          const triggerTaskService = new TriggerTaskService();
 
-      if (result) {
-        return { success: true as const, runId: result.run.friendlyId };
-      } else {
-        return {
-          success: false as const,
-          error: "TriggerTaskService returned undefined",
-          errorCode: "TRIGGER_FAILED",
-        };
+          // Normalize payload - for application/store (R2 paths), this passes through as-is
+          const payload = normalizePayload(item.payload, item.payloadType);
+
+          const result = await triggerTaskService.call(
+            item.task,
+            {
+              id: meta.environmentId,
+              type: meta.environmentType,
+              organizationId: meta.organizationId,
+              projectId: meta.projectId,
+              organization: { id: meta.organizationId },
+              project: { id: meta.projectId },
+            } as AuthenticatedEnvironment,
+            {
+              payload,
+              options: {
+                ...(item.options as Record<string, unknown>),
+                payloadType: item.payloadType,
+                parentRunId: meta.parentRunId,
+                resumeParentOnCompletion: meta.resumeParentOnCompletion,
+                parentBatch: batchId,
+              },
+            },
+            {
+              triggerVersion: meta.triggerVersion,
+              traceContext: meta.traceContext as Record<string, unknown> | undefined,
+              spanParentAsLink: meta.spanParentAsLink,
+              batchId,
+              batchIndex: itemIndex,
+              skipChecks: true, // Already validated at batch level
+              realtimeStreamsVersion: meta.realtimeStreamsVersion,
+            },
+            "V2"
+          );
+
+          if (result) {
+            span.setAttribute("batch.result.run_id", result.run.friendlyId);
+            span.end();
+            return { success: true as const, runId: result.run.friendlyId };
+          } else {
+            span.setAttribute("batch.result.error", "TriggerTaskService returned undefined");
+            span.end();
+            return {
+              success: false as const,
+              error: "TriggerTaskService returned undefined",
+              errorCode: "TRIGGER_FAILED",
+            };
+          }
+        } catch (error) {
+          span.setAttribute(
+            "batch.result.error",
+            error instanceof Error ? error.message : String(error)
+          );
+          span.recordException(error instanceof Error ? error : new Error(String(error)));
+          span.end();
+          return {
+            success: false as const,
+            error: error instanceof Error ? error.message : String(error),
+            errorCode: "TRIGGER_ERROR",
+          };
+        }
       }
-    } catch (error) {
-      return {
-        success: false as const,
-        error: error instanceof Error ? error.message : String(error),
-        errorCode: "TRIGGER_ERROR",
-      };
-    }
+    );
   });
 
   // Batch completion callback - updates Postgres with results

@@ -71,8 +71,8 @@ export const BatchMeta = z.object({
   realtimeStreamsVersion: z.enum(["v1", "v2"]).optional(),
   /** Idempotency key for the batch */
   idempotencyKey: z.string().optional(),
-  /** Plan type for entitlement */
-  planType: z.string().optional(),
+  /** Processing concurrency limit for this batch's environment */
+  processingConcurrency: z.number().optional(),
 });
 export type BatchMeta = z.infer<typeof BatchMeta>;
 
@@ -156,8 +156,8 @@ export type InitializeBatchOptions = {
   realtimeStreamsVersion?: "v1" | "v2";
   /** Idempotency key for the batch */
   idempotencyKey?: string;
-  /** Plan type for entitlement */
-  planType?: string;
+  /** Processing concurrency limit for this batch's environment */
+  processingConcurrency?: number;
 };
 
 /**
@@ -198,6 +198,17 @@ export type BatchQueueOptions = {
   consumerIntervalMs: number;
   /** Whether to start consumers on initialization */
   startConsumers?: boolean;
+  /**
+   * Default processing concurrency per environment.
+   * This is used when no specific concurrency is set for an environment.
+   * Items wait in queue until capacity frees up.
+   */
+  defaultConcurrency?: number;
+  /**
+   * Optional global rate limiter to limit processing across all consumers.
+   * When configured, limits the max items/second processed globally.
+   */
+  globalRateLimiter?: import("@trigger.dev/redis-worker").GlobalRateLimiter;
   /** Logger instance */
   logger?: {
     debug: (message: string, context?: Record<string, unknown>) => void;

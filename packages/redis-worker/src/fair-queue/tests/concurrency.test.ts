@@ -8,33 +8,37 @@ describe("ConcurrencyManager", () => {
   let keys: FairQueueKeyProducer;
 
   describe("single group concurrency", () => {
-    redisTest("should allow processing when under limit", { timeout: 10000 }, async ({ redisOptions }) => {
-      keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+    redisTest(
+      "should allow processing when under limit",
+      { timeout: 10000 },
+      async ({ redisOptions }) => {
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
 
-      const manager = new ConcurrencyManager({
-        redis: redisOptions,
-        keys,
-        groups: [
-          {
-            name: "tenant",
-            extractGroupId: (q) => q.tenantId,
-            getLimit: async () => 5,
-            defaultLimit: 5,
-          },
-        ],
-      });
+        const manager = new ConcurrencyManager({
+          redis: redisOptions,
+          keys,
+          groups: [
+            {
+              name: "tenant",
+              extractGroupId: (q) => q.tenantId,
+              getLimit: async () => 5,
+              defaultLimit: 5,
+            },
+          ],
+        });
 
-      const queue: QueueDescriptor = {
-        id: "queue-1",
-        tenantId: "t1",
-        metadata: {},
-      };
+        const queue: QueueDescriptor = {
+          id: "queue-1",
+          tenantId: "t1",
+          metadata: {},
+        };
 
-      const result = await manager.canProcess(queue);
-      expect(result.allowed).toBe(true);
+        const result = await manager.canProcess(queue);
+        expect(result.allowed).toBe(true);
 
-      await manager.close();
-    });
+        await manager.close();
+      }
+    );
 
     redisTest("should block when at capacity", { timeout: 10000 }, async ({ redisOptions }) => {
       keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
@@ -159,276 +163,416 @@ describe("ConcurrencyManager", () => {
       await manager.close();
     });
 
-    redisTest("should block if any group is at capacity", { timeout: 10000 }, async ({ redisOptions }) => {
-      keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+    redisTest(
+      "should block if any group is at capacity",
+      { timeout: 10000 },
+      async ({ redisOptions }) => {
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
 
-      const manager = new ConcurrencyManager({
-        redis: redisOptions,
-        keys,
-        groups: [
-          {
-            name: "tenant",
-            extractGroupId: (q) => q.tenantId,
-            getLimit: async () => 5,
-            defaultLimit: 5,
-          },
-          {
-            name: "organization",
-            extractGroupId: (q) => q.metadata.orgId ?? "default",
-            getLimit: async () => 10,
-            defaultLimit: 10,
-          },
-        ],
-      });
+        const manager = new ConcurrencyManager({
+          redis: redisOptions,
+          keys,
+          groups: [
+            {
+              name: "tenant",
+              extractGroupId: (q) => q.tenantId,
+              getLimit: async () => 5,
+              defaultLimit: 5,
+            },
+            {
+              name: "organization",
+              extractGroupId: (q) => q.metadata.orgId ?? "default",
+              getLimit: async () => 10,
+              defaultLimit: 10,
+            },
+          ],
+        });
 
-      // Use different queue with different tenant but same org
-      const queue1: QueueDescriptor = {
-        id: "queue-1",
-        tenantId: "t1",
-        metadata: { orgId: "org1" },
-      };
+        // Use different queue with different tenant but same org
+        const queue1: QueueDescriptor = {
+          id: "queue-1",
+          tenantId: "t1",
+          metadata: { orgId: "org1" },
+        };
 
-      const queue2: QueueDescriptor = {
-        id: "queue-2",
-        tenantId: "t2",
-        metadata: { orgId: "org1" }, // Same org
-      };
+        const queue2: QueueDescriptor = {
+          id: "queue-2",
+          tenantId: "t2",
+          metadata: { orgId: "org1" }, // Same org
+        };
 
-      // Fill up org with messages from both tenants
-      for (let i = 0; i < 5; i++) {
-        await manager.reserve(queue1, `msg-t1-${i}`);
+        // Fill up org with messages from both tenants
+        for (let i = 0; i < 5; i++) {
+          await manager.reserve(queue1, `msg-t1-${i}`);
+        }
+        for (let i = 0; i < 5; i++) {
+          await manager.reserve(queue2, `msg-t2-${i}`);
+        }
+
+        // t1 tenant is at 5/5, org is at 10/10
+        let result = await manager.canProcess(queue1);
+        expect(result.allowed).toBe(false);
+
+        // t2 tenant is at 5/5
+        result = await manager.canProcess(queue2);
+        expect(result.allowed).toBe(false);
+
+        await manager.close();
       }
-      for (let i = 0; i < 5; i++) {
-        await manager.reserve(queue2, `msg-t2-${i}`);
-      }
-
-      // t1 tenant is at 5/5, org is at 10/10
-      let result = await manager.canProcess(queue1);
-      expect(result.allowed).toBe(false);
-
-      // t2 tenant is at 5/5
-      result = await manager.canProcess(queue2);
-      expect(result.allowed).toBe(false);
-
-      await manager.close();
-    });
+    );
   });
 
   describe("atomic reservation", () => {
-    redisTest("should atomically reserve across groups", { timeout: 10000 }, async ({ redisOptions }) => {
-      keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+    redisTest(
+      "should atomically reserve across groups",
+      { timeout: 10000 },
+      async ({ redisOptions }) => {
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
 
-      const manager = new ConcurrencyManager({
-        redis: redisOptions,
-        keys,
-        groups: [
-          {
-            name: "tenant",
-            extractGroupId: (q) => q.tenantId,
-            getLimit: async () => 5,
-            defaultLimit: 5,
-          },
-          {
-            name: "organization",
-            extractGroupId: (q) => q.metadata.orgId ?? "default",
-            getLimit: async () => 10,
-            defaultLimit: 10,
-          },
-        ],
-      });
+        const manager = new ConcurrencyManager({
+          redis: redisOptions,
+          keys,
+          groups: [
+            {
+              name: "tenant",
+              extractGroupId: (q) => q.tenantId,
+              getLimit: async () => 5,
+              defaultLimit: 5,
+            },
+            {
+              name: "organization",
+              extractGroupId: (q) => q.metadata.orgId ?? "default",
+              getLimit: async () => 10,
+              defaultLimit: 10,
+            },
+          ],
+        });
 
-      const queue: QueueDescriptor = {
-        id: "queue-1",
-        tenantId: "t1",
-        metadata: { orgId: "org1" },
-      };
+        const queue: QueueDescriptor = {
+          id: "queue-1",
+          tenantId: "t1",
+          metadata: { orgId: "org1" },
+        };
 
-      const result = await manager.reserve(queue, "msg-1");
-      expect(result).toBe(true);
+        const result = await manager.reserve(queue, "msg-1");
+        expect(result).toBe(true);
 
-      const tenantCurrent = await manager.getCurrentConcurrency("tenant", "t1");
-      const orgCurrent = await manager.getCurrentConcurrency("organization", "org1");
+        const tenantCurrent = await manager.getCurrentConcurrency("tenant", "t1");
+        const orgCurrent = await manager.getCurrentConcurrency("organization", "org1");
 
-      expect(tenantCurrent).toBe(1);
-      expect(orgCurrent).toBe(1);
+        expect(tenantCurrent).toBe(1);
+        expect(orgCurrent).toBe(1);
 
-      await manager.close();
-    });
-
-    redisTest("should not reserve if any group is at capacity", { timeout: 10000 }, async ({ redisOptions }) => {
-      keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
-
-      const manager = new ConcurrencyManager({
-        redis: redisOptions,
-        keys,
-        groups: [
-          {
-            name: "tenant",
-            extractGroupId: (q) => q.tenantId,
-            getLimit: async () => 5,
-            defaultLimit: 5,
-          },
-        ],
-      });
-
-      const queue: QueueDescriptor = {
-        id: "queue-1",
-        tenantId: "t1",
-        metadata: {},
-      };
-
-      // Fill up tenant
-      for (let i = 0; i < 5; i++) {
-        await manager.reserve(queue, `msg-${i}`);
+        await manager.close();
       }
+    );
 
-      // Try to reserve one more
-      const result = await manager.reserve(queue, "msg-extra");
-      expect(result).toBe(false);
+    redisTest(
+      "should not reserve if any group is at capacity",
+      { timeout: 10000 },
+      async ({ redisOptions }) => {
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
 
-      // Should still be at 5
-      const current = await manager.getCurrentConcurrency("tenant", "t1");
-      expect(current).toBe(5);
+        const manager = new ConcurrencyManager({
+          redis: redisOptions,
+          keys,
+          groups: [
+            {
+              name: "tenant",
+              extractGroupId: (q) => q.tenantId,
+              getLimit: async () => 5,
+              defaultLimit: 5,
+            },
+          ],
+        });
 
-      await manager.close();
-    });
+        const queue: QueueDescriptor = {
+          id: "queue-1",
+          tenantId: "t1",
+          metadata: {},
+        };
+
+        // Fill up tenant
+        for (let i = 0; i < 5; i++) {
+          await manager.reserve(queue, `msg-${i}`);
+        }
+
+        // Try to reserve one more
+        const result = await manager.reserve(queue, "msg-extra");
+        expect(result).toBe(false);
+
+        // Should still be at 5
+        const current = await manager.getCurrentConcurrency("tenant", "t1");
+        expect(current).toBe(5);
+
+        await manager.close();
+      }
+    );
   });
 
   describe("get active messages", () => {
-    redisTest("should return all active message IDs", { timeout: 10000 }, async ({ redisOptions }) => {
-      keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+    redisTest(
+      "should return all active message IDs",
+      { timeout: 10000 },
+      async ({ redisOptions }) => {
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
 
-      const manager = new ConcurrencyManager({
-        redis: redisOptions,
-        keys,
-        groups: [
-          {
-            name: "tenant",
-            extractGroupId: (q) => q.tenantId,
-            getLimit: async () => 10,
-            defaultLimit: 10,
-          },
-        ],
-      });
+        const manager = new ConcurrencyManager({
+          redis: redisOptions,
+          keys,
+          groups: [
+            {
+              name: "tenant",
+              extractGroupId: (q) => q.tenantId,
+              getLimit: async () => 10,
+              defaultLimit: 10,
+            },
+          ],
+        });
 
-      const queue: QueueDescriptor = {
-        id: "queue-1",
-        tenantId: "t1",
-        metadata: {},
-      };
+        const queue: QueueDescriptor = {
+          id: "queue-1",
+          tenantId: "t1",
+          metadata: {},
+        };
 
-      await manager.reserve(queue, "msg-1");
-      await manager.reserve(queue, "msg-2");
-      await manager.reserve(queue, "msg-3");
+        await manager.reserve(queue, "msg-1");
+        await manager.reserve(queue, "msg-2");
+        await manager.reserve(queue, "msg-3");
 
-      const active = await manager.getActiveMessages("tenant", "t1");
-      expect(active).toHaveLength(3);
-      expect(active).toContain("msg-1");
-      expect(active).toContain("msg-2");
-      expect(active).toContain("msg-3");
+        const active = await manager.getActiveMessages("tenant", "t1");
+        expect(active).toHaveLength(3);
+        expect(active).toContain("msg-1");
+        expect(active).toContain("msg-2");
+        expect(active).toContain("msg-3");
 
-      await manager.close();
-    });
+        await manager.close();
+      }
+    );
   });
 
   describe("clear group", () => {
-    redisTest("should clear all messages for a group", { timeout: 10000 }, async ({ redisOptions }) => {
-      keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+    redisTest(
+      "should clear all messages for a group",
+      { timeout: 10000 },
+      async ({ redisOptions }) => {
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
 
-      const manager = new ConcurrencyManager({
-        redis: redisOptions,
-        keys,
-        groups: [
-          {
-            name: "tenant",
-            extractGroupId: (q) => q.tenantId,
-            getLimit: async () => 10,
-            defaultLimit: 10,
-          },
-        ],
-      });
+        const manager = new ConcurrencyManager({
+          redis: redisOptions,
+          keys,
+          groups: [
+            {
+              name: "tenant",
+              extractGroupId: (q) => q.tenantId,
+              getLimit: async () => 10,
+              defaultLimit: 10,
+            },
+          ],
+        });
 
-      const queue: QueueDescriptor = {
-        id: "queue-1",
-        tenantId: "t1",
-        metadata: {},
-      };
+        const queue: QueueDescriptor = {
+          id: "queue-1",
+          tenantId: "t1",
+          metadata: {},
+        };
 
-      await manager.reserve(queue, "msg-1");
-      await manager.reserve(queue, "msg-2");
+        await manager.reserve(queue, "msg-1");
+        await manager.reserve(queue, "msg-2");
 
-      await manager.clearGroup("tenant", "t1");
+        await manager.clearGroup("tenant", "t1");
 
-      const current = await manager.getCurrentConcurrency("tenant", "t1");
-      expect(current).toBe(0);
+        const current = await manager.getCurrentConcurrency("tenant", "t1");
+        expect(current).toBe(0);
 
-      await manager.close();
-    });
+        await manager.close();
+      }
+    );
   });
 
   describe("get state", () => {
-    redisTest("should return full concurrency state", { timeout: 10000 }, async ({ redisOptions }) => {
-      keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+    redisTest(
+      "should return full concurrency state",
+      { timeout: 10000 },
+      async ({ redisOptions }) => {
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
 
-      const manager = new ConcurrencyManager({
-        redis: redisOptions,
-        keys,
-        groups: [
-          {
-            name: "tenant",
-            extractGroupId: (q) => q.tenantId,
-            getLimit: async () => 5,
-            defaultLimit: 5,
-          },
-        ],
-      });
+        const manager = new ConcurrencyManager({
+          redis: redisOptions,
+          keys,
+          groups: [
+            {
+              name: "tenant",
+              extractGroupId: (q) => q.tenantId,
+              getLimit: async () => 5,
+              defaultLimit: 5,
+            },
+          ],
+        });
 
-      const queue: QueueDescriptor = {
-        id: "queue-1",
-        tenantId: "t1",
-        metadata: {},
-      };
+        const queue: QueueDescriptor = {
+          id: "queue-1",
+          tenantId: "t1",
+          metadata: {},
+        };
 
-      await manager.reserve(queue, "msg-1");
-      await manager.reserve(queue, "msg-2");
+        await manager.reserve(queue, "msg-1");
+        await manager.reserve(queue, "msg-2");
 
-      const state = await manager.getState("tenant", "t1");
-      expect(state.groupName).toBe("tenant");
-      expect(state.groupId).toBe("t1");
-      expect(state.current).toBe(2);
-      expect(state.limit).toBe(5);
+        const state = await manager.getState("tenant", "t1");
+        expect(state.groupName).toBe("tenant");
+        expect(state.groupId).toBe("t1");
+        expect(state.current).toBe(2);
+        expect(state.limit).toBe(5);
 
-      await manager.close();
-    });
+        await manager.close();
+      }
+    );
   });
 
   describe("group names", () => {
-    redisTest("should return configured group names", { timeout: 10000 }, async ({ redisOptions }) => {
-      keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+    redisTest(
+      "should return configured group names",
+      { timeout: 10000 },
+      async ({ redisOptions }) => {
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
 
-      const manager = new ConcurrencyManager({
-        redis: redisOptions,
-        keys,
-        groups: [
-          {
-            name: "tenant",
-            extractGroupId: (q) => q.tenantId,
-            getLimit: async () => 5,
-            defaultLimit: 5,
+        const manager = new ConcurrencyManager({
+          redis: redisOptions,
+          keys,
+          groups: [
+            {
+              name: "tenant",
+              extractGroupId: (q) => q.tenantId,
+              getLimit: async () => 5,
+              defaultLimit: 5,
+            },
+            {
+              name: "organization",
+              extractGroupId: (q) => q.metadata.orgId ?? "default",
+              getLimit: async () => 10,
+              defaultLimit: 10,
+            },
+          ],
+        });
+
+        const names = manager.getGroupNames();
+        expect(names).toEqual(["tenant", "organization"]);
+
+        await manager.close();
+      }
+    );
+  });
+
+  describe("keyPrefix handling", () => {
+    redisTest(
+      "should correctly reserve and release with keyPrefix",
+      { timeout: 10000 },
+      async ({ redisOptions }) => {
+        keys = new DefaultFairQueueKeyProducer({ prefix: "myprefix" });
+
+        // Create manager with keyPrefix - this simulates real-world usage
+        const manager = new ConcurrencyManager({
+          redis: {
+            ...redisOptions,
+            keyPrefix: "engine:batch-queue:",
           },
-          {
-            name: "organization",
-            extractGroupId: (q) => q.metadata.orgId ?? "default",
-            getLimit: async () => 10,
-            defaultLimit: 10,
+          keys,
+          groups: [
+            {
+              name: "tenant",
+              extractGroupId: (q) => q.tenantId,
+              getLimit: async () => 2,
+              defaultLimit: 2,
+            },
+          ],
+        });
+
+        const queue: QueueDescriptor = {
+          id: "queue-1",
+          tenantId: "t1",
+          metadata: {},
+        };
+
+        // Reserve slots
+        const reserved1 = await manager.reserve(queue, "msg-1");
+        const reserved2 = await manager.reserve(queue, "msg-2");
+        expect(reserved1).toBe(true);
+        expect(reserved2).toBe(true);
+
+        // Should be at capacity
+        let result = await manager.canProcess(queue);
+        expect(result.allowed).toBe(false);
+
+        // Release one - this must use the SAME key as reserve (with keyPrefix)
+        await manager.release(queue, "msg-1");
+
+        // Should now be allowed - this proves reserve and release use the same key
+        result = await manager.canProcess(queue);
+        expect(result.allowed).toBe(true);
+
+        // Verify concurrency count is correct
+        const current = await manager.getCurrentConcurrency("tenant", "t1");
+        expect(current).toBe(1);
+
+        await manager.close();
+      }
+    );
+
+    redisTest(
+      "should handle reserve/release cycle multiple times with keyPrefix",
+      { timeout: 15000 },
+      async ({ redisOptions }) => {
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+
+        const manager = new ConcurrencyManager({
+          redis: {
+            ...redisOptions,
+            keyPrefix: "myapp:",
           },
-        ],
-      });
+          keys,
+          groups: [
+            {
+              name: "tenant",
+              extractGroupId: (q) => q.tenantId,
+              getLimit: async () => 1, // Concurrency of 1
+              defaultLimit: 1,
+            },
+          ],
+        });
 
-      const names = manager.getGroupNames();
-      expect(names).toEqual(["tenant", "organization"]);
+        const queue: QueueDescriptor = {
+          id: "queue-1",
+          tenantId: "t1",
+          metadata: {},
+        };
 
-      await manager.close();
-    });
+        // Simulate processing multiple messages one at a time
+        for (let i = 0; i < 5; i++) {
+          const msgId = `msg-${i}`;
+
+          // Reserve
+          const reserved = await manager.reserve(queue, msgId);
+          expect(reserved).toBe(true);
+
+          // Should be at capacity now
+          const check = await manager.canProcess(queue);
+          expect(check.allowed).toBe(false);
+
+          // Release
+          await manager.release(queue, msgId);
+
+          // Should be free again
+          const checkAfter = await manager.canProcess(queue);
+          expect(checkAfter.allowed).toBe(true);
+        }
+
+        // Final state should be 0 concurrent
+        const current = await manager.getCurrentConcurrency("tenant", "t1");
+        expect(current).toBe(0);
+
+        await manager.close();
+      }
+    );
   });
 });

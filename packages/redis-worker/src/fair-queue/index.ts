@@ -16,6 +16,7 @@ import type {
   FairQueueKeyProducer,
   FairQueueOptions,
   FairScheduler,
+  GlobalRateLimiter,
   MessageHandler,
   MessageHandlerContext,
   QueueCooloffState,
@@ -85,6 +86,9 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
   private cooloffPeriodMs: number;
   private queueCooloffStates = new Map<string, QueueCooloffState>();
 
+  // Global rate limiter
+  private globalRateLimiter?: GlobalRateLimiter;
+
   // Runtime state
   private messageHandler?: MessageHandler<z.infer<TPayloadSchema>>;
   private isRunning = false;
@@ -128,6 +132,9 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     this.cooloffEnabled = options.cooloff?.enabled ?? true;
     this.cooloffThreshold = options.cooloff?.threshold ?? 10;
     this.cooloffPeriodMs = options.cooloff?.periodMs ?? 10_000;
+
+    // Global rate limiter
+    this.globalRateLimiter = options.globalRateLimiter;
 
     // Initialize telemetry
     this.telemetry = new FairQueueTelemetry({
@@ -179,6 +186,32 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     if (options.startConsumers !== false) {
       this.start();
     }
+  }
+
+  // ============================================================================
+  // Public API - Telemetry
+  // ============================================================================
+
+  /**
+   * Register observable gauge callbacks for telemetry.
+   * Call this after FairQueue is created to enable gauge metrics.
+   *
+   * @param options.observedTenants - List of tenant IDs to observe for DLQ metrics
+   */
+  registerTelemetryGauges(options?: { observedTenants?: string[] }): void {
+    this.telemetry.registerGaugeCallbacks({
+      getMasterQueueLength: async (shardId: number) => {
+        return await this.masterQueue.getShardQueueCount(shardId);
+      },
+      getInflightCount: async (shardId: number) => {
+        return await this.visibilityManager.getInflightCount(shardId);
+      },
+      getDLQLength: async (tenantId: string) => {
+        return await this.getDeadLetterQueueLength(tenantId);
+      },
+      shardCount: this.shardCount,
+      observedTenants: options?.observedTenants,
+    });
   }
 
   // ============================================================================
@@ -749,6 +782,18 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       }
     }
 
+    // Check global rate limit - wait if rate limited
+    if (this.globalRateLimiter) {
+      const result = await this.globalRateLimiter.limit();
+      if (!result.allowed && result.resetAt) {
+        const waitMs = Math.max(0, result.resetAt - Date.now());
+        if (waitMs > 0) {
+          this.logger.debug("Global rate limit reached, waiting", { waitMs, loopId });
+          await new Promise((resolve) => setTimeout(resolve, waitMs));
+        }
+      }
+    }
+
     // Claim message with visibility timeout
     const claimResult = await this.visibilityManager.claim<StoredMessage<z.infer<TPayloadSchema>>>(
       queueId,
@@ -958,6 +1003,18 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       const check = await this.concurrencyManager.canProcess(descriptor);
       if (!check.allowed) {
         return false;
+      }
+    }
+
+    // Check global rate limit - wait if rate limited
+    if (this.globalRateLimiter) {
+      const result = await this.globalRateLimiter.limit();
+      if (!result.allowed && result.resetAt) {
+        const waitMs = Math.max(0, result.resetAt - Date.now());
+        if (waitMs > 0) {
+          this.logger.debug("Global rate limit reached, waiting", { waitMs, loopId });
+          await new Promise((resolve) => setTimeout(resolve, waitMs));
+        }
       }
     }
 
@@ -1387,6 +1444,11 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
         this.queueCooloffStates.set(queueId, {
           tag: "cooloff",
           expiresAt: Date.now() + this.cooloffPeriodMs,
+        });
+        this.logger.debug("Queue entered cooloff", {
+          queueId,
+          cooloffPeriodMs: this.cooloffPeriodMs,
+          consecutiveFailures: newFailures,
         });
       } else {
         this.queueCooloffStates.set(queueId, {

@@ -2,6 +2,7 @@ import { json } from "@remix-run/server-runtime";
 import { CreateBatchRequestBody, CreateBatchResponse, generateJWT } from "@trigger.dev/core/v3";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
+import { BatchRateLimitExceededError } from "~/runEngine/concerns/batchLimits.server";
 import { CreateBatchService } from "~/runEngine/services/createBatch.server";
 import { AuthenticatedEnvironment, getOneTimeUseToken } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
@@ -154,6 +155,30 @@ const { action, loader } = createActionApiRoute(
         headers: $responseHeaders,
       });
     } catch (error) {
+      if (error instanceof BatchRateLimitExceededError) {
+        logger.info("Batch rate limit exceeded", {
+          limit: error.limit,
+          remaining: error.remaining,
+          resetAt: error.resetAt.toISOString(),
+          itemCount: error.itemCount,
+        });
+        return json(
+          { error: error.message },
+          {
+            status: 429,
+            headers: {
+              "X-RateLimit-Limit": error.limit.toString(),
+              "X-RateLimit-Remaining": error.remaining.toString(),
+              "X-RateLimit-Reset": Math.floor(error.resetAt.getTime() / 1000).toString(),
+              "Retry-After": Math.max(
+                1,
+                Math.ceil((error.resetAt.getTime() - Date.now()) / 1000)
+              ).toString(),
+            },
+          }
+        );
+      }
+
       logger.error("Create batch error", {
         error: {
           message: (error as Error).message,

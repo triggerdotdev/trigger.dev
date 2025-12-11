@@ -31,6 +31,7 @@ export class BatchCompletionTracker {
   private redis: Redis;
   private logger: {
     debug: (message: string, context?: Record<string, unknown>) => void;
+    info: (message: string, context?: Record<string, unknown>) => void;
     error: (message: string, context?: Record<string, unknown>) => void;
   };
 
@@ -38,12 +39,14 @@ export class BatchCompletionTracker {
     redis: RedisOptions;
     logger?: {
       debug: (message: string, context?: Record<string, unknown>) => void;
+      info: (message: string, context?: Record<string, unknown>) => void;
       error: (message: string, context?: Record<string, unknown>) => void;
     };
   }) {
     this.redis = createRedisClient(options.redis);
     this.logger = options.logger ?? {
       debug: () => {},
+      info: () => {},
       error: () => {},
     };
 
@@ -247,6 +250,11 @@ export class BatchCompletionTracker {
   async markItemEnqueued(batchId: string, itemIndex: number): Promise<boolean> {
     const enqueuedKey = this.enqueuedItemsKey(batchId);
     const added = await this.redis.sadd(enqueuedKey, itemIndex.toString());
+
+    if (added === 0) {
+      this.logger.debug("Item deduplication: item already enqueued", { batchId, itemIndex });
+    }
+
     return added === 1;
   }
 

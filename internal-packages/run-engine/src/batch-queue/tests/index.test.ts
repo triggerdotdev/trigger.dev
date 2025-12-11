@@ -129,7 +129,6 @@ describe("BatchQueue", () => {
           triggerVersion: "1.0.0",
           spanParentAsLink: true,
           idempotencyKey: "idem123",
-          planType: "paid",
         };
 
         await queue.initializeBatch(options);
@@ -149,7 +148,6 @@ describe("BatchQueue", () => {
         expect(meta?.triggerVersion).toBe("1.0.0");
         expect(meta?.spanParentAsLink).toBe(true);
         expect(meta?.idempotencyKey).toBe("idem123");
-        expect(meta?.planType).toBe("paid");
       } finally {
         await queue.close();
       }
