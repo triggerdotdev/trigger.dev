@@ -644,6 +644,7 @@ function TasksTreeView({
   const [showDurations, setShowDurations] = useState(true);
   const [showQueueTime, setShowQueueTime] = useState(false);
   const [scale, setScale] = useState(0);
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const parentRef = useRef<HTMLDivElement>(null);
   const treeScrollRef = useRef<HTMLDivElement>(null);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
@@ -769,19 +770,27 @@ function TasksTreeView({
               getNodeProps={getNodeProps}
               getTreeProps={getTreeProps}
               parentClassName="pl-3"
-              renderNode={({ node, state, index }) => (
-                <>
-                  <div
-                    className={cn(
-                      "flex h-8 cursor-pointer items-center overflow-hidden rounded-l-sm pr-2",
-                      state.selected
-                        ? "bg-grid-dimmed hover:bg-grid-bright"
-                        : "bg-transparent hover:bg-grid-dimmed"
-                    )}
-                    onClick={() => {
-                      selectNode(node.id);
-                    }}
-                  >
+              renderNode={({ node, state, index }) => {
+                const isHovered = hoveredNodeId === node.id;
+                return (
+                  <>
+                    <div
+                      className={cn(
+                        "flex h-8 cursor-pointer items-center overflow-hidden rounded-l-sm pr-2",
+                        state.selected
+                          ? isHovered
+                            ? "bg-grid-bright"
+                            : "bg-grid-dimmed"
+                          : isHovered
+                          ? "bg-grid-dimmed"
+                          : "bg-transparent"
+                      )}
+                      onClick={() => {
+                        selectNode(node.id);
+                      }}
+                      onMouseEnter={() => setHoveredNodeId(node.id)}
+                      onMouseLeave={() => setHoveredNodeId(null)}
+                    >
                     <div className="flex h-8 items-center">
                       {Array.from({ length: node.level }).map((_, index) => (
                         <TaskLine
@@ -837,7 +846,8 @@ function TasksTreeView({
                     </div>
                   </div>
                 </>
-              )}
+              );
+              }}
               onScroll={(scrollTop) => {
                 //sync the scroll to the tree
                 if (timelineScrollRef.current) {
@@ -870,6 +880,8 @@ function TasksTreeView({
             treeScrollRef={treeScrollRef}
             virtualizer={virtualizer}
             toggleNodeSelection={toggleNodeSelection}
+            hoveredNodeId={hoveredNodeId}
+            setHoveredNodeId={setHoveredNodeId}
           />
         </ResizablePanel>
       </ResizablePanelGroup>
@@ -935,6 +947,8 @@ type TimelineViewProps = Pick<
   toggleNodeSelection: UseTreeStateOutput["toggleNodeSelection"];
   showDurations: boolean;
   treeScrollRef: React.RefObject<HTMLDivElement>;
+  hoveredNodeId: string | null;
+  setHoveredNodeId: (nodeId: string | null) => void;
 };
 
 const tickCount = 5;
@@ -954,6 +968,8 @@ function TimelineView({
   showDurations,
   treeScrollRef,
   queuedDuration,
+  hoveredNodeId,
+  setHoveredNodeId,
 }: TimelineViewProps) {
   const timelineContainerRef = useRef<HTMLDivElement>(null);
   const initialTimelineDimensions = useInitialDimensions(timelineContainerRef);
@@ -1098,6 +1114,7 @@ function TimelineView({
               parentClassName="h-full scrollbar-hide"
               renderNode={({ node, state, index, virtualizer, virtualItem }) => {
                 const isTopSpan = node.id === events[0]?.id;
+                const isHovered = hoveredNodeId === node.id;
 
                 return (
                   <Timeline.Row
@@ -1105,13 +1122,18 @@ function TimelineView({
                     className={cn(
                       "group flex h-8 items-center",
                       state.selected
-                        ? "bg-grid-dimmed hover:bg-grid-bright"
-                        : "bg-transparent hover:bg-grid-dimmed"
+                        ? isHovered
+                          ? "bg-grid-bright"
+                          : "bg-grid-dimmed"
+                        : isHovered
+                        ? "bg-grid-dimmed"
+                        : "bg-transparent"
                     )}
-                    // onMouseOver={() => console.log(`hover ${index}`)}
                     onClick={(e) => {
                       toggleNodeSelection(node.id);
                     }}
+                    onMouseEnter={() => setHoveredNodeId(node.id)}
+                    onMouseLeave={() => setHoveredNodeId(null)}
                   >
                     {node.data.level === "TRACE" ? (
                       <>
