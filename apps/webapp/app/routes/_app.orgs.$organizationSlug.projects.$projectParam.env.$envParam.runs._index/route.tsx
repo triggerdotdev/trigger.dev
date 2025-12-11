@@ -55,6 +55,7 @@ import {
   v3CreateBulkActionPath,
   v3ProjectPath,
   v3TestPath,
+  v3TestTaskPath,
 } from "~/utils/pathBuilder";
 import { ListPagination } from "../../components/ListPagination";
 import { CreateBulkActionInspector } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.bulkaction";
@@ -235,7 +236,13 @@ function RunsList({
               list.possibleTasks.length === 0 ? (
                 <CreateFirstTaskInstructions />
               ) : (
-                <RunTaskInstructions />
+                <RunTaskInstructions
+                  task={
+                    list.filters.tasks.length === 1
+                      ? list.possibleTasks.find((t) => t.slug === list.filters.tasks[0])
+                      : undefined
+                  }
+                />
               )
             ) : (
               <div className={cn("grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden")}>
@@ -339,7 +346,7 @@ function CreateFirstTaskInstructions() {
   );
 }
 
-function RunTaskInstructions() {
+function RunTaskInstructions({ task }: { task?: { slug: string } }) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -352,7 +359,11 @@ function RunTaskInstructions() {
           Perform a test run with a payload directly from the dashboard.
         </Paragraph>
         <LinkButton
-          to={v3TestPath(organization, project, environment)}
+          to={
+            task
+              ? v3TestTaskPath(organization, project, environment, { taskIdentifier: task.slug })
+              : v3TestPath(organization, project, environment)
+          }
           variant="secondary/medium"
           LeadingIcon={BeakerIcon}
           leadingIconClassName="text-lime-500"
