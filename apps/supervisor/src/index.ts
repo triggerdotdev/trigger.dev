@@ -252,6 +252,8 @@ class ManagedSupervisor {
           machine: message.run.machine,
           orgId: message.organization.id,
           projectId: message.project.id,
+          deploymentId: message.deployment.friendlyId,
+          deploymentVersion: message.deployment.version,
           runId: message.run.id,
           runFriendlyId: message.run.friendlyId,
           version: message.version,

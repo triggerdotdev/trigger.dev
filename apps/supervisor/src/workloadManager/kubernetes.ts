@@ -124,6 +124,14 @@ export class KubernetesWorkloadManager implements WorkloadManager {
                     value: opts.envId,
                   },
                   {
+                    name: "TRIGGER_DEPLOYMENT_ID",
+                    value: opts.deploymentId,
+                  },
+                  {
+                    name: "TRIGGER_DEPLOYMENT_VERSION",
+                    value: opts.deploymentVersion,
+                  },
+                  {
                     name: "TRIGGER_SNAPSHOT_ID",
                     value: opts.snapshotFriendlyId,
                   },

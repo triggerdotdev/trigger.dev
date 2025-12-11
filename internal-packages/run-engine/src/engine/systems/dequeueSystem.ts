@@ -560,8 +560,9 @@ export class DequeueSystem {
                   version: result.worker.version,
                 },
                 deployment: {
-                  id: result.deployment?.id,
-                  friendlyId: result.deployment?.friendlyId,
+                  id: result.deployment?.id ?? "",
+                  friendlyId: result.deployment?.friendlyId ?? "",
+                  version: result.deployment?.version ?? "",
                   imagePlatform: result.deployment?.imagePlatform,
                 },
                 run: {
