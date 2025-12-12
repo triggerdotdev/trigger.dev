@@ -76,13 +76,6 @@ export interface PayloadProcessor {
   process(request: TriggerTaskRequest): Promise<IOPacket>;
 }
 
-export interface RunNumberIncrementer {
-  incrementRunNumber<T>(
-    request: TriggerTaskRequest,
-    callback: (num: number) => Promise<T>
-  ): Promise<T | undefined>;
-}
-
 export interface TagValidationParams {
   tags?: string[] | string;
 }

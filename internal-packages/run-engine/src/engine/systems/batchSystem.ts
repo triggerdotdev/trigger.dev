@@ -65,11 +65,11 @@ export class BatchSystem {
 
       // Check if all runs are created (or accounted for with failures)
       // v2 batches use successfulRunCount + failedRunCount, v1 uses processingJobsCount
-      const isV2Batch = batch.batchVersion === "runengine:v2";
-      
+      const isNewBatch = batch.batchVersion === "runengine:v2";
+
       let processedRunCount: number;
-      if (isV2Batch) {
-        // For v2 batches, we need to count both successful and failed runs
+      if (isNewBatch) {
+        // For v2/v3 batches, we need to count both successful and failed runs
         const successfulCount = batch.successfulRunCount ?? 0;
         const failedCount = batch.failedRunCount ?? 0;
         processedRunCount = successfulCount + failedCount;
@@ -82,7 +82,7 @@ export class BatchSystem {
           batchId,
           processedRunCount,
           runCount: batch.runCount,
-          isV2Batch,
+          isNewBatch,
         });
         return;
       }

@@ -384,7 +384,6 @@ export class RunEngine {
   async trigger(
     {
       friendlyId,
-      number,
       environment,
       idempotencyKey,
       idempotencyKeyExpiresAt,
@@ -457,7 +456,6 @@ export class RunEngine {
               id: taskRunId,
               engine: "V2",
               status,
-              number,
               friendlyId,
               runtimeEnvironmentId: environment.id,
               environmentType: environment.type,
@@ -1318,6 +1316,9 @@ export class RunEngine {
 
       // This is just a failsafe
       await this.runLockRedis.quit();
+
+      // Close the batch queue and its Redis connections
+      await this.batchQueue.close();
     } catch (error) {
       // And should always throw
     }
