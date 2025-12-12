@@ -1,5 +1,22 @@
 # trigger.dev
 
+## 4.3.0
+
+### Minor Changes
+
+- feat(cli): deterministic image builds for deployments ([#2778](https://github.com/triggerdotdev/trigger.dev/pull/2778))
+- feat(cli): enable zstd compression for deployment images ([#2773](https://github.com/triggerdotdev/trigger.dev/pull/2773))
+
+### Patch Changes
+
+- The new `triggeredVia` field is now populated in deployments via the CLI. ([#2767](https://github.com/triggerdotdev/trigger.dev/pull/2767))
+- fix(dev): stop max listeners exceeded warning messages when running more than 10 runs concurrently ([#2771](https://github.com/triggerdotdev/trigger.dev/pull/2771))
+- Upgrade @modelcontextprotocol/sdk to 1.24.3 ([#2768](https://github.com/triggerdotdev/trigger.dev/pull/2768))
+- Updated dependencies:
+  - `@trigger.dev/core@4.3.0`
+  - `@trigger.dev/build@4.3.0`
+  - `@trigger.dev/schema-to-json@4.3.0`
+
 ## 4.2.0
 
 ### Minor Changes
