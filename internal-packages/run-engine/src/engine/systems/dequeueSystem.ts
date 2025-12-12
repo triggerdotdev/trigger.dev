@@ -562,10 +562,9 @@ export class DequeueSystem {
                 // TODO: use a discriminated union schema to differentiate between dequeued runs in dev and in deployed environments.
                 // Would help make the typechecking stricter
                 deployment: {
-                  id: result.deployment?.id ?? "NO_DEPLOYMENT_DEV_ENV",
-                  friendlyId: result.deployment?.friendlyId ?? "NO_DEPLOYMENT_DEV_ENV",
-                  version: result.deployment?.version ?? "NO_DEPLOYMENT_DEV_ENV",
-                  imagePlatform: result.deployment?.imagePlatform ?? "NO_DEPLOYMENT_DEV_ENV",
+                  id: result.deployment?.id,
+                  friendlyId: result.deployment?.friendlyId,
+                  imagePlatform: result.deployment?.imagePlatform,
                 },
                 run: {
                   id: lockedTaskRun.id,

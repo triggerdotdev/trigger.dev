@@ -29,7 +29,7 @@ export interface WorkloadManagerCreateOptions {
   envType: EnvironmentType;
   orgId: string;
   projectId: string;
-  deploymentId: string;
+  deploymentFriendlyId: string;
   deploymentVersion: string;
   runId: string;
   runFriendlyId: string;
