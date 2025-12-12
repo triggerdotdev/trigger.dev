@@ -27,7 +27,6 @@ import {
   MaxAttemptsValidationParams,
   ParentRunValidationParams,
   PayloadProcessor,
-  RunNumberIncrementer,
   TagValidationParams,
   TracedEventSpan,
   TraceEventConcern,
@@ -42,15 +41,6 @@ import { promiseWithResolvers } from "@trigger.dev/core";
 import { setTimeout } from "node:timers/promises";
 
 vi.setConfig({ testTimeout: 30_000 }); // 30 seconds timeout
-
-class MockRunNumberIncrementer implements RunNumberIncrementer {
-  async incrementRunNumber<T>(
-    request: TriggerTaskRequest,
-    callback: (num: number) => Promise<T>
-  ): Promise<T | undefined> {
-    return await callback(1);
-  }
-}
 
 class MockPayloadProcessor implements PayloadProcessor {
   async process(request: TriggerTaskRequest): Promise<IOPacket> {
@@ -192,7 +182,6 @@ describe("RunEngineTriggerTaskService", () => {
     const triggerTaskService = new RunEngineTriggerTaskService({
       engine,
       prisma,
-      runNumberIncrementer: new MockRunNumberIncrementer(),
       payloadProcessor: new MockPayloadProcessor(),
       queueConcern: queuesManager,
       idempotencyKeyConcern,
@@ -283,7 +272,6 @@ describe("RunEngineTriggerTaskService", () => {
     const triggerTaskService = new RunEngineTriggerTaskService({
       engine,
       prisma,
-      runNumberIncrementer: new MockRunNumberIncrementer(),
       payloadProcessor: new MockPayloadProcessor(),
       queueConcern: queuesManager,
       idempotencyKeyConcern,
@@ -463,7 +451,6 @@ describe("RunEngineTriggerTaskService", () => {
       const triggerTaskService = new RunEngineTriggerTaskService({
         engine,
         prisma,
-        runNumberIncrementer: new MockRunNumberIncrementer(),
         payloadProcessor: new MockPayloadProcessor(),
         queueConcern: queuesManager,
         idempotencyKeyConcern,
@@ -647,7 +634,6 @@ describe("RunEngineTriggerTaskService", () => {
       const triggerTaskService = new RunEngineTriggerTaskService({
         engine,
         prisma,
-        runNumberIncrementer: new MockRunNumberIncrementer(),
         payloadProcessor: new MockPayloadProcessor(),
         queueConcern: queuesManager,
         idempotencyKeyConcern,

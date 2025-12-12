@@ -59,16 +59,6 @@ const { action, loader } = createActionApiRoute(
       );
     }
 
-    // Verify BatchQueue is enabled
-    if (!engine.isBatchQueueEnabled()) {
-      return json(
-        {
-          error: "Streaming batch API is not available. BatchQueue is not enabled.",
-        },
-        { status: 503 }
-      );
-    }
-
     const {
       "trigger-version": triggerVersion,
       "x-trigger-span-parent-as-link": spanParentAsLink,
