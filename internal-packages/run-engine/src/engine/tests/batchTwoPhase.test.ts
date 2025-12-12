@@ -5,7 +5,11 @@ import { RunEngine } from "../index.js";
 import { setTimeout } from "node:timers/promises";
 import { generateFriendlyId, BatchId } from "@trigger.dev/core/v3/isomorphic";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
-import type { CompleteBatchResult, BatchItem, InitializeBatchOptions } from "../../batch-queue/types.js";
+import type {
+  CompleteBatchResult,
+  BatchItem,
+  InitializeBatchOptions,
+} from "../../batch-queue/types.js";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -61,10 +65,10 @@ describe("RunEngine 2-Phase Batch API", () => {
       // Set up callbacks
       engine.setBatchProcessItemCallback(async ({ batchId, itemIndex, item, meta }) => {
         // Simulate creating a run
+        const friendlyId = generateFriendlyId("run");
         const run = await engine.trigger(
           {
-            number: itemIndex + 1,
-            friendlyId: `run_batch_${batchId}_${itemIndex}`,
+            friendlyId,
             environment: authenticatedEnvironment,
             taskIdentifier: item.task,
             payload: typeof item.payload === "string" ? item.payload : JSON.stringify(item.payload),
@@ -235,19 +239,39 @@ describe("RunEngine 2-Phase Batch API", () => {
         };
 
         // Enqueue item at index 0
-        const result1 = await engine.enqueueBatchItem(batchId, authenticatedEnvironment.id, 0, item);
+        const result1 = await engine.enqueueBatchItem(
+          batchId,
+          authenticatedEnvironment.id,
+          0,
+          item
+        );
         expect(result1.enqueued).toBe(true);
 
         // Try to enqueue same index again - should be deduplicated
-        const result2 = await engine.enqueueBatchItem(batchId, authenticatedEnvironment.id, 0, item);
+        const result2 = await engine.enqueueBatchItem(
+          batchId,
+          authenticatedEnvironment.id,
+          0,
+          item
+        );
         expect(result2.enqueued).toBe(false);
 
         // Enqueue item at index 1
-        const result3 = await engine.enqueueBatchItem(batchId, authenticatedEnvironment.id, 1, item);
+        const result3 = await engine.enqueueBatchItem(
+          batchId,
+          authenticatedEnvironment.id,
+          1,
+          item
+        );
         expect(result3.enqueued).toBe(true);
 
         // Try to enqueue index 1 again - should be deduplicated
-        const result4 = await engine.enqueueBatchItem(batchId, authenticatedEnvironment.id, 1, item);
+        const result4 = await engine.enqueueBatchItem(
+          batchId,
+          authenticatedEnvironment.id,
+          1,
+          item
+        );
         expect(result4.enqueued).toBe(false);
 
         // Verify enqueued count shows 2 (not 4)
@@ -320,10 +344,10 @@ describe("RunEngine 2-Phase Batch API", () => {
 
       // Set up callbacks
       engine.setBatchProcessItemCallback(async ({ batchId, itemIndex, item, meta }) => {
+        const friendlyId = generateFriendlyId("run");
         const run = await engine.trigger(
           {
-            number: itemIndex + 1,
-            friendlyId: `run_batch_${batchId}_${itemIndex}`,
+            friendlyId,
             environment: authenticatedEnvironment,
             taskIdentifier: item.task,
             payload: typeof item.payload === "string" ? item.payload : JSON.stringify(item.payload),
@@ -338,7 +362,7 @@ describe("RunEngine 2-Phase Batch API", () => {
             tags: [],
             batch: {
               id: batchId,
-              friendlyId: meta.friendlyId,
+              index: itemIndex,
             },
             resumeParentOnCompletion: meta.resumeParentOnCompletion,
           },
@@ -388,15 +412,14 @@ describe("RunEngine 2-Phase Batch API", () => {
             status: "PENDING",
             runCount: 2,
             expectedCount: 2,
-            batchVersion: "runengine:v3",
+            batchVersion: "runengine:v2",
           },
         });
 
         // Trigger the parent run
         const parentRun = await engine.trigger(
           {
-            number: 1,
-            friendlyId: "run_parent",
+            friendlyId: generateFriendlyId("run"),
             environment: authenticatedEnvironment,
             taskIdentifier: parentTask,
             payload: "{}",
@@ -600,4 +623,3 @@ describe("RunEngine 2-Phase Batch API", () => {
     }
   );
 });
-

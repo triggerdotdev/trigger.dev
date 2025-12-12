@@ -110,8 +110,8 @@ export type HeartbeatTimeouts = {
 };
 
 export type TriggerParams = {
+  number?: number;
   friendlyId: string;
-  number: number;
   environment: MinimalAuthenticatedEnvironment;
   idempotencyKey?: string;
   idempotencyKeyExpiresAt?: Date;
