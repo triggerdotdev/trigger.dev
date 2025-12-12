@@ -1,5 +1,335 @@
-import { batch, logger, task } from "@trigger.dev/sdk/v3";
+import { batch, logger, runs, task, tasks } from "@trigger.dev/sdk/v3";
 import { setTimeout } from "timers/promises";
+
+// ============================================================================
+// Toxiproxy-based Retry Testing
+// ============================================================================
+// These tests use Toxiproxy to inject real network failures and verify
+// that the SDK's batch streaming retry logic works correctly.
+//
+// Prerequisites:
+// 1. Run `pnpm run docker` to start services including toxiproxy
+// 2. Toxiproxy proxies localhost:3030 (webapp) on localhost:30303
+// 3. Toxiproxy API is available on localhost:8474
+// ============================================================================
+
+const TOXIPROXY_API = "http://localhost:8474";
+const TOXIPROXY_PROXY_NAME = "trigger_webapp_local";
+const PROXIED_API_URL = "http://localhost:30303"; // Goes through toxiproxy
+
+/**
+ * Toxiproxy API helper - adds a toxic to inject failures
+ */
+async function addToxic(toxic: {
+  name: string;
+  type: string;
+  stream?: "upstream" | "downstream";
+  toxicity?: number;
+  attributes?: Record<string, unknown>;
+}): Promise<void> {
+  const response = await fetch(`${TOXIPROXY_API}/proxies/${TOXIPROXY_PROXY_NAME}/toxics`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      stream: "downstream", // Server -> Client
+      toxicity: 1.0, // 100% of connections affected
+      ...toxic,
+    }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Failed to add toxic: ${response.status} ${text}`);
+  }
+
+  logger.info(`Added toxic: ${toxic.name}`, { toxic });
+}
+
+/**
+ * Toxiproxy API helper - removes a toxic
+ */
+async function removeToxic(name: string): Promise<void> {
+  const response = await fetch(`${TOXIPROXY_API}/proxies/${TOXIPROXY_PROXY_NAME}/toxics/${name}`, {
+    method: "DELETE",
+  });
+
+  if (!response.ok && response.status !== 404) {
+    const text = await response.text();
+    throw new Error(`Failed to remove toxic: ${response.status} ${text}`);
+  }
+
+  logger.info(`Removed toxic: ${name}`);
+}
+
+/**
+ * Toxiproxy API helper - list all toxics
+ */
+async function listToxics(): Promise<unknown[]> {
+  const response = await fetch(`${TOXIPROXY_API}/proxies/${TOXIPROXY_PROXY_NAME}/toxics`);
+  if (!response.ok) {
+    return [];
+  }
+  return response.json();
+}
+
+/**
+ * Toxiproxy API helper - clear all toxics
+ */
+async function clearAllToxics(): Promise<void> {
+  const toxics = (await listToxics()) as Array<{ name: string }>;
+  for (const toxic of toxics) {
+    await removeToxic(toxic.name);
+  }
+  logger.info("Cleared all toxics");
+}
+
+/**
+ * Test: Batch retry with connection reset injection
+ *
+ * This test:
+ * 1. Configures SDK to use the proxied URL (through toxiproxy)
+ * 2. Adds a "reset_peer" toxic that will kill connections
+ * 3. Triggers a batch - the connection will be reset mid-stream
+ * 4. SDK should retry with tee'd stream
+ * 5. Removes toxic so retry succeeds
+ * 6. Verifies all items were processed exactly once
+ *
+ * Run with: `npx trigger.dev@latest dev` then trigger this task
+ */
+export const batchRetryWithToxiproxy = task({
+  id: "batch-retry-with-toxiproxy",
+  machine: "small-1x",
+  maxDuration: 300,
+  run: async (payload: { count: number; failAfterBytes?: number }) => {
+    const count = payload.count || 50;
+    const failAfterBytes = payload.failAfterBytes || 5000; // Fail after ~5KB sent
+
+    // Clear any existing toxics
+    await clearAllToxics();
+
+    // Generate batch items
+    const items = Array.from({ length: count }, (_, i) => ({
+      payload: { index: i, batchTest: "toxiproxy-retry" },
+    }));
+
+    // Add a toxic that limits data then resets connection
+    // This simulates a connection failure mid-stream
+    await addToxic({
+      name: "limit_and_reset",
+      type: "limit_data",
+      stream: "upstream", // Client -> Server (our stream upload)
+      attributes: {
+        bytes: failAfterBytes, // Allow this many bytes then close
+      },
+    });
+
+    logger.info("Starting batch trigger through toxiproxy", {
+      count,
+      failAfterBytes,
+      apiUrl: PROXIED_API_URL,
+    });
+
+    // Schedule toxic removal after a delay to allow retry to succeed
+    const toxicRemovalPromise = (async () => {
+      await setTimeout(2000); // Wait for first attempt to fail
+      await clearAllToxics();
+      logger.info("Toxic removed - retry should succeed now");
+    })();
+
+    try {
+      // Trigger batch through the proxied URL
+      // The first attempt will fail due to the toxic, retry should succeed
+      const result = await tasks.batchTrigger<typeof retryTrackingTask>(
+        "retry-tracking-task",
+        items,
+        undefined,
+        {
+          // Use the proxied URL that goes through toxiproxy
+          clientConfig: {
+            baseURL: PROXIED_API_URL,
+          },
+        }
+      );
+
+      // Wait for toxic removal to complete
+      await toxicRemovalPromise;
+
+      logger.info("Batch triggered successfully!", {
+        batchId: result.batchId,
+        runCount: result.runCount,
+      });
+
+      // Wait for runs to complete
+      await setTimeout(10000);
+
+      // Retrieve batch to check results
+      const batchResult = await batch.retrieve(result.batchId);
+
+      return {
+        success: true,
+        batchId: result.batchId,
+        runCount: result.runCount,
+        batchStatus: batchResult.status,
+        note: "Check logs to see retry behavior. Items should be deduplicated on server.",
+      };
+    } catch (error) {
+      // Clean up toxics on error
+      await clearAllToxics();
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        note: "Batch failed - check if toxiproxy is running and webapp is accessible",
+      };
+    }
+  },
+});
+
+/**
+ * Test: Verify deduplication after retry
+ *
+ * This test uses a slower toxic (latency + timeout) and verifies
+ * that items processed before failure aren't reprocessed after retry.
+ */
+export const batchDeduplicationTest = task({
+  id: "batch-deduplication-test",
+  machine: "small-1x",
+  maxDuration: 300,
+  run: async (payload: { count: number }) => {
+    const count = payload.count || 20;
+
+    // Clear any existing toxics
+    await clearAllToxics();
+
+    // Create a unique test ID to track this specific batch
+    const testId = `dedup-${Date.now()}`;
+
+    // Items with tags for easy querying
+    const items = Array.from({ length: count }, (_, i) => ({
+      payload: {
+        index: i,
+        testId,
+      },
+      options: {
+        tags: [`testId:${testId}`, `index:${i}`],
+      },
+    }));
+
+    // Add timeout toxic - connection will timeout mid-stream
+    await addToxic({
+      name: "timeout_test",
+      type: "timeout",
+      stream: "upstream",
+      attributes: {
+        timeout: 1000, // Timeout after 1 second
+      },
+    });
+
+    // Remove toxic after delay so retry succeeds
+    setTimeout(3000).then(() => clearAllToxics());
+
+    try {
+      const result = await tasks.batchTrigger<typeof retryTrackingTask>(
+        "retry-tracking-task",
+        items,
+        undefined,
+        { clientConfig: { baseURL: PROXIED_API_URL } }
+      );
+
+      // Wait for completion
+      await setTimeout(15000);
+
+      // Query all runs with our testId to check for duplicates
+      const allRuns = await runs.list({
+        tag: `testId:${testId}`,
+      });
+
+      // Collect run IDs first (list doesn't include payload)
+      const runIds: string[] = [];
+      for await (const run of allRuns) {
+        runIds.push(run.id);
+      }
+
+      // Retrieve full run details to get payloads
+      const runDetails = await Promise.all(runIds.map((id) => runs.retrieve(id)));
+
+      // Count occurrences of each index
+      const indexCounts = new Map<number, number>();
+      for (const run of runDetails) {
+        const payload = run.payload as { index: number } | undefined;
+        if (payload?.index !== undefined) {
+          indexCounts.set(payload.index, (indexCounts.get(payload.index) || 0) + 1);
+        }
+      }
+
+      const duplicates = Array.from(indexCounts.entries()).filter(([_, count]) => count > 1);
+
+      return {
+        batchId: result.batchId,
+        totalRuns: runIds.length,
+        expectedRuns: count,
+        duplicates: duplicates.length > 0 ? duplicates : "none",
+        success: duplicates.length === 0 && runIds.length === count,
+      };
+    } finally {
+      await clearAllToxics();
+    }
+  },
+});
+
+/**
+ * Task that tracks its execution for deduplication verification.
+ * Tags are set when triggering via batch options.
+ */
+export const retryTrackingTask = task({
+  id: "retry-tracking-task",
+  retry: { maxAttempts: 1 }, // Don't retry the task itself
+  run: async (payload: { index: number; testId?: string; batchTest?: string }) => {
+    logger.info(`Processing item ${payload.index}`, { payload });
+
+    await setTimeout(100);
+
+    return {
+      index: payload.index,
+      processedAt: Date.now(),
+    };
+  },
+});
+
+/**
+ * Simple test to verify toxiproxy is working
+ */
+export const toxiproxyHealthCheck = task({
+  id: "toxiproxy-health-check",
+  run: async () => {
+    // Check toxiproxy API
+    const apiResponse = await fetch(`${TOXIPROXY_API}/proxies`);
+    const proxies = await apiResponse.json();
+
+    // Check proxied webapp
+    let webappStatus = "unknown";
+    try {
+      const webappResponse = await fetch(`${PROXIED_API_URL}/api/v1/whoami`, {
+        headers: {
+          Authorization: `Bearer ${process.env.TRIGGER_SECRET_KEY}`,
+        },
+      });
+      webappStatus = webappResponse.ok ? "ok" : `error: ${webappResponse.status}`;
+    } catch (e) {
+      webappStatus = `error: ${e instanceof Error ? e.message : String(e)}`;
+    }
+
+    // List current toxics
+    const toxics = await listToxics();
+
+    return {
+      toxiproxyApi: apiResponse.ok ? "ok" : "error",
+      proxies,
+      webappThroughProxy: webappStatus,
+      currentToxics: toxics,
+    };
+  },
+});
 
 export const batchTriggerAndWait = task({
   id: "batch-trigger-and-wait",

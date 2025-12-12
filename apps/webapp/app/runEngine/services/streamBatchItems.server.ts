@@ -273,9 +273,7 @@ export function createNdjsonParserStream(
  * Convert a ReadableStream into an AsyncIterable.
  * Useful for processing streams with for-await-of loops.
  */
-export async function* streamToAsyncIterable<T>(
-  stream: ReadableStream<T>
-): AsyncIterable<T> {
+export async function* streamToAsyncIterable<T>(stream: ReadableStream<T>): AsyncIterable<T> {
   const reader = stream.getReader();
   try {
     while (true) {
@@ -287,4 +285,3 @@ export async function* streamToAsyncIterable<T>(
     reader.releaseLock();
   }
 }
-

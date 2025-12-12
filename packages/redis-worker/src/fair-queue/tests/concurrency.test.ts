@@ -134,7 +134,7 @@ describe("ConcurrencyManager", () => {
           },
           {
             name: "organization",
-            extractGroupId: (q) => q.metadata.orgId ?? "default",
+            extractGroupId: (q) => (q.metadata.orgId as string) ?? "default",
             getLimit: async () => 10,
             defaultLimit: 10,
           },
@@ -181,7 +181,7 @@ describe("ConcurrencyManager", () => {
             },
             {
               name: "organization",
-              extractGroupId: (q) => q.metadata.orgId ?? "default",
+              extractGroupId: (q) => (q.metadata.orgId as string) ?? "default",
               getLimit: async () => 10,
               defaultLimit: 10,
             },
@@ -241,7 +241,7 @@ describe("ConcurrencyManager", () => {
             },
             {
               name: "organization",
-              extractGroupId: (q) => q.metadata.orgId ?? "default",
+              extractGroupId: (q) => (q.metadata.orgId as string) ?? "default",
               getLimit: async () => 10,
               defaultLimit: 10,
             },
@@ -449,7 +449,7 @@ describe("ConcurrencyManager", () => {
             },
             {
               name: "organization",
-              extractGroupId: (q) => q.metadata.orgId ?? "default",
+              extractGroupId: (q) => (q.metadata.orgId as string) ?? "default",
               getLimit: async () => 10,
               defaultLimit: 10,
             },

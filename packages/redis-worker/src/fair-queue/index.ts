@@ -1340,7 +1340,6 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
   ): Promise<void> {
     if (!this.deadLetterQueueEnabled) {
       // Just complete and discard
-      const shardId = this.masterQueue.getShardForQueue(storedMessage.queueId);
       await this.visibilityManager.complete(storedMessage.id, storedMessage.queueId);
       return;
     }

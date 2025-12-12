@@ -1,5 +1,8 @@
 import { z } from "zod";
 import { RuntimeEnvironmentType } from "@trigger.dev/database";
+import { Logger, LogLevel } from "@trigger.dev/core/logger";
+import { GlobalRateLimiter } from "@trigger.dev/redis-worker";
+import { Meter, Tracer } from "@internal/tracing";
 
 // ============================================================================
 // Batch Item Schemas
@@ -208,18 +211,14 @@ export type BatchQueueOptions = {
    * Optional global rate limiter to limit processing across all consumers.
    * When configured, limits the max items/second processed globally.
    */
-  globalRateLimiter?: import("@trigger.dev/redis-worker").GlobalRateLimiter;
+  globalRateLimiter?: GlobalRateLimiter;
   /** Logger instance */
-  logger?: {
-    debug: (message: string, context?: Record<string, unknown>) => void;
-    info: (message: string, context?: Record<string, unknown>) => void;
-    warn: (message: string, context?: Record<string, unknown>) => void;
-    error: (message: string, context?: Record<string, unknown>) => void;
-  };
+  logger?: Logger;
+  logLevel?: LogLevel;
   /** OpenTelemetry tracer for distributed tracing */
-  tracer?: import("@internal/tracing").Tracer;
+  tracer?: Tracer;
   /** OpenTelemetry meter for metrics */
-  meter?: import("@internal/tracing").Meter;
+  meter?: Meter;
 };
 
 /**
