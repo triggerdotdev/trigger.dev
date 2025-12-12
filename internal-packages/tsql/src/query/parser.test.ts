@@ -33,7 +33,7 @@ function parseAndConvert(input: string) {
 
 describe("TSQLParseTreeConverter", () => {
   describe("SELECT statements", () => {
-    it.only("should convert a simple SELECT statement", () => {
+    it("should convert a simple SELECT statement", () => {
       const ast = parseAndConvert("SELECT * FROM users");
 
       expect(ast).toBeDefined();
