@@ -58,16 +58,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: authResult.error }, { status: 401 });
   }
 
-  // Verify BatchQueue is enabled
-  if (!engine.isBatchQueueEnabled()) {
-    return json(
-      {
-        error: "Streaming batch API is not available. BatchQueue is not enabled.",
-      },
-      { status: 503 }
-    );
-  }
-
   // Get the request body stream
   const body = request.body;
   if (!body) {

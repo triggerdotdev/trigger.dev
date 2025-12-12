@@ -1,18 +1,24 @@
+import { CompleteBatchResult } from "@internal/run-engine";
+import { SpanKind } from "@internal/tracing";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { createJsonErrorObject, sanitizeError } from "@trigger.dev/core/v3";
 import { RunId } from "@trigger.dev/core/v3/isomorphic";
-import { $replica } from "~/db.server";
+import { BatchTaskRunStatus, Prisma } from "@trigger.dev/database";
+import { $replica, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { findEnvironmentFromRun } from "~/models/runtimeEnvironment.server";
+import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { updateMetadataService } from "~/services/metadata/updateMetadataInstance.server";
 import { reportInvocationUsage } from "~/services/platform.v3.server";
 import { MetadataTooLargeError } from "~/utils/packets";
+import { TriggerTaskService } from "~/v3/services/triggerTask.server";
+import { tracer } from "~/v3/tracer.server";
+import { createExceptionPropertiesFromError } from "./eventRepository/common.server";
+import { recordRunDebugLog, resolveEventRepositoryForStore } from "./eventRepository/index.server";
 import { roomFromFriendlyRunId, socketIo } from "./handleSocketIo.server";
 import { engine } from "./runEngine.server";
 import { PerformTaskRunAlertsService } from "./services/alerts/performTaskRunAlerts.server";
-import { resolveEventRepositoryForStore, recordRunDebugLog } from "./eventRepository/index.server";
-import { createExceptionPropertiesFromError } from "./eventRepository/common.server";
 
 export function registerRunEngineEventBusHandlers() {
   engine.eventBus.on("runSucceeded", async ({ time, run }) => {
@@ -625,4 +631,196 @@ export function registerRunEngineEventBusHandlers() {
       });
     }
   });
+}
+
+/**
+ * Set up the BatchQueue processing callbacks.
+ * These handle creating runs from batch items and completing batches.
+ *
+ * Payload handling:
+ * - If payloadType is "application/store", the payload is an R2 path (already offloaded)
+ * - DefaultPayloadProcessor in TriggerTaskService will pass it through without re-offloading
+ * - The run engine will download from R2 when the task executes
+ */
+export function setupBatchQueueCallbacks() {
+  // Item processing callback - creates a run for each batch item
+  engine.setBatchProcessItemCallback(async ({ batchId, friendlyId, itemIndex, item, meta }) => {
+    return tracer.startActiveSpan(
+      "batch.processItem",
+      {
+        kind: SpanKind.INTERNAL,
+        attributes: {
+          "batch.id": friendlyId,
+          "batch.item_index": itemIndex,
+          "batch.task": item.task,
+          "batch.environment_id": meta.environmentId,
+          "batch.parent_run_id": meta.parentRunId ?? "",
+        },
+      },
+      async (span) => {
+        try {
+          const triggerTaskService = new TriggerTaskService();
+
+          // Normalize payload - for application/store (R2 paths), this passes through as-is
+          const payload = normalizePayload(item.payload, item.payloadType);
+
+          const result = await triggerTaskService.call(
+            item.task,
+            {
+              id: meta.environmentId,
+              type: meta.environmentType,
+              organizationId: meta.organizationId,
+              projectId: meta.projectId,
+              organization: { id: meta.organizationId },
+              project: { id: meta.projectId },
+            } as AuthenticatedEnvironment,
+            {
+              payload,
+              options: {
+                ...(item.options as Record<string, unknown>),
+                payloadType: item.payloadType,
+                parentRunId: meta.parentRunId,
+                resumeParentOnCompletion: meta.resumeParentOnCompletion,
+                parentBatch: batchId,
+              },
+            },
+            {
+              triggerVersion: meta.triggerVersion,
+              traceContext: meta.traceContext as Record<string, unknown> | undefined,
+              spanParentAsLink: meta.spanParentAsLink,
+              batchId,
+              batchIndex: itemIndex,
+              skipChecks: true, // Already validated at batch level
+              realtimeStreamsVersion: meta.realtimeStreamsVersion,
+            },
+            "V2"
+          );
+
+          if (result) {
+            span.setAttribute("batch.result.run_id", result.run.friendlyId);
+            span.end();
+            return { success: true as const, runId: result.run.friendlyId };
+          } else {
+            span.setAttribute("batch.result.error", "TriggerTaskService returned undefined");
+            span.end();
+            return {
+              success: false as const,
+              error: "TriggerTaskService returned undefined",
+              errorCode: "TRIGGER_FAILED",
+            };
+          }
+        } catch (error) {
+          span.setAttribute(
+            "batch.result.error",
+            error instanceof Error ? error.message : String(error)
+          );
+          span.recordException(error instanceof Error ? error : new Error(String(error)));
+          span.end();
+          return {
+            success: false as const,
+            error: error instanceof Error ? error.message : String(error),
+            errorCode: "TRIGGER_ERROR",
+          };
+        }
+      }
+    );
+  });
+
+  // Batch completion callback - updates Postgres with results
+  engine.setBatchCompletionCallback(async (result: CompleteBatchResult) => {
+    const { batchId, runIds, successfulRunCount, failedRunCount, failures } = result;
+
+    // Determine final status
+    let status: BatchTaskRunStatus;
+    if (failedRunCount > 0 && successfulRunCount === 0) {
+      status = "ABORTED";
+    } else if (failedRunCount > 0) {
+      status = "PARTIAL_FAILED";
+    } else {
+      status = "PENDING"; // All runs created, waiting for completion
+    }
+
+    try {
+      // Update BatchTaskRun
+      await prisma.batchTaskRun.update({
+        where: { id: batchId },
+        data: {
+          status,
+          runIds,
+          successfulRunCount,
+          failedRunCount,
+          completedAt: status === "ABORTED" ? new Date() : undefined,
+          processingCompletedAt: new Date(),
+        },
+      });
+
+      // Create error records if there were failures
+      if (failures.length > 0) {
+        for (const failure of failures) {
+          await prisma.batchTaskRunError.create({
+            data: {
+              batchTaskRunId: batchId,
+              index: failure.index,
+              taskIdentifier: failure.taskIdentifier,
+              payload: failure.payload,
+              options: failure.options as Prisma.InputJsonValue | undefined,
+              error: failure.error,
+              errorCode: failure.errorCode,
+            },
+          });
+        }
+      }
+
+      // Try to complete the batch (handles waitpoint completion if all runs are done)
+      if (status !== "ABORTED") {
+        await engine.tryCompleteBatch({ batchId });
+      }
+
+      logger.info("Batch completion handled", {
+        batchId,
+        status,
+        successfulRunCount,
+        failedRunCount,
+      });
+    } catch (error) {
+      logger.error("Failed to handle batch completion", {
+        batchId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+  logger.info("BatchQueue callbacks configured");
+}
+
+/**
+ * Normalize the payload from BatchQueue.
+ *
+ * Handles different payload types:
+ * - "application/store": Already offloaded to R2, payload is the path - pass through as-is
+ * - "application/json": May be a pre-serialized JSON string - parse to avoid double-stringification
+ * - Other types: Pass through as-is
+ *
+ * @param payload - The raw payload from the batch item
+ * @param payloadType - The payload type (e.g., "application/json", "application/store")
+ */
+function normalizePayload(payload: unknown, payloadType?: string): unknown {
+  // For non-JSON payloads (including application/store for R2-offloaded payloads),
+  // return as-is - no normalization needed
+  if (payloadType !== "application/json" && payloadType !== undefined) {
+    return payload;
+  }
+
+  // For JSON payloads, if payload is a string, try to parse it
+  // This handles pre-serialized JSON from the SDK
+  if (typeof payload === "string") {
+    try {
+      return JSON.parse(payload);
+    } catch {
+      // If it's not valid JSON, return as-is
+      return payload;
+    }
+  }
+
+  return payload;
 }

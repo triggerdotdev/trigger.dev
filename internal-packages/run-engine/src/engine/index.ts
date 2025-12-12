@@ -966,13 +966,6 @@ export class RunEngine {
   // ============================================================================
 
   /**
-   * Check if the BatchQueue is enabled and available.
-   */
-  isBatchQueueEnabled(): boolean {
-    return this.batchQueue !== undefined;
-  }
-
-  /**
    * Set the callback for processing batch items.
    * This is called for each item dequeued from the batch queue.
    */
