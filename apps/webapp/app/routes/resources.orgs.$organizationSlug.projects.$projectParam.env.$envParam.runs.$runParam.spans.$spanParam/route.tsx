@@ -1,4 +1,5 @@
 import {
+  ArrowPathIcon,
   CheckIcon,
   CloudArrowDownIcon,
   EnvelopeIcon,
@@ -29,6 +30,7 @@ import { Header2, Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
 import { Spinner } from "~/components/primitives/Spinner";
+import { toast } from "sonner";
 import {
   Table,
   TableBody,
@@ -40,6 +42,7 @@ import {
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { TextLink } from "~/components/primitives/TextLink";
 import { InfoIconTooltip, SimpleTooltip } from "~/components/primitives/Tooltip";
+import { ToastUI } from "~/components/primitives/Toast";
 import { RunTimeline, RunTimelineEvent, SpanTimeline } from "~/components/run/RunTimeline";
 import { PacketDisplay } from "~/components/runs/v3/PacketDisplay";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
@@ -69,6 +72,7 @@ import {
   v3BatchPath,
   v3DeploymentVersionPath,
   v3RunDownloadLogsPath,
+  v3RunIdempotencyKeyResetPath,
   v3RunPath,
   v3RunRedirectPath,
   v3RunSpanPath,
@@ -81,6 +85,7 @@ import { CompleteWaitpointForm } from "../resources.orgs.$organizationSlug.proje
 import { requireUserId } from "~/services/session.server";
 import type { SpanOverride } from "~/v3/eventRepository/eventRepository.types";
 import { RealtimeStreamViewer } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.streams.$streamKey/route";
+import { action as resetIdempotencyKeyAction } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.idempotencyKey.reset";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -293,6 +298,28 @@ function RunBody({
   const isAdmin = useHasAdminAccess();
   const { value, replace } = useSearchParams();
   const tab = value("tab");
+  const resetFetcher = useTypedFetcher<typeof resetIdempotencyKeyAction>();
+
+  // Handle toast messages from the reset action
+  useEffect(() => {
+    if (resetFetcher.data && resetFetcher.state === "idle") {
+      // Check if the response indicates success
+      if (resetFetcher.data && typeof resetFetcher.data === "object" && "success" in resetFetcher.data && resetFetcher.data.success === true) {
+        toast.custom(
+          (t) => (
+            <ToastUI
+              variant="success"
+              message="Idempotency key reset successfully"
+              t={t as string}
+            />
+          ),
+          {
+            duration: 5000,
+          }
+        );
+      }
+    }
+  }, [resetFetcher.data, resetFetcher.state]);
 
   return (
     <div className="grid h-full max-h-full grid-rows-[2.5rem_2rem_1fr_3.25rem] overflow-hidden bg-background-bright">
@@ -543,17 +570,37 @@ function RunBody({
                 <Property.Item>
                   <Property.Label>Idempotency</Property.Label>
                   <Property.Value>
-                    <div className="break-all">{run.idempotencyKey ? run.idempotencyKey : "–"}</div>
-                    {run.idempotencyKey && (
-                      <div>
-                        Expires:{" "}
-                        {run.idempotencyKeyExpiresAt ? (
-                          <DateTime date={run.idempotencyKeyExpiresAt} />
-                        ) : (
-                          "–"
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1">
+                        <div className="break-all">{run.idempotencyKey ? run.idempotencyKey : "–"}</div>
+                        {run.idempotencyKey && (
+                          <div>
+                            Expires:{" "}
+                            {run.idempotencyKeyExpiresAt ? (
+                              <DateTime date={run.idempotencyKeyExpiresAt} />
+                            ) : (
+                              "–"
+                            )}
+                          </div>
                         )}
                       </div>
-                    )}
+                      {run.idempotencyKey && (
+                        <resetFetcher.Form
+                          method="post"
+                          action={v3RunIdempotencyKeyResetPath(organization, project, environment, { friendlyId: runParam })}
+                        >
+                          <input type="hidden" name="taskIdentifier" value={run.taskIdentifier} />
+                          <Button
+                            type="submit"
+                            variant="minimal/small"
+                            LeadingIcon={ArrowPathIcon}
+                            disabled={resetFetcher.state === "submitting"}
+                          >
+                            {resetFetcher.state === "submitting" ? "Resetting..." : "Reset"}
+                          </Button>
+                        </resetFetcher.Form>
+                      )}
+                    </div>
                   </Property.Value>
                 </Property.Item>
                 <Property.Item>

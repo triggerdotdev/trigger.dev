@@ -1,0 +1,39 @@
+import { json } from "@remix-run/server-runtime";
+import { z } from "zod";
+import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import { ResetIdempotencyKeyService } from "~/v3/services/resetIdempotencyKey.server";
+
+const ParamsSchema = z.object({
+  key: z.string(),
+});
+
+const BodySchema = z.object({
+  taskIdentifier: z.string().min(1, "Task identifier is required"),
+});
+
+export const { action } = createActionApiRoute(
+  {
+    params: ParamsSchema,
+    body: BodySchema,
+    allowJWT: true,
+    corsStrategy: "all",
+    authorization: {
+      action: "write",
+      resource: () => ({}),
+      superScopes: ["write:runs", "admin"],
+    },
+  },
+  async ({ params, body, authentication }) => {
+    const service = new ResetIdempotencyKeyService();
+
+    try {
+      const result = await service.call(params.key, body.taskIdentifier, authentication.environment);
+      return json(result, { status: 200 });
+    } catch (error) {
+      if (error instanceof Error) {
+        return json({ error: error.message }, { status: 404 });
+      }
+      return json({ error: "Internal Server Error" }, { status: 500 });
+    }
+  }
+);
