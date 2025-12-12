@@ -12,7 +12,7 @@ import { join, relative, sep } from "node:path";
 import { generateContainerfile } from "../deploy/buildImage.js";
 import { writeFile } from "node:fs/promises";
 import { buildManifestToJSON } from "../utilities/buildManifest.js";
-import { readPackageJSON, writePackageJSON } from "pkg-types";
+import { readPackageJSON } from "pkg-types";
 import { writeJSONFile } from "../utilities/fileSystem.js";
 import { isWindows } from "std-env";
 import { pathToFileURL } from "node:url";
@@ -192,20 +192,23 @@ async function writeDeployFiles({
     ) ?? {};
 
   // Step 3: Write the resolved dependencies to the package.json file
-  await writePackageJSON(join(outputPath, "package.json"), {
-    ...packageJson,
-    name: packageJson.name ?? "trigger-project",
-    dependencies: {
-      ...dependencies,
+  await writeJSONFile(
+    join(outputPath, "package.json"),
+    {
+      ...packageJson,
+      name: packageJson.name ?? "trigger-project",
+      dependencies: {
+        ...dependencies,
+      },
+      trustedDependencies: Object.keys(dependencies).sort(),
+      devDependencies: {},
+      peerDependencies: {},
+      scripts: {},
     },
-    trustedDependencies: Object.keys(dependencies),
-    devDependencies: {},
-    peerDependencies: {},
-    scripts: {},
-  });
+    true
+  );
 
   await writeJSONFile(join(outputPath, "build.json"), buildManifestToJSON(buildManifest));
-  await writeJSONFile(join(outputPath, "metafile.json"), bundleResult.metafile);
   await writeContainerfile(outputPath, buildManifest);
 }
 
