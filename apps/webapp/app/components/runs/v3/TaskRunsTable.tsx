@@ -91,6 +91,7 @@ export function TaskRunsTable({
   const location = useOptimisticLocation();
   const rootOnly = value("rootOnly") ? `` : `rootOnly=${rootOnlyDefault}`;
   const search = rootOnly ? `${rootOnly}&${location.search}` : location.search;
+  /** TableState has to be encoded as a separate URI component, so it's merged under one, 'tableState' param */
   const tableStateParam = disableAdjacentRows ? '' : encodeURIComponent(search);
 
   const showCompute = isManagedCloud;
