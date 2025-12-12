@@ -581,13 +581,16 @@ export interface Task<TIdentifier extends string, TInput = void, TOutput = any> 
 
   /**
    * Batch trigger multiple task runs with the given payloads, and continue without waiting for the results. If you want to wait for the results, use `batchTriggerAndWait`. Returns the id of the triggered batch.
-   * @param items
+   * @param items - Array, AsyncIterable, or ReadableStream of batch items
    * @returns InvokeBatchHandle
    * - `batchId` - The id of the triggered batch.
    * - `runs` - The ids of the triggered task runs.
    */
   batchTrigger: (
-    items: Array<BatchItem<TInput>>,
+    items:
+      | Array<BatchItem<TInput>>
+      | AsyncIterable<BatchItem<TInput>>
+      | ReadableStream<BatchItem<TInput>>,
     options?: BatchTriggerOptions,
     requestOptions?: TriggerApiRequestOptions
   ) => Promise<BatchRunHandle<TIdentifier, TInput, TOutput>>;
@@ -616,7 +619,7 @@ export interface Task<TIdentifier extends string, TInput = void, TOutput = any> 
 
   /**
    * Batch trigger multiple task runs with the given payloads, and wait for the results. Returns the results of the task runs.
-   * @param items
+   * @param items - Array, AsyncIterable, or ReadableStream of batch items
    * @returns BatchResult
    * @example
    * ```
@@ -635,7 +638,10 @@ export interface Task<TIdentifier extends string, TInput = void, TOutput = any> 
    * ```
    */
   batchTriggerAndWait: (
-    items: Array<BatchTriggerAndWaitItem<TInput>>,
+    items:
+      | Array<BatchTriggerAndWaitItem<TInput>>
+      | AsyncIterable<BatchTriggerAndWaitItem<TInput>>
+      | ReadableStream<BatchTriggerAndWaitItem<TInput>>,
     options?: BatchTriggerAndWaitOptions
   ) => Promise<BatchResult<TIdentifier, TOutput>>;
 }
