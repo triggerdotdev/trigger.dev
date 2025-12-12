@@ -251,10 +251,17 @@ export class WeightedScheduler extends BaseScheduler {
 
     // Weighted shuffle to select top N tenants
     const maxAge = Math.max(...tenantAges.map((t) => t.avgAge));
-    const weightedTenants = tenantAges.map((t) => ({
-      tenantId: t.tenantId,
-      weight: t.avgAge / maxAge,
-    }));
+    // Guard against division by zero: if maxAge is 0, assign equal weights
+    const weightedTenants =
+      maxAge === 0
+        ? tenantAges.map((t) => ({
+            tenantId: t.tenantId,
+            weight: 1 / tenantAges.length,
+          }))
+        : tenantAges.map((t) => ({
+            tenantId: t.tenantId,
+            weight: t.avgAge / maxAge,
+          }));
 
     const selectedTenants = new Set<string>();
     let remaining = [...weightedTenants];
@@ -310,13 +317,16 @@ export class WeightedScheduler extends BaseScheduler {
 
       // Concurrency limit bias
       if (concurrencyLimitBias > 0) {
-        const normalizedLimit = tenant.concurrency.limit / maxLimit;
+        // Guard against division by zero: if maxLimit is 0, treat normalizedLimit as 0
+        const normalizedLimit = maxLimit > 0 ? tenant.concurrency.limit / maxLimit : 0;
         weight *= 1 + Math.pow(normalizedLimit * concurrencyLimitBias, 2);
       }
 
       // Available capacity bias
       if (availableCapacityBias > 0) {
-        const usedPercentage = tenant.concurrency.current / tenant.concurrency.limit;
+        // Guard against division by zero: if limit is 0, treat as fully used (no bonus)
+        const usedPercentage =
+          tenant.concurrency.limit > 0 ? tenant.concurrency.current / tenant.concurrency.limit : 1;
         const availableBonus = 1 - usedPercentage;
         weight *= 1 + Math.pow(availableBonus * availableCapacityBias, 2);
       }
@@ -343,9 +353,11 @@ export class WeightedScheduler extends BaseScheduler {
 
     // Weighted random based on age
     const maxAge = Math.max(...queues.map((q) => q.age));
+    // Guard against division by zero: if maxAge is 0, all queues have equal weight
+    const ageDenom = maxAge === 0 ? 1 : maxAge;
     const weightedQueues = queues.map((q) => ({
       queue: q,
-      weight: 1 + (q.age / maxAge) * queueAgeRandomization,
+      weight: 1 + (q.age / ageDenom) * queueAgeRandomization,
     }));
 
     const result: string[] = [];

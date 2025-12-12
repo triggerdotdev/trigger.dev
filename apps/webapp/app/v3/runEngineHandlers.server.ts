@@ -6,7 +6,7 @@ import { RunId } from "@trigger.dev/core/v3/isomorphic";
 import { BatchTaskRunStatus, Prisma } from "@trigger.dev/database";
 import { $replica, prisma } from "~/db.server";
 import { env } from "~/env.server";
-import { findEnvironmentFromRun } from "~/models/runtimeEnvironment.server";
+import { findEnvironmentById, findEnvironmentFromRun } from "~/models/runtimeEnvironment.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { updateMetadataService } from "~/services/metadata/updateMetadataInstance.server";
@@ -659,6 +659,18 @@ export function setupBatchQueueCallbacks() {
       },
       async (span) => {
         try {
+          const environment = await findEnvironmentById(meta.environmentId);
+
+          if (!environment) {
+            span.setAttribute("batch.result.error", "Environment not found");
+            span.end();
+            return {
+              success: false as const,
+              error: "Environment not found",
+              errorCode: "ENVIRONMENT_NOT_FOUND",
+            };
+          }
+
           const triggerTaskService = new TriggerTaskService();
 
           // Normalize payload - for application/store (R2 paths), this passes through as-is
@@ -666,14 +678,7 @@ export function setupBatchQueueCallbacks() {
 
           const result = await triggerTaskService.call(
             item.task,
-            {
-              id: meta.environmentId,
-              type: meta.environmentType,
-              organizationId: meta.organizationId,
-              projectId: meta.projectId,
-              organization: { id: meta.organizationId },
-              project: { id: meta.projectId },
-            } as AuthenticatedEnvironment,
+            environment,
             {
               payload,
               options: {

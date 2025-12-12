@@ -4,6 +4,7 @@ import { z } from "zod";
 import { env } from "~/env.server";
 import { RateLimiterConfig } from "~/services/authorizationRateLimitMiddleware.server";
 import { createRedisRateLimitClient, Duration, RateLimiter } from "~/services/rateLimiter.server";
+import { singleton } from "~/utils/singleton";
 
 const BatchLimitsConfig = z.object({
   processingConcurrency: z.number().int().default(env.BATCH_CONCURRENCY_LIMIT_DEFAULT),
@@ -14,7 +15,9 @@ const BatchLimitsConfig = z.object({
  */
 export type BatchLimitsConfig = z.infer<typeof BatchLimitsConfig>;
 
-function createOrganizationRateLimiter(organization: Organization): RateLimiter {
+const batchLimitsRedisClient = singleton("batchLimitsRedisClient", createBatchLimitsRedisClient);
+
+function createBatchLimitsRedisClient() {
   const redisClient = createRedisRateLimitClient({
     port: env.RATE_LIMIT_REDIS_PORT,
     host: env.RATE_LIMIT_REDIS_HOST,
@@ -24,6 +27,10 @@ function createOrganizationRateLimiter(organization: Organization): RateLimiter 
     clusterMode: env.RATE_LIMIT_REDIS_CLUSTER_MODE_ENABLED === "1",
   });
 
+  return redisClient;
+}
+
+function createOrganizationRateLimiter(organization: Organization): RateLimiter {
   const limiterConfig = resolveBatchRateLimitConfig(organization.batchRateLimitConfig);
 
   const limiter =
@@ -38,7 +45,7 @@ function createOrganizationRateLimiter(organization: Organization): RateLimiter 
       : Ratelimit.slidingWindow(limiterConfig.tokens, limiterConfig.window);
 
   return new RateLimiter({
-    redisClient,
+    redisClient: batchLimitsRedisClient,
     keyPrefix: "ratelimit:batch",
     limiter,
     logSuccess: false,

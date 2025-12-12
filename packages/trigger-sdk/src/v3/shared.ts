@@ -125,6 +125,9 @@ export { SubtaskUnwrapError, TaskRunPromise };
 
 export type Context = TaskRunContext;
 
+// Re-export for external use (defined later in file)
+export { BatchTriggerError };
+
 export function queue(options: QueueOptions): Queue {
   resourceCatalog.registerQueueMetadata(options);
 
@@ -1538,22 +1541,40 @@ async function executeBatchTwoPhase(
   },
   requestOptions?: TriggerApiRequestOptions
 ): Promise<{ id: string; runCount: number; publicAccessToken: string }> {
-  // Phase 1: Create batch
-  const batch = await apiClient.createBatch(
-    {
-      runCount: items.length,
-      parentRunId: options.parentRunId,
-      resumeParentOnCompletion: options.resumeParentOnCompletion,
-      idempotencyKey: options.idempotencyKey,
-    },
-    { spanParentAsLink: options.spanParentAsLink },
-    requestOptions
-  );
+  let batch: Awaited<ReturnType<typeof apiClient.createBatch>> | undefined;
+
+  try {
+    // Phase 1: Create batch
+    batch = await apiClient.createBatch(
+      {
+        runCount: items.length,
+        parentRunId: options.parentRunId,
+        resumeParentOnCompletion: options.resumeParentOnCompletion,
+        idempotencyKey: options.idempotencyKey,
+      },
+      { spanParentAsLink: options.spanParentAsLink },
+      requestOptions
+    );
+  } catch (error) {
+    // Wrap with context about which phase failed
+    throw new BatchTriggerError(
+      `Failed to create batch with ${items.length} items`,
+      { cause: error, phase: "create", itemCount: items.length }
+    );
+  }
 
   // If the batch was cached (idempotent replay), skip streaming items
   if (!batch.isCached) {
-    // Phase 2: Stream items
-    await apiClient.streamBatchItems(batch.id, items, requestOptions);
+    try {
+      // Phase 2: Stream items
+      await apiClient.streamBatchItems(batch.id, items, requestOptions);
+    } catch (error) {
+      // Wrap with context about which phase failed and include batch ID
+      throw new BatchTriggerError(
+        `Failed to stream items for batch ${batch.id} (${items.length} items)`,
+        { cause: error, phase: "stream", batchId: batch.id, itemCount: items.length }
+      );
+    }
   }
 
   return {
@@ -1561,6 +1582,32 @@ async function executeBatchTwoPhase(
     runCount: batch.runCount,
     publicAccessToken: batch.publicAccessToken,
   };
+}
+
+/**
+ * Error thrown when batch trigger operations fail.
+ * Includes context about which phase failed and the batch details.
+ */
+class BatchTriggerError extends Error {
+  readonly phase: "create" | "stream";
+  readonly batchId?: string;
+  readonly itemCount: number;
+
+  constructor(
+    message: string,
+    options: {
+      cause?: unknown;
+      phase: "create" | "stream";
+      batchId?: string;
+      itemCount: number;
+    }
+  ) {
+    super(message, { cause: options.cause });
+    this.name = "BatchTriggerError";
+    this.phase = options.phase;
+    this.batchId = options.batchId;
+    this.itemCount = options.itemCount;
+  }
 }
 
 /**

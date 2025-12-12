@@ -61,9 +61,7 @@ export class BatchQueue {
   private itemQueueTimeHistogram?: Histogram;
 
   constructor(private options: BatchQueueOptions) {
-    this.logger = options.logger
-      ? new Logger("BatchQueue", "info")
-      : new Logger("BatchQueue", "info");
+    this.logger = options.logger ?? new Logger("BatchQueue", options.logLevel ?? "info");
     this.defaultConcurrency = options.defaultConcurrency ?? 10;
 
     // Initialize metrics if meter is provided

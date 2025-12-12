@@ -34,7 +34,7 @@ export interface QueueDescriptor {
   /** Tenant this queue belongs to */
   tenantId: string;
   /** Additional metadata for concurrency group extraction */
-  metadata: Record<string, string>;
+  metadata: Record<string, unknown>;
 }
 
 /**
@@ -75,7 +75,7 @@ export interface StoredMessage<TPayload = unknown> {
   /** Worker queue to route to */
   workerQueue?: string;
   /** Additional metadata */
-  metadata?: Record<string, string>;
+  metadata?: Record<string, unknown>;
 }
 
 /**
