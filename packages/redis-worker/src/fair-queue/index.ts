@@ -1099,6 +1099,20 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
         });
         // Move to DLQ
         await this.#moveToDeadLetterQueue(storedMessage, "Payload validation failed");
+
+        // Release reserved concurrency slot
+        if (this.concurrencyManager) {
+          try {
+            await this.concurrencyManager.release(descriptor, storedMessage.id);
+          } catch (releaseError) {
+            this.logger.error("Failed to release concurrency slot after payload validation failure", {
+              messageId: storedMessage.id,
+              queueId,
+              error: releaseError instanceof Error ? releaseError.message : String(releaseError),
+            });
+          }
+        }
+
         return;
       }
       payload = result.data;
