@@ -687,16 +687,20 @@ export class BatchQueue {
     if (this.completionCallback) {
       try {
         await this.completionCallback(result);
+        // Only cleanup if callback succeeded - preserves Redis data for retry on failure
+        await this.completionTracker.cleanup(batchId);
       } catch (error) {
         this.logger.error("Error in batch completion callback", {
           batchId,
           error: error instanceof Error ? error.message : String(error),
         });
+        // Re-throw to preserve Redis data and signal failure to callers
+        throw error;
       }
+    } else {
+      // No callback, safe to cleanup
+      await this.completionTracker.cleanup(batchId);
     }
-
-    // Clean up Redis keys for this batch
-    await this.completionTracker.cleanup(batchId);
   }
 
   // ============================================================================
