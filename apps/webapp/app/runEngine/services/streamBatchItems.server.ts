@@ -4,7 +4,7 @@ import {
   BatchItemNDJSON as BatchItemNDJSONSchema,
 } from "@trigger.dev/core/v3";
 import { BatchId } from "@trigger.dev/core/v3/isomorphic";
-import type { BatchItem } from "@internal/run-engine";
+import type { BatchItem, RunEngine } from "@internal/run-engine";
 import { prisma, type PrismaClientOrTransaction } from "~/db.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
@@ -13,6 +13,11 @@ import { BatchPayloadProcessor } from "../concerns/batchPayloads.server";
 
 export type StreamBatchItemsServiceOptions = {
   maxItemBytes: number;
+};
+
+export type StreamBatchItemsServiceConstructorOptions = {
+  prisma?: PrismaClientOrTransaction;
+  engine?: RunEngine;
 };
 
 /**
@@ -31,8 +36,8 @@ export type StreamBatchItemsServiceOptions = {
 export class StreamBatchItemsService extends WithRunEngine {
   private readonly payloadProcessor: BatchPayloadProcessor;
 
-  constructor(protected readonly _prisma: PrismaClientOrTransaction = prisma) {
-    super({ prisma });
+  constructor(opts: StreamBatchItemsServiceConstructorOptions = {}) {
+    super({ prisma: opts.prisma ?? prisma, engine: opts.engine });
     this.payloadProcessor = new BatchPayloadProcessor();
   }
 
@@ -172,16 +177,73 @@ export class StreamBatchItemsService extends WithRunEngine {
           };
         }
 
-        // Seal the batch - update status to PROCESSING
-        await this._prisma.batchTaskRun.update({
-          where: { id: batchId },
+        // Seal the batch - use conditional update to prevent TOCTOU race
+        // Another concurrent request may have already sealed this batch
+        const now = new Date();
+        const sealResult = await this._prisma.batchTaskRun.updateMany({
+          where: {
+            id: batchId,
+            sealed: false,
+            status: "PENDING",
+          },
           data: {
             sealed: true,
-            sealedAt: new Date(),
+            sealedAt: now,
             status: "PROCESSING",
-            processingStartedAt: new Date(),
+            processingStartedAt: now,
           },
         });
+
+        // Check if we won the race to seal the batch
+        if (sealResult.count === 0) {
+          // Another request sealed the batch first - re-query to check current state
+          const currentBatch = await this._prisma.batchTaskRun.findUnique({
+            where: { id: batchId },
+            select: {
+              id: true,
+              friendlyId: true,
+              status: true,
+              sealed: true,
+            },
+          });
+
+          if (currentBatch?.sealed && currentBatch.status === "PROCESSING") {
+            // The batch was sealed by another request - this is fine, the goal was achieved
+            logger.info("Batch already sealed by concurrent request", {
+              batchId: batchFriendlyId,
+              itemsAccepted,
+              itemsDeduplicated,
+              envId: environment.id,
+            });
+
+            span.setAttribute("itemsAccepted", itemsAccepted);
+            span.setAttribute("itemsDeduplicated", itemsDeduplicated);
+            span.setAttribute("sealedByConcurrentRequest", true);
+
+            return {
+              id: batchFriendlyId,
+              itemsAccepted,
+              itemsDeduplicated,
+              sealed: true,
+            };
+          }
+
+          // Batch is in an unexpected state - fail with error
+          const actualStatus = currentBatch?.status ?? "unknown";
+          const actualSealed = currentBatch?.sealed ?? "unknown";
+          logger.error("Batch seal race condition: unexpected state", {
+            batchId: batchFriendlyId,
+            expectedStatus: "PENDING",
+            actualStatus,
+            expectedSealed: false,
+            actualSealed,
+            envId: environment.id,
+          });
+
+          throw new ServiceValidationError(
+            `Batch ${batchFriendlyId} is in unexpected state (status: ${actualStatus}, sealed: ${actualSealed}). Cannot seal batch.`
+          );
+        }
 
         logger.info("Batch sealed and ready for processing", {
           batchId: batchFriendlyId,
