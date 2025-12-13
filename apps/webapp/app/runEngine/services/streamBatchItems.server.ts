@@ -273,64 +273,169 @@ export class StreamBatchItemsService extends WithRunEngine {
  * Converts a stream of Uint8Array chunks into parsed JSON objects.
  * Each line in the NDJSON is parsed independently.
  *
+ * Uses byte-buffer accumulation to:
+ * - Prevent OOM from unbounded string buffers
+ * - Properly handle multibyte UTF-8 characters across chunk boundaries
+ * - Check size limits on raw bytes before decoding
+ *
  * @param maxItemBytes - Maximum allowed bytes per line (item)
  * @returns TransformStream that outputs parsed JSON objects
  */
 export function createNdjsonParserStream(
   maxItemBytes: number
 ): TransformStream<Uint8Array, unknown> {
-  const decoder = new TextDecoder();
-  let buffer = "";
+  // Single decoder instance, reused for all lines
+  const decoder = new TextDecoder("utf-8", { fatal: true });
+
+  // Byte buffer: array of chunks with tracked total length
+  let chunks: Uint8Array[] = [];
+  let totalBytes = 0;
   let lineNumber = 0;
+
+  const NEWLINE_BYTE = 0x0a; // '\n'
+
+  /**
+   * Concatenate all chunks into a single Uint8Array
+   */
+  function concatenateChunks(): Uint8Array {
+    if (chunks.length === 0) {
+      return new Uint8Array(0);
+    }
+    if (chunks.length === 1) {
+      return chunks[0];
+    }
+    const result = new Uint8Array(totalBytes);
+    let offset = 0;
+    for (const chunk of chunks) {
+      result.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return result;
+  }
+
+  /**
+   * Find the index of the first newline byte in the buffer.
+   * Returns -1 if not found.
+   */
+  function findNewlineIndex(): number {
+    let globalIndex = 0;
+    for (const chunk of chunks) {
+      for (let i = 0; i < chunk.byteLength; i++) {
+        if (chunk[i] === NEWLINE_BYTE) {
+          return globalIndex + i;
+        }
+      }
+      globalIndex += chunk.byteLength;
+    }
+    return -1;
+  }
+
+  /**
+   * Extract bytes from the buffer up to (but not including) the given index,
+   * and remove those bytes plus the delimiter from the buffer.
+   */
+  function extractLine(newlineIndex: number): Uint8Array {
+    const fullBuffer = concatenateChunks();
+    const lineBytes = fullBuffer.slice(0, newlineIndex);
+    const remaining = fullBuffer.slice(newlineIndex + 1); // Skip the newline
+
+    // Reset buffer with remaining bytes
+    if (remaining.byteLength > 0) {
+      chunks = [remaining];
+      totalBytes = remaining.byteLength;
+    } else {
+      chunks = [];
+      totalBytes = 0;
+    }
+
+    return lineBytes;
+  }
+
+  /**
+   * Parse a line from bytes, handling whitespace trimming.
+   * Returns the parsed object or null for empty lines.
+   */
+  function parseLine(
+    lineBytes: Uint8Array,
+    controller: TransformStreamDefaultController<unknown>
+  ): void {
+    lineNumber++;
+
+    // Decode the line bytes (stream: false since this is a complete line)
+    let lineText: string;
+    try {
+      lineText = decoder.decode(lineBytes, { stream: false });
+    } catch (err) {
+      throw new Error(`Invalid UTF-8 at line ${lineNumber}: ${(err as Error).message}`);
+    }
+
+    const trimmed = lineText.trim();
+    if (!trimmed) {
+      return; // Skip empty lines
+    }
+
+    try {
+      const obj = JSON.parse(trimmed);
+      controller.enqueue(obj);
+    } catch (err) {
+      throw new Error(`Invalid JSON at line ${lineNumber}: ${(err as Error).message}`);
+    }
+  }
 
   return new TransformStream<Uint8Array, unknown>({
     transform(chunk, controller) {
-      buffer += decoder.decode(chunk, { stream: true });
+      // Append chunk to buffer
+      chunks.push(chunk);
+      totalBytes += chunk.byteLength;
 
-      // Split on newlines
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
-
-      for (const line of lines) {
-        lineNumber++;
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-
-        // Check byte size before parsing
-        const lineBytes = new TextEncoder().encode(trimmed).length;
-        if (lineBytes > maxItemBytes) {
+      // Process all complete lines in the buffer
+      let newlineIndex: number;
+      while ((newlineIndex = findNewlineIndex()) !== -1) {
+        // Check size limit BEFORE extracting/decoding (bytes up to newline)
+        if (newlineIndex > maxItemBytes) {
           throw new Error(
-            `Item at line ${lineNumber} exceeds maximum size of ${maxItemBytes} bytes (actual: ${lineBytes})`
+            `Item at line ${
+              lineNumber + 1
+            } exceeds maximum size of ${maxItemBytes} bytes (actual: ${newlineIndex})`
           );
         }
 
-        try {
-          const obj = JSON.parse(trimmed);
-          controller.enqueue(obj);
-        } catch (err) {
-          throw new Error(`Invalid JSON at line ${lineNumber}: ${(err as Error).message}`);
-        }
+        const lineBytes = extractLine(newlineIndex);
+        parseLine(lineBytes, controller);
+      }
+
+      // Check if the remaining buffer (incomplete line) exceeds the limit
+      // This prevents OOM from a single huge line without newlines
+      if (totalBytes > maxItemBytes) {
+        throw new Error(
+          `Item at line ${
+            lineNumber + 1
+          } exceeds maximum size of ${maxItemBytes} bytes (buffered: ${totalBytes}, no newline found)`
+        );
       }
     },
-    flush(controller) {
-      // Handle any remaining buffered data (no trailing newline case)
-      const final = buffer.trim();
-      if (!final) return;
 
-      lineNumber++;
-      const lineBytes = new TextEncoder().encode(final).length;
-      if (lineBytes > maxItemBytes) {
+    flush(controller) {
+      // Flush any remaining bytes from the decoder's internal state
+      // This handles multibyte characters that may have been split across chunks
+      decoder.decode(new Uint8Array(0), { stream: false });
+
+      // Process any remaining buffered data (no trailing newline case)
+      if (totalBytes === 0) {
+        return;
+      }
+
+      // Check size limit before processing final line
+      if (totalBytes > maxItemBytes) {
         throw new Error(
-          `Item at line ${lineNumber} exceeds maximum size of ${maxItemBytes} bytes (actual: ${lineBytes})`
+          `Item at line ${
+            lineNumber + 1
+          } exceeds maximum size of ${maxItemBytes} bytes (actual: ${totalBytes})`
         );
       }
 
-      try {
-        const obj = JSON.parse(final);
-        controller.enqueue(obj);
-      } catch (err) {
-        throw new Error(`Invalid JSON at line ${lineNumber}: ${(err as Error).message}`);
-      }
+      const finalBytes = concatenateChunks();
+      parseLine(finalBytes, controller);
     },
   });
 }
