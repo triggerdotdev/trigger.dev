@@ -161,11 +161,14 @@ export class StreamBatchItemsService extends WithRunEngine {
           });
 
           // Don't seal the batch if count doesn't match
-          // Client can retry with missing items
+          // Return sealed: false so client knows to retry with missing items
           return {
             id: batchFriendlyId,
             itemsAccepted,
             itemsDeduplicated,
+            sealed: false,
+            enqueuedCount,
+            expectedCount: batch.runCount,
           };
         }
 
@@ -195,6 +198,7 @@ export class StreamBatchItemsService extends WithRunEngine {
           id: batchFriendlyId,
           itemsAccepted,
           itemsDeduplicated,
+          sealed: true,
         };
       }
     );

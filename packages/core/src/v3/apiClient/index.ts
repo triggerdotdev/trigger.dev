@@ -66,7 +66,7 @@ import {
   zodfetchCursorPage,
   zodfetchOffsetLimitPage,
 } from "./core.js";
-import { ApiConnectionError, ApiError } from "./errors.js";
+import { ApiConnectionError, ApiError, BatchNotSealedError } from "./errors.js";
 import { calculateNextRetryDelay } from "../utils/retries.js";
 import { RetryOptions } from "../schemas/index.js";
 import {
@@ -463,20 +463,48 @@ export class ApiClient {
         throw ApiError.generate(response.status, errJSON, errMessage, responseHeaders);
       }
 
-      // Success - cancel the backup stream to release resources
-      await forRetry.cancel();
-
       const result = await response.json();
       const parsed = StreamBatchItemsResponse.safeParse(result);
 
       if (!parsed.success) {
+        // Cancel backup stream since we're throwing
+        await forRetry.cancel();
         throw new Error(
           `Invalid response from server for batch ${batchId}: ${parsed.error.message}`
         );
       }
 
+      // Check if the batch was sealed
+      if (!parsed.data.sealed) {
+        // Not all items were received - treat as retryable condition
+        const delay = calculateNextRetryDelay(retryOptions, attempt);
+
+        if (delay) {
+          // Retry with the backup stream
+          await sleep(delay);
+          return this.#streamBatchItemsWithRetry(batchId, forRetry, retryOptions, attempt + 1);
+        }
+
+        // No more retries - cancel backup stream and throw descriptive error
+        await forRetry.cancel();
+        throw new BatchNotSealedError({
+          batchId,
+          enqueuedCount: parsed.data.enqueuedCount ?? 0,
+          expectedCount: parsed.data.expectedCount ?? 0,
+          itemsAccepted: parsed.data.itemsAccepted,
+          itemsDeduplicated: parsed.data.itemsDeduplicated,
+        });
+      }
+
+      // Success - cancel the backup stream to release resources
+      await forRetry.cancel();
+
       return parsed.data;
     } catch (error) {
+      // Don't retry BatchNotSealedError (retries already exhausted)
+      if (error instanceof BatchNotSealedError) {
+        throw error;
+      }
       // Don't retry ApiErrors (already handled above with backup stream cancelled)
       if (error instanceof ApiError) {
         throw error;

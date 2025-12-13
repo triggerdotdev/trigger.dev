@@ -379,6 +379,14 @@ export const StreamBatchItemsResponse = z.object({
   itemsAccepted: z.number(),
   /** Number of items that were deduplicated (already enqueued) */
   itemsDeduplicated: z.number(),
+  /** Whether the batch was sealed and is ready for processing.
+   * If false, the batch needs more items before processing can start.
+   * Clients should check this field and retry with missing items if needed. */
+  sealed: z.boolean(),
+  /** Total items currently enqueued (only present when sealed=false to help with retries) */
+  enqueuedCount: z.number().optional(),
+  /** Expected total item count (only present when sealed=false to help with retries) */
+  expectedCount: z.number().optional(),
 });
 
 export type StreamBatchItemsResponse = z.infer<typeof StreamBatchItemsResponse>;
