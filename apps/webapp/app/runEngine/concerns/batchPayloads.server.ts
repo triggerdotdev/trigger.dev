@@ -119,7 +119,9 @@ export class BatchPayloadProcessor {
 
         // Throw to fail this item - SDK can retry
         throw new Error(
-          `Failed to upload large payload to object store: ${uploadError instanceof Error ? uploadError.message : String(uploadError)}`
+          `Failed to upload large payload to object store: ${
+            uploadError instanceof Error ? uploadError.message : String(uploadError)
+          }`
         );
       }
 
@@ -147,6 +149,11 @@ export class BatchPayloadProcessor {
    */
   #createPayloadPacket(payload: unknown, payloadType: string): IOPacket {
     if (payloadType === "application/json") {
+      // Payload from SDK is already serialized as a string - use directly
+      if (typeof payload === "string") {
+        return { data: payload, dataType: "application/json" };
+      }
+      // Non-string payloads (e.g., direct API calls with objects) need serialization
       return { data: JSON.stringify(payload), dataType: "application/json" };
     }
 
@@ -162,4 +169,3 @@ export class BatchPayloadProcessor {
     }
   }
 }
-
