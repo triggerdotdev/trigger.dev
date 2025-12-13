@@ -76,6 +76,8 @@ export const BatchMeta = z.object({
   idempotencyKey: z.string().optional(),
   /** Processing concurrency limit for this batch's environment */
   processingConcurrency: z.number().optional(),
+  /** Plan type for billing (e.g., "free", "paid") - used when skipChecks is enabled */
+  planType: z.string().optional(),
 });
 export type BatchMeta = z.infer<typeof BatchMeta>;
 
@@ -161,6 +163,8 @@ export type InitializeBatchOptions = {
   idempotencyKey?: string;
   /** Processing concurrency limit for this batch's environment */
   processingConcurrency?: number;
+  /** Plan type for billing (e.g., "free", "paid") - used when skipChecks is enabled */
+  planType?: string;
 };
 
 /**

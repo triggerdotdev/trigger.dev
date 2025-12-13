@@ -697,6 +697,7 @@ export function setupBatchQueueCallbacks() {
               batchIndex: itemIndex,
               skipChecks: true, // Already validated at batch level
               realtimeStreamsVersion: meta.realtimeStreamsVersion,
+              planType: meta.planType,
             },
             "V2"
           );

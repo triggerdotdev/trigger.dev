@@ -71,6 +71,9 @@ export class CreateBatchService extends WithRunEngine {
             throw entitlementValidation.error;
           }
 
+          // Extract plan type from entitlement validation for billing tracking
+          const planType = entitlementValidation.plan?.type;
+
           // Get batch limits for this organization
           const { config, rateLimiter } = await getBatchLimits(environment.organization);
 
@@ -148,6 +151,7 @@ export class CreateBatchService extends WithRunEngine {
             realtimeStreamsVersion: options.realtimeStreamsVersion,
             idempotencyKey: body.idempotencyKey,
             processingConcurrency: config.processingConcurrency,
+            planType,
           };
 
           await this._engine.initializeBatch(initOptions);
