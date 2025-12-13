@@ -141,11 +141,15 @@ export class VisibilityManager {
     const member = this.#makeMember(messageId, queueId);
     const newDeadline = Date.now() + extendMs;
 
-    // Update the score (deadline) in the in-flight set
-    // Only update if the message is still in the set
-    const result = await this.redis.zadd(inflightKey, "XX", newDeadline, member);
+    // Use Lua script to atomically check existence and update score
+    // ZADD XX returns 0 even on successful updates, so we use a custom command
+    const result = await this.redis.heartbeatMessage(
+      inflightKey,
+      member,
+      newDeadline.toString()
+    );
 
-    const success = result !== 0;
+    const success = result === 1;
 
     if (success) {
       this.logger.debug("Heartbeat successful", {
@@ -458,6 +462,28 @@ redis.call('HSET', queueItemsKey, messageId, payload)
 return 1
       `,
     });
+
+    // Atomic heartbeat: check if member exists and update score
+    // ZADD XX returns 0 even on successful updates (it counts new additions only)
+    // So we need to check existence first with ZSCORE
+    this.redis.defineCommand("heartbeatMessage", {
+      numberOfKeys: 1,
+      lua: `
+local inflightKey = KEYS[1]
+local member = ARGV[1]
+local newDeadline = tonumber(ARGV[2])
+
+-- Check if member exists in the in-flight set
+local score = redis.call('ZSCORE', inflightKey, member)
+if not score then
+  return 0
+end
+
+-- Update the deadline
+redis.call('ZADD', inflightKey, 'XX', newDeadline, member)
+return 1
+      `,
+    });
   }
 }
 
@@ -483,5 +509,7 @@ declare module "@internal/redis" {
       messageId: string,
       score: string
     ): Promise<number>;
+
+    heartbeatMessage(inflightKey: string, member: string, newDeadline: string): Promise<number>;
   }
 }
