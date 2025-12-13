@@ -1661,6 +1661,7 @@ model BatchTaskRunError {
 
   createdAt DateTime @default(now())
 
+  @@unique([batchTaskRunId, index])
   @@index([batchTaskRunId])
 }
 

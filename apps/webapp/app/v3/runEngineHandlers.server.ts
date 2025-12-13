@@ -746,24 +746,26 @@ export function setupBatchQueueCallbacks() {
     }
 
     try {
-      // Update BatchTaskRun
-      await prisma.batchTaskRun.update({
-        where: { id: batchId },
-        data: {
-          status,
-          runIds,
-          successfulRunCount,
-          failedRunCount,
-          completedAt: status === "ABORTED" ? new Date() : undefined,
-          processingCompletedAt: new Date(),
-        },
-      });
+      // Use a transaction to ensure atomicity of batch update and error record creation
+      // skipDuplicates handles idempotency when callback is retried (relies on unique constraint)
+      await prisma.$transaction(async (tx) => {
+        // Update BatchTaskRun
+        await tx.batchTaskRun.update({
+          where: { id: batchId },
+          data: {
+            status,
+            runIds,
+            successfulRunCount,
+            failedRunCount,
+            completedAt: status === "ABORTED" ? new Date() : undefined,
+            processingCompletedAt: new Date(),
+          },
+        });
 
-      // Create error records if there were failures
-      if (failures.length > 0) {
-        for (const failure of failures) {
-          await prisma.batchTaskRunError.create({
-            data: {
+        // Create error records if there were failures
+        if (failures.length > 0) {
+          await tx.batchTaskRunError.createMany({
+            data: failures.map((failure) => ({
               batchTaskRunId: batchId,
               index: failure.index,
               taskIdentifier: failure.taskIdentifier,
@@ -771,10 +773,11 @@ export function setupBatchQueueCallbacks() {
               options: failure.options as Prisma.InputJsonValue | undefined,
               error: failure.error,
               errorCode: failure.errorCode,
-            },
+            })),
+            skipDuplicates: true,
           });
         }
-      }
+      });
 
       // Try to complete the batch (handles waitpoint completion if all runs are done)
       if (status !== "ABORTED") {
