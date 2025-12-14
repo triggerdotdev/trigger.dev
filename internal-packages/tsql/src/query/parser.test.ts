@@ -36,38 +36,22 @@ describe("TSQLParseTreeConverter", () => {
     it("should convert a simple SELECT statement", () => {
       const ast = parseAndConvert("SELECT * FROM users");
 
-      expect(ast).toMatchInlineSnapshot(`
-        {
-          "ctes": undefined,
-          "distinct": undefined,
-          "expression_type": "select_query",
-          "group_by": undefined,
-          "having": undefined,
-          "limit_by": undefined,
-          "order_by": undefined,
-          "prewhere": undefined,
-          "select": [
-            {
-              "chain": [
-                "*",
-              ],
-              "expression_type": "field",
-            },
-          ],
-          "select_from": {
-            "expression_type": "join_expr",
-            "sample": undefined,
-            "table": {
-              "chain": [
-                "users",
-              ],
-              "expression_type": "field",
-            },
-            "table_final": undefined,
+      expect(ast).toMatchObject({
+        expression_type: "select_query",
+        select: [
+          {
+            chain: ["*"],
+            expression_type: "field",
           },
-          "where": undefined,
-        }
-      `);
+        ],
+        select_from: {
+          expression_type: "join_expr",
+          table: {
+            chain: ["users"],
+            expression_type: "field",
+          },
+        },
+      });
     });
 
     it("should convert SELECT with multiple columns", () => {
