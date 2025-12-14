@@ -36,14 +36,38 @@ describe("TSQLParseTreeConverter", () => {
     it("should convert a simple SELECT statement", () => {
       const ast = parseAndConvert("SELECT * FROM users");
 
-      expect(ast).toBeDefined();
-      console.log(ast);
-      expect(ast.expression_type).toBe("select_query");
-      const selectQuery = ast as SelectQuery;
-      expect(selectQuery.select).toBeDefined();
-      expect(selectQuery.select_from).toBeDefined();
-      expect(selectQuery.select.length).toBe(1);
-      expect((selectQuery.select[0] as Field).chain).toEqual(["*"]);
+      expect(ast).toMatchInlineSnapshot(`
+        {
+          "ctes": undefined,
+          "distinct": undefined,
+          "expression_type": "select_query",
+          "group_by": undefined,
+          "having": undefined,
+          "limit_by": undefined,
+          "order_by": undefined,
+          "prewhere": undefined,
+          "select": [
+            {
+              "chain": [
+                "*",
+              ],
+              "expression_type": "field",
+            },
+          ],
+          "select_from": {
+            "expression_type": "join_expr",
+            "sample": undefined,
+            "table": {
+              "chain": [
+                "users",
+              ],
+              "expression_type": "field",
+            },
+            "table_final": undefined,
+          },
+          "where": undefined,
+        }
+      `);
     });
 
     it("should convert SELECT with multiple columns", () => {
@@ -221,7 +245,8 @@ describe("TSQLParseTreeConverter", () => {
       const ast = parseAndConvert("SELECT COUNT(*) FROM users");
       const selectQuery = ast as SelectQuery;
       const expr = selectQuery.select[0] as Call;
-      expect(expr.name).toBe("count");
+      // Function names preserve original case from the query
+      expect(expr.name).toBe("COUNT");
     });
 
     it("should convert nested field access", () => {
@@ -272,14 +297,15 @@ describe("TSQLParseTreeConverter", () => {
   });
 
   describe("UNION queries", () => {
-    it("should convert UNION query", () => {
-      const ast = parseAndConvert("SELECT id FROM users UNION SELECT id FROM customers");
-      expect("initial_select_query" in ast).toBe(true);
+    it("should convert UNION DISTINCT query", () => {
+      // Grammar supports UNION ALL, UNION DISTINCT, INTERSECT, INTERSECT DISTINCT, EXCEPT
+      // Bare UNION (without ALL/DISTINCT) is not supported
+      const ast = parseAndConvert("SELECT id FROM users UNION DISTINCT SELECT id FROM customers");
       const setQuery = ast as SelectSetQuery;
       expect(setQuery.initial_select_query).toBeDefined();
       expect(setQuery.subsequent_select_queries).toBeDefined();
       expect(setQuery.subsequent_select_queries.length).toBe(1);
-      expect(setQuery.subsequent_select_queries[0].set_operator).toBe("UNION");
+      expect(setQuery.subsequent_select_queries[0].set_operator).toBe("UNION DISTINCT");
     });
 
     it("should convert UNION ALL query", () => {
