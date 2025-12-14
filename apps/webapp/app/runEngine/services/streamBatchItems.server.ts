@@ -42,6 +42,18 @@ export class StreamBatchItemsService extends WithRunEngine {
   }
 
   /**
+   * Parse a batch friendly ID to its internal ID format.
+   * Throws a ServiceValidationError with 400 status if the ID is malformed.
+   */
+  private parseBatchFriendlyId(friendlyId: string): string {
+    try {
+      return BatchId.fromFriendlyId(friendlyId);
+    } catch {
+      throw new ServiceValidationError(`Invalid batchFriendlyId: ${friendlyId}`, 400);
+    }
+  }
+
+  /**
    * Process a stream of batch items from an async iterator.
    * Each item is validated and enqueued to the BatchQueue.
    * The batch is sealed when the stream completes.
@@ -59,7 +71,7 @@ export class StreamBatchItemsService extends WithRunEngine {
         span.setAttribute("batchId", batchFriendlyId);
 
         // Convert friendly ID to internal ID
-        const batchId = BatchId.fromFriendlyId(batchFriendlyId);
+        const batchId = this.parseBatchFriendlyId(batchFriendlyId);
 
         // Validate batch exists and belongs to this environment
         const batch = await this._prisma.batchTaskRun.findFirst({
