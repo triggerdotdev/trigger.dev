@@ -681,9 +681,13 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     const limitAndOffsetClause = ctx.limitAndOffsetClause();
     const offsetOnlyClause = ctx.offsetOnlyClause();
     if (limitAndOffsetClause) {
-      selectQuery.limit = this.visitAsExpr(limitAndOffsetClause.columnExpr(0));
-      if (limitAndOffsetClause.columnExpr(1)) {
-        selectQuery.offset = this.visitAsExpr(limitAndOffsetClause.columnExpr(1));
+      // Use array access to avoid getRuleContext throwing when index is out of bounds
+      const columnExprs = limitAndOffsetClause.columnExpr();
+      if (columnExprs.length > 0) {
+        selectQuery.limit = this.visitAsExpr(columnExprs[0]);
+      }
+      if (columnExprs.length > 1) {
+        selectQuery.offset = this.visitAsExpr(columnExprs[1]);
       }
       if (limitAndOffsetClause.WITH() && limitAndOffsetClause.TIES()) {
         selectQuery.limit_with_ties = true;

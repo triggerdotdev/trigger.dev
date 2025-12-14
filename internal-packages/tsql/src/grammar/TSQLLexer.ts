@@ -403,7 +403,7 @@ export class TSQLLexer extends Lexer {
 	private TAG_LT_OPEN_sempred(_localctx: RuleContext, predIndex: number): boolean {
 		switch (predIndex) {
 		case 0:
-			return self.isOpeningTag();
+			return this.isOpeningTag();
 		}
 		return true;
 	}
