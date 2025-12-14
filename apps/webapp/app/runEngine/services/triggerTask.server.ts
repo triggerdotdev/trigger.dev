@@ -364,7 +364,13 @@ export class RunEngineTriggerTaskService {
       } catch (error) {
         if (error instanceof RunDuplicateIdempotencyKeyError) {
           //retry calling this function, because this time it will return the idempotent run
-          return await this.call({ taskId, environment, body, options, attempt: attempt + 1 });
+          return await this.call({
+            taskId,
+            environment,
+            body,
+            options: { ...options, runFriendlyId },
+            attempt: attempt + 1,
+          });
         }
 
         if (error instanceof RunOneTimeUseTokenError) {
