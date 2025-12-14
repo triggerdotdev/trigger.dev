@@ -15,6 +15,7 @@ describe("streamBatchItems unsealed handling", () => {
   /**
    * Helper to create a mock fetch that properly consumes the request body stream.
    * This is necessary because streamBatchItems sends a ReadableStream body.
+   * Important: We must release the reader lock after consuming, just like real fetch does.
    */
   function createMockFetch(
     responses: Array<{
@@ -32,9 +33,14 @@ describe("streamBatchItems unsealed handling", () => {
       if (init?.body && init.body instanceof ReadableStream) {
         const reader = init.body.getReader();
         // Drain the stream
-        while (true) {
-          const { done } = await reader.read();
-          if (done) break;
+        try {
+          while (true) {
+            const { done } = await reader.read();
+            if (done) break;
+          }
+        } finally {
+          // Release the lock so the stream can be cancelled later (like real fetch does)
+          reader.releaseLock();
         }
       }
 
@@ -64,11 +70,9 @@ describe("streamBatchItems unsealed handling", () => {
     const client = new ApiClient("http://localhost:3030", "tr_test_key");
 
     const error = await client
-      .streamBatchItems(
-        "batch_test123",
-        [{ index: 0, task: "test-task", payload: "{}" }],
-        { retry: { maxAttempts: 2, minDelay: 10, maxDelay: 50 } }
-      )
+      .streamBatchItems("batch_test123", [{ index: 0, task: "test-task", payload: "{}" }], {
+        retry: { maxAttempts: 2, minTimeoutInMs: 10, maxTimeoutInMs: 50 },
+      })
       .catch((e) => e);
 
     expect(error).toBeInstanceOf(BatchNotSealedError);
@@ -108,7 +112,7 @@ describe("streamBatchItems unsealed handling", () => {
     const result = await client.streamBatchItems(
       "batch_test123",
       [{ index: 0, task: "test-task", payload: "{}" }],
-      { retry: { maxAttempts: 3, minDelay: 10, maxDelay: 50 } }
+      { retry: { maxAttempts: 3, minTimeoutInMs: 10, maxTimeoutInMs: 50 } }
     );
 
     expect(result.sealed).toBe(true);
@@ -155,11 +159,9 @@ describe("streamBatchItems unsealed handling", () => {
     const client = new ApiClient("http://localhost:3030", "tr_test_key");
 
     const error = await client
-      .streamBatchItems(
-        "batch_abc123",
-        [{ index: 0, task: "test-task", payload: "{}" }],
-        { retry: { maxAttempts: 1, minDelay: 10, maxDelay: 50 } }
-      )
+      .streamBatchItems("batch_abc123", [{ index: 0, task: "test-task", payload: "{}" }], {
+        retry: { maxAttempts: 1, minTimeoutInMs: 10, maxTimeoutInMs: 50 },
+      })
       .catch((e) => e);
 
     expect(error).toBeInstanceOf(BatchNotSealedError);
@@ -185,16 +187,277 @@ describe("streamBatchItems unsealed handling", () => {
     const client = new ApiClient("http://localhost:3030", "tr_test_key");
 
     const error = await client
-      .streamBatchItems(
-        "batch_test123",
-        [{ index: 0, task: "test-task", payload: "{}" }],
-        { retry: { maxAttempts: 1, minDelay: 10, maxDelay: 50 } }
-      )
+      .streamBatchItems("batch_test123", [{ index: 0, task: "test-task", payload: "{}" }], {
+        retry: { maxAttempts: 1, minTimeoutInMs: 10, maxTimeoutInMs: 50 },
+      })
       .catch((e) => e);
 
     expect(error).toBeInstanceOf(BatchNotSealedError);
     // Should default to 0 when not provided
     expect((error as BatchNotSealedError).enqueuedCount).toBe(0);
     expect((error as BatchNotSealedError).expectedCount).toBe(0);
+  });
+});
+
+describe("streamBatchItems stream cancellation on retry", () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  /**
+   * Helper to consume a stream and release the lock (simulating fetch behavior).
+   */
+  async function consumeAndRelease(stream: ReadableStream<any>) {
+    const reader = stream.getReader();
+    try {
+      while (true) {
+        const { done } = await reader.read();
+        if (done) break;
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  }
+
+  it("cancels forRequest stream when retrying due to HTTP error", async () => {
+    // Track cancel calls
+    let cancelCallCount = 0;
+    let callIndex = 0;
+
+    const mockFetch = vi.fn().mockImplementation(async (_url: string, init?: RequestInit) => {
+      const currentAttempt = callIndex;
+      callIndex++;
+
+      if (init?.body && init.body instanceof ReadableStream) {
+        const originalCancel = init.body.cancel.bind(init.body);
+        init.body.cancel = async (reason?: any) => {
+          cancelCallCount++;
+          return originalCancel(reason);
+        };
+
+        // Consume stream and release lock (like real fetch does)
+        await consumeAndRelease(init.body);
+      }
+
+      // First attempt: return 500 error (retryable)
+      if (currentAttempt === 0) {
+        return {
+          ok: false,
+          status: 500,
+          text: () => Promise.resolve("Server error"),
+          headers: new Headers(),
+        };
+      }
+
+      // Second attempt: success
+      return {
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            id: "batch_test123",
+            itemsAccepted: 10,
+            itemsDeduplicated: 0,
+            sealed: true,
+          }),
+      };
+    });
+    globalThis.fetch = mockFetch;
+
+    const client = new ApiClient("http://localhost:3030", "tr_test_key");
+
+    const result = await client.streamBatchItems(
+      "batch_test123",
+      [{ index: 0, task: "test-task", payload: "{}" }],
+      { retry: { maxAttempts: 3, minTimeoutInMs: 10, maxTimeoutInMs: 50 } }
+    );
+
+    expect(result.sealed).toBe(true);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    // forRequest should be cancelled once (before first retry)
+    // forRetry should be cancelled once (after success)
+    // Total: 2 cancel calls
+    expect(cancelCallCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it("cancels forRequest stream when retrying due to batch not sealed", async () => {
+    let cancelCallCount = 0;
+    let callIndex = 0;
+
+    const mockFetch = vi.fn().mockImplementation(async (_url: string, init?: RequestInit) => {
+      const currentAttempt = callIndex;
+      callIndex++;
+
+      if (init?.body && init.body instanceof ReadableStream) {
+        const originalCancel = init.body.cancel.bind(init.body);
+        init.body.cancel = async (reason?: any) => {
+          cancelCallCount++;
+          return originalCancel(reason);
+        };
+
+        await consumeAndRelease(init.body);
+      }
+
+      // First attempt: not sealed (triggers retry)
+      if (currentAttempt === 0) {
+        return {
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              id: "batch_test123",
+              itemsAccepted: 5,
+              itemsDeduplicated: 0,
+              sealed: false,
+              enqueuedCount: 5,
+              expectedCount: 10,
+            }),
+        };
+      }
+
+      // Second attempt: sealed
+      return {
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            id: "batch_test123",
+            itemsAccepted: 5,
+            itemsDeduplicated: 5,
+            sealed: true,
+          }),
+      };
+    });
+    globalThis.fetch = mockFetch;
+
+    const client = new ApiClient("http://localhost:3030", "tr_test_key");
+
+    const result = await client.streamBatchItems(
+      "batch_test123",
+      [{ index: 0, task: "test-task", payload: "{}" }],
+      { retry: { maxAttempts: 3, minTimeoutInMs: 10, maxTimeoutInMs: 50 } }
+    );
+
+    expect(result.sealed).toBe(true);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    // forRequest cancelled before retry + forRetry cancelled after success
+    expect(cancelCallCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it("cancels forRequest stream when retrying due to connection error", async () => {
+    let cancelCallCount = 0;
+    let callIndex = 0;
+
+    const mockFetch = vi.fn().mockImplementation(async (_url: string, init?: RequestInit) => {
+      const currentAttempt = callIndex;
+      callIndex++;
+
+      if (init?.body && init.body instanceof ReadableStream) {
+        const originalCancel = init.body.cancel.bind(init.body);
+        init.body.cancel = async (reason?: any) => {
+          cancelCallCount++;
+          return originalCancel(reason);
+        };
+
+        // Always consume and release - even for error case
+        // This simulates what happens when fetch partially reads before failing
+        // The important thing is the stream lock is released so cancel() can work
+        await consumeAndRelease(init.body);
+      }
+
+      // First attempt: connection error (simulate by throwing after consuming)
+      if (currentAttempt === 0) {
+        throw new TypeError("Failed to fetch");
+      }
+
+      // Second attempt: success
+      return {
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            id: "batch_test123",
+            itemsAccepted: 10,
+            itemsDeduplicated: 0,
+            sealed: true,
+          }),
+      };
+    });
+    globalThis.fetch = mockFetch;
+
+    const client = new ApiClient("http://localhost:3030", "tr_test_key");
+
+    const result = await client.streamBatchItems(
+      "batch_test123",
+      [{ index: 0, task: "test-task", payload: "{}" }],
+      { retry: { maxAttempts: 3, minTimeoutInMs: 10, maxTimeoutInMs: 50 } }
+    );
+
+    expect(result.sealed).toBe(true);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    // forRequest should be cancelled before retry
+    expect(cancelCallCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it("does not leak memory by leaving tee branches unconsumed during multiple retries", async () => {
+    let cancelCallCount = 0;
+    let callIndex = 0;
+
+    const mockFetch = vi.fn().mockImplementation(async (_url: string, init?: RequestInit) => {
+      const currentAttempt = callIndex;
+      callIndex++;
+
+      if (init?.body && init.body instanceof ReadableStream) {
+        const originalCancel = init.body.cancel.bind(init.body);
+        init.body.cancel = async (reason?: any) => {
+          cancelCallCount++;
+          return originalCancel(reason);
+        };
+
+        await consumeAndRelease(init.body);
+      }
+
+      // First two attempts: not sealed
+      if (currentAttempt < 2) {
+        return {
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              id: "batch_test123",
+              itemsAccepted: 5,
+              itemsDeduplicated: 0,
+              sealed: false,
+              enqueuedCount: 5,
+              expectedCount: 10,
+            }),
+        };
+      }
+
+      // Third attempt: sealed
+      return {
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            id: "batch_test123",
+            itemsAccepted: 5,
+            itemsDeduplicated: 5,
+            sealed: true,
+          }),
+      };
+    });
+    globalThis.fetch = mockFetch;
+
+    const client = new ApiClient("http://localhost:3030", "tr_test_key");
+
+    const result = await client.streamBatchItems(
+      "batch_test123",
+      [{ index: 0, task: "test-task", payload: "{}" }],
+      { retry: { maxAttempts: 5, minTimeoutInMs: 10, maxTimeoutInMs: 50 } }
+    );
+
+    expect(result.sealed).toBe(true);
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+    // Each retry should cancel forRequest, plus final forRetry cancel
+    // With 2 retries: 2 forRequest cancels + 1 forRetry cancel = 3 total
+    expect(cancelCallCount).toBeGreaterThanOrEqual(2);
   });
 });

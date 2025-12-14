@@ -442,6 +442,8 @@ export class ApiClient {
         const retryResult = shouldRetryStreamBatchItems(response, attempt, retryOptions);
 
         if (retryResult.retry) {
+          // Cancel the request stream before retry to prevent tee() from buffering
+          await forRequest.cancel();
           await sleep(retryResult.delay);
           // Use the backup stream for retry
           return this.#streamBatchItemsWithRetry(batchId, forRetry, retryOptions, attempt + 1);
@@ -480,6 +482,8 @@ export class ApiClient {
         const delay = calculateNextRetryDelay(retryOptions, attempt);
 
         if (delay) {
+          // Cancel the request stream before retry to prevent tee() from buffering
+          await forRequest.cancel();
           // Retry with the backup stream
           await sleep(delay);
           return this.#streamBatchItemsWithRetry(batchId, forRetry, retryOptions, attempt + 1);
@@ -513,6 +517,8 @@ export class ApiClient {
       // Retry connection errors using the backup stream
       const delay = calculateNextRetryDelay(retryOptions, attempt);
       if (delay) {
+        // Cancel the request stream before retry to prevent tee() from buffering
+        await forRequest.cancel();
         await sleep(delay);
         return this.#streamBatchItemsWithRetry(batchId, forRetry, retryOptions, attempt + 1);
       }
