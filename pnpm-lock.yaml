@@ -999,6 +999,9 @@ importers:
       '@internal/tracing':
         specifier: workspace:*
         version: link:../tracing
+      '@internal/tsql':
+        specifier: workspace:*
+        version: link:../tsql
       '@trigger.dev/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -1265,9 +1268,6 @@ importers:
 
   internal-packages/tsql:
     dependencies:
-      '@internal/clickhouse':
-        specifier: workspace:*
-        version: link:../clickhouse
       '@trigger.dev/core':
         specifier: workspace:*
         version: link:../../packages/core

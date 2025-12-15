@@ -7,8 +7,12 @@
 
 import type { ClickHouseSettings } from "@clickhouse/client";
 import { z } from "zod";
+import { compileTSQL, type TableSchema, type QuerySettings } from "@internal/tsql";
 import type { ClickhouseReader } from "./types.js";
 import { QueryError } from "./errors.js";
+
+// Re-export TableSchema for convenience
+export type { TableSchema, QuerySettings };
 
 /**
  * Options for executing a TSQL query
@@ -27,49 +31,11 @@ export interface ExecuteTSQLOptions<TOut extends z.ZodSchema> {
   /** The environment ID for tenant isolation */
   environmentId: string;
   /** Schema registry defining allowed tables and columns */
-  tableSchema: TSQLTableSchema[];
+  tableSchema: TableSchema[];
   /** Optional ClickHouse query settings */
-  settings?: ClickHouseSettings;
-  /** Maximum number of rows to return (default: 10000) */
-  maxRows?: number;
-  /** Timezone for date/time operations (default: UTC) */
-  timezone?: string;
-}
-
-/**
- * Schema definition for a table accessible via TSQL
- */
-export interface TSQLTableSchema {
-  /** The name of the table as used in TSQL queries */
-  name: string;
-  /** The fully qualified ClickHouse table name */
-  clickhouseName: string;
-  /** Column definitions */
-  columns: Record<string, TSQLColumnSchema>;
-  /** Tenant isolation column configuration */
-  tenantColumns: {
-    organizationId: string;
-    projectId: string;
-    environmentId: string;
-  };
-}
-
-/**
- * Schema definition for a column
- */
-export interface TSQLColumnSchema {
-  /** The column name */
-  name: string;
-  /** The ClickHouse column name (if different from name) */
-  clickhouseName?: string;
-  /** Whether the column can be selected */
-  selectable?: boolean;
-  /** Whether the column can be used in WHERE */
-  filterable?: boolean;
-  /** Whether the column can be used in ORDER BY */
-  sortable?: boolean;
-  /** Whether the column can be used in GROUP BY */
-  groupable?: boolean;
+  clickhouseSettings?: ClickHouseSettings;
+  /** Optional TSQL query settings (maxRows, timezone, etc.) */
+  querySettings?: Partial<QuerySettings>;
 }
 
 /**
@@ -81,11 +47,8 @@ export type TSQLQueryResult<T> = [QueryError, null] | [null, T[]];
  * Execute a TSQL query against ClickHouse
  *
  * This function:
- * 1. Parses the TSQL query into an AST
- * 2. Validates tables and columns against the schema
- * 3. Injects tenant isolation WHERE clauses
- * 4. Generates parameterized ClickHouse SQL
- * 5. Executes the query and returns validated results
+ * 1. Compiles the TSQL query to ClickHouse SQL (parse, validate, inject tenant guards)
+ * 2. Executes the query and returns validated results
  *
  * @example
  * ```typescript
@@ -104,43 +67,23 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
   reader: ClickhouseReader,
   options: ExecuteTSQLOptions<TOut>
 ): Promise<TSQLQueryResult<z.output<TOut>>> {
-  // Lazy import to avoid circular dependencies and keep the TSQL package optional
-  const {
-    parseTSQLSelect,
-    createPrinterContext,
-    createSchemaRegistry,
-    printToClickHouse,
-  } = await import("@internal/tsql");
-
   try {
-    // 1. Parse the TSQL query
-    const ast = parseTSQLSelect(options.query);
-
-    // 2. Create schema registry from table schemas
-    const schemaRegistry = createSchemaRegistry(options.tableSchema);
-
-    // 3. Create printer context with tenant IDs
-    const context = createPrinterContext({
+    // 1. Compile the TSQL query to ClickHouse SQL
+    const { sql, params } = compileTSQL(options.query, {
       organizationId: options.organizationId,
       projectId: options.projectId,
       environmentId: options.environmentId,
-      schema: schemaRegistry,
-      settings: {
-        maxRows: options.maxRows ?? 10000,
-        timezone: options.timezone ?? "UTC",
-      },
+      tableSchema: options.tableSchema,
+      settings: options.querySettings,
     });
 
-    // 4. Print the AST to ClickHouse SQL
-    const { sql, params } = printToClickHouse(ast, context);
-
-    // 5. Execute the query
+    // 2. Execute the query
     const queryFn = reader.query({
       name: options.name,
       query: sql,
       params: z.record(z.any()),
       schema: options.schema,
-      settings: options.settings,
+      settings: options.clickhouseSettings,
     });
 
     return await queryFn(params);
@@ -169,7 +112,7 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
  * });
  * ```
  */
-export function createTSQLExecutor(reader: ClickhouseReader, tableSchema: TSQLTableSchema[]) {
+export function createTSQLExecutor(reader: ClickhouseReader, tableSchema: TableSchema[]) {
   return {
     execute: <TOut extends z.ZodSchema>(
       options: Omit<ExecuteTSQLOptions<TOut>, "tableSchema">
@@ -178,4 +121,3 @@ export function createTSQLExecutor(reader: ClickhouseReader, tableSchema: TSQLTa
     },
   };
 }
-
