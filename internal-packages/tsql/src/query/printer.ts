@@ -269,8 +269,10 @@ export class ClickHousePrinter {
 
   private visitSelectQuery(node: SelectQuery): string {
     // Determine if this is a top-level query
-    const partOfSelectUnion = this.stack.length >= 2 && this.isSelectSetQuery(this.stack[this.stack.length - 2]);
-    const isTopLevelQuery = this.stack.length <= 1 || (this.stack.length === 2 && partOfSelectUnion);
+    const partOfSelectUnion =
+      this.stack.length >= 2 && this.isSelectSetQuery(this.stack[this.stack.length - 2]);
+    const isTopLevelQuery =
+      this.stack.length <= 1 || (this.stack.length === 2 && partOfSelectUnion);
 
     // Clear table contexts for top-level queries (subqueries inherit parent context)
     if (isTopLevelQuery) {
@@ -386,7 +388,9 @@ export class ClickHousePrinter {
     // Add LIMIT BY
     if (node.limit_by) {
       const limitByExprs = node.limit_by.exprs.map((e) => this.visit(e)).join(", ");
-      const offsetPart = node.limit_by.offset_value ? ` OFFSET ${this.visit(node.limit_by.offset_value)}` : "";
+      const offsetPart = node.limit_by.offset_value
+        ? ` OFFSET ${this.visit(node.limit_by.offset_value)}`
+        : "";
       clauses.push(`LIMIT ${this.visit(node.limit_by.n)}${offsetPart} BY ${limitByExprs}`);
     }
 
@@ -472,7 +476,9 @@ export class ClickHousePrinter {
         // Placeholder - visit inner expression
         joinStrings.push(this.visit(tableExpr));
       } else {
-        throw new QueryError(`Unsupported table expression type: ${(tableExpr as Expression).expression_type}`);
+        throw new QueryError(
+          `Unsupported table expression type: ${(tableExpr as Expression).expression_type}`
+        );
       }
     }
 
@@ -649,20 +655,32 @@ export class ClickHousePrinter {
     switch (node.op) {
       case CompareOperationOp.Eq:
         // Handle NULL comparison
-        if ((node.right as Constant).expression_type === "constant" && (node.right as Constant).value === null) {
+        if (
+          (node.right as Constant).expression_type === "constant" &&
+          (node.right as Constant).value === null
+        ) {
           return `isNull(${left})`;
         }
-        if ((node.left as Constant).expression_type === "constant" && (node.left as Constant).value === null) {
+        if (
+          (node.left as Constant).expression_type === "constant" &&
+          (node.left as Constant).value === null
+        ) {
           return `isNull(${right})`;
         }
         return `equals(${left}, ${right})`;
 
       case CompareOperationOp.NotEq:
         // Handle NULL comparison
-        if ((node.right as Constant).expression_type === "constant" && (node.right as Constant).value === null) {
+        if (
+          (node.right as Constant).expression_type === "constant" &&
+          (node.right as Constant).value === null
+        ) {
           return `isNotNull(${left})`;
         }
-        if ((node.left as Constant).expression_type === "constant" && (node.left as Constant).value === null) {
+        if (
+          (node.left as Constant).expression_type === "constant" &&
+          (node.left as Constant).value === null
+        ) {
           return `isNotNull(${right})`;
         }
         return `notEquals(${left}, ${right})`;
@@ -1054,4 +1072,3 @@ export function printToClickHouse(
   const printer = new ClickHousePrinter(context, options);
   return printer.print(node);
 }
-
