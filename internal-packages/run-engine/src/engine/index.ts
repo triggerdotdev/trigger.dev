@@ -324,13 +324,8 @@ export class RunEngine {
 
     this.batchQueue = new BatchQueue({
       redis: {
-        host: options.batchQueue?.redis.host ?? "localhost",
-        port: options.batchQueue?.redis.port ?? 6379,
-        username: options.batchQueue?.redis.username,
-        password: options.batchQueue?.redis.password,
         keyPrefix: `${options.batchQueue?.redis.keyPrefix ?? ""}batch-queue:`,
-        enableAutoPipelining: options.batchQueue?.redis.enableAutoPipelining ?? true,
-        tls: options.batchQueue?.redis.tls !== undefined,
+        ...options.batchQueue?.redis,
       },
       drr: {
         quantum: options.batchQueue?.drr?.quantum ?? 5,

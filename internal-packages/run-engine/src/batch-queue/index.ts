@@ -45,7 +45,7 @@ export class BatchQueue {
   private fairQueue: FairQueue<typeof BatchItemPayloadSchema>;
   private completionTracker: BatchCompletionTracker;
   private logger: Logger;
-  private concurrencyRedis: import("@internal/redis").Redis;
+  private concurrencyRedis: Redis;
   private defaultConcurrency: number;
 
   private processItemCallback?: ProcessBatchItemCallback;
@@ -91,22 +91,11 @@ export class BatchQueue {
       },
     });
 
-    // Create DRR scheduler
-    const redisOptions: RedisOptions = {
-      host: options.redis.host,
-      port: options.redis.port,
-      username: options.redis.username,
-      password: options.redis.password,
-      keyPrefix: options.redis.keyPrefix,
-      enableAutoPipelining: options.redis.enableAutoPipelining,
-      ...(options.redis.tls ? { tls: {} } : {}),
-    };
-
     // Create a separate Redis client for concurrency lookups
-    this.concurrencyRedis = createRedisClient(redisOptions);
+    this.concurrencyRedis = createRedisClient(options.redis);
 
     const scheduler = new DRRScheduler({
-      redis: redisOptions,
+      redis: options.redis,
       keys: keyProducer,
       quantum: options.drr.quantum,
       maxDeficit: options.drr.maxDeficit,
@@ -118,7 +107,7 @@ export class BatchQueue {
 
     // Create FairQueue with telemetry and environment-based concurrency limiting
     const fairQueueOptions: FairQueueOptions<typeof BatchItemPayloadSchema> = {
-      redis: redisOptions,
+      redis: options.redis,
       keys: keyProducer,
       scheduler,
       payloadSchema: BatchItemPayloadSchema,
@@ -161,7 +150,7 @@ export class BatchQueue {
 
     // Create completion tracker
     this.completionTracker = new BatchCompletionTracker({
-      redis: redisOptions,
+      redis: options.redis,
       logger: {
         debug: (msg, ctx) => this.logger.debug(msg, ctx),
         info: (msg, ctx) => this.logger.info(msg, ctx),
@@ -599,15 +588,18 @@ export class BatchQueue {
         // For inline payloads, store the full payload - it's under the offload threshold anyway
         const payloadStr =
           typeof item.payload === "string" ? item.payload : JSON.stringify(item.payload);
+
         processedCount = await this.completionTracker.recordFailure(batchId, {
           index: itemIndex,
           taskIdentifier: item.task,
           payload: payloadStr,
-          options: item.options as Record<string, unknown>,
+          options: item.options,
           error: result.error,
           errorCode: result.errorCode,
         });
+
         this.itemsFailedCounter?.add(1, { envId: meta.environmentId, errorCode: result.errorCode });
+
         this.logger.error("Batch item processing failed", {
           batchId,
           itemIndex,
@@ -621,14 +613,16 @@ export class BatchQueue {
       // For offloaded payloads, payload is an R2 path; for inline payloads, store full payload
       const payloadStr =
         typeof item.payload === "string" ? item.payload : JSON.stringify(item.payload);
+
       processedCount = await this.completionTracker.recordFailure(batchId, {
         index: itemIndex,
         taskIdentifier: item.task,
         payload: payloadStr,
-        options: item.options as Record<string, unknown>,
+        options: item.options,
         error: error instanceof Error ? error.message : String(error),
         errorCode: "UNEXPECTED_ERROR",
       });
+
       this.itemsFailedCounter?.add(1, { envId: meta.environmentId, errorCode: "UNEXPECTED_ERROR" });
       this.logger.error("Unexpected error processing batch item", {
         batchId,

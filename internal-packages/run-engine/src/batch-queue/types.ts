@@ -3,6 +3,7 @@ import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { Logger, LogLevel } from "@trigger.dev/core/logger";
 import { GlobalRateLimiter } from "@trigger.dev/redis-worker";
 import { Meter, Tracer } from "@internal/tracing";
+import { RedisOptions } from "@internal/redis";
 
 // ============================================================================
 // Batch Item Schemas
@@ -188,15 +189,7 @@ export type CompleteBatchResult = {
  */
 export type BatchQueueOptions = {
   /** Redis connection options */
-  redis: {
-    host: string;
-    port: number;
-    username?: string;
-    password?: string;
-    keyPrefix?: string;
-    tls?: boolean;
-    enableAutoPipelining?: boolean;
-  };
+  redis: RedisOptions;
   /** DRR configuration */
   drr: DRRConfig;
   /** Number of consumer loops to run */
