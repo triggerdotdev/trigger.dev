@@ -495,29 +495,32 @@ export class ClickHousePrinter {
 
   /**
    * Create a WHERE clause expression for tenant isolation
+   * Note: We use just the column name without table prefix since ClickHouse
+   * requires the actual table name (task_runs_v2), not the TSQL alias (task_runs)
    */
-  private createTenantGuard(tableSchema: TableSchema, tableAlias: string): And {
+  private createTenantGuard(tableSchema: TableSchema, _tableAlias: string): And {
     const { tenantColumns } = tableSchema;
 
     // Create equality comparisons for each tenant column
+    // Use just the column name - ClickHouse will resolve it correctly
     const orgGuard: CompareOperation = {
       expression_type: "compare_operation",
       op: CompareOperationOp.Eq,
-      left: { expression_type: "field", chain: [tableAlias, tenantColumns.organizationId] } as Field,
+      left: { expression_type: "field", chain: [tenantColumns.organizationId] } as Field,
       right: { expression_type: "constant", value: this.context.organizationId } as Constant,
     };
 
     const projectGuard: CompareOperation = {
       expression_type: "compare_operation",
       op: CompareOperationOp.Eq,
-      left: { expression_type: "field", chain: [tableAlias, tenantColumns.projectId] } as Field,
+      left: { expression_type: "field", chain: [tenantColumns.projectId] } as Field,
       right: { expression_type: "constant", value: this.context.projectId } as Constant,
     };
 
     const envGuard: CompareOperation = {
       expression_type: "compare_operation",
       op: CompareOperationOp.Eq,
-      left: { expression_type: "field", chain: [tableAlias, tenantColumns.environmentId] } as Field,
+      left: { expression_type: "field", chain: [tenantColumns.environmentId] } as Field,
       right: { expression_type: "constant", value: this.context.environmentId } as Constant,
     };
 

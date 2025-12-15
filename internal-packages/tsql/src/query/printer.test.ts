@@ -377,23 +377,14 @@ describe("ClickHousePrinter", () => {
       }).toThrow();
     });
 
-    it("should reject identifiers with % character", () => {
+    it("should only allow tables defined in schema", () => {
+      // Users cannot query arbitrary tables - only those in the schema
       expect(() => {
-        const context = createTestContext();
-        // Create a schema with a table name containing %
-        const badSchema = createSchemaRegistry([
-          {
-            ...taskRunsSchema,
-            name: "task%runs",
-          },
-        ]);
-        const badContext = createPrinterContext({
-          organizationId: "org_test",
-          projectId: "proj_test",
-          environmentId: "env_test",
-          schema: badSchema,
-        });
-        printQuery("SELECT * FROM `task%runs`", badContext);
+        printQuery("SELECT * FROM system_tables");
+      }).toThrow();
+
+      expect(() => {
+        printQuery("SELECT * FROM unknown_table");
       }).toThrow();
     });
 

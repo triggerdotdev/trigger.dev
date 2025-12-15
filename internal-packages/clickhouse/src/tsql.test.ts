@@ -1,0 +1,474 @@
+import { clickhouseTest } from "@internal/testcontainers";
+import { z } from "zod";
+import { ClickhouseClient } from "./client/client.js";
+import { executeTSQL, createTSQLExecutor, type TableSchema } from "./client/tsql.js";
+import { insertTaskRuns } from "./taskRuns.js";
+import { column } from "@internal/tsql";
+
+/**
+ * Schema definition for task_runs table used in TSQL tests
+ */
+const taskRunsSchema: TableSchema = {
+  name: "task_runs",
+  clickhouseName: "trigger_dev.task_runs_v2",
+  columns: {
+    run_id: { name: "run_id", ...column("String") },
+    friendly_id: { name: "friendly_id", ...column("String") },
+    status: { name: "status", ...column("String") },
+    task_identifier: { name: "task_identifier", ...column("String") },
+    queue: { name: "queue", ...column("String") },
+    environment_id: { name: "environment_id", ...column("String") },
+    environment_type: { name: "environment_type", ...column("String") },
+    organization_id: { name: "organization_id", ...column("String") },
+    project_id: { name: "project_id", ...column("String") },
+    created_at: { name: "created_at", ...column("DateTime") },
+    updated_at: { name: "updated_at", ...column("DateTime") },
+    is_test: { name: "is_test", ...column("Bool") },
+    tags: { name: "tags", ...column("Array(String)") },
+  },
+  tenantColumns: {
+    organizationId: "organization_id",
+    projectId: "project_id",
+    environmentId: "environment_id",
+  },
+};
+
+const defaultTaskRun = {
+  environment_id: "env_tenant1",
+  environment_type: "DEVELOPMENT",
+  organization_id: "org_tenant1",
+  project_id: "proj_tenant1",
+  run_id: `run_${Math.random().toString(36).slice(2)}`,
+  friendly_id: `friendly_${Math.random().toString(36).slice(2)}`,
+  attempt: 1,
+  engine: "V2",
+  status: "PENDING",
+  task_identifier: "my-task",
+  queue: "my-queue",
+  schedule_id: "",
+  batch_id: "",
+  created_at: Date.now(),
+  updated_at: Date.now(),
+  tags: [] as string[],
+  output: null,
+  error: null,
+  usage_duration_ms: 0,
+  cost_in_cents: 0,
+  base_cost_in_cents: 0,
+  task_version: "",
+  sdk_version: "",
+  cli_version: "",
+  machine_preset: "",
+  is_test: false,
+  span_id: "",
+  trace_id: "",
+  idempotency_key: "",
+  expiration_ttl: "",
+  root_run_id: "",
+  parent_run_id: "",
+  depth: 0,
+  concurrency_key: "",
+  bulk_action_group_ids: [] as string[],
+  _version: "1",
+};
+
+/**
+ * Helper to create test task run data
+ */
+function createTaskRun(overrides: Partial<typeof defaultTaskRun> = {}) {
+  return {
+    ...defaultTaskRun,
+    ...overrides,
+  };
+}
+
+describe("TSQL Integration Tests", () => {
+  clickhouseTest("should execute a simple SELECT query", async ({ clickhouseContainer }) => {
+    const client = new ClickhouseClient({
+      name: "test",
+      url: clickhouseContainer.getConnectionUrl(),
+    });
+
+    const insert = insertTaskRuns(client, { async_insert: 0 });
+
+    // Insert test data
+    const [insertError] = await insert([
+      createTaskRun({ run_id: "run_test1", status: "COMPLETED_SUCCESSFULLY" }),
+      createTaskRun({ run_id: "run_test2", status: "PENDING" }),
+      createTaskRun({ run_id: "run_test3", status: "COMPLETED_SUCCESSFULLY" }),
+    ]);
+    expect(insertError).toBeNull();
+
+    // Execute TSQL query
+    const [error, rows] = await executeTSQL(client, {
+      name: "test-simple-select",
+      query: "SELECT run_id, status FROM task_runs",
+      schema: z.object({ run_id: z.string(), status: z.string() }),
+      organizationId: "org_tenant1",
+      projectId: "proj_tenant1",
+      environmentId: "env_tenant1",
+      tableSchema: [taskRunsSchema],
+    });
+
+    expect(error).toBeNull();
+    expect(rows).toHaveLength(3);
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ run_id: "run_test1", status: "COMPLETED_SUCCESSFULLY" }),
+        expect.objectContaining({ run_id: "run_test2", status: "PENDING" }),
+        expect.objectContaining({ run_id: "run_test3", status: "COMPLETED_SUCCESSFULLY" }),
+      ])
+    );
+  });
+
+  clickhouseTest("should filter with WHERE clause", async ({ clickhouseContainer }) => {
+    const client = new ClickhouseClient({
+      name: "test",
+      url: clickhouseContainer.getConnectionUrl(),
+    });
+
+    const insert = insertTaskRuns(client, { async_insert: 0 });
+
+    await insert([
+      createTaskRun({ run_id: "run_filter1", status: "COMPLETED_SUCCESSFULLY" }),
+      createTaskRun({ run_id: "run_filter2", status: "PENDING" }),
+      createTaskRun({ run_id: "run_filter3", status: "COMPLETED_SUCCESSFULLY" }),
+    ]);
+
+    const [error, rows] = await executeTSQL(client, {
+      name: "test-where-clause",
+      query: "SELECT run_id, status FROM task_runs WHERE status = 'COMPLETED_SUCCESSFULLY'",
+      schema: z.object({ run_id: z.string(), status: z.string() }),
+      organizationId: "org_tenant1",
+      projectId: "proj_tenant1",
+      environmentId: "env_tenant1",
+      tableSchema: [taskRunsSchema],
+    });
+
+    expect(error).toBeNull();
+    expect(rows).toHaveLength(2);
+    expect(rows?.every((r) => r.status === "COMPLETED_SUCCESSFULLY")).toBe(true);
+  });
+
+  clickhouseTest("should enforce tenant isolation", async ({ clickhouseContainer }) => {
+    const client = new ClickhouseClient({
+      name: "test",
+      url: clickhouseContainer.getConnectionUrl(),
+    });
+
+    const insert = insertTaskRuns(client, { async_insert: 0 });
+
+    // Insert data for two different tenants
+    await insert([
+      createTaskRun({
+        run_id: "run_tenant1_a",
+        organization_id: "org_tenant1",
+        project_id: "proj_tenant1",
+        environment_id: "env_tenant1",
+      }),
+      createTaskRun({
+        run_id: "run_tenant1_b",
+        organization_id: "org_tenant1",
+        project_id: "proj_tenant1",
+        environment_id: "env_tenant1",
+      }),
+      createTaskRun({
+        run_id: "run_tenant2_a",
+        organization_id: "org_tenant2",
+        project_id: "proj_tenant2",
+        environment_id: "env_tenant2",
+      }),
+      createTaskRun({
+        run_id: "run_tenant2_b",
+        organization_id: "org_tenant2",
+        project_id: "proj_tenant2",
+        environment_id: "env_tenant2",
+      }),
+    ]);
+
+    // Query as tenant1 - should only see tenant1's data
+    const [error1, rows1] = await executeTSQL(client, {
+      name: "test-tenant-isolation-1",
+      query: "SELECT run_id FROM task_runs",
+      schema: z.object({ run_id: z.string() }),
+      organizationId: "org_tenant1",
+      projectId: "proj_tenant1",
+      environmentId: "env_tenant1",
+      tableSchema: [taskRunsSchema],
+    });
+
+    expect(error1).toBeNull();
+    expect(rows1).toHaveLength(2);
+    expect(rows1?.map((r) => r.run_id).sort()).toEqual(["run_tenant1_a", "run_tenant1_b"]);
+
+    // Query as tenant2 - should only see tenant2's data
+    const [error2, rows2] = await executeTSQL(client, {
+      name: "test-tenant-isolation-2",
+      query: "SELECT run_id FROM task_runs",
+      schema: z.object({ run_id: z.string() }),
+      organizationId: "org_tenant2",
+      projectId: "proj_tenant2",
+      environmentId: "env_tenant2",
+      tableSchema: [taskRunsSchema],
+    });
+
+    expect(error2).toBeNull();
+    expect(rows2).toHaveLength(2);
+    expect(rows2?.map((r) => r.run_id).sort()).toEqual(["run_tenant2_a", "run_tenant2_b"]);
+  });
+
+  clickhouseTest(
+    "should not allow cross-tenant access even with malicious WHERE",
+    async ({ clickhouseContainer }) => {
+      const client = new ClickhouseClient({
+        name: "test",
+        url: clickhouseContainer.getConnectionUrl(),
+      });
+
+      const insert = insertTaskRuns(client, { async_insert: 0 });
+
+      await insert([
+        createTaskRun({
+          run_id: "run_secret",
+          organization_id: "org_victim",
+          project_id: "proj_victim",
+          environment_id: "env_victim",
+          status: "SECRET_DATA",
+        }),
+        createTaskRun({
+          run_id: "run_attacker",
+          organization_id: "org_attacker",
+          project_id: "proj_attacker",
+          environment_id: "env_attacker",
+        }),
+      ]);
+
+      // Attacker tries to access victim's data with OR 1=1
+      const [error, rows] = await executeTSQL(client, {
+        name: "test-cross-tenant-attack",
+        query: "SELECT run_id, status FROM task_runs WHERE status = 'COMPLETED' OR 1=1",
+        schema: z.object({ run_id: z.string(), status: z.string() }),
+        organizationId: "org_attacker",
+        projectId: "proj_attacker",
+        environmentId: "env_attacker",
+        tableSchema: [taskRunsSchema],
+      });
+
+      expect(error).toBeNull();
+      // Should only get attacker's own data, not victim's
+      expect(rows).toHaveLength(1);
+      expect(rows?.[0].run_id).toBe("run_attacker");
+      expect(rows?.find((r) => r.run_id === "run_secret")).toBeUndefined();
+    }
+  );
+
+  clickhouseTest("should handle aggregations", async ({ clickhouseContainer }) => {
+    const client = new ClickhouseClient({
+      name: "test",
+      url: clickhouseContainer.getConnectionUrl(),
+    });
+
+    const insert = insertTaskRuns(client, { async_insert: 0 });
+
+    await insert([
+      createTaskRun({ run_id: "run_agg1", status: "COMPLETED_SUCCESSFULLY" }),
+      createTaskRun({ run_id: "run_agg2", status: "COMPLETED_SUCCESSFULLY" }),
+      createTaskRun({ run_id: "run_agg3", status: "PENDING" }),
+      createTaskRun({ run_id: "run_agg4", status: "FAILED" }),
+    ]);
+
+    const [error, rows] = await executeTSQL(client, {
+      name: "test-aggregation",
+      query:
+        "SELECT status, count(*) as cnt FROM task_runs GROUP BY status ORDER BY cnt DESC, status ASC",
+      schema: z.object({ status: z.string(), cnt: z.coerce.number() }),
+      organizationId: "org_tenant1",
+      projectId: "proj_tenant1",
+      environmentId: "env_tenant1",
+      tableSchema: [taskRunsSchema],
+    });
+
+    expect(error).toBeNull();
+    expect(rows).toHaveLength(3);
+    expect(rows?.[0]).toEqual({ status: "COMPLETED_SUCCESSFULLY", cnt: 2 });
+    // The remaining rows have cnt=1, check they're both present
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        { status: "PENDING", cnt: 1 },
+        { status: "FAILED", cnt: 1 },
+      ])
+    );
+  });
+
+  clickhouseTest("should handle ORDER BY and LIMIT", async ({ clickhouseContainer }) => {
+    const client = new ClickhouseClient({
+      name: "test",
+      url: clickhouseContainer.getConnectionUrl(),
+    });
+
+    const insert = insertTaskRuns(client, { async_insert: 0 });
+
+    const now = Date.now();
+    await insert([
+      createTaskRun({ run_id: "run_order1", created_at: now - 3000 }),
+      createTaskRun({ run_id: "run_order2", created_at: now - 1000 }),
+      createTaskRun({ run_id: "run_order3", created_at: now - 2000 }),
+    ]);
+
+    const [error, rows] = await executeTSQL(client, {
+      name: "test-order-limit",
+      query: "SELECT run_id FROM task_runs ORDER BY created_at DESC LIMIT 2",
+      schema: z.object({ run_id: z.string() }),
+      organizationId: "org_tenant1",
+      projectId: "proj_tenant1",
+      environmentId: "env_tenant1",
+      tableSchema: [taskRunsSchema],
+    });
+
+    expect(error).toBeNull();
+    expect(rows).toHaveLength(2);
+    expect(rows?.[0].run_id).toBe("run_order2"); // Most recent
+    expect(rows?.[1].run_id).toBe("run_order3"); // Second most recent
+  });
+
+  clickhouseTest("should reject unknown tables", async ({ clickhouseContainer }) => {
+    const client = new ClickhouseClient({
+      name: "test",
+      url: clickhouseContainer.getConnectionUrl(),
+    });
+
+    const [error, rows] = await executeTSQL(client, {
+      name: "test-unknown-table",
+      query: "SELECT * FROM unknown_table",
+      schema: z.object({ id: z.string() }),
+      organizationId: "org_tenant1",
+      projectId: "proj_tenant1",
+      environmentId: "env_tenant1",
+      tableSchema: [taskRunsSchema],
+    });
+
+    expect(error).not.toBeNull();
+    expect(error?.message).toContain("unknown_table");
+    expect(rows).toBeNull();
+  });
+
+  clickhouseTest("should work with createTSQLExecutor", async ({ clickhouseContainer }) => {
+    const client = new ClickhouseClient({
+      name: "test",
+      url: clickhouseContainer.getConnectionUrl(),
+    });
+
+    const insert = insertTaskRuns(client, { async_insert: 0 });
+
+    await insert([
+      createTaskRun({ run_id: "run_executor1", status: "COMPLETED_SUCCESSFULLY" }),
+      createTaskRun({ run_id: "run_executor2", status: "PENDING" }),
+    ]);
+
+    // Create a reusable executor
+    const tsql = createTSQLExecutor(client, [taskRunsSchema]);
+
+    const [error, rows] = await tsql.execute({
+      name: "test-executor",
+      query: "SELECT run_id, status FROM task_runs WHERE status = 'PENDING'",
+      schema: z.object({ run_id: z.string(), status: z.string() }),
+      organizationId: "org_tenant1",
+      projectId: "proj_tenant1",
+      environmentId: "env_tenant1",
+    });
+
+    expect(error).toBeNull();
+    expect(rows).toHaveLength(1);
+    expect(rows?.[0]).toEqual({ run_id: "run_executor2", status: "PENDING" });
+  });
+
+  clickhouseTest("should handle string injection attempts", async ({ clickhouseContainer }) => {
+    const client = new ClickhouseClient({
+      name: "test",
+      url: clickhouseContainer.getConnectionUrl(),
+    });
+
+    const insert = insertTaskRuns(client, { async_insert: 0 });
+
+    await insert([
+      createTaskRun({ run_id: "run_inject1", status: "NORMAL" }),
+      createTaskRun({ run_id: "run_inject2", status: "DROP TABLE task_runs" }),
+    ]);
+
+    // Query with a "malicious" value that looks like SQL
+    const [error, rows] = await executeTSQL(client, {
+      name: "test-injection",
+      query: "SELECT run_id, status FROM task_runs WHERE status = 'DROP TABLE task_runs'",
+      schema: z.object({ run_id: z.string(), status: z.string() }),
+      organizationId: "org_tenant1",
+      projectId: "proj_tenant1",
+      environmentId: "env_tenant1",
+      tableSchema: [taskRunsSchema],
+    });
+
+    expect(error).toBeNull();
+    // Should find the row with the literal string value, not execute SQL
+    expect(rows).toHaveLength(1);
+    expect(rows?.[0].status).toBe("DROP TABLE task_runs");
+  });
+
+  clickhouseTest("should handle IN queries", async ({ clickhouseContainer }) => {
+    const client = new ClickhouseClient({
+      name: "test",
+      url: clickhouseContainer.getConnectionUrl(),
+    });
+
+    const insert = insertTaskRuns(client, { async_insert: 0 });
+
+    await insert([
+      createTaskRun({ run_id: "run_in1", status: "COMPLETED_SUCCESSFULLY" }),
+      createTaskRun({ run_id: "run_in2", status: "PENDING" }),
+      createTaskRun({ run_id: "run_in3", status: "FAILED" }),
+      createTaskRun({ run_id: "run_in4", status: "CANCELLED" }),
+    ]);
+
+    const [error, rows] = await executeTSQL(client, {
+      name: "test-in-query",
+      query:
+        "SELECT run_id, status FROM task_runs WHERE status IN ('COMPLETED_SUCCESSFULLY', 'FAILED')",
+      schema: z.object({ run_id: z.string(), status: z.string() }),
+      organizationId: "org_tenant1",
+      projectId: "proj_tenant1",
+      environmentId: "env_tenant1",
+      tableSchema: [taskRunsSchema],
+    });
+
+    expect(error).toBeNull();
+    expect(rows).toHaveLength(2);
+    expect(rows?.map((r) => r.status).sort()).toEqual(["COMPLETED_SUCCESSFULLY", "FAILED"]);
+  });
+
+  clickhouseTest("should handle LIKE queries", async ({ clickhouseContainer }) => {
+    const client = new ClickhouseClient({
+      name: "test",
+      url: clickhouseContainer.getConnectionUrl(),
+    });
+
+    const insert = insertTaskRuns(client, { async_insert: 0 });
+
+    await insert([
+      createTaskRun({ run_id: "run_like1", task_identifier: "email/send" }),
+      createTaskRun({ run_id: "run_like2", task_identifier: "email/receive" }),
+      createTaskRun({ run_id: "run_like3", task_identifier: "sms/send" }),
+    ]);
+
+    const [error, rows] = await executeTSQL(client, {
+      name: "test-like-query",
+      query: "SELECT run_id, task_identifier FROM task_runs WHERE task_identifier LIKE 'email%'",
+      schema: z.object({ run_id: z.string(), task_identifier: z.string() }),
+      organizationId: "org_tenant1",
+      projectId: "proj_tenant1",
+      environmentId: "env_tenant1",
+      tableSchema: [taskRunsSchema],
+    });
+
+    expect(error).toBeNull();
+    expect(rows).toHaveLength(2);
+    expect(rows?.every((r) => r.task_identifier.startsWith("email"))).toBe(true);
+  });
+});
