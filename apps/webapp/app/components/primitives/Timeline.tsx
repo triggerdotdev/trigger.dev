@@ -75,12 +75,24 @@ export function MousePositionProvider({ children }: { children: ReactNode }) {
   }, [computeFromClient]);
 
   useEffect(() => {
-    if (position === undefined || !lastClient.current) return;
+    if (position === undefined || !lastClient.current || !ref.current) return;
+
+    const isAnimating = () => {
+      if (!ref.current) return false;
+      const styles = window.getComputedStyle(ref.current);
+      return styles.transition !== "none" || styles.animation !== "none";
+    };
 
     const tick = () => {
       const lc = lastClient.current;
-      if (lc) computeFromClient(lc.clientX, lc.clientY);
-      rafId.current = requestAnimationFrame(tick);
+      if (lc) {
+        computeFromClient(lc.clientX, lc.clientY);
+        if (isAnimating()) {
+          rafId.current = requestAnimationFrame(tick);
+        } else {
+          rafId.current = null;
+        }
+      }
     };
 
     rafId.current = requestAnimationFrame(tick);
