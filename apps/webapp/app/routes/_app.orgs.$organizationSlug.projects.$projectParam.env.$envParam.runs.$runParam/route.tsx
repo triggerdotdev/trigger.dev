@@ -645,6 +645,9 @@ function TasksTreeView({
   const [showQueueTime, setShowQueueTime] = useState(false);
   const [scale, setScale] = useState(0);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+  const [isScrolling, setIsScrolling] = useState(false);
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingHoverIdRef = useRef<string | null>(null);
   const parentRef = useRef<HTMLDivElement>(null);
   const treeScrollRef = useRef<HTMLDivElement>(null);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
@@ -655,6 +658,27 @@ function TasksTreeView({
 
   const displayEvents = events;
   const queuedTime = showQueueTime ? undefined : queuedDuration;
+
+  const handleHoverChange = useCallback((nodeId: string | null) => {
+    pendingHoverIdRef.current = nodeId;
+    if (!isScrolling) {
+      setHoveredNodeId(nodeId);
+    }
+  }, [isScrolling]);
+
+  const handleScroll = useCallback((scrollTop: number) => {
+    setIsScrolling(true);
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current);
+    }
+    scrollTimeoutRef.current = setTimeout(() => {
+      setIsScrolling(false);
+      // Apply the pending hover ID when scrolling stops
+      if (pendingHoverIdRef.current !== null) {
+        setHoveredNodeId(pendingHoverIdRef.current);
+      }
+    }, 150);
+  }, []);
 
   const {
     nodes,
@@ -788,8 +812,8 @@ function TasksTreeView({
                       onClick={() => {
                         selectNode(node.id);
                       }}
-                      onMouseEnter={() => setHoveredNodeId(node.id)}
-                      onMouseLeave={() => setHoveredNodeId(null)}
+                      onMouseEnter={() => handleHoverChange(node.id)}
+                      onMouseLeave={() => handleHoverChange(null)}
                     >
                     <div className="flex h-8 items-center">
                       {Array.from({ length: node.level }).map((_, index) => (
@@ -849,6 +873,7 @@ function TasksTreeView({
               );
               }}
               onScroll={(scrollTop) => {
+                handleScroll(scrollTop);
                 //sync the scroll to the tree
                 if (timelineScrollRef.current) {
                   timelineScrollRef.current.scrollTop = scrollTop;
@@ -882,6 +907,8 @@ function TasksTreeView({
             toggleNodeSelection={toggleNodeSelection}
             hoveredNodeId={hoveredNodeId}
             setHoveredNodeId={setHoveredNodeId}
+            handleHoverChange={handleHoverChange}
+            handleScroll={handleScroll}
           />
         </ResizablePanel>
       </ResizablePanelGroup>
@@ -949,6 +976,8 @@ type TimelineViewProps = Pick<
   treeScrollRef: React.RefObject<HTMLDivElement>;
   hoveredNodeId: string | null;
   setHoveredNodeId: (nodeId: string | null) => void;
+  handleHoverChange: (nodeId: string | null) => void;
+  handleScroll: (scrollTop: number) => void;
 };
 
 const tickCount = 5;
@@ -970,6 +999,8 @@ function TimelineView({
   queuedDuration,
   hoveredNodeId,
   setHoveredNodeId,
+  handleHoverChange,
+  handleScroll,
 }: TimelineViewProps) {
   const timelineContainerRef = useRef<HTMLDivElement>(null);
   const initialTimelineDimensions = useInitialDimensions(timelineContainerRef);
@@ -1132,8 +1163,8 @@ function TimelineView({
                     onClick={(e) => {
                       toggleNodeSelection(node.id);
                     }}
-                    onMouseEnter={() => setHoveredNodeId(node.id)}
-                    onMouseLeave={() => setHoveredNodeId(null)}
+                    onMouseEnter={() => handleHoverChange(node.id)}
+                    onMouseLeave={() => handleHoverChange(null)}
                   >
                     {node.data.level === "TRACE" ? (
                       <>
@@ -1239,6 +1270,7 @@ function TimelineView({
                 );
               }}
               onScroll={(scrollTop) => {
+                handleScroll(scrollTop);
                 //sync the scroll to the tree
                 if (treeScrollRef.current) {
                   treeScrollRef.current.scrollTop = scrollTop;
