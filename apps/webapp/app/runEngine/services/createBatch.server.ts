@@ -37,7 +37,7 @@ export class CreateBatchService extends WithRunEngine {
   private readonly validator: DefaultTriggerTaskValidator;
 
   constructor(protected readonly _prisma: PrismaClientOrTransaction = prisma) {
-    super({ prisma });
+    super({ prisma: _prisma });
 
     this.queueConcern = new DefaultQueueManager(this._prisma, this._engine);
     this.validator = new DefaultTriggerTaskValidator();

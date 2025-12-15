@@ -569,4 +569,93 @@ describe("BatchQueue", () => {
       }
     });
   });
+
+  describe("completion callback error handling", () => {
+    redisTest(
+      "should preserve Redis data when completion callback throws an error",
+      async ({ redisContainer }) => {
+        const queue = createBatchQueue(redisContainer, { startConsumers: true });
+        let callbackCallCount = 0;
+        let lastCompletionResult: CompleteBatchResult | null = null;
+
+        try {
+          queue.onProcessItem(async ({ itemIndex }) => {
+            return { success: true, runId: `run_${itemIndex}` };
+          });
+
+          queue.onBatchComplete(async (result) => {
+            callbackCallCount++;
+            lastCompletionResult = result;
+            // Simulate database failure on first attempt
+            if (callbackCallCount === 1) {
+              throw new Error("Database temporarily unavailable");
+            }
+          });
+
+          await queue.initializeBatch(createInitOptions("batch1", "env1", 3));
+          await enqueueItems(queue, "batch1", "env1", createBatchItems(3));
+
+          // Wait for completion callback to be called (and fail)
+          await vi.waitFor(
+            () => {
+              expect(callbackCallCount).toBeGreaterThanOrEqual(1);
+            },
+            { timeout: 5000 }
+          );
+
+          // Redis data should still exist after callback failure
+          const meta = await queue.getBatchMeta("batch1");
+          expect(meta).not.toBeNull();
+          expect(meta?.batchId).toBe("batch1");
+
+          // Verify the completion result was correct
+          expect(lastCompletionResult).not.toBeNull();
+          expect(lastCompletionResult!.batchId).toBe("batch1");
+          expect(lastCompletionResult!.successfulRunCount).toBe(3);
+          expect(lastCompletionResult!.runIds).toHaveLength(3);
+        } finally {
+          await queue.close();
+        }
+      }
+    );
+
+    redisTest(
+      "should cleanup Redis data when completion callback succeeds",
+      async ({ redisContainer }) => {
+        const queue = createBatchQueue(redisContainer, { startConsumers: true });
+        let completionCalled = false;
+
+        try {
+          queue.onProcessItem(async ({ itemIndex }) => {
+            return { success: true, runId: `run_${itemIndex}` };
+          });
+
+          queue.onBatchComplete(async () => {
+            completionCalled = true;
+            // Callback succeeds - no error thrown
+          });
+
+          await queue.initializeBatch(createInitOptions("batch1", "env1", 3));
+          await enqueueItems(queue, "batch1", "env1", createBatchItems(3));
+
+          // Wait for completion
+          await vi.waitFor(
+            () => {
+              expect(completionCalled).toBe(true);
+            },
+            { timeout: 5000 }
+          );
+
+          // Small delay to ensure cleanup has occurred
+          await new Promise((resolve) => setTimeout(resolve, 100));
+
+          // Redis data should be cleaned up after successful callback
+          const meta = await queue.getBatchMeta("batch1");
+          expect(meta).toBeNull();
+        } finally {
+          await queue.close();
+        }
+      }
+    );
+  });
 });

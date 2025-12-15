@@ -941,23 +941,15 @@ const EnvironmentSchema = z
     BATCH_TRIGGER_WORKER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
 
     // BatchQueue DRR settings (Run Engine v2)
-    BATCH_QUEUE_DRR_QUANTUM: z.coerce.number().int().default(5),
-    BATCH_QUEUE_MAX_DEFICIT: z.coerce.number().int().default(50),
-    BATCH_QUEUE_CONSUMER_COUNT: z.coerce.number().int().optional(),
-    BATCH_QUEUE_CONSUMER_INTERVAL_MS: z.coerce.number().int().optional(),
+    BATCH_QUEUE_DRR_QUANTUM: z.coerce.number().int().default(25),
+    BATCH_QUEUE_MAX_DEFICIT: z.coerce.number().int().default(100),
+    BATCH_QUEUE_CONSUMER_COUNT: z.coerce.number().int().default(3),
+    BATCH_QUEUE_CONSUMER_INTERVAL_MS: z.coerce.number().int().default(50),
     // Global rate limit: max items processed per second across all consumers
     // If not set, no global rate limiting is applied
     BATCH_QUEUE_GLOBAL_RATE_LIMIT: z.coerce.number().int().positive().optional(),
-
-    // Batch rate limits and concurrency by plan type
-    // Rate limit: max items per minute for batch creation
-    BATCH_RATE_LIMIT_FREE: z.coerce.number().int().default(100), // 100 items/min for free
-    BATCH_RATE_LIMIT_PAID: z.coerce.number().int().default(10_000), // 10k items/min for paid
-    BATCH_RATE_LIMIT_ENTERPRISE: z.coerce.number().int().default(100_000), // 100k items/min for enterprise
-    // Processing concurrency: max concurrent batch items being processed
-    BATCH_CONCURRENCY_FREE: z.coerce.number().int().default(1),
-    BATCH_CONCURRENCY_PAID: z.coerce.number().int().default(10),
-    BATCH_CONCURRENCY_ENTERPRISE: z.coerce.number().int().default(50),
+    // Processing concurrency: max concurrent batch items being processed per environment
+    BATCH_CONCURRENCY_DEFAULT_CONCURRENCY: z.coerce.number().int().default(1),
 
     ADMIN_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
     ADMIN_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),

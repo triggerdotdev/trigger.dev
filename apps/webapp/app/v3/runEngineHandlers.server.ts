@@ -796,6 +796,8 @@ export function setupBatchQueueCallbacks() {
         batchId,
         error: error instanceof Error ? error.message : String(error),
       });
+      // Re-throw to preserve Redis data for retry (BatchQueue expects errors to propagate)
+      throw error;
     }
   });
 
