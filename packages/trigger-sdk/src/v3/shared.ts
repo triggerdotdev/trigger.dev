@@ -1557,10 +1557,11 @@ async function executeBatchTwoPhase(
     );
   } catch (error) {
     // Wrap with context about which phase failed
-    throw new BatchTriggerError(
-      `Failed to create batch with ${items.length} items`,
-      { cause: error, phase: "create", itemCount: items.length }
-    );
+    throw new BatchTriggerError(`Failed to create batch with ${items.length} items`, {
+      cause: error,
+      phase: "create",
+      itemCount: items.length,
+    });
   }
 
   // If the batch was cached (idempotent replay), skip streaming items
@@ -1674,9 +1675,14 @@ function isReadableStream<T>(value: unknown): value is ReadableStream<T> {
 }
 
 /**
- * Convert a ReadableStream to an AsyncIterable
+ * Convert a ReadableStream to an AsyncIterable.
+ * Properly cancels the stream when the consumer terminates early.
+ *
+ * @internal Exported for testing purposes
  */
-async function* readableStreamToAsyncIterable<T>(stream: ReadableStream<T>): AsyncIterable<T> {
+export async function* readableStreamToAsyncIterable<T>(
+  stream: ReadableStream<T>
+): AsyncIterable<T> {
   const reader = stream.getReader();
   try {
     while (true) {
@@ -1685,6 +1691,11 @@ async function* readableStreamToAsyncIterable<T>(stream: ReadableStream<T>): Asy
       yield value;
     }
   } finally {
+    try {
+      await reader.cancel();
+    } catch {
+      // Ignore errors - stream might already be errored or closed
+    }
     reader.releaseLock();
   }
 }
