@@ -7,8 +7,6 @@ import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { ResetIdempotencyKeyService } from "~/v3/services/resetIdempotencyKey.server";
 import { v3RunParamsSchema } from "~/utils/pathBuilder";
-import { authenticateApiRequest } from "~/services/apiAuth.server";
-import { environment } from "effect/Differ";
 
 export const resetIdempotencyKeySchema = z.object({
   taskIdentifier: z.string().min(1, "Task identifier is required"),
