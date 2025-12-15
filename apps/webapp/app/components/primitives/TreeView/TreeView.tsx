@@ -423,6 +423,10 @@ export function useTree<TData, TFilterValue>({
           }
           case "Left":
           case "ArrowLeft": {
+            if (e.metaKey) {
+              return;
+            }
+
             e.preventDefault();
 
             const selected = selectedIdFromState(state.nodes);
