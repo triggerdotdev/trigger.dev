@@ -12,19 +12,19 @@ const taskRunsSchema: TableSchema = {
   name: "task_runs",
   clickhouseName: "trigger_dev.task_runs_v2",
   columns: {
-    id: { name: "id", type: "String", ...column("String") },
-    status: { name: "status", type: "String", ...column("String") },
-    task_identifier: { name: "task_identifier", type: "String", ...column("String") },
-    created_at: { name: "created_at", type: "DateTime64", ...column("DateTime64") },
-    updated_at: { name: "updated_at", type: "DateTime64", ...column("DateTime64") },
-    started_at: { name: "started_at", type: "Nullable(DateTime64)", ...column("Nullable(DateTime64)") },
-    completed_at: { name: "completed_at", type: "Nullable(DateTime64)", ...column("Nullable(DateTime64)") },
-    duration_ms: { name: "duration_ms", type: "Nullable(UInt64)", ...column("Nullable(UInt64)") },
-    organization_id: { name: "organization_id", type: "String", ...column("String") },
-    project_id: { name: "project_id", type: "String", ...column("String") },
-    environment_id: { name: "environment_id", type: "String", ...column("String") },
-    queue_name: { name: "queue_name", type: "String", ...column("String") },
-    is_test: { name: "is_test", type: "UInt8", ...column("UInt8") },
+    id: { name: "id", ...column("String") },
+    status: { name: "status", ...column("String") },
+    task_identifier: { name: "task_identifier", ...column("String") },
+    created_at: { name: "created_at", ...column("DateTime64") },
+    updated_at: { name: "updated_at", ...column("DateTime64") },
+    started_at: { name: "started_at", ...column("Nullable(DateTime64)") },
+    completed_at: { name: "completed_at", ...column("Nullable(DateTime64)") },
+    duration_ms: { name: "duration_ms", ...column("Nullable(UInt64)") },
+    organization_id: { name: "organization_id", ...column("String") },
+    project_id: { name: "project_id", ...column("String") },
+    environment_id: { name: "environment_id", ...column("String") },
+    queue_name: { name: "queue_name", ...column("String") },
+    is_test: { name: "is_test", ...column("UInt8") },
   },
   tenantColumns: {
     organizationId: "organization_id",
@@ -37,14 +37,14 @@ const taskEventsSchema: TableSchema = {
   name: "task_events",
   clickhouseName: "trigger_dev.task_events_v2",
   columns: {
-    id: { name: "id", type: "String", ...column("String") },
-    run_id: { name: "run_id", type: "String", ...column("String") },
-    event_type: { name: "event_type", type: "String", ...column("String") },
-    timestamp: { name: "timestamp", type: "DateTime64", ...column("DateTime64") },
-    payload: { name: "payload", type: "String", ...column("String") },
-    organization_id: { name: "organization_id", type: "String", ...column("String") },
-    project_id: { name: "project_id", type: "String", ...column("String") },
-    environment_id: { name: "environment_id", type: "String", ...column("String") },
+    id: { name: "id", ...column("String") },
+    run_id: { name: "run_id", ...column("String") },
+    event_type: { name: "event_type", ...column("String") },
+    timestamp: { name: "timestamp", ...column("DateTime64") },
+    payload: { name: "payload", ...column("String") },
+    organization_id: { name: "organization_id", ...column("String") },
+    project_id: { name: "project_id", ...column("String") },
+    environment_id: { name: "environment_id", ...column("String") },
   },
   tenantColumns: {
     organizationId: "organization_id",
@@ -56,7 +56,9 @@ const taskEventsSchema: TableSchema = {
 /**
  * Helper to create a test context
  */
-function createTestContext(overrides: Partial<Parameters<typeof createPrinterContext>[0]> = {}): PrinterContext {
+function createTestContext(
+  overrides: Partial<Parameters<typeof createPrinterContext>[0]> = {}
+): PrinterContext {
   const schema = createSchemaRegistry([taskRunsSchema, taskEventsSchema]);
   return createPrinterContext({
     organizationId: "org_test123",
@@ -121,14 +123,18 @@ describe("ClickHousePrinter", () => {
     });
 
     it("should print WHERE with multiple conditions", () => {
-      const { sql } = printQuery("SELECT * FROM task_runs WHERE status = 'completed' AND is_test = 0");
+      const { sql } = printQuery(
+        "SELECT * FROM task_runs WHERE status = 'completed' AND is_test = 0"
+      );
 
       expect(sql).toContain("and(");
       expect(sql).toContain("equals(");
     });
 
     it("should print WHERE with OR conditions", () => {
-      const { sql } = printQuery("SELECT * FROM task_runs WHERE status = 'completed' OR status = 'failed'");
+      const { sql } = printQuery(
+        "SELECT * FROM task_runs WHERE status = 'completed' OR status = 'failed'"
+      );
 
       expect(sql).toContain("or(");
     });
@@ -239,13 +245,17 @@ describe("ClickHousePrinter", () => {
     });
 
     it("should print GROUP BY with multiple columns", () => {
-      const { sql } = printQuery("SELECT status, queue_name, count(*) FROM task_runs GROUP BY status, queue_name");
+      const { sql } = printQuery(
+        "SELECT status, queue_name, count(*) FROM task_runs GROUP BY status, queue_name"
+      );
 
       expect(sql).toContain("GROUP BY status, queue_name");
     });
 
     it("should print GROUP BY with HAVING", () => {
-      const { sql } = printQuery("SELECT status, count(*) as cnt FROM task_runs GROUP BY status HAVING cnt > 10");
+      const { sql } = printQuery(
+        "SELECT status, count(*) as cnt FROM task_runs GROUP BY status HAVING cnt > 10"
+      );
 
       expect(sql).toContain("GROUP BY status");
       expect(sql).toContain("HAVING");
@@ -351,7 +361,9 @@ describe("ClickHousePrinter", () => {
 
   describe("SQL injection prevention", () => {
     it("should parameterize string values", () => {
-      const { sql, params } = printQuery("SELECT * FROM task_runs WHERE status = 'DROP TABLE users'");
+      const { sql, params } = printQuery(
+        "SELECT * FROM task_runs WHERE status = 'DROP TABLE users'"
+      );
 
       // The malicious string should be in params, not in SQL
       expect(sql).not.toContain("DROP TABLE");
@@ -528,7 +540,9 @@ describe("ClickHousePrinter", () => {
 
   describe("Pretty printing", () => {
     it("should format SQL with newlines when pretty=true", () => {
-      const ast = parseTSQLSelect("SELECT id, status FROM task_runs WHERE status = 'completed' ORDER BY created_at");
+      const ast = parseTSQLSelect(
+        "SELECT id, status FROM task_runs WHERE status = 'completed' ORDER BY created_at"
+      );
       const context = createTestContext();
       const printer = new ClickHousePrinter(context, { pretty: true });
       const { sql } = printer.print(ast);
@@ -537,7 +551,9 @@ describe("ClickHousePrinter", () => {
     });
 
     it("should produce single-line SQL when pretty=false", () => {
-      const ast = parseTSQLSelect("SELECT id, status FROM task_runs WHERE status = 'completed' ORDER BY created_at");
+      const ast = parseTSQLSelect(
+        "SELECT id, status FROM task_runs WHERE status = 'completed' ORDER BY created_at"
+      );
       const context = createTestContext();
       const printer = new ClickHousePrinter(context, { pretty: false });
       const { sql } = printer.print(ast);
@@ -603,4 +619,3 @@ describe("Edge cases", () => {
     expect(sql).toContain("1.5");
   });
 });
-
