@@ -121,6 +121,10 @@ const stories: Story[] = [
     slug: "tree-view",
   },
   {
+    name: "TSQL Editor",
+    slug: "tsql-editor",
+  },
+  {
     name: "Timeline",
     slug: "timeline",
   },
