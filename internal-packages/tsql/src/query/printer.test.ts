@@ -54,6 +54,30 @@ const taskEventsSchema: TableSchema = {
 };
 
 /**
+ * Schema with user-friendly names that map to internal ClickHouse names
+ */
+const runsSchema: TableSchema = {
+  name: "runs", // User writes: FROM runs
+  clickhouseName: "trigger_dev.task_runs_v2", // ClickHouse sees this
+  columns: {
+    id: { name: "id", clickhouseName: "run_id", ...column("String") },
+    friendly_id: { name: "friendly_id", ...column("String") }, // No mapping
+    created: { name: "created", clickhouseName: "created_at", ...column("DateTime64") },
+    updated: { name: "updated", clickhouseName: "updated_at", ...column("DateTime64") },
+    status: { name: "status", ...column("String") },
+    task: { name: "task", clickhouseName: "task_identifier", ...column("String") },
+    org_id: { name: "org_id", clickhouseName: "organization_id", ...column("String") },
+    proj_id: { name: "proj_id", clickhouseName: "project_id", ...column("String") },
+    env_id: { name: "env_id", clickhouseName: "environment_id", ...column("String") },
+  },
+  tenantColumns: {
+    organizationId: "organization_id",
+    projectId: "project_id",
+    environmentId: "environment_id",
+  },
+};
+
+/**
  * Helper to create a test context
  */
 function createTestContext(
@@ -109,6 +133,81 @@ describe("ClickHousePrinter", () => {
 
       expect(sql).toContain("id AS run_id");
       expect(sql).toContain("status AS run_status");
+    });
+  });
+
+  describe("Table and column name mapping", () => {
+    function createMappedContext() {
+      const schema = createSchemaRegistry([runsSchema]);
+      return createPrinterContext({
+        organizationId: "org_test",
+        projectId: "proj_test",
+        environmentId: "env_test",
+        schema,
+      });
+    }
+
+    it("should map user-friendly table name to ClickHouse name", () => {
+      const ctx = createMappedContext();
+      const { sql } = printQuery("SELECT * FROM runs", ctx);
+
+      // Table name should be mapped
+      expect(sql).toContain("FROM trigger_dev.task_runs_v2");
+      expect(sql).not.toContain("FROM runs");
+    });
+
+    it("should map user-friendly column names to ClickHouse names", () => {
+      const ctx = createMappedContext();
+      const { sql } = printQuery("SELECT id, created, status FROM runs", ctx);
+
+      // id -> run_id, created -> created_at, status stays as status
+      expect(sql).toContain("run_id");
+      expect(sql).toContain("created_at");
+      expect(sql).toContain("status");
+    });
+
+    it("should map column names in WHERE clause", () => {
+      const ctx = createMappedContext();
+      const { sql } = printQuery("SELECT * FROM runs WHERE task = 'my-task'", ctx);
+
+      // task -> task_identifier
+      expect(sql).toContain("task_identifier");
+      expect(sql).not.toMatch(/\btask\b.*=/); // task should not appear as column
+    });
+
+    it("should map column names in ORDER BY", () => {
+      const ctx = createMappedContext();
+      const { sql } = printQuery("SELECT * FROM runs ORDER BY created DESC", ctx);
+
+      // created -> created_at
+      expect(sql).toContain("ORDER BY created_at DESC");
+    });
+
+    it("should map column names in GROUP BY", () => {
+      const ctx = createMappedContext();
+      const { sql } = printQuery("SELECT task, count(*) FROM runs GROUP BY task", ctx);
+
+      // task -> task_identifier in both SELECT and GROUP BY
+      expect(sql).toContain("task_identifier");
+      expect(sql).toContain("GROUP BY task_identifier");
+    });
+
+    it("should preserve unmapped column names", () => {
+      const ctx = createMappedContext();
+      const { sql } = printQuery("SELECT friendly_id, status FROM runs", ctx);
+
+      // friendly_id has no clickhouseName, should stay as-is
+      expect(sql).toContain("friendly_id");
+      expect(sql).toContain("status");
+    });
+
+    it("should handle qualified column references (table.column)", () => {
+      const ctx = createMappedContext();
+      const { sql } = printQuery("SELECT runs.id, runs.created FROM runs", ctx);
+
+      // Should still map the column names
+      expect(sql).toContain("run_id");
+      expect(sql).toContain("created_at");
     });
   });
 

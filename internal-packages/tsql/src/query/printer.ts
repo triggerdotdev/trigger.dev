@@ -76,6 +76,7 @@ interface JoinExprResponse {
  * - Automatic tenant isolation (organization_id, project_id, environment_id)
  * - Schema-based table/column validation
  * - SQL injection protection via parameterized queries
+ * - Table and column name mapping (user-friendly → internal ClickHouse names)
  */
 export class ClickHousePrinter {
   /** Stack of AST nodes being visited (for context) */
@@ -86,6 +87,11 @@ export class ClickHousePrinter {
   private tabSize = 4;
   /** Whether to pretty print output */
   private pretty: boolean;
+  /**
+   * Map of table aliases to their schemas (for column name resolution)
+   * Key is the alias/name used in the query, value is the TableSchema
+   */
+  private tableContexts: Map<string, TableSchema> = new Map();
 
   constructor(
     private context: PrinterContext,
@@ -266,6 +272,11 @@ export class ClickHousePrinter {
     const partOfSelectUnion = this.stack.length >= 2 && this.isSelectSetQuery(this.stack[this.stack.length - 2]);
     const isTopLevelQuery = this.stack.length <= 1 || (this.stack.length === 2 && partOfSelectUnion);
 
+    // Clear table contexts for top-level queries (subqueries inherit parent context)
+    if (isTopLevelQuery) {
+      this.tableContexts.clear();
+    }
+
     // Build WHERE clause starting with any existing where
     let where: Expression | undefined = node.where;
 
@@ -443,6 +454,11 @@ export class ClickHousePrinter {
         // Look up table schema and get ClickHouse table name
         const tableSchema = this.lookupTable(tableName);
         joinStrings.push(tableSchema.clickhouseName);
+
+        // Register this table context for column name resolution
+        // Use the alias if provided, otherwise use the TSQL table name
+        const contextKey = node.alias || tableName;
+        this.tableContexts.set(contextKey, tableSchema);
 
         // Add tenant isolation guard
         extraWhere = this.createTenantGuard(tableSchema, node.alias || tableName);
@@ -777,8 +793,76 @@ export class ClickHousePrinter {
       return "*";
     }
 
+    // Handle table.* asterisk
+    if (node.chain.length === 2 && node.chain[1] === "*") {
+      const tableAlias = node.chain[0];
+      if (typeof tableAlias === "string") {
+        return `${this.printIdentifier(tableAlias)}.*`;
+      }
+    }
+
+    // Try to resolve column names through table context
+    const resolvedChain = this.resolveFieldChain(node.chain);
+
     // Print each chain element
-    return node.chain.map((part) => this.printIdentifierOrIndex(part)).join(".");
+    return resolvedChain.map((part) => this.printIdentifierOrIndex(part)).join(".");
+  }
+
+  /**
+   * Resolve field chain to use ClickHouse column names where applicable
+   * Handles both qualified (table.column) and unqualified (column) references
+   */
+  private resolveFieldChain(chain: Array<string | number>): Array<string | number> {
+    if (chain.length === 0) {
+      return chain;
+    }
+
+    const firstPart = chain[0];
+    if (typeof firstPart !== "string") {
+      return chain; // Index access, return as-is
+    }
+
+    // Case 1: Qualified reference like table.column or table.column.nested
+    if (chain.length >= 2) {
+      const tableAlias = firstPart;
+      const tableSchema = this.tableContexts.get(tableAlias);
+
+      if (tableSchema) {
+        // This is a table.column reference
+        const columnName = chain[1];
+        if (typeof columnName === "string") {
+          const resolvedColumn = this.resolveColumnName(tableSchema, columnName);
+          return [tableAlias, resolvedColumn, ...chain.slice(2)];
+        }
+      }
+      // Not a known table alias, might be a nested field - return as-is
+      return chain;
+    }
+
+    // Case 2: Unqualified reference like just "column"
+    // Try to find the column in any table context
+    const columnName = firstPart;
+    for (const tableSchema of this.tableContexts.values()) {
+      const columnSchema = tableSchema.columns[columnName];
+      if (columnSchema) {
+        return [columnSchema.clickhouseName || columnSchema.name, ...chain.slice(1)];
+      }
+    }
+
+    // Column not found in any table context - return as-is (might be a function, subquery alias, etc.)
+    return chain;
+  }
+
+  /**
+   * Resolve a column name to its ClickHouse name using the table schema
+   */
+  private resolveColumnName(tableSchema: TableSchema, columnName: string): string {
+    const columnSchema = tableSchema.columns[columnName];
+    if (columnSchema) {
+      return columnSchema.clickhouseName || columnSchema.name;
+    }
+    // Column not in schema - return as-is (might be a computed column, etc.)
+    return columnName;
   }
 
   private visitPlaceholder(node: Placeholder): string {
