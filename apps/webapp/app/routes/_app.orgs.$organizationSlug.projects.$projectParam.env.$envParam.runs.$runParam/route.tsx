@@ -23,7 +23,7 @@ import {
 } from "@trigger.dev/core/v3";
 import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { motion } from "framer-motion";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { redirect } from "remix-typedjson";
 import { MoveToTopIcon } from "~/assets/icons/MoveToTopIcon";
@@ -140,10 +140,10 @@ const resizableSettings = {
 type TraceEvent = NonNullable<SerializeFrom<typeof loader>["trace"]>["events"][0];
 
 type RunsListNavigation = {
-  runs: Array<{ friendlyId: string }>;
+  runs: Array<{ friendlyId: string; spanId: string }>;
   pagination: { next?: string; previous?: string };
-  prevPageLastRun?: { friendlyId: string; cursor: string };
-  nextPageFirstRun?: { friendlyId: string; cursor: string };
+  prevPageLastRun?: { friendlyId: string; spanId: string; cursor: string };
+  nextPageFirstRun?: { friendlyId: string; spanId: string; cursor: string };
 };
 
 async function getRunsListFromTableState({
@@ -204,6 +204,7 @@ async function getRunsListFromTableState({
       if (prevPageResult.runs.length > 0) {
         runsList.prevPageLastRun = {
           friendlyId: prevPageResult.runs[0].friendlyId,
+          spanId: prevPageResult.runs[0].spanId,
           cursor: currentPageResult.pagination.previous,
         };
       }
@@ -222,6 +223,7 @@ async function getRunsListFromTableState({
       if (nextPageResult.runs.length > 0) {
         runsList.nextPageFirstRun = {
           friendlyId: nextPageResult.runs[0].friendlyId,
+          spanId: nextPageResult.runs[0].spanId,
           cursor: currentPageResult.pagination.next,
         };
       }
@@ -296,7 +298,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 type LoaderData = SerializeFrom<typeof loader>;
 
 export default function Page() {
-  const { run, trace, resizable, maximumLiveReloadingSetting, runsList } = useLoaderData<typeof loader>();
+  const { run, trace, maximumLiveReloadingSetting, runsList } = useLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -308,8 +310,10 @@ export default function Page() {
   const tableState = decodeURIComponent(value("tableState") ?? "");
   const tableStateSearchParams = new URLSearchParams(tableState);
   const filters = getRunFiltersFromSearchParams(tableStateSearchParams);
+  const tabParam = value("tab") ?? undefined;
+  const spanParam = value("span") ?? undefined;
 
-  const [previousRunPath, nextRunPath] = useAdjacentRunPaths({organization, project, environment, tableState, run, runsList});
+  const [previousRunPath, nextRunPath] = useAdjacentRunPaths({organization, project, environment, tableState, run, runsList, tabParam, useSpan: !!spanParam});
 
   return (
     <>
@@ -320,7 +324,7 @@ export default function Page() {
             text: "Runs",
           }}
           title={<>
-          <CopyableText value={run.friendlyId} variant="text-below" className="font-mono"/>
+          <CopyableText value={run.friendlyId} variant="text-below" className="font-mono px-0 py-0 pb-[2px]"/>
           {tableState && (<div className="flex">
               <PreviousRunButton to={previousRunPath} />
               <NextRunButton to={nextRunPath} />
@@ -940,7 +944,6 @@ function TimelineView({
   scale,
   rootSpanStatus,
   rootStartedAt,
-  parentRef,
   timelineScrollRef,
   virtualizer,
   events,
@@ -1127,7 +1130,8 @@ function TimelineView({
                                     "-ml-[0.5px] h-[0.5625rem] w-px rounded-none",
                                     eventBackgroundClassName(node.data)
                                   )}
-                                  layoutId={`${node.id}-${event.name}`}
+                                  layoutId={node.data.isPartial ? `${node.id}-${event.name}` : undefined}
+                                  animate={!node.data.isPartial ? false : undefined}
                                 />
                               )}
                             </Timeline.Point>
@@ -1145,7 +1149,8 @@ function TimelineView({
                                     "-ml-[0.1562rem] size-[0.3125rem] rounded-full border bg-background-bright",
                                     eventBorderClassName(node.data)
                                   )}
-                                  layoutId={`${node.id}-${event.name}`}
+                                  layoutId={node.data.isPartial ? `${node.id}-${event.name}` : undefined}
+                                  animate={!node.data.isPartial ? false : undefined}
                                 />
                               )}
                             </Timeline.Point>
@@ -1164,7 +1169,8 @@ function TimelineView({
                           >
                             <motion.div
                               className={cn("h-px w-full", eventBackgroundClassName(node.data))}
-                              layoutId={`mark-${node.id}`}
+                              layoutId={node.data.isPartial ? `mark-${node.id}` : undefined}
+                              animate={!node.data.isPartial ? false : undefined}
                             />
                           </Timeline.Span>
                         ) : null}
@@ -1201,7 +1207,8 @@ function TimelineView({
                               "-ml-0.5 size-3 rounded-full border-2 border-background-bright",
                               eventBackgroundClassName(node.data)
                             )}
-                            layoutId={node.id}
+                            layoutId={node.data.isPartial ? node.id : undefined}
+                            animate={!node.data.isPartial ? false : undefined}
                           />
                         )}
                       </Timeline.Point>
@@ -1444,7 +1451,8 @@ function SpanWithDuration({
           fadeLeft ? "rounded-r-sm bg-gradient-to-r from-black/50 to-transparent" : "rounded-sm"
         )}
         style={{ backgroundSize: "20px 100%", backgroundRepeat: "no-repeat" }}
-        layoutId={node.id}
+        layoutId={node.data.isPartial ? node.id : undefined}
+        animate={!node.data.isPartial ? false : undefined}
       >
         {node.data.isPartial && (
           <div
@@ -1457,10 +1465,12 @@ function SpanWithDuration({
             "sticky left-0 z-10 transition-opacity group-hover:opacity-100",
             !showDuration && "opacity-0"
           )}
+          animate={!node.data.isPartial ? false : undefined}
         >
           <motion.div
             className="whitespace-nowrap rounded-sm px-1 py-0.5 text-xxs text-text-bright text-shadow-custom"
-            layout="position"
+            layout={node.data.isPartial ? "position" : undefined}
+            animate={!node.data.isPartial ? false : undefined}
           >
             {formatDurationMilliseconds(props.durationMs, {
               style: "short",
@@ -1543,12 +1553,11 @@ function KeyboardShortcuts({
   expandAllBelowDepth,
   collapseAllBelowDepth,
   toggleExpandLevel,
-  setShowDurations,
 }: {
   expandAllBelowDepth: (depth: number) => void;
   collapseAllBelowDepth: (depth: number) => void;
   toggleExpandLevel: (depth: number) => void;
-  setShowDurations: (show: (show: boolean) => boolean) => void;
+  setShowDurations?: (show: (show: boolean) => boolean) => void;
 }) {
   return (
     <>
@@ -1666,63 +1675,77 @@ function useAdjacentRunPaths({
   tableState,
   run,
   runsList,
+  tabParam,
+  useSpan
 }: {
   organization: { slug: string };
   project: { slug: string };
   environment: { slug: string };
   tableState: string;
-  run: { friendlyId: string };
+  run: { friendlyId: string, spanId: string };
   runsList: RunsListNavigation | null;
+  tabParam?: string;
+  useSpan?: boolean;
 }): [string | null, string | null] {
-  return useMemo(() => {
-    if (!runsList || runsList.runs.length === 0) {
-      return [null, null];
-    }
+  if (!runsList || runsList.runs.length === 0) {
+    return [null, null];
+  }
 
-    const currentIndex = runsList.runs.findIndex((r) => r.friendlyId === run.friendlyId);
-    
-    if (currentIndex === -1) {
-      return [null, null];
-    }
+  const currentIndex = runsList.runs.findIndex((r) => r.friendlyId === run.friendlyId);
+  
+  if (currentIndex === -1) {
+    return [null, null];
+  }
 
-    // Determine previous run: use prevPageLastRun if at first position, otherwise use previous run in list
-    let previousRun: { friendlyId: string } | null = null;
-    const previousRunTableState = new URLSearchParams(tableState);
-    if (currentIndex > 0) {
-      previousRun = runsList.runs[currentIndex - 1];
-    } else if (runsList.prevPageLastRun) {
-      previousRun = runsList.prevPageLastRun;
-      // Update tableState with the new cursor for the previous page
-      previousRunTableState.set("cursor", runsList.prevPageLastRun.cursor);
-      previousRunTableState.set("direction", "backward");
-    }
+  // Determine previous run: use prevPageLastRun if at first position, otherwise use previous run in list
+  let previousRun: { friendlyId: string; spanId: string } | null = null;
+  const previousRunTableState = new URLSearchParams(tableState);
+  if (currentIndex > 0) {
+    previousRun = runsList.runs[currentIndex - 1];
+  } else if (runsList.prevPageLastRun) {
+    previousRun = runsList.prevPageLastRun;
+    // Update tableState with the new cursor for the previous page
+    previousRunTableState.set("cursor", runsList.prevPageLastRun.cursor);
+    previousRunTableState.set("direction", "backward");
+  }
 
-    // Determine next run: use nextPageFirstRun if at last position, otherwise use next run in list
-    let nextRun: { friendlyId: string } | null = null;
-    const nextRunTableState = new URLSearchParams(tableState);
-    if (currentIndex < runsList.runs.length - 1) {
-      nextRun = runsList.runs[currentIndex + 1];
-    } else if (runsList.nextPageFirstRun) {
-      nextRun = runsList.nextPageFirstRun;
-      // Update tableState with the new cursor for the next page
-      nextRunTableState.set("cursor", runsList.nextPageFirstRun.cursor);
-      nextRunTableState.set("direction", "forward");
-    }
+  // Determine next run: use nextPageFirstRun if at last position, otherwise use next run in list
+  let nextRun: { friendlyId: string; spanId: string } | null = null;
+  const nextRunTableState = new URLSearchParams(tableState);
+  if (currentIndex < runsList.runs.length - 1) {
+    nextRun = runsList.runs[currentIndex + 1];
+  } else if (runsList.nextPageFirstRun) {
+    nextRun = runsList.nextPageFirstRun;
+    // Update tableState with the new cursor for the next page
+    nextRunTableState.set("cursor", runsList.nextPageFirstRun.cursor);
+    nextRunTableState.set("direction", "forward");
+  }
 
-    const previousURLSearchParams = new URLSearchParams();
-    previousURLSearchParams.set("tableState", previousRunTableState.toString());
-    const previousRunPath = previousRun
-      ? v3RunPath(organization, project, environment, previousRun, previousURLSearchParams)
-      : null;
+  const previousURLSearchParams = new URLSearchParams();
+  previousURLSearchParams.set("tableState", previousRunTableState.toString());
+  if (previousRun && useSpan) {
+    previousURLSearchParams.set("span", previousRun.spanId);
+  }
+  if (tabParam && useSpan) {
+    previousURLSearchParams.set("tab", tabParam);
+  }
+  const previousRunPath = previousRun
+    ? v3RunPath(organization, project, environment, previousRun, previousURLSearchParams)
+    : null;
 
-    const nextURLSearchParams = new URLSearchParams();
-    nextURLSearchParams.set("tableState", nextRunTableState.toString());
-    const nextRunPath = nextRun
-      ? v3RunPath(organization, project, environment, nextRun, nextURLSearchParams)
-      : null;
+  const nextURLSearchParams = new URLSearchParams();
+  nextURLSearchParams.set("tableState", nextRunTableState.toString());
+  if (nextRun && useSpan) {
+    nextURLSearchParams.set("span", nextRun.spanId);
+  }
+  if (tabParam && useSpan) {
+    nextURLSearchParams.set("tab", tabParam);
+  }
+  const nextRunPath = nextRun
+    ? v3RunPath(organization, project, environment, nextRun, nextURLSearchParams)
+    : null;
 
-    return [previousRunPath, nextRunPath];
-  }, [organization, project, environment, tableState, run.friendlyId, runsList]);
+  return [previousRunPath, nextRunPath];
 }
 
 
@@ -1741,6 +1764,7 @@ function PreviousRunButton({ to }: { to: string | null }) {
         shortcut={{ key: "[" }}
         tooltip="Previous Run"
         disabled={!to}
+        replace
       />
     </div>
   );
@@ -1761,6 +1785,7 @@ function NextRunButton({ to }: { to: string | null }) {
         shortcut={{ key: "]" }}
         tooltip="Next Run"
         disabled={!to}
+        replace
       />
     </div>
   );

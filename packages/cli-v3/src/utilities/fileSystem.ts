@@ -1,4 +1,5 @@
 import fsSync from "fs";
+import stringify from "json-stable-stringify";
 import fsModule, { writeFile } from "fs/promises";
 import fs from "node:fs";
 import { homedir, tmpdir } from "node:os";
@@ -159,7 +160,7 @@ export async function safeReadJSONFile(path: string) {
 }
 
 export async function writeJSONFile(path: string, json: any, pretty = false) {
-  await safeWriteFile(path, JSON.stringify(json, undefined, pretty ? 2 : undefined));
+  await safeWriteFile(path, stringify(json, pretty ? { space: 2 } : undefined) ?? "");
 }
 
 // Will create the directory if it doesn't exist

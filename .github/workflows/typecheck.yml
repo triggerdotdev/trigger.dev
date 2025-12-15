@@ -35,6 +35,8 @@ jobs:
 
       - name: 🔎 Type check
         run: pnpm run typecheck
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
 
       - name: 🔎 Check exports
         run: pnpm run check-exports

@@ -201,6 +201,7 @@ async function remoteBuildImage(options: DepotBuildImageOptions): Promise<BuildI
   const outputOptions = getOutputOptions({
     imageTag: undefined, // This is already handled via the --save flag
     push: true, // We always push the image to the registry
+    load: options.load,
     compression: options.compression,
     compressionLevel: options.compressionLevel,
     forceCompression: options.forceCompression,
@@ -213,17 +214,16 @@ async function remoteBuildImage(options: DepotBuildImageOptions): Promise<BuildI
     options.noCache ? "--no-cache" : undefined,
     "--platform",
     options.imagePlatform,
-    options.load ? "--load" : undefined,
     "--provenance",
     "false",
     "--metadata-file",
     "metadata.json",
     "--build-arg",
+    `SOURCE_DATE_EPOCH=0`,
+    "--build-arg",
     `TRIGGER_PROJECT_ID=${options.projectId}`,
     "--build-arg",
     `TRIGGER_DEPLOYMENT_ID=${options.deploymentId}`,
-    "--build-arg",
-    `TRIGGER_DEPLOYMENT_VERSION=${options.deploymentVersion}`,
     "--build-arg",
     `TRIGGER_CONTENT_HASH=${options.contentHash}`,
     "--build-arg",
@@ -534,6 +534,7 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
   const outputOptions = getOutputOptions({
     imageTag,
     push,
+    load,
     compression,
     compressionLevel,
     forceCompression,
@@ -563,17 +564,16 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
     options.imagePlatform,
     options.network ? `--network=${options.network}` : undefined,
     addHost ? `--add-host=${addHost}` : undefined,
-    load ? "--load" : undefined,
     "--provenance",
     "false",
     "--metadata-file",
     "metadata.json",
     "--build-arg",
+    `SOURCE_DATE_EPOCH=0`,
+    "--build-arg",
     `TRIGGER_PROJECT_ID=${options.projectId}`,
     "--build-arg",
     `TRIGGER_DEPLOYMENT_ID=${options.deploymentId}`,
-    "--build-arg",
-    `TRIGGER_DEPLOYMENT_VERSION=${options.deploymentVersion}`,
     "--build-arg",
     `TRIGGER_CONTENT_HASH=${options.contentHash}`,
     "--build-arg",
@@ -588,8 +588,6 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
     ...(options.extraCACerts ? ["--build-arg", `NODE_EXTRA_CA_CERTS=${options.extraCACerts}`] : []),
     "--progress",
     "plain",
-    "-t",
-    imageTag,
     ".", // The build context
   ].filter(Boolean) as string[];
 
@@ -814,15 +812,11 @@ USER bun
 WORKDIR /app
 
 ARG TRIGGER_PROJECT_ID
-ARG TRIGGER_DEPLOYMENT_ID
-ARG TRIGGER_DEPLOYMENT_VERSION
 ARG TRIGGER_CONTENT_HASH
 ARG TRIGGER_PROJECT_REF
 ARG NODE_EXTRA_CA_CERTS
 
 ENV TRIGGER_PROJECT_ID=\${TRIGGER_PROJECT_ID} \
-    TRIGGER_DEPLOYMENT_ID=\${TRIGGER_DEPLOYMENT_ID} \
-    TRIGGER_DEPLOYMENT_VERSION=\${TRIGGER_DEPLOYMENT_VERSION} \
     TRIGGER_CONTENT_HASH=\${TRIGGER_CONTENT_HASH} \
     TRIGGER_PROJECT_REF=\${TRIGGER_PROJECT_REF} \
     UV_USE_IO_URING=0 \
@@ -928,15 +922,11 @@ USER node
 WORKDIR /app
 
 ARG TRIGGER_PROJECT_ID
-ARG TRIGGER_DEPLOYMENT_ID
-ARG TRIGGER_DEPLOYMENT_VERSION
 ARG TRIGGER_CONTENT_HASH
 ARG TRIGGER_PROJECT_REF
 ARG NODE_EXTRA_CA_CERTS
 
 ENV TRIGGER_PROJECT_ID=\${TRIGGER_PROJECT_ID} \
-    TRIGGER_DEPLOYMENT_ID=\${TRIGGER_DEPLOYMENT_ID} \
-    TRIGGER_DEPLOYMENT_VERSION=\${TRIGGER_DEPLOYMENT_VERSION} \
     TRIGGER_CONTENT_HASH=\${TRIGGER_CONTENT_HASH} \
     TRIGGER_PROJECT_REF=\${TRIGGER_PROJECT_REF} \
     UV_USE_IO_URING=0 \
@@ -1129,18 +1119,20 @@ function shouldLoad(load?: boolean, push?: boolean) {
 function getOutputOptions({
   imageTag,
   push,
+  load,
   compression,
   compressionLevel,
   forceCompression,
 }: {
   imageTag?: string;
   push?: boolean;
+  load?: boolean;
   compression?: "zstd" | "gzip";
   compressionLevel?: number;
   forceCompression?: boolean;
 }): string[] {
   // Always use OCI media types for compatibility
-  const outputOptions: string[] = ["type=image", "oci-mediatypes=true"];
+  const outputOptions: string[] = ["type=image", "oci-mediatypes=true", "rewrite-timestamp=true"];
 
   if (imageTag) {
     outputOptions.push(`name=${imageTag}`);
@@ -1148,6 +1140,10 @@ function getOutputOptions({
 
   if (push) {
     outputOptions.push("push=true");
+  }
+
+  if (load) {
+    outputOptions.push("load=true");
   }
 
   // Only add compression args when using zstd (gzip is the default, no args needed)
