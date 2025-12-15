@@ -814,9 +814,9 @@ export function setupBatchQueueCallbacks() {
  * @param payloadType - The payload type (e.g., "application/json", "application/store")
  */
 function normalizePayload(payload: unknown, payloadType?: string): unknown {
-  // For non-JSON payloads (including application/store for R2-offloaded payloads),
-  // return as-is - no normalization needed
-  if (payloadType !== "application/json" && payloadType !== undefined) {
+  // Only process "application/json" payloads
+  // For all other types (including undefined), return as-is
+  if (payloadType !== "application/json") {
     return payload;
   }
 
