@@ -102,6 +102,9 @@ describe("StreamBatchItemsService", () => {
           },
           baseCostInCents: 0.0005,
         },
+        batchQueue: {
+          redis: redisOptions,
+        },
         tracer: trace.getTracer("test", "0.0.0"),
       });
 
@@ -198,6 +201,9 @@ describe("StreamBatchItemsService", () => {
           },
           baseCostInCents: 0.0005,
         },
+        batchQueue: {
+          redis: redisOptions,
+        },
         tracer: trace.getTracer("test", "0.0.0"),
       });
 
@@ -279,6 +285,9 @@ describe("StreamBatchItemsService", () => {
             },
           },
           baseCostInCents: 0.0005,
+        },
+        batchQueue: {
+          redis: redisOptions,
         },
         tracer: trace.getTracer("test", "0.0.0"),
       });
@@ -403,6 +412,9 @@ describe("StreamBatchItemsService", () => {
           },
           baseCostInCents: 0.0005,
         },
+        batchQueue: {
+          redis: redisOptions,
+        },
         tracer: trace.getTracer("test", "0.0.0"),
       });
 
@@ -507,6 +519,9 @@ describe("StreamBatchItemsService", () => {
             },
           },
           baseCostInCents: 0.0005,
+        },
+        batchQueue: {
+          redis: redisOptions,
         },
         tracer: trace.getTracer("test", "0.0.0"),
       });
