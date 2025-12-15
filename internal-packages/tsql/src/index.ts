@@ -9,6 +9,9 @@ import { TSQLParser } from "./grammar/TSQLParser.js";
 import { TSQLParseTreeConverter } from "./query/parser.js";
 import type { SelectQuery, SelectSetQuery, Expression } from "./query/ast.js";
 import { SyntaxError } from "./query/errors.js";
+import { createSchemaRegistry, type TableSchema } from "./query/schema.js";
+import { createPrinterContext, type QuerySettings } from "./query/printer_context.js";
+import { printToClickHouse, type PrintResult } from "./query/printer.js";
 
 /**
  * Simple error listener that captures syntax errors
@@ -163,4 +166,68 @@ export function parseTSQLExpr(expr: string): Expression {
 
   const converter = new TSQLParseTreeConverter();
   return converter.visit(parseTree) as Expression;
+}
+
+/**
+ * Options for compiling a TSQL query to ClickHouse SQL
+ */
+export interface CompileTSQLOptions {
+  /** The organization ID for tenant isolation */
+  organizationId: string;
+  /** The project ID for tenant isolation */
+  projectId: string;
+  /** The environment ID for tenant isolation */
+  environmentId: string;
+  /** Schema definitions for allowed tables and columns */
+  tableSchema: TableSchema[];
+  /** Optional query settings */
+  settings?: Partial<QuerySettings>;
+}
+
+/**
+ * Compile a TSQL query string to ClickHouse SQL with parameters
+ *
+ * This function:
+ * 1. Parses the TSQL query into an AST
+ * 2. Validates tables and columns against the schema
+ * 3. Injects tenant isolation WHERE clauses
+ * 4. Generates parameterized ClickHouse SQL
+ *
+ * @param query - The TSQL query string to compile
+ * @param options - Compilation options including tenant IDs and schema
+ * @returns The compiled SQL and parameters
+ * @throws SyntaxError if the query is invalid
+ * @throws QueryError if tables/columns are not allowed
+ *
+ * @example
+ * ```typescript
+ * const { sql, params } = compileTSQL(
+ *   "SELECT * FROM task_runs WHERE status = 'completed' LIMIT 100",
+ *   {
+ *     organizationId: "org_123",
+ *     projectId: "proj_456",
+ *     environmentId: "env_789",
+ *     tableSchema: [taskRunsSchema],
+ *   }
+ * );
+ * ```
+ */
+export function compileTSQL(query: string, options: CompileTSQLOptions): PrintResult {
+  // 1. Parse the TSQL query
+  const ast = parseTSQLSelect(query);
+
+  // 2. Create schema registry from table schemas
+  const schemaRegistry = createSchemaRegistry(options.tableSchema);
+
+  // 3. Create printer context with tenant IDs
+  const context = createPrinterContext({
+    organizationId: options.organizationId,
+    projectId: options.projectId,
+    environmentId: options.environmentId,
+    schema: schemaRegistry,
+    settings: options.settings,
+  });
+
+  // 4. Print the AST to ClickHouse SQL
+  return printToClickHouse(ast, context);
 }
