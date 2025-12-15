@@ -36,8 +36,7 @@ export {
   executeTSQL,
   createTSQLExecutor,
   type ExecuteTSQLOptions,
-  type TSQLTableSchema,
-  type TSQLColumnSchema,
+  type TableSchema,
   type TSQLQueryResult,
 } from "./client/tsql.js";
 
