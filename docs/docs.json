@@ -271,6 +271,13 @@
             ]
           },
           {
+            "group": "Batches API",
+            "pages": [
+              "management/batches/create",
+              "management/batches/stream-items"
+            ]
+          },
+          {
             "group": "Runs API",
             "pages": [
               "management/runs/list",
