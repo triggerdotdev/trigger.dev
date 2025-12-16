@@ -176,7 +176,7 @@ function createRunEngine() {
       consumerIntervalMs: env.BATCH_QUEUE_CONSUMER_INTERVAL_MS,
       // Default processing concurrency when no specific limit is set
       // This is overridden per-batch based on the plan type at batch creation
-      defaultConcurrency: env.BATCH_CONCURRENCY_DEFAULT_CONCURRENCY,
+      defaultConcurrency: env.BATCH_CONCURRENCY_LIMIT_DEFAULT,
       // Optional global rate limiter - limits max items/sec processed across all consumers
       globalRateLimiter: env.BATCH_QUEUE_GLOBAL_RATE_LIMIT
         ? createBatchGlobalRateLimiter(env.BATCH_QUEUE_GLOBAL_RATE_LIMIT)
