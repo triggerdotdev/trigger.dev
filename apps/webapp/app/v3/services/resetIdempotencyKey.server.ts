@@ -1,5 +1,6 @@
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
+import { logger } from "~/services/logger.server";
 
 export class ResetIdempotencyKeyService extends BaseService {
   public async call(
@@ -25,6 +26,10 @@ export class ResetIdempotencyKeyService extends BaseService {
         404
       );
     }
+
+    logger.info(
+      `Reset idempotency key: ${idempotencyKey} for task: ${taskIdentifier} in env: ${authenticatedEnv.id}, affected ${count} run(s)`
+    );
 
     return { id: idempotencyKey };
   }
