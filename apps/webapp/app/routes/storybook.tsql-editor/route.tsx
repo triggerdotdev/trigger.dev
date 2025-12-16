@@ -2,6 +2,9 @@ import { useState } from "react";
 import { TSQLEditor } from "~/components/code/TSQLEditor";
 import { column, type TableSchema } from "@internal/tsql";
 
+const RUN_STATUSES = ["PENDING", "QUEUED", "EXECUTING", "COMPLETED", "FAILED", "CANCELED"] as const;
+const LOG_LEVELS = ["DEBUG", "INFO", "WARN", "ERROR"] as const;
+
 const runsSchema: TableSchema = {
   name: "runs",
   clickhouseName: "trigger_dev.task_runs_v2",
@@ -16,7 +19,10 @@ const runsSchema: TableSchema = {
     task_id: { name: "task_id", ...column("String", { description: "Task identifier" }) },
     status: {
       name: "status",
-      ...column("String", { description: "Run status (PENDING, EXECUTING, COMPLETED, FAILED)" }),
+      ...column("String", {
+        description: "Run status",
+        allowedValues: [...RUN_STATUSES],
+      }),
     },
     created_at: {
       name: "created_at",
@@ -52,7 +58,13 @@ const logsSchema: TableSchema = {
   columns: {
     id: { name: "id", ...column("String", { description: "Event identifier" }) },
     run_id: { name: "run_id", ...column("String", { description: "Associated run ID" }) },
-    level: { name: "level", ...column("String", { description: "Log level (INFO, WARN, ERROR)" }) },
+    level: {
+      name: "level",
+      ...column("String", {
+        description: "Log level",
+        allowedValues: [...LOG_LEVELS],
+      }),
+    },
     message: { name: "message", ...column("String", { description: "Log message content" }) },
     timestamp: { name: "timestamp", ...column("DateTime64", { description: "Event timestamp" }) },
     organization_id: { name: "organization_id", ...column("String") },
@@ -71,6 +83,10 @@ const exampleQueries = [
   {
     name: "With WHERE clause",
     query: "SELECT id, task_id, status, created_at FROM runs WHERE status = 'COMPLETED' LIMIT 100",
+  },
+  {
+    name: "Enum IN clause",
+    query: "SELECT * FROM runs WHERE status IN ('PENDING', 'QUEUED', 'EXECUTING') LIMIT 50",
   },
   {
     name: "Aggregation",
@@ -134,8 +150,8 @@ export default function Story() {
       <div className="flex flex-col gap-2">
         <h2 className="text-lg font-semibold text-text-bright">Editor with Schema</h2>
         <p className="text-sm text-text-dimmed">
-          Try typing to see autocomplete suggestions. Available tables: <code>runs</code>,{" "}
-          <code>logs</code>
+          Try typing to see autocomplete suggestions. Type <code>status = </code> to see enum value
+          suggestions. Available tables: <code>runs</code>, <code>logs</code>
         </p>
         <div className="overflow-hidden rounded-lg border border-grid-dimmed">
           <TSQLEditor
@@ -199,6 +215,42 @@ export default function Story() {
         </div>
       </div>
 
+      {/* Invalid enum value example */}
+      <div className="flex flex-col gap-2">
+        <h2 className="text-lg font-semibold text-text-bright">With Invalid Enum Value</h2>
+        <p className="text-sm text-text-dimmed">
+          The linter validates enum values against the schema. Try changing{" "}
+          <code>'INVALID_STATUS'</code> to a valid status like <code>'COMPLETED'</code>.
+        </p>
+        <div className="overflow-hidden rounded-lg border border-grid-dimmed">
+          <TSQLEditor
+            defaultValue="SELECT * FROM runs WHERE status = 'INVALID_STATUS' LIMIT 10"
+            schema={exampleSchema}
+            linterEnabled={true}
+            showCopyButton={true}
+            className="min-h-[100px]"
+          />
+        </div>
+      </div>
+
+      {/* Unknown column example */}
+      <div className="flex flex-col gap-2">
+        <h2 className="text-lg font-semibold text-text-bright">With Unknown Column</h2>
+        <p className="text-sm text-text-dimmed">
+          The linter warns about unknown column names. Try changing <code>unknown_col</code> to a
+          valid column like <code>status</code>.
+        </p>
+        <div className="overflow-hidden rounded-lg border border-grid-dimmed">
+          <TSQLEditor
+            defaultValue="SELECT id, unknown_col FROM runs LIMIT 10"
+            schema={exampleSchema}
+            linterEnabled={true}
+            showCopyButton={true}
+            className="min-h-[100px]"
+          />
+        </div>
+      </div>
+
       {/* Available tables reference */}
       <div className="flex flex-col gap-2">
         <h2 className="text-lg font-semibold text-text-bright">Available Schema</h2>
@@ -214,11 +266,18 @@ export default function Story() {
               <p className="mb-3 text-xs text-text-dimmed">{table.description}</p>
               <div className="space-y-1">
                 {Object.entries(table.columns).map(([name, col]) => (
-                  <div key={name} className="flex items-baseline gap-2 text-xs">
-                    <code className="text-blue-400">{name}</code>
-                    <span className="text-charcoal-400">{col.type}</span>
-                    {col.description && (
-                      <span className="text-text-dimmed">- {col.description}</span>
+                  <div key={name} className="flex flex-col gap-0.5 text-xs">
+                    <div className="flex items-baseline gap-2">
+                      <code className="text-blue-400">{name}</code>
+                      <span className="text-charcoal-400">{col.type}</span>
+                      {col.description && (
+                        <span className="text-text-dimmed">- {col.description}</span>
+                      )}
+                    </div>
+                    {col.allowedValues && col.allowedValues.length > 0 && (
+                      <div className="ml-4 text-green-400/70">
+                        Allowed: {col.allowedValues.join(", ")}
+                      </div>
                     )}
                   </div>
                 ))}

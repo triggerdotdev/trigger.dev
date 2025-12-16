@@ -91,6 +91,14 @@ export { ClickHousePrinter, printToClickHouse, type PrintResult } from "./query/
 // Re-export parser converter for advanced usage
 export { TSQLParseTreeConverter } from "./query/parser.js";
 
+// Re-export validator
+export {
+  validateQuery,
+  type ValidationResult,
+  type ValidationIssue,
+  type ValidationSeverity,
+} from "./query/validator.js";
+
 /**
  * Parse a TSQL SELECT query string into an AST
  *
