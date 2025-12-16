@@ -66,6 +66,8 @@ export interface ColumnSchema {
   groupable?: boolean;
   /** Description of the column for documentation/autocomplete */
   description?: string;
+  /** Allowed values for this column (for enum-like columns) */
+  allowedValues?: string[];
 }
 
 /**

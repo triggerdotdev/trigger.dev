@@ -1,5 +1,5 @@
 import type { CompletionContext, CompletionResult, Completion } from "@codemirror/autocomplete";
-import type { TableSchema } from "@internal/tsql";
+import type { TableSchema, ColumnSchema } from "@internal/tsql";
 import {
   TSQL_CLICKHOUSE_FUNCTIONS,
   TSQL_AGGREGATIONS,
@@ -185,14 +185,73 @@ type CompletionContextType =
   | "table" // After FROM or JOIN
   | "column" // After SELECT, WHERE, ORDER BY, GROUP BY, etc.
   | "alias" // After table_name.
+  | "value" // After comparison operator (=, !=, IN, etc.)
   | "general"; // Anywhere else
+
+/**
+ * Result of context detection
+ */
+interface ContextResult {
+  type: CompletionContextType;
+  tablePrefix?: string;
+  /** Column being compared (for value context) */
+  columnName?: string;
+  /** Table alias for the column (for value context) */
+  columnTableAlias?: string;
+}
+
+/**
+ * Extract column name from text before a comparison operator
+ * Handles: "column =", "table.column =", "column IN", etc.
+ */
+function extractColumnBeforeOperator(textBefore: string): { columnName: string; tableAlias?: string } | null {
+  // Match patterns like: column =, column !=, column IN, table.column =, etc.
+  // We need to capture the column (and optional table prefix) before the operator
+  const patterns = [
+    // column = or column != or column <> (with optional whitespace)
+    /(\w+)\.(\w+)\s*(?:=|!=|<>)\s*$/i,
+    /(\w+)\s*(?:=|!=|<>)\s*$/i,
+    // column IN ( or column NOT IN (
+    /(\w+)\.(\w+)\s+(?:NOT\s+)?IN\s*\(\s*$/i,
+    /(\w+)\s+(?:NOT\s+)?IN\s*\(\s*$/i,
+    // After a comma in IN clause - need to find the column before IN
+    /(\w+)\.(\w+)\s+(?:NOT\s+)?IN\s*\([^)]*,\s*$/i,
+    /(\w+)\s+(?:NOT\s+)?IN\s*\([^)]*,\s*$/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = textBefore.match(pattern);
+    if (match) {
+      if (match.length === 3) {
+        // table.column pattern
+        return { tableAlias: match[1], columnName: match[2] };
+      } else {
+        // just column pattern
+        return { columnName: match[1] };
+      }
+    }
+  }
+
+  return null;
+}
 
 function determineContext(
   doc: string,
   pos: number
-): { type: CompletionContextType; tablePrefix?: string } {
+): ContextResult {
   // Get text before cursor
   const textBefore = doc.slice(0, pos);
+
+  // Check if we're in a value context (after comparison operator)
+  // This should be checked before other contexts
+  const columnInfo = extractColumnBeforeOperator(textBefore);
+  if (columnInfo) {
+    return {
+      type: "value",
+      columnName: columnInfo.columnName,
+      columnTableAlias: columnInfo.tableAlias,
+    };
+  }
 
   // Check if we're completing after a dot (table.column)
   const dotMatch = textBefore.match(/(\w+)\.\s*$/);
@@ -235,6 +294,48 @@ function determineContext(
 }
 
 /**
+ * Find a column schema by name in the tables map
+ */
+function findColumnSchema(
+  columnName: string,
+  tableAlias: string | undefined,
+  tables: Map<string, TableSchema>
+): ColumnSchema | null {
+  if (tableAlias) {
+    // Look in specific table
+    const tableSchema = tables.get(tableAlias.toLowerCase());
+    if (tableSchema) {
+      return tableSchema.columns[columnName] || null;
+    }
+  } else {
+    // Look in all tables
+    for (const tableSchema of tables.values()) {
+      const col = tableSchema.columns[columnName];
+      if (col) {
+        return col;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Create completions for enum values
+ */
+function createEnumValueCompletions(columnSchema: ColumnSchema): Completion[] {
+  if (!columnSchema.allowedValues || columnSchema.allowedValues.length === 0) {
+    return [];
+  }
+
+  return columnSchema.allowedValues.map((value) => ({
+    label: `'${value}'`,
+    type: "enum",
+    detail: columnSchema.description || "allowed value",
+    boost: 3, // Highest priority for enum values in value context
+  }));
+}
+
+/**
  * Create a TSQL-aware autocompletion source
  *
  * @param schema - Array of table schemas to use for completions
@@ -249,8 +350,8 @@ export function createTSQLCompletion(
   const tableCompletions = createTableCompletions(schema);
 
   return (context: CompletionContext): CompletionResult | null => {
-    // Get the word being typed
-    const word = context.matchBefore(/[\w.]+/);
+    // Get the word being typed - include single quotes for value completion
+    const word = context.matchBefore(/[\w.']+/);
 
     // Don't show completions if no word is being typed and not explicitly triggered
     if (!word && !context.explicit) {
@@ -277,6 +378,22 @@ export function createTSQLCompletion(
 
           if (tableSchema) {
             options = createColumnCompletions(tableSchema);
+          }
+        }
+        break;
+
+      case "value":
+        // After comparison operator, show enum values if available
+        if (queryContext.columnName) {
+          const tables = extractTablesFromQuery(doc, schema);
+          const columnSchema = findColumnSchema(
+            queryContext.columnName,
+            queryContext.columnTableAlias,
+            tables
+          );
+
+          if (columnSchema) {
+            options = createEnumValueCompletions(columnSchema);
           }
         }
         break;
@@ -328,7 +445,7 @@ export function createTSQLCompletion(
     return {
       from,
       options,
-      validFor: /^[\w.]*$/,
+      validFor: /^[\w.']*$/,
     };
   };
 }

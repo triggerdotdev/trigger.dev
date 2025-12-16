@@ -1,7 +1,7 @@
 import type { EditorView } from "@codemirror/view";
 import type { Diagnostic } from "@codemirror/lint";
 import type { TableSchema } from "@internal/tsql";
-import { parseTSQLSelect, SyntaxError, QueryError } from "@internal/tsql";
+import { parseTSQLSelect, SyntaxError, QueryError, validateQuery } from "@internal/tsql";
 
 /**
  * Configuration for the TSQL linter
@@ -78,6 +78,8 @@ function findTokenEnd(doc: string, start: number): number {
 export function createTSQLLinter(
   config: TSQLLinterConfig = {}
 ): (view: EditorView) => Diagnostic[] {
+  const { schema = [] } = config;
+
   return (view: EditorView): Diagnostic[] => {
     const content = view.state.doc.toString().trim();
 
@@ -90,10 +92,30 @@ export function createTSQLLinter(
 
     try {
       // Try to parse the query
-      parseTSQLSelect(content);
+      const ast = parseTSQLSelect(content);
 
-      // If parsing succeeds, we could do additional schema validation here
-      // For now, we just validate syntax
+      // If parsing succeeds and we have a schema, run schema validation
+      if (schema.length > 0) {
+        const validationResult = validateQuery(ast, schema);
+
+        for (const issue of validationResult.issues) {
+          // Map validation severity to CodeMirror diagnostic severity
+          const severity: "error" | "warning" | "info" =
+            issue.severity === "error"
+              ? "error"
+              : issue.severity === "warning"
+                ? "warning"
+                : "info";
+
+          diagnostics.push({
+            from: 0,
+            to: content.length,
+            severity,
+            message: issue.message,
+            source: "tsql",
+          });
+        }
+      }
     } catch (error) {
       if (error instanceof SyntaxError) {
         const position = parseErrorPosition(error.message);
