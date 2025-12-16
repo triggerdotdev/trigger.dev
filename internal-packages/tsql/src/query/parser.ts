@@ -524,9 +524,9 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
       throw new SyntaxError("For statement body is required");
     }
     return {
-      initializer: initializer ? this.visitVarDecl(initializer) : undefined,
+      initializer: initializer ? this.visitVarDecl(initializer as any) : undefined,
       condition: this.visitExpression(ctx._condition),
-      increment: this.visitVarDecl(increment),
+      increment: this.visitVarDecl(increment as any),
       body: this.visitStatement(statement),
     };
   }

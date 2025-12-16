@@ -1,9 +1,7 @@
 import { useState } from "react";
 import { TSQLEditor } from "~/components/code/TSQLEditor";
-import type { TableSchema } from "@internal/tsql";
-import { column } from "@internal/tsql";
+import { column, type TableSchema } from "@internal/tsql";
 
-// Example schema for demonstration
 const runsSchema: TableSchema = {
   name: "runs",
   clickhouseName: "trigger_dev.task_runs_v2",
@@ -206,8 +204,13 @@ export default function Story() {
         <h2 className="text-lg font-semibold text-text-bright">Available Schema</h2>
         <div className="grid gap-4 md:grid-cols-2">
           {exampleSchema.map((table) => (
-            <div key={table.name} className="rounded-lg border border-grid-dimmed bg-charcoal-800 p-4">
-              <h3 className="mb-1 font-mono text-sm font-semibold text-text-bright">{table.name}</h3>
+            <div
+              key={table.name}
+              className="rounded-lg border border-grid-dimmed bg-charcoal-800 p-4"
+            >
+              <h3 className="mb-1 font-mono text-sm font-semibold text-text-bright">
+                {table.name}
+              </h3>
               <p className="mb-3 text-xs text-text-dimmed">{table.description}</p>
               <div className="space-y-1">
                 {Object.entries(table.columns).map(([name, col]) => (
@@ -227,4 +230,3 @@ export default function Story() {
     </div>
   );
 }
-
