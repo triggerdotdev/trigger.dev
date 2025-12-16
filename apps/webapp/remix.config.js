@@ -36,6 +36,8 @@ module.exports = {
       os: true,
       crypto: true,
       http2: true,
+      assert: true,
+      util: true,
     },
   },
 };

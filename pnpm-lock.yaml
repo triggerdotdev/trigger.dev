@@ -1287,6 +1287,9 @@ importers:
       antlr4ts-cli:
         specifier: 0.5.0-alpha.4
         version: 0.5.0-alpha.4
+      rimraf:
+        specifier: 6.0.1
+        version: 6.0.1
 
   internal-packages/zod-worker:
     dependencies:
@@ -34713,7 +34716,7 @@ snapshots:
 
   foreground-child@3.1.1:
     dependencies:
-      cross-spawn: 7.0.3
+      cross-spawn: 7.0.6
       signal-exit: 4.1.0
 
   forever-agent@0.6.1: {}
