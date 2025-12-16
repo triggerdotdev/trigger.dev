@@ -4,7 +4,7 @@ import { Fragment } from "react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { AppContainer } from "~/components/layout/AppLayout";
 import { env } from "~/env.server";
-import { requireUserId } from "~/services/session.server";
+import { requireUser } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 
 const stories: Story[] = [
@@ -181,11 +181,9 @@ const stories: Story[] = [
 ];
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  await requireUserId(request);
+  const user = await requireUser(request);
 
-  console.log("ENV", env.NODE_ENV);
-
-  if (env.NODE_ENV !== "development") {
+  if (!user.admin) {
     throw redirect("/");
   }
 
