@@ -541,7 +541,7 @@ const EnvironmentSchema = z
     // 2-phase batch API settings
     STREAMING_BATCH_MAX_ITEMS: z.coerce.number().int().default(1_000), // Max items in streaming batch
     STREAMING_BATCH_ITEM_MAXIMUM_SIZE: z.coerce.number().int().default(3_145_728),
-    BATCH_RATE_LIMIT_REFILL_RATE: z.coerce.number().int().default(10),
+    BATCH_RATE_LIMIT_REFILL_RATE: z.coerce.number().int().default(100),
     BATCH_RATE_LIMIT_MAX: z.coerce.number().int().default(1200),
     BATCH_RATE_LIMIT_REFILL_INTERVAL: z.string().default("10s"),
     BATCH_CONCURRENCY_LIMIT_DEFAULT: z.coerce.number().int().default(10),

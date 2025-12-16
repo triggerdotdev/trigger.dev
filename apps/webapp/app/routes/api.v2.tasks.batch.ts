@@ -110,7 +110,7 @@ const { action, loader } = createActionApiRoute(
       ? { traceparent, tracestate }
       : { external: { traceparent, tracestate } };
 
-    // Note: SDK v4.1+ uses the 2-phase batch API (POST /api/v3/batches + streaming items)
+    // Note: SDK v4.3+ uses the 2-phase batch API (POST /api/v3/batches + streaming items)
     // This endpoint is for backwards compatibility with older SDK versions
     const service = new RunEngineBatchTriggerService(batchProcessingStrategy ?? undefined);
 
