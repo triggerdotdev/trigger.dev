@@ -1,6 +1,6 @@
 import { ArrowRightIcon, ExclamationCircleIcon } from "@heroicons/react/20/solid";
 import { BookOpenIcon } from "@heroicons/react/24/solid";
-import { type MetaFunction, Outlet, useNavigation, useParams } from "@remix-run/react";
+import { type MetaFunction, Outlet, useNavigation, useParams, useLocation } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDuration } from "@trigger.dev/core/v3/utils/durations";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -160,7 +160,10 @@ export default function Page() {
 
 function BatchesTable({ batches, hasFilters, filters }: BatchList) {
   const navigation = useNavigation();
-  const isLoading = navigation.state !== "idle";
+  const location = useLocation();
+  const isLoading =
+    navigation.state !== "idle" && navigation.location?.pathname === location.pathname;
+
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -210,7 +213,8 @@ function BatchesTable({ batches, hasFilters, filters }: BatchList) {
           </TableBlankRow>
         ) : (
           batches.map((batch) => {
-            const inspectorPath = v3BatchPath(organization, project, environment, batch);
+            const basePath = v3BatchPath(organization, project, environment, batch);
+            const inspectorPath = `${basePath}${location.search}`;
             const runsPath = v3BatchRunsPath(organization, project, environment, batch);
             const isSelected = batchParam === batch.friendlyId;
 
