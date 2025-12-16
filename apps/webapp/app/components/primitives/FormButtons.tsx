@@ -15,8 +15,10 @@ export function FormButtons({
         "flex w-full items-center justify-between border-t border-grid-bright pt-4",
         className
       )}
+      style={{ flexDirection: "row-reverse" }}
     >
-      {cancelButton ? cancelButton : <div />} {confirmButton}
+      <div style={{ order: 1 }}>{confirmButton}</div>
+      <div style={{ order: 2 }}>{cancelButton ? cancelButton : <div />}</div>
     </div>
   );
 }

@@ -953,18 +953,6 @@ function QueueOverrideConcurrencyButton({
       navigation.formData?.get("action") === "queue-remove-override"
   );
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLFormElement>) => {
-    if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
-      e.preventDefault();
-      const overrideButton = e.currentTarget.querySelector(
-        'button[name="action"][value="queue-override"]'
-      ) as HTMLButtonElement;
-      if (overrideButton && !overrideButton.disabled) {
-        overrideButton.click();
-      }
-    }
-  };
-
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
@@ -995,12 +983,7 @@ function QueueOverrideConcurrencyButton({
               set {queue.concurrencyLimit !== null ? "in code" : "by the environment"}.
             </Paragraph>
           )}
-          <Form
-            method="post"
-            onSubmit={() => setIsOpen(false)}
-            onKeyDown={handleKeyDown}
-            className="space-y-3"
-          >
+          <Form method="post" onSubmit={() => setIsOpen(false)} className="space-y-3">
             <input type="hidden" name="friendlyId" value={queue.id} />
             <div className="space-y-2">
               <label htmlFor="concurrencyLimit" className="text-sm text-text-bright">
