@@ -20,6 +20,7 @@ import {
   PrismaClient,
   PrismaClientOrTransaction,
   PrismaReplicaClient,
+  RuntimeEnvironmentType,
   TaskRun,
   TaskRunExecutionSnapshot,
   Waitpoint,
@@ -27,6 +28,14 @@ import {
 import { Worker } from "@trigger.dev/redis-worker";
 import { assertNever } from "assert-never";
 import { EventEmitter } from "node:events";
+import { BatchQueue } from "../batch-queue/index.js";
+import type {
+  BatchItem,
+  CompleteBatchResult,
+  InitializeBatchOptions,
+  ProcessBatchItemCallback,
+  BatchCompletionCallback,
+} from "../batch-queue/types.js";
 import { FairQueueSelectionStrategy } from "../run-queue/fairQueueSelectionStrategy.js";
 import { RunQueue } from "../run-queue/index.js";
 import { RunQueueFullKeyProducer } from "../run-queue/keyProducer.js";
@@ -72,6 +81,7 @@ export class RunEngine {
   private meter: Meter;
   private heartbeatTimeouts: HeartbeatTimeouts;
   private repairSnapshotTimeoutMs: number;
+  private batchQueue: BatchQueue;
 
   prisma: PrismaClient;
   readOnlyPrisma: PrismaReplicaClient;
@@ -308,6 +318,35 @@ export class RunEngine {
       waitpointSystem: this.waitpointSystem,
     });
 
+    // Initialize BatchQueue for DRR-based batch processing (if configured)
+    // Only start consumers if worker is not disabled (same as main worker)
+    const startConsumers = !options.worker.disabled;
+
+    this.batchQueue = new BatchQueue({
+      redis: {
+        keyPrefix: `${options.batchQueue?.redis.keyPrefix ?? ""}batch-queue:`,
+        ...options.batchQueue?.redis,
+      },
+      drr: {
+        quantum: options.batchQueue?.drr?.quantum ?? 5,
+        maxDeficit: options.batchQueue?.drr?.maxDeficit ?? 50,
+      },
+      consumerCount: options.batchQueue?.consumerCount ?? 2,
+      consumerIntervalMs: options.batchQueue?.consumerIntervalMs ?? 100,
+      defaultConcurrency: options.batchQueue?.defaultConcurrency ?? 10,
+      globalRateLimiter: options.batchQueue?.globalRateLimiter,
+      startConsumers,
+      tracer: options.tracer,
+      meter: options.meter,
+    });
+
+    this.logger.info("BatchQueue initialized", {
+      consumerCount: options.batchQueue?.consumerCount ?? 2,
+      drrQuantum: options.batchQueue?.drr?.quantum ?? 5,
+      defaultConcurrency: options.batchQueue?.defaultConcurrency ?? 10,
+      consumersEnabled: startConsumers,
+    });
+
     this.runAttemptSystem = new RunAttemptSystem({
       resources,
       executionSnapshotSystem: this.executionSnapshotSystem,
@@ -340,7 +379,6 @@ export class RunEngine {
   async trigger(
     {
       friendlyId,
-      number,
       environment,
       idempotencyKey,
       idempotencyKeyExpiresAt,
@@ -413,7 +451,6 @@ export class RunEngine {
               id: taskRunId,
               engine: "V2",
               status,
-              number,
               friendlyId,
               runtimeEnvironmentId: environment.id,
               environmentType: environment.type,
@@ -919,6 +956,92 @@ export class RunEngine {
     return this.batchSystem.scheduleCompleteBatch({ batchId });
   }
 
+  // ============================================================================
+  // BatchQueue methods (DRR-based batch processing)
+  // ============================================================================
+
+  /**
+   * Set the callback for processing batch items.
+   * This is called for each item dequeued from the batch queue.
+   */
+  setBatchProcessItemCallback(callback: ProcessBatchItemCallback): void {
+    this.batchQueue.onProcessItem(callback);
+  }
+
+  /**
+   * Set the callback for batch completion.
+   * This is called when all items in a batch have been processed.
+   */
+  setBatchCompletionCallback(callback: BatchCompletionCallback): void {
+    this.batchQueue.onBatchComplete(callback);
+  }
+
+  /**
+   * Get the remaining count of items in a batch.
+   */
+  async getBatchQueueRemainingCount(batchId: string): Promise<number> {
+    return this.batchQueue.getBatchRemainingCount(batchId);
+  }
+
+  /**
+   * Get the live progress for a batch from Redis.
+   * Returns success count, failure count, and processed count.
+   * This is useful for displaying real-time progress in the UI without
+   * hitting the database.
+   */
+  async getBatchQueueProgress(batchId: string): Promise<{
+    successCount: number;
+    failureCount: number;
+    processedCount: number;
+  } | null> {
+    return this.batchQueue.getBatchProgress(batchId);
+  }
+
+  // ============================================================================
+  // Batch Queue - 2-Phase API (v3)
+  // ============================================================================
+
+  /**
+   * Initialize a batch for 2-phase processing (Phase 1).
+   *
+   * This stores batch metadata in Redis WITHOUT enqueueing any items.
+   * Items are streamed separately via enqueueBatchItem().
+   *
+   * Use this for the v3 streaming batch API where items are sent via NDJSON stream.
+   */
+  async initializeBatch(options: InitializeBatchOptions): Promise<void> {
+    return this.batchQueue.initializeBatch(options);
+  }
+
+  /**
+   * Enqueue a single item to an existing batch (Phase 2).
+   *
+   * This is used for streaming batch item ingestion in the v3 API.
+   * Returns whether the item was enqueued (true) or deduplicated (false).
+   *
+   * @param batchId - The batch ID (internal format)
+   * @param envId - The environment ID (needed for queue routing)
+   * @param itemIndex - Zero-based index of this item
+   * @param item - The batch item to enqueue
+   * @returns Object with enqueued status
+   */
+  async enqueueBatchItem(
+    batchId: string,
+    envId: string,
+    itemIndex: number,
+    item: BatchItem
+  ): Promise<{ enqueued: boolean }> {
+    return this.batchQueue.enqueueBatchItem(batchId, envId, itemIndex, item);
+  }
+
+  /**
+   * Get the count of items that have been enqueued for a batch.
+   * Useful for progress tracking during streaming ingestion.
+   */
+  async getBatchEnqueuedCount(batchId: string): Promise<number> {
+    return this.batchQueue.getEnqueuedCount(batchId);
+  }
+
   async getWaitpoint({
     waitpointId,
     environmentId,
@@ -1181,6 +1304,9 @@ export class RunEngine {
 
       // This is just a failsafe
       await this.runLockRedis.quit();
+
+      // Close the batch queue and its Redis connections
+      await this.batchQueue.close();
     } catch (error) {
       // And should always throw
     }

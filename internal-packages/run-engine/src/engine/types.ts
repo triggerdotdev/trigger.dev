@@ -8,12 +8,17 @@ import {
   TriggerTraceContext,
 } from "@trigger.dev/core/v3";
 import { PrismaClient, PrismaReplicaClient } from "@trigger.dev/database";
-import { Worker, type WorkerConcurrencyOptions } from "@trigger.dev/redis-worker";
+import {
+  Worker,
+  type WorkerConcurrencyOptions,
+  type GlobalRateLimiter,
+} from "@trigger.dev/redis-worker";
 import { FairQueueSelectionStrategyOptions } from "../run-queue/fairQueueSelectionStrategy.js";
 import { MinimalAuthenticatedEnvironment } from "../shared/index.js";
 import { LockRetryConfig } from "./locking.js";
 import { workerCatalog } from "./workerCatalog.js";
 import { type BillingPlan } from "./billingCache.js";
+import type { DRRConfig } from "../batch-queue/types.js";
 
 export type RunEngineOptions = {
   prisma: PrismaClient;
@@ -68,6 +73,16 @@ export type RunEngineOptions = {
   cache?: {
     redis: RedisOptions;
   };
+  batchQueue?: {
+    redis: RedisOptions;
+    drr?: Partial<DRRConfig>;
+    consumerCount?: number;
+    consumerIntervalMs?: number;
+    /** Default processing concurrency per environment when no specific limit is set */
+    defaultConcurrency?: number;
+    /** Optional global rate limiter to limit processing across all consumers */
+    globalRateLimiter?: GlobalRateLimiter;
+  };
   /** If not set then checkpoints won't ever be used */
   retryWarmStartThresholdMs?: number;
   heartbeatTimeoutsMs?: Partial<HeartbeatTimeouts>;
@@ -95,8 +110,8 @@ export type HeartbeatTimeouts = {
 };
 
 export type TriggerParams = {
+  number?: number;
   friendlyId: string;
-  number: number;
   environment: MinimalAuthenticatedEnvironment;
   idempotencyKey?: string;
   idempotencyKeyExpiresAt?: Date;

@@ -6,6 +6,8 @@ volumes:
   redis-data:
   clickhouse-data:
   clickhouse-logs:
+  prometheus-data:
+  grafana-data:
 
 networks:
   app_network:
@@ -164,15 +166,51 @@ services:
       - ./config/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./config/certs:/etc/nginx/certs:ro
 
-  # otel-collector:
-  #   container_name: otel-collector
-  #   image: otel/opentelemetry-collector-contrib:latest
-  #   restart: always
-  #   command: ["--config", "/etc/otel-collector-config.yaml"]
-  #   volumes:
-  #     - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
-  #   ports:
-  #     - "55680:55680"
-  #     - "55681:55681"
-  #     - "4317:4317" # OTLP gRPC receiver
-  #     - "4318:4318" # OTLP http receiver
+  # Observability stack for local development
+  otel-collector:
+    container_name: otel-collector
+    image: otel/opentelemetry-collector-contrib:0.96.0
+    restart: always
+    command: ["--config", "/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./config/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    ports:
+      - "4317:4317" # OTLP gRPC receiver
+      - "4318:4318" # OTLP HTTP receiver
+      - "8889:8889" # Prometheus exporter
+    networks:
+      - app_network
+
+  prometheus:
+    container_name: prometheus
+    image: prom/prometheus:v2.54.1
+    restart: always
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - app_network
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+
+  grafana:
+    container_name: grafana
+    image: grafana/grafana:11.3.0
+    restart: always
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: false
+    networks:
+      - app_network
+    depends_on:
+      - prometheus

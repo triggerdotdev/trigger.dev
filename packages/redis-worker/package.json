@@ -27,6 +27,7 @@
     "lodash.omit": "^4.5.0",
     "nanoid": "^5.0.7",
     "p-limit": "^6.2.0",
+    "seedrandom": "^3.0.5",
     "zod": "3.25.76",
     "cron-parser": "^4.9.0"
   },
@@ -35,6 +36,7 @@
     "@internal/testcontainers": "workspace:*",
     "@internal/tracing": "workspace:*",
     "@types/lodash.omit": "^4.5.7",
+    "@types/seedrandom": "^3.0.8",
     "rimraf": "6.0.1",
     "tsup": "^8.4.0",
     "tsx": "4.17.0"

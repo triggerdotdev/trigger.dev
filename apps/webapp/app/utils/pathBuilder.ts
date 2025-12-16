@@ -423,7 +423,7 @@ export function v3BatchPath(
   environment: EnvironmentForPath,
   batch: { friendlyId: string }
 ) {
-  return `${v3EnvironmentPath(organization, project, environment)}/batches?id=${batch.friendlyId}`;
+  return `${v3BatchesPath(organization, project, environment)}/${batch.friendlyId}`;
 }
 
 export function v3BatchRunsPath(

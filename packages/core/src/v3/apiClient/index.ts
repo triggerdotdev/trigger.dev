@@ -7,12 +7,15 @@ import {
   ApiDeploymentListResponseItem,
   ApiDeploymentListSearchParams,
   AppendToStreamResponseBody,
+  BatchItemNDJSON,
   BatchTaskRunExecutionResult,
   BatchTriggerTaskV3RequestBody,
   BatchTriggerTaskV3Response,
   CanceledRunResponse,
   CompleteWaitpointTokenRequestBody,
   CompleteWaitpointTokenResponseBody,
+  CreateBatchRequestBody,
+  CreateBatchResponse,
   CreateEnvironmentVariableRequestBody,
   CreateScheduleOptions,
   CreateStreamResponseBody,
@@ -35,6 +38,7 @@ import {
   RetrieveRunResponse,
   RetrieveRunTraceResponseBody,
   ScheduleObject,
+  StreamBatchItemsResponse,
   TaskRunExecutionResult,
   TriggerTaskRequestBody,
   TriggerTaskResponse,
@@ -63,7 +67,9 @@ import {
   zodfetchCursorPage,
   zodfetchOffsetLimitPage,
 } from "./core.js";
-import { ApiError } from "./errors.js";
+import { ApiConnectionError, ApiError, BatchNotSealedError } from "./errors.js";
+import { calculateNextRetryDelay } from "../utils/retries.js";
+import { RetryOptions } from "../schemas/index.js";
 import {
   AnyRealtimeRun,
   AnyRunShape,
@@ -93,6 +99,12 @@ import { getEnvVar } from "../utils/getEnv.js";
 
 export type CreateWaitpointTokenResponse = Prettify<
   CreateWaitpointTokenResponseBody & {
+    publicAccessToken: string;
+  }
+>;
+
+export type CreateBatchApiResponse = Prettify<
+  CreateBatchResponse & {
     publicAccessToken: string;
   }
 >;
@@ -321,6 +333,207 @@ export class ApiClient {
           publicAccessToken: jwt,
         };
       });
+  }
+
+  /**
+   * Phase 1 of 2-phase batch API: Create a batch
+   *
+   * Creates a new batch and returns its ID. For batchTriggerAndWait,
+   * the parent run is blocked immediately on batch creation.
+   *
+   * @param body - The batch creation parameters
+   * @param clientOptions - Options for trace context handling
+   * @param clientOptions.spanParentAsLink - If true, child runs will have separate trace IDs with a link to parent
+   * @param requestOptions - Optional request options
+   * @returns The created batch with ID and metadata
+   */
+  createBatch(
+    body: CreateBatchRequestBody,
+    clientOptions?: ClientTriggerOptions,
+    requestOptions?: TriggerRequestOptions
+  ) {
+    return zodfetch(
+      CreateBatchResponse,
+      `${this.baseUrl}/api/v3/batches`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(clientOptions?.spanParentAsLink ?? false),
+        body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    )
+      .withResponse()
+      .then(async ({ data, response }) => {
+        const claimsHeader = response.headers.get("x-trigger-jwt-claims");
+        const claims = claimsHeader ? JSON.parse(claimsHeader) : undefined;
+
+        const jwt = await generateJWT({
+          secretKey: this.accessToken,
+          payload: {
+            ...claims,
+            scopes: [`read:batch:${data.id}`],
+          },
+          expirationTime: requestOptions?.publicAccessToken?.expirationTime ?? "1h",
+        });
+
+        return {
+          ...data,
+          publicAccessToken: jwt,
+        };
+      });
+  }
+
+  /**
+   * Phase 2 of 2-phase batch API: Stream batch items
+   *
+   * Streams batch items as NDJSON to the server. Each item is enqueued
+   * as it arrives. The batch is automatically sealed when the stream completes.
+   *
+   * Includes automatic retry with exponential backoff. Since items are deduplicated
+   * by index on the server, retrying the entire stream is safe.
+   *
+   * Uses ReadableStream.tee() for retry capability without buffering all items
+   * upfront - only items consumed before a failure are buffered for retry.
+   *
+   * @param batchId - The batch ID from createBatch
+   * @param items - Array or async iterable of batch items
+   * @param requestOptions - Optional request options
+   * @returns Summary of items accepted and deduplicated
+   */
+  async streamBatchItems(
+    batchId: string,
+    items: BatchItemNDJSON[] | AsyncIterable<BatchItemNDJSON>,
+    requestOptions?: ApiRequestOptions
+  ): Promise<StreamBatchItemsResponse> {
+    // Convert input to ReadableStream for uniform handling and tee() support
+    const stream = createNdjsonStream(items);
+
+    const retryOptions = {
+      ...DEFAULT_STREAM_BATCH_RETRY_OPTIONS,
+      ...requestOptions?.retry,
+    };
+
+    return this.#streamBatchItemsWithRetry(batchId, stream, retryOptions);
+  }
+
+  async #streamBatchItemsWithRetry(
+    batchId: string,
+    stream: ReadableStream<Uint8Array>,
+    retryOptions: RetryOptions,
+    attempt: number = 1
+  ): Promise<StreamBatchItemsResponse> {
+    const headers = this.#getHeaders(false);
+    headers["Content-Type"] = "application/x-ndjson";
+
+    // Tee the stream: one branch for this attempt, one for potential retry
+    // tee() internally buffers data consumed from one branch for the other,
+    // so we only buffer what's been sent before a failure occurs
+    const [forRequest, forRetry] = stream.tee();
+
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v3/batches/${batchId}/items`, {
+        method: "POST",
+        headers,
+        body: forRequest,
+        // @ts-expect-error - duplex is required for streaming body but not in types
+        duplex: "half",
+      });
+
+      if (!response.ok) {
+        const retryResult = shouldRetryStreamBatchItems(response, attempt, retryOptions);
+
+        if (retryResult.retry) {
+          // Cancel the request stream before retry to prevent tee() from buffering
+          await forRequest.cancel();
+          await sleep(retryResult.delay);
+          // Use the backup stream for retry
+          return this.#streamBatchItemsWithRetry(batchId, forRetry, retryOptions, attempt + 1);
+        }
+
+        // Not retrying - cancel the backup stream
+        await forRetry.cancel();
+
+        const errText = await response.text().catch((e) => (e as Error).message);
+        let errJSON: Object | undefined;
+        try {
+          errJSON = JSON.parse(errText) as Object;
+        } catch {
+          // ignore
+        }
+        const errMessage = errJSON ? undefined : errText;
+        const responseHeaders = Object.fromEntries(response.headers.entries());
+
+        throw ApiError.generate(response.status, errJSON, errMessage, responseHeaders);
+      }
+
+      const result = await response.json();
+      const parsed = StreamBatchItemsResponse.safeParse(result);
+
+      if (!parsed.success) {
+        // Cancel backup stream since we're throwing
+        await forRetry.cancel();
+        throw new Error(
+          `Invalid response from server for batch ${batchId}: ${parsed.error.message}`
+        );
+      }
+
+      // Check if the batch was sealed
+      if (!parsed.data.sealed) {
+        // Not all items were received - treat as retryable condition
+        const delay = calculateNextRetryDelay(retryOptions, attempt);
+
+        if (delay) {
+          // Cancel the request stream before retry to prevent tee() from buffering
+          await forRequest.cancel();
+          // Retry with the backup stream
+          await sleep(delay);
+          return this.#streamBatchItemsWithRetry(batchId, forRetry, retryOptions, attempt + 1);
+        }
+
+        // No more retries - cancel backup stream and throw descriptive error
+        await forRetry.cancel();
+        throw new BatchNotSealedError({
+          batchId,
+          enqueuedCount: parsed.data.enqueuedCount ?? 0,
+          expectedCount: parsed.data.expectedCount ?? 0,
+          itemsAccepted: parsed.data.itemsAccepted,
+          itemsDeduplicated: parsed.data.itemsDeduplicated,
+        });
+      }
+
+      // Success - cancel the backup stream to release resources
+      await forRetry.cancel();
+
+      return parsed.data;
+    } catch (error) {
+      // Don't retry BatchNotSealedError (retries already exhausted)
+      if (error instanceof BatchNotSealedError) {
+        throw error;
+      }
+      // Don't retry ApiErrors (already handled above with backup stream cancelled)
+      if (error instanceof ApiError) {
+        throw error;
+      }
+
+      // Retry connection errors using the backup stream
+      const delay = calculateNextRetryDelay(retryOptions, attempt);
+      if (delay) {
+        // Cancel the request stream before retry to prevent tee() from buffering
+        await forRequest.cancel();
+        await sleep(delay);
+        return this.#streamBatchItemsWithRetry(batchId, forRetry, retryOptions, attempt + 1);
+      }
+
+      // No more retries - cancel the backup stream
+      await forRetry.cancel();
+
+      // Wrap in a more descriptive error
+      const cause = error instanceof Error ? error : new Error(String(error));
+      throw new ApiConnectionError({
+        cause,
+        message: `Failed to stream batch items for batch ${batchId}: ${cause.message}`,
+      });
+    }
   }
 
   createUploadPayloadUrl(filename: string, requestOptions?: ZodFetchOptions) {
@@ -1427,6 +1640,142 @@ function createSearchQueryForListWaitpointTokens(
   }
 
   return searchParams;
+}
+
+// ============================================================================
+// Stream Batch Items Retry Helpers
+// ============================================================================
+
+/**
+ * Default retry options for streaming batch items.
+ * Uses higher values than the default zodfetch retry since batch operations
+ * are more expensive to repeat from scratch.
+ */
+const DEFAULT_STREAM_BATCH_RETRY_OPTIONS: RetryOptions = {
+  maxAttempts: 5,
+  factor: 2,
+  minTimeoutInMs: 1000,
+  maxTimeoutInMs: 30_000,
+  randomize: true,
+};
+
+type ShouldRetryResult = { retry: false } | { retry: true; delay: number };
+
+/**
+ * Determines if a failed stream batch items request should be retried.
+ * Follows similar logic to zodfetch's shouldRetry but specific to batch streaming.
+ */
+function shouldRetryStreamBatchItems(
+  response: Response,
+  attempt: number,
+  retryOptions: RetryOptions
+): ShouldRetryResult {
+  function shouldRetryForOptions(): ShouldRetryResult {
+    const delay = calculateNextRetryDelay(retryOptions, attempt);
+    if (delay) {
+      return { retry: true, delay };
+    }
+    return { retry: false };
+  }
+
+  // Check x-should-retry header - server can explicitly control retry behavior
+  const shouldRetryHeader = response.headers.get("x-should-retry");
+  if (shouldRetryHeader === "true") return shouldRetryForOptions();
+  if (shouldRetryHeader === "false") return { retry: false };
+
+  // Retry on request timeouts
+  if (response.status === 408) return shouldRetryForOptions();
+
+  // Retry on lock timeouts
+  if (response.status === 409) return shouldRetryForOptions();
+
+  // Retry on rate limits with special handling for Retry-After
+  if (response.status === 429) {
+    if (attempt >= retryOptions.maxAttempts!) {
+      return { retry: false };
+    }
+
+    // x-ratelimit-reset is the unix timestamp in milliseconds when the rate limit will reset
+    const resetAtUnixEpochMs = response.headers.get("x-ratelimit-reset");
+    if (resetAtUnixEpochMs) {
+      const resetAtUnixEpoch = parseInt(resetAtUnixEpochMs, 10);
+      const delay = resetAtUnixEpoch - Date.now() + Math.floor(Math.random() * 1000);
+      if (delay > 0) {
+        return { retry: true, delay };
+      }
+    }
+
+    // Fall back to Retry-After header (seconds)
+    const retryAfter = response.headers.get("retry-after");
+    if (retryAfter) {
+      const retryAfterSeconds = parseInt(retryAfter, 10);
+      if (!isNaN(retryAfterSeconds)) {
+        return { retry: true, delay: retryAfterSeconds * 1000 };
+      }
+    }
+
+    return shouldRetryForOptions();
+  }
+
+  // Retry on server errors (5xx)
+  if (response.status >= 500) return shouldRetryForOptions();
+
+  // Don't retry client errors (4xx) except those handled above
+  return { retry: false };
+}
+
+/**
+ * Simple sleep utility for retry delays.
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// ============================================================================
+// NDJSON Stream Helpers
+// ============================================================================
+
+/**
+ * Creates a ReadableStream that emits NDJSON (newline-delimited JSON) from items.
+ * Handles both arrays and async iterables for streaming large batches.
+ */
+function createNdjsonStream(
+  items: BatchItemNDJSON[] | AsyncIterable<BatchItemNDJSON>
+): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+
+  // Check if items is an array
+  if (Array.isArray(items)) {
+    let index = 0;
+    return new ReadableStream({
+      pull(controller) {
+        if (index >= items.length) {
+          controller.close();
+          return;
+        }
+
+        const item = items[index++];
+        const line = JSON.stringify(item) + "\n";
+        controller.enqueue(encoder.encode(line));
+      },
+    });
+  }
+
+  // Handle async iterable
+  const iterator = items[Symbol.asyncIterator]();
+  return new ReadableStream({
+    async pull(controller) {
+      const { value, done } = await iterator.next();
+
+      if (done) {
+        controller.close();
+        return;
+      }
+
+      const line = JSON.stringify(value) + "\n";
+      controller.enqueue(encoder.encode(line));
+    },
+  });
 }
 
 export function mergeRequestOptions(
