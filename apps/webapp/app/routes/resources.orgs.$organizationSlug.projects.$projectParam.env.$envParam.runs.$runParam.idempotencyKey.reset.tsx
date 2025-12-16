@@ -2,7 +2,7 @@ import { parse } from "@conform-to/zod";
 import { type ActionFunction, json } from "@remix-run/node";
 import { z } from "zod";
 import { prisma } from "~/db.server";
-import { jsonWithErrorMessage, jsonWithSuccessMessage } from "~/models/message.server";
+import { jsonWithErrorMessage } from "~/models/message.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { ResetIdempotencyKeyService } from "~/v3/services/resetIdempotencyKey.server";
@@ -100,11 +100,7 @@ export const action: ActionFunction = async ({ request, params }) => {
       organization: environment.project.organization,
     });
 
-    return jsonWithSuccessMessage(
-      { success: true },
-      request,
-      "Idempotency key reset successfully"
-    );
+    return json({ success: true });
   } catch (error) {
     if (error instanceof Error) {
       logger.error("Failed to reset idempotency key", {

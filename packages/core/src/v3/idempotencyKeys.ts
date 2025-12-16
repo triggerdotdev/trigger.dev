@@ -2,6 +2,7 @@ import { apiClientManager } from "./apiClientManager-api.js";
 import { taskContext } from "./task-context-api.js";
 import { IdempotencyKey } from "./types/idempotencyKeys.js";
 import { digestSHA256 } from "./utils/crypto.js";
+import type { ZodFetchOptions } from "./apiClient/core.js";
 
 export function isIdempotencyKey(
   value: string | string[] | IdempotencyKey
@@ -137,9 +138,14 @@ export function attemptKey(ctx: AttemptKeyMaterial): string {
 /** Resets an idempotency key, effectively deleting it from the associated task.*/
 export async function resetIdempotencyKey(
   taskIdentifier: string,
-  idempotencyKey: string
+  idempotencyKey: string,
+  requestOptions?: ZodFetchOptions
 ): Promise<{ id: string }> {
   const client = apiClientManager.clientOrThrow();
 
-  return client.resetIdempotencyKey(taskIdentifier, idempotencyKey);
+  return client.resetIdempotencyKey(
+    taskIdentifier,
+    idempotencyKey,
+    requestOptions
+  );
 }

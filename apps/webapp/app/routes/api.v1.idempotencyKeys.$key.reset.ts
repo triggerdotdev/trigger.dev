@@ -3,6 +3,7 @@ import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { z } from "zod";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { ResetIdempotencyKeyService } from "~/v3/services/resetIdempotencyKey.server";
+import { logger } from "~/services/logger.server";
 
 const ParamsSchema = z.object({
   key: z.string(),
@@ -38,6 +39,10 @@ export const { action } = createActionApiRoute(
       if (error instanceof ServiceValidationError) {
         return json({ error: error.message }, { status: error.status ?? 400 });
       }
+
+      logger.error("Failed to reset idempotency key via API", {
+        error: error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : String(error),
+      });
 
       return json({ error: "Internal Server Error" }, { status: 500 });
     }
