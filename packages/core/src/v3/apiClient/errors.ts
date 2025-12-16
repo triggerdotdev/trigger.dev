@@ -190,6 +190,47 @@ export class ApiSchemaValidationError extends ApiError {
   }
 }
 
+/**
+ * Error thrown when a batch stream completes but the batch was not sealed.
+ * This indicates that not all expected items were received by the server.
+ * The client should retry sending all items, or investigate the mismatch.
+ */
+export class BatchNotSealedError extends Error {
+  readonly name = "BatchNotSealedError";
+
+  /** The batch ID that was not sealed */
+  readonly batchId: string;
+
+  /** Number of items currently enqueued on the server */
+  readonly enqueuedCount: number;
+
+  /** Number of items expected to complete the batch */
+  readonly expectedCount: number;
+
+  /** Number of items accepted in this request */
+  readonly itemsAccepted: number;
+
+  /** Number of items deduplicated in this request */
+  readonly itemsDeduplicated: number;
+
+  constructor(options: {
+    batchId: string;
+    enqueuedCount: number;
+    expectedCount: number;
+    itemsAccepted: number;
+    itemsDeduplicated: number;
+  }) {
+    const message = `Batch ${options.batchId} was not sealed: received ${options.enqueuedCount} of ${options.expectedCount} expected items (accepted: ${options.itemsAccepted}, deduplicated: ${options.itemsDeduplicated})`;
+    super(message);
+
+    this.batchId = options.batchId;
+    this.enqueuedCount = options.enqueuedCount;
+    this.expectedCount = options.expectedCount;
+    this.itemsAccepted = options.itemsAccepted;
+    this.itemsDeduplicated = options.itemsDeduplicated;
+  }
+}
+
 function castToError(err: any): Error {
   if (err instanceof Error) return err;
   return new Error(err);

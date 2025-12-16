@@ -1,0 +1,17 @@
+# Grafana dashboard provisioning
+# Automatically loads dashboard JSON files from the dashboards folder
+
+apiVersion: 1
+
+providers:
+  - name: "Trigger.dev Dashboards"
+    orgId: 1
+    folder: "Trigger.dev"
+    folderUid: "triggerdotdev"
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards
+

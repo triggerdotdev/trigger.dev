@@ -47,7 +47,9 @@ export async function makeIdempotencyKey(
     return idempotencyKey;
   }
 
-  return await createIdempotencyKey(idempotencyKey, { scope: "global" });
+  return await createIdempotencyKey(idempotencyKey, {
+    scope: "run",
+  });
 }
 
 /**

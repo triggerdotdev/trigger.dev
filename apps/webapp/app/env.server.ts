@@ -528,6 +528,7 @@ const EnvironmentSchema = z
     MAXIMUM_TRACE_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(25_000),
     MAXIMUM_TRACE_DETAILED_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(10_000),
     TASK_PAYLOAD_OFFLOAD_THRESHOLD: z.coerce.number().int().default(524_288), // 512KB
+    BATCH_PAYLOAD_OFFLOAD_THRESHOLD: z.coerce.number().int().optional(), // Defaults to TASK_PAYLOAD_OFFLOAD_THRESHOLD if not set
     TASK_PAYLOAD_MAXIMUM_SIZE: z.coerce.number().int().default(3_145_728), // 3MB
     BATCH_TASK_PAYLOAD_MAXIMUM_SIZE: z.coerce.number().int().default(1_000_000), // 1MB
     TASK_RUN_METADATA_MAXIMUM_SIZE: z.coerce.number().int().default(262_144), // 256KB
@@ -536,6 +537,14 @@ const EnvironmentSchema = z
     MAXIMUM_DEPLOYED_QUEUE_SIZE: z.coerce.number().int().optional(),
     MAX_BATCH_V2_TRIGGER_ITEMS: z.coerce.number().int().default(500),
     MAX_BATCH_AND_WAIT_V2_TRIGGER_ITEMS: z.coerce.number().int().default(500),
+
+    // 2-phase batch API settings
+    STREAMING_BATCH_MAX_ITEMS: z.coerce.number().int().default(1_000), // Max items in streaming batch
+    STREAMING_BATCH_ITEM_MAXIMUM_SIZE: z.coerce.number().int().default(3_145_728),
+    BATCH_RATE_LIMIT_REFILL_RATE: z.coerce.number().int().default(100),
+    BATCH_RATE_LIMIT_MAX: z.coerce.number().int().default(1200),
+    BATCH_RATE_LIMIT_REFILL_INTERVAL: z.string().default("10s"),
+    BATCH_CONCURRENCY_LIMIT_DEFAULT: z.coerce.number().int().default(10),
 
     REALTIME_STREAM_VERSION: z.enum(["v1", "v2"]).default("v1"),
     REALTIME_STREAM_MAX_LENGTH: z.coerce.number().int().default(1000),
@@ -930,6 +939,17 @@ const EnvironmentSchema = z
       .string()
       .default(process.env.REDIS_TLS_DISABLED ?? "false"),
     BATCH_TRIGGER_WORKER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
+
+    // BatchQueue DRR settings (Run Engine v2)
+    BATCH_QUEUE_DRR_QUANTUM: z.coerce.number().int().default(25),
+    BATCH_QUEUE_MAX_DEFICIT: z.coerce.number().int().default(100),
+    BATCH_QUEUE_CONSUMER_COUNT: z.coerce.number().int().default(3),
+    BATCH_QUEUE_CONSUMER_INTERVAL_MS: z.coerce.number().int().default(50),
+    // Global rate limit: max items processed per second across all consumers
+    // If not set, no global rate limiting is applied
+    BATCH_QUEUE_GLOBAL_RATE_LIMIT: z.coerce.number().int().positive().optional(),
+    // Processing concurrency: max concurrent batch items being processed per environment
+    BATCH_CONCURRENCY_DEFAULT_CONCURRENCY: z.coerce.number().int().default(1),
 
     ADMIN_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
     ADMIN_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),
