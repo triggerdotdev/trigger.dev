@@ -1,9 +1,8 @@
 // TypeScript translation of posthog/hogql/errors.py
-// Keep this file in sync with the Python version
 
 import type { Expr } from "./ast";
 
-export class BaseHogQLError extends Error {
+export class BaseTSQLError extends Error {
   message: string;
   start?: number;
   end?: number;
@@ -29,34 +28,34 @@ export class BaseHogQLError extends Error {
   }
 }
 
-export class ExposedHogQLError extends BaseHogQLError {
+export class ExposedTSQLError extends BaseTSQLError {
   /** An exception that can be exposed to the user. */
 }
 
-export class InternalHogQLError extends BaseHogQLError {
-  /** An internal exception in the HogQL engine. */
+export class InternalTSQLError extends BaseTSQLError {
+  /** An internal exception in the TSQL engine. */
 }
 
-export class SyntaxError extends ExposedHogQLError {
-  /** The input does not conform to HogQL syntax. */
+export class SyntaxError extends ExposedTSQLError {
+  /** The input does not conform to TSQL syntax. */
 }
 
-export class QueryError extends ExposedHogQLError {
+export class QueryError extends ExposedTSQLError {
   /** The query is invalid, though correct syntactically. */
 }
 
-export class NotImplementedError extends InternalHogQLError {
-  /** This feature isn't implemented in HogQL (yet). */
+export class NotImplementedError extends InternalTSQLError {
+  /** This feature isn't implemented in TSQL (yet). */
 }
 
-export class ParsingError extends InternalHogQLError {
+export class ParsingError extends InternalTSQLError {
   /** Parsing failed. */
 }
 
-export class ImpossibleASTError extends InternalHogQLError {
+export class ImpossibleASTError extends InternalTSQLError {
   /** Parsing or resolution resulted in an impossible AST. */
 }
 
-export class ResolutionError extends InternalHogQLError {
+export class ResolutionError extends InternalTSQLError {
   /** Resolution of a table/field/expression failed. */
 }

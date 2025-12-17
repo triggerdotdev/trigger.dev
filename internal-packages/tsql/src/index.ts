@@ -1,5 +1,5 @@
-// TSQL - Type-Safe SQL Query Language
-// A TypeScript port of PostHog's HogQL for ClickHouse queries
+// TSQL - Type-Safe SQL Query Language for ClickHouse
+// Originally derived from PostHog's HogQL (see NOTICE.md for attribution)
 
 import { CharStreams, CommonTokenStream } from "antlr4ts";
 import type { ANTLRErrorListener, RecognitionException, Recognizer } from "antlr4ts";

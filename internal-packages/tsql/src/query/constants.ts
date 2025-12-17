@@ -1,5 +1,4 @@
 // TypeScript translation of posthog/hogql/constants.py
-// Keep this file in sync with the Python version
 
 export type ConstantDataType =
   | "int"
@@ -45,15 +44,15 @@ export enum LimitContext {
 }
 
 // Settings applied at the SELECT level
-export interface HogQLQuerySettings {
+export interface TSQLQuerySettings {
   optimize_aggregation_in_order?: boolean;
   date_time_output_format?: string;
   date_time_input_format?: string;
   join_algorithm?: string;
 }
 
-// Settings applied on top of all HogQL queries
-export interface HogQLGlobalSettings extends HogQLQuerySettings {
+// Settings applied on top of all TSQL queries
+export interface TSQLGlobalSettings extends TSQLQuerySettings {
   readonly?: number;
   max_execution_time?: number;
   max_memory_usage?: number;

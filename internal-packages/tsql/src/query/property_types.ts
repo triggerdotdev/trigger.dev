@@ -1,5 +1,4 @@
 // TypeScript translation of posthog/hogql/transforms/property_types.py
-// Keep this file in sync with the Python version
 
 import type {
   AST,
@@ -16,20 +15,20 @@ import type {
   CallType,
   DateTimeType,
 } from "./ast";
-import type { HogQLContext } from "./context";
+import type { TSQLContext } from "./context";
 import type { BooleanDatabaseField, DateTimeDatabaseField, Table } from "./models";
 
-// Helper function to escape HogQL identifiers
-function escapeHogQLIdentifier(identifier: string | number): string {
+// Helper function to escape TSQL identifiers
+function escapeTSQLIdentifier(identifier: string | number): string {
   if (typeof identifier === "number") {
     return String(identifier);
   }
   if (identifier.includes("%")) {
     throw new Error(
-      `The HogQL identifier "${identifier}" is not permitted as it contains the "%" character`
+      `The TSQL identifier "${identifier}" is not permitted as it contains the "%" character`
     );
   }
-  // HogQL allows dollars in the identifier
+  // TSQL allows dollars in the identifier
   if (/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(identifier)) {
     return identifier;
   }
@@ -70,8 +69,8 @@ function getVisitorMethodName(node: AST): string {
 
   // Handle special cases (matching Python replacements)
   const replacements: Record<string, string> = {
-    hog_qlxtag: "hogqlx_tag",
-    hog_qlxattribute: "hogqlx_attribute",
+    tsqlxtag: "tsqlx_tag",
+    tsqlxattribute: "tsqlx_attribute",
     uuidtype: "uuid_type",
     string_jsontype: "string_json_type",
   };
@@ -264,13 +263,13 @@ class CloningVisitor extends Visitor<any> {
 
 // PropertyFinder: Traverses AST to find all property references
 class PropertyFinder extends TraversingVisitor {
-  context: HogQLContext;
+  context: TSQLContext;
   personProperties: Set<string> = new Set();
   eventProperties: Set<string> = new Set();
   groupProperties: Map<number, Set<string>> = new Map();
   foundTimestamps: boolean = false;
 
-  constructor(context: HogQLContext) {
+  constructor(context: TSQLContext) {
     super();
     this.context = context;
   }
@@ -281,7 +280,7 @@ class PropertyFinder extends TraversingVisitor {
       if (this.isBaseTableType(tableType)) {
         const table = tableType.resolve_database_table?.(this.context);
         if (table) {
-          const tableName = table.to_printed_hogql?.() || "";
+          const tableName = table.to_printed_tsql?.() || "";
           const propertyName = String(node.chain[0]);
 
           if (tableName === "persons" || tableName === "raw_persons") {
@@ -358,7 +357,7 @@ export class PropertySwapper extends CloningVisitor {
   eventProperties: Map<string, string>;
   personProperties: Map<string, string>;
   groupProperties: Map<string, string>;
-  context: HogQLContext;
+  context: TSQLContext;
   setTimeZones: boolean;
 
   constructor(
@@ -366,7 +365,7 @@ export class PropertySwapper extends CloningVisitor {
     eventProperties: Map<string, string> | Record<string, string>,
     personProperties: Map<string, string> | Record<string, string>,
     groupProperties: Map<string, string> | Record<string, string>,
-    context: HogQLContext,
+    context: TSQLContext,
     setTimeZones: boolean
   ) {
     super(false); // Don't clear types
@@ -428,7 +427,7 @@ export class PropertySwapper extends CloningVisitor {
       } else if (this.isBaseTableType(tableType)) {
         const table = tableType.resolve_database_table?.(this.context);
         if (table) {
-          const tableName = table.to_printed_hogql?.() || "";
+          const tableName = table.to_printed_tsql?.() || "";
 
           if (tableName === "persons" || tableName === "raw_persons") {
             if (this.personProperties.has(propertyName)) {
@@ -472,7 +471,7 @@ export class PropertySwapper extends CloningVisitor {
       if (this.isBaseTableType(tableType)) {
         const table = tableType.resolve_database_table?.(this.context);
         if (table) {
-          const tableName = table.to_printed_hogql?.() || "";
+          const tableName = table.to_printed_tsql?.() || "";
           if (tableName === "events") {
             if (this.personProperties.has(propertyName)) {
               return this.convertStringPropertyToType(node, "person", propertyName);
@@ -490,16 +489,16 @@ export class PropertySwapper extends CloningVisitor {
     propertyType: "event" | "person" | "group",
     propertyName: string
   ): Expr {
-    let posthogFieldType: string | undefined;
+    let fieldTypeValue: string | undefined;
     if (propertyType === "person") {
-      posthogFieldType = this.personProperties.get(propertyName);
+      fieldTypeValue = this.personProperties.get(propertyName);
     } else if (propertyType === "group") {
-      posthogFieldType = this.groupProperties.get(propertyName);
+      fieldTypeValue = this.groupProperties.get(propertyName);
     } else {
-      posthogFieldType = this.eventProperties.get(propertyName);
+      fieldTypeValue = this.eventProperties.get(propertyName);
     }
 
-    const fieldType = posthogFieldType === "Numeric" ? "Float" : posthogFieldType || "String";
+    const fieldType = fieldTypeValue === "Numeric" ? "Float" : fieldTypeValue || "String";
     this.addPropertyNotice(node, propertyType, fieldType);
 
     return this.fieldTypeToPropertyCall(node, fieldType);
@@ -630,7 +629,7 @@ export class PropertySwapper extends CloningVisitor {
     }
     // Only highlight the last part of the chain
     const lastPart = node.chain[node.chain.length - 1];
-    const identifierLength = escapeHogQLIdentifier(lastPart).length;
+    const identifierLength = escapeTSQLIdentifier(lastPart).length;
     this.context.notices.push({
       start: Math.max(node.start, node.end - identifierLength),
       end: node.end,
@@ -672,7 +671,7 @@ export class PropertySwapper extends CloningVisitor {
 }
 
 // Main function to build property swapper
-export function buildPropertySwapper(node: AST, context: HogQLContext): void {
+export function buildPropertySwapper(node: AST, context: TSQLContext): void {
   if (!context || !context.team_id) {
     return;
   }

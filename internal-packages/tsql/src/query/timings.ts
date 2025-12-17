@@ -1,5 +1,4 @@
 // TypeScript translation of posthog/hogql/timings.py
-// Keep this file in sync with the Python version
 
 /**
  * Get performance counter in milliseconds (Node.js equivalent of perf_counter)
@@ -31,8 +30,8 @@ const TIMING_DECIMAL_PLACES = 3; // round to milliseconds
 
 // Not thread safe.
 // See trends_query_runner for an example of how to use for multithreaded queries
-export class HogQLTimings {
-    // Completed time in seconds for different parts of the HogQL query
+export class TSQLTimings {
+    // Completed time in seconds for different parts of the TSQL query
     timings: Record<string, number> = {};
 
     // Used for housekeeping
@@ -44,8 +43,8 @@ export class HogQLTimings {
         this._timingStarts[this._timingPointer] = this.perfCounter();
     }
 
-    cloneForSubquery(seriesIndex: number): HogQLTimings {
-        return new HogQLTimings(`${this._timingPointer}/series_${seriesIndex}`);
+    cloneForSubquery(seriesIndex: number): TSQLTimings {
+        return new TSQLTimings(`${this._timingPointer}/series_${seriesIndex}`);
     }
 
     clearTimings(): void {
