@@ -5,6 +5,7 @@ import {
   BellAlertIcon,
   ChartBarIcon,
   ChevronRightIcon,
+  CircleStackIcon,
   ClockIcon,
   Cog8ToothIcon,
   CogIcon,
@@ -13,11 +14,13 @@ import {
   GlobeAmericasIcon,
   IdentificationIcon,
   KeyIcon,
+  MagnifyingGlassCircleIcon,
   PencilSquareIcon,
   PlusIcon,
   RectangleStackIcon,
   ServerStackIcon,
   Squares2X2Icon,
+  TableCellsIcon,
   UsersIcon,
 } from "@heroicons/react/20/solid";
 import { Link, useNavigation } from "@remix-run/react";
@@ -51,6 +54,7 @@ import {
   organizationPath,
   organizationSettingsPath,
   organizationTeamPath,
+  queryPath,
   regionsPath,
   v3ApiKeysPath,
   v3BatchesPath,
@@ -267,6 +271,15 @@ export function SideMenu({
               to={v3TestPath(organization, project, environment)}
               data-action="test"
             />
+            {user.admin && (
+              <SideMenuItem
+                name="Query"
+                icon={TableCellsIcon}
+                activeIconColor="text-purple-500"
+                to={queryPath(organization, project, environment)}
+                data-action="query"
+              />
+            )}
           </div>
 
           <SideMenuSection title="Waitpoints">
