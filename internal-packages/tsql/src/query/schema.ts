@@ -68,6 +68,15 @@ export interface ColumnSchema {
   description?: string;
   /** Allowed values for this column (for enum-like columns) */
   allowedValues?: string[];
+  /**
+   * Map of internal values to user-friendly display names (for enum-like columns)
+   * Key: internal ClickHouse value (e.g., "COMPLETED_SUCCESSFULLY")
+   * Value: user-friendly display name (e.g., "Completed")
+   *
+   * When set, users can write queries using the user-friendly names,
+   * and results will display user-friendly names instead of internal values.
+   */
+  valueMap?: Record<string, string>;
 }
 
 /**
@@ -272,6 +281,91 @@ export function validateGroupColumn(
  */
 export function getClickHouseColumnName(col: ColumnSchema): string {
   return col.clickhouseName ?? col.name;
+}
+
+/**
+ * Get the user-friendly display value for an internal value (case-insensitive)
+ * Used for transforming query results back to user-friendly format
+ *
+ * @param col - The column schema
+ * @param internalValue - The internal ClickHouse value
+ * @returns The user-friendly display value, or the original value if no mapping exists
+ */
+export function getUserFriendlyValue(col: ColumnSchema, internalValue: string): string {
+  if (!col.valueMap) {
+    return internalValue;
+  }
+
+  // Direct lookup first (case-sensitive for exact match)
+  if (col.valueMap[internalValue] !== undefined) {
+    return col.valueMap[internalValue];
+  }
+
+  // Case-insensitive fallback
+  const lowerValue = internalValue.toLowerCase();
+  for (const [internal, friendly] of Object.entries(col.valueMap)) {
+    if (internal.toLowerCase() === lowerValue) {
+      return friendly;
+    }
+  }
+
+  return internalValue;
+}
+
+/**
+ * Get the internal ClickHouse value for a user-friendly value (case-insensitive)
+ * Used for transforming user queries to internal format
+ *
+ * @param col - The column schema
+ * @param userValue - The user-friendly display value
+ * @returns The internal ClickHouse value, or the original value if no mapping exists
+ */
+export function getInternalValue(col: ColumnSchema, userValue: string): string {
+  if (!col.valueMap) {
+    return userValue;
+  }
+
+  const lowerUserValue = userValue.toLowerCase();
+
+  // Search for matching user-friendly value (case-insensitive)
+  for (const [internal, friendly] of Object.entries(col.valueMap)) {
+    if (friendly.toLowerCase() === lowerUserValue) {
+      return internal;
+    }
+  }
+
+  return userValue;
+}
+
+/**
+ * Get all allowed user-friendly values for a column
+ * Used for validation and autocomplete
+ *
+ * @param col - The column schema
+ * @returns Array of allowed user-friendly values, or allowedValues if no valueMap exists
+ */
+export function getAllowedUserValues(col: ColumnSchema): string[] {
+  if (col.valueMap) {
+    return Object.values(col.valueMap);
+  }
+  return col.allowedValues ?? [];
+}
+
+/**
+ * Check if a user-provided value is valid for a column (case-insensitive)
+ *
+ * @param col - The column schema
+ * @param userValue - The user-provided value to validate
+ * @returns true if the value is valid, false otherwise
+ */
+export function isValidUserValue(col: ColumnSchema, userValue: string): boolean {
+  const allowedValues = getAllowedUserValues(col);
+  if (allowedValues.length === 0) {
+    return true; // No restrictions
+  }
+
+  const lowerUserValue = userValue.toLowerCase();
+  return allowedValues.some((v) => v.toLowerCase() === lowerUserValue);
 }
 
 /**

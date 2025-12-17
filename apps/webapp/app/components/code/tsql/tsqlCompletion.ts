@@ -321,8 +321,20 @@ function findColumnSchema(
 
 /**
  * Create completions for enum values
+ * Uses user-friendly values from valueMap when available, showing internal value as detail
  */
 function createEnumValueCompletions(columnSchema: ColumnSchema): Completion[] {
+  // Prefer valueMap over allowedValues if available
+  if (columnSchema.valueMap && Object.keys(columnSchema.valueMap).length > 0) {
+    return Object.entries(columnSchema.valueMap).map(([internalValue, userFriendlyValue]) => ({
+      label: `'${userFriendlyValue}'`,
+      type: "enum",
+      detail: `→ ${internalValue}`,
+      boost: 3, // Highest priority for enum values in value context
+    }));
+  }
+
+  // Fall back to allowedValues
   if (!columnSchema.allowedValues || columnSchema.allowedValues.length === 0) {
     return [];
   }

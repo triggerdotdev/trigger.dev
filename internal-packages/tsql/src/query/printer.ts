@@ -47,7 +47,7 @@ import {
   validateFunctionArgs,
 } from "./functions";
 import { PrinterContext } from "./printer_context";
-import { findTable, validateTable, TableSchema } from "./schema";
+import { findTable, validateTable, TableSchema, ColumnSchema, getInternalValue } from "./schema";
 
 /**
  * Result of printing an AST to ClickHouse SQL
@@ -649,15 +649,21 @@ export class ClickHousePrinter {
   }
 
   private visitCompareOperation(node: CompareOperation): string {
+    // Check if we need to transform values using valueMap
+    const columnSchema = this.extractColumnSchemaFromExpression(node.left);
+
+    // Transform the right side if it contains user-friendly values
+    const transformedRight = this.transformValueMapExpression(node.right, columnSchema);
+
     const left = this.visit(node.left);
-    const right = this.visit(node.right);
+    const right = this.visit(transformedRight);
 
     switch (node.op) {
       case CompareOperationOp.Eq:
         // Handle NULL comparison
         if (
-          (node.right as Constant).expression_type === "constant" &&
-          (node.right as Constant).value === null
+          (transformedRight as Constant).expression_type === "constant" &&
+          (transformedRight as Constant).value === null
         ) {
           return `isNull(${left})`;
         }
@@ -672,8 +678,8 @@ export class ClickHousePrinter {
       case CompareOperationOp.NotEq:
         // Handle NULL comparison
         if (
-          (node.right as Constant).expression_type === "constant" &&
-          (node.right as Constant).value === null
+          (transformedRight as Constant).expression_type === "constant" &&
+          (transformedRight as Constant).value === null
         ) {
           return `isNotNull(${left})`;
         }
@@ -720,6 +726,113 @@ export class ClickHousePrinter {
       default:
         throw new ImpossibleASTError(`Unknown CompareOperationOp: ${node.op}`);
     }
+  }
+
+  /**
+   * Extract column schema from a field expression if it references a known column
+   */
+  private extractColumnSchemaFromExpression(expr: Expression): ColumnSchema | null {
+    if ((expr as Field).expression_type !== "field") return null;
+
+    const field = expr as Field;
+    const chain = field.chain;
+
+    if (chain.length === 0) return null;
+
+    const firstPart = chain[0];
+    if (typeof firstPart !== "string") return null;
+
+    // Qualified reference: table.column
+    if (chain.length >= 2) {
+      const tableAlias = firstPart;
+      const tableSchema = this.tableContexts.get(tableAlias);
+      if (!tableSchema) return null;
+
+      const columnName = chain[1];
+      if (typeof columnName !== "string") return null;
+
+      return tableSchema.columns[columnName] || null;
+    }
+
+    // Unqualified reference
+    const columnName = firstPart;
+    for (const tableSchema of this.tableContexts.values()) {
+      const columnSchema = tableSchema.columns[columnName];
+      if (columnSchema) {
+        return columnSchema;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Transform an expression's values using the column's valueMap if applicable
+   * Returns the original expression if no transformation is needed
+   */
+  private transformValueMapExpression(
+    expr: Expression,
+    columnSchema: ColumnSchema | null
+  ): Expression {
+    // No column schema or no valueMap, return as-is
+    if (!columnSchema || !columnSchema.valueMap) {
+      return expr;
+    }
+
+    // Handle constant string values
+    if ((expr as Constant).expression_type === "constant") {
+      const constant = expr as Constant;
+      if (typeof constant.value === "string") {
+        const internalValue = getInternalValue(columnSchema, constant.value);
+        if (internalValue !== constant.value) {
+          // Return a new constant with the transformed value
+          return {
+            expression_type: "constant",
+            value: internalValue,
+          } as Constant;
+        }
+      }
+      return expr;
+    }
+
+    // Handle arrays (for IN expressions with [...])
+    if ((expr as ASTArray).expression_type === "array") {
+      const array = expr as ASTArray;
+      const transformedExprs = array.exprs.map((e) =>
+        this.transformValueMapExpression(e, columnSchema)
+      );
+
+      // Check if any expressions were actually transformed
+      const hasChanges = transformedExprs.some((e, i) => e !== array.exprs[i]);
+      if (hasChanges) {
+        return {
+          expression_type: "array",
+          exprs: transformedExprs,
+        } as ASTArray;
+      }
+      return expr;
+    }
+
+    // Handle tuples (for IN expressions with (...))
+    if ((expr as Tuple).expression_type === "tuple") {
+      const tuple = expr as Tuple;
+      const transformedExprs = tuple.exprs.map((e) =>
+        this.transformValueMapExpression(e, columnSchema)
+      );
+
+      // Check if any expressions were actually transformed
+      const hasChanges = transformedExprs.some((e, i) => e !== tuple.exprs[i]);
+      if (hasChanges) {
+        return {
+          expression_type: "tuple",
+          exprs: transformedExprs,
+        } as Tuple;
+      }
+      return expr;
+    }
+
+    // Other expression types, return as-is
+    return expr;
   }
 
   private visitBetweenExpr(node: BetweenExpr): string {
