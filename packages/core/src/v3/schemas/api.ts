@@ -205,7 +205,7 @@ export const TriggerTaskRequestBody = z.object({
       region: z.string().optional(),
       debounce: z
         .object({
-          key: z.string(),
+          key: z.string().max(512),
           delay: z.string(),
         })
         .optional(),
@@ -259,7 +259,7 @@ export const BatchTriggerTaskItem = z.object({
       region: z.string().optional(),
       debounce: z
         .object({
-          key: z.string(),
+          key: z.string().max(512),
           delay: z.string(),
         })
         .optional(),
