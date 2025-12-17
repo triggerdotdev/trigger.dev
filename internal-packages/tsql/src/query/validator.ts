@@ -67,6 +67,8 @@ interface ValidationContext {
   schema: TableSchema[];
   /** Accumulated issues */
   issues: ValidationIssue[];
+  /** Set of column aliases defined in the SELECT clause */
+  selectAliases: Set<string>;
 }
 
 /**
@@ -84,6 +86,7 @@ export function validateQuery(
     tables: new Map(),
     schema,
     issues: [],
+    selectAliases: new Set(),
   };
 
   if (ast.expression_type === "select_set_query") {
@@ -121,9 +124,23 @@ function validateSelectSetQuery(node: SelectSetQuery, context: ValidationContext
  * Validate a SELECT query
  */
 function validateSelectQuery(node: SelectQuery, context: ValidationContext): void {
+  // Save parent aliases and create fresh set for this query
+  const parentAliases = context.selectAliases;
+  context.selectAliases = new Set();
+
   // First, extract tables from FROM clause to build context
   if (node.select_from) {
     extractTablesFromJoin(node.select_from, context);
+  }
+
+  // Extract column aliases from SELECT clause before validation
+  // This allows ORDER BY to reference aliased columns
+  if (node.select) {
+    for (const expr of node.select) {
+      if ((expr as Alias).expression_type === "alias") {
+        context.selectAliases.add((expr as Alias).alias);
+      }
+    }
   }
 
   // Validate SELECT columns
@@ -156,6 +173,9 @@ function validateSelectQuery(node: SelectQuery, context: ValidationContext): voi
       validateExpression(expr, context);
     }
   }
+
+  // Restore parent aliases
+  context.selectAliases = parentAliases;
 }
 
 /**
@@ -316,8 +336,14 @@ function validateField(field: Field, context: ValidationContext): void {
     return;
   }
 
-  // Case 2: Unqualified reference - try to find in any table
+  // Case 2: Unqualified reference - try to find in any table or SELECT alias
   const columnName = firstPart;
+
+  // Check if it's a SELECT alias (e.g., from "count(*) as count")
+  if (context.selectAliases.has(columnName)) {
+    return;
+  }
+
   let found = false;
 
   for (const tableSchema of context.tables.values()) {
