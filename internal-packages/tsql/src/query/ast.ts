@@ -1,7 +1,6 @@
 // TypeScript translation of posthog/hogql/ast.py
-// Keep this file in sync with the Python version
 
-import type { HogQLContext } from "./context";
+import type { TSQLContext } from "./context";
 import type {
   DatabaseField,
   ExpressionField,
@@ -15,7 +14,7 @@ import type {
   UnknownDatabaseField,
   VirtualTable,
 } from "./models";
-import type { ConstantDataType, HogQLQuerySettings } from "./constants";
+import type { ConstantDataType, TSQLQuerySettings } from "./constants";
 
 // Base types
 export interface AST {
@@ -25,10 +24,10 @@ export interface AST {
 }
 
 export interface Type extends AST {
-  get_child?(name: string, context: HogQLContext): Type;
-  has_child?(name: string, context: HogQLContext): boolean;
-  resolve_constant_type?(context: HogQLContext): ConstantType;
-  resolve_column_constant_type?(name: string, context: HogQLContext): ConstantType;
+  get_child?(name: string, context: TSQLContext): Type;
+  has_child?(name: string, context: TSQLContext): boolean;
+  resolve_constant_type?(context: TSQLContext): ConstantType;
+  resolve_column_constant_type?(name: string, context: TSQLContext): ConstantType;
 }
 
 export interface Expr extends AST {
@@ -76,7 +75,7 @@ export type Expression =
   | SelectSetQuery
   | RatioExpr
   | SampleExpr
-  | HogQLXTag;
+  | TSQLXTag;
 
 export interface CTE extends Expr {
   expression_type: "cte";
@@ -98,7 +97,7 @@ export interface FieldAliasType extends Type {
 }
 
 export interface BaseTableType extends Type {
-  resolve_database_table?(context: HogQLContext): Table;
+  resolve_database_table?(context: TSQLContext): Table;
 }
 
 export interface TableType extends BaseTableType {
@@ -504,7 +503,7 @@ export interface JoinExpr extends Expr {
   expression_type: "join_expr";
   type?: TableOrSelectType;
   join_type?: string;
-  table?: SelectQuery | SelectSetQuery | Placeholder | HogQLXTag | Field;
+  table?: SelectQuery | SelectSetQuery | Placeholder | TSQLXTag | Field;
   table_args?: Expression[];
   alias?: string;
   table_final?: boolean;
@@ -563,7 +562,7 @@ export interface SelectQuery extends Expr {
   limit_by?: LimitByExpr;
   limit_with_ties?: boolean;
   offset?: Expression;
-  settings?: HogQLQuerySettings;
+  settings?: TSQLQuerySettings;
   view_name?: string;
 }
 
@@ -603,15 +602,15 @@ export interface SampleExpr extends Expr {
   offset_value?: RatioExpr;
 }
 
-export interface HogQLXAttribute extends AST {
+export interface TSQLXAttribute extends AST {
   name: string;
   value: any;
 }
 
-export interface HogQLXTag extends Expr {
-  expression_type: "hogqlx_tag";
+export interface TSQLXTag extends Expr {
+  expression_type: "tsqlx_tag";
   kind: string;
-  attributes: HogQLXAttribute[];
+  attributes: TSQLXAttribute[];
   // Equivalent to to_dict() method
   to_dict?(): Record<string, any>;
 }

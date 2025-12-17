@@ -1,8 +1,7 @@
 // TypeScript translation of posthog/hogql/database/models.py
-// Keep this file in sync with the Python version
 
 import type { Expr, ConstantType } from "./ast";
-import type { HogQLContext } from "./context";
+import type { TSQLContext } from "./context";
 
 export interface FieldOrTable {
   hidden?: boolean;
@@ -43,15 +42,15 @@ export interface Table extends FieldOrTable {
   fields: Record<string, FieldOrTable>;
   has_field?(name: string | number): boolean;
   get_field?(name: string | number): FieldOrTable;
-  to_printed_clickhouse?(context: HogQLContext): string;
-  to_printed_hogql?(): string;
+  to_printed_clickhouse?(context: TSQLContext): string;
+  to_printed_tsql?(): string;
   avoid_asterisk_fields?(): string[];
   get_asterisk?(): Record<string, FieldOrTable>;
 }
 
 export interface LazyJoin extends FieldOrTable {
   join_function?(from_table: Table, to_table: Table, requesting_table: Table): Expr;
-  resolve_table?(context: HogQLContext): Table;
+  resolve_table?(context: TSQLContext): Table;
 }
 
 export interface LazyTable extends Table {}
@@ -63,7 +62,7 @@ export interface SavedQuery extends Table {
 }
 
 export interface FunctionCallTable extends Table {
-  call_function?(context: HogQLContext): Expr;
+  call_function?(context: TSQLContext): Expr;
 }
 
 export interface TableNode {

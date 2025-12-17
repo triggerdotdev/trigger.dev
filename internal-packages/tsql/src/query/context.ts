@@ -1,19 +1,18 @@
 // TypeScript translation of posthog/hogql/context.py
-// Keep this file in sync with the Python version
 
 import type { LimitContext } from "./constants";
 import type { Database } from "./database";
 import type { PropertySwapper } from "./property_types";
-import type { HogQLTimings } from "./timings";
+import type { TSQLTimings } from "./timings";
 
-export interface HogQLNotice {
+export interface TSQLNotice {
   start?: number;
   end?: number;
   message: string;
   fix?: string;
 }
 
-export interface HogQLQueryModifiers {
+export interface TSQLQueryModifiers {
   optimizeJoinedFilters?: boolean;
   debug?: boolean;
   timings?: boolean;
@@ -24,7 +23,7 @@ export interface HogQLQueryModifiers {
   optimizeProjections?: boolean;
 }
 
-export interface HogQLFieldAccess {
+export interface TSQLFieldAccess {
   input: string[];
   type?: "run";
   field?: string;
@@ -36,22 +35,22 @@ export interface Team {
   project_id: number;
 }
 
-export interface HogQLContext {
+export interface TSQLContext {
   team_id?: number;
   team?: Team;
   database?: Database;
   values: Record<string, any>;
-  within_non_hogql_query?: boolean;
+  within_non_tsql_query?: boolean;
   enable_select_queries?: boolean;
   limit_top_select?: boolean;
   limit_context?: LimitContext;
   output_format?: string | null;
   globals?: Record<string, any>;
-  warnings: HogQLNotice[];
-  notices: HogQLNotice[];
-  errors: HogQLNotice[];
-  timings: HogQLTimings;
-  modifiers: HogQLQueryModifiers;
+  warnings: TSQLNotice[];
+  notices: TSQLNotice[];
+  errors: TSQLNotice[];
+  timings: TSQLTimings;
+  modifiers: TSQLQueryModifiers;
   debug?: boolean;
   property_swapper?: PropertySwapper;
 }

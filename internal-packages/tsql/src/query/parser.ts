@@ -148,8 +148,8 @@ import {
   ForInStatement,
   ForStatement,
   Function,
-  HogQLXAttribute,
-  HogQLXTag,
+  TSQLXAttribute,
+  TSQLXTag,
   IfStatement,
   JoinConstraint,
   JoinExpr,
@@ -181,7 +181,7 @@ import {
   WindowFunction,
 } from "./ast";
 import { RESERVED_KEYWORDS } from "./constants";
-import { BaseHogQLError, NotImplementedError, SyntaxError } from "./errors";
+import { BaseTSQLError, NotImplementedError, SyntaxError } from "./errors";
 import { parseStringLiteralText } from "./parse_string";
 
 /**
@@ -339,7 +339,7 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
       }
       return node;
     } catch (e: any) {
-      if (e instanceof BaseHogQLError) {
+      if (e instanceof BaseTSQLError) {
         if (
           start !== undefined &&
           end !== undefined &&
@@ -570,7 +570,7 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
   }
 
   // SELECT statements
-  visitSelect(ctx: SelectContext): SelectQuery | SelectSetQuery | HogQLXTag {
+  visitSelect(ctx: SelectContext): SelectQuery | SelectSetQuery | TSQLXTag {
     const selectSetStmt = ctx.selectSetStmt();
     const selectStmt = ctx.selectStmt();
     const tSQLxTagElement = ctx.tSQLxTagElement();
@@ -579,7 +579,7 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     } else if (selectStmt) {
       return this.visitSelectStmt(selectStmt);
     } else if (tSQLxTagElement) {
-      return this.visitHogqlxTagElementNested(tSQLxTagElement);
+      return this.visitTsqlxTagElementNested(tSQLxTagElement);
     }
     throw new SyntaxError(
       "Select statement must be either a select set statement, a select statement, or a tSQLx tag element"
@@ -844,7 +844,7 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
       return tableResult;
     }
     // Otherwise, wrap the table expression in a JoinExpr
-    const table = tableResult as SelectQuery | SelectSetQuery | Placeholder | HogQLXTag | Field;
+    const table = tableResult as SelectQuery | SelectSetQuery | Placeholder | TSQLXTag | Field;
     return {
       expression_type: "join_expr",
       table,
@@ -856,13 +856,13 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
   /** Helper for visiting table expressions that may return JoinExpr or table types */
   private visitTableExprResult(
     ctx: ParserRuleContext
-  ): JoinExpr | SelectQuery | SelectSetQuery | Placeholder | HogQLXTag | Field {
+  ): JoinExpr | SelectQuery | SelectSetQuery | Placeholder | TSQLXTag | Field {
     return this.visit(ctx) as
       | JoinExpr
       | SelectQuery
       | SelectSetQuery
       | Placeholder
-      | HogQLXTag
+      | TSQLXTag
       | Field;
   }
 
@@ -1512,7 +1512,7 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
       return tableResult;
     }
     // Otherwise, wrap in a JoinExpr
-    const table = tableResult as SelectQuery | SelectSetQuery | Placeholder | HogQLXTag | Field;
+    const table = tableResult as SelectQuery | SelectSetQuery | Placeholder | TSQLXTag | Field;
     return { expression_type: "join_expr", table, alias };
   }
 
@@ -1520,8 +1520,8 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     return this.visitTableFunctionExpr(ctx.tableFunctionExpr());
   }
 
-  visitTableExprTag(ctx: TableExprTagContext): HogQLXTag {
-    return this.visitHogqlxTagElementNested(ctx.tSQLxTagElement());
+  visitTableExprTag(ctx: TableExprTagContext): TSQLXTag {
+    return this.visitTsqlxTagElementNested(ctx.tSQLxTagElement());
   }
 
   visitTableFunctionExpr(ctx: TableFunctionExprContext): JoinExpr {
@@ -1670,51 +1670,51 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     };
   }
 
-  visitHogqlxChildElement(ctx: TSQLxChildElementContext): Expression {
+  visitTsqlxChildElement(ctx: TSQLxChildElementContext): Expression {
     const tSQLxTagElement = ctx.tSQLxTagElement();
     if (tSQLxTagElement) {
-      return this.visitHogqlxTagElementNested(tSQLxTagElement);
+      return this.visitTsqlxTagElementNested(tSQLxTagElement);
     }
     if (ctx.TSQLX_TEXT_TEXT()) {
-      return this.visitHogqlxText(ctx);
+      return this.visitTsqlxText(ctx);
     }
     return this.visitAsExpr(ctx.columnExpr()!);
   }
 
-  visitHogqlxText(ctx: TSQLxChildElementContext): Constant {
+  visitTsqlxText(ctx: TSQLxChildElementContext): Constant {
     const text = ctx.TSQLX_TEXT_TEXT();
     return { expression_type: "constant", value: text ? text.text : "" };
   }
 
-  visitHogqlxTagElementClosed(ctx: TSQLxTagElementContext): HogQLXTag {
+  visitTsqlxTagElementClosed(ctx: TSQLxTagElementContext): TSQLXTag {
     const kind = this.visitIdentifier(ctx.identifier()[0]);
     const attributes = ctx.tSQLxTagAttribute()
       ? ctx
           .tSQLxTagAttribute()
-          .map((a: TSQLxTagAttributeContext) => this.visitHogqlxTagAttribute(a))
+          .map((a: TSQLxTagAttributeContext) => this.visitTsqlxTagAttribute(a))
       : [];
-    return { expression_type: "hogqlx_tag", kind, attributes };
+    return { expression_type: "tsqlx_tag", kind, attributes };
   }
 
-  visitHogqlxTagElementNested(ctx: TSQLxTagElementContext): HogQLXTag {
+  visitTsqlxTagElementNested(ctx: TSQLxTagElementContext): TSQLXTag {
     const opening = this.visitIdentifier(ctx.identifier(0));
     const closing = this.visitIdentifier(ctx.identifier(1));
     if (opening !== closing) {
       throw new SyntaxError(
-        `Opening and closing HogQLX tags must match. Got ${opening} and ${closing}`
+        `Opening and closing TSQLX tags must match. Got ${opening} and ${closing}`
       );
     }
 
     const attributes = ctx.tSQLxTagAttribute()
       ? ctx
           .tSQLxTagAttribute()
-          .map((a: TSQLxTagAttributeContext) => this.visitHogqlxTagAttribute(a))
+          .map((a: TSQLxTagAttributeContext) => this.visitTsqlxTagAttribute(a))
       : [];
 
     // ── collect child nodes, discarding pure-indentation whitespace ──
     const keptChildren: Expression[] = [];
     for (const element of ctx.tSQLxChildElement()) {
-      const child = this.visitHogqlxChildElement(element);
+      const child = this.visitTsqlxChildElement(element);
 
       if ("value" in child && typeof child.value === "string") {
         const v = child.value;
@@ -1729,18 +1729,18 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     }
 
     if (keptChildren.length > 0) {
-      if (attributes.some((a: HogQLXAttribute) => a.name === "children")) {
+      if (attributes.some((a: TSQLXAttribute) => a.name === "children")) {
         throw new SyntaxError(
-          "Can't have a HogQLX tag with both children and a 'children' attribute"
+          "Can't have a TSQLX tag with both children and a 'children' attribute"
         );
       }
       attributes.push({ name: "children", value: keptChildren });
     }
 
-    return { expression_type: "hogqlx_tag", kind: opening, attributes };
+    return { expression_type: "tsqlx_tag", kind: opening, attributes };
   }
 
-  visitHogqlxTagAttribute(ctx: TSQLxTagAttributeContext): HogQLXAttribute {
+  visitTsqlxTagAttribute(ctx: TSQLxTagAttributeContext): TSQLXAttribute {
     const name = this.visitIdentifier(ctx.identifier());
     const columnExpr = ctx.columnExpr();
     const string = ctx.string();

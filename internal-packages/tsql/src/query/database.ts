@@ -1,5 +1,4 @@
 // TypeScript translation of posthog/hogql/database/database.py
-// Keep this file in sync with the Python version
 //
 // NOTE: This implementation requires database/ORM access for:
 // - serialize() method (needs DataWarehouseTable, DataWarehouseSavedQuery queries)
@@ -7,7 +6,7 @@
 // Adapt these methods to your database/ORM setup
 
 import type { ConstantType } from "./ast";
-import type { HogQLContext, HogQLQueryModifiers, Team } from "./context";
+import type { TSQLContext, TSQLQueryModifiers, Team } from "./context";
 import type {
   DatabaseField,
   ExpressionField,
@@ -18,16 +17,12 @@ import type {
   TableNode,
   VirtualTable,
 } from "./models";
-import type { HogQLTimings } from "./timings";
+import type { TSQLTimings } from "./timings";
 import { QueryError, ResolutionError } from "./errors";
-import { HogQLTimings as HogQLTimingsClass } from "./timings";
+import { TSQLTimings as TSQLTimingsClass } from "./timings";
 
 // Type definitions for schema serialization (adapt to your schema types)
 export interface DatabaseSchemaTable {
-  // Base schema table type
-}
-
-export interface DatabaseSchemaPostHogTable extends DatabaseSchemaTable {
   fields: Record<string, DatabaseSchemaField>;
   id: string;
   name: string;
@@ -78,7 +73,7 @@ export interface DatabaseSchemaEndpointTable extends DatabaseSchemaTable {
 
 export interface DatabaseSchemaField {
   name: string;
-  hogql_value: string;
+  tsql_value: string;
   type: DatabaseSerializedFieldType;
   schema_valid: boolean;
   fields?: string[];
@@ -143,6 +138,7 @@ export class Database {
   private _warehouseTableNames: string[] = [];
   private _warehouseSelfManagedTableNames: string[] = [];
   private _viewTableNames: string[] = [];
+  private _coreTableNames: string[] = [];
 
   private _timezone?: string | null;
   private _weekStartDay?: string | null; // WeekStartDay enum
@@ -154,10 +150,6 @@ export class Database {
     this.tables = new TableNodeImpl("root");
     this._timezone = timezone || null;
     this._weekStartDay = weekStartDay || null;
-
-    // NOTE: In Python, tables are initialized with all PostHog tables.
-    // You'll need to initialize these based on your table definitions.
-    // For now, this is a minimal structure.
   }
 
   getTimezone(): string {
@@ -221,20 +213,19 @@ export class Database {
     const warehouseTableNames = this._warehouseTableNames.filter((x) => x.includes("."));
 
     return [
-      ...this.getPosthogTableNames(),
+      ...this._coreTableNames,
       ...warehouseTableNames,
       ...this._warehouseSelfManagedTableNames,
       ...this._viewTableNames,
     ];
   }
 
-  // These are the tables exposed via SQL editor autocomplete and data management
-  getPosthogTableNames(): string[] {
-    return ["events", "groups", "persons", "sessions", ...this.getSystemTableNames()];
+  // Core tables exposed via SQL editor autocomplete and data management
+  getCoreTableNames(): string[] {
+    return [...this._coreTableNames, ...this.getSystemTableNames()];
   }
 
   getSystemTableNames(): string[] {
-    // NOTE: Adapt this based on your SystemTables implementation
     const systemNode = this.tables.children["system"];
     if (systemNode && systemNode.resolve_all_table_names) {
       return ["query_log", ...systemNode.resolve_all_table_names()];
@@ -248,6 +239,13 @@ export class Database {
 
   getViewNames(): string[] {
     return this._viewTableNames;
+  }
+
+  addCoreTable(tableName: string, node: TableNode): void {
+    if (this.tables.add_child) {
+      this.tables.add_child(node);
+    }
+    this._coreTableNames.push(tableName);
   }
 
   private _addWarehouseTables(node: TableNode): void {
@@ -280,7 +278,7 @@ export class Database {
     }
   }
 
-  serialize(context: HogQLContext, includeOnly?: Set<string>): Record<string, DatabaseSchemaTable> {
+  serialize(context: TSQLContext, includeOnly?: Set<string>): Record<string, DatabaseSchemaTable> {
     // NOTE: This method requires database queries to fetch:
     // - DataWarehouseTable objects
     // - DataWarehouseSavedQuery objects
@@ -294,9 +292,9 @@ export class Database {
       throw new ResolutionError("Must provide team_id to serialize database");
     }
 
-    // PostHog tables
-    const posthogTableNames = this.getPosthogTableNames();
-    for (const tableName of posthogTableNames) {
+    // Core tables
+    const coreTableNames = this.getCoreTableNames();
+    for (const tableName of coreTableNames) {
       if (includeOnly && !includeOnly.has(tableName)) {
         continue;
       }
@@ -309,13 +307,7 @@ export class Database {
         fieldInput = table.fields;
       }
 
-      const fields = serializeFields(
-        fieldInput,
-        context,
-        tableName.split("."),
-        undefined,
-        "posthog"
-      );
+      const fields = serializeFields(fieldInput, context, tableName.split("."), undefined);
       const fieldsDict: Record<string, DatabaseSchemaField> = {};
       for (const field of fields) {
         fieldsDict[field.name] = field;
@@ -324,7 +316,7 @@ export class Database {
         fields: fieldsDict,
         id: tableName,
         name: tableName,
-      } as DatabaseSchemaPostHogTable;
+      } as DatabaseSchemaTable;
     }
 
     // System tables
@@ -342,13 +334,7 @@ export class Database {
         systemFieldInput = table.fields;
       }
 
-      const fields = serializeFields(
-        systemFieldInput,
-        context,
-        tableKey.split("."),
-        undefined,
-        "posthog"
-      );
+      const fields = serializeFields(systemFieldInput, context, tableKey.split("."), undefined);
       const fieldsDict: Record<string, DatabaseSchemaField> = {};
       for (const field of fields) {
         fieldsDict[field.name] = field;
@@ -373,8 +359,8 @@ export class Database {
     teamId?: number,
     options?: {
       team?: Team;
-      modifiers?: HogQLQueryModifiers;
-      timings?: HogQLTimings;
+      modifiers?: TSQLQueryModifiers;
+      timings?: TSQLTimings;
     }
   ): Database {
     // NOTE: This method requires extensive database/ORM access:
@@ -387,7 +373,7 @@ export class Database {
     //
     // This is a skeleton structure - adapt to your setup
 
-    const timings = options?.timings || new HogQLTimingsClass();
+    const timings = options?.timings || new TSQLTimingsClass();
     const { team, modifiers } = options || {};
 
     // Validate team/teamId
@@ -412,7 +398,6 @@ export class Database {
 
     // NOTE: Apply modifiers, setup tables, etc.
     // This requires extensive database access and table setup logic
-    // See Python implementation for full details
 
     return database;
   }
@@ -420,7 +405,7 @@ export class Database {
 
 // Helper functions
 
-const HOGQL_CHARACTERS_TO_BE_WRAPPED = ["@", "-", "!", "$", "+"];
+const TSQL_CHARACTERS_TO_BE_WRAPPED = ["@", "-", "!", "$", "+"];
 
 function constantTypeToSerializedFieldType(
   constantType: ConstantType
@@ -484,10 +469,9 @@ function constantTypeToSerializedFieldType(
 
 export function serializeFields(
   fieldInput: Record<string, FieldOrTable>,
-  context: HogQLContext,
+  context: TSQLContext,
   tableChain: string[],
-  dbColumns?: Record<string, any>, // DataWarehouseTableColumns
-  tableType: "posthog" | "external" = "posthog"
+  dbColumns?: Record<string, any> // DataWarehouseTableColumns
 ): DatabaseSchemaField[] {
   // NOTE: This requires resolve_types_from_table from resolver
   // Import as needed: import { resolveTypesFromTable } from '../resolver';
@@ -506,21 +490,18 @@ export function serializeFields(
       }
     }
 
-    let hogqlValue: string;
-    if (HOGQL_CHARACTERS_TO_BE_WRAPPED.some((char) => fieldKey.includes(char))) {
-      hogqlValue = `\`${fieldKey}\``;
+    let tsqlValue: string;
+    if (TSQL_CHARACTERS_TO_BE_WRAPPED.some((char) => fieldKey.includes(char))) {
+      tsqlValue = `\`${fieldKey}\``;
     } else {
-      hogqlValue = fieldKey;
+      tsqlValue = fieldKey;
     }
 
     if ("hidden" in field && field.hidden) {
       continue;
     }
 
-    if (fieldKey === "team_id" && tableType === "posthog") {
-      // Skip team_id for posthog tables
-      continue;
-    } else if ("name" in field && "get_constant_type" in field) {
+    if ("name" in field && "get_constant_type" in field) {
       // DatabaseField
       const dbField = field as DatabaseField;
       let fieldType: DatabaseSerializedFieldType;
@@ -538,7 +519,7 @@ export function serializeFields(
 
       fieldOutput.push({
         name: fieldKey,
-        hogql_value: hogqlValue,
+        tsql_value: tsqlValue,
         type: fieldType,
         schema_valid: schemaValid,
       });
@@ -546,13 +527,13 @@ export function serializeFields(
       // ExpressionField
       const exprField = field as ExpressionField;
       // NOTE: Requires resolve_types_from_table
-      // const resolvedExpr = resolveTypesFromTable(exprField.expr, tableChain, context, 'hogql');
+      // const resolvedExpr = resolveTypesFromTable(exprField.expr, tableChain, context, 'tsql');
       // const constantType = resolvedExpr.type?.resolve_constant_type(context);
       // const fieldType = constantTypeToSerializedFieldType(constantType) || DatabaseSerializedFieldType.EXPRESSION;
 
       fieldOutput.push({
         name: fieldKey,
-        hogql_value: hogqlValue,
+        tsql_value: tsqlValue,
         type: DatabaseSerializedFieldType.EXPRESSION,
         schema_valid: schemaValid,
       });
@@ -568,10 +549,10 @@ export function serializeFields(
 
         fieldOutput.push({
           name: fieldKey,
-          hogql_value: hogqlValue,
+          tsql_value: tsqlValue,
           type,
           schema_valid: schemaValid,
-          table: resolvedTable.to_printed_hogql ? resolvedTable.to_printed_hogql() : fieldKey,
+          table: resolvedTable.to_printed_tsql ? resolvedTable.to_printed_tsql() : fieldKey,
           fields: "fields" in resolvedTable ? Object.keys(resolvedTable.fields) : [],
           id: "id" in resolvedTable && resolvedTable.id ? String(resolvedTable.id) : fieldKey,
         });
@@ -581,10 +562,10 @@ export function serializeFields(
       const virtualTable = field as VirtualTable;
       fieldOutput.push({
         name: fieldKey,
-        hogql_value: hogqlValue,
+        tsql_value: tsqlValue,
         type: DatabaseSerializedFieldType.VIRTUAL_TABLE,
         schema_valid: schemaValid,
-        table: virtualTable.to_printed_hogql ? virtualTable.to_printed_hogql() : fieldKey,
+        table: virtualTable.to_printed_tsql ? virtualTable.to_printed_tsql() : fieldKey,
         fields: Object.keys(virtualTable.fields),
       });
     } else if ("chain" in field) {
@@ -592,7 +573,7 @@ export function serializeFields(
       const traverser = field as FieldTraverser;
       fieldOutput.push({
         name: fieldKey,
-        hogql_value: hogqlValue,
+        tsql_value: tsqlValue,
         type: DatabaseSerializedFieldType.FIELD_TRAVERSER,
         schema_valid: schemaValid,
         chain: traverser.chain,
@@ -601,43 +582,4 @@ export function serializeFields(
   }
 
   return fieldOutput;
-}
-
-// Helper functions for database setup (simplified versions)
-function usePersonPropertiesFromEvents(database: Database): void {
-  const table = database.getTable("events");
-  table.fields["person"] = { chain: ["poe"] } as FieldTraverser;
-}
-
-function usePersonIdFromPersonOverrides(database: Database): void {
-  const table = database.getTable("events");
-  table.fields["event_person_id"] = { name: "person_id" } as DatabaseField;
-  // NOTE: Setup LazyJoin and ExpressionField for override logic
-  // This requires complex setup - see Python implementation
-}
-
-function useErrorTrackingIssueIdFromErrorTrackingIssueOverrides(database: Database): void {
-  const table = database.getTable("events");
-  // NOTE: Setup ExpressionField and LazyJoin for error tracking
-  // See Python implementation for details
-}
-
-function setupGroupKeyFields(database: Database, team: Team): void {
-  // NOTE: Requires GroupTypeMapping queries from database
-  // See Python implementation for full logic
-  const table = database.getTable("events");
-  // Setup group key fields based on GroupTypeMapping
-}
-
-function useVirtualFields(
-  database: Database,
-  modifiers: HogQLQueryModifiers,
-  timings: HogQLTimings
-): void {
-  // NOTE: Requires channel type creation functions
-  // See Python implementation for full virtual field setup
-  const eventsTable = database.getTable("events");
-  const personsTable = database.getTable("persons");
-  const groupsTable = database.getTable("groups");
-  // Setup virtual fields like initial_referring_domain_type, initial_channel_type, revenue fields
 }
