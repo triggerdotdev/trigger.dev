@@ -675,6 +675,120 @@ describe("ClickHousePrinter", () => {
   });
 });
 
+describe("Value mapping (valueMap)", () => {
+  /**
+   * Schema with valueMap for status column
+   */
+  const statusMappedSchema: TableSchema = {
+    name: "runs",
+    clickhouseName: "trigger_dev.task_runs_v2",
+    columns: {
+      id: { name: "id", ...column("String") },
+      status: {
+        name: "status",
+        ...column("String"),
+        valueMap: {
+          COMPLETED_SUCCESSFULLY: "Completed",
+          COMPLETED_WITH_ERRORS: "Completed with errors",
+          SYSTEM_FAILURE: "System failure",
+          PENDING: "Pending",
+          EXECUTING: "Running",
+          FAILED: "Failed",
+        },
+      },
+      organization_id: { name: "organization_id", ...column("String") },
+      project_id: { name: "project_id", ...column("String") },
+      environment_id: { name: "environment_id", ...column("String") },
+    },
+    tenantColumns: {
+      organizationId: "organization_id",
+      projectId: "project_id",
+      environmentId: "environment_id",
+    },
+  };
+
+  function createValueMapContext() {
+    const schema = createSchemaRegistry([statusMappedSchema]);
+    return createPrinterContext({
+      organizationId: "org_test",
+      projectId: "proj_test",
+      environmentId: "env_test",
+      schema,
+    });
+  }
+
+  it("should transform user-friendly value to internal value in equality comparison", () => {
+    const ctx = createValueMapContext();
+    const { sql, params } = printQuery("SELECT * FROM runs WHERE status = 'Completed'", ctx);
+
+    // The user-friendly value "Completed" should be transformed to "COMPLETED_SUCCESSFULLY"
+    expect(Object.values(params)).toContain("COMPLETED_SUCCESSFULLY");
+    expect(Object.values(params)).not.toContain("Completed");
+  });
+
+  it("should transform user-friendly values in IN clause", () => {
+    const ctx = createValueMapContext();
+    const { sql, params } = printQuery(
+      "SELECT * FROM runs WHERE status IN ('Completed', 'Failed', 'Running')",
+      ctx
+    );
+
+    // All user-friendly values should be transformed
+    expect(Object.values(params)).toContain("COMPLETED_SUCCESSFULLY");
+    expect(Object.values(params)).toContain("FAILED");
+    expect(Object.values(params)).toContain("EXECUTING");
+    expect(Object.values(params)).not.toContain("Completed");
+    expect(Object.values(params)).not.toContain("Failed");
+    expect(Object.values(params)).not.toContain("Running");
+  });
+
+  it("should handle case-insensitive value matching", () => {
+    const ctx = createValueMapContext();
+    const { params: params1 } = printQuery("SELECT * FROM runs WHERE status = 'completed'", ctx);
+    const { params: params2 } = printQuery("SELECT * FROM runs WHERE status = 'COMPLETED'", ctx);
+    const { params: params3 } = printQuery("SELECT * FROM runs WHERE status = 'Completed'", ctx);
+
+    // All variations should map to the same internal value
+    expect(Object.values(params1)).toContain("COMPLETED_SUCCESSFULLY");
+    expect(Object.values(params2)).toContain("COMPLETED_SUCCESSFULLY");
+    expect(Object.values(params3)).toContain("COMPLETED_SUCCESSFULLY");
+  });
+
+  it("should pass through values without mapping if not in valueMap", () => {
+    const ctx = createValueMapContext();
+    const { params } = printQuery("SELECT * FROM runs WHERE status = 'UNKNOWN_STATUS'", ctx);
+
+    // Value not in valueMap should pass through unchanged
+    expect(Object.values(params)).toContain("UNKNOWN_STATUS");
+  });
+
+  it("should transform values in NOT IN clause", () => {
+    const ctx = createValueMapContext();
+    const { sql, params } = printQuery(
+      "SELECT * FROM runs WHERE status NOT IN ('Pending', 'System failure')",
+      ctx
+    );
+
+    expect(Object.values(params)).toContain("PENDING");
+    expect(Object.values(params)).toContain("SYSTEM_FAILURE");
+  });
+
+  it("should transform values in != comparison", () => {
+    const ctx = createValueMapContext();
+    const { params } = printQuery("SELECT * FROM runs WHERE status != 'Failed'", ctx);
+
+    expect(Object.values(params)).toContain("FAILED");
+  });
+
+  it("should not transform values for columns without valueMap", () => {
+    const ctx = createValueMapContext();
+    const { params } = printQuery("SELECT * FROM runs WHERE id = 'Completed'", ctx);
+
+    // 'id' column has no valueMap, so "Completed" should pass through unchanged
+    expect(Object.values(params)).toContain("Completed");
+  });
+});
+
 describe("Edge cases", () => {
   it("should handle empty string values", () => {
     const { sql, params } = printQuery("SELECT * FROM task_runs WHERE status = ''");

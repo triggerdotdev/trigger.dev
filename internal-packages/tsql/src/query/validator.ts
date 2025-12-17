@@ -19,6 +19,7 @@ import type {
   Array as ASTArray,
 } from "./ast.js";
 import type { TableSchema, ColumnSchema } from "./schema.js";
+import { getAllowedUserValues, isValidUserValue } from "./schema.js";
 import { CompareOperationOp } from "./ast.js";
 
 /**
@@ -360,8 +361,9 @@ function validateCompareOperation(op: CompareOperation, context: ValidationConte
 
   const { columnSchema, columnName, tableName } = columnInfo;
 
-  // Only validate if the column has allowedValues
-  if (!columnSchema.allowedValues || columnSchema.allowedValues.length === 0) return;
+  // Only validate if the column has allowedValues or valueMap
+  const allowedValues = getAllowedUserValues(columnSchema);
+  if (allowedValues.length === 0) return;
 
   // Check the comparison type
   switch (op.op) {
@@ -432,6 +434,7 @@ function extractColumnFromExpression(
 
 /**
  * Validate that a value matches the allowed enum values for a column
+ * Supports both allowedValues and valueMap, with case-insensitive matching
  */
 function validateEnumValue(
   expr: Expression,
@@ -446,10 +449,12 @@ function validateEnumValue(
   if (typeof constant.value !== "string") return;
 
   const value = constant.value;
-  const allowedValues = columnSchema.allowedValues!;
 
-  if (!allowedValues.includes(value)) {
+  // Use isValidUserValue for case-insensitive validation against user-friendly values
+  if (!isValidUserValue(columnSchema, value)) {
     const columnRef = tableName ? `${tableName}.${columnName}` : columnName;
+    // Show user-friendly values in the error message
+    const allowedValues = getAllowedUserValues(columnSchema);
     context.issues.push({
       message: `Invalid value "${value}" for column "${columnRef}". Allowed values: ${allowedValues.join(
         ", "

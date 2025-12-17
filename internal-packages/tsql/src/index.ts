@@ -73,6 +73,11 @@ export {
   validateSortColumn,
   validateGroupColumn,
   column,
+  // Value mapping utilities
+  getUserFriendlyValue,
+  getInternalValue,
+  getAllowedUserValues,
+  isValidUserValue,
 } from "./query/schema.js";
 
 // Re-export printer context
@@ -98,6 +103,13 @@ export {
   type ValidationIssue,
   type ValidationSeverity,
 } from "./query/validator.js";
+
+// Re-export result transformation utilities
+export {
+  transformResults,
+  createResultTransformer,
+  type TransformResultsOptions,
+} from "./query/results.js";
 
 /**
  * Parse a TSQL SELECT query string into an AST

@@ -7,7 +7,12 @@
 
 import type { ClickHouseSettings } from "@clickhouse/client";
 import { z } from "zod";
-import { compileTSQL, type TableSchema, type QuerySettings } from "@internal/tsql";
+import {
+  compileTSQL,
+  transformResults,
+  type TableSchema,
+  type QuerySettings,
+} from "@internal/tsql";
 import type { ClickhouseReader } from "./types.js";
 import { QueryError } from "./errors.js";
 
@@ -36,6 +41,13 @@ export interface ExecuteTSQLOptions<TOut extends z.ZodSchema> {
   clickhouseSettings?: ClickHouseSettings;
   /** Optional TSQL query settings (maxRows, timezone, etc.) */
   querySettings?: Partial<QuerySettings>;
+  /**
+   * Whether to transform result values using the schema's valueMap
+   * When enabled, internal ClickHouse values (e.g., 'COMPLETED_SUCCESSFULLY')
+   * are converted to user-friendly display names (e.g., 'Completed')
+   * @default true
+   */
+  transformValues?: boolean;
 }
 
 /**
@@ -67,6 +79,8 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
   reader: ClickhouseReader,
   options: ExecuteTSQLOptions<TOut>
 ): Promise<TSQLQueryResult<z.output<TOut>>> {
+  const shouldTransformValues = options.transformValues ?? true;
+
   try {
     // 1. Compile the TSQL query to ClickHouse SQL
     const { sql, params } = compileTSQL(options.query, {
@@ -86,7 +100,22 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
       settings: options.clickhouseSettings,
     });
 
-    return await queryFn(params);
+    const [error, rows] = await queryFn(params);
+
+    if (error) {
+      return [error, null];
+    }
+
+    // 3. Transform result values if enabled
+    if (shouldTransformValues && rows) {
+      const transformedRows = transformResults(
+        rows as Record<string, unknown>[],
+        options.tableSchema
+      );
+      return [null, transformedRows as z.output<TOut>[]];
+    }
+
+    return [null, rows];
   } catch (error) {
     if (error instanceof Error) {
       return [new QueryError(error.message, { query: options.query }), null];
