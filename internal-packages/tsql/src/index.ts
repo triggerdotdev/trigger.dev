@@ -78,6 +78,9 @@ export {
   getInternalValue,
   getAllowedUserValues,
   isValidUserValue,
+  // Virtual column utilities
+  isVirtualColumn,
+  getVirtualColumnExpression,
 } from "./query/schema.js";
 
 // Re-export printer context

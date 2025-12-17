@@ -40,6 +40,22 @@ const runsSchema: TableSchema = {
       name: "duration_ms",
       ...column("Nullable(UInt64)", { description: "Run duration in milliseconds" }),
     },
+    // Virtual column: computed from started_at and completed_at
+    execution_duration: {
+      name: "execution_duration",
+      ...column("Nullable(Int64)", {
+        description: "Computed execution time in milliseconds (virtual column)",
+      }),
+      expression: "dateDiff('millisecond', started_at, completed_at)",
+    },
+    // Virtual column: duration in seconds for convenience
+    duration_seconds: {
+      name: "duration_seconds",
+      ...column("Float64", {
+        description: "Duration in seconds (virtual column)",
+      }),
+      expression: "duration_ms / 1000.0",
+    },
     organization_id: { name: "organization_id", ...column("String") },
     project_id: { name: "project_id", ...column("String") },
     environment_id: { name: "environment_id", ...column("String") },
@@ -87,6 +103,18 @@ const exampleQueries = [
   {
     name: "Enum IN clause",
     query: "SELECT * FROM runs WHERE status IN ('PENDING', 'QUEUED', 'EXECUTING') LIMIT 50",
+  },
+  {
+    name: "Virtual columns",
+    query: `SELECT 
+  id,
+  status,
+  execution_duration,
+  duration_seconds
+FROM runs
+WHERE execution_duration > 5000
+ORDER BY execution_duration DESC
+LIMIT 20`,
   },
   {
     name: "Aggregation",
@@ -268,8 +296,15 @@ export default function Story() {
                 {Object.entries(table.columns).map(([name, col]) => (
                   <div key={name} className="flex flex-col gap-0.5 text-xs">
                     <div className="flex items-baseline gap-2">
-                      <code className="text-blue-400">{name}</code>
+                      <code className={col.expression ? "text-purple-400" : "text-blue-400"}>
+                        {name}
+                      </code>
                       <span className="text-charcoal-400">{col.type}</span>
+                      {col.expression && (
+                        <span className="rounded bg-purple-500/20 px-1 text-[10px] text-purple-300">
+                          virtual
+                        </span>
+                      )}
                       {col.description && (
                         <span className="text-text-dimmed">- {col.description}</span>
                       )}
@@ -277,6 +312,11 @@ export default function Story() {
                     {col.allowedValues && col.allowedValues.length > 0 && (
                       <div className="ml-4 text-green-400/70">
                         Allowed: {col.allowedValues.join(", ")}
+                      </div>
+                    )}
+                    {col.expression && (
+                      <div className="ml-4 font-mono text-purple-400/70">
+                        Expression: {col.expression}
                       </div>
                     )}
                   </div>
