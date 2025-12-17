@@ -110,6 +110,12 @@ export class DockerWorkloadManager implements WorkloadManager {
       });
     }
 
+    if (opts.envVars) {
+      Object.entries(opts.envVars).forEach(([key, value]) => {
+        envVars.push(`${key}=${value}`);
+      });
+    }
+
     const hostConfig: Docker.HostConfig = {
       AutoRemove: !!this.opts.dockerAutoremove,
     };

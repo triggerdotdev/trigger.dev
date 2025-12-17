@@ -370,12 +370,44 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
   }
 
   async dequeue({ runnerId }: { runnerId?: string }): Promise<DequeuedMessage[]> {
-    return await this._engine.dequeueFromWorkerQueue({
+    const messages = await this._engine.dequeueFromWorkerQueue({
       consumerId: this.workerInstanceId,
       workerQueue: this.masterQueue,
       workerId: this.workerInstanceId,
       runnerId,
     });
+
+    // Fetch and inject environment variables for each message
+    const messagesWithEnvVars = await Promise.all(
+      messages.map(async (message) => {
+        const defaultMachinePreset = machinePresetFromName(defaultMachine);
+
+        const environment = await this._prisma.runtimeEnvironment.findFirst({
+          where: {
+            id: message.environment.id,
+          },
+          include: {
+            parentEnvironment: true,
+          },
+        });
+
+        const envVars = environment
+          ? await this.getEnvVars(
+              environment,
+              message.run.id,
+              message.run.machine ?? defaultMachinePreset,
+              environment.parentEnvironment ?? undefined
+            )
+          : {};
+
+        return {
+          ...message,
+          envVars,
+        };
+      })
+    );
+
+    return messagesWithEnvVars;
   }
 
   async heartbeatWorkerInstance() {

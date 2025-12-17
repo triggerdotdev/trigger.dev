@@ -270,5 +270,6 @@ export const DequeuedMessage = z.object({
     id: z.string(),
   }),
   placementTags: z.array(PlacementTag).optional(),
+  envVars: z.record(z.string()).optional(),
 });
 export type DequeuedMessage = z.infer<typeof DequeuedMessage>;
