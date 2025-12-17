@@ -1,4 +1,3 @@
-import { CircleStackIcon } from "@heroicons/react/20/solid";
 import { Form, useNavigation } from "@remix-run/react";
 import {
   type ActionFunctionArgs,
@@ -9,6 +8,7 @@ import { useState } from "react";
 import { typedjson, useTypedActionData, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { TSQLEditor } from "~/components/code/TSQLEditor";
+import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button } from "~/components/primitives/Buttons";
 import { Header2 } from "~/components/primitives/Headers";
@@ -16,6 +16,9 @@ import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { Spinner } from "~/components/primitives/Spinner";
+import { useEnvironment } from "~/hooks/useEnvironment";
+import { useOrganization } from "~/hooks/useOrganizations";
+import { useProject } from "~/hooks/useProject";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { executeQuery } from "~/services/queryService.server";
@@ -143,9 +146,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 };
 
 export default function Page() {
-  const { organizationId, projectId, environmentId, defaultQuery } =
-    useTypedLoaderData<typeof loader>();
-  const actionData = useTypedActionData<typeof action>();
+  const { defaultQuery } = useTypedLoaderData<typeof loader>();
+  const results = useTypedActionData<typeof action>();
   const navigation = useNavigation();
 
   const [query, setQuery] = useState(defaultQuery);
@@ -159,86 +161,69 @@ export default function Page() {
         <PageTitle title="Query" />
       </NavBar>
       <PageBody scrollable={false}>
-        <div className="flex h-full flex-col gap-4 p-4">
-          {/* Editor */}
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <Header2>SQL Query</Header2>
-              <Paragraph variant="small" className="text-text-dimmed">
-                Query task runs using SQL. Results are scoped to your selected tenant level.
-              </Paragraph>
-            </div>
-            <div className="overflow-hidden rounded-lg border border-grid-dimmed">
-              <TSQLEditor
-                defaultValue={query}
-                onChange={setQuery}
-                schema={querySchemas}
-                linterEnabled={true}
-                showCopyButton={true}
-                showClearButton={true}
-                minHeight="200px"
-                className="min-h-[200px]"
-              />
-            </div>
-          </div>
-
-          {/* Controls */}
-          <Form method="post" className="flex items-center gap-3">
-            <input type="hidden" name="query" value={query} />
-            <input type="hidden" name="scope" value={scope} />
-
-            <div className="flex items-center gap-2">
-              <Paragraph variant="small" className="text-text-dimmed">
-                Scope:
-              </Paragraph>
-              <Select<QueryScope, (typeof scopeOptions)[number]>
+        <div className="grid grid-rows-[1fr_auto]">
+          {/* Query editor */}
+          <div className="flex h-full flex-col gap-2 pb-2">
+            <TSQLEditor
+              defaultValue={query}
+              onChange={setQuery}
+              schema={querySchemas}
+              linterEnabled={true}
+              showCopyButton={true}
+              showClearButton={true}
+              minHeight="200px"
+              className="min-h-[200px]"
+            />
+            <Form method="post" className="flex items-center justify-end gap-3 px-2">
+              <input type="hidden" name="query" value={query} />
+              <input type="hidden" name="scope" value={scope} />
+              <Select
                 value={scope}
                 setValue={(value) => setScope(value as QueryScope)}
-                variant="secondary/small"
+                variant="tertiary/small"
                 dropdownIcon={true}
                 items={[...scopeOptions]}
+                text={(value) => {
+                  return <ScopeItem scope={value as QueryScope} />;
+                }}
               >
                 {(items) =>
                   items.map((item) => (
                     <SelectItem key={item.value} value={item.value}>
-                      {item.label}
+                      <ScopeItem scope={item.value as QueryScope} />
                     </SelectItem>
                   ))
                 }
               </Select>
-            </div>
-
-            <Button
-              type="submit"
-              variant="primary/medium"
-              disabled={isLoading || !query.trim()}
-              shortcut={{ modifiers: ["mod"], key: "enter", enabledOnInputElements: true }}
-            >
-              {isLoading ? (
-                <>
-                  <Spinner className="size-4" color="white" />
-                  Querying...
-                </>
-              ) : (
-                "Query"
-              )}
-            </Button>
-          </Form>
-
+              <Button
+                type="submit"
+                variant="primary/small"
+                disabled={isLoading || !query.trim()}
+                shortcut={{ modifiers: ["mod"], key: "enter", enabledOnInputElements: true }}
+                LeadingIcon={isLoading ? <Spinner className="size-4" color="white" /> : undefined}
+              >
+                {isLoading ? "Querying..." : "Query"}
+              </Button>
+            </Form>
+          </div>
           {/* Results */}
-          <div className="flex min-h-0 flex-1 flex-col gap-2">
-            <Header2>Results</Header2>
+          <div className="grid h-full min-h-0 flex-1 grid-rows-[2.5rem_1fr] flex-col gap-2 border-t border-grid-dimmed pt-1">
+            <div className="px-3">
+              <Header2>
+                {results?.rows?.length ? `${results.rows.length} Results` : "Results"}
+              </Header2>
+            </div>
             <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-grid-dimmed bg-charcoal-900 p-4">
               {isLoading ? (
                 <div className="flex items-center gap-2 text-text-dimmed">
                   <Spinner className="size-4" />
                   <span>Executing query...</span>
                 </div>
-              ) : actionData?.error ? (
-                <pre className="whitespace-pre-wrap text-sm text-red-400">{actionData.error}</pre>
-              ) : actionData?.rows ? (
+              ) : results?.error ? (
+                <pre className="whitespace-pre-wrap text-sm text-red-400">{results.error}</pre>
+              ) : results?.rows ? (
                 <pre className="whitespace-pre-wrap text-sm text-text-bright">
-                  {JSON.stringify(actionData.rows, null, 2)}
+                  {JSON.stringify(results.rows, null, 2)}
                 </pre>
               ) : (
                 <Paragraph variant="small" className="text-text-dimmed">
@@ -246,9 +231,30 @@ export default function Page() {
                 </Paragraph>
               )}
             </div>
-          </div>
+          </div>{" "}
+          :{" "}
+          <Paragraph variant="small" className="text-text-dimmed">
+            Run a query to see results here.
+          </Paragraph>
         </div>
       </PageBody>
     </PageContainer>
   );
+}
+
+function ScopeItem({ scope }: { scope: QueryScope }) {
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+
+  switch (scope) {
+    case "organization":
+      return organization.title;
+    case "project":
+      return project.name;
+    case "environment":
+      return <EnvironmentLabel environment={environment} />;
+    default:
+      return scope;
+  }
 }
