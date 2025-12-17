@@ -3,8 +3,11 @@ import { autocompletion } from "@codemirror/autocomplete";
 import { linter, lintGutter } from "@codemirror/lint";
 import type { ViewUpdate } from "@codemirror/view";
 import { CheckIcon, ClipboardIcon, TrashIcon } from "@heroicons/react/20/solid";
-import type { ReactCodeMirrorProps, UseCodeMirror } from "@uiw/react-codemirror";
-import { useCodeMirror } from "@uiw/react-codemirror";
+import {
+  type ReactCodeMirrorProps,
+  type UseCodeMirror,
+  useCodeMirror,
+} from "@uiw/react-codemirror";
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { cn } from "~/utils/cn";
 import { Button } from "../primitives/Buttons";
@@ -13,6 +16,7 @@ import { darkTheme } from "./codeMirrorTheme";
 import { createTSQLCompletion } from "./tsql/tsqlCompletion";
 import { createTSQLLinter } from "./tsql/tsqlLinter";
 import type { TableSchema } from "@internal/tsql";
+import { Header2 } from "../primitives/Headers";
 
 export interface TSQLEditorProps extends Omit<ReactCodeMirrorProps, "onBlur"> {
   /** Initial value for the editor */
@@ -168,15 +172,21 @@ export function TSQLEditor(opts: TSQLEditorProps) {
 
   return (
     <div
-      className={cn(
-        "grid",
-        showButtons ? "grid-rows-[2.5rem_1fr]" : "grid-rows-[1fr]",
-        opts.className
-      )}
+      className={cn("relative flex h-full flex-col", opts.className)}
       style={minHeight ? { minHeight } : undefined}
     >
+      <div
+        className={cn(
+          "min-h-0 flex-1 overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        )}
+        ref={editor}
+        onBlur={() => {
+          if (!onBlur) return;
+          onBlur(editor.current?.textContent ?? "");
+        }}
+      />
       {showButtons && (
-        <div className="mx-3 flex items-center justify-end gap-2 border-b border-grid-dimmed">
+        <div className="absolute right-0 top-0 z-10 flex items-center justify-end bg-charcoal-950/80 p-0.5">
           {additionalActions && additionalActions}
           {showClearButton && (
             <Button
@@ -211,15 +221,6 @@ export function TSQLEditor(opts: TSQLEditorProps) {
           )}
         </div>
       )}
-      <div
-        className="w-full overflow-auto"
-        ref={editor}
-        onBlur={() => {
-          if (!onBlur) return;
-          onBlur(editor.current?.textContent ?? "");
-        }}
-      />
     </div>
   );
 }
-
