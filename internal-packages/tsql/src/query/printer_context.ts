@@ -61,12 +61,12 @@ export class PrinterContext {
   readonly errors: QueryNotice[] = [];
 
   constructor(
-    /** The organization ID for tenant isolation */
+    /** The organization ID for tenant isolation (required) */
     public readonly organizationId: string,
-    /** The project ID for tenant isolation */
-    public readonly projectId: string,
-    /** The environment ID for tenant isolation */
-    public readonly environmentId: string,
+    /** The project ID for tenant isolation (optional - omit to query across all projects) */
+    public readonly projectId: string | undefined,
+    /** The environment ID for tenant isolation (optional - omit to query across all environments) */
+    public readonly environmentId: string | undefined,
     /** Schema registry containing allowed tables and columns */
     public readonly schema: SchemaRegistry,
     /** Query execution settings */
@@ -177,9 +177,12 @@ export class PrinterContext {
  * Options for creating a printer context
  */
 export interface PrinterContextOptions {
+  /** The organization ID for tenant isolation (required) */
   organizationId: string;
-  projectId: string;
-  environmentId: string;
+  /** The project ID for tenant isolation (optional - omit to query across all projects) */
+  projectId?: string;
+  /** The environment ID for tenant isolation (optional - omit to query across all environments) */
+  environmentId?: string;
   schema: SchemaRegistry;
   settings?: QuerySettings;
 }

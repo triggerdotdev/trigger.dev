@@ -519,12 +519,14 @@ export class ClickHousePrinter {
    * Create a WHERE clause expression for tenant isolation
    * Note: We use just the column name without table prefix since ClickHouse
    * requires the actual table name (task_runs_v2), not the TSQL alias (task_runs)
+   *
+   * Organization ID is always required. Project ID and Environment ID are optional -
+   * if not provided, the query will return results across all projects/environments.
    */
-  private createTenantGuard(tableSchema: TableSchema, _tableAlias: string): And {
+  private createTenantGuard(tableSchema: TableSchema, _tableAlias: string): And | CompareOperation {
     const { tenantColumns } = tableSchema;
 
-    // Create equality comparisons for each tenant column
-    // Use just the column name - ClickHouse will resolve it correctly
+    // Organization guard is always required
     const orgGuard: CompareOperation = {
       expression_type: "compare_operation",
       op: CompareOperationOp.Eq,
@@ -532,23 +534,39 @@ export class ClickHousePrinter {
       right: { expression_type: "constant", value: this.context.organizationId } as Constant,
     };
 
-    const projectGuard: CompareOperation = {
-      expression_type: "compare_operation",
-      op: CompareOperationOp.Eq,
-      left: { expression_type: "field", chain: [tenantColumns.projectId] } as Field,
-      right: { expression_type: "constant", value: this.context.projectId } as Constant,
-    };
+    // Collect all guards - org is always included
+    const guards: CompareOperation[] = [orgGuard];
 
-    const envGuard: CompareOperation = {
-      expression_type: "compare_operation",
-      op: CompareOperationOp.Eq,
-      left: { expression_type: "field", chain: [tenantColumns.environmentId] } as Field,
-      right: { expression_type: "constant", value: this.context.environmentId } as Constant,
-    };
+    // Only add project guard if projectId is provided
+    if (this.context.projectId !== undefined) {
+      const projectGuard: CompareOperation = {
+        expression_type: "compare_operation",
+        op: CompareOperationOp.Eq,
+        left: { expression_type: "field", chain: [tenantColumns.projectId] } as Field,
+        right: { expression_type: "constant", value: this.context.projectId } as Constant,
+      };
+      guards.push(projectGuard);
+    }
+
+    // Only add environment guard if environmentId is provided
+    if (this.context.environmentId !== undefined) {
+      const envGuard: CompareOperation = {
+        expression_type: "compare_operation",
+        op: CompareOperationOp.Eq,
+        left: { expression_type: "field", chain: [tenantColumns.environmentId] } as Field,
+        right: { expression_type: "constant", value: this.context.environmentId } as Constant,
+      };
+      guards.push(envGuard);
+    }
+
+    // If only org guard, return it directly (no need for AND wrapper)
+    if (guards.length === 1) {
+      return orgGuard;
+    }
 
     return {
       expression_type: "and",
-      exprs: [orgGuard, projectGuard, envGuard],
+      exprs: guards,
     };
   }
 
