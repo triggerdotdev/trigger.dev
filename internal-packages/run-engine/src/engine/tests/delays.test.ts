@@ -73,10 +73,10 @@ describe("RunEngine delays", () => {
         prisma
       );
 
-      //should be created but not queued yet
+      //should be delayed but not queued yet
       const executionData = await engine.getRunExecutionData({ runId: run.id });
       assertNonNullable(executionData);
-      expect(executionData.snapshot.executionStatus).toBe("RUN_CREATED");
+      expect(executionData.snapshot.executionStatus).toBe("DELAYED");
 
       //wait for 1 seconds
       await setTimeout(1_000);
@@ -155,10 +155,10 @@ describe("RunEngine delays", () => {
         prisma
       );
 
-      //should be created but not queued yet
+      //should be delayed but not queued yet
       const executionData = await engine.getRunExecutionData({ runId: run.id });
       assertNonNullable(executionData);
-      expect(executionData.snapshot.executionStatus).toBe("RUN_CREATED");
+      expect(executionData.snapshot.executionStatus).toBe("DELAYED");
 
       const rescheduleTo = new Date(Date.now() + 1_500);
       const updatedRun = await engine.rescheduleDelayedRun({
@@ -170,10 +170,10 @@ describe("RunEngine delays", () => {
       //wait so the initial delay passes
       await setTimeout(1_000);
 
-      //should still be created
+      //should still be delayed (rescheduled)
       const executionData2 = await engine.getRunExecutionData({ runId: run.id });
       assertNonNullable(executionData2);
-      expect(executionData2.snapshot.executionStatus).toBe("RUN_CREATED");
+      expect(executionData2.snapshot.executionStatus).toBe("DELAYED");
 
       //wait so the updated delay passes
       await setTimeout(1_750);
@@ -253,10 +253,10 @@ describe("RunEngine delays", () => {
         prisma
       );
 
-      //should be created but not queued yet
+      //should be delayed but not queued yet
       const executionData = await engine.getRunExecutionData({ runId: run.id });
       assertNonNullable(executionData);
-      expect(executionData.snapshot.executionStatus).toBe("RUN_CREATED");
+      expect(executionData.snapshot.executionStatus).toBe("DELAYED");
       expect(run.status).toBe("DELAYED");
 
       //wait for 1 seconds
@@ -356,10 +356,10 @@ describe("RunEngine delays", () => {
         prisma
       );
 
-      //verify it's created but not queued
+      //verify it's delayed but not queued
       const executionData = await engine.getRunExecutionData({ runId: run.id });
       assertNonNullable(executionData);
-      expect(executionData.snapshot.executionStatus).toBe("RUN_CREATED");
+      expect(executionData.snapshot.executionStatus).toBe("DELAYED");
       expect(run.status).toBe("DELAYED");
 
       //cancel the run
