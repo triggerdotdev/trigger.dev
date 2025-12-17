@@ -216,10 +216,13 @@ export class DebounceSystem {
 
     // Timed out waiting - the other server may have failed
     // Delete the stale pending key and return "new"
-    this.$.logger.warn("waitForExistingRun: timed out waiting for pending claim, deleting stale key", {
-      redisKey,
-      debounceKey: debounce.key,
-    });
+    this.$.logger.warn(
+      "waitForExistingRun: timed out waiting for pending claim, deleting stale key",
+      {
+        redisKey,
+        debounceKey: debounce.key,
+      }
+    );
     await this.redis.del(redisKey);
     return { status: "new" };
   }
@@ -287,16 +290,14 @@ export class DebounceSystem {
         return { status: "new" };
       }
 
-      // Calculate new delay
-      const delayMs = parseNaturalLanguageDuration(debounce.delay);
-      if (!delayMs) {
+      // Calculate new delay - parseNaturalLanguageDuration returns a Date (now + duration)
+      const newDelayUntil = parseNaturalLanguageDuration(debounce.delay);
+      if (!newDelayUntil) {
         this.$.logger.error("handleExistingRun: invalid delay duration", {
           delay: debounce.delay,
         });
         return { status: "new" };
       }
-
-      const newDelayUntil = new Date(Date.now() + delayMs.getTime() - Date.now());
 
       // Check if max debounce duration would be exceeded
       const runCreatedAt = existingRun.createdAt;
@@ -316,25 +317,42 @@ export class DebounceSystem {
         return { status: "max_duration_exceeded" };
       }
 
-      // Reschedule the delayed run
-      await this.delayedRunSystem.rescheduleDelayedRun({
-        runId: existingRunId,
-        delayUntil: newDelayUntil,
-        tx: prisma,
-      });
+      // Only reschedule if the new delay would push the run later
+      // This ensures debounce always "pushes later", never earlier
+      const currentDelayUntil = existingRun.delayUntil;
+      const shouldReschedule = !currentDelayUntil || newDelayUntil > currentDelayUntil;
 
-      // Update Redis TTL
-      const ttlMs = Math.max(
-        newDelayUntil.getTime() - Date.now() + 60_000, // Add 1 minute buffer
-        60_000
-      );
-      await this.redis.pexpire(redisKey, ttlMs);
+      if (shouldReschedule) {
+        // Reschedule the delayed run
+        await this.delayedRunSystem.rescheduleDelayedRun({
+          runId: existingRunId,
+          delayUntil: newDelayUntil,
+          tx: prisma,
+        });
 
-      this.$.logger.debug("handleExistingRun: rescheduled existing debounced run", {
-        existingRunId,
-        debounceKey: debounce.key,
-        newDelayUntil,
-      });
+        // Update Redis TTL
+        const ttlMs = Math.max(
+          newDelayUntil.getTime() - Date.now() + 60_000, // Add 1 minute buffer
+          60_000
+        );
+        await this.redis.pexpire(redisKey, ttlMs);
+
+        this.$.logger.debug("handleExistingRun: rescheduled existing debounced run", {
+          existingRunId,
+          debounceKey: debounce.key,
+          newDelayUntil,
+        });
+      } else {
+        this.$.logger.debug(
+          "handleExistingRun: skipping reschedule, new delay is not later than current",
+          {
+            existingRunId,
+            debounceKey: debounce.key,
+            currentDelayUntil,
+            newDelayUntil,
+          }
+        );
+      }
 
       return {
         status: "existing",
