@@ -576,6 +576,18 @@ export class WaitpointSystem {
             reason: "run is already executing",
           };
         }
+        case "DELAYED": {
+          this.$.logger.debug(`continueRunIfUnblocked: run is delayed, skipping`, {
+            runId,
+            snapshot,
+            executionStatus: snapshot.executionStatus,
+          });
+
+          return {
+            status: "skipped",
+            reason: "run is delayed",
+          };
+        }
         case "QUEUED": {
           this.$.logger.info(`continueRunIfUnblocked: run is queued, skipping`, {
             runId,

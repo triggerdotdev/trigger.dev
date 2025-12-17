@@ -14,7 +14,7 @@
     "lint": "eslint --cache --cache-location ./node_modules/.cache/eslint .",
     "start": "cross-env NODE_ENV=production node --max-old-space-size=8192 ./build/server.js",
     "start:local": "cross-env node --max-old-space-size=8192 ./build/server.js",
-    "typecheck": "tsc --noEmit -p ./tsconfig.check.json",
+    "typecheck": "cross-env NODE_OPTIONS=\"--max-old-space-size=8192\" tsc --noEmit -p ./tsconfig.check.json",
     "db:seed": "tsx seed.mts",
     "upload:sourcemaps": "bash ./upload-sourcemaps.sh",
     "test": "vitest --no-file-parallelism",

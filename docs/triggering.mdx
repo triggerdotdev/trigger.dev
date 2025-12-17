@@ -831,6 +831,67 @@ export const myTask = task({
 
 For more information, see our [Idempotency](/idempotency) documentation.
 
+### `debounce`
+
+You can debounce task triggers to consolidate multiple trigger calls into a single delayed run. When a run with the same debounce key already exists in the delayed state, subsequent triggers "push" the existing run's execution time later rather than creating new runs.
+
+This is useful for scenarios like:
+
+- Real-time document indexing where you want to wait for the user to finish typing
+- Aggregating webhook events from the same source
+- Rate limiting expensive operations while still processing the final request
+
+```ts
+// First trigger creates a new run, delayed by 5 seconds
+await myTask.trigger({ some: "data" }, { debounce: { key: "user-123", delay: "5s" } });
+
+// If triggered again within 5 seconds, the existing run is pushed later
+await myTask.trigger({ updated: "data" }, { debounce: { key: "user-123", delay: "5s" } });
+
+// The run only executes after 5 seconds of no new triggers
+// Note: The first payload is used (first trigger wins)
+```
+
+<Note>
+  Debounce keys are scoped to the task identifier, so different tasks can use the same key without
+  conflicts.
+</Note>
+
+The `debounce` option accepts:
+
+- `key` - A unique string to identify the debounce group (scoped to the task)
+- `delay` - Duration string specifying how long to delay (e.g., "5s", "1m", "30s")
+
+**How it works:**
+
+1. First trigger with a debounce key creates a new delayed run
+2. Subsequent triggers with the same key (while the run is still delayed) push the execution time further
+3. Once no new triggers occur within the delay duration, the run executes with the **first** payload
+4. After the run starts executing, a new trigger with the same key will create a new run
+
+**With `triggerAndWait`:**
+
+When using `triggerAndWait` with debounce, the parent run blocks on the existing debounced run if one exists:
+
+```ts
+export const parentTask = task({
+  id: "parent-task",
+  run: async (payload: string) => {
+    // Both will wait for the same run
+    const result = await childTask.triggerAndWait(
+      { data: payload },
+      { debounce: { key: "shared-key", delay: "3s" } }
+    );
+    return result;
+  },
+});
+```
+
+<Note>
+  Idempotency keys take precedence over debounce keys. If both are provided and an idempotency match
+  is found, it wins.
+</Note>
+
 ### `queue`
 
 When you trigger a task you can override the concurrency limit. This is really useful if you sometimes have high priority runs.

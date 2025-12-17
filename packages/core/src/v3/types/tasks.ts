@@ -896,6 +896,40 @@ export type TriggerOptions = {
    * ```
    */
   region?: string;
+
+  /**
+   * Debounce settings for consolidating multiple trigger calls into a single delayed run.
+   *
+   * When a run with the same debounce key already exists in the delayed state, subsequent triggers
+   * "push" the existing run's execution time later rather than creating new runs.
+   *
+   * The debounce key is scoped to the task identifier, so different tasks can use the same key without conflicts.
+   *
+   * @example
+   *
+   * ```ts
+   * // First trigger creates a new run, delayed by 5 seconds
+   * await myTask.trigger({ some: "data" }, { debounce: { key: "user-123", delay: "5s" } });
+   *
+   * // Second trigger within 5 seconds pushes the existing run's delay further
+   * await myTask.trigger({ some: "data" }, { debounce: { key: "user-123", delay: "5s" } });
+   *
+   * // After no more triggers for 5 seconds, the single run executes with the first payload
+   * ```
+   */
+  debounce?: {
+    /**
+     * Unique key scoped to the task identifier. Runs with the same key will be debounced together.
+     */
+    key: string;
+    /**
+     * Duration string specifying how long to delay the run. If another trigger with the same key
+     * occurs within this duration, the delay is extended.
+     *
+     * @example "5s", "1m", "30s"
+     */
+    delay: string;
+  };
 };
 
 export type TriggerAndWaitOptions = Omit<TriggerOptions, "version">;

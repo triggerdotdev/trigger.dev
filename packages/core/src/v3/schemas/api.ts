@@ -203,6 +203,12 @@ export const TriggerTaskRequestBody = z.object({
       priority: z.number().optional(),
       bulkActionId: z.string().optional(),
       region: z.string().optional(),
+      debounce: z
+        .object({
+          key: z.string(),
+          delay: z.string(),
+        })
+        .optional(),
     })
     .optional(),
 });

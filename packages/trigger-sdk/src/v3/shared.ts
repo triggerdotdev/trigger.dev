@@ -2054,6 +2054,7 @@ async function trigger_internal<TRunTypes extends AnyRunTypes>(
         priority: options?.priority,
         region: options?.region,
         lockToVersion: options?.version ?? getEnvVar("TRIGGER_VERSION"),
+        debounce: options?.debounce,
       },
     },
     {
@@ -2285,6 +2286,7 @@ async function triggerAndWait_internal<TIdentifier extends string, TPayload, TOu
             machine: options?.machine,
             priority: options?.priority,
             region: options?.region,
+            debounce: options?.debounce,
           },
         },
         {},

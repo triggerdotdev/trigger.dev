@@ -160,10 +160,19 @@ export class RunEngineTriggerTaskService {
         }
       }
 
-      const [parseDelayError, delayUntil] = await tryCatch(parseDelay(body.options?.delay));
+      // Parse delay from either explicit delay option or debounce.delay
+      const delaySource = body.options?.delay ?? body.options?.debounce?.delay;
+      const [parseDelayError, delayUntil] = await tryCatch(parseDelay(delaySource));
 
       if (parseDelayError) {
-        throw new ServiceValidationError(`Invalid delay ${body.options?.delay}`);
+        throw new ServiceValidationError(`Invalid delay ${delaySource}`);
+      }
+
+      // Validate debounce options
+      if (body.options?.debounce && !delayUntil) {
+        throw new ServiceValidationError(
+          `Debounce requires a valid delay duration. Provided: ${body.options.debounce.delay}`
+        );
       }
 
       const ttl =
@@ -340,9 +349,41 @@ export class RunEngineTriggerTaskService {
                 bulkActionId: body.options?.bulkActionId,
                 planType,
                 realtimeStreamsVersion: options.realtimeStreamsVersion,
+                debounce: body.options?.debounce,
+                // When debouncing with triggerAndWait, create a span for the debounced trigger
+                onDebounced:
+                  body.options?.debounce && body.options?.resumeParentOnCompletion
+                    ? async ({ existingRun, waitpoint, debounceKey }) => {
+                        return await this.traceEventConcern.traceDebouncedRun(
+                          triggerRequest,
+                          parentRun?.taskEventStore,
+                          {
+                            existingRun,
+                            debounceKey,
+                            incomplete: waitpoint.status === "PENDING",
+                            isError: waitpoint.outputIsError,
+                          },
+                          async (spanEvent) => {
+                            const spanId =
+                              options?.parentAsLinkType === "replay"
+                                ? spanEvent.spanId
+                                : spanEvent.traceparent?.spanId
+                                ? `${spanEvent.traceparent.spanId}:${spanEvent.spanId}`
+                                : spanEvent.spanId;
+                            return spanId;
+                          }
+                        );
+                      }
+                    : undefined,
               },
               this.prisma
             );
+
+            // If the returned run has a different friendlyId, it was debounced
+            // Stop the outer span to prevent a duplicate - the debounced span was created via onDebounced
+            if (taskRun.friendlyId !== runFriendlyId) {
+              event.stop();
+            }
 
             const error = taskRun.error ? TaskRunError.parse(taskRun.error) : undefined;
 

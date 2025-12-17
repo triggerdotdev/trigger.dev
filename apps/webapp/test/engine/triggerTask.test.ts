@@ -80,6 +80,7 @@ class MockTraceEventConcern implements TraceEventConcern {
         traceparent: undefined,
         setAttribute: () => {},
         failWithError: () => {},
+        stop: () => {},
       },
       "test"
     );
@@ -104,6 +105,32 @@ class MockTraceEventConcern implements TraceEventConcern {
         traceparent: undefined,
         setAttribute: () => {},
         failWithError: () => {},
+        stop: () => {},
+      },
+      "test"
+    );
+  }
+
+  async traceDebouncedRun<T>(
+    request: TriggerTaskRequest,
+    parentStore: string | undefined,
+    options: {
+      existingRun: TaskRun;
+      debounceKey: string;
+      incomplete: boolean;
+      isError: boolean;
+    },
+    callback: (span: TracedEventSpan, store: string) => Promise<T>
+  ): Promise<T> {
+    return await callback(
+      {
+        traceId: "test",
+        spanId: "test",
+        traceContext: {},
+        traceparent: undefined,
+        setAttribute: () => {},
+        failWithError: () => {},
+        stop: () => {},
       },
       "test"
     );
