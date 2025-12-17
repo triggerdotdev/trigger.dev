@@ -257,6 +257,12 @@ export const BatchTriggerTaskItem = z.object({
       ttl: z.string().or(z.number().nonnegative().int()).optional(),
       priority: z.number().optional(),
       region: z.string().optional(),
+      debounce: z
+        .object({
+          key: z.string(),
+          delay: z.string(),
+        })
+        .optional(),
     })
     .optional(),
 });

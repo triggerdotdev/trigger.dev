@@ -1,4 +1,4 @@
-import { logger, task, wait } from "@trigger.dev/sdk/v3";
+import { batch, logger, task, wait } from "@trigger.dev/sdk/v3";
 
 /**
  * A simple task that processes data updates.
@@ -568,5 +568,165 @@ export const testDifferentDelays = task({
     );
 
     return { triggered: true };
+  },
+});
+
+/**
+ * Example 7: Batch Trigger with Debounce
+ *
+ * Demonstrates using debounce with batchTrigger.
+ * Each item in the batch can have its own debounce key and delay.
+ * Items with the same debounce key will be consolidated into a single run.
+ */
+export const batchItemTask = task({
+  id: "batch-item-task",
+  run: async (payload: { itemId: string; data: string }) => {
+    logger.info("Processing batch item", { payload });
+
+    await wait.for({ seconds: 1 });
+
+    logger.info("Batch item processed", { itemId: payload.itemId });
+
+    return {
+      processed: true,
+      itemId: payload.itemId,
+      processedAt: new Date().toISOString(),
+    };
+  },
+});
+
+/**
+ * Demonstrates batch.trigger() with debounce options on individual items.
+ *
+ * This shows how you can:
+ * - Use different debounce keys for different items
+ * - Items with the same debounce key will be consolidated
+ * - Items with different keys will create separate runs
+ *
+ * Run this task and watch:
+ * - Items 1 and 3 share debounce key "group-a" -> ONE run
+ * - Items 2 and 4 share debounce key "group-b" -> ONE run
+ * - Item 5 has unique key "group-c" -> ONE run
+ * - Total: 3 runs instead of 5 (but batch shows 5 items)
+ *
+ * Note: The batch itself still reports 5 items, but only 3 actual task runs
+ * will execute due to debouncing.
+ */
+export const demonstrateBatchDebounce = task({
+  id: "demonstrate-batch-debounce",
+  run: async (payload: { prefix?: string }) => {
+    const prefix = payload.prefix ?? "batch-demo";
+
+    logger.info("Starting batch debounce demonstration");
+    logger.info("Will trigger 5 items with 3 different debounce keys");
+    logger.info(
+      "Items 1&3 share key 'group-a', items 2&4 share key 'group-b', item 5 has key 'group-c'"
+    );
+
+    // Use batch.trigger with debounce options on each item
+    const result = await batch.trigger<typeof batchItemTask>([
+      {
+        id: "batch-item-task",
+        payload: { itemId: `${prefix}-1`, data: "First item in group A" },
+        options: {
+          debounce: { key: `${prefix}-group-a`, delay: "5s" },
+        },
+      },
+      {
+        id: "batch-item-task",
+        payload: { itemId: `${prefix}-2`, data: "First item in group B" },
+        options: {
+          debounce: { key: `${prefix}-group-b`, delay: "5s" },
+        },
+      },
+      {
+        id: "batch-item-task",
+        payload: { itemId: `${prefix}-3`, data: "Second item in group A (debounced)" },
+        options: {
+          debounce: { key: `${prefix}-group-a`, delay: "5s" },
+        },
+      },
+      {
+        id: "batch-item-task",
+        payload: { itemId: `${prefix}-4`, data: "Second item in group B (debounced)" },
+        options: {
+          debounce: { key: `${prefix}-group-b`, delay: "5s" },
+        },
+      },
+      {
+        id: "batch-item-task",
+        payload: { itemId: `${prefix}-5`, data: "Only item in group C" },
+        options: {
+          debounce: { key: `${prefix}-group-c`, delay: "5s" },
+        },
+      },
+    ]);
+
+    logger.info("Batch debounce demonstration complete", {
+      batchId: result.batchId,
+      totalItemsInBatch: result.runCount,
+      note: "Check the dashboard - only 3 actual task runs should execute due to debouncing",
+    });
+
+    return {
+      batchId: result.batchId,
+      totalItemsInBatch: result.runCount,
+      expectedUniqueRuns: 3,
+      message:
+        "5 items submitted, but only 3 runs will execute: group-a (1 run), group-b (1 run), group-c (1 run)",
+    };
+  },
+});
+
+/**
+ * Demonstrates batchTrigger on a single task with debounce.
+ *
+ * Similar to batch.trigger but using myTask.batchTrigger() syntax.
+ * Each item can have its own debounce configuration.
+ *
+ * When all items share the same debounce key, only ONE run will execute.
+ */
+export const demonstrateSingleTaskBatchDebounce = task({
+  id: "demonstrate-single-task-batch-debounce",
+  run: async (payload: { debounceKey?: string }) => {
+    const key = payload.debounceKey ?? "single-batch-demo";
+
+    logger.info("Starting single task batch debounce demonstration", { debounceKey: key });
+    logger.info("Triggering 4 items with the SAME debounce key - only 1 run should execute");
+
+    // All items have the same debounce key, so they should all resolve to the same run
+    const result = await batchItemTask.batchTrigger([
+      {
+        payload: { itemId: `${key}-1`, data: "Item 1" },
+        options: { debounce: { key, delay: "5s" } },
+      },
+      {
+        payload: { itemId: `${key}-2`, data: "Item 2" },
+        options: { debounce: { key, delay: "5s" } },
+      },
+      {
+        payload: { itemId: `${key}-3`, data: "Item 3" },
+        options: { debounce: { key, delay: "5s" } },
+      },
+      {
+        payload: { itemId: `${key}-4`, data: "Item 4" },
+        options: { debounce: { key, delay: "5s" } },
+      },
+    ]);
+
+    logger.info("Single task batch debounce complete", {
+      batchId: result.batchId,
+      totalItemsInBatch: result.runCount,
+      debounceKey: key,
+      note: "All items share the same debounce key, so only 1 task run should execute",
+    });
+
+    return {
+      batchId: result.batchId,
+      totalItemsInBatch: result.runCount,
+      debounceKey: key,
+      expectedUniqueRuns: 1,
+      message: "4 items submitted with same debounce key - only 1 run will execute",
+    };
   },
 });

@@ -649,6 +649,7 @@ export async function batchTriggerById<TTask extends AnyTask>(
             priority: item.options?.priority,
             region: item.options?.region,
             lockToVersion: item.options?.version ?? getEnvVar("TRIGGER_VERSION"),
+            debounce: item.options?.debounce,
           },
         };
       })
@@ -904,6 +905,7 @@ export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
             machine: item.options?.machine,
             priority: item.options?.priority,
             region: item.options?.region,
+            debounce: item.options?.debounce,
           },
         };
       })
@@ -1163,6 +1165,7 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
             priority: item.options?.priority,
             region: item.options?.region,
             lockToVersion: item.options?.version ?? getEnvVar("TRIGGER_VERSION"),
+            debounce: item.options?.debounce,
           },
         };
       })
@@ -1423,6 +1426,7 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
             machine: item.options?.machine,
             priority: item.options?.priority,
             region: item.options?.region,
+            debounce: item.options?.debounce,
           },
         };
       })
@@ -1758,6 +1762,7 @@ async function* transformBatchItemsStream<TTask extends AnyTask>(
         priority: item.options?.priority,
         region: item.options?.region,
         lockToVersion: item.options?.version ?? getEnvVar("TRIGGER_VERSION"),
+        debounce: item.options?.debounce,
       },
     };
   }
@@ -1809,6 +1814,7 @@ async function* transformBatchItemsStreamForWait<TTask extends AnyTask>(
         machine: item.options?.machine,
         priority: item.options?.priority,
         region: item.options?.region,
+        debounce: item.options?.debounce,
       },
     };
   }
@@ -1859,6 +1865,7 @@ async function* transformBatchByTaskItemsStream<TTasks extends readonly AnyTask[
         priority: item.options?.priority,
         region: item.options?.region,
         lockToVersion: item.options?.version ?? getEnvVar("TRIGGER_VERSION"),
+        debounce: item.options?.debounce,
       },
     };
   }
@@ -1909,6 +1916,7 @@ async function* transformBatchByTaskItemsStreamForWait<TTasks extends readonly A
         machine: item.options?.machine,
         priority: item.options?.priority,
         region: item.options?.region,
+        debounce: item.options?.debounce,
       },
     };
   }
@@ -1961,6 +1969,7 @@ async function* transformSingleTaskBatchItemsStream<TPayload>(
         priority: item.options?.priority,
         region: item.options?.region,
         lockToVersion: item.options?.version ?? getEnvVar("TRIGGER_VERSION"),
+        debounce: item.options?.debounce,
       },
     };
   }
@@ -2013,6 +2022,7 @@ async function* transformSingleTaskBatchItemsStreamForWait<TPayload>(
         machine: item.options?.machine,
         priority: item.options?.priority,
         region: item.options?.region,
+        debounce: item.options?.debounce,
       },
     };
   }
