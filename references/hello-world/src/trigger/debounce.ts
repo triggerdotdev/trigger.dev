@@ -523,8 +523,8 @@ export const parentWithDebouncedChild = task({
 export const shortDebounce = task({
   id: "short-debounce",
   run: async (payload: { key: string }) => {
-    logger.info("Short debounce task (500ms)", { key: payload.key });
-    return { key: payload.key, delay: "500ms" };
+    logger.info("Short debounce task (1s)", { key: payload.key });
+    return { key: payload.key, delay: "1s" };
   },
 });
 
@@ -549,10 +549,10 @@ export const testDifferentDelays = task({
   run: async (payload: { key: string }) => {
     logger.info("Testing different debounce delays", { key: payload.key });
 
-    // 500ms debounce - good for rapid UI updates
+    // 1 second debounce - good for rapid UI updates
     await shortDebounce.trigger(
       { key: `${payload.key}-short` },
-      { debounce: { key: `${payload.key}-short`, delay: "500ms" } }
+      { debounce: { key: `${payload.key}-short`, delay: "1s" } }
     );
 
     // 5 second debounce - good for user input

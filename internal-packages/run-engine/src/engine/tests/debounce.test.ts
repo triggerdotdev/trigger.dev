@@ -480,7 +480,7 @@ describe("RunEngine debounce", () => {
 
         await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
 
-        // First trigger with 500ms delay
+        // First trigger with 1s delay
         const run = await engine.trigger(
           {
             number: 1,
@@ -497,10 +497,10 @@ describe("RunEngine debounce", () => {
             queue: "task/test-task",
             isTest: false,
             tags: [],
-            delayUntil: new Date(Date.now() + 500),
+            delayUntil: new Date(Date.now() + 1000),
             debounce: {
               key: "user-123",
-              delay: "500ms",
+              delay: "1s",
             },
           },
           prisma
@@ -512,7 +512,7 @@ describe("RunEngine debounce", () => {
         expect(executionData.snapshot.executionStatus).toBe("DELAYED");
 
         // Wait for delay to pass
-        await setTimeout(1000);
+        await setTimeout(1500);
 
         // Should now be QUEUED
         executionData = await engine.getRunExecutionData({ runId: run.id });

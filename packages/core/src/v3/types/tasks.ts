@@ -920,13 +920,17 @@ export type TriggerOptions = {
   debounce?: {
     /**
      * Unique key scoped to the task identifier. Runs with the same key will be debounced together.
+     * Maximum length is 512 characters.
      */
     key: string;
     /**
      * Duration string specifying how long to delay the run. If another trigger with the same key
      * occurs within this duration, the delay is extended.
      *
-     * @example "5s", "1m", "30s"
+     * Supported formats: `{number}s` (seconds), `{number}m` (minutes), `{number}h` (hours),
+     * `{number}d` (days), `{number}w` (weeks). Minimum delay is 1 second.
+     *
+     * @example "1s", "5s", "1m", "30m", "1h"
      */
     delay: string;
   };
