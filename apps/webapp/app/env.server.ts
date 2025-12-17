@@ -759,6 +759,12 @@ const EnvironmentSchema = z
     RUN_ENGINE_RATE_LIMIT_REJECTION_LOGS_ENABLED: z.string().default("1"),
     RUN_ENGINE_RATE_LIMIT_LIMITER_LOGS_ENABLED: z.string().default("0"),
 
+    /**
+     * Disable queue rate limiting (useful for development and testing).
+     * When set to "1", rate limit checks on queues will be bypassed.
+     */
+    TRIGGER_DISABLE_QUEUE_RATE_LIMITS: z.string().default("0"),
+
     RUN_ENGINE_RELEASE_CONCURRENCY_ENABLED: z.string().default("0"),
     RUN_ENGINE_RELEASE_CONCURRENCY_DISABLE_CONSUMERS: z.string().default("0"),
     RUN_ENGINE_RELEASE_CONCURRENCY_MAX_TOKENS_RATIO: z.coerce.number().default(1),

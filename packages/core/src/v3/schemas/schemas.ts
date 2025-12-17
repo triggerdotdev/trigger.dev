@@ -102,6 +102,19 @@ export const RateLimitOptions = z.discriminatedUnion("type", [
 
 export type RateLimitOptions = z.infer<typeof RateLimitOptions>;
 
+// Duration string format: number + unit (ms, s, m, h, d)
+export const DurationStringSchema = z.string().regex(/^\d+(\.\d+)?(ms|s|m|h|d)$/);
+export type DurationString = z.infer<typeof DurationStringSchema>;
+
+// Queue Rate limit configuration schema (uses DurationStringSchema for period validation)
+export const QueueRateLimitConfigSchema = z.object({
+  limit: z.number().int().positive(),
+  period: DurationStringSchema,
+  burst: z.number().int().positive().optional(),
+});
+
+export type QueueRateLimitConfig = z.infer<typeof QueueRateLimitConfigSchema>;
+
 export const RetryOptions = z.object({
   /** The number of attempts before giving up */
   maxAttempts: z.number().int().optional(),
@@ -132,6 +145,20 @@ export const RetryOptions = z.object({
 });
 
 export type RetryOptions = z.infer<typeof RetryOptions>;
+
+/** Rate limit configuration using GCRA (Generic Cell Rate Algorithm) */
+export const RateLimitConfig = z.object({
+  /** Maximum number of requests allowed in the period */
+  limit: z.number().int().min(1).max(100000),
+  /** Time window - must be a valid duration string (e.g., "1s", "100ms", "5m", "1h") */
+  period: z.string().regex(/^\d+(\.\d+)?(ms|s|m|h|d)$/, {
+    message: 'Period must be a valid duration string (e.g., "1s", "100ms", "5m", "1h")',
+  }),
+  /** Optional burst allowance - allows temporary exceeding of rate limit (defaults to limit) */
+  burst: z.number().int().min(1).optional(),
+});
+
+export type RateLimitConfig = z.infer<typeof RateLimitConfig>;
 
 export const QueueManifest = z.object({
   /** You can define a shared queue and then pass the name in to your task.
@@ -170,6 +197,21 @@ export const QueueManifest = z.object({
    *
    * If this property is omitted, the task can potentially use up the full concurrency of an environment */
   concurrencyLimit: z.number().int().min(0).max(100000).optional().nullable(),
+  /** Optional rate limit configuration for controlling request frequency.
+   *
+   * Unlike concurrencyLimit (which controls how many tasks run at once),
+   * rateLimit controls how frequently tasks can be dequeued.
+   *
+   * @example
+   * ```ts
+   * // Limit to 10 requests per second
+   * rateLimit: { limit: 10, period: "1s" }
+   *
+   * // Limit to 100 requests per minute with burst allowance
+   * rateLimit: { limit: 100, period: "1m", burst: 150 }
+   * ```
+   */
+  rateLimit: RateLimitConfig.optional(),
 });
 
 export type QueueManifest = z.infer<typeof QueueManifest>;

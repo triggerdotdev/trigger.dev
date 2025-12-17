@@ -9,14 +9,19 @@ import { BackgroundWorkerId } from "@trigger.dev/core/v3/isomorphic";
 import type { BackgroundWorker, TaskQueue, TaskQueueType } from "@trigger.dev/database";
 import cronstrue from "cronstrue";
 import { Prisma, PrismaClientOrTransaction } from "~/db.server";
+import { env } from "~/env.server";
 import { sanitizeQueueName } from "~/models/taskQueue.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import {
+  parseDurationToMs,
   removeQueueConcurrencyLimits,
+  removeQueueRateLimitConfig,
   updateEnvConcurrencyLimits,
   updateQueueConcurrencyLimits,
+  updateQueueRateLimitConfig,
+  type QueueRateLimitConfig,
 } from "../runQueue.server";
 import { calculateNextBuildVersion } from "../utils/calculateNextBuildVersion";
 import { clampMaxDuration } from "../utils/maxDuration";
@@ -250,11 +255,12 @@ async function createWorkerTask(
     let queue = queues.find((queue) => queue.name === task.queue?.name);
 
     if (!queue) {
-      // Create a TaskQueue
+      // Create a TaskQueue with rate limit config if provided
       queue = await createWorkerQueue(
         {
           name: task.queue?.name ?? `task/${task.id}`,
           concurrencyLimit: task.queue?.concurrencyLimit,
+          rateLimit: task.queue?.rateLimit,
         },
         task.id,
         task.queue?.name ? "NAMED" : "VIRTUAL",
@@ -364,9 +370,28 @@ async function createWorkerQueue(
       ? Math.max(Math.min(queue.concurrencyLimit, environment.maximumConcurrencyLimit), 0)
       : queue.concurrencyLimit;
 
+  // Parse rate limit config if provided
+  let rateLimitConfig: QueueRateLimitConfig | null = null;
+  if (queue.rateLimit) {
+    try {
+      rateLimitConfig = {
+        limit: queue.rateLimit.limit,
+        periodMs: parseDurationToMs(queue.rateLimit.period),
+        burst: queue.rateLimit.burst,
+      };
+    } catch (error) {
+      logger.error("createWorkerQueue: invalid rate limit period format", {
+        queueName,
+        rateLimit: queue.rateLimit,
+        error,
+      });
+    }
+  }
+
   const taskQueue = await upsertWorkerQueueRecord(
     queueName,
     baseConcurrencyLimit ?? null,
+    rateLimitConfig,
     orderableName,
     queueType,
     worker,
@@ -376,6 +401,7 @@ async function createWorkerQueue(
   const newConcurrencyLimit = taskQueue.concurrencyLimit;
 
   if (!taskQueue.paused) {
+    // Handle concurrency limit sync
     if (typeof newConcurrencyLimit === "number") {
       logger.debug("createWorkerQueue: updating concurrency limit", {
         workerId: worker.id,
@@ -397,8 +423,36 @@ async function createWorkerQueue(
       });
       await removeQueueConcurrencyLimits(environment, taskQueue.name);
     }
+
+    // Handle rate limit config sync to Redis
+    if (env.TRIGGER_DISABLE_QUEUE_RATE_LIMITS === "1") {
+      // Rate limiting disabled: remove any existing config from Redis
+      // This ensures clean state when toggling the flag
+      logger.debug("createWorkerQueue: rate limiting disabled by env flag, removing config", {
+        workerId: worker.id,
+        taskQueue: taskQueue.name,
+        orgId: environment.organizationId,
+        projectId: environment.projectId,
+        environmentId: environment.id,
+      });
+      await removeQueueRateLimitConfig(environment, taskQueue.name);
+    } else if (rateLimitConfig) {
+      // Rate limiting enabled and config exists: sync to Redis
+      logger.debug("createWorkerQueue: updating rate limit config", {
+        workerId: worker.id,
+        taskQueue: taskQueue.name,
+        orgId: environment.organizationId,
+        projectId: environment.projectId,
+        environmentId: environment.id,
+        rateLimitConfig,
+      });
+      await updateQueueRateLimitConfig(environment, taskQueue.name, rateLimitConfig);
+    } else {
+      // Rate limiting enabled but no config: remove any stale config
+      await removeQueueRateLimitConfig(environment, taskQueue.name);
+    }
   } else {
-    logger.debug("createWorkerQueue: queue is paused, not updating concurrency limit", {
+    logger.debug("createWorkerQueue: queue is paused, not updating limits", {
       workerId: worker.id,
       taskQueue,
       orgId: environment.organizationId,
@@ -413,6 +467,7 @@ async function createWorkerQueue(
 async function upsertWorkerQueueRecord(
   queueName: string,
   concurrencyLimit: number | null,
+  rateLimitConfig: QueueRateLimitConfig | null,
   orderableName: string,
   queueType: TaskQueueType,
   worker: BackgroundWorker,
@@ -431,6 +486,15 @@ async function upsertWorkerQueueRecord(
       },
     });
 
+    // Serialize rate limit config for storage (or null to clear)
+    const rateLimitData = rateLimitConfig
+      ? {
+          limit: rateLimitConfig.limit,
+          periodMs: rateLimitConfig.periodMs,
+          burst: rateLimitConfig.burst,
+        }
+      : Prisma.JsonNull;
+
     if (!taskQueue) {
       taskQueue = await prisma.taskQueue.create({
         data: {
@@ -439,6 +503,7 @@ async function upsertWorkerQueueRecord(
           name: queueName,
           orderableName,
           concurrencyLimit,
+          rateLimit: rateLimitData,
           runtimeEnvironmentId: worker.runtimeEnvironmentId,
           projectId: worker.projectId,
           type: queueType,
@@ -463,6 +528,8 @@ async function upsertWorkerQueueRecord(
           // If overridden, keep current limit and update base; otherwise update limit normally
           concurrencyLimit: hasOverride ? undefined : concurrencyLimit,
           concurrencyLimitBase: hasOverride ? concurrencyLimit : undefined,
+          // Always update rate limit config (not overrideable for now)
+          rateLimit: rateLimitData,
         },
       });
     }
@@ -474,6 +541,7 @@ async function upsertWorkerQueueRecord(
       return await upsertWorkerQueueRecord(
         queueName,
         concurrencyLimit,
+        rateLimitConfig,
         orderableName,
         queueType,
         worker,

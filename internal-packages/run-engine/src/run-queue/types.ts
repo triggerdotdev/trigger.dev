@@ -11,6 +11,7 @@ export const InputPayload = z.object({
   environmentType: z.nativeEnum(RuntimeEnvironmentType),
   queue: z.string(),
   concurrencyKey: z.string().optional(),
+  rateLimitKey: z.string().optional(),
   timestamp: z.number(),
   attempt: z.number(),
 });
@@ -120,6 +121,16 @@ export interface RunQueueKeyProducer {
   // Concurrency sweeper methods
   markedForAckKey(): string;
   currentConcurrencySetKeyScanPattern(): string;
+
+  // Rate limiting keys
+  queueRateLimitConfigKey(env: RunQueueKeyProducerEnvironment, queue: string): string;
+  queueRateLimitBucketKey(
+    env: RunQueueKeyProducerEnvironment,
+    queue: string,
+    rateLimitKey?: string
+  ): string;
+  queueRateLimitConfigKeyFromQueue(queue: string): string;
+  queueRateLimitBucketKeyFromQueue(queue: string, rateLimitKey?: string): string;
 }
 
 export type EnvQueues = {

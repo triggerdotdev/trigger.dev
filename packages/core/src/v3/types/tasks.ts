@@ -220,10 +220,64 @@ type CommonTaskOptions<
       },
     });
    * ```
+   *
+   * @example
+   * rate limiting to 10 requests per second
+   *
+   * ```ts
+   * export const rateLimitedTask = task({
+      id: "rate-limited",
+      queue: {
+        rateLimit: {
+          limit: 10,
+          period: "1s",
+        },
+      },
+      run: async ({ payload, ctx }) => {
+        //...
+      },
+    });
+   * ```
+   *
+   * @example
+   * per-tenant rate limiting
+   *
+   * ```ts
+   * export const perTenantTask = task({
+      id: "per-tenant",
+      queue: {
+        rateLimit: {
+          limit: 100,
+          period: "1m",
+          key: (payload) => payload.tenantId,
+        },
+      },
+      run: async ({ payload, ctx }) => {
+        //...
+      },
+    });
+   * ```
    */
   queue?: {
     name?: string;
     concurrencyLimit?: number;
+    /** Rate limit configuration for controlling request frequency.
+     *
+     * Unlike concurrencyLimit (which controls how many tasks run at once),
+     * rateLimit controls how frequently tasks can be dequeued.
+     */
+    rateLimit?: {
+      /** Maximum number of requests allowed in the period */
+      limit: number;
+      /** Time window as a duration string (e.g., "1s", "100ms", "5m", "1h") */
+      period: string;
+      /** Optional burst allowance (defaults to limit) */
+      burst?: number;
+      /** Optional function to derive rate limit key from payload (evaluated at trigger time).
+       * This allows per-tenant or per-user rate limiting.
+       */
+      key?: (payload: TPayload) => string;
+    };
   };
   /** Configure the spec of the [machine](https://trigger.dev/docs/machines) you want your task to run on.
    *
@@ -782,6 +836,20 @@ export type TriggerOptions = {
    * and you set the concurrency key to `userId`, then each user will have their own queue with a concurrency limit of 10.
    */
   concurrencyKey?: string;
+
+  /**
+   * The `rateLimitKey` creates a separate rate limit bucket for every unique value of the key.
+   * This allows per-tenant or per-user rate limiting.
+   *
+   * If the task has a rate limit key function defined, it will be evaluated at trigger time
+   * and the result will be used as the key. This option allows you to override that behavior.
+   *
+   * @example
+   * ```ts
+   * await myTask.trigger(payload, { rateLimitKey: `tenant-${tenantId}` });
+   * ```
+   */
+  rateLimitKey?: string;
 
   /**
    * The delay before the task is executed. This can be a string like "1h" or a Date object.

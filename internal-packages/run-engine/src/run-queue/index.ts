@@ -323,6 +323,44 @@ export class RunQueue {
     return this.redis.del(this.keys.queueConcurrencyLimitKey(env, queue));
   }
 
+  /**
+   * Set rate limit configuration for a queue in Redis.
+   * Config is stored as JSON with 7-day TTL (refreshed on deploy).
+   */
+  public async setQueueRateLimitConfig(
+    env: MinimalAuthenticatedEnvironment,
+    queue: string,
+    config: { limit: number; periodMs: number; burst?: number }
+  ) {
+    const key = this.keys.queueRateLimitConfigKey(env, queue);
+    // Store with 7-day TTL, refreshed on each deploy
+    return this.redis.set(key, JSON.stringify(config), "EX", 86400 * 7);
+  }
+
+  /**
+   * Remove rate limit configuration for a queue from Redis.
+   */
+  public async removeQueueRateLimitConfig(env: MinimalAuthenticatedEnvironment, queue: string) {
+    return this.redis.del(this.keys.queueRateLimitConfigKey(env, queue));
+  }
+
+  /**
+   * Get rate limit configuration for a queue.
+   */
+  public async getQueueRateLimitConfig(
+    env: MinimalAuthenticatedEnvironment,
+    queue: string
+  ): Promise<{ limit: number; periodMs: number; burst?: number } | undefined> {
+    const result = await this.redis.get(this.keys.queueRateLimitConfigKey(env, queue));
+    if (!result) return undefined;
+
+    try {
+      return JSON.parse(result);
+    } catch {
+      return undefined;
+    }
+  }
+
   public async getQueueConcurrencyLimit(env: MinimalAuthenticatedEnvironment, queue: string) {
     const result = await this.redis.get(this.keys.queueConcurrencyLimitKey(env, queue));
 

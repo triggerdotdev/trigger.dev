@@ -128,6 +128,7 @@ export type TriggerParams = {
   sdkVersion?: string;
   cliVersion?: string;
   concurrencyKey?: string;
+  rateLimitKey?: string;
   workerQueue?: string;
   queue: string;
   lockedQueueId?: string;
