@@ -242,6 +242,14 @@ export function v3TestPath(
   return `${v3EnvironmentPath(organization, project, environment)}/test`;
 }
 
+export function queryPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/query`;
+}
+
 export function v3TestTaskPath(
   organization: OrgForPath,
   project: ProjectForPath,
