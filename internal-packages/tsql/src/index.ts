@@ -192,12 +192,12 @@ export function parseTSQLExpr(expr: string): Expression {
  * Options for compiling a TSQL query to ClickHouse SQL
  */
 export interface CompileTSQLOptions {
-  /** The organization ID for tenant isolation */
+  /** The organization ID for tenant isolation (required) */
   organizationId: string;
-  /** The project ID for tenant isolation */
-  projectId: string;
-  /** The environment ID for tenant isolation */
-  environmentId: string;
+  /** The project ID for tenant isolation (optional - omit to query across all projects) */
+  projectId?: string;
+  /** The environment ID for tenant isolation (optional - omit to query across all environments) */
+  environmentId?: string;
   /** Schema definitions for allowed tables and columns */
   tableSchema: TableSchema[];
   /** Optional query settings */

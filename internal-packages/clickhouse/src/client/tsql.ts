@@ -29,12 +29,12 @@ export interface ExecuteTSQLOptions<TOut extends z.ZodSchema> {
   query: string;
   /** The Zod schema for validating output rows */
   schema: TOut;
-  /** The organization ID for tenant isolation */
+  /** The organization ID for tenant isolation (required) */
   organizationId: string;
-  /** The project ID for tenant isolation */
-  projectId: string;
-  /** The environment ID for tenant isolation */
-  environmentId: string;
+  /** The project ID for tenant isolation (optional - omit to query across all projects) */
+  projectId?: string;
+  /** The environment ID for tenant isolation (optional - omit to query across all environments) */
+  environmentId?: string;
   /** Schema registry defining allowed tables and columns */
   tableSchema: TableSchema[];
   /** Optional ClickHouse query settings */

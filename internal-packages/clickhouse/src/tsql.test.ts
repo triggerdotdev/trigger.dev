@@ -472,3 +472,286 @@ describe("TSQL Integration Tests", () => {
     expect(rows?.every((r) => r.task_identifier.startsWith("email"))).toBe(true);
   });
 });
+
+describe("TSQL Optional Tenant Filter Tests", () => {
+  clickhouseTest(
+    "should query across all projects when projectId is omitted",
+    async ({ clickhouseContainer }) => {
+      const client = new ClickhouseClient({
+        name: "test",
+        url: clickhouseContainer.getConnectionUrl(),
+      });
+
+      const insert = insertTaskRuns(client, { async_insert: 0 });
+
+      // Insert data across multiple projects in the same org
+      await insert([
+        createTaskRun({
+          run_id: "run_proj1_a",
+          organization_id: "org_multi",
+          project_id: "proj_1",
+          environment_id: "env_dev",
+        }),
+        createTaskRun({
+          run_id: "run_proj1_b",
+          organization_id: "org_multi",
+          project_id: "proj_1",
+          environment_id: "env_dev",
+        }),
+        createTaskRun({
+          run_id: "run_proj2_a",
+          organization_id: "org_multi",
+          project_id: "proj_2",
+          environment_id: "env_dev",
+        }),
+        createTaskRun({
+          run_id: "run_proj3_a",
+          organization_id: "org_multi",
+          project_id: "proj_3",
+          environment_id: "env_prod",
+        }),
+        // Different org - should not be returned
+        createTaskRun({
+          run_id: "run_other_org",
+          organization_id: "org_other",
+          project_id: "proj_other",
+          environment_id: "env_other",
+        }),
+      ]);
+
+      // Query across all projects (omit projectId and environmentId)
+      const [error, rows] = await executeTSQL(client, {
+        name: "test-cross-project-query",
+        query: "SELECT run_id FROM task_runs",
+        schema: z.object({ run_id: z.string() }),
+        organizationId: "org_multi",
+        // projectId and environmentId omitted - query across all
+        tableSchema: [taskRunsSchema],
+      });
+
+      expect(error).toBeNull();
+      expect(rows).toHaveLength(4); // All runs from org_multi
+      expect(rows?.map((r) => r.run_id).sort()).toEqual([
+        "run_proj1_a",
+        "run_proj1_b",
+        "run_proj2_a",
+        "run_proj3_a",
+      ]);
+    }
+  );
+
+  clickhouseTest(
+    "should query across all environments in a project when environmentId is omitted",
+    async ({ clickhouseContainer }) => {
+      const client = new ClickhouseClient({
+        name: "test",
+        url: clickhouseContainer.getConnectionUrl(),
+      });
+
+      const insert = insertTaskRuns(client, { async_insert: 0 });
+
+      // Insert data across multiple environments in the same project
+      await insert([
+        createTaskRun({
+          run_id: "run_dev_1",
+          organization_id: "org_envtest",
+          project_id: "proj_envtest",
+          environment_id: "env_development",
+        }),
+        createTaskRun({
+          run_id: "run_staging_1",
+          organization_id: "org_envtest",
+          project_id: "proj_envtest",
+          environment_id: "env_staging",
+        }),
+        createTaskRun({
+          run_id: "run_prod_1",
+          organization_id: "org_envtest",
+          project_id: "proj_envtest",
+          environment_id: "env_production",
+        }),
+        // Different project - should not be returned
+        createTaskRun({
+          run_id: "run_other_proj",
+          organization_id: "org_envtest",
+          project_id: "proj_other",
+          environment_id: "env_development",
+        }),
+      ]);
+
+      // Query across all environments (omit environmentId only)
+      const [error, rows] = await executeTSQL(client, {
+        name: "test-cross-env-query",
+        query: "SELECT run_id FROM task_runs",
+        schema: z.object({ run_id: z.string() }),
+        organizationId: "org_envtest",
+        projectId: "proj_envtest",
+        // environmentId omitted - query across all environments
+        tableSchema: [taskRunsSchema],
+      });
+
+      expect(error).toBeNull();
+      expect(rows).toHaveLength(3); // All runs from proj_envtest across all envs
+      expect(rows?.map((r) => r.run_id).sort()).toEqual([
+        "run_dev_1",
+        "run_prod_1",
+        "run_staging_1",
+      ]);
+    }
+  );
+
+  clickhouseTest(
+    "should still enforce org isolation when querying across projects",
+    async ({ clickhouseContainer }) => {
+      const client = new ClickhouseClient({
+        name: "test",
+        url: clickhouseContainer.getConnectionUrl(),
+      });
+
+      const insert = insertTaskRuns(client, { async_insert: 0 });
+
+      // Insert data for multiple orgs
+      await insert([
+        createTaskRun({
+          run_id: "run_org1_a",
+          organization_id: "org_isolation_1",
+          project_id: "proj_a",
+          environment_id: "env_a",
+        }),
+        createTaskRun({
+          run_id: "run_org1_b",
+          organization_id: "org_isolation_1",
+          project_id: "proj_b",
+          environment_id: "env_b",
+        }),
+        createTaskRun({
+          run_id: "run_org2_a",
+          organization_id: "org_isolation_2",
+          project_id: "proj_c",
+          environment_id: "env_c",
+        }),
+        createTaskRun({
+          run_id: "run_org2_b",
+          organization_id: "org_isolation_2",
+          project_id: "proj_d",
+          environment_id: "env_d",
+        }),
+      ]);
+
+      // Query org1 across all projects - should NOT see org2's data
+      const [error1, rows1] = await executeTSQL(client, {
+        name: "test-org-isolation-1",
+        query: "SELECT run_id FROM task_runs",
+        schema: z.object({ run_id: z.string() }),
+        organizationId: "org_isolation_1",
+        // projectId and environmentId omitted
+        tableSchema: [taskRunsSchema],
+      });
+
+      expect(error1).toBeNull();
+      expect(rows1).toHaveLength(2);
+      expect(rows1?.map((r) => r.run_id).sort()).toEqual(["run_org1_a", "run_org1_b"]);
+
+      // Query org2 across all projects - should NOT see org1's data
+      const [error2, rows2] = await executeTSQL(client, {
+        name: "test-org-isolation-2",
+        query: "SELECT run_id FROM task_runs",
+        schema: z.object({ run_id: z.string() }),
+        organizationId: "org_isolation_2",
+        // projectId and environmentId omitted
+        tableSchema: [taskRunsSchema],
+      });
+
+      expect(error2).toBeNull();
+      expect(rows2).toHaveLength(2);
+      expect(rows2?.map((r) => r.run_id).sort()).toEqual(["run_org2_a", "run_org2_b"]);
+    }
+  );
+
+  clickhouseTest(
+    "should prevent OR clause bypass with org-only filter",
+    async ({ clickhouseContainer }) => {
+      const client = new ClickhouseClient({
+        name: "test",
+        url: clickhouseContainer.getConnectionUrl(),
+      });
+
+      const insert = insertTaskRuns(client, { async_insert: 0 });
+
+      await insert([
+        createTaskRun({
+          run_id: "run_victim",
+          organization_id: "org_victim",
+          project_id: "proj_victim",
+          environment_id: "env_victim",
+          status: "SECRET",
+        }),
+        createTaskRun({
+          run_id: "run_attacker",
+          organization_id: "org_attacker",
+          project_id: "proj_attacker",
+          environment_id: "env_attacker",
+          status: "PUBLIC",
+        }),
+      ]);
+
+      // Attacker tries to use OR 1=1 to bypass org filter
+      const [error, rows] = await executeTSQL(client, {
+        name: "test-or-bypass-attempt",
+        query: "SELECT run_id, status FROM task_runs WHERE status = 'COMPLETED' OR 1=1",
+        schema: z.object({ run_id: z.string(), status: z.string() }),
+        organizationId: "org_attacker",
+        // No project/env filter - but org filter should still protect
+        tableSchema: [taskRunsSchema],
+      });
+
+      expect(error).toBeNull();
+      // Should only get attacker's data, not victim's
+      expect(rows).toHaveLength(1);
+      expect(rows?.[0].run_id).toBe("run_attacker");
+      expect(rows?.find((r) => r.run_id === "run_victim")).toBeUndefined();
+    }
+  );
+
+  clickhouseTest(
+    "should work with createTSQLExecutor and optional filters",
+    async ({ clickhouseContainer }) => {
+      const client = new ClickhouseClient({
+        name: "test",
+        url: clickhouseContainer.getConnectionUrl(),
+      });
+
+      const insert = insertTaskRuns(client, { async_insert: 0 });
+
+      await insert([
+        createTaskRun({
+          run_id: "run_exec_1",
+          organization_id: "org_executor_test",
+          project_id: "proj_1",
+          environment_id: "env_1",
+        }),
+        createTaskRun({
+          run_id: "run_exec_2",
+          organization_id: "org_executor_test",
+          project_id: "proj_2",
+          environment_id: "env_2",
+        }),
+      ]);
+
+      const tsql = createTSQLExecutor(client, [taskRunsSchema]);
+
+      // Use executor with org-only filter
+      const [error, rows] = await tsql.execute({
+        name: "test-executor-optional",
+        query: "SELECT run_id FROM task_runs",
+        schema: z.object({ run_id: z.string() }),
+        organizationId: "org_executor_test",
+        // projectId and environmentId omitted
+      });
+
+      expect(error).toBeNull();
+      expect(rows).toHaveLength(2);
+      expect(rows?.map((r) => r.run_id).sort()).toEqual(["run_exec_1", "run_exec_2"]);
+    }
+  );
+});

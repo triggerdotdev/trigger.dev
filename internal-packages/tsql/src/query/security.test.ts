@@ -398,6 +398,158 @@ describe("Parameter Safety", () => {
   });
 });
 
+describe("Optional Tenant Filters", () => {
+  describe("Organization ID is always required", () => {
+    it("should always inject organization guard even with optional project/env", () => {
+      const { sql, params } = compile("SELECT * FROM task_runs", {
+        projectId: undefined,
+        environmentId: undefined,
+      });
+
+      // Must contain organization_id
+      expect(sql).toContain("organization_id");
+      expect(Object.values(params)).toContain("org_tenant1");
+
+      // Should NOT contain project_id or environment_id guards
+      expect(sql).not.toContain("project_id");
+      expect(sql).not.toContain("environment_id");
+    });
+  });
+
+  describe("Project ID is optional", () => {
+    it("should inject org and project guards when project is provided", () => {
+      const { sql, params } = compile("SELECT * FROM task_runs", {
+        projectId: "proj_tenant1",
+        environmentId: undefined,
+      });
+
+      // Must contain organization_id and project_id
+      expect(sql).toContain("organization_id");
+      expect(sql).toContain("project_id");
+      expect(Object.values(params)).toContain("org_tenant1");
+      expect(Object.values(params)).toContain("proj_tenant1");
+
+      // Should NOT contain environment_id guard
+      expect(sql).not.toContain("environment_id");
+    });
+
+    it("should allow querying across all projects when projectId is omitted", () => {
+      const { sql, params } = compile("SELECT * FROM task_runs", {
+        projectId: undefined,
+        environmentId: undefined,
+      });
+
+      // Only org guard should be present
+      expect(sql).toContain("organization_id");
+      expect(Object.values(params)).toContain("org_tenant1");
+      expect(sql).not.toContain("project_id");
+    });
+  });
+
+  describe("Environment ID is optional", () => {
+    it("should inject org, project, and env guards when all provided", () => {
+      const { sql, params } = compile("SELECT * FROM task_runs");
+
+      // All three should be present (default options include all)
+      expect(sql).toContain("organization_id");
+      expect(sql).toContain("project_id");
+      expect(sql).toContain("environment_id");
+      expect(Object.values(params)).toContain("org_tenant1");
+      expect(Object.values(params)).toContain("proj_tenant1");
+      expect(Object.values(params)).toContain("env_tenant1");
+    });
+
+    it("should allow querying across all environments when environmentId is omitted", () => {
+      const { sql, params } = compile("SELECT * FROM task_runs", {
+        projectId: "proj_tenant1",
+        environmentId: undefined,
+      });
+
+      // Org and project guards should be present
+      expect(sql).toContain("organization_id");
+      expect(sql).toContain("project_id");
+      expect(Object.values(params)).toContain("org_tenant1");
+      expect(Object.values(params)).toContain("proj_tenant1");
+
+      // Environment guard should NOT be present
+      expect(sql).not.toContain("environment_id");
+    });
+  });
+
+  describe("Cross-tenant security with optional filters", () => {
+    it("should still prevent cross-org access with org-only filter", () => {
+      const { sql, params } = compile(
+        "SELECT * FROM task_runs WHERE organization_id = 'org_other'",
+        {
+          projectId: undefined,
+          environmentId: undefined,
+        }
+      );
+
+      // Our org guard should still be enforced
+      expect(Object.values(params)).toContain("org_tenant1");
+    });
+
+    it("should apply org guard to all tables in JOIN when using org-only filter", () => {
+      const { sql } = compile(
+        `
+        SELECT r.id, e.event_type 
+        FROM task_runs r 
+        JOIN task_events e ON r.id = e.run_id
+      `,
+        {
+          projectId: undefined,
+          environmentId: undefined,
+        }
+      );
+
+      // Both tables should have org guards
+      const orgIdMatches = sql.match(/organization_id/g) || [];
+      expect(orgIdMatches.length).toBeGreaterThanOrEqual(2);
+
+      // Project and environment should NOT appear
+      expect(sql).not.toContain("project_id");
+      expect(sql).not.toContain("environment_id");
+    });
+
+    it("should apply org guard to UNION queries when using org-only filter", () => {
+      const { sql } = compile(
+        `
+        SELECT id, status FROM task_runs WHERE status = 'completed'
+        UNION ALL
+        SELECT id, status FROM task_runs WHERE status = 'failed'
+      `,
+        {
+          projectId: undefined,
+          environmentId: undefined,
+        }
+      );
+
+      // Both parts should have org guards
+      const orgIdMatches = sql.match(/organization_id/g) || [];
+      expect(orgIdMatches.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it("should apply org guard to subqueries when using org-only filter", () => {
+      const { sql, params } = compile(
+        `
+        SELECT * FROM task_runs 
+        WHERE id IN (SELECT run_id FROM task_events)
+      `,
+        {
+          projectId: undefined,
+          environmentId: undefined,
+        }
+      );
+
+      // Both main query and subquery should have org guards
+      expect(Object.values(params)).toContain("org_tenant1");
+      const orgIdMatches = sql.match(/organization_id/g) || [];
+      expect(orgIdMatches.length).toBeGreaterThanOrEqual(2);
+    });
+  });
+});
+
 describe("Edge Cases", () => {
   it("should handle empty string values", () => {
     const { params } = compile("SELECT * FROM task_runs WHERE status = ''");
