@@ -823,3 +823,215 @@ describe("Edge cases", () => {
     expect(sql).toContain("1.5");
   });
 });
+
+describe("Virtual columns", () => {
+  /**
+   * Schema with virtual (computed) columns
+   */
+  const virtualColumnSchema: TableSchema = {
+    name: "runs",
+    clickhouseName: "trigger_dev.task_runs_v2",
+    columns: {
+      run_id: { name: "run_id", ...column("String") },
+      status: { name: "status", ...column("String") },
+      started_at: { name: "started_at", ...column("Nullable(DateTime64)") },
+      completed_at: { name: "completed_at", ...column("Nullable(DateTime64)") },
+      usage_duration_ms: { name: "usage_duration_ms", ...column("UInt32") },
+      // Virtual column: execution_duration computes the time between started_at and completed_at
+      execution_duration: {
+        name: "execution_duration",
+        ...column("Nullable(Int64)"),
+        expression: "dateDiff('millisecond', started_at, completed_at)",
+        description: "Time between started_at and completed_at in milliseconds",
+      },
+      // Virtual column: is_long_running checks if execution took more than 60 seconds
+      is_long_running: {
+        name: "is_long_running",
+        ...column("UInt8"),
+        expression:
+          "if(completed_at IS NOT NULL AND started_at IS NOT NULL, dateDiff('second', started_at, completed_at) > 60, 0)",
+      },
+      // Virtual column with simple arithmetic
+      usage_duration_seconds: {
+        name: "usage_duration_seconds",
+        ...column("Float64"),
+        expression: "usage_duration_ms / 1000.0",
+      },
+      organization_id: { name: "organization_id", ...column("String") },
+      project_id: { name: "project_id", ...column("String") },
+      environment_id: { name: "environment_id", ...column("String") },
+    },
+    tenantColumns: {
+      organizationId: "organization_id",
+      projectId: "project_id",
+      environmentId: "environment_id",
+    },
+  };
+
+  function createVirtualColumnContext() {
+    const schema = createSchemaRegistry([virtualColumnSchema]);
+    return createPrinterContext({
+      organizationId: "org_test",
+      projectId: "proj_test",
+      environmentId: "env_test",
+      schema,
+    });
+  }
+
+  describe("SELECT clause", () => {
+    it("should expand bare virtual column to expression with alias", () => {
+      const ctx = createVirtualColumnContext();
+      const { sql } = printQuery("SELECT execution_duration FROM runs", ctx);
+
+      // Virtual column should be expanded to its expression with AS alias
+      expect(sql).toContain("(dateDiff('millisecond', started_at, completed_at))");
+      expect(sql).toContain("AS execution_duration");
+    });
+
+    it("should expand virtual column with explicit alias", () => {
+      const ctx = createVirtualColumnContext();
+      const { sql } = printQuery("SELECT execution_duration AS dur FROM runs", ctx);
+
+      // Virtual column should use the user-provided alias
+      expect(sql).toContain("(dateDiff('millisecond', started_at, completed_at))");
+      expect(sql).toContain("AS dur");
+      expect(sql).not.toContain("AS execution_duration");
+    });
+
+    it("should expand qualified virtual column reference", () => {
+      const ctx = createVirtualColumnContext();
+      const { sql } = printQuery("SELECT runs.execution_duration FROM runs", ctx);
+
+      // Qualified reference should also expand
+      expect(sql).toContain("(dateDiff('millisecond', started_at, completed_at))");
+      expect(sql).toContain("AS execution_duration");
+    });
+
+    it("should handle multiple virtual columns in SELECT", () => {
+      const ctx = createVirtualColumnContext();
+      const { sql } = printQuery(
+        "SELECT run_id, execution_duration, is_long_running FROM runs",
+        ctx
+      );
+
+      expect(sql).toContain("run_id");
+      expect(sql).toContain("(dateDiff('millisecond', started_at, completed_at))");
+      expect(sql).toContain("AS execution_duration");
+      expect(sql).toContain(
+        "(if(completed_at IS NOT NULL AND started_at IS NOT NULL, dateDiff('second', started_at, completed_at) > 60, 0))"
+      );
+      expect(sql).toContain("AS is_long_running");
+    });
+
+    it("should mix regular and virtual columns correctly", () => {
+      const ctx = createVirtualColumnContext();
+      const { sql } = printQuery("SELECT run_id, status, execution_duration, started_at FROM runs", ctx);
+
+      // Regular columns should be normal
+      expect(sql).toMatch(/\brun_id\b/);
+      expect(sql).toMatch(/\bstatus\b/);
+      expect(sql).toMatch(/\bstarted_at\b/);
+      // Virtual column should be expanded
+      expect(sql).toContain("(dateDiff('millisecond', started_at, completed_at)) AS execution_duration");
+    });
+  });
+
+  describe("WHERE clause", () => {
+    it("should expand virtual column in WHERE equality", () => {
+      const ctx = createVirtualColumnContext();
+      const { sql } = printQuery("SELECT * FROM runs WHERE execution_duration > 1000", ctx);
+
+      // Virtual column in WHERE should expand without AS
+      expect(sql).toContain("greater((dateDiff('millisecond', started_at, completed_at)), 1000)");
+    });
+
+    it("should expand virtual column in WHERE with comparison operators", () => {
+      const ctx = createVirtualColumnContext();
+      const { sql } = printQuery("SELECT * FROM runs WHERE execution_duration >= 5000", ctx);
+
+      expect(sql).toContain("greaterOrEquals((dateDiff('millisecond', started_at, completed_at)), 5000)");
+    });
+
+    it("should expand virtual column in WHERE with multiple conditions", () => {
+      const ctx = createVirtualColumnContext();
+      const { sql } = printQuery(
+        "SELECT * FROM runs WHERE execution_duration > 1000 AND is_long_running = 1",
+        ctx
+      );
+
+      expect(sql).toContain("(dateDiff('millisecond', started_at, completed_at))");
+      expect(sql).toContain(
+        "(if(completed_at IS NOT NULL AND started_at IS NOT NULL, dateDiff('second', started_at, completed_at) > 60, 0))"
+      );
+    });
+
+    it("should expand qualified virtual column in WHERE", () => {
+      const ctx = createVirtualColumnContext();
+      const { sql } = printQuery("SELECT * FROM runs WHERE runs.execution_duration > 1000", ctx);
+
+      expect(sql).toContain("greater((dateDiff('millisecond', started_at, completed_at)), 1000)");
+    });
+  });
+
+  describe("ORDER BY clause", () => {
+    it("should expand virtual column in ORDER BY", () => {
+      const ctx = createVirtualColumnContext();
+      const { sql } = printQuery("SELECT * FROM runs ORDER BY execution_duration DESC", ctx);
+
+      expect(sql).toContain("ORDER BY (dateDiff('millisecond', started_at, completed_at)) DESC");
+    });
+
+    it("should expand virtual column in ORDER BY with multiple columns", () => {
+      const ctx = createVirtualColumnContext();
+      const { sql } = printQuery("SELECT * FROM runs ORDER BY status ASC, execution_duration DESC", ctx);
+
+      expect(sql).toContain("status ASC");
+      expect(sql).toContain("(dateDiff('millisecond', started_at, completed_at)) DESC");
+    });
+  });
+
+  describe("GROUP BY clause", () => {
+    it("should expand virtual column in GROUP BY", () => {
+      const ctx = createVirtualColumnContext();
+      const { sql } = printQuery(
+        "SELECT is_long_running, count(*) FROM runs GROUP BY is_long_running",
+        ctx
+      );
+
+      // Both SELECT and GROUP BY should have the expansion
+      expect(sql).toContain("GROUP BY (if(completed_at IS NOT NULL AND started_at IS NOT NULL, dateDiff('second', started_at, completed_at) > 60, 0))");
+    });
+  });
+
+  describe("Complex expressions", () => {
+    it("should handle arithmetic virtual columns", () => {
+      const ctx = createVirtualColumnContext();
+      const { sql } = printQuery("SELECT usage_duration_seconds FROM runs", ctx);
+
+      expect(sql).toContain("(usage_duration_ms / 1000.0)");
+      expect(sql).toContain("AS usage_duration_seconds");
+    });
+
+    it("should handle virtual column in arithmetic expression", () => {
+      const ctx = createVirtualColumnContext();
+      const { sql } = printQuery("SELECT execution_duration / 1000 AS dur_seconds FROM runs", ctx);
+
+      // The virtual column expression should be wrapped in the arithmetic
+      expect(sql).toContain("divide((dateDiff('millisecond', started_at, completed_at)), 1000)");
+      expect(sql).toContain("AS dur_seconds");
+    });
+  });
+
+  describe("Regular columns unchanged", () => {
+    it("should not affect regular columns without expression", () => {
+      const ctx = createVirtualColumnContext();
+      const { sql } = printQuery("SELECT run_id, status, started_at FROM runs", ctx);
+
+      // Regular columns should appear as-is
+      expect(sql).toContain("run_id, status, started_at");
+      // No extra parentheses or AS for regular columns in basic SELECT
+      expect(sql).not.toMatch(/\(run_id\)/);
+      expect(sql).not.toMatch(/\(status\)/);
+    });
+  });
+});

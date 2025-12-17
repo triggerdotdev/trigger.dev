@@ -47,7 +47,14 @@ import {
   validateFunctionArgs,
 } from "./functions";
 import { PrinterContext } from "./printer_context";
-import { findTable, validateTable, TableSchema, ColumnSchema, getInternalValue } from "./schema";
+import {
+  findTable,
+  validateTable,
+  TableSchema,
+  ColumnSchema,
+  getInternalValue,
+  isVirtualColumn,
+} from "./schema";
 
 /**
  * Result of printing an AST to ClickHouse SQL
@@ -316,7 +323,7 @@ export class ClickHousePrinter {
     // Process SELECT columns
     let columns: string[];
     if (node.select && node.select.length > 0) {
-      columns = node.select.map((col) => this.visit(col));
+      columns = node.select.map((col) => this.visitSelectColumn(col));
     } else {
       columns = ["1"];
     }
@@ -428,6 +435,73 @@ export class ClickHousePrinter {
     }
 
     return response;
+  }
+
+  /**
+   * Visit a SELECT column expression, handling virtual columns specially
+   *
+   * For bare Field expressions that reference virtual columns, we need to add
+   * an AS alias to preserve the column name in the result set.
+   *
+   * Examples:
+   * - `SELECT execution_duration` → `SELECT (expr) AS execution_duration`
+   * - `SELECT execution_duration AS dur` → `SELECT (expr) AS dur` (Alias handles it)
+   * - `SELECT run_id` → `SELECT run_id` (not a virtual column)
+   */
+  private visitSelectColumn(col: Expression): string {
+    // Check if this is a bare Field (not wrapped in Alias)
+    if ((col as Field).expression_type === "field") {
+      const field = col as Field;
+      const virtualColumnName = this.getVirtualColumnNameForField(field.chain);
+
+      if (virtualColumnName !== null) {
+        // Visit the field (which will return the expression)
+        const visited = this.visit(col);
+        // Add the alias to preserve the column name
+        return `${visited} AS ${this.printIdentifier(virtualColumnName)}`;
+      }
+    }
+
+    // For non-virtual columns or expressions already wrapped in Alias, visit normally
+    return this.visit(col);
+  }
+
+  /**
+   * Get the virtual column name if a field chain references a virtual column
+   * @returns The column name (as exposed in TSQL), or null if not a virtual column
+   */
+  private getVirtualColumnNameForField(chain: Array<string | number>): string | null {
+    if (chain.length === 0) return null;
+
+    const firstPart = chain[0];
+    if (typeof firstPart !== "string") return null;
+
+    // Case 1: Qualified reference like table.column
+    if (chain.length >= 2) {
+      const tableAlias = firstPart;
+      const tableSchema = this.tableContexts.get(tableAlias);
+      if (!tableSchema) return null;
+
+      const columnName = chain[1];
+      if (typeof columnName !== "string") return null;
+
+      const columnSchema = tableSchema.columns[columnName];
+      if (columnSchema && isVirtualColumn(columnSchema)) {
+        return columnName;
+      }
+      return null;
+    }
+
+    // Case 2: Unqualified reference like just "column"
+    const columnName = firstPart;
+    for (const tableSchema of this.tableContexts.values()) {
+      const columnSchema = tableSchema.columns[columnName];
+      if (columnSchema && isVirtualColumn(columnSchema)) {
+        return columnName;
+      }
+    }
+
+    return null;
   }
 
   // ============================================================
@@ -950,11 +1024,56 @@ export class ClickHousePrinter {
       }
     }
 
+    // Check if this field is a virtual column
+    const virtualExpression = this.getVirtualColumnExpressionForField(node.chain);
+    if (virtualExpression !== null) {
+      // Return the expression wrapped in parentheses
+      return `(${virtualExpression})`;
+    }
+
     // Try to resolve column names through table context
     const resolvedChain = this.resolveFieldChain(node.chain);
 
     // Print each chain element
     return resolvedChain.map((part) => this.printIdentifierOrIndex(part)).join(".");
+  }
+
+  /**
+   * Check if a field chain references a virtual column and return its expression
+   * @returns The virtual column expression, or null if not a virtual column
+   */
+  private getVirtualColumnExpressionForField(chain: Array<string | number>): string | null {
+    if (chain.length === 0) return null;
+
+    const firstPart = chain[0];
+    if (typeof firstPart !== "string") return null;
+
+    // Case 1: Qualified reference like table.column
+    if (chain.length >= 2) {
+      const tableAlias = firstPart;
+      const tableSchema = this.tableContexts.get(tableAlias);
+      if (!tableSchema) return null;
+
+      const columnName = chain[1];
+      if (typeof columnName !== "string") return null;
+
+      const columnSchema = tableSchema.columns[columnName];
+      if (columnSchema && isVirtualColumn(columnSchema)) {
+        return columnSchema.expression!;
+      }
+      return null;
+    }
+
+    // Case 2: Unqualified reference like just "column"
+    const columnName = firstPart;
+    for (const tableSchema of this.tableContexts.values()) {
+      const columnSchema = tableSchema.columns[columnName];
+      if (columnSchema && isVirtualColumn(columnSchema)) {
+        return columnSchema.expression!;
+      }
+    }
+
+    return null;
   }
 
   /**

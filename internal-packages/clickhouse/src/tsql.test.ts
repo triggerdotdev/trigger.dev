@@ -49,6 +49,8 @@ const defaultTaskRun = {
   batch_id: "",
   created_at: Date.now(),
   updated_at: Date.now(),
+  started_at: null as number | null,
+  completed_at: null as number | null,
   tags: [] as string[],
   output: null,
   error: null,
@@ -752,6 +754,271 @@ describe("TSQL Optional Tenant Filter Tests", () => {
       expect(error).toBeNull();
       expect(rows).toHaveLength(2);
       expect(rows?.map((r) => r.run_id).sort()).toEqual(["run_exec_1", "run_exec_2"]);
+    }
+  );
+});
+
+describe("TSQL Virtual Column Tests", () => {
+  /**
+   * Schema with virtual (computed) columns
+   */
+  const virtualColumnSchema: TableSchema = {
+    name: "task_runs",
+    clickhouseName: "trigger_dev.task_runs_v2",
+    columns: {
+      run_id: { name: "run_id", ...column("String") },
+      friendly_id: { name: "friendly_id", ...column("String") },
+      status: { name: "status", ...column("String") },
+      task_identifier: { name: "task_identifier", ...column("String") },
+      queue: { name: "queue", ...column("String") },
+      environment_id: { name: "environment_id", ...column("String") },
+      environment_type: { name: "environment_type", ...column("String") },
+      organization_id: { name: "organization_id", ...column("String") },
+      project_id: { name: "project_id", ...column("String") },
+      created_at: { name: "created_at", ...column("DateTime") },
+      updated_at: { name: "updated_at", ...column("DateTime") },
+      started_at: { name: "started_at", ...column("Nullable(DateTime64)") },
+      completed_at: { name: "completed_at", ...column("Nullable(DateTime64)") },
+      usage_duration_ms: { name: "usage_duration_ms", ...column("UInt32") },
+      is_test: { name: "is_test", ...column("Bool") },
+      tags: { name: "tags", ...column("Array(String)") },
+      // Virtual column: execution_duration computes milliseconds between started_at and completed_at
+      execution_duration: {
+        name: "execution_duration",
+        ...column("Nullable(Int64)"),
+        expression: "dateDiff('millisecond', started_at, completed_at)",
+        description: "Time between started_at and completed_at in milliseconds",
+      },
+      // Virtual column: usage_duration_seconds converts ms to seconds
+      usage_duration_seconds: {
+        name: "usage_duration_seconds",
+        ...column("Float64"),
+        expression: "usage_duration_ms / 1000.0",
+        description: "Usage duration in seconds",
+      },
+    },
+    tenantColumns: {
+      organizationId: "organization_id",
+      projectId: "project_id",
+      environmentId: "environment_id",
+    },
+  };
+
+  clickhouseTest(
+    "should select virtual column and compute correct value",
+    async ({ clickhouseContainer }) => {
+      const client = new ClickhouseClient({
+        name: "test",
+        url: clickhouseContainer.getConnectionUrl(),
+      });
+
+      const insert = insertTaskRuns(client, { async_insert: 0 });
+
+      const now = Date.now();
+      const startedAt = now - 5000; // 5 seconds ago
+      const completedAt = now;
+
+      await insert([
+        createTaskRun({
+          run_id: "run_virtual_1",
+          started_at: startedAt,
+          completed_at: completedAt,
+          usage_duration_ms: 3500,
+        }),
+      ]);
+
+      const [error, rows] = await executeTSQL(client, {
+        name: "test-virtual-column-select",
+        query: "SELECT run_id, execution_duration, usage_duration_seconds FROM task_runs",
+        schema: z.object({
+          run_id: z.string(),
+          execution_duration: z.number().nullable(),
+          usage_duration_seconds: z.number(),
+        }),
+        organizationId: "org_tenant1",
+        projectId: "proj_tenant1",
+        environmentId: "env_tenant1",
+        tableSchema: [virtualColumnSchema],
+      });
+
+      expect(error).toBeNull();
+      expect(rows).toHaveLength(1);
+      // execution_duration should be approximately 5000ms (difference between started_at and completed_at)
+      expect(rows?.[0].execution_duration).toBeCloseTo(5000, -2); // within 100ms tolerance
+      // usage_duration_seconds should be 3.5 (3500ms / 1000)
+      expect(rows?.[0].usage_duration_seconds).toBeCloseTo(3.5, 1);
+    }
+  );
+
+  clickhouseTest(
+    "should filter by virtual column in WHERE clause",
+    async ({ clickhouseContainer }) => {
+      const client = new ClickhouseClient({
+        name: "test",
+        url: clickhouseContainer.getConnectionUrl(),
+      });
+
+      const insert = insertTaskRuns(client, { async_insert: 0 });
+
+      const now = Date.now();
+
+      await insert([
+        createTaskRun({
+          run_id: "run_short",
+          started_at: now - 1000, // 1 second duration
+          completed_at: now,
+        }),
+        createTaskRun({
+          run_id: "run_long",
+          started_at: now - 10000, // 10 second duration
+          completed_at: now,
+        }),
+        createTaskRun({
+          run_id: "run_very_long",
+          started_at: now - 60000, // 60 second duration
+          completed_at: now,
+        }),
+      ]);
+
+      // Query runs with execution_duration > 5000ms (5 seconds)
+      const [error, rows] = await executeTSQL(client, {
+        name: "test-virtual-column-where",
+        query: "SELECT run_id FROM task_runs WHERE execution_duration > 5000",
+        schema: z.object({ run_id: z.string() }),
+        organizationId: "org_tenant1",
+        projectId: "proj_tenant1",
+        environmentId: "env_tenant1",
+        tableSchema: [virtualColumnSchema],
+      });
+
+      expect(error).toBeNull();
+      expect(rows).toHaveLength(2);
+      expect(rows?.map((r) => r.run_id).sort()).toEqual(["run_long", "run_very_long"]);
+    }
+  );
+
+  clickhouseTest("should order by virtual column", async ({ clickhouseContainer }) => {
+    const client = new ClickhouseClient({
+      name: "test",
+      url: clickhouseContainer.getConnectionUrl(),
+    });
+
+    const insert = insertTaskRuns(client, { async_insert: 0 });
+
+    const now = Date.now();
+
+    await insert([
+      createTaskRun({
+        run_id: "run_order_a",
+        usage_duration_ms: 1000,
+      }),
+      createTaskRun({
+        run_id: "run_order_b",
+        usage_duration_ms: 3000,
+      }),
+      createTaskRun({
+        run_id: "run_order_c",
+        usage_duration_ms: 2000,
+      }),
+    ]);
+
+    // Order by usage_duration_seconds descending (virtual column)
+    const [error, rows] = await executeTSQL(client, {
+      name: "test-virtual-column-order",
+      query:
+        "SELECT run_id, usage_duration_seconds FROM task_runs ORDER BY usage_duration_seconds DESC",
+      schema: z.object({
+        run_id: z.string(),
+        usage_duration_seconds: z.number(),
+      }),
+      organizationId: "org_tenant1",
+      projectId: "proj_tenant1",
+      environmentId: "env_tenant1",
+      tableSchema: [virtualColumnSchema],
+    });
+
+    expect(error).toBeNull();
+    expect(rows).toHaveLength(3);
+    // Should be ordered by usage_duration_seconds DESC: b (3), c (2), a (1)
+    expect(rows?.[0].run_id).toBe("run_order_b");
+    expect(rows?.[0].usage_duration_seconds).toBeCloseTo(3.0, 1);
+    expect(rows?.[1].run_id).toBe("run_order_c");
+    expect(rows?.[1].usage_duration_seconds).toBeCloseTo(2.0, 1);
+    expect(rows?.[2].run_id).toBe("run_order_a");
+    expect(rows?.[2].usage_duration_seconds).toBeCloseTo(1.0, 1);
+  });
+
+  clickhouseTest(
+    "should use virtual column with explicit alias",
+    async ({ clickhouseContainer }) => {
+      const client = new ClickhouseClient({
+        name: "test",
+        url: clickhouseContainer.getConnectionUrl(),
+      });
+
+      const insert = insertTaskRuns(client, { async_insert: 0 });
+
+      await insert([
+        createTaskRun({
+          run_id: "run_alias_test",
+          usage_duration_ms: 5000,
+        }),
+      ]);
+
+      // Use virtual column with custom alias
+      const [error, rows] = await executeTSQL(client, {
+        name: "test-virtual-column-alias",
+        query: "SELECT run_id, usage_duration_seconds AS dur_sec FROM task_runs",
+        schema: z.object({
+          run_id: z.string(),
+          dur_sec: z.number(),
+        }),
+        organizationId: "org_tenant1",
+        projectId: "proj_tenant1",
+        environmentId: "env_tenant1",
+        tableSchema: [virtualColumnSchema],
+      });
+
+      expect(error).toBeNull();
+      expect(rows).toHaveLength(1);
+      expect(rows?.[0].dur_sec).toBeCloseTo(5.0, 1);
+    }
+  );
+
+  clickhouseTest(
+    "should handle null values in virtual column expression",
+    async ({ clickhouseContainer }) => {
+      const client = new ClickhouseClient({
+        name: "test",
+        url: clickhouseContainer.getConnectionUrl(),
+      });
+
+      const insert = insertTaskRuns(client, { async_insert: 0 });
+
+      await insert([
+        createTaskRun({
+          run_id: "run_null_times",
+          // started_at and completed_at will be null
+        }),
+      ]);
+
+      const [error, rows] = await executeTSQL(client, {
+        name: "test-virtual-column-null",
+        query: "SELECT run_id, execution_duration FROM task_runs",
+        schema: z.object({
+          run_id: z.string(),
+          execution_duration: z.number().nullable(),
+        }),
+        organizationId: "org_tenant1",
+        projectId: "proj_tenant1",
+        environmentId: "env_tenant1",
+        tableSchema: [virtualColumnSchema],
+      });
+
+      expect(error).toBeNull();
+      expect(rows).toHaveLength(1);
+      // execution_duration should be null when started_at or completed_at is null
+      expect(rows?.[0].execution_duration).toBeNull();
     }
   );
 });

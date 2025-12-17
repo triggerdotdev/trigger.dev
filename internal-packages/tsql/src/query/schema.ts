@@ -77,6 +77,24 @@ export interface ColumnSchema {
    * and results will display user-friendly names instead of internal values.
    */
   valueMap?: Record<string, string>;
+  /**
+   * For virtual (computed) columns: the raw ClickHouse SQL expression.
+   * Use actual ClickHouse column names in the expression.
+   *
+   * When set, this column becomes a virtual column that doesn't exist in the
+   * underlying table but is computed from the expression at query time.
+   *
+   * @example
+   * ```typescript
+   * {
+   *   name: "execution_duration",
+   *   type: "Nullable(Int64)",
+   *   expression: "dateDiff('millisecond', started_at, completed_at)",
+   *   description: "Time between started_at and completed_at in milliseconds"
+   * }
+   * ```
+   */
+  expression?: string;
 }
 
 /**
@@ -281,6 +299,29 @@ export function validateGroupColumn(
  */
 export function getClickHouseColumnName(col: ColumnSchema): string {
   return col.clickhouseName ?? col.name;
+}
+
+/**
+ * Check if a column is a virtual (computed) column
+ *
+ * Virtual columns have an expression property that defines how they are computed
+ * from other columns. They don't exist in the underlying table.
+ *
+ * @param col - The column schema to check
+ * @returns true if the column is virtual, false otherwise
+ */
+export function isVirtualColumn(col: ColumnSchema): boolean {
+  return col.expression !== undefined && col.expression.length > 0;
+}
+
+/**
+ * Get the expression for a virtual column
+ *
+ * @param col - The column schema
+ * @returns The expression string, or undefined if not a virtual column
+ */
+export function getVirtualColumnExpression(col: ColumnSchema): string | undefined {
+  return isVirtualColumn(col) ? col.expression : undefined;
 }
 
 /**
