@@ -6,7 +6,6 @@ describe("TSQLParser", () => {
   function parse(input: string) {
     const inputStream = CharStreams.fromString(input);
     const lexer = new TSQLLexer(inputStream);
-    // @ts-expect-error - antlr4ts type definitions issue: Lexer implements TokenSource but types don't reflect it
     const tokenStream = new CommonTokenStream(lexer);
     const parser = new TSQLParser(tokenStream);
     return parser;
@@ -81,9 +80,7 @@ describe("TSQLParser", () => {
       const columnExpr = tree.columnExpr();
       expect(columnExpr).toBeDefined();
       // Check that the expression has children (the operands and operator)
-      // @ts-expect-error - text property exists at runtime but not in types
       expect(columnExpr.text).toBeDefined();
-      // @ts-expect-error - text property exists at runtime but not in types
       const text = columnExpr.text;
       expect(text).toContain("1");
       expect(text).toContain("2");
@@ -98,7 +95,6 @@ describe("TSQLParser", () => {
       const columnExpr = tree.columnExpr();
       expect(columnExpr).toBeDefined();
       // The expression should contain the operators
-      // @ts-expect-error - text property exists at runtime but not in types
       const text = columnExpr.text;
       expect(text).toContain("+");
       expect(text).toContain("*");
@@ -114,7 +110,6 @@ describe("TSQLParser", () => {
       expect(tree).toBeDefined();
       const columnExpr = tree.columnExpr();
       expect(columnExpr).toBeDefined();
-      // @ts-expect-error - text property exists at runtime but not in types
       const text = columnExpr.text;
       expect(text).toContain("hello");
       expect(text).toContain("world");
@@ -127,7 +122,6 @@ describe("TSQLParser", () => {
       expect(tree).toBeDefined();
       const columnExpr = tree.columnExpr();
       expect(columnExpr).toBeDefined();
-      // @ts-expect-error - text property exists at runtime but not in types
       expect(columnExpr.text).toContain("42");
     });
   });
