@@ -23,6 +23,7 @@ import { Paragraph } from "../primitives/Paragraph";
 import { TextLink } from "../primitives/TextLink";
 import { v3RunPathFromFriendlyId } from "~/utils/pathBuilder";
 import { SimpleTooltip } from "../primitives/Tooltip";
+import { InformationCircleIcon } from "@heroicons/react/20/solid";
 
 /**
  * Check if a ClickHouse type is a DateTime type
@@ -211,7 +212,22 @@ export function TSQLResultsTable({
       <TableHeader>
         <TableRow>
           {columns.map((col) => (
-            <TableHeaderCell key={col.name}>{col.name}</TableHeaderCell>
+            <TableHeaderCell key={col.name}>
+              {col.description ? (
+                <SimpleTooltip
+                  content={col.description}
+                  disableHoverableContent
+                  button={
+                    <span className="inline-flex items-center gap-1">
+                      {col.name}
+                      <InformationCircleIcon className="size-4 text-text-dimmed" />
+                    </span>
+                  }
+                />
+              ) : (
+                col.name
+              )}
+            </TableHeaderCell>
           ))}
         </TableRow>
       </TableHeader>
