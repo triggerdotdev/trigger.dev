@@ -118,6 +118,21 @@ export interface ColumnSchema {
    * ```
    */
   customRenderType?: string;
+  /**
+   * Example value for documentation purposes.
+   *
+   * Used in help/documentation UI to show users what values look like.
+   *
+   * @example
+   * ```typescript
+   * {
+   *   name: "run_id",
+   *   type: "String",
+   *   example: "run_abc123",
+   * }
+   * ```
+   */
+  example?: string;
 }
 
 /**

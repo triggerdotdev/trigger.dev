@@ -35,19 +35,23 @@ export const runsSchema: TableSchema = {
     run_id: {
       name: "run_id",
       clickhouseName: "friendly_id",
-      ...column("String", { description: "Run ID (e.g., run_abc123)", customRenderType: "runId" }),
+      ...column("String", {
+        description: "Run ID (e.g., run_abc123)",
+        customRenderType: "runId",
+        example: "run_1234abcd5678efgh",
+      }),
     },
     environment_id: {
       name: "environment_id",
-      ...column("String", { description: "Environment ID" }),
+      ...column("String", { description: "Environment ID", example: "cm1a2b3c4d5e6f7g8h9i" }),
     },
     organization_id: {
       name: "organization_id",
-      ...column("String", { description: "Organization ID" }),
+      ...column("String", { description: "Organization ID", example: "cm9z8y7x6w5v4u3t2s1r" }),
     },
     project_id: {
       name: "project_id",
-      ...column("String", { description: "Project ID" }),
+      ...column("String", { description: "Project ID", example: "cm2b3c4d5e6f7g8h9i0j" }),
     },
     environment_type: {
       name: "environment_type",
@@ -55,11 +59,12 @@ export const runsSchema: TableSchema = {
         description: "Environment type",
         allowedValues: [...ENVIRONMENT_TYPES],
         customRenderType: "environmentType",
+        example: "PRODUCTION",
       }),
     },
     attempt: {
       name: "attempt",
-      ...column("UInt8", { description: "Number of attempts (starts at 1)" }),
+      ...column("UInt8", { description: "Number of attempts (starts at 1)", example: "1" }),
     },
     status: {
       name: "status",
@@ -68,91 +73,131 @@ export const runsSchema: TableSchema = {
         allowedValues: [...runFriendlyStatus],
         valueMap: runStatusTitleFromStatus,
         customRenderType: "runStatus",
+        example: "Completed",
       }),
     },
 
     // Task & queue
     task_identifier: {
       name: "task_identifier",
-      ...column("String", { description: "Task identifier/slug" }),
+      ...column("String", { description: "Task identifier/slug", example: "my-background-task" }),
     },
     queue: {
       name: "queue",
-      ...column("String", { description: "Queue name" }),
+      ...column("String", { description: "Queue name", example: "task/my-background-task" }),
     },
     schedule_id: {
       name: "schedule_id",
-      ...column("String", { description: "Schedule ID (if triggered by schedule)" }),
+      ...column("String", {
+        description: "Schedule ID (if triggered by schedule)",
+        example: "sched_1234abcd",
+      }),
     },
     batch_id: {
       name: "batch_id",
-      ...column("String", { description: "Batch ID (if part of a batch)" }),
+      ...column("String", {
+        description: "Batch ID (if part of a batch)",
+        example: "batch_5678efgh",
+      }),
     },
 
     // Related runs
     root_run_id: {
       name: "root_run_id",
-      ...column("String", { description: "Root run ID (for child runs)" }),
+      ...column("String", {
+        description: "Root run ID (for child runs)",
+        example: "run_root1234abcd",
+      }),
     },
     parent_run_id: {
       name: "parent_run_id",
-      ...column("String", { description: "Parent run ID (for child runs)" }),
+      ...column("String", {
+        description: "Parent run ID (for child runs)",
+        example: "run_parent5678ef",
+      }),
     },
     depth: {
       name: "depth",
-      ...column("UInt8", { description: "Nesting depth (0 for root runs)" }),
+      ...column("UInt8", { description: "Nesting depth (0 for root runs)", example: "0" }),
     },
 
     // Telemetry
     span_id: {
       name: "span_id",
-      ...column("String", { description: "OpenTelemetry span ID" }),
+      ...column("String", { description: "OpenTelemetry span ID", example: "a1b2c3d4e5f6g7h8" }),
     },
     trace_id: {
       name: "trace_id",
-      ...column("String", { description: "OpenTelemetry trace ID" }),
+      ...column("String", {
+        description: "OpenTelemetry trace ID",
+        example: "abc123def456ghi789jkl012mno345pq",
+      }),
     },
     idempotency_key: {
       name: "idempotency_key",
-      ...column("String", { description: "Idempotency key" }),
+      ...column("String", { description: "Idempotency key", example: "user-123-action-456" }),
     },
 
     // Timing
     created_at: {
       name: "created_at",
-      ...column("DateTime64", { description: "When the run was created" }),
+      ...column("DateTime64", {
+        description: "When the run was created",
+        example: "2024-01-15 09:30:00.000",
+      }),
     },
     updated_at: {
       name: "updated_at",
-      ...column("DateTime64", { description: "When the run was last updated" }),
+      ...column("DateTime64", {
+        description: "When the run was last updated",
+        example: "2024-01-15 09:30:05.123",
+      }),
     },
     started_at: {
       name: "started_at",
-      ...column("Nullable(DateTime64)", { description: "When the run started executing" }),
+      ...column("Nullable(DateTime64)", {
+        description: "When the run started executing",
+        example: "2024-01-15 09:30:01.000",
+      }),
     },
     executed_at: {
       name: "executed_at",
-      ...column("Nullable(DateTime64)", { description: "When execution began" }),
+      ...column("Nullable(DateTime64)", {
+        description: "When execution began",
+        example: "2024-01-15 09:30:01.500",
+      }),
     },
     completed_at: {
       name: "completed_at",
-      ...column("Nullable(DateTime64)", { description: "When the run completed" }),
+      ...column("Nullable(DateTime64)", {
+        description: "When the run completed",
+        example: "2024-01-15 09:30:05.000",
+      }),
     },
     delay_until: {
       name: "delay_until",
-      ...column("Nullable(DateTime64)", { description: "Delayed execution until this time" }),
+      ...column("Nullable(DateTime64)", {
+        description: "Delayed execution until this time",
+        example: "2024-01-15 10:00:00.000",
+      }),
     },
     queued_at: {
       name: "queued_at",
-      ...column("Nullable(DateTime64)", { description: "When the run was queued" }),
+      ...column("Nullable(DateTime64)", {
+        description: "When the run was queued",
+        example: "2024-01-15 09:30:00.500",
+      }),
     },
     expired_at: {
       name: "expired_at",
-      ...column("Nullable(DateTime64)", { description: "When the run expired" }),
+      ...column("Nullable(DateTime64)", {
+        description: "When the run expired",
+        example: "2024-01-15 09:35:00.000",
+      }),
     },
     expiration_ttl: {
       name: "expiration_ttl",
-      ...column("String", { description: "TTL string for expiration" }),
+      ...column("String", { description: "TTL string for expiration", example: "5m" }),
     },
 
     // Cost & usage
@@ -162,6 +207,7 @@ export const runsSchema: TableSchema = {
       ...column("UInt32", {
         description: "Usage duration in milliseconds",
         customRenderType: "duration",
+        example: "3500",
       }),
     },
     compute_cost: {
@@ -169,6 +215,7 @@ export const runsSchema: TableSchema = {
       ...column("Float64", {
         description: "Compute cost in cents",
         customRenderType: "cost",
+        example: "0.0025",
       }),
       expression: "cost_in_cents / 100.0",
     },
@@ -177,6 +224,7 @@ export const runsSchema: TableSchema = {
       ...column("Float64", {
         description: "Invocation cost in cents",
         customRenderType: "cost",
+        example: "0.001",
       }),
       expression: "base_cost_in_cents / 100.0",
     },
@@ -184,29 +232,36 @@ export const runsSchema: TableSchema = {
     // Output & error (JSON columns)
     output: {
       name: "output",
-      ...column("JSON", { description: "Run output data" }),
+      ...column("JSON", { description: "Run output data", example: '{"result": "success"}' }),
     },
     error: {
       name: "error",
-      ...column("JSON", { description: "Error information" }),
+      ...column("JSON", {
+        description: "Error information",
+        example: '{"message": "Task failed"}',
+      }),
     },
 
     // Tags & versions
     tags: {
       name: "tags",
-      ...column("Array(String)", { description: "Run tags", customRenderType: "tags" }),
+      ...column("Array(String)", {
+        description: "Run tags",
+        customRenderType: "tags",
+        example: '["user:123", "priority:high"]',
+      }),
     },
     task_version: {
       name: "task_version",
-      ...column("String", { description: "Task version" }),
+      ...column("String", { description: "Task version", example: "20240115.1" }),
     },
     sdk_version: {
       name: "sdk_version",
-      ...column("String", { description: "SDK version" }),
+      ...column("String", { description: "SDK version", example: "3.3.0" }),
     },
     cli_version: {
       name: "cli_version",
-      ...column("String", { description: "CLI version" }),
+      ...column("String", { description: "CLI version", example: "3.3.0" }),
     },
     machine: {
       name: "machine",
@@ -215,13 +270,14 @@ export const runsSchema: TableSchema = {
         description: "Machine preset",
         allowedValues: [...MACHINE_PRESETS],
         customRenderType: "machine",
+        example: "small-1x",
       }),
     },
 
     // Flags
     is_test: {
       name: "is_test",
-      ...column("UInt8", { description: "Whether this is a test run (0 or 1)" }),
+      ...column("UInt8", { description: "Whether this is a test run (0 or 1)", example: "0" }),
     },
 
     // Virtual columns
@@ -230,6 +286,7 @@ export const runsSchema: TableSchema = {
       ...column("Nullable(Int64)", {
         description: "Computed execution time in milliseconds (virtual column)",
         customRenderType: "duration",
+        example: "4000",
       }),
       expression: "dateDiff('millisecond', started_at, completed_at)",
     },
