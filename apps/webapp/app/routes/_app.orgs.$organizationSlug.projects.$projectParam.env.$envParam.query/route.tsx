@@ -79,20 +79,26 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
   // Temporarily admin-only
   if (!user.admin) {
-    return typedjson({ error: "Unauthorized", rows: null, columns: null }, { status: 403 });
+    return typedjson(
+      { error: "Unauthorized", rows: null, columns: null, stats: null },
+      { status: 403 }
+    );
   }
 
   const { projectParam, organizationSlug, envParam } = EnvironmentParamSchema.parse(params);
 
   const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
   if (!project) {
-    return typedjson({ error: "Project not found", rows: null, columns: null }, { status: 404 });
+    return typedjson(
+      { error: "Project not found", rows: null, columns: null, stats: null },
+      { status: 404 }
+    );
   }
 
   const environment = await findEnvironmentBySlug(project.id, envParam, user.id);
   if (!environment) {
     return typedjson(
-      { error: "Environment not found", rows: null, columns: null },
+      { error: "Environment not found", rows: null, columns: null, stats: null },
       { status: 404 }
     );
   }
@@ -105,7 +111,12 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
   if (!parsed.success) {
     return typedjson(
-      { error: parsed.error.errors.map((e) => e.message).join(", "), rows: null, columns: null },
+      {
+        error: parsed.error.errors.map((e) => e.message).join(", "),
+        rows: null,
+        columns: null,
+        stats: null,
+      },
       { status: 400 }
     );
   }
@@ -140,13 +151,24 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     });
 
     if (error) {
-      return typedjson({ error: error.message, rows: null, columns: null }, { status: 400 });
+      return typedjson(
+        { error: error.message, rows: null, columns: null, stats: null },
+        { status: 400 }
+      );
     }
 
-    return typedjson({ error: null, rows: result.rows, columns: result.columns });
+    return typedjson({
+      error: null,
+      rows: result.rows,
+      columns: result.columns,
+      stats: result.stats,
+    });
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : "Unknown error executing query";
-    return typedjson({ error: errorMessage, rows: null, columns: null }, { status: 500 });
+    return typedjson(
+      { error: errorMessage, rows: null, columns: null, stats: null },
+      { status: 500 }
+    );
   }
 };
 
@@ -215,9 +237,16 @@ export default function Page() {
           {/* Results */}
           <div className="grid max-h-full grid-rows-[2rem_1fr] gap-2 overflow-hidden border-t border-grid-dimmed pt-1">
             <div className="flex items-center justify-between border-b border-grid-dimmed bg-charcoal-900 px-3">
-              <Header2>
-                {results?.rows?.length ? `${results.rows.length} Results` : "Results"}
-              </Header2>
+              <div className="flex items-center gap-3">
+                <Header2>
+                  {results?.rows?.length ? `${results.rows.length} Results` : "Results"}
+                </Header2>
+                {results?.stats && (
+                  <span className="text-xs text-text-dimmed">
+                    {formatQueryStats(results.stats)}
+                  </span>
+                )}
+              </div>
               <Switch
                 variant="small"
                 label="Pretty formatting"
@@ -265,4 +294,29 @@ function ScopeItem({ scope }: { scope: QueryScope }) {
     default:
       return scope;
   }
+}
+
+function formatQueryStats(stats: {
+  read_rows: string;
+  read_bytes: string;
+  elapsed_ns: string;
+}): string {
+  const readRows = parseInt(stats.read_rows, 10);
+  const readBytes = parseInt(stats.read_bytes, 10);
+  const elapsedNs = parseInt(stats.elapsed_ns, 10);
+
+  const elapsedMs = elapsedNs / 1_000_000;
+  const formattedTime =
+    elapsedMs < 1000 ? `${elapsedMs.toFixed(1)}ms` : `${(elapsedMs / 1000).toFixed(2)}s`;
+  const formattedBytes = formatBytes(readBytes);
+
+  return `${readRows.toLocaleString()} rows read · ${formattedBytes} · ${formattedTime}`;
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 }
