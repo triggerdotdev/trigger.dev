@@ -1,3 +1,4 @@
+import { LightBulbIcon } from "@heroicons/react/20/solid";
 import { Form, useNavigation } from "@remix-run/react";
 import {
   type ActionFunctionArgs,
@@ -7,14 +8,20 @@ import {
 import { useState } from "react";
 import { typedjson, useTypedActionData, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { TSQLEditor } from "~/components/code/TSQLEditor";
 import { TSQLResultsTable } from "~/components/code/TSQLResultsTable";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button } from "~/components/primitives/Buttons";
-import { Header3 } from "~/components/primitives/Headers";
+import { Header2, Header3 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "~/components/primitives/Resizable";
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Switch } from "~/components/primitives/Switch";
@@ -180,6 +187,7 @@ export default function Page() {
   const [query, setQuery] = useState(defaultQuery);
   const [scope, setScope] = useState<QueryScope>("environment");
   const [prettyFormatting, setPrettyFormatting] = useState(true);
+  const [showHelpSidebar, setShowHelpSidebar] = useState(true);
 
   const isLoading = navigation.state === "submitting" || navigation.state === "loading";
 
@@ -189,93 +197,149 @@ export default function Page() {
         <PageTitle title="Query" />
       </NavBar>
       <PageBody scrollable={false}>
-        <div className="grid max-h-full grid-rows-[auto_1fr] overflow-hidden">
-          {/* Query editor */}
-          <div className="flex flex-col gap-2 pb-2">
-            <TSQLEditor
-              defaultValue={query}
-              onChange={setQuery}
-              schema={querySchemas}
-              linterEnabled={true}
-              showCopyButton={true}
-              showClearButton={true}
-              minHeight="200px"
-              className="min-h-[200px]"
-            />
-            <Form method="post" className="flex items-center justify-end gap-2 px-2">
-              <input type="hidden" name="query" value={query} />
-              <input type="hidden" name="scope" value={scope} />
-              <Select
-                value={scope}
-                setValue={(value) => setScope(value as QueryScope)}
-                variant="tertiary/small"
-                dropdownIcon={true}
-                items={[...scopeOptions]}
-                text={(value) => {
-                  return <ScopeItem scope={value as QueryScope} />;
-                }}
-              >
-                {(items) =>
-                  items.map((item) => (
-                    <SelectItem key={item.value} value={item.value}>
-                      <ScopeItem scope={item.value as QueryScope} />
-                    </SelectItem>
-                  ))
-                }
-              </Select>
-              <Button
-                type="submit"
-                variant="primary/small"
-                disabled={isLoading || !query.trim()}
-                shortcut={{ modifiers: ["mod"], key: "enter", enabledOnInputElements: true }}
-                LeadingIcon={isLoading ? <Spinner className="size-4" color="white" /> : undefined}
-              >
-                {isLoading ? "Querying..." : "Query"}
-              </Button>
-            </Form>
-          </div>
-          {/* Results */}
-          <div className="grid max-h-full grid-rows-[2rem_1fr] overflow-hidden border-t border-grid-dimmed">
-            <div className="flex items-center justify-between border-b border-grid-dimmed bg-charcoal-900 px-3">
-              <div className="flex items-center gap-3">
-                <Header3>
-                  {results?.rows?.length ? `${results.rows.length} Results` : "Results"}
-                </Header3>
-                {results?.stats && (
-                  <span className="text-xs text-text-dimmed">
-                    {formatQueryStats(results.stats)}
-                  </span>
+        <ResizablePanelGroup orientation="horizontal" className="max-h-full">
+          <ResizablePanel id="query-main" className="max-h-full">
+            <div className="grid max-h-full grid-rows-[auto_1fr] overflow-hidden">
+              {/* Query editor */}
+              <div className="flex flex-col gap-2 pb-2">
+                <TSQLEditor
+                  defaultValue={query}
+                  onChange={setQuery}
+                  schema={querySchemas}
+                  linterEnabled={true}
+                  showCopyButton={true}
+                  showClearButton={true}
+                  minHeight="200px"
+                  className="min-h-[200px]"
+                />
+                <Form method="post" className="flex items-center justify-end gap-2 px-2">
+                  <input type="hidden" name="query" value={query} />
+                  <input type="hidden" name="scope" value={scope} />
+                  <Select
+                    value={scope}
+                    setValue={(value) => setScope(value as QueryScope)}
+                    variant="tertiary/small"
+                    dropdownIcon={true}
+                    items={[...scopeOptions]}
+                    text={(value) => {
+                      return <ScopeItem scope={value as QueryScope} />;
+                    }}
+                  >
+                    {(items) =>
+                      items.map((item) => (
+                        <SelectItem key={item.value} value={item.value}>
+                          <ScopeItem scope={item.value as QueryScope} />
+                        </SelectItem>
+                      ))
+                    }
+                  </Select>
+                  {!showHelpSidebar && (
+                    <Button
+                      variant="minimal/small"
+                      TrailingIcon={LightBulbIcon}
+                      onClick={() => setShowHelpSidebar(true)}
+                      className="px-2.5"
+                    />
+                  )}
+                  <Button
+                    type="submit"
+                    variant="primary/small"
+                    disabled={isLoading || !query.trim()}
+                    shortcut={{ modifiers: ["mod"], key: "enter", enabledOnInputElements: true }}
+                    LeadingIcon={
+                      isLoading ? <Spinner className="size-4" color="white" /> : undefined
+                    }
+                  >
+                    {isLoading ? "Querying..." : "Query"}
+                  </Button>
+                </Form>
+              </div>
+              {/* Results */}
+              <div className="grid max-h-full grid-rows-[2rem_1fr] overflow-hidden border-t border-grid-dimmed">
+                <div className="flex items-center justify-between border-b border-grid-dimmed bg-charcoal-900 px-3">
+                  <div className="flex items-center gap-3">
+                    <Header3>
+                      {results?.rows?.length ? `${results.rows.length} Results` : "Results"}
+                    </Header3>
+                    {results?.stats && (
+                      <span className="text-xs text-text-dimmed">
+                        {formatQueryStats(results.stats)}
+                      </span>
+                    )}
+                  </div>
+                  <Switch
+                    variant="small"
+                    label="Pretty formatting"
+                    checked={prettyFormatting}
+                    onCheckedChange={setPrettyFormatting}
+                  />
+                </div>
+                {isLoading ? (
+                  <div className="flex items-center gap-2 p-4 text-text-dimmed">
+                    <Spinner className="size-4" />
+                    <span>Executing query...</span>
+                  </div>
+                ) : results?.error ? (
+                  <pre className="whitespace-pre-wrap p-4 text-sm text-red-400">
+                    {results.error}
+                  </pre>
+                ) : results?.rows && results?.columns ? (
+                  <TSQLResultsTable
+                    rows={results.rows}
+                    columns={results.columns}
+                    prettyFormatting={prettyFormatting}
+                  />
+                ) : (
+                  <Paragraph variant="small" className="p-4 text-text-dimmed">
+                    Run a query to see results here.
+                  </Paragraph>
                 )}
               </div>
-              <Switch
-                variant="small"
-                label="Pretty formatting"
-                checked={prettyFormatting}
-                onCheckedChange={setPrettyFormatting}
-              />
             </div>
-            {isLoading ? (
-              <div className="flex items-center gap-2 p-4 text-text-dimmed">
-                <Spinner className="size-4" />
-                <span>Executing query...</span>
-              </div>
-            ) : results?.error ? (
-              <pre className="whitespace-pre-wrap p-4 text-sm text-red-400">{results.error}</pre>
-            ) : results?.rows && results?.columns ? (
-              <TSQLResultsTable
-                rows={results.rows}
-                columns={results.columns}
-                prettyFormatting={prettyFormatting}
-              />
-            ) : (
-              <Paragraph variant="small" className="p-4 text-text-dimmed">
-                Run a query to see results here.
-              </Paragraph>
-            )}
-          </div>
-        </div>
+          </ResizablePanel>
+          {showHelpSidebar && (
+            <>
+              <ResizableHandle id="query-handle" />
+              <ResizablePanel
+                id="query-help"
+                min="200px"
+                default="400px"
+                max="500px"
+                className="w-full"
+              >
+                <QueryHelpSidebar onClose={() => setShowHelpSidebar(false)} />
+              </ResizablePanel>
+            </>
+          )}
+        </ResizablePanelGroup>
       </PageBody>
     </PageContainer>
+  );
+}
+
+function QueryHelpSidebar({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
+      <div className="overflow-y-scroll p-3 pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        <div className="mb-2 flex items-center justify-between gap-2 border-b border-grid-dimmed pb-2">
+          <Header2 className="flex items-center gap-2">
+            <LightBulbIcon className="size-4 min-w-4 text-sun-500" />
+            Query help
+          </Header2>
+          <Button
+            onClick={onClose}
+            variant="minimal/small"
+            TrailingIcon={ExitIcon}
+            shortcut={{ key: "esc" }}
+            shortcutPosition="before-trailing-icon"
+            className="pl-[0.375rem]"
+          />
+        </div>
+        <Paragraph variant="small" className="text-text-dimmed">
+          Help content coming soon...
+        </Paragraph>
+      </div>
+    </div>
   );
 }
 
