@@ -165,9 +165,9 @@ export default function Page() {
         <PageTitle title="Query" />
       </NavBar>
       <PageBody scrollable={false}>
-        <div className="grid grid-rows-[1fr_auto]">
+        <div className="grid max-h-full grid-rows-[auto_1fr] overflow-hidden">
           {/* Query editor */}
-          <div className="flex h-full flex-col gap-2 pb-2">
+          <div className="flex flex-col gap-2 pb-2">
             <TSQLEditor
               defaultValue={query}
               onChange={setQuery}
@@ -211,28 +211,26 @@ export default function Page() {
             </Form>
           </div>
           {/* Results */}
-          <div className="grid h-full min-h-0 flex-1 grid-rows-[2.5rem_1fr] flex-col gap-2 border-t border-grid-dimmed pt-1">
-            <div className="px-3">
+          <div className="grid max-h-full grid-rows-[2rem_1fr] gap-2 overflow-hidden border-t border-grid-dimmed pt-1">
+            <div className="border-b border-grid-dimmed bg-charcoal-900 px-3">
               <Header2>
                 {results?.rows?.length ? `${results.rows.length} Results` : "Results"}
               </Header2>
             </div>
-            <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-grid-dimmed bg-charcoal-900">
-              {isLoading ? (
-                <div className="flex items-center gap-2 p-4 text-text-dimmed">
-                  <Spinner className="size-4" />
-                  <span>Executing query...</span>
-                </div>
-              ) : results?.error ? (
-                <pre className="whitespace-pre-wrap p-4 text-sm text-red-400">{results.error}</pre>
-              ) : results?.rows && results?.columns ? (
-                <TSQLResultsTable rows={results.rows} columns={results.columns} />
-              ) : (
-                <Paragraph variant="small" className="p-4 text-text-dimmed">
-                  Run a query to see results here.
-                </Paragraph>
-              )}
-            </div>
+            {isLoading ? (
+              <div className="flex items-center gap-2 p-4 text-text-dimmed">
+                <Spinner className="size-4" />
+                <span>Executing query...</span>
+              </div>
+            ) : results?.error ? (
+              <pre className="whitespace-pre-wrap p-4 text-sm text-red-400">{results.error}</pre>
+            ) : results?.rows && results?.columns ? (
+              <TSQLResultsTable rows={results.rows} columns={results.columns} />
+            ) : (
+              <Paragraph variant="small" className="p-4 text-text-dimmed">
+                Run a query to see results here.
+              </Paragraph>
+            )}
           </div>
         </div>
       </PageBody>
