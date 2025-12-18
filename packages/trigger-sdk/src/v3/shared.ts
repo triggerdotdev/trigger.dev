@@ -1753,6 +1753,7 @@ async function* transformBatchItemsStream<TTask extends AnyTask>(
       options: {
         queue: item.options?.queue ? { name: item.options.queue } : undefined,
         concurrencyKey: item.options?.concurrencyKey,
+        rateLimitKey: item.options?.rateLimitKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
         delay: item.options?.delay,
@@ -1806,6 +1807,7 @@ async function* transformBatchItemsStreamForWait<TTask extends AnyTask>(
         lockToVersion: taskContext.worker?.version,
         queue: item.options?.queue ? { name: item.options.queue } : undefined,
         concurrencyKey: item.options?.concurrencyKey,
+        rateLimitKey: item.options?.rateLimitKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
         delay: item.options?.delay,
@@ -1856,6 +1858,7 @@ async function* transformBatchByTaskItemsStream<TTasks extends readonly AnyTask[
       options: {
         queue: item.options?.queue ? { name: item.options.queue } : undefined,
         concurrencyKey: item.options?.concurrencyKey,
+        rateLimitKey: item.options?.rateLimitKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
         delay: item.options?.delay,
@@ -1908,6 +1911,7 @@ async function* transformBatchByTaskItemsStreamForWait<TTasks extends readonly A
         lockToVersion: taskContext.worker?.version,
         queue: item.options?.queue ? { name: item.options.queue } : undefined,
         concurrencyKey: item.options?.concurrencyKey,
+        rateLimitKey: item.options?.rateLimitKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
         delay: item.options?.delay,
