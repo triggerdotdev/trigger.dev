@@ -169,10 +169,25 @@ export class RunEngineTriggerTaskService {
       }
 
       // Validate debounce options
-      if (body.options?.debounce && !delayUntil) {
-        throw new ServiceValidationError(
-          `Debounce requires a valid delay duration. Provided: ${body.options.debounce.delay}`
+      if (body.options?.debounce) {
+        if (!delayUntil) {
+          throw new ServiceValidationError(
+            `Debounce requires a valid delay duration. Provided: ${body.options.debounce.delay}`
+          );
+        }
+
+        // Always validate debounce.delay separately since it's used for rescheduling
+        // This catches the case where options.delay is valid but debounce.delay is invalid
+        const [debounceDelayError, debounceDelayUntil] = await tryCatch(
+          parseDelay(body.options.debounce.delay)
         );
+
+        if (debounceDelayError || !debounceDelayUntil) {
+          throw new ServiceValidationError(
+            `Invalid debounce delay: ${body.options.debounce.delay}. ` +
+              `Supported formats: {number}s, {number}m, {number}h, {number}d, {number}w`
+          );
+        }
       }
 
       const ttl =
