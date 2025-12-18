@@ -1,5 +1,4 @@
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
-import type { TaskRunStatus } from "@trigger.dev/database";
 import type { OutputColumnMetadata } from "@internal/clickhouse";
 import { DateTime } from "~/components/primitives/DateTime";
 import {
@@ -11,14 +10,12 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { formatCurrencyAccurate, formatNumber } from "~/utils/numberFormatter";
-import { allTaskRunStatuses, TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
-
-/**
- * Check if a value is a valid TaskRunStatus
- */
-function isTaskRunStatus(value: unknown): value is TaskRunStatus {
-  return typeof value === "string" && allTaskRunStatuses.includes(value as TaskRunStatus);
-}
+import {
+  isRunFriendlyStatus,
+  isTaskRunStatus,
+  runStatusFromFriendlyTitle,
+  TaskRunStatusCombo,
+} from "~/components/runs/v3/TaskRunStatus";
 
 /**
  * Check if a ClickHouse type is a DateTime type
@@ -61,20 +58,27 @@ function isBooleanType(type: string): boolean {
  * Render a cell value based on its type and optional customRenderType
  */
 function CellValue({ value, column }: { value: unknown; column: OutputColumnMetadata }) {
-  // Handle null/undefined values
-  if (value === null || value === undefined) {
-    return <span className="text-text-dimmed">–</span>;
+  if (value === null) {
+    return <pre className="text-text-dimmed">NULL</pre>;
+  }
+
+  if (value === undefined) {
+    return <pre className="text-text-dimmed">UNDEFINED</pre>;
   }
 
   // First check customRenderType for special rendering
   if (column.customRenderType) {
     switch (column.customRenderType) {
-      case "runStatus":
+      case "runStatus": {
+        // We have mapped the status to a friendly status so we need to map back to render the normal component
         if (isTaskRunStatus(value)) {
           return <TaskRunStatusCombo status={value} />;
         }
+        if (isRunFriendlyStatus(value)) {
+          return <TaskRunStatusCombo status={runStatusFromFriendlyTitle(value)} />;
+        }
         return <span>{String(value)}</span>;
-
+      }
       case "duration":
         if (typeof value === "number") {
           return (

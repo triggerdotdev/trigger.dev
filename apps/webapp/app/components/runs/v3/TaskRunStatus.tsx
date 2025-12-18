@@ -241,9 +241,11 @@ export function runStatusTitle(status: TaskRunStatus): RunFriendlyStatus {
   return runStatusTitleFromStatus[status];
 }
 
-export function runStatusFromFriendlyTitle(friendly: RunFriendlyStatus): TaskRunStatus | undefined {
+export function runStatusFromFriendlyTitle(friendly: RunFriendlyStatus): TaskRunStatus {
   const result = titlesStatusesArray.find(([_, f]) => f === friendly);
-  if (!result) return;
+  if (!result) {
+    throw new Error(`Unknown friendly status: ${friendly}`);
+  }
   return result[0] as TaskRunStatus;
 }
 
@@ -266,7 +268,21 @@ export const runFriendlyStatus = [
   "Timed out",
 ] as const;
 
-type RunFriendlyStatus = (typeof runFriendlyStatus)[number];
+export type RunFriendlyStatus = (typeof runFriendlyStatus)[number];
+
+/**
+ * Check if a value is a valid TaskRunStatus
+ */
+export function isTaskRunStatus(value: unknown): value is TaskRunStatus {
+  return typeof value === "string" && allTaskRunStatuses.includes(value as TaskRunStatus);
+}
+
+/**
+ * Check if a value is a valid RunFriendlyStatus
+ */
+export function isRunFriendlyStatus(value: unknown): value is RunFriendlyStatus {
+  return typeof value === "string" && runFriendlyStatus.includes(value as RunFriendlyStatus);
+}
 
 export const runStatusTitleFromStatus: Record<TaskRunStatus, RunFriendlyStatus> = {
   DELAYED: "Delayed",
