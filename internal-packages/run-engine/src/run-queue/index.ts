@@ -36,6 +36,11 @@ import {
   MinimalAuthenticatedEnvironment,
 } from "../shared/index.js";
 import {
+  configToGCRAParams,
+  type QueueRateLimitConfig,
+  type StoredQueueRateLimitConfig,
+} from "../rate-limiter/index.js";
+import {
   InputPayload,
   OutputPayload,
   OutputPayloadV2,
@@ -92,6 +97,7 @@ export type RunQueueOptions = {
     processMarkedJitterInMs?: number;
     callback: ConcurrencySweeperCallback;
   };
+  disableRateLimits?: boolean;
 };
 
 export interface ConcurrencySweeperCallback {
@@ -326,15 +332,24 @@ export class RunQueue {
   /**
    * Set rate limit configuration for a queue in Redis.
    * Config is stored as JSON with 7-day TTL (refreshed on deploy).
+   * Pre-calculates GCRA params so the Lua script doesn't need to parse duration strings.
    */
   public async setQueueRateLimitConfig(
     env: MinimalAuthenticatedEnvironment,
     queue: string,
-    config: { limit: number; periodMs: number; burst?: number }
+    config: QueueRateLimitConfig
   ) {
     const key = this.keys.queueRateLimitConfigKey(env, queue);
+    const gcraParams = configToGCRAParams(config);
+
+    // Store config with pre-calculated GCRA params for efficient Lua processing
+    const storedConfig = {
+      ...config,
+      ...gcraParams,
+    };
+
     // Store with 7-day TTL, refreshed on each deploy
-    return this.redis.set(key, JSON.stringify(config), "EX", 86400 * 7);
+    return this.redis.set(key, JSON.stringify(storedConfig), "EX", 86400 * 7);
   }
 
   /**
@@ -350,12 +365,12 @@ export class RunQueue {
   public async getQueueRateLimitConfig(
     env: MinimalAuthenticatedEnvironment,
     queue: string
-  ): Promise<{ limit: number; periodMs: number; burst?: number } | undefined> {
+  ): Promise<StoredQueueRateLimitConfig | undefined> {
     const result = await this.redis.get(this.keys.queueRateLimitConfigKey(env, queue));
     if (!result) return undefined;
 
     try {
-      return JSON.parse(result);
+      return JSON.parse(result) as StoredQueueRateLimitConfig;
     } catch {
       return undefined;
     }
@@ -1601,7 +1616,8 @@ export class RunQueue {
         String(this.options.defaultEnvConcurrency),
         String(this.options.defaultEnvConcurrencyBurstFactor ?? 1),
         this.options.redis.keyPrefix ?? "",
-        String(maxCount)
+        String(maxCount),
+        this.options.disableRateLimits ? "1" : "0"
       );
 
       if (!result) {
@@ -2375,6 +2391,34 @@ local defaultEnvConcurrencyLimit = ARGV[3]
 local defaultEnvConcurrencyBurstFactor = ARGV[4]
 local keyPrefix = ARGV[5]
 local maxCount = tonumber(ARGV[6] or '1')
+local rateLimitDisabled = ARGV[7] or '0'
+
+-- GCRA Rate Limit Check Function
+-- Returns: allowed (boolean), retryAfter (number or nil)
+local function gcra_check(bucket_key, now, emission_interval, burst_tolerance, expire)
+  local tat = tonumber(redis.call("GET", bucket_key) or 0)
+  if tat == 0 then
+    tat = now
+  end
+  
+  if now >= tat then
+    -- No delay, request is on schedule
+    redis.call("SET", bucket_key, now + emission_interval, "PX", expire)
+    return true, 0
+  elseif (now + burst_tolerance) >= tat then
+    -- Within burst capacity
+    redis.call("SET", bucket_key, tat + emission_interval, "PX", expire)
+    return true, 0
+  else
+    -- Exceeded rate limit
+    return false, tat - (now + burst_tolerance)
+  end
+end
+
+-- Helper to get base queue key (strip :ck:* suffix for rate limit keys)
+local function get_base_queue(queue)
+  return string.gsub(queue, ":ck:[^:]+$", "")
+end
 
 -- Check current env concurrency against the limit
 local envCurrentConcurrency = tonumber(redis.call('SCARD', envCurrentConcurrencyKey) or '0')
@@ -2405,6 +2449,18 @@ if actualMaxCount <= 0 then
     return nil
 end
 
+-- Pre-fetch rate limit config if rate limiting is enabled
+local rateLimitConfig = nil
+if rateLimitDisabled ~= '1' then
+  local baseQueue = get_base_queue(queueName)
+  -- Use keyPrefix when building rate limit keys (ioredis adds prefix to stored keys)
+  local rateLimitConfigKey = keyPrefix .. baseQueue .. ':rl:config'
+  local configJson = redis.call('GET', rateLimitConfigKey)
+  if configJson then
+    rateLimitConfig = cjson.decode(configJson)
+  end
+end
+
 -- Attempt to dequeue messages up to actualMaxCount
 local messages = redis.call('ZRANGEBYSCORE', queueKey, '-inf', currentTime, 'WITHSCORES', 'LIMIT', 0, actualMaxCount)
 
@@ -2425,18 +2481,47 @@ for i = 1, #messages, 2 do
     local messagePayload = redis.call('GET', messageKey)
     
     if messagePayload then
-        -- Update concurrency
-        redis.call('ZREM', queueKey, messageId)
-        redis.call('ZREM', envQueueKey, messageId)
-        redis.call('SADD', queueCurrentConcurrencyKey, messageId)
-        redis.call('SADD', envCurrentConcurrencyKey, messageId)
+        -- Check rate limit BEFORE updating concurrency
+        local shouldDequeue = true
         
-        -- Add to results
-        table.insert(results, messageId)
-        table.insert(results, messageScore)
-        table.insert(results, messagePayload)
+        if rateLimitConfig then
+          local messageData = cjson.decode(messagePayload)
+          local rateLimitKey = messageData.rateLimitKey or 'global'
+          local baseQueue = get_base_queue(queueName)
+          -- Use keyPrefix for bucket key consistency
+          local bucketKey = keyPrefix .. baseQueue .. ':rl:' .. rateLimitKey
+          
+          local allowed, retryAfter = gcra_check(
+            bucketKey,
+            currentTime,
+            rateLimitConfig.emissionInterval,
+            rateLimitConfig.burstTolerance,
+            rateLimitConfig.keyExpiration
+          )
+          
+          if not allowed then
+            -- Rate limited: re-score message with delay (retryAfter + jitter)
+            local jitter = math.random(0, 100)
+            local newScore = currentTime + retryAfter + jitter
+            redis.call('ZADD', queueKey, newScore, messageId)
+            shouldDequeue = false
+          end
+        end
         
-        dequeuedCount = dequeuedCount + 1
+        if shouldDequeue then
+          -- Update concurrency
+          redis.call('ZREM', queueKey, messageId)
+          redis.call('ZREM', envQueueKey, messageId)
+          redis.call('SADD', queueCurrentConcurrencyKey, messageId)
+          redis.call('SADD', envCurrentConcurrencyKey, messageId)
+          
+          -- Add to results
+          table.insert(results, messageId)
+          table.insert(results, messageScore)
+          table.insert(results, messagePayload)
+          
+          dequeuedCount = dequeuedCount + 1
+        end
     end
 end
 
@@ -2804,6 +2889,7 @@ declare module "@internal/redis" {
       defaultEnvConcurrencyBurstFactor: string,
       keyPrefix: string,
       maxCount: string,
+      rateLimitDisabled: string,
       callback?: Callback<string[]>
     ): Result<string[], Context>;
 

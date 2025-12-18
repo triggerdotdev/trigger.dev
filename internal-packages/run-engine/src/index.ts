@@ -20,3 +20,13 @@ export type {
   ProcessBatchItemCallback,
   BatchCompletionCallback,
 } from "./batch-queue/types.js";
+
+// Rate limiter exports
+export { GCRARateLimiter, configToGCRAParams, parseDurationToMs } from "./rate-limiter/index.js";
+export type {
+  GCRARateLimiterOptions,
+  GCRAParams,
+  QueueRateLimitConfig,
+  StoredQueueRateLimitConfig,
+  RateLimitResult,
+} from "./rate-limiter/index.js";

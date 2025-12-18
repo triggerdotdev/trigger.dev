@@ -179,6 +179,7 @@ export class RunEngine {
       masterQueueConsumersIntervalMs: options.queue?.masterQueueConsumersIntervalMs,
       processWorkerQueueDebounceMs: options.queue?.processWorkerQueueDebounceMs,
       dequeueBlockingTimeoutSeconds: options.queue?.dequeueBlockingTimeoutSeconds,
+      disableRateLimits: options.queue?.disableRateLimits,
       meter: options.meter,
     });
 

@@ -63,6 +63,7 @@ export type RunEngineOptions = {
       scanJitterInMs?: number;
       processMarkedJitterInMs?: number;
     };
+    disableRateLimits?: boolean;
   };
   runLock: {
     redis: RedisOptions;

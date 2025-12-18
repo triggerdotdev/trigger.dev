@@ -255,7 +255,7 @@ async function createWorkerTask(
     let queue = queues.find((queue) => queue.name === task.queue?.name);
 
     if (!queue) {
-      // Create a TaskQueue with rate limit config if provided
+      // Create a TaskQueue
       queue = await createWorkerQueue(
         {
           name: task.queue?.name ?? `task/${task.id}`,
@@ -370,7 +370,6 @@ async function createWorkerQueue(
       ? Math.max(Math.min(queue.concurrencyLimit, environment.maximumConcurrencyLimit), 0)
       : queue.concurrencyLimit;
 
-  // Parse rate limit config if provided
   let rateLimitConfig: QueueRateLimitConfig | null = null;
   if (queue.rateLimit) {
     try {
@@ -401,7 +400,6 @@ async function createWorkerQueue(
   const newConcurrencyLimit = taskQueue.concurrencyLimit;
 
   if (!taskQueue.paused) {
-    // Handle concurrency limit sync
     if (typeof newConcurrencyLimit === "number") {
       logger.debug("createWorkerQueue: updating concurrency limit", {
         workerId: worker.id,
