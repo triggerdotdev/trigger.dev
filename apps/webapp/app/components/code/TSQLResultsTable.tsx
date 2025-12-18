@@ -57,7 +57,20 @@ function isBooleanType(type: string): boolean {
 /**
  * Render a cell value based on its type and optional customRenderType
  */
-function CellValue({ value, column }: { value: unknown; column: OutputColumnMetadata }) {
+function CellValue({
+  value,
+  column,
+  prettyFormatting = true,
+}: {
+  value: unknown;
+  column: OutputColumnMetadata;
+  prettyFormatting?: boolean;
+}) {
+  // Plain text mode - render everything as monospace text
+  if (!prettyFormatting) {
+    return <pre className="font-mono text-xs">{value === null ? "NULL" : String(value)}</pre>;
+  }
+
   if (value === null) {
     return <pre className="text-text-dimmed">NULL</pre>;
   }
@@ -147,9 +160,11 @@ function CellValue({ value, column }: { value: unknown; column: OutputColumnMeta
 export function TSQLResultsTable({
   rows,
   columns,
+  prettyFormatting = true,
 }: {
   rows: Record<string, unknown>[];
   columns: OutputColumnMetadata[];
+  prettyFormatting?: boolean;
 }) {
   if (!rows.length || !columns.length) return null;
 
@@ -167,7 +182,7 @@ export function TSQLResultsTable({
           <TableRow key={i}>
             {columns.map((col) => (
               <TableCell key={col.name}>
-                <CellValue value={row[col.name]} column={col} />
+                <CellValue value={row[col.name]} column={col} prettyFormatting={prettyFormatting} />
               </TableCell>
             ))}
           </TableRow>
