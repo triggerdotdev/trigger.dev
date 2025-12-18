@@ -457,7 +457,22 @@ export class RunEngine {
           const debounceResult = await this.debounceSystem.handleDebounce({
             environmentId: environment.id,
             taskIdentifier,
-            debounce,
+            debounce:
+              debounce.mode === "trailing"
+                ? {
+                    ...debounce,
+                    updateData: {
+                      payload,
+                      payloadType,
+                      metadata,
+                      metadataType,
+                      tags,
+                      maxAttempts,
+                      maxDurationInSeconds,
+                      machine,
+                    },
+                  }
+                : debounce,
             tx: prisma,
           });
 

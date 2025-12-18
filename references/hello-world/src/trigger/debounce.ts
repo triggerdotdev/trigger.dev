@@ -730,3 +730,329 @@ export const demonstrateSingleTaskBatchDebounce = task({
     };
   },
 });
+
+/**
+ * Example 8: Trailing Mode - Process Latest Data
+ *
+ * Trailing mode updates the run's payload (and other options) with each subsequent trigger.
+ * When the debounce window closes, the task runs with the LAST payload instead of the first.
+ *
+ * This is perfect for scenarios like:
+ * - Auto-saving the latest document state
+ * - Processing the final search query after typing stops
+ * - Aggregating real-time data and processing the latest snapshot
+ */
+export const processLatestData = task({
+  id: "process-latest-data",
+  run: async (payload: { version: number; content: string; timestamp: string }) => {
+    logger.info("Processing latest data", { payload });
+
+    await wait.for({ seconds: 1 });
+
+    logger.info("Processed latest data", {
+      version: payload.version,
+      content: payload.content,
+    });
+
+    return {
+      processed: true,
+      version: payload.version,
+      content: payload.content,
+      processedAt: new Date().toISOString(),
+    };
+  },
+});
+
+/**
+ * Demonstrates trailing mode in action.
+ *
+ * This task triggers processLatestData 5 times rapidly with different payloads.
+ * With mode: "trailing", the run will execute with version 5 (the LAST payload),
+ * not version 1 (the first payload).
+ *
+ * Compare this to the demonstrateDebounce task which uses the default leading mode.
+ */
+export const demonstrateTrailingMode = task({
+  id: "demonstrate-trailing-mode",
+  run: async (payload: { debounceKey?: string }) => {
+    const key = payload.debounceKey ?? "trailing-demo-key";
+
+    logger.info("Starting trailing mode demonstration", { debounceKey: key });
+    logger.info("Will trigger processLatestData 5 times with mode: 'trailing'");
+    logger.info("The run should execute with version 5 (the LAST payload)");
+
+    const handles: string[] = [];
+
+    // Trigger 5 times rapidly - with trailing mode, the LAST payload wins
+    for (let i = 1; i <= 5; i++) {
+      logger.info(`Triggering version ${i}/5`, { version: i });
+
+      const handle = await processLatestData.trigger(
+        {
+          version: i,
+          content: `Content version ${i}`,
+          timestamp: new Date().toISOString(),
+        },
+        {
+          debounce: {
+            key: key,
+            delay: "5s",
+            mode: "trailing", // Use trailing mode - LAST payload wins
+          },
+        }
+      );
+
+      handles.push(handle.id);
+      logger.info(`Version ${i} returned run ID: ${handle.id}`, {
+        version: i,
+        runId: handle.id,
+      });
+
+      // Small delay between triggers
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+
+    // All handles should be the same run
+    const uniqueHandles = [...new Set(handles)];
+    const allSameRun = uniqueHandles.length === 1;
+
+    logger.info("Trailing mode demonstration complete", {
+      totalTriggers: 5,
+      uniqueRuns: uniqueHandles.length,
+      allSameRun,
+      note: "The run should execute with version 5 (the LAST payload)",
+    });
+
+    return {
+      debounceKey: key,
+      totalTriggers: 5,
+      uniqueRunsCreated: uniqueHandles.length,
+      allSameRun,
+      runId: uniqueHandles[0],
+      expectedPayloadVersion: 5,
+      message:
+        "With trailing mode, the run executes with the LAST payload (version 5), not the first",
+    };
+  },
+});
+
+/**
+ * Example 9: Document Auto-Save with Trailing Mode
+ *
+ * A practical example: when editing a document, you want to save the LATEST
+ * version after the user stops typing, not the first version.
+ *
+ * Trailing mode is ideal for this because:
+ * - Each keystroke/edit triggers a save
+ * - Each trigger updates the pending run's payload to the latest content
+ * - When typing stops, the latest content is saved
+ */
+export const saveDocumentLatest = task({
+  id: "save-document-latest",
+  run: async (payload: {
+    documentId: string;
+    content: string;
+    editCount: number;
+    lastEditedAt: string;
+  }) => {
+    logger.info("Saving document (latest version)", {
+      documentId: payload.documentId,
+      contentLength: payload.content.length,
+      editCount: payload.editCount,
+    });
+
+    // Simulate save operation
+    await wait.for({ seconds: 1 });
+
+    logger.info("Document saved successfully with latest content", {
+      documentId: payload.documentId,
+      editCount: payload.editCount,
+      savedAt: new Date().toISOString(),
+    });
+
+    return {
+      saved: true,
+      documentId: payload.documentId,
+      editCount: payload.editCount,
+      contentLength: payload.content.length,
+      savedAt: new Date().toISOString(),
+    };
+  },
+});
+
+export const onDocumentEditWithTrailing = task({
+  id: "on-document-edit-with-trailing",
+  run: async (payload: { documentId: string; content: string; editorId: string }) => {
+    // Track how many edits we've made (for demonstration)
+    const editCount = payload.content.length; // Using content length as a simple proxy
+
+    logger.info("Document edited (using trailing mode)", {
+      documentId: payload.documentId,
+      editorId: payload.editorId,
+      editCount,
+    });
+
+    // Use trailing mode - the LATEST content will be saved
+    const handle = await saveDocumentLatest.trigger(
+      {
+        documentId: payload.documentId,
+        content: payload.content,
+        editCount,
+        lastEditedAt: new Date().toISOString(),
+      },
+      {
+        debounce: {
+          key: `doc-${payload.documentId}`,
+          delay: "3s",
+          mode: "trailing", // Save the LATEST content, not the first
+        },
+      }
+    );
+
+    return {
+      acknowledged: true,
+      pendingSaveRunId: handle.id,
+      note: "With trailing mode, the latest content will be saved after 3 seconds of no edits",
+    };
+  },
+});
+
+/**
+ * Example 10: Leading vs Trailing Mode Comparison
+ *
+ * This task demonstrates the difference between leading and trailing modes
+ * by triggering two separate debounced tasks with the same data pattern.
+ *
+ * - Leading mode task: will process version 1 (first payload)
+ * - Trailing mode task: will process version 5 (last payload)
+ */
+export const processWithLeadingMode = task({
+  id: "process-with-leading-mode",
+  run: async (payload: { version: number }) => {
+    logger.info("Leading mode: Processing data", { version: payload.version });
+    return { mode: "leading", version: payload.version };
+  },
+});
+
+export const processWithTrailingMode = task({
+  id: "process-with-trailing-mode",
+  run: async (payload: { version: number }) => {
+    logger.info("Trailing mode: Processing data", { version: payload.version });
+    return { mode: "trailing", version: payload.version };
+  },
+});
+
+export const compareLeadingAndTrailing = task({
+  id: "compare-leading-and-trailing",
+  run: async (payload: { prefix?: string }) => {
+    const prefix = payload.prefix ?? "compare";
+
+    logger.info("Starting leading vs trailing mode comparison");
+    logger.info("Triggering both modes 5 times with versions 1-5");
+    logger.info("Expected: Leading mode processes v1, Trailing mode processes v5");
+
+    // Trigger both modes 5 times
+    for (let i = 1; i <= 5; i++) {
+      // Leading mode (default) - will keep first payload
+      await processWithLeadingMode.trigger(
+        { version: i },
+        {
+          debounce: {
+            key: `${prefix}-leading`,
+            delay: "5s",
+            // mode: "leading" is the default
+          },
+        }
+      );
+
+      // Trailing mode - will update to latest payload
+      await processWithTrailingMode.trigger(
+        { version: i },
+        {
+          debounce: {
+            key: `${prefix}-trailing`,
+            delay: "5s",
+            mode: "trailing",
+          },
+        }
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    logger.info("Comparison complete", {
+      leadingModeExpected: "version 1 (first payload)",
+      trailingModeExpected: "version 5 (last payload)",
+    });
+
+    return {
+      message: "Check the processWithLeadingMode and processWithTrailingMode runs",
+      leadingModeExpected: { version: 1 },
+      trailingModeExpected: { version: 5 },
+    };
+  },
+});
+
+/**
+ * Example 11: Trailing Mode with Metadata Updates
+ *
+ * Trailing mode also updates metadata, tags, maxAttempts, maxDuration, and machine.
+ * This example shows how metadata changes with each trigger.
+ */
+export const processWithMetadata = task({
+  id: "process-with-metadata",
+  run: async (payload: { action: string }, { ctx }) => {
+    logger.info("Processing with metadata", { action: payload.action });
+
+    // The metadata will be from the LAST trigger when using trailing mode
+    logger.info("Run metadata reflects the latest trigger");
+
+    return {
+      action: payload.action,
+      processedAt: new Date().toISOString(),
+    };
+  },
+});
+
+export const demonstrateTrailingWithMetadata = task({
+  id: "demonstrate-trailing-with-metadata",
+  run: async (payload: { debounceKey?: string }) => {
+    const key = payload.debounceKey ?? "metadata-trailing-demo";
+
+    logger.info("Demonstrating trailing mode with metadata updates");
+
+    const actions = ["created", "updated", "reviewed", "approved", "published"];
+
+    for (const action of actions) {
+      await processWithMetadata.trigger(
+        { action },
+        {
+          debounce: {
+            key,
+            delay: "5s",
+            mode: "trailing",
+          },
+          metadata: {
+            lastAction: action,
+            actionTimestamp: new Date().toISOString(),
+            actionIndex: actions.indexOf(action) + 1,
+          },
+        }
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    logger.info("Metadata trailing demonstration complete", {
+      expectedAction: "published",
+      expectedMetadata: { lastAction: "published", actionIndex: 5 },
+    });
+
+    return {
+      debounceKey: key,
+      triggeredActions: actions,
+      expectedFinalAction: "published",
+      message: "The run will have metadata from the 'published' trigger (the last one)",
+    };
+  },
+});

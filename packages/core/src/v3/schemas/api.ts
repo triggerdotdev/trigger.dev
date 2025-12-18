@@ -207,6 +207,7 @@ export const TriggerTaskRequestBody = z.object({
         .object({
           key: z.string().max(512),
           delay: z.string(),
+          mode: z.enum(["leading", "trailing"]).optional(),
         })
         .optional(),
     })
@@ -261,6 +262,7 @@ export const BatchTriggerTaskItem = z.object({
         .object({
           key: z.string().max(512),
           delay: z.string(),
+          mode: z.enum(["leading", "trailing"]).optional(),
         })
         .optional(),
     })

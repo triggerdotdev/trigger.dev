@@ -1485,5 +1485,459 @@ describe("RunEngine debounce", () => {
       }
     }
   );
+
+  containerTest(
+    "Debounce trailing mode: updates payload on subsequent triggers",
+    async ({ prisma, redisOptions }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        debounce: {
+          maxDebounceDurationMs: 60_000,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      try {
+        const taskIdentifier = "test-task";
+
+        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+        // First trigger creates run with trailing mode
+        const run1 = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_trailing1",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: '{"data": "first"}',
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t12345",
+            spanId: "s12345",
+            workerQueue: "main",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+            delayUntil: new Date(Date.now() + 5000),
+            debounce: {
+              key: "trailing-key",
+              delay: "5s",
+              mode: "trailing",
+            },
+          },
+          prisma
+        );
+
+        expect(run1.friendlyId).toBe("run_trailing1");
+        expect(run1.payload).toBe('{"data": "first"}');
+
+        // Second trigger with trailing mode should update the payload
+        const run2 = await engine.trigger(
+          {
+            number: 2,
+            friendlyId: "run_trailing2",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: '{"data": "second"}',
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t12346",
+            spanId: "s12346",
+            workerQueue: "main",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+            delayUntil: new Date(Date.now() + 5000),
+            debounce: {
+              key: "trailing-key",
+              delay: "5s",
+              mode: "trailing",
+            },
+          },
+          prisma
+        );
+
+        // Should return the same run
+        expect(run2.id).toBe(run1.id);
+
+        // Verify the payload was updated to the second trigger's payload
+        const dbRun = await prisma.taskRun.findFirst({
+          where: { id: run1.id },
+        });
+        assertNonNullable(dbRun);
+        expect(dbRun.payload).toBe('{"data": "second"}');
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "Debounce trailing mode: updates metadata on subsequent triggers",
+    async ({ prisma, redisOptions }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        debounce: {
+          maxDebounceDurationMs: 60_000,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      try {
+        const taskIdentifier = "test-task";
+
+        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+        // First trigger with metadata
+        const run1 = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_trailingmeta1",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: '{"data": "first"}',
+            payloadType: "application/json",
+            metadata: '{"version": 1}',
+            metadataType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t12345",
+            spanId: "s12345",
+            workerQueue: "main",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+            delayUntil: new Date(Date.now() + 5000),
+            debounce: {
+              key: "trailing-meta-key",
+              delay: "5s",
+              mode: "trailing",
+            },
+          },
+          prisma
+        );
+
+        // Second trigger with different metadata
+        await engine.trigger(
+          {
+            number: 2,
+            friendlyId: "run_trailingmeta2",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: '{"data": "second"}',
+            payloadType: "application/json",
+            metadata: '{"version": 2, "extra": "field"}',
+            metadataType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t12346",
+            spanId: "s12346",
+            workerQueue: "main",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+            delayUntil: new Date(Date.now() + 5000),
+            debounce: {
+              key: "trailing-meta-key",
+              delay: "5s",
+              mode: "trailing",
+            },
+          },
+          prisma
+        );
+
+        // Verify metadata was updated
+        const dbRun = await prisma.taskRun.findFirst({
+          where: { id: run1.id },
+        });
+        assertNonNullable(dbRun);
+        expect(dbRun.metadata).toBe('{"version": 2, "extra": "field"}');
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "Debounce trailing mode: updates maxAttempts and maxDuration",
+    async ({ prisma, redisOptions }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        debounce: {
+          maxDebounceDurationMs: 60_000,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      try {
+        const taskIdentifier = "test-task";
+
+        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+        // First trigger with maxAttempts and maxDuration
+        const run1 = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_trailingopts1",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: '{"data": "first"}',
+            payloadType: "application/json",
+            maxAttempts: 3,
+            maxDurationInSeconds: 60,
+            context: {},
+            traceContext: {},
+            traceId: "t12345",
+            spanId: "s12345",
+            workerQueue: "main",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+            delayUntil: new Date(Date.now() + 5000),
+            debounce: {
+              key: "trailing-opts-key",
+              delay: "5s",
+              mode: "trailing",
+            },
+          },
+          prisma
+        );
+
+        // Verify initial values
+        let dbRun = await prisma.taskRun.findFirst({
+          where: { id: run1.id },
+        });
+        assertNonNullable(dbRun);
+        expect(dbRun.maxAttempts).toBe(3);
+        expect(dbRun.maxDurationInSeconds).toBe(60);
+
+        // Second trigger with different maxAttempts and maxDuration
+        await engine.trigger(
+          {
+            number: 2,
+            friendlyId: "run_trailingopts2",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: '{"data": "second"}',
+            payloadType: "application/json",
+            maxAttempts: 5,
+            maxDurationInSeconds: 120,
+            context: {},
+            traceContext: {},
+            traceId: "t12346",
+            spanId: "s12346",
+            workerQueue: "main",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+            delayUntil: new Date(Date.now() + 5000),
+            debounce: {
+              key: "trailing-opts-key",
+              delay: "5s",
+              mode: "trailing",
+            },
+          },
+          prisma
+        );
+
+        // Verify values were updated
+        dbRun = await prisma.taskRun.findFirst({
+          where: { id: run1.id },
+        });
+        assertNonNullable(dbRun);
+        expect(dbRun.maxAttempts).toBe(5);
+        expect(dbRun.maxDurationInSeconds).toBe(120);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "Debounce leading mode (default): does NOT update payload",
+    async ({ prisma, redisOptions }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        debounce: {
+          maxDebounceDurationMs: 60_000,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      try {
+        const taskIdentifier = "test-task";
+
+        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+        // First trigger creates run (leading mode - default)
+        const run1 = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_leading1",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: '{"data": "first"}',
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t12345",
+            spanId: "s12345",
+            workerQueue: "main",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+            delayUntil: new Date(Date.now() + 5000),
+            debounce: {
+              key: "leading-key",
+              delay: "5s",
+              // mode: "leading" is default, not specifying it
+            },
+          },
+          prisma
+        );
+
+        // Second trigger should NOT update the payload (leading mode)
+        await engine.trigger(
+          {
+            number: 2,
+            friendlyId: "run_leading2",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: '{"data": "second"}',
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t12346",
+            spanId: "s12346",
+            workerQueue: "main",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+            delayUntil: new Date(Date.now() + 5000),
+            debounce: {
+              key: "leading-key",
+              delay: "5s",
+            },
+          },
+          prisma
+        );
+
+        // Verify the payload is still the first trigger's payload
+        const dbRun = await prisma.taskRun.findFirst({
+          where: { id: run1.id },
+        });
+        assertNonNullable(dbRun);
+        expect(dbRun.payload).toBe('{"data": "first"}');
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
 });
 

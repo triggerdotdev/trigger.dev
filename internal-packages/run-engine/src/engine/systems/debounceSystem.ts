@@ -16,6 +16,18 @@ import { DelayedRunSystem } from "./delayedRunSystem.js";
 export type DebounceOptions = {
   key: string;
   delay: string;
+  mode?: "leading" | "trailing";
+  /** When mode: "trailing", these fields will be used to update the existing run */
+  updateData?: {
+    payload: string;
+    payloadType: string;
+    metadata?: string;
+    metadataType?: string;
+    tags?: { id: string; name: string }[];
+    maxAttempts?: number;
+    maxDurationInSeconds?: number;
+    machine?: string;
+  };
 };
 
 export type DebounceSystemOptions = {
@@ -439,9 +451,24 @@ return { 0, value }
         );
       }
 
+      // Update run data when mode is "trailing"
+      let updatedRun = existingRun;
+      if (debounce.mode === "trailing" && debounce.updateData) {
+        updatedRun = await this.#updateRunForTrailingMode({
+          runId: existingRunId,
+          updateData: debounce.updateData,
+          tx: prisma,
+        });
+
+        this.$.logger.debug("handleExistingRun: updated run data for trailing mode", {
+          existingRunId,
+          debounceKey: debounce.key,
+        });
+      }
+
       return {
         status: "existing",
-        run: existingRun,
+        run: updatedRun,
         waitpoint: existingRun.associatedWaitpoint,
       };
     });
@@ -637,6 +664,75 @@ return { 0, value }
       taskIdentifier,
       debounceKey,
     });
+  }
+
+  /**
+   * Updates a run's data for trailing mode debounce.
+   * Updates: payload, metadata, tags, maxAttempts, maxDurationInSeconds, machinePreset
+   */
+  async #updateRunForTrailingMode({
+    runId,
+    updateData,
+    tx,
+  }: {
+    runId: string;
+    updateData: NonNullable<DebounceOptions["updateData"]>;
+    tx?: PrismaClientOrTransaction;
+  }): Promise<TaskRun & { associatedWaitpoint: Waitpoint | null }> {
+    const prisma = tx ?? this.$.prisma;
+
+    // Build the update object
+    const updatePayload: {
+      payload: string;
+      payloadType: string;
+      metadata?: string;
+      metadataType?: string;
+      maxAttempts?: number;
+      maxDurationInSeconds?: number;
+      machinePreset?: string;
+      runTags?: string[];
+      tags?: {
+        set: { id: string }[];
+      };
+    } = {
+      payload: updateData.payload,
+      payloadType: updateData.payloadType,
+    };
+
+    if (updateData.metadata !== undefined) {
+      updatePayload.metadata = updateData.metadata;
+      updatePayload.metadataType = updateData.metadataType ?? "application/json";
+    }
+
+    if (updateData.maxAttempts !== undefined) {
+      updatePayload.maxAttempts = updateData.maxAttempts;
+    }
+
+    if (updateData.maxDurationInSeconds !== undefined) {
+      updatePayload.maxDurationInSeconds = updateData.maxDurationInSeconds;
+    }
+
+    if (updateData.machine !== undefined) {
+      updatePayload.machinePreset = updateData.machine;
+    }
+
+    // Handle tags update - replace existing tags
+    if (updateData.tags !== undefined) {
+      updatePayload.runTags = updateData.tags.map((t) => t.name);
+      updatePayload.tags = {
+        set: updateData.tags.map((t) => ({ id: t.id })),
+      };
+    }
+
+    const updatedRun = await prisma.taskRun.update({
+      where: { id: runId },
+      data: updatePayload,
+      include: {
+        associatedWaitpoint: true,
+      },
+    });
+
+    return updatedRun;
   }
 
   async quit(): Promise<void> {

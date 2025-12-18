@@ -908,13 +908,15 @@ export type TriggerOptions = {
    * @example
    *
    * ```ts
-   * // First trigger creates a new run, delayed by 5 seconds
-   * await myTask.trigger({ some: "data" }, { debounce: { key: "user-123", delay: "5s" } });
+   * // Leading mode (default): executes with the FIRST payload
+   * await myTask.trigger({ some: "data1" }, { debounce: { key: "user-123", delay: "5s" } });
+   * await myTask.trigger({ some: "data2" }, { debounce: { key: "user-123", delay: "5s" } });
+   * // After 5 seconds, runs with { some: "data1" }
    *
-   * // Second trigger within 5 seconds pushes the existing run's delay further
-   * await myTask.trigger({ some: "data" }, { debounce: { key: "user-123", delay: "5s" } });
-   *
-   * // After no more triggers for 5 seconds, the single run executes with the first payload
+   * // Trailing mode: executes with the LAST payload
+   * await myTask.trigger({ some: "data1" }, { debounce: { key: "user-123", delay: "5s", mode: "trailing" } });
+   * await myTask.trigger({ some: "data2" }, { debounce: { key: "user-123", delay: "5s", mode: "trailing" } });
+   * // After 5 seconds, runs with { some: "data2" }
    * ```
    */
   debounce?: {
@@ -933,6 +935,16 @@ export type TriggerOptions = {
      * @example "1s", "5s", "1m", "30m", "1h"
      */
     delay: string;
+    /**
+     * Controls which trigger's data is used when the debounced run finally executes.
+     *
+     * - `"leading"` (default): Use data from the first trigger (payload, metadata, tags, etc.)
+     * - `"trailing"`: Use data from the last trigger. Each subsequent trigger updates the run's
+     *   payload, metadata, tags, maxAttempts, maxDuration, and machine preset.
+     *
+     * @default "leading"
+     */
+    mode?: "leading" | "trailing";
   };
 };
 
