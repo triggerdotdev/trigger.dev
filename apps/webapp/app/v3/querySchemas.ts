@@ -225,6 +225,7 @@ export const runsSchema: TableSchema = {
       name: "execution_duration",
       ...column("Nullable(Int64)", {
         description: "Computed execution time in milliseconds (virtual column)",
+        customRenderType: "duration",
       }),
       expression: "dateDiff('millisecond', started_at, completed_at)",
     },

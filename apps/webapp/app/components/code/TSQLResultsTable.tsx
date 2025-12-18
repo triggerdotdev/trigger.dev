@@ -11,6 +11,7 @@ import {
 } from "~/components/primitives/Table";
 import { formatCurrencyAccurate, formatNumber } from "~/utils/numberFormatter";
 import {
+  descriptionForTaskRunStatus,
   isRunFriendlyStatus,
   isTaskRunStatus,
   runStatusFromFriendlyTitle,
@@ -19,6 +20,7 @@ import {
 import { Paragraph } from "../primitives/Paragraph";
 import { TextLink } from "../primitives/TextLink";
 import { v3RunPathFromFriendlyId } from "~/utils/pathBuilder";
+import { SimpleTooltip } from "../primitives/Tooltip";
 
 /**
  * Check if a ClickHouse type is a DateTime type
@@ -93,13 +95,21 @@ function CellValue({
       }
       case "runStatus": {
         // We have mapped the status to a friendly status so we need to map back to render the normal component
-        if (isTaskRunStatus(value)) {
-          return <TaskRunStatusCombo status={value} />;
+        const status = isTaskRunStatus(value)
+          ? value
+          : isRunFriendlyStatus(value)
+          ? runStatusFromFriendlyTitle(value)
+          : undefined;
+        if (status) {
+          return (
+            <SimpleTooltip
+              content={descriptionForTaskRunStatus(status)}
+              disableHoverableContent
+              button={<TaskRunStatusCombo status={status} />}
+            />
+          );
         }
-        if (isRunFriendlyStatus(value)) {
-          return <TaskRunStatusCombo status={runStatusFromFriendlyTitle(value)} />;
-        }
-        return <span>{String(value)}</span>;
+        break;
       }
       case "duration":
         if (typeof value === "number") {
@@ -110,7 +120,6 @@ function CellValue({
           );
         }
         return <span>{String(value)}</span>;
-
       case "cost":
         if (typeof value === "number") {
           // Assume cost values are in cents
