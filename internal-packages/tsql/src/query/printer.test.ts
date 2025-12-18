@@ -925,14 +925,19 @@ describe("Virtual columns", () => {
 
     it("should mix regular and virtual columns correctly", () => {
       const ctx = createVirtualColumnContext();
-      const { sql } = printQuery("SELECT run_id, status, execution_duration, started_at FROM runs", ctx);
+      const { sql } = printQuery(
+        "SELECT run_id, status, execution_duration, started_at FROM runs",
+        ctx
+      );
 
       // Regular columns should be normal
       expect(sql).toMatch(/\brun_id\b/);
       expect(sql).toMatch(/\bstatus\b/);
       expect(sql).toMatch(/\bstarted_at\b/);
       // Virtual column should be expanded
-      expect(sql).toContain("(dateDiff('millisecond', started_at, completed_at)) AS execution_duration");
+      expect(sql).toContain(
+        "(dateDiff('millisecond', started_at, completed_at)) AS execution_duration"
+      );
     });
   });
 
@@ -949,7 +954,9 @@ describe("Virtual columns", () => {
       const ctx = createVirtualColumnContext();
       const { sql } = printQuery("SELECT * FROM runs WHERE execution_duration >= 5000", ctx);
 
-      expect(sql).toContain("greaterOrEquals((dateDiff('millisecond', started_at, completed_at)), 5000)");
+      expect(sql).toContain(
+        "greaterOrEquals((dateDiff('millisecond', started_at, completed_at)), 5000)"
+      );
     });
 
     it("should expand virtual column in WHERE with multiple conditions", () => {
@@ -983,7 +990,10 @@ describe("Virtual columns", () => {
 
     it("should expand virtual column in ORDER BY with multiple columns", () => {
       const ctx = createVirtualColumnContext();
-      const { sql } = printQuery("SELECT * FROM runs ORDER BY status ASC, execution_duration DESC", ctx);
+      const { sql } = printQuery(
+        "SELECT * FROM runs ORDER BY status ASC, execution_duration DESC",
+        ctx
+      );
 
       expect(sql).toContain("status ASC");
       expect(sql).toContain("(dateDiff('millisecond', started_at, completed_at)) DESC");
@@ -999,7 +1009,9 @@ describe("Virtual columns", () => {
       );
 
       // Both SELECT and GROUP BY should have the expansion
-      expect(sql).toContain("GROUP BY (if(completed_at IS NOT NULL AND started_at IS NOT NULL, dateDiff('second', started_at, completed_at) > 60, 0))");
+      expect(sql).toContain(
+        "GROUP BY (if(completed_at IS NOT NULL AND started_at IS NOT NULL, dateDiff('second', started_at, completed_at) > 60, 0))"
+      );
     });
   });
 
@@ -1032,6 +1044,278 @@ describe("Virtual columns", () => {
       // No extra parentheses or AS for regular columns in basic SELECT
       expect(sql).not.toMatch(/\(run_id\)/);
       expect(sql).not.toMatch(/\(status\)/);
+    });
+  });
+});
+
+describe("Column metadata", () => {
+  /**
+   * Schema with customRenderType for testing
+   */
+  const schemaWithRenderTypes: TableSchema = {
+    name: "runs",
+    clickhouseName: "trigger_dev.task_runs_v2",
+    columns: {
+      run_id: { name: "run_id", ...column("String") },
+      friendly_id: { name: "friendly_id", ...column("String") },
+      status: {
+        name: "status",
+        ...column("LowCardinality(String)"),
+        customRenderType: "runStatus",
+      },
+      created_at: { name: "created_at", ...column("DateTime64") },
+      started_at: { name: "started_at", ...column("Nullable(DateTime64)") },
+      completed_at: { name: "completed_at", ...column("Nullable(DateTime64)") },
+      usage_duration_ms: {
+        name: "usage_duration_ms",
+        ...column("UInt32"),
+        customRenderType: "duration",
+      },
+      cost_in_cents: {
+        name: "cost_in_cents",
+        ...column("Float64"),
+        customRenderType: "cost",
+      },
+      organization_id: { name: "organization_id", ...column("String") },
+      project_id: { name: "project_id", ...column("String") },
+      environment_id: { name: "environment_id", ...column("String") },
+      is_test: { name: "is_test", ...column("UInt8") },
+    },
+    tenantColumns: {
+      organizationId: "organization_id",
+      projectId: "project_id",
+      environmentId: "environment_id",
+    },
+  };
+
+  function createMetadataTestContext() {
+    const schema = createSchemaRegistry([schemaWithRenderTypes]);
+    return createPrinterContext({
+      organizationId: "org_test",
+      projectId: "proj_test",
+      environmentId: "env_test",
+      schema,
+    });
+  }
+
+  describe("Basic column metadata", () => {
+    it("should return column metadata for simple field references", () => {
+      const ctx = createMetadataTestContext();
+      const { columns } = printQuery("SELECT run_id, created_at FROM runs", ctx);
+
+      expect(columns).toHaveLength(2);
+      expect(columns[0]).toEqual({
+        name: "run_id",
+        type: "String",
+      });
+      expect(columns[1]).toEqual({
+        name: "created_at",
+        type: "DateTime64",
+      });
+    });
+
+    it("should include customRenderType when defined in schema", () => {
+      const ctx = createMetadataTestContext();
+      const { columns } = printQuery(
+        "SELECT status, usage_duration_ms, cost_in_cents FROM runs",
+        ctx
+      );
+
+      expect(columns).toHaveLength(3);
+      expect(columns[0]).toEqual({
+        name: "status",
+        type: "LowCardinality(String)",
+        customRenderType: "runStatus",
+      });
+      expect(columns[1]).toEqual({
+        name: "usage_duration_ms",
+        type: "UInt32",
+        customRenderType: "duration",
+      });
+      expect(columns[2]).toEqual({
+        name: "cost_in_cents",
+        type: "Float64",
+        customRenderType: "cost",
+      });
+    });
+
+    it("should use alias as output name when AS is used", () => {
+      const ctx = createMetadataTestContext();
+      const { columns } = printQuery("SELECT run_id AS id, status AS run_status FROM runs", ctx);
+
+      expect(columns).toHaveLength(2);
+      expect(columns[0].name).toBe("id");
+      expect(columns[0].type).toBe("String");
+      expect(columns[1].name).toBe("run_status");
+      expect(columns[1].type).toBe("LowCardinality(String)");
+      expect(columns[1].customRenderType).toBe("runStatus");
+    });
+  });
+
+  describe("Type inference for aggregations", () => {
+    it("should infer UInt64 for COUNT", () => {
+      const ctx = createMetadataTestContext();
+      const { columns } = printQuery("SELECT COUNT(*) AS total FROM runs", ctx);
+
+      expect(columns).toHaveLength(1);
+      expect(columns[0].name).toBe("total");
+      expect(columns[0].type).toBe("UInt64");
+    });
+
+    it("should infer UInt64 for COUNT with column", () => {
+      const ctx = createMetadataTestContext();
+      const { columns } = printQuery("SELECT COUNT(run_id) AS run_count FROM runs", ctx);
+
+      expect(columns).toHaveLength(1);
+      expect(columns[0].name).toBe("run_count");
+      expect(columns[0].type).toBe("UInt64");
+    });
+
+    it("should infer Float64 for AVG", () => {
+      const ctx = createMetadataTestContext();
+      const { columns } = printQuery(
+        "SELECT AVG(usage_duration_ms) AS avg_duration FROM runs",
+        ctx
+      );
+
+      expect(columns).toHaveLength(1);
+      expect(columns[0].name).toBe("avg_duration");
+      expect(columns[0].type).toBe("Float64");
+    });
+
+    it("should infer Int64 for SUM", () => {
+      const ctx = createMetadataTestContext();
+      const { columns } = printQuery(
+        "SELECT SUM(usage_duration_ms) AS total_duration FROM runs",
+        ctx
+      );
+
+      expect(columns).toHaveLength(1);
+      expect(columns[0].name).toBe("total_duration");
+      expect(columns[0].type).toBe("Int64");
+    });
+
+    it("should preserve column type for MIN/MAX", () => {
+      const ctx = createMetadataTestContext();
+      const { columns } = printQuery(
+        "SELECT MIN(created_at) AS first_run, MAX(created_at) AS last_run FROM runs",
+        ctx
+      );
+
+      expect(columns).toHaveLength(2);
+      expect(columns[0].name).toBe("first_run");
+      expect(columns[0].type).toBe("DateTime64");
+      expect(columns[1].name).toBe("last_run");
+      expect(columns[1].type).toBe("DateTime64");
+    });
+  });
+
+  describe("Type inference for computed expressions", () => {
+    it("should infer Int64 for dateDiff", () => {
+      const ctx = createMetadataTestContext();
+      const { columns } = printQuery(
+        "SELECT dateDiff('millisecond', started_at, completed_at) AS duration FROM runs",
+        ctx
+      );
+
+      expect(columns).toHaveLength(1);
+      expect(columns[0].name).toBe("duration");
+      expect(columns[0].type).toBe("Int64");
+    });
+
+    it("should infer Float64 for division", () => {
+      const ctx = createMetadataTestContext();
+      const { columns } = printQuery(
+        "SELECT usage_duration_ms / 1000 AS duration_seconds FROM runs",
+        ctx
+      );
+
+      expect(columns).toHaveLength(1);
+      expect(columns[0].name).toBe("duration_seconds");
+      expect(columns[0].type).toBe("Float64");
+    });
+
+    it("should infer Int64 for integer arithmetic", () => {
+      const ctx = createMetadataTestContext();
+      const { columns } = printQuery(
+        "SELECT usage_duration_ms + 100 AS adjusted_duration FROM runs",
+        ctx
+      );
+
+      expect(columns).toHaveLength(1);
+      expect(columns[0].name).toBe("adjusted_duration");
+      // UInt32 + Int64 constant = Int64
+      expect(columns[0].type).toBe("Int64");
+    });
+
+    it("should infer String for string functions", () => {
+      const ctx = createMetadataTestContext();
+      const { columns } = printQuery(
+        "SELECT concat(run_id, '-', status) AS combined FROM runs",
+        ctx
+      );
+
+      expect(columns).toHaveLength(1);
+      expect(columns[0].name).toBe("combined");
+      expect(columns[0].type).toBe("String");
+    });
+  });
+
+  describe("Mixed columns with and without customRenderType", () => {
+    it("should handle a mix of regular and custom-rendered columns", () => {
+      const ctx = createMetadataTestContext();
+      const { columns } = printQuery(
+        "SELECT run_id, status, created_at, usage_duration_ms, cost_in_cents FROM runs",
+        ctx
+      );
+
+      expect(columns).toHaveLength(5);
+
+      // run_id - no customRenderType
+      expect(columns[0].name).toBe("run_id");
+      expect(columns[0].type).toBe("String");
+      expect(columns[0].customRenderType).toBeUndefined();
+
+      // status - has customRenderType
+      expect(columns[1].name).toBe("status");
+      expect(columns[1].customRenderType).toBe("runStatus");
+
+      // created_at - no customRenderType
+      expect(columns[2].name).toBe("created_at");
+      expect(columns[2].type).toBe("DateTime64");
+      expect(columns[2].customRenderType).toBeUndefined();
+
+      // usage_duration_ms - has customRenderType
+      expect(columns[3].name).toBe("usage_duration_ms");
+      expect(columns[3].customRenderType).toBe("duration");
+
+      // cost_in_cents - has customRenderType
+      expect(columns[4].name).toBe("cost_in_cents");
+      expect(columns[4].customRenderType).toBe("cost");
+    });
+
+    it("should handle aggregations mixed with regular columns", () => {
+      const ctx = createMetadataTestContext();
+      const { columns } = printQuery(
+        "SELECT status, COUNT(*) AS count, AVG(usage_duration_ms) AS avg_duration FROM runs GROUP BY status",
+        ctx
+      );
+
+      expect(columns).toHaveLength(3);
+
+      // status - from schema with customRenderType
+      expect(columns[0].name).toBe("status");
+      expect(columns[0].customRenderType).toBe("runStatus");
+
+      // count - aggregation inferred type
+      expect(columns[1].name).toBe("count");
+      expect(columns[1].type).toBe("UInt64");
+      expect(columns[1].customRenderType).toBeUndefined();
+
+      // avg_duration - aggregation inferred type
+      expect(columns[2].name).toBe("avg_duration");
+      expect(columns[2].type).toBe("Float64");
+      expect(columns[2].customRenderType).toBeUndefined();
     });
   });
 });
