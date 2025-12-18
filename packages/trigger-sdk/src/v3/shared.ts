@@ -129,17 +129,10 @@ export type Context = TaskRunContext;
 export { BatchTriggerError };
 
 export function queue(options: QueueOptions): Queue {
-  // Register with serializable metadata (strip key function from rateLimit)
   resourceCatalog.registerQueueMetadata({
     name: options.name,
     concurrencyLimit: options.concurrencyLimit,
-    rateLimit: options.rateLimit
-      ? {
-          limit: options.rateLimit.limit,
-          period: options.rateLimit.period,
-          burst: options.rateLimit.burst,
-        }
-      : undefined,
+    rateLimit: options.rateLimit,
   });
 
   // @ts-expect-error
@@ -182,11 +175,6 @@ export function createTask<
     description: params.description,
     jsonSchema: params.jsonSchema,
     trigger: async (payload, options) => {
-      // Evaluate rate limit key function if defined
-      const rateLimitKey =
-        options?.rateLimitKey ??
-        (params.queue?.rateLimit?.key ? params.queue.rateLimit.key(payload) : undefined);
-
       return await trigger_internal<RunTypes<TIdentifier, TInput, TOutput>>(
         "trigger()",
         params.id,
@@ -195,7 +183,6 @@ export function createTask<
         {
           queue: params.queue?.name,
           ...options,
-          rateLimitKey,
         }
       );
     },
@@ -207,16 +194,10 @@ export function createTask<
         options,
         undefined,
         undefined,
-        params.queue?.name,
-        params.queue?.rateLimit?.key
+        params.queue?.name
       );
     },
     triggerAndWait: (payload, options, requestOptions) => {
-      // Evaluate rate limit key function if defined
-      const rateLimitKey =
-        options?.rateLimitKey ??
-        (params.queue?.rateLimit?.key ? params.queue.rateLimit.key(payload) : undefined);
-
       return new TaskRunPromise<TIdentifier, TOutput>((resolve, reject) => {
         triggerAndWait_internal<TIdentifier, TInput, TOutput>(
           "triggerAndWait()",
@@ -226,7 +207,6 @@ export function createTask<
           {
             queue: params.queue?.name,
             ...options,
-            rateLimitKey,
           },
           requestOptions
         )
@@ -246,8 +226,7 @@ export function createTask<
         undefined,
         options,
         undefined,
-        params.queue?.name,
-        params.queue?.rateLimit?.key
+        params.queue?.name
       );
     },
   };
@@ -273,14 +252,7 @@ export function createTask<
     resourceCatalog.registerQueueMetadata({
       name: queue.name,
       concurrencyLimit: queue.concurrencyLimit,
-      // Only include serializable rateLimit config (without key function)
-      rateLimit: queue.rateLimit
-        ? {
-            limit: queue.rateLimit.limit,
-            period: queue.rateLimit.period,
-            burst: queue.rateLimit.burst,
-          }
-        : undefined,
+      rateLimit: queue.rateLimit,
     });
   }
 
@@ -335,11 +307,6 @@ export function createSchemaTask<
     description: params.description,
     schema: params.schema,
     trigger: async (payload, options, requestOptions) => {
-      // Evaluate rate limit key function if defined
-      const rateLimitKey =
-        options?.rateLimitKey ??
-        (params.queue?.rateLimit?.key ? params.queue.rateLimit.key(payload) : undefined);
-
       return await trigger_internal<RunTypes<TIdentifier, inferSchemaIn<TSchema>, TOutput>>(
         "trigger()",
         params.id,
@@ -348,7 +315,6 @@ export function createSchemaTask<
         {
           queue: params.queue?.name,
           ...options,
-          rateLimitKey,
         },
         requestOptions
       );
@@ -361,16 +327,10 @@ export function createSchemaTask<
         options,
         parsePayload,
         requestOptions,
-        params.queue?.name,
-        params.queue?.rateLimit?.key
+        params.queue?.name
       );
     },
     triggerAndWait: (payload, options) => {
-      // Evaluate rate limit key function if defined
-      const rateLimitKey =
-        options?.rateLimitKey ??
-        (params.queue?.rateLimit?.key ? params.queue.rateLimit.key(payload) : undefined);
-
       return new TaskRunPromise<TIdentifier, TOutput>((resolve, reject) => {
         triggerAndWait_internal<TIdentifier, inferSchemaIn<TSchema>, TOutput>(
           "triggerAndWait()",
@@ -380,7 +340,6 @@ export function createSchemaTask<
           {
             queue: params.queue?.name,
             ...options,
-            rateLimitKey,
           }
         )
           .then((result) => {
@@ -399,8 +358,7 @@ export function createSchemaTask<
         parsePayload,
         options,
         undefined,
-        params.queue?.name,
-        params.queue?.rateLimit?.key
+        params.queue?.name
       );
     },
   };
@@ -427,14 +385,7 @@ export function createSchemaTask<
     resourceCatalog.registerQueueMetadata({
       name: queue.name,
       concurrencyLimit: queue.concurrencyLimit,
-      // Only include serializable rateLimit config (without key function)
-      rateLimit: queue.rateLimit
-        ? {
-            limit: queue.rateLimit.limit,
-            period: queue.rateLimit.period,
-            burst: queue.rateLimit.burst,
-          }
-        : undefined,
+      rateLimit: queue.rateLimit,
     });
   }
 
@@ -1979,8 +1930,7 @@ async function* transformSingleTaskBatchItemsStream<TPayload>(
   items: AsyncIterable<BatchItem<TPayload>>,
   parsePayload: SchemaParseFn<TPayload> | undefined,
   options: BatchTriggerOptions | undefined,
-  queue: string | undefined,
-  rateLimitKeyFn?: (payload: TPayload) => string | undefined
+  queue: string | undefined
 ): AsyncIterable<BatchItemNDJSON> {
   let index = 0;
   for await (const item of items) {
@@ -1990,10 +1940,6 @@ async function* transformSingleTaskBatchItemsStream<TPayload>(
     const batchItemIdempotencyKey = await makeIdempotencyKey(
       flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
     );
-
-    // Evaluate rate limit key for this item
-    const rateLimitKey =
-      item.options?.rateLimitKey ?? (rateLimitKeyFn ? rateLimitKeyFn(parsedPayload) : undefined);
 
     yield {
       index: index++,
@@ -2006,7 +1952,7 @@ async function* transformSingleTaskBatchItemsStream<TPayload>(
           ? { name: queue }
           : undefined,
         concurrencyKey: item.options?.concurrencyKey,
-        rateLimitKey,
+        rateLimitKey: item.options?.rateLimitKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
         delay: item.options?.delay,
@@ -2037,8 +1983,7 @@ async function* transformSingleTaskBatchItemsStreamForWait<TPayload>(
   items: AsyncIterable<BatchTriggerAndWaitItem<TPayload>>,
   parsePayload: SchemaParseFn<TPayload> | undefined,
   options: BatchTriggerAndWaitOptions | undefined,
-  queue: string | undefined,
-  rateLimitKeyFn?: (payload: TPayload) => string | undefined
+  queue: string | undefined
 ): AsyncIterable<BatchItemNDJSON> {
   let index = 0;
   for await (const item of items) {
@@ -2048,10 +1993,6 @@ async function* transformSingleTaskBatchItemsStreamForWait<TPayload>(
     const batchItemIdempotencyKey = await makeIdempotencyKey(
       flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
     );
-
-    // Evaluate rate limit key for this item
-    const rateLimitKey =
-      item.options?.rateLimitKey ?? (rateLimitKeyFn ? rateLimitKeyFn(parsedPayload) : undefined);
 
     yield {
       index: index++,
@@ -2065,7 +2006,7 @@ async function* transformSingleTaskBatchItemsStreamForWait<TPayload>(
           ? { name: queue }
           : undefined,
         concurrencyKey: item.options?.concurrencyKey,
-        rateLimitKey,
+        rateLimitKey: item.options?.rateLimitKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
         delay: item.options?.delay,
@@ -2155,8 +2096,7 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
   options?: BatchTriggerOptions,
   parsePayload?: SchemaParseFn<TRunTypes["payload"]>,
   requestOptions?: TriggerApiRequestOptions,
-  queue?: string,
-  rateLimitKeyFn?: (payload: TRunTypes["payload"]) => string | undefined
+  queue?: string
 ): Promise<BatchRunHandleFromTypes<TRunTypes>> {
   const apiClient = apiClientManager.clientOrThrow(requestOptions?.clientConfig);
 
@@ -2175,11 +2115,6 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
           flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
         );
 
-        // Evaluate rate limit key for this item
-        const rateLimitKey =
-          item.options?.rateLimitKey ??
-          (rateLimitKeyFn ? rateLimitKeyFn(parsedPayload) : undefined);
-
         return {
           index,
           task: taskIdentifier,
@@ -2191,7 +2126,7 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
               ? { name: queue }
               : undefined,
             concurrencyKey: item.options?.concurrencyKey,
-            rateLimitKey,
+            rateLimitKey: item.options?.rateLimitKey,
             test: taskContext.ctx?.run.isTest,
             payloadType: payloadPacket.dataType,
             delay: item.options?.delay,
@@ -2264,8 +2199,7 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
       asyncItems,
       parsePayload,
       options,
-      queue,
-      rateLimitKeyFn
+      queue
     );
 
     // Execute streaming 2-phase batch
@@ -2405,8 +2339,7 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
   parsePayload?: SchemaParseFn<TPayload>,
   options?: BatchTriggerAndWaitOptions,
   requestOptions?: TriggerApiRequestOptions,
-  queue?: string,
-  rateLimitKeyFn?: (payload: TPayload) => string | undefined
+  queue?: string
 ): Promise<BatchResult<TIdentifier, TOutput>> {
   const ctx = taskContext.ctx;
 
@@ -2429,11 +2362,6 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
           flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
         );
 
-        // Evaluate rate limit key for this item
-        const rateLimitKey =
-          item.options?.rateLimitKey ??
-          (rateLimitKeyFn ? rateLimitKeyFn(parsedPayload) : undefined);
-
         return {
           index,
           task: id,
@@ -2446,7 +2374,7 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
               ? { name: queue }
               : undefined,
             concurrencyKey: item.options?.concurrencyKey,
-            rateLimitKey,
+            rateLimitKey: item.options?.rateLimitKey,
             test: taskContext.ctx?.run.isTest,
             payloadType: payloadPacket.dataType,
             delay: item.options?.delay,
@@ -2525,8 +2453,7 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
       asyncItems,
       parsePayload,
       options,
-      queue,
-      rateLimitKeyFn
+      queue
     );
 
     return await tracer.startActiveSpan(

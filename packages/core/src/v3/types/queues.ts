@@ -50,14 +50,14 @@ export type QueueOptions = {
    *   },
    * });
    *
-   * // Per-tenant rate limiting
-   * const perTenantQueue = queue({
-   *   name: "per-tenant-api",
-   *   rateLimit: {
-   *     limit: 100,
-   *     period: "1m",
-   *     key: (payload) => payload.tenantId,
-   *   },
+   * // Per-tenant rate limiting - pass rateLimitKey at trigger time
+   * await myTask.trigger(payload, {
+   *   rateLimitKey: `tenant-${payload.tenantId}`,
+   * });
+   *
+   * // Also works with tasks.trigger()
+   * await tasks.trigger("my-task", payload, {
+   *   rateLimitKey: `tenant-${tenantId}`,
    * });
    * ```
    */
@@ -68,7 +68,5 @@ export type QueueOptions = {
     period: string;
     /** Optional burst allowance (defaults to limit) */
     burst?: number;
-    /** Optional function to derive rate limit key from payload (evaluated at trigger time) */
-    key?: (payload: any) => string;
   };
 };
