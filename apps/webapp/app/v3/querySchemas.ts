@@ -7,11 +7,6 @@ import { runFriendlyStatus, runStatusTitleFromStatus } from "~/components/runs/v
 const ENVIRONMENT_TYPES = ["PRODUCTION", "STAGING", "DEVELOPMENT", "PREVIEW"] as const;
 
 /**
- * Engine type values
- */
-const ENGINE_TYPES = ["V1", "V2"] as const;
-
-/**
  * Machine preset values
  */
 const MACHINE_PRESETS = [
@@ -37,14 +32,10 @@ export const runsSchema: TableSchema = {
     environmentId: "environment_id",
   },
   columns: {
-    // IDs & hierarchy
     run_id: {
       name: "run_id",
-      ...column("String", { description: "Unique run identifier" }),
-    },
-    friendly_id: {
-      name: "friendly_id",
-      ...column("String", { description: "Human-readable run ID (e.g., run_abc123)" }),
+      clickhouseName: "friendly_id",
+      ...column("String", { description: "Run ID (e.g., run_abc123)" }),
     },
     environment_id: {
       name: "environment_id",
@@ -67,16 +58,7 @@ export const runsSchema: TableSchema = {
     },
     attempt: {
       name: "attempt",
-      ...column("UInt8", { description: "Attempt number (starts at 1)" }),
-    },
-
-    // Status & engine
-    engine: {
-      name: "engine",
-      ...column("LowCardinality(String)", {
-        description: "Run engine version",
-        allowedValues: [...ENGINE_TYPES],
-      }),
+      ...column("UInt8", { description: "Number of attempts (starts at 1)" }),
     },
     status: {
       name: "status",
@@ -208,7 +190,7 @@ export const runsSchema: TableSchema = {
     // Tags & versions
     tags: {
       name: "tags",
-      ...column("Array(String)", { description: "Run tags" }),
+      ...column("Array(String)", { description: "Run tags", customRenderType: "tags" }),
     },
     task_version: {
       name: "task_version",
@@ -227,6 +209,7 @@ export const runsSchema: TableSchema = {
       ...column("LowCardinality(String)", {
         description: "Machine preset",
         allowedValues: [...MACHINE_PRESETS],
+        customRenderType: "machine",
       }),
     },
 
@@ -234,6 +217,15 @@ export const runsSchema: TableSchema = {
     is_test: {
       name: "is_test",
       ...column("UInt8", { description: "Whether this is a test run (0 or 1)" }),
+    },
+
+    // Virtual columns
+    execution_duration: {
+      name: "execution_duration",
+      ...column("Nullable(Int64)", {
+        description: "Computed execution time in milliseconds (virtual column)",
+      }),
+      expression: "dateDiff('millisecond', started_at, completed_at)",
     },
   },
 };
@@ -248,7 +240,6 @@ export const querySchemas: TableSchema[] = [runsSchema];
  */
 export const defaultQuery = `SELECT
   run_id,
-  friendly_id,
   task_identifier,
   status,
   created_at,
