@@ -1939,5 +1939,107 @@ describe("RunEngine debounce", () => {
       }
     }
   );
+
+  containerTest(
+    "registerDebouncedRun: atomic claim prevents overwrite when claim is lost",
+    async ({ prisma, redisOptions }) => {
+      // This test verifies the fix for the TOCTOU race condition in registerDebouncedRun.
+      // The race occurs when:
+      // 1. Server A claims debounce key with claimId-A
+      // 2. Server B claims same key with claimId-B (after A's claim expires)
+      // 3. Server B registers runId-B successfully
+      // 4. Server A attempts to register runId-A with stale claimId-A
+      // Without the fix, step 4 would overwrite runId-B. With the fix, it fails atomically.
+
+      const { createRedisClient } = await import("@internal/redis");
+
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        debounce: {
+          maxDebounceDurationMs: 60_000,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      // Create a separate Redis client to simulate "another server" modifying keys directly
+      const simulatedServerRedis = createRedisClient({
+        ...redisOptions,
+        keyPrefix: `${redisOptions.keyPrefix ?? ""}debounce:`,
+      });
+
+      try {
+        const taskIdentifier = "test-task";
+        const debounceKey = "race-test-key";
+        const environmentId = authenticatedEnvironment.id;
+        const delayUntil = new Date(Date.now() + 60_000);
+
+        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+        // Construct the Redis key (same format as DebounceSystem.getDebounceRedisKey)
+        const redisKey = `${environmentId}:${taskIdentifier}:${debounceKey}`;
+
+        // Step 1: Server A claims the key with claimId-A
+        const claimIdA = "claim-server-A";
+        await simulatedServerRedis.set(redisKey, `pending:${claimIdA}`, "PX", 60_000);
+
+        // Step 2 & 3: Simulate Server B claiming and registering (after A's claim "expires")
+        // In reality, this simulates the race where B's claim overwrites A's pending claim
+        const runIdB = "run_server_B";
+        await simulatedServerRedis.set(redisKey, runIdB, "PX", 60_000);
+
+        // Verify Server B's registration is in place
+        const valueAfterB = await simulatedServerRedis.get(redisKey);
+        expect(valueAfterB).toBe(runIdB);
+
+        // Step 4: Server A attempts to register with its stale claimId-A
+        // This should FAIL because the key no longer contains "pending:claim-server-A"
+        const runIdA = "run_server_A";
+        const registered = await engine.debounceSystem.registerDebouncedRun({
+          runId: runIdA,
+          environmentId,
+          taskIdentifier,
+          debounceKey,
+          delayUntil,
+          claimId: claimIdA, // Stale claim ID
+        });
+
+        // Step 5: Verify Server A's registration failed
+        expect(registered).toBe(false);
+
+        // Step 6: Verify Redis still contains runId-B (not overwritten by Server A)
+        const finalValue = await simulatedServerRedis.get(redisKey);
+        expect(finalValue).toBe(runIdB);
+      } finally {
+        await simulatedServerRedis.quit();
+        await engine.quit();
+      }
+    }
+  );
 });
 

@@ -121,6 +121,22 @@ end
 return { 0, value }
       `,
     });
+
+    // Atomically sets runId only if current value equals expected pending claim.
+    // This prevents the TOCTOU race condition where between GET (check claim) and SET (register),
+    // another server could claim and register a different run, which would get overwritten.
+    // Returns 1 if set succeeded, 0 if claim mismatch (lost the claim).
+    this.redis.defineCommand("registerIfClaimOwned", {
+      numberOfKeys: 1,
+      lua: `
+local value = redis.call('GET', KEYS[1])
+if value == ARGV[1] then
+  redis.call('SET', KEYS[1], ARGV[2], 'PX', ARGV[3])
+  return 1
+end
+return 0
+      `,
+    });
   }
 
   /**
@@ -593,10 +609,24 @@ return { 0, value }
       async (span) => {
         const redisKey = this.getDebounceRedisKey(environmentId, taskIdentifier, debounceKey);
 
+        // Calculate TTL: delay until + buffer
+        const ttlMs = Math.max(
+          delayUntil.getTime() - Date.now() + 60_000, // Add 1 minute buffer
+          60_000
+        );
+
         if (claimId) {
-          // Verify we still own the pending claim before overwriting
-          const currentValue = await this.redis.get(redisKey);
-          if (currentValue !== `pending:${claimId}`) {
+          // Use atomic Lua script to verify claim and set runId in one operation.
+          // This prevents the TOCTOU race where another server could claim and register
+          // between our GET check and SET.
+          const result = await this.redis.registerIfClaimOwned(
+            redisKey,
+            `pending:${claimId}`,
+            runId,
+            ttlMs.toString()
+          );
+
+          if (result === 0) {
             // We lost the claim - another server took over or it expired
             this.$.logger.warn("registerDebouncedRun: lost claim, not registering", {
               runId,
@@ -604,20 +634,14 @@ return { 0, value }
               taskIdentifier,
               debounceKey,
               claimId,
-              currentValue,
             });
             span.setAttribute("claimLost", true);
             return false;
           }
+        } else {
+          // No claim to verify, just set directly
+          await this.redis.set(redisKey, runId, "PX", ttlMs);
         }
-
-        // Calculate TTL: delay until + buffer
-        const ttlMs = Math.max(
-          delayUntil.getTime() - Date.now() + 60_000, // Add 1 minute buffer
-          60_000
-        );
-
-        await this.redis.set(redisKey, runId, "PX", ttlMs);
 
         this.$.logger.debug("registerDebouncedRun: stored debounce key mapping", {
           runId,
@@ -751,5 +775,22 @@ declare module "@internal/redis" {
       key: string,
       callback?: Callback<[number, string | null]>
     ): Result<[number, string | null], Context>;
+
+    /**
+     * Atomically sets runId only if current value equals expected pending claim.
+     * Prevents TOCTOU race condition between claim verification and registration.
+     * @param key - The Redis key
+     * @param expectedClaim - Expected value "pending:{claimId}"
+     * @param runId - The new value (run ID) to set
+     * @param ttlMs - TTL in milliseconds
+     * @returns 1 if set succeeded, 0 if claim mismatch
+     */
+    registerIfClaimOwned(
+      key: string,
+      expectedClaim: string,
+      runId: string,
+      ttlMs: string,
+      callback?: Callback<number>
+    ): Result<number, Context>;
   }
 }
