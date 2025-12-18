@@ -1,6 +1,8 @@
-import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
+import { formatDurationMilliseconds, MachinePresetName } from "@trigger.dev/core/v3";
 import type { OutputColumnMetadata } from "@internal/clickhouse";
 import { DateTime } from "~/components/primitives/DateTime";
+import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
+import { MachineLabelCombo } from "~/components/MachineLabelCombo";
 import {
   Table,
   TableBody,
@@ -126,8 +128,26 @@ function CellValue({
           return <span className="tabular-nums">{formatCurrencyAccurate(value / 100)}</span>;
         }
         return <span>{String(value)}</span>;
-
-      // Add more custom render types as needed
+      case "machine": {
+        const preset = MachinePresetName.safeParse(value);
+        if (preset.success) {
+          return <MachineLabelCombo preset={preset.data} />;
+        }
+        return <span>{String(value)}</span>;
+      }
+      case "environmentType": {
+        if (
+          typeof value === "string" &&
+          ["PRODUCTION", "STAGING", "DEVELOPMENT", "PREVIEW"].includes(value)
+        ) {
+          return (
+            <EnvironmentCombo
+              environment={{ type: value as "PRODUCTION" | "STAGING" | "DEVELOPMENT" | "PREVIEW" }}
+            />
+          );
+        }
+        return <span>{String(value)}</span>;
+      }
     }
   }
 
