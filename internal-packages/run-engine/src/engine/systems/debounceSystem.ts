@@ -244,6 +244,74 @@ return 0
   }
 
   /**
+   * Atomically claims the debounce key before returning "new".
+   * This prevents the race condition where returning "new" without a claimId
+   * allows registerDebouncedRun to do a plain SET that can overwrite another server's registration.
+   *
+   * This method is called when we've determined there's no valid existing run but need
+   * to safely claim the key before creating a new one.
+   */
+  private async claimKeyForNewRun({
+    environmentId,
+    taskIdentifier,
+    debounce,
+    tx,
+  }: {
+    environmentId: string;
+    taskIdentifier: string;
+    debounce: DebounceOptions;
+    tx?: PrismaClientOrTransaction;
+  }): Promise<DebounceResult> {
+    const redisKey = this.getDebounceRedisKey(environmentId, taskIdentifier, debounce.key);
+    const claimId = nanoid(16);
+
+    const claimResult = await this.claimDebounceKey({
+      environmentId,
+      taskIdentifier,
+      debounceKey: debounce.key,
+      claimId,
+      ttlMs: CLAIM_TTL_MS,
+    });
+
+    if (claimResult.claimed) {
+      this.$.logger.debug("claimKeyForNewRun: claimed key, returning new", {
+        debounceKey: debounce.key,
+        taskIdentifier,
+        environmentId,
+        claimId,
+      });
+      return { status: "new", claimId };
+    }
+
+    if (claimResult.existingRunId) {
+      // Another server registered a run while we were processing - handle it
+      this.$.logger.debug("claimKeyForNewRun: found existing run, handling it", {
+        debounceKey: debounce.key,
+        existingRunId: claimResult.existingRunId,
+      });
+      return await this.handleExistingRun({
+        existingRunId: claimResult.existingRunId,
+        redisKey,
+        environmentId,
+        taskIdentifier,
+        debounce,
+        tx,
+      });
+    }
+
+    // Another server is creating (pending state) - wait for it
+    this.$.logger.debug("claimKeyForNewRun: key is pending, waiting for existing run", {
+      debounceKey: debounce.key,
+    });
+    return await this.waitForExistingRun({
+      environmentId,
+      taskIdentifier,
+      debounce,
+      tx,
+    });
+  }
+
+  /**
    * Waits for another server to complete its claim and register a run ID.
    * Used when we detect a "pending" state, meaning another server has claimed
    * the key but hasn't yet created the run.
@@ -267,13 +335,18 @@ return 0
       const value = await this.redis.get(redisKey);
 
       if (!value) {
-        // Key expired or was deleted - return "new" to create fresh
-        this.$.logger.debug("waitForExistingRun: key expired/deleted, returning new", {
+        // Key expired or was deleted - atomically claim before returning "new"
+        this.$.logger.debug("waitForExistingRun: key expired/deleted, claiming key", {
           redisKey,
           debounceKey: debounce.key,
           attempt: i + 1,
         });
-        return { status: "new" };
+        return await this.claimKeyForNewRun({
+          environmentId,
+          taskIdentifier,
+          debounce,
+          tx,
+        });
       }
 
       if (!value.startsWith("pending:")) {
@@ -287,6 +360,8 @@ return 0
         return await this.handleExistingRun({
           existingRunId: value,
           redisKey,
+          environmentId,
+          taskIdentifier,
           debounce,
           tx,
         });
@@ -314,12 +389,17 @@ return 0
     const deleteResult = await this.conditionallyDeletePendingKey(redisKey);
 
     if (deleteResult.deleted) {
-      // Key was pending (or didn't exist) - safe to create new run
-      this.$.logger.debug("waitForExistingRun: stale pending key deleted, returning new", {
+      // Key was pending (or didn't exist) - atomically claim before returning "new"
+      this.$.logger.debug("waitForExistingRun: stale pending key deleted, claiming key", {
         redisKey,
         debounceKey: debounce.key,
       });
-      return { status: "new" };
+      return await this.claimKeyForNewRun({
+        environmentId,
+        taskIdentifier,
+        debounce,
+        tx,
+      });
     }
 
     // Key now has a valid run ID - the original server completed!
@@ -335,6 +415,8 @@ return 0
     return await this.handleExistingRun({
       existingRunId: deleteResult.existingRunId,
       redisKey,
+      environmentId,
+      taskIdentifier,
       debounce,
       tx,
     });
@@ -347,11 +429,15 @@ return 0
   private async handleExistingRun({
     existingRunId,
     redisKey,
+    environmentId,
+    taskIdentifier,
     debounce,
     tx,
   }: {
     existingRunId: string;
     redisKey: string;
+    environmentId: string;
+    taskIdentifier: string;
     debounce: DebounceOptions;
     tx?: PrismaClientOrTransaction;
   }): Promise<DebounceResult> {
@@ -369,9 +455,14 @@ return 0
           debounceKey: debounce.key,
           error,
         });
-        // Clean up stale Redis key
+        // Clean up stale Redis key and atomically claim before returning "new"
         await this.redis.del(redisKey);
-        return { status: "new" };
+        return await this.claimKeyForNewRun({
+          environmentId,
+          taskIdentifier,
+          debounce,
+          tx,
+        });
       }
 
       // Check if run is still in DELAYED status (or legacy RUN_CREATED for older runs)
@@ -381,9 +472,14 @@ return 0
           executionStatus: snapshot.executionStatus,
           debounceKey: debounce.key,
         });
-        // Clean up Redis key since run is no longer debounceable
+        // Clean up Redis key and atomically claim before returning "new"
         await this.redis.del(redisKey);
-        return { status: "new" };
+        return await this.claimKeyForNewRun({
+          environmentId,
+          taskIdentifier,
+          debounce,
+          tx,
+        });
       }
 
       // Get the run to check debounce metadata and createdAt
@@ -399,8 +495,14 @@ return 0
           existingRunId,
           debounceKey: debounce.key,
         });
+        // Clean up stale Redis key and atomically claim before returning "new"
         await this.redis.del(redisKey);
-        return { status: "new" };
+        return await this.claimKeyForNewRun({
+          environmentId,
+          taskIdentifier,
+          debounce,
+          tx,
+        });
       }
 
       // Calculate new delay - parseNaturalLanguageDuration returns a Date (now + duration)
@@ -409,7 +511,13 @@ return 0
         this.$.logger.error("handleExistingRun: invalid delay duration", {
           delay: debounce.delay,
         });
-        return { status: "new" };
+        // Invalid delay but we still need to atomically claim before returning "new"
+        return await this.claimKeyForNewRun({
+          environmentId,
+          taskIdentifier,
+          debounce,
+          tx,
+        });
       }
 
       // Check if max debounce duration would be exceeded
@@ -566,6 +674,8 @@ return 0
         return await this.handleExistingRun({
           existingRunId: claimResult.existingRunId,
           redisKey,
+          environmentId,
+          taskIdentifier,
           debounce,
           tx,
         });

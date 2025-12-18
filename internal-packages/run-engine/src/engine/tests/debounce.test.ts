@@ -2041,5 +2041,134 @@ describe("RunEngine debounce", () => {
       }
     }
   );
+
+  containerTest(
+    "waitForExistingRun: returns claimId when key expires during wait",
+    async ({ prisma, redisOptions }) => {
+      // This test verifies the fix for the race condition where waitForExistingRun
+      // returns { status: "new" } without a claimId. Without the fix:
+      // 1. Server A's pending claim expires
+      // 2. Server B's waitForExistingRun detects key is gone, returns { status: "new" } (no claimId)
+      // 3. Server C atomically claims the key and registers runId-C
+      // 4. Server B calls registerDebouncedRun without claimId, does plain SET, overwrites runId-C
+      //
+      // With the fix, step 2 atomically claims the key before returning, preventing step 4's overwrite.
+
+      const { createRedisClient } = await import("@internal/redis");
+
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        debounce: {
+          maxDebounceDurationMs: 60_000,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      // Create a separate Redis client to simulate "another server" modifying keys directly
+      const simulatedServerRedis = createRedisClient({
+        ...redisOptions,
+        keyPrefix: `${redisOptions.keyPrefix ?? ""}debounce:`,
+      });
+
+      try {
+        const taskIdentifier = "test-task";
+        const debounceKey = "wait-race-test-key";
+        const environmentId = authenticatedEnvironment.id;
+
+        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+        // Construct the Redis key (same format as DebounceSystem.getDebounceRedisKey)
+        const redisKey = `${environmentId}:${taskIdentifier}:${debounceKey}`;
+
+        // Step 1: Server A claims the key with a pending claim
+        const claimIdA = "claim-server-A";
+        await simulatedServerRedis.set(redisKey, `pending:${claimIdA}`, "PX", 60_000);
+
+        // Step 2: Delete the key to simulate Server A's claim expiring
+        await simulatedServerRedis.del(redisKey);
+
+        // Step 3: Server B calls handleDebounce - since key is gone, it should atomically claim
+        const debounceResult = await engine.debounceSystem.handleDebounce({
+          environmentId,
+          taskIdentifier,
+          debounce: {
+            key: debounceKey,
+            delay: "5s",
+          },
+        });
+
+        // Step 4: Verify result is { status: "new" } WITH a claimId
+        expect(debounceResult.status).toBe("new");
+        if (debounceResult.status === "new") {
+          expect(debounceResult.claimId).toBeDefined();
+          expect(typeof debounceResult.claimId).toBe("string");
+          expect(debounceResult.claimId!.length).toBeGreaterThan(0);
+
+          // Step 5: Verify the key now contains Server B's pending claim
+          const valueAfterB = await simulatedServerRedis.get(redisKey);
+          expect(valueAfterB).toBe(`pending:${debounceResult.claimId}`);
+
+          // Step 6: Server C tries to claim the same key - should fail
+          const claimIdC = "claim-server-C";
+          const claimResultC = await simulatedServerRedis.set(
+            redisKey,
+            `pending:${claimIdC}`,
+            "PX",
+            60_000,
+            "NX"
+          );
+          expect(claimResultC).toBeNull(); // NX fails because key exists
+
+          // Step 7: Server B registers its run using its claimId
+          const runIdB = "run_server_B";
+          const delayUntil = new Date(Date.now() + 60_000);
+          const registered = await engine.debounceSystem.registerDebouncedRun({
+            runId: runIdB,
+            environmentId,
+            taskIdentifier,
+            debounceKey,
+            delayUntil,
+            claimId: debounceResult.claimId,
+          });
+
+          // Step 8: Verify Server B's registration succeeded
+          expect(registered).toBe(true);
+
+          // Step 9: Verify Redis contains Server B's run ID
+          const finalValue = await simulatedServerRedis.get(redisKey);
+          expect(finalValue).toBe(runIdB);
+        }
+      } finally {
+        await simulatedServerRedis.quit();
+        await engine.quit();
+      }
+    }
+  );
 });
 
