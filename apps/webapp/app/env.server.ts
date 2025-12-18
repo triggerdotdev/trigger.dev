@@ -611,6 +611,12 @@ const EnvironmentSchema = z
       .default(60_000),
     RUN_ENGINE_SUSPENDED_HEARTBEAT_RETRIES_FACTOR: z.coerce.number().default(2),
 
+    /** Maximum duration in milliseconds that a run can be debounced. Default: 1 hour (3,600,000ms) */
+    RUN_ENGINE_MAXIMUM_DEBOUNCE_DURATION_MS: z.coerce
+      .number()
+      .int()
+      .default(60_000 * 60), // 1 hour
+
     RUN_ENGINE_WORKER_REDIS_HOST: z
       .string()
       .optional()

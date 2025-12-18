@@ -581,6 +581,10 @@ model TaskRun {
 
   idempotencyKey          String?
   idempotencyKeyExpiresAt DateTime?
+
+  /// Debounce options: { key: string, delay: string, createdAt: Date }
+  debounce Json?
+
   taskIdentifier          String
 
   isTest Boolean @default(false)
@@ -948,6 +952,8 @@ model TaskRunExecutionSnapshot {
 enum TaskRunExecutionStatus {
   /// Run has been created
   RUN_CREATED
+  /// Run is delayed, waiting to be enqueued
+  DELAYED
   /// Run is in the RunQueue
   QUEUED
   /// Run is in the RunQueue, and is also executing. This happens when a run is continued cannot reacquire concurrency

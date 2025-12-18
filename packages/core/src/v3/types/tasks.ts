@@ -965,6 +965,56 @@ export type TriggerOptions = {
    * ```
    */
   region?: string;
+
+  /**
+   * Debounce settings for consolidating multiple trigger calls into a single delayed run.
+   *
+   * When a run with the same debounce key already exists in the delayed state, subsequent triggers
+   * "push" the existing run's execution time later rather than creating new runs.
+   *
+   * The debounce key is scoped to the task identifier, so different tasks can use the same key without conflicts.
+   *
+   * @example
+   *
+   * ```ts
+   * // Leading mode (default): executes with the FIRST payload
+   * await myTask.trigger({ some: "data1" }, { debounce: { key: "user-123", delay: "5s" } });
+   * await myTask.trigger({ some: "data2" }, { debounce: { key: "user-123", delay: "5s" } });
+   * // After 5 seconds, runs with { some: "data1" }
+   *
+   * // Trailing mode: executes with the LAST payload
+   * await myTask.trigger({ some: "data1" }, { debounce: { key: "user-123", delay: "5s", mode: "trailing" } });
+   * await myTask.trigger({ some: "data2" }, { debounce: { key: "user-123", delay: "5s", mode: "trailing" } });
+   * // After 5 seconds, runs with { some: "data2" }
+   * ```
+   */
+  debounce?: {
+    /**
+     * Unique key scoped to the task identifier. Runs with the same key will be debounced together.
+     * Maximum length is 512 characters.
+     */
+    key: string;
+    /**
+     * Duration string specifying how long to delay the run. If another trigger with the same key
+     * occurs within this duration, the delay is extended.
+     *
+     * Supported formats: `{number}s` (seconds), `{number}m` (minutes), `{number}h` (hours),
+     * `{number}d` (days), `{number}w` (weeks). Minimum delay is 1 second.
+     *
+     * @example "1s", "5s", "1m", "30m", "1h"
+     */
+    delay: string;
+    /**
+     * Controls which trigger's data is used when the debounced run finally executes.
+     *
+     * - `"leading"` (default): Use data from the first trigger (payload, metadata, tags, etc.)
+     * - `"trailing"`: Use data from the last trigger. Each subsequent trigger updates the run's
+     *   payload, metadata, tags, maxAttempts, maxDuration, and machine preset.
+     *
+     * @default "leading"
+     */
+    mode?: "leading" | "trailing";
+  };
 };
 
 export type TriggerAndWaitOptions = Omit<TriggerOptions, "version">;

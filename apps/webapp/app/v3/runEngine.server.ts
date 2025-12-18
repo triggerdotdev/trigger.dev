@@ -183,6 +183,10 @@ function createRunEngine() {
         ? createBatchGlobalRateLimiter(env.BATCH_QUEUE_GLOBAL_RATE_LIMIT)
         : undefined,
     },
+    // Debounce configuration
+    debounce: {
+      maxDebounceDurationMs: env.RUN_ENGINE_MAXIMUM_DEBOUNCE_DURATION_MS,
+    },
   });
 
   return engine;

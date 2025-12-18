@@ -208,6 +208,13 @@ export const TriggerTaskRequestBody = z.object({
       priority: z.number().optional(),
       bulkActionId: z.string().optional(),
       region: z.string().optional(),
+      debounce: z
+        .object({
+          key: z.string().max(512),
+          delay: z.string(),
+          mode: z.enum(["leading", "trailing"]).optional(),
+        })
+        .optional(),
     })
     .optional(),
 });
@@ -261,6 +268,13 @@ export const BatchTriggerTaskItem = z.object({
       ttl: z.string().or(z.number().nonnegative().int()).optional(),
       priority: z.number().optional(),
       region: z.string().optional(),
+      debounce: z
+        .object({
+          key: z.string().max(512),
+          delay: z.string(),
+          mode: z.enum(["leading", "trailing"]).optional(),
+        })
+        .optional(),
     })
     .optional(),
 });

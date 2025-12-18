@@ -234,6 +234,7 @@ export class SpanPresenter extends BasePresenter {
       environmentId: run.runtimeEnvironment.id,
       idempotencyKey: run.idempotencyKey,
       idempotencyKeyExpiresAt: run.idempotencyKeyExpiresAt,
+      debounce: run.debounce as { key: string; delay: string; createdAt: Date } | null,
       schedule: await this.resolveSchedule(run.scheduleId ?? undefined),
       queue: {
         name: run.queue,
@@ -357,6 +358,8 @@ export class SpanPresenter extends BasePresenter {
         //idempotency
         idempotencyKey: true,
         idempotencyKeyExpiresAt: true,
+        //debounce
+        debounce: true,
         //delayed
         delayUntil: true,
         //ttl

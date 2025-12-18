@@ -1,0 +1,6 @@
+---
+description: how to create and apply database migrations
+alwaysApply: false
+---
+
+Follow our [migrations.md](mdc:ai/references/migrations.md) guide for how to create and apply database migrations.

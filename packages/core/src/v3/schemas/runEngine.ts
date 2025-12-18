@@ -13,6 +13,7 @@ export const TaskRunExecutionStatus = {
   SUSPENDED: "SUSPENDED",
   PENDING_CANCEL: "PENDING_CANCEL",
   FINISHED: "FINISHED",
+  DELAYED: "DELAYED",
 } satisfies Enum<DB_TYPES.TaskRunExecutionStatus>;
 
 export type TaskRunExecutionStatus =
