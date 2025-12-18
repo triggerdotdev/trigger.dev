@@ -35,7 +35,7 @@ export const runsSchema: TableSchema = {
     run_id: {
       name: "run_id",
       clickhouseName: "friendly_id",
-      ...column("String", { description: "Run ID (e.g., run_abc123)" }),
+      ...column("String", { description: "Run ID (e.g., run_abc123)", customRenderType: "runId" }),
     },
     environment_id: {
       name: "environment_id",
@@ -54,6 +54,7 @@ export const runsSchema: TableSchema = {
       ...column("LowCardinality(String)", {
         description: "Environment type",
         allowedValues: [...ENVIRONMENT_TYPES],
+        customRenderType: "environmentType",
       }),
     },
     attempt: {

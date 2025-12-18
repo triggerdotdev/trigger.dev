@@ -17,6 +17,8 @@ import {
   TaskRunStatusCombo,
 } from "~/components/runs/v3/TaskRunStatus";
 import { Paragraph } from "../primitives/Paragraph";
+import { TextLink } from "../primitives/TextLink";
+import { v3RunPathFromFriendlyId } from "~/utils/pathBuilder";
 
 /**
  * Check if a ClickHouse type is a DateTime type
@@ -83,6 +85,12 @@ function CellValue({
   // First check customRenderType for special rendering
   if (column.customRenderType) {
     switch (column.customRenderType) {
+      case "runId": {
+        if (typeof value === "string") {
+          return <TextLink to={v3RunPathFromFriendlyId(value)}>{value}</TextLink>;
+        }
+        break;
+      }
       case "runStatus": {
         // We have mapped the status to a friendly status so we need to map back to render the normal component
         if (isTaskRunStatus(value)) {

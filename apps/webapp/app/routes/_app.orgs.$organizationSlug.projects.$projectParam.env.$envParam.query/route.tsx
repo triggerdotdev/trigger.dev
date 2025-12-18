@@ -202,7 +202,7 @@ export default function Page() {
               minHeight="200px"
               className="min-h-[200px]"
             />
-            <Form method="post" className="flex items-center justify-end gap-3 px-2">
+            <Form method="post" className="flex items-center justify-end gap-2 px-2">
               <input type="hidden" name="query" value={query} />
               <input type="hidden" name="scope" value={scope} />
               <Select
