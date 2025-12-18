@@ -38,7 +38,9 @@ export {
   type ExecuteTSQLOptions,
   type TableSchema,
   type TSQLQueryResult,
+  type TSQLQuerySuccess,
 } from "./client/tsql.js";
+export type { OutputColumnMetadata } from "@internal/tsql";
 
 export type ClickhouseCommonConfig = {
   keepAlive?: {

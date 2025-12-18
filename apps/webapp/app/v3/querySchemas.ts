@@ -1,10 +1,5 @@
 import { column, type TableSchema } from "@internal/tsql";
-import {
-  allTaskRunStatuses,
-  runFriendlyStatus,
-  runStatusTitleFromStatus,
-} from "~/components/runs/v3/TaskRunStatus";
-import type { ColumnInferer } from "~/utils/tsqlColumns";
+import { runFriendlyStatus, runStatusTitleFromStatus } from "~/components/runs/v3/TaskRunStatus";
 
 /**
  * Environment type values
@@ -89,6 +84,7 @@ export const runsSchema: TableSchema = {
         description: "Run status",
         allowedValues: [...runFriendlyStatus],
         valueMap: runStatusTitleFromStatus,
+        customRenderType: "runStatus",
       }),
     },
 
@@ -179,15 +175,24 @@ export const runsSchema: TableSchema = {
     // Cost & usage
     usage_duration_ms: {
       name: "usage_duration_ms",
-      ...column("UInt32", { description: "Usage duration in milliseconds" }),
+      ...column("UInt32", {
+        description: "Usage duration in milliseconds",
+        customRenderType: "duration",
+      }),
     },
     cost_in_cents: {
       name: "cost_in_cents",
-      ...column("Float64", { description: "Cost in cents" }),
+      ...column("Float64", {
+        description: "Cost in cents",
+        customRenderType: "cost",
+      }),
     },
     base_cost_in_cents: {
       name: "base_cost_in_cents",
-      ...column("Float64", { description: "Base cost in cents" }),
+      ...column("Float64", {
+        description: "Base cost in cents",
+        customRenderType: "cost",
+      }),
     },
 
     // Output & error (JSON columns)
@@ -237,42 +242,6 @@ export const runsSchema: TableSchema = {
  * All available schemas for the query editor
  */
 export const querySchemas: TableSchema[] = [runsSchema];
-
-/**
- * Custom column inferers for the query editor
- *
- * These run in order before falling back to basic type inference.
- * Each inferer can detect specific column patterns and return custom metadata.
- */
-export const queryInferers: ColumnInferer[] = [
-  // TaskRunStatus inferer - detects status columns containing valid run statuses
-  (columnName, values, basicType) => {
-    if (basicType !== "string") {
-      return false;
-    }
-
-    // Check if the column name suggests it's a status
-    const lowerName = columnName.toLowerCase();
-    if (!lowerName.includes("status")) {
-      return false;
-    }
-
-    // Check if all values are valid TaskRunStatus values
-    const isValidStatus = values.every((v) =>
-      allTaskRunStatuses.includes(v as (typeof allTaskRunStatuses)[number])
-    );
-
-    if (isValidStatus) {
-      return {
-        name: columnName,
-        jsType: "string",
-        renderType: "runStatus",
-      };
-    }
-
-    return false;
-  },
-];
 
 /**
  * Default query for the query editor

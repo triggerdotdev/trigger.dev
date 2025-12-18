@@ -25,8 +25,7 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { executeQuery } from "~/services/queryService.server";
 import { requireUser } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
-import { inferColumnMetadata } from "~/utils/tsqlColumns";
-import { defaultQuery, queryInferers, querySchemas } from "~/v3/querySchemas";
+import { defaultQuery, querySchemas } from "~/v3/querySchemas";
 
 const scopeOptions = [
   { value: "environment", label: "Environment" },
@@ -130,7 +129,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 
   try {
-    const [error, rows] = await executeQuery({
+    const [error, result] = await executeQuery({
       name: "query-page",
       query,
       schema: z.record(z.any()),
@@ -143,10 +142,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       return typedjson({ error: error.message, rows: null, columns: null }, { status: 400 });
     }
 
-    // Infer column metadata on the server
-    const columns = inferColumnMetadata(rows, queryInferers);
-
-    return typedjson({ error: null, rows, columns });
+    return typedjson({ error: null, rows: result.rows, columns: result.columns });
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : "Unknown error executing query";
     return typedjson({ error: errorMessage, rows: null, columns: null }, { status: 500 });
