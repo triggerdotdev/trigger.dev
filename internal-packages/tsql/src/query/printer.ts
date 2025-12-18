@@ -484,7 +484,11 @@ export class ClickHousePrinter {
 
         // Check if the column has a different clickhouseName - if so, add an alias
         // to ensure results come back with the user-facing name
-        if (outputName && sourceColumn?.clickhouseName && sourceColumn.clickhouseName !== outputName) {
+        if (
+          outputName &&
+          sourceColumn?.clickhouseName &&
+          sourceColumn.clickhouseName !== outputName
+        ) {
           sqlResult = `${visited} AS ${this.printIdentifier(outputName)}`;
         } else {
           sqlResult = visited;
@@ -505,6 +509,11 @@ export class ClickHousePrinter {
       // Only add customRenderType if specified in schema
       if (sourceColumn?.customRenderType) {
         metadata.customRenderType = sourceColumn.customRenderType;
+      }
+
+      // Only add description if specified in schema (columns and virtual columns)
+      if (sourceColumn?.description) {
+        metadata.description = sourceColumn.description;
       }
 
       this.outputColumns.push(metadata);
@@ -655,7 +664,12 @@ export class ClickHousePrinter {
     const name = call.name.toLowerCase();
 
     // Count functions always return UInt64
-    if (name === "count" || name === "countif" || name === "countdistinct" || name === "countdistinctif") {
+    if (
+      name === "count" ||
+      name === "countif" ||
+      name === "countdistinct" ||
+      name === "countdistinctif"
+    ) {
       return "UInt64";
     }
 

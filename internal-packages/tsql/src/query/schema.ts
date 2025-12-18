@@ -136,6 +136,11 @@ export interface OutputColumnMetadata {
    * When set, the UI should use a custom renderer instead of the default for the ClickHouseType.
    */
   customRenderType?: string;
+  /**
+   * Description from the schema column definition, if available.
+   * Only present for columns or virtual columns defined in the table schema.
+   */
+  description?: string;
 }
 
 /**
