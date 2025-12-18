@@ -16,6 +16,7 @@ import {
   runStatusFromFriendlyTitle,
   TaskRunStatusCombo,
 } from "~/components/runs/v3/TaskRunStatus";
+import { Paragraph } from "../primitives/Paragraph";
 
 /**
  * Check if a ClickHouse type is a DateTime type
@@ -166,7 +167,7 @@ export function TSQLResultsTable({
   columns: OutputColumnMetadata[];
   prettyFormatting?: boolean;
 }) {
-  if (!rows.length || !columns.length) return null;
+  if (!columns.length) return null;
 
   return (
     <Table fullWidth>
@@ -178,15 +179,29 @@ export function TSQLResultsTable({
         </TableRow>
       </TableHeader>
       <TableBody>
-        {rows.map((row, i) => (
-          <TableRow key={i}>
-            {columns.map((col) => (
-              <TableCell key={col.name}>
-                <CellValue value={row[col.name]} column={col} prettyFormatting={prettyFormatting} />
-              </TableCell>
-            ))}
+        {rows.length === 0 ? (
+          <TableRow>
+            <TableCell colSpan={columns.length}>
+              <Paragraph variant="extra-small" className="p-2 text-text-dimmed">
+                No results
+              </Paragraph>
+            </TableCell>
           </TableRow>
-        ))}
+        ) : (
+          rows.map((row, i) => (
+            <TableRow key={i}>
+              {columns.map((col) => (
+                <TableCell key={col.name}>
+                  <CellValue
+                    value={row[col.name]}
+                    column={col}
+                    prettyFormatting={prettyFormatting}
+                  />
+                </TableCell>
+              ))}
+            </TableRow>
+          ))
+        )}
       </TableBody>
     </Table>
   );

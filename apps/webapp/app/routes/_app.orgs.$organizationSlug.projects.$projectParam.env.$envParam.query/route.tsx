@@ -12,7 +12,7 @@ import { TSQLResultsTable } from "~/components/code/TSQLResultsTable";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button } from "~/components/primitives/Buttons";
-import { Header2 } from "~/components/primitives/Headers";
+import { Header3 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Select, SelectItem } from "~/components/primitives/Select";
@@ -235,12 +235,12 @@ export default function Page() {
             </Form>
           </div>
           {/* Results */}
-          <div className="grid max-h-full grid-rows-[2rem_1fr] gap-2 overflow-hidden border-t border-grid-dimmed pt-1">
+          <div className="grid max-h-full grid-rows-[2rem_1fr] overflow-hidden border-t border-grid-dimmed">
             <div className="flex items-center justify-between border-b border-grid-dimmed bg-charcoal-900 px-3">
               <div className="flex items-center gap-3">
-                <Header2>
+                <Header3>
                   {results?.rows?.length ? `${results.rows.length} Results` : "Results"}
-                </Header2>
+                </Header3>
                 {results?.stats && (
                   <span className="text-xs text-text-dimmed">
                     {formatQueryStats(results.stats)}
