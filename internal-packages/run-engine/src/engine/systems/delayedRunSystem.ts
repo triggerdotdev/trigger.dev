@@ -41,7 +41,10 @@ export class DelayedRunSystem {
           const snapshot = await getLatestExecutionSnapshot(prisma, runId);
 
           // Check if the run is still in DELAYED status (or legacy RUN_CREATED for older runs)
-          if (snapshot.executionStatus !== "DELAYED" && snapshot.executionStatus !== "RUN_CREATED") {
+          if (
+            snapshot.executionStatus !== "DELAYED" &&
+            snapshot.executionStatus !== "RUN_CREATED"
+          ) {
             throw new ServiceValidationError("Cannot reschedule a run that is not delayed");
           }
 
@@ -126,6 +129,19 @@ export class DelayedRunSystem {
 
       if (!run) {
         throw new Error(`#enqueueDelayedRun: run not found: ${runId}`);
+      }
+
+      // Check if delayUntil has been rescheduled to the future (e.g., by debounce)
+      // If so, don't enqueue - the rescheduled worker job will handle it
+      if (run.delayUntil && run.delayUntil > new Date()) {
+        this.$.logger.debug(
+          "enqueueDelayedRun: delay was rescheduled to the future, skipping enqueue",
+          {
+            runId,
+            delayUntil: run.delayUntil,
+          }
+        );
+        return;
       }
 
       // Now we need to enqueue the run into the RunQueue
