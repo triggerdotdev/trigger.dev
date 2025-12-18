@@ -135,7 +135,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       query,
       schema: z.record(z.any()),
       tableSchema: querySchemas,
-      transformValues: false,
+      transformValues: true,
       ...tenantOptions,
     });
 

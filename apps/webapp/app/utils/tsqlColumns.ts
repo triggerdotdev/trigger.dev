@@ -169,11 +169,6 @@ function deriveRenderType(
 ): RenderType {
   const lowerName = columnName.toLowerCase();
 
-  // Status column with string type → runStatus
-  if (lowerName === "status" && jsType === "string") {
-    return "runStatus";
-  }
-
   // Check for datetime strings
   if (jsType === "string" && allStringsAreDates(rows, columnName)) {
     return "datetime";
