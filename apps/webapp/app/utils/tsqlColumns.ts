@@ -38,6 +38,36 @@ export interface ColumnMetadata {
 }
 
 /**
+ * A custom column inferer function that can detect specific column types.
+ *
+ * Inferers are called in order before falling back to basic type inference.
+ * Return `ColumnMetadata` if the column matches, or `false` to pass to the next inferer.
+ *
+ * @param columnName - The name of the column
+ * @param values - Non-null values from the column (via getColumnData)
+ * @param basicType - The basic JS type inferred from the values
+ * @returns ColumnMetadata if matched, false otherwise
+ *
+ * @example
+ * ```typescript
+ * const statusInferer: ColumnInferer = (name, values, basicType) => {
+ *   if (name === "status" && basicType === "string") {
+ *     const isValid = values.every(v => VALID_STATUSES.includes(v as string));
+ *     if (isValid) {
+ *       return { name, jsType: "string", renderType: "runStatus" };
+ *     }
+ *   }
+ *   return false;
+ * };
+ * ```
+ */
+export type ColumnInferer = (
+  columnName: string,
+  values: unknown[],
+  basicType: JSType
+) => ColumnMetadata | false;
+
+/**
  * Check if a string looks like an ISO 8601 date
  */
 function isISODateString(value: string): boolean {
@@ -205,6 +235,7 @@ function deriveRenderType(
  * Infer column metadata from query result rows
  *
  * @param rows - Array of result rows from the query
+ * @param inferers - Optional array of custom inferers to run before basic inference
  * @returns Array of column metadata in the order columns appear
  *
  * @example
@@ -214,7 +245,7 @@ function deriveRenderType(
  *   { run_id: "run_456", status: "PENDING", created_at: "2024-01-02T00:00:00Z" },
  * ];
  *
- * const columns = inferColumnMetadata(rows);
+ * const columns = inferColumnMetadata(rows, [statusInferer]);
  * // [
  * //   { name: "run_id", jsType: "string", renderType: "string" },
  * //   { name: "status", jsType: "string", renderType: "runStatus" },
@@ -222,7 +253,10 @@ function deriveRenderType(
  * // ]
  * ```
  */
-export function inferColumnMetadata(rows: Record<string, unknown>[]): ColumnMetadata[] {
+export function inferColumnMetadata(
+  rows: Record<string, unknown>[],
+  inferers?: ColumnInferer[]
+): ColumnMetadata[] {
   if (rows.length === 0) {
     return [];
   }
@@ -231,7 +265,20 @@ export function inferColumnMetadata(rows: Record<string, unknown>[]): ColumnMeta
   const columnNames = [...new Set(rows.flatMap((row) => Object.keys(row)))];
 
   return columnNames.map((name) => {
+    const values = getColumnData(name, rows);
     const jsType = sampleJSType(rows, name);
+
+    // Try custom inferers first, in order
+    if (inferers) {
+      for (const inferer of inferers) {
+        const result = inferer(name, values, jsType);
+        if (result !== false) {
+          return result;
+        }
+      }
+    }
+
+    // Fall back to basic type derivation
     const renderType = deriveRenderType(name, jsType, rows);
 
     return {
@@ -242,8 +289,11 @@ export function inferColumnMetadata(rows: Record<string, unknown>[]): ColumnMeta
   });
 }
 
-function getColumnData(key: string, rows: Record<string, unknown>[]): unknown[] {
-  let data: unknown[] = [];
+/**
+ * Extract non-null values from a specific column across all rows
+ */
+export function getColumnData(key: string, rows: Record<string, unknown>[]): unknown[] {
+  const data: unknown[] = [];
   for (const row of rows) {
     const value = row[key];
     if (value !== null && value !== undefined) {

@@ -1,5 +1,10 @@
 import { column, type TableSchema } from "@internal/tsql";
-import { runFriendlyStatus, runStatusTitleFromStatus } from "~/components/runs/v3/TaskRunStatus";
+import {
+  allTaskRunStatuses,
+  runFriendlyStatus,
+  runStatusTitleFromStatus,
+} from "~/components/runs/v3/TaskRunStatus";
+import type { ColumnInferer } from "~/utils/tsqlColumns";
 
 /**
  * Environment type values
@@ -232,6 +237,42 @@ export const runsSchema: TableSchema = {
  * All available schemas for the query editor
  */
 export const querySchemas: TableSchema[] = [runsSchema];
+
+/**
+ * Custom column inferers for the query editor
+ *
+ * These run in order before falling back to basic type inference.
+ * Each inferer can detect specific column patterns and return custom metadata.
+ */
+export const queryInferers: ColumnInferer[] = [
+  // TaskRunStatus inferer - detects status columns containing valid run statuses
+  (columnName, values, basicType) => {
+    if (basicType !== "string") {
+      return false;
+    }
+
+    // Check if the column name suggests it's a status
+    const lowerName = columnName.toLowerCase();
+    if (!lowerName.includes("status")) {
+      return false;
+    }
+
+    // Check if all values are valid TaskRunStatus values
+    const isValidStatus = values.every((v) =>
+      allTaskRunStatuses.includes(v as (typeof allTaskRunStatuses)[number])
+    );
+
+    if (isValidStatus) {
+      return {
+        name: columnName,
+        jsType: "string",
+        renderType: "runStatus",
+      };
+    }
+
+    return false;
+  },
+];
 
 /**
  * Default query for the query editor

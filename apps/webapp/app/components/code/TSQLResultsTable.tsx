@@ -10,7 +10,7 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { formatCurrencyAccurate, formatNumber } from "~/utils/numberFormatter";
-import { inferColumnMetadata, type ColumnMetadata } from "~/utils/tsqlColumns";
+import type { ColumnMetadata } from "~/utils/tsqlColumns";
 import { allTaskRunStatuses, TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
 
 /**
@@ -87,11 +87,14 @@ function CellValue({ value, column }: { value: unknown; column: ColumnMetadata }
   }
 }
 
-export function TSQLResultsTable({ rows }: { rows: Record<string, unknown>[] }) {
-  if (!rows.length) return null;
-
-  // Infer column metadata from the rows
-  const columns = inferColumnMetadata(rows);
+export function TSQLResultsTable({
+  rows,
+  columns,
+}: {
+  rows: Record<string, unknown>[];
+  columns: ColumnMetadata[];
+}) {
+  if (!rows.length || !columns.length) return null;
 
   return (
     <Table fullWidth>
