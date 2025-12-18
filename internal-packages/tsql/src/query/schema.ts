@@ -95,6 +95,47 @@ export interface ColumnSchema {
    * ```
    */
   expression?: string;
+  /**
+   * Custom render type for UI display.
+   *
+   * When set, the UI can use this to render the column with a custom component
+   * instead of the default renderer based on ClickHouseType.
+   *
+   * Common custom render types:
+   * - "runStatus" - Task run status badges
+   * - "cost" - Cost formatting (cents to dollars)
+   * - "duration" - Duration formatting (ms to human-readable)
+   *
+   * Custom types can be defined by consumers without modifying this package.
+   *
+   * @example
+   * ```typescript
+   * {
+   *   name: "status",
+   *   type: "LowCardinality(String)",
+   *   customRenderType: "runStatus",
+   * }
+   * ```
+   */
+  customRenderType?: string;
+}
+
+/**
+ * Metadata for a column in query results.
+ *
+ * This is returned by the TSQL compiler to describe each column in the SELECT clause,
+ * allowing the UI to render columns appropriately without inspecting result values.
+ */
+export interface OutputColumnMetadata {
+  /** Column name in the result set (after AS aliasing) */
+  name: string;
+  /** ClickHouse data type (from schema or inferred for computed expressions) */
+  type: ClickHouseType;
+  /**
+   * Custom render type from schema, if specified.
+   * When set, the UI should use a custom renderer instead of the default for the ClickHouseType.
+   */
+  customRenderType?: string;
 }
 
 /**
@@ -269,7 +310,9 @@ export function validateSortColumn(
     throw new QueryError(`Column "${columnName}" does not exist on table "${tableName}"`);
   }
   if (col.sortable === false) {
-    throw new QueryError(`Column "${columnName}" on table "${tableName}" cannot be used in ORDER BY`);
+    throw new QueryError(
+      `Column "${columnName}" on table "${tableName}" cannot be used in ORDER BY`
+    );
   }
   return col;
 }
@@ -289,7 +332,9 @@ export function validateGroupColumn(
     throw new QueryError(`Column "${columnName}" does not exist on table "${tableName}"`);
   }
   if (col.groupable === false) {
-    throw new QueryError(`Column "${columnName}" on table "${tableName}" cannot be used in GROUP BY`);
+    throw new QueryError(
+      `Column "${columnName}" on table "${tableName}" cannot be used in GROUP BY`
+    );
   }
   return col;
 }
@@ -424,4 +469,3 @@ export function getTableColumnNames(schema: SchemaRegistry, tableName: string): 
 export function getAllTableNames(schema: SchemaRegistry): string[] {
   return Object.keys(schema.tables);
 }
-

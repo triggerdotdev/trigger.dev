@@ -64,6 +64,7 @@ export {
   type TenantColumnConfig,
   type SchemaRegistry,
   type ClickHouseType,
+  type OutputColumnMetadata,
   createSchemaRegistry,
   findTable,
   findColumn,

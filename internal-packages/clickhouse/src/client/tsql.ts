@@ -15,8 +15,8 @@ import {
 } from "@internal/tsql";
 import type { ClickhouseReader } from "./types.js";
 import { QueryError } from "./errors.js";
+import type { OutputColumnMetadata } from "@internal/tsql";
 
-// Re-export TableSchema for convenience
 export type { TableSchema, QuerySettings };
 
 /**
@@ -51,9 +51,17 @@ export interface ExecuteTSQLOptions<TOut extends z.ZodSchema> {
 }
 
 /**
+ * Successful result from TSQL query execution
+ */
+export interface TSQLQuerySuccess<T> {
+  rows: T[];
+  columns: OutputColumnMetadata[];
+}
+
+/**
  * Result type for TSQL query execution
  */
-export type TSQLQueryResult<T> = [QueryError, null] | [null, T[]];
+export type TSQLQueryResult<T> = [QueryError, null] | [null, TSQLQuerySuccess<T>];
 
 /**
  * Execute a TSQL query against ClickHouse
@@ -83,7 +91,7 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
 
   try {
     // 1. Compile the TSQL query to ClickHouse SQL
-    const { sql, params } = compileTSQL(options.query, {
+    const { sql, params, columns } = compileTSQL(options.query, {
       organizationId: options.organizationId,
       projectId: options.projectId,
       environmentId: options.environmentId,
@@ -112,10 +120,10 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
         rows as Record<string, unknown>[],
         options.tableSchema
       );
-      return [null, transformedRows as z.output<TOut>[]];
+      return [null, { rows: transformedRows as z.output<TOut>[], columns }];
     }
 
-    return [null, rows];
+    return [null, { rows: rows ?? [], columns }];
   } catch (error) {
     if (error instanceof Error) {
       return [new QueryError(error.message, { query: options.query }), null];

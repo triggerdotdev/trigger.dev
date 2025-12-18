@@ -54,6 +54,8 @@ import {
   ColumnSchema,
   getInternalValue,
   isVirtualColumn,
+  OutputColumnMetadata,
+  ClickHouseType,
 } from "./schema";
 
 /**
@@ -64,6 +66,8 @@ export interface PrintResult {
   sql: string;
   /** Parameter values for parameterized query execution */
   params: Record<string, unknown>;
+  /** Metadata for each column in the SELECT clause, in order */
+  columns: OutputColumnMetadata[];
 }
 
 /**
@@ -99,6 +103,8 @@ export class ClickHousePrinter {
    * Key is the alias/name used in the query, value is the TableSchema
    */
   private tableContexts: Map<string, TableSchema> = new Map();
+  /** Column metadata collected during SELECT processing */
+  private outputColumns: OutputColumnMetadata[] = [];
 
   constructor(
     private context: PrinterContext,
@@ -111,10 +117,12 @@ export class ClickHousePrinter {
    * Print an AST node to ClickHouse SQL
    */
   print(node: SelectQuery | SelectSetQuery): PrintResult {
+    this.outputColumns = [];
     const sql = this.visit(node);
     return {
       sql,
       params: this.context.getParams(),
+      columns: this.outputColumns,
     };
   }
 
@@ -320,10 +328,14 @@ export class ClickHousePrinter {
       nextJoin = nextJoin.next_join;
     }
 
-    // Process SELECT columns
+    // Process SELECT columns and collect metadata
     let columns: string[];
     if (node.select && node.select.length > 0) {
-      columns = node.select.map((col) => this.visitSelectColumn(col));
+      // Only collect metadata for top-level queries (not subqueries)
+      if (isTopLevelQuery) {
+        this.outputColumns = [];
+      }
+      columns = node.select.map((col) => this.visitSelectColumnWithMetadata(col, isTopLevelQuery));
     } else {
       columns = ["1"];
     }
@@ -438,7 +450,7 @@ export class ClickHousePrinter {
   }
 
   /**
-   * Visit a SELECT column expression, handling virtual columns specially
+   * Visit a SELECT column expression with metadata collection
    *
    * For bare Field expressions that reference virtual columns, we need to add
    * an AS alias to preserve the column name in the result set.
@@ -447,9 +459,16 @@ export class ClickHousePrinter {
    * - `SELECT execution_duration` → `SELECT (expr) AS execution_duration`
    * - `SELECT execution_duration AS dur` → `SELECT (expr) AS dur` (Alias handles it)
    * - `SELECT run_id` → `SELECT run_id` (not a virtual column)
+   *
+   * @param col - The column expression
+   * @param collectMetadata - Whether to collect column metadata (only for top-level queries)
    */
-  private visitSelectColumn(col: Expression): string {
+  private visitSelectColumnWithMetadata(col: Expression, collectMetadata: boolean): string {
+    // Extract output name and source column before visiting
+    const { outputName, sourceColumn, inferredType } = this.analyzeSelectColumn(col);
+
     // Check if this is a bare Field (not wrapped in Alias)
+    let sqlResult: string;
     if ((col as Field).expression_type === "field") {
       const field = col as Field;
       const virtualColumnName = this.getVirtualColumnNameForField(field.chain);
@@ -458,12 +477,436 @@ export class ClickHousePrinter {
         // Visit the field (which will return the expression)
         const visited = this.visit(col);
         // Add the alias to preserve the column name
-        return `${visited} AS ${this.printIdentifier(virtualColumnName)}`;
+        sqlResult = `${visited} AS ${this.printIdentifier(virtualColumnName)}`;
+      } else {
+        sqlResult = this.visit(col);
+      }
+    } else {
+      // For non-virtual columns or expressions already wrapped in Alias, visit normally
+      sqlResult = this.visit(col);
+    }
+
+    // Collect metadata for top-level queries
+    if (collectMetadata && outputName) {
+      const metadata: OutputColumnMetadata = {
+        name: outputName,
+        type: sourceColumn?.type ?? inferredType ?? "String",
+      };
+
+      // Only add customRenderType if specified in schema
+      if (sourceColumn?.customRenderType) {
+        metadata.customRenderType = sourceColumn.customRenderType;
+      }
+
+      this.outputColumns.push(metadata);
+    }
+
+    return sqlResult;
+  }
+
+  /**
+   * Analyze a SELECT column expression to extract output name, source column, and type
+   */
+  private analyzeSelectColumn(col: Expression): {
+    outputName: string | null;
+    sourceColumn: ColumnSchema | null;
+    inferredType: ClickHouseType | null;
+  } {
+    // Handle Alias - the output name is the alias
+    if ((col as Alias).expression_type === "alias") {
+      const alias = col as Alias;
+      const innerAnalysis = this.analyzeSelectColumn(alias.expr);
+      return {
+        outputName: alias.alias,
+        sourceColumn: innerAnalysis.sourceColumn,
+        inferredType: innerAnalysis.inferredType,
+      };
+    }
+
+    // Handle Field - the output name is the column name
+    if ((col as Field).expression_type === "field") {
+      const field = col as Field;
+      const columnInfo = this.resolveFieldToColumn(field.chain);
+      return {
+        outputName: columnInfo.outputName,
+        sourceColumn: columnInfo.column,
+        inferredType: columnInfo.column?.type ?? null,
+      };
+    }
+
+    // Handle Call (function/aggregation) - infer type from function
+    if ((col as Call).expression_type === "call") {
+      const call = col as Call;
+      const inferredType = this.inferCallType(call);
+      return {
+        outputName: null, // Computed columns without alias get auto-named by ClickHouse
+        sourceColumn: null,
+        inferredType,
+      };
+    }
+
+    // Handle ArithmeticOperation - infer type
+    if ((col as ArithmeticOperation).expression_type === "arithmetic_operation") {
+      const arith = col as ArithmeticOperation;
+      const inferredType = this.inferArithmeticType(arith);
+      return {
+        outputName: null,
+        sourceColumn: null,
+        inferredType,
+      };
+    }
+
+    // Handle Constant
+    if ((col as Constant).expression_type === "constant") {
+      const constant = col as Constant;
+      const inferredType = this.inferConstantType(constant);
+      return {
+        outputName: null,
+        sourceColumn: null,
+        inferredType,
+      };
+    }
+
+    // Default for other expression types
+    return {
+      outputName: null,
+      sourceColumn: null,
+      inferredType: null,
+    };
+  }
+
+  /**
+   * Resolve a field chain to its column schema and output name
+   */
+  private resolveFieldToColumn(chain: Array<string | number>): {
+    outputName: string | null;
+    column: ColumnSchema | null;
+  } {
+    if (chain.length === 0) {
+      return { outputName: null, column: null };
+    }
+
+    // Handle asterisk
+    if (chain[0] === "*" || (chain.length === 2 && chain[1] === "*")) {
+      return { outputName: null, column: null };
+    }
+
+    const firstPart = chain[0];
+    if (typeof firstPart !== "string") {
+      return { outputName: null, column: null };
+    }
+
+    // Case 1: Qualified reference like table.column
+    if (chain.length >= 2) {
+      const tableAlias = firstPart;
+      const tableSchema = this.tableContexts.get(tableAlias);
+      if (!tableSchema) {
+        return { outputName: firstPart, column: null };
+      }
+
+      const columnName = chain[1];
+      if (typeof columnName !== "string") {
+        return { outputName: null, column: null };
+      }
+
+      const columnSchema = tableSchema.columns[columnName];
+      return {
+        outputName: columnName,
+        column: columnSchema || null,
+      };
+    }
+
+    // Case 2: Unqualified reference like just "column"
+    const columnName = firstPart;
+    for (const tableSchema of this.tableContexts.values()) {
+      const columnSchema = tableSchema.columns[columnName];
+      if (columnSchema) {
+        return {
+          outputName: columnName,
+          column: columnSchema,
+        };
       }
     }
 
-    // For non-virtual columns or expressions already wrapped in Alias, visit normally
-    return this.visit(col);
+    // Column not found in any table context
+    return {
+      outputName: columnName,
+      column: null,
+    };
+  }
+
+  // ============================================================
+  // Type Inference for Computed Expressions
+  // ============================================================
+
+  /**
+   * Infer the ClickHouse type for a function call expression
+   */
+  private inferCallType(call: Call): ClickHouseType {
+    const name = call.name.toLowerCase();
+
+    // Count functions always return UInt64
+    if (name === "count" || name === "countif" || name === "countdistinct" || name === "countdistinctif") {
+      return "UInt64";
+    }
+
+    // Uniq functions return UInt64
+    if (name.startsWith("uniq")) {
+      return "UInt64";
+    }
+
+    // Sum returns Int64 by default (could be more specific based on input)
+    if (name === "sum" || name === "sumif") {
+      return "Int64";
+    }
+
+    // Avg returns Float64
+    if (name === "avg" || name === "avgif") {
+      return "Float64";
+    }
+
+    // Min/Max preserve the input type - try to infer from first arg
+    if (name === "min" || name === "max" || name === "minif" || name === "maxif") {
+      if (call.args.length > 0) {
+        const argType = this.inferExpressionType(call.args[0]);
+        if (argType) return argType;
+      }
+      return "Float64"; // Default
+    }
+
+    // dateDiff returns Int64 (signed difference)
+    if (name === "datediff" || name === "date_diff") {
+      return "Int64";
+    }
+
+    // String functions
+    if (
+      name === "concat" ||
+      name === "substring" ||
+      name === "substr" ||
+      name === "lower" ||
+      name === "upper" ||
+      name === "trim" ||
+      name === "replace" ||
+      name === "tostring"
+    ) {
+      return "String";
+    }
+
+    // Date/DateTime conversion functions
+    if (name === "todate" || name === "todate32") {
+      return "Date";
+    }
+    if (name === "todatetime") {
+      return "DateTime";
+    }
+    if (name === "todatetime64") {
+      return "DateTime64";
+    }
+
+    // Date extraction functions return UInt8/UInt16
+    if (
+      name === "toyear" ||
+      name === "tomonth" ||
+      name === "todayofmonth" ||
+      name === "todayofweek" ||
+      name === "todayofyear" ||
+      name === "tohour" ||
+      name === "tominute" ||
+      name === "tosecond"
+    ) {
+      return "UInt16";
+    }
+
+    // toUnixTimestamp returns UInt32
+    if (name === "tounixtimestamp") {
+      return "UInt32";
+    }
+
+    // Numeric conversion functions
+    if (name === "toint8") return "Int8";
+    if (name === "toint16") return "Int16";
+    if (name === "toint32") return "Int32";
+    if (name === "toint64") return "Int64";
+    if (name === "touint8") return "UInt8";
+    if (name === "touint16") return "UInt16";
+    if (name === "touint32") return "UInt32";
+    if (name === "touint64") return "UInt64";
+    if (name === "tofloat32") return "Float32";
+    if (name === "tofloat64") return "Float64";
+
+    // Boolean functions
+    if (
+      name === "empty" ||
+      name === "notempty" ||
+      name === "isnull" ||
+      name === "isnotnull" ||
+      name === "in" ||
+      name === "notin"
+    ) {
+      return "UInt8"; // ClickHouse uses UInt8 for booleans
+    }
+
+    // If/multiIf - try to infer from result expressions
+    if (name === "if" && call.args.length >= 2) {
+      const thenType = this.inferExpressionType(call.args[1]);
+      if (thenType) return thenType;
+    }
+
+    // Array functions that return arrays
+    if (name === "grouparray" || name === "groupuniqarray" || name === "array") {
+      return "Array(String)"; // Simplified - could be more specific
+    }
+
+    // Length functions return UInt64
+    if (name === "length" || name === "lengthutf8" || name === "char_length") {
+      return "UInt64";
+    }
+
+    // Default to String for unknown functions
+    return "String";
+  }
+
+  /**
+   * Infer the ClickHouse type for an arithmetic operation
+   */
+  private inferArithmeticType(arith: ArithmeticOperation): ClickHouseType {
+    const leftType = this.inferExpressionType(arith.left);
+    const rightType = this.inferExpressionType(arith.right);
+
+    // DateTime minus DateTime could produce an interval/Int64
+    if (this.isDateTimeType(leftType) && this.isDateTimeType(rightType)) {
+      return "Int64"; // Seconds difference
+    }
+
+    // If either is Float, result is Float
+    if (this.isFloatType(leftType) || this.isFloatType(rightType)) {
+      return "Float64";
+    }
+
+    // Division always produces Float64
+    if (arith.op === ArithmeticOperationOp.Div) {
+      return "Float64";
+    }
+
+    // Integer arithmetic stays integer
+    if (this.isIntType(leftType) && this.isIntType(rightType)) {
+      // Return the wider type
+      return this.widerIntType(leftType, rightType);
+    }
+
+    // Default to Float64 for mixed or unknown types
+    return "Float64";
+  }
+
+  /**
+   * Infer the ClickHouse type for a constant value
+   */
+  private inferConstantType(constant: Constant): ClickHouseType {
+    const value = constant.value;
+
+    if (value === null) {
+      return "Nullable(String)";
+    }
+    if (typeof value === "boolean") {
+      return "UInt8";
+    }
+    if (typeof value === "number") {
+      if (Number.isInteger(value)) {
+        return "Int64";
+      }
+      return "Float64";
+    }
+    if (typeof value === "string") {
+      // Check if it looks like a date/datetime
+      if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(value)) {
+        return "DateTime64";
+      }
+      if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        return "Date";
+      }
+      return "String";
+    }
+
+    return "String";
+  }
+
+  /**
+   * Infer the ClickHouse type for any expression
+   */
+  private inferExpressionType(expr: Expression): ClickHouseType | null {
+    if ((expr as Field).expression_type === "field") {
+      const field = expr as Field;
+      const { column } = this.resolveFieldToColumn(field.chain);
+      return column?.type ?? null;
+    }
+
+    if ((expr as Call).expression_type === "call") {
+      return this.inferCallType(expr as Call);
+    }
+
+    if ((expr as ArithmeticOperation).expression_type === "arithmetic_operation") {
+      return this.inferArithmeticType(expr as ArithmeticOperation);
+    }
+
+    if ((expr as Constant).expression_type === "constant") {
+      return this.inferConstantType(expr as Constant);
+    }
+
+    return null;
+  }
+
+  /**
+   * Check if a type is a DateTime type
+   */
+  private isDateTimeType(type: ClickHouseType | null): boolean {
+    if (!type) return false;
+    return (
+      type === "DateTime" ||
+      type === "DateTime64" ||
+      type === "Date" ||
+      type === "Date32" ||
+      type.startsWith("Nullable(DateTime") ||
+      type.startsWith("Nullable(Date")
+    );
+  }
+
+  /**
+   * Check if a type is a Float type
+   */
+  private isFloatType(type: ClickHouseType | null): boolean {
+    if (!type) return false;
+    return (
+      type === "Float32" ||
+      type === "Float64" ||
+      type === "Nullable(Float32)" ||
+      type === "Nullable(Float64)"
+    );
+  }
+
+  /**
+   * Check if a type is an integer type
+   */
+  private isIntType(type: ClickHouseType | null): boolean {
+    if (!type) return false;
+    return (
+      type.startsWith("Int") ||
+      type.startsWith("UInt") ||
+      type.startsWith("Nullable(Int") ||
+      type.startsWith("Nullable(UInt")
+    );
+  }
+
+  /**
+   * Return the wider of two integer types
+   */
+  private widerIntType(left: ClickHouseType | null, right: ClickHouseType | null): ClickHouseType {
+    // Simple heuristic: prefer Int64 for safety
+    if (left === "Int64" || right === "Int64") return "Int64";
+    if (left === "UInt64" || right === "UInt64") return "UInt64";
+    if (left === "Int32" || right === "Int32") return "Int32";
+    if (left === "UInt32" || right === "UInt32") return "UInt32";
+    return "Int64";
   }
 
   /**
