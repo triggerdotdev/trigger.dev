@@ -25,7 +25,8 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { executeQuery } from "~/services/queryService.server";
 import { requireUser } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
-import { defaultQuery, querySchemas } from "~/v3/querySchemas";
+import { inferColumnMetadata } from "~/utils/tsqlColumns";
+import { defaultQuery, queryInferers, querySchemas } from "~/v3/querySchemas";
 
 const scopeOptions = [
   { value: "environment", label: "Environment" },
@@ -78,19 +79,22 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
   // Temporarily admin-only
   if (!user.admin) {
-    return typedjson({ error: "Unauthorized", rows: null }, { status: 403 });
+    return typedjson({ error: "Unauthorized", rows: null, columns: null }, { status: 403 });
   }
 
   const { projectParam, organizationSlug, envParam } = EnvironmentParamSchema.parse(params);
 
   const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
   if (!project) {
-    return typedjson({ error: "Project not found", rows: null }, { status: 404 });
+    return typedjson({ error: "Project not found", rows: null, columns: null }, { status: 404 });
   }
 
   const environment = await findEnvironmentBySlug(project.id, envParam, user.id);
   if (!environment) {
-    return typedjson({ error: "Environment not found", rows: null }, { status: 404 });
+    return typedjson(
+      { error: "Environment not found", rows: null, columns: null },
+      { status: 404 }
+    );
   }
 
   const formData = await request.formData();
@@ -101,7 +105,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
   if (!parsed.success) {
     return typedjson(
-      { error: parsed.error.errors.map((e) => e.message).join(", "), rows: null },
+      { error: parsed.error.errors.map((e) => e.message).join(", "), rows: null, columns: null },
       { status: 400 }
     );
   }
@@ -136,13 +140,16 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     });
 
     if (error) {
-      return typedjson({ error: error.message, rows: null }, { status: 400 });
+      return typedjson({ error: error.message, rows: null, columns: null }, { status: 400 });
     }
 
-    return typedjson({ error: null, rows });
+    // Infer column metadata on the server
+    const columns = inferColumnMetadata(rows, queryInferers);
+
+    return typedjson({ error: null, rows, columns });
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : "Unknown error executing query";
-    return typedjson({ error: errorMessage, rows: null }, { status: 500 });
+    return typedjson({ error: errorMessage, rows: null, columns: null }, { status: 500 });
   }
 };
 
@@ -222,8 +229,8 @@ export default function Page() {
                 </div>
               ) : results?.error ? (
                 <pre className="whitespace-pre-wrap p-4 text-sm text-red-400">{results.error}</pre>
-              ) : results?.rows ? (
-                <TSQLResultsTable rows={results.rows} />
+              ) : results?.rows && results?.columns ? (
+                <TSQLResultsTable rows={results.rows} columns={results.columns} />
               ) : (
                 <Paragraph variant="small" className="p-4 text-text-dimmed">
                   Run a query to see results here.
