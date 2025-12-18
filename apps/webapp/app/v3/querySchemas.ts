@@ -156,26 +156,29 @@ export const runsSchema: TableSchema = {
     },
 
     // Cost & usage
-    usage_duration_ms: {
-      name: "usage_duration_ms",
+    usage_duration: {
+      name: "usage_duration",
+      clickhouseName: "usage_duration_ms",
       ...column("UInt32", {
         description: "Usage duration in milliseconds",
         customRenderType: "duration",
       }),
     },
-    cost_in_cents: {
-      name: "cost_in_cents",
+    compute_cost: {
+      name: "compute_cost",
       ...column("Float64", {
-        description: "Cost in cents",
+        description: "Compute cost in cents",
         customRenderType: "cost",
       }),
+      expression: "cost_in_cents / 100.0",
     },
-    base_cost_in_cents: {
-      name: "base_cost_in_cents",
+    invocation_cost: {
+      name: "invocation_cost",
       ...column("Float64", {
-        description: "Base cost in cents",
+        description: "Invocation cost in cents",
         customRenderType: "cost",
       }),
+      expression: "base_cost_in_cents / 100.0",
     },
 
     // Output & error (JSON columns)
@@ -205,8 +208,9 @@ export const runsSchema: TableSchema = {
       name: "cli_version",
       ...column("String", { description: "CLI version" }),
     },
-    machine_preset: {
-      name: "machine_preset",
+    machine: {
+      name: "machine",
+      clickhouseName: "machine_preset",
       ...column("LowCardinality(String)", {
         description: "Machine preset",
         allowedValues: [...MACHINE_PRESETS],
@@ -245,7 +249,10 @@ export const defaultQuery = `SELECT
   task_identifier,
   status,
   created_at,
-  usage_duration_ms
+  usage_duration,
+  compute_cost,
+  invocation_cost,
+  machine,
 FROM runs
 ORDER BY created_at DESC
 LIMIT 10`;
