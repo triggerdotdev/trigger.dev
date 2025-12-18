@@ -306,9 +306,13 @@ export function v3RunPath(
 export function v3RunRedirectPath(
   organization: OrgForPath,
   project: ProjectForPath,
-  run: v3RunForPath,
+  run: v3RunForPath
 ) {
   return `${v3ProjectPath(organization, project)}/runs/${run.friendlyId}`;
+}
+
+export function v3RunPathFromFriendlyId(runId: string) {
+  return `/runs/${runId}`;
 }
 
 export function v3RunDownloadLogsPath(run: v3RunForPath) {
