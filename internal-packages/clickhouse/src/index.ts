@@ -39,6 +39,7 @@ export {
   type TableSchema,
   type TSQLQueryResult,
   type TSQLQuerySuccess,
+  type QueryStats,
 } from "./client/tsql.js";
 export type { OutputColumnMetadata } from "@internal/tsql";
 

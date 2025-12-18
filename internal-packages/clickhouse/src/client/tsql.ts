@@ -13,9 +13,11 @@ import {
   type TableSchema,
   type QuerySettings,
 } from "@internal/tsql";
-import type { ClickhouseReader } from "./types.js";
+import type { ClickhouseReader, QueryStats } from "./types.js";
 import { QueryError } from "./errors.js";
 import type { OutputColumnMetadata } from "@internal/tsql";
+
+export type { QueryStats };
 
 export type { TableSchema, QuerySettings };
 
@@ -56,6 +58,7 @@ export interface ExecuteTSQLOptions<TOut extends z.ZodSchema> {
 export interface TSQLQuerySuccess<T> {
   rows: T[];
   columns: OutputColumnMetadata[];
+  stats: QueryStats;
 }
 
 /**
@@ -99,8 +102,8 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
       settings: options.querySettings,
     });
 
-    // 2. Execute the query
-    const queryFn = reader.query({
+    // 2. Execute the query with stats
+    const queryFn = reader.queryWithStats({
       name: options.name,
       query: sql,
       params: z.record(z.any()),
@@ -108,11 +111,13 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
       settings: options.clickhouseSettings,
     });
 
-    const [error, rows] = await queryFn(params);
+    const [error, result] = await queryFn(params);
 
     if (error) {
       return [error, null];
     }
+
+    const { rows, stats } = result;
 
     // 3. Transform result values if enabled
     if (shouldTransformValues && rows) {
@@ -120,10 +125,10 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
         rows as Record<string, unknown>[],
         options.tableSchema
       );
-      return [null, { rows: transformedRows as z.output<TOut>[], columns }];
+      return [null, { rows: transformedRows as z.output<TOut>[], columns, stats }];
     }
 
-    return [null, { rows: rows ?? [], columns }];
+    return [null, { rows: rows ?? [], columns, stats }];
   } catch (error) {
     if (error instanceof Error) {
       return [new QueryError(error.message, { query: options.query }), null];

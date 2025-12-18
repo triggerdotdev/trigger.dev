@@ -3,9 +3,10 @@ import { InsertError, QueryError } from "./errors.js";
 import {
   ClickhouseQueryBuilderFastFunction,
   ClickhouseQueryBuilderFunction,
+  ClickhouseReader,
   ClickhouseWriter,
+  QueryResultWithStats,
 } from "./types.js";
-import { ClickhouseReader } from "./types.js";
 import { z } from "zod";
 import { ClickHouseSettings, InsertResult } from "@clickhouse/client";
 import { ClickhouseQueryBuilder, ClickhouseQueryFastBuilder } from "./queryBuilder.js";
@@ -48,6 +49,37 @@ export class NoopClient implements ClickhouseReader, ClickhouseWriter {
       }
 
       return [null, []];
+    };
+  }
+
+  public queryWithStats<TIn extends z.ZodSchema<any>, TOut extends z.ZodSchema<any>>(req: {
+    query: string;
+    params?: TIn;
+    schema: TOut;
+  }): (params: z.input<TIn>) => Promise<Result<QueryResultWithStats<z.output<TOut>>, QueryError>> {
+    return async (params: z.input<TIn>) => {
+      const validParams = req.params?.safeParse(params);
+
+      if (validParams?.error) {
+        return [new QueryError(`Bad params: ${validParams.error.message}`, { query: "" }), null];
+      }
+
+      return [
+        null,
+        {
+          rows: [],
+          stats: {
+            read_rows: "0",
+            read_bytes: "0",
+            written_rows: "0",
+            written_bytes: "0",
+            total_rows_to_read: "0",
+            result_rows: "0",
+            result_bytes: "0",
+            elapsed_ns: "0",
+          },
+        },
+      ];
     };
   }
 

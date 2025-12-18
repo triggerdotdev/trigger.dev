@@ -16,9 +16,11 @@ import type {
   ClickhouseQueryBuilderFastFunction,
   ClickhouseQueryBuilderFunction,
   ClickhouseQueryFunction,
+  ClickhouseQueryWithStatsFunction,
   ClickhouseReader,
   ClickhouseWriter,
   ColumnExpression,
+  QueryStats,
 } from "./types.js";
 import { generateErrorMessage } from "zod-error";
 import { Logger, type LogLevel } from "@trigger.dev/core/logger";
@@ -225,6 +227,177 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
         });
 
         return [null, parsed.data];
+      });
+    };
+  }
+
+  public queryWithStats<TIn extends z.ZodSchema<any>, TOut extends z.ZodSchema<any>>(req: {
+    /**
+     * The name of the operation.
+     * This will be used to identify the operation in the span.
+     */
+    name: string;
+    /**
+     * The SQL query to run.
+     * Use {paramName: Type} to define parameters
+     * Example: `SELECT * FROM table WHERE id = {id: String}`
+     */
+    query: string;
+    /**
+     * The schema of the parameters
+     * Example: z.object({ id: z.string() })
+     */
+    params?: TIn;
+    /**
+     * The schema of the output of each row
+     * Example: z.object({ id: z.string() })
+     */
+    schema: TOut;
+    /**
+     * The settings to use for the query.
+     * These will be merged with the default settings.
+     */
+    settings?: ClickHouseSettings;
+  }): ClickhouseQueryWithStatsFunction<z.input<TIn>, z.output<TOut>> {
+    return async (params, options) => {
+      const queryId = randomUUID();
+
+      return await startSpan(this.tracer, "queryWithStats", async (span) => {
+        this.logger.debug("Querying clickhouse with stats", {
+          name: req.name,
+          query: req.query.replace(/\s+/g, " "),
+          params,
+          settings: req.settings,
+          attributes: options?.attributes,
+          queryId,
+        });
+
+        span.setAttributes({
+          "clickhouse.clientName": this.name,
+          "clickhouse.operationName": req.name,
+          "clickhouse.queryId": queryId,
+          ...flattenAttributes(req.settings, "clickhouse.settings"),
+          ...flattenAttributes(options?.attributes),
+        });
+
+        const validParams = req.params?.safeParse(params);
+
+        if (validParams?.error) {
+          recordSpanError(span, validParams.error);
+
+          this.logger.error("Error parsing query params", {
+            name: req.name,
+            error: validParams.error,
+            query: req.query,
+            params,
+            queryId,
+          });
+
+          return [
+            new QueryError(`Bad params: ${generateErrorMessage(validParams.error.issues)}`, {
+              query: req.query,
+            }),
+            null,
+          ];
+        }
+
+        let unparsedRows: Array<TOut> = [];
+
+        const [clickhouseError, res] = await tryCatch(
+          this.client.query({
+            query: req.query,
+            query_params: validParams?.data,
+            format: "JSONEachRow",
+            query_id: queryId,
+            ...options?.params,
+            clickhouse_settings: {
+              ...req.settings,
+              ...options?.params?.clickhouse_settings,
+            },
+          })
+        );
+
+        if (clickhouseError) {
+          this.logger.error("Error querying clickhouse", {
+            name: req.name,
+            error: clickhouseError,
+            query: req.query,
+            params,
+            queryId,
+          });
+
+          recordClickhouseError(span, clickhouseError);
+
+          return [
+            new QueryError(`Unable to query clickhouse: ${clickhouseError.message}`, {
+              query: req.query,
+            }),
+            null,
+          ];
+        }
+
+        unparsedRows = await res.json();
+
+        span.setAttributes({
+          "clickhouse.query_id": res.query_id,
+          ...flattenAttributes(res.response_headers, "clickhouse.response_headers"),
+        });
+
+        // Parse the summary header to get stats
+        const summaryHeader = res.response_headers["x-clickhouse-summary"];
+        let stats: QueryStats = {
+          read_rows: "0",
+          read_bytes: "0",
+          written_rows: "0",
+          written_bytes: "0",
+          total_rows_to_read: "0",
+          result_rows: "0",
+          result_bytes: "0",
+          elapsed_ns: "0",
+        };
+
+        if (typeof summaryHeader === "string") {
+          const parsedSummary = JSON.parse(summaryHeader);
+          stats = {
+            read_rows: parsedSummary.read_rows ?? "0",
+            read_bytes: parsedSummary.read_bytes ?? "0",
+            written_rows: parsedSummary.written_rows ?? "0",
+            written_bytes: parsedSummary.written_bytes ?? "0",
+            total_rows_to_read: parsedSummary.total_rows_to_read ?? "0",
+            result_rows: parsedSummary.result_rows ?? "0",
+            result_bytes: parsedSummary.result_bytes ?? "0",
+            elapsed_ns: parsedSummary.elapsed_ns ?? "0",
+          };
+          span.setAttributes({
+            ...flattenAttributes(parsedSummary, "clickhouse.summary"),
+          });
+        }
+
+        const parsed = z.array(req.schema).safeParse(unparsedRows);
+
+        if (parsed.error) {
+          this.logger.error("Error parsing clickhouse query result", {
+            name: req.name,
+            error: parsed.error,
+            query: req.query,
+            params,
+            queryId,
+          });
+
+          const queryError = new QueryError(generateErrorMessage(parsed.error.issues), {
+            query: req.query,
+          });
+
+          recordSpanError(span, queryError);
+
+          return [queryError, null];
+        }
+
+        span.setAttributes({
+          "clickhouse.rows": unparsedRows.length,
+        });
+
+        return [null, { rows: parsed.data, stats }];
       });
     };
   }
