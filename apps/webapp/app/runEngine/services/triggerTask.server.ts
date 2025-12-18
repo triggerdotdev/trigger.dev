@@ -379,9 +379,15 @@ export class RunEngineTriggerTaskService {
               this.prisma
             );
 
-            // If the returned run has a different friendlyId, it was debounced
-            // Stop the outer span to prevent a duplicate - the debounced span was created via onDebounced
-            if (taskRun.friendlyId !== runFriendlyId) {
+            // If the returned run has a different friendlyId, it was debounced.
+            // For triggerAndWait: stop the outer span since a replacement debounced span was created via onDebounced.
+            // For regular trigger: let the span complete normally - no replacement span needed since the
+            // original run already has its span from when it was first created.
+            if (
+              taskRun.friendlyId !== runFriendlyId &&
+              body.options?.debounce &&
+              body.options?.resumeParentOnCompletion
+            ) {
               event.stop();
             }
 
