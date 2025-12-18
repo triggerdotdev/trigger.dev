@@ -202,6 +202,7 @@
     "simplur": "^3.0.1",
     "slug": "^6.0.0",
     "socket.io": "4.7.4",
+    "sql-formatter": "^15.4.10",
     "socket.io-adapter": "^2.5.4",
     "sonner": "^1.0.3",
     "sqs-consumer": "^7.4.0",

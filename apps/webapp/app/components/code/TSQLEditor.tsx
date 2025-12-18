@@ -2,7 +2,7 @@ import { sql, StandardSQL } from "@codemirror/lang-sql";
 import { autocompletion } from "@codemirror/autocomplete";
 import { linter, lintGutter } from "@codemirror/lint";
 import type { ViewUpdate } from "@codemirror/view";
-import { CheckIcon, ClipboardIcon, TrashIcon } from "@heroicons/react/20/solid";
+import { CheckIcon, ClipboardIcon, SparklesIcon, TrashIcon } from "@heroicons/react/20/solid";
 import {
   type ReactCodeMirrorProps,
   type UseCodeMirror,
@@ -16,7 +16,7 @@ import { darkTheme } from "./codeMirrorTheme";
 import { createTSQLCompletion } from "./tsql/tsqlCompletion";
 import { createTSQLLinter } from "./tsql/tsqlLinter";
 import type { TableSchema } from "@internal/tsql";
-import { Header2 } from "../primitives/Headers";
+import { format as formatSQL } from "sql-formatter";
 
 export interface TSQLEditorProps extends Omit<ReactCodeMirrorProps, "onBlur"> {
   /** Initial value for the editor */
@@ -35,6 +35,8 @@ export interface TSQLEditorProps extends Omit<ReactCodeMirrorProps, "onBlur"> {
   showCopyButton?: boolean;
   /** Show clear button */
   showClearButton?: boolean;
+  /** Show format button */
+  showFormatButton?: boolean;
   /** Enable linting (syntax checking) */
   linterEnabled?: boolean;
   /** Placeholder text when empty */
@@ -53,6 +55,7 @@ const defaultProps: TSQLEditorDefaultProps = {
   linterEnabled: true,
   showCopyButton: true,
   showClearButton: false,
+  showFormatButton: true,
   schema: [],
 };
 
@@ -67,6 +70,7 @@ export function TSQLEditor(opts: TSQLEditorProps) {
     autoFocus,
     showCopyButton = true,
     showClearButton = false,
+    showFormatButton = true,
     linterEnabled = true,
     schema = [],
     placeholder = "",
@@ -168,7 +172,28 @@ export function TSQLEditor(opts: TSQLEditorProps) {
     }, 1500);
   }, [view]);
 
-  const showButtons = showClearButton || showCopyButton || additionalActions;
+  const format = useCallback(() => {
+    if (view === undefined) return;
+    const currentContent = view.state.doc.toString();
+    if (!currentContent.trim()) return;
+
+    try {
+      const formatted = formatSQL(currentContent, {
+        language: "sql",
+        keywordCase: "upper",
+        indentStyle: "standard",
+        linesBetweenQueries: 2,
+      });
+      view.dispatch({
+        changes: { from: 0, to: view.state.doc.length, insert: formatted },
+      });
+      onChange?.(formatted);
+    } catch {
+      // If formatting fails (e.g., invalid SQL), silently ignore
+    }
+  }, [view, onChange]);
+
+  const showButtons = showClearButton || showCopyButton || showFormatButton || additionalActions;
 
   return (
     <div
@@ -188,6 +213,21 @@ export function TSQLEditor(opts: TSQLEditorProps) {
       {showButtons && (
         <div className="absolute right-0 top-0 z-10 flex items-center justify-end bg-charcoal-900/80 p-0.5">
           {additionalActions && additionalActions}
+          {showFormatButton && (
+            <Button
+              type="button"
+              variant="minimal/small"
+              className="flex-none"
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                format();
+              }}
+              shortcut={{ key: "f", modifiers: ["shift", "alt"], enabledOnInputElements: true }}
+            >
+              Format
+            </Button>
+          )}
           {showClearButton && (
             <Button
               type="button"
