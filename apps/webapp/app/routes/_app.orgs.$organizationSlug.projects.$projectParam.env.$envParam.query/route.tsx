@@ -17,6 +17,7 @@ import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { Spinner } from "~/components/primitives/Spinner";
+import { Switch } from "~/components/primitives/Switch";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -156,6 +157,7 @@ export default function Page() {
 
   const [query, setQuery] = useState(defaultQuery);
   const [scope, setScope] = useState<QueryScope>("environment");
+  const [prettyFormatting, setPrettyFormatting] = useState(true);
 
   const isLoading = navigation.state === "submitting" || navigation.state === "loading";
 
@@ -212,10 +214,16 @@ export default function Page() {
           </div>
           {/* Results */}
           <div className="grid max-h-full grid-rows-[2rem_1fr] gap-2 overflow-hidden border-t border-grid-dimmed pt-1">
-            <div className="border-b border-grid-dimmed bg-charcoal-900 px-3">
+            <div className="flex items-center justify-between border-b border-grid-dimmed bg-charcoal-900 px-3">
               <Header2>
                 {results?.rows?.length ? `${results.rows.length} Results` : "Results"}
               </Header2>
+              <Switch
+                variant="small"
+                label="Pretty formatting"
+                checked={prettyFormatting}
+                onCheckedChange={setPrettyFormatting}
+              />
             </div>
             {isLoading ? (
               <div className="flex items-center gap-2 p-4 text-text-dimmed">
@@ -225,7 +233,11 @@ export default function Page() {
             ) : results?.error ? (
               <pre className="whitespace-pre-wrap p-4 text-sm text-red-400">{results.error}</pre>
             ) : results?.rows && results?.columns ? (
-              <TSQLResultsTable rows={results.rows} columns={results.columns} />
+              <TSQLResultsTable
+                rows={results.rows}
+                columns={results.columns}
+                prettyFormatting={prettyFormatting}
+              />
             ) : (
               <Paragraph variant="small" className="p-4 text-text-dimmed">
                 Run a query to see results here.
