@@ -1,4 +1,10 @@
-import { createRedisClient, Redis, RedisOptions } from "@internal/redis";
+import {
+  createRedisClient,
+  Redis,
+  RedisOptions,
+  type Callback,
+  type Result,
+} from "@internal/redis";
 import { startSpan } from "@internal/tracing";
 import { parseNaturalLanguageDuration } from "@trigger.dev/core/v3/isomorphic";
 import { PrismaClientOrTransaction, TaskRun, Waitpoint } from "@trigger.dev/database";
@@ -79,6 +85,30 @@ export class DebounceSystem {
     this.executionSnapshotSystem = options.executionSnapshotSystem;
     this.delayedRunSystem = options.delayedRunSystem;
     this.maxDebounceDurationMs = options.maxDebounceDurationMs;
+
+    this.#registerCommands();
+  }
+
+  #registerCommands() {
+    // Atomically deletes a key only if its value starts with "pending:".
+    // Returns [1, nil] if deleted (was pending or didn't exist)
+    // Returns [0, value] if not deleted (has a run ID)
+    // This prevents the race condition where between checking "still pending?"
+    // and calling DEL, the original server could complete and register a valid run ID.
+    this.redis.defineCommand("conditionallyDeletePendingKey", {
+      numberOfKeys: 1,
+      lua: `
+local value = redis.call('GET', KEYS[1])
+if not value then
+  return { 1, nil }
+end
+if string.sub(value, 1, 8) == 'pending:' then
+  redis.call('DEL', KEYS[1])
+  return { 1, nil }
+end
+return { 0, value }
+      `,
+    });
   }
 
   /**
@@ -87,6 +117,34 @@ export class DebounceSystem {
    */
   private getDebounceRedisKey(envId: string, taskId: string, debounceKey: string): string {
     return `${envId}:${taskId}:${debounceKey}`;
+  }
+
+  /**
+   * Atomically deletes a key only if its value still starts with "pending:".
+   * This prevents the race condition where between the final GET check and DEL,
+   * the original server could complete and register a valid run ID.
+   *
+   * @returns { deleted: true } if the key was deleted or didn't exist
+   * @returns { deleted: false, existingRunId: string } if the key has a valid run ID
+   */
+  private async conditionallyDeletePendingKey(
+    redisKey: string
+  ): Promise<{ deleted: true } | { deleted: false; existingRunId: string }> {
+    const result = await this.redis.conditionallyDeletePendingKey(redisKey);
+
+    if (!result) {
+      // Should not happen, but treat as deleted if no result
+      return { deleted: true };
+    }
+
+    const [wasDeleted, currentValue] = result;
+
+    if (wasDeleted === 1) {
+      return { deleted: true };
+    }
+
+    // Key exists with a valid run ID
+    return { deleted: false, existingRunId: currentValue! };
   }
 
   /**
@@ -215,16 +273,43 @@ export class DebounceSystem {
     }
 
     // Timed out waiting - the other server may have failed
-    // Delete the stale pending key and return "new"
+    // Conditionally delete the key only if it's still pending
+    // This prevents the race where the original server completed between our last check and now
     this.$.logger.warn(
-      "waitForExistingRun: timed out waiting for pending claim, deleting stale key",
+      "waitForExistingRun: timed out waiting for pending claim, attempting conditional delete",
       {
         redisKey,
         debounceKey: debounce.key,
       }
     );
-    await this.redis.del(redisKey);
-    return { status: "new" };
+
+    const deleteResult = await this.conditionallyDeletePendingKey(redisKey);
+
+    if (deleteResult.deleted) {
+      // Key was pending (or didn't exist) - safe to create new run
+      this.$.logger.debug("waitForExistingRun: stale pending key deleted, returning new", {
+        redisKey,
+        debounceKey: debounce.key,
+      });
+      return { status: "new" };
+    }
+
+    // Key now has a valid run ID - the original server completed!
+    // Handle the existing run instead of creating a duplicate
+    this.$.logger.debug(
+      "waitForExistingRun: original server completed during timeout, handling existing run",
+      {
+        redisKey,
+        debounceKey: debounce.key,
+        existingRunId: deleteResult.existingRunId,
+      }
+    );
+    return await this.handleExistingRun({
+      existingRunId: deleteResult.existingRunId,
+      redisKey,
+      debounce,
+      tx,
+    });
   }
 
   /**
@@ -556,5 +641,19 @@ export class DebounceSystem {
 
   async quit(): Promise<void> {
     await this.redis.quit();
+  }
+}
+
+declare module "@internal/redis" {
+  interface RedisCommander<Context> {
+    /**
+     * Atomically deletes a key only if its value starts with "pending:".
+     * @returns [1, nil] if deleted (was pending or didn't exist)
+     * @returns [0, value] if not deleted (has a run ID)
+     */
+    conditionallyDeletePendingKey(
+      key: string,
+      callback?: Callback<[number, string | null]>
+    ): Result<[number, string | null], Context>;
   }
 }
