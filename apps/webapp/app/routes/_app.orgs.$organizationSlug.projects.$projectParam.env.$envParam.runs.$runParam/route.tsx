@@ -210,7 +210,10 @@ async function getRunsListFromTableState({
       }
     }
 
-    if (currentRunIndex === currentPageResult.runs.length - 1 && currentPageResult.pagination.next) {
+    if (
+      currentRunIndex === currentPageResult.runs.length - 1 &&
+      currentPageResult.pagination.next
+    ) {
       const nextPageResult = await runsListPresenter.call(project.organizationId, environment.id, {
         userId,
         projectId: project.id,
@@ -313,7 +316,16 @@ export default function Page() {
   const tabParam = value("tab") ?? undefined;
   const spanParam = value("span") ?? undefined;
 
-  const [previousRunPath, nextRunPath] = useAdjacentRunPaths({organization, project, environment, tableState, run, runsList, tabParam, useSpan: !!spanParam});
+  const [previousRunPath, nextRunPath] = useAdjacentRunPaths({
+    organization,
+    project,
+    environment,
+    tableState,
+    run,
+    runsList,
+    tabParam,
+    useSpan: !!spanParam,
+  });
 
   return (
     <>
@@ -323,13 +335,21 @@ export default function Page() {
             to: v3RunsPath(organization, project, environment, filters),
             text: "Runs",
           }}
-          title={<>
-          <CopyableText value={run.friendlyId} variant="text-below" className="font-mono px-0 py-0 pb-[2px]"/>
-          {tableState && (<div className="flex">
-              <PreviousRunButton to={previousRunPath} />
-              <NextRunButton to={nextRunPath} />
-            </div>)}
-          </>}
+          title={
+            <>
+              <CopyableText
+                value={run.friendlyId}
+                variant="text-below"
+                className="-ml-[0.4375rem] px-1.5 pb-[3px] font-mono text-xs leading-none"
+              />
+              {tableState && (
+                <div className="flex">
+                  <PreviousRunButton to={previousRunPath} />
+                  <NextRunButton to={nextRunPath} />
+                </div>
+              )}
+            </>
+          }
         />
         {environment.type === "DEVELOPMENT" && <DevDisconnectedBanner isConnected={isConnected} />}
         <PageAccessories>
@@ -407,16 +427,18 @@ export default function Page() {
             maximumLiveReloadingSetting={maximumLiveReloadingSetting}
           />
         ) : (
-          <NoLogsView
-            run={run}
-          />
+          <NoLogsView run={run} />
         )}
       </PageBody>
     </>
   );
 }
 
-function TraceView({ run, trace, maximumLiveReloadingSetting }: Pick<LoaderData, "run" | "trace" | "maximumLiveReloadingSetting">) {
+function TraceView({
+  run,
+  trace,
+  maximumLiveReloadingSetting,
+}: Pick<LoaderData, "run" | "trace" | "maximumLiveReloadingSetting">) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -1130,7 +1152,9 @@ function TimelineView({
                                     "-ml-[0.5px] h-[0.5625rem] w-px rounded-none",
                                     eventBackgroundClassName(node.data)
                                   )}
-                                  layoutId={node.data.isPartial ? `${node.id}-${event.name}` : undefined}
+                                  layoutId={
+                                    node.data.isPartial ? `${node.id}-${event.name}` : undefined
+                                  }
                                   animate={!node.data.isPartial ? false : undefined}
                                 />
                               )}
@@ -1149,7 +1173,9 @@ function TimelineView({
                                     "-ml-[0.1562rem] size-[0.3125rem] rounded-full border bg-background-bright",
                                     eventBorderClassName(node.data)
                                   )}
-                                  layoutId={node.data.isPartial ? `${node.id}-${event.name}` : undefined}
+                                  layoutId={
+                                    node.data.isPartial ? `${node.id}-${event.name}` : undefined
+                                  }
                                   animate={!node.data.isPartial ? false : undefined}
                                 />
                               )}
@@ -1580,13 +1606,15 @@ function KeyboardShortcuts({
 }
 
 function AdjacentRunsShortcuts() {
-  return (<div className="flex items-center gap-0.5">
+  return (
+    <div className="flex items-center gap-0.5">
       <ShortcutKey shortcut={{ key: "[" }} variant="medium" className="ml-0 mr-0 px-1" />
       <ShortcutKey shortcut={{ key: "]" }} variant="medium" className="ml-0 mr-0 px-1" />
       <Paragraph variant="extra-small" className="ml-1.5 whitespace-nowrap">
         Adjacent runs
       </Paragraph>
-    </div>);
+    </div>
+  );
 }
 
 function ArrowKeyShortcuts() {
@@ -1676,13 +1704,13 @@ function useAdjacentRunPaths({
   run,
   runsList,
   tabParam,
-  useSpan
+  useSpan,
 }: {
   organization: { slug: string };
   project: { slug: string };
   environment: { slug: string };
   tableState: string;
-  run: { friendlyId: string, spanId: string };
+  run: { friendlyId: string; spanId: string };
   runsList: RunsListNavigation | null;
   tabParam?: string;
   useSpan?: boolean;
@@ -1692,7 +1720,7 @@ function useAdjacentRunPaths({
   }
 
   const currentIndex = runsList.runs.findIndex((r) => r.friendlyId === run.friendlyId);
-  
+
   if (currentIndex === -1) {
     return [null, null];
   }
@@ -1748,12 +1776,11 @@ function useAdjacentRunPaths({
   return [previousRunPath, nextRunPath];
 }
 
-
 function PreviousRunButton({ to }: { to: string | null }) {
   return (
     <div className={cn("peer/prev order-1", !to && "pointer-events-none")}>
       <LinkButton
-        to={to ? to : '#'}
+        to={to ? to : "#"}
         variant={"minimal/small"}
         LeadingIcon={ChevronUpIcon}
         className={cn(
@@ -1774,7 +1801,7 @@ function NextRunButton({ to }: { to: string | null }) {
   return (
     <div className={cn("peer/next order-3", !to && "pointer-events-none")}>
       <LinkButton
-        to={to ? to : '#'}
+        to={to ? to : "#"}
         variant={"minimal/small"}
         TrailingIcon={ChevronDownIcon}
         className={cn(
@@ -1790,4 +1817,3 @@ function NextRunButton({ to }: { to: string | null }) {
     </div>
   );
 }
-

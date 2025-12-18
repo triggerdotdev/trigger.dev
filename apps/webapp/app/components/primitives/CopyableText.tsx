@@ -72,20 +72,20 @@ export function CopyableText({
         button={
           <Button
             variant="minimal/small"
-            onClick={(e) => { 
+            onClick={(e) => {
               e.stopPropagation();
-              copy(); 
+              copy();
             }}
             className={cn(
-              "cursor-pointer bg-transparent py-0 px-1 text-left text-text-bright transition-colors hover:text-white hover:bg-transparent",
+              "cursor-pointer bg-transparent px-1 py-0 text-left text-text-bright transition-colors hover:bg-transparent hover:text-white",
               className
             )}
           >
             <span>{value}</span>
           </Button>
         }
-        content={copied ? "Copied" : "Click to copy"}
-        className="font-sans px-2 py-1"
+        content={copied ? "Copied" : "Copy"}
+        className="px-2 py-1 font-sans"
         disableHoverableContent
         open={isHovered || copied}
         onOpenChange={setIsHovered}
