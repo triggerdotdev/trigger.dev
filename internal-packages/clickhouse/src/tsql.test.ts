@@ -102,7 +102,7 @@ describe("TSQL Integration Tests", () => {
     expect(insertError).toBeNull();
 
     // Execute TSQL query
-    const [error, rows] = await executeTSQL(client, {
+    const [error, result] = await executeTSQL(client, {
       name: "test-simple-select",
       query: "SELECT run_id, status FROM task_runs",
       schema: z.object({ run_id: z.string(), status: z.string() }),
@@ -113,14 +113,18 @@ describe("TSQL Integration Tests", () => {
     });
 
     expect(error).toBeNull();
-    expect(rows).toHaveLength(3);
-    expect(rows).toEqual(
+    expect(result?.rows).toHaveLength(3);
+    expect(result?.rows).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ run_id: "run_test1", status: "COMPLETED_SUCCESSFULLY" }),
         expect.objectContaining({ run_id: "run_test2", status: "PENDING" }),
         expect.objectContaining({ run_id: "run_test3", status: "COMPLETED_SUCCESSFULLY" }),
       ])
     );
+    // Verify stats are returned
+    expect(result?.stats).toBeDefined();
+    expect(result?.stats.read_rows).toBeDefined();
+    expect(result?.stats.elapsed_ns).toBeDefined();
   });
 
   clickhouseTest("should filter with WHERE clause", async ({ clickhouseContainer }) => {
@@ -137,7 +141,7 @@ describe("TSQL Integration Tests", () => {
       createTaskRun({ run_id: "run_filter3", status: "COMPLETED_SUCCESSFULLY" }),
     ]);
 
-    const [error, rows] = await executeTSQL(client, {
+    const [error, result] = await executeTSQL(client, {
       name: "test-where-clause",
       query: "SELECT run_id, status FROM task_runs WHERE status = 'COMPLETED_SUCCESSFULLY'",
       schema: z.object({ run_id: z.string(), status: z.string() }),
@@ -148,8 +152,8 @@ describe("TSQL Integration Tests", () => {
     });
 
     expect(error).toBeNull();
-    expect(rows).toHaveLength(2);
-    expect(rows?.every((r) => r.status === "COMPLETED_SUCCESSFULLY")).toBe(true);
+    expect(result?.rows).toHaveLength(2);
+    expect(result?.rows?.every((r) => r.status === "COMPLETED_SUCCESSFULLY")).toBe(true);
   });
 
   clickhouseTest("should enforce tenant isolation", async ({ clickhouseContainer }) => {
@@ -189,7 +193,7 @@ describe("TSQL Integration Tests", () => {
     ]);
 
     // Query as tenant1 - should only see tenant1's data
-    const [error1, rows1] = await executeTSQL(client, {
+    const [error1, result1] = await executeTSQL(client, {
       name: "test-tenant-isolation-1",
       query: "SELECT run_id FROM task_runs",
       schema: z.object({ run_id: z.string() }),
@@ -200,11 +204,11 @@ describe("TSQL Integration Tests", () => {
     });
 
     expect(error1).toBeNull();
-    expect(rows1).toHaveLength(2);
-    expect(rows1?.map((r) => r.run_id).sort()).toEqual(["run_tenant1_a", "run_tenant1_b"]);
+    expect(result1?.rows).toHaveLength(2);
+    expect(result1?.rows?.map((r) => r.run_id).sort()).toEqual(["run_tenant1_a", "run_tenant1_b"]);
 
     // Query as tenant2 - should only see tenant2's data
-    const [error2, rows2] = await executeTSQL(client, {
+    const [error2, result2] = await executeTSQL(client, {
       name: "test-tenant-isolation-2",
       query: "SELECT run_id FROM task_runs",
       schema: z.object({ run_id: z.string() }),
@@ -215,8 +219,8 @@ describe("TSQL Integration Tests", () => {
     });
 
     expect(error2).toBeNull();
-    expect(rows2).toHaveLength(2);
-    expect(rows2?.map((r) => r.run_id).sort()).toEqual(["run_tenant2_a", "run_tenant2_b"]);
+    expect(result2?.rows).toHaveLength(2);
+    expect(result2?.rows?.map((r) => r.run_id).sort()).toEqual(["run_tenant2_a", "run_tenant2_b"]);
   });
 
   clickhouseTest(
@@ -246,7 +250,7 @@ describe("TSQL Integration Tests", () => {
       ]);
 
       // Attacker tries to access victim's data with OR 1=1
-      const [error, rows] = await executeTSQL(client, {
+      const [error, result] = await executeTSQL(client, {
         name: "test-cross-tenant-attack",
         query: "SELECT run_id, status FROM task_runs WHERE status = 'COMPLETED' OR 1=1",
         schema: z.object({ run_id: z.string(), status: z.string() }),
@@ -258,9 +262,9 @@ describe("TSQL Integration Tests", () => {
 
       expect(error).toBeNull();
       // Should only get attacker's own data, not victim's
-      expect(rows).toHaveLength(1);
-      expect(rows?.[0].run_id).toBe("run_attacker");
-      expect(rows?.find((r) => r.run_id === "run_secret")).toBeUndefined();
+      expect(result?.rows).toHaveLength(1);
+      expect(result?.rows?.[0].run_id).toBe("run_attacker");
+      expect(result?.rows?.find((r) => r.run_id === "run_secret")).toBeUndefined();
     }
   );
 
@@ -279,7 +283,7 @@ describe("TSQL Integration Tests", () => {
       createTaskRun({ run_id: "run_agg4", status: "FAILED" }),
     ]);
 
-    const [error, rows] = await executeTSQL(client, {
+    const [error, result] = await executeTSQL(client, {
       name: "test-aggregation",
       query:
         "SELECT status, count(*) as cnt FROM task_runs GROUP BY status ORDER BY cnt DESC, status ASC",
@@ -291,10 +295,10 @@ describe("TSQL Integration Tests", () => {
     });
 
     expect(error).toBeNull();
-    expect(rows).toHaveLength(3);
-    expect(rows?.[0]).toEqual({ status: "COMPLETED_SUCCESSFULLY", cnt: 2 });
+    expect(result?.rows).toHaveLength(3);
+    expect(result?.rows?.[0]).toEqual({ status: "COMPLETED_SUCCESSFULLY", cnt: 2 });
     // The remaining rows have cnt=1, check they're both present
-    expect(rows).toEqual(
+    expect(result?.rows).toEqual(
       expect.arrayContaining([
         { status: "PENDING", cnt: 1 },
         { status: "FAILED", cnt: 1 },
@@ -317,7 +321,7 @@ describe("TSQL Integration Tests", () => {
       createTaskRun({ run_id: "run_order3", created_at: now - 2000 }),
     ]);
 
-    const [error, rows] = await executeTSQL(client, {
+    const [error, result] = await executeTSQL(client, {
       name: "test-order-limit",
       query: "SELECT run_id FROM task_runs ORDER BY created_at DESC LIMIT 2",
       schema: z.object({ run_id: z.string() }),
@@ -328,9 +332,9 @@ describe("TSQL Integration Tests", () => {
     });
 
     expect(error).toBeNull();
-    expect(rows).toHaveLength(2);
-    expect(rows?.[0].run_id).toBe("run_order2"); // Most recent
-    expect(rows?.[1].run_id).toBe("run_order3"); // Second most recent
+    expect(result?.rows).toHaveLength(2);
+    expect(result?.rows?.[0].run_id).toBe("run_order2"); // Most recent
+    expect(result?.rows?.[1].run_id).toBe("run_order3"); // Second most recent
   });
 
   clickhouseTest("should reject unknown tables", async ({ clickhouseContainer }) => {
@@ -339,7 +343,7 @@ describe("TSQL Integration Tests", () => {
       url: clickhouseContainer.getConnectionUrl(),
     });
 
-    const [error, rows] = await executeTSQL(client, {
+    const [error, result] = await executeTSQL(client, {
       name: "test-unknown-table",
       query: "SELECT * FROM unknown_table",
       schema: z.object({ id: z.string() }),
@@ -351,7 +355,7 @@ describe("TSQL Integration Tests", () => {
 
     expect(error).not.toBeNull();
     expect(error?.message).toContain("unknown_table");
-    expect(rows).toBeNull();
+    expect(result).toBeNull();
   });
 
   clickhouseTest("should work with createTSQLExecutor", async ({ clickhouseContainer }) => {
@@ -370,7 +374,7 @@ describe("TSQL Integration Tests", () => {
     // Create a reusable executor
     const tsql = createTSQLExecutor(client, [taskRunsSchema]);
 
-    const [error, rows] = await tsql.execute({
+    const [error, result] = await tsql.execute({
       name: "test-executor",
       query: "SELECT run_id, status FROM task_runs WHERE status = 'PENDING'",
       schema: z.object({ run_id: z.string(), status: z.string() }),
@@ -380,8 +384,8 @@ describe("TSQL Integration Tests", () => {
     });
 
     expect(error).toBeNull();
-    expect(rows).toHaveLength(1);
-    expect(rows?.[0]).toEqual({ run_id: "run_executor2", status: "PENDING" });
+    expect(result?.rows).toHaveLength(1);
+    expect(result?.rows?.[0]).toEqual({ run_id: "run_executor2", status: "PENDING" });
   });
 
   clickhouseTest("should handle string injection attempts", async ({ clickhouseContainer }) => {
@@ -398,7 +402,7 @@ describe("TSQL Integration Tests", () => {
     ]);
 
     // Query with a "malicious" value that looks like SQL
-    const [error, rows] = await executeTSQL(client, {
+    const [error, result] = await executeTSQL(client, {
       name: "test-injection",
       query: "SELECT run_id, status FROM task_runs WHERE status = 'DROP TABLE task_runs'",
       schema: z.object({ run_id: z.string(), status: z.string() }),
@@ -410,8 +414,8 @@ describe("TSQL Integration Tests", () => {
 
     expect(error).toBeNull();
     // Should find the row with the literal string value, not execute SQL
-    expect(rows).toHaveLength(1);
-    expect(rows?.[0].status).toBe("DROP TABLE task_runs");
+    expect(result?.rows).toHaveLength(1);
+    expect(result?.rows?.[0].status).toBe("DROP TABLE task_runs");
   });
 
   clickhouseTest("should handle IN queries", async ({ clickhouseContainer }) => {
@@ -429,7 +433,7 @@ describe("TSQL Integration Tests", () => {
       createTaskRun({ run_id: "run_in4", status: "CANCELLED" }),
     ]);
 
-    const [error, rows] = await executeTSQL(client, {
+    const [error, result] = await executeTSQL(client, {
       name: "test-in-query",
       query:
         "SELECT run_id, status FROM task_runs WHERE status IN ('COMPLETED_SUCCESSFULLY', 'FAILED')",
@@ -441,8 +445,8 @@ describe("TSQL Integration Tests", () => {
     });
 
     expect(error).toBeNull();
-    expect(rows).toHaveLength(2);
-    expect(rows?.map((r) => r.status).sort()).toEqual(["COMPLETED_SUCCESSFULLY", "FAILED"]);
+    expect(result?.rows).toHaveLength(2);
+    expect(result?.rows?.map((r) => r.status).sort()).toEqual(["COMPLETED_SUCCESSFULLY", "FAILED"]);
   });
 
   clickhouseTest("should handle LIKE queries", async ({ clickhouseContainer }) => {
@@ -459,7 +463,7 @@ describe("TSQL Integration Tests", () => {
       createTaskRun({ run_id: "run_like3", task_identifier: "sms/send" }),
     ]);
 
-    const [error, rows] = await executeTSQL(client, {
+    const [error, result] = await executeTSQL(client, {
       name: "test-like-query",
       query: "SELECT run_id, task_identifier FROM task_runs WHERE task_identifier LIKE 'email%'",
       schema: z.object({ run_id: z.string(), task_identifier: z.string() }),
@@ -470,8 +474,8 @@ describe("TSQL Integration Tests", () => {
     });
 
     expect(error).toBeNull();
-    expect(rows).toHaveLength(2);
-    expect(rows?.every((r) => r.task_identifier.startsWith("email"))).toBe(true);
+    expect(result?.rows).toHaveLength(2);
+    expect(result?.rows?.every((r) => r.task_identifier.startsWith("email"))).toBe(true);
   });
 });
 
@@ -522,7 +526,7 @@ describe("TSQL Optional Tenant Filter Tests", () => {
       ]);
 
       // Query across all projects (omit projectId and environmentId)
-      const [error, rows] = await executeTSQL(client, {
+      const [error, result] = await executeTSQL(client, {
         name: "test-cross-project-query",
         query: "SELECT run_id FROM task_runs",
         schema: z.object({ run_id: z.string() }),
@@ -532,8 +536,8 @@ describe("TSQL Optional Tenant Filter Tests", () => {
       });
 
       expect(error).toBeNull();
-      expect(rows).toHaveLength(4); // All runs from org_multi
-      expect(rows?.map((r) => r.run_id).sort()).toEqual([
+      expect(result?.rows).toHaveLength(4); // All runs from org_multi
+      expect(result?.rows?.map((r) => r.run_id).sort()).toEqual([
         "run_proj1_a",
         "run_proj1_b",
         "run_proj2_a",
@@ -582,7 +586,7 @@ describe("TSQL Optional Tenant Filter Tests", () => {
       ]);
 
       // Query across all environments (omit environmentId only)
-      const [error, rows] = await executeTSQL(client, {
+      const [error, result] = await executeTSQL(client, {
         name: "test-cross-env-query",
         query: "SELECT run_id FROM task_runs",
         schema: z.object({ run_id: z.string() }),
@@ -593,8 +597,8 @@ describe("TSQL Optional Tenant Filter Tests", () => {
       });
 
       expect(error).toBeNull();
-      expect(rows).toHaveLength(3); // All runs from proj_envtest across all envs
-      expect(rows?.map((r) => r.run_id).sort()).toEqual([
+      expect(result?.rows).toHaveLength(3); // All runs from proj_envtest across all envs
+      expect(result?.rows?.map((r) => r.run_id).sort()).toEqual([
         "run_dev_1",
         "run_prod_1",
         "run_staging_1",
@@ -641,7 +645,7 @@ describe("TSQL Optional Tenant Filter Tests", () => {
       ]);
 
       // Query org1 across all projects - should NOT see org2's data
-      const [error1, rows1] = await executeTSQL(client, {
+      const [error1, result1] = await executeTSQL(client, {
         name: "test-org-isolation-1",
         query: "SELECT run_id FROM task_runs",
         schema: z.object({ run_id: z.string() }),
@@ -651,11 +655,11 @@ describe("TSQL Optional Tenant Filter Tests", () => {
       });
 
       expect(error1).toBeNull();
-      expect(rows1).toHaveLength(2);
-      expect(rows1?.map((r) => r.run_id).sort()).toEqual(["run_org1_a", "run_org1_b"]);
+      expect(result1?.rows).toHaveLength(2);
+      expect(result1?.rows?.map((r) => r.run_id).sort()).toEqual(["run_org1_a", "run_org1_b"]);
 
       // Query org2 across all projects - should NOT see org1's data
-      const [error2, rows2] = await executeTSQL(client, {
+      const [error2, result2] = await executeTSQL(client, {
         name: "test-org-isolation-2",
         query: "SELECT run_id FROM task_runs",
         schema: z.object({ run_id: z.string() }),
@@ -665,8 +669,8 @@ describe("TSQL Optional Tenant Filter Tests", () => {
       });
 
       expect(error2).toBeNull();
-      expect(rows2).toHaveLength(2);
-      expect(rows2?.map((r) => r.run_id).sort()).toEqual(["run_org2_a", "run_org2_b"]);
+      expect(result2?.rows).toHaveLength(2);
+      expect(result2?.rows?.map((r) => r.run_id).sort()).toEqual(["run_org2_a", "run_org2_b"]);
     }
   );
 
@@ -698,7 +702,7 @@ describe("TSQL Optional Tenant Filter Tests", () => {
       ]);
 
       // Attacker tries to use OR 1=1 to bypass org filter
-      const [error, rows] = await executeTSQL(client, {
+      const [error, result] = await executeTSQL(client, {
         name: "test-or-bypass-attempt",
         query: "SELECT run_id, status FROM task_runs WHERE status = 'COMPLETED' OR 1=1",
         schema: z.object({ run_id: z.string(), status: z.string() }),
@@ -709,9 +713,9 @@ describe("TSQL Optional Tenant Filter Tests", () => {
 
       expect(error).toBeNull();
       // Should only get attacker's data, not victim's
-      expect(rows).toHaveLength(1);
-      expect(rows?.[0].run_id).toBe("run_attacker");
-      expect(rows?.find((r) => r.run_id === "run_victim")).toBeUndefined();
+      expect(result?.rows).toHaveLength(1);
+      expect(result?.rows?.[0].run_id).toBe("run_attacker");
+      expect(result?.rows?.find((r) => r.run_id === "run_victim")).toBeUndefined();
     }
   );
 
@@ -743,7 +747,7 @@ describe("TSQL Optional Tenant Filter Tests", () => {
       const tsql = createTSQLExecutor(client, [taskRunsSchema]);
 
       // Use executor with org-only filter
-      const [error, rows] = await tsql.execute({
+      const [error, result] = await tsql.execute({
         name: "test-executor-optional",
         query: "SELECT run_id FROM task_runs",
         schema: z.object({ run_id: z.string() }),
@@ -752,8 +756,8 @@ describe("TSQL Optional Tenant Filter Tests", () => {
       });
 
       expect(error).toBeNull();
-      expect(rows).toHaveLength(2);
-      expect(rows?.map((r) => r.run_id).sort()).toEqual(["run_exec_1", "run_exec_2"]);
+      expect(result?.rows).toHaveLength(2);
+      expect(result?.rows?.map((r) => r.run_id).sort()).toEqual(["run_exec_1", "run_exec_2"]);
     }
   );
 });
@@ -827,7 +831,7 @@ describe("TSQL Virtual Column Tests", () => {
         }),
       ]);
 
-      const [error, rows] = await executeTSQL(client, {
+      const [error, result] = await executeTSQL(client, {
         name: "test-virtual-column-select",
         query: "SELECT run_id, execution_duration, usage_duration_seconds FROM task_runs",
         schema: z.object({
@@ -842,11 +846,11 @@ describe("TSQL Virtual Column Tests", () => {
       });
 
       expect(error).toBeNull();
-      expect(rows).toHaveLength(1);
+      expect(result?.rows).toHaveLength(1);
       // execution_duration should be approximately 5000ms (difference between started_at and completed_at)
-      expect(rows?.[0].execution_duration).toBeCloseTo(5000, -2); // within 100ms tolerance
+      expect(result?.rows?.[0].execution_duration).toBeCloseTo(5000, -2); // within 100ms tolerance
       // usage_duration_seconds should be 3.5 (3500ms / 1000)
-      expect(rows?.[0].usage_duration_seconds).toBeCloseTo(3.5, 1);
+      expect(result?.rows?.[0].usage_duration_seconds).toBeCloseTo(3.5, 1);
     }
   );
 
@@ -881,7 +885,7 @@ describe("TSQL Virtual Column Tests", () => {
       ]);
 
       // Query runs with execution_duration > 5000ms (5 seconds)
-      const [error, rows] = await executeTSQL(client, {
+      const [error, result] = await executeTSQL(client, {
         name: "test-virtual-column-where",
         query: "SELECT run_id FROM task_runs WHERE execution_duration > 5000",
         schema: z.object({ run_id: z.string() }),
@@ -892,8 +896,8 @@ describe("TSQL Virtual Column Tests", () => {
       });
 
       expect(error).toBeNull();
-      expect(rows).toHaveLength(2);
-      expect(rows?.map((r) => r.run_id).sort()).toEqual(["run_long", "run_very_long"]);
+      expect(result?.rows).toHaveLength(2);
+      expect(result?.rows?.map((r) => r.run_id).sort()).toEqual(["run_long", "run_very_long"]);
     }
   );
 
@@ -923,7 +927,7 @@ describe("TSQL Virtual Column Tests", () => {
     ]);
 
     // Order by usage_duration_seconds descending (virtual column)
-    const [error, rows] = await executeTSQL(client, {
+    const [error, result] = await executeTSQL(client, {
       name: "test-virtual-column-order",
       query:
         "SELECT run_id, usage_duration_seconds FROM task_runs ORDER BY usage_duration_seconds DESC",
@@ -938,14 +942,14 @@ describe("TSQL Virtual Column Tests", () => {
     });
 
     expect(error).toBeNull();
-    expect(rows).toHaveLength(3);
+    expect(result?.rows).toHaveLength(3);
     // Should be ordered by usage_duration_seconds DESC: b (3), c (2), a (1)
-    expect(rows?.[0].run_id).toBe("run_order_b");
-    expect(rows?.[0].usage_duration_seconds).toBeCloseTo(3.0, 1);
-    expect(rows?.[1].run_id).toBe("run_order_c");
-    expect(rows?.[1].usage_duration_seconds).toBeCloseTo(2.0, 1);
-    expect(rows?.[2].run_id).toBe("run_order_a");
-    expect(rows?.[2].usage_duration_seconds).toBeCloseTo(1.0, 1);
+    expect(result?.rows?.[0].run_id).toBe("run_order_b");
+    expect(result?.rows?.[0].usage_duration_seconds).toBeCloseTo(3.0, 1);
+    expect(result?.rows?.[1].run_id).toBe("run_order_c");
+    expect(result?.rows?.[1].usage_duration_seconds).toBeCloseTo(2.0, 1);
+    expect(result?.rows?.[2].run_id).toBe("run_order_a");
+    expect(result?.rows?.[2].usage_duration_seconds).toBeCloseTo(1.0, 1);
   });
 
   clickhouseTest(
@@ -966,7 +970,7 @@ describe("TSQL Virtual Column Tests", () => {
       ]);
 
       // Use virtual column with custom alias
-      const [error, rows] = await executeTSQL(client, {
+      const [error, result] = await executeTSQL(client, {
         name: "test-virtual-column-alias",
         query: "SELECT run_id, usage_duration_seconds AS dur_sec FROM task_runs",
         schema: z.object({
@@ -980,8 +984,8 @@ describe("TSQL Virtual Column Tests", () => {
       });
 
       expect(error).toBeNull();
-      expect(rows).toHaveLength(1);
-      expect(rows?.[0].dur_sec).toBeCloseTo(5.0, 1);
+      expect(result?.rows).toHaveLength(1);
+      expect(result?.rows?.[0].dur_sec).toBeCloseTo(5.0, 1);
     }
   );
 
@@ -1002,7 +1006,7 @@ describe("TSQL Virtual Column Tests", () => {
         }),
       ]);
 
-      const [error, rows] = await executeTSQL(client, {
+      const [error, result] = await executeTSQL(client, {
         name: "test-virtual-column-null",
         query: "SELECT run_id, execution_duration FROM task_runs",
         schema: z.object({
@@ -1016,9 +1020,9 @@ describe("TSQL Virtual Column Tests", () => {
       });
 
       expect(error).toBeNull();
-      expect(rows).toHaveLength(1);
+      expect(result?.rows).toHaveLength(1);
       // execution_duration should be null when started_at or completed_at is null
-      expect(rows?.[0].execution_duration).toBeNull();
+      expect(result?.rows?.[0].execution_duration).toBeNull();
     }
   );
 });

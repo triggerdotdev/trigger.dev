@@ -13,6 +13,36 @@ export type ClickhouseQueryFunction<TInput, TOutput> = (
   }
 ) => Promise<Result<TOutput[], QueryError>>;
 
+/**
+ * Query statistics returned by ClickHouse
+ */
+export interface QueryStats {
+  read_rows: string;
+  read_bytes: string;
+  written_rows: string;
+  written_bytes: string;
+  total_rows_to_read: string;
+  result_rows: string;
+  result_bytes: string;
+  elapsed_ns: string;
+}
+
+/**
+ * Result type for queries that include stats
+ */
+export interface QueryResultWithStats<TOutput> {
+  rows: TOutput[];
+  stats: QueryStats;
+}
+
+export type ClickhouseQueryWithStatsFunction<TInput, TOutput> = (
+  params: TInput,
+  options?: {
+    attributes?: Record<string, string | number | boolean>;
+    params?: BaseQueryParams;
+  }
+) => Promise<Result<QueryResultWithStats<TOutput>, QueryError>>;
+
 export type ClickhouseQueryBuilderFunction<TOutput> = (options?: {
   settings?: ClickHouseSettings;
 }) => ClickhouseQueryBuilder<TOutput>;
@@ -55,6 +85,39 @@ export interface ClickhouseReader {
      */
     settings?: ClickHouseSettings;
   }): ClickhouseQueryFunction<z.input<TIn>, z.output<TOut>>;
+
+  /**
+   * Execute a query and return both rows and query statistics.
+   * Same as `query` but includes ClickHouse query stats in the result.
+   */
+  queryWithStats<TIn extends z.ZodSchema<any>, TOut extends z.ZodSchema<any>>(req: {
+    /**
+     * The name of the operation.
+     * This will be used to identify the operation in the span.
+     */
+    name: string;
+    /**
+     * The SQL query to run.
+     * Use {paramName: Type} to define parameters
+     * Example: `SELECT * FROM table WHERE id = {id: String}`
+     */
+    query: string;
+    /**
+     * The schema of the parameters
+     * Example: z.object({ id: z.string() })
+     */
+    params?: TIn;
+    /**
+     * The schema of the output of each row
+     * Example: z.object({ id: z.string() })
+     */
+    schema: TOut;
+    /**
+     * The settings to use for the query.
+     * These will be merged with the default settings.
+     */
+    settings?: ClickHouseSettings;
+  }): ClickhouseQueryWithStatsFunction<z.input<TIn>, z.output<TOut>>;
 
   queryFast<TOut extends Record<string, any>, TParams extends Record<string, any>>(req: {
     /**
