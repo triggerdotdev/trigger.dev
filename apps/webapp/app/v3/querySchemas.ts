@@ -1,27 +1,5 @@
 import { column, type TableSchema } from "@internal/tsql";
-
-/**
- * Run status values in ClickHouse
- */
-const RUN_STATUSES = [
-  "DELAYED",
-  "PENDING",
-  "PENDING_VERSION",
-  "WAITING_FOR_DEPLOY",
-  "DEQUEUED",
-  "EXECUTING",
-  "WAITING_TO_RESUME",
-  "RETRYING_AFTER_FAILURE",
-  "PAUSED",
-  "CANCELED",
-  "INTERRUPTED",
-  "COMPLETED_SUCCESSFULLY",
-  "COMPLETED_WITH_ERRORS",
-  "SYSTEM_FAILURE",
-  "CRASHED",
-  "EXPIRED",
-  "TIMED_OUT",
-] as const;
+import { runFriendlyStatus, runStatusTitleFromStatus } from "~/components/runs/v3/TaskRunStatus";
 
 /**
  * Environment type values
@@ -104,7 +82,8 @@ export const runsSchema: TableSchema = {
       name: "status",
       ...column("LowCardinality(String)", {
         description: "Run status",
-        allowedValues: [...RUN_STATUSES],
+        allowedValues: [...runFriendlyStatus],
+        valueMap: runStatusTitleFromStatus,
       }),
     },
 
@@ -267,4 +246,3 @@ export const defaultQuery = `SELECT
 FROM runs
 ORDER BY created_at DESC
 LIMIT 10`;
-

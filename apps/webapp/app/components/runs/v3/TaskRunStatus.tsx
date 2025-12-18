@@ -13,6 +13,7 @@ import {
 } from "@heroicons/react/20/solid";
 import type { TaskRunStatus } from "@trigger.dev/database";
 import assertNever from "assert-never";
+import { status } from "effect/Fiber";
 import { HourglassIcon } from "lucide-react";
 import { TimedOutIcon } from "~/assets/icons/TimedOutIcon";
 import { Callout } from "~/components/primitives/Callout";
@@ -236,43 +237,55 @@ export function runStatusClassNameColor(status: TaskRunStatus): string {
   }
 }
 
-export function runStatusTitle(status: TaskRunStatus): string {
-  switch (status) {
-    case "DELAYED":
-      return "Delayed";
-    case "PENDING":
-      return "Queued";
-    case "PENDING_VERSION":
-    case "WAITING_FOR_DEPLOY":
-      return "Pending version";
-    case "DEQUEUED":
-      return "Dequeued";
-    case "EXECUTING":
-      return "Executing";
-    case "WAITING_TO_RESUME":
-      return "Waiting";
-    case "RETRYING_AFTER_FAILURE":
-      return "Reattempting";
-    case "PAUSED":
-      return "Paused";
-    case "CANCELED":
-      return "Canceled";
-    case "INTERRUPTED":
-      return "Interrupted";
-    case "COMPLETED_SUCCESSFULLY":
-      return "Completed";
-    case "COMPLETED_WITH_ERRORS":
-      return "Failed";
-    case "SYSTEM_FAILURE":
-      return "System failure";
-    case "CRASHED":
-      return "Crashed";
-    case "EXPIRED":
-      return "Expired";
-    case "TIMED_OUT":
-      return "Timed out";
-    default: {
-      assertNever(status);
-    }
-  }
+export function runStatusTitle(status: TaskRunStatus): RunFriendlyStatus {
+  return runStatusTitleFromStatus[status];
 }
+
+export function runStatusFromFriendlyTitle(friendly: RunFriendlyStatus): TaskRunStatus | undefined {
+  const result = titlesStatusesArray.find(([_, f]) => f === friendly);
+  if (!result) return;
+  return result[0] as TaskRunStatus;
+}
+
+export const runFriendlyStatus = [
+  "Delayed",
+  "Queued",
+  "Pending version",
+  "Dequeued",
+  "Executing",
+  "Waiting",
+  "Reattempting",
+  "Paused",
+  "Canceled",
+  "Interrupted",
+  "Completed",
+  "Failed",
+  "System failure",
+  "Crashed",
+  "Expired",
+  "Timed out",
+] as const;
+
+type RunFriendlyStatus = (typeof runFriendlyStatus)[number];
+
+export const runStatusTitleFromStatus: Record<TaskRunStatus, RunFriendlyStatus> = {
+  DELAYED: "Delayed",
+  PENDING: "Queued",
+  PENDING_VERSION: "Pending version",
+  WAITING_FOR_DEPLOY: "Pending version",
+  DEQUEUED: "Dequeued",
+  EXECUTING: "Executing",
+  WAITING_TO_RESUME: "Waiting",
+  RETRYING_AFTER_FAILURE: "Reattempting",
+  PAUSED: "Paused",
+  CANCELED: "Canceled",
+  INTERRUPTED: "Interrupted",
+  COMPLETED_SUCCESSFULLY: "Completed",
+  COMPLETED_WITH_ERRORS: "Failed",
+  SYSTEM_FAILURE: "System failure",
+  CRASHED: "Crashed",
+  EXPIRED: "Expired",
+  TIMED_OUT: "Timed out",
+};
+
+const titlesStatusesArray = Object.entries(runStatusTitleFromStatus);

@@ -8,6 +8,7 @@ import { useState } from "react";
 import { typedjson, useTypedActionData, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { TSQLEditor } from "~/components/code/TSQLEditor";
+import { TSQLResultsTable } from "~/components/code/TSQLResultsTable";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button } from "~/components/primitives/Buttons";
@@ -213,29 +214,23 @@ export default function Page() {
                 {results?.rows?.length ? `${results.rows.length} Results` : "Results"}
               </Header2>
             </div>
-            <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-grid-dimmed bg-charcoal-900 p-4">
+            <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-grid-dimmed bg-charcoal-900">
               {isLoading ? (
-                <div className="flex items-center gap-2 text-text-dimmed">
+                <div className="flex items-center gap-2 p-4 text-text-dimmed">
                   <Spinner className="size-4" />
                   <span>Executing query...</span>
                 </div>
               ) : results?.error ? (
-                <pre className="whitespace-pre-wrap text-sm text-red-400">{results.error}</pre>
+                <pre className="whitespace-pre-wrap p-4 text-sm text-red-400">{results.error}</pre>
               ) : results?.rows ? (
-                <pre className="whitespace-pre-wrap text-sm text-text-bright">
-                  {JSON.stringify(results.rows, null, 2)}
-                </pre>
+                <TSQLResultsTable rows={results.rows} />
               ) : (
-                <Paragraph variant="small" className="text-text-dimmed">
+                <Paragraph variant="small" className="p-4 text-text-dimmed">
                   Run a query to see results here.
                 </Paragraph>
               )}
             </div>
-          </div>{" "}
-          :{" "}
-          <Paragraph variant="small" className="text-text-dimmed">
-            Run a query to see results here.
-          </Paragraph>
+          </div>
         </div>
       </PageBody>
     </PageContainer>
