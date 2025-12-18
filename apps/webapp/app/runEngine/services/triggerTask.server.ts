@@ -160,10 +160,34 @@ export class RunEngineTriggerTaskService {
         }
       }
 
-      const [parseDelayError, delayUntil] = await tryCatch(parseDelay(body.options?.delay));
+      // Parse delay from either explicit delay option or debounce.delay
+      const delaySource = body.options?.delay ?? body.options?.debounce?.delay;
+      const [parseDelayError, delayUntil] = await tryCatch(parseDelay(delaySource));
 
       if (parseDelayError) {
-        throw new ServiceValidationError(`Invalid delay ${body.options?.delay}`);
+        throw new ServiceValidationError(`Invalid delay ${delaySource}`);
+      }
+
+      // Validate debounce options
+      if (body.options?.debounce) {
+        if (!delayUntil) {
+          throw new ServiceValidationError(
+            `Debounce requires a valid delay duration. Provided: ${body.options.debounce.delay}`
+          );
+        }
+
+        // Always validate debounce.delay separately since it's used for rescheduling
+        // This catches the case where options.delay is valid but debounce.delay is invalid
+        const [debounceDelayError, debounceDelayUntil] = await tryCatch(
+          parseDelay(body.options.debounce.delay)
+        );
+
+        if (debounceDelayError || !debounceDelayUntil) {
+          throw new ServiceValidationError(
+            `Invalid debounce delay: ${body.options.debounce.delay}. ` +
+              `Supported formats: {number}s, {number}m, {number}h, {number}d, {number}w`
+          );
+        }
       }
 
       const ttl =
@@ -340,9 +364,47 @@ export class RunEngineTriggerTaskService {
                 bulkActionId: body.options?.bulkActionId,
                 planType,
                 realtimeStreamsVersion: options.realtimeStreamsVersion,
+                debounce: body.options?.debounce,
+                // When debouncing with triggerAndWait, create a span for the debounced trigger
+                onDebounced:
+                  body.options?.debounce && body.options?.resumeParentOnCompletion
+                    ? async ({ existingRun, waitpoint, debounceKey }) => {
+                        return await this.traceEventConcern.traceDebouncedRun(
+                          triggerRequest,
+                          parentRun?.taskEventStore,
+                          {
+                            existingRun,
+                            debounceKey,
+                            incomplete: waitpoint.status === "PENDING",
+                            isError: waitpoint.outputIsError,
+                          },
+                          async (spanEvent) => {
+                            const spanId =
+                              options?.parentAsLinkType === "replay"
+                                ? spanEvent.spanId
+                                : spanEvent.traceparent?.spanId
+                                ? `${spanEvent.traceparent.spanId}:${spanEvent.spanId}`
+                                : spanEvent.spanId;
+                            return spanId;
+                          }
+                        );
+                      }
+                    : undefined,
               },
               this.prisma
             );
+
+            // If the returned run has a different friendlyId, it was debounced.
+            // For triggerAndWait: stop the outer span since a replacement debounced span was created via onDebounced.
+            // For regular trigger: let the span complete normally - no replacement span needed since the
+            // original run already has its span from when it was first created.
+            if (
+              taskRun.friendlyId !== runFriendlyId &&
+              body.options?.debounce &&
+              body.options?.resumeParentOnCompletion
+            ) {
+              event.stop();
+            }
 
             const error = taskRun.error ? TaskRunError.parse(taskRun.error) : undefined;
 

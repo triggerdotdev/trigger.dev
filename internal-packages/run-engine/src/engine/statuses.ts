@@ -37,7 +37,7 @@ export function isFinishedOrPendingFinished(status: TaskRunExecutionStatus): boo
 }
 
 export function isInitialState(status: TaskRunExecutionStatus): boolean {
-  const startedStatuses: TaskRunExecutionStatus[] = ["RUN_CREATED"];
+  const startedStatuses: TaskRunExecutionStatus[] = ["RUN_CREATED", "DELAYED"];
   return startedStatuses.includes(status);
 }
 

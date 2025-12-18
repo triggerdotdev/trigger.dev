@@ -557,6 +557,19 @@ function RunBody({
                   </Property.Value>
                 </Property.Item>
                 <Property.Item>
+                  <Property.Label>Debounce</Property.Label>
+                  <Property.Value>
+                    {run.debounce ? (
+                      <div>
+                        <div className="break-all">Key: {run.debounce.key}</div>
+                        <div>Delay: {run.debounce.delay}</div>
+                      </div>
+                    ) : (
+                      "–"
+                    )}
+                  </Property.Value>
+                </Property.Item>
+                <Property.Item>
                   <Property.Label>Version</Property.Label>
                   <Property.Value>
                     {run.version ? (
