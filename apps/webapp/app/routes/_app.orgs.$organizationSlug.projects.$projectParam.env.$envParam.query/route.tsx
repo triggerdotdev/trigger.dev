@@ -320,24 +320,72 @@ export default function Page() {
 function QueryHelpSidebar({ onClose }: { onClose: () => void }) {
   return (
     <div className="grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
+      <div className="flex items-center justify-between gap-2 border-b border-grid-dimmed p-3 pt-2">
+        <Header2 className="flex items-center gap-2">
+          <LightBulbIcon className="size-4 min-w-4 text-sun-500" />
+          Query help
+        </Header2>
+        <Button
+          onClick={onClose}
+          variant="minimal/small"
+          TrailingIcon={ExitIcon}
+          shortcut={{ key: "esc" }}
+          shortcutPosition="before-trailing-icon"
+          className="pl-[0.375rem]"
+        />
+      </div>
       <div className="overflow-y-scroll p-3 pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-        <div className="mb-2 flex items-center justify-between gap-2 border-b border-grid-dimmed pb-2">
-          <Header2 className="flex items-center gap-2">
-            <LightBulbIcon className="size-4 min-w-4 text-sun-500" />
-            Query help
-          </Header2>
-          <Button
-            onClick={onClose}
-            variant="minimal/small"
-            TrailingIcon={ExitIcon}
-            shortcut={{ key: "esc" }}
-            shortcutPosition="before-trailing-icon"
-            className="pl-[0.375rem]"
-          />
-        </div>
-        <Paragraph variant="small" className="text-text-dimmed">
-          Help content coming soon...
-        </Paragraph>
+        {querySchemas.map((table) => (
+          <div key={table.name} className="mb-6">
+            <div className="mb-2">
+              <Header3 className="font-mono text-text-bright">{table.name}</Header3>
+              {table.description && (
+                <Paragraph variant="small" className="mt-1 text-text-dimmed">
+                  {table.description}
+                </Paragraph>
+              )}
+            </div>
+            <div className="flex flex-col gap-3">
+              {Object.values(table.columns).map((col) => (
+                <div
+                  key={col.name}
+                  className="rounded border border-grid-dimmed bg-charcoal-900 p-2"
+                >
+                  <div className="flex items-baseline gap-2">
+                    <code className="text-sm font-medium text-text-bright">{col.name}</code>
+                    <span className="text-xs text-text-dimmed">{col.type}</span>
+                  </div>
+                  {col.description && (
+                    <Paragraph variant="extra-small" className="mt-1 text-text-dimmed">
+                      {col.description}
+                    </Paragraph>
+                  )}
+                  {col.example && (
+                    <div className="mt-1.5 flex items-baseline gap-1.5">
+                      <span className="text-xs text-text-dimmed">Example:</span>
+                      <code className="text-xs text-green-400">{col.example}</code>
+                    </div>
+                  )}
+                  {col.allowedValues && col.allowedValues.length > 0 && (
+                    <div className="mt-1.5">
+                      <span className="text-xs text-text-dimmed">Allowed values:</span>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {col.allowedValues.map((value) => (
+                          <code
+                            key={value}
+                            className="rounded bg-charcoal-800 px-1.5 py-0.5 text-xs text-amber-400"
+                          >
+                            {col.valueMap?.[value] ?? value}
+                          </code>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
