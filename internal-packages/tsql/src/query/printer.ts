@@ -479,7 +479,16 @@ export class ClickHousePrinter {
         // Add the alias to preserve the column name
         sqlResult = `${visited} AS ${this.printIdentifier(virtualColumnName)}`;
       } else {
-        sqlResult = this.visit(col);
+        // Visit the field to get the ClickHouse SQL
+        const visited = this.visit(col);
+
+        // Check if the column has a different clickhouseName - if so, add an alias
+        // to ensure results come back with the user-facing name
+        if (outputName && sourceColumn?.clickhouseName && sourceColumn.clickhouseName !== outputName) {
+          sqlResult = `${visited} AS ${this.printIdentifier(outputName)}`;
+        } else {
+          sqlResult = visited;
+        }
       }
     } else {
       // For non-virtual columns or expressions already wrapped in Alias, visit normally

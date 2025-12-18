@@ -209,6 +209,46 @@ describe("ClickHousePrinter", () => {
       expect(sql).toContain("run_id");
       expect(sql).toContain("created_at");
     });
+
+    it("should add AS alias for columns with different clickhouseName to preserve user-facing name in results", () => {
+      const ctx = createMappedContext();
+      const { sql, columns } = printQuery("SELECT id, created, status FROM runs", ctx);
+
+      // Columns with clickhouseName should be aliased back to user-facing name
+      // id -> run_id AS id, created -> created_at AS created
+      expect(sql).toContain("run_id AS id");
+      expect(sql).toContain("created_at AS created");
+      // status has no clickhouseName mapping, should not have alias
+      expect(sql).not.toContain("status AS");
+
+      // Column metadata should use user-facing names
+      expect(columns.map((c) => c.name)).toEqual(["id", "created", "status"]);
+    });
+
+    it("should add AS alias for qualified column references with different clickhouseName", () => {
+      const ctx = createMappedContext();
+      const { sql, columns } = printQuery("SELECT runs.id, runs.task FROM runs", ctx);
+
+      // Should add aliases to preserve user-facing names
+      expect(sql).toContain("run_id AS id");
+      expect(sql).toContain("task_identifier AS task");
+
+      // Column metadata should use user-facing names
+      expect(columns.map((c) => c.name)).toEqual(["id", "task"]);
+    });
+
+    it("should not add redundant alias when user provides explicit AS", () => {
+      const ctx = createMappedContext();
+      const { sql, columns } = printQuery("SELECT id AS my_id FROM runs", ctx);
+
+      // Should use the clickhouse name with user's explicit alias
+      expect(sql).toContain("run_id AS my_id");
+      // Should NOT have double aliasing
+      expect(sql).not.toContain("run_id AS id AS my_id");
+
+      // Column metadata should use the explicit alias
+      expect(columns.map((c) => c.name)).toEqual(["my_id"]);
+    });
   });
 
   describe("WHERE clauses", () => {
