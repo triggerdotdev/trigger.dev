@@ -77,6 +77,7 @@ export class NoopClient implements ClickhouseReader, ClickhouseWriter {
             result_rows: "0",
             result_bytes: "0",
             elapsed_ns: "0",
+            byte_seconds: "0",
           },
         },
       ];

@@ -1,4 +1,5 @@
 import { LightBulbIcon } from "@heroicons/react/20/solid";
+import { ColumnSchema } from "@internal/tsql";
 import { Form, useNavigation } from "@remix-run/react";
 import {
   type ActionFunctionArgs,
@@ -9,11 +10,14 @@ import { useState } from "react";
 import { typedjson, useTypedActionData, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
+import { AlphaTitle } from "~/components/AlphaBadge";
 import { TSQLEditor } from "~/components/code/TSQLEditor";
 import { TSQLResultsTable } from "~/components/code/TSQLResultsTable";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { Badge } from "~/components/primitives/Badge";
 import { Button } from "~/components/primitives/Buttons";
+import { CopyableText } from "~/components/primitives/CopyableText";
 import { Header2, Header3 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -194,7 +198,7 @@ export default function Page() {
   return (
     <PageContainer>
       <NavBar>
-        <PageTitle title="Query" />
+        <PageTitle title={<AlphaTitle>Query</AlphaTitle>} />
       </NavBar>
       <PageBody scrollable={false}>
         <ResizablePanelGroup orientation="horizontal" className="max-h-full">
@@ -211,6 +215,13 @@ export default function Page() {
                   showClearButton={true}
                   minHeight="200px"
                   className="min-h-[200px]"
+                  additionalActions={
+                    showHelpSidebar ? null : (
+                      <Button variant="minimal/small" onClick={() => setShowHelpSidebar(true)}>
+                        Help
+                      </Button>
+                    )
+                  }
                 />
                 <Form method="post" className="flex items-center justify-end gap-2 px-2">
                   <input type="hidden" name="query" value={query} />
@@ -345,48 +356,51 @@ function QueryHelpSidebar({ onClose }: { onClose: () => void }) {
                 </Paragraph>
               )}
             </div>
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-2 divide-y divide-grid-dimmed">
               {Object.values(table.columns).map((col) => (
-                <div
-                  key={col.name}
-                  className="rounded border border-grid-dimmed bg-charcoal-900 p-2"
-                >
-                  <div className="flex items-baseline gap-2">
-                    <code className="text-sm font-medium text-text-bright">{col.name}</code>
-                    <span className="text-xs text-text-dimmed">{col.type}</span>
-                  </div>
-                  {col.description && (
-                    <Paragraph variant="extra-small" className="mt-1 text-text-dimmed">
-                      {col.description}
-                    </Paragraph>
-                  )}
-                  {col.example && (
-                    <div className="mt-1.5 flex items-baseline gap-1.5">
-                      <span className="text-xs text-text-dimmed">Example:</span>
-                      <code className="text-xs text-green-400">{col.example}</code>
-                    </div>
-                  )}
-                  {col.allowedValues && col.allowedValues.length > 0 && (
-                    <div className="mt-1.5">
-                      <span className="text-xs text-text-dimmed">Allowed values:</span>
-                      <div className="mt-1 flex flex-wrap gap-1">
-                        {col.allowedValues.map((value) => (
-                          <code
-                            key={value}
-                            className="rounded bg-charcoal-800 px-1.5 py-0.5 text-xs text-amber-400"
-                          >
-                            {col.valueMap?.[value] ?? value}
-                          </code>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
+                <ColumnHelpItem key={col.name} col={col} />
               ))}
             </div>
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function ColumnHelpItem({ col }: { col: ColumnSchema }) {
+  return (
+    <div className="pt-1">
+      <div className="flex items-center gap-2">
+        <CopyableText value={col.name} className="text-sm text-indigo-400" />
+        <Badge className="font-mono text-xxs">{col.type}</Badge>
+      </div>
+      {col.description && (
+        <Paragraph variant="extra-small" className="mt-1 text-text-dimmed">
+          {col.description}
+        </Paragraph>
+      )}
+      {col.example && (
+        <div className="mt-1 flex items-baseline gap-0.5">
+          <span className="text-xs text-text-dimmed">Example:</span>
+          <CopyableText
+            value={col.example}
+            className="rounded-sm bg-charcoal-750 px-1.5 py-0.5 font-mono text-xxs"
+          />
+        </div>
+      )}
+      {col.allowedValues && col.allowedValues.length > 0 && (
+        <div className="mt-0.5 flex flex-wrap gap-1">
+          <span className="text-xs text-text-dimmed">Available options:</span>
+          {col.allowedValues.map((value) => (
+            <CopyableText
+              key={value}
+              value={col.valueMap?.[value] ?? value}
+              className="rounded-sm bg-charcoal-750 px-1.5 py-0.5 font-mono text-xxs"
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -412,17 +426,21 @@ function formatQueryStats(stats: {
   read_rows: string;
   read_bytes: string;
   elapsed_ns: string;
+  byte_seconds: string;
 }): string {
   const readRows = parseInt(stats.read_rows, 10);
   const readBytes = parseInt(stats.read_bytes, 10);
   const elapsedNs = parseInt(stats.elapsed_ns, 10);
+  const byteSeconds = parseFloat(stats.byte_seconds);
 
   const elapsedMs = elapsedNs / 1_000_000;
   const formattedTime =
     elapsedMs < 1000 ? `${elapsedMs.toFixed(1)}ms` : `${(elapsedMs / 1000).toFixed(2)}s`;
   const formattedBytes = formatBytes(readBytes);
 
-  return `${readRows.toLocaleString()} rows read · ${formattedBytes} · ${formattedTime}`;
+  return `${readRows.toLocaleString()} rows read · ${formattedBytes} · ${formattedTime} · ${formatBytes(
+    byteSeconds
+  )}s`;
 }
 
 function formatBytes(bytes: number): string {

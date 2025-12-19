@@ -354,10 +354,16 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
           result_rows: "0",
           result_bytes: "0",
           elapsed_ns: "0",
+          byte_seconds: "0",
         };
 
         if (typeof summaryHeader === "string") {
           const parsedSummary = JSON.parse(summaryHeader);
+          this.logger.log("parsedSummary", parsedSummary);
+          const readBytes = parsedSummary.read_bytes ? parseInt(parsedSummary.read_bytes, 10) : 0;
+          const elapsedNs = parsedSummary.elapsed_ns ? parseInt(parsedSummary.elapsed_ns, 10) : 0;
+          const elapsedSeconds = elapsedNs / 1_000_000_000;
+          const byteSeconds = readBytes / elapsedSeconds;
           stats = {
             read_rows: parsedSummary.read_rows ?? "0",
             read_bytes: parsedSummary.read_bytes ?? "0",
@@ -367,6 +373,7 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
             result_rows: parsedSummary.result_rows ?? "0",
             result_bytes: parsedSummary.result_bytes ?? "0",
             elapsed_ns: parsedSummary.elapsed_ns ?? "0",
+            byte_seconds: byteSeconds.toString(),
           };
           span.setAttributes({
             ...flattenAttributes(parsedSummary, "clickhouse.summary"),

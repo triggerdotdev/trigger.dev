@@ -97,6 +97,7 @@ import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
+import { AlphaBadge } from "../AlphaBadge";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 export type SideMenuProject = Pick<
@@ -278,6 +279,7 @@ export function SideMenu({
                 activeIconColor="text-purple-500"
                 to={queryPath(organization, project, environment)}
                 data-action="query"
+                badge={<AlphaBadge />}
               />
             )}
           </div>
