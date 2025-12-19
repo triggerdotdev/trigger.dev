@@ -32,6 +32,7 @@ import {
   QueueTypeName,
   ReplayRunResponse,
   RescheduleRunRequestBody,
+  ResetIdempotencyKeyResponse,
   RetrieveBatchV2Response,
   RetrieveQueueParam,
   RetrieveRunResponse,
@@ -656,6 +657,23 @@ export class ApiClient {
       {
         method: "POST",
         headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  resetIdempotencyKey(
+    taskIdentifier: string,
+    idempotencyKey: string,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      ResetIdempotencyKeyResponse,
+      `${this.baseUrl}/api/v1/idempotencyKeys/${encodeURIComponent(idempotencyKey)}/reset`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify({ taskIdentifier }),
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );
