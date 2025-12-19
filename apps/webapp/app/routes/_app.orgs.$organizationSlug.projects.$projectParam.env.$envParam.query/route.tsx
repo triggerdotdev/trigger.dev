@@ -1,5 +1,6 @@
-import { LightBulbIcon } from "@heroicons/react/20/solid";
-import { ColumnSchema } from "@internal/tsql";
+import { ArrowDownTrayIcon, ClipboardIcon, LightBulbIcon } from "@heroicons/react/20/solid";
+import type { OutputColumnMetadata } from "@internal/clickhouse";
+import type { ColumnSchema } from "@internal/tsql";
 import { Form, useNavigation } from "@remix-run/react";
 import {
   type ActionFunctionArgs,
@@ -22,6 +23,12 @@ import { Header2, Header3 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
+  Popover,
+  PopoverArrowTrigger,
+  PopoverContent,
+  PopoverMenuItem,
+} from "~/components/primitives/Popover";
+import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
@@ -36,6 +43,7 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { executeQuery } from "~/services/queryService.server";
 import { requireUser } from "~/services/session.server";
+import { downloadFile, rowsToCSV, rowsToJSON } from "~/utils/dataExport";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { defaultQuery, querySchemas } from "~/v3/querySchemas";
 
@@ -278,12 +286,17 @@ export default function Page() {
                       </span>
                     )}
                   </div>
-                  <Switch
-                    variant="small"
-                    label="Pretty formatting"
-                    checked={prettyFormatting}
-                    onCheckedChange={setPrettyFormatting}
-                  />
+                  <div className="flex items-center gap-3">
+                    {results?.rows && results?.columns && results.rows.length > 0 && (
+                      <ExportResultsButton rows={results.rows} columns={results.columns} />
+                    )}
+                    <Switch
+                      variant="small"
+                      label="Pretty formatting"
+                      checked={prettyFormatting}
+                      onCheckedChange={setPrettyFormatting}
+                    />
+                  </div>
                 </div>
                 {isLoading ? (
                   <div className="flex items-center gap-2 p-4 text-text-dimmed">
@@ -325,6 +338,60 @@ export default function Page() {
         </ResizablePanelGroup>
       </PageBody>
     </PageContainer>
+  );
+}
+
+function ExportResultsButton({
+  rows,
+  columns,
+}: {
+  rows: Record<string, unknown>[];
+  columns: OutputColumnMetadata[];
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  const handleCopyCSV = () => {
+    const csv = rowsToCSV(rows, columns);
+    navigator.clipboard.writeText(csv);
+    setIsOpen(false);
+  };
+
+  const handleExportCSV = () => {
+    const csv = rowsToCSV(rows, columns);
+    const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, "");
+    downloadFile(csv, `query-results-${timestamp}.csv`, "text/csv");
+    setIsOpen(false);
+  };
+
+  const handleCopyJSON = () => {
+    const json = rowsToJSON(rows);
+    navigator.clipboard.writeText(json);
+    setIsOpen(false);
+  };
+
+  const handleExportJSON = () => {
+    const json = rowsToJSON(rows);
+    const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, "");
+    downloadFile(json, `query-results-${timestamp}.json`, "application/json");
+    setIsOpen(false);
+  };
+
+  return (
+    <Popover open={isOpen} onOpenChange={setIsOpen}>
+      <PopoverArrowTrigger isOpen={isOpen}>Export</PopoverArrowTrigger>
+      <PopoverContent className="min-w-[10rem] p-1" align="end">
+        <div className="flex flex-col gap-1">
+          <PopoverMenuItem icon={ClipboardIcon} title="Copy CSV" onClick={handleCopyCSV} />
+          <PopoverMenuItem icon={ArrowDownTrayIcon} title="Export CSV" onClick={handleExportCSV} />
+          <PopoverMenuItem icon={ClipboardIcon} title="Copy JSON" onClick={handleCopyJSON} />
+          <PopoverMenuItem
+            icon={ArrowDownTrayIcon}
+            title="Export JSON"
+            onClick={handleExportJSON}
+          />
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
