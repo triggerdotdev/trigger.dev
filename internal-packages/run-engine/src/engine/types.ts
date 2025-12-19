@@ -7,7 +7,7 @@ import {
   RetryOptions,
   TriggerTraceContext,
 } from "@trigger.dev/core/v3";
-import { PrismaClient, PrismaReplicaClient } from "@trigger.dev/database";
+import { PrismaClient, PrismaReplicaClient, TaskRun, Waitpoint } from "@trigger.dev/database";
 import {
   Worker,
   type WorkerConcurrencyOptions,
@@ -82,6 +82,11 @@ export type RunEngineOptions = {
     defaultConcurrency?: number;
     /** Optional global rate limiter to limit processing across all consumers */
     globalRateLimiter?: GlobalRateLimiter;
+  };
+  debounce?: {
+    redis?: RedisOptions;
+    /** Maximum duration in milliseconds that a run can be debounced. Default: 1 hour */
+    maxDebounceDurationMs?: number;
   };
   /** If not set then checkpoints won't ever be used */
   retryWarmStartThresholdMs?: number;
@@ -164,6 +169,21 @@ export type TriggerParams = {
   bulkActionId?: string;
   planType?: string;
   realtimeStreamsVersion?: string;
+  debounce?: {
+    key: string;
+    delay: string;
+    mode?: "leading" | "trailing";
+  };
+  /**
+   * Called when a run is debounced (existing delayed run found with triggerAndWait).
+   * Return spanIdToComplete to enable span closing when the run completes.
+   * This allows the webapp to create a trace span for the debounced trigger.
+   */
+  onDebounced?: (params: {
+    existingRun: TaskRun;
+    waitpoint: Waitpoint;
+    debounceKey: string;
+  }) => Promise<string | undefined>;
 };
 
 export type EngineWorker = Worker<typeof workerCatalog>;

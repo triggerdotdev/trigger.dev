@@ -47,6 +47,7 @@ import { RunLocker } from "./locking.js";
 import { getFinalRunStatuses } from "./statuses.js";
 import { BatchSystem } from "./systems/batchSystem.js";
 import { CheckpointSystem } from "./systems/checkpointSystem.js";
+import { DebounceSystem } from "./systems/debounceSystem.js";
 import { DelayedRunSystem } from "./systems/delayedRunSystem.js";
 import { DequeueSystem } from "./systems/dequeueSystem.js";
 import { EnqueueSystem } from "./systems/enqueueSystem.js";
@@ -95,6 +96,7 @@ export class RunEngine {
   enqueueSystem: EnqueueSystem;
   checkpointSystem: CheckpointSystem;
   delayedRunSystem: DelayedRunSystem;
+  debounceSystem: DebounceSystem;
   ttlSystem: TtlSystem;
   pendingVersionSystem: PendingVersionSystem;
   raceSimulationSystem: RaceSimulationSystem = new RaceSimulationSystem();
@@ -297,6 +299,14 @@ export class RunEngine {
       enqueueSystem: this.enqueueSystem,
     });
 
+    this.debounceSystem = new DebounceSystem({
+      resources,
+      redis: options.debounce?.redis ?? options.runLock.redis,
+      executionSnapshotSystem: this.executionSnapshotSystem,
+      delayedRunSystem: this.delayedRunSystem,
+      maxDebounceDurationMs: options.debounce?.maxDebounceDurationMs ?? 60 * 60 * 1000, // Default 1 hour
+    });
+
     this.pendingVersionSystem = new PendingVersionSystem({
       resources,
       enqueueSystem: this.enqueueSystem,
@@ -428,6 +438,8 @@ export class RunEngine {
       bulkActionId,
       planType,
       realtimeStreamsVersion,
+      debounce,
+      onDebounced,
     }: TriggerParams,
     tx?: PrismaClientOrTransaction
   ): Promise<TaskRun> {
@@ -437,6 +449,77 @@ export class RunEngine {
       this.tracer,
       "trigger",
       async (span) => {
+        // Handle debounce before creating a new run
+        // Store claimId if we successfully claimed the debounce key
+        let debounceClaimId: string | undefined;
+
+        if (debounce) {
+          const debounceResult = await this.debounceSystem.handleDebounce({
+            environmentId: environment.id,
+            taskIdentifier,
+            debounce:
+              debounce.mode === "trailing"
+                ? {
+                    ...debounce,
+                    updateData: {
+                      payload,
+                      payloadType,
+                      metadata,
+                      metadataType,
+                      tags,
+                      maxAttempts,
+                      maxDurationInSeconds,
+                      machine,
+                    },
+                  }
+                : debounce,
+            tx: prisma,
+          });
+
+          if (debounceResult.status === "existing") {
+            span.setAttribute("debounced", true);
+            span.setAttribute("existingRunId", debounceResult.run.id);
+
+            // For triggerAndWait, block the parent run with the existing run's waitpoint
+            if (resumeParentOnCompletion && parentTaskRunId && debounceResult.waitpoint) {
+              // Call the onDebounced callback to create a span and get spanIdToComplete
+              let spanIdToComplete: string | undefined;
+              if (onDebounced) {
+                spanIdToComplete = await onDebounced({
+                  existingRun: debounceResult.run,
+                  waitpoint: debounceResult.waitpoint,
+                  debounceKey: debounce.key,
+                });
+              }
+
+              await this.waitpointSystem.blockRunWithWaitpoint({
+                runId: parentTaskRunId,
+                waitpoints: debounceResult.waitpoint.id,
+                spanIdToComplete,
+                projectId: environment.project.id,
+                organizationId: environment.organization.id,
+                batch,
+                workerId,
+                runnerId,
+                tx: prisma,
+              });
+            }
+
+            return debounceResult.run;
+          }
+
+          // If max_duration_exceeded, we continue to create a new run without debouncing
+          if (debounceResult.status === "max_duration_exceeded") {
+            span.setAttribute("debounceMaxDurationExceeded", true);
+          }
+
+          // Store the claimId for later registration
+          if (debounceResult.status === "new" && debounceResult.claimId) {
+            debounceClaimId = debounceResult.claimId;
+            span.setAttribute("debounceClaimId", debounceClaimId);
+          }
+        }
+
         const status = delayUntil ? "DELAYED" : "PENDING";
 
         //create run
@@ -508,11 +591,18 @@ export class RunEngine {
               bulkActionGroupIds: bulkActionId ? [bulkActionId] : undefined,
               planType,
               realtimeStreamsVersion,
+              debounce: debounce
+                ? {
+                    key: debounce.key,
+                    delay: debounce.delay,
+                    createdAt: new Date(),
+                  }
+                : undefined,
               executionSnapshots: {
                 create: {
                   engine: "V2",
-                  executionStatus: "RUN_CREATED",
-                  description: "Run was created",
+                  executionStatus: delayUntil ? "DELAYED" : "RUN_CREATED",
+                  description: delayUntil ? "Run is delayed" : "Run was created",
                   runStatus: status,
                   environmentId: environment.id,
                   environmentType: environment.type,
@@ -582,6 +672,27 @@ export class RunEngine {
             runId: taskRun.id,
             delayUntil: taskRun.delayUntil,
           });
+
+          // Register debounced run in Redis for future lookups
+          if (debounce) {
+            const registered = await this.debounceSystem.registerDebouncedRun({
+              runId: taskRun.id,
+              environmentId: environment.id,
+              taskIdentifier,
+              debounceKey: debounce.key,
+              delayUntil: taskRun.delayUntil,
+              claimId: debounceClaimId,
+            });
+
+            if (!registered) {
+              // We lost the claim - this shouldn't normally happen, but log it
+              this.logger.warn("trigger: lost debounce claim after creating run", {
+                runId: taskRun.id,
+                debounceKey: debounce.key,
+                claimId: debounceClaimId,
+              });
+            }
+          }
         } else {
           if (taskRun.ttl) {
             await this.ttlSystem.scheduleExpireRun({ runId: taskRun.id, ttl: taskRun.ttl });
@@ -1307,6 +1418,9 @@ export class RunEngine {
 
       // Close the batch queue and its Redis connections
       await this.batchQueue.close();
+
+      // Close the debounce system Redis connection
+      await this.debounceSystem.quit();
     } catch (error) {
       // And should always throw
     }
@@ -1780,6 +1894,9 @@ export class RunEngine {
         case "FINISHED": {
           throw new NotImplementedError("There shouldn't be a heartbeat for FINISHED");
         }
+        case "DELAYED": {
+          throw new NotImplementedError("There shouldn't be a heartbeat for DELAYED");
+        }
         default: {
           assertNever(latestSnapshot.executionStatus);
         }
@@ -1820,7 +1937,8 @@ export class RunEngine {
         case "PENDING_CANCEL":
         case "PENDING_EXECUTING":
         case "QUEUED_EXECUTING":
-        case "RUN_CREATED": {
+        case "RUN_CREATED":
+        case "DELAYED": {
           // Do nothing;
           return;
         }

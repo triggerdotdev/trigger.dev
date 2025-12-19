@@ -1,7 +1,7 @@
 name: 🚀 Publish Trigger.dev Docker
 
 on:
-  repository_dispatch:
+  workflow_dispatch:
   workflow_call:
     inputs:
       image_tag:
