@@ -196,6 +196,24 @@ function CellValue({
   return <span>{String(value)}</span>;
 }
 
+/**
+ * Check if a column should be right-aligned (numeric columns, duration, cost)
+ */
+function isRightAlignedColumn(column: OutputColumnMetadata): boolean {
+  // Check for custom render types that display numeric values
+  if (column.customRenderType === "duration" || column.customRenderType === "cost") {
+    return true;
+  }
+
+  // Check for numeric types (excluding UInt8 which is often used for booleans)
+  const { type } = column;
+  if (type === "UInt8" || type === "Nullable(UInt8)") {
+    return false;
+  }
+
+  return isNumericType(type);
+}
+
 export function TSQLResultsTable({
   rows,
   columns,
@@ -212,7 +230,10 @@ export function TSQLResultsTable({
       <TableHeader>
         <TableRow>
           {columns.map((col) => (
-            <TableHeaderCell key={col.name}>
+            <TableHeaderCell
+              key={col.name}
+              alignment={isRightAlignedColumn(col) ? "right" : "left"}
+            >
               {col.description ? (
                 <SimpleTooltip
                   content={col.description}
@@ -244,7 +265,7 @@ export function TSQLResultsTable({
           rows.map((row, i) => (
             <TableRow key={i}>
               {columns.map((col) => (
-                <TableCell key={col.name}>
+                <TableCell key={col.name} alignment={isRightAlignedColumn(col) ? "right" : "left"}>
                   <CellValue
                     value={row[col.name]}
                     column={col}
