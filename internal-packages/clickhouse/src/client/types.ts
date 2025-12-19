@@ -25,6 +25,7 @@ export interface QueryStats {
   result_rows: string;
   result_bytes: string;
   elapsed_ns: string;
+  byte_seconds: string;
 }
 
 /**

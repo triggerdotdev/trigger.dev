@@ -137,6 +137,11 @@ export const runsSchema: TableSchema = {
       name: "idempotency_key",
       ...column("String", { description: "Idempotency key", example: "user-123-action-456" }),
     },
+    region: {
+      name: "region",
+      clickhouseName: "region",
+      ...column("String", { description: "Region", example: "us-east-1" }),
+    },
 
     // Timing
     created_at: {
