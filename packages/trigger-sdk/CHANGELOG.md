@@ -1,5 +1,15 @@
 # @trigger.dev/sdk
 
+## 4.3.1
+
+### Patch Changes
+
+- feat: Support for new batch trigger system ([#2779](https://github.com/triggerdotdev/trigger.dev/pull/2779))
+- feat(sdk): Support debouncing runs when triggering with new debounce options ([#2794](https://github.com/triggerdotdev/trigger.dev/pull/2794))
+- Added support for idempotency reset ([#2777](https://github.com/triggerdotdev/trigger.dev/pull/2777))
+- Updated dependencies:
+  - `@trigger.dev/core@4.3.1`
+
 ## 4.3.0
 
 ### Patch Changes
