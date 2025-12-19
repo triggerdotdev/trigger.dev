@@ -1,0 +1,93 @@
+---
+title: "Claude GitHub wiki"
+sidebarTitle: "Claude GitHub wiki"
+description: "Ask questions about any public GitHub repository and get AI-powered analysis using the Claude Agent SDK and Trigger.dev."
+---
+
+## Overview
+
+This demo shows how to build an AI agent using the Claude Agent SDK that clones any public GitHub repo and uses Claude to answer questions about it's codebase. The agent explores the code using `Grep` and `Read` tools to provide detailed, accurate answers.
+
+## Tech stack
+
+- **[Next.js](https://nextjs.org/)** – React framework with App Router for the frontend
+- **[Claude Agent SDK](https://docs.anthropic.com/en/docs/agents-and-tools/claude-agent-sdk)** – Anthropic's SDK for building AI agents with file system and search tools
+- **[Trigger.dev](https://trigger.dev/)** – workflow orchestration with real-time streaming, observability, and deployment
+
+## Demo video
+
+<video
+  controls
+  className="w-full aspect-video"
+  src="https://github.com/user-attachments/assets/ff89ae41-0488-4d1c-aa7d-4dad15cefc12"
+></video>
+
+## GitHub repo
+
+<Card
+  title="View the Claude GitHub wiki agent repo"
+  icon="GitHub"
+  href="https://github.com/triggerdotdev/examples/tree/main/claude-agent-github-wiki"
+>
+  Click here to view the full code for this project in our examples repository on GitHub. You can
+  fork it and use it as a starting point for your own project.
+</Card>
+
+## How it works
+
+The agent workflow:
+
+1. **Receive question** – User provides a GitHub URL and question about the repo
+2. **Clone repository** – Shallow clone to a temp directory (depth=1 for speed)
+3. **Analyze with Claude** – Agent explores the codebase using allowed tools:
+   - `Grep` – Search for patterns across files
+   - `Read` – Read file contents
+4. **Stream response** – Analysis streams to the frontend in real-time
+5. **Cleanup** – Temp directory is always deleted, even on failure
+
+## Features
+
+- **Ask anything about any public repo** – Architecture, security vulnerabilities, API endpoints, testing strategies, etc.
+- **Claude Agent SDK exploration** – Claude explores the codebase using `Grep` and `Read` tools
+- **Cancel anytime** – Abort long-running tasks with proper cleanup
+- **Trigger.dev [Realtime](/realtime/overview) streaming** – Watch Claude's analysis stream in as it's generated
+- **Progress tracking** – See clone status, analysis progress, and repo size via Trigger.dev metadata
+
+## Relevant code
+
+| File                                                                                                                                              | Description                                                         |
+| ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| [`trigger/analyze-repo.ts`](https://github.com/triggerdotdev/examples/blob/main/claude-agent-github-wiki/trigger/analyze-repo.ts)                 | Main task that clones repo, runs Claude agent, and streams response |
+| [`trigger/agent-stream.ts`](https://github.com/triggerdotdev/examples/blob/main/claude-agent-github-wiki/trigger/agent-stream.ts)                 | Typed stream definition for real-time text responses                |
+| [`app/api/analyze-repo/route.ts`](https://github.com/triggerdotdev/examples/blob/main/claude-agent-github-wiki/app/api/analyze-repo/route.ts)     | API endpoint that triggers the task                                 |
+| [`app/response/[runId]/page.tsx`](https://github.com/triggerdotdev/examples/blob/main/claude-agent-github-wiki/app/response/%5BrunId%5D/page.tsx) | Real-time streaming display with progress                           |
+
+## trigger.config.ts
+
+You need to mark the Claude Agent SDK as external in your trigger.config.ts file.
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk";
+
+export default defineConfig({
+  project: process.env.TRIGGER_PROJECT_REF!,
+  runtime: "node",
+  logLevel: "log",
+  maxDuration: 3600, // 60 minutes for large repos
+  build: {
+    external: ["@anthropic-ai/claude-agent-sdk"],
+  },
+  machine: "medium-2x",
+});
+```
+
+<Note>
+  Adding packages to `external` prevents them from being bundled, which is necessary for the Claude
+  Agent SDK. See the [build configuration docs](/config/config-file#external) for more details.
+</Note>
+
+## Learn more
+
+- [**Building agents with Claude Agent SDK**](/guides/ai-agents/claude-code-trigger) – Comprehensive guide for using Claude Agent SDK with Trigger.dev
+- [**Trigger.dev Realtime**](/realtime/overview) – Stream task progress to your frontend
+- [**Errors and retrying**](/errors-retrying) – Handle failures gracefully
