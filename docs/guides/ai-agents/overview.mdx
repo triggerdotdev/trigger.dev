@@ -4,47 +4,24 @@ sidebarTitle: "Overview"
 description: "Real world AI agent example tasks using Trigger.dev"
 ---
 
-## Overview
-
-These guides will show you how to set up different types of AI agent workflows with Trigger.dev. The examples take inspiration from Anthropic's blog post on [building effective agents](https://www.anthropic.com/research/building-effective-agents).
-
-<CardGroup cols={2}>
-  <Card
-    title="Prompt chaining"
-    img="/guides/ai-agents/prompt-chaining.png"
-    href="/guides/ai-agents/generate-translate-copy"
-  >
-    Chain prompts together to generate and translate marketing copy automatically
-  </Card>
-  <Card title="Routing" img="/guides/ai-agents/routing.png" href="/guides/ai-agents/route-question">
-    Send questions to different AI models based on complexity analysis
-  </Card>
-  <Card
-    title="Parallelization"
-    img="/guides/ai-agents/parallelization.png"
-    href="/guides/ai-agents/respond-and-check-content"
-  >
-    Simultaneously check for inappropriate content while responding to customer inquiries
-  </Card>
-  <Card
-    title="Orchestrator"
-    img="/guides/ai-agents/orchestrator-workers.png"
-    href="/guides/ai-agents/verify-news-article"
-  >
-    Coordinate multiple AI workers to verify news article accuracy
-  </Card>
-  <Card
-    title="Evaluator-optimizer"
-    img="/guides/ai-agents/evaluator-optimizer.png"
-    href="/guides/ai-agents/translate-and-refine"
-  >
-    Translate text and automatically improve quality through feedback loops
-  </Card>
-</CardGroup>
-
 ## Example projects using AI agents
 
 <CardGroup cols={2}>
+  <Card
+    icon="scroll"
+    title="Claude changelog generator"
+    href="/guides/example-projects/claude-changelog-generator"
+  >
+    Automatically generate professional changelogs from git commits using Claude.
+  </Card>
+  <Card
+    icon="book"
+    title="Claude GitHub wiki agent"
+    href="/guides/example-projects/claude-github-wiki"
+  >
+    Generate and maintain GitHub wiki documentation with Claude-powered analysis.
+  </Card>
+
   <Card
     icon="hand"
     title="Human-in-the-loop workflow"
@@ -81,5 +58,43 @@ These guides will show you how to set up different types of AI agent workflows w
     href="/guides/example-projects/vercel-ai-sdk-deep-research"
   >
     Use the Vercel AI SDK to generate comprehensive PDF reports using a deep research agent.
+  </Card>
+</CardGroup>
+
+## Agent fundamentals
+
+These guides will show you how to set up different types of AI agent workflows with Trigger.dev. The examples take inspiration from Anthropic's blog post on [building effective agents](https://www.anthropic.com/research/building-effective-agents).
+
+<CardGroup cols={2}>
+  <Card
+    title="Prompt chaining"
+    img="/guides/ai-agents/prompt-chaining.png"
+    href="/guides/ai-agents/generate-translate-copy"
+  >
+    Chain prompts together to generate and translate marketing copy automatically
+  </Card>
+  <Card title="Routing" img="/guides/ai-agents/routing.png" href="/guides/ai-agents/route-question">
+    Send questions to different AI models based on complexity analysis
+  </Card>
+  <Card
+    title="Parallelization"
+    img="/guides/ai-agents/parallelization.png"
+    href="/guides/ai-agents/respond-and-check-content"
+  >
+    Simultaneously check for inappropriate content while responding to customer inquiries
+  </Card>
+  <Card
+    title="Orchestrator"
+    img="/guides/ai-agents/orchestrator-workers.png"
+    href="/guides/ai-agents/verify-news-article"
+  >
+    Coordinate multiple AI workers to verify news article accuracy
+  </Card>
+  <Card
+    title="Evaluator-optimizer"
+    img="/guides/ai-agents/evaluator-optimizer.png"
+    href="/guides/ai-agents/translate-and-refine"
+  >
+    Translate text and automatically improve quality through feedback loops
   </Card>
 </CardGroup>

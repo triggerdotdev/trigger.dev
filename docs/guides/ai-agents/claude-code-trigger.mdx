@@ -1,0 +1,226 @@
+---
+title: "Claude Agent SDK setup guide"
+sidebarTitle: "Claude Agent SDK"
+icon: "sparkles"
+description: "Build AI agents that can read files, run commands, and edit code using the Claude Agent SDK and Trigger.dev."
+---
+
+The [Claude Agent SDK](https://platform.claude.com/docs/en/agent-sdk/overview) gives you the same tools, agent loop, and context management that power Claude Code. Combined with Trigger.dev, you get durable execution, automatic retries, and full observability for your agents.
+
+## Setup
+
+<Note>
+  This guide assumes you are working with an existing [Trigger.dev](https://trigger.dev) project.
+  Follow our [quickstart](/quick-start) to get set up if you don't have a project yet.
+</Note>
+
+<Steps>
+
+<Step title="Install the Claude Agent SDK">
+
+<CodeGroup>
+
+```bash npm
+npm install @anthropic-ai/claude-agent-sdk
+```
+
+```bash pnpm
+pnpm add @anthropic-ai/claude-agent-sdk
+```
+
+```bash yarn
+
+```
+
+```bash bun
+bun add @anthropic-ai/claude-agent-sdk
+```
+
+</CodeGroup>
+
+</Step>
+
+<Step title="Configure trigger.config.ts">
+
+Add the SDK to the `external` array so it's not bundled:
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk";
+
+export default defineConfig({
+  project: process.env.TRIGGER_PROJECT_REF!,
+  build: {
+    external: ["@anthropic-ai/claude-agent-sdk"],
+  },
+  machine: "small-2x",
+});
+```
+
+<Note>
+  Adding packages to `external` prevents them from being bundled, which is necessary for the Claude
+  Agent SDK. See the [build configuration docs](/config/config-file#external) for more details.
+</Note>
+
+</Step>
+
+<Step title="Set your API key">
+
+Add your Anthropic API key to your environment variables. The SDK reads it automatically.
+
+```bash
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+You can set this in the [Trigger.dev dashboard](/dashboard/overview) under **Environment Variables**, or in your `.env` file for local development.
+
+</Step>
+
+<Step title="Create your first agent task">
+
+This example creates a task where Claude generates code in an empty workspace. The agent will create files based on your prompt:
+
+```ts trigger/claude-agent.ts
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import { schemaTask, logger } from "@trigger.dev/sdk";
+import { mkdtemp, rm, readdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { z } from "zod";
+
+export const codeGenerator = schemaTask({
+  id: "code-generator",
+  schema: z.object({
+    prompt: z.string(),
+  }),
+  run: async ({ prompt }, { signal }) => {
+    const abortController = new AbortController();
+    signal.addEventListener("abort", () => abortController.abort());
+
+    // Create an empty workspace for the agent
+    // The agent will create files here based on the prompt
+    const workDir = await mkdtemp(join(tmpdir(), "claude-agent-"));
+    logger.info("Created workspace", { workDir });
+
+    try {
+      const result = query({
+        prompt,
+        options: {
+          model: "claude-sonnet-4-20250514",
+          abortController,
+          cwd: workDir,
+          maxTurns: 10,
+          permissionMode: "acceptEdits",
+          allowedTools: ["Read", "Edit", "Write", "Glob"],
+        },
+      });
+
+      for await (const message of result) {
+        logger.info("Agent message", { type: message.type });
+      }
+
+      // See what files Claude created
+      const files = await readdir(workDir, { recursive: true });
+      logger.info("Files created", { files });
+
+      return { filesCreated: files };
+    } finally {
+      await rm(workDir, { recursive: true, force: true });
+    }
+  },
+});
+```
+
+</Step>
+
+<Step title="Run the dev server">
+
+```bash
+npx trigger.dev@latest dev
+```
+
+</Step>
+
+<Step title="Test your agent">
+
+Go to the Trigger.dev dashboard, find your `code-generator` task, and trigger it with a test payload:
+
+```json
+{
+  "prompt": "Create a Node.js project with a fibonacci.ts file containing a function to calculate fibonacci numbers, and a fibonacci.test.ts file with tests."
+}
+```
+
+</Step>
+
+</Steps>
+
+## How it works
+
+The `query()` function runs Claude in an agentic loop where it can:
+
+1. **Read files** - Explore codebases with `Read`, `Grep`, and `Glob` tools
+2. **Edit files** - Modify code with `Edit` and `Write` tools
+3. **Run commands** - Execute shell commands with `Bash` tool (if enabled)
+4. **Think step by step** - Use extended thinking for complex problems
+
+The agent continues until it completes the task or reaches `maxTurns`.
+
+### Permission modes
+
+| Mode                  | What it does                                          |
+| --------------------- | ----------------------------------------------------- |
+| `"default"`           | Asks for approval on potentially dangerous operations |
+| `"acceptEdits"`       | Auto-approves file operations, asks for bash/network  |
+| `"bypassPermissions"` | Skips all safety checks (not recommended)             |
+
+### Available tools
+
+```ts
+allowedTools: [
+  "Task", // Planning and task management
+  "Glob", // Find files by pattern
+  "Grep", // Search file contents
+  "Read", // Read file contents
+  "Edit", // Edit existing files
+  "Write", // Create new files
+  "Bash", // Run shell commands
+  "TodoRead", // Read todo list
+  "TodoWrite", // Update todo list
+];
+```
+
+## GitHub repo
+
+<Card
+  title="View the Claude Agent SDK + Trigger.dev example"
+  icon="GitHub"
+  href="https://github.com/triggerdotdev/examples/tree/main/claude-agent-sdk-trigger"
+>
+  A complete example with two agent patterns: basic safe code generation and advanced with bash
+  execution.
+</Card>
+
+## Example projects using the Claude Agent SDK
+
+<CardGroup cols={2}>
+  <Card
+    title="Claude changelog generator"
+    icon="scroll"
+    href="/guides/example-projects/claude-changelog-generator"
+  >
+    Generate changelogs from git commits using custom MCP tools.
+  </Card>
+  <Card
+    title="Claude GitHub wiki agent"
+    icon="book"
+    href="/guides/example-projects/claude-github-wiki"
+  >
+    Analyze repositories and answer questions with real-time streaming.
+  </Card>
+</CardGroup>
+
+## Learn more
+
+- [Claude Agent SDK docs](https://platform.claude.com/docs/en/agent-sdk/overview) – Official Anthropic documentation
+- [Trigger.dev Realtime](/realtime/overview) – Stream agent progress to your frontend
+- [Waitpoints](/wait) – Add human-in-the-loop approval steps
