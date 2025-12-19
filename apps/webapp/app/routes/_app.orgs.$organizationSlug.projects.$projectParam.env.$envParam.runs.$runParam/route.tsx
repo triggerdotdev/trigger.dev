@@ -2,7 +2,6 @@ import {
   ArrowUturnLeftIcon,
   BoltSlashIcon,
   BookOpenIcon,
-  ChevronUpIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   InformationCircleIcon,
@@ -12,6 +11,7 @@ import {
   MagnifyingGlassPlusIcon,
   StopCircleIcon,
 } from "@heroicons/react/20/solid";
+
 import { useLoaderData, useRevalidator } from "@remix-run/react";
 import { type LoaderFunctionArgs, type SerializeFrom, json } from "@remix-run/server-runtime";
 import { type Virtualizer } from "@tanstack/react-virtual";
@@ -26,6 +26,8 @@ import { motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { redirect } from "remix-typedjson";
+import { ChevronExtraSmallDown } from "~/assets/icons/ChevronExtraSmallDown";
+import { ChevronExtraSmallUp } from "~/assets/icons/ChevronExtraSmallUp";
 import { MoveToTopIcon } from "~/assets/icons/MoveToTopIcon";
 import { MoveUpIcon } from "~/assets/icons/MoveUpIcon";
 import tileBgPath from "~/assets/images/error-banner-tile@2x.png";
@@ -35,6 +37,7 @@ import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { PageBody } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTimeShort } from "~/components/primitives/DateTime";
 import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { Header3 } from "~/components/primitives/Headers";
@@ -62,6 +65,7 @@ import {
 import { type NodesState } from "~/components/primitives/TreeView/reducer";
 import { CancelRunDialog } from "~/components/runs/v3/CancelRunDialog";
 import { ReplayRunDialog } from "~/components/runs/v3/ReplayRunDialog";
+import { getRunFiltersFromSearchParams } from "~/components/runs/v3/RunFilters";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
 import {
   SpanTitle,
@@ -69,6 +73,7 @@ import {
   eventBorderClassName,
 } from "~/components/runs/v3/SpanTitle";
 import { TaskRunStatusIcon, runStatusClassNameColor } from "~/components/runs/v3/TaskRunStatus";
+import { $replica } from "~/db.server";
 import { useDebounce } from "~/hooks/useDebounce";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useEventSource } from "~/hooks/useEventSource";
@@ -76,10 +81,16 @@ import { useInitialDimensions } from "~/hooks/useInitialDimensions";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useReplaceSearchParams } from "~/hooks/useReplaceSearchParams";
+import { useSearchParams } from "~/hooks/useSearchParam";
 import { type Shortcut, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { useHasAdminAccess } from "~/hooks/useUser";
+import { findProjectBySlug } from "~/models/project.server";
+import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
+import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
 import { RunEnvironmentMismatchError, RunPresenter } from "~/presenters/v3/RunPresenter.server";
+import { clickhouseClient } from "~/services/clickhouseInstance.server";
 import { getImpersonationId } from "~/services/impersonation.server";
+import { logger } from "~/services/logger.server";
 import { getResizableSnapshot } from "~/services/resizablePanel.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
@@ -94,18 +105,9 @@ import {
   v3RunStreamingPath,
   v3RunsPath,
 } from "~/utils/pathBuilder";
+import type { SpanOverride } from "~/v3/eventRepository/eventRepository.types";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { SpanView } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.spans.$spanParam/route";
-import { useSearchParams } from "~/hooks/useSearchParam";
-import { CopyableText } from "~/components/primitives/CopyableText";
-import type { SpanOverride } from "~/v3/eventRepository/eventRepository.types";
-import { getRunFiltersFromSearchParams } from "~/components/runs/v3/RunFilters";
-import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
-import { $replica } from "~/db.server";
-import { clickhouseClient } from "~/services/clickhouseInstance.server";
-import { findProjectBySlug } from "~/models/project.server";
-import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
-import { logger } from "~/services/logger.server";
 
 const resizableSettings = {
   parent: {
@@ -336,11 +338,11 @@ export default function Page() {
             text: "Runs",
           }}
           title={
-            <>
+            <div className="flex items-center gap-x-0">
               <CopyableText
                 value={run.friendlyId}
                 variant="text-below"
-                className="-ml-[0.4375rem] px-1.5 pb-[3px] font-mono text-xs leading-none"
+                className="-ml-[0.4375rem] h-6 px-1.5 font-mono text-xs"
               />
               {tableState && (
                 <div className="flex">
@@ -348,7 +350,7 @@ export default function Page() {
                   <NextRunButton to={nextRunPath} />
                 </div>
               )}
-            </>
+            </div>
           }
         />
         {environment.type === "DEVELOPMENT" && <DevDisconnectedBanner isConnected={isConnected} />}
@@ -1782,11 +1784,9 @@ function PreviousRunButton({ to }: { to: string | null }) {
       <LinkButton
         to={to ? to : "#"}
         variant={"minimal/small"}
-        LeadingIcon={ChevronUpIcon}
-        className={cn(
-          "flex items-center rounded-r-none border-r-0 pl-2 pr-[0.5625rem]",
-          !to && "cursor-not-allowed opacity-50"
-        )}
+        LeadingIcon={ChevronExtraSmallUp}
+        leadingIconClassName="size-3"
+        className={cn("flex size-6 max-w-6 items-center", !to && "cursor-not-allowed opacity-50")}
         onClick={(e) => !to && e.preventDefault()}
         shortcut={{ key: "[" }}
         tooltip="Previous Run"
@@ -1803,11 +1803,9 @@ function NextRunButton({ to }: { to: string | null }) {
       <LinkButton
         to={to ? to : "#"}
         variant={"minimal/small"}
-        TrailingIcon={ChevronDownIcon}
-        className={cn(
-          "flex items-center rounded-l-none border-l-0 pl-[0.5625rem] pr-2",
-          !to && "cursor-not-allowed opacity-50"
-        )}
+        LeadingIcon={ChevronExtraSmallDown}
+        leadingIconClassName="size-3"
+        className={cn("flex size-6 max-w-6 items-center", !to && "cursor-not-allowed opacity-50")}
         onClick={(e) => !to && e.preventDefault()}
         shortcut={{ key: "]" }}
         tooltip="Next Run"
