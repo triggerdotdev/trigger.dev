@@ -153,6 +153,29 @@ function hash(payload: any): string {
 }
 ```
 
+## Resetting idempotency keys
+
+You can reset an idempotency key to clear it from all associated runs. This is useful if you need to allow a task to be triggered again with the same idempotency key.
+
+When you reset an idempotency key, it will be cleared for all runs that match both the task identifier and the idempotency key in the current environment. This allows you to trigger the task again with the same key.
+
+```ts
+import { idempotencyKeys } from "@trigger.dev/sdk";
+
+// Reset an idempotency key for a specific task
+await idempotencyKeys.reset("my-task", "my-idempotency-key");
+```
+
+The `reset` function requires both parameters:
+- `taskIdentifier`: The identifier of the task (e.g., `"my-task"`)
+- `idempotencyKey`: The idempotency key to reset
+
+After resetting, any subsequent triggers with the same idempotency key will create new task runs instead of returning the existing ones.
+
+<Note>
+Resetting an idempotency key only affects runs in the current environment. The reset is scoped to the specific task identifier and idempotency key combination.
+</Note>
+
 ## Important notes
 
 Idempotency keys, even the ones scoped globally, are actually scoped to the task and the environment. This means that you cannot collide with keys from other environments (e.g. dev will never collide with prod), or to other projects and orgs.

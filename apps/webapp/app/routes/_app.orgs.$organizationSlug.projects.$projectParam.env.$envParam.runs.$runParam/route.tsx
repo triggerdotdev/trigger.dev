@@ -983,6 +983,7 @@ function TimelineView({
   const initialTimelineDimensions = useInitialDimensions(timelineContainerRef);
   const minTimelineWidth = initialTimelineDimensions?.width ?? 300;
   const maxTimelineWidth = minTimelineWidth * 10;
+  const disableSpansAnimations = rootSpanStatus !== "executing";
 
   //we want to live-update the duration if the root span is still executing
   const [duration, setDuration] = useState(queueAdjustedNs(totalDuration, queuedDuration));
@@ -1155,9 +1156,9 @@ function TimelineView({
                                     eventBackgroundClassName(node.data)
                                   )}
                                   layoutId={
-                                    node.data.isPartial ? `${node.id}-${event.name}` : undefined
+                                    disableSpansAnimations ? undefined : `${node.id}-${event.name}`
                                   }
-                                  animate={!node.data.isPartial ? false : undefined}
+                                  animate={disableSpansAnimations ? false : undefined}
                                 />
                               )}
                             </Timeline.Point>
@@ -1176,9 +1177,9 @@ function TimelineView({
                                     eventBorderClassName(node.data)
                                   )}
                                   layoutId={
-                                    node.data.isPartial ? `${node.id}-${event.name}` : undefined
+                                    disableSpansAnimations ? undefined : `${node.id}-${event.name}`
                                   }
-                                  animate={!node.data.isPartial ? false : undefined}
+                                  animate={disableSpansAnimations ? false : undefined}
                                 />
                               )}
                             </Timeline.Point>
@@ -1197,8 +1198,8 @@ function TimelineView({
                           >
                             <motion.div
                               className={cn("h-px w-full", eventBackgroundClassName(node.data))}
-                              layoutId={node.data.isPartial ? `mark-${node.id}` : undefined}
-                              animate={!node.data.isPartial ? false : undefined}
+                              layoutId={disableSpansAnimations ? undefined : `mark-${node.id}`}
+                              animate={disableSpansAnimations ? false : undefined}
                             />
                           </Timeline.Span>
                         ) : null}
@@ -1221,6 +1222,7 @@ function TimelineView({
                           }
                           node={node}
                           fadeLeft={isTopSpan && queuedDuration !== undefined}
+                          disableAnimations={disableSpansAnimations}
                         />
                       </>
                     ) : (
@@ -1235,8 +1237,8 @@ function TimelineView({
                               "-ml-0.5 size-3 rounded-full border-2 border-background-bright",
                               eventBackgroundClassName(node.data)
                             )}
-                            layoutId={node.data.isPartial ? node.id : undefined}
-                            animate={!node.data.isPartial ? false : undefined}
+                            layoutId={disableSpansAnimations ? undefined : node.id}
+                            animate={disableSpansAnimations ? false : undefined}
                           />
                         )}
                       </Timeline.Point>
@@ -1468,8 +1470,14 @@ function SpanWithDuration({
   showDuration,
   node,
   fadeLeft,
+  disableAnimations,
   ...props
-}: Timeline.SpanProps & { node: TraceEvent; showDuration: boolean; fadeLeft: boolean }) {
+}: Timeline.SpanProps & {
+  node: TraceEvent;
+  showDuration: boolean;
+  fadeLeft: boolean;
+  disableAnimations?: boolean;
+}) {
   return (
     <Timeline.Span {...props}>
       <motion.div
@@ -1479,8 +1487,8 @@ function SpanWithDuration({
           fadeLeft ? "rounded-r-sm bg-gradient-to-r from-black/50 to-transparent" : "rounded-sm"
         )}
         style={{ backgroundSize: "20px 100%", backgroundRepeat: "no-repeat" }}
-        layoutId={node.data.isPartial ? node.id : undefined}
-        animate={!node.data.isPartial ? false : undefined}
+        layoutId={disableAnimations ? undefined : node.id}
+        animate={disableAnimations ? false : undefined}
       >
         {node.data.isPartial && (
           <div
@@ -1493,12 +1501,12 @@ function SpanWithDuration({
             "sticky left-0 z-10 transition-opacity group-hover:opacity-100",
             !showDuration && "opacity-0"
           )}
-          animate={!node.data.isPartial ? false : undefined}
+          animate={disableAnimations ? false : undefined}
         >
           <motion.div
             className="whitespace-nowrap rounded-sm px-1 py-0.5 text-xxs text-text-bright text-shadow-custom"
-            layout={node.data.isPartial ? "position" : undefined}
-            animate={!node.data.isPartial ? false : undefined}
+            layout={disableAnimations ? undefined : "position"}
+            animate={disableAnimations ? false : undefined}
           >
             {formatDurationMilliseconds(props.durationMs, {
               style: "short",
