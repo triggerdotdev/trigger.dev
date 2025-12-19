@@ -10,11 +10,7 @@
   },
   "favicon": "/images/favicon.png",
   "contextual": {
-    "options": [
-      "copy",
-      "view",
-      "claude"
-    ]
+    "options": ["copy", "view", "claude"]
   },
   "navigation": {
     "dropdowns": [
@@ -40,11 +36,7 @@
             "pages": [
               {
                 "group": "Tasks",
-                "pages": [
-                  "tasks/overview",
-                  "tasks/schemaTask",
-                  "tasks/scheduled"
-                ]
+                "pages": ["tasks/overview", "tasks/schemaTask", "tasks/scheduled"]
               },
               "triggering",
               "runs",
@@ -59,12 +51,7 @@
               "errors-retrying",
               {
                 "group": "Wait",
-                "pages": [
-                  "wait",
-                  "wait-for",
-                  "wait-until",
-                  "wait-for-token"
-                ]
+                "pages": ["wait", "wait-for", "wait-until", "wait-for-token"]
               },
               "queue-concurrency",
               "versioning",
@@ -113,9 +100,7 @@
           },
           {
             "group": "Development",
-            "pages": [
-              "cli-dev"
-            ]
+            "pages": ["cli-dev"]
           },
           {
             "group": "Deployment",
@@ -127,10 +112,7 @@
               "deployment/atomic-deployment",
               {
                 "group": "Deployment integrations",
-                "pages": [
-                  "github-integration",
-                  "vercel-integration"
-                ]
+                "pages": ["github-integration", "vercel-integration"]
               }
             ]
           },
@@ -186,20 +168,11 @@
           },
           {
             "group": "MCP Server",
-            "pages": [
-              "mcp-introduction",
-              "mcp-tools",
-              "mcp-agent-rules"
-            ]
+            "pages": ["mcp-introduction", "mcp-tools", "mcp-agent-rules"]
           },
           {
             "group": "Using the Dashboard",
-            "pages": [
-              "run-tests",
-              "troubleshooting-alerts",
-              "replaying",
-              "bulk-actions"
-            ]
+            "pages": ["run-tests", "troubleshooting-alerts", "replaying", "bulk-actions"]
           },
           {
             "group": "Troubleshooting",
@@ -221,30 +194,18 @@
               "self-hosting/kubernetes",
               {
                 "group": "Environment variables",
-                "pages": [
-                  "self-hosting/env/webapp",
-                  "self-hosting/env/supervisor"
-                ]
+                "pages": ["self-hosting/env/webapp", "self-hosting/env/supervisor"]
               },
               "open-source-self-hosting"
             ]
           },
           {
             "group": "Open source",
-            "pages": [
-              "open-source-contributing",
-              "github-repo",
-              "changelog",
-              "roadmap"
-            ]
+            "pages": ["open-source-contributing", "github-repo", "changelog", "roadmap"]
           },
           {
             "group": "Help",
-            "pages": [
-              "community",
-              "help-slack",
-              "help-email"
-            ]
+            "pages": ["community", "help-slack", "help-email"]
           }
         ]
       },
@@ -265,10 +226,7 @@
           },
           {
             "group": "Tasks API",
-            "pages": [
-              "management/tasks/trigger",
-              "management/tasks/batch-trigger"
-            ]
+            "pages": ["management/tasks/trigger", "management/tasks/batch-trigger"]
           },
           {
             "group": "Runs API",
@@ -314,9 +272,7 @@
         "groups": [
           {
             "group": "Introduction",
-            "pages": [
-              "guides/introduction"
-            ]
+            "pages": ["guides/introduction"]
           },
           {
             "group": "Frameworks",
@@ -339,6 +295,7 @@
                 },
                 "pages": [
                   "guides/ai-agents/overview",
+
                   "guides/ai-agents/generate-translate-copy",
                   "guides/ai-agents/route-question",
                   "guides/ai-agents/respond-and-check-content",
@@ -346,6 +303,7 @@
                   "guides/ai-agents/verify-news-article"
                 ]
               },
+              "guides/ai-agents/claude-code-trigger",
               "guides/frameworks/drizzle",
               "guides/frameworks/prisma",
               "guides/frameworks/sequin",
@@ -392,6 +350,8 @@
             "pages": [
               "guides/example-projects/anchor-browser-web-scraper",
               "guides/example-projects/batch-llm-evaluator",
+              "guides/example-projects/claude-changelog-generator",
+              "guides/example-projects/claude-github-wiki",
               "guides/example-projects/claude-thinking-chatbot",
               "guides/example-projects/human-in-the-loop-workflow",
               "guides/example-projects/mastra-agents-with-memory",
@@ -445,9 +405,7 @@
           },
           {
             "group": "Migration guides",
-            "pages": [
-              "migration-mergent"
-            ]
+            "pages": ["migration-mergent"]
           },
           {
             "group": "Community packages",
@@ -468,10 +426,7 @@
     "href": "https://trigger.dev"
   },
   "api": {
-    "openapi": [
-      "openapi.yml",
-      "v3-openapi.yaml"
-    ],
+    "openapi": ["openapi.yml", "v3-openapi.yaml"],
     "playground": {
       "display": "simple"
     }
