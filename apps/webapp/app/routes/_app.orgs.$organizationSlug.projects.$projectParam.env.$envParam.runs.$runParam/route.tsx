@@ -342,7 +342,7 @@ export default function Page() {
               <CopyableText
                 value={run.friendlyId}
                 variant="text-below"
-                className="-ml-[0.4375rem] h-6 px-1.5 font-mono text-xs"
+                className="-ml-[0.4375rem] h-6 px-1.5 font-mono text-xs hover:text-text-bright"
               />
               {tableState && (
                 <div className="flex">
@@ -1785,7 +1785,7 @@ function PreviousRunButton({ to }: { to: string | null }) {
         to={to ? to : "#"}
         variant={"minimal/small"}
         LeadingIcon={ChevronExtraSmallUp}
-        leadingIconClassName="size-3"
+        leadingIconClassName="size-3 group-hover/button:text-text-bright transition-colors"
         className={cn("flex size-6 max-w-6 items-center", !to && "cursor-not-allowed opacity-50")}
         onClick={(e) => !to && e.preventDefault()}
         shortcut={{ key: "[" }}
@@ -1804,7 +1804,7 @@ function NextRunButton({ to }: { to: string | null }) {
         to={to ? to : "#"}
         variant={"minimal/small"}
         LeadingIcon={ChevronExtraSmallDown}
-        leadingIconClassName="size-3"
+        leadingIconClassName="size-3 group-hover/button:text-text-bright transition-colors"
         className={cn("flex size-6 max-w-6 items-center", !to && "cursor-not-allowed opacity-50")}
         onClick={(e) => !to && e.preventDefault()}
         shortcut={{ key: "]" }}

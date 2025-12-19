@@ -77,11 +77,11 @@ export function CopyableText({
               copy();
             }}
             className={cn(
-              "cursor-pointer bg-transparent px-1 py-0 text-left text-text-bright transition-colors hover:bg-transparent hover:text-white",
+              "cursor-pointer bg-transparent px-1 py-0 text-left text-text-dimmed transition-colors hover:bg-transparent",
               className
             )}
           >
-            {value}
+            <span className="transition-colors group-hover/button:text-text-bright">{value}</span>
           </Button>
         }
         content={copied ? "Copied" : "Copy"}
