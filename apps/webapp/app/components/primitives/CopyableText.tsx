@@ -81,7 +81,7 @@ export function CopyableText({
               className
             )}
           >
-            <span>{value}</span>
+            {value}
           </Button>
         }
         content={copied ? "Copied" : "Copy"}
@@ -89,6 +89,7 @@ export function CopyableText({
         disableHoverableContent
         open={isHovered || copied}
         onOpenChange={setIsHovered}
+        asChild
       />
     );
   }
