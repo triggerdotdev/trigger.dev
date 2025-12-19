@@ -899,7 +899,7 @@ function TasksTreeView({
       </ResizablePanelGroup>
       <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-4">
         <div className="grow @container">
-          <div className="hidden items-center gap-4 @[42rem]:flex">
+          <div className="hidden items-center gap-4 @[48rem]:flex">
             <KeyboardShortcuts
               expandAllBelowDepth={expandAllBelowDepth}
               collapseAllBelowDepth={collapseAllBelowDepth}
@@ -907,7 +907,7 @@ function TasksTreeView({
               setShowDurations={setShowDurations}
             />
           </div>
-          <div className="@[42rem]:hidden">
+          <div className="@[48rem]:hidden">
             <Popover>
               <PopoverArrowTrigger>Shortcuts</PopoverArrowTrigger>
               <PopoverContent
@@ -1613,7 +1613,7 @@ function AdjacentRunsShortcuts() {
       <ShortcutKey shortcut={{ key: "[" }} variant="medium" className="ml-0 mr-0 px-1" />
       <ShortcutKey shortcut={{ key: "]" }} variant="medium" className="ml-0 mr-0 px-1" />
       <Paragraph variant="extra-small" className="ml-1.5 whitespace-nowrap">
-        Adjacent runs
+        Next/previous run
       </Paragraph>
     </div>
   );
