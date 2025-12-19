@@ -984,6 +984,16 @@ function QueueOverrideConcurrencyButton({
             </Paragraph>
           )}
           <Form method="post" onSubmit={() => setIsOpen(false)} className="space-y-3">
+            {/* Hidden button to capture Enter key for primary action */}
+            <button
+              type="submit"
+              name="action"
+              value="queue-override"
+              disabled={isLoading || !concurrencyLimit}
+              className="hidden"
+              tabIndex={-1}
+              aria-hidden="true"
+            />
             <input type="hidden" name="friendlyId" value={queue.id} />
             <div className="space-y-2">
               <label htmlFor="concurrencyLimit" className="text-sm text-text-bright">
