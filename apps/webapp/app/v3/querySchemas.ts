@@ -220,7 +220,7 @@ export const runsSchema: TableSchema = {
       name: "compute_cost",
       ...column("Float64", {
         description: "Compute cost in dollars",
-        customRenderType: "cost",
+        customRenderType: "costInDollars",
         example: "0.000676",
       }),
       expression: "cost_in_cents / 100.0",
@@ -229,7 +229,7 @@ export const runsSchema: TableSchema = {
       name: "invocation_cost",
       ...column("Float64", {
         description: "Invocation cost in dollars",
-        customRenderType: "cost",
+        customRenderType: "costInDollars",
         example: "0.000025",
       }),
       expression: "base_cost_in_cents / 100.0",

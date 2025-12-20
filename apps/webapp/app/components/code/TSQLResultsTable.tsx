@@ -129,6 +129,12 @@ function CellValue({
           return <span className="tabular-nums">{formatCurrencyAccurate(value / 100)}</span>;
         }
         return <span>{String(value)}</span>;
+      case "costInDollars":
+        if (typeof value === "number") {
+          // Value is already in dollars, no conversion needed
+          return <span className="tabular-nums">{formatCurrencyAccurate(value)}</span>;
+        }
+        return <span>{String(value)}</span>;
       case "machine": {
         const preset = MachinePresetName.safeParse(value);
         if (preset.success) {
@@ -201,7 +207,11 @@ function CellValue({
  */
 function isRightAlignedColumn(column: OutputColumnMetadata): boolean {
   // Check for custom render types that display numeric values
-  if (column.customRenderType === "duration" || column.customRenderType === "cost") {
+  if (
+    column.customRenderType === "duration" ||
+    column.customRenderType === "cost" ||
+    column.customRenderType === "costInDollars"
+  ) {
     return true;
   }
 
