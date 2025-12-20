@@ -290,7 +290,8 @@ export const runsSchema: TableSchema = {
     execution_duration: {
       name: "execution_duration",
       ...column("Nullable(Int64)", {
-        description: "Computed execution time in milliseconds (virtual column)",
+        description:
+          "The time between the run starting and completing. This includes any time spent waiting (it is not compute time, use `usage_duration` for that).",
         customRenderType: "duration",
         example: "4000",
       }),
