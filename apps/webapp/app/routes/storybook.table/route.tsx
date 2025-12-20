@@ -2,6 +2,7 @@ import React from "react";
 import { Header1, Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
+  CopyableTableCell,
   Table,
   TableBody,
   TableCell,
@@ -57,6 +58,33 @@ export default function Story() {
                 <TableCell to="#">{index + 3}</TableCell>
               </TableRow>
             ))}
+          </TableBody>
+        </Table>
+      </div>
+      <div className="flex flex-col gap-2">
+        <Header1>Copyable cells</Header1>
+        <Paragraph>
+          Hover over the first column to see the copy button. Click to copy the cell value.
+        </Paragraph>
+        <Table>
+          <TableHeader className="bg-background-bright">
+            <TableRow>
+              <TableHeaderCell>ID (copyable)</TableHeaderCell>
+              <TableHeaderCell>Name</TableHeaderCell>
+              <TableHeaderCell>Status</TableHeaderCell>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {Array.from({ length: 5 }, (_, index) => {
+              const id = `run_${crypto.randomUUID().slice(0, 8)}`;
+              return (
+                <TableRow key={index}>
+                  <CopyableTableCell value={id}>{id}</CopyableTableCell>
+                  <TableCell>Task {index + 1}</TableCell>
+                  <TableCell>Completed</TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </div>

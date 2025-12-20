@@ -1,9 +1,11 @@
 import { ChevronRightIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
+import { ClipboardCheckIcon, ClipboardIcon } from "lucide-react";
 import React, { type ReactNode, forwardRef, useState, useContext, createContext } from "react";
+import { useCopy } from "~/hooks/useCopy";
 import { cn } from "~/utils/cn";
 import { Popover, PopoverContent, PopoverVerticalEllipseTrigger } from "./Popover";
-import { InfoIconTooltip } from "./Tooltip";
+import { InfoIconTooltip, SimpleTooltip } from "./Tooltip";
 
 const variants = {
   bright: {
@@ -265,6 +267,53 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
           <>{children}</>
         )}
       </td>
+    );
+  }
+);
+
+type CopyableTableCellProps = TableCellProps & {
+  value: string;
+};
+
+export const CopyableTableCell = forwardRef<HTMLTableCellElement, CopyableTableCellProps>(
+  ({ value, children, className, ...props }, ref) => {
+    const { copy, copied } = useCopy(value);
+
+    return (
+      <TableCell ref={ref} className={cn("group/copyable-cell", className)} {...props}>
+        <div className="relative flex items-center">
+          {children}
+          <span
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              copy();
+            }}
+            className="absolute right-0 top-1/2 z-10 hidden -translate-y-1/2 cursor-pointer group-hover/copyable-cell:flex"
+          >
+            <SimpleTooltip
+              button={
+                <span
+                  className={cn(
+                    "flex size-6 items-center justify-center rounded border border-charcoal-650 bg-charcoal-750",
+                    copied
+                      ? "text-green-500"
+                      : "text-text-dimmed hover:border-charcoal-600 hover:bg-charcoal-700 hover:text-text-bright"
+                  )}
+                >
+                  {copied ? (
+                    <ClipboardCheckIcon className="size-3.5" />
+                  ) : (
+                    <ClipboardIcon className="size-3.5" />
+                  )}
+                </span>
+              }
+              content={copied ? "Copied!" : "Copy"}
+              disableHoverableContent
+            />
+          </span>
+        </div>
+      </TableCell>
     );
   }
 );
