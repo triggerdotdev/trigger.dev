@@ -1,5 +1,5 @@
 import { ArrowDownTrayIcon, ClipboardIcon, LightBulbIcon } from "@heroicons/react/20/solid";
-import type { FieldMappings, OutputColumnMetadata } from "@internal/clickhouse";
+import type { OutputColumnMetadata } from "@internal/clickhouse";
 import type { ColumnSchema } from "@internal/tsql";
 import { Form, useNavigation } from "@remix-run/react";
 import {
@@ -39,10 +39,9 @@ import { Switch } from "~/components/primitives/Switch";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { prisma } from "~/db.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
-import { executeQuery } from "~/services/queryService.server";
+import { executeQuery, type QueryScope } from "~/services/queryService.server";
 import { requireUser } from "~/services/session.server";
 import { downloadFile, rowsToCSV, rowsToJSON } from "~/utils/dataExport";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
@@ -53,8 +52,6 @@ const scopeOptions = [
   { value: "project", label: "Project" },
   { value: "organization", label: "Organization" },
 ] as const;
-
-type QueryScope = (typeof scopeOptions)[number]["value"];
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
@@ -143,39 +140,6 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
   const { query, scope } = parsed.data;
 
-  // Build tenant IDs based on scope
-  const tenantOptions: {
-    organizationId: string;
-    projectId?: string;
-    environmentId?: string;
-  } = {
-    organizationId: project.organizationId,
-  };
-
-  if (scope === "project" || scope === "environment") {
-    tenantOptions.projectId = project.id;
-  }
-
-  if (scope === "environment") {
-    tenantOptions.environmentId = environment.id;
-  }
-
-  // Build field mappings for project_ref → project_id and environment_id → slug translation
-  const projects = await prisma.project.findMany({
-    where: { organizationId: project.organizationId },
-    select: { id: true, externalRef: true },
-  });
-
-  const environments = await prisma.runtimeEnvironment.findMany({
-    where: { project: { organizationId: project.organizationId } },
-    select: { id: true, slug: true },
-  });
-
-  const fieldMappings: FieldMappings = {
-    project: Object.fromEntries(projects.map((p) => [p.id, p.externalRef])),
-    environment: Object.fromEntries(environments.map((e) => [e.id, e.slug])),
-  };
-
   try {
     const [error, result] = await executeQuery({
       name: "query-page",
@@ -183,8 +147,14 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       schema: z.record(z.any()),
       tableSchema: querySchemas,
       transformValues: true,
-      fieldMappings,
-      ...tenantOptions,
+      scope,
+      organizationId: project.organizationId,
+      projectId: project.id,
+      environmentId: environment.id,
+      history: {
+        source: "DASHBOARD",
+        userId: user.id,
+      },
     });
 
     if (error) {

@@ -521,6 +521,7 @@ const EnvironmentSchema = z
     PROD_USAGE_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().optional(),
 
     CENTS_PER_RUN: z.coerce.number().default(0),
+    CENTS_PER_QUERY_BYTE_SECOND: z.coerce.number().default(0),
 
     EVENT_LOOP_MONITOR_ENABLED: z.string().default("1"),
     RESOURCE_MONITOR_ENABLED: z.string().default("0"),
