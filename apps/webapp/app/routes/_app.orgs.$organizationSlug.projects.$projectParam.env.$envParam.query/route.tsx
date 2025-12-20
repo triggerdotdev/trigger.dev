@@ -10,10 +10,12 @@ import {
 import { useState } from "react";
 import { typedjson, useTypedActionData, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import { ClockRotateLeftIcon } from "~/assets/icons/ClockRotateLeftIcon";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { AlphaTitle } from "~/components/AlphaBadge";
 import { TSQLEditor } from "~/components/code/TSQLEditor";
 import { TSQLResultsTable } from "~/components/code/TSQLResultsTable";
+import { DateTime } from "~/components/primitives/DateTime";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
@@ -27,6 +29,7 @@ import {
   PopoverArrowTrigger,
   PopoverContent,
   PopoverMenuItem,
+  PopoverTrigger,
 } from "~/components/primitives/Popover";
 import {
   ResizableHandle,
@@ -41,11 +44,12 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
+import { QueryPresenter, type QueryHistoryItem } from "~/presenters/v3/QueryPresenter.server";
 import { executeQuery, type QueryScope } from "~/services/queryService.server";
 import { requireUser } from "~/services/session.server";
 import { downloadFile, rowsToCSV, rowsToJSON } from "~/utils/dataExport";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
-import { defaultQuery, querySchemas } from "~/v3/querySchemas";
+import { querySchemas } from "~/v3/querySchemas";
 
 const scopeOptions = [
   { value: "environment", label: "Environment" },
@@ -78,11 +82,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     });
   }
 
-  return typedjson({
+  const presenter = new QueryPresenter();
+  const { defaultQuery, history } = await presenter.call({
     organizationId: project.organizationId,
-    projectId: project.id,
-    environmentId: environment.id,
+  });
+
+  return typedjson({
     defaultQuery,
+    history,
   });
 };
 
@@ -180,7 +187,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 };
 
 export default function Page() {
-  const { defaultQuery } = useTypedLoaderData<typeof loader>();
+  const { defaultQuery, history } = useTypedLoaderData<typeof loader>();
   const results = useTypedActionData<typeof action>();
   const navigation = useNavigation();
 
@@ -190,6 +197,11 @@ export default function Page() {
   const [showHelpSidebar, setShowHelpSidebar] = useState(true);
 
   const isLoading = navigation.state === "submitting" || navigation.state === "loading";
+
+  const handleHistorySelected = (item: QueryHistoryItem) => {
+    setQuery(item.query);
+    setScope(item.scope);
+  };
 
   return (
     <PageContainer>
@@ -219,46 +231,49 @@ export default function Page() {
                     )
                   }
                 />
-                <Form method="post" className="flex items-center justify-end gap-2 px-2">
+                <Form method="post" className="flex items-center justify-between gap-2 px-2">
                   <input type="hidden" name="query" value={query} />
                   <input type="hidden" name="scope" value={scope} />
-                  <Select
-                    value={scope}
-                    setValue={(value) => setScope(value as QueryScope)}
-                    variant="tertiary/small"
-                    dropdownIcon={true}
-                    items={[...scopeOptions]}
-                    text={(value) => {
-                      return <ScopeItem scope={value as QueryScope} />;
-                    }}
-                  >
-                    {(items) =>
-                      items.map((item) => (
-                        <SelectItem key={item.value} value={item.value}>
-                          <ScopeItem scope={item.value as QueryScope} />
-                        </SelectItem>
-                      ))
-                    }
-                  </Select>
-                  {!showHelpSidebar && (
+                  <QueryHistoryPopover history={history} onQuerySelected={handleHistorySelected} />
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={scope}
+                      setValue={(value) => setScope(value as QueryScope)}
+                      variant="tertiary/small"
+                      dropdownIcon={true}
+                      items={[...scopeOptions]}
+                      text={(value) => {
+                        return <ScopeItem scope={value as QueryScope} />;
+                      }}
+                    >
+                      {(items) =>
+                        items.map((item) => (
+                          <SelectItem key={item.value} value={item.value}>
+                            <ScopeItem scope={item.value as QueryScope} />
+                          </SelectItem>
+                        ))
+                      }
+                    </Select>
+                    {!showHelpSidebar && (
+                      <Button
+                        variant="minimal/small"
+                        TrailingIcon={LightBulbIcon}
+                        onClick={() => setShowHelpSidebar(true)}
+                        className="px-2.5"
+                      />
+                    )}
                     <Button
-                      variant="minimal/small"
-                      TrailingIcon={LightBulbIcon}
-                      onClick={() => setShowHelpSidebar(true)}
-                      className="px-2.5"
-                    />
-                  )}
-                  <Button
-                    type="submit"
-                    variant="primary/small"
-                    disabled={isLoading || !query.trim()}
-                    shortcut={{ modifiers: ["mod"], key: "enter", enabledOnInputElements: true }}
-                    LeadingIcon={
-                      isLoading ? <Spinner className="size-4" color="white" /> : undefined
-                    }
-                  >
-                    {isLoading ? "Querying..." : "Query"}
-                  </Button>
+                      type="submit"
+                      variant="primary/small"
+                      disabled={isLoading || !query.trim()}
+                      shortcut={{ modifiers: ["mod"], key: "enter", enabledOnInputElements: true }}
+                      LeadingIcon={
+                        isLoading ? <Spinner className="size-4" color="white" /> : undefined
+                      }
+                    >
+                      {isLoading ? "Querying..." : "Query"}
+                    </Button>
+                  </div>
                 </Form>
               </div>
               {/* Results */}
@@ -504,4 +519,128 @@ function formatBytes(bytes: number): string {
   const sizes = ["B", "KB", "MB", "GB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+}
+
+const SQL_KEYWORDS = [
+  "SELECT",
+  "FROM",
+  "WHERE",
+  "ORDER BY",
+  "LIMIT",
+  "GROUP BY",
+  "HAVING",
+  "JOIN",
+  "LEFT JOIN",
+  "RIGHT JOIN",
+  "INNER JOIN",
+  "OUTER JOIN",
+  "AND",
+  "OR",
+  "AS",
+  "ON",
+  "IN",
+  "NOT",
+  "NULL",
+  "DESC",
+  "ASC",
+  "DISTINCT",
+  "COUNT",
+  "SUM",
+  "AVG",
+  "MIN",
+  "MAX",
+];
+
+function highlightSQL(query: string): React.ReactNode[] {
+  // Normalize whitespace for display
+  const normalized = query.replace(/\s+/g, " ").slice(0, 80);
+  const suffix = query.length > 80 ? "..." : "";
+
+  // Create a regex pattern that matches keywords as whole words (case insensitive)
+  const keywordPattern = new RegExp(
+    `\\b(${SQL_KEYWORDS.map((k) => k.replace(/\s+/g, "\\s+")).join("|")})\\b`,
+    "gi"
+  );
+
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match;
+
+  while ((match = keywordPattern.exec(normalized)) !== null) {
+    // Add text before the match
+    if (match.index > lastIndex) {
+      parts.push(normalized.slice(lastIndex, match.index));
+    }
+    // Add the highlighted keyword
+    parts.push(
+      <span key={match.index} className="text-[#c678dd]">
+        {match[0]}
+      </span>
+    );
+    lastIndex = keywordPattern.lastIndex;
+  }
+
+  // Add remaining text
+  if (lastIndex < normalized.length) {
+    parts.push(normalized.slice(lastIndex));
+  }
+
+  if (suffix) {
+    parts.push(suffix);
+  }
+
+  return parts;
+}
+
+function QueryHistoryPopover({
+  history,
+  onQuerySelected,
+}: {
+  history: QueryHistoryItem[];
+  onQuerySelected: (item: QueryHistoryItem) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <Popover open={isOpen} onOpenChange={setIsOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="tertiary/small"
+          LeadingIcon={ClockRotateLeftIcon}
+          disabled={history.length === 0}
+        >
+          History
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="min-w-[350px] p-0" align="start" sideOffset={6}>
+        <div className="max-h-80 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+          <div className="p-1">
+            {history.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => {
+                  onQuerySelected(item);
+                  setIsOpen(false);
+                }}
+                className="flex w-full items-center gap-2 rounded-sm px-2 py-2 outline-none transition-colors focus-custom hover:bg-charcoal-900"
+              >
+                <div className="flex flex-1 flex-col items-start overflow-hidden">
+                  <span className="w-full truncate text-left font-mono text-xs text-[#9b99ff]">
+                    {highlightSQL(item.query)}
+                  </span>
+                  <div className="flex items-center gap-2 text-xs text-text-dimmed">
+                    <DateTime date={item.createdAt} showTooltip={false} />
+                    {item.userName && <span>· {item.userName}</span>}
+                    <span className="capitalize">· {item.scope}</span>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
 }
