@@ -238,7 +238,9 @@ export class ClickHousePrinter {
         response = this.visitSampleExpr(node as SampleExpr);
         break;
       default:
-        throw new NotImplementedError(`Unknown expression type: ${nodeType}`);
+        throw new NotImplementedError(
+          `Unknown expression type: ${nodeType}. Node: ${JSON.stringify(node, null, 2).slice(0, 200)}`
+        );
     }
 
     this.indentLevel--;

@@ -320,10 +320,22 @@ describe("ClickHousePrinter", () => {
       expect(sql).toContain("isNull(");
     });
 
-    it("should handle IS NOT NULL comparisons", () => {
+    it("should handle != NULL comparisons", () => {
       const { sql } = printQuery("SELECT * FROM task_runs WHERE started_at != NULL");
 
       expect(sql).toContain("isNotNull(");
+    });
+
+    it("should handle IS NULL syntax", () => {
+      const { sql } = printQuery("SELECT * FROM task_runs WHERE error IS NULL");
+
+      expect(sql).toContain("isNull(error)");
+    });
+
+    it("should handle IS NOT NULL syntax", () => {
+      const { sql } = printQuery("SELECT * FROM task_runs WHERE error IS NOT NULL");
+
+      expect(sql).toContain("isNotNull(error)");
     });
   });
 
