@@ -17,10 +17,11 @@ import type {
   JoinExpr,
   BetweenExpr,
   Array as ASTArray,
+  ArithmeticOperation,
 } from "./ast.js";
 import type { TableSchema, ColumnSchema } from "./schema.js";
 import { getAllowedUserValues, isValidUserValue } from "./schema.js";
-import { CompareOperationOp } from "./ast.js";
+import { CompareOperationOp, ArithmeticOperationOp } from "./ast.js";
 
 /**
  * Severity of a validation issue
@@ -102,6 +103,55 @@ export function validateQuery(
 }
 
 /**
+ * Get the implicit column name for an expression without an explicit alias.
+ * This matches the naming used in the printer for result columns.
+ *
+ * @param expr - The SELECT expression
+ * @returns The implicit name, or null if no implicit name applies
+ */
+function getImplicitName(expr: Expression): string | null {
+  // Handle Call (function/aggregation) - use lowercase function name
+  if ((expr as Call).expression_type === "call") {
+    const call = expr as Call;
+    return call.name.toLowerCase();
+  }
+
+  // Handle ArithmeticOperation - use operator function name
+  if ((expr as ArithmeticOperation).expression_type === "arithmetic_operation") {
+    const arith = expr as ArithmeticOperation;
+    switch (arith.op) {
+      case ArithmeticOperationOp.Add:
+        return "plus";
+      case ArithmeticOperationOp.Sub:
+        return "minus";
+      case ArithmeticOperationOp.Mult:
+        return "multiply";
+      case ArithmeticOperationOp.Div:
+        return "divide";
+      case ArithmeticOperationOp.Mod:
+        return "modulo";
+      default:
+        return "expression";
+    }
+  }
+
+  // Handle Constant - use string representation
+  if ((expr as Constant).expression_type === "constant") {
+    const constant = expr as Constant;
+    if (constant.value === null) {
+      return "NULL";
+    }
+    if (typeof constant.value === "string") {
+      return `'${constant.value}'`;
+    }
+    return String(constant.value);
+  }
+
+  // Field expressions don't get implicit names (they use the column name directly)
+  return null;
+}
+
+/**
  * Validate a SELECT SET query (UNION, INTERSECT, etc.)
  */
 function validateSelectSetQuery(node: SelectSetQuery, context: ValidationContext): void {
@@ -134,11 +184,18 @@ function validateSelectQuery(node: SelectQuery, context: ValidationContext): voi
   }
 
   // Extract column aliases from SELECT clause before validation
-  // This allows ORDER BY to reference aliased columns
+  // This allows ORDER BY and HAVING to reference aliased columns
   if (node.select) {
     for (const expr of node.select) {
       if ((expr as Alias).expression_type === "alias") {
+        // Explicit alias: SELECT ... AS name
         context.selectAliases.add((expr as Alias).alias);
+      } else {
+        // Check for implicit aliases from expressions without AS
+        const implicitName = getImplicitName(expr);
+        if (implicitName) {
+          context.selectAliases.add(implicitName);
+        }
       }
     }
   }

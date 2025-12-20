@@ -62,6 +62,30 @@ describe("validateQuery", () => {
       expect(result.valid).toBe(true);
       expect(result.issues).toHaveLength(0);
     });
+
+    it("should allow HAVING to reference implicit column names from aggregations", () => {
+      const result = validateSQL(
+        "SELECT COUNT(), status FROM runs GROUP BY status HAVING count > 20"
+      );
+      expect(result.valid).toBe(true);
+      expect(result.issues).toHaveLength(0);
+    });
+
+    it("should allow HAVING to reference implicit names from multiple aggregations", () => {
+      const result = validateSQL(
+        "SELECT COUNT(), SUM(created_at), status FROM runs GROUP BY status HAVING count > 10 AND sum > 100"
+      );
+      expect(result.valid).toBe(true);
+      expect(result.issues).toHaveLength(0);
+    });
+
+    it("should allow ORDER BY to reference implicit column names", () => {
+      const result = validateSQL(
+        "SELECT COUNT(), status FROM runs GROUP BY status ORDER BY count DESC"
+      );
+      expect(result.valid).toBe(true);
+      expect(result.issues).toHaveLength(0);
+    });
   });
 
   describe("column validation", () => {
