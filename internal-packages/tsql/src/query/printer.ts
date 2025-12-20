@@ -501,8 +501,23 @@ export class ClickHousePrinter {
           sqlResult = visited;
         }
       }
+    } else if (
+      // Handle expressions that need implicit aliases (Call, ArithmeticOperation, Constant)
+      // These expressions get implicit names and need AS clauses so results match metadata
+      (col as Alias).expression_type !== "alias" &&
+      ((col as Call).expression_type === "call" ||
+        (col as ArithmeticOperation).expression_type === "arithmetic_operation" ||
+        (col as Constant).expression_type === "constant")
+    ) {
+      const visited = this.visit(col);
+      // Add explicit AS clause with the implicit name so ClickHouse results match our metadata
+      if (outputName) {
+        sqlResult = `${visited} AS ${this.printIdentifier(outputName)}`;
+      } else {
+        sqlResult = visited;
+      }
     } else {
-      // For non-virtual columns or expressions already wrapped in Alias, visit normally
+      // For Alias expressions or other types, visit normally
       sqlResult = this.visit(col);
     }
 
@@ -602,21 +617,21 @@ export class ClickHousePrinter {
 
   /**
    * Generate an implicit column name for an expression without an explicit alias.
-   * This matches how ClickHouse auto-names result columns.
+   * This matches how Postgres auto-names result columns (just the function name).
    *
    * Examples:
-   * - COUNT() -> "count()"
-   * - COUNT(id) -> "count(id)"
-   * - SUM(duration_ms) -> "sum(duration_ms)"
-   * - 1 + 2 -> "plus(1, 2)"
+   * - COUNT() -> "count"
+   * - COUNT(id) -> "count"
+   * - SUM(duration_ms) -> "sum"
+   * - 1 + 2 -> "plus"
    */
   private generateImplicitName(expr: Expression): string {
     // Handle Call (function/aggregation)
     if ((expr as Call).expression_type === "call") {
       const call = expr as Call;
-      const args = call.args.map((arg) => this.generateImplicitName(arg));
-      // Use lowercase function name to match ClickHouse behavior
-      return `${call.name.toLowerCase()}(${args.join(", ")})`;
+      // Use lowercase function name without parentheses, like Postgres does
+      // This allows users to reference the column in WHERE/HAVING without issues
+      return call.name.toLowerCase();
     }
 
     // Handle Field
@@ -627,23 +642,21 @@ export class ClickHousePrinter {
       return parts.length > 0 ? parts[parts.length - 1] : "*";
     }
 
-    // Handle ArithmeticOperation
+    // Handle ArithmeticOperation - use operator function name without args
     if ((expr as ArithmeticOperation).expression_type === "arithmetic_operation") {
       const arith = expr as ArithmeticOperation;
-      const left = this.generateImplicitName(arith.left);
-      const right = this.generateImplicitName(arith.right);
 
       switch (arith.op) {
         case ArithmeticOperationOp.Add:
-          return `plus(${left}, ${right})`;
+          return "plus";
         case ArithmeticOperationOp.Sub:
-          return `minus(${left}, ${right})`;
+          return "minus";
         case ArithmeticOperationOp.Mult:
-          return `multiply(${left}, ${right})`;
+          return "multiply";
         case ArithmeticOperationOp.Div:
-          return `divide(${left}, ${right})`;
+          return "divide";
         case ArithmeticOperationOp.Mod:
-          return `modulo(${left}, ${right})`;
+          return "modulo";
         default:
           return "expression";
       }

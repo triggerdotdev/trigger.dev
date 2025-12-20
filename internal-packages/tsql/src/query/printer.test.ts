@@ -1522,7 +1522,7 @@ describe("Column metadata", () => {
       const { columns } = printQuery("SELECT COUNT() FROM runs", ctx);
 
       expect(columns).toHaveLength(1);
-      expect(columns[0].name).toBe("count()");
+      expect(columns[0].name).toBe("count");
       expect(columns[0].type).toBe("UInt64");
     });
 
@@ -1531,7 +1531,7 @@ describe("Column metadata", () => {
       const { columns } = printQuery("SELECT COUNT(*) FROM runs", ctx);
 
       expect(columns).toHaveLength(1);
-      expect(columns[0].name).toBe("count(*)");
+      expect(columns[0].name).toBe("count");
       expect(columns[0].type).toBe("UInt64");
     });
 
@@ -1540,7 +1540,7 @@ describe("Column metadata", () => {
       const { columns } = printQuery("SELECT COUNT(run_id) FROM runs", ctx);
 
       expect(columns).toHaveLength(1);
-      expect(columns[0].name).toBe("count(run_id)");
+      expect(columns[0].name).toBe("count");
       expect(columns[0].type).toBe("UInt64");
     });
 
@@ -1549,7 +1549,7 @@ describe("Column metadata", () => {
       const { columns } = printQuery("SELECT SUM(usage_duration_ms) FROM runs", ctx);
 
       expect(columns).toHaveLength(1);
-      expect(columns[0].name).toBe("sum(usage_duration_ms)");
+      expect(columns[0].name).toBe("sum");
       expect(columns[0].type).toBe("Int64");
     });
 
@@ -1558,7 +1558,7 @@ describe("Column metadata", () => {
       const { columns } = printQuery("SELECT AVG(usage_duration_ms) FROM runs", ctx);
 
       expect(columns).toHaveLength(1);
-      expect(columns[0].name).toBe("avg(usage_duration_ms)");
+      expect(columns[0].name).toBe("avg");
       expect(columns[0].type).toBe("Float64");
     });
 
@@ -1570,7 +1570,7 @@ describe("Column metadata", () => {
       );
 
       expect(columns).toHaveLength(2);
-      expect(columns[0].name).toBe("count()");
+      expect(columns[0].name).toBe("count");
       expect(columns[0].type).toBe("UInt64");
       expect(columns[1].name).toBe("status");
       expect(columns[1].type).toBe("LowCardinality(String)");
@@ -1584,7 +1584,7 @@ describe("Column metadata", () => {
       );
 
       expect(columns).toHaveLength(1);
-      expect(columns[0].name).toBe("plus(usage_duration_ms, 100)");
+      expect(columns[0].name).toBe("plus");
     });
 
     it("should generate implicit name for constant values", () => {
@@ -1605,8 +1605,37 @@ describe("Column metadata", () => {
 
       expect(columns).toHaveLength(3);
       expect(columns[0].name).toBe("total");
-      expect(columns[1].name).toBe("avg(usage_duration_ms)");
+      expect(columns[1].name).toBe("avg");
       expect(columns[2].name).toBe("run_status");
+    });
+
+    it("should add AS clause to generated SQL for implicit names", () => {
+      const ctx = createMetadataTestContext();
+      const { sql, columns } = printQuery(
+        "SELECT COUNT(), status FROM runs GROUP BY status",
+        ctx
+      );
+
+      // The SQL should include an explicit AS clause for the COUNT()
+      expect(sql).toContain("count() AS count");
+      expect(columns[0].name).toBe("count");
+    });
+
+    it("should add AS clause for multiple aggregations", () => {
+      const ctx = createMetadataTestContext();
+      const { sql, columns } = printQuery(
+        "SELECT COUNT(), SUM(usage_duration_ms), AVG(usage_duration_ms) FROM runs",
+        ctx
+      );
+
+      // All aggregations should have AS clauses
+      expect(sql).toContain("count() AS count");
+      expect(sql).toContain("sum(usage_duration_ms) AS sum");
+      expect(sql).toContain("avg(usage_duration_ms) AS avg");
+      expect(columns).toHaveLength(3);
+      expect(columns[0].name).toBe("count");
+      expect(columns[1].name).toBe("sum");
+      expect(columns[2].name).toBe("avg");
     });
   });
 });
