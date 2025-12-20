@@ -1233,7 +1233,7 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     return {
       expression_type: "compare_operation",
       left: this.visitAsExpr(ctx.columnExpr()),
-      right: { value: null } as Constant,
+      right: { expression_type: "constant", value: null } as Constant,
       op: ctx.NOT() ? CompareOperationOp.NotEq : CompareOperationOp.Eq,
     };
   }
