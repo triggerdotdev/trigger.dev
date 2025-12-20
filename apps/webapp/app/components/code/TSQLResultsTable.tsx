@@ -22,9 +22,10 @@ import {
 } from "~/components/runs/v3/TaskRunStatus";
 import { Paragraph } from "../primitives/Paragraph";
 import { TextLink } from "../primitives/TextLink";
-import { v3RunPathFromFriendlyId } from "~/utils/pathBuilder";
+import { v3ProjectPath, v3RunPathFromFriendlyId } from "~/utils/pathBuilder";
 import { SimpleTooltip } from "../primitives/Tooltip";
 import { InformationCircleIcon } from "@heroicons/react/20/solid";
+import { useOrganization } from "~/hooks/useOrganizations";
 
 /**
  * Check if a ClickHouse type is a DateTime type
@@ -156,6 +157,12 @@ function CellValue({
         }
         return <span>{String(value)}</span>;
       }
+      case "project": {
+        if (typeof value === "string") {
+          return <ProjectCellValue value={value} />;
+        }
+        return <span>{String(value)}</span>;
+      }
     }
   }
 
@@ -201,6 +208,17 @@ function CellValue({
 
   // Default to string rendering
   return <span>{String(value)}</span>;
+}
+
+function ProjectCellValue({ value }: { value: string }) {
+  const organization = useOrganization();
+  const project = organization.projects.find((p) => p.externalRef === value);
+
+  if (!project) {
+    return <span>{value}</span>;
+  }
+
+  return <TextLink to={v3ProjectPath(organization, project)}>{project.name}</TextLink>;
 }
 
 /**
