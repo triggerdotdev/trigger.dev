@@ -246,6 +246,7 @@ export const runsSchema: TableSchema = {
         description: "Error information",
         example: '{"message": "Task failed"}',
       }),
+      expression: "if(error = '{}', NULL, error)",
     },
 
     // Tags & versions
