@@ -730,153 +730,483 @@ ORDER BY run_count DESC`,
         <Header3 className="mb-2 text-text-bright">Available functions</Header3>
 
         <div className="space-y-4">
-          <div>
-            <Paragraph variant="small/bright" className="mb-1">
-              Aggregate functions
-            </Paragraph>
-            <FunctionList
-              functions={[
-                { name: "count()", desc: "Count rows", example: "count()" },
-                { name: "sum(col)", desc: "Sum values", example: "sum(compute_cost)" },
-                { name: "avg(col)", desc: "Average", example: "avg(usage_duration)" },
-                { name: "min(col)", desc: "Minimum value", example: "min(created_at)" },
-                { name: "max(col)", desc: "Maximum value", example: "max(compute_cost)" },
-                {
-                  name: "uniq(col)",
-                  desc: "Count unique values",
-                  example: "uniq(task_identifier)",
-                },
-                {
-                  name: "quantile(p)(col)",
-                  desc: "Percentile",
-                  example: "quantile(0.95)(usage_duration)",
-                },
-              ]}
-            />
-          </div>
+          {/* Aggregate functions */}
+          <FunctionCategory
+            title="Aggregate functions"
+            functions={[
+              "count()",
+              "countIf(col, cond)",
+              "countDistinct(col)",
+              "sum(col)",
+              "sumIf(col, cond)",
+              "avg(col)",
+              "avgIf(col, cond)",
+              "min(col)",
+              "minIf(col, cond)",
+              "max(col)",
+              "maxIf(col, cond)",
+              "uniq(col)",
+              "uniqExact(col)",
+              "uniqIf(col, cond)",
+              "any(col)",
+              "anyLast(col)",
+              "argMin(arg, val)",
+              "argMax(arg, val)",
+              "median(col)",
+              "medianExact(col)",
+              "quantile(p)(col)",
+              "quantiles(p1, p2)(col)",
+              "stddevPop(col)",
+              "stddevSamp(col)",
+              "varPop(col)",
+              "varSamp(col)",
+              "covarPop(x, y)",
+              "covarSamp(x, y)",
+              "corr(x, y)",
+              "groupArray(col)",
+              "groupUniqArray(col)",
+              "topK(k)(col)",
+            ]}
+          />
 
-          <div>
-            <Paragraph variant="small/bright" className="mb-1">
-              String functions
-            </Paragraph>
-            <FunctionList
-              functions={[
-                {
-                  name: "concat(a, b)",
-                  desc: "Join strings",
-                  example: "concat(task_identifier, '-v2')",
-                },
-                { name: "lower(s)", desc: "Lowercase", example: "lower(status)" },
-                { name: "upper(s)", desc: "Uppercase", example: "upper(status)" },
-                {
-                  name: "substring(s, start, len)",
-                  desc: "Extract substring",
-                  example: "substring(run_id, 1, 10)",
-                },
-                { name: "trim(s)", desc: "Remove whitespace", example: "trim(task_identifier)" },
-                { name: "length(s)", desc: "String length", example: "length(task_identifier)" },
-              ]}
-            />
-          </div>
+          {/* String functions */}
+          <FunctionCategory
+            title="String functions"
+            functions={[
+              "length(s)",
+              "lengthUTF8(s)",
+              "empty(s)",
+              "notEmpty(s)",
+              "lower(s)",
+              "upper(s)",
+              "lowerUTF8(s)",
+              "upperUTF8(s)",
+              "reverse(s)",
+              "reverseUTF8(s)",
+              "concat(s1, s2, ...)",
+              "substring(s, offset, len)",
+              "substr(s, offset, len)",
+              "left(s, n)",
+              "right(s, n)",
+              "trim(s)",
+              "trimLeft(s)",
+              "trimRight(s)",
+              "ltrim(s)",
+              "rtrim(s)",
+              "leftPad(s, len, char)",
+              "rightPad(s, len, char)",
+              "startsWith(s, prefix)",
+              "endsWith(s, suffix)",
+              "position(haystack, needle)",
+              "locate(haystack, needle)",
+              "replace(s, from, to)",
+              "replaceOne(s, from, to)",
+              "replaceAll(s, from, to)",
+              "replaceRegexpOne(s, pattern, replacement)",
+              "replaceRegexpAll(s, pattern, replacement)",
+              "match(s, pattern)",
+              "extract(s, pattern)",
+              "extractAll(s, pattern)",
+              "like(s, pattern)",
+              "ilike(s, pattern)",
+              "notLike(s, pattern)",
+              "notILike(s, pattern)",
+              "splitByChar(sep, s)",
+              "splitByString(sep, s)",
+              "splitByRegexp(pattern, s)",
+              "arrayStringConcat(arr, sep)",
+              "base64Encode(s)",
+              "base64Decode(s)",
+              "repeat(s, n)",
+              "space(n)",
+              "format(pattern, args...)",
+            ]}
+          />
 
-          <div>
-            <Paragraph variant="small/bright" className="mb-1">
-              Date/time functions
-            </Paragraph>
-            <FunctionList
-              functions={[
-                { name: "now()", desc: "Current timestamp", example: "now()" },
-                { name: "today()", desc: "Current date", example: "today()" },
-                { name: "toDate(dt)", desc: "Extract date", example: "toDate(created_at)" },
-                {
-                  name: "toStartOfDay(dt)",
-                  desc: "Start of day",
-                  example: "toStartOfDay(created_at)",
-                },
-                {
-                  name: "toStartOfHour(dt)",
-                  desc: "Start of hour",
-                  example: "toStartOfHour(created_at)",
-                },
-                {
-                  name: "dateDiff('unit', a, b)",
-                  desc: "Difference",
-                  example: "dateDiff('minute', started_at, completed_at)",
-                },
-                {
-                  name: "formatDateTime(dt, fmt)",
-                  desc: "Format date",
-                  example: "formatDateTime(created_at, '%Y-%m-%d')",
-                },
-              ]}
-            />
-          </div>
+          {/* Date/time functions */}
+          <FunctionCategory
+            title="Date/time functions"
+            functions={[
+              "now()",
+              "now64()",
+              "today()",
+              "yesterday()",
+              "toYear(dt)",
+              "toQuarter(dt)",
+              "toMonth(dt)",
+              "toDayOfYear(dt)",
+              "toDayOfMonth(dt)",
+              "toDayOfWeek(dt)",
+              "toHour(dt)",
+              "toMinute(dt)",
+              "toSecond(dt)",
+              "toDate(dt)",
+              "toDateTime(dt)",
+              "toDateTime64(dt)",
+              "toStartOfYear(dt)",
+              "toStartOfQuarter(dt)",
+              "toStartOfMonth(dt)",
+              "toStartOfWeek(dt)",
+              "toMonday(dt)",
+              "toStartOfDay(dt)",
+              "toStartOfHour(dt)",
+              "toStartOfMinute(dt)",
+              "toStartOfSecond(dt)",
+              "toStartOfFiveMinutes(dt)",
+              "toStartOfTenMinutes(dt)",
+              "toStartOfFifteenMinutes(dt)",
+              "toStartOfInterval(dt, interval)",
+              "toUnixTimestamp(dt)",
+              "toTime(dt)",
+              "toISOYear(dt)",
+              "toISOWeek(dt)",
+              "toWeek(dt)",
+              "toYearWeek(dt)",
+              "dateDiff(unit, start, end)",
+              "date_diff(unit, start, end)",
+              "dateAdd(unit, n, dt)",
+              "date_add(unit, n, dt)",
+              "dateSub(unit, n, dt)",
+              "date_sub(unit, n, dt)",
+              "dateTrunc(unit, dt)",
+              "date_trunc(unit, dt)",
+              "addSeconds(dt, n)",
+              "addMinutes(dt, n)",
+              "addHours(dt, n)",
+              "addDays(dt, n)",
+              "addWeeks(dt, n)",
+              "addMonths(dt, n)",
+              "addQuarters(dt, n)",
+              "addYears(dt, n)",
+              "subtractSeconds(dt, n)",
+              "subtractMinutes(dt, n)",
+              "subtractHours(dt, n)",
+              "subtractDays(dt, n)",
+              "subtractWeeks(dt, n)",
+              "subtractMonths(dt, n)",
+              "subtractQuarters(dt, n)",
+              "subtractYears(dt, n)",
+              "formatDateTime(dt, format)",
+              "parseDateTime(s, format)",
+              "parseDateTimeBestEffort(s)",
+              "toTimeZone(dt, tz)",
+            ]}
+          />
 
-          <div>
-            <Paragraph variant="small/bright" className="mb-1">
-              Conditional functions
-            </Paragraph>
-            <FunctionList
-              functions={[
-                {
-                  name: "if(cond, then, else)",
-                  desc: "Conditional",
-                  example: "if(status = 'Failed', 1, 0)",
-                },
-                {
-                  name: "multiIf(c1, t1, c2, t2, else)",
-                  desc: "Multiple conditions",
-                  example: "multiIf(status = 'Completed', 'ok', status = 'Failed', 'bad', 'other')",
-                },
-                {
-                  name: "coalesce(a, b, ...)",
-                  desc: "First non-null",
-                  example: "coalesce(completed_at, created_at)",
-                },
-              ]}
-            />
-          </div>
+          {/* Conditional & null functions */}
+          <FunctionCategory
+            title="Conditional & null functions"
+            functions={[
+              "if(cond, then, else)",
+              "multiIf(c1, t1, c2, t2, ..., else)",
+              "coalesce(a, b, ...)",
+              "ifNull(x, alt)",
+              "nullIf(x, y)",
+              "isNull(x)",
+              "isNotNull(x)",
+              "assumeNotNull(x)",
+              "toNullable(x)",
+            ]}
+          />
 
-          <div>
-            <Paragraph variant="small/bright" className="mb-1">
-              Array functions
-            </Paragraph>
-            <FunctionList
-              functions={[
-                {
-                  name: "has(arr, val)",
-                  desc: "Check if array contains",
-                  example: "has(tags, 'important')",
-                },
-                {
-                  name: "arrayJoin(arr)",
-                  desc: "Expand array to rows",
-                  example: "arrayJoin(tags)",
-                },
-                { name: "length(arr)", desc: "Array length", example: "length(tags)" },
-              ]}
-            />
-          </div>
+          {/* Arithmetic & math */}
+          <FunctionCategory
+            title="Arithmetic & math functions"
+            functions={[
+              "plus(a, b)",
+              "minus(a, b)",
+              "multiply(a, b)",
+              "divide(a, b)",
+              "intDiv(a, b)",
+              "intDivOrZero(a, b)",
+              "modulo(a, b)",
+              "moduloOrZero(a, b)",
+              "negate(x)",
+              "abs(x)",
+              "sign(x)",
+              "gcd(a, b)",
+              "lcm(a, b)",
+              "exp(x)",
+              "log(x)",
+              "ln(x)",
+              "exp2(x)",
+              "log2(x)",
+              "exp10(x)",
+              "log10(x)",
+              "sqrt(x)",
+              "cbrt(x)",
+              "pow(x, y)",
+              "power(x, y)",
+              "round(x, n)",
+              "floor(x)",
+              "ceil(x)",
+              "ceiling(x)",
+              "trunc(x)",
+              "truncate(x)",
+              "sin(x)",
+              "cos(x)",
+              "tan(x)",
+              "asin(x)",
+              "acos(x)",
+              "atan(x)",
+              "least(a, b)",
+              "greatest(a, b)",
+              "min2(a, b)",
+              "max2(a, b)",
+            ]}
+          />
+
+          {/* Array functions */}
+          <FunctionCategory
+            title="Array functions"
+            functions={[
+              "array(a, b, ...)",
+              "range(start, end, step)",
+              "length(arr)",
+              "empty(arr)",
+              "notEmpty(arr)",
+              "has(arr, elem)",
+              "hasAll(arr1, arr2)",
+              "hasAny(arr1, arr2)",
+              "indexOf(arr, elem)",
+              "arrayElement(arr, n)",
+              "arrayJoin(arr)",
+              "arrayConcat(arr1, arr2)",
+              "arraySlice(arr, offset, length)",
+              "arrayPushBack(arr, elem)",
+              "arrayPushFront(arr, elem)",
+              "arrayPopBack(arr)",
+              "arrayPopFront(arr)",
+              "arraySort(arr)",
+              "arrayReverseSort(arr)",
+              "arrayReverse(arr)",
+              "arrayUniq(arr)",
+              "arrayDistinct(arr)",
+              "arrayCompact(arr)",
+              "arrayFlatten(arr)",
+              "arrayIntersect(arr1, arr2)",
+              "arrayMap(func, arr)",
+              "arrayFilter(func, arr)",
+              "arrayExists(func, arr)",
+              "arrayAll(func, arr)",
+              "arrayFirst(func, arr)",
+              "arrayLast(func, arr)",
+              "arrayFirstIndex(func, arr)",
+              "arrayLastIndex(func, arr)",
+              "arrayMin(arr)",
+              "arrayMax(arr)",
+              "arraySum(arr)",
+              "arrayAvg(arr)",
+              "arrayCount(func, arr)",
+              "arrayReduce(agg, arr)",
+              "arrayShuffle(arr)",
+              "arrayZip(arr1, arr2)",
+            ]}
+          />
+
+          {/* JSON functions */}
+          <FunctionCategory
+            title="JSON functions"
+            functions={[
+              "JSONHas(json, key)",
+              "JSONLength(json)",
+              "JSONType(json, key)",
+              "JSONExtract(json, key, type)",
+              "JSONExtractString(json, key)",
+              "JSONExtractInt(json, key)",
+              "JSONExtractUInt(json, key)",
+              "JSONExtractFloat(json, key)",
+              "JSONExtractBool(json, key)",
+              "JSONExtractRaw(json, key)",
+              "JSONExtractArrayRaw(json, key)",
+              "JSONExtractKeys(json)",
+              "JSONExtractKeysAndValues(json, type)",
+              "toJSONString(value)",
+            ]}
+          />
+
+          {/* Type conversion */}
+          <FunctionCategory
+            title="Type conversion functions"
+            functions={[
+              "toString(x)",
+              "toFixedString(s, n)",
+              "toInt8(x)",
+              "toInt16(x)",
+              "toInt32(x)",
+              "toInt64(x)",
+              "toUInt8(x)",
+              "toUInt16(x)",
+              "toUInt32(x)",
+              "toUInt64(x)",
+              "toFloat32(x)",
+              "toFloat64(x)",
+              "toDecimal32(x, s)",
+              "toDecimal64(x, s)",
+              "toDecimal128(x, s)",
+              "toDate(x)",
+              "toDateOrNull(x)",
+              "toDateOrZero(x)",
+              "toDateTime(x)",
+              "toDateTimeOrNull(x)",
+              "toDateTimeOrZero(x)",
+              "toUUID(x)",
+              "toUUIDOrNull(x)",
+              "toTypeName(x)",
+            ]}
+          />
+
+          {/* Comparison & logical */}
+          <FunctionCategory
+            title="Comparison & logical functions"
+            functions={[
+              "equals(a, b)",
+              "notEquals(a, b)",
+              "less(a, b)",
+              "greater(a, b)",
+              "lessOrEquals(a, b)",
+              "greaterOrEquals(a, b)",
+              "and(a, b, ...)",
+              "or(a, b, ...)",
+              "xor(a, b)",
+              "not(x)",
+              "in(x, set)",
+              "notIn(x, set)",
+            ]}
+          />
+
+          {/* Hash functions */}
+          <FunctionCategory
+            title="Hash functions"
+            functions={[
+              "MD5(s)",
+              "SHA1(s)",
+              "SHA224(s)",
+              "SHA256(s)",
+              "SHA384(s)",
+              "SHA512(s)",
+              "sipHash64(s)",
+              "sipHash128(s)",
+              "cityHash64(s)",
+              "xxHash32(s)",
+              "xxHash64(s)",
+              "murmurHash2_32(s)",
+              "murmurHash2_64(s)",
+              "murmurHash3_32(s)",
+              "murmurHash3_64(s)",
+              "murmurHash3_128(s)",
+              "hex(s)",
+              "unhex(s)",
+            ]}
+          />
+
+          {/* URL functions */}
+          <FunctionCategory
+            title="URL functions"
+            functions={[
+              "protocol(url)",
+              "domain(url)",
+              "domainWithoutWWW(url)",
+              "topLevelDomain(url)",
+              "firstSignificantSubdomain(url)",
+              "port(url)",
+              "path(url)",
+              "pathFull(url)",
+              "queryString(url)",
+              "fragment(url)",
+              "extractURLParameter(url, name)",
+              "extractURLParameters(url)",
+              "encodeURLComponent(s)",
+              "decodeURLComponent(s)",
+            ]}
+          />
+
+          {/* UUID & other */}
+          <FunctionCategory
+            title="UUID & utility functions"
+            functions={[
+              "generateUUIDv4()",
+              "UUIDStringToNum(s)",
+              "UUIDNumToString(n)",
+              "isFinite(x)",
+              "isInfinite(x)",
+              "isNaN(x)",
+              "formatReadableSize(bytes)",
+              "formatReadableQuantity(n)",
+              "formatReadableTimeDelta(seconds)",
+              "runningDifference(col)",
+              "neighbor(col, offset)",
+              "bar(x, min, max, width)",
+              "transform(x, from_arr, to_arr, default)",
+            ]}
+          />
+
+          {/* Tuple & map functions */}
+          <FunctionCategory
+            title="Tuple & map functions"
+            functions={[
+              "tuple(a, b, ...)",
+              "tupleElement(tuple, n)",
+              "untuple(tuple)",
+              "map(k1, v1, k2, v2, ...)",
+              "mapFromArrays(keys, values)",
+              "mapContains(map, key)",
+              "mapKeys(map)",
+              "mapValues(map)",
+            ]}
+          />
+
+          {/* Window functions */}
+          <FunctionCategory
+            title="Window functions"
+            functions={[
+              "row_number()",
+              "rank()",
+              "dense_rank()",
+              "first_value(col)",
+              "last_value(col)",
+              "nth_value(col, n)",
+              "lag(col, offset, default)",
+              "lead(col, offset, default)",
+            ]}
+          />
+
+          {/* Interval functions */}
+          <FunctionCategory
+            title="Interval functions"
+            functions={[
+              "toIntervalSecond(n)",
+              "toIntervalMinute(n)",
+              "toIntervalHour(n)",
+              "toIntervalDay(n)",
+              "toIntervalWeek(n)",
+              "toIntervalMonth(n)",
+              "toIntervalQuarter(n)",
+              "toIntervalYear(n)",
+            ]}
+          />
         </div>
       </section>
     </div>
   );
 }
 
-function FunctionList({
-  functions,
-}: {
-  functions: Array<{ name: string; desc: string; example: string }>;
-}) {
+function FunctionCategory({ title, functions }: { title: string; functions: string[] }) {
   return (
-    <div className="space-y-1">
-      {functions.map((fn) => (
-        <div key={fn.name} className="text-xs">
-          <code className="text-indigo-400">{fn.name}</code>
-          <span className="text-text-dimmed"> — {fn.desc}</span>
-          <div className="ml-2 mt-0.5 font-mono text-xxs text-charcoal-400">{fn.example}</div>
-        </div>
-      ))}
+    <div>
+      <Paragraph variant="small/bright" className="mb-1">
+        {title}
+      </Paragraph>
+      <div className="flex flex-wrap gap-1">
+        {functions.map((fn) => (
+          <code
+            key={fn}
+            className="rounded bg-charcoal-750 px-1.5 py-0.5 font-mono text-xxs text-indigo-400"
+          >
+            {fn}
+          </code>
+        ))}
+      </div>
     </div>
   );
 }
