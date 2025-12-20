@@ -1,5 +1,5 @@
 import { ArrowDownTrayIcon, ClipboardIcon, LightBulbIcon } from "@heroicons/react/20/solid";
-import type { OutputColumnMetadata } from "@internal/clickhouse";
+import type { FieldMappings, OutputColumnMetadata } from "@internal/clickhouse";
 import type { ColumnSchema } from "@internal/tsql";
 import { Form, useNavigation } from "@remix-run/react";
 import {
@@ -39,6 +39,7 @@ import { Switch } from "~/components/primitives/Switch";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { prisma } from "~/db.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { executeQuery } from "~/services/queryService.server";
@@ -159,6 +160,16 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     tenantOptions.environmentId = environment.id;
   }
 
+  // Build field mappings for project_ref → project_id translation
+  const projects = await prisma.project.findMany({
+    where: { organizationId: project.organizationId },
+    select: { id: true, externalRef: true },
+  });
+
+  const fieldMappings: FieldMappings = {
+    project: Object.fromEntries(projects.map((p) => [p.id, p.externalRef])),
+  };
+
   try {
     const [error, result] = await executeQuery({
       name: "query-page",
@@ -166,6 +177,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       schema: z.record(z.any()),
       tableSchema: querySchemas,
       transformValues: true,
+      fieldMappings,
       ...tenantOptions,
     });
 

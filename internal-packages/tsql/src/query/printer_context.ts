@@ -2,7 +2,7 @@
 // Adapted for ClickHouse client's {param: Type} syntax
 
 import { getClickHouseType } from "./escape";
-import { SchemaRegistry } from "./schema";
+import { SchemaRegistry, FieldMappings } from "./schema";
 
 /**
  * Settings that control query execution behavior
@@ -46,6 +46,7 @@ export interface QueryNotice {
  * - Schema registry for table/column validation
  * - Parameter accumulator for SQL injection safety
  * - Query settings and execution options
+ * - Field mappings for runtime value translation
  */
 export class PrinterContext {
   /** Accumulated parameter values for parameterized query */
@@ -60,6 +61,9 @@ export class PrinterContext {
   /** Errors collected during printing */
   readonly errors: QueryNotice[] = [];
 
+  /** Runtime field mappings for dynamic value translation */
+  readonly fieldMappings: FieldMappings;
+
   constructor(
     /** The organization ID for tenant isolation (required) */
     public readonly organizationId: string,
@@ -70,10 +74,13 @@ export class PrinterContext {
     /** Schema registry containing allowed tables and columns */
     public readonly schema: SchemaRegistry,
     /** Query execution settings */
-    public readonly settings: QuerySettings = {}
+    public readonly settings: QuerySettings = {},
+    /** Runtime field mappings for dynamic value translation */
+    fieldMappings: FieldMappings = {}
   ) {
     // Initialize with default settings
     this.settings = { ...DEFAULT_QUERY_SETTINGS, ...settings };
+    this.fieldMappings = fieldMappings;
   }
 
   /**
@@ -154,12 +161,12 @@ export class PrinterContext {
       this.projectId,
       this.environmentId,
       this.schema,
-      this.settings
+      this.settings,
+      this.fieldMappings
     );
     // Share the same values map so parameters are unified
     child.values = this.values;
     // Share the same counter reference via closure
-    const parentCounter = this.paramCounter;
     const parentThis = this;
     Object.defineProperty(child, "paramCounter", {
       get() {
@@ -185,6 +192,11 @@ export interface PrinterContextOptions {
   environmentId?: string;
   schema: SchemaRegistry;
   settings?: QuerySettings;
+  /**
+   * Runtime field mappings for dynamic value translation.
+   * Maps internal ClickHouse values to external user-facing values.
+   */
+  fieldMappings?: FieldMappings;
 }
 
 /**
@@ -196,7 +208,8 @@ export function createPrinterContext(options: PrinterContextOptions): PrinterCon
     options.projectId,
     options.environmentId,
     options.schema,
-    options.settings
+    options.settings,
+    options.fieldMappings
   );
 }
 

@@ -1341,3 +1341,208 @@ describe("TSQL Virtual Column Tests", () => {
     }
   );
 });
+
+describe("Field Mapping Tests", () => {
+  /**
+   * Schema with a field mapping column (project_ref → project_id)
+   */
+  const fieldMappingSchema: TableSchema = {
+    name: "task_runs",
+    clickhouseName: "trigger_dev.task_runs_v2",
+    columns: {
+      run_id: { name: "run_id", ...column("String") },
+      status: { name: "status", ...column("String") },
+      project_ref: {
+        name: "project_ref",
+        clickhouseName: "project_id",
+        ...column("String"),
+        fieldMapping: "project",
+      },
+      environment_id: { name: "environment_id", ...column("String") },
+      organization_id: { name: "organization_id", ...column("String") },
+      project_id: { name: "project_id", ...column("String") },
+    },
+    tenantColumns: {
+      organizationId: "organization_id",
+      projectId: "project_id",
+      environmentId: "environment_id",
+    },
+  };
+
+  clickhouseTest(
+    "should transform field mapping values in SELECT results",
+    async ({ clickhouseContainer }) => {
+      const client = new ClickhouseClient({
+        name: "test",
+        url: clickhouseContainer.getConnectionUrl(),
+      });
+
+      const insert = insertTaskRuns(client, { async_insert: 0 });
+
+      // Insert test runs with known project_id values
+      await insert([
+        createTaskRun({
+          run_id: "run_fm1",
+          project_id: "proj_tenant1",
+          status: "COMPLETED_SUCCESSFULLY",
+        }),
+      ]);
+
+      // Execute TSQL query with field mappings
+      const [error, result] = await executeTSQL(client, {
+        name: "test-field-mapping-select",
+        query: "SELECT run_id, project_ref FROM task_runs",
+        schema: z.object({ run_id: z.string(), project_ref: z.string().nullable() }),
+        organizationId: "org_tenant1",
+        projectId: "proj_tenant1",
+        environmentId: "env_tenant1",
+        tableSchema: [fieldMappingSchema],
+        fieldMappings: {
+          project: {
+            proj_tenant1: "my-project-ref",
+          },
+        },
+      });
+
+      expect(error).toBeNull();
+      expect(result?.rows).toHaveLength(1);
+      expect(result?.rows?.[0].project_ref).toBe("my-project-ref");
+    }
+  );
+
+  clickhouseTest(
+    "should return null for unmapped values in field mapping",
+    async ({ clickhouseContainer }) => {
+      const client = new ClickhouseClient({
+        name: "test",
+        url: clickhouseContainer.getConnectionUrl(),
+      });
+
+      const insert = insertTaskRuns(client, { async_insert: 0 });
+
+      // Insert test run with a project_id that's NOT in the mapping
+      await insert([
+        createTaskRun({
+          run_id: "run_fm_unmapped",
+          project_id: "proj_tenant1", // This ID exists but won't be in our mapping
+          status: "PENDING",
+        }),
+      ]);
+
+      // Execute with an empty mapping (no project_id mapped)
+      const [error, result] = await executeTSQL(client, {
+        name: "test-field-mapping-unmapped",
+        query: "SELECT run_id, project_ref FROM task_runs WHERE run_id = 'run_fm_unmapped'",
+        schema: z.object({ run_id: z.string(), project_ref: z.string().nullable() }),
+        organizationId: "org_tenant1",
+        projectId: "proj_tenant1",
+        environmentId: "env_tenant1",
+        tableSchema: [fieldMappingSchema],
+        fieldMappings: {
+          project: {
+            some_other_id: "other-ref",
+          },
+        },
+      });
+
+      expect(error).toBeNull();
+      expect(result?.rows).toHaveLength(1);
+      expect(result?.rows?.[0].project_ref).toBeNull();
+    }
+  );
+
+  clickhouseTest(
+    "should transform field mapping values in WHERE clause",
+    async ({ clickhouseContainer }) => {
+      const client = new ClickhouseClient({
+        name: "test",
+        url: clickhouseContainer.getConnectionUrl(),
+      });
+
+      const insert = insertTaskRuns(client, { async_insert: 0 });
+
+      // Insert test runs
+      await insert([
+        createTaskRun({
+          run_id: "run_fm_where1",
+          project_id: "proj_tenant1",
+          status: "COMPLETED_SUCCESSFULLY",
+        }),
+        createTaskRun({
+          run_id: "run_fm_where2",
+          project_id: "proj_other",
+          organization_id: "org_tenant1",
+          status: "PENDING",
+        }),
+      ]);
+
+      // Query using external project_ref value in WHERE clause
+      const [error, result] = await executeTSQL(client, {
+        name: "test-field-mapping-where",
+        query: "SELECT run_id FROM task_runs WHERE project_ref = 'my-project-ref'",
+        schema: z.object({ run_id: z.string() }),
+        organizationId: "org_tenant1",
+        projectId: "proj_tenant1",
+        environmentId: "env_tenant1",
+        tableSchema: [fieldMappingSchema],
+        fieldMappings: {
+          project: {
+            proj_tenant1: "my-project-ref",
+            proj_other: "other-project",
+          },
+        },
+      });
+
+      expect(error).toBeNull();
+      expect(result?.rows).toHaveLength(1);
+      expect(result?.rows?.[0].run_id).toBe("run_fm_where1");
+    }
+  );
+
+  clickhouseTest(
+    "should handle field mapping with IN clause",
+    async ({ clickhouseContainer }) => {
+      const client = new ClickhouseClient({
+        name: "test",
+        url: clickhouseContainer.getConnectionUrl(),
+      });
+
+      const insert = insertTaskRuns(client, { async_insert: 0 });
+
+      // Insert test runs with different projects
+      await insert([
+        createTaskRun({
+          run_id: "run_fm_in1",
+          project_id: "proj_tenant1",
+          status: "COMPLETED_SUCCESSFULLY",
+        }),
+        createTaskRun({
+          run_id: "run_fm_in2",
+          project_id: "proj_other",
+          organization_id: "org_tenant1",
+          status: "PENDING",
+        }),
+      ]);
+
+      // Query using IN clause with external project_ref values
+      const [error, result] = await executeTSQL(client, {
+        name: "test-field-mapping-in",
+        query:
+          "SELECT run_id FROM task_runs WHERE project_ref IN ('my-project-ref', 'other-project')",
+        schema: z.object({ run_id: z.string() }),
+        organizationId: "org_tenant1",
+        tableSchema: [fieldMappingSchema],
+        fieldMappings: {
+          project: {
+            proj_tenant1: "my-project-ref",
+            proj_other: "other-project",
+          },
+        },
+      });
+
+      expect(error).toBeNull();
+      expect(result?.rows).toHaveLength(2);
+      expect(result?.rows?.map((r) => r.run_id).sort()).toEqual(["run_fm_in1", "run_fm_in2"]);
+    }
+  );
+});

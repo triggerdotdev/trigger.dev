@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { parseTSQLSelect, parseTSQLExpr } from "../index.js";
-import { ClickHousePrinter, printToClickHouse } from "./printer.js";
+import { ClickHousePrinter, printToClickHouse, type PrintResult } from "./printer.js";
 import { createPrinterContext, PrinterContext } from "./printer_context.js";
 import { createSchemaRegistry, column, type TableSchema, type SchemaRegistry } from "./schema.js";
 import { QueryError, SyntaxError } from "./errors.js";
@@ -1514,5 +1514,115 @@ describe("Column metadata", () => {
       expect(columns[2].type).toBe("Float64");
       expect(columns[2].customRenderType).toBeUndefined();
     });
+  });
+});
+
+describe("Field Mapping Value Transformation", () => {
+  // Test schema with a field mapping column
+  const fieldMappingSchema: TableSchema = {
+    name: "runs",
+    clickhouseName: "trigger_dev.task_runs_v2",
+    columns: {
+      run_id: { name: "run_id", ...column("String") },
+      status: { name: "status", ...column("String") },
+      project_ref: {
+        name: "project_ref",
+        clickhouseName: "project_id",
+        ...column("String"),
+        fieldMapping: "project",
+      },
+      environment_id: { name: "environment_id", ...column("String") },
+      organization_id: { name: "organization_id", ...column("String") },
+      project_id: { name: "project_id", ...column("String") },
+    },
+    tenantColumns: {
+      organizationId: "organization_id",
+      projectId: "project_id",
+      environmentId: "environment_id",
+    },
+  };
+
+  function createFieldMappingContext(): PrinterContext {
+    const schemaRegistry = createSchemaRegistry([fieldMappingSchema]);
+    return new PrinterContext(
+      "org_123",
+      "proj_456",
+      "env_789",
+      schemaRegistry,
+      {},
+      {
+        project: {
+          proj_tenant1: "my-project-ref",
+          proj_other: "other-project",
+        },
+      }
+    );
+  }
+
+  function printQuery(query: string, ctx: PrinterContext): PrintResult {
+    const ast = parseTSQLSelect(query);
+    const printer = new ClickHousePrinter(ctx);
+    return printer.print(ast);
+  }
+
+  it("should transform field mapping values in WHERE clause with equals", () => {
+    const ctx = createFieldMappingContext();
+    const { sql, params } = printQuery(
+      "SELECT run_id FROM runs WHERE project_ref = 'my-project-ref'",
+      ctx
+    );
+
+    // The value should be transformed to the internal value
+    expect(sql).toContain("project_id");
+    expect(Object.values(params)).toContain("proj_tenant1");
+    expect(Object.values(params)).not.toContain("my-project-ref");
+  });
+
+  it("should transform field mapping values in WHERE clause with IN list", () => {
+    const ctx = createFieldMappingContext();
+    const { sql, params } = printQuery(
+      "SELECT run_id FROM runs WHERE project_ref IN ('my-project-ref', 'other-project')",
+      ctx
+    );
+
+    expect(sql).toContain("project_id");
+    const paramValues = Object.values(params);
+    expect(paramValues).toContain("proj_tenant1");
+    expect(paramValues).toContain("proj_other");
+    expect(paramValues).not.toContain("my-project-ref");
+    expect(paramValues).not.toContain("other-project");
+  });
+
+  it("should be case-insensitive when transforming field mapping values", () => {
+    const ctx = createFieldMappingContext();
+    // Using uppercase version of the external value
+    const { params } = printQuery(
+      "SELECT run_id FROM runs WHERE project_ref = 'MY-PROJECT-REF'",
+      ctx
+    );
+
+    // Should still transform to the internal value
+    expect(Object.values(params)).toContain("proj_tenant1");
+  });
+
+  it("should pass through unmapped values unchanged", () => {
+    const ctx = createFieldMappingContext();
+    // Using a value that's not in the mapping
+    const { params } = printQuery(
+      "SELECT run_id FROM runs WHERE project_ref = 'unknown-ref'",
+      ctx
+    );
+
+    // Value should remain unchanged since it's not in the mapping
+    expect(Object.values(params)).toContain("unknown-ref");
+  });
+
+  it("should use clickhouseName when selecting field mapping column", () => {
+    const ctx = createFieldMappingContext();
+    const { sql } = printQuery("SELECT project_ref FROM runs", ctx);
+
+    // Should use the actual ClickHouse column name (project_id) in the SQL
+    expect(sql).toContain("project_id");
+    // But the column metadata should use the exposed name
   });
 });

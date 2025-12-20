@@ -56,6 +56,8 @@ import {
   isVirtualColumn,
   OutputColumnMetadata,
   ClickHouseType,
+  hasFieldMapping,
+  getInternalValueFromMappingCaseInsensitive,
 } from "./schema";
 
 /**
@@ -1327,15 +1329,50 @@ export class ClickHousePrinter {
   }
 
   /**
-   * Transform an expression's values using the column's valueMap if applicable
+   * Transform a single string value using either valueMap or fieldMapping
+   * Returns the transformed value, or the original value if no transformation applies
+   */
+  private transformSingleValue(columnSchema: ColumnSchema, value: string): string {
+    // First try static valueMap
+    if (columnSchema.valueMap) {
+      const internalValue = getInternalValue(columnSchema, value);
+      if (internalValue !== value) {
+        return internalValue;
+      }
+    }
+
+    // Then try runtime fieldMapping
+    if (hasFieldMapping(columnSchema) && columnSchema.fieldMapping) {
+      const internalValue = getInternalValueFromMappingCaseInsensitive(
+        this.context.fieldMappings,
+        columnSchema.fieldMapping,
+        value
+      );
+      if (internalValue !== null) {
+        return internalValue;
+      }
+    }
+
+    return value;
+  }
+
+  /**
+   * Transform an expression's values using the column's valueMap or fieldMapping if applicable
    * Returns the original expression if no transformation is needed
    */
   private transformValueMapExpression(
     expr: Expression,
     columnSchema: ColumnSchema | null
   ): Expression {
-    // No column schema or no valueMap, return as-is
-    if (!columnSchema || !columnSchema.valueMap) {
+    // No column schema, return as-is
+    if (!columnSchema) {
+      return expr;
+    }
+
+    // Check if column has any transformation mechanism
+    const hasValueMap = columnSchema.valueMap && Object.keys(columnSchema.valueMap).length > 0;
+    const hasFieldMap = hasFieldMapping(columnSchema);
+    if (!hasValueMap && !hasFieldMap) {
       return expr;
     }
 
@@ -1343,7 +1380,7 @@ export class ClickHousePrinter {
     if ((expr as Constant).expression_type === "constant") {
       const constant = expr as Constant;
       if (typeof constant.value === "string") {
-        const internalValue = getInternalValue(columnSchema, constant.value);
+        const internalValue = this.transformSingleValue(columnSchema, constant.value);
         if (internalValue !== constant.value) {
           // Return a new constant with the transformed value
           return {
