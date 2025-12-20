@@ -32,30 +32,16 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   // Parse logId to extract traceId, spanId, runId, and startTime
   // Format: {traceId}::{spanId}::{runId}::{startTime}
-  // Note: startTime may be URL-encoded (spaces as %20)
+  // All 4 parts are needed to uniquely identify a log entry (multiple events can share the same spanId)
   const decodedLogId = decodeURIComponent(logId);
   const parts = decodedLogId.split("::");
   if (parts.length !== 4) {
     throw new Response("Invalid log ID format", { status: 400 });
   }
 
-  const [traceId, spanId, runId, startTimeStr] = parts;
+  const [traceId, spanId, , startTime] = parts;
 
   const presenter = new LogDetailPresenter($replica, clickhouseClient);
-
-  // Convert startTime string to Date (format: YYYY-MM-DD HH:mm:ss.nanoseconds)
-  // JavaScript Date only handles up to milliseconds, so we need to truncate nanoseconds
-  let startTimeDate: Date | undefined;
-  try {
-    // Remove nanoseconds (keep only up to milliseconds) and convert to ISO format
-    const dateStr = startTimeStr.split(".")[0].replace(" ", "T") + "Z";
-    startTimeDate = new Date(dateStr);
-    if (isNaN(startTimeDate.getTime())) {
-      startTimeDate = undefined;
-    }
-  } catch {
-    // If parsing fails, continue without time bounds
-  }
 
   const result = await presenter.call({
     environmentId: environment.id,
@@ -63,7 +49,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     projectId: project.id,
     spanId,
     traceId,
-    startTime: startTimeDate,
+    startTime,
   });
 
   if (!result) {

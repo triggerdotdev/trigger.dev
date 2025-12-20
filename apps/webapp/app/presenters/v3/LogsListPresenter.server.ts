@@ -6,6 +6,7 @@ import {
   type TaskRunStatus,
   TaskTriggerSource,
 } from "@trigger.dev/database";
+import parseDuration from "parse-duration";
 import { type Direction } from "~/components/ListPagination";
 import { timeFilters } from "~/components/runs/v3/SharedFilters";
 import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
@@ -16,6 +17,8 @@ import {
   convertDateToClickhouseDateTime,
   convertClickhouseDateTime64ToJsDate,
 } from "~/v3/eventRepository/clickhouseEventRepository.server";
+
+export type LogLevel = "TRACE" | "DEBUG" | "INFO" | "WARN" | "ERROR" | "LOG";
 
 export type LogsListOptions = {
   userId?: string;
@@ -36,6 +39,7 @@ export type LogsListOptions = {
   runId?: string[];
   queues?: string[];
   machines?: MachinePresetName[];
+  levels?: LogLevel[];
   // search
   search?: string;
   // pagination
@@ -96,6 +100,24 @@ function kindToLevel(
   }
 }
 
+// Convert display level to ClickHouse kinds
+function levelToKinds(level: LogLevel): string[] {
+  switch (level) {
+    case "DEBUG":
+      return ["DEBUG_EVENT", "LOG_DEBUG"];
+    case "INFO":
+      return ["LOG_INFO"];
+    case "WARN":
+      return ["LOG_WARN"];
+    case "ERROR":
+      return ["LOG_ERROR"];
+    case "LOG":
+      return ["LOG_LOG"];
+    case "TRACE":
+      return ["SPAN", "ANCESTOR_OVERRIDE", "SPAN_EVENT"];
+  }
+}
+
 // Convert nanoseconds to milliseconds
 function convertDateToNanoseconds(date: Date): bigint {
   return BigInt(date.getTime()) * 1_000_000n;
@@ -126,6 +148,7 @@ export class LogsListPresenter {
       runId,
       queues,
       machines,
+      levels,
       search,
       from,
       to,
@@ -140,6 +163,19 @@ export class LogsListPresenter {
       from,
       to,
     });
+
+    // If period is provided but from/to are not calculated, convert period to date range
+    // This is needed because timeFilters doesn't convert period to actual dates
+    let effectiveFrom = time.from;
+    let effectiveTo = time.to;
+
+    if (!effectiveFrom && !effectiveTo && time.period) {
+      const periodMs = parseDuration(time.period);
+      if (periodMs) {
+        effectiveFrom = new Date(Date.now() - periodMs);
+        effectiveTo = new Date();
+      }
+    }
 
     const hasStatusFilters = statuses && statuses.length > 0;
     const hasRunLevelFilters =
@@ -158,6 +194,7 @@ export class LogsListPresenter {
     const hasFilters =
       (tasks !== undefined && tasks.length > 0) ||
       hasRunLevelFilters ||
+      (levels !== undefined && levels.length > 0) ||
       (search !== undefined && search !== "") ||
       !time.isDefault;
 
@@ -244,8 +281,8 @@ export class LogsListPresenter {
         tags,
         scheduleId,
         period,
-        from: time.from ? time.from.getTime() : undefined,
-        to: time.to ? clampToNow(time.to).getTime() : undefined,
+        from: effectiveFrom ? effectiveFrom.getTime() : undefined,
+        to: effectiveTo ? clampToNow(effectiveTo).getTime() : undefined,
         isTest,
         rootOnly,
         batchId,
@@ -283,8 +320,9 @@ export class LogsListPresenter {
             tasks: tasks || [],
             versions: versions || [],
             statuses: statuses || [],
-            from: time.from,
-            to: time.to,
+            levels: levels || [],
+            from: effectiveFrom,
+            to: effectiveTo,
           },
           hasFilters,
           hasAnyLogs: false,
@@ -296,31 +334,34 @@ export class LogsListPresenter {
     // Build ClickHouse query
     const queryBuilder = this.clickhouse.taskEventsV2.logsListQueryBuilder();
 
-    // Required filters
-    queryBuilder.where("environment_id = {environmentId: String}", {
+    // PREWHERE for primary key columns (first in ORDER BY, uses index efficiently)
+    queryBuilder.prewhere("environment_id = {environmentId: String}", {
       environmentId,
     });
+
+    // WHERE for non-indexed columns
     queryBuilder.where("organization_id = {organizationId: String}", {
       organizationId,
     });
     queryBuilder.where("project_id = {projectId: String}", { projectId });
 
-    // Time filter (with inserted_at for partition pruning)
-    if (time.from) {
-      const fromNs = convertDateToNanoseconds(time.from).toString();
-      queryBuilder.where("inserted_at >= {insertedAtStart: DateTime64(3)}", {
-        insertedAtStart: convertDateToClickhouseDateTime(time.from),
+    // Time filters - inserted_at in PREWHERE for partition pruning, start_time in WHERE
+    if (effectiveFrom) {
+      const fromNs = convertDateToNanoseconds(effectiveFrom).toString();
+      // PREWHERE for partition key (inserted_at) - dramatically reduces data scanned
+      queryBuilder.prewhere("inserted_at >= {insertedAtStart: DateTime64(3)}", {
+        insertedAtStart: convertDateToClickhouseDateTime(effectiveFrom),
       });
       queryBuilder.where("start_time >= {fromTime: String}", {
         fromTime: fromNs.slice(0, 10) + "." + fromNs.slice(10),
       });
     }
 
-    if (time.to) {
-      const clampedTo = time.to > new Date() ? new Date() : time.to;
+    if (effectiveTo) {
+      const clampedTo = effectiveTo > new Date() ? new Date() : effectiveTo;
       const toNs = convertDateToNanoseconds(clampedTo).toString();
-      // Add inserted_at filter for partition pruning
-      queryBuilder.where("inserted_at <= {insertedAtEnd: DateTime64(3)}", {
+      // PREWHERE for partition key (inserted_at) - dramatically reduces data scanned
+      queryBuilder.prewhere("inserted_at <= {insertedAtEnd: DateTime64(3)}", {
         insertedAtEnd: convertDateToClickhouseDateTime(clampedTo),
       });
       queryBuilder.where("start_time <= {toTime: String}", {
@@ -345,6 +386,12 @@ export class LogsListPresenter {
       queryBuilder.where("message ilike {searchPattern: String}", {
         searchPattern: `%${search.trim()}%`,
       });
+    }
+
+    // Level filter (map display levels to ClickHouse kinds)
+    if (levels && levels.length > 0) {
+      const kinds = levels.flatMap(levelToKinds);
+      queryBuilder.where("kind IN {kinds: Array(String)}", { kinds });
     }
 
     // Cursor pagination
@@ -429,8 +476,9 @@ export class LogsListPresenter {
         tasks: tasks || [],
         versions: versions || [],
         statuses: statuses || [],
-        from: time.from,
-        to: time.to,
+        levels: levels || [],
+        from: effectiveFrom,
+        to: effectiveTo,
       },
       hasFilters,
       hasAnyLogs: transformedLogs.length > 0,

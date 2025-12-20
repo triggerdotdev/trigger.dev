@@ -98,6 +98,7 @@ export class ClickhouseQueryFastBuilder<TOutput extends Record<string, any>> {
   private columns: Array<string | ColumnExpression>;
   private reader: ClickhouseReader;
   private settings: ClickHouseSettings | undefined;
+  private prewhereClauses: string[] = [];
   private whereClauses: string[] = [];
   private params: QueryParams = {};
   private orderByClause: string | null = null;
@@ -116,6 +117,26 @@ export class ClickhouseQueryFastBuilder<TOutput extends Record<string, any>> {
     this.columns = columns;
     this.reader = reader;
     this.settings = settings;
+  }
+
+  /**
+   * Add a PREWHERE clause - filters applied before reading columns.
+   * Use for primary key columns (environment_id, start_time) to reduce I/O.
+   * PREWHERE is evaluated before WHERE and significantly reduces data read.
+   */
+  prewhere(clause: string, params?: QueryParams): this {
+    this.prewhereClauses.push(clause);
+    if (params) {
+      Object.assign(this.params, params);
+    }
+    return this;
+  }
+
+  prewhereIf(condition: any, clause: string, params?: QueryParams): this {
+    if (condition) {
+      this.prewhere(clause, params);
+    }
+    return this;
   }
 
   where(clause: string, params?: QueryParams): this {
@@ -163,6 +184,9 @@ export class ClickhouseQueryFastBuilder<TOutput extends Record<string, any>> {
 
   build(): { query: string; params: QueryParams } {
     let query = `SELECT ${this.buildColumns().join(", ")} FROM ${this.table}`;
+    if (this.prewhereClauses.length > 0) {
+      query += " PREWHERE " + this.prewhereClauses.join(" AND ");
+    }
     if (this.whereClauses.length > 0) {
       query += " WHERE " + this.whereClauses.join(" AND ");
     }

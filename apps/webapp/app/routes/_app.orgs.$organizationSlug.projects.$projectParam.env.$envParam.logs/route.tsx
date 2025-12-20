@@ -12,7 +12,7 @@ import { docsPath, EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { getRunFiltersFromRequest } from "~/presenters/RunFilters.server";
-import { LogsListPresenter } from "~/presenters/v3/LogsListPresenter.server";
+import { LogsListPresenter, type LogLevel } from "~/presenters/v3/LogsListPresenter.server";
 import { $replica } from "~/db.server";
 import { clickhouseClient } from "~/services/clickhouseInstance.server";
 import {
@@ -33,11 +33,23 @@ import { LogsTable } from "~/components/logs/LogsTable";
 import type { LogEntry } from "~/presenters/v3/LogsListPresenter.server";
 import { LogDetailView } from "~/components/logs/LogDetailView";
 import { LogsSearchInput } from "~/components/logs/LogsSearchInput";
+import { LogsLevelFilter } from "~/components/logs/LogsLevelFilter";
+import { LogsRunIdFilter } from "~/components/logs/LogsRunIdFilter";
+import { LogsTimePresets } from "~/components/logs/LogsTimePresets";
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
+
+// Valid log levels for filtering
+const validLevels: LogLevel[] = ["TRACE", "DEBUG", "INFO", "WARN", "ERROR", "LOG"];
+
+function parseLevelsFromUrl(url: URL): LogLevel[] | undefined {
+  const levelParams = url.searchParams.getAll("levels").filter((v) => v.length > 0);
+  if (levelParams.length === 0) return undefined;
+  return levelParams.filter((l): l is LogLevel => validLevels.includes(l as LogLevel));
+}
 
 export const meta: MetaFunction = () => {
   return [
@@ -63,9 +75,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const filters = await getRunFiltersFromRequest(request);
 
-  // Get search term from query params
+  // Get search term and levels from query params
   const url = new URL(request.url);
   const search = url.searchParams.get("search") ?? undefined;
+  const levels = parseLevelsFromUrl(url);
 
   const presenter = new LogsListPresenter($replica, clickhouseClient);
   const list = presenter.call(project.organizationId, environment.id, {
@@ -73,6 +86,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     projectId: project.id,
     ...filters,
     search,
+    levels,
   });
 
   const session = await setRootOnlyFilterPreference(filters.rootOnly, request);
@@ -260,8 +274,11 @@ function LogsList({
                 rootOnlyDefault={rootOnlyDefault}
                 hideSearch
               />
+              <LogsLevelFilter />
+              <LogsRunIdFilter />
               <LogsSearchInput />
             </div>
+            <LogsTimePresets />
           </div>
 
           {/* Table */}

@@ -1,9 +1,6 @@
 import { type ClickHouse } from "@internal/clickhouse";
 import { type PrismaClientOrTransaction } from "@trigger.dev/database";
-import {
-  convertClickhouseDateTime64ToJsDate,
-  convertDateToClickhouseDateTime,
-} from "~/v3/eventRepository/clickhouseEventRepository.server";
+import { convertClickhouseDateTime64ToJsDate } from "~/v3/eventRepository/clickhouseEventRepository.server";
 
 export type LogDetailOptions = {
   environmentId: string;
@@ -11,8 +8,8 @@ export type LogDetailOptions = {
   projectId: string;
   spanId: string;
   traceId: string;
-  // Time bounds for query optimization
-  startTime?: Date;
+  // The exact start_time from the log id - used to uniquely identify the event
+  startTime: string;
 };
 
 export type LogDetail = Awaited<ReturnType<LogDetailPresenter["call"]>>;
@@ -53,7 +50,8 @@ export class LogDetailPresenter {
     // Build ClickHouse query
     const queryBuilder = this.clickhouse.taskEventsV2.logDetailQueryBuilder();
 
-    // Required filters
+    // Required filters - spanId, traceId, and startTime uniquely identify the log
+    // Multiple events can share the same spanId (span, span events, logs), so startTime is needed
     queryBuilder.where("environment_id = {environmentId: String}", {
       environmentId,
     });
@@ -63,14 +61,7 @@ export class LogDetailPresenter {
     queryBuilder.where("project_id = {projectId: String}", { projectId });
     queryBuilder.where("span_id = {spanId: String}", { spanId });
     queryBuilder.where("trace_id = {traceId: String}", { traceId });
-
-    // Add time bounds for partition pruning if available
-    if (startTime) {
-      const startTimeWithBuffer = new Date(startTime.getTime() - 60_000); // 1 minute buffer
-      queryBuilder.where("inserted_at >= {insertedAtStart: DateTime64(3)}", {
-        insertedAtStart: convertDateToClickhouseDateTime(startTimeWithBuffer),
-      });
-    }
+    queryBuilder.where("start_time = {startTime: String}", { startTime });
 
     queryBuilder.limit(1);
 

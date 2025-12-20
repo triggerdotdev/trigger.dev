@@ -55,6 +55,39 @@ function getLevelColor(level: LogEntry["level"]): string {
   }
 }
 
+// Status badge color styles
+function getStatusColor(status: string): string {
+  switch (status) {
+    case "OK":
+      return "text-success bg-success/10 border-success/20";
+    case "ERROR":
+      return "text-error bg-error/10 border-error/20";
+    case "CANCELLED":
+      return "text-charcoal-400 bg-charcoal-700 border-charcoal-600";
+    case "PARTIAL":
+      return "text-pending bg-pending/10 border-pending/20";
+    default:
+      return "text-text-dimmed bg-charcoal-750 border-charcoal-700";
+  }
+}
+
+// Left border color for error highlighting
+function getLevelBorderColor(level: LogEntry["level"]): string {
+  switch (level) {
+    case "ERROR":
+      return "border-l-error";
+    case "WARN":
+      return "border-l-warning";
+    case "INFO":
+      return "border-l-blue-500";
+    case "DEBUG":
+    case "TRACE":
+    case "LOG":
+    default:
+      return "border-l-transparent";
+  }
+}
+
 // Case-insensitive text highlighting
 function highlightText(
   text: string,
@@ -135,13 +168,14 @@ export function LogsTable({
             <TableHeaderCell>Run</TableHeaderCell>
             <TableHeaderCell>Task</TableHeaderCell>
             <TableHeaderCell>Level</TableHeaderCell>
+            <TableHeaderCell>Status</TableHeaderCell>
             <TableHeaderCell>Duration</TableHeaderCell>
             <TableHeaderCell className="w-full">Message</TableHeaderCell>
           </TableRow>
         </TableHeader>
         <TableBody>
           {logs.length === 0 && !hasFilters ? (
-            <TableBlankRow colSpan={6}>
+            <TableBlankRow colSpan={7}>
               {!isLoading && <NoLogs title="No logs found" />}
             </TableBlankRow>
           ) : logs.length === 0 ? (
@@ -163,7 +197,8 @@ export function LogsTable({
                 <TableRow
                   key={log.id}
                   className={cn(
-                    "cursor-pointer transition-colors",
+                    "cursor-pointer transition-colors border-l-2",
+                    getLevelBorderColor(log.level),
                     isSelected
                       ? "bg-charcoal-750"
                       : "hover:bg-charcoal-850"
@@ -198,6 +233,16 @@ export function LogsTable({
                       )}
                     >
                       {log.level}
+                    </span>
+                  </TableCell>
+                  <TableCell onClick={handleRowClick} hasAction>
+                    <span
+                      className={cn(
+                        "inline-flex items-center rounded border px-1.5 py-0.5 text-xs font-medium",
+                        getStatusColor(log.status)
+                      )}
+                    >
+                      {log.status}
                     </span>
                   </TableCell>
                   <TableCell
@@ -254,10 +299,10 @@ function NoLogs({ title }: { title: string }) {
 }
 
 function BlankState({ isLoading }: { isLoading?: boolean }) {
-  if (isLoading) return <TableBlankRow colSpan={6}></TableBlankRow>;
+  if (isLoading) return <TableBlankRow colSpan={7}></TableBlankRow>;
 
   return (
-    <TableBlankRow colSpan={6}>
+    <TableBlankRow colSpan={7}>
       <div className="flex flex-col items-center justify-center gap-6">
         <Paragraph className="w-auto" variant="base/bright">
           No logs match your filters. Try refreshing or modifying your filters.
