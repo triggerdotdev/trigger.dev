@@ -1025,4 +1025,319 @@ describe("TSQL Virtual Column Tests", () => {
       expect(result?.rows?.[0].execution_duration).toBeNull();
     }
   );
+
+  /**
+   * Schema with cost-based virtual columns that use division expressions
+   * This mimics the real runsSchema where invocation_cost = base_cost_in_cents / 100.0
+   */
+  const costExpressionSchema: TableSchema = {
+    name: "task_runs",
+    clickhouseName: "trigger_dev.task_runs_v2",
+    columns: {
+      run_id: { name: "run_id", ...column("String") },
+      friendly_id: { name: "friendly_id", ...column("String") },
+      status: { name: "status", ...column("String") },
+      task_identifier: { name: "task_identifier", ...column("String") },
+      queue: { name: "queue", ...column("String") },
+      environment_id: { name: "environment_id", ...column("String") },
+      environment_type: { name: "environment_type", ...column("String") },
+      organization_id: { name: "organization_id", ...column("String") },
+      project_id: { name: "project_id", ...column("String") },
+      created_at: { name: "created_at", ...column("DateTime") },
+      updated_at: { name: "updated_at", ...column("DateTime") },
+      is_test: { name: "is_test", ...column("Bool") },
+      tags: { name: "tags", ...column("Array(String)") },
+      // Raw cost columns stored in ClickHouse
+      cost_in_cents: { name: "cost_in_cents", ...column("Float64") },
+      base_cost_in_cents: { name: "base_cost_in_cents", ...column("Float64") },
+      // Virtual column: compute_cost = cost_in_cents / 100.0
+      compute_cost: {
+        name: "compute_cost",
+        ...column("Float64"),
+        expression: "cost_in_cents / 100.0",
+        description: "Compute cost in dollars (cost_in_cents / 100)",
+      },
+      // Virtual column: invocation_cost = base_cost_in_cents / 100.0
+      invocation_cost: {
+        name: "invocation_cost",
+        ...column("Float64"),
+        expression: "base_cost_in_cents / 100.0",
+        description: "Invocation cost in dollars (base_cost_in_cents / 100)",
+      },
+    },
+    tenantColumns: {
+      organizationId: "organization_id",
+      projectId: "project_id",
+      environmentId: "environment_id",
+    },
+  };
+
+  clickhouseTest(
+    "should filter by expression column with division in WHERE clause",
+    async ({ clickhouseContainer }) => {
+      const client = new ClickhouseClient({
+        name: "test",
+        url: clickhouseContainer.getConnectionUrl(),
+      });
+
+      const insert = insertTaskRuns(client, { async_insert: 0 });
+
+      // Insert runs with different cost values
+      // invocation_cost = base_cost_in_cents / 100.0
+      // So base_cost_in_cents of 500 = invocation_cost of 5.0
+      // And base_cost_in_cents of 50 = invocation_cost of 0.5
+      await insert([
+        createTaskRun({
+          run_id: "run_cheap",
+          base_cost_in_cents: 50, // invocation_cost = 0.5
+          cost_in_cents: 100,
+        }),
+        createTaskRun({
+          run_id: "run_medium",
+          base_cost_in_cents: 200, // invocation_cost = 2.0
+          cost_in_cents: 300,
+        }),
+        createTaskRun({
+          run_id: "run_expensive",
+          base_cost_in_cents: 500, // invocation_cost = 5.0
+          cost_in_cents: 800,
+        }),
+      ]);
+
+      // Query runs where invocation_cost > 1.0 (base_cost_in_cents > 100)
+      // Should return run_medium (2.0) and run_expensive (5.0)
+      const [error, result] = await executeTSQL(client, {
+        name: "test-expression-division-where",
+        query: "SELECT run_id, invocation_cost FROM task_runs WHERE invocation_cost > 1.0",
+        schema: z.object({ run_id: z.string(), invocation_cost: z.number() }),
+        organizationId: "org_tenant1",
+        projectId: "proj_tenant1",
+        environmentId: "env_tenant1",
+        tableSchema: [costExpressionSchema],
+      });
+
+      expect(error).toBeNull();
+      expect(result?.rows).toHaveLength(2);
+      expect(result?.rows?.map((r) => r.run_id).sort()).toEqual(["run_expensive", "run_medium"]);
+    }
+  );
+
+  clickhouseTest(
+    "should filter by expression column with greater-than-or-equals comparison",
+    async ({ clickhouseContainer }) => {
+      const client = new ClickhouseClient({
+        name: "test",
+        url: clickhouseContainer.getConnectionUrl(),
+      });
+
+      const insert = insertTaskRuns(client, { async_insert: 0 });
+
+      await insert([
+        createTaskRun({
+          run_id: "run_1",
+          base_cost_in_cents: 100, // invocation_cost = 1.0
+        }),
+        createTaskRun({
+          run_id: "run_2",
+          base_cost_in_cents: 200, // invocation_cost = 2.0
+        }),
+        createTaskRun({
+          run_id: "run_3",
+          base_cost_in_cents: 50, // invocation_cost = 0.5
+        }),
+      ]);
+
+      // Query runs where invocation_cost >= 1.0
+      // Should return run_1 (1.0) and run_2 (2.0)
+      const [error, result] = await executeTSQL(client, {
+        name: "test-expression-gte-where",
+        query: "SELECT run_id, invocation_cost FROM task_runs WHERE invocation_cost >= 1.0",
+        schema: z.object({ run_id: z.string(), invocation_cost: z.number() }),
+        organizationId: "org_tenant1",
+        projectId: "proj_tenant1",
+        environmentId: "env_tenant1",
+        tableSchema: [costExpressionSchema],
+      });
+
+      expect(error).toBeNull();
+      expect(result?.rows).toHaveLength(2);
+      expect(result?.rows?.map((r) => r.run_id).sort()).toEqual(["run_1", "run_2"]);
+    }
+  );
+
+  clickhouseTest(
+    "should filter by expression column with less-than comparison",
+    async ({ clickhouseContainer }) => {
+      const client = new ClickhouseClient({
+        name: "test",
+        url: clickhouseContainer.getConnectionUrl(),
+      });
+
+      const insert = insertTaskRuns(client, { async_insert: 0 });
+
+      await insert([
+        createTaskRun({
+          run_id: "run_small",
+          base_cost_in_cents: 50, // invocation_cost = 0.5
+        }),
+        createTaskRun({
+          run_id: "run_large",
+          base_cost_in_cents: 300, // invocation_cost = 3.0
+        }),
+      ]);
+
+      // Query runs where invocation_cost < 1.0
+      // Should return only run_small (0.5)
+      const [error, result] = await executeTSQL(client, {
+        name: "test-expression-lt-where",
+        query: "SELECT run_id, invocation_cost FROM task_runs WHERE invocation_cost < 1.0",
+        schema: z.object({ run_id: z.string(), invocation_cost: z.number() }),
+        organizationId: "org_tenant1",
+        projectId: "proj_tenant1",
+        environmentId: "env_tenant1",
+        tableSchema: [costExpressionSchema],
+      });
+
+      expect(error).toBeNull();
+      expect(result?.rows).toHaveLength(1);
+      expect(result?.rows?.[0].run_id).toBe("run_small");
+    }
+  );
+
+  clickhouseTest(
+    "should filter by expression column with BETWEEN comparison",
+    async ({ clickhouseContainer }) => {
+      const client = new ClickhouseClient({
+        name: "test",
+        url: clickhouseContainer.getConnectionUrl(),
+      });
+
+      const insert = insertTaskRuns(client, { async_insert: 0 });
+
+      await insert([
+        createTaskRun({
+          run_id: "run_low",
+          base_cost_in_cents: 50, // invocation_cost = 0.5
+        }),
+        createTaskRun({
+          run_id: "run_mid",
+          base_cost_in_cents: 150, // invocation_cost = 1.5
+        }),
+        createTaskRun({
+          run_id: "run_high",
+          base_cost_in_cents: 500, // invocation_cost = 5.0
+        }),
+      ]);
+
+      // Query runs where invocation_cost is between 1.0 and 2.0
+      // Should return only run_mid (1.5)
+      const [error, result] = await executeTSQL(client, {
+        name: "test-expression-between-where",
+        query:
+          "SELECT run_id, invocation_cost FROM task_runs WHERE invocation_cost BETWEEN 1.0 AND 2.0",
+        schema: z.object({ run_id: z.string(), invocation_cost: z.number() }),
+        organizationId: "org_tenant1",
+        projectId: "proj_tenant1",
+        environmentId: "env_tenant1",
+        tableSchema: [costExpressionSchema],
+      });
+
+      expect(error).toBeNull();
+      expect(result?.rows).toHaveLength(1);
+      expect(result?.rows?.[0].run_id).toBe("run_mid");
+    }
+  );
+
+  clickhouseTest(
+    "should use expression column in complex WHERE with AND/OR",
+    async ({ clickhouseContainer }) => {
+      const client = new ClickhouseClient({
+        name: "test",
+        url: clickhouseContainer.getConnectionUrl(),
+      });
+
+      const insert = insertTaskRuns(client, { async_insert: 0 });
+
+      await insert([
+        createTaskRun({
+          run_id: "run_a",
+          status: "COMPLETED_SUCCESSFULLY",
+          base_cost_in_cents: 100, // invocation_cost = 1.0
+        }),
+        createTaskRun({
+          run_id: "run_b",
+          status: "FAILED",
+          base_cost_in_cents: 300, // invocation_cost = 3.0
+        }),
+        createTaskRun({
+          run_id: "run_c",
+          status: "COMPLETED_SUCCESSFULLY",
+          base_cost_in_cents: 300, // invocation_cost = 3.0
+        }),
+      ]);
+
+      // Query completed runs with invocation_cost > 2.0
+      const [error, result] = await executeTSQL(client, {
+        name: "test-expression-complex-where",
+        query:
+          "SELECT run_id FROM task_runs WHERE status = 'COMPLETED_SUCCESSFULLY' AND invocation_cost > 2.0",
+        schema: z.object({ run_id: z.string() }),
+        organizationId: "org_tenant1",
+        projectId: "proj_tenant1",
+        environmentId: "env_tenant1",
+        tableSchema: [costExpressionSchema],
+      });
+
+      expect(error).toBeNull();
+      expect(result?.rows).toHaveLength(1);
+      expect(result?.rows?.[0].run_id).toBe("run_c");
+    }
+  );
+
+  clickhouseTest(
+    "should filter by expression column comparing with large integer value",
+    async ({ clickhouseContainer }) => {
+      const client = new ClickhouseClient({
+        name: "test",
+        url: clickhouseContainer.getConnectionUrl(),
+      });
+
+      const insert = insertTaskRuns(client, { async_insert: 0 });
+
+      // Insert runs with large base_cost_in_cents values
+      // So invocation_cost = base_cost_in_cents / 100.0
+      // To get invocation_cost > 100, we need base_cost_in_cents > 10000
+      await insert([
+        createTaskRun({
+          run_id: "run_small_cost",
+          base_cost_in_cents: 500, // invocation_cost = 5.0
+        }),
+        createTaskRun({
+          run_id: "run_medium_cost",
+          base_cost_in_cents: 5000, // invocation_cost = 50.0
+        }),
+        createTaskRun({
+          run_id: "run_large_cost",
+          base_cost_in_cents: 15000, // invocation_cost = 150.0
+        }),
+      ]);
+
+      // Query runs where invocation_cost > 100
+      // Should only return run_large_cost (150.0)
+      const [error, result] = await executeTSQL(client, {
+        name: "test-expression-large-integer-where",
+        query: "SELECT run_id, invocation_cost FROM task_runs WHERE invocation_cost > 100",
+        schema: z.object({ run_id: z.string(), invocation_cost: z.number() }),
+        organizationId: "org_tenant1",
+        projectId: "proj_tenant1",
+        environmentId: "env_tenant1",
+        tableSchema: [costExpressionSchema],
+      });
+
+      expect(error).toBeNull();
+      expect(result?.rows).toHaveLength(1);
+      expect(result?.rows?.[0].run_id).toBe("run_large_cost");
+      expect(result?.rows?.[0].invocation_cost).toBeCloseTo(150.0, 1);
+    }
+  );
 });

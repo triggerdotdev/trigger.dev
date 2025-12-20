@@ -36,9 +36,10 @@ export const runsSchema: TableSchema = {
       name: "run_id",
       clickhouseName: "friendly_id",
       ...column("String", {
-        description: "Run ID (e.g., run_abc123)",
+        description:
+          "A unique ID for a run. They always start with `run_`, e.g., run_cm1a2b3c4d5e6f7g8h9i",
         customRenderType: "runId",
-        example: "run_1234abcd5678efgh",
+        example: "run_cm1a2b3c4d5e6f7g8h9i",
       }),
     },
     environment_id: {
@@ -218,18 +219,18 @@ export const runsSchema: TableSchema = {
     compute_cost: {
       name: "compute_cost",
       ...column("Float64", {
-        description: "Compute cost in cents",
+        description: "Compute cost in dollars",
         customRenderType: "cost",
-        example: "0.0025",
+        example: "0.000676",
       }),
       expression: "cost_in_cents / 100.0",
     },
     invocation_cost: {
       name: "invocation_cost",
       ...column("Float64", {
-        description: "Invocation cost in cents",
+        description: "Invocation cost in dollars",
         customRenderType: "cost",
-        example: "0.001",
+        example: "0.000025",
       }),
       expression: "base_cost_in_cents / 100.0",
     },
