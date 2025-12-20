@@ -19,6 +19,8 @@ const runsSchema: TableSchema = {
   },
   tenantColumns: {
     organizationId: "organization_id",
+    projectId: "project_id",
+    environmentId: "environment_id",
   },
 };
 
@@ -120,4 +122,3 @@ describe("validateQuery", () => {
     });
   });
 });
-

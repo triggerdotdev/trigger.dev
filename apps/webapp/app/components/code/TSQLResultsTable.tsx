@@ -26,6 +26,7 @@ import { v3ProjectPath, v3RunPathFromFriendlyId } from "~/utils/pathBuilder";
 import { SimpleTooltip } from "../primitives/Tooltip";
 import { InformationCircleIcon } from "@heroicons/react/20/solid";
 import { useOrganization } from "~/hooks/useOrganizations";
+import { useProject } from "~/hooks/useProject";
 
 /**
  * Check if a ClickHouse type is a DateTime type
@@ -163,6 +164,12 @@ function CellValue({
         }
         return <span>{String(value)}</span>;
       }
+      case "environment": {
+        if (typeof value === "string") {
+          return <EnvironmentCellValue value={value} />;
+        }
+        return <span>{String(value)}</span>;
+      }
     }
   }
 
@@ -219,6 +226,17 @@ function ProjectCellValue({ value }: { value: string }) {
   }
 
   return <TextLink to={v3ProjectPath(organization, project)}>{project.name}</TextLink>;
+}
+
+function EnvironmentCellValue({ value }: { value: string }) {
+  const project = useProject();
+  const environment = project.environments.find((e) => e.slug === value);
+
+  if (!environment) {
+    return <span>{value}</span>;
+  }
+
+  return <EnvironmentCombo environment={environment} />;
 }
 
 /**

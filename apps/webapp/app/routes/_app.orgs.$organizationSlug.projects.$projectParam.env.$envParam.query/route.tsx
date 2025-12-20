@@ -160,14 +160,20 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     tenantOptions.environmentId = environment.id;
   }
 
-  // Build field mappings for project_ref → project_id translation
+  // Build field mappings for project_ref → project_id and environment_id → slug translation
   const projects = await prisma.project.findMany({
     where: { organizationId: project.organizationId },
     select: { id: true, externalRef: true },
   });
 
+  const environments = await prisma.runtimeEnvironment.findMany({
+    where: { project: { organizationId: project.organizationId } },
+    select: { id: true, slug: true },
+  });
+
   const fieldMappings: FieldMappings = {
     project: Object.fromEntries(projects.map((p) => [p.id, p.externalRef])),
+    environment: Object.fromEntries(environments.map((e) => [e.id, e.slug])),
   };
 
   try {

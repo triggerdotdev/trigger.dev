@@ -42,13 +42,12 @@ export const runsSchema: TableSchema = {
         example: "run_cm1a2b3c4d5e6f7g8h9i",
       }),
     },
-    environment_id: {
-      name: "environment_id",
-      ...column("String", { description: "Environment ID", example: "cm1a2b3c4d5e6f7g8h9i" }),
-    },
-    organization_id: {
-      name: "organization_id",
-      ...column("String", { description: "Organization ID", example: "cm9z8y7x6w5v4u3t2s1r" }),
+    environment: {
+      name: "environment",
+      clickhouseName: "environment_id",
+      ...column("String", { description: "The environment slug", example: "prod" }),
+      fieldMapping: "environment",
+      customRenderType: "environment",
     },
     project: {
       name: "project",
