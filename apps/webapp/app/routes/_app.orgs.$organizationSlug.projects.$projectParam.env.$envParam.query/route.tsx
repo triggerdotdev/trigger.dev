@@ -1,4 +1,9 @@
-import { ArrowDownTrayIcon, ClipboardIcon, LightBulbIcon } from "@heroicons/react/20/solid";
+import {
+  ArrowDownTrayIcon,
+  ClipboardIcon,
+  LightBulbIcon,
+  PlayIcon,
+} from "@heroicons/react/20/solid";
 import type { OutputColumnMetadata } from "@internal/clickhouse";
 import type { ColumnSchema } from "@internal/tsql";
 import { Form, useNavigation } from "@remix-run/react";
@@ -13,8 +18,15 @@ import { z } from "zod";
 import { ClockRotateLeftIcon } from "~/assets/icons/ClockRotateLeftIcon";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { AlphaTitle } from "~/components/AlphaBadge";
+import { CodeBlock } from "~/components/code/CodeBlock";
 import { TSQLEditor } from "~/components/code/TSQLEditor";
 import { TSQLResultsTable } from "~/components/code/TSQLResultsTable";
+import {
+  ClientTabs,
+  ClientTabsContent,
+  ClientTabsList,
+  ClientTabsTrigger,
+} from "~/components/primitives/ClientTabs";
 import { DateTime } from "~/components/primitives/DateTime";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
@@ -334,7 +346,13 @@ export default function Page() {
                 max="500px"
                 className="w-full"
               >
-                <QueryHelpSidebar onClose={() => setShowHelpSidebar(false)} />
+                <QueryHelpSidebar
+                  onClose={() => setShowHelpSidebar(false)}
+                  onTryExample={(exampleQuery, exampleScope) => {
+                    setQuery(exampleQuery);
+                    setScope(exampleScope);
+                  }}
+                />
               </ResizablePanel>
             </>
           )}
@@ -398,7 +416,67 @@ function ExportResultsButton({
   );
 }
 
-function QueryHelpSidebar({ onClose }: { onClose: () => void }) {
+// Example queries for the Examples tab
+const exampleQueries: Array<{
+  title: string;
+  description: string;
+  query: string;
+  scope: QueryScope;
+}> = [
+  {
+    title: "Failed runs by task (past 7 days)",
+    description: "Count of failed runs grouped by task identifier over the last 7 days.",
+    query: `SELECT
+  task_identifier,
+  count() AS failed_count
+FROM runs
+WHERE status = 'Failed'
+  AND created_at > now() - INTERVAL 7 DAY
+GROUP BY task_identifier
+ORDER BY failed_count DESC
+LIMIT 20`,
+    scope: "environment",
+  },
+  {
+    title: "Execution duration p50 by task (past 7d)",
+    description: "Median (50th percentile) execution duration for each task.",
+    query: `SELECT
+  task_identifier,
+  quantile(0.5)(execution_duration) AS p50_duration_ms
+FROM runs
+WHERE created_at > now() - INTERVAL 7 DAY
+  AND execution_duration IS NOT NULL
+GROUP BY task_identifier
+ORDER BY p50_duration_ms DESC
+LIMIT 20`,
+    scope: "environment",
+  },
+  {
+    title: "Most expensive 100 runs (past 7d)",
+    description: "Top 100 runs by compute cost over the last 7 days.",
+    query: `SELECT
+  run_id,
+  task_identifier,
+  status,
+  compute_cost,
+  usage_duration,
+  machine,
+  created_at
+FROM runs
+WHERE created_at > now() - INTERVAL 7 DAY
+ORDER BY compute_cost DESC
+LIMIT 100`,
+    scope: "environment",
+  },
+];
+
+function QueryHelpSidebar({
+  onClose,
+  onTryExample,
+}: {
+  onClose: () => void;
+  onTryExample: (query: string, scope: QueryScope) => void;
+}) {
   return (
     <div className="grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
       <div className="flex items-center justify-between gap-2 border-b border-grid-dimmed p-3 pt-2">
@@ -415,25 +493,389 @@ function QueryHelpSidebar({ onClose }: { onClose: () => void }) {
           className="pl-[0.375rem]"
         />
       </div>
-      <div className="overflow-y-scroll p-3 pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-        {querySchemas.map((table) => (
-          <div key={table.name} className="mb-6">
-            <div className="mb-2">
-              <Header3 className="font-mono text-text-bright">{table.name}</Header3>
-              {table.description && (
-                <Paragraph variant="small" className="mt-1 text-text-dimmed">
-                  {table.description}
-                </Paragraph>
-              )}
-            </div>
-            <div className="flex flex-col gap-2 divide-y divide-grid-dimmed">
-              {Object.values(table.columns).map((col) => (
-                <ColumnHelpItem key={col.name} col={col} />
-              ))}
-            </div>
+      <ClientTabs defaultValue="guide" className="flex min-h-0 flex-col overflow-hidden">
+        <ClientTabsList variant="underline" className="mx-3 shrink-0">
+          <ClientTabsTrigger value="guide" variant="underline" layoutId="query-help-tabs">
+            Writing TRQL
+          </ClientTabsTrigger>
+          <ClientTabsTrigger value="schema" variant="underline" layoutId="query-help-tabs">
+            Table schema
+          </ClientTabsTrigger>
+          <ClientTabsTrigger value="examples" variant="underline" layoutId="query-help-tabs">
+            Examples
+          </ClientTabsTrigger>
+        </ClientTabsList>
+        <ClientTabsContent
+          value="guide"
+          className="min-h-0 flex-1 overflow-y-auto p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        >
+          <TRQLGuideContent />
+        </ClientTabsContent>
+        <ClientTabsContent
+          value="schema"
+          className="min-h-0 flex-1 overflow-y-auto p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        >
+          <TableSchemaContent />
+        </ClientTabsContent>
+        <ClientTabsContent
+          value="examples"
+          className="min-h-0 flex-1 overflow-y-auto p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        >
+          <ExamplesContent onTryExample={onTryExample} />
+        </ClientTabsContent>
+      </ClientTabs>
+    </div>
+  );
+}
+
+function TRQLGuideContent() {
+  return (
+    <div className="space-y-6">
+      {/* Table of contents */}
+      <nav className="space-y-1 text-sm">
+        <a href="#basic" className="block text-text-link hover:underline">
+          Basic queries
+        </a>
+        <a href="#filtering" className="block text-text-link hover:underline">
+          Filtering with WHERE
+        </a>
+        <a href="#sorting" className="block text-text-link hover:underline">
+          Sorting &amp; limiting
+        </a>
+        <a href="#grouping" className="block text-text-link hover:underline">
+          Grouping &amp; aggregation
+        </a>
+        <a href="#functions" className="block text-text-link hover:underline">
+          Available functions
+        </a>
+      </nav>
+
+      {/* Basic queries */}
+      <section id="basic">
+        <Header3 className="mb-2 text-text-bright">Basic queries</Header3>
+        <Paragraph variant="small" className="mb-2 text-text-dimmed">
+          Select columns from a table. Use <code className="text-xs">*</code> to select all columns,
+          or list specific columns.
+        </Paragraph>
+        <CodeBlock
+          code={`SELECT run_id, task_identifier, status
+FROM runs
+LIMIT 10`}
+          language="sql"
+          showLineNumbers={false}
+          showOpenInModal={false}
+          className="text-xs"
+        />
+        <Paragraph variant="small" className="mt-2 text-text-dimmed">
+          Alias columns with <code className="text-xs">AS</code>:
+        </Paragraph>
+        <CodeBlock
+          code={`SELECT task_identifier AS task, count() AS total
+FROM runs
+GROUP BY task`}
+          language="sql"
+          showLineNumbers={false}
+          showOpenInModal={false}
+          className="mt-1 text-xs"
+        />
+      </section>
+
+      {/* Filtering */}
+      <section id="filtering">
+        <Header3 className="mb-2 text-text-bright">Filtering with WHERE</Header3>
+        <Paragraph variant="small" className="mb-2 text-text-dimmed">
+          Use comparison operators: <code className="text-xs">=</code>,{" "}
+          <code className="text-xs">!=</code>, <code className="text-xs">&lt;</code>,{" "}
+          <code className="text-xs">&gt;</code>, <code className="text-xs">&lt;=</code>,{" "}
+          <code className="text-xs">&gt;=</code>
+        </Paragraph>
+        <CodeBlock
+          code={`SELECT * FROM runs
+WHERE status = 'Failed'
+  AND created_at > now() - INTERVAL 1 DAY`}
+          language="sql"
+          showLineNumbers={false}
+          showOpenInModal={false}
+          className="text-xs"
+        />
+        <Paragraph variant="small" className="mt-2 text-text-dimmed">
+          Other operators:
+        </Paragraph>
+        <CodeBlock
+          code={`-- IN for multiple values
+WHERE status IN ('Failed', 'Crashed')
+
+-- LIKE for pattern matching (% = wildcard)
+WHERE task_identifier LIKE 'email%'
+
+-- ILIKE for case-insensitive matching
+WHERE task_identifier ILIKE '%send%'
+
+-- BETWEEN for ranges
+WHERE created_at BETWEEN '2024-01-01' AND '2024-01-31'
+
+-- NULL checks
+WHERE completed_at IS NOT NULL`}
+          language="sql"
+          showLineNumbers={false}
+          showOpenInModal={false}
+          className="mt-1 text-xs"
+        />
+      </section>
+
+      {/* Sorting & limiting */}
+      <section id="sorting">
+        <Header3 className="mb-2 text-text-bright">Sorting &amp; limiting</Header3>
+        <Paragraph variant="small" className="mb-2 text-text-dimmed">
+          Sort results with <code className="text-xs">ORDER BY</code> (ASC/DESC). Limit results with{" "}
+          <code className="text-xs">LIMIT</code>.
+        </Paragraph>
+        <CodeBlock
+          code={`SELECT run_id, compute_cost, created_at
+FROM runs
+ORDER BY compute_cost DESC, created_at ASC
+LIMIT 50`}
+          language="sql"
+          showLineNumbers={false}
+          showOpenInModal={false}
+          className="text-xs"
+        />
+      </section>
+
+      {/* Grouping */}
+      <section id="grouping">
+        <Header3 className="mb-2 text-text-bright">Grouping &amp; aggregation</Header3>
+        <Paragraph variant="small" className="mb-2 text-text-dimmed">
+          Use <code className="text-xs">GROUP BY</code> with aggregate functions. Filter groups with{" "}
+          <code className="text-xs">HAVING</code>.
+        </Paragraph>
+        <CodeBlock
+          code={`SELECT
+  task_identifier,
+  status,
+  count() AS run_count,
+  avg(usage_duration) AS avg_duration
+FROM runs
+GROUP BY task_identifier, status
+HAVING run_count > 10
+ORDER BY run_count DESC`}
+          language="sql"
+          showLineNumbers={false}
+          showOpenInModal={false}
+          className="text-xs"
+        />
+      </section>
+
+      {/* Functions */}
+      <section id="functions">
+        <Header3 className="mb-2 text-text-bright">Available functions</Header3>
+
+        <div className="space-y-4">
+          <div>
+            <Paragraph variant="small/bright" className="mb-1">
+              Aggregate functions
+            </Paragraph>
+            <FunctionList
+              functions={[
+                { name: "count()", desc: "Count rows", example: "count()" },
+                { name: "sum(col)", desc: "Sum values", example: "sum(compute_cost)" },
+                { name: "avg(col)", desc: "Average", example: "avg(usage_duration)" },
+                { name: "min(col)", desc: "Minimum value", example: "min(created_at)" },
+                { name: "max(col)", desc: "Maximum value", example: "max(compute_cost)" },
+                {
+                  name: "uniq(col)",
+                  desc: "Count unique values",
+                  example: "uniq(task_identifier)",
+                },
+                {
+                  name: "quantile(p)(col)",
+                  desc: "Percentile",
+                  example: "quantile(0.95)(usage_duration)",
+                },
+              ]}
+            />
           </div>
-        ))}
-      </div>
+
+          <div>
+            <Paragraph variant="small/bright" className="mb-1">
+              String functions
+            </Paragraph>
+            <FunctionList
+              functions={[
+                {
+                  name: "concat(a, b)",
+                  desc: "Join strings",
+                  example: "concat(task_identifier, '-v2')",
+                },
+                { name: "lower(s)", desc: "Lowercase", example: "lower(status)" },
+                { name: "upper(s)", desc: "Uppercase", example: "upper(status)" },
+                {
+                  name: "substring(s, start, len)",
+                  desc: "Extract substring",
+                  example: "substring(run_id, 1, 10)",
+                },
+                { name: "trim(s)", desc: "Remove whitespace", example: "trim(task_identifier)" },
+                { name: "length(s)", desc: "String length", example: "length(task_identifier)" },
+              ]}
+            />
+          </div>
+
+          <div>
+            <Paragraph variant="small/bright" className="mb-1">
+              Date/time functions
+            </Paragraph>
+            <FunctionList
+              functions={[
+                { name: "now()", desc: "Current timestamp", example: "now()" },
+                { name: "today()", desc: "Current date", example: "today()" },
+                { name: "toDate(dt)", desc: "Extract date", example: "toDate(created_at)" },
+                {
+                  name: "toStartOfDay(dt)",
+                  desc: "Start of day",
+                  example: "toStartOfDay(created_at)",
+                },
+                {
+                  name: "toStartOfHour(dt)",
+                  desc: "Start of hour",
+                  example: "toStartOfHour(created_at)",
+                },
+                {
+                  name: "dateDiff('unit', a, b)",
+                  desc: "Difference",
+                  example: "dateDiff('minute', started_at, completed_at)",
+                },
+                {
+                  name: "formatDateTime(dt, fmt)",
+                  desc: "Format date",
+                  example: "formatDateTime(created_at, '%Y-%m-%d')",
+                },
+              ]}
+            />
+          </div>
+
+          <div>
+            <Paragraph variant="small/bright" className="mb-1">
+              Conditional functions
+            </Paragraph>
+            <FunctionList
+              functions={[
+                {
+                  name: "if(cond, then, else)",
+                  desc: "Conditional",
+                  example: "if(status = 'Failed', 1, 0)",
+                },
+                {
+                  name: "multiIf(c1, t1, c2, t2, else)",
+                  desc: "Multiple conditions",
+                  example: "multiIf(status = 'Completed', 'ok', status = 'Failed', 'bad', 'other')",
+                },
+                {
+                  name: "coalesce(a, b, ...)",
+                  desc: "First non-null",
+                  example: "coalesce(completed_at, created_at)",
+                },
+              ]}
+            />
+          </div>
+
+          <div>
+            <Paragraph variant="small/bright" className="mb-1">
+              Array functions
+            </Paragraph>
+            <FunctionList
+              functions={[
+                {
+                  name: "has(arr, val)",
+                  desc: "Check if array contains",
+                  example: "has(tags, 'important')",
+                },
+                {
+                  name: "arrayJoin(arr)",
+                  desc: "Expand array to rows",
+                  example: "arrayJoin(tags)",
+                },
+                { name: "length(arr)", desc: "Array length", example: "length(tags)" },
+              ]}
+            />
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function FunctionList({
+  functions,
+}: {
+  functions: Array<{ name: string; desc: string; example: string }>;
+}) {
+  return (
+    <div className="space-y-1">
+      {functions.map((fn) => (
+        <div key={fn.name} className="text-xs">
+          <code className="text-indigo-400">{fn.name}</code>
+          <span className="text-text-dimmed"> — {fn.desc}</span>
+          <div className="ml-2 mt-0.5 font-mono text-xxs text-charcoal-400">{fn.example}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TableSchemaContent() {
+  return (
+    <div>
+      {querySchemas.map((table) => (
+        <div key={table.name} className="mb-6">
+          <div className="mb-2">
+            <Header3 className="font-mono text-text-bright">{table.name}</Header3>
+            {table.description && (
+              <Paragraph variant="small" className="mt-1 text-text-dimmed">
+                {table.description}
+              </Paragraph>
+            )}
+          </div>
+          <div className="flex flex-col gap-2 divide-y divide-grid-dimmed">
+            {Object.values(table.columns).map((col) => (
+              <ColumnHelpItem key={col.name} col={col} />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ExamplesContent({
+  onTryExample,
+}: {
+  onTryExample: (query: string, scope: QueryScope) => void;
+}) {
+  return (
+    <div className="space-y-6">
+      {exampleQueries.map((example) => (
+        <div key={example.title}>
+          <Header3 className="mb-1 text-text-bright">{example.title}</Header3>
+          <Paragraph variant="small" className="mb-2 text-text-dimmed">
+            {example.description}
+          </Paragraph>
+          <CodeBlock
+            code={example.query}
+            language="sql"
+            showLineNumbers={false}
+            showOpenInModal={false}
+            className="text-xs"
+          />
+          <Button
+            variant="tertiary/small"
+            onClick={() => onTryExample(example.query, example.scope)}
+            LeadingIcon={PlayIcon}
+            className="mt-2"
+          >
+            Try it
+          </Button>
+        </div>
+      ))}
     </div>
   );
 }
