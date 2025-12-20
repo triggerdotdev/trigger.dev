@@ -241,7 +241,10 @@ export class ClickHousePrinter {
         break;
       default:
         throw new NotImplementedError(
-          `Unknown expression type: ${nodeType}. Node: ${JSON.stringify(node, null, 2).slice(0, 200)}`
+          `Unknown expression type: ${nodeType}. Node: ${JSON.stringify(node, null, 2).slice(
+            0,
+            200
+          )}`
         );
     }
 
@@ -561,7 +564,7 @@ export class ClickHousePrinter {
       const call = col as Call;
       const inferredType = this.inferCallType(call);
       return {
-        outputName: null, // Computed columns without alias get auto-named by ClickHouse
+        outputName: this.generateImplicitName(call),
         sourceColumn: null,
         inferredType,
       };
@@ -572,7 +575,7 @@ export class ClickHousePrinter {
       const arith = col as ArithmeticOperation;
       const inferredType = this.inferArithmeticType(arith);
       return {
-        outputName: null,
+        outputName: this.generateImplicitName(arith),
         sourceColumn: null,
         inferredType,
       };
@@ -583,7 +586,7 @@ export class ClickHousePrinter {
       const constant = col as Constant;
       const inferredType = this.inferConstantType(constant);
       return {
-        outputName: null,
+        outputName: this.generateImplicitName(constant),
         sourceColumn: null,
         inferredType,
       };
@@ -595,6 +598,77 @@ export class ClickHousePrinter {
       sourceColumn: null,
       inferredType: null,
     };
+  }
+
+  /**
+   * Generate an implicit column name for an expression without an explicit alias.
+   * This matches how ClickHouse auto-names result columns.
+   *
+   * Examples:
+   * - COUNT() -> "count()"
+   * - COUNT(id) -> "count(id)"
+   * - SUM(duration_ms) -> "sum(duration_ms)"
+   * - 1 + 2 -> "plus(1, 2)"
+   */
+  private generateImplicitName(expr: Expression): string {
+    // Handle Call (function/aggregation)
+    if ((expr as Call).expression_type === "call") {
+      const call = expr as Call;
+      const args = call.args.map((arg) => this.generateImplicitName(arg));
+      // Use lowercase function name to match ClickHouse behavior
+      return `${call.name.toLowerCase()}(${args.join(", ")})`;
+    }
+
+    // Handle Field
+    if ((expr as Field).expression_type === "field") {
+      const field = expr as Field;
+      // Return the last part of the chain (column name)
+      const parts = field.chain.filter((p): p is string => typeof p === "string");
+      return parts.length > 0 ? parts[parts.length - 1] : "*";
+    }
+
+    // Handle ArithmeticOperation
+    if ((expr as ArithmeticOperation).expression_type === "arithmetic_operation") {
+      const arith = expr as ArithmeticOperation;
+      const left = this.generateImplicitName(arith.left);
+      const right = this.generateImplicitName(arith.right);
+
+      switch (arith.op) {
+        case ArithmeticOperationOp.Add:
+          return `plus(${left}, ${right})`;
+        case ArithmeticOperationOp.Sub:
+          return `minus(${left}, ${right})`;
+        case ArithmeticOperationOp.Mult:
+          return `multiply(${left}, ${right})`;
+        case ArithmeticOperationOp.Div:
+          return `divide(${left}, ${right})`;
+        case ArithmeticOperationOp.Mod:
+          return `modulo(${left}, ${right})`;
+        default:
+          return "expression";
+      }
+    }
+
+    // Handle Constant
+    if ((expr as Constant).expression_type === "constant") {
+      const constant = expr as Constant;
+      if (constant.value === null) {
+        return "NULL";
+      }
+      if (typeof constant.value === "string") {
+        return `'${constant.value}'`;
+      }
+      return String(constant.value);
+    }
+
+    // Handle Alias (shouldn't normally reach here since aliases have explicit names)
+    if ((expr as Alias).expression_type === "alias") {
+      const alias = expr as Alias;
+      return alias.alias;
+    }
+
+    // Default fallback
+    return "expression";
   }
 
   /**
