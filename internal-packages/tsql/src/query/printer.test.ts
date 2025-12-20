@@ -1088,6 +1088,151 @@ describe("Virtual columns", () => {
   });
 });
 
+describe("Expression columns with division (cost/invocation_cost pattern)", () => {
+  /**
+   * Schema mimicking the real runsSchema with cost-based expression columns
+   * These use division expressions like base_cost_in_cents / 100.0
+   */
+  const costExpressionSchema: TableSchema = {
+    name: "runs",
+    clickhouseName: "trigger_dev.task_runs_v2",
+    columns: {
+      run_id: { name: "run_id", ...column("String") },
+      status: { name: "status", ...column("String") },
+      cost_in_cents: { name: "cost_in_cents", ...column("Float64") },
+      base_cost_in_cents: { name: "base_cost_in_cents", ...column("Float64") },
+      // Virtual column: compute_cost = cost_in_cents / 100.0
+      compute_cost: {
+        name: "compute_cost",
+        ...column("Float64"),
+        expression: "cost_in_cents / 100.0",
+        description: "Compute cost in dollars",
+      },
+      // Virtual column: invocation_cost = base_cost_in_cents / 100.0
+      invocation_cost: {
+        name: "invocation_cost",
+        ...column("Float64"),
+        expression: "base_cost_in_cents / 100.0",
+        description: "Invocation cost in dollars",
+      },
+      organization_id: { name: "organization_id", ...column("String") },
+      project_id: { name: "project_id", ...column("String") },
+      environment_id: { name: "environment_id", ...column("String") },
+    },
+    tenantColumns: {
+      organizationId: "organization_id",
+      projectId: "project_id",
+      environmentId: "environment_id",
+    },
+  };
+
+  function createCostExpressionContext() {
+    const schema = createSchemaRegistry([costExpressionSchema]);
+    return createPrinterContext({
+      organizationId: "org_test",
+      projectId: "proj_test",
+      environmentId: "env_test",
+      schema,
+    });
+  }
+
+  describe("WHERE clause with division expression columns", () => {
+    it("should expand invocation_cost > 100 to (base_cost_in_cents / 100.0) > 100", () => {
+      const ctx = createCostExpressionContext();
+      const { sql } = printQuery("SELECT * FROM runs WHERE invocation_cost > 100", ctx);
+
+      // Virtual column should be expanded to its expression in the comparison
+      expect(sql).toContain("greater((base_cost_in_cents / 100.0), 100)");
+    });
+
+    it("should expand invocation_cost >= 0.01 correctly", () => {
+      const ctx = createCostExpressionContext();
+      const { sql } = printQuery("SELECT * FROM runs WHERE invocation_cost >= 0.01", ctx);
+
+      expect(sql).toContain("greaterOrEquals((base_cost_in_cents / 100.0), 0.01)");
+    });
+
+    it("should expand invocation_cost < 1.5 correctly", () => {
+      const ctx = createCostExpressionContext();
+      const { sql } = printQuery("SELECT * FROM runs WHERE invocation_cost < 1.5", ctx);
+
+      expect(sql).toContain("less((base_cost_in_cents / 100.0), 1.5)");
+    });
+
+    it("should expand invocation_cost = 0 correctly", () => {
+      const ctx = createCostExpressionContext();
+      const { sql } = printQuery("SELECT * FROM runs WHERE invocation_cost = 0", ctx);
+
+      expect(sql).toContain("equals((base_cost_in_cents / 100.0), 0)");
+    });
+
+    it("should expand compute_cost in BETWEEN correctly", () => {
+      const ctx = createCostExpressionContext();
+      const { sql } = printQuery(
+        "SELECT * FROM runs WHERE compute_cost BETWEEN 1.0 AND 10.0",
+        ctx
+      );
+
+      expect(sql).toContain("(cost_in_cents / 100.0) BETWEEN 1 AND 10");
+    });
+
+    it("should handle multiple expression columns in WHERE with AND", () => {
+      const ctx = createCostExpressionContext();
+      const { sql } = printQuery(
+        "SELECT * FROM runs WHERE invocation_cost > 0.5 AND compute_cost < 5.0",
+        ctx
+      );
+
+      expect(sql).toContain("greater((base_cost_in_cents / 100.0), 0.5)");
+      expect(sql).toContain("less((cost_in_cents / 100.0), 5)");
+    });
+
+    it("should handle expression column with OR condition", () => {
+      const ctx = createCostExpressionContext();
+      const { sql } = printQuery(
+        "SELECT * FROM runs WHERE invocation_cost > 10 OR status = 'COMPLETED'",
+        ctx
+      );
+
+      expect(sql).toContain("or(");
+      expect(sql).toContain("greater((base_cost_in_cents / 100.0), 10)");
+    });
+  });
+
+  describe("SELECT clause with division expression columns", () => {
+    it("should expand invocation_cost in SELECT with alias", () => {
+      const ctx = createCostExpressionContext();
+      const { sql } = printQuery("SELECT run_id, invocation_cost FROM runs", ctx);
+
+      expect(sql).toContain("(base_cost_in_cents / 100.0) AS invocation_cost");
+    });
+
+    it("should expand both cost columns correctly", () => {
+      const ctx = createCostExpressionContext();
+      const { sql } = printQuery("SELECT compute_cost, invocation_cost FROM runs", ctx);
+
+      expect(sql).toContain("(cost_in_cents / 100.0) AS compute_cost");
+      expect(sql).toContain("(base_cost_in_cents / 100.0) AS invocation_cost");
+    });
+  });
+
+  describe("ORDER BY clause with division expression columns", () => {
+    it("should expand invocation_cost in ORDER BY DESC", () => {
+      const ctx = createCostExpressionContext();
+      const { sql } = printQuery("SELECT * FROM runs ORDER BY invocation_cost DESC", ctx);
+
+      expect(sql).toContain("ORDER BY (base_cost_in_cents / 100.0) DESC");
+    });
+
+    it("should expand compute_cost in ORDER BY ASC", () => {
+      const ctx = createCostExpressionContext();
+      const { sql } = printQuery("SELECT * FROM runs ORDER BY compute_cost ASC", ctx);
+
+      expect(sql).toContain("ORDER BY (cost_in_cents / 100.0) ASC");
+    });
+  });
+});
+
 describe("Column metadata", () => {
   /**
    * Schema with customRenderType for testing
