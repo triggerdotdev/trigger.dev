@@ -289,7 +289,7 @@ export const CopyableTableCell = forwardRef<HTMLTableCellElement, CopyableTableC
               e.preventDefault();
               copy();
             }}
-            className="absolute right-0 top-1/2 z-10 hidden -translate-y-1/2 cursor-pointer group-hover/copyable-cell:flex"
+            className="absolute -right-2 top-1/2 z-10 hidden -translate-y-1/2 cursor-pointer group-hover/copyable-cell:flex"
           >
             <SimpleTooltip
               button={
