@@ -509,7 +509,7 @@ function QueryHelpSidebar({
           value="guide"
           className="min-h-0 flex-1 overflow-y-auto p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
         >
-          <TRQLGuideContent />
+          <TRQLGuideContent onTryExample={onTryExample} />
         </ClientTabsContent>
         <ClientTabsContent
           value="schema"
@@ -528,7 +528,41 @@ function QueryHelpSidebar({
   );
 }
 
-function TRQLGuideContent() {
+/** A code block with an integrated "Try it" button */
+function TryableCodeBlock({
+  code,
+  onTry,
+  className,
+}: {
+  code: string;
+  onTry?: () => void;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <CodeBlock
+        code={code}
+        language="sql"
+        showLineNumbers={false}
+        showOpenInModal={false}
+        className={onTry ? "rounded-b-none border-b-0 text-xs" : "text-xs"}
+      />
+      {onTry && (
+        <div className="flex justify-end rounded-b-md border border-grid-bright p-1">
+          <Button variant="minimal/small" onClick={onTry} LeadingIcon={PlayIcon}>
+            Try it
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TRQLGuideContent({
+  onTryExample,
+}: {
+  onTryExample: (query: string, scope: QueryScope) => void;
+}) {
   return (
     <div className="space-y-6">
       {/* Table of contents */}
@@ -557,26 +591,35 @@ function TRQLGuideContent() {
           Select columns from a table. Use <code className="text-xs">*</code> to select all columns,
           or list specific columns.
         </Paragraph>
-        <CodeBlock
+        <TryableCodeBlock
           code={`SELECT run_id, task_identifier, status
 FROM runs
 LIMIT 10`}
-          language="sql"
-          showLineNumbers={false}
-          showOpenInModal={false}
-          className="text-xs"
+          onTry={() =>
+            onTryExample(
+              `SELECT run_id, task_identifier, status
+FROM runs
+LIMIT 10`,
+              "environment"
+            )
+          }
         />
-        <Paragraph variant="small" className="mt-2 text-text-dimmed">
+        <Paragraph variant="small" className="mt-3 text-text-dimmed">
           Alias columns with <code className="text-xs">AS</code>:
         </Paragraph>
-        <CodeBlock
+        <TryableCodeBlock
           code={`SELECT task_identifier AS task, count() AS total
 FROM runs
 GROUP BY task`}
-          language="sql"
-          showLineNumbers={false}
-          showOpenInModal={false}
-          className="mt-1 text-xs"
+          onTry={() =>
+            onTryExample(
+              `SELECT task_identifier AS task, count() AS total
+FROM runs
+GROUP BY task`,
+              "environment"
+            )
+          }
+          className="mt-1"
         />
       </section>
 
@@ -589,19 +632,23 @@ GROUP BY task`}
           <code className="text-xs">&gt;</code>, <code className="text-xs">&lt;=</code>,{" "}
           <code className="text-xs">&gt;=</code>
         </Paragraph>
-        <CodeBlock
+        <TryableCodeBlock
           code={`SELECT * FROM runs
 WHERE status = 'Failed'
   AND created_at > now() - INTERVAL 1 DAY`}
-          language="sql"
-          showLineNumbers={false}
-          showOpenInModal={false}
-          className="text-xs"
+          onTry={() =>
+            onTryExample(
+              `SELECT * FROM runs
+WHERE status = 'Failed'
+  AND created_at > now() - INTERVAL 1 DAY`,
+              "environment"
+            )
+          }
         />
-        <Paragraph variant="small" className="mt-2 text-text-dimmed">
+        <Paragraph variant="small" className="mt-3 text-text-dimmed">
           Other operators:
         </Paragraph>
-        <CodeBlock
+        <TryableCodeBlock
           code={`-- IN for multiple values
 WHERE status IN ('Failed', 'Crashed')
 
@@ -616,10 +663,7 @@ WHERE created_at BETWEEN '2024-01-01' AND '2024-01-31'
 
 -- NULL checks
 WHERE completed_at IS NOT NULL`}
-          language="sql"
-          showLineNumbers={false}
-          showOpenInModal={false}
-          className="mt-1 text-xs"
+          className="mt-1"
         />
       </section>
 
@@ -630,15 +674,20 @@ WHERE completed_at IS NOT NULL`}
           Sort results with <code className="text-xs">ORDER BY</code> (ASC/DESC). Limit results with{" "}
           <code className="text-xs">LIMIT</code>.
         </Paragraph>
-        <CodeBlock
+        <TryableCodeBlock
           code={`SELECT run_id, compute_cost, created_at
 FROM runs
 ORDER BY compute_cost DESC, created_at ASC
 LIMIT 50`}
-          language="sql"
-          showLineNumbers={false}
-          showOpenInModal={false}
-          className="text-xs"
+          onTry={() =>
+            onTryExample(
+              `SELECT run_id, compute_cost, created_at
+FROM runs
+ORDER BY compute_cost DESC, created_at ASC
+LIMIT 50`,
+              "environment"
+            )
+          }
         />
       </section>
 
@@ -649,7 +698,7 @@ LIMIT 50`}
           Use <code className="text-xs">GROUP BY</code> with aggregate functions. Filter groups with{" "}
           <code className="text-xs">HAVING</code>.
         </Paragraph>
-        <CodeBlock
+        <TryableCodeBlock
           code={`SELECT
   task_identifier,
   status,
@@ -659,10 +708,20 @@ FROM runs
 GROUP BY task_identifier, status
 HAVING run_count > 10
 ORDER BY run_count DESC`}
-          language="sql"
-          showLineNumbers={false}
-          showOpenInModal={false}
-          className="text-xs"
+          onTry={() =>
+            onTryExample(
+              `SELECT
+  task_identifier,
+  status,
+  count() AS run_count,
+  avg(usage_duration) AS avg_duration
+FROM runs
+GROUP BY task_identifier, status
+HAVING run_count > 10
+ORDER BY run_count DESC`,
+              "environment"
+            )
+          }
         />
       </section>
 
@@ -859,21 +918,10 @@ function ExamplesContent({
           <Paragraph variant="small" className="mb-2 text-text-dimmed">
             {example.description}
           </Paragraph>
-          <CodeBlock
+          <TryableCodeBlock
             code={example.query}
-            language="sql"
-            showLineNumbers={false}
-            showOpenInModal={false}
-            className="text-xs"
+            onTry={() => onTryExample(example.query, example.scope)}
           />
-          <Button
-            variant="tertiary/small"
-            onClick={() => onTryExample(example.query, example.scope)}
-            LeadingIcon={PlayIcon}
-            className="mt-2"
-          >
-            Try it
-          </Button>
         </div>
       ))}
     </div>
