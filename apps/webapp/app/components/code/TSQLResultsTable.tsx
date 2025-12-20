@@ -299,11 +299,13 @@ export function TSQLResultsTable({
                   alignment={isRightAlignedColumn(col) ? "right" : "left"}
                   value={String(row[col.name])}
                 >
-                  <CellValue
-                    value={row[col.name]}
-                    column={col}
-                    prettyFormatting={prettyFormatting}
-                  />
+                  <span className="flex-1">
+                    <CellValue
+                      value={row[col.name]}
+                      column={col}
+                      prettyFormatting={prettyFormatting}
+                    />
+                  </span>
                 </CopyableTableCell>
               ))}
             </TableRow>
