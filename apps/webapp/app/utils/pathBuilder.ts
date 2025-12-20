@@ -432,6 +432,17 @@ export function v3ProjectSettingsPath(
   return `${v3EnvironmentPath(organization, project, environment)}/settings`;
 }
 
+export function v3LogsPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath,
+  // deployment: DeploymentForPath,
+  // currentPage: number
+) {
+  // const query = currentPage ? `?page=${currentPage}` : "";
+  return `${v3EnvironmentPath(organization, project, environment)}/logs`;
+}
+
 export function v3DeploymentsPath(
   organization: OrgForPath,
   project: ProjectForPath,

@@ -230,3 +230,94 @@ export function getSpanDetailsQueryBuilderV2(
     settings,
   });
 }
+
+// ============================================================================
+// Logs List Query Builders (for aggregated logs page)
+// ============================================================================
+
+export const LogsListV2Result = z.object({
+  environment_id: z.string(),
+  organization_id: z.string(),
+  project_id: z.string(),
+  task_identifier: z.string(),
+  run_id: z.string(),
+  start_time: z.string(),
+  trace_id: z.string(),
+  span_id: z.string(),
+  parent_span_id: z.string(),
+  message: z.string(),
+  kind: z.string(),
+  status: z.string(),
+  duration: z.number().or(z.string()),
+});
+
+export type LogsListV2Result = z.output<typeof LogsListV2Result>;
+
+export function getLogsListQueryBuilderV2(ch: ClickhouseReader, settings?: ClickHouseSettings) {
+  return ch.queryBuilderFast<LogsListV2Result>({
+    name: "getLogsList",
+    table: "trigger_dev.task_events_v2",
+    columns: [
+      "environment_id",
+      "organization_id",
+      "project_id",
+      "task_identifier",
+      "run_id",
+      "start_time",
+      "trace_id",
+      "span_id",
+      "parent_span_id",
+      { name: "message", expression: "LEFT(message, 512)" },
+      "kind",
+      "status",
+      "duration",
+    ],
+    settings,
+  });
+}
+
+// Single log detail query builder (for side panel)
+export const LogDetailV2Result = z.object({
+  environment_id: z.string(),
+  organization_id: z.string(),
+  project_id: z.string(),
+  task_identifier: z.string(),
+  run_id: z.string(),
+  start_time: z.string(),
+  trace_id: z.string(),
+  span_id: z.string(),
+  parent_span_id: z.string(),
+  message: z.string(),
+  kind: z.string(),
+  status: z.string(),
+  duration: z.number().or(z.string()),
+  metadata: z.string(),
+  attributes_text: z.string(),
+});
+
+export type LogDetailV2Result = z.output<typeof LogDetailV2Result>;
+
+export function getLogDetailQueryBuilderV2(ch: ClickhouseReader, settings?: ClickHouseSettings) {
+  return ch.queryBuilderFast<LogDetailV2Result>({
+    name: "getLogDetail",
+    table: "trigger_dev.task_events_v2",
+    columns: [
+      "environment_id",
+      "organization_id",
+      "project_id",
+      "task_identifier",
+      "run_id",
+      "start_time",
+      "trace_id",
+      "span_id",
+      "parent_span_id",
+      "message",
+      "kind",
+      "status",
+      "duration",
+      "metadata",
+      "attributes_text",
+    ],
+    settings,
+  });
+}

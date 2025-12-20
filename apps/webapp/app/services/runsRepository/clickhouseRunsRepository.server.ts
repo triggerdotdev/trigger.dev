@@ -52,6 +52,29 @@ export class ClickHouseRunsRepository implements IRunsRepository {
     return runIds;
   }
 
+  async listFriendlyRunIds(options: ListRunsOptions) {
+    // First get internal IDs from ClickHouse
+    const internalIds = await this.listRunIds(options);
+
+    if (internalIds.length === 0) {
+      return [];
+    }
+
+    // Then get friendly IDs from Prisma
+    const runs = await this.options.prisma.taskRun.findMany({
+      where: {
+        id: {
+          in: internalIds,
+        },
+      },
+      select: {
+        friendlyId: true,
+      },
+    });
+
+    return runs.map((run) => run.friendlyId);
+  }
+
   async listRuns(options: ListRunsOptions) {
     const runIds = await this.listRunIds(options);
 

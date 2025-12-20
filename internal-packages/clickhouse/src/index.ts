@@ -22,6 +22,8 @@ import {
   getTraceSummaryQueryBuilderV2,
   insertTaskEvents,
   insertTaskEventsV2,
+  getLogsListQueryBuilderV2,
+  getLogDetailQueryBuilderV2,
 } from "./taskEvents.js";
 import { Logger, type LogLevel } from "@trigger.dev/core/logger";
 import type { Agent as HttpAgent } from "http";
@@ -182,6 +184,8 @@ export class ClickHouse {
       traceSummaryQueryBuilder: getTraceSummaryQueryBuilderV2(this.reader),
       traceDetailedSummaryQueryBuilder: getTraceDetailedSummaryQueryBuilderV2(this.reader),
       spanDetailsQueryBuilder: getSpanDetailsQueryBuilderV2(this.reader),
+      logsListQueryBuilder: getLogsListQueryBuilderV2(this.reader),
+      logDetailQueryBuilder: getLogDetailQueryBuilderV2(this.reader),
     };
   }
 }

@@ -8,6 +8,7 @@ import {
   ClockIcon,
   Cog8ToothIcon,
   CogIcon,
+  DocumentTextIcon,
   FolderIcon,
   FolderOpenIcon,
   GlobeAmericasIcon,
@@ -56,6 +57,7 @@ import {
   v3BatchesPath,
   v3BillingPath,
   v3BulkActionsPath,
+  v3LogsPath,
   v3DeploymentsPath,
   v3EnvironmentPath,
   v3EnvironmentVariablesPath,
@@ -259,6 +261,13 @@ export function SideMenu({
               activeIconColor="text-deployments"
               to={v3DeploymentsPath(organization, project, environment)}
               data-action="deployments"
+            />
+            <SideMenuItem
+              name="Logs"
+              icon={DocumentTextIcon}
+              activeIconColor="text-deployments"
+              to={v3LogsPath(organization, project, environment)}
+              data-action="logs"
             />
             <SideMenuItem
               name="Test"

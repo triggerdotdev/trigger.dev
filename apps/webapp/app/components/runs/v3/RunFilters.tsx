@@ -324,6 +324,8 @@ type RunFiltersProps = {
   }[];
   rootOnlyDefault: boolean;
   hasFilters: boolean;
+  /** Hide the AI search input (useful when replacing with a custom search component) */
+  hideSearch?: boolean;
 };
 
 export function RunsFilters(props: RunFiltersProps) {
@@ -344,7 +346,7 @@ export function RunsFilters(props: RunFiltersProps) {
   return (
     <div className="flex flex-row flex-wrap items-center gap-1">
       <FilterMenu {...props} />
-      <AIFilterInput />
+      {!props.hideSearch && <AIFilterInput />}
       <RootOnlyToggle defaultValue={props.rootOnlyDefault} />
       <TimeFilter />
       <AppliedFilters {...props} />

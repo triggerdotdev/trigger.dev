@@ -62,7 +62,7 @@ export const DateTime = ({
 
   if (!showTooltip) return formattedDateTime;
 
-  return <SimpleTooltip button={formattedDateTime} content={tooltipContent} side="right" />;
+  return <SimpleTooltip button={formattedDateTime} content={tooltipContent} side="right" asChild={true} />;
 };
 
 export function formatDateTime(
@@ -249,6 +249,7 @@ export const DateTimeAccurate = ({
       button={<Fragment>{formattedDateTime.replace(/\s/g, String.fromCharCode(32))}</Fragment>}
       content={tooltipContent}
       side="right"
+      asChild={true}
     />
   );
 };
