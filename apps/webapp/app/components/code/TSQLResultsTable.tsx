@@ -4,6 +4,7 @@ import { DateTime } from "~/components/primitives/DateTime";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { MachineLabelCombo } from "~/components/MachineLabelCombo";
 import {
+  CopyableTableCell,
   Table,
   TableBody,
   TableCell,
@@ -275,13 +276,17 @@ export function TSQLResultsTable({
           rows.map((row, i) => (
             <TableRow key={i}>
               {columns.map((col) => (
-                <TableCell key={col.name} alignment={isRightAlignedColumn(col) ? "right" : "left"}>
+                <CopyableTableCell
+                  key={col.name}
+                  alignment={isRightAlignedColumn(col) ? "right" : "left"}
+                  value={String(row[col.name])}
+                >
                   <CellValue
                     value={row[col.name]}
                     column={col}
                     prettyFormatting={prettyFormatting}
                   />
-                </TableCell>
+                </CopyableTableCell>
               ))}
             </TableRow>
           ))
