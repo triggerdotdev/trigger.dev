@@ -552,9 +552,9 @@ const SQL_KEYWORDS = [
 ];
 
 function highlightSQL(query: string): React.ReactNode[] {
-  // Normalize whitespace for display
-  const normalized = query.replace(/\s+/g, " ").slice(0, 80);
-  const suffix = query.length > 80 ? "..." : "";
+  // Normalize whitespace for display (let CSS line-clamp handle truncation)
+  const normalized = query.replace(/\s+/g, " ").slice(0, 200);
+  const suffix = "";
 
   // Create a regex pattern that matches keywords as whole words (case insensitive)
   const keywordPattern = new RegExp(
@@ -613,7 +613,11 @@ function QueryHistoryPopover({
           History
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="min-w-[350px] p-0" align="start" sideOffset={6}>
+      <PopoverContent
+        className="w-[400px] min-w-0 overflow-hidden p-0"
+        align="start"
+        sideOffset={6}
+      >
         <div className="max-h-80 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
           <div className="p-1">
             {history.map((item) => (
@@ -627,9 +631,9 @@ function QueryHistoryPopover({
                 className="flex w-full items-center gap-2 rounded-sm px-2 py-2 outline-none transition-colors focus-custom hover:bg-charcoal-900"
               >
                 <div className="flex flex-1 flex-col items-start overflow-hidden">
-                  <span className="w-full truncate text-left font-mono text-xs text-[#9b99ff]">
+                  <p className="line-clamp-2 w-full break-words text-left font-mono text-xs text-[#9b99ff]">
                     {highlightSQL(item.query)}
-                  </span>
+                  </p>
                   <div className="flex items-center gap-2 text-xs text-text-dimmed">
                     <DateTime date={item.createdAt} showTooltip={false} />
                     {item.userName && <span>· {item.userName}</span>}
