@@ -139,6 +139,7 @@ export class OrganizationsPresenter {
             slug: true,
             name: true,
             updatedAt: true,
+            externalRef: true,
           },
           orderBy: { name: "asc" },
         },
@@ -161,6 +162,7 @@ export class OrganizationsPresenter {
           slug: project.slug,
           name: project.name,
           updatedAt: project.updatedAt,
+          externalRef: project.externalRef,
         })),
         membersCount: org._count.members,
       };

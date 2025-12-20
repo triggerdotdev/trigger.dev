@@ -50,14 +50,15 @@ export const runsSchema: TableSchema = {
       name: "organization_id",
       ...column("String", { description: "Organization ID", example: "cm9z8y7x6w5v4u3t2s1r" }),
     },
-    project_ref: {
-      name: "project_ref",
+    project: {
+      name: "project",
       clickhouseName: "project_id",
       ...column("String", {
-        description: "Project reference (external identifier)",
-        example: "my-project-ref",
+        description: "The project reference, they always start with `proj_`.",
+        example: "proj_howcnaxbfxdmwmxazktx",
       }),
       fieldMapping: "project",
+      customRenderType: "project",
     },
     environment_type: {
       name: "environment_type",
