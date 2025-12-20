@@ -9,7 +9,7 @@ import { TSQLParser } from "./grammar/TSQLParser.js";
 import { TSQLParseTreeConverter } from "./query/parser.js";
 import type { SelectQuery, SelectSetQuery, Expression } from "./query/ast.js";
 import { SyntaxError } from "./query/errors.js";
-import { createSchemaRegistry, type TableSchema } from "./query/schema.js";
+import { createSchemaRegistry, type TableSchema, type FieldMappings } from "./query/schema.js";
 import { createPrinterContext, type QuerySettings } from "./query/printer_context.js";
 import { printToClickHouse, type PrintResult } from "./query/printer.js";
 
@@ -65,6 +65,7 @@ export {
   type SchemaRegistry,
   type ClickHouseType,
   type OutputColumnMetadata,
+  type FieldMappings,
   createSchemaRegistry,
   findTable,
   findColumn,
@@ -82,6 +83,11 @@ export {
   // Virtual column utilities
   isVirtualColumn,
   getVirtualColumnExpression,
+  // Field mapping utilities (runtime dynamic mappings)
+  hasFieldMapping,
+  getExternalValue,
+  getInternalValueFromMapping,
+  getInternalValueFromMappingCaseInsensitive,
 } from "./query/schema.js";
 
 // Re-export printer context
@@ -206,6 +212,18 @@ export interface CompileTSQLOptions {
   tableSchema: TableSchema[];
   /** Optional query settings */
   settings?: Partial<QuerySettings>;
+  /**
+   * Runtime field mappings for dynamic value translation.
+   * Maps internal ClickHouse values to external user-facing values.
+   *
+   * @example
+   * ```typescript
+   * {
+   *   project: { "cm12345": "my-project-ref" },
+   * }
+   * ```
+   */
+  fieldMappings?: FieldMappings;
 }
 
 /**
@@ -243,13 +261,14 @@ export function compileTSQL(query: string, options: CompileTSQLOptions): PrintRe
   // 2. Create schema registry from table schemas
   const schemaRegistry = createSchemaRegistry(options.tableSchema);
 
-  // 3. Create printer context with tenant IDs
+  // 3. Create printer context with tenant IDs and field mappings
   const context = createPrinterContext({
     organizationId: options.organizationId,
     projectId: options.projectId,
     environmentId: options.environmentId,
     schema: schemaRegistry,
     settings: options.settings,
+    fieldMappings: options.fieldMappings,
   });
 
   // 4. Print the AST to ClickHouse SQL

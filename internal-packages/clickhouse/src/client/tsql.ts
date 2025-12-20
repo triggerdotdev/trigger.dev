@@ -12,6 +12,7 @@ import {
   transformResults,
   type TableSchema,
   type QuerySettings,
+  type FieldMappings,
 } from "@internal/tsql";
 import type { ClickhouseReader, QueryStats } from "./types.js";
 import { QueryError } from "./errors.js";
@@ -19,7 +20,7 @@ import type { OutputColumnMetadata } from "@internal/tsql";
 
 export type { QueryStats };
 
-export type { TableSchema, QuerySettings };
+export type { TableSchema, QuerySettings, FieldMappings };
 
 /**
  * Options for executing a TSQL query
@@ -50,6 +51,18 @@ export interface ExecuteTSQLOptions<TOut extends z.ZodSchema> {
    * @default true
    */
   transformValues?: boolean;
+  /**
+   * Runtime field mappings for dynamic value translation.
+   * Maps internal ClickHouse values to external user-facing values.
+   *
+   * @example
+   * ```typescript
+   * {
+   *   project: { "cm12345": "my-project-ref" },
+   * }
+   * ```
+   */
+  fieldMappings?: FieldMappings;
 }
 
 /**
@@ -100,6 +113,7 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
       environmentId: options.environmentId,
       tableSchema: options.tableSchema,
       settings: options.querySettings,
+      fieldMappings: options.fieldMappings,
     });
 
     // 2. Execute the query with stats
@@ -123,7 +137,8 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
     if (shouldTransformValues && rows) {
       const transformedRows = transformResults(
         rows as Record<string, unknown>[],
-        options.tableSchema
+        options.tableSchema,
+        { fieldMappings: options.fieldMappings }
       );
       return [null, { rows: transformedRows as z.output<TOut>[], columns, stats }];
     }

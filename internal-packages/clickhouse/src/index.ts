@@ -40,6 +40,7 @@ export {
   type TSQLQueryResult,
   type TSQLQuerySuccess,
   type QueryStats,
+  type FieldMappings,
 } from "./client/tsql.js";
 export type { OutputColumnMetadata } from "@internal/tsql";
 

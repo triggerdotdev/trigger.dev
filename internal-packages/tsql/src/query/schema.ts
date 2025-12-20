@@ -133,7 +133,45 @@ export interface ColumnSchema {
    * ```
    */
   example?: string;
+  /**
+   * Name of the runtime field mapping to use for value translation.
+   * When set, values are translated using the mapping provided at query time.
+   *
+   * Unlike `valueMap` which is static and defined in the schema, `fieldMapping`
+   * references a mapping that is provided at runtime via `FieldMappings`.
+   *
+   * - During query compilation: external values → internal values
+   * - During result transformation: internal values → external values (or null if unmapped)
+   *
+   * @example
+   * ```typescript
+   * {
+   *   name: "project_ref",
+   *   clickhouseName: "project_id",  // Maps to actual CH column
+   *   type: "String",
+   *   fieldMapping: "project",  // Uses runtime "project" mapping
+   * }
+   * ```
+   */
+  fieldMapping?: string;
 }
+
+/**
+ * Runtime field mappings for dynamic value translation.
+ *
+ * Structure: mappingName → (internalValue → externalValue)
+ *
+ * @example
+ * ```typescript
+ * const fieldMappings: FieldMappings = {
+ *   project: {
+ *     "cm12345": "my-project-ref",
+ *     "cm67890": "other-project-ref",
+ *   },
+ * };
+ * ```
+ */
+export type FieldMappings = Record<string, Record<string, string>>;
 
 /**
  * Metadata for a column in query results.
@@ -472,6 +510,103 @@ export function isValidUserValue(col: ColumnSchema, userValue: string): boolean 
 
   const lowerUserValue = userValue.toLowerCase();
   return allowedValues.some((v) => v.toLowerCase() === lowerUserValue);
+}
+
+// ============================================================
+// Field Mapping Utilities (Runtime Dynamic Mappings)
+// ============================================================
+
+/**
+ * Check if a column uses a runtime field mapping
+ *
+ * @param col - The column schema to check
+ * @returns true if the column has a fieldMapping defined
+ */
+export function hasFieldMapping(col: ColumnSchema): boolean {
+  return col.fieldMapping !== undefined && col.fieldMapping.length > 0;
+}
+
+/**
+ * Get the external (user-facing) value for an internal ClickHouse value
+ * using a runtime field mapping.
+ *
+ * @param mappings - The runtime field mappings
+ * @param mappingName - The name of the mapping to use (from column's fieldMapping)
+ * @param internalValue - The internal ClickHouse value
+ * @returns The external value, or null if not found in the mapping
+ */
+export function getExternalValue(
+  mappings: FieldMappings,
+  mappingName: string,
+  internalValue: string
+): string | null {
+  const mapping = mappings[mappingName];
+  if (!mapping) {
+    return null;
+  }
+
+  const externalValue = mapping[internalValue];
+  return externalValue !== undefined ? externalValue : null;
+}
+
+/**
+ * Get the internal ClickHouse value for an external (user-facing) value
+ * using a runtime field mapping. This performs a reverse lookup.
+ *
+ * @param mappings - The runtime field mappings
+ * @param mappingName - The name of the mapping to use (from column's fieldMapping)
+ * @param externalValue - The external (user-facing) value
+ * @returns The internal value, or null if not found in the mapping
+ */
+export function getInternalValueFromMapping(
+  mappings: FieldMappings,
+  mappingName: string,
+  externalValue: string
+): string | null {
+  const mapping = mappings[mappingName];
+  if (!mapping) {
+    return null;
+  }
+
+  // Reverse lookup: find internal value by external value
+  for (const [internal, external] of Object.entries(mapping)) {
+    if (external === externalValue) {
+      return internal;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Get the internal ClickHouse value for an external value (case-insensitive)
+ * using a runtime field mapping.
+ *
+ * @param mappings - The runtime field mappings
+ * @param mappingName - The name of the mapping to use
+ * @param externalValue - The external (user-facing) value
+ * @returns The internal value, or null if not found
+ */
+export function getInternalValueFromMappingCaseInsensitive(
+  mappings: FieldMappings,
+  mappingName: string,
+  externalValue: string
+): string | null {
+  const mapping = mappings[mappingName];
+  if (!mapping) {
+    return null;
+  }
+
+  const lowerExternal = externalValue.toLowerCase();
+
+  // Case-insensitive reverse lookup
+  for (const [internal, external] of Object.entries(mapping)) {
+    if (external.toLowerCase() === lowerExternal) {
+      return internal;
+    }
+  }
+
+  return null;
 }
 
 /**
