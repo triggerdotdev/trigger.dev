@@ -454,18 +454,18 @@ LIMIT 20`,
   },
   {
     title: "Most expensive 100 runs (past 7d)",
-    description: "Top 100 runs by compute cost over the last 7 days.",
+    description: "Top 100 runs by cost over the last 7 days.",
     query: `SELECT
   run_id,
   task_identifier,
   status,
-  compute_cost,
+  total_cost,
   usage_duration,
   machine,
   created_at
 FROM runs
 WHERE created_at > now() - INTERVAL 7 DAY
-ORDER BY compute_cost DESC
+ORDER BY total_cost DESC
 LIMIT 100`,
     scope: "environment",
   },

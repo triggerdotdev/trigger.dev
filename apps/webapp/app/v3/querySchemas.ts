@@ -108,23 +108,39 @@ export const runsSchema: TableSchema = {
     },
 
     // Related runs
-    root_run_id: {
-      name: "root_run_id",
+    root_run: {
+      name: "root_run",
+      clickhouseName: "root_run_id",
       ...column("String", {
         description: "Root run ID (for child runs)",
-        example: "run_root1234abcd",
+        example: "run_cm1a2b3c4d5e6f7g8h9i",
+        customRenderType: "runId",
+        expression: "if(root_run_id = '', NULL, 'run_' || root_run_id)",
       }),
     },
-    parent_run_id: {
-      name: "parent_run_id",
+    parent_run: {
+      name: "parent_run",
+      clickhouseName: "parent_run_id",
       ...column("String", {
         description: "Parent run ID (for child runs)",
-        example: "run_parent5678ef",
+        example: "run_cm1a2b3c4d5e6f7g8h9i",
+        customRenderType: "runId",
+        expression: "if(parent_run_id = '', NULL, 'run_' || parent_run_id)",
       }),
     },
     depth: {
       name: "depth",
       ...column("UInt8", { description: "Nesting depth (0 for root runs)", example: "0" }),
+    },
+    is_root_run: {
+      name: "is_root_run",
+      ...column("UInt8", { description: "Whether this is a root run (0 or 1)", example: "0" }),
+      expression: "if(depth = 0, 1, 0)",
+    },
+    is_child_run: {
+      name: "is_child_run",
+      ...column("UInt8", { description: "Whether this is a child run (0 or 1)", example: "0" }),
+      expression: "if(depth > 0, 1, 0)",
     },
 
     // Telemetry
@@ -238,6 +254,15 @@ export const runsSchema: TableSchema = {
         example: "0.000025",
       }),
       expression: "base_cost_in_cents / 100.0",
+    },
+    total_cost: {
+      name: "total_cost",
+      ...column("Float64", {
+        description: "Total cost in dollars (compute_cost + invocation_cost)",
+        customRenderType: "costInDollars",
+        example: "0.000701",
+      }),
+      expression: "(cost_in_cents + base_cost_in_cents) / 100.0",
     },
 
     // Output & error (JSON columns)
