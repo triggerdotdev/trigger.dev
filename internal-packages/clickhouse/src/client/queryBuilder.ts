@@ -122,7 +122,6 @@ export class ClickhouseQueryFastBuilder<TOutput extends Record<string, any>> {
   /**
    * Add a PREWHERE clause - filters applied before reading columns.
    * Use for primary key columns (environment_id, start_time) to reduce I/O.
-   * PREWHERE is evaluated before WHERE and significantly reduces data read.
    */
   prewhere(clause: string, params?: QueryParams): this {
     this.prewhereClauses.push(clause);

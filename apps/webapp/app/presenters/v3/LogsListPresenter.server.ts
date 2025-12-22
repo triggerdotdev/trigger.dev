@@ -1,4 +1,4 @@
-import { type ClickHouse, type LogsListV2Result } from "@internal/clickhouse";
+import { type ClickHouse, type LogsListResult } from "@internal/clickhouse";
 import { MachinePresetName } from "@trigger.dev/core/v3";
 import {
   type PrismaClient,

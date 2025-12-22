@@ -436,10 +436,7 @@ export function v3LogsPath(
   organization: OrgForPath,
   project: ProjectForPath,
   environment: EnvironmentForPath,
-  // deployment: DeploymentForPath,
-  // currentPage: number
 ) {
-  // const query = currentPage ? `?page=${currentPage}` : "";
   return `${v3EnvironmentPath(organization, project, environment)}/logs`;
 }
 

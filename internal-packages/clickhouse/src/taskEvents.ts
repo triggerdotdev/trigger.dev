@@ -235,7 +235,7 @@ export function getSpanDetailsQueryBuilderV2(
 // Logs List Query Builders (for aggregated logs page)
 // ============================================================================
 
-export const LogsListV2Result = z.object({
+export const LogsListResult = z.object({
   environment_id: z.string(),
   organization_id: z.string(),
   project_id: z.string(),
@@ -251,10 +251,10 @@ export const LogsListV2Result = z.object({
   duration: z.number().or(z.string()),
 });
 
-export type LogsListV2Result = z.output<typeof LogsListV2Result>;
+export type LogsListResult = z.output<typeof LogsListResult>;
 
-export function getLogsListQueryBuilderV2(ch: ClickhouseReader, settings?: ClickHouseSettings) {
-  return ch.queryBuilderFast<LogsListV2Result>({
+export function getLogsListQueryBuilder(ch: ClickhouseReader, settings?: ClickHouseSettings) {
+  return ch.queryBuilderFast<LogsListResult>({
     name: "getLogsList",
     table: "trigger_dev.task_events_v2",
     columns: [
@@ -302,7 +302,7 @@ export const LogDetailV2Result = z.object({
 
 export type LogDetailV2Result = z.output<typeof LogDetailV2Result>;
 
-export function getLogDetailQueryBuilderV2(ch: ClickhouseReader, settings?: ClickHouseSettings) {
+export function getLogDetailQueryBuilder(ch: ClickhouseReader, settings?: ClickHouseSettings) {
   return ch.queryBuilderFast<LogDetailV2Result>({
     name: "getLogDetail",
     table: "trigger_dev.task_events_v2",
