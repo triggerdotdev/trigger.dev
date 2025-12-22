@@ -198,8 +198,8 @@ Triggers a single run of a task with the payload you pass in, and any options yo
 
 <Note>
   If you need to call `trigger()` on a task in a loop, use
-  [`batchTrigger()`](#yourTask-batchtrigger) instead which will trigger up to 500 runs in a single
-  call.
+  [`batchTrigger()`](#yourTask-batchtrigger) instead which will trigger up to 1,000 runs in a single
+  call with SDK 4.3.1+ (500 runs in prior versions).
 </Note>
 
 ```ts ./trigger/my-task.ts
@@ -971,6 +971,44 @@ await yourTask.trigger(payload, { machine: "large-1x" });
 
 If you don't specify a machine it will use the machine preset for your task (or the default for your project). For more information read [the machines guide](/machines).
 
+## Streaming batch triggering
+
+<Note>This feature is only available with SDK 4.3.1+</Note>
+
+For large batches, you can pass an `AsyncIterable` or `ReadableStream` instead of an array. This allows you to generate items on-demand without loading them all into memory upfront.
+
+```ts /trigger/my-task.ts
+import { task } from "@trigger.dev/sdk";
+import { myOtherTask } from "~/trigger/my-other-task";
+
+export const myTask = task({
+  id: "my-task",
+  run: async (payload: { userIds: string[] }) => {
+    // Use an async generator to stream items
+    async function* generateItems() {
+      for (const userId of payload.userIds) {
+        yield { payload: { userId } };
+      }
+    }
+
+    const batchHandle = await myOtherTask.batchTrigger(generateItems());
+
+    return { batchId: batchHandle.batchId };
+  },
+});
+```
+
+This works with all batch trigger methods:
+
+- `yourTask.batchTrigger()`
+- `yourTask.batchTriggerAndWait()`
+- `batch.triggerByTask()`
+- `batch.triggerByTaskAndWait()`
+- `tasks.batchTrigger()`
+
+Streaming is especially useful when generating batches from database queries, API pagination, or
+file processing where you don't want to load all items into memory at once.
+
 ## Large Payloads
 
 We recommend keeping your task payloads as small as possible. We currently have a hard limit on task payloads above 10MB.
@@ -1049,7 +1087,3 @@ export const myTask = task({
 ```
 
 </CodeGroup>
-
-### Batch Triggering
-
-When using triggering a batch, the total size of all payloads cannot exceed 1MB. This means if you are doing a batch of 100 runs, each payload should be less than 100KB. The max batch size is 500 runs.
