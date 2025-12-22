@@ -809,6 +809,12 @@ export const CanceledRunResponse = z.object({
 
 export type CanceledRunResponse = z.infer<typeof CanceledRunResponse>;
 
+export const ResetIdempotencyKeyResponse = z.object({
+  id: z.string(),
+});
+
+export type ResetIdempotencyKeyResponse = z.infer<typeof ResetIdempotencyKeyResponse>;
+
 export const ScheduleType = z.union([z.literal("DECLARATIVE"), z.literal("IMPERATIVE")]);
 
 export const ScheduledTaskPayload = z.object({
