@@ -8,6 +8,7 @@ import { Select, SelectItem } from "../primitives/Select";
 import { Switch } from "../primitives/Switch";
 
 export type ChartType = "bar" | "line";
+export type SortDirection = "asc" | "desc";
 
 export interface ChartConfiguration {
   chartType: ChartType;
@@ -15,6 +16,8 @@ export interface ChartConfiguration {
   yAxisColumns: string[];
   groupByColumn: string | null;
   stacked: boolean;
+  sortByColumn: string | null;
+  sortDirection: SortDirection;
 }
 
 export const defaultChartConfig: ChartConfiguration = {
@@ -23,6 +26,8 @@ export const defaultChartConfig: ChartConfiguration = {
   yAxisColumns: [],
   groupByColumn: null,
   stacked: false,
+  sortByColumn: null,
+  sortDirection: "asc",
 };
 
 interface ChartConfigPanelProps {
@@ -172,6 +177,17 @@ export function ChartConfigPanel({ columns, config, onChange, className }: Chart
     return [{ value: "__none__", label: "None", type: "" }, ...options];
   }, [categoricalColumns, config.xAxisColumn]);
 
+  // Sort by options: all columns
+  const sortByOptions = useMemo(() => {
+    const options = allColumns.map((col) => ({
+      value: col.name,
+      label: col.name,
+      type: col.type,
+    }));
+
+    return [{ value: "__none__", label: "None", type: "" }, ...options];
+  }, [allColumns]);
+
   if (columns.length === 0) {
     return (
       <div className={cn("flex items-center justify-center p-4", className)}>
@@ -288,6 +304,41 @@ export function ChartConfigPanel({ columns, config, onChange, className }: Chart
           />
         </ConfigField>
       )}
+
+      {/* Order By */}
+      <ConfigField label="Order by">
+        <Select
+          value={config.sortByColumn ?? "__none__"}
+          setValue={(value) => updateConfig({ sortByColumn: value === "__none__" ? null : value })}
+          variant="tertiary/small"
+          placeholder="None"
+          items={sortByOptions}
+          dropdownIcon
+          className="min-w-[140px]"
+          text={(t) => (t === "__none__" ? "None" : t)}
+        >
+          {(items) =>
+            items.map((item) => (
+              <SelectItem key={item.value} value={item.value}>
+                <span className="flex items-center gap-2">
+                  <span>{item.label}</span>
+                  {item.type && <TypeBadge type={item.type} />}
+                </span>
+              </SelectItem>
+            ))
+          }
+        </Select>
+      </ConfigField>
+
+      {/* Sort Direction (only when sorting) */}
+      {config.sortByColumn && (
+        <ConfigField label="">
+          <SortDirectionToggle
+            direction={config.sortDirection}
+            onChange={(direction) => updateConfig({ sortDirection: direction })}
+          />
+        </ConfigField>
+      )}
     </div>
   );
 }
@@ -328,6 +379,45 @@ function ChartTypeButton({
       <Icon className="size-3.5" />
       <span>{label}</span>
     </button>
+  );
+}
+
+function SortDirectionToggle({
+  direction,
+  onChange,
+}: {
+  direction: SortDirection;
+  onChange: (direction: SortDirection) => void;
+}) {
+  return (
+    <div className="flex gap-1">
+      <button
+        type="button"
+        onClick={() => onChange("asc")}
+        className={cn(
+          "rounded px-2 py-1 text-xs transition-colors",
+          direction === "asc"
+            ? "bg-charcoal-700 text-text-bright"
+            : "text-text-dimmed hover:bg-charcoal-800 hover:text-text-bright"
+        )}
+        title="Ascending"
+      >
+        Asc
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange("desc")}
+        className={cn(
+          "rounded px-2 py-1 text-xs transition-colors",
+          direction === "desc"
+            ? "bg-charcoal-700 text-text-bright"
+            : "text-text-dimmed hover:bg-charcoal-800 hover:text-text-bright"
+        )}
+        title="Descending"
+      >
+        Desc
+      </button>
+    </div>
   );
 }
 

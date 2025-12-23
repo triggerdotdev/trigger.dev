@@ -279,13 +279,70 @@ function toNumber(value: unknown): number {
   return 0;
 }
 
+/**
+ * Sort data array by a specified column
+ */
+function sortData(
+  data: Record<string, unknown>[],
+  sortByColumn: string | null,
+  sortDirection: "asc" | "desc"
+): Record<string, unknown>[] {
+  if (!sortByColumn) return data;
+
+  return [...data].sort((a, b) => {
+    const aVal = a[sortByColumn];
+    const bVal = b[sortByColumn];
+
+    // Handle null/undefined
+    if (aVal == null && bVal == null) return 0;
+    if (aVal == null) return sortDirection === "asc" ? -1 : 1;
+    if (bVal == null) return sortDirection === "asc" ? 1 : -1;
+
+    // Try to compare as dates first (using __rawDate if available)
+    const aDate = a.__rawDate as Date | null;
+    const bDate = b.__rawDate as Date | null;
+    if (aDate && bDate) {
+      const diff = aDate.getTime() - bDate.getTime();
+      return sortDirection === "asc" ? diff : -diff;
+    }
+
+    // Compare as numbers if possible
+    const aNum = typeof aVal === "number" ? aVal : parseFloat(String(aVal));
+    const bNum = typeof bVal === "number" ? bVal : parseFloat(String(bVal));
+    if (!isNaN(aNum) && !isNaN(bNum)) {
+      return sortDirection === "asc" ? aNum - bNum : bNum - aNum;
+    }
+
+    // Fall back to string comparison
+    const aStr = String(aVal);
+    const bStr = String(bVal);
+    const cmp = aStr.localeCompare(bStr);
+    return sortDirection === "asc" ? cmp : -cmp;
+  });
+}
+
 export function QueryResultsChart({ rows, columns, config }: QueryResultsChartProps) {
-  const { xAxisColumn, yAxisColumns, chartType, groupByColumn, stacked } = config;
+  const {
+    xAxisColumn,
+    yAxisColumns,
+    chartType,
+    groupByColumn,
+    stacked,
+    sortByColumn,
+    sortDirection,
+  } = config;
 
   // Transform data for charting
-  const { data, series, dateValues } = useMemo(
-    () => transformDataForChart(rows, config),
-    [rows, config]
+  const {
+    data: unsortedData,
+    series,
+    dateValues,
+  } = useMemo(() => transformDataForChart(rows, config), [rows, config]);
+
+  // Apply sorting
+  const data = useMemo(
+    () => sortData(unsortedData, sortByColumn, sortDirection),
+    [unsortedData, sortByColumn, sortDirection]
   );
 
   // Detect time granularity for the data
