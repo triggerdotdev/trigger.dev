@@ -143,11 +143,7 @@ export class VisibilityManager {
 
     // Use Lua script to atomically check existence and update score
     // ZADD XX returns 0 even on successful updates, so we use a custom command
-    const result = await this.redis.heartbeatMessage(
-      inflightKey,
-      member,
-      newDeadline.toString()
-    );
+    const result = await this.redis.heartbeatMessage(inflightKey, member, newDeadline.toString());
 
     const success = result === 1;
 
@@ -187,6 +183,7 @@ export class VisibilityManager {
    * @param queueId - The queue ID
    * @param queueKey - The Redis key for the queue
    * @param queueItemsKey - The Redis key for the queue items hash
+   * @param masterQueueKey - The Redis key for the master queue
    * @param score - Optional score for the message (defaults to now)
    */
   async release<TPayload = unknown>(
@@ -194,6 +191,7 @@ export class VisibilityManager {
     queueId: string,
     queueKey: string,
     queueItemsKey: string,
+    masterQueueKey: string,
     score?: number
   ): Promise<void> {
     const shardId = this.#getShardForQueue(queueId);
@@ -206,14 +204,17 @@ export class VisibilityManager {
     // 1. Get message data from in-flight
     // 2. Remove from in-flight
     // 3. Add back to queue
+    // 4. Update master queue to ensure queue is picked up
     await this.redis.releaseMessage(
       inflightKey,
       inflightDataKey,
       queueKey,
       queueItemsKey,
+      masterQueueKey,
       member,
       messageId,
-      messageScore.toString()
+      messageScore.toString(),
+      queueId
     );
 
     this.logger.debug("Message released", {
@@ -233,7 +234,11 @@ export class VisibilityManager {
    */
   async reclaimTimedOut(
     shardId: number,
-    getQueueKeys: (queueId: string) => { queueKey: string; queueItemsKey: string }
+    getQueueKeys: (queueId: string) => {
+      queueKey: string;
+      queueItemsKey: string;
+      masterQueueKey: string;
+    }
   ): Promise<number> {
     const inflightKey = this.keys.inflightKey(shardId);
     const inflightDataKey = this.keys.inflightDataKey(shardId);
@@ -259,7 +264,7 @@ export class VisibilityManager {
         continue;
       }
       const { messageId, queueId } = this.#parseMember(member);
-      const { queueKey, queueItemsKey } = getQueueKeys(queueId);
+      const { queueKey, queueItemsKey, masterQueueKey } = getQueueKeys(queueId);
 
       try {
         // Re-add to queue with original score (or now if not available)
@@ -269,9 +274,11 @@ export class VisibilityManager {
           inflightDataKey,
           queueKey,
           queueItemsKey,
+          masterQueueKey,
           member,
           messageId,
-          score.toString()
+          score.toString(),
+          queueId
         );
 
         reclaimed++;
@@ -431,18 +438,20 @@ return {messageId, payload}
       `,
     });
 
-    // Atomic release: remove from in-flight, add back to queue
+    // Atomic release: remove from in-flight, add back to queue, update master queue
     this.redis.defineCommand("releaseMessage", {
-      numberOfKeys: 4,
+      numberOfKeys: 5,
       lua: `
 local inflightKey = KEYS[1]
 local inflightDataKey = KEYS[2]
 local queueKey = KEYS[3]
 local queueItemsKey = KEYS[4]
+local masterQueueKey = KEYS[5]
 
 local member = ARGV[1]
 local messageId = ARGV[2]
 local score = tonumber(ARGV[3])
+local queueId = ARGV[4]
 
 -- Get message data from in-flight
 local payload = redis.call('HGET', inflightDataKey, messageId)
@@ -458,6 +467,10 @@ redis.call('HDEL', inflightDataKey, messageId)
 -- Add back to queue
 redis.call('ZADD', queueKey, score, messageId)
 redis.call('HSET', queueItemsKey, messageId, payload)
+
+-- Update master queue to ensure queue is picked up by consumers
+-- Use the message score so older messages get priority
+redis.call('ZADD', masterQueueKey, score, queueId)
 
 return 1
       `,
@@ -505,9 +518,11 @@ declare module "@internal/redis" {
       inflightDataKey: string,
       queueKey: string,
       queueItemsKey: string,
+      masterQueueKey: string,
       member: string,
       messageId: string,
-      score: string
+      score: string,
+      queueId: string
     ): Promise<number>;
 
     heartbeatMessage(inflightKey: string, member: string, newDeadline: string): Promise<number>;
