@@ -4,7 +4,7 @@
 
 ### Build and deploy fully‑managed AI agents and workflows
 
-[Website](https://trigger.dev) | [Docs](https://trigger.dev/docs) | [Issues](https://github.com/triggerdotdev/trigger.dev/issues) | [Feature requests](https://triggerdev.featurebase.app/) | [Public roadmap](https://triggerdev.featurebase.app/roadmap) | [Self-hosting](https://trigger.dev/docs/self-hosting/overview)
+[Website](https://trigger.dev) | [Docs](https://trigger.dev/docs) | [Issues](https://github.com/triggerdotdev/trigger.dev/issues) | [Example projects](https://github.com/triggerdotdev/examples) | [Feature requests](https://triggerdev.featurebase.app/) | [Public roadmap](https://triggerdev.featurebase.app/roadmap) | [Self-hosting](https://trigger.dev/docs/self-hosting/overview) 
 
 [![Open Source](https://img.shields.io/badge/Open%20Source-%E2%9D%A4-red.svg)](https://github.com/triggerdotdev/trigger.dev)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/triggerdotdev/trigger.dev/blob/main/LICENSE)
