@@ -460,7 +460,7 @@ export function QueryResultsChart({ rows, columns, config }: QueryResultsChartPr
           {series.map((s, i) => (
             <Line
               key={s}
-              type="monotone"
+              type="linear"
               dataKey={s}
               stroke={getSeriesColor(i)}
               strokeWidth={2}
