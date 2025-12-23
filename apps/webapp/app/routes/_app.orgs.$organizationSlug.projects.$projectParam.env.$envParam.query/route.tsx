@@ -12,7 +12,7 @@ import {
   type LoaderFunctionArgs,
   redirect,
 } from "@remix-run/server-runtime";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { typedjson, useTypedActionData, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { ClockRotateLeftIcon } from "~/assets/icons/ClockRotateLeftIcon";
@@ -219,7 +219,19 @@ export default function Page() {
 
   const isLoading = navigation.state === "submitting" || navigation.state === "loading";
 
-  // Reset chart config when results change to trigger auto-selection
+  // Create a stable key from columns to detect schema changes
+  const columnsKey = results?.columns
+    ? results.columns.map((c) => `${c.name}:${c.type}`).join(",")
+    : "";
+
+  // Reset chart config only when column schema actually changes
+  // This allows re-running queries with different WHERE clauses without losing config
+  useEffect(() => {
+    if (columnsKey) {
+      setChartConfig(defaultChartConfig);
+    }
+  }, [columnsKey]);
+
   const handleChartConfigChange = useCallback((config: ChartConfiguration) => {
     setChartConfig(config);
   }, []);
@@ -347,10 +359,7 @@ export default function Page() {
                       Graph
                     </ClientTabsTrigger>
                   </ClientTabsList>
-                  <ClientTabsContent
-                    value="table"
-                    className="min-h-0 flex-1 overflow-hidden"
-                  >
+                  <ClientTabsContent value="table" className="min-h-0 flex-1 overflow-hidden">
                     {isLoading ? (
                       <div className="flex items-center gap-2 p-4 text-text-dimmed">
                         <Spinner className="size-4" />
