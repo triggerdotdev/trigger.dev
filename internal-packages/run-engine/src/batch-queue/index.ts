@@ -1,5 +1,12 @@
 import { createRedisClient, type Redis, type RedisOptions } from "@internal/redis";
-import type { Counter, Histogram, Meter } from "@internal/tracing";
+import {
+  startSpan,
+  type Counter,
+  type Histogram,
+  type Meter,
+  type Span,
+  type Tracer,
+} from "@internal/tracing";
 import {
   FairQueue,
   DRRScheduler,
@@ -45,6 +52,7 @@ export class BatchQueue {
   private fairQueue: FairQueue<typeof BatchItemPayloadSchema>;
   private completionTracker: BatchCompletionTracker;
   private logger: Logger;
+  private tracer?: Tracer;
   private concurrencyRedis: Redis;
   private defaultConcurrency: number;
 
@@ -62,6 +70,7 @@ export class BatchQueue {
 
   constructor(private options: BatchQueueOptions) {
     this.logger = options.logger ?? new Logger("BatchQueue", options.logLevel ?? "info");
+    this.tracer = options.tracer;
     this.defaultConcurrency = options.defaultConcurrency ?? 10;
 
     // Initialize metrics if meter is provided
@@ -528,173 +537,292 @@ export class BatchQueue {
   }): Promise<void> {
     const { batchId, friendlyId, itemIndex, item } = ctx.message.payload;
 
-    // Record queue time metric (time from enqueue to processing)
-    const queueTimeMs = Date.now() - ctx.message.timestamp;
-    this.itemQueueTimeHistogram?.record(queueTimeMs, { envId: ctx.queue.tenantId });
+    return this.#startSpan(
+      "BatchQueue.handleMessage",
+      async (span) => {
+        span?.setAttributes({
+          "batch.id": batchId,
+          "batch.friendlyId": friendlyId,
+          "batch.itemIndex": itemIndex,
+          "batch.task": item.task,
+          "batch.consumerId": ctx.consumerId,
+          "batch.attempt": ctx.message.attempt,
+        });
 
-    this.logger.debug("Processing batch item", {
-      batchId,
-      friendlyId,
-      itemIndex,
-      task: item.task,
-      consumerId: ctx.consumerId,
-      attempt: ctx.message.attempt,
-      queueTimeMs,
-    });
+        // Record queue time metric (time from enqueue to processing)
+        const queueTimeMs = Date.now() - ctx.message.timestamp;
+        this.itemQueueTimeHistogram?.record(queueTimeMs, { envId: ctx.queue.tenantId });
+        span?.setAttribute("batch.queueTimeMs", queueTimeMs);
 
-    if (!this.processItemCallback) {
-      this.logger.error("No process item callback set", { batchId, itemIndex });
-      // Still complete the message to avoid blocking
-      await ctx.complete();
-      return;
-    }
-
-    // Get batch metadata
-    const meta = await this.completionTracker.getMeta(batchId);
-    if (!meta) {
-      this.logger.error("Batch metadata not found", { batchId, itemIndex });
-      await ctx.complete();
-      return;
-    }
-
-    let processedCount: number;
-
-    try {
-      const result = await this.processItemCallback({
-        batchId,
-        friendlyId,
-        itemIndex,
-        item,
-        meta,
-      });
-
-      if (result.success) {
-        // Pass itemIndex for idempotency - prevents double-counting on redelivery
-        processedCount = await this.completionTracker.recordSuccess(
+        this.logger.debug("Processing batch item", {
           batchId,
-          result.runId,
-          itemIndex
-        );
-        this.itemsProcessedCounter?.add(1, { envId: meta.environmentId });
-        this.logger.debug("Batch item processed successfully", {
-          batchId,
+          friendlyId,
           itemIndex,
-          runId: result.runId,
-          processedCount,
-          expectedCount: meta.runCount,
-        });
-      } else {
-        // For offloaded payloads (payloadType: "application/store"), payload is already an R2 path
-        // For inline payloads, store the full payload - it's under the offload threshold anyway
-        const payloadStr =
-          typeof item.payload === "string" ? item.payload : JSON.stringify(item.payload);
-
-        processedCount = await this.completionTracker.recordFailure(batchId, {
-          index: itemIndex,
-          taskIdentifier: item.task,
-          payload: payloadStr,
-          options: item.options,
-          error: result.error,
-          errorCode: result.errorCode,
+          task: item.task,
+          consumerId: ctx.consumerId,
+          attempt: ctx.message.attempt,
+          queueTimeMs,
         });
 
-        this.itemsFailedCounter?.add(1, { envId: meta.environmentId, errorCode: result.errorCode });
+        if (!this.processItemCallback) {
+          this.logger.error("No process item callback set", { batchId, itemIndex });
+          // Still complete the message to avoid blocking
+          await ctx.complete();
+          return;
+        }
 
-        this.logger.error("Batch item processing failed", {
-          batchId,
-          itemIndex,
-          error: result.error,
-          processedCount,
-          expectedCount: meta.runCount,
+        // Get batch metadata
+        const meta = await this.#startSpan("BatchQueue.getMeta", async () => {
+          return this.completionTracker.getMeta(batchId);
         });
+
+        if (!meta) {
+          this.logger.error("Batch metadata not found", { batchId, itemIndex });
+          await ctx.complete();
+          return;
+        }
+
+        span?.setAttributes({
+          "batch.runCount": meta.runCount,
+          "batch.environmentId": meta.environmentId,
+        });
+
+        let processedCount: number;
+
+        try {
+          const result = await this.#startSpan(
+            "BatchQueue.processItemCallback",
+            async (innerSpan) => {
+              innerSpan?.setAttributes({
+                "batch.id": batchId,
+                "batch.itemIndex": itemIndex,
+                "batch.task": item.task,
+              });
+              return this.processItemCallback!({
+                batchId,
+                friendlyId,
+                itemIndex,
+                item,
+                meta,
+              });
+            }
+          );
+
+          if (result.success) {
+            span?.setAttribute("batch.result", "success");
+            span?.setAttribute("batch.runId", result.runId);
+
+            // Pass itemIndex for idempotency - prevents double-counting on redelivery
+            processedCount = await this.#startSpan(
+              "BatchQueue.recordSuccess",
+              async () => {
+                return this.completionTracker.recordSuccess(batchId, result.runId, itemIndex);
+              }
+            );
+
+            this.itemsProcessedCounter?.add(1, { envId: meta.environmentId });
+            this.logger.debug("Batch item processed successfully", {
+              batchId,
+              itemIndex,
+              runId: result.runId,
+              processedCount,
+              expectedCount: meta.runCount,
+            });
+          } else {
+            span?.setAttribute("batch.result", "failure");
+            span?.setAttribute("batch.error", result.error);
+            if (result.errorCode) {
+              span?.setAttribute("batch.errorCode", result.errorCode);
+            }
+
+            // For offloaded payloads (payloadType: "application/store"), payload is already an R2 path
+            // For inline payloads, store the full payload - it's under the offload threshold anyway
+            const payloadStr = await this.#startSpan(
+              "BatchQueue.serializePayload",
+              async (innerSpan) => {
+                const str =
+                  typeof item.payload === "string" ? item.payload : JSON.stringify(item.payload);
+                innerSpan?.setAttribute("batch.payloadSize", str.length);
+                return str;
+              }
+            );
+
+            processedCount = await this.#startSpan(
+              "BatchQueue.recordFailure",
+              async () => {
+                return this.completionTracker.recordFailure(batchId, {
+                  index: itemIndex,
+                  taskIdentifier: item.task,
+                  payload: payloadStr,
+                  options: item.options,
+                  error: result.error,
+                  errorCode: result.errorCode,
+                });
+              }
+            );
+
+            this.itemsFailedCounter?.add(1, {
+              envId: meta.environmentId,
+              errorCode: result.errorCode,
+            });
+
+            this.logger.error("Batch item processing failed", {
+              batchId,
+              itemIndex,
+              error: result.error,
+              processedCount,
+              expectedCount: meta.runCount,
+            });
+          }
+        } catch (error) {
+          span?.setAttribute("batch.result", "unexpected_error");
+          span?.setAttribute(
+            "batch.error",
+            error instanceof Error ? error.message : String(error)
+          );
+
+          // Unexpected error during processing
+          // For offloaded payloads, payload is an R2 path; for inline payloads, store full payload
+          const payloadStr = await this.#startSpan(
+            "BatchQueue.serializePayload",
+            async (innerSpan) => {
+              const str =
+                typeof item.payload === "string" ? item.payload : JSON.stringify(item.payload);
+              innerSpan?.setAttribute("batch.payloadSize", str.length);
+              return str;
+            }
+          );
+
+          processedCount = await this.#startSpan(
+            "BatchQueue.recordFailure",
+            async () => {
+              return this.completionTracker.recordFailure(batchId, {
+                index: itemIndex,
+                taskIdentifier: item.task,
+                payload: payloadStr,
+                options: item.options,
+                error: error instanceof Error ? error.message : String(error),
+                errorCode: "UNEXPECTED_ERROR",
+              });
+            }
+          );
+
+          this.itemsFailedCounter?.add(1, {
+            envId: meta.environmentId,
+            errorCode: "UNEXPECTED_ERROR",
+          });
+          this.logger.error("Unexpected error processing batch item", {
+            batchId,
+            itemIndex,
+            error: error instanceof Error ? error.message : String(error),
+            processedCount,
+            expectedCount: meta.runCount,
+          });
+        }
+
+        span?.setAttribute("batch.processedCount", processedCount);
+
+        // Complete the FairQueue message (no retry for batch items)
+        // This must happen after recording success/failure to ensure the counter
+        // is updated before the message is considered done
+        await this.#startSpan("BatchQueue.completeMessage", async () => {
+          return ctx.complete();
+        });
+
+        // Check if all items have been processed using atomic counter
+        // This is safe even with multiple concurrent consumers because
+        // the processedCount is atomically incremented and we only trigger
+        // finalization when we see the exact final count
+        if (processedCount === meta.runCount) {
+          this.logger.debug("All items processed, finalizing batch", {
+            batchId,
+            processedCount,
+            expectedCount: meta.runCount,
+          });
+          await this.#finalizeBatch(batchId, meta);
+        }
       }
-    } catch (error) {
-      // Unexpected error during processing
-      // For offloaded payloads, payload is an R2 path; for inline payloads, store full payload
-      const payloadStr =
-        typeof item.payload === "string" ? item.payload : JSON.stringify(item.payload);
-
-      processedCount = await this.completionTracker.recordFailure(batchId, {
-        index: itemIndex,
-        taskIdentifier: item.task,
-        payload: payloadStr,
-        options: item.options,
-        error: error instanceof Error ? error.message : String(error),
-        errorCode: "UNEXPECTED_ERROR",
-      });
-
-      this.itemsFailedCounter?.add(1, { envId: meta.environmentId, errorCode: "UNEXPECTED_ERROR" });
-      this.logger.error("Unexpected error processing batch item", {
-        batchId,
-        itemIndex,
-        error: error instanceof Error ? error.message : String(error),
-        processedCount,
-        expectedCount: meta.runCount,
-      });
-    }
-
-    // Complete the FairQueue message (no retry for batch items)
-    // This must happen after recording success/failure to ensure the counter
-    // is updated before the message is considered done
-    await ctx.complete();
-
-    // Check if all items have been processed using atomic counter
-    // This is safe even with multiple concurrent consumers because
-    // the processedCount is atomically incremented and we only trigger
-    // finalization when we see the exact final count
-    if (processedCount === meta.runCount) {
-      this.logger.debug("All items processed, finalizing batch", {
-        batchId,
-        processedCount,
-        expectedCount: meta.runCount,
-      });
-      await this.#finalizeBatch(batchId, meta);
-    }
+    );
   }
 
   /**
    * Finalize a completed batch: gather results and call completion callback.
    */
   async #finalizeBatch(batchId: string, meta: BatchMeta): Promise<void> {
-    const result = await this.completionTracker.getCompletionResult(batchId);
+    return this.#startSpan("BatchQueue.finalizeBatch", async (span) => {
+      span?.setAttributes({
+        "batch.id": batchId,
+        "batch.friendlyId": meta.friendlyId,
+        "batch.runCount": meta.runCount,
+        "batch.environmentId": meta.environmentId,
+      });
 
-    // Record metrics
-    this.batchCompletedCounter?.add(1, {
-      envId: meta.environmentId,
-      hasFailures: result.failedRunCount > 0,
-    });
+      const result = await this.#startSpan(
+        "BatchQueue.getCompletionResult",
+        async (innerSpan) => {
+          const completionResult = await this.completionTracker.getCompletionResult(batchId);
+          innerSpan?.setAttributes({
+            "batch.successfulRunCount": completionResult.successfulRunCount,
+            "batch.failedRunCount": completionResult.failedRunCount,
+            "batch.runIdsCount": completionResult.runIds.length,
+            "batch.failuresCount": completionResult.failures.length,
+          });
+          return completionResult;
+        }
+      );
 
-    const processingDuration = Date.now() - meta.createdAt;
-    this.batchProcessingDurationHistogram?.record(processingDuration, {
-      envId: meta.environmentId,
-      itemCount: meta.runCount,
-    });
+      span?.setAttributes({
+        "batch.successfulRunCount": result.successfulRunCount,
+        "batch.failedRunCount": result.failedRunCount,
+      });
 
-    this.logger.info("Batch completed", {
-      batchId,
-      friendlyId: meta.friendlyId,
-      successfulRunCount: result.successfulRunCount,
-      failedRunCount: result.failedRunCount,
-      processingDurationMs: processingDuration,
-    });
+      // Record metrics
+      this.batchCompletedCounter?.add(1, {
+        envId: meta.environmentId,
+        hasFailures: result.failedRunCount > 0,
+      });
 
-    if (this.completionCallback) {
-      try {
-        await this.completionCallback(result);
-        // Only cleanup if callback succeeded - preserves Redis data for retry on failure
-        await this.completionTracker.cleanup(batchId);
-      } catch (error) {
-        this.logger.error("Error in batch completion callback", {
-          batchId,
-          error: error instanceof Error ? error.message : String(error),
+      const processingDuration = Date.now() - meta.createdAt;
+      this.batchProcessingDurationHistogram?.record(processingDuration, {
+        envId: meta.environmentId,
+        itemCount: meta.runCount,
+      });
+
+      span?.setAttribute("batch.processingDurationMs", processingDuration);
+
+      this.logger.info("Batch completed", {
+        batchId,
+        friendlyId: meta.friendlyId,
+        successfulRunCount: result.successfulRunCount,
+        failedRunCount: result.failedRunCount,
+        processingDurationMs: processingDuration,
+      });
+
+      if (this.completionCallback) {
+        try {
+          await this.#startSpan("BatchQueue.completionCallback", async () => {
+            return this.completionCallback!(result);
+          });
+
+          // Only cleanup if callback succeeded - preserves Redis data for retry on failure
+          await this.#startSpan("BatchQueue.cleanup", async () => {
+            return this.completionTracker.cleanup(batchId);
+          });
+        } catch (error) {
+          this.logger.error("Error in batch completion callback", {
+            batchId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          // Re-throw to preserve Redis data and signal failure to callers
+          throw error;
+        }
+      } else {
+        // No callback, safe to cleanup
+        await this.#startSpan("BatchQueue.cleanup", async () => {
+          return this.completionTracker.cleanup(batchId);
         });
-        // Re-throw to preserve Redis data and signal failure to callers
-        throw error;
       }
-    } else {
-      // No callback, safe to cleanup
-      await this.completionTracker.cleanup(batchId);
-    }
+    });
   }
 
   // ============================================================================
@@ -707,5 +835,16 @@ export class BatchQueue {
    */
   #makeQueueId(envId: string, batchId: string): string {
     return `env:${envId}:batch:${batchId}`;
+  }
+
+  /**
+   * Helper to start a span if tracer is available.
+   * If no tracer is configured, just executes the callback directly.
+   */
+  async #startSpan<T>(name: string, fn: (span: Span | undefined) => Promise<T>): Promise<T> {
+    if (!this.tracer) {
+      return fn(undefined);
+    }
+    return startSpan(this.tracer, name, fn);
   }
 }
