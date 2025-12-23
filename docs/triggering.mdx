@@ -198,8 +198,8 @@ Triggers a single run of a task with the payload you pass in, and any options yo
 
 <Note>
   If you need to call `trigger()` on a task in a loop, use
-  [`batchTrigger()`](#yourTask-batchtrigger) instead which will trigger up to 500 runs in a single
-  call.
+  [`batchTrigger()`](#yourTask-batchtrigger) instead which will trigger up to 1,000 runs in a single
+  call with SDK 4.3.1+ (500 runs in prior versions).
 </Note>
 
 ```ts ./trigger/my-task.ts
@@ -831,6 +831,97 @@ export const myTask = task({
 
 For more information, see our [Idempotency](/idempotency) documentation.
 
+### `debounce`
+
+You can debounce task triggers to consolidate multiple trigger calls into a single delayed run. When a run with the same debounce key already exists in the delayed state, subsequent triggers "push" the existing run's execution time later rather than creating new runs.
+
+This is useful for scenarios like:
+
+- Real-time document indexing where you want to wait for the user to finish typing
+- Aggregating webhook events from the same source
+- Rate limiting expensive operations while still processing the final request
+
+```ts
+// First trigger creates a new run, delayed by 5 seconds
+await myTask.trigger({ some: "data" }, { debounce: { key: "user-123", delay: "5s" } });
+
+// If triggered again within 5 seconds, the existing run is pushed later
+await myTask.trigger({ updated: "data" }, { debounce: { key: "user-123", delay: "5s" } });
+
+// The run only executes after 5 seconds of no new triggers
+// Note: The first payload is used (first trigger wins)
+```
+
+<Note>
+  Debounce keys are scoped to the task identifier, so different tasks can use the same key without
+  conflicts.
+</Note>
+
+The `debounce` option accepts:
+
+- `key` - A unique string to identify the debounce group (scoped to the task)
+- `delay` - Duration string specifying how long to delay (e.g., "5s", "1m", "30s")
+- `mode` - Optional. Controls which trigger's data is used: `"leading"` (default) or `"trailing"`
+
+**How it works:**
+
+1. First trigger with a debounce key creates a new delayed run
+2. Subsequent triggers with the same key (while the run is still delayed) push the execution time further
+3. Once no new triggers occur within the delay duration, the run executes
+4. After the run starts executing, a new trigger with the same key will create a new run
+
+**Leading vs Trailing mode:**
+
+By default, debounce uses **leading mode** - the run executes with data from the **first** trigger.
+
+With **trailing mode**, each subsequent trigger updates the run's data (payload, metadata, tags, maxAttempts, maxDuration, and machine), so the run executes with data from the **last** trigger:
+
+```ts
+// Leading mode (default): runs with first payload
+await myTask.trigger({ count: 1 }, { debounce: { key: "user-123", delay: "5s" } });
+await myTask.trigger({ count: 2 }, { debounce: { key: "user-123", delay: "5s" } });
+// After 5 seconds, runs with { count: 1 }
+
+// Trailing mode: runs with last payload
+await myTask.trigger(
+  { count: 1 },
+  { debounce: { key: "user-123", delay: "5s", mode: "trailing" } }
+);
+await myTask.trigger(
+  { count: 2 },
+  { debounce: { key: "user-123", delay: "5s", mode: "trailing" } }
+);
+// After 5 seconds, runs with { count: 2 }
+```
+
+Use **trailing mode** when you want to process the most recent data, such as:
+
+- Saving the latest version of a document after edits stop
+- Processing the final state after a series of rapid updates
+
+**With `triggerAndWait`:**
+
+When using `triggerAndWait` with debounce, the parent run blocks on the existing debounced run if one exists:
+
+```ts
+export const parentTask = task({
+  id: "parent-task",
+  run: async (payload: string) => {
+    // Both will wait for the same run
+    const result = await childTask.triggerAndWait(
+      { data: payload },
+      { debounce: { key: "shared-key", delay: "3s" } }
+    );
+    return result;
+  },
+});
+```
+
+<Note>
+  Idempotency keys take precedence over debounce keys. If both are provided and an idempotency match
+  is found, it wins.
+</Note>
+
 ### `queue`
 
 When you trigger a task you can override the concurrency limit. This is really useful if you sometimes have high priority runs.
@@ -971,6 +1062,44 @@ await yourTask.trigger(payload, { machine: "large-1x" });
 
 If you don't specify a machine it will use the machine preset for your task (or the default for your project). For more information read [the machines guide](/machines).
 
+## Streaming batch triggering
+
+<Note>This feature is only available with SDK 4.3.1+</Note>
+
+For large batches, you can pass an `AsyncIterable` or `ReadableStream` instead of an array. This allows you to generate items on-demand without loading them all into memory upfront.
+
+```ts /trigger/my-task.ts
+import { task } from "@trigger.dev/sdk";
+import { myOtherTask } from "~/trigger/my-other-task";
+
+export const myTask = task({
+  id: "my-task",
+  run: async (payload: { userIds: string[] }) => {
+    // Use an async generator to stream items
+    async function* generateItems() {
+      for (const userId of payload.userIds) {
+        yield { payload: { userId } };
+      }
+    }
+
+    const batchHandle = await myOtherTask.batchTrigger(generateItems());
+
+    return { batchId: batchHandle.batchId };
+  },
+});
+```
+
+This works with all batch trigger methods:
+
+- `yourTask.batchTrigger()`
+- `yourTask.batchTriggerAndWait()`
+- `batch.triggerByTask()`
+- `batch.triggerByTaskAndWait()`
+- `tasks.batchTrigger()`
+
+Streaming is especially useful when generating batches from database queries, API pagination, or
+file processing where you don't want to load all items into memory at once.
+
 ## Large Payloads
 
 We recommend keeping your task payloads as small as possible. We currently have a hard limit on task payloads above 10MB.
@@ -1049,7 +1178,3 @@ export const myTask = task({
 ```
 
 </CodeGroup>
-
-### Batch Triggering
-
-When using triggering a batch, the total size of all payloads cannot exceed 1MB. This means if you are doing a batch of 100 runs, each payload should be less than 100KB. The max batch size is 500 runs.
