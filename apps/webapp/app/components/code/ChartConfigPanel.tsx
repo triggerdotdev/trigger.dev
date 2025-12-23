@@ -262,6 +262,7 @@ export function ChartConfigPanel({ columns, config, onChange, className }: Chart
           items={groupByOptions}
           dropdownIcon
           className="min-w-[140px]"
+          text={(t) => (t === "__none__" ? "None" : t)}
         >
           {(items) =>
             items.map((item) => (
