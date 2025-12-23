@@ -12,13 +12,19 @@ import {
   type LoaderFunctionArgs,
   redirect,
 } from "@remix-run/server-runtime";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { typedjson, useTypedActionData, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { ClockRotateLeftIcon } from "~/assets/icons/ClockRotateLeftIcon";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { AlphaTitle } from "~/components/AlphaBadge";
+import {
+  ChartConfigPanel,
+  defaultChartConfig,
+  type ChartConfiguration,
+} from "~/components/code/ChartConfigPanel";
 import { CodeBlock } from "~/components/code/CodeBlock";
+import { QueryResultsChart } from "~/components/code/QueryResultsChart";
 import { TSQLEditor } from "~/components/code/TSQLEditor";
 import { TSQLResultsTable } from "~/components/code/TSQLResultsTable";
 import {
@@ -208,8 +214,15 @@ export default function Page() {
   const [scope, setScope] = useState<QueryScope>("environment");
   const [prettyFormatting, setPrettyFormatting] = useState(true);
   const [showHelpSidebar, setShowHelpSidebar] = useState(true);
+  const [resultsView, setResultsView] = useState<"table" | "graph">("table");
+  const [chartConfig, setChartConfig] = useState<ChartConfiguration>(defaultChartConfig);
 
   const isLoading = navigation.state === "submitting" || navigation.state === "loading";
+
+  // Reset chart config when results change to trigger auto-selection
+  const handleChartConfigChange = useCallback((config: ChartConfiguration) => {
+    setChartConfig(config);
+  }, []);
 
   const handleHistorySelected = (item: QueryHistoryItem) => {
     setQuery(item.query);
@@ -306,34 +319,86 @@ export default function Page() {
                     {results?.rows && results?.columns && results.rows.length > 0 && (
                       <ExportResultsButton rows={results.rows} columns={results.columns} />
                     )}
-                    <Switch
-                      variant="small"
-                      label="Pretty formatting"
-                      checked={prettyFormatting}
-                      onCheckedChange={setPrettyFormatting}
-                    />
+                    {resultsView === "table" && (
+                      <Switch
+                        variant="small"
+                        label="Pretty formatting"
+                        checked={prettyFormatting}
+                        onCheckedChange={setPrettyFormatting}
+                      />
+                    )}
                   </div>
                 </div>
-                {isLoading ? (
-                  <div className="flex items-center gap-2 p-4 text-text-dimmed">
-                    <Spinner className="size-4" />
-                    <span>Executing query...</span>
-                  </div>
-                ) : results?.error ? (
-                  <pre className="whitespace-pre-wrap p-4 text-sm text-red-400">
-                    {results.error}
-                  </pre>
-                ) : results?.rows && results?.columns ? (
-                  <TSQLResultsTable
-                    rows={results.rows}
-                    columns={results.columns}
-                    prettyFormatting={prettyFormatting}
-                  />
-                ) : (
-                  <Paragraph variant="small" className="p-4 text-text-dimmed">
-                    Run a query to see results here.
-                  </Paragraph>
-                )}
+                <ClientTabs
+                  value={resultsView}
+                  onValueChange={(v) => setResultsView(v as "table" | "graph")}
+                  className="flex min-h-0 flex-col overflow-hidden"
+                >
+                  <ClientTabsList variant="underline" className="mx-3 shrink-0">
+                    <ClientTabsTrigger value="table" variant="underline" layoutId="results-tabs">
+                      Table
+                    </ClientTabsTrigger>
+                    <ClientTabsTrigger
+                      value="graph"
+                      variant="underline"
+                      layoutId="results-tabs"
+                      disabled={!results?.rows || results.rows.length === 0}
+                    >
+                      Graph
+                    </ClientTabsTrigger>
+                  </ClientTabsList>
+                  <ClientTabsContent
+                    value="table"
+                    className="min-h-0 flex-1 overflow-hidden"
+                  >
+                    {isLoading ? (
+                      <div className="flex items-center gap-2 p-4 text-text-dimmed">
+                        <Spinner className="size-4" />
+                        <span>Executing query...</span>
+                      </div>
+                    ) : results?.error ? (
+                      <pre className="whitespace-pre-wrap p-4 text-sm text-red-400">
+                        {results.error}
+                      </pre>
+                    ) : results?.rows && results?.columns ? (
+                      <TSQLResultsTable
+                        rows={results.rows}
+                        columns={results.columns}
+                        prettyFormatting={prettyFormatting}
+                      />
+                    ) : (
+                      <Paragraph variant="small" className="p-4 text-text-dimmed">
+                        Run a query to see results here.
+                      </Paragraph>
+                    )}
+                  </ClientTabsContent>
+                  <ClientTabsContent
+                    value="graph"
+                    className="flex min-h-0 flex-1 flex-col overflow-hidden"
+                  >
+                    {results?.rows && results?.columns && results.rows.length > 0 ? (
+                      <>
+                        <ChartConfigPanel
+                          columns={results.columns}
+                          config={chartConfig}
+                          onChange={handleChartConfigChange}
+                          className="shrink-0 border-b border-grid-dimmed"
+                        />
+                        <div className="min-h-0 flex-1 overflow-auto p-3">
+                          <QueryResultsChart
+                            rows={results.rows}
+                            columns={results.columns}
+                            config={chartConfig}
+                          />
+                        </div>
+                      </>
+                    ) : (
+                      <Paragraph variant="small" className="p-4 text-text-dimmed">
+                        Run a query to visualize results.
+                      </Paragraph>
+                    )}
+                  </ClientTabsContent>
+                </ClientTabs>
               </div>
             </div>
           </ResizablePanel>
