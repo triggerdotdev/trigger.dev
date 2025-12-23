@@ -56,7 +56,7 @@
     "@heroicons/react": "^2.0.12",
     "@internal/cache": "workspace:*",
     "@internal/redis": "workspace:*",
-    "@internal/tsql": "workspace:*",
+    "@internal/trql": "workspace:*",
     "@internal/run-engine": "workspace:*",
     "@internal/schedule-engine": "workspace:*",
     "@internal/tracing": "workspace:*",

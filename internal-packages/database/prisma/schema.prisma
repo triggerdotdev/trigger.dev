@@ -2402,7 +2402,7 @@ enum CustomerQueryScope {
 model CustomerQuery {
   id String @id @default(cuid())
 
-  /// The TSQL query text that was executed
+  /// The TRQL query text that was executed
   query String
 
   /// The scope of the query (determines which tenant IDs were used)

@@ -31,18 +31,18 @@ export type * from "./taskRuns.js";
 export type * from "./taskEvents.js";
 export type * from "./client/queryBuilder.js";
 
-// TSQL query execution
+// TRQL query execution
 export {
-  executeTSQL,
-  createTSQLExecutor,
-  type ExecuteTSQLOptions,
+  executeTRQL,
+  createTRQLExecutor,
+  type ExecuteTRQLOptions,
   type TableSchema,
-  type TSQLQueryResult,
-  type TSQLQuerySuccess,
+  type TRQLQueryResult,
+  type TRQLQuerySuccess,
   type QueryStats,
   type FieldMappings,
-} from "./client/tsql.js";
-export type { OutputColumnMetadata } from "@internal/tsql";
+} from "./client/trql.js";
+export type { OutputColumnMetadata } from "@internal/trql";
 
 export type ClickhouseCommonConfig = {
   keepAlive?: {

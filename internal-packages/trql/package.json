@@ -1,0 +1,23 @@
+{
+  "name": "@internal/trql",
+  "private": true,
+  "version": "0.0.1",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "type": "module",
+  "dependencies": {
+    "@trigger.dev/core": "workspace:*",
+    "antlr4ts": "0.5.0-alpha.4",
+    "zod": "3.25.76"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "grammar:build": "pnpm grammar:build:typescript",
+    "grammar:build:typescript": "cat src/grammar/TRQLLexer.typescript.g4 > src/grammar/TRQLLexer.g4 && tail -n +2 src/grammar/TRQLLexer.common.g4 |sed s/isOpeningTag/self.isOpeningTag/ >> src/grammar/TRQLLexer.g4 && antlr4ts src/grammar/TRQLLexer.g4 && rm src/grammar/TRQLLexer.g4 && antlr4ts -visitor -no-listener -Dlanguage=TypeScript src/grammar/TRQLParser.g4",
+    "test": "vitest --sequence.concurrent=false --no-file-parallelism",
+    "test:coverage": "vitest --sequence.concurrent=false --no-file-parallelism --coverage.enabled"
+  },
+  "devDependencies": {
+    "antlr4ts-cli": "0.5.0-alpha.4"
+  }
+}

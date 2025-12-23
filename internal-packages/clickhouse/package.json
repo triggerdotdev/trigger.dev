@@ -8,7 +8,7 @@
   "dependencies": {
     "@clickhouse/client": "^1.12.1",
     "@internal/tracing": "workspace:*",
-    "@internal/tsql": "workspace:*",
+    "@internal/trql": "workspace:*",
     "@trigger.dev/core": "workspace:*",
     "zod": "3.25.76",
     "zod-error": "1.5.0"

@@ -303,9 +303,9 @@ importers:
       '@internal/tracing':
         specifier: workspace:*
         version: link:../../internal-packages/tracing
-      '@internal/tsql':
+      '@internal/trql':
         specifier: workspace:*
-        version: link:../../internal-packages/tsql
+        version: link:../../internal-packages/trql
       '@internal/zod-worker':
         specifier: workspace:*
         version: link:../../internal-packages/zod-worker
@@ -1011,9 +1011,9 @@ importers:
       '@internal/tracing':
         specifier: workspace:*
         version: link:../tracing
-      '@internal/tsql':
+      '@internal/trql':
         specifier: workspace:*
-        version: link:../tsql
+        version: link:../trql
       '@trigger.dev/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -1278,7 +1278,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/core
 
-  internal-packages/tsql:
+  internal-packages/trql:
     dependencies:
       '@trigger.dev/core':
         specifier: workspace:*

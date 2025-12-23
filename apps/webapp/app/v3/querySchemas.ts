@@ -1,4 +1,4 @@
-import { column, type TableSchema } from "@internal/tsql";
+import { column, type TableSchema } from "@internal/trql";
 import { runFriendlyStatus, runStatusTitleFromStatus } from "~/components/runs/v3/TaskRunStatus";
 
 /**

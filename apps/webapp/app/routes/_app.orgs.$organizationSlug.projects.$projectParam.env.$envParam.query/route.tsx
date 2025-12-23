@@ -5,7 +5,7 @@ import {
   PlayIcon,
 } from "@heroicons/react/20/solid";
 import type { OutputColumnMetadata } from "@internal/clickhouse";
-import type { ColumnSchema } from "@internal/tsql";
+import type { ColumnSchema } from "@internal/trql";
 import { Form, useNavigation } from "@remix-run/react";
 import {
   type ActionFunctionArgs,
@@ -19,8 +19,8 @@ import { ClockRotateLeftIcon } from "~/assets/icons/ClockRotateLeftIcon";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { AlphaTitle } from "~/components/AlphaBadge";
 import { CodeBlock } from "~/components/code/CodeBlock";
-import { TSQLEditor } from "~/components/code/TSQLEditor";
-import { TSQLResultsTable } from "~/components/code/TSQLResultsTable";
+import { TRQLEditor } from "~/components/code/TRQLEditor";
+import { TRQLResultsTable } from "~/components/code/TRQLResultsTable";
 import {
   ClientTabs,
   ClientTabsContent,
@@ -227,7 +227,7 @@ export default function Page() {
             <div className="grid max-h-full grid-rows-[auto_1fr] overflow-hidden">
               {/* Query editor */}
               <div className="flex flex-col gap-2 pb-2">
-                <TSQLEditor
+                <TRQLEditor
                   defaultValue={query}
                   onChange={setQuery}
                   schema={querySchemas}
@@ -324,7 +324,7 @@ export default function Page() {
                     {results.error}
                   </pre>
                 ) : results?.rows && results?.columns ? (
-                  <TSQLResultsTable
+                  <TRQLResultsTable
                     rows={results.rows}
                     columns={results.columns}
                     prettyFormatting={prettyFormatting}
@@ -1881,7 +1881,7 @@ const SQL_KEYWORDS = [
   "MAX",
 ];
 
-function highlightSQL(query: string): React.ReactNode[] {
+function highlightRQL(query: string): React.ReactNode[] {
   // Normalize whitespace for display (let CSS line-clamp handle truncation)
   const normalized = query.replace(/\s+/g, " ").slice(0, 200);
   const suffix = "";
@@ -1962,7 +1962,7 @@ function QueryHistoryPopover({
               >
                 <div className="flex flex-1 flex-col items-start overflow-hidden">
                   <p className="line-clamp-2 w-full break-words text-left font-mono text-xs text-[#9b99ff]">
-                    {highlightSQL(item.query)}
+                    {highlightRQL(item.query)}
                   </p>
                   <div className="flex items-center gap-2 text-xs text-text-dimmed">
                     <DateTime date={item.createdAt} showTooltip={false} />

@@ -1,17 +1,17 @@
 import {
-  executeTSQL,
-  type ExecuteTSQLOptions,
+  executeTRQL,
+  type ExecuteTRQLOptions,
   type FieldMappings,
-  type TSQLQueryResult,
+  type TRQLQueryResult,
 } from "@internal/clickhouse";
 import type { CustomerQuerySource } from "@trigger.dev/database";
-import type { TableSchema } from "@internal/tsql";
+import type { TableSchema } from "@internal/trql";
 import { type z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { clickhouseClient } from "./clickhouseInstance.server";
 
-export type { TableSchema, TSQLQueryResult };
+export type { TableSchema, TRQLQueryResult };
 
 export type QueryScope = "organization" | "project" | "environment";
 
@@ -22,7 +22,7 @@ const scopeToEnum = {
 } as const;
 
 export type ExecuteQueryOptions<TOut extends z.ZodSchema> = Omit<
-  ExecuteTSQLOptions<TOut>,
+  ExecuteTRQLOptions<TOut>,
   "tableSchema" | "organizationId" | "projectId" | "environmentId" | "fieldMappings"
 > & {
   tableSchema: TableSchema[];
@@ -44,12 +44,12 @@ export type ExecuteQueryOptions<TOut extends z.ZodSchema> = Omit<
 };
 
 /**
- * Execute a TSQL query against ClickHouse with tenant isolation
+ * Execute a TRQL query against ClickHouse with tenant isolation
  * Handles building tenant options, field mappings, and optionally saves to history
  */
 export async function executeQuery<TOut extends z.ZodSchema>(
   options: ExecuteQueryOptions<TOut>
-): Promise<TSQLQueryResult<z.output<TOut>>> {
+): Promise<TRQLQueryResult<z.output<TOut>>> {
   const { scope, organizationId, projectId, environmentId, history, ...baseOptions } = options;
 
   // Build tenant IDs based on scope
@@ -85,7 +85,7 @@ export async function executeQuery<TOut extends z.ZodSchema>(
     environment: Object.fromEntries(environments.map((e) => [e.id, e.slug])),
   };
 
-  const result = await executeTSQL(clickhouseClient.reader, {
+  const result = await executeTRQL(clickhouseClient.reader, {
     ...baseOptions,
     ...tenantOptions,
     fieldMappings,
