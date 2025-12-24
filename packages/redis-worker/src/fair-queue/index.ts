@@ -163,6 +163,10 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       name: options.name ?? "fairqueue",
       maxIterations: this.consumerTraceMaxIterations,
       timeoutSeconds: this.consumerTraceTimeoutSeconds,
+      getDynamicAttributes: () => ({
+        "cache.descriptor_size": this.queueDescriptorCache.size,
+        "cache.cooloff_states_size": this.queueCooloffStates.size,
+      }),
     });
 
     // Initialize components
@@ -597,6 +601,35 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     return await this.redis.zcard(dlqKey);
   }
 
+  /**
+   * Get the size of the in-memory queue descriptor cache.
+   * This cache stores metadata for queues that have been enqueued.
+   * The cache is cleaned up when queues are fully processed.
+   */
+  getQueueDescriptorCacheSize(): number {
+    return this.queueDescriptorCache.size;
+  }
+
+  /**
+   * Get the size of the in-memory cooloff states cache.
+   * This cache tracks queues that are in cooloff due to repeated failures.
+   * The cache is cleaned up when queues are fully processed or cooloff expires.
+   */
+  getQueueCooloffStatesSize(): number {
+    return this.queueCooloffStates.size;
+  }
+
+  /**
+   * Get all in-memory cache sizes for monitoring.
+   * Useful for adding as span attributes.
+   */
+  getCacheSizes(): { descriptorCacheSize: number; cooloffStatesSize: number } {
+    return {
+      descriptorCacheSize: this.queueDescriptorCache.size,
+      cooloffStatesSize: this.queueCooloffStates.size,
+    };
+  }
+
   // ============================================================================
   // Public API - Lifecycle
   // ============================================================================
@@ -897,8 +930,12 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     );
 
     if (!claimResult.claimed || !claimResult.message) {
-      // Queue is empty, update master queue
-      await this.redis.updateMasterQueueIfEmpty(masterQueueKey, queueKey, queueId);
+      // Queue is empty, update master queue and clean up caches
+      const removed = await this.redis.updateMasterQueueIfEmpty(masterQueueKey, queueKey, queueId);
+      if (removed === 1) {
+        this.queueDescriptorCache.delete(queueId);
+        this.queueCooloffStates.delete(queueId);
+      }
       return false;
     }
 
@@ -1234,8 +1271,12 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     );
 
     if (!claimResult.claimed || !claimResult.message) {
-      // Queue is empty, update master queue
-      await this.redis.updateMasterQueueIfEmpty(masterQueueKey, queueKey, queueId);
+      // Queue is empty, update master queue and clean up caches
+      const removed = await this.redis.updateMasterQueueIfEmpty(masterQueueKey, queueKey, queueId);
+      if (removed === 1) {
+        this.queueDescriptorCache.delete(queueId);
+        this.queueCooloffStates.delete(queueId);
+      }
       return false;
     }
 
@@ -1442,8 +1483,12 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       await this.concurrencyManager.release(descriptor, storedMessage.id);
     }
 
-    // Update master queue if queue is now empty
-    await this.redis.updateMasterQueueIfEmpty(masterQueueKey, queueKey, queueId);
+    // Update master queue if queue is now empty, and clean up caches
+    const removed = await this.redis.updateMasterQueueIfEmpty(masterQueueKey, queueKey, queueId);
+    if (removed === 1) {
+      this.queueDescriptorCache.delete(queueId);
+      this.queueCooloffStates.delete(queueId);
+    }
 
     this.logger.debug("Message completed", {
       messageId: storedMessage.id,
