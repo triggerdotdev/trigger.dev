@@ -468,6 +468,8 @@ export interface BatchedSpanManagerOptions {
   maxIterations: number;
   /** Maximum seconds before rotating the span */
   timeoutSeconds: number;
+  /** Optional callback to get dynamic attributes when starting a new batched span */
+  getDynamicAttributes?: () => Attributes;
 }
 
 /**
@@ -482,12 +484,14 @@ export class BatchedSpanManager {
   private maxIterations: number;
   private timeoutSeconds: number;
   private loopStates = new Map<string, ConsumerLoopState>();
+  private getDynamicAttributes?: () => Attributes;
 
   constructor(options: BatchedSpanManagerOptions) {
     this.tracer = options.tracer;
     this.name = options.name;
     this.maxIterations = options.maxIterations;
     this.timeoutSeconds = options.timeoutSeconds;
+    this.getDynamicAttributes = options.getDynamicAttributes;
   }
 
   /**
@@ -585,6 +589,9 @@ export class BatchedSpanManager {
         ? state.iterationsCount / (traceDurationInMs / 1000)
         : undefined;
 
+    // Get dynamic attributes if callback is provided
+    const dynamicAttributes = this.getDynamicAttributes?.() ?? {};
+
     // Start new span
     state.currentSpan = this.tracer.startSpan(
       `${this.name}.consumerLoop`,
@@ -598,6 +605,7 @@ export class BatchedSpanManager {
           previous_duration_ms: traceDurationInMs,
           previous_iterations_per_second: iterationsPerSecond,
           total_iterations: state.totalIterationsCount,
+          ...dynamicAttributes,
           ...attributes,
         },
       },
