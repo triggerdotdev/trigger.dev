@@ -815,8 +815,14 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     if (this.concurrencyManager) {
       const reserved = await this.concurrencyManager.reserve(descriptor, message.messageId);
       if (!reserved) {
-        // Release message back to queue
-        await this.visibilityManager.release(message.messageId, queueId, queueKey, queueItemsKey);
+        // Release message back to queue (and ensure it's in master queue)
+        await this.visibilityManager.release(
+          message.messageId,
+          queueId,
+          queueKey,
+          queueItemsKey,
+          masterQueueKey
+        );
         return false;
       }
     }
@@ -1056,8 +1062,14 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     if (this.concurrencyManager) {
       const reserved = await this.concurrencyManager.reserve(descriptor, message.messageId);
       if (!reserved) {
-        // Release message back to queue
-        await this.visibilityManager.release(message.messageId, queueId, queueKey, queueItemsKey);
+        // Release message back to queue (and ensure it's in master queue)
+        await this.visibilityManager.release(
+          message.messageId,
+          queueId,
+          queueKey,
+          queueItemsKey,
+          masterQueueKey
+        );
         return false;
       }
     }
@@ -1105,11 +1117,14 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
           try {
             await this.concurrencyManager.release(descriptor, storedMessage.id);
           } catch (releaseError) {
-            this.logger.error("Failed to release concurrency slot after payload validation failure", {
-              messageId: storedMessage.id,
-              queueId,
-              error: releaseError instanceof Error ? releaseError.message : String(releaseError),
-            });
+            this.logger.error(
+              "Failed to release concurrency slot after payload validation failure",
+              {
+                messageId: storedMessage.id,
+                queueId,
+                error: releaseError instanceof Error ? releaseError.message : String(releaseError),
+              }
+            );
           }
         }
 
@@ -1172,7 +1187,14 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
         );
       },
       release: async () => {
-        await this.#releaseMessage(storedMessage, queueId, queueKey, queueItemsKey, descriptor);
+        await this.#releaseMessage(
+          storedMessage,
+          queueId,
+          queueKey,
+          queueItemsKey,
+          masterQueueKey,
+          descriptor
+        );
       },
       fail: async (error?: Error) => {
         await this.#handleMessageFailure(
@@ -1251,14 +1273,16 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     queueId: string,
     queueKey: string,
     queueItemsKey: string,
+    masterQueueKey: string,
     descriptor: QueueDescriptor
   ): Promise<void> {
-    // Release back to queue
+    // Release back to queue (and update master queue to ensure the queue is picked up)
     await this.visibilityManager.release(
       storedMessage.id,
       queueId,
       queueKey,
       queueItemsKey,
+      masterQueueKey,
       Date.now() // Put at back of queue
     );
 
@@ -1302,12 +1326,13 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
           attempt: storedMessage.attempt + 1,
         };
 
-        // Release with delay
+        // Release with delay (and ensure queue is in master queue)
         await this.visibilityManager.release(
           storedMessage.id,
           queueId,
           queueKey,
           queueItemsKey,
+          masterQueueKey,
           Date.now() + nextDelay
         );
 
@@ -1433,6 +1458,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       const reclaimed = await this.visibilityManager.reclaimTimedOut(shardId, (queueId) => ({
         queueKey: this.keys.queueKey(queueId),
         queueItemsKey: this.keys.queueItemsKey(queueId),
+        masterQueueKey: this.keys.masterQueueKey(this.masterQueue.getShardForQueue(queueId)),
       }));
 
       totalReclaimed += reclaimed;

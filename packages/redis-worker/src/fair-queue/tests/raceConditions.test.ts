@@ -446,6 +446,7 @@ describe("Race Condition Tests", () => {
           const reclaimed = await manager.reclaimTimedOut(0, (queueId) => ({
             queueKey: keys.queueKey(queueId),
             queueItemsKey: keys.queueItemsKey(queueId),
+            masterQueueKey: keys.masterQueueKey(0),
           }));
           reclaimResults.push(reclaimed);
         }
