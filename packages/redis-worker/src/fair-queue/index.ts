@@ -909,6 +909,8 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     if (this.concurrencyManager) {
       const check = await this.concurrencyManager.canProcess(descriptor);
       if (!check.allowed) {
+        // Queue at max concurrency, back off to avoid repeated attempts
+        this.#incrementCooloff(queueId);
         return false;
       }
     }
@@ -958,6 +960,8 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
           queueItemsKey,
           masterQueueKey
         );
+        // Concurrency reservation failed, back off to avoid repeated attempts
+        this.#incrementCooloff(queueId);
         return false;
       }
     }
@@ -1253,6 +1257,8 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     if (this.concurrencyManager) {
       const check = await this.concurrencyManager.canProcess(descriptor);
       if (!check.allowed) {
+        // Queue at max concurrency, back off to avoid repeated attempts
+        this.#incrementCooloff(queueId);
         return false;
       }
     }
@@ -1302,6 +1308,8 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
           queueItemsKey,
           masterQueueKey
         );
+        // Concurrency reservation failed, back off to avoid repeated attempts
+        this.#incrementCooloff(queueId);
         return false;
       }
     }
