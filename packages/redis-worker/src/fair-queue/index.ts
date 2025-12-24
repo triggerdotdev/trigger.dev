@@ -1,5 +1,5 @@
 import { createRedisClient, type Redis, type RedisOptions } from "@internal/redis";
-import { SpanKind } from "@internal/tracing";
+import { SpanKind, type Span } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
 import { nanoid } from "nanoid";
 import { setInterval } from "node:timers/promises";
@@ -7,7 +7,12 @@ import { type z } from "zod";
 import { ConcurrencyManager } from "./concurrency.js";
 import { MasterQueue } from "./masterQueue.js";
 import { type RetryStrategy, ExponentialBackoffRetry } from "./retry.js";
-import { FairQueueTelemetry, FairQueueAttributes, MessagingAttributes } from "./telemetry.js";
+import {
+  FairQueueTelemetry,
+  FairQueueAttributes,
+  MessagingAttributes,
+  BatchedSpanManager,
+} from "./telemetry.js";
 import type {
   ConcurrencyGroupConfig,
   DeadLetterMessage,
@@ -89,6 +94,11 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
   // Global rate limiter
   private globalRateLimiter?: GlobalRateLimiter;
 
+  // Consumer tracing
+  private consumerTraceMaxIterations: number;
+  private consumerTraceTimeoutSeconds: number;
+  private batchedSpanManager: BatchedSpanManager;
+
   // Runtime state
   private messageHandler?: MessageHandler<z.infer<TPayloadSchema>>;
   private isRunning = false;
@@ -136,11 +146,23 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     // Global rate limiter
     this.globalRateLimiter = options.globalRateLimiter;
 
+    // Consumer tracing
+    this.consumerTraceMaxIterations = options.consumerTraceMaxIterations ?? 500;
+    this.consumerTraceTimeoutSeconds = options.consumerTraceTimeoutSeconds ?? 60;
+
     // Initialize telemetry
     this.telemetry = new FairQueueTelemetry({
       tracer: options.tracer,
       meter: options.meter,
       name: options.name ?? "fairqueue",
+    });
+
+    // Initialize batched span manager for consumer tracing
+    this.batchedSpanManager = new BatchedSpanManager({
+      tracer: options.tracer,
+      name: options.name ?? "fairqueue",
+      maxIterations: this.consumerTraceMaxIterations,
+      timeoutSeconds: this.consumerTraceTimeoutSeconds,
     });
 
     // Initialize components
@@ -653,6 +675,10 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
    */
   async close(): Promise<void> {
     await this.stop();
+
+    // Clean up any remaining batched spans
+    this.batchedSpanManager.cleanupAll();
+
     await Promise.all([
       this.masterQueue.close(),
       this.concurrencyManager?.close(),
@@ -703,56 +729,123 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
   async #runMasterQueueConsumerLoop(shardId: number): Promise<void> {
     const loopId = `master-shard-${shardId}`;
 
+    // Initialize batched span tracking for this loop
+    this.batchedSpanManager.initializeLoop(loopId);
+
     try {
       for await (const _ of setInterval(this.consumerIntervalMs, null, {
         signal: this.abortController.signal,
       })) {
         try {
-          await this.#processMasterQueueShard(loopId, shardId);
+          await this.batchedSpanManager.withBatchedSpan(
+            loopId,
+            async (span) => {
+              span.setAttribute("shard_id", shardId);
+              await this.#processMasterQueueShard(loopId, shardId, span);
+            },
+            {
+              iterationSpanName: "processMasterQueueShard",
+              attributes: { shard_id: shardId },
+            }
+          );
         } catch (error) {
           this.logger.error("Master queue consumer error", {
             loopId,
             shardId,
             error: error instanceof Error ? error.message : String(error),
           });
+          this.batchedSpanManager.markForRotation(loopId);
         }
       }
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
         this.logger.debug("Master queue consumer aborted", { loopId });
+        this.batchedSpanManager.cleanup(loopId);
         return;
       }
       throw error;
+    } finally {
+      this.batchedSpanManager.cleanup(loopId);
     }
   }
 
-  async #processMasterQueueShard(loopId: string, shardId: number): Promise<void> {
+  async #processMasterQueueShard(
+    loopId: string,
+    shardId: number,
+    parentSpan?: Span
+  ): Promise<void> {
     const masterQueueKey = this.keys.masterQueueKey(shardId);
 
     // Create scheduler context
-    const context = this.#createSchedulerContext();
+    const schedulerContext = this.#createSchedulerContext();
 
     // Get queues to process from scheduler
-    const tenantQueues = await this.scheduler.selectQueues(masterQueueKey, loopId, context);
+    const tenantQueues = await this.telemetry.trace(
+      "selectQueues",
+      async (span) => {
+        span.setAttribute(FairQueueAttributes.SHARD_ID, shardId.toString());
+        span.setAttribute(FairQueueAttributes.CONSUMER_ID, loopId);
+        const result = await this.scheduler.selectQueues(masterQueueKey, loopId, schedulerContext);
+        span.setAttribute("tenant_count", result.length);
+        span.setAttribute(
+          "queue_count",
+          result.reduce((acc, t) => acc + t.queues.length, 0)
+        );
+        return result;
+      },
+      { kind: SpanKind.INTERNAL }
+    );
 
     if (tenantQueues.length === 0) {
+      this.batchedSpanManager.incrementStat(loopId, "empty_iterations");
       return;
     }
+
+    // Track stats
+    this.batchedSpanManager.incrementStat(loopId, "tenants_selected", tenantQueues.length);
+    this.batchedSpanManager.incrementStat(
+      loopId,
+      "queues_selected",
+      tenantQueues.reduce((acc, t) => acc + t.queues.length, 0)
+    );
 
     // Process queues and push to worker queues
     for (const { tenantId, queues } of tenantQueues) {
       for (const queueId of queues) {
         // Check cooloff
         if (this.cooloffEnabled && this.#isInCooloff(queueId)) {
+          this.batchedSpanManager.incrementStat(loopId, "cooloff_skipped");
           continue;
         }
 
-        const processed = await this.#claimAndPushToWorkerQueue(loopId, queueId, tenantId, shardId);
+        const processed = await this.telemetry.trace(
+          "claimAndPushToWorkerQueue",
+          async (span) => {
+            span.setAttribute(FairQueueAttributes.QUEUE_ID, queueId);
+            span.setAttribute(FairQueueAttributes.TENANT_ID, tenantId);
+            span.setAttribute(FairQueueAttributes.SHARD_ID, shardId.toString());
+            return this.#claimAndPushToWorkerQueue(loopId, queueId, tenantId, shardId);
+          },
+          { kind: SpanKind.INTERNAL }
+        );
 
         if (processed) {
-          await this.scheduler.recordProcessed?.(tenantId, queueId);
+          this.batchedSpanManager.incrementStat(loopId, "messages_claimed");
+
+          if (this.scheduler.recordProcessed) {
+            await this.telemetry.trace(
+              "recordProcessed",
+              async (span) => {
+                span.setAttribute(FairQueueAttributes.QUEUE_ID, queueId);
+                span.setAttribute(FairQueueAttributes.TENANT_ID, tenantId);
+                await this.scheduler.recordProcessed!(tenantId, queueId);
+              },
+              { kind: SpanKind.INTERNAL }
+            );
+          }
           this.#resetCooloff(queueId);
         } else {
+          this.batchedSpanManager.incrementStat(loopId, "claim_failures");
           this.#incrementCooloff(queueId);
         }
       }
@@ -845,6 +938,9 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     const loopId = `worker-${consumerId}`;
     const workerQueueId = loopId; // Each consumer has its own worker queue by default
 
+    // Initialize batched span tracking for this loop
+    this.batchedSpanManager.initializeLoop(loopId);
+
     try {
       while (this.isRunning) {
         if (!this.messageHandler) {
@@ -861,6 +957,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
           );
 
           if (!messageKey) {
+            this.batchedSpanManager.incrementStat(loopId, "blocking_pop_timeouts");
             continue; // Timeout, loop again
           }
 
@@ -868,13 +965,31 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
           const colonIndex = messageKey.indexOf(":");
           if (colonIndex === -1) {
             this.logger.error("Invalid message key format", { messageKey });
+            this.batchedSpanManager.incrementStat(loopId, "invalid_message_keys");
             continue;
           }
 
           const messageId = messageKey.substring(0, colonIndex);
           const queueId = messageKey.substring(colonIndex + 1);
 
-          await this.#processMessageFromWorkerQueue(loopId, messageId, queueId);
+          await this.batchedSpanManager.withBatchedSpan(
+            loopId,
+            async (span) => {
+              span.setAttribute("consumer_id", consumerId);
+              span.setAttribute(FairQueueAttributes.MESSAGE_ID, messageId);
+              span.setAttribute(FairQueueAttributes.QUEUE_ID, queueId);
+              await this.#processMessageFromWorkerQueue(loopId, messageId, queueId);
+              this.batchedSpanManager.incrementStat(loopId, "messages_processed");
+            },
+            {
+              iterationSpanName: "processMessageFromWorkerQueue",
+              attributes: {
+                consumer_id: consumerId,
+                [FairQueueAttributes.MESSAGE_ID]: messageId,
+                [FairQueueAttributes.QUEUE_ID]: queueId,
+              },
+            }
+          );
         } catch (error) {
           if (this.abortController.signal.aborted) {
             break;
@@ -883,14 +998,18 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
             loopId,
             error: error instanceof Error ? error.message : String(error),
           });
+          this.batchedSpanManager.markForRotation(loopId);
         }
       }
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
         this.logger.debug("Worker queue consumer aborted", { loopId });
+        this.batchedSpanManager.cleanup(loopId);
         return;
       }
       throw error;
+    } finally {
+      this.batchedSpanManager.cleanup(loopId);
     }
   }
 
@@ -927,6 +1046,9 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
   async #runDirectConsumerLoop(consumerId: number, shardId: number): Promise<void> {
     const loopId = `consumer-${consumerId}-shard-${shardId}`;
 
+    // Initialize batched span tracking for this loop
+    this.batchedSpanManager.initializeLoop(loopId);
+
     try {
       for await (const _ of setInterval(this.consumerIntervalMs, null, {
         signal: this.abortController.signal,
@@ -936,35 +1058,73 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
         }
 
         try {
-          await this.#processDirectIteration(loopId, shardId);
+          await this.batchedSpanManager.withBatchedSpan(
+            loopId,
+            async (span) => {
+              span.setAttribute("consumer_id", consumerId);
+              span.setAttribute("shard_id", shardId);
+              await this.#processDirectIteration(loopId, shardId, span);
+            },
+            {
+              iterationSpanName: "processDirectIteration",
+              attributes: { consumer_id: consumerId, shard_id: shardId },
+            }
+          );
         } catch (error) {
           this.logger.error("Direct consumer iteration error", {
             loopId,
             error: error instanceof Error ? error.message : String(error),
           });
+          this.batchedSpanManager.markForRotation(loopId);
         }
       }
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
         this.logger.debug("Direct consumer loop aborted", { loopId });
+        this.batchedSpanManager.cleanup(loopId);
         return;
       }
       throw error;
+    } finally {
+      this.batchedSpanManager.cleanup(loopId);
     }
   }
 
-  async #processDirectIteration(loopId: string, shardId: number): Promise<void> {
+  async #processDirectIteration(loopId: string, shardId: number, parentSpan?: Span): Promise<void> {
     const masterQueueKey = this.keys.masterQueueKey(shardId);
 
     // Create scheduler context
-    const context = this.#createSchedulerContext();
+    const schedulerContext = this.#createSchedulerContext();
 
     // Get queues to process from scheduler
-    const tenantQueues = await this.scheduler.selectQueues(masterQueueKey, loopId, context);
+    const tenantQueues = await this.telemetry.trace(
+      "selectQueues",
+      async (span) => {
+        span.setAttribute(FairQueueAttributes.SHARD_ID, shardId.toString());
+        span.setAttribute(FairQueueAttributes.CONSUMER_ID, loopId);
+        const result = await this.scheduler.selectQueues(masterQueueKey, loopId, schedulerContext);
+        span.setAttribute("tenant_count", result.length);
+        span.setAttribute(
+          "queue_count",
+          result.reduce((acc, t) => acc + t.queues.length, 0)
+        );
+        return result;
+      },
+      { kind: SpanKind.INTERNAL }
+    );
 
     if (tenantQueues.length === 0) {
+      this.batchedSpanManager.incrementStat(loopId, "empty_iterations");
       return;
     }
+
+    // Track stats
+    this.batchedSpanManager.incrementStat(loopId, "tenants_selected", tenantQueues.length);
+    this.batchedSpanManager.incrementStat(
+      loopId,
+      "queues_selected",
+      tenantQueues.reduce((acc, t) => acc + t.queues.length, 0)
+    );
 
     // Process messages from each selected tenant
     // For fairness, process up to available concurrency slots per tenant
@@ -985,16 +1145,39 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
         while (slotsUsed < availableSlots) {
           // Check cooloff
           if (this.cooloffEnabled && this.#isInCooloff(queueId)) {
+            this.batchedSpanManager.incrementStat(loopId, "cooloff_skipped");
             break; // Try next queue
           }
 
-          const processed = await this.#processOneMessage(loopId, queueId, tenantId, shardId);
+          const processed = await this.telemetry.trace(
+            "processOneMessage",
+            async (span) => {
+              span.setAttribute(FairQueueAttributes.QUEUE_ID, queueId);
+              span.setAttribute(FairQueueAttributes.TENANT_ID, tenantId);
+              span.setAttribute(FairQueueAttributes.SHARD_ID, shardId.toString());
+              return this.#processOneMessage(loopId, queueId, tenantId, shardId);
+            },
+            { kind: SpanKind.INTERNAL }
+          );
 
           if (processed) {
-            await this.scheduler.recordProcessed?.(tenantId, queueId);
+            this.batchedSpanManager.incrementStat(loopId, "messages_processed");
+
+            if (this.scheduler.recordProcessed) {
+              await this.telemetry.trace(
+                "recordProcessed",
+                async (span) => {
+                  span.setAttribute(FairQueueAttributes.QUEUE_ID, queueId);
+                  span.setAttribute(FairQueueAttributes.TENANT_ID, tenantId);
+                  await this.scheduler.recordProcessed!(tenantId, queueId);
+                },
+                { kind: SpanKind.INTERNAL }
+              );
+            }
             this.#resetCooloff(queueId);
             slotsUsed++;
           } else {
+            this.batchedSpanManager.incrementStat(loopId, "process_failures");
             this.#incrementCooloff(queueId);
             break; // Queue empty or blocked, try next queue
           }
