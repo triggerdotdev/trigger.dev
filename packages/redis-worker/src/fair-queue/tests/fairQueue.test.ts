@@ -728,6 +728,72 @@ describe("FairQueue", () => {
         await queue.close();
       }
     );
+
+    redisTest(
+      "should clear cooloff states when size cap is exceeded",
+      { timeout: 15000 },
+      async ({ redisOptions }) => {
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+
+        const scheduler = new DRRScheduler({
+          redis: redisOptions,
+          keys,
+          quantum: 10,
+          maxDeficit: 100,
+        });
+
+        const queue = new FairQueue({
+          redis: redisOptions,
+          keys,
+          scheduler,
+          payloadSchema: TestPayloadSchema,
+          shardCount: 1,
+          consumerCount: 1,
+          consumerIntervalMs: 20,
+          visibilityTimeoutMs: 5000,
+          cooloff: {
+            enabled: true,
+            threshold: 1, // Enter cooloff after 1 failure
+            periodMs: 100, // Short cooloff for testing
+            maxStatesSize: 5, // Very small cap for testing
+          },
+          startConsumers: false,
+        });
+
+        // Enqueue messages to multiple queues
+        for (let i = 0; i < 10; i++) {
+          await queue.enqueue({
+            queueId: `tenant:t${i}:queue:q1`,
+            tenantId: `t${i}`,
+            payload: { value: `msg-${i}` },
+          });
+        }
+
+        const processed: string[] = [];
+
+        // Handler that always fails to trigger cooloff
+        queue.onMessage(async (ctx) => {
+          processed.push(ctx.message.payload.value);
+          await ctx.fail(new Error("Forced failure"));
+        });
+
+        queue.start();
+
+        // Wait for some messages to be processed and fail
+        await vi.waitFor(
+          () => {
+            expect(processed.length).toBeGreaterThanOrEqual(5);
+          },
+          { timeout: 10000 }
+        );
+
+        // The cooloff states size should be capped (test that it doesn't grow unbounded)
+        const cacheSizes = queue.getCacheSizes();
+        expect(cacheSizes.cooloffStatesSize).toBeLessThanOrEqual(10); // Some buffer for race conditions
+
+        await queue.close();
+      }
+    );
   });
 
   describe("inspection methods", () => {

@@ -89,6 +89,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
   private cooloffEnabled: boolean;
   private cooloffThreshold: number;
   private cooloffPeriodMs: number;
+  private maxCooloffStatesSize: number;
   private queueCooloffStates = new Map<string, QueueCooloffState>();
 
   // Global rate limiter
@@ -142,6 +143,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     this.cooloffEnabled = options.cooloff?.enabled ?? true;
     this.cooloffThreshold = options.cooloff?.threshold ?? 10;
     this.cooloffPeriodMs = options.cooloff?.periodMs ?? 10_000;
+    this.maxCooloffStatesSize = options.cooloff?.maxStatesSize ?? 1000;
 
     // Global rate limiter
     this.globalRateLimiter = options.globalRateLimiter;
@@ -878,8 +880,11 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
           }
           this.#resetCooloff(queueId);
         } else {
-          this.batchedSpanManager.incrementStat(loopId, "claim_failures");
-          this.#incrementCooloff(queueId);
+          // Don't increment cooloff here - the queue was either:
+          // 1. Empty (removed from master, cache cleaned up)
+          // 2. Concurrency blocked (message released back to queue)
+          // Neither case warrants cooloff as they're not failures
+          this.batchedSpanManager.incrementStat(loopId, "claim_skipped");
         }
       }
     }
@@ -1214,8 +1219,11 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
             this.#resetCooloff(queueId);
             slotsUsed++;
           } else {
-            this.batchedSpanManager.incrementStat(loopId, "process_failures");
-            this.#incrementCooloff(queueId);
+            // Don't increment cooloff here - the queue was either:
+            // 1. Empty (removed from master, cache cleaned up)
+            // 2. Concurrency blocked (message released back to queue)
+            // Neither case warrants cooloff as they're not failures
+            this.batchedSpanManager.incrementStat(loopId, "process_skipped");
             break; // Queue empty or blocked, try next queue
           }
         }
@@ -1717,6 +1725,15 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
   }
 
   #incrementCooloff(queueId: string): void {
+    // Safety check: if the cache is too large, just clear it
+    if (this.queueCooloffStates.size >= this.maxCooloffStatesSize) {
+      this.logger.warn("Cooloff states cache hit size cap, clearing all entries", {
+        size: this.queueCooloffStates.size,
+        cap: this.maxCooloffStatesSize,
+      });
+      this.queueCooloffStates.clear();
+    }
+
     const state = this.queueCooloffStates.get(queueId) ?? {
       tag: "normal" as const,
       consecutiveFailures: 0,
