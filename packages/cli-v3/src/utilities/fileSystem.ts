@@ -159,8 +159,24 @@ export async function safeReadJSONFile(path: string) {
   }
 }
 
+/**
+ * Use this for deterministic builds. Uses `json-stable-stringify` to sort keys alphabetically.
+ * @param path - The path to the file to write
+ * @param json - The JSON object to write
+ * @param pretty - Whether to pretty print the JSON
+ */
 export async function writeJSONFile(path: string, json: any, pretty = false) {
   await safeWriteFile(path, stringify(json, pretty ? { space: 2 } : undefined) ?? "");
+}
+
+/**
+ * Use this when you want to preserve the original key ordering (e.g. user's package.json)
+ * @param path - The path to the file to write
+ * @param json - The JSON object to write
+ * @param pretty - Whether to pretty print the JSON
+ */
+export async function writeJSONFilePreserveOrder(path: string, json: any, pretty = false) {
+  await safeWriteFile(path, JSON.stringify(json, undefined, pretty ? 2 : undefined));
 }
 
 // Will create the directory if it doesn't exist

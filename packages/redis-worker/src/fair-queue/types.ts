@@ -364,6 +364,12 @@ export interface FairQueueOptions<TPayloadSchema extends z.ZodTypeAny = z.ZodUnk
   /** Whether to start consumers on initialization (default: true) */
   startConsumers?: boolean;
 
+  // Consumer tracing
+  /** Maximum iterations before starting a new trace span (default: 500) */
+  consumerTraceMaxIterations?: number;
+  /** Maximum seconds before starting a new trace span (default: 60) */
+  consumerTraceTimeoutSeconds?: number;
+
   // Cooloff
   /** Queue cooloff configuration */
   cooloff?: CooloffOptions;
