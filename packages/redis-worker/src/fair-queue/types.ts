@@ -309,6 +309,8 @@ export interface CooloffOptions {
   threshold?: number;
   /** Duration of cooloff period in milliseconds (default: 10000) */
   periodMs?: number;
+  /** Maximum number of cooloff state entries before triggering cleanup (default: 1000) */
+  maxStatesSize?: number;
 }
 
 /**
