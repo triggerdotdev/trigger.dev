@@ -468,9 +468,13 @@ redis.call('HDEL', inflightDataKey, messageId)
 redis.call('ZADD', queueKey, score, messageId)
 redis.call('HSET', queueItemsKey, messageId, payload)
 
--- Update master queue to ensure queue is picked up by consumers
--- Use the message score so older messages get priority
-redis.call('ZADD', masterQueueKey, score, queueId)
+-- Update master queue with oldest message timestamp
+-- This ensures delayed messages don't push the queue priority to the future
+-- when there are other ready messages in the queue
+local oldest = redis.call('ZRANGE', queueKey, 0, 0, 'WITHSCORES')
+if #oldest >= 2 then
+  redis.call('ZADD', masterQueueKey, oldest[2], queueId)
+end
 
 return 1
       `,
