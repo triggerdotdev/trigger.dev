@@ -324,7 +324,8 @@ export class FairQueueTelemetry {
   // ============================================================================
 
   /**
-   * Create standard attributes for a message operation.
+   * Create standard attributes for a message operation (for spans/traces).
+   * Use this for span attributes where high cardinality is acceptable.
    */
   messageAttributes(params: {
     queueId?: string;
