@@ -327,13 +327,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
           [FairQueueAttributes.SHARD_ID]: shardId.toString(),
         });
 
-        this.telemetry.recordEnqueue(
-          this.telemetry.messageAttributes({
-            queueId: options.queueId,
-            tenantId: options.tenantId,
-            messageId,
-          })
-        );
+        this.telemetry.recordEnqueue();
 
         this.logger.debug("Message enqueued", {
           queueId: options.queueId,
@@ -431,13 +425,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
           [FairQueueAttributes.SHARD_ID]: shardId.toString(),
         });
 
-        this.telemetry.recordEnqueueBatch(
-          messageIds.length,
-          this.telemetry.messageAttributes({
-            queueId: options.queueId,
-            tenantId: options.tenantId,
-          })
-        );
+        this.telemetry.recordEnqueueBatch(messageIds.length);
 
         this.logger.debug("Batch enqueued", {
           queueId: options.queueId,
@@ -1387,14 +1375,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
 
     // Record queue time
     const queueTime = startTime - storedMessage.timestamp;
-    this.telemetry.recordQueueTime(
-      queueTime,
-      this.telemetry.messageAttributes({
-        queueId,
-        tenantId: storedMessage.tenantId,
-        messageId: storedMessage.id,
-      })
-    );
+    this.telemetry.recordQueueTime(queueTime);
 
     // Build handler context
     const handlerContext: MessageHandlerContext<z.infer<TPayloadSchema>> = {
@@ -1410,21 +1391,8 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       },
       complete: async () => {
         await this.#completeMessage(storedMessage, queueId, queueKey, masterQueueKey, descriptor);
-        this.telemetry.recordComplete(
-          this.telemetry.messageAttributes({
-            queueId,
-            tenantId: storedMessage.tenantId,
-            messageId: storedMessage.id,
-          })
-        );
-        this.telemetry.recordProcessingTime(
-          Date.now() - startTime,
-          this.telemetry.messageAttributes({
-            queueId,
-            tenantId: storedMessage.tenantId,
-            messageId: storedMessage.id,
-          })
-        );
+        this.telemetry.recordComplete();
+        this.telemetry.recordProcessingTime(Date.now() - startTime);
       },
       release: async () => {
         await this.#releaseMessage(
@@ -1550,14 +1518,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     descriptor: QueueDescriptor,
     error?: Error
   ): Promise<void> {
-    this.telemetry.recordFailure(
-      this.telemetry.messageAttributes({
-        queueId,
-        tenantId: storedMessage.tenantId,
-        messageId: storedMessage.id,
-        attempt: storedMessage.attempt,
-      })
-    );
+    this.telemetry.recordFailure();
 
     // Check retry strategy
     if (this.retryStrategy) {
@@ -1588,14 +1549,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
           await this.concurrencyManager.release(descriptor, storedMessage.id);
         }
 
-        this.telemetry.recordRetry(
-          this.telemetry.messageAttributes({
-            queueId,
-            tenantId: storedMessage.tenantId,
-            messageId: storedMessage.id,
-            attempt: storedMessage.attempt + 1,
-          })
-        );
+        this.telemetry.recordRetry();
 
         this.logger.debug("Message scheduled for retry", {
           messageId: storedMessage.id,
@@ -1651,14 +1605,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     pipeline.hset(dlqDataKey, storedMessage.id, JSON.stringify(dlqMessage));
     await pipeline.exec();
 
-    this.telemetry.recordDLQ(
-      this.telemetry.messageAttributes({
-        queueId: storedMessage.queueId,
-        tenantId: storedMessage.tenantId,
-        messageId: storedMessage.id,
-        attempt: storedMessage.attempt,
-      })
-    );
+    this.telemetry.recordDLQ();
 
     this.logger.info("Message moved to DLQ", {
       messageId: storedMessage.id,
