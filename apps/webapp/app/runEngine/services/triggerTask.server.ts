@@ -323,6 +323,7 @@ export class RunEngineTriggerTaskService {
                 sdkVersion: lockedToBackgroundWorker?.sdkVersion,
                 cliVersion: lockedToBackgroundWorker?.cliVersion,
                 concurrencyKey: body.options?.concurrencyKey,
+                rateLimitKey: body.options?.rateLimitKey,
                 queue: queueName,
                 lockedQueueId,
                 workerQueue,

@@ -181,6 +181,7 @@ export class RunEngine {
       masterQueueConsumersIntervalMs: options.queue?.masterQueueConsumersIntervalMs,
       processWorkerQueueDebounceMs: options.queue?.processWorkerQueueDebounceMs,
       dequeueBlockingTimeoutSeconds: options.queue?.dequeueBlockingTimeoutSeconds,
+      disableRateLimits: options.queue?.disableRateLimits,
       meter: options.meter,
     });
 
@@ -405,6 +406,7 @@ export class RunEngine {
       sdkVersion,
       cliVersion,
       concurrencyKey,
+      rateLimitKey,
       workerQueue,
       queue,
       lockedQueueId,
@@ -554,6 +556,7 @@ export class RunEngine {
               sdkVersion,
               cliVersion,
               concurrencyKey,
+              rateLimitKey,
               queue,
               lockedQueueId,
               workerQueue,
@@ -668,6 +671,7 @@ export class RunEngine {
 
         if (taskRun.delayUntil) {
           // Schedule the run to be enqueued at the delayUntil time
+          // Note: rateLimitKey is not passed for delayed runs - it will need to be stored on the run if needed
           await this.delayedRunSystem.scheduleDelayedRunEnqueuing({
             runId: taskRun.id,
             delayUntil: taskRun.delayUntil,
@@ -705,6 +709,7 @@ export class RunEngine {
             runnerId,
             tx: prisma,
             skipRunLock: true,
+            rateLimitKey,
           });
         }
 

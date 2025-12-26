@@ -63,6 +63,7 @@ export type RunEngineOptions = {
       scanJitterInMs?: number;
       processMarkedJitterInMs?: number;
     };
+    disableRateLimits?: boolean;
   };
   runLock: {
     redis: RedisOptions;
@@ -133,6 +134,7 @@ export type TriggerParams = {
   sdkVersion?: string;
   cliVersion?: string;
   concurrencyKey?: string;
+  rateLimitKey?: string;
   workerQueue?: string;
   queue: string;
   lockedQueueId?: string;

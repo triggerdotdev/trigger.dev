@@ -34,6 +34,7 @@ export class EnqueueSystem {
     workerId,
     runnerId,
     skipRunLock,
+    rateLimitKey,
   }: {
     run: TaskRun;
     env: MinimalAuthenticatedEnvironment;
@@ -53,6 +54,7 @@ export class EnqueueSystem {
     workerId?: string;
     runnerId?: string;
     skipRunLock?: boolean;
+    rateLimitKey?: string;
   }) {
     const prisma = tx ?? this.$.prisma;
 
@@ -81,6 +83,12 @@ export class EnqueueSystem {
 
       const timestamp = (run.queueTimestamp ?? run.createdAt).getTime() - run.priorityMs;
 
+      // IMPORTANT: Use provided rateLimitKey or fall back to the one stored on the run.
+      // This ensures re-enqueued runs (checkpoint, delay, waitpoint, pendingVersion)
+      // maintain their original rate limit bucket. Future callers should rely on this
+      // fallback rather than passing rateLimitKey explicitly for re-enqueue scenarios.
+      const effectiveRateLimitKey = rateLimitKey ?? run.rateLimitKey ?? undefined;
+
       await this.$.runQueue.enqueueMessage({
         env,
         workerQueue,
@@ -93,6 +101,7 @@ export class EnqueueSystem {
           environmentType: env.type,
           queue: run.queue,
           concurrencyKey: run.concurrencyKey ?? undefined,
+          rateLimitKey: effectiveRateLimitKey,
           timestamp,
           attempt: 0,
         },

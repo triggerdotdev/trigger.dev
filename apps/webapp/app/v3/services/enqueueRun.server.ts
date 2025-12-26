@@ -7,6 +7,7 @@ export type EnqueueRunOptions = {
   env: AuthenticatedEnvironment;
   run: TaskRun;
   dependentRun?: { queue: string; id: string };
+  rateLimitKey?: string;
 };
 
 export type EnqueueRunResult =
@@ -22,6 +23,7 @@ export async function enqueueRun({
   env,
   run,
   dependentRun,
+  rateLimitKey,
 }: EnqueueRunOptions): Promise<EnqueueRunResult> {
   // If this is a triggerAndWait or batchTriggerAndWait,
   // we need to add the parent run to the reserve concurrency set
@@ -39,6 +41,8 @@ export async function enqueueRun({
       projectId: env.projectId,
       environmentId: env.id,
       environmentType: env.type,
+      // Include rateLimitKey in message payload for dequeue-time checks
+      rateLimitKey,
     },
     run.concurrencyKey ?? undefined,
     run.queueTimestamp ?? undefined,
