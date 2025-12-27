@@ -14,6 +14,8 @@ export const deployTool = {
   name: toolsMetadata.deploy.name,
   title: toolsMetadata.deploy.title,
   description: toolsMetadata.deploy.description,
+  readOnlyHint: false,
+  destructiveHint: true,
   inputSchema: DeployInput.shape,
   handler: toolHandler(DeployInput.shape, async (input, { ctx, createProgressTracker, _meta }) => {
     ctx.logger?.log("calling deploy", { input });
@@ -114,6 +116,8 @@ export const listDeploysTool = {
   name: toolsMetadata.list_deploys.name,
   title: toolsMetadata.list_deploys.title,
   description: toolsMetadata.list_deploys.description,
+  readOnlyHint: true,
+  destructiveHint: false,
   inputSchema: ListDeploysInput.shape,
   handler: toolHandler(ListDeploysInput.shape, async (input, { ctx }) => {
     ctx.logger?.log("calling list_deploys", { input });
