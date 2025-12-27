@@ -344,7 +344,7 @@ export default function Page() {
                 <ClientTabs
                   value={resultsView}
                   onValueChange={(v) => setResultsView(v as "table" | "graph")}
-                  className="flex min-h-0 flex-col overflow-hidden"
+                  className="grid min-h-0 grid-rows-[auto_1fr] overflow-hidden"
                 >
                   <ClientTabsList variant="underline" className="mx-3 shrink-0">
                     <ClientTabsTrigger value="table" variant="underline" layoutId="results-tabs">
@@ -359,7 +359,7 @@ export default function Page() {
                       Graph
                     </ClientTabsTrigger>
                   </ClientTabsList>
-                  <ClientTabsContent value="table" className="min-h-0 flex-1 overflow-hidden">
+                  <ClientTabsContent value="table" className="min-h-0 overflow-y-hidden">
                     {isLoading ? (
                       <div className="flex items-center gap-2 p-4 text-text-dimmed">
                         <Spinner className="size-4" />
@@ -383,7 +383,7 @@ export default function Page() {
                   </ClientTabsContent>
                   <ClientTabsContent
                     value="graph"
-                    className="flex min-h-0 flex-1 flex-col overflow-hidden"
+                    className="flex min-h-0 flex-col overflow-hidden"
                   >
                     {results?.rows && results?.columns && results.rows.length > 0 ? (
                       <>

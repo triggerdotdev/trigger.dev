@@ -273,7 +273,7 @@ export function TSQLResultsTable({
   if (!columns.length) return null;
 
   return (
-    <Table fullWidth>
+    <Table fullWidth containerClassName="h-full overflow-y-auto">
       <TableHeader>
         <TableRow>
           {columns.map((col) => (
