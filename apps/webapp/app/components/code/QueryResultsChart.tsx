@@ -497,8 +497,8 @@ export function QueryResultsChart({ rows, columns, config }: QueryResultsChartPr
               dataKey={s}
               stroke={getSeriesColor(i)}
               strokeWidth={2}
-              dot={{ fill: getSeriesColor(i), r: 3 }}
-              activeDot={{ r: 5 }}
+              dot={false}
+              activeDot={{ r: 4 }}
             />
           ))}
         </LineChart>
