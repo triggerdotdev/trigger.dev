@@ -6,6 +6,7 @@ import { Header3 } from "../primitives/Headers";
 import { Paragraph } from "../primitives/Paragraph";
 import { Select, SelectItem } from "../primitives/Select";
 import { Switch } from "../primitives/Switch";
+import { Button } from "../primitives/Buttons";
 
 export type ChartType = "bar" | "line";
 export type SortDirection = "asc" | "desc";
@@ -199,58 +200,62 @@ export function ChartConfigPanel({ columns, config, onChange, className }: Chart
   }
 
   return (
-    <div className={cn("flex flex-wrap items-center gap-3 px-3 py-2", className)}>
+    <div className={cn("flex flex-col gap-2 px-3 py-2", className)}>
       {/* Chart Type */}
-      <ConfigField label="Type">
-        <div className="flex gap-1">
-          <ChartTypeButton
-            type="bar"
-            selected={config.chartType === "bar"}
-            onClick={() => updateConfig({ chartType: "bar" })}
-          />
-          <ChartTypeButton
-            type="line"
-            selected={config.chartType === "line"}
-            onClick={() => updateConfig({ chartType: "line" })}
-          />
-        </div>
-      </ConfigField>
+      <div className="flex items-center gap-1">
+        <ConfigField label="Type">
+          <div className="flex items-center">
+            <Button
+              type="button"
+              variant="tertiary/small"
+              className={cn(
+                "rounded-r-none border-b pl-1 pr-2",
+                config.chartType === "bar" ? "border-indigo-500" : "border-transparent"
+              )}
+              iconSpacing="gap-x-1"
+              onClick={() => updateConfig({ chartType: "bar" })}
+              LeadingIcon={BarChart}
+              leadingIconClassName={
+                config.chartType === "bar" ? "text-indigo-500" : "text-text-dimmed"
+              }
+            >
+              <span className={config.chartType === "bar" ? "text-indigo-500" : "text-text-dimmed"}>
+                Bar
+              </span>
+            </Button>
+            <Button
+              type="button"
+              variant="tertiary/small"
+              className={cn(
+                "rounded-l-none border-b pl-1 pr-2",
+                config.chartType === "line" ? "border-indigo-500" : "border-transparent"
+              )}
+              iconSpacing="gap-x-1"
+              onClick={() => updateConfig({ chartType: "line" })}
+              LeadingIcon={LineChart}
+              leadingIconClassName={
+                config.chartType === "line" ? "text-indigo-500" : "text-text-dimmed"
+              }
+            >
+              <span
+                className={config.chartType === "line" ? "text-indigo-500" : "text-text-dimmed"}
+              >
+                Line
+              </span>
+            </Button>
+          </div>
+        </ConfigField>
+      </div>
 
-      {/* X-Axis */}
-      <ConfigField label="X-Axis">
-        <Select
-          value={config.xAxisColumn ?? ""}
-          setValue={(value) => updateConfig({ xAxisColumn: value || null })}
-          variant="tertiary/small"
-          placeholder="Select column"
-          items={xAxisOptions}
-          dropdownIcon
-          className="min-w-[140px]"
-        >
-          {(items) =>
-            items.map((item) => (
-              <SelectItem key={item.value} value={item.value}>
-                <span className="flex items-center gap-2">
-                  <span>{item.label}</span>
-                  <TypeBadge type={item.type} />
-                </span>
-              </SelectItem>
-            ))
-          }
-        </Select>
-      </ConfigField>
-
-      {/* Y-Axis */}
-      <ConfigField label="Y-Axis">
-        {yAxisOptions.length === 0 ? (
-          <span className="text-xs text-text-dimmed">No numeric columns</span>
-        ) : (
+      <div className="flex flex-wrap items-center gap-3">
+        {/* X-Axis */}
+        <ConfigField label="X-Axis">
           <Select
-            value={config.yAxisColumns[0] ?? ""}
-            setValue={(value) => updateConfig({ yAxisColumns: value ? [value] : [] })}
+            value={config.xAxisColumn ?? ""}
+            setValue={(value) => updateConfig({ xAxisColumn: value || null })}
             variant="tertiary/small"
             placeholder="Select column"
-            items={yAxisOptions}
+            items={xAxisOptions}
             dropdownIcon
             className="min-w-[140px]"
           >
@@ -265,80 +270,112 @@ export function ChartConfigPanel({ columns, config, onChange, className }: Chart
               ))
             }
           </Select>
+        </ConfigField>
+
+        {/* Y-Axis */}
+        <ConfigField label="Y-Axis">
+          {yAxisOptions.length === 0 ? (
+            <span className="text-xs text-text-dimmed">No numeric columns</span>
+          ) : (
+            <Select
+              value={config.yAxisColumns[0] ?? ""}
+              setValue={(value) => updateConfig({ yAxisColumns: value ? [value] : [] })}
+              variant="tertiary/small"
+              placeholder="Select column"
+              items={yAxisOptions}
+              dropdownIcon
+              className="min-w-[140px]"
+            >
+              {(items) =>
+                items.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    <span className="flex items-center gap-2">
+                      <span>{item.label}</span>
+                      <TypeBadge type={item.type} />
+                    </span>
+                  </SelectItem>
+                ))
+              }
+            </Select>
+          )}
+        </ConfigField>
+
+        {/* Group By */}
+        <ConfigField label="Group by">
+          <Select
+            value={config.groupByColumn ?? "__none__"}
+            setValue={(value) =>
+              updateConfig({ groupByColumn: value === "__none__" ? null : value })
+            }
+            variant="tertiary/small"
+            placeholder="None"
+            items={groupByOptions}
+            dropdownIcon
+            className="min-w-[140px]"
+            text={(t) => (t === "__none__" ? "None" : t)}
+          >
+            {(items) =>
+              items.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  <span className="flex items-center gap-2">
+                    <span>{item.label}</span>
+                    {item.type && <TypeBadge type={item.type} />}
+                  </span>
+                </SelectItem>
+              ))
+            }
+          </Select>
+        </ConfigField>
+
+        {/* Stacked toggle (only when grouped) */}
+        {config.groupByColumn && (
+          <ConfigField label="">
+            <Switch
+              variant="small"
+              label="Stacked"
+              checked={config.stacked}
+              onCheckedChange={(checked) => updateConfig({ stacked: checked })}
+            />
+          </ConfigField>
         )}
-      </ConfigField>
 
-      {/* Group By */}
-      <ConfigField label="Group by">
-        <Select
-          value={config.groupByColumn ?? "__none__"}
-          setValue={(value) => updateConfig({ groupByColumn: value === "__none__" ? null : value })}
-          variant="tertiary/small"
-          placeholder="None"
-          items={groupByOptions}
-          dropdownIcon
-          className="min-w-[140px]"
-          text={(t) => (t === "__none__" ? "None" : t)}
-        >
-          {(items) =>
-            items.map((item) => (
-              <SelectItem key={item.value} value={item.value}>
-                <span className="flex items-center gap-2">
-                  <span>{item.label}</span>
-                  {item.type && <TypeBadge type={item.type} />}
-                </span>
-              </SelectItem>
-            ))
-          }
-        </Select>
-      </ConfigField>
-
-      {/* Stacked toggle (only when grouped) */}
-      {config.groupByColumn && (
-        <ConfigField label="">
-          <Switch
-            variant="small"
-            label="Stacked"
-            checked={config.stacked}
-            onCheckedChange={(checked) => updateConfig({ stacked: checked })}
-          />
+        {/* Order By */}
+        <ConfigField label="Order by">
+          <Select
+            value={config.sortByColumn ?? "__none__"}
+            setValue={(value) =>
+              updateConfig({ sortByColumn: value === "__none__" ? null : value })
+            }
+            variant="tertiary/small"
+            placeholder="None"
+            items={sortByOptions}
+            dropdownIcon
+            className="min-w-[140px]"
+            text={(t) => (t === "__none__" ? "None" : t)}
+          >
+            {(items) =>
+              items.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  <span className="flex items-center gap-2">
+                    <span>{item.label}</span>
+                    {item.type && <TypeBadge type={item.type} />}
+                  </span>
+                </SelectItem>
+              ))
+            }
+          </Select>
         </ConfigField>
-      )}
 
-      {/* Order By */}
-      <ConfigField label="Order by">
-        <Select
-          value={config.sortByColumn ?? "__none__"}
-          setValue={(value) => updateConfig({ sortByColumn: value === "__none__" ? null : value })}
-          variant="tertiary/small"
-          placeholder="None"
-          items={sortByOptions}
-          dropdownIcon
-          className="min-w-[140px]"
-          text={(t) => (t === "__none__" ? "None" : t)}
-        >
-          {(items) =>
-            items.map((item) => (
-              <SelectItem key={item.value} value={item.value}>
-                <span className="flex items-center gap-2">
-                  <span>{item.label}</span>
-                  {item.type && <TypeBadge type={item.type} />}
-                </span>
-              </SelectItem>
-            ))
-          }
-        </Select>
-      </ConfigField>
-
-      {/* Sort Direction (only when sorting) */}
-      {config.sortByColumn && (
-        <ConfigField label="">
-          <SortDirectionToggle
-            direction={config.sortDirection}
-            onChange={(direction) => updateConfig({ sortDirection: direction })}
-          />
-        </ConfigField>
-      )}
+        {/* Sort Direction (only when sorting) */}
+        {config.sortByColumn && (
+          <ConfigField label="">
+            <SortDirectionToggle
+              direction={config.sortDirection}
+              onChange={(direction) => updateConfig({ sortDirection: direction })}
+            />
+          </ConfigField>
+        )}
+      </div>
     </div>
   );
 }
@@ -349,36 +386,6 @@ function ConfigField({ label, children }: { label: string; children: React.React
       {label && <span className="text-xs text-text-dimmed">{label}</span>}
       {children}
     </div>
-  );
-}
-
-function ChartTypeButton({
-  type,
-  selected,
-  onClick,
-}: {
-  type: ChartType;
-  selected: boolean;
-  onClick: () => void;
-}) {
-  const Icon = type === "bar" ? BarChart : LineChart;
-  const label = type === "bar" ? "Bar" : "Line";
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "flex items-center gap-1.5 rounded px-2 py-1 text-xs transition-colors",
-        selected
-          ? "bg-charcoal-700 text-text-bright"
-          : "text-text-dimmed hover:bg-charcoal-800 hover:text-text-bright"
-      )}
-      title={`${label} chart`}
-    >
-      <Icon className="size-3.5" />
-      <span>{label}</span>
-    </button>
   );
 }
 
