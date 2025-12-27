@@ -274,6 +274,14 @@ export default function Page() {
                   <input type="hidden" name="scope" value={scope} />
                   <QueryHistoryPopover history={history} onQuerySelected={handleHistorySelected} />
                   <div className="flex items-center gap-2">
+                    {!showHelpSidebar && (
+                      <Button
+                        variant="minimal/small"
+                        TrailingIcon={LightBulbIcon}
+                        onClick={() => setShowHelpSidebar(true)}
+                        className="px-2.5"
+                      />
+                    )}
                     <Select
                       value={scope}
                       setValue={(value) => setScope(value as QueryScope)}
@@ -292,14 +300,6 @@ export default function Page() {
                         ))
                       }
                     </Select>
-                    {!showHelpSidebar && (
-                      <Button
-                        variant="minimal/small"
-                        TrailingIcon={LightBulbIcon}
-                        onClick={() => setShowHelpSidebar(true)}
-                        className="px-2.5"
-                      />
-                    )}
                     <Button
                       type="submit"
                       variant="primary/small"
