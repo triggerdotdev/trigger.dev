@@ -1,6 +1,16 @@
 import type { OutputColumnMetadata } from "@internal/clickhouse";
 import { useMemo } from "react";
-import { Bar, BarChart, CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Line,
+  LineChart,
+  XAxis,
+  YAxis,
+} from "recharts";
 import {
   type ChartConfig,
   ChartContainer,
@@ -450,6 +460,29 @@ export function QueryResultsChart({ rows, columns, config }: QueryResultsChartPr
             />
           ))}
         </BarChart>
+      ) : stacked && series.length > 1 ? (
+        <AreaChart {...commonProps} stackOffset="none">
+          <CartesianGrid vertical={false} strokeDasharray="3 3" />
+          <XAxis {...xAxisProps} />
+          <YAxis {...yAxisProps} />
+          <ChartTooltip
+            content={<ChartTooltipContent indicator="line" />}
+            labelFormatter={tooltipLabelFormatter}
+          />
+          <ChartLegend content={<ChartLegendContent />} />
+          {series.map((s, i) => (
+            <Area
+              key={s}
+              type="linear"
+              dataKey={s}
+              stroke={getSeriesColor(i)}
+              fill={getSeriesColor(i)}
+              fillOpacity={0.6}
+              strokeWidth={2}
+              stackId="stack"
+            />
+          ))}
+        </AreaChart>
       ) : (
         <LineChart {...commonProps}>
           <CartesianGrid vertical={false} strokeDasharray="3 3" />
