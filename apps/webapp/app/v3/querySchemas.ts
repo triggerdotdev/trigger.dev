@@ -272,6 +272,7 @@ export const runsSchema: TableSchema = {
     output: {
       name: "output",
       ...column("JSON", { description: "Run output data", example: '{"result": "success"}' }),
+      expression: "if(output = '{}', NULL, output)",
     },
     error: {
       name: "error",
