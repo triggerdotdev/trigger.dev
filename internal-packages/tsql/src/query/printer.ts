@@ -1147,15 +1147,17 @@ export class ClickHousePrinter {
   // ============================================================
 
   /**
-   * Create a WHERE clause expression for tenant isolation
+   * Create a WHERE clause expression for tenant isolation and required filters
    * Note: We use just the column name without table prefix since ClickHouse
    * requires the actual table name (task_runs_v2), not the TSQL alias (task_runs)
    *
    * Organization ID is always required. Project ID and Environment ID are optional -
    * if not provided, the query will return results across all projects/environments.
+   *
+   * Required filters from the table schema are also always included.
    */
   private createTenantGuard(tableSchema: TableSchema, _tableAlias: string): And | CompareOperation {
-    const { tenantColumns } = tableSchema;
+    const { tenantColumns, requiredFilters } = tableSchema;
 
     // Organization guard is always required
     const orgGuard: CompareOperation = {
@@ -1188,6 +1190,19 @@ export class ClickHousePrinter {
         right: { expression_type: "constant", value: this.context.environmentId } as Constant,
       };
       guards.push(envGuard);
+    }
+
+    // Add required filters from the table schema
+    if (requiredFilters && requiredFilters.length > 0) {
+      for (const filter of requiredFilters) {
+        const filterGuard: CompareOperation = {
+          expression_type: "compare_operation",
+          op: CompareOperationOp.Eq,
+          left: { expression_type: "field", chain: [filter.column] } as Field,
+          right: { expression_type: "constant", value: filter.value } as Constant,
+        };
+        guards.push(filterGuard);
+      }
     }
 
     // If only org guard, return it directly (no need for AND wrapper)

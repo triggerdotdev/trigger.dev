@@ -210,6 +210,16 @@ export interface TenantColumnConfig {
 }
 
 /**
+ * Required filter that is always applied to queries on a table
+ */
+export interface RequiredFilter {
+  /** The ClickHouse column name to filter on */
+  column: string;
+  /** The value the column must equal */
+  value: string;
+}
+
+/**
  * Schema definition for a table
  */
 export interface TableSchema {
@@ -225,6 +235,11 @@ export interface TableSchema {
   description?: string;
   /** Whether this table can be joined to other tables */
   joinable?: boolean;
+  /**
+   * Required filters that are always applied to queries on this table.
+   * These are injected into the WHERE clause automatically, similar to tenant isolation.
+   */
+  requiredFilters?: RequiredFilter[];
 }
 
 /**

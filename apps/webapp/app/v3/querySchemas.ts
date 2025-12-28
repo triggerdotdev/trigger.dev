@@ -31,6 +31,7 @@ export const runsSchema: TableSchema = {
     projectId: "project_id",
     environmentId: "environment_id",
   },
+  requiredFilters: [{ column: "engine", value: "V2" }],
   columns: {
     run_id: {
       name: "run_id",

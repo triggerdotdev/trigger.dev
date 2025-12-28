@@ -9,7 +9,12 @@ import { TSQLParser } from "./grammar/TSQLParser.js";
 import { TSQLParseTreeConverter } from "./query/parser.js";
 import type { SelectQuery, SelectSetQuery, Expression } from "./query/ast.js";
 import { SyntaxError } from "./query/errors.js";
-import { createSchemaRegistry, type TableSchema, type FieldMappings } from "./query/schema.js";
+import {
+  createSchemaRegistry,
+  type TableSchema,
+  type FieldMappings,
+  type RequiredFilter,
+} from "./query/schema.js";
 import { createPrinterContext, type QuerySettings } from "./query/printer_context.js";
 import { printToClickHouse, type PrintResult } from "./query/printer.js";
 
@@ -62,6 +67,7 @@ export {
   type TableSchema,
   type ColumnSchema,
   type TenantColumnConfig,
+  type RequiredFilter,
   type SchemaRegistry,
   type ClickHouseType,
   type OutputColumnMetadata,
