@@ -987,6 +987,37 @@ describe("WHERE transform (whereTransform)", () => {
     expect(Object.values(params)).toContain("a");
     expect(Object.values(params)).toContain("b");
   });
+
+  it("should use raw column in GROUP BY for columns with whereTransform", () => {
+    const ctx = createPrefixedContext();
+    const { sql } = printQuery(
+      "SELECT batch_id, COUNT() as count FROM runs GROUP BY batch_id",
+      ctx
+    );
+
+    // SELECT should use the expression (adds prefix)
+    expect(sql).toContain("if(batch_id = '', NULL, concat('batch_', batch_id))");
+
+    // GROUP BY should use table-qualified raw column (not the expression)
+    // This avoids the "not in GROUP BY keys" error from ClickHouse
+    expect(sql).toMatch(/GROUP BY.*`?runs`?\.`?batch_id`?/);
+    expect(sql).not.toMatch(/GROUP BY.*concat\('batch_'/);
+  });
+
+  it("should work with GROUP BY and WHERE together", () => {
+    const ctx = createPrefixedContext();
+    const { sql, params } = printQuery(
+      "SELECT batch_id, COUNT() as count FROM runs WHERE batch_id != NULL GROUP BY batch_id",
+      ctx
+    );
+
+    // SELECT should use expression
+    expect(sql).toContain("if(batch_id = '', NULL, concat('batch_', batch_id))");
+
+    // Both WHERE and GROUP BY should use raw column
+    expect(sql).toMatch(/WHERE.*`?runs`?\.`?batch_id`?/);
+    expect(sql).toMatch(/GROUP BY.*`?runs`?\.`?batch_id`?/);
+  });
 });
 
 describe("Edge cases", () => {

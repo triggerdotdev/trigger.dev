@@ -107,6 +107,8 @@ export class ClickHousePrinter {
   private tableContexts: Map<string, TableSchema> = new Map();
   /** Column metadata collected during SELECT processing */
   private outputColumns: OutputColumnMetadata[] = [];
+  /** Whether we're currently processing GROUP BY expressions */
+  private inGroupByContext = false;
 
   constructor(
     private context: PrinterContext,
@@ -359,7 +361,15 @@ export class ClickHousePrinter {
     // Process other clauses
     const prewhere = node.prewhere ? this.visit(node.prewhere) : null;
     const whereStr = where ? this.visit(where) : null;
-    const groupBy = node.group_by ? node.group_by.map((col) => this.visit(col)) : null;
+
+    // Process GROUP BY with context flag to use raw columns for whereTransform columns
+    let groupBy: string[] | null = null;
+    if (node.group_by) {
+      this.inGroupByContext = true;
+      groupBy = node.group_by.map((col) => this.visit(col));
+      this.inGroupByContext = false;
+    }
+
     const having = node.having ? this.visit(node.having) : null;
     const orderBy = node.order_by ? node.order_by.map((col) => this.visit(col)) : null;
 
@@ -1669,9 +1679,16 @@ export class ClickHousePrinter {
   }
 
   /**
-   * Check if we're currently inside a comparison operation (WHERE context)
+   * Check if we're in a context where we should use raw column names
+   * instead of virtual column expressions (WHERE comparisons or GROUP BY)
    */
   private isInComparisonContext(): boolean {
+    // Check if we're in GROUP BY context
+    if (this.inGroupByContext) {
+      return true;
+    }
+
+    // Check if we're inside a comparison operation (WHERE/HAVING context)
     for (const node of this.stack) {
       if ((node as CompareOperation).expression_type === "compare_operation") {
         return true;
