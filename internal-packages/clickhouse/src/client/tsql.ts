@@ -116,11 +116,6 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
       fieldMappings: options.fieldMappings,
     });
 
-    // DEBUG: Log the generated SQL and params
-    console.log("[TSQL DEBUG] Input query:", options.query);
-    console.log("[TSQL DEBUG] Generated SQL:", sql);
-    console.log("[TSQL DEBUG] Params:", JSON.stringify(params, null, 2));
-
     // 2. Execute the query with stats
     const queryFn = reader.queryWithStats({
       name: options.name,
@@ -131,11 +126,6 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
     });
 
     const [error, result] = await queryFn(params);
-
-    // DEBUG: Log query result
-    console.log("[TSQL DEBUG] Query error:", error);
-    console.log("[TSQL DEBUG] Raw rows count:", result?.rows?.length ?? 0);
-    console.log("[TSQL DEBUG] Raw rows:", JSON.stringify(result?.rows?.slice(0, 5), null, 2));
 
     if (error) {
       return [error, null];
