@@ -1088,15 +1088,20 @@ export class ClickHousePrinter {
 
         // Look up table schema and get ClickHouse table name
         const tableSchema = this.lookupTable(tableName);
-        joinStrings.push(tableSchema.clickhouseName);
+
+        // Always add the TSQL table name as an alias if no explicit alias is provided
+        // This ensures table-qualified column references work in WHERE clauses
+        // (needed to avoid alias conflicts when columns have expressions)
+        const effectiveAlias = node.alias || tableName;
+        joinStrings.push(
+          `${tableSchema.clickhouseName} AS ${this.printIdentifier(effectiveAlias)}`
+        );
 
         // Register this table context for column name resolution
-        // Use the alias if provided, otherwise use the TSQL table name
-        const contextKey = node.alias || tableName;
-        this.tableContexts.set(contextKey, tableSchema);
+        this.tableContexts.set(effectiveAlias, tableSchema);
 
         // Add tenant isolation guard
-        extraWhere = this.createTenantGuard(tableSchema, node.alias || tableName);
+        extraWhere = this.createTenantGuard(tableSchema, effectiveAlias);
       } else if (
         (tableExpr as SelectQuery).expression_type === "select_query" ||
         (tableExpr as SelectSetQuery).expression_type === "select_set_query"
@@ -1638,6 +1643,18 @@ export class ClickHousePrinter {
     }
 
     // Check if this field is a virtual column
+    // BUT: if the column has whereTransform and we're in a comparison context,
+    // use the raw column instead of the expression (for efficient index usage)
+    const columnSchema = this.resolveFieldToColumnSchema(node.chain);
+    const inComparisonContext = this.isInComparisonContext();
+
+    if (columnSchema?.whereTransform && inComparisonContext) {
+      // Use raw column for WHERE comparisons when whereTransform is defined
+      // Must table-qualify to avoid alias conflicts with SELECT expressions
+      const tableQualifiedChain = this.resolveFieldChainWithTableAlias(node.chain);
+      return tableQualifiedChain.map((part) => this.printIdentifierOrIndex(part)).join(".");
+    }
+
     const virtualExpression = this.getVirtualColumnExpressionForField(node.chain);
     if (virtualExpression !== null) {
       // Return the expression wrapped in parentheses
@@ -1649,6 +1666,81 @@ export class ClickHousePrinter {
 
     // Print each chain element
     return resolvedChain.map((part) => this.printIdentifierOrIndex(part)).join(".");
+  }
+
+  /**
+   * Check if we're currently inside a comparison operation (WHERE context)
+   */
+  private isInComparisonContext(): boolean {
+    for (const node of this.stack) {
+      if ((node as CompareOperation).expression_type === "compare_operation") {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Resolve field chain with table alias prefix to avoid alias conflicts.
+   * This is used in WHERE clauses when a column has whereTransform to ensure
+   * we reference the raw column, not a SELECT alias with the same name.
+   */
+  private resolveFieldChainWithTableAlias(chain: Array<string | number>): Array<string | number> {
+    if (chain.length === 0) return chain;
+
+    const firstPart = chain[0];
+    if (typeof firstPart !== "string") return chain;
+
+    // If already qualified (table.column), use normal resolution
+    if (chain.length >= 2) {
+      return this.resolveFieldChain(chain);
+    }
+
+    // Unqualified reference - need to find the table and add its alias
+    const columnName = firstPart;
+    for (const [tableAlias, tableSchema] of this.tableContexts.entries()) {
+      const columnSchema = tableSchema.columns[columnName];
+      if (columnSchema) {
+        const resolvedColumnName = columnSchema.clickhouseName || columnSchema.name;
+        return [tableAlias, resolvedColumnName, ...chain.slice(1)];
+      }
+    }
+
+    // Not found in any table - return as-is
+    return chain;
+  }
+
+  /**
+   * Resolve a field chain to its column schema (if it references a known column)
+   */
+  private resolveFieldToColumnSchema(chain: Array<string | number>): ColumnSchema | null {
+    if (chain.length === 0) return null;
+
+    const firstPart = chain[0];
+    if (typeof firstPart !== "string") return null;
+
+    // Qualified reference: table.column
+    if (chain.length >= 2) {
+      const tableAlias = firstPart;
+      const tableSchema = this.tableContexts.get(tableAlias);
+      if (!tableSchema) return null;
+
+      const columnName = chain[1];
+      if (typeof columnName !== "string") return null;
+
+      return tableSchema.columns[columnName] || null;
+    }
+
+    // Unqualified reference
+    const columnName = firstPart;
+    for (const tableSchema of this.tableContexts.values()) {
+      const columnSchema = tableSchema.columns[columnName];
+      if (columnSchema) {
+        return columnSchema;
+      }
+    }
+
+    return null;
   }
 
   /**

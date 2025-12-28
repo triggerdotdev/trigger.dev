@@ -948,6 +948,25 @@ describe("WHERE transform (whereTransform)", () => {
     expect(sql).toContain("if(batch_id = '', NULL, concat('batch_', batch_id))");
   });
 
+  it("should use raw column in WHERE but expression in SELECT", () => {
+    const ctx = createPrefixedContext();
+    const { sql, params } = printQuery(
+      "SELECT batch_id FROM runs WHERE batch_id = 'batch_abc123'",
+      ctx
+    );
+
+    // SELECT should use the expression (adds prefix)
+    expect(sql).toContain("if(batch_id = '', NULL, concat('batch_', batch_id))");
+
+    // WHERE should use table-qualified raw column (not the expression), and value should be stripped
+    // The WHERE clause should compare `runs.batch_id` directly (table-qualified to avoid alias conflict)
+    expect(sql).toMatch(/WHERE.*equals\(`?runs`?\.`?batch_id`?,/);
+    expect(sql).not.toMatch(/WHERE.*concat\('batch_'/);
+
+    // The value should have prefix stripped
+    expect(Object.values(params)).toContain("abc123");
+  });
+
   it("should work with different prefix patterns", () => {
     const ctx = createPrefixedContext();
     const { params } = printQuery("SELECT * FROM runs WHERE schedule_id = 'sched_xyz789'", ctx);
