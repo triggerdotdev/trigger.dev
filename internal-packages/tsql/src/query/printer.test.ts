@@ -841,6 +841,135 @@ describe("Value mapping (valueMap)", () => {
   });
 });
 
+describe("WHERE transform (whereTransform)", () => {
+  /**
+   * Schema with whereTransform for batch_id column (strips prefix)
+   */
+  const prefixedIdSchema: TableSchema = {
+    name: "runs",
+    clickhouseName: "trigger_dev.task_runs_v2",
+    columns: {
+      id: { name: "id", ...column("String") },
+      batch_id: {
+        name: "batch_id",
+        ...column("String"),
+        // Transform strips the "batch_" prefix from user input
+        whereTransform: (value: string) => value.replace(/^batch_/, ""),
+        // Expression adds the prefix back in SELECT
+        expression: "if(batch_id = '', NULL, concat('batch_', batch_id))",
+      },
+      schedule_id: {
+        name: "schedule_id",
+        ...column("String"),
+        // Transform strips the "sched_" prefix
+        whereTransform: (value: string) => value.replace(/^sched_/, ""),
+      },
+      organization_id: { name: "organization_id", ...column("String") },
+      project_id: { name: "project_id", ...column("String") },
+      environment_id: { name: "environment_id", ...column("String") },
+    },
+    tenantColumns: {
+      organizationId: "organization_id",
+      projectId: "project_id",
+      environmentId: "environment_id",
+    },
+  };
+
+  function createPrefixedContext() {
+    const schema = createSchemaRegistry([prefixedIdSchema]);
+    return createPrinterContext({
+      organizationId: "org_test123",
+      projectId: "proj_test456",
+      environmentId: "env_test789",
+      schema,
+    });
+  }
+
+  it("should strip prefix from value in equality comparison", () => {
+    const ctx = createPrefixedContext();
+    const { params } = printQuery("SELECT * FROM runs WHERE batch_id = 'batch_abc123'", ctx);
+
+    // The "batch_" prefix should be stripped, leaving just "abc123"
+    expect(Object.values(params)).toContain("abc123");
+    expect(Object.values(params)).not.toContain("batch_abc123");
+  });
+
+  it("should strip prefix from values in IN clause", () => {
+    const ctx = createPrefixedContext();
+    const { params } = printQuery(
+      "SELECT * FROM runs WHERE batch_id IN ('batch_abc', 'batch_def', 'batch_ghi')",
+      ctx
+    );
+
+    // All prefixes should be stripped
+    expect(Object.values(params)).toContain("abc");
+    expect(Object.values(params)).toContain("def");
+    expect(Object.values(params)).toContain("ghi");
+    expect(Object.values(params)).not.toContain("batch_abc");
+  });
+
+  it("should strip prefix from value in NOT IN clause", () => {
+    const ctx = createPrefixedContext();
+    const { params } = printQuery("SELECT * FROM runs WHERE batch_id NOT IN ('batch_xyz')", ctx);
+
+    expect(Object.values(params)).toContain("xyz");
+    expect(Object.values(params)).not.toContain("batch_xyz");
+  });
+
+  it("should strip prefix from value in != comparison", () => {
+    const ctx = createPrefixedContext();
+    const { params } = printQuery("SELECT * FROM runs WHERE batch_id != 'batch_test'", ctx);
+
+    expect(Object.values(params)).toContain("test");
+    expect(Object.values(params)).not.toContain("batch_test");
+  });
+
+  it("should handle values without the prefix (pass through unchanged)", () => {
+    const ctx = createPrefixedContext();
+    const { params } = printQuery("SELECT * FROM runs WHERE batch_id = 'raw_value'", ctx);
+
+    // If no prefix to strip, the value passes through unchanged
+    expect(Object.values(params)).toContain("raw_value");
+  });
+
+  it("should not transform values for columns without whereTransform", () => {
+    const ctx = createPrefixedContext();
+    const { params } = printQuery("SELECT * FROM runs WHERE id = 'batch_abc123'", ctx);
+
+    // 'id' column has no whereTransform, so value passes through unchanged
+    expect(Object.values(params)).toContain("batch_abc123");
+  });
+
+  it("should use expression for SELECT output (virtual column)", () => {
+    const ctx = createPrefixedContext();
+    const { sql } = printQuery("SELECT batch_id FROM runs", ctx);
+
+    // The expression should be used in SELECT
+    expect(sql).toContain("if(batch_id = '', NULL, concat('batch_', batch_id))");
+  });
+
+  it("should work with different prefix patterns", () => {
+    const ctx = createPrefixedContext();
+    const { params } = printQuery("SELECT * FROM runs WHERE schedule_id = 'sched_xyz789'", ctx);
+
+    // The "sched_" prefix should be stripped
+    expect(Object.values(params)).toContain("xyz789");
+    expect(Object.values(params)).not.toContain("sched_xyz789");
+  });
+
+  it("should transform values in tuple/array for IN expressions", () => {
+    const ctx = createPrefixedContext();
+    const { params } = printQuery(
+      "SELECT * FROM runs WHERE batch_id IN ['batch_a', 'batch_b']",
+      ctx
+    );
+
+    // Both prefixes should be stripped
+    expect(Object.values(params)).toContain("a");
+    expect(Object.values(params)).toContain("b");
+  });
+});
+
 describe("Edge cases", () => {
   it("should handle empty string values", () => {
     const { sql, params } = printQuery("SELECT * FROM task_runs WHERE status = ''");
@@ -1180,10 +1309,7 @@ describe("Expression columns with division (cost/invocation_cost pattern)", () =
 
     it("should expand compute_cost in BETWEEN correctly", () => {
       const ctx = createCostExpressionContext();
-      const { sql } = printQuery(
-        "SELECT * FROM runs WHERE compute_cost BETWEEN 1.0 AND 10.0",
-        ctx
-      );
+      const { sql } = printQuery("SELECT * FROM runs WHERE compute_cost BETWEEN 1.0 AND 10.0", ctx);
 
       expect(sql).toContain("(cost_in_cents / 100.0) BETWEEN 1 AND 10");
     });
@@ -1564,10 +1690,7 @@ describe("Column metadata", () => {
 
     it("should generate implicit names for multiple aggregations without aliases", () => {
       const ctx = createMetadataTestContext();
-      const { columns } = printQuery(
-        "SELECT COUNT(), status FROM runs GROUP BY status",
-        ctx
-      );
+      const { columns } = printQuery("SELECT COUNT(), status FROM runs GROUP BY status", ctx);
 
       expect(columns).toHaveLength(2);
       expect(columns[0].name).toBe("count");
@@ -1578,10 +1701,7 @@ describe("Column metadata", () => {
 
     it("should generate implicit name for arithmetic expressions", () => {
       const ctx = createMetadataTestContext();
-      const { columns } = printQuery(
-        "SELECT usage_duration_ms + 100 FROM runs",
-        ctx
-      );
+      const { columns } = printQuery("SELECT usage_duration_ms + 100 FROM runs", ctx);
 
       expect(columns).toHaveLength(1);
       expect(columns[0].name).toBe("plus");
@@ -1611,10 +1731,7 @@ describe("Column metadata", () => {
 
     it("should add AS clause to generated SQL for implicit names", () => {
       const ctx = createMetadataTestContext();
-      const { sql, columns } = printQuery(
-        "SELECT COUNT(), status FROM runs GROUP BY status",
-        ctx
-      );
+      const { sql, columns } = printQuery("SELECT COUNT(), status FROM runs GROUP BY status", ctx);
 
       // The SQL should include an explicit AS clause for the COUNT()
       expect(sql).toContain("count() AS count");
@@ -1731,10 +1848,7 @@ describe("Field Mapping Value Transformation", () => {
   it("should pass through unmapped values unchanged", () => {
     const ctx = createFieldMappingContext();
     // Using a value that's not in the mapping
-    const { params } = printQuery(
-      "SELECT run_id FROM runs WHERE project_ref = 'unknown-ref'",
-      ctx
-    );
+    const { params } = printQuery("SELECT run_id FROM runs WHERE project_ref = 'unknown-ref'", ctx);
 
     // Value should remain unchanged since it's not in the mapping
     expect(Object.values(params)).toContain("unknown-ref");

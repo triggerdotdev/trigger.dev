@@ -105,7 +105,9 @@ export const runsSchema: TableSchema = {
       ...column("String", {
         description: "Batch ID (if part of a batch)",
         example: "batch_5678efgh",
+        expression: "if(batch_id = '', NULL, 'batch_' || batch_id)",
       }),
+      whereTransform: (value: string) => value.replace(/^batch_/, ""),
     },
 
     // Related runs

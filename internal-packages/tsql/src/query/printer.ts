@@ -1431,11 +1431,16 @@ export class ClickHousePrinter {
   }
 
   /**
-   * Transform a single string value using either valueMap or fieldMapping
+   * Transform a single string value using whereTransform, valueMap, or fieldMapping
    * Returns the transformed value, or the original value if no transformation applies
    */
   private transformSingleValue(columnSchema: ColumnSchema, value: string): string {
-    // First try static valueMap
+    // First try whereTransform function (highest priority)
+    if (columnSchema.whereTransform) {
+      return columnSchema.whereTransform(value);
+    }
+
+    // Then try static valueMap
     if (columnSchema.valueMap) {
       const internalValue = getInternalValue(columnSchema, value);
       if (internalValue !== value) {
@@ -1459,7 +1464,7 @@ export class ClickHousePrinter {
   }
 
   /**
-   * Transform an expression's values using the column's valueMap or fieldMapping if applicable
+   * Transform an expression's values using the column's whereTransform, valueMap, or fieldMapping if applicable
    * Returns the original expression if no transformation is needed
    */
   private transformValueMapExpression(
@@ -1472,9 +1477,10 @@ export class ClickHousePrinter {
     }
 
     // Check if column has any transformation mechanism
+    const hasWhereTransform = columnSchema.whereTransform !== undefined;
     const hasValueMap = columnSchema.valueMap && Object.keys(columnSchema.valueMap).length > 0;
     const hasFieldMap = hasFieldMapping(columnSchema);
-    if (!hasValueMap && !hasFieldMap) {
+    if (!hasWhereTransform && !hasValueMap && !hasFieldMap) {
       return expr;
     }
 

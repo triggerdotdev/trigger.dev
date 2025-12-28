@@ -154,6 +154,32 @@ export interface ColumnSchema {
    * ```
    */
   fieldMapping?: string;
+  /**
+   * Transform function for user input values in WHERE clauses.
+   *
+   * When set, this function is called to transform user-provided values before
+   * they are used in comparisons. This is useful for columns where:
+   * - Users query with prefixed IDs (e.g., "batch_xyz") but the column stores raw values ("xyz")
+   * - Values need normalization before comparison
+   *
+   * The function receives the user's input string and returns the transformed value
+   * to use in the actual ClickHouse query.
+   *
+   * For output transformation (adding prefixes in SELECT), use `expression` instead.
+   *
+   * @example
+   * ```typescript
+   * {
+   *   name: "batch_id",
+   *   type: "String",
+   *   // Strip "batch_" prefix from user input in WHERE clauses
+   *   whereTransform: (value) => value.replace(/^batch_/, ""),
+   *   // Add prefix back in SELECT output
+   *   expression: "if(batch_id = '', NULL, concat('batch_', batch_id))",
+   * }
+   * ```
+   */
+  whereTransform?: (value: string) => string;
 }
 
 /**
