@@ -15,6 +15,14 @@ const variants = {
     menuButtonDivider: "group-hover/table-row:border-charcoal-600/70",
     rowSelected: "bg-charcoal-750 group-hover/table-row:bg-charcoal-750",
   },
+  "bright/no-hover": {
+    header: "bg-transparent",
+    cell: "group-hover/table-row:bg-transparent",
+    stickyCell: "bg-background-bright",
+    menuButton: "bg-background-bright",
+    menuButtonDivider: "",
+    rowSelected: "bg-charcoal-750",
+  },
   dimmed: {
     header: "bg-background-dimmed",
     cell: "group-hover/table-row:bg-charcoal-800 group-has-[[tabindex='0']:focus]/table-row:bg-background-bright",

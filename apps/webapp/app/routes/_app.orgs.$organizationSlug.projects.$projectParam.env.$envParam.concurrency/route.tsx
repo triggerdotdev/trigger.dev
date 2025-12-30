@@ -331,7 +331,7 @@ function Upgradable({
               disabled={unallocated < 0 ? false : allocationModified}
             />
           </div>
-          <Table>
+          <Table variant="bright/no-hover">
             <TableBody>
               <TableRow>
                 <TableCell className="pl-0 text-text-bright">Extra concurrency purchased</TableCell>
@@ -434,7 +434,7 @@ function Upgradable({
           <div className="flex items-center pb-1">
             <Header3 className="grow">Concurrency allocation</Header3>
           </div>
-          <Table>
+          <Table variant="bright/no-hover">
             <TableHeader>
               <TableRow>
                 <TableHeaderCell className="pl-0">Environment</TableHeaderCell>
@@ -523,7 +523,7 @@ function NotUpgradable({ environments }: { environments: EnvironmentWithConcurre
         </>
       ) : null}
       <div className="mt-3 flex flex-col gap-3">
-        <Table>
+        <Table variant="bright/no-hover">
           <TableHeader>
             <TableRow>
               <TableHeaderCell className="pl-0">Environment</TableHeaderCell>
