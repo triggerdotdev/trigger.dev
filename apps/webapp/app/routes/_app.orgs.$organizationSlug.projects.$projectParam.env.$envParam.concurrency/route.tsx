@@ -19,6 +19,7 @@ import {
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
 import { useEffect, useState } from "react";
+import simplur from "simplur";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
@@ -705,7 +706,7 @@ function PurchaseConcurrencyModal({
                 </div>
                 <div className="grid grid-cols-2 text-xs">
                   <span className="text-text-dimmed">
-                    ({extraConcurrency / concurrencyPricing.stepSize} bundles)
+                    ({simplur`${extraConcurrency / concurrencyPricing.stepSize} bundle[|s]`})
                   </span>
                   <span className="justify-self-end text-text-dimmed">/mth</span>
                 </div>
@@ -726,8 +727,11 @@ function PurchaseConcurrencyModal({
                 </div>
                 <div className="grid grid-cols-2 text-xs">
                   <span className="text-text-dimmed">
-                    ({(amountValue - extraConcurrency) / concurrencyPricing.stepSize} bundles @{" "}
-                    {formatCurrency(concurrencyPricing.centsPerStep / 100, true)}/mth)
+                    (
+                    {simplur`${
+                      (amountValue - extraConcurrency) / concurrencyPricing.stepSize
+                    } bundle[|s]`}{" "}
+                    @ {formatCurrency(concurrencyPricing.centsPerStep / 100, true)}/mth)
                   </span>
                   <span className="justify-self-end text-text-dimmed">/mth</span>
                 </div>
@@ -746,7 +750,7 @@ function PurchaseConcurrencyModal({
                 </div>
                 <div className="grid grid-cols-2 text-xs">
                   <span className="text-text-dimmed">
-                    ({amountValue / concurrencyPricing.stepSize} bundles)
+                    ({simplur`${amountValue / concurrencyPricing.stepSize} bundle[|s]`})
                   </span>
                   <span className="justify-self-end text-text-dimmed">/mth</span>
                 </div>
