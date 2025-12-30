@@ -1,6 +1,7 @@
 import { conform, useFieldList, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import {
+  ArrowDownIcon,
   EnvelopeIcon,
   ExclamationTriangleIcon,
   InformationCircleIcon,
@@ -379,8 +380,15 @@ function Upgradable({
                   )}
                 </TableCell>
               </TableRow>
-              <TableRow className={allocationModified ? undefined : "after:bg-transparent"}>
-                <TableCell colSpan={2} className="py-0">
+              <TableRow
+                className={
+                  allocationModified || unallocated > 0 ? undefined : "after:bg-transparent"
+                }
+              >
+                <TableCell
+                  colSpan={2}
+                  className={cn("py-0", (unallocated > 0 || allocationModified) && "pr-0")}
+                >
                   <div className="flex h-10 items-center">
                     {allocationModified ? (
                       unallocated < 0 ? (
@@ -419,6 +427,16 @@ function Upgradable({
                           </Button>
                         </div>
                       )
+                    ) : unallocated > 0 ? (
+                      <div className="flex h-full w-full items-center justify-between bg-success/10 px-2.5">
+                        <div className="flex items-center justify-start gap-1">
+                          <InformationCircleIcon className="size-4 text-success" />
+                          <span className="text-success">
+                            You have {unallocated} extra concurrency available to allocate below.
+                          </span>
+                        </div>
+                        <ArrowDownIcon className="size-4 animate-bounce text-success" />
+                      </div>
                     ) : (
                       <></>
                     )}
