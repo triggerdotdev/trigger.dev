@@ -452,7 +452,12 @@ function Upgradable({
               {environments.map((environment, index) => (
                 <TableRow key={environment.id}>
                   <TableCell>
-                    <EnvironmentCombo environment={environment} />
+                    <EnvironmentCombo
+                      environment={environment}
+                      className="max-w-[18ch]"
+                      tooltipSideOffset={6}
+                      tooltipSide="top"
+                    />
                   </TableCell>
                   <TableCell alignment="right">{environment.planConcurrencyLimit}</TableCell>
                   <TableCell alignment="right">

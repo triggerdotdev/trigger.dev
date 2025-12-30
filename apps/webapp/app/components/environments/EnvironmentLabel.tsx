@@ -51,10 +51,14 @@ export function EnvironmentCombo({
   environment,
   className,
   iconClassName,
+  tooltipSideOffset,
+  tooltipSide,
 }: {
   environment: Environment;
   className?: string;
   iconClassName?: string;
+  tooltipSideOffset?: number;
+  tooltipSide?: "top" | "right" | "bottom" | "left";
 }) {
   return (
     <span className={cn("flex items-center gap-1.5 text-sm text-text-bright", className)}>
@@ -62,7 +66,11 @@ export function EnvironmentCombo({
         environment={environment}
         className={cn("size-4.5 shrink-0", iconClassName)}
       />
-      <EnvironmentLabel environment={environment} />
+      <EnvironmentLabel
+        environment={environment}
+        tooltipSideOffset={tooltipSideOffset}
+        tooltipSide={tooltipSide}
+      />
     </span>
   );
 }
@@ -70,9 +78,13 @@ export function EnvironmentCombo({
 export function EnvironmentLabel({
   environment,
   className,
+  tooltipSideOffset = 34,
+  tooltipSide = "right",
 }: {
   environment: Environment;
   className?: string;
+  tooltipSideOffset?: number;
+  tooltipSide?: "top" | "right" | "bottom" | "left";
 }) {
   const spanRef = useRef<HTMLSpanElement>(null);
   const [isTruncated, setIsTruncated] = useState(false);
@@ -115,9 +127,10 @@ export function EnvironmentLabel({
             {text}
           </span>
         }
-        side="right"
+        side={tooltipSide}
         variant="dark"
-        sideOffset={34}
+        sideOffset={tooltipSideOffset}
+        disableHoverableContent
       />
     );
   }
