@@ -86,7 +86,7 @@ function getLevelBorderColor(level: LogEntry["level"]): string {
     case "TRACE":
     case "LOG":
     default:
-      return "border-l-transparent";
+      return "border-l-transparent hover:border-l-charcoal-800";
   }
 }
 
