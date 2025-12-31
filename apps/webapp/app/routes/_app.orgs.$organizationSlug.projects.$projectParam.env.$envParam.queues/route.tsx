@@ -499,7 +499,7 @@ export default function Page() {
                     >
                       Limited by
                     </TableHeaderCell>
-                    <TableHeaderCell className="w-[1%] pl-24">
+                    <TableHeaderCell className="w-[1%] pl-32">
                       <span className="sr-only">Pause/resume</span>
                     </TableHeaderCell>
                   </TableRow>
@@ -571,7 +571,7 @@ export default function Page() {
                           <TableCell
                             alignment="right"
                             className={cn(
-                              "w-[1%] tabular-nums",
+                              "w-[1%] pl-16 tabular-nums",
                               queue.paused ? "opacity-50" : undefined
                             )}
                           >
@@ -580,7 +580,7 @@ export default function Page() {
                           <TableCell
                             alignment="right"
                             className={cn(
-                              "w-[1%] tabular-nums",
+                              "w-[1%] pl-16 tabular-nums",
                               queue.paused ? "opacity-50" : undefined,
                               queue.running > 0 && "text-text-bright",
                               isAtLimit && "text-warning"
@@ -591,7 +591,7 @@ export default function Page() {
                           <TableCell
                             alignment="right"
                             className={cn(
-                              "w-[1%] tabular-nums",
+                              "w-[1%] pl-16 tabular-nums",
                               queue.paused ? "opacity-50" : undefined,
                               queue.concurrency?.overriddenAt && "font-medium text-text-bright"
                             )}
@@ -601,7 +601,7 @@ export default function Page() {
                           <TableCell
                             alignment="right"
                             className={cn(
-                              "w-[1%]",
+                              "w-[1%] pl-16",
                               queue.paused ? "opacity-50" : undefined,
                               isAtLimit && "text-warning",
                               queue.concurrency?.overriddenAt && "font-medium text-text-bright"
