@@ -392,7 +392,7 @@ export default function Page() {
                     period: "30d",
                     rootOnly: false,
                   })}
-                  tooltip="View runs"
+                  tooltip="View running runs"
                 />
               }
               compactThreshold={1000000}
