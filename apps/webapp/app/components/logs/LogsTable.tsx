@@ -1,4 +1,5 @@
-import { ArrowPathIcon, ArrowTopRightOnSquareIcon } from "@heroicons/react/20/solid";
+import { ArrowPathIcon } from "@heroicons/react/20/solid";
+import { Link } from "@remix-run/react";
 import { formatDurationNanoseconds } from "@trigger.dev/core/v3";
 import { type ReactNode, useEffect, useRef } from "react";
 import { cn } from "~/utils/cn";
@@ -11,6 +12,7 @@ import { v3RunSpanPath } from "~/utils/pathBuilder";
 import { DateTime } from "../primitives/DateTime";
 import { Paragraph } from "../primitives/Paragraph";
 import { Spinner } from "../primitives/Spinner";
+import { SimpleTooltip } from "../primitives/Tooltip";
 import {
   Table,
   TableBlankRow,
@@ -208,14 +210,18 @@ export function LogsTable({
                     <DateTime date={log.startTime} />
                   </TableCell>
                   <TableCell>
-                    <a
-                      href={runPath}
-                      className="flex items-center gap-1 text-blue-500 hover:underline"
-                      title="View run"
-                    >
-                      <span className="font-mono text-xs">{log.runId.slice(0, 12)}...</span>
-                      <ArrowTopRightOnSquareIcon className="size-3" />
-                    </a>
+                    <SimpleTooltip
+                      content="Jump to run"
+                      disableHoverableContent
+                      button={
+                        <Link
+                          to={runPath}
+                          className="flex items-center gap-1 text-blue-500 hover:text-blue-400"
+                        >
+                          {log.runId.slice(0, 12)}…
+                        </Link>
+                      }
+                    />
                   </TableCell>
                   <TableCell onClick={handleRowClick} hasAction>
                     <span className="font-mono text-xs">{log.taskIdentifier}</span>
