@@ -229,7 +229,7 @@ export function LogsTable({
                   <TableCell onClick={handleRowClick} hasAction>
                     <span
                       className={cn(
-                        "inline-flex items-center rounded border px-1.5 py-0.5 text-xs font-medium uppercase",
+                        "inline-flex items-center rounded border px-1 py-0.5 text-xxs font-medium uppercase tracking-wider",
                         getLevelColor(log.level)
                       )}
                     >
@@ -239,7 +239,7 @@ export function LogsTable({
                   <TableCell onClick={handleRowClick} hasAction>
                     <span
                       className={cn(
-                        "inline-flex items-center rounded border px-1.5 py-0.5 text-xs font-medium",
+                        "inline-flex items-center rounded border px-1 py-0.5 text-xxs font-medium uppercase tracking-wider",
                         getStatusColor(log.status)
                       )}
                     >
