@@ -166,6 +166,7 @@ export const runsSchema: TableSchema = {
       name: "region",
       clickhouseName: "worker_queue",
       ...column("String", { description: "Region", example: "us-east-1" }),
+      expression: "if(startsWith(worker_queue, 'cm'), NULL, worker_queue)",
     },
 
     // Timing
