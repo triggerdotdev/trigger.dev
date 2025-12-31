@@ -89,10 +89,7 @@ function getLevelBorderColor(level: LogEntry["level"]): string {
 }
 
 // Case-insensitive text highlighting
-function highlightText(
-  text: string,
-  searchTerm: string | undefined
-): ReactNode {
+function highlightText(text: string, searchTerm: string | undefined): ReactNode {
   if (!searchTerm || searchTerm.trim() === "") {
     return text;
   }
@@ -161,7 +158,7 @@ export function LogsTable({
 
   return (
     <div className="relative h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-      <Table variant={variant}>
+      <Table variant="compact/mono">
         <TableHeader>
           <TableRow>
             <TableHeaderCell>Time</TableHeaderCell>
@@ -197,11 +194,9 @@ export function LogsTable({
                 <TableRow
                   key={log.id}
                   className={cn(
-                    "cursor-pointer transition-colors border-l-2",
+                    "cursor-pointer border-l-2 transition-colors",
                     getLevelBorderColor(log.level),
-                    isSelected
-                      ? "bg-charcoal-750"
-                      : "hover:bg-charcoal-850"
+                    isSelected ? "bg-charcoal-750" : "hover:bg-charcoal-850"
                   )}
                   isSelected={isSelected}
                 >
@@ -255,10 +250,7 @@ export function LogsTable({
                       : "–"}
                   </TableCell>
                   <TableCell className="max-w-0 truncate" onClick={handleRowClick} hasAction>
-                    <span
-                      className="block truncate font-mono text-xs"
-                      title={log.message}
-                    >
+                    <span className="block truncate font-mono text-xs" title={log.message}>
                       {highlightText(log.message, searchTerm)}
                     </span>
                   </TableCell>
@@ -270,10 +262,7 @@ export function LogsTable({
       </Table>
       {/* Infinite scroll trigger */}
       {hasMore && logs.length > 0 && (
-        <div
-          ref={loadMoreRef}
-          className="flex items-center justify-center py-4"
-        >
+        <div ref={loadMoreRef} className="flex items-center justify-center py-4">
           {isLoadingMore && (
             <div className="flex items-center gap-2">
               <Spinner /> <span className="text-text-dimmed">Loading more…</span>

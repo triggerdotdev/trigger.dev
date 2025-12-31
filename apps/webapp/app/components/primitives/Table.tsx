@@ -8,7 +8,10 @@ import { InfoIconTooltip } from "./Tooltip";
 const variants = {
   bright: {
     header: "bg-background-bright",
+    headerCell: "px-3 py-2.5 pb-3 text-sm",
     cell: "group-hover/table-row:bg-charcoal-750 group-has-[[tabindex='0']:focus]/table-row:bg-charcoal-750",
+    cellSize: "px-3 py-3",
+    cellText: "text-xs",
     stickyCell: "bg-background-bright group-hover/table-row:bg-charcoal-750",
     menuButton:
       "bg-background-bright group-hover/table-row:bg-charcoal-750 group-hover/table-row:ring-charcoal-600/70 group-has-[[tabindex='0']:focus]/table-row:bg-charcoal-750",
@@ -17,7 +20,22 @@ const variants = {
   },
   dimmed: {
     header: "bg-background-dimmed",
+    headerCell: "px-3 py-2.5 pb-3 text-sm",
     cell: "group-hover/table-row:bg-charcoal-800 group-has-[[tabindex='0']:focus]/table-row:bg-background-bright",
+    cellSize: "px-3 py-3",
+    cellText: "text-xs",
+    stickyCell: "group-hover/table-row:bg-charcoal-800",
+    menuButton:
+      "bg-background-dimmed group-hover/table-row:bg-charcoal-800 group-hover/table-row:ring-grid-bright group-has-[[tabindex='0']:focus]/table-row:bg-background-bright",
+    menuButtonDivider: "group-hover/table-row:border-grid-bright",
+    rowSelected: "bg-charcoal-750 group-hover/table-row:bg-charcoal-750",
+  },
+  "compact/mono": {
+    header: "bg-background-dimmed",
+    headerCell: "px-2 py-1.5 text-sm",
+    cell: "group-hover/table-row:bg-charcoal-800 group-has-[[tabindex='0']:focus]/table-row:bg-background-bright",
+    cellSize: "px-2 py-1.5",
+    cellText: "text-xs font-mono",
     stickyCell: "group-hover/table-row:bg-charcoal-800",
     menuButton:
       "bg-background-dimmed group-hover/table-row:bg-charcoal-800 group-hover/table-row:ring-grid-bright group-has-[[tabindex='0']:focus]/table-row:bg-background-bright",
@@ -136,6 +154,7 @@ type TableHeaderCellProps = TableCellBasicProps & {
 
 export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellProps>(
   ({ className, alignment = "left", children, colSpan, hiddenLabel = false, tooltip }, ref) => {
+    const { variant } = useContext(TableContext);
     let alignmentClassName = "text-left";
     switch (alignment) {
       case "center":
@@ -151,7 +170,8 @@ export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellP
         ref={ref}
         scope="col"
         className={cn(
-          "px-3 py-2.5 pb-3 align-middle text-sm font-medium text-text-bright",
+          "align-middle font-medium text-text-bright",
+          variants[variant].headerCell,
           alignmentClassName,
           className
         )}
@@ -217,23 +237,28 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
         break;
     }
 
+    const { variant } = useContext(TableContext);
     const flexClasses = cn(
-      "flex w-full whitespace-nowrap px-3 py-3 items-center text-xs text-text-dimmed",
+      "flex w-full whitespace-nowrap items-center text-text-dimmed",
+      variants[variant].cellSize,
+      variants[variant].cellText,
       alignment === "left"
         ? "justify-start text-left"
         : alignment === "center"
         ? "justify-center text-center"
         : "justify-end text-right"
     );
-    const { variant } = useContext(TableContext);
 
     return (
       <td
         ref={ref}
         className={cn(
-          "text-xs text-charcoal-400 has-[[tabindex='0']:focus]:before:absolute has-[[tabindex='0']:focus]:before:-top-px has-[[tabindex='0']:focus]:before:left-0 has-[[tabindex='0']:focus]:before:h-px has-[[tabindex='0']:focus]:before:w-3 has-[[tabindex='0']:focus]:before:bg-grid-dimmed has-[[tabindex='0']:focus]:after:absolute has-[[tabindex='0']:focus]:after:bottom-0 has-[[tabindex='0']:focus]:after:left-0 has-[[tabindex='0']:focus]:after:right-0 has-[[tabindex='0']:focus]:after:h-px has-[[tabindex='0']:focus]:after:bg-grid-dimmed",
+          "text-charcoal-400 has-[[tabindex='0']:focus]:before:absolute has-[[tabindex='0']:focus]:before:-top-px has-[[tabindex='0']:focus]:before:left-0 has-[[tabindex='0']:focus]:before:h-px has-[[tabindex='0']:focus]:before:w-3 has-[[tabindex='0']:focus]:before:bg-grid-dimmed has-[[tabindex='0']:focus]:after:absolute has-[[tabindex='0']:focus]:after:bottom-0 has-[[tabindex='0']:focus]:after:left-0 has-[[tabindex='0']:focus]:after:right-0 has-[[tabindex='0']:focus]:after:h-px has-[[tabindex='0']:focus]:after:bg-grid-dimmed",
+          variants[variant].cellText,
           variants[variant].cell,
-          to || onClick || hasAction ? "cursor-pointer" : "cursor-default px-3 py-3 align-middle",
+          to || onClick || hasAction
+            ? "cursor-pointer"
+            : cn("cursor-default align-middle", variants[variant].cellSize),
           !to && !onClick && alignmentClassName,
           isSticky &&
             "[&:has(.group-hover/table-row:block)]:w-auto sticky right-0 bg-background-dimmed",
