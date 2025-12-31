@@ -8,7 +8,6 @@ import {
   ClockIcon,
   Cog8ToothIcon,
   CogIcon,
-  DocumentTextIcon,
   FolderIcon,
   FolderOpenIcon,
   GlobeAmericasIcon,
@@ -24,9 +23,10 @@ import {
 import { Link, useNavigation } from "@remix-run/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import simplur from "simplur";
-import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
+import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
+import { LogsIcon } from "~/assets/icons/LogsIcon";
 import { RunsIconExtraSmall } from "~/assets/icons/RunsIcon";
 import { TaskIconSmall } from "~/assets/icons/TaskIcon";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
@@ -57,10 +57,10 @@ import {
   v3BatchesPath,
   v3BillingPath,
   v3BulkActionsPath,
-  v3LogsPath,
   v3DeploymentsPath,
   v3EnvironmentPath,
   v3EnvironmentVariablesPath,
+  v3LogsPath,
   v3ProjectAlertsPath,
   v3ProjectPath,
   v3ProjectSettingsPath,
@@ -264,8 +264,8 @@ export function SideMenu({
             />
             <SideMenuItem
               name="Logs"
-              icon={DocumentTextIcon}
-              activeIconColor="text-deployments"
+              icon={LogsIcon}
+              activeIconColor="text-logs"
               to={v3LogsPath(organization, project, environment)}
               data-action="logs"
             />
