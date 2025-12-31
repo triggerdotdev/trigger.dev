@@ -399,6 +399,16 @@ describe("Parameter Safety", () => {
 });
 
 describe("Optional Tenant Filters", () => {
+  /**
+   * Helper to extract the WHERE clause from SQL for more precise testing.
+   * This is needed because SELECT * expansion includes all columns,
+   * but we only want to check what's in the WHERE clause for tenant filtering.
+   */
+  function getWhereClause(sql: string): string {
+    const whereMatch = sql.match(/WHERE\s+(.*?)(?:\s+(?:ORDER|GROUP|LIMIT|$))/is);
+    return whereMatch ? whereMatch[1] : "";
+  }
+
   describe("Organization ID is always required", () => {
     it("should always inject organization guard even with optional project/env", () => {
       const { sql, params } = compile("SELECT * FROM task_runs", {
@@ -406,13 +416,15 @@ describe("Optional Tenant Filters", () => {
         environmentId: undefined,
       });
 
-      // Must contain organization_id
-      expect(sql).toContain("organization_id");
+      const whereClause = getWhereClause(sql);
+
+      // Must contain organization_id in WHERE clause
+      expect(whereClause).toContain("organization_id");
       expect(Object.values(params)).toContain("org_tenant1");
 
-      // Should NOT contain project_id or environment_id guards
-      expect(sql).not.toContain("project_id");
-      expect(sql).not.toContain("environment_id");
+      // Should NOT contain project_id or environment_id guards in WHERE clause
+      expect(whereClause).not.toContain("project_id");
+      expect(whereClause).not.toContain("environment_id");
     });
   });
 
@@ -423,14 +435,16 @@ describe("Optional Tenant Filters", () => {
         environmentId: undefined,
       });
 
-      // Must contain organization_id and project_id
-      expect(sql).toContain("organization_id");
-      expect(sql).toContain("project_id");
+      const whereClause = getWhereClause(sql);
+
+      // Must contain organization_id and project_id in WHERE clause
+      expect(whereClause).toContain("organization_id");
+      expect(whereClause).toContain("project_id");
       expect(Object.values(params)).toContain("org_tenant1");
       expect(Object.values(params)).toContain("proj_tenant1");
 
-      // Should NOT contain environment_id guard
-      expect(sql).not.toContain("environment_id");
+      // Should NOT contain environment_id guard in WHERE clause
+      expect(whereClause).not.toContain("environment_id");
     });
 
     it("should allow querying across all projects when projectId is omitted", () => {
@@ -439,10 +453,12 @@ describe("Optional Tenant Filters", () => {
         environmentId: undefined,
       });
 
-      // Only org guard should be present
-      expect(sql).toContain("organization_id");
+      const whereClause = getWhereClause(sql);
+
+      // Only org guard should be present in WHERE clause
+      expect(whereClause).toContain("organization_id");
       expect(Object.values(params)).toContain("org_tenant1");
-      expect(sql).not.toContain("project_id");
+      expect(whereClause).not.toContain("project_id");
     });
   });
 
@@ -450,10 +466,12 @@ describe("Optional Tenant Filters", () => {
     it("should inject org, project, and env guards when all provided", () => {
       const { sql, params } = compile("SELECT * FROM task_runs");
 
-      // All three should be present (default options include all)
-      expect(sql).toContain("organization_id");
-      expect(sql).toContain("project_id");
-      expect(sql).toContain("environment_id");
+      const whereClause = getWhereClause(sql);
+
+      // All three should be present in WHERE clause (default options include all)
+      expect(whereClause).toContain("organization_id");
+      expect(whereClause).toContain("project_id");
+      expect(whereClause).toContain("environment_id");
       expect(Object.values(params)).toContain("org_tenant1");
       expect(Object.values(params)).toContain("proj_tenant1");
       expect(Object.values(params)).toContain("env_tenant1");
@@ -465,14 +483,16 @@ describe("Optional Tenant Filters", () => {
         environmentId: undefined,
       });
 
-      // Org and project guards should be present
-      expect(sql).toContain("organization_id");
-      expect(sql).toContain("project_id");
+      const whereClause = getWhereClause(sql);
+
+      // Org and project guards should be present in WHERE clause
+      expect(whereClause).toContain("organization_id");
+      expect(whereClause).toContain("project_id");
       expect(Object.values(params)).toContain("org_tenant1");
       expect(Object.values(params)).toContain("proj_tenant1");
 
-      // Environment guard should NOT be present
-      expect(sql).not.toContain("environment_id");
+      // Environment guard should NOT be present in WHERE clause
+      expect(whereClause).not.toContain("environment_id");
     });
   });
 

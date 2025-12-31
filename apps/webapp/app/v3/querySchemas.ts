@@ -164,7 +164,7 @@ export const runsSchema: TableSchema = {
     },
     region: {
       name: "region",
-      clickhouseName: "region",
+      clickhouseName: "worker_queue",
       ...column("String", { description: "Region", example: "us-east-1" }),
     },
 

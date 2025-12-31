@@ -338,13 +338,16 @@ export class ClickHousePrinter {
     }
 
     // Process SELECT columns and collect metadata
+    // Using flatMap because asterisk expansion can return multiple columns
     let columns: string[];
     if (node.select && node.select.length > 0) {
       // Only collect metadata for top-level queries (not subqueries)
       if (isTopLevelQuery) {
         this.outputColumns = [];
       }
-      columns = node.select.map((col) => this.visitSelectColumnWithMetadata(col, isTopLevelQuery));
+      columns = node.select.flatMap((col) =>
+        this.visitSelectColumnWithMetadata(col, isTopLevelQuery)
+      );
     } else {
       columns = ["1"];
     }
@@ -476,11 +479,22 @@ export class ClickHousePrinter {
    * - `SELECT execution_duration` → `SELECT (expr) AS execution_duration`
    * - `SELECT execution_duration AS dur` → `SELECT (expr) AS dur` (Alias handles it)
    * - `SELECT run_id` → `SELECT run_id` (not a virtual column)
+   * - `SELECT *` → Expands to all selectable columns from the table(s)
    *
    * @param col - The column expression
    * @param collectMetadata - Whether to collect column metadata (only for top-level queries)
+   * @returns Array of SQL column strings (usually one, but multiple for asterisk expansion)
    */
-  private visitSelectColumnWithMetadata(col: Expression, collectMetadata: boolean): string {
+  private visitSelectColumnWithMetadata(col: Expression, collectMetadata: boolean): string[] {
+    // Check for asterisk expansion first
+    if ((col as Field).expression_type === "field") {
+      const field = col as Field;
+      const asteriskExpansion = this.expandAsterisk(field.chain, collectMetadata);
+      if (asteriskExpansion !== null) {
+        return asteriskExpansion;
+      }
+    }
+
     // Extract output name and source column before visiting
     const { outputName, sourceColumn, inferredType } = this.analyzeSelectColumn(col);
 
@@ -551,7 +565,136 @@ export class ClickHousePrinter {
       this.outputColumns.push(metadata);
     }
 
-    return sqlResult;
+    return [sqlResult];
+  }
+
+  /**
+   * Expand an asterisk field to all selectable columns from the table(s)
+   *
+   * @param chain - The field chain (["*"] for SELECT *, [tableName, "*"] for table.*)
+   * @param collectMetadata - Whether to collect column metadata
+   * @returns Array of SQL column strings, or null if not an asterisk
+   */
+  private expandAsterisk(
+    chain: Array<string | number>,
+    collectMetadata: boolean
+  ): string[] | null {
+    // Check for SELECT * (chain: ["*"])
+    if (chain.length === 1 && chain[0] === "*") {
+      return this.expandAllTableColumns(collectMetadata);
+    }
+
+    // Check for table.* (chain: [tableName, "*"])
+    if (chain.length === 2 && chain[1] === "*") {
+      const tableAlias = chain[0];
+      if (typeof tableAlias === "string") {
+        return this.expandTableColumns(tableAlias, collectMetadata);
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Expand SELECT * to all selectable columns from all tables in context
+   */
+  private expandAllTableColumns(collectMetadata: boolean): string[] {
+    const results: string[] = [];
+
+    // Iterate through all tables in the context
+    for (const [tableAlias, tableSchema] of this.tableContexts.entries()) {
+      const tableColumns = this.getSelectableColumnsFromSchema(
+        tableSchema,
+        tableAlias,
+        collectMetadata
+      );
+      results.push(...tableColumns);
+    }
+
+    // If no tables in context, fall back to literal *
+    if (results.length === 0) {
+      return ["*"];
+    }
+
+    return results;
+  }
+
+  /**
+   * Expand table.* to all selectable columns from a specific table
+   */
+  private expandTableColumns(tableAlias: string, collectMetadata: boolean): string[] {
+    const tableSchema = this.tableContexts.get(tableAlias);
+
+    if (!tableSchema) {
+      // Table not found in context, fall back to literal table.*
+      return [`${this.printIdentifier(tableAlias)}.*`];
+    }
+
+    return this.getSelectableColumnsFromSchema(tableSchema, tableAlias, collectMetadata);
+  }
+
+  /**
+   * Get all selectable columns from a table schema as SQL strings
+   *
+   * @param tableSchema - The table schema
+   * @param tableAlias - The alias used for the table in the query (for table-qualified columns)
+   * @param collectMetadata - Whether to collect column metadata
+   * @returns Array of SQL column strings
+   */
+  private getSelectableColumnsFromSchema(
+    tableSchema: TableSchema,
+    tableAlias: string,
+    collectMetadata: boolean
+  ): string[] {
+    const results: string[] = [];
+
+    for (const [columnName, columnSchema] of Object.entries(tableSchema.columns)) {
+      // Skip non-selectable columns
+      if (columnSchema.selectable === false) {
+        continue;
+      }
+
+      // Build the SQL for this column
+      let sqlResult: string;
+
+      // Check if this is a virtual column (has expression)
+      if (isVirtualColumn(columnSchema)) {
+        // Virtual column: use the expression with an alias
+        sqlResult = `(${columnSchema.expression}) AS ${this.printIdentifier(columnName)}`;
+      } else {
+        // Regular column: use the actual ClickHouse column name
+        const clickhouseName = columnSchema.clickhouseName ?? columnName;
+
+        // If the column has a different internal name, add an alias
+        if (clickhouseName !== columnName) {
+          sqlResult = `${this.printIdentifier(clickhouseName)} AS ${this.printIdentifier(columnName)}`;
+        } else {
+          sqlResult = this.printIdentifier(columnName);
+        }
+      }
+
+      results.push(sqlResult);
+
+      // Collect metadata if requested
+      if (collectMetadata) {
+        const metadata: OutputColumnMetadata = {
+          name: columnName,
+          type: columnSchema.type,
+        };
+
+        if (columnSchema.customRenderType) {
+          metadata.customRenderType = columnSchema.customRenderType;
+        }
+
+        if (columnSchema.description) {
+          metadata.description = columnSchema.description;
+        }
+
+        this.outputColumns.push(metadata);
+      }
+    }
+
+    return results;
   }
 
   /**
@@ -588,9 +731,29 @@ export class ClickHousePrinter {
     if ((col as Call).expression_type === "call") {
       const call = col as Call;
       const inferredType = this.inferCallType(call);
+
+      // For value-preserving aggregates (SUM, AVG, MIN, MAX), propagate customRenderType
+      // from the source column. COUNT and other aggregates return counts, not values,
+      // so they shouldn't inherit the source column's render type.
+      const valuePreservingAggregates = ["sum", "sumif", "avg", "avgif", "min", "minif", "max", "maxif"];
+      const funcName = call.name.toLowerCase();
+      let sourceColumn: ColumnSchema | null = null;
+
+      if (valuePreservingAggregates.includes(funcName) && call.args.length > 0) {
+        const firstArg = call.args[0];
+        if ((firstArg as Field).expression_type === "field") {
+          const field = firstArg as Field;
+          const columnInfo = this.resolveFieldToColumn(field.chain);
+          // Only propagate customRenderType, not the full column schema
+          if (columnInfo.column?.customRenderType) {
+            sourceColumn = { type: inferredType, customRenderType: columnInfo.column.customRenderType };
+          }
+        }
+      }
+
       return {
         outputName: this.generateImplicitName(call),
-        sourceColumn: null,
+        sourceColumn,
         inferredType,
       };
     }

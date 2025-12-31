@@ -104,15 +104,30 @@ function printQuery(query: string, context?: PrinterContext) {
 
 describe("ClickHousePrinter", () => {
   describe("Basic SELECT statements", () => {
-    it("should print a simple SELECT *", () => {
-      const { sql, params } = printQuery("SELECT * FROM task_runs");
+    it("should expand SELECT * to individual columns", () => {
+      const { sql, params, columns } = printQuery("SELECT * FROM task_runs");
 
-      expect(sql).toContain("SELECT *");
+      // SELECT * should be expanded to individual columns
+      expect(sql).toContain("SELECT ");
+      expect(sql).not.toContain("SELECT *"); // Should NOT contain literal *
       expect(sql).toContain("FROM trigger_dev.task_runs_v2");
-      // Should include tenant guards
+
+      // Should include all columns from the schema
+      expect(sql).toContain("id");
+      expect(sql).toContain("status");
+      expect(sql).toContain("task_identifier");
+      expect(sql).toContain("created_at");
+      expect(sql).toContain("is_test");
+
+      // Should include tenant guards in WHERE
       expect(sql).toContain("organization_id");
       expect(sql).toContain("project_id");
       expect(sql).toContain("environment_id");
+
+      // Should return column metadata for all expanded columns
+      expect(columns.length).toBeGreaterThan(0);
+      expect(columns.some((c) => c.name === "id")).toBe(true);
+      expect(columns.some((c) => c.name === "status")).toBe(true);
     });
 
     it("should print SELECT with specific columns", () => {
@@ -133,6 +148,93 @@ describe("ClickHousePrinter", () => {
 
       expect(sql).toContain("id AS run_id");
       expect(sql).toContain("status AS run_status");
+    });
+
+    it("should expand SELECT * with column name mapping", () => {
+      const schema = createSchemaRegistry([runsSchema]);
+      const ctx = createPrinterContext({
+        organizationId: "org_test",
+        projectId: "proj_test",
+        environmentId: "env_test",
+        schema,
+      });
+
+      const { sql, columns } = printQuery("SELECT * FROM runs", ctx);
+
+      // Should expand to all columns from runsSchema with proper aliases
+      expect(sql).not.toContain("SELECT *");
+      // Should have AS clauses for columns with different clickhouseName
+      expect(sql).toContain("run_id AS id"); // id -> run_id with alias back to id
+      expect(sql).toContain("created_at AS created"); // created -> created_at with alias back
+      expect(sql).toContain("status"); // status stays as-is
+
+      // Should return column metadata with user-facing names
+      expect(columns.length).toBeGreaterThan(0);
+      expect(columns.some((c) => c.name === "id")).toBe(true);
+      expect(columns.some((c) => c.name === "created")).toBe(true);
+      expect(columns.some((c) => c.name === "status")).toBe(true);
+    });
+
+    it("should expand table.* for specific table", () => {
+      const { sql, columns } = printQuery("SELECT task_runs.* FROM task_runs");
+
+      // Should expand to all columns from task_runs
+      expect(sql).not.toContain("task_runs.*");
+      expect(sql).toContain("id");
+      expect(sql).toContain("status");
+
+      // Should return column metadata
+      expect(columns.length).toBeGreaterThan(0);
+    });
+
+    it("should include virtual columns in SELECT * expansion", () => {
+      // Schema with virtual columns
+      const schemaWithVirtual: TableSchema = {
+        name: "runs",
+        clickhouseName: "trigger_dev.task_runs_v2",
+        columns: {
+          id: { name: "id", ...column("String") },
+          started_at: { name: "started_at", ...column("Nullable(DateTime64)") },
+          completed_at: { name: "completed_at", ...column("Nullable(DateTime64)") },
+          // Virtual column with expression
+          duration: {
+            name: "duration",
+            ...column("Nullable(Int64)"),
+            expression: "dateDiff('millisecond', started_at, completed_at)",
+            description: "Execution duration in ms",
+          },
+          org_id: { name: "org_id", clickhouseName: "organization_id", ...column("String") },
+          proj_id: { name: "proj_id", clickhouseName: "project_id", ...column("String") },
+          env_id: { name: "env_id", clickhouseName: "environment_id", ...column("String") },
+        },
+        tenantColumns: {
+          organizationId: "organization_id",
+          projectId: "project_id",
+          environmentId: "environment_id",
+        },
+      };
+
+      const schema = createSchemaRegistry([schemaWithVirtual]);
+      const ctx = createPrinterContext({
+        organizationId: "org_test",
+        projectId: "proj_test",
+        environmentId: "env_test",
+        schema,
+      });
+
+      const { sql, columns } = printQuery("SELECT * FROM runs", ctx);
+
+      // Should include virtual column with its expression
+      expect(sql).toContain("dateDiff('millisecond', started_at, completed_at)");
+      expect(sql).toContain("AS duration");
+
+      // Should include regular columns
+      expect(sql).toContain("id");
+
+      // Metadata should include the virtual column
+      expect(columns.some((c) => c.name === "duration")).toBe(true);
+      const durationCol = columns.find((c) => c.name === "duration");
+      expect(durationCol?.description).toBe("Execution duration in ms");
     });
   });
 
@@ -1680,14 +1782,60 @@ describe("Column metadata", () => {
       expect(columns[0].name).toBe("status");
       expect(columns[0].customRenderType).toBe("runStatus");
 
-      // count - aggregation inferred type
+      // count - aggregation inferred type, COUNT doesn't preserve customRenderType
       expect(columns[1].name).toBe("count");
       expect(columns[1].type).toBe("UInt64");
       expect(columns[1].customRenderType).toBeUndefined();
 
-      // avg_duration - aggregation inferred type
+      // avg_duration - aggregation inferred type, AVG preserves customRenderType from source column
+      // (average duration is still a duration)
       expect(columns[2].name).toBe("avg_duration");
       expect(columns[2].type).toBe("Float64");
+      expect(columns[2].customRenderType).toBe("duration");
+    });
+
+    it("should propagate customRenderType for value-preserving aggregates (SUM, AVG, MIN, MAX)", () => {
+      const ctx = createMetadataTestContext();
+      const { columns } = printQuery(
+        "SELECT SUM(usage_duration_ms) AS total_duration, AVG(cost_in_cents) AS avg_cost, MIN(usage_duration_ms) AS min_duration, MAX(cost_in_cents) AS max_cost FROM runs",
+        ctx
+      );
+
+      expect(columns).toHaveLength(4);
+
+      // SUM preserves customRenderType
+      expect(columns[0].name).toBe("total_duration");
+      expect(columns[0].customRenderType).toBe("duration");
+
+      // AVG preserves customRenderType
+      expect(columns[1].name).toBe("avg_cost");
+      expect(columns[1].customRenderType).toBe("cost");
+
+      // MIN preserves customRenderType
+      expect(columns[2].name).toBe("min_duration");
+      expect(columns[2].customRenderType).toBe("duration");
+
+      // MAX preserves customRenderType
+      expect(columns[3].name).toBe("max_cost");
+      expect(columns[3].customRenderType).toBe("cost");
+    });
+
+    it("should NOT propagate customRenderType for COUNT aggregates", () => {
+      const ctx = createMetadataTestContext();
+      const { columns } = printQuery(
+        "SELECT COUNT(*), COUNT(usage_duration_ms), COUNT(DISTINCT status) FROM runs",
+        ctx
+      );
+
+      expect(columns).toHaveLength(3);
+
+      // COUNT(*) - no customRenderType
+      expect(columns[0].customRenderType).toBeUndefined();
+
+      // COUNT(duration_column) - still no customRenderType (it's a count, not a duration)
+      expect(columns[1].customRenderType).toBeUndefined();
+
+      // COUNT(DISTINCT ...) - no customRenderType
       expect(columns[2].customRenderType).toBeUndefined();
     });
   });
