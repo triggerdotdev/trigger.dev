@@ -11,7 +11,7 @@ const variants = {
     headerCell: "px-3 py-2.5 pb-3 text-sm",
     cell: "group-hover/table-row:bg-charcoal-750 group-has-[[tabindex='0']:focus]/table-row:bg-charcoal-750",
     cellSize: "px-3 py-3",
-    cellText: "text-xs",
+    cellText: "text-xs group-hover/table-row:text-text-bright",
     stickyCell: "bg-background-bright group-hover/table-row:bg-charcoal-750",
     menuButton:
       "bg-background-bright group-hover/table-row:bg-charcoal-750 group-hover/table-row:ring-charcoal-600/70 group-has-[[tabindex='0']:focus]/table-row:bg-charcoal-750",
@@ -23,7 +23,7 @@ const variants = {
     headerCell: "px-3 py-2.5 pb-3 text-sm",
     cell: "group-hover/table-row:bg-charcoal-800 group-has-[[tabindex='0']:focus]/table-row:bg-background-bright",
     cellSize: "px-3 py-3",
-    cellText: "text-xs",
+    cellText: "text-xs group-hover/table-row:text-text-bright",
     stickyCell: "group-hover/table-row:bg-charcoal-800",
     menuButton:
       "bg-background-dimmed group-hover/table-row:bg-charcoal-800 group-hover/table-row:ring-grid-bright group-has-[[tabindex='0']:focus]/table-row:bg-background-bright",
@@ -35,7 +35,7 @@ const variants = {
     headerCell: "px-2 py-1.5 text-sm",
     cell: "group-hover/table-row:bg-charcoal-800 group-has-[[tabindex='0']:focus]/table-row:bg-background-bright",
     cellSize: "px-2 py-1.5",
-    cellText: "text-xs font-mono",
+    cellText: "text-xs font-mono group-hover/table-row:text-text-bright",
     stickyCell: "group-hover/table-row:bg-charcoal-800",
     menuButton:
       "bg-background-dimmed group-hover/table-row:bg-charcoal-800 group-hover/table-row:ring-grid-bright group-has-[[tabindex='0']:focus]/table-row:bg-background-bright",
