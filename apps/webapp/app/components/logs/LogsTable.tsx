@@ -1,4 +1,5 @@
-import { ArrowPathIcon, ArrowTopRightOnSquareIcon } from "@heroicons/react/20/solid";
+import { ArrowPathIcon } from "@heroicons/react/20/solid";
+import { Link } from "@remix-run/react";
 import { formatDurationNanoseconds } from "@trigger.dev/core/v3";
 import { type ReactNode, useEffect, useRef } from "react";
 import { cn } from "~/utils/cn";
@@ -11,6 +12,7 @@ import { v3RunSpanPath } from "~/utils/pathBuilder";
 import { DateTime } from "../primitives/DateTime";
 import { Paragraph } from "../primitives/Paragraph";
 import { Spinner } from "../primitives/Spinner";
+import { SimpleTooltip } from "../primitives/Tooltip";
 import {
   Table,
   TableBlankRow,
@@ -84,15 +86,12 @@ function getLevelBorderColor(level: LogEntry["level"]): string {
     case "TRACE":
     case "LOG":
     default:
-      return "border-l-transparent";
+      return "border-l-transparent hover:border-l-charcoal-800";
   }
 }
 
 // Case-insensitive text highlighting
-function highlightText(
-  text: string,
-  searchTerm: string | undefined
-): ReactNode {
+function highlightText(text: string, searchTerm: string | undefined): ReactNode {
   if (!searchTerm || searchTerm.trim() === "") {
     return text;
   }
@@ -161,7 +160,7 @@ export function LogsTable({
 
   return (
     <div className="relative h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-      <Table variant={variant}>
+      <Table variant="compact/mono">
         <TableHeader>
           <TableRow>
             <TableHeaderCell>Time</TableHeaderCell>
@@ -197,11 +196,9 @@ export function LogsTable({
                 <TableRow
                   key={log.id}
                   className={cn(
-                    "cursor-pointer transition-colors border-l-2",
+                    "cursor-pointer border-l-2 transition-colors",
                     getLevelBorderColor(log.level),
-                    isSelected
-                      ? "bg-charcoal-750"
-                      : "hover:bg-charcoal-850"
+                    isSelected ? "bg-charcoal-750" : "hover:bg-charcoal-850"
                   )}
                   isSelected={isSelected}
                 >
@@ -213,14 +210,18 @@ export function LogsTable({
                     <DateTime date={log.startTime} />
                   </TableCell>
                   <TableCell>
-                    <a
-                      href={runPath}
-                      className="flex items-center gap-1 text-blue-500 hover:underline"
-                      title="View run"
-                    >
-                      <span className="font-mono text-xs">{log.runId.slice(0, 12)}...</span>
-                      <ArrowTopRightOnSquareIcon className="size-3" />
-                    </a>
+                    <SimpleTooltip
+                      content="Jump to run"
+                      disableHoverableContent
+                      button={
+                        <Link
+                          to={runPath}
+                          className="flex items-center gap-1 text-blue-500 hover:text-blue-400"
+                        >
+                          {log.runId.slice(0, 12)}…
+                        </Link>
+                      }
+                    />
                   </TableCell>
                   <TableCell onClick={handleRowClick} hasAction>
                     <span className="font-mono text-xs">{log.taskIdentifier}</span>
@@ -228,7 +229,7 @@ export function LogsTable({
                   <TableCell onClick={handleRowClick} hasAction>
                     <span
                       className={cn(
-                        "inline-flex items-center rounded border px-1.5 py-0.5 text-xs font-medium uppercase",
+                        "inline-flex items-center rounded border px-1 py-0.5 text-xxs font-medium uppercase tracking-wider",
                         getLevelColor(log.level)
                       )}
                     >
@@ -238,7 +239,7 @@ export function LogsTable({
                   <TableCell onClick={handleRowClick} hasAction>
                     <span
                       className={cn(
-                        "inline-flex items-center rounded border px-1.5 py-0.5 text-xs font-medium",
+                        "inline-flex items-center rounded border px-1 py-0.5 text-xxs font-medium uppercase tracking-wider",
                         getStatusColor(log.status)
                       )}
                     >
@@ -255,10 +256,7 @@ export function LogsTable({
                       : "–"}
                   </TableCell>
                   <TableCell className="max-w-0 truncate" onClick={handleRowClick} hasAction>
-                    <span
-                      className="block truncate font-mono text-xs"
-                      title={log.message}
-                    >
+                    <span className="block truncate font-mono text-xs" title={log.message}>
                       {highlightText(log.message, searchTerm)}
                     </span>
                   </TableCell>
@@ -270,10 +268,7 @@ export function LogsTable({
       </Table>
       {/* Infinite scroll trigger */}
       {hasMore && logs.length > 0 && (
-        <div
-          ref={loadMoreRef}
-          className="flex items-center justify-center py-4"
-        >
+        <div ref={loadMoreRef} className="flex items-center justify-center py-4">
           {isLoadingMore && (
             <div className="flex items-center gap-2">
               <Spinner /> <span className="text-text-dimmed">Loading more…</span>

@@ -5,8 +5,8 @@ import { cn } from "~/utils/cn";
 
 const variantClasses = {
   basic:
-    "bg-background-bright border border-grid-bright rounded px-3 py-2 text-sm text-text-bright shadow-md fade-in-50",
-  dark: "bg-background-dimmed border border-grid-bright rounded px-3 py-2 text-sm text-text-bright shadow-md fade-in-50"
+    "bg-background-bright border border-grid-bright rounded px-2 py-1.5 text-xs text-text-bright shadow-md fade-in-50",
+  dark: "bg-background-dimmed border border-grid-bright rounded px-2 py-1.5 text-xs text-text-bright shadow-md fade-in-50",
 };
 
 type Variant = keyof typeof variantClasses;
