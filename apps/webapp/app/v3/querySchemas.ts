@@ -96,7 +96,11 @@ export const runsSchema: TableSchema = {
     },
     queue: {
       name: "queue",
-      ...column("String", { description: "Queue name", example: "task/my-background-task" }),
+      ...column("String", {
+        description: "Queue name",
+        example: "task/my-background-task",
+        customRenderType: "queue",
+      }),
     },
     schedule_id: {
       name: "schedule_id",

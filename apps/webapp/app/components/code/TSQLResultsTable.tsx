@@ -27,6 +27,7 @@ import { SimpleTooltip } from "../primitives/Tooltip";
 import { InformationCircleIcon } from "@heroicons/react/20/solid";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { QueueName } from "../runs/v3/QueueName";
 
 /**
  * Check if a ClickHouse type is a DateTime type
@@ -165,6 +166,13 @@ function CellValue({
       case "environment": {
         if (typeof value === "string") {
           return <EnvironmentCellValue value={value} />;
+        }
+        return <span>{String(value)}</span>;
+      }
+      case "queue": {
+        if (typeof value === "string") {
+          const type = value.startsWith("task/") ? "task" : "custom";
+          return <QueueName type={type} name={value.replace("task/", "")} />;
         }
         return <span>{String(value)}</span>;
       }
