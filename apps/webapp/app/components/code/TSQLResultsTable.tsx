@@ -1,6 +1,6 @@
 import { formatDurationMilliseconds, MachinePresetName } from "@trigger.dev/core/v3";
 import type { OutputColumnMetadata } from "@internal/clickhouse";
-import { DateTime } from "~/components/primitives/DateTime";
+import { DateTime, DateTimeAccurate } from "~/components/primitives/DateTime";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { MachineLabelCombo } from "~/components/MachineLabelCombo";
 import {
@@ -185,7 +185,7 @@ function CellValue({
   // DateTime types
   if (isDateTimeType(type)) {
     if (typeof value === "string") {
-      return <DateTime date={value} />;
+      return <DateTimeAccurate date={value} />;
     }
     return <span>{String(value)}</span>;
   }

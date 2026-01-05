@@ -102,13 +102,7 @@ export const runsSchema: TableSchema = {
         customRenderType: "queue",
       }),
     },
-    schedule_id: {
-      name: "schedule_id",
-      ...column("String", {
-        description: "Schedule ID (if triggered by schedule)",
-        example: "sched_1234abcd",
-      }),
-    },
+
     batch_id: {
       name: "batch_id",
       ...column("String", {
@@ -120,9 +114,8 @@ export const runsSchema: TableSchema = {
     },
 
     // Related runs
-    root_run: {
-      name: "root_run",
-      clickhouseName: "root_run_id",
+    root_run_id: {
+      name: "root_run_id",
       ...column("String", {
         description: "Root run ID (for child runs)",
         example: "run_cm1a2b3c4d5e6f7g8h9i",
@@ -130,9 +123,8 @@ export const runsSchema: TableSchema = {
         expression: "if(root_run_id = '', NULL, 'run_' || root_run_id)",
       }),
     },
-    parent_run: {
-      name: "parent_run",
-      clickhouseName: "parent_run_id",
+    parent_run_id: {
+      name: "parent_run_id",
       ...column("String", {
         description: "Parent run ID (for child runs)",
         example: "run_cm1a2b3c4d5e6f7g8h9i",
@@ -155,18 +147,7 @@ export const runsSchema: TableSchema = {
       expression: "if(depth > 0, true, false)",
     },
 
-    // Telemetry
-    span_id: {
-      name: "span_id",
-      ...column("String", { description: "OpenTelemetry span ID", example: "a1b2c3d4e5f6g7h8" }),
-    },
-    trace_id: {
-      name: "trace_id",
-      ...column("String", {
-        description: "OpenTelemetry trace ID",
-        example: "abc123def456ghi789jkl012mno345pq",
-      }),
-    },
+    // Useless until we show the user-provided key
     idempotency_key: {
       name: "idempotency_key",
       ...column("String", { description: "Idempotency key", example: "user-123-action-456" }),
@@ -174,36 +155,43 @@ export const runsSchema: TableSchema = {
     region: {
       name: "region",
       clickhouseName: "worker_queue",
-      ...column("String", { description: "Region", example: "us-east-1" }),
+      ...column("String", {
+        description: "Region",
+        example: "us-east-1",
+      }),
       expression: "if(startsWith(worker_queue, 'cm'), NULL, worker_queue)",
     },
 
     // Timing
-    created_at: {
-      name: "created_at",
+    triggered_at: {
+      name: "triggered_at",
+      clickhouseName: "created_at",
       ...column("DateTime64", {
-        description: "When the run was created",
+        description: "When the run was triggered.",
         example: "2024-01-15 09:30:00.000",
       }),
     },
-    updated_at: {
-      name: "updated_at",
-      ...column("DateTime64", {
-        description: "When the run was last updated",
-        example: "2024-01-15 09:30:05.123",
+    queued_at: {
+      name: "queued_at",
+      ...column("Nullable(DateTime64)", {
+        description:
+          "When the run was added to the queue. This is normally the same time as the triggered_at time, unless a delay is passed in or it's a scheduled run.",
+        example: "2024-01-15 09:30:01.000",
       }),
     },
-    started_at: {
-      name: "started_at",
+    dequeued_at: {
+      name: "dequeued_at",
+      clickhouseName: "started_at",
       ...column("Nullable(DateTime64)", {
-        description: "When the run started executing",
+        description:
+          "When the run was dequeued for execution. This happens when there is available concurrency to execute your run.",
         example: "2024-01-15 09:30:01.000",
       }),
     },
     executed_at: {
       name: "executed_at",
       ...column("Nullable(DateTime64)", {
-        description: "When execution began",
+        description: "When execution of the run began.",
         example: "2024-01-15 09:30:01.500",
       }),
     },
@@ -221,23 +209,58 @@ export const runsSchema: TableSchema = {
         example: "2024-01-15 10:00:00.000",
       }),
     },
-    queued_at: {
-      name: "queued_at",
-      ...column("Nullable(DateTime64)", {
-        description: "When the run was queued",
-        example: "2024-01-15 09:30:00.500",
-      }),
+    has_delay: {
+      name: "has_delay",
+      ...column("UInt8", { description: "Whether the run had a delay passed in", example: "1" }),
+      expression: "if(isNotNull(delay_until), true, false)",
     },
     expired_at: {
       name: "expired_at",
       ...column("Nullable(DateTime64)", {
-        description: "When the run expired",
+        description:
+          'If there was a TTL on the run, this is when the run "expired". By default dev runs have a TTL of 10 minutes.',
         example: "2024-01-15 09:35:00.000",
       }),
     },
-    expiration_ttl: {
-      name: "expiration_ttl",
-      ...column("String", { description: "TTL string for expiration", example: "5m" }),
+    ttl: {
+      name: "ttl",
+      clickhouseName: "expiration_ttl",
+      ...column("String", {
+        description: "TTL string for expiration. By default dev runs have a TTL of 10m.",
+        example: "10m",
+      }),
+    },
+
+    // Useful time periods
+    execution_duration: {
+      name: "execution_duration",
+      ...column("Nullable(Int64)", {
+        description:
+          "The time between starting to execute and completing. This includes any time spent waiting (it is not compute time, use `usage_duration` for that).",
+        customRenderType: "duration",
+        example: "4000",
+      }),
+      expression: "dateDiff('millisecond', executed_at, completed_at)",
+    },
+    total_duration: {
+      name: "total_duration",
+      ...column("Nullable(Int64)", {
+        description:
+          "The time between being triggered and completing (if it has). This includes any time spent waiting (it is not compute time, use `usage_duration` for that).",
+        customRenderType: "duration",
+        example: "4000",
+      }),
+      expression: "dateDiff('millisecond', created_at, completed_at)",
+    },
+    queued_duration: {
+      name: "queued_duration",
+      ...column("Nullable(Int64)", {
+        description:
+          "The time between being queued and dequeued. Remember you need enough available concurrency for runs to be dequeued and start executing.",
+        customRenderType: "duration",
+        example: "4000",
+      }),
+      expression: "dateDiff('millisecond', queued_at, started_at)",
     },
 
     // Cost & usage
@@ -330,18 +353,6 @@ export const runsSchema: TableSchema = {
       name: "is_test",
       ...column("UInt8", { description: "Whether this is a test run (0 or 1)", example: "0" }),
       expression: "if(is_test > 0, true, false)",
-    },
-
-    // Virtual columns
-    execution_duration: {
-      name: "execution_duration",
-      ...column("Nullable(Int64)", {
-        description:
-          "The time between the run starting and completing. This includes any time spent waiting (it is not compute time, use `usage_duration` for that).",
-        customRenderType: "duration",
-        example: "4000",
-      }),
-      expression: "dateDiff('millisecond', started_at, completed_at)",
     },
   },
 };
