@@ -707,6 +707,40 @@ function RunBody({
                     </Property.Value>
                   </Property.Item>
                 )}
+                {run.replays && run.replays.length > 0 && (
+                  <Property.Item>
+                    <Property.Label>Replayed as</Property.Label>
+                    <Property.Value>
+                      <div className="flex flex-col gap-1">
+                        {run.replays.map((replay) => (
+                          <SimpleTooltip
+                            key={replay.friendlyId}
+                            button={
+                              <TextLink
+                                to={v3RunRedirectPath(organization, project, {
+                                  friendlyId: replay.friendlyId,
+                                })}
+                                className="flex items-center gap-1"
+                              >
+                                <CopyableText
+                                  value={replay.friendlyId}
+                                  copyValue={replay.friendlyId}
+                                  asChild
+                                />
+                                <TaskRunStatusCombo
+                                  status={replay.status as any}
+                                  className="text-xs"
+                                />
+                              </TextLink>
+                            }
+                            content={`Jump to replay run`}
+                            disableHoverableContent
+                          />
+                        ))}
+                      </div>
+                    </Property.Value>
+                  </Property.Item>
+                )}
                 {environment && (
                   <Property.Item>
                     <Property.Label>Environment</Property.Label>
