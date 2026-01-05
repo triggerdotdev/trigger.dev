@@ -60,9 +60,7 @@ function isNumericType(type: string): boolean {
  * Check if a ClickHouse type is a boolean type
  */
 function isBooleanType(type: string): boolean {
-  return (
-    type === "Bool" || type === "UInt8" || type === "Nullable(Bool)" || type === "Nullable(UInt8)"
-  );
+  return type === "Bool" || type === "Nullable(Bool)";
 }
 
 /**

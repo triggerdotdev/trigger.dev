@@ -69,9 +69,14 @@ export const runsSchema: TableSchema = {
         example: "PRODUCTION",
       }),
     },
-    attempt: {
-      name: "attempt",
-      ...column("UInt8", { description: "Number of attempts (starts at 1)", example: "1" }),
+    attempt_count: {
+      name: "attempt_count",
+      clickhouseName: "attempt",
+      ...column("UInt8", {
+        description: "Number of attempts (starts at 1)",
+        example: "1",
+        customRenderType: "number",
+      }),
     },
     status: {
       name: "status",
@@ -138,12 +143,12 @@ export const runsSchema: TableSchema = {
     is_root_run: {
       name: "is_root_run",
       ...column("UInt8", { description: "Whether this is a root run (0 or 1)", example: "0" }),
-      expression: "if(depth = 0, 1, 0)",
+      expression: "if(depth = 0, true, false)",
     },
     is_child_run: {
       name: "is_child_run",
       ...column("UInt8", { description: "Whether this is a child run (0 or 1)", example: "0" }),
-      expression: "if(depth > 0, 1, 0)",
+      expression: "if(depth > 0, true, false)",
     },
 
     // Telemetry
@@ -320,6 +325,7 @@ export const runsSchema: TableSchema = {
     is_test: {
       name: "is_test",
       ...column("UInt8", { description: "Whether this is a test run (0 or 1)", example: "0" }),
+      expression: "if(is_test > 0, true, false)",
     },
 
     // Virtual columns
