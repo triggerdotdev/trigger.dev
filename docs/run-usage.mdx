@@ -8,6 +8,8 @@ description: "Get compute duration and cost from inside a run, or for a specific
 You can get the cost and duration of the current including retries of the same run.
 
 ```ts
+import { task, usage, wait } from "@trigger.dev/sdk/v3";
+
 export const heavyTask = task({
   id: "heavy-task",
   machine: {
@@ -87,6 +89,8 @@ console.log("Total cost", totalCost);
 You can also wrap code with `usage.measure` to get the cost and duration of that block of code:
 
 ```ts
+import { usage, logger } from "@trigger.dev/sdk/v3";
+
 // Inside a task run function, or inside a function that's called from there.
 const { result, compute } = await usage.measure(async () => {
   //...Do something for 1 second
