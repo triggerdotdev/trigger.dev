@@ -575,10 +575,7 @@ export class ClickHousePrinter {
    * @param collectMetadata - Whether to collect column metadata
    * @returns Array of SQL column strings, or null if not an asterisk
    */
-  private expandAsterisk(
-    chain: Array<string | number>,
-    collectMetadata: boolean
-  ): string[] | null {
+  private expandAsterisk(chain: Array<string | number>, collectMetadata: boolean): string[] | null {
     // Check for SELECT * (chain: ["*"])
     if (chain.length === 1 && chain[0] === "*") {
       return this.expandAllTableColumns(collectMetadata);
@@ -667,7 +664,9 @@ export class ClickHousePrinter {
 
         // If the column has a different internal name, add an alias
         if (clickhouseName !== columnName) {
-          sqlResult = `${this.printIdentifier(clickhouseName)} AS ${this.printIdentifier(columnName)}`;
+          sqlResult = `${this.printIdentifier(clickhouseName)} AS ${this.printIdentifier(
+            columnName
+          )}`;
         } else {
           sqlResult = this.printIdentifier(columnName);
         }
@@ -702,7 +701,7 @@ export class ClickHousePrinter {
    */
   private analyzeSelectColumn(col: Expression): {
     outputName: string | null;
-    sourceColumn: ColumnSchema | null;
+    sourceColumn: Partial<ColumnSchema> | null;
     inferredType: ClickHouseType | null;
   } {
     // Handle Alias - the output name is the alias
@@ -735,9 +734,19 @@ export class ClickHousePrinter {
       // For value-preserving aggregates (SUM, AVG, MIN, MAX), propagate customRenderType
       // from the source column. COUNT and other aggregates return counts, not values,
       // so they shouldn't inherit the source column's render type.
-      const valuePreservingAggregates = ["sum", "sumif", "avg", "avgif", "min", "minif", "max", "maxif"];
+      const valuePreservingAggregates = [
+        "sum",
+        "sumif",
+        "avg",
+        "avgif",
+        "min",
+        "minif",
+        "max",
+        "maxif",
+        "quantile",
+      ];
       const funcName = call.name.toLowerCase();
-      let sourceColumn: ColumnSchema | null = null;
+      let sourceColumn: Partial<ColumnSchema> | null = null;
 
       if (valuePreservingAggregates.includes(funcName) && call.args.length > 0) {
         const firstArg = call.args[0];
@@ -746,7 +755,10 @@ export class ClickHousePrinter {
           const columnInfo = this.resolveFieldToColumn(field.chain);
           // Only propagate customRenderType, not the full column schema
           if (columnInfo.column?.customRenderType) {
-            sourceColumn = { type: inferredType, customRenderType: columnInfo.column.customRenderType };
+            sourceColumn = {
+              type: inferredType,
+              customRenderType: columnInfo.column.customRenderType,
+            };
           }
         }
       }
