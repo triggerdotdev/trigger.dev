@@ -89,15 +89,12 @@ graph TB
 graph TB
     A[runETLPipeline] --> B[coordinateExtraction]
     B --> C[batchTriggerAndWait]
-
     C --> D[extractFromAPI]
     C --> E[extractFromDatabase]
     C --> F[extractFromS3]
-
     D --> G[transformData]
     E --> G
     F --> G
-
     G --> H[validateData]
     H --> I[loadToWarehouse]
 ```
@@ -114,15 +111,12 @@ graph TB
 graph TB
     A[scrapeSite] --> B[coordinateScraping]
     B --> C[batchTriggerAndWait]
-
     C --> D[scrapePage1]
     C --> E[scrapePage2]
     C --> F[scrapePageN]
-
     D --> G[cleanData]
     E --> G
     F --> G
-
     G --> H[normalizeData]
     H --> I[storeInDatabase]
 ```
@@ -140,15 +134,12 @@ graph TB
     A[enrichRecords] --> B[fetchRecordsToEnrich]
     B --> C[coordinateEnrichment]
     C --> D[batchTriggerAndWait]
-
     D --> E[enrichRecord1]
     D --> F[enrichRecord2]
     D --> G[enrichRecordN]
-
     E --> H[validateEnrichedData]
     F --> H
     G --> H
-
     H --> I[updateDatabase]
 ```
 

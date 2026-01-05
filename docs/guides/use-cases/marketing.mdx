@@ -67,7 +67,6 @@ graph TB
     C --> D[sendProductTipsEmail]
     D --> E[wait.for 7d]
     E --> F[sendFeedbackEmail]
-
 ```
 
 </div>
@@ -83,15 +82,12 @@ graph TB
     A[startCampaign] --> B[fetchUserProfile]
     B --> C[selectChannel]
     C --> D{Preferred<br/>Channel?}
-
     D -->|Email| E[sendEmail1]
     D -->|SMS| F[sendSMS1]
     D -->|Push| G[sendPush1]
-
     E --> H[wait.for 2d]
     F --> H
     G --> H
-
     H --> I[sendFollowUp]
     I --> J[trackConversion]
 ```
@@ -109,7 +105,6 @@ graph TB
     A[createCampaignAssets] --> B[generateAIContent]
     B --> C[wait.forToken approval]
     C --> D{Approved?}
-
     D -->|Yes| E[publishToChannels]
     D -->|Needs revision| F[applyFeedback]
     F --> B
@@ -127,15 +122,12 @@ graph TB
 graph TB
     A[processSurveyResponse] --> B[coordinateEnrichment]
     B --> C[batchTriggerAndWait]
-
     C --> D[fetchCRMData]
     C --> E[fetchAnalytics]
     C --> F[fetchBehaviorData]
-
     D --> G[analyzeAndScore]
     E --> G
     F --> G
-
     G --> H[updateCRMProfile]
     H --> I[triggerFollowUp]
 ```

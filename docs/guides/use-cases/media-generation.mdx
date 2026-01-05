@@ -74,7 +74,6 @@ graph TB
     A[generateContent] --> B[createWithAI]
     B --> C[wait.forToken approval]
     C --> D{Approved?}
-
     D -->|Yes| E[publishContent]
     D -->|Needs revision| F[applyFeedback]
     F --> B
@@ -106,15 +105,12 @@ graph TB
 graph TB
     A[processBatch] --> B[coordinateGeneration]
     B --> C[batchTriggerAndWait]
-
     C --> D[generateImage1]
     C --> E[generateImage2]
     C --> F[generateImageN]
-
     D --> G[validateResults]
     E --> G
     F --> G
-
     G --> H[storeResults]
     H --> I[notifyCompletion]
 ```
