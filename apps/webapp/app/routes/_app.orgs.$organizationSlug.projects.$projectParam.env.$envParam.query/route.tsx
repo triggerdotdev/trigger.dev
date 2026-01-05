@@ -316,8 +316,8 @@ export default function Page() {
               </div>
               {/* Results */}
               <div className="grid max-h-full grid-rows-[2rem_1fr] overflow-hidden border-t border-grid-dimmed">
-                <div className="flex items-center justify-between border-b border-grid-dimmed bg-charcoal-900 px-3">
-                  <div className="flex items-center gap-3">
+                <div className="flex items-center justify-between border-b border-grid-dimmed bg-charcoal-900 pl-3 pr-1">
+                  <div className="flex items-center gap-2">
                     <Header3>
                       {results?.rows?.length ? `${results.rows.length} Results` : "Results"}
                     </Header3>
@@ -327,7 +327,7 @@ export default function Page() {
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1">
                     {results?.rows && results?.columns && results.rows.length > 0 && (
                       <ExportResultsButton rows={results.rows} columns={results.columns} />
                     )}
@@ -346,7 +346,7 @@ export default function Page() {
                   onValueChange={(v) => setResultsView(v as "table" | "graph")}
                   className="grid min-h-0 grid-rows-[auto_1fr] overflow-hidden"
                 >
-                  <ClientTabsList variant="underline" className="mx-3 shrink-0">
+                  <ClientTabsList variant="underline" className="shrink-0 px-3">
                     <ClientTabsTrigger value="table" variant="underline" layoutId="results-tabs">
                       Table
                     </ClientTabsTrigger>
