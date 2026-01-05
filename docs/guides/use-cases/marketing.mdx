@@ -81,7 +81,7 @@ graph TB
 graph TB
     A[startCampaign] --> B[fetchUserProfile]
     B --> C[selectChannel]
-    C --> D{Preferred<br/>Channel?}
+    C --> D{Channel?}
     D -->|Email| E[sendEmail1]
     D -->|SMS| F[sendSMS1]
     D -->|Push| G[sendPush1]

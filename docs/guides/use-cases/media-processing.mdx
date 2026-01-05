@@ -71,7 +71,7 @@ graph TB
 ```mermaid
 graph TB
     A[processVideoUpload] --> B[analyzeMetadata]
-    B --> C{Source<br/>Resolution?}
+    B --> C{Resolution?}
     C -->|4K Source| D[transcode4K]
     C -->|HD Source| E[transcodeHD]
     C -->|SD Source| F[transcodeSD]
@@ -99,7 +99,7 @@ graph TB
 ```mermaid
 graph TB
     A[processImageUpload] --> B[analyzeContent]
-    B --> C{Content<br/>Type?}
+    B --> C{Content Type?}
     C -->|Product| D[removeBackground]
     C -->|Portrait| E[detectFaces]
     C -->|Landscape| F[analyzeScene]
@@ -157,7 +157,7 @@ graph TB
     F -->|Invoice| G[extractLineItems]
     F -->|Contract| H[extractClauses]
     F -->|Receipt| I[extractExpenses]
-    G --> J{Needs<br/>Review?}
+    G --> J{Needs Review?}
     H --> J
     I --> J
     J -->|Yes| K[wait.forToken approval]
