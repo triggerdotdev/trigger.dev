@@ -29,6 +29,29 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { QueueName } from "../runs/v3/QueueName";
 
+const MAX_STRING_DISPLAY_LENGTH = 64;
+
+/**
+ * Truncate a string for display, adding ellipsis if it exceeds max length
+ */
+function truncateString(value: string, maxLength: number = MAX_STRING_DISPLAY_LENGTH): string {
+  if (value.length <= maxLength) {
+    return value;
+  }
+  return value.slice(0, maxLength) + "…";
+}
+
+/**
+ * Convert any value to a string suitable for copying
+ * Objects and arrays are JSON stringified, primitives use String()
+ */
+function valueToString(value: unknown): string {
+  if (value === null) return "NULL";
+  if (value === undefined) return "UNDEFINED";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
 /**
  * Check if a ClickHouse type is a DateTime type
  */
@@ -76,9 +99,25 @@ function CellValue({
   column: OutputColumnMetadata;
   prettyFormatting?: boolean;
 }) {
-  // Plain text mode - render everything as monospace text
+  // Plain text mode - render everything as monospace text with truncation
   if (!prettyFormatting) {
-    return <pre className="font-mono text-xs">{value === null ? "NULL" : String(value)}</pre>;
+    const plainValue = value === null ? "NULL" : String(value);
+    const isTruncated = plainValue.length > MAX_STRING_DISPLAY_LENGTH;
+
+    if (isTruncated) {
+      return (
+        <SimpleTooltip
+          content={
+            <pre className="max-w-sm whitespace-pre-wrap break-all font-mono text-xs">
+              {plainValue}
+            </pre>
+          }
+          button={<pre className="font-mono text-xs">{truncateString(plainValue)}</pre>}
+        />
+      );
+    }
+
+    return <pre className="font-mono text-xs">{plainValue}</pre>;
   }
 
   if (value === null) {
@@ -201,15 +240,51 @@ function CellValue({
 
   // JSON type
   if (type === "JSON") {
-    return <span className="font-mono text-xs text-text-dimmed">{JSON.stringify(value)}</span>;
+    const jsonString = JSON.stringify(value);
+    const isTruncated = jsonString.length > MAX_STRING_DISPLAY_LENGTH;
+
+    if (isTruncated) {
+      return (
+        <SimpleTooltip
+          content={
+            <pre className="max-w-sm whitespace-pre-wrap break-all font-mono text-xs">
+              {jsonString}
+            </pre>
+          }
+          button={
+            <span className="font-mono text-xs text-text-dimmed">{truncateString(jsonString)}</span>
+          }
+        />
+      );
+    }
+    return <span className="font-mono text-xs text-text-dimmed">{jsonString}</span>;
   }
 
   // Array types
   if (type.startsWith("Array")) {
-    return <span className="font-mono text-xs text-text-dimmed">{JSON.stringify(value)}</span>;
+    const arrayString = JSON.stringify(value);
+    const isTruncated = arrayString.length > MAX_STRING_DISPLAY_LENGTH;
+
+    if (isTruncated) {
+      return (
+        <SimpleTooltip
+          content={
+            <pre className="max-w-sm whitespace-pre-wrap break-all font-mono text-xs">
+              {arrayString}
+            </pre>
+          }
+          button={
+            <span className="font-mono text-xs text-text-dimmed">
+              {truncateString(arrayString)}
+            </span>
+          }
+        />
+      );
+    }
+    return <span className="font-mono text-xs text-text-dimmed">{arrayString}</span>;
   }
 
-  // Boolean-like types (UInt8 is commonly used for booleans in ClickHouse)
+  // Boolean types
   if (isBooleanType(type)) {
     if (typeof value === "boolean") {
       return <span className="text-text-dimmed">{value ? "true" : "false"}</span>;
@@ -220,16 +295,32 @@ function CellValue({
     return <span>{String(value)}</span>;
   }
 
-  // Numeric types (excluding UInt8 which is handled as boolean above)
-  if (isNumericType(type) && type !== "UInt8" && type !== "Nullable(UInt8)") {
+  // Numeric types
+  if (isNumericType(type)) {
     if (typeof value === "number") {
       return <span className="tabular-nums">{formatNumber(value)}</span>;
     }
     return <span>{String(value)}</span>;
   }
 
-  // Default to string rendering
-  return <span>{String(value)}</span>;
+  // Default to string rendering with truncation for long values
+  const stringValue = String(value);
+  const isTruncated = stringValue.length > MAX_STRING_DISPLAY_LENGTH;
+
+  if (isTruncated) {
+    return (
+      <SimpleTooltip
+        content={
+          <pre className="max-w-sm whitespace-pre-wrap break-all font-mono text-xs">
+            {stringValue}
+          </pre>
+        }
+        button={<span>{truncateString(stringValue)}</span>}
+      />
+    );
+  }
+
+  return <span>{stringValue}</span>;
 }
 
 function ProjectCellValue({ value }: { value: string }) {
@@ -268,13 +359,7 @@ function isRightAlignedColumn(column: OutputColumnMetadata): boolean {
     return true;
   }
 
-  // Check for numeric types (excluding UInt8 which is often used for booleans)
-  const { type } = column;
-  if (type === "UInt8" || type === "Nullable(UInt8)") {
-    return false;
-  }
-
-  return isNumericType(type);
+  return isNumericType(column.type);
 }
 
 export function TSQLResultsTable({
@@ -331,7 +416,7 @@ export function TSQLResultsTable({
                 <CopyableTableCell
                   key={col.name}
                   alignment={isRightAlignedColumn(col) ? "right" : "left"}
-                  value={String(row[col.name])}
+                  value={valueToString(row[col.name])}
                 >
                   <span className="flex-1">
                     <CellValue
