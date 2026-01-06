@@ -109,6 +109,12 @@
 
 /* Streamdown markdown styling */
 .streamdown-container {
+  /* Streamdown uses shadcn/ui CSS variables - define them for our theme */
+  --muted: 220 13% 20%;
+  --muted-foreground: 215 14% 60%;
+  --foreground: 210 20% 90%;
+  --border: 217 19% 27%;
+
   & p {
     @apply my-1;
   }
@@ -136,14 +142,9 @@
   & li {
     @apply my-0.5;
   }
-  & code {
+  /* Inline code (not in pre blocks) */
+  & code:not(pre code) {
     @apply bg-charcoal-700 px-1 py-0.5 rounded text-text-bright font-mono;
-  }
-  & pre {
-    @apply bg-charcoal-700 p-2 rounded my-2 overflow-x-auto;
-  }
-  & pre code {
-    @apply bg-transparent p-0;
   }
   & blockquote {
     @apply border-l-2 border-charcoal-600 pl-3 my-2 italic;
@@ -168,5 +169,30 @@
   }
   & th {
     @apply bg-charcoal-700 font-semibold;
+  }
+
+  /* Streamdown code block container */
+  & [data-code-block-container] {
+    @apply my-2 border-charcoal-700;
+  }
+  & [data-code-block-header] {
+    @apply bg-charcoal-800 text-text-dimmed border-b border-charcoal-700;
+  }
+  /* Hide light mode code block, show dark mode */
+  & [data-code-block].dark\:hidden {
+    display: none !important;
+  }
+  & [data-code-block].hidden.dark\:block {
+    display: block !important;
+  }
+  /* Override the bg-muted/40 class to let inline styles work */
+  & [data-code-block] pre {
+    background-color: inherit !important;
+  }
+  & [data-code-block] pre code {
+    @apply bg-transparent;
+  }
+  & [data-code-block] .line {
+    @apply leading-relaxed;
   }
 }

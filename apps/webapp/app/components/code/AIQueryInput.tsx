@@ -2,8 +2,16 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 
-// Lazy load streamdown to avoid SSR issues
-const Streamdown = lazy(() => import("streamdown").then((mod) => ({ default: mod.Streamdown })));
+// Lazy load streamdown components to avoid SSR issues
+const StreamdownRenderer = lazy(() =>
+  import("streamdown").then((mod) => ({
+    default: ({ children, isAnimating }: { children: string; isAnimating: boolean }) => (
+      <mod.ShikiThemeContext.Provider value={["one-dark-pro", "one-dark-pro"]}>
+        <mod.Streamdown isAnimating={isAnimating}>{children}</mod.Streamdown>
+      </mod.ShikiThemeContext.Provider>
+    ),
+  }))
+);
 import { Button } from "~/components/primitives/Buttons";
 import { Spinner } from "~/components/primitives/Spinner";
 import { useEnvironment } from "~/hooks/useEnvironment";
@@ -137,7 +145,7 @@ export function AIQueryInput({ onQueryGenerated, autoSubmitPrompt }: AIQueryInpu
           setThinking((prev) => prev + event.content);
           break;
         case "tool_call":
-          setThinking((prev) => prev + `\n[Validating query...]\n`);
+          setThinking((prev) => prev + `\nValidating query...\n`);
           break;
         case "tool_result":
           // Optionally show validation result
@@ -319,9 +327,9 @@ export function AIQueryInput({ onQueryGenerated, autoSubmitPrompt }: AIQueryInpu
                   </Button>
                 )}
               </div>
-              <div className="streamdown-container max-h-48 overflow-y-auto text-xs text-text-dimmed scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+              <div className="streamdown-container max-h-96 overflow-y-auto text-xs text-text-dimmed scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
                 <Suspense fallback={<p className="whitespace-pre-wrap">{thinking}</p>}>
-                  <Streamdown isAnimating={isLoading}>{thinking}</Streamdown>
+                  <StreamdownRenderer isAnimating={isLoading}>{thinking}</StreamdownRenderer>
                 </Suspense>
               </div>
             </div>
