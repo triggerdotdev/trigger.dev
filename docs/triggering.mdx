@@ -1100,6 +1100,88 @@ This works with all batch trigger methods:
 Streaming is especially useful when generating batches from database queries, API pagination, or
 file processing where you don't want to load all items into memory at once.
 
+## Handling batch trigger errors
+
+When batch triggering fails, the SDK throws a `BatchTriggerError` with properties that help you understand what went wrong and how to react:
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `isRateLimited` | `boolean` | `true` if the error was caused by rate limiting |
+| `retryAfterMs` | `number \| undefined` | Milliseconds until the rate limit resets |
+| `phase` | `"create" \| "stream"` | Which phase of batch creation failed |
+| `batchId` | `string \| undefined` | The batch ID if it was created before failure |
+| `itemCount` | `number` | Number of items attempted in the batch |
+| `cause` | `unknown` | The underlying error |
+
+### Detecting and handling rate limits
+
+When you hit [batch trigger rate limits](/limits#batch-trigger-rate-limits), you can detect this and implement retry logic:
+
+```ts Your backend
+import { tasks, BatchTriggerError } from "@trigger.dev/sdk";
+import type { myTask } from "~/trigger/myTask";
+
+async function triggerBatchWithRetry(items: { payload: { userId: string } }[], maxRetries = 3) {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await tasks.batchTrigger<typeof myTask>("my-task", items);
+    } catch (error) {
+      if (error instanceof BatchTriggerError && error.isRateLimited) {
+        // Rate limited - wait and retry
+        const waitMs = error.retryAfterMs ?? 10000;
+        console.log(`Rate limited. Waiting ${waitMs}ms before retry ${attempt + 1}/${maxRetries}`);
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
+        continue;
+      }
+      // Not a rate limit error - rethrow
+      throw error;
+    }
+  }
+  throw new Error("Max retries exceeded");
+}
+```
+
+### Handling errors inside tasks
+
+When calling `batchTrigger` from inside another task, you can handle errors similarly:
+
+```ts /trigger/parent-task.ts
+import { task, BatchTriggerError } from "@trigger.dev/sdk";
+import { childTask } from "./child-task";
+
+export const parentTask = task({
+  id: "parent-task",
+  run: async (payload: { userIds: string[] }) => {
+    const items = payload.userIds.map((userId) => ({ payload: { userId } }));
+
+    try {
+      const batchHandle = await childTask.batchTrigger(items);
+      return { batchId: batchHandle.batchId };
+    } catch (error) {
+      if (error instanceof BatchTriggerError) {
+        // Log details about the failure
+        console.error("Batch trigger failed", {
+          message: error.message,
+          phase: error.phase,
+          itemCount: error.itemCount,
+          isRateLimited: error.isRateLimited,
+        });
+
+        if (error.isRateLimited) {
+          // You might want to re-throw to let the task retry naturally
+          throw error;
+        }
+      }
+      throw error;
+    }
+  },
+});
+```
+
+<Note>
+  For rate limit values and how the token bucket algorithm works, see [Batch trigger rate limits](/limits#batch-trigger-rate-limits).
+</Note>
+
 ## Large Payloads
 
 We recommend keeping your task payloads as small as possible. We currently have a hard limit on task payloads above 10MB.
