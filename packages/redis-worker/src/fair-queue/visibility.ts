@@ -160,7 +160,6 @@ export class VisibilityManager {
       inflightKey,
       inflightDataKey,
       queueId,
-      consumerId,
       deadline.toString(),
       maxCount.toString()
     );
@@ -587,9 +586,8 @@ local inflightKey = KEYS[3]
 local inflightDataKey = KEYS[4]
 
 local queueId = ARGV[1]
-local consumerId = ARGV[2]
-local deadline = tonumber(ARGV[3])
-local maxCount = tonumber(ARGV[4])
+local deadline = tonumber(ARGV[2])
+local maxCount = tonumber(ARGV[3])
 
 -- Get up to maxCount oldest messages from queue
 local items = redis.call('ZRANGE', queueKey, 0, maxCount - 1)
@@ -765,7 +763,6 @@ declare module "@internal/redis" {
       inflightKey: string,
       inflightDataKey: string,
       queueId: string,
-      consumerId: string,
       deadline: string,
       maxCount: string
     ): Promise<string[]>;

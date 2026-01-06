@@ -119,15 +119,34 @@ export class ConcurrencyManager {
    * Returns the minimum available capacity across all groups.
    */
   async getAvailableCapacity(queue: QueueDescriptor): Promise<number> {
+    if (this.groups.length === 0) {
+      return 0;
+    }
+
+    // Build group data for parallel fetching
+    const groupData = this.groups.map((group) => ({
+      group,
+      groupId: group.extractGroupId(queue),
+    }));
+
+    // Fetch all current counts and limits in parallel
+    const [currents, limits] = await Promise.all([
+      Promise.all(
+        groupData.map(({ group, groupId }) =>
+          this.redis.scard(this.keys.concurrencyKey(group.name, groupId))
+        )
+      ),
+      Promise.all(
+        groupData.map(({ group, groupId }) =>
+          group.getLimit(groupId).then((limit) => limit || group.defaultLimit)
+        )
+      ),
+    ]);
+
+    // Calculate minimum available capacity across all groups
     let minCapacity = Infinity;
-
-    for (const group of this.groups) {
-      const groupId = group.extractGroupId(queue);
-      const key = this.keys.concurrencyKey(group.name, groupId);
-      const current = await this.redis.scard(key);
-      const limit = (await group.getLimit(groupId)) || group.defaultLimit;
-      const available = Math.max(0, limit - current);
-
+    for (let i = 0; i < groupData.length; i++) {
+      const available = Math.max(0, limits[i]! - currents[i]!);
       minCapacity = Math.min(minCapacity, available);
     }
 

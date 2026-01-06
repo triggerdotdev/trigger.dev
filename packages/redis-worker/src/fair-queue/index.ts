@@ -84,6 +84,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
   private workerQueueEnabled: boolean;
   private workerQueueBlockingTimeoutSeconds: number;
   private workerQueueResolver?: (message: StoredMessage<z.infer<TPayloadSchema>>) => string;
+  private batchClaimSize: number;
 
   // Cooloff state
   private cooloffEnabled: boolean;
@@ -138,6 +139,9 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     this.workerQueueEnabled = options.workerQueue?.enabled ?? false;
     this.workerQueueBlockingTimeoutSeconds = options.workerQueue?.blockingTimeoutSeconds ?? 10;
     this.workerQueueResolver = options.workerQueue?.resolveWorkerQueue;
+
+    // Batch claiming
+    this.batchClaimSize = options.batchClaimSize ?? 10;
 
     // Cooloff
     this.cooloffEnabled = options.cooloff?.enabled ?? true;
@@ -892,8 +896,20 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
           messagesProcessed += processedFromQueue;
           this.batchedSpanManager.incrementStat(loopId, "messages_claimed", processedFromQueue);
 
-          if (this.scheduler.recordProcessed) {
-            // Record each processed message for DRR deficit tracking
+          // Record processed messages for DRR deficit tracking
+          // Use batch variant if available for efficiency, otherwise fall back to single calls
+          if (this.scheduler.recordProcessedBatch) {
+            await this.telemetry.trace(
+              "recordProcessedBatch",
+              async (span) => {
+                span.setAttribute(FairQueueAttributes.QUEUE_ID, queueId);
+                span.setAttribute(FairQueueAttributes.TENANT_ID, tenantId);
+                span.setAttribute("count", processedFromQueue);
+                await this.scheduler.recordProcessedBatch!(tenantId, queueId, processedFromQueue);
+              },
+              { kind: SpanKind.INTERNAL }
+            );
+          } else if (this.scheduler.recordProcessed) {
             for (let i = 0; i < processedFromQueue; i++) {
               await this.telemetry.trace(
                 "recordProcessed",
@@ -936,7 +952,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     };
 
     // Determine how many messages we can claim based on concurrency
-    let maxClaimCount = 10; // Default batch size cap
+    let maxClaimCount = this.batchClaimSize;
     if (this.concurrencyManager) {
       const availableCapacity = await this.concurrencyManager.getAvailableCapacity(descriptor);
       if (availableCapacity === 0) {
@@ -974,7 +990,12 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       return 0;
     }
 
-    // Use single shared worker queue - all messages go to one queue, all consumers pop atomically
+    // Single shared worker queue pattern:
+    // All consumers pop from one queue ("worker-queue") for atomic distribution.
+    // Trade-off: Simpler code and fair distribution vs. potential contention
+    // under very high load (>10k messages/sec). For most workloads, Redis
+    // can handle 100k+ ops/sec on a single key, so this is rarely a bottleneck.
+    // Future: Consider adding optional worker queue sharding if needed.
     const workerQueueId = "worker-queue";
     let processedCount = 0;
 

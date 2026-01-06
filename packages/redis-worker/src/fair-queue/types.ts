@@ -187,6 +187,13 @@ export interface FairScheduler {
   recordProcessed?(tenantId: string, queueId: string): Promise<void>;
 
   /**
+   * Called after processing multiple messages to update scheduler state.
+   * Batch variant for efficiency - reduces Redis calls when processing multiple messages.
+   * Optional - falls back to calling recordProcessed multiple times if not implemented.
+   */
+  recordProcessedBatch?(tenantId: string, queueId: string, count: number): Promise<void>;
+
+  /**
    * Initialize the scheduler (called once on startup).
    */
   initialize?(): Promise<void>;
@@ -365,6 +372,10 @@ export interface FairQueueOptions<TPayloadSchema extends z.ZodTypeAny = z.ZodUnk
   consumerIntervalMs?: number;
   /** Whether to start consumers on initialization (default: true) */
   startConsumers?: boolean;
+
+  // Batch claiming
+  /** Maximum number of messages to claim in a single batch operation (default: 10) */
+  batchClaimSize?: number;
 
   // Consumer tracing
   /** Maximum iterations before starting a new trace span (default: 500) */

@@ -323,6 +323,128 @@ describe("VisibilityManager", () => {
         await manager.close();
       }
     );
+
+    redisTest(
+      "should claim all available messages when queue has fewer than maxCount",
+      { timeout: 10000 },
+      async ({ redisOptions }) => {
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+
+        const manager = new VisibilityManager({
+          redis: redisOptions,
+          keys,
+          shardCount: 1,
+          defaultTimeoutMs: 5000,
+        });
+
+        const redis = createRedisClient(redisOptions);
+        const queueId = "tenant:t1:queue:partial-batch";
+        const queueKey = keys.queueKey(queueId);
+        const queueItemsKey = keys.queueItemsKey(queueId);
+
+        // Add only 3 messages to the queue
+        for (let i = 1; i <= 3; i++) {
+          const messageId = `msg-${i}`;
+          const storedMessage = {
+            id: messageId,
+            queueId,
+            tenantId: "t1",
+            payload: { value: `test-${i}` },
+            timestamp: Date.now() - (4 - i) * 1000,
+            attempt: 1,
+          };
+          await redis.zadd(queueKey, storedMessage.timestamp, messageId);
+          await redis.hset(queueItemsKey, messageId, JSON.stringify(storedMessage));
+        }
+
+        // Request 10 messages but only 3 exist
+        const claimed = await manager.claimBatch(queueId, queueKey, queueItemsKey, "consumer-1", 10);
+
+        expect(claimed).toHaveLength(3);
+        expect(claimed[0]!.messageId).toBe("msg-1");
+        expect(claimed[1]!.messageId).toBe("msg-2");
+        expect(claimed[2]!.messageId).toBe("msg-3");
+
+        // Verify all messages are in in-flight set
+        const inflightCount = await manager.getTotalInflightCount();
+        expect(inflightCount).toBe(3);
+
+        // Verify queue is empty
+        const remainingCount = await redis.zcard(queueKey);
+        expect(remainingCount).toBe(0);
+
+        await manager.close();
+        await redis.quit();
+      }
+    );
+
+    redisTest(
+      "should skip corrupted messages and continue claiming valid ones",
+      { timeout: 10000 },
+      async ({ redisOptions }) => {
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+
+        const manager = new VisibilityManager({
+          redis: redisOptions,
+          keys,
+          shardCount: 1,
+          defaultTimeoutMs: 5000,
+        });
+
+        const redis = createRedisClient(redisOptions);
+        const queueId = "tenant:t1:queue:corrupted-batch";
+        const queueKey = keys.queueKey(queueId);
+        const queueItemsKey = keys.queueItemsKey(queueId);
+
+        // Add valid message 1
+        const storedMessage1 = {
+          id: "msg-1",
+          queueId,
+          tenantId: "t1",
+          payload: { value: "test-1" },
+          timestamp: Date.now() - 3000,
+          attempt: 1,
+        };
+        await redis.zadd(queueKey, storedMessage1.timestamp, "msg-1");
+        await redis.hset(queueItemsKey, "msg-1", JSON.stringify(storedMessage1));
+
+        // Add corrupted message 2 (invalid JSON)
+        await redis.zadd(queueKey, Date.now() - 2000, "msg-2");
+        await redis.hset(queueItemsKey, "msg-2", "not-valid-json{{{");
+
+        // Add valid message 3
+        const storedMessage3 = {
+          id: "msg-3",
+          queueId,
+          tenantId: "t1",
+          payload: { value: "test-3" },
+          timestamp: Date.now() - 1000,
+          attempt: 1,
+        };
+        await redis.zadd(queueKey, storedMessage3.timestamp, "msg-3");
+        await redis.hset(queueItemsKey, "msg-3", JSON.stringify(storedMessage3));
+
+        // Claim all 3 messages
+        const claimed = await manager.claimBatch(queueId, queueKey, queueItemsKey, "consumer-1", 5);
+
+        // Should only return the 2 valid messages
+        expect(claimed).toHaveLength(2);
+        expect(claimed[0]!.messageId).toBe("msg-1");
+        expect(claimed[1]!.messageId).toBe("msg-3");
+
+        // Corrupted message should have been removed from in-flight
+        // Valid messages should be in in-flight
+        const inflightCount = await manager.getTotalInflightCount();
+        expect(inflightCount).toBe(2);
+
+        // Queue should be empty (all messages processed or removed)
+        const remainingCount = await redis.zcard(queueKey);
+        expect(remainingCount).toBe(0);
+
+        await manager.close();
+        await redis.quit();
+      }
+    );
   });
 
   describe("releaseBatch", () => {

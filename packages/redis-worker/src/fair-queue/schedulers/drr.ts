@@ -140,6 +140,18 @@ export class DRRScheduler extends BaseScheduler {
     await this.#decrementDeficit(tenantId);
   }
 
+  /**
+   * Record that multiple messages were processed from a tenant.
+   * Decrements the tenant's deficit by count atomically.
+   */
+  override async recordProcessedBatch(
+    tenantId: string,
+    _queueId: string,
+    count: number
+  ): Promise<void> {
+    await this.#decrementDeficitBatch(tenantId, count);
+  }
+
   override async close(): Promise<void> {
     await this.redis.quit();
   }
@@ -249,6 +261,17 @@ export class DRRScheduler extends BaseScheduler {
     return parseFloat(result);
   }
 
+  /**
+   * Decrement deficit for a tenant by a count atomically.
+   */
+  async #decrementDeficitBatch(tenantId: string, count: number): Promise<number> {
+    const key = this.#deficitKey();
+
+    // Use Lua script to decrement by count and ensure non-negative
+    const result = await this.redis.drrDecrementDeficitBatch(key, tenantId, count.toString());
+    return parseFloat(result);
+  }
+
   #registerCommands(): void {
     // Atomic quantum addition with capping for multiple tenants
     this.redis.defineCommand("drrAddQuantum", {
@@ -298,6 +321,27 @@ end
 return tostring(newDeficit)
       `,
     });
+
+    // Atomic deficit decrement by count with floor at 0
+    this.redis.defineCommand("drrDecrementDeficitBatch", {
+      numberOfKeys: 1,
+      lua: `
+local deficitKey = KEYS[1]
+local tenantId = ARGV[1]
+local count = tonumber(ARGV[2])
+
+local newDeficit = redis.call('HINCRBYFLOAT', deficitKey, tenantId, -count)
+newDeficit = tonumber(newDeficit)
+
+-- Floor at 0
+if newDeficit < 0 then
+  redis.call('HSET', deficitKey, tenantId, 0)
+  newDeficit = 0
+end
+
+return tostring(newDeficit)
+      `,
+    });
   }
 }
 
@@ -312,6 +356,12 @@ declare module "@internal/redis" {
     ): Promise<string[]>;
 
     drrDecrementDeficit(deficitKey: string, tenantId: string): Promise<string>;
+
+    drrDecrementDeficitBatch(
+      deficitKey: string,
+      tenantId: string,
+      count: string
+    ): Promise<string>;
   }
 }
 
