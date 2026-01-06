@@ -134,16 +134,11 @@ You should use the version you run locally during dev and manual deploy. The cur
 
 ## Self-hosting
 
-When self-hosting, you will have to take a few additional steps:
+When self-hosting, you need to:
 
-- Specify the `TRIGGER_API_URL` environment variable. You can add it to the GitHub secrets the same way as the access token. This should point at your webapp domain, for example: `https://trigger.example.com`
-- Setup docker as you will need to build and push the image to your registry. On [Trigger.dev Cloud](https://cloud.trigger.dev) this is all done remotely.
+- Set up Docker Buildx in your CI environment for building images locally.
 - Add your registry credentials to the GitHub secrets.
-- Use the `--self-hosted` and `--push` flags when deploying.
-
-<Tip>If you're self-hosting v4, the `--self-hosted` and `--push` flags are **NOT** needed.</Tip>
-
-Other than that, your GitHub action file will look very similar to the one above:
+- Specify the `TRIGGER_API_URL` environment variable pointing to your webapp domain, for example: `https://trigger.example.com`
 
 <CodeGroup>
 
@@ -170,13 +165,11 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      # docker setup - part 1
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         with:
           version: latest
 
-      # docker setup - part 2
       - name: Login to DockerHub
         uses: docker/login-action@v3
         with:
@@ -186,11 +179,9 @@ jobs:
       - name: 🚀 Deploy Trigger.dev
         env:
           TRIGGER_ACCESS_TOKEN: ${{ secrets.TRIGGER_ACCESS_TOKEN }}
-          # required when self-hosting
           TRIGGER_API_URL: ${{ secrets.TRIGGER_API_URL }}
-        # deploy with additional flags
         run: |
-          npx trigger.dev@latest deploy --self-hosted --push
+          npx trigger.dev@latest deploy
 ```
 
 </CodeGroup>

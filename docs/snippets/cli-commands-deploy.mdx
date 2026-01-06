@@ -85,54 +85,14 @@ These options are available on most commands.
 
 ### Self-hosting
 
-These options are used when [self-hosting](/open-source-self-hosting) or for local development.
+When [self-hosting](/open-source-self-hosting), builds are performed locally by default. Set the `TRIGGER_ACCESS_TOKEN` environment variable and point to your self-hosted instance using `TRIGGER_API_URL` or `--api-url`:
+
+```bash
+TRIGGER_ACCESS_TOKEN=your_token TRIGGER_API_URL=https://your-trigger-instance.com npx trigger.dev@latest deploy
+```
+
+For CI/CD setup with self-hosting, see the [GitHub Actions guide](/github-actions#self-hosting).
 
 <ParamField body="Local build" type="--local-build">
-  Build the deployment image locally using your local Docker instead of using the remote build service.
+  Force building the deployment image locally using your local Docker. This is automatic when self-hosting.
 </ParamField>
-
-<ParamField body="Load image" type="--load">
-  Load the built image into your local Docker after building it.
-</ParamField>
-
-<ParamField body="Push image" type="--push">
-  Push the image to the registry after building locally.
-</ParamField>
-
-<ParamField body="Network" type="--network">
-  The networking mode for RUN instructions when building locally. Options: `default`, `none`, `host`.
-</ParamField>
-
-<ParamField body="Native build server" type="--native-build-server">
-  Use the native build server for building the image. This uploads your project files and builds remotely.
-</ParamField>
-
-<ParamField body="Detach" type="--detach">
-  Return immediately after the deployment is queued, without waiting for the build to complete. Implies `--native-build-server`.
-</ParamField>
-
-## Examples
-
-### Self-hosted deployment
-
-For self-hosted deployments, set your `TRIGGER_ACCESS_TOKEN` and use the `--api-url` option to point to your self-hosted instance:
-
-```bash
-TRIGGER_ACCESS_TOKEN=your_token npx trigger.dev@latest deploy --api-url https://your-trigger-instance.com
-```
-
-### Local build with Docker
-
-Build the image locally and load it into your local Docker:
-
-```bash
-npx trigger.dev@latest deploy --local-build --load
-```
-
-### Local build and push to registry
-
-Build the image locally and push it to your configured registry:
-
-```bash
-npx trigger.dev@latest deploy --local-build --push
-```
