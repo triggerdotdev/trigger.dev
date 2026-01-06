@@ -85,50 +85,54 @@ These options are available on most commands.
 
 ### Self-hosting
 
-These options are typically used when [self-hosting](/open-source-self-hosting) or for local development.
+These options are used when [self-hosting](/open-source-self-hosting) or for local development.
 
-<ParamField body="Self-hosted (builds locally)" type="--self-hosted">
-  Builds and loads the image using your local docker. Use the `--registry` option to specify the
-  registry to push the image to when using `--self-hosted`, or just use `--push` to push to the
-  default registry.
+<ParamField body="Local build" type="--local-build">
+  Build the deployment image locally using your local Docker instead of using the remote build service.
 </ParamField>
 
-<ParamField body="Skip deploying the image" type="--skip-deploy | -D">
-  Load the built image into your local docker.
-</ParamField>
-
-<ParamField body="Load image" type="--load-image">
-  Loads the image into your local docker after building it.
-</ParamField>
-
-<ParamField body="Registry" type="--registry">
-  Specify the registry to push the image to when using `--self-hosted`. Will automatically enable
-  `--push`.
+<ParamField body="Load image" type="--load">
+  Load the built image into your local Docker after building it.
 </ParamField>
 
 <ParamField body="Push image" type="--push">
-  When using the `--self-hosted` flag, push the image to the registry.
-</ParamField>
-
-<ParamField body="Namespace" type="--namespace">
-  The namespace to use when pushing the image to the registry. For example, if pushing to Docker
-  Hub, the namespace is your Docker Hub username.
+  Push the image to the registry after building locally.
 </ParamField>
 
 <ParamField body="Network" type="--network">
-  The networking mode for RUN instructions when using `--self-hosted`.
+  The networking mode for RUN instructions when building locally. Options: `default`, `none`, `host`.
+</ParamField>
+
+<ParamField body="Native build server" type="--native-build-server">
+  Use the native build server for building the image. This uploads your project files and builds remotely.
+</ParamField>
+
+<ParamField body="Detach" type="--detach">
+  Return immediately after the deployment is queued, without waiting for the build to complete. Implies `--native-build-server`.
 </ParamField>
 
 ## Examples
 
-### Push to Docker Hub (self-hosted)
+### Self-hosted deployment
 
-An example of deploying to Docker Hub when using a self-hosted setup:
+For self-hosted deployments, set your `TRIGGER_ACCESS_TOKEN` and use the `--api-url` option to point to your self-hosted instance:
 
 ```bash
-npx trigger.dev@latest deploy \
-  --self-hosted \
-  --load-image \
-  --registry docker.io \
-  --namespace mydockerhubusername
+TRIGGER_ACCESS_TOKEN=your_token npx trigger.dev@latest deploy --api-url https://your-trigger-instance.com
+```
+
+### Local build with Docker
+
+Build the image locally and load it into your local Docker:
+
+```bash
+npx trigger.dev@latest deploy --local-build --load
+```
+
+### Local build and push to registry
+
+Build the image locally and push it to your configured registry:
+
+```bash
+npx trigger.dev@latest deploy --local-build --push
 ```
