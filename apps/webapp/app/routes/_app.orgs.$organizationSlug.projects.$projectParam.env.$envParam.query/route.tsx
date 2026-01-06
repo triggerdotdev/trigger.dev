@@ -18,6 +18,7 @@ import { z } from "zod";
 import { ClockRotateLeftIcon } from "~/assets/icons/ClockRotateLeftIcon";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { AlphaTitle } from "~/components/AlphaBadge";
+import { AIQueryInput } from "~/components/code/AIQueryInput";
 import {
   ChartConfigPanel,
   defaultChartConfig,
@@ -427,6 +428,7 @@ export default function Page() {
                     setQuery(exampleQuery);
                     setScope(exampleScope);
                   }}
+                  onQueryGenerated={setQuery}
                 />
               </ResizablePanel>
             </>
@@ -548,9 +550,11 @@ LIMIT 100`,
 function QueryHelpSidebar({
   onClose,
   onTryExample,
+  onQueryGenerated,
 }: {
   onClose: () => void;
   onTryExample: (query: string, scope: QueryScope) => void;
+  onQueryGenerated: (query: string) => void;
 }) {
   return (
     <div className="grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
@@ -568,8 +572,11 @@ function QueryHelpSidebar({
           className="pl-[0.375rem]"
         />
       </div>
-      <ClientTabs defaultValue="guide" className="flex min-h-0 flex-col overflow-hidden">
+      <ClientTabs defaultValue="ai" className="flex min-h-0 flex-col overflow-hidden">
         <ClientTabsList variant="underline" className="mx-3 shrink-0">
+          <ClientTabsTrigger value="ai" variant="underline" layoutId="query-help-tabs">
+            AI
+          </ClientTabsTrigger>
           <ClientTabsTrigger value="guide" variant="underline" layoutId="query-help-tabs">
             Writing TRQL
           </ClientTabsTrigger>
@@ -580,6 +587,12 @@ function QueryHelpSidebar({
             Examples
           </ClientTabsTrigger>
         </ClientTabsList>
+        <ClientTabsContent
+          value="ai"
+          className="min-h-0 flex-1 overflow-y-auto p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        >
+          <AITabContent onQueryGenerated={onQueryGenerated} />
+        </ClientTabsContent>
         <ClientTabsContent
           value="guide"
           className="min-h-0 flex-1 overflow-y-auto p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
@@ -599,6 +612,51 @@ function QueryHelpSidebar({
           <ExamplesContent onTryExample={onTryExample} />
         </ClientTabsContent>
       </ClientTabs>
+    </div>
+  );
+}
+
+function AITabContent({ onQueryGenerated }: { onQueryGenerated: (query: string) => void }) {
+  const [autoSubmitPrompt, setAutoSubmitPrompt] = useState<string | undefined>();
+
+  const examplePrompts = [
+    "Show me failed runs from the last 7 days",
+    "Count of runs by status",
+    "Top 10 most expensive runs this week",
+    "Average execution duration by task",
+    "Runs that crashed or timed out in the last hour",
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <Header3 className="mb-2 text-text-bright">Generate query with AI</Header3>
+        <Paragraph variant="small" className="mb-3 text-text-dimmed">
+          Describe the data you want to query in natural language. The AI will generate a valid TSQL
+          query for you.
+        </Paragraph>
+        <AIQueryInput onQueryGenerated={onQueryGenerated} autoSubmitPrompt={autoSubmitPrompt} />
+      </div>
+
+      <div className="border-t border-grid-dimmed pt-4">
+        <Header3 className="mb-2 text-text-bright">Example prompts</Header3>
+        <div className="space-y-2">
+          {examplePrompts.map((example) => (
+            <button
+              key={example}
+              type="button"
+              onClick={() => {
+                // Use a unique key to ensure re-trigger even if same prompt clicked twice
+                setAutoSubmitPrompt(undefined);
+                setTimeout(() => setAutoSubmitPrompt(example), 0);
+              }}
+              className="block w-full rounded-md border border-grid-dimmed bg-charcoal-800 px-3 py-2 text-left text-sm text-text-dimmed transition-colors hover:border-grid-bright hover:bg-charcoal-750 hover:text-text-bright"
+            >
+              {example}
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
