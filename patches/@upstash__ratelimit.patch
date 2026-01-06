@@ -1,0 +1,26 @@
+diff --git a/dist/index.js b/dist/index.js
+index 7d1502426320957017988aed0c29974acd70e8da..062769cda055302d737503e5d1ba5e62609c934f 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -841,7 +841,7 @@ var tokenBucketLimitScript = `
+     refilledAt = refilledAt + numRefills * interval
+   end
+ 
+-  if tokens == 0 then
++  if tokens < incrementBy then
+     return {-1, refilledAt + interval}
+   end
+ 
+diff --git a/dist/index.mjs b/dist/index.mjs
+index 25a2c888be27b7c5aff41de63d5df189e0031145..53b4a4b2d2ef55f709f7404cc6a66058b7f3191a 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -813,7 +813,7 @@ var tokenBucketLimitScript = `
+     refilledAt = refilledAt + numRefills * interval
+   end
+ 
+-  if tokens == 0 then
++  if tokens < incrementBy then
+     return {-1, refilledAt + interval}
+   end
+ 

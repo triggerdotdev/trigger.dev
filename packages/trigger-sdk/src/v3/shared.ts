@@ -2,6 +2,7 @@ import { SpanKind } from "@opentelemetry/api";
 import { SerializableJson } from "@trigger.dev/core";
 import {
   accessoryAttributes,
+  ApiError,
   apiClientManager,
   ApiRequestOptions,
   conditionallyImportPacket,
@@ -17,6 +18,7 @@ import {
   parsePacket,
   Queue,
   QueueOptions,
+  RateLimitError,
   resourceCatalog,
   runtime,
   SemanticInternalAttributes,
@@ -124,9 +126,6 @@ export type {
 export { SubtaskUnwrapError, TaskRunPromise };
 
 export type Context = TaskRunContext;
-
-// Re-export for external use (defined later in file)
-export { BatchTriggerError };
 
 export function queue(options: QueueOptions): Queue {
   resourceCatalog.registerQueueMetadata(options);
@@ -1592,11 +1591,27 @@ async function executeBatchTwoPhase(
 /**
  * Error thrown when batch trigger operations fail.
  * Includes context about which phase failed and the batch details.
+ *
+ * When the underlying error is a rate limit (429), additional properties are exposed:
+ * - `isRateLimited`: true
+ * - `retryAfterMs`: milliseconds until the rate limit resets
  */
-class BatchTriggerError extends Error {
+export class BatchTriggerError extends Error {
   readonly phase: "create" | "stream";
   readonly batchId?: string;
   readonly itemCount: number;
+
+  /** True if the error was caused by rate limiting (HTTP 429) */
+  readonly isRateLimited: boolean;
+
+  /** Milliseconds until the rate limit resets. Only set when `isRateLimited` is true. */
+  readonly retryAfterMs?: number;
+
+  /** The underlying API error, if the cause was an ApiError */
+  readonly apiError?: ApiError;
+
+  /** The underlying cause of the error */
+  override readonly cause?: unknown;
 
   constructor(
     message: string,
@@ -1607,12 +1622,59 @@ class BatchTriggerError extends Error {
       itemCount: number;
     }
   ) {
-    super(message, { cause: options.cause });
+    // Build enhanced message that includes the cause's message
+    const fullMessage = buildBatchErrorMessage(message, options.cause);
+    super(fullMessage, { cause: options.cause });
+
     this.name = "BatchTriggerError";
+    this.cause = options.cause;
     this.phase = options.phase;
     this.batchId = options.batchId;
     this.itemCount = options.itemCount;
+
+    // Extract rate limit info from cause
+    if (options.cause instanceof RateLimitError) {
+      this.isRateLimited = true;
+      this.retryAfterMs = options.cause.millisecondsUntilReset;
+      this.apiError = options.cause;
+    } else if (options.cause instanceof ApiError) {
+      this.isRateLimited = options.cause.status === 429;
+      this.apiError = options.cause;
+    } else {
+      this.isRateLimited = false;
+    }
   }
+}
+
+/**
+ * Build an enhanced error message that includes context from the cause.
+ */
+function buildBatchErrorMessage(baseMessage: string, cause: unknown): string {
+  if (!cause) {
+    return baseMessage;
+  }
+
+  // Handle RateLimitError specifically for better messaging
+  if (cause instanceof RateLimitError) {
+    const retryMs = cause.millisecondsUntilReset;
+    if (retryMs !== undefined) {
+      const retrySeconds = Math.ceil(retryMs / 1000);
+      return `${baseMessage}: Rate limit exceeded - retry after ${retrySeconds}s`;
+    }
+    return `${baseMessage}: Rate limit exceeded`;
+  }
+
+  // Handle other ApiErrors
+  if (cause instanceof ApiError) {
+    return `${baseMessage}: ${cause.message}`;
+  }
+
+  // Handle generic errors
+  if (cause instanceof Error) {
+    return `${baseMessage}: ${cause.message}`;
+  }
+
+  return baseMessage;
 }
 
 /**

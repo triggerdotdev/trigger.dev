@@ -1,4 +1,4 @@
-import { batch, logger, runs, task, tasks } from "@trigger.dev/sdk/v3";
+import { batch, BatchTriggerError, logger, runs, task, tasks } from "@trigger.dev/sdk/v3";
 import { setTimeout } from "timers/promises";
 
 // ============================================================================
@@ -341,6 +341,211 @@ export const batchTriggerAndWait = task({
 
     // First batch triggerAndWait with idempotency keys
     const firstResults = await fixedLengthTask.batchTriggerAndWait(payloads);
+  },
+});
+
+// ============================================================================
+// Rate Limit Error Testing
+// ============================================================================
+
+/**
+ * Test: Intentionally trigger a rate limit error to verify BatchTriggerError improvements
+ *
+ * This test triggers many batches in rapid succession to exceed the rate limit.
+ * When a rate limit is hit, it verifies that:
+ * 1. The error is a BatchTriggerError
+ * 2. The error has isRateLimited = true
+ * 3. The error message includes rate limit details
+ * 4. The retryAfterMs property is set
+ *
+ * Run this from backend code, not from inside a task (to avoid worker rate limits).
+ */
+export const rateLimitErrorTest = task({
+  id: "rate-limit-error-test",
+  maxDuration: 300,
+  run: async (payload: { batchesPerAttempt?: number; itemsPerBatch?: number }) => {
+    const batchesPerAttempt = payload.batchesPerAttempt || 50;
+    const itemsPerBatch = payload.itemsPerBatch || 100;
+
+    logger.info("Starting rate limit error test", {
+      batchesPerAttempt,
+      itemsPerBatch,
+      totalItems: batchesPerAttempt * itemsPerBatch,
+    });
+
+    const results: Array<{
+      batchIndex: number;
+      success: boolean;
+      batchId?: string;
+      error?: {
+        message: string;
+        name: string;
+        isRateLimited?: boolean;
+        retryAfterMs?: number;
+        phase?: string;
+      };
+    }> = [];
+
+    // Try to trigger many batches rapidly
+    const batchPromises = Array.from({ length: batchesPerAttempt }, async (_, batchIndex) => {
+      const items = Array.from({ length: itemsPerBatch }, (_, i) => ({
+        payload: { index: batchIndex * itemsPerBatch + i, testId: `rate-limit-test-${Date.now()}` },
+      }));
+
+      try {
+        const result = await retryTrackingTask.batchTrigger(items);
+        return {
+          batchIndex,
+          success: true as const,
+          batchId: result.batchId,
+        };
+      } catch (error) {
+        // Log the error details for inspection
+        if (error instanceof BatchTriggerError) {
+          logger.info(`BatchTriggerError caught for batch ${batchIndex}`, {
+            message: error.message,
+            name: error.name,
+            isRateLimited: error.isRateLimited,
+            retryAfterMs: error.retryAfterMs,
+            phase: error.phase,
+            batchId: error.batchId,
+            itemCount: error.itemCount,
+            cause: error.cause instanceof Error ? error.cause.message : String(error.cause),
+          });
+
+          return {
+            batchIndex,
+            success: false as const,
+            error: {
+              message: error.message,
+              name: error.name,
+              isRateLimited: error.isRateLimited,
+              retryAfterMs: error.retryAfterMs,
+              phase: error.phase,
+            },
+          };
+        }
+
+        // Non-BatchTriggerError
+        const err = error instanceof Error ? error : new Error(String(error));
+        logger.warn(`Non-BatchTriggerError caught for batch ${batchIndex}`, {
+          message: err.message,
+          name: err.name,
+        });
+
+        return {
+          batchIndex,
+          success: false as const,
+          error: {
+            message: err.message,
+            name: err.name,
+          },
+        };
+      }
+    });
+
+    // Wait for all attempts (use allSettled to capture all results)
+    const settled = await Promise.allSettled(batchPromises);
+
+    for (const result of settled) {
+      if (result.status === "fulfilled") {
+        results.push(result.value);
+      } else {
+        results.push({
+          batchIndex: -1,
+          success: false,
+          error: {
+            message: result.reason?.message || String(result.reason),
+            name: result.reason?.name || "Error",
+          },
+        });
+      }
+    }
+
+    // Analyze results
+    const successCount = results.filter((r) => r.success).length;
+    const rateLimitedCount = results.filter((r) => !r.success && r.error?.isRateLimited).length;
+    const otherErrorCount = results.filter((r) => !r.success && !r.error?.isRateLimited).length;
+
+    // Get a sample rate limit error for inspection
+    const sampleRateLimitError = results.find((r) => r.error?.isRateLimited)?.error;
+
+    return {
+      summary: {
+        totalBatches: batchesPerAttempt,
+        successCount,
+        rateLimitedCount,
+        otherErrorCount,
+      },
+      sampleRateLimitError: sampleRateLimitError || null,
+      allResults: results,
+      testPassed:
+        rateLimitedCount > 0 &&
+        sampleRateLimitError?.isRateLimited === true &&
+        typeof sampleRateLimitError?.retryAfterMs === "number",
+    };
+  },
+});
+
+/**
+ * Simpler test: Direct batch trigger that's likely to hit rate limits
+ *
+ * This test just tries to batch trigger a very large number of items in one call.
+ * If the organization has rate limits configured, this should trigger them.
+ */
+export const simpleBatchRateLimitTest = task({
+  id: "simple-batch-rate-limit-test",
+  maxDuration: 120,
+  run: async (payload: { itemCount?: number }) => {
+    const itemCount = payload.itemCount || 5000; // Large batch that might hit limits
+
+    logger.info("Starting simple batch rate limit test", { itemCount });
+
+    const items = Array.from({ length: itemCount }, (_, i) => ({
+      payload: { index: i, testId: `simple-rate-test-${Date.now()}` },
+    }));
+
+    try {
+      const result = await retryTrackingTask.batchTrigger(items);
+
+      logger.info("Batch succeeded (no rate limit hit)", {
+        batchId: result.batchId,
+        runCount: result.runCount,
+      });
+
+      return {
+        success: true,
+        batchId: result.batchId,
+        runCount: result.runCount,
+        rateLimitHit: false,
+      };
+    } catch (error) {
+      if (error instanceof BatchTriggerError) {
+        logger.info("BatchTriggerError caught", {
+          fullMessage: error.message,
+          isRateLimited: error.isRateLimited,
+          retryAfterMs: error.retryAfterMs,
+          phase: error.phase,
+          itemCount: error.itemCount,
+          apiErrorType: error.apiError?.constructor.name,
+        });
+
+        return {
+          success: false,
+          rateLimitHit: error.isRateLimited,
+          errorMessage: error.message,
+          errorDetails: {
+            phase: error.phase,
+            itemCount: error.itemCount,
+            isRateLimited: error.isRateLimited,
+            retryAfterMs: error.retryAfterMs,
+            hasApiError: !!error.apiError,
+          },
+        };
+      }
+
+      throw error; // Re-throw unexpected errors
+    }
   },
 });
 

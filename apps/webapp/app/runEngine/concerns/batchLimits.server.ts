@@ -115,9 +115,7 @@ export class BatchRateLimitExceededError extends Error {
     public readonly resetAt: Date,
     public readonly itemCount: number
   ) {
-    super(
-      `Batch rate limit exceeded. Attempted to submit ${itemCount} items but only ${remaining} remaining. Limit resets at ${resetAt.toISOString()}`
-    );
+    super(`Batch rate limit exceeded. Limit resets at ${resetAt.toISOString()}`);
     this.name = "BatchRateLimitExceededError";
   }
 }
