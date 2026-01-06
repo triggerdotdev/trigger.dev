@@ -511,6 +511,8 @@ export interface DRRSchedulerConfig {
   quantum: number;
   /** Maximum accumulated deficit (prevents starvation) */
   maxDeficit: number;
+  /** Maximum queues to fetch from master queue (default: 1000) */
+  masterQueueLimit?: number;
   /** Redis options for state storage */
   redis: RedisOptions;
   /** Key producer */

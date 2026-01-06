@@ -108,6 +108,7 @@ export class BatchQueue {
       keys: keyProducer,
       quantum: options.drr.quantum,
       maxDeficit: options.drr.maxDeficit,
+      masterQueueLimit: options.drr.masterQueueLimit,
       logger: {
         debug: (msg, ctx) => this.logger.debug(msg, ctx),
         error: (msg, ctx) => this.logger.error(msg, ctx),
@@ -121,7 +122,7 @@ export class BatchQueue {
       scheduler,
       payloadSchema: BatchItemPayloadSchema,
       validateOnEnqueue: false, // We control the payload
-      shardCount: 1, // Batches don't need sharding
+      shardCount: options.shardCount ?? 1,
       consumerCount: options.consumerCount,
       consumerIntervalMs: options.consumerIntervalMs,
       visibilityTimeoutMs: 60_000, // 1 minute for batch item processing
@@ -131,6 +132,14 @@ export class BatchQueue {
         threshold: 5,
         periodMs: 5_000,
       },
+      // Enable two-stage processing with worker queues for better parallelism (when configured)
+      // Worker queues provide better concurrency by separating queue selection from message processing
+      workerQueue: options.workerQueueBlockingTimeoutSeconds
+        ? {
+            enabled: true,
+            blockingTimeoutSeconds: options.workerQueueBlockingTimeoutSeconds,
+          }
+        : undefined,
       // Concurrency group based on tenant (environment)
       // This limits how many batch items can be processed concurrently per environment
       // Items wait in queue until capacity frees up

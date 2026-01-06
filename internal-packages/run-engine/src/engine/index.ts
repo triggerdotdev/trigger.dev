@@ -340,7 +340,10 @@ export class RunEngine {
       drr: {
         quantum: options.batchQueue?.drr?.quantum ?? 5,
         maxDeficit: options.batchQueue?.drr?.maxDeficit ?? 50,
+        masterQueueLimit: options.batchQueue?.drr?.masterQueueLimit,
       },
+      shardCount: options.batchQueue?.shardCount,
+      workerQueueBlockingTimeoutSeconds: options.batchQueue?.workerQueueBlockingTimeoutSeconds,
       consumerCount: options.batchQueue?.consumerCount ?? 2,
       consumerIntervalMs: options.batchQueue?.consumerIntervalMs ?? 100,
       defaultConcurrency: options.batchQueue?.defaultConcurrency ?? 10,

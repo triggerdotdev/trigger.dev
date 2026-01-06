@@ -115,6 +115,26 @@ export class ConcurrencyManager {
   }
 
   /**
+   * Get available capacity for a queue across all concurrency groups.
+   * Returns the minimum available capacity across all groups.
+   */
+  async getAvailableCapacity(queue: QueueDescriptor): Promise<number> {
+    let minCapacity = Infinity;
+
+    for (const group of this.groups) {
+      const groupId = group.extractGroupId(queue);
+      const key = this.keys.concurrencyKey(group.name, groupId);
+      const current = await this.redis.scard(key);
+      const limit = (await group.getLimit(groupId)) || group.defaultLimit;
+      const available = Math.max(0, limit - current);
+
+      minCapacity = Math.min(minCapacity, available);
+    }
+
+    return minCapacity === Infinity ? 0 : minCapacity;
+  }
+
+  /**
    * Get concurrency limit for a specific group.
    */
   async getConcurrencyLimit(groupName: string, groupId: string): Promise<number> {

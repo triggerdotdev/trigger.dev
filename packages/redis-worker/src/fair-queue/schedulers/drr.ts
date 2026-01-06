@@ -27,6 +27,7 @@ export class DRRScheduler extends BaseScheduler {
   private keys: FairQueueKeyProducer;
   private quantum: number;
   private maxDeficit: number;
+  private masterQueueLimit: number;
   private logger: NonNullable<DRRSchedulerConfig["logger"]>;
 
   constructor(private config: DRRSchedulerConfig) {
@@ -35,6 +36,7 @@ export class DRRScheduler extends BaseScheduler {
     this.keys = config.keys;
     this.quantum = config.quantum;
     this.maxDeficit = config.maxDeficit;
+    this.masterQueueLimit = config.masterQueueLimit ?? 1000;
     this.logger = config.logger ?? {
       debug: () => {},
       error: () => {},
@@ -195,7 +197,7 @@ export class DRRScheduler extends BaseScheduler {
       "WITHSCORES",
       "LIMIT",
       0,
-      1000 // Limit for performance
+      this.masterQueueLimit
     );
 
     const queues: QueueWithScore[] = [];

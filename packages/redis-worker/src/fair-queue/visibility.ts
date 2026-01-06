@@ -128,6 +128,93 @@ export class VisibilityManager {
   }
 
   /**
+   * Claim multiple messages for processing (batch claim).
+   * Moves up to maxCount messages from the queue to the in-flight set.
+   *
+   * @param queueId - The queue to claim from
+   * @param queueKey - The Redis key for the queue sorted set
+   * @param queueItemsKey - The Redis key for the queue items hash
+   * @param consumerId - ID of the consumer claiming the messages
+   * @param maxCount - Maximum number of messages to claim
+   * @param timeoutMs - Visibility timeout in milliseconds
+   * @returns Array of claimed messages
+   */
+  async claimBatch<TPayload = unknown>(
+    queueId: string,
+    queueKey: string,
+    queueItemsKey: string,
+    consumerId: string,
+    maxCount: number,
+    timeoutMs?: number
+  ): Promise<Array<InFlightMessage<TPayload>>> {
+    const timeout = timeoutMs ?? this.defaultTimeoutMs;
+    const deadline = Date.now() + timeout;
+    const shardId = this.#getShardForQueue(queueId);
+    const inflightKey = this.keys.inflightKey(shardId);
+    const inflightDataKey = this.keys.inflightDataKey(shardId);
+
+    // Use Lua script to atomically claim up to maxCount messages
+    const result = await this.redis.claimMessageBatch(
+      queueKey,
+      queueItemsKey,
+      inflightKey,
+      inflightDataKey,
+      queueId,
+      consumerId,
+      deadline.toString(),
+      maxCount.toString()
+    );
+
+    if (!result || result.length === 0) {
+      return [];
+    }
+
+    const messages: Array<InFlightMessage<TPayload>> = [];
+
+    // Results come in pairs: [messageId1, payload1, messageId2, payload2, ...]
+    for (let i = 0; i < result.length; i += 2) {
+      const messageId = result[i];
+      const payloadJson = result[i + 1];
+
+      // Skip if either value is missing
+      if (!messageId || !payloadJson) {
+        continue;
+      }
+
+      try {
+        const payload = JSON.parse(payloadJson) as TPayload;
+        messages.push({
+          messageId,
+          queueId,
+          payload,
+          deadline,
+          consumerId,
+        });
+      } catch (error) {
+        // JSON parse error - skip this message
+        this.logger.error("Failed to parse claimed message in batch", {
+          messageId,
+          queueId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        // Remove the corrupted message from in-flight
+        await this.#removeFromInflight(shardId, messageId, queueId);
+      }
+    }
+
+    if (messages.length > 0) {
+      this.logger.debug("Batch claimed messages", {
+        queueId,
+        consumerId,
+        count: messages.length,
+        deadline,
+      });
+    }
+
+    return messages;
+  }
+
+  /**
    * Extend the visibility timeout for a message (heartbeat).
    *
    * @param messageId - The message ID
@@ -438,6 +525,57 @@ return {messageId, payload}
       `,
     });
 
+    // Atomic batch claim: pop up to N messages from queue, add to in-flight
+    this.redis.defineCommand("claimMessageBatch", {
+      numberOfKeys: 4,
+      lua: `
+local queueKey = KEYS[1]
+local queueItemsKey = KEYS[2]
+local inflightKey = KEYS[3]
+local inflightDataKey = KEYS[4]
+
+local queueId = ARGV[1]
+local consumerId = ARGV[2]
+local deadline = tonumber(ARGV[3])
+local maxCount = tonumber(ARGV[4])
+
+-- Get up to maxCount oldest messages from queue
+local items = redis.call('ZRANGE', queueKey, 0, maxCount - 1)
+if #items == 0 then
+  return {}
+end
+
+local results = {}
+
+for i, messageId in ipairs(items) do
+  -- Get message data
+  local payload = redis.call('HGET', queueItemsKey, messageId)
+  
+  if payload then
+    -- Remove from queue
+    redis.call('ZREM', queueKey, messageId)
+    redis.call('HDEL', queueItemsKey, messageId)
+    
+    -- Add to in-flight set with deadline
+    local member = messageId .. ':' .. queueId
+    redis.call('ZADD', inflightKey, deadline, member)
+    
+    -- Store message data for potential release
+    redis.call('HSET', inflightDataKey, messageId, payload)
+    
+    -- Add to results
+    table.insert(results, messageId)
+    table.insert(results, payload)
+  else
+    -- Message data missing, remove from queue
+    redis.call('ZREM', queueKey, messageId)
+  end
+end
+
+return results
+      `,
+    });
+
     // Atomic release: remove from in-flight, add back to queue, update master queue
     this.redis.defineCommand("releaseMessage", {
       numberOfKeys: 5,
@@ -516,6 +654,17 @@ declare module "@internal/redis" {
       consumerId: string,
       deadline: string
     ): Promise<[string, string] | null>;
+
+    claimMessageBatch(
+      queueKey: string,
+      queueItemsKey: string,
+      inflightKey: string,
+      inflightDataKey: string,
+      queueId: string,
+      consumerId: string,
+      deadline: string,
+      maxCount: string
+    ): Promise<string[]>;
 
     releaseMessage(
       inflightKey: string,

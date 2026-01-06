@@ -123,6 +123,8 @@ export type DRRConfig = {
   quantum: number;
   /** Maximum accumulated deficit (prevents starvation) */
   maxDeficit: number;
+  /** Maximum queues to fetch from master queue (default: 1000) */
+  masterQueueLimit?: number;
 };
 
 // ============================================================================
@@ -196,6 +198,10 @@ export type BatchQueueOptions = {
   consumerCount: number;
   /** Interval between consumer iterations (ms) */
   consumerIntervalMs: number;
+  /** Number of master queue shards (default: 1) */
+  shardCount?: number;
+  /** Worker queue blocking timeout in seconds (enables two-stage processing) */
+  workerQueueBlockingTimeoutSeconds?: number;
   /** Whether to start consumers on initialization */
   startConsumers?: boolean;
   /**

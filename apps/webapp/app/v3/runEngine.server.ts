@@ -171,7 +171,10 @@ function createRunEngine() {
       drr: {
         quantum: env.BATCH_QUEUE_DRR_QUANTUM,
         maxDeficit: env.BATCH_QUEUE_MAX_DEFICIT,
+        masterQueueLimit: env.BATCH_QUEUE_MASTER_QUEUE_LIMIT,
       },
+      shardCount: env.BATCH_QUEUE_SHARD_COUNT,
+      workerQueueBlockingTimeoutSeconds: env.BATCH_QUEUE_WORKER_QUEUE_TIMEOUT_SECONDS,
       consumerCount: env.BATCH_QUEUE_CONSUMER_COUNT,
       consumerIntervalMs: env.BATCH_QUEUE_CONSUMER_INTERVAL_MS,
       // Default processing concurrency when no specific limit is set

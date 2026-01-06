@@ -305,7 +305,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
                 attempt: 1,
                 metadata: options.metadata,
               })
-            : options.queueId,
+            : undefined,
           metadata: options.metadata,
         };
 
@@ -401,7 +401,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
                   attempt: 1,
                   metadata: options.metadata,
                 })
-              : options.queueId,
+              : undefined,
             metadata: options.metadata,
           };
 
@@ -756,15 +756,19 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     this.batchedSpanManager.initializeLoop(loopId);
 
     try {
-      for await (const _ of setInterval(this.consumerIntervalMs, null, {
-        signal: this.abortController.signal,
-      })) {
+      while (this.isRunning) {
+        // Check abort signal
+        if (this.abortController.signal.aborted) {
+          break;
+        }
+
+        let hadWork = false;
         try {
-          await this.batchedSpanManager.withBatchedSpan(
+          hadWork = await this.batchedSpanManager.withBatchedSpan(
             loopId,
             async (span) => {
               span.setAttribute("shard_id", shardId);
-              await this.#processMasterQueueShard(loopId, shardId, span);
+              return await this.#processMasterQueueShard(loopId, shardId, span);
             },
             {
               iterationSpanName: "processMasterQueueShard",
@@ -779,9 +783,25 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
           });
           this.batchedSpanManager.markForRotation(loopId);
         }
+
+        // Only wait if there was no work (avoid spinning when idle)
+        // When there's work, immediately process the next batch
+        if (!hadWork) {
+          await new Promise<void>((resolve, reject) => {
+            const timeout = setTimeout(resolve, this.consumerIntervalMs);
+            this.abortController.signal.addEventListener(
+              "abort",
+              () => {
+                clearTimeout(timeout);
+                reject(new Error("AbortError"));
+              },
+              { once: true }
+            );
+          });
+        }
       }
     } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") {
+      if (error instanceof Error && error.message === "AbortError") {
         this.logger.debug("Master queue consumer aborted", { loopId });
         this.batchedSpanManager.cleanup(loopId);
         return;
@@ -796,7 +816,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     loopId: string,
     shardId: number,
     parentSpan?: Span
-  ): Promise<void> {
+  ): Promise<boolean> {
     const masterQueueKey = this.keys.masterQueueKey(shardId);
 
     // Create scheduler context
@@ -821,7 +841,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
 
     if (tenantQueues.length === 0) {
       this.batchedSpanManager.incrementStat(loopId, "empty_iterations");
-      return;
+      return false;
     }
 
     // Track stats
@@ -832,6 +852,8 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       tenantQueues.reduce((acc, t) => acc + t.queues.length, 0)
     );
 
+    let messagesProcessed = 0;
+
     // Process queues and push to worker queues
     for (const { tenantId, queues } of tenantQueues) {
       for (const queueId of queues) {
@@ -841,32 +863,47 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
           continue;
         }
 
-        const processed = await this.telemetry.trace(
+        // Check tenant capacity before attempting to process
+        // If tenant is at capacity, skip ALL remaining queues for this tenant
+        if (this.concurrencyManager) {
+          const isAtCapacity = await this.concurrencyManager.isAtCapacity("tenant", tenantId);
+          if (isAtCapacity) {
+            this.batchedSpanManager.incrementStat(loopId, "tenant_capacity_skipped");
+            break; // Skip remaining queues for this tenant
+          }
+        }
+
+        const processedFromQueue = await this.telemetry.trace(
           "claimAndPushToWorkerQueue",
           async (span) => {
             span.setAttribute(FairQueueAttributes.QUEUE_ID, queueId);
             span.setAttribute(FairQueueAttributes.TENANT_ID, tenantId);
             span.setAttribute(FairQueueAttributes.SHARD_ID, shardId.toString());
-            return this.#claimAndPushToWorkerQueue(loopId, queueId, tenantId, shardId);
+            const count = await this.#claimAndPushToWorkerQueue(loopId, queueId, tenantId, shardId);
+            span.setAttribute("messages_claimed", count);
+            return count;
           },
           { kind: SpanKind.INTERNAL }
         );
 
-        if (processed) {
-          this.batchedSpanManager.incrementStat(loopId, "messages_claimed");
+        if (processedFromQueue > 0) {
+          messagesProcessed += processedFromQueue;
+          this.batchedSpanManager.incrementStat(loopId, "messages_claimed", processedFromQueue);
 
           if (this.scheduler.recordProcessed) {
-            await this.telemetry.trace(
-              "recordProcessed",
-              async (span) => {
-                span.setAttribute(FairQueueAttributes.QUEUE_ID, queueId);
-                span.setAttribute(FairQueueAttributes.TENANT_ID, tenantId);
-                await this.scheduler.recordProcessed!(tenantId, queueId);
-              },
-              { kind: SpanKind.INTERNAL }
-            );
+            // Record each processed message for DRR deficit tracking
+            for (let i = 0; i < processedFromQueue; i++) {
+              await this.telemetry.trace(
+                "recordProcessed",
+                async (span) => {
+                  span.setAttribute(FairQueueAttributes.QUEUE_ID, queueId);
+                  span.setAttribute(FairQueueAttributes.TENANT_ID, tenantId);
+                  await this.scheduler.recordProcessed!(tenantId, queueId);
+                },
+                { kind: SpanKind.INTERNAL }
+              );
+            }
           }
-          this.#resetCooloff(queueId);
         } else {
           // Don't increment cooloff here - the queue was either:
           // 1. Empty (removed from master, cache cleaned up)
@@ -876,6 +913,9 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
         }
       }
     }
+
+    // Return true if we processed any messages (had work)
+    return messagesProcessed > 0;
   }
 
   async #claimAndPushToWorkerQueue(
@@ -883,7 +923,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     queueId: string,
     tenantId: string,
     shardId: number
-  ): Promise<boolean> {
+  ): Promise<number> {
     const queueKey = this.keys.queueKey(queueId);
     const queueItemsKey = this.keys.queueItemsKey(queueId);
     const masterQueueKey = this.keys.masterQueueKey(shardId);
@@ -893,14 +933,16 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       metadata: {},
     };
 
-    // Check concurrency before claiming
+    // Determine how many messages we can claim based on concurrency
+    let maxClaimCount = 10; // Default batch size cap
     if (this.concurrencyManager) {
-      const check = await this.concurrencyManager.canProcess(descriptor);
-      if (!check.allowed) {
+      const availableCapacity = await this.concurrencyManager.getAvailableCapacity(descriptor);
+      if (availableCapacity === 0) {
         // Queue at max concurrency, back off to avoid repeated attempts
         this.#incrementCooloff(queueId);
-        return false;
+        return 0;
       }
+      maxClaimCount = Math.min(maxClaimCount, availableCapacity);
     }
 
     // Check global rate limit - wait if rate limited
@@ -915,53 +957,55 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       }
     }
 
-    // Claim message with visibility timeout
-    const claimResult = await this.visibilityManager.claim<StoredMessage<z.infer<TPayloadSchema>>>(
-      queueId,
-      queueKey,
-      queueItemsKey,
-      loopId,
-      this.visibilityTimeoutMs
-    );
+    // Claim batch of messages with visibility timeout
+    const claimedMessages = await this.visibilityManager.claimBatch<
+      StoredMessage<z.infer<TPayloadSchema>>
+    >(queueId, queueKey, queueItemsKey, loopId, maxClaimCount, this.visibilityTimeoutMs);
 
-    if (!claimResult.claimed || !claimResult.message) {
+    if (claimedMessages.length === 0) {
       // Queue is empty, update master queue and clean up caches
       const removed = await this.redis.updateMasterQueueIfEmpty(masterQueueKey, queueKey, queueId);
       if (removed === 1) {
         this.queueDescriptorCache.delete(queueId);
         this.queueCooloffStates.delete(queueId);
       }
-      return false;
+      return 0;
     }
 
-    const { message } = claimResult;
+    // Use single shared worker queue - all messages go to one queue, all consumers pop atomically
+    const workerQueueId = "worker-queue";
+    let processedCount = 0;
 
-    // Reserve concurrency slot
-    if (this.concurrencyManager) {
-      const reserved = await this.concurrencyManager.reserve(descriptor, message.messageId);
-      if (!reserved) {
-        // Release message back to queue (and ensure it's in master queue)
-        await this.visibilityManager.release(
-          message.messageId,
-          queueId,
-          queueKey,
-          queueItemsKey,
-          masterQueueKey
-        );
-        // Concurrency reservation failed, back off to avoid repeated attempts
-        this.#incrementCooloff(queueId);
-        return false;
+    // Reserve concurrency and push each message to worker queue
+    for (const message of claimedMessages) {
+      // Reserve concurrency slot
+      if (this.concurrencyManager) {
+        const reserved = await this.concurrencyManager.reserve(descriptor, message.messageId);
+        if (!reserved) {
+          // Release message back to queue (and ensure it's in master queue)
+          await this.visibilityManager.release(
+            message.messageId,
+            queueId,
+            queueKey,
+            queueItemsKey,
+            masterQueueKey
+          );
+          // Stop processing more messages from this queue since we're at capacity
+          break;
+        }
       }
+
+      // Push to worker queue
+      const messageKey = `${message.messageId}:${queueId}`;
+      await this.workerQueueManager!.push(workerQueueId, messageKey);
+      processedCount++;
     }
 
-    // Determine worker queue
-    const workerQueueId = message.payload.workerQueue ?? queueId;
+    if (processedCount > 0) {
+      this.#resetCooloff(queueId);
+    }
 
-    // Push to worker queue
-    const messageKey = `${message.messageId}:${queueId}`;
-    await this.workerQueueManager!.push(workerQueueId, messageKey);
-
-    return true;
+    return processedCount;
   }
 
   // ============================================================================
@@ -970,7 +1014,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
 
   async #runWorkerQueueConsumerLoop(consumerId: number): Promise<void> {
     const loopId = `worker-${consumerId}`;
-    const workerQueueId = loopId; // Each consumer has its own worker queue by default
+    const workerQueueId = "worker-queue"; // All consumers share a single worker queue
 
     // Initialize batched span tracking for this loop
     this.batchedSpanManager.initializeLoop(loopId);

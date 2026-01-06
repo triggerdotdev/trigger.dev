@@ -951,6 +951,12 @@ const EnvironmentSchema = z
     BATCH_QUEUE_MAX_DEFICIT: z.coerce.number().int().default(100),
     BATCH_QUEUE_CONSUMER_COUNT: z.coerce.number().int().default(3),
     BATCH_QUEUE_CONSUMER_INTERVAL_MS: z.coerce.number().int().default(50),
+    // Number of master queue shards for horizontal scaling
+    BATCH_QUEUE_SHARD_COUNT: z.coerce.number().int().default(1),
+    // Maximum queues to fetch from master queue per iteration
+    BATCH_QUEUE_MASTER_QUEUE_LIMIT: z.coerce.number().int().default(1000),
+    // Worker queue blocking timeout in seconds (for two-stage processing)
+    BATCH_QUEUE_WORKER_QUEUE_TIMEOUT_SECONDS: z.coerce.number().int().default(10),
     // Global rate limit: max items processed per second across all consumers
     // If not set, no global rate limiting is applied
     BATCH_QUEUE_GLOBAL_RATE_LIMIT: z.coerce.number().int().positive().optional(),
