@@ -251,7 +251,7 @@ export default function Page() {
           <ResizablePanel id="query-main" className="max-h-full">
             <div className="grid max-h-full grid-rows-[auto_1fr] overflow-hidden">
               {/* Query editor */}
-              <div className="flex flex-col gap-2 pb-2">
+              <div className="flex flex-col gap-2 bg-charcoal-900 pb-2">
                 <TSQLEditor
                   defaultValue={query}
                   onChange={setQuery}
@@ -315,8 +315,8 @@ export default function Page() {
                 </Form>
               </div>
               {/* Results */}
-              <div className="grid max-h-full grid-rows-[2rem_1fr] overflow-hidden border-t border-grid-dimmed">
-                <div className="flex items-center justify-between border-b border-grid-dimmed bg-charcoal-900 pl-3 pr-1">
+              <div className="grid max-h-full grid-rows-[2rem_1fr] overflow-hidden border-t border-grid-dimmed bg-charcoal-800">
+                <div className="flex items-center justify-between border-b border-grid-dimmed pl-3 pr-1">
                   <div className="flex items-center gap-2">
                     <Header3>
                       {results?.rows?.length ? `${results.rows.length} Results` : "Results"}
@@ -506,7 +506,7 @@ const exampleQueries: Array<{
   count() AS failed_count
 FROM runs
 WHERE status = 'Failed'
-  AND created_at > now() - INTERVAL 7 DAY
+  AND triggered_at > now() - INTERVAL 7 DAY
 GROUP BY task_identifier
 ORDER BY failed_count DESC
 LIMIT 20`,
@@ -519,7 +519,7 @@ LIMIT 20`,
   task_identifier,
   quantile(0.5)(execution_duration) AS p50_duration_ms
 FROM runs
-WHERE created_at > now() - INTERVAL 7 DAY
+WHERE triggered_at > now() - INTERVAL 7 DAY
   AND execution_duration IS NOT NULL
 GROUP BY task_identifier
 ORDER BY p50_duration_ms DESC
@@ -538,7 +538,7 @@ LIMIT 20`,
   machine,
   created_at
 FROM runs
-WHERE created_at > now() - INTERVAL 7 DAY
+WHERE triggered_at > now() - INTERVAL 7 DAY
 ORDER BY total_cost DESC
 LIMIT 100`,
     scope: "environment",

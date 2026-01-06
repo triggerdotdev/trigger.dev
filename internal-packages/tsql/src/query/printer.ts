@@ -964,6 +964,11 @@ export class ClickHousePrinter {
       return "Float64";
     }
 
+    // Quantile functions return Float64
+    if (name === "quantile" || name === "quantileif" || name.startsWith("quantile")) {
+      return "Float64";
+    }
+
     // Min/Max preserve the input type - try to infer from first arg
     if (name === "min" || name === "max" || name === "minif" || name === "maxif") {
       if (call.args.length > 0) {

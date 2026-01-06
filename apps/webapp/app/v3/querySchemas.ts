@@ -1,5 +1,6 @@
 import { column, type TableSchema } from "@internal/tsql";
 import { runFriendlyStatus, runStatusTitleFromStatus } from "~/components/runs/v3/TaskRunStatus";
+import { logger } from "~/services/logger.server";
 
 /**
  * Environment type values
@@ -122,6 +123,7 @@ export const runsSchema: TableSchema = {
         customRenderType: "runId",
         expression: "if(root_run_id = '', NULL, 'run_' || root_run_id)",
       }),
+      whereTransform: (value: string) => value.replace(/^run_/, ""),
     },
     parent_run_id: {
       name: "parent_run_id",
@@ -131,6 +133,7 @@ export const runsSchema: TableSchema = {
         customRenderType: "runId",
         expression: "if(parent_run_id = '', NULL, 'run_' || parent_run_id)",
       }),
+      whereTransform: (value: string) => value.replace(/^run_/, ""),
     },
     depth: {
       name: "depth",
@@ -226,7 +229,7 @@ export const runsSchema: TableSchema = {
       name: "ttl",
       clickhouseName: "expiration_ttl",
       ...column("String", {
-        description: "TTL string for expiration. By default dev runs have a TTL of 10m.",
+        description: "The TTL string for expiration – by default dev runs have a TTL of '10m'.",
         example: "10m",
       }),
     },
@@ -268,7 +271,7 @@ export const runsSchema: TableSchema = {
       name: "usage_duration",
       clickhouseName: "usage_duration_ms",
       ...column("UInt32", {
-        description: "Usage duration in milliseconds",
+        description: "Compute usage duration in milliseconds.",
         customRenderType: "duration",
         example: "3500",
       }),
@@ -285,7 +288,7 @@ export const runsSchema: TableSchema = {
     invocation_cost: {
       name: "invocation_cost",
       ...column("Float64", {
-        description: "Invocation cost in dollars",
+        description: "Invocation cost in dollars – the cost to start a run.",
         customRenderType: "costInDollars",
         example: "0.000025",
       }),
@@ -304,13 +307,17 @@ export const runsSchema: TableSchema = {
     // Output & error (JSON columns)
     output: {
       name: "output",
-      ...column("JSON", { description: "Run output data", example: '{"result": "success"}' }),
+      ...column("JSON", {
+        description: "The data you returned from the task.",
+        example: '{"result": "success"}',
+      }),
       expression: "if(output = '{}', NULL, output)",
     },
     error: {
       name: "error",
       ...column("JSON", {
-        description: "Error information",
+        description:
+          "If a run completely failed (after all attempts) then this error will be populated.",
         example: '{"message": "Task failed"}',
       }),
       expression: "if(error = '{}', NULL, error)",
@@ -320,39 +327,64 @@ export const runsSchema: TableSchema = {
     tags: {
       name: "tags",
       ...column("Array(String)", {
-        description: "Run tags",
+        description: "Tags you have added to the run.",
         customRenderType: "tags",
         example: '["user:123", "priority:high"]',
       }),
     },
     task_version: {
       name: "task_version",
-      ...column("String", { description: "Task version", example: "20240115.1" }),
+      ...column("String", {
+        description: "The version of your code in reverse date format.",
+        example: "20240115.1",
+      }),
     },
     sdk_version: {
       name: "sdk_version",
-      ...column("String", { description: "SDK version", example: "3.3.0" }),
+      ...column("String", {
+        description: "The SDK package version for this run.",
+        example: "3.3.0",
+      }),
     },
     cli_version: {
       name: "cli_version",
-      ...column("String", { description: "CLI version", example: "3.3.0" }),
+      ...column("String", {
+        description: "The CLI package version for this run.",
+        example: "3.3.0",
+      }),
     },
     machine: {
       name: "machine",
       clickhouseName: "machine_preset",
       ...column("LowCardinality(String)", {
-        description: "Machine preset",
+        description: "The machine that the run executed on.",
         allowedValues: [...MACHINE_PRESETS],
         customRenderType: "machine",
         example: "small-1x",
       }),
     },
-
-    // Flags
     is_test: {
       name: "is_test",
       ...column("UInt8", { description: "Whether this is a test run (0 or 1)", example: "0" }),
       expression: "if(is_test > 0, true, false)",
+    },
+    concurrency_key: {
+      name: "concurrency_key",
+      ...column("String", {
+        description: "The concurrency key you passed in when triggering the run.",
+        example: "user:1234567",
+      }),
+    },
+    bulk_action_group_ids: {
+      name: "bulk_action_group_ids",
+      ...column("Array(String)", {
+        description: "Any bulk actions that operated on this run.",
+        example: '["bulk_12345678", "bulk_34567890"]',
+        whereTransform: (value: string) => {
+          logger.log(`WHERE TRANSFORM: ${value}`);
+          return value.replace(/^bulk_/, "");
+        },
+      }),
     },
   },
 };
@@ -365,15 +397,7 @@ export const querySchemas: TableSchema[] = [runsSchema];
 /**
  * Default query for the query editor
  */
-export const defaultQuery = `SELECT
-  run_id,
-  task_identifier,
-  status,
-  created_at,
-  usage_duration,
-  compute_cost,
-  invocation_cost,
-  machine,
+export const defaultQuery = `SELECT *
 FROM runs
-ORDER BY created_at DESC
-LIMIT 10`;
+ORDER BY triggered_at DESC
+LIMIT 100`;
