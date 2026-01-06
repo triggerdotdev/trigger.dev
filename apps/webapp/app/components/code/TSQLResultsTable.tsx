@@ -125,6 +125,15 @@ function CellValue({
           );
         }
         return <span>{String(value)}</span>;
+      case "durationSeconds":
+        if (typeof value === "number") {
+          return (
+            <span className="tabular-nums">
+              {formatDurationMilliseconds(value * 1000, { style: "short" })}
+            </span>
+          );
+        }
+        return <span>{String(value)}</span>;
       case "cost":
         if (typeof value === "number") {
           // Assume cost values are in cents
@@ -252,6 +261,7 @@ function isRightAlignedColumn(column: OutputColumnMetadata): boolean {
   // Check for custom render types that display numeric values
   if (
     column.customRenderType === "duration" ||
+    column.customRenderType === "durationSeconds" ||
     column.customRenderType === "cost" ||
     column.customRenderType === "costInDollars"
   ) {

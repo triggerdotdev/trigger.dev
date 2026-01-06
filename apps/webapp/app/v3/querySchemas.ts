@@ -375,6 +375,16 @@ export const runsSchema: TableSchema = {
         example: "user:1234567",
       }),
     },
+    max_duration: {
+      name: "max_duration",
+      clickhouseName: "max_duration_in_seconds",
+      ...column("Nullable(UInt32)", {
+        description:
+          "The maximum allowed compute duration for this run in seconds. If the run exceeds this duration, the run will fail with an error. Can be set on an individual task, in the trigger.config, or per-run when triggering.",
+        example: "300",
+        customRenderType: "durationSeconds",
+      }),
+    },
     bulk_action_group_ids: {
       name: "bulk_action_group_ids",
       ...column("Array(String)", {

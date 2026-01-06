@@ -249,7 +249,7 @@ export default function Page() {
       <PageBody scrollable={false}>
         <ResizablePanelGroup orientation="horizontal" className="max-h-full">
           <ResizablePanel id="query-main" className="max-h-full">
-            <div className="grid max-h-full grid-rows-[auto_1fr] overflow-hidden">
+            <div className="grid max-h-full grid-rows-[auto_1fr] overflow-hidden bg-charcoal-800">
               {/* Query editor */}
               <div className="flex flex-col gap-2 bg-charcoal-900 pb-2">
                 <TSQLEditor
