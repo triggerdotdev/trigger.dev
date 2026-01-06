@@ -34,6 +34,7 @@ import { TaskIconSmall } from "~/assets/icons/TaskIcon";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
 import { Avatar } from "~/components/primitives/Avatar";
 import { type MatchedEnvironment } from "~/hooks/useEnvironment";
+import { useFeatureFlags } from "~/hooks/useFeatureFlags";
 import { useFeatures } from "~/hooks/useFeatures";
 import { type MatchedOrganization } from "~/hooks/useOrganizations";
 import { type MatchedProject } from "~/hooks/useProject";
@@ -130,6 +131,7 @@ export function SideMenu({
   const isFreeUser = currentPlan?.v3Subscription?.isPaying === false;
   const isAdmin = useHasAdminAccess();
   const { isManagedCloud } = useFeatures();
+  const featureFlags = useFeatureFlags();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -272,7 +274,7 @@ export function SideMenu({
               to={v3TestPath(organization, project, environment)}
               data-action="test"
             />
-            {user.admin && (
+            {(user.admin || featureFlags.hasQueryAccess) && (
               <SideMenuItem
                 name="Query"
                 icon={TableCellsIcon}

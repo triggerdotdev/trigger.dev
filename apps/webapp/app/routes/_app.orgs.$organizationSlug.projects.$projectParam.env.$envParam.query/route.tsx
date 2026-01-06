@@ -62,6 +62,7 @@ import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { prisma } from "~/db.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { QueryPresenter, type QueryHistoryItem } from "~/presenters/v3/QueryPresenter.server";
@@ -69,7 +70,41 @@ import { executeQuery, type QueryScope } from "~/services/queryService.server";
 import { requireUser } from "~/services/session.server";
 import { downloadFile, rowsToCSV, rowsToJSON } from "~/utils/dataExport";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
+import { FEATURE_FLAG, validateFeatureFlagValue } from "~/v3/featureFlags.server";
 import { querySchemas } from "~/v3/querySchemas";
+
+async function hasQueryAccess(
+  userId: string,
+  isAdmin: boolean,
+  organizationSlug: string
+): Promise<boolean> {
+  if (isAdmin) {
+    return true;
+  }
+
+  // Check organization feature flags
+  const organization = await prisma.organization.findFirst({
+    where: {
+      slug: organizationSlug,
+      members: { some: { userId } },
+    },
+    select: {
+      featureFlags: true,
+    },
+  });
+
+  if (!organization?.featureFlags) {
+    return false;
+  }
+
+  const flags = organization.featureFlags as Record<string, unknown>;
+  const hasQueryAccessResult = validateFeatureFlagValue(
+    FEATURE_FLAG.hasQueryAccess,
+    flags.hasQueryAccess
+  );
+
+  return hasQueryAccessResult.success && hasQueryAccessResult.data === true;
+}
 
 const scopeOptions = [
   { value: "environment", label: "Environment" },
@@ -79,12 +114,12 @@ const scopeOptions = [
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
+  const { projectParam, organizationSlug, envParam } = EnvironmentParamSchema.parse(params);
 
-  if (!user.admin) {
+  const canAccess = await hasQueryAccess(user.id, user.admin, organizationSlug);
+  if (!canAccess) {
     throw redirect("/");
   }
-
-  const { projectParam, organizationSlug, envParam } = EnvironmentParamSchema.parse(params);
 
   const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
   if (!project) {
@@ -120,16 +155,15 @@ const ActionSchema = z.object({
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
   const user = await requireUser(request);
+  const { projectParam, organizationSlug, envParam } = EnvironmentParamSchema.parse(params);
 
-  // Temporarily admin-only
-  if (!user.admin) {
+  const canAccess = await hasQueryAccess(user.id, user.admin, organizationSlug);
+  if (!canAccess) {
     return typedjson(
       { error: "Unauthorized", rows: null, columns: null, stats: null },
       { status: 403 }
     );
   }
-
-  const { projectParam, organizationSlug, envParam } = EnvironmentParamSchema.parse(params);
 
   const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
   if (!project) {

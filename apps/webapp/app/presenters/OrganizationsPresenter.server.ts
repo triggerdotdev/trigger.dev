@@ -10,6 +10,7 @@ import {
 } from "./SelectBestEnvironmentPresenter.server";
 import { sortEnvironments } from "~/utils/environmentSort";
 import { defaultAvatar, parseAvatar } from "~/components/primitives/Avatar";
+import { validatePartialFeatureFlags } from "~/v3/featureFlags.server";
 
 export class OrganizationsPresenter {
   #prismaClient: PrismaClient;
@@ -132,6 +133,7 @@ export class OrganizationsPresenter {
         slug: true,
         title: true,
         avatar: true,
+        featureFlags: true,
         projects: {
           where: { deletedAt: null, version: "V3" },
           select: {
@@ -152,11 +154,17 @@ export class OrganizationsPresenter {
     });
 
     return orgs.map((org) => {
+      const flagsResult = org.featureFlags
+        ? validatePartialFeatureFlags(org.featureFlags as Record<string, unknown>)
+        : ({ success: false } as const);
+      const flags = flagsResult.success ? flagsResult.data : {};
+
       return {
         id: org.id,
         slug: org.slug,
         title: org.title,
         avatar: parseAvatar(org.avatar, defaultAvatar),
+        featureFlags: flags,
         projects: org.projects.map((project) => ({
           id: project.id,
           slug: project.slug,
