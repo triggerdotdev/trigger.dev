@@ -788,15 +788,17 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
         // When there's work, immediately process the next batch
         if (!hadWork) {
           await new Promise<void>((resolve, reject) => {
-            const timeout = setTimeout(resolve, this.consumerIntervalMs);
-            this.abortController.signal.addEventListener(
-              "abort",
-              () => {
-                clearTimeout(timeout);
-                reject(new Error("AbortError"));
-              },
-              { once: true }
-            );
+            const abortHandler = () => {
+              clearTimeout(timeout);
+              reject(new Error("AbortError"));
+            };
+            const timeout = setTimeout(() => {
+              // Must remove listener when timeout fires, otherwise listeners accumulate
+              // (the { once: true } option only removes on abort, not on timeout)
+              this.abortController.signal.removeEventListener("abort", abortHandler);
+              resolve();
+            }, this.consumerIntervalMs);
+            this.abortController.signal.addEventListener("abort", abortHandler, { once: true });
           });
         }
       }
