@@ -1,6 +1,9 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
+
+// Lazy load streamdown to avoid SSR issues
+const Streamdown = lazy(() => import("streamdown").then((mod) => ({ default: mod.Streamdown })));
 import { Button } from "~/components/primitives/Buttons";
 import { Spinner } from "~/components/primitives/Spinner";
 import { useEnvironment } from "~/hooks/useEnvironment";
@@ -316,10 +319,10 @@ export function AIQueryInput({ onQueryGenerated, autoSubmitPrompt }: AIQueryInpu
                   </Button>
                 )}
               </div>
-              <div className="max-h-48 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-                <p className="whitespace-pre-wrap text-xs text-text-dimmed">
-                  {thinking.slice(-800)}
-                </p>
+              <div className="streamdown-container max-h-48 overflow-y-auto text-xs text-text-dimmed scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+                <Suspense fallback={<p className="whitespace-pre-wrap">{thinking}</p>}>
+                  <Streamdown isAnimating={isLoading}>{thinking}</Streamdown>
+                </Suspense>
               </div>
             </div>
           </motion.div>
