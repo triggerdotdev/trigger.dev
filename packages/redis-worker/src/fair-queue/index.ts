@@ -977,14 +977,17 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     let processedCount = 0;
 
     // Reserve concurrency and push each message to worker queue
-    for (const message of claimedMessages) {
+    for (let i = 0; i < claimedMessages.length; i++) {
+      const message = claimedMessages[i]!;
+
       // Reserve concurrency slot
       if (this.concurrencyManager) {
         const reserved = await this.concurrencyManager.reserve(descriptor, message.messageId);
         if (!reserved) {
-          // Release message back to queue (and ensure it's in master queue)
-          await this.visibilityManager.release(
-            message.messageId,
+          // Release ALL remaining messages (from index i onward) back to queue
+          // This prevents messages from being stranded in the in-flight set
+          await this.visibilityManager.releaseBatch(
+            claimedMessages.slice(i),
             queueId,
             queueKey,
             queueItemsKey,

@@ -876,4 +876,106 @@ describe("FairQueue", () => {
       await queue.close();
     });
   });
+
+  describe("two-stage processing with concurrency limits", () => {
+    redisTest(
+      "should release remaining claimed messages when concurrency reservation fails",
+      { timeout: 30000 },
+      async ({ redisOptions }) => {
+        const processed: string[] = [];
+        const processingMessages = new Set<string>();
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+
+        const scheduler = new DRRScheduler({
+          redis: redisOptions,
+          keys,
+          quantum: 10,
+          maxDeficit: 100,
+        });
+
+        // Create queue with:
+        // - Worker queue enabled (two-stage processing)
+        // - Concurrency limit of 2 per tenant
+        const queue = new FairQueue({
+          redis: redisOptions,
+          keys,
+          scheduler,
+          payloadSchema: TestPayloadSchema,
+          shardCount: 1,
+          consumerCount: 1,
+          consumerIntervalMs: 50,
+          visibilityTimeoutMs: 10000,
+          workerQueue: {
+            enabled: true,
+            blockingTimeoutSeconds: 1,
+          },
+          concurrency: {
+            groups: [
+              {
+                name: "tenant",
+                extractGroupId: (q) => q.tenantId,
+                getLimit: async () => 2, // Limit to 2 concurrent per tenant
+                defaultLimit: 2,
+              },
+            ],
+          },
+          startConsumers: false,
+        });
+
+        // Message handler that tracks what's being processed
+        queue.onMessage(async (ctx) => {
+          const value = ctx.message.payload.value;
+          processingMessages.add(value);
+
+          // Simulate some work
+          await new Promise((resolve) => setTimeout(resolve, 100));
+
+          processed.push(value);
+          processingMessages.delete(value);
+          await ctx.complete();
+        });
+
+        // Enqueue 5 messages to the same tenant queue
+        await queue.enqueueBatch({
+          queueId: "tenant:t1:queue:q1",
+          tenantId: "t1",
+          messages: [
+            { payload: { value: "msg-1" } },
+            { payload: { value: "msg-2" } },
+            { payload: { value: "msg-3" } },
+            { payload: { value: "msg-4" } },
+            { payload: { value: "msg-5" } },
+          ],
+        });
+
+        // Start processing
+        queue.start();
+
+        // Wait for all messages to be processed
+        // With concurrency limit of 2, it should process in batches
+        await vi.waitFor(
+          () => {
+            expect(processed.length).toBe(5);
+          },
+          { timeout: 20000 }
+        );
+
+        // All messages should have been processed
+        expect(processed).toContain("msg-1");
+        expect(processed).toContain("msg-2");
+        expect(processed).toContain("msg-3");
+        expect(processed).toContain("msg-4");
+        expect(processed).toContain("msg-5");
+
+        // Wait a bit for any cleanup to complete
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        // No messages should be stuck in-flight
+        const inflightCount = await queue.getTotalInflightCount();
+        expect(inflightCount).toBe(0);
+
+        await queue.close();
+      }
+    );
+  });
 });

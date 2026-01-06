@@ -312,6 +312,58 @@ export class VisibilityManager {
   }
 
   /**
+   * Release multiple messages back to their queue in a single operation.
+   * Used when processing fails or consumer wants to retry later.
+   * All messages must belong to the same queue.
+   *
+   * @param messages - Array of messages to release (must all have same queueId)
+   * @param queueId - The queue ID
+   * @param queueKey - The Redis key for the queue
+   * @param queueItemsKey - The Redis key for the queue items hash
+   * @param masterQueueKey - The Redis key for the master queue
+   * @param score - Optional score for the messages (defaults to now)
+   */
+  async releaseBatch(
+    messages: Array<{ messageId: string }>,
+    queueId: string,
+    queueKey: string,
+    queueItemsKey: string,
+    masterQueueKey: string,
+    score?: number
+  ): Promise<void> {
+    if (messages.length === 0) {
+      return;
+    }
+
+    const shardId = this.#getShardForQueue(queueId);
+    const inflightKey = this.keys.inflightKey(shardId);
+    const inflightDataKey = this.keys.inflightDataKey(shardId);
+    const messageScore = score ?? Date.now();
+
+    // Build arrays of members and messageIds for the Lua script
+    const messageIds = messages.map((m) => m.messageId);
+    const members = messages.map((m) => this.#makeMember(m.messageId, queueId));
+
+    await this.redis.releaseMessageBatch(
+      inflightKey,
+      inflightDataKey,
+      queueKey,
+      queueItemsKey,
+      masterQueueKey,
+      messageScore.toString(),
+      queueId,
+      ...members,
+      ...messageIds
+    );
+
+    this.logger.debug("Batch messages released", {
+      queueId,
+      count: messages.length,
+      score: messageScore,
+    });
+  }
+
+  /**
    * Reclaim timed-out messages from a shard.
    * Returns messages to their original queues.
    *
@@ -618,6 +670,58 @@ return 1
       `,
     });
 
+    // Atomic batch release: release multiple messages back to queue
+    this.redis.defineCommand("releaseMessageBatch", {
+      numberOfKeys: 5,
+      lua: `
+local inflightKey = KEYS[1]
+local inflightDataKey = KEYS[2]
+local queueKey = KEYS[3]
+local queueItemsKey = KEYS[4]
+local masterQueueKey = KEYS[5]
+
+local score = tonumber(ARGV[1])
+local queueId = ARGV[2]
+
+-- Remaining args are: members..., messageIds...
+-- Calculate how many messages we have
+local numMessages = (table.getn(ARGV) - 2) / 2
+local membersStart = 3
+local messageIdsStart = membersStart + numMessages
+
+local releasedCount = 0
+
+for i = 0, numMessages - 1 do
+  local member = ARGV[membersStart + i]
+  local messageId = ARGV[messageIdsStart + i]
+  
+  -- Get message data from in-flight
+  local payload = redis.call('HGET', inflightDataKey, messageId)
+  if payload then
+    -- Remove from in-flight
+    redis.call('ZREM', inflightKey, member)
+    redis.call('HDEL', inflightDataKey, messageId)
+    
+    -- Add back to queue
+    redis.call('ZADD', queueKey, score, messageId)
+    redis.call('HSET', queueItemsKey, messageId, payload)
+    
+    releasedCount = releasedCount + 1
+  end
+end
+
+-- Update master queue with oldest message timestamp (only once at the end)
+if releasedCount > 0 then
+  local oldest = redis.call('ZRANGE', queueKey, 0, 0, 'WITHSCORES')
+  if #oldest >= 2 then
+    redis.call('ZADD', masterQueueKey, oldest[2], queueId)
+  end
+end
+
+return releasedCount
+      `,
+    });
+
     // Atomic heartbeat: check if member exists and update score
     // ZADD XX returns 0 even on successful updates (it counts new additions only)
     // So we need to check existence first with ZSCORE
@@ -676,6 +780,17 @@ declare module "@internal/redis" {
       messageId: string,
       score: string,
       queueId: string
+    ): Promise<number>;
+
+    releaseMessageBatch(
+      inflightKey: string,
+      inflightDataKey: string,
+      queueKey: string,
+      queueItemsKey: string,
+      masterQueueKey: string,
+      score: string,
+      queueId: string,
+      ...membersAndMessageIds: string[]
     ): Promise<number>;
 
     heartbeatMessage(inflightKey: string, member: string, newDeadline: string): Promise<number>;
