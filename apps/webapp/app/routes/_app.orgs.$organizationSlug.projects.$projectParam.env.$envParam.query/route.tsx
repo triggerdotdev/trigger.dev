@@ -247,9 +247,9 @@ export default function Page() {
         <PageTitle title={<AlphaTitle>Query</AlphaTitle>} />
       </NavBar>
       <PageBody scrollable={false}>
-        <ResizablePanelGroup orientation="horizontal" className="max-h-full">
+        <ResizablePanelGroup orientation="horizontal" className="max-h-full bg-charcoal-800">
           <ResizablePanel id="query-main" className="max-h-full">
-            <div className="grid max-h-full grid-rows-[auto_1fr] overflow-hidden bg-charcoal-800">
+            <div className="grid max-h-full grid-rows-[auto_1fr] overflow-hidden">
               {/* Query editor */}
               <div className="flex flex-col gap-2 bg-charcoal-900 pb-2">
                 <TSQLEditor
