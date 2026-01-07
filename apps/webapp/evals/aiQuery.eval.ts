@@ -18,6 +18,13 @@ function normalizeQuery(query: string): string {
     .toLowerCase();
 }
 
+// Type for parsed query results
+interface ParsedQueryResult {
+  success: boolean;
+  query?: string;
+  error?: string;
+}
+
 // Custom scorer that checks if the generated query is semantically similar
 // and also syntactically valid
 const QuerySimilarity = {
@@ -29,11 +36,15 @@ const QuerySimilarity = {
   }: {
     input: string;
     output: string;
-    expected: string;
+    expected?: string;
   }) => {
+    if (!expected) {
+      return 0;
+    }
+
     // Parse the output to extract the query
-    const outputParsed = JSON.parse(output);
-    const expectedParsed = JSON.parse(expected);
+    const outputParsed = JSON.parse(output) as ParsedQueryResult;
+    const expectedParsed = JSON.parse(expected) as ParsedQueryResult;
 
     // Check success status first
     if (outputParsed.success !== expectedParsed.success) {
@@ -48,8 +59,8 @@ const QuerySimilarity = {
 
     // If both succeeded, compare the queries
     if (outputParsed.success && expectedParsed.success) {
-      const normalizedOutput = normalizeQuery(outputParsed.query);
-      const normalizedExpected = normalizeQuery(expectedParsed.query);
+      const normalizedOutput = normalizeQuery(outputParsed.query ?? "");
+      const normalizedExpected = normalizeQuery(expectedParsed.query ?? "");
 
       // Key patterns to check
       const patterns = [
@@ -78,7 +89,7 @@ const QuerySimilarity = {
       for (const pattern of patterns) {
         const outputMatch = pattern.test(normalizedOutput);
         const expectedMatch = pattern.test(normalizedExpected);
-        
+
         if (expectedMatch) {
           totalPatterns++;
           if (outputMatch) {
@@ -91,12 +102,11 @@ const QuerySimilarity = {
       const patternScore = totalPatterns > 0 ? matchScore / totalPatterns : 0.5;
 
       // Use Levenshtein for overall similarity
-      const levenshtein = Levenshtein.scorer({
-        input,
+      const levenshteinResult = await Levenshtein({
         output: normalizedOutput,
         expected: normalizedExpected,
       });
-      const levenshteinScore = typeof levenshtein === "number" ? levenshtein : 0;
+      const levenshteinScore = levenshteinResult?.score ?? 0;
 
       // Weighted combination
       return 0.6 * patternScore + 0.4 * levenshteinScore;
@@ -355,14 +365,10 @@ LIMIT 100`,
     ];
   },
   task: async (input) => {
-    const service = new AIQueryService(
-      [runsSchema],
-      traceAISDKModel(openai("gpt-4o-mini"))
-    );
+    const service = new AIQueryService([runsSchema], traceAISDKModel(openai("gpt-4o-mini")));
 
     const result = await service.call(input);
     return JSON.stringify(result);
   },
   scorers: [QuerySimilarity, Levenshtein],
 });
-
