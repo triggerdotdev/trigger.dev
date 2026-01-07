@@ -134,12 +134,13 @@ export class BatchQueue {
       },
       // Enable two-stage processing with worker queues for better parallelism (when configured)
       // Worker queues provide better concurrency by separating queue selection from message processing
-      workerQueue: options.workerQueueBlockingTimeoutSeconds
-        ? {
-            enabled: true,
-            blockingTimeoutSeconds: options.workerQueueBlockingTimeoutSeconds,
-          }
-        : undefined,
+      workerQueue:
+        options.workerQueueBlockingTimeoutSeconds !== undefined
+          ? {
+              enabled: true,
+              blockingTimeoutSeconds: options.workerQueueBlockingTimeoutSeconds,
+            }
+          : undefined,
       // Concurrency group based on tenant (environment)
       // This limits how many batch items can be processed concurrently per environment
       // Items wait in queue until capacity frees up
