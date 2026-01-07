@@ -45,6 +45,7 @@ export const TaskRunV2 = z.object({
   concurrency_key: z.string().default(""),
   bulk_action_group_ids: z.array(z.string()).default([]),
   worker_queue: z.string().default(""),
+  replayed_from_friendly_id: z.string().default(""),
   _version: z.string(),
   _is_deleted: z.number().int().default(0),
 });
@@ -302,6 +303,44 @@ export function getTaskUsageByOrganization(ch: ClickhouseReader, settings?: Clic
     `,
     schema: TaskUsageByOrganizationQueryResult,
     params: TaskUsageByOrganizationQueryParams,
+    settings,
+  });
+}
+
+export const RunReplayQueryResult = z.object({
+  friendly_id: z.string(),
+  status: z.string(),
+});
+
+export type RunReplayQueryResult = z.infer<typeof RunReplayQueryResult>;
+
+export const RunReplayQueryParams = z.object({
+  organizationId: z.string(),
+  projectId: z.string(),
+  environmentId: z.string(),
+  replayedFromFriendlyId: z.string(),
+});
+
+export function getRunReplays(ch: ClickhouseReader, settings?: ClickHouseSettings) {
+  return ch.query({
+    name: "getRunReplays",
+    query: `
+    SELECT
+        friendly_id,
+        status
+    FROM trigger_dev.task_runs_v2 FINAL
+    WHERE
+        organization_id = {organizationId: String}
+        AND project_id = {projectId: String}
+        AND environment_id = {environmentId: String}
+        AND replayed_from_friendly_id = {replayedFromFriendlyId: String}
+        AND _is_deleted = 0
+    ORDER BY
+        created_at DESC
+    LIMIT 10
+    `,
+    schema: RunReplayQueryResult,
+    params: RunReplayQueryParams,
     settings,
   });
 }

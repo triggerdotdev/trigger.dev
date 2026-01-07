@@ -9,6 +9,7 @@ import {
 } from "@trigger.dev/core/v3";
 import { AttemptId, getMaxDuration, parseTraceparent } from "@trigger.dev/core/v3/isomorphic";
 import { RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
+import { clickhouseClient } from "~/services/clickhouseInstance.server";
 import { logger } from "~/services/logger.server";
 import { rehydrateAttribute } from "~/v3/eventRepository/eventRepository.server";
 import { machinePresetFromRun } from "~/v3/machinePresets.server";
@@ -210,6 +211,14 @@ export class SpanPresenter extends BasePresenter {
       region = workerGroup ?? null;
     }
 
+    // Query for runs that are replays of this run (from ClickHouse)
+    const replays = await this.#getRunReplays(
+      run.project.organization.id,
+      run.project.id,
+      run.runtimeEnvironment.id,
+      run.friendlyId
+    );
+
     return {
       id: run.id,
       friendlyId: run.friendlyId,
@@ -276,7 +285,49 @@ export class SpanPresenter extends BasePresenter {
       machinePreset: machine?.name,
       taskEventStore: run.taskEventStore,
       externalTraceId,
+      replays,
     };
+  }
+
+  async #getRunReplays(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    friendlyId: string
+  ): Promise<Array<{ friendlyId: string; status: string }>> {
+    try {
+      const [error, result] = await clickhouseClient.taskRuns.getRunReplays({
+        organizationId,
+        projectId,
+        environmentId,
+        replayedFromFriendlyId: friendlyId,
+      });
+
+      if (error) {
+        logger.error("Error fetching run replays from ClickHouse", {
+          error,
+          organizationId,
+          projectId,
+          environmentId,
+          friendlyId,
+        });
+        return [];
+      }
+
+      return result.map((row) => ({
+        friendlyId: row.friendly_id,
+        status: row.status,
+      }));
+    } catch (error) {
+      logger.error("Error fetching run replays from ClickHouse", {
+        error,
+        organizationId,
+        projectId,
+        environmentId,
+        friendlyId,
+      });
+      return [];
+    }
   }
 
   async resolveSchedule(scheduleId?: string) {

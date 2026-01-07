@@ -831,6 +831,7 @@ export class RunsReplicationService {
       concurrency_key: run.concurrencyKey ?? "",
       bulk_action_group_ids: run.bulkActionGroupIds ?? [],
       worker_queue: run.masterQueue,
+      replayed_from_friendly_id: run.replayedFromTaskRunFriendlyId ?? "",
       _version: _version.toString(),
       _is_deleted: event === "delete" ? 1 : 0,
     };

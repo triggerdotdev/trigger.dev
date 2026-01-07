@@ -12,6 +12,7 @@ import {
   getTaskUsageByOrganization,
   getTaskRunsCountQueryBuilder,
   getTaskRunTagsQueryBuilder,
+  getRunReplays,
 } from "./taskRuns.js";
 import {
   getSpanDetailsQueryBuilder,
@@ -164,6 +165,7 @@ export class ClickHouse {
       getCurrentRunningStats: getCurrentRunningStats(this.reader),
       getAverageDurations: getAverageDurations(this.reader),
       getTaskUsageByOrganization: getTaskUsageByOrganization(this.reader),
+      getRunReplays: getRunReplays(this.reader),
     };
   }
 
