@@ -441,6 +441,112 @@ describe("ClickHousePrinter", () => {
     });
   });
 
+  describe("nullValue transformation for JSON columns", () => {
+    // Create a schema with JSON columns that have nullValue set
+    const jsonSchema: TableSchema = {
+      name: "runs",
+      clickhouseName: "trigger_dev.task_runs_v2",
+      columns: {
+        id: { name: "id", ...column("String") },
+        error: {
+          name: "error",
+          ...column("JSON"),
+          nullValue: "'{}'", // Empty object represents NULL
+        },
+        output: {
+          name: "output",
+          ...column("JSON"),
+          nullValue: "'{}'", // Empty object represents NULL
+        },
+        status: { name: "status", ...column("String") },
+        organization_id: { name: "organization_id", ...column("String") },
+        project_id: { name: "project_id", ...column("String") },
+        environment_id: { name: "environment_id", ...column("String") },
+      },
+      tenantColumns: {
+        organizationId: "organization_id",
+        projectId: "project_id",
+        environmentId: "environment_id",
+      },
+    };
+
+    function createJsonContext() {
+      const schema = createSchemaRegistry([jsonSchema]);
+      return createPrinterContext({
+        organizationId: "org_test",
+        projectId: "proj_test",
+        environmentId: "env_test",
+        schema,
+      });
+    }
+
+    it("should transform IS NULL to equals empty object for JSON columns with nullValue", () => {
+      const ctx = createJsonContext();
+      const { sql } = printQuery("SELECT * FROM runs WHERE error IS NULL", ctx);
+
+      // Should use equals with '{}' instead of isNull
+      expect(sql).toContain("equals(error, '{}')");
+      expect(sql).not.toContain("isNull(error)");
+    });
+
+    it("should transform IS NOT NULL to notEquals empty object for JSON columns with nullValue", () => {
+      const ctx = createJsonContext();
+      const { sql } = printQuery("SELECT * FROM runs WHERE error IS NOT NULL", ctx);
+
+      // Should use notEquals with '{}' instead of isNotNull
+      expect(sql).toContain("notEquals(error, '{}')");
+      expect(sql).not.toContain("isNotNull(error)");
+    });
+
+    it("should transform = NULL to equals empty object for JSON columns with nullValue", () => {
+      const ctx = createJsonContext();
+      const { sql } = printQuery("SELECT * FROM runs WHERE error = NULL", ctx);
+
+      expect(sql).toContain("equals(error, '{}')");
+      expect(sql).not.toContain("isNull(error)");
+    });
+
+    it("should transform != NULL to notEquals empty object for JSON columns with nullValue", () => {
+      const ctx = createJsonContext();
+      const { sql } = printQuery("SELECT * FROM runs WHERE error != NULL", ctx);
+
+      expect(sql).toContain("notEquals(error, '{}')");
+      expect(sql).not.toContain("isNotNull(error)");
+    });
+
+    it("should not affect regular columns without nullValue", () => {
+      const ctx = createJsonContext();
+      const { sql } = printQuery("SELECT * FROM runs WHERE status IS NULL", ctx);
+
+      // Regular column should still use isNull
+      expect(sql).toContain("isNull(status)");
+    });
+
+    it("should work with multiple JSON column NULL checks", () => {
+      const ctx = createJsonContext();
+      const { sql } = printQuery(
+        "SELECT * FROM runs WHERE error IS NOT NULL AND output IS NULL",
+        ctx
+      );
+
+      expect(sql).toContain("notEquals(error, '{}')");
+      expect(sql).toContain("equals(output, '{}')");
+    });
+
+    it("should allow GROUP BY on JSON columns without error", () => {
+      const ctx = createJsonContext();
+      const { sql } = printQuery(
+        "SELECT error, count() AS error_count FROM runs WHERE error IS NOT NULL GROUP BY error",
+        ctx
+      );
+
+      // Should filter with notEquals
+      expect(sql).toContain("notEquals(error, '{}')");
+      // Should group by the raw column
+      expect(sql).toContain("GROUP BY error");
+    });
+  });
+
   describe("ORDER BY clauses", () => {
     it("should print ORDER BY ASC", () => {
       const { sql } = printQuery("SELECT * FROM task_runs ORDER BY created_at ASC");
@@ -1348,9 +1454,7 @@ describe("Virtual columns", () => {
       // GROUP BY should use the alias, not the expression (ClickHouse allows this)
       expect(sql).toContain("GROUP BY is_long_running");
       // Should NOT have the expression in GROUP BY
-      expect(sql).not.toContain(
-        "GROUP BY (if(completed_at IS NOT NULL AND started_at IS NOT NULL"
-      );
+      expect(sql).not.toContain("GROUP BY (if(completed_at IS NOT NULL AND started_at IS NOT NULL");
     });
 
     it("should use alias for virtual column in GROUP BY with WHERE and aggregation", () => {
@@ -1369,9 +1473,7 @@ describe("Virtual columns", () => {
       // Should NOT have the expression in GROUP BY
       expect(sql).not.toContain("GROUP BY (dateDiff('millisecond'");
       // WHERE should still use the expression
-      expect(sql).toContain(
-        "isNotNull((dateDiff('millisecond', started_at, completed_at)))"
-      );
+      expect(sql).toContain("isNotNull((dateDiff('millisecond', started_at, completed_at)))");
     });
   });
 

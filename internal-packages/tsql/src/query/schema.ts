@@ -180,6 +180,23 @@ export interface ColumnSchema {
    * ```
    */
   whereTransform?: (value: string) => string;
+  /**
+   * Value to use when comparing to NULL for this column.
+   *
+   * When set, NULL comparisons (IS NULL, IS NOT NULL, = NULL, != NULL) are
+   * transformed to compare against this value instead. This is useful for
+   * JSON/Object columns where "empty" is represented as '{}' rather than NULL.
+   *
+   * @example
+   * ```typescript
+   * {
+   *   name: "error",
+   *   type: "JSON",
+   *   nullValue: "'{}'",  // error IS NULL → error = '{}'
+   * }
+   * ```
+   */
+  nullValue?: string;
 }
 
 /**

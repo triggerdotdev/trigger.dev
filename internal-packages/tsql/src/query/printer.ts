@@ -1510,6 +1510,7 @@ export class ClickHousePrinter {
   private visitCompareOperation(node: CompareOperation): string {
     // Check if we need to transform values using valueMap
     const columnSchema = this.extractColumnSchemaFromExpression(node.left);
+    const rightColumnSchema = this.extractColumnSchemaFromExpression(node.right);
 
     // Transform the right side if it contains user-friendly values
     const transformedRight = this.transformValueMapExpression(node.right, columnSchema);
@@ -1524,12 +1525,20 @@ export class ClickHousePrinter {
           (transformedRight as Constant).expression_type === "constant" &&
           (transformedRight as Constant).value === null
         ) {
+          // Check if the column has a custom nullValue (e.g., '{}' for JSON columns)
+          if (columnSchema?.nullValue) {
+            return `equals(${left}, ${columnSchema.nullValue})`;
+          }
           return `isNull(${left})`;
         }
         if (
           (node.left as Constant).expression_type === "constant" &&
           (node.left as Constant).value === null
         ) {
+          // Check if the column has a custom nullValue (e.g., '{}' for JSON columns)
+          if (rightColumnSchema?.nullValue) {
+            return `equals(${right}, ${rightColumnSchema.nullValue})`;
+          }
           return `isNull(${right})`;
         }
         return `equals(${left}, ${right})`;
@@ -1540,12 +1549,20 @@ export class ClickHousePrinter {
           (transformedRight as Constant).expression_type === "constant" &&
           (transformedRight as Constant).value === null
         ) {
+          // Check if the column has a custom nullValue (e.g., '{}' for JSON columns)
+          if (columnSchema?.nullValue) {
+            return `notEquals(${left}, ${columnSchema.nullValue})`;
+          }
           return `isNotNull(${left})`;
         }
         if (
           (node.left as Constant).expression_type === "constant" &&
           (node.left as Constant).value === null
         ) {
+          // Check if the column has a custom nullValue (e.g., '{}' for JSON columns)
+          if (rightColumnSchema?.nullValue) {
+            return `notEquals(${right}, ${rightColumnSchema.nullValue})`;
+          }
           return `isNotNull(${right})`;
         }
         return `notEquals(${left}, ${right})`;

@@ -315,13 +315,15 @@ export const runsSchema: TableSchema = {
     },
 
     // Output & error (JSON columns)
+    // For JSON columns, NULL checks are transformed to check for empty object '{}'
+    // So `error IS NULL` becomes `error = '{}'` and `error IS NOT NULL` becomes `error != '{}'`
     output: {
       name: "output",
       ...column("JSON", {
         description: "The data you returned from the task.",
         example: '{"result": "success"}',
       }),
-      expression: "if(output = '{}', NULL, output)",
+      nullValue: "'{}'", // Transform NULL checks to compare against empty object
     },
     error: {
       name: "error",
@@ -330,7 +332,7 @@ export const runsSchema: TableSchema = {
           "If a run completely failed (after all attempts) then this error will be populated.",
         example: '{"message": "Task failed"}',
       }),
-      expression: "if(error = '{}', NULL, error)",
+      nullValue: "'{}'", // Transform NULL checks to compare against empty object
     },
 
     // Tags & versions
