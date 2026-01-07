@@ -497,6 +497,8 @@ export class ClickHousePrinter {
 
     // Extract output name and source column before visiting
     const { outputName, sourceColumn, inferredType } = this.analyzeSelectColumn(col);
+    // effectiveOutputName may be overridden for JSON subfields
+    let effectiveOutputName = outputName;
 
     // Check if this is a bare Field (not wrapped in Alias)
     let sqlResult: string;
@@ -513,9 +515,19 @@ export class ClickHousePrinter {
         // Visit the field to get the ClickHouse SQL
         const visited = this.visit(col);
 
+        // Check if this is a JSON subfield access (will have .:String type hint)
+        // If so, add an alias to preserve the nice column name (dots → underscores)
+        const isJsonSubfield = this.isJsonSubfieldAccess(field.chain);
+        if (isJsonSubfield) {
+          // Build the alias using underscores (e.g., "error_data_name")
+          const aliasName = field.chain.filter((p): p is string => typeof p === "string").join("_");
+          sqlResult = `${visited} AS ${this.printIdentifier(aliasName)}`;
+          // Override output name for metadata
+          effectiveOutputName = aliasName;
+        }
         // Check if the column has a different clickhouseName - if so, add an alias
         // to ensure results come back with the user-facing name
-        if (
+        else if (
           outputName &&
           sourceColumn?.clickhouseName &&
           sourceColumn.clickhouseName !== outputName
@@ -546,9 +558,9 @@ export class ClickHousePrinter {
     }
 
     // Collect metadata for top-level queries
-    if (collectMetadata && outputName) {
+    if (collectMetadata && effectiveOutputName) {
       const metadata: OutputColumnMetadata = {
-        name: outputName,
+        name: effectiveOutputName,
         type: sourceColumn?.type ?? inferredType ?? "String",
       };
 
@@ -1882,7 +1894,21 @@ export class ClickHousePrinter {
     const resolvedChain = this.resolveFieldChain(node.chain);
 
     // Print each chain element
-    return resolvedChain.map((part) => this.printIdentifierOrIndex(part)).join(".");
+    let result = resolvedChain.map((part) => this.printIdentifierOrIndex(part)).join(".");
+
+    // For JSON column subfield access (e.g., error.data.name), add .:String type hint
+    // This is required because ClickHouse's Dynamic/Variant types are not allowed in
+    // GROUP BY without type casting, and SELECT/GROUP BY expressions must match
+    if (resolvedChain.length > 1) {
+      // Check if the root column (first part) is a JSON column
+      const rootColumnSchema = this.resolveFieldToColumnSchema([node.chain[0]]);
+      if (rootColumnSchema?.type === "JSON") {
+        // Add .:String type hint for JSON subfield access
+        result = `${result}.:String`;
+      }
+    }
+
+    return result;
   }
 
   /**
@@ -1932,6 +1958,17 @@ export class ClickHousePrinter {
 
     // Not found in any table - return as-is
     return chain;
+  }
+
+  /**
+   * Check if a field chain represents JSON subfield access (e.g., error.data.name)
+   * Returns true if the root column is JSON type and there are additional path parts
+   */
+  private isJsonSubfieldAccess(chain: Array<string | number>): boolean {
+    if (chain.length <= 1) return false;
+
+    const rootColumnSchema = this.resolveFieldToColumnSchema([chain[0]]);
+    return rootColumnSchema?.type === "JSON";
   }
 
   /**

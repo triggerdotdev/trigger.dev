@@ -545,6 +545,58 @@ describe("ClickHousePrinter", () => {
       // Should group by the raw column
       expect(sql).toContain("GROUP BY error");
     });
+
+    it("should cast JSON subfield to String with underscore alias in SELECT and GROUP BY", () => {
+      const ctx = createJsonContext();
+      const { sql, columns } = printQuery(
+        "SELECT error.data.name, count() AS error_count FROM runs GROUP BY error.data.name",
+        ctx
+      );
+
+      // SELECT should use .:String type hint with underscore alias
+      expect(sql).toContain("error.data.name.:String AS error_data_name");
+      // GROUP BY should use .:String type hint (no alias needed)
+      expect(sql).toContain("GROUP BY error.data.name.:String");
+
+      // Column metadata should have the underscore alias name
+      expect(columns).toContainEqual(
+        expect.objectContaining({ name: "error_data_name", type: "String" })
+      );
+      expect(columns).toContainEqual(
+        expect.objectContaining({ name: "error_count", type: "UInt64" })
+      );
+    });
+
+    it("should cast JSON subfield to String with multiple fields and underscore aliases", () => {
+      const ctx = createJsonContext();
+      const { sql, columns } = printQuery(
+        "SELECT error.name, error.message, count() AS cnt FROM runs GROUP BY error.name, error.message",
+        ctx
+      );
+
+      // SELECT should have type hints with underscore aliases
+      expect(sql).toContain("error.name.:String AS error_name");
+      expect(sql).toContain("error.message.:String AS error_message");
+      // GROUP BY should have type hints
+      expect(sql).toContain("GROUP BY error.name.:String, error.message.:String");
+
+      // Column metadata should have correct names
+      expect(columns).toContainEqual(
+        expect.objectContaining({ name: "error_name", type: "String" })
+      );
+      expect(columns).toContainEqual(
+        expect.objectContaining({ name: "error_message", type: "String" })
+      );
+    });
+
+    it("should not cast non-JSON columns in GROUP BY", () => {
+      const ctx = createJsonContext();
+      const { sql } = printQuery("SELECT status, count() AS cnt FROM runs GROUP BY status", ctx);
+
+      // Regular columns should not have type hints
+      expect(sql).toContain("GROUP BY status");
+      expect(sql).not.toContain(".:String");
+    });
   });
 
   describe("ORDER BY clauses", () => {
