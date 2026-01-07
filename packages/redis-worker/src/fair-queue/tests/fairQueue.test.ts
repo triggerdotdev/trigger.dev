@@ -7,12 +7,207 @@ import {
   DRRScheduler,
   FixedDelayRetry,
   NoRetry,
+  WorkerQueueManager,
 } from "../index.js";
-import type { FairQueueKeyProducer } from "../types.js";
+import type { FairQueueKeyProducer, FairQueueOptions, StoredMessage } from "../types.js";
+import type { RedisOptions } from "@internal/redis";
 
 // Define a common payload schema for tests
 const TestPayloadSchema = z.object({ value: z.string() });
 type TestPayload = z.infer<typeof TestPayloadSchema>;
+
+// Constant for test worker queue ID
+const TEST_WORKER_QUEUE_ID = "test-worker-queue";
+
+/**
+ * TestFairQueueHelper wraps FairQueue for easier testing.
+ * It manages the worker queue consumer loop and provides a simple onMessage interface.
+ */
+class TestFairQueueHelper {
+  public fairQueue: FairQueue<typeof TestPayloadSchema>;
+  private workerQueueManager: WorkerQueueManager;
+  private isRunning = false;
+  private abortController: AbortController;
+  private consumerLoops: Promise<void>[] = [];
+  private messageHandler?: (ctx: {
+    message: {
+      id: string;
+      queueId: string;
+      payload: TestPayload;
+      timestamp: number;
+      attempt: number;
+    };
+    queue: { id: string; tenantId: string };
+    consumerId: string;
+    heartbeat: () => Promise<boolean>;
+    complete: () => Promise<void>;
+    release: () => Promise<void>;
+    fail: (error?: Error) => Promise<void>;
+  }) => Promise<void>;
+
+  constructor(
+    private redisOptions: RedisOptions,
+    private keys: FairQueueKeyProducer,
+    options: Omit<FairQueueOptions<typeof TestPayloadSchema>, "redis" | "keys" | "workerQueue">
+  ) {
+    this.abortController = new AbortController();
+
+    // Create FairQueue with worker queue resolver
+    this.fairQueue = new FairQueue({
+      ...options,
+      redis: redisOptions,
+      keys,
+      workerQueue: {
+        resolveWorkerQueue: () => TEST_WORKER_QUEUE_ID,
+      },
+    });
+
+    // Create worker queue manager for consuming
+    this.workerQueueManager = new WorkerQueueManager({
+      redis: redisOptions,
+      keys,
+    });
+  }
+
+  onMessage(
+    handler: (ctx: {
+      message: {
+        id: string;
+        queueId: string;
+        payload: TestPayload;
+        timestamp: number;
+        attempt: number;
+      };
+      queue: { id: string; tenantId: string };
+      consumerId: string;
+      heartbeat: () => Promise<boolean>;
+      complete: () => Promise<void>;
+      release: () => Promise<void>;
+      fail: (error?: Error) => Promise<void>;
+    }) => Promise<void>
+  ): void {
+    this.messageHandler = handler;
+  }
+
+  start(): void {
+    if (this.isRunning) return;
+    this.isRunning = true;
+    this.abortController = new AbortController();
+
+    // Start FairQueue's master queue consumers
+    this.fairQueue.start();
+
+    // Start worker queue consumer loop
+    const loop = this.#runConsumerLoop();
+    this.consumerLoops.push(loop);
+  }
+
+  async stop(): Promise<void> {
+    if (!this.isRunning) return;
+    this.isRunning = false;
+    this.abortController.abort();
+    await this.fairQueue.stop();
+    await Promise.allSettled(this.consumerLoops);
+    this.consumerLoops = [];
+  }
+
+  async close(): Promise<void> {
+    await this.stop();
+    await this.fairQueue.close();
+    await this.workerQueueManager.close();
+  }
+
+  // Delegate methods to fairQueue
+  async enqueue(options: Parameters<typeof this.fairQueue.enqueue>[0]) {
+    return this.fairQueue.enqueue(options);
+  }
+
+  async enqueueBatch(options: Parameters<typeof this.fairQueue.enqueueBatch>[0]) {
+    return this.fairQueue.enqueueBatch(options);
+  }
+
+  async getQueueLength(queueId: string) {
+    return this.fairQueue.getQueueLength(queueId);
+  }
+
+  async getTotalInflightCount() {
+    return this.fairQueue.getTotalInflightCount();
+  }
+
+
+  registerTelemetryGauges(options?: { observedTenants?: string[] }) {
+    return this.fairQueue.registerTelemetryGauges(options);
+  }
+
+  async getDeadLetterQueueLength(tenantId: string) {
+    return this.fairQueue.getDeadLetterQueueLength(tenantId);
+  }
+
+  async getDeadLetterMessages(tenantId: string) {
+    return this.fairQueue.getDeadLetterMessages(tenantId);
+  }
+
+  async redriveMessage(tenantId: string, messageId: string) {
+    return this.fairQueue.redriveMessage(tenantId, messageId);
+  }
+
+  async #runConsumerLoop(): Promise<void> {
+    const loopId = "test-consumer-0";
+
+    try {
+      while (this.isRunning) {
+        if (!this.messageHandler) {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          continue;
+        }
+
+        try {
+          const messageKey = await this.workerQueueManager.blockingPop(
+            TEST_WORKER_QUEUE_ID,
+            1,
+            this.abortController.signal
+          );
+
+          if (!messageKey) continue;
+
+          const colonIndex = messageKey.indexOf(":");
+          if (colonIndex === -1) continue;
+
+          const messageId = messageKey.substring(0, colonIndex);
+          const queueId = messageKey.substring(colonIndex + 1);
+
+          const storedMessage = await this.fairQueue.getMessageData(messageId, queueId);
+          if (!storedMessage) continue;
+
+          const ctx = {
+            message: {
+              id: storedMessage.id,
+              queueId: storedMessage.queueId,
+              payload: storedMessage.payload,
+              timestamp: storedMessage.timestamp,
+              attempt: storedMessage.attempt,
+            },
+            queue: {
+              id: queueId,
+              tenantId: storedMessage.tenantId,
+            },
+            consumerId: loopId,
+            heartbeat: () => this.fairQueue.heartbeatMessage(messageId, queueId),
+            complete: () => this.fairQueue.completeMessage(messageId, queueId),
+            release: () => this.fairQueue.releaseMessage(messageId, queueId),
+            fail: (error?: Error) => this.fairQueue.failMessage(messageId, queueId, error),
+          };
+
+          await this.messageHandler(ctx);
+        } catch (error) {
+          if (this.abortController.signal.aborted) break;
+        }
+      }
+    } catch {
+      // Ignore abort errors
+    }
+  }
+}
 
 describe("FairQueue", () => {
   let keys: FairQueueKeyProducer;
@@ -32,9 +227,7 @@ describe("FairQueue", () => {
           maxDeficit: 100,
         });
 
-        const queue = new FairQueue({
-          redis: redisOptions,
-          keys,
+        const queue = new TestFairQueueHelper(redisOptions, keys, {
           scheduler,
           payloadSchema: TestPayloadSchema,
           shardCount: 1,
@@ -87,9 +280,7 @@ describe("FairQueue", () => {
           maxDeficit: 100,
         });
 
-        const queue = new FairQueue({
-          redis: redisOptions,
-          keys,
+        const queue = new TestFairQueueHelper(redisOptions, keys, {
           scheduler,
           payloadSchema: TestPayloadSchema,
           shardCount: 1,
@@ -152,9 +343,7 @@ describe("FairQueue", () => {
           maxDeficit: 5,
         });
 
-        const queue = new FairQueue({
-          redis: redisOptions,
-          keys,
+        const queue = new TestFairQueueHelper(redisOptions, keys, {
           scheduler,
           payloadSchema: TestPayloadSchema,
           shardCount: 1,
@@ -226,9 +415,7 @@ describe("FairQueue", () => {
           maxDeficit: 100,
         });
 
-        const queue = new FairQueue({
-          redis: redisOptions,
-          keys,
+        const queue = new TestFairQueueHelper(redisOptions, keys, {
           scheduler,
           payloadSchema: TestPayloadSchema,
           shardCount: 1,
@@ -289,9 +476,7 @@ describe("FairQueue", () => {
           maxDeficit: 100,
         });
 
-        const queue = new FairQueue({
-          redis: redisOptions,
-          keys,
+        const queue = new TestFairQueueHelper(redisOptions, keys, {
           scheduler,
           payloadSchema: TestPayloadSchema,
           shardCount: 1,
@@ -364,9 +549,7 @@ describe("FairQueue", () => {
           maxDeficit: 100,
         });
 
-        const queue = new FairQueue({
-          redis: redisOptions,
-          keys,
+        const queue = new TestFairQueueHelper(redisOptions, keys, {
           scheduler,
           payloadSchema: TestPayloadSchema,
           shardCount: 1,
@@ -429,9 +612,7 @@ describe("FairQueue", () => {
           maxDeficit: 100,
         });
 
-        const queue = new FairQueue({
-          redis: redisOptions,
-          keys,
+        const queue = new TestFairQueueHelper(redisOptions, keys, {
           scheduler,
           payloadSchema: TestPayloadSchema,
           shardCount: 1,
@@ -495,9 +676,7 @@ describe("FairQueue", () => {
         maxDeficit: 100,
       });
 
-      const queue = new FairQueue({
-        redis: redisOptions,
-        keys,
+      const queue = new TestFairQueueHelper(redisOptions, keys, {
         scheduler,
         payloadSchema: TestPayloadSchema,
         shardCount: 1,
@@ -589,6 +768,9 @@ describe("FairQueue", () => {
           payloadSchema: PayloadSchema,
           validateOnEnqueue: true,
           startConsumers: false,
+          workerQueue: {
+            resolveWorkerQueue: () => TEST_WORKER_QUEUE_ID,
+          },
         });
 
         // Valid payload should work
@@ -626,6 +808,12 @@ describe("FairQueue", () => {
           maxDeficit: 100,
         });
 
+        // Create worker queue manager for consuming
+        const workerQueueManager = new WorkerQueueManager({
+          redis: redisOptions,
+          keys,
+        });
+
         const queue = new FairQueue({
           redis: redisOptions,
           keys,
@@ -636,13 +824,13 @@ describe("FairQueue", () => {
           consumerIntervalMs: 50,
           visibilityTimeoutMs: 5000,
           startConsumers: false,
+          workerQueue: {
+            resolveWorkerQueue: () => TEST_WORKER_QUEUE_ID,
+          },
         });
 
-        queue.onMessage(async (ctx) => {
-          // TypeScript should infer ctx.message.payload as { name: string; count: number }
-          processed.push(ctx.message.payload);
-          await ctx.complete();
-        });
+        // Start the queue (which routes messages to worker queue)
+        queue.start();
 
         await queue.enqueue({
           queueId: "tenant:t1:queue:q1",
@@ -650,18 +838,29 @@ describe("FairQueue", () => {
           payload: { name: "typed", count: 42 },
         });
 
-        queue.start();
+        // Consume from worker queue
+        let attempts = 0;
+        while (processed.length === 0 && attempts < 50) {
+          const messageKey = await workerQueueManager.blockingPop(TEST_WORKER_QUEUE_ID, 1);
+          if (messageKey) {
+            const colonIndex = messageKey.indexOf(":");
+            const messageId = messageKey.substring(0, colonIndex);
+            const queueId = messageKey.substring(colonIndex + 1);
+            const storedMessage = await queue.getMessageData(messageId, queueId);
+            if (storedMessage) {
+              // TypeScript should infer storedMessage.payload as { name: string; count: number }
+              processed.push(storedMessage.payload);
+              await queue.completeMessage(messageId, queueId);
+            }
+          }
+          attempts++;
+        }
 
-        await vi.waitFor(
-          () => {
-            expect(processed).toHaveLength(1);
-          },
-          { timeout: 5000 }
-        );
-
+        expect(processed).toHaveLength(1);
         expect(processed[0]).toEqual({ name: "typed", count: 42 });
 
         await queue.close();
+        await workerQueueManager.close();
       }
     );
   });
@@ -680,9 +879,8 @@ describe("FairQueue", () => {
           maxDeficit: 100,
         });
 
-        const queue = new FairQueue({
-          redis: redisOptions,
-          keys,
+        const processed: string[] = [];
+        const queue = new TestFairQueueHelper(redisOptions, keys, {
           scheduler,
           payloadSchema: TestPayloadSchema,
           shardCount: 1,
@@ -697,6 +895,11 @@ describe("FairQueue", () => {
           startConsumers: false,
         });
 
+        queue.onMessage(async (ctx) => {
+          processed.push(ctx.message.payload.value);
+          await ctx.complete();
+        });
+
         // Start without any messages (will trigger empty dequeues)
         queue.start();
 
@@ -709,12 +912,6 @@ describe("FairQueue", () => {
           queueId: "tenant:t1:queue:q1",
           tenantId: "t1",
           payload: { value: "after-cooloff" },
-        });
-
-        const processed: string[] = [];
-        queue.onMessage(async (ctx) => {
-          processed.push(ctx.message.payload.value);
-          await ctx.complete();
         });
 
         // Message should still be processed (cooloff is per-queue, not global)
@@ -742,9 +939,9 @@ describe("FairQueue", () => {
           maxDeficit: 100,
         });
 
-        const queue = new FairQueue({
-          redis: redisOptions,
-          keys,
+        const processed: string[] = [];
+
+        const queue = new TestFairQueueHelper(redisOptions, keys, {
           scheduler,
           payloadSchema: TestPayloadSchema,
           shardCount: 1,
@@ -760,6 +957,12 @@ describe("FairQueue", () => {
           startConsumers: false,
         });
 
+        // Handler that always fails to trigger cooloff
+        queue.onMessage(async (ctx) => {
+          processed.push(ctx.message.payload.value);
+          await ctx.fail(new Error("Forced failure"));
+        });
+
         // Enqueue messages to multiple queues
         for (let i = 0; i < 10; i++) {
           await queue.enqueue({
@@ -768,14 +971,6 @@ describe("FairQueue", () => {
             payload: { value: `msg-${i}` },
           });
         }
-
-        const processed: string[] = [];
-
-        // Handler that always fails to trigger cooloff
-        queue.onMessage(async (ctx) => {
-          processed.push(ctx.message.payload.value);
-          await ctx.fail(new Error("Forced failure"));
-        });
 
         queue.start();
 
@@ -788,7 +983,7 @@ describe("FairQueue", () => {
         );
 
         // The cooloff states size should be capped (test that it doesn't grow unbounded)
-        const cacheSizes = queue.getCacheSizes();
+        const cacheSizes = queue.fairQueue.getCacheSizes();
         expect(cacheSizes.cooloffStatesSize).toBeLessThanOrEqual(10); // Some buffer for race conditions
 
         await queue.close();
@@ -812,6 +1007,9 @@ describe("FairQueue", () => {
         keys,
         scheduler,
         startConsumers: false,
+        workerQueue: {
+          resolveWorkerQueue: () => TEST_WORKER_QUEUE_ID,
+        },
       });
 
       // Initially empty
@@ -852,6 +1050,9 @@ describe("FairQueue", () => {
         scheduler,
         shardCount: 2,
         startConsumers: false,
+        workerQueue: {
+          resolveWorkerQueue: () => TEST_WORKER_QUEUE_ID,
+        },
       });
 
       // Initially empty
@@ -896,19 +1097,13 @@ describe("FairQueue", () => {
         // Create queue with:
         // - Worker queue enabled (two-stage processing)
         // - Concurrency limit of 2 per tenant
-        const queue = new FairQueue({
-          redis: redisOptions,
-          keys,
+        const queue = new TestFairQueueHelper(redisOptions, keys, {
           scheduler,
           payloadSchema: TestPayloadSchema,
           shardCount: 1,
           consumerCount: 1,
           consumerIntervalMs: 50,
           visibilityTimeoutMs: 10000,
-          workerQueue: {
-            enabled: true,
-            blockingTimeoutSeconds: 1,
-          },
           concurrencyGroups: [
             {
               name: "tenant",

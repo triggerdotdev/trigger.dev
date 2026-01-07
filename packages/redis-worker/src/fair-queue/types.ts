@@ -286,14 +286,15 @@ export interface FairQueueKeyProducer {
 
 /**
  * Worker queue configuration options.
+ * Worker queues are always enabled - FairQueue routes messages to worker queues,
+ * and external consumers are responsible for consuming from those queues.
  */
 export interface WorkerQueueOptions<TPayload = unknown> {
-  /** Whether to enable worker queues (default: false for backwards compatibility) */
-  enabled: boolean;
-  /** Blocking pop timeout in seconds (default: 10) */
-  blockingTimeoutSeconds?: number;
-  /** Function to resolve which worker queue a message should go to */
-  resolveWorkerQueue?: (message: StoredMessage<TPayload>) => string;
+  /**
+   * Function to resolve which worker queue a message should go to.
+   * This is called during the claim-and-push phase to determine the target queue.
+   */
+  resolveWorkerQueue: (message: StoredMessage<TPayload>) => string;
 }
 
 /**
@@ -349,9 +350,12 @@ export interface FairQueueOptions<TPayloadSchema extends z.ZodTypeAny = z.ZodUnk
   /** Concurrency group configurations */
   concurrencyGroups?: ConcurrencyGroupConfig[];
 
-  // Worker queue
-  /** Worker queue configuration */
-  workerQueue?: WorkerQueueOptions<z.infer<TPayloadSchema>>;
+  // Worker queue (required)
+  /**
+   * Worker queue configuration.
+   * FairQueue routes messages to worker queues; external consumers handle consumption.
+   */
+  workerQueue: WorkerQueueOptions<z.infer<TPayloadSchema>>;
 
   // Retry and DLQ
   /** Retry and dead letter queue configuration */

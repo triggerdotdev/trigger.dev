@@ -8,12 +8,191 @@ import {
   ConcurrencyManager,
   VisibilityManager,
   MasterQueue,
+  WorkerQueueManager,
   FixedDelayRetry,
 } from "../index.js";
-import type { FairQueueKeyProducer, QueueDescriptor } from "../types.js";
-import { createRedisClient } from "@internal/redis";
+import type { FairQueueKeyProducer, FairQueueOptions, QueueDescriptor, StoredMessage } from "../types.js";
+import { createRedisClient, type RedisOptions } from "@internal/redis";
 
 const TestPayloadSchema = z.object({ id: z.number(), value: z.string() });
+type TestPayload = z.infer<typeof TestPayloadSchema>;
+
+// Constant for test worker queue ID
+const TEST_WORKER_QUEUE_ID = "test-worker-queue";
+
+/**
+ * TestFairQueueHelper wraps FairQueue for easier testing in race condition tests.
+ */
+class TestFairQueueHelper {
+  public fairQueue: FairQueue<typeof TestPayloadSchema>;
+  private workerQueueManager: WorkerQueueManager;
+  private isRunning = false;
+  private abortController: AbortController;
+  private consumerLoops: Promise<void>[] = [];
+  private messageHandler?: (ctx: {
+    message: {
+      id: string;
+      queueId: string;
+      payload: TestPayload;
+      timestamp: number;
+      attempt: number;
+    };
+    queue: { id: string; tenantId: string };
+    consumerId: string;
+    heartbeat: () => Promise<boolean>;
+    complete: () => Promise<void>;
+    release: () => Promise<void>;
+    fail: (error?: Error) => Promise<void>;
+  }) => Promise<void>;
+
+  constructor(
+    private redisOptions: RedisOptions,
+    private keys: FairQueueKeyProducer,
+    options: Omit<FairQueueOptions<typeof TestPayloadSchema>, "redis" | "keys" | "workerQueue">
+  ) {
+    this.abortController = new AbortController();
+
+    this.fairQueue = new FairQueue({
+      ...options,
+      redis: redisOptions,
+      keys,
+      workerQueue: {
+        resolveWorkerQueue: () => TEST_WORKER_QUEUE_ID,
+      },
+    });
+
+    this.workerQueueManager = new WorkerQueueManager({
+      redis: redisOptions,
+      keys,
+    });
+  }
+
+  onMessage(
+    handler: (ctx: {
+      message: {
+        id: string;
+        queueId: string;
+        payload: TestPayload;
+        timestamp: number;
+        attempt: number;
+      };
+      queue: { id: string; tenantId: string };
+      consumerId: string;
+      heartbeat: () => Promise<boolean>;
+      complete: () => Promise<void>;
+      release: () => Promise<void>;
+      fail: (error?: Error) => Promise<void>;
+    }) => Promise<void>
+  ): void {
+    this.messageHandler = handler;
+  }
+
+  start(): void {
+    if (this.isRunning) return;
+    this.isRunning = true;
+    this.abortController = new AbortController();
+    this.fairQueue.start();
+    const loop = this.#runConsumerLoop();
+    this.consumerLoops.push(loop);
+  }
+
+  async stop(): Promise<void> {
+    if (!this.isRunning) return;
+    this.isRunning = false;
+    this.abortController.abort();
+    await this.fairQueue.stop();
+    await Promise.allSettled(this.consumerLoops);
+    this.consumerLoops = [];
+  }
+
+  async close(): Promise<void> {
+    await this.stop();
+    await this.fairQueue.close();
+    await this.workerQueueManager.close();
+  }
+
+  async enqueue(options: Parameters<typeof this.fairQueue.enqueue>[0]) {
+    return this.fairQueue.enqueue(options);
+  }
+
+  async enqueueBatch(options: Parameters<typeof this.fairQueue.enqueueBatch>[0]) {
+    return this.fairQueue.enqueueBatch(options);
+  }
+
+  async getQueueLength(queueId: string) {
+    return this.fairQueue.getQueueLength(queueId);
+  }
+
+  async getTotalInflightCount() {
+    return this.fairQueue.getTotalInflightCount();
+  }
+
+  async getDeadLetterQueueLength(tenantId: string) {
+    return this.fairQueue.getDeadLetterQueueLength(tenantId);
+  }
+
+  async getDeadLetterMessages(tenantId: string, limit?: number) {
+    return this.fairQueue.getDeadLetterMessages(tenantId, limit);
+  }
+
+  async getTotalQueueCount() {
+    return this.fairQueue.getTotalQueueCount();
+  }
+
+  async #runConsumerLoop(): Promise<void> {
+    const loopId = "test-consumer-0";
+    try {
+      while (this.isRunning) {
+        if (!this.messageHandler) {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          continue;
+        }
+        try {
+          const messageKey = await this.workerQueueManager.blockingPop(
+            TEST_WORKER_QUEUE_ID,
+            1,
+            this.abortController.signal
+          );
+          if (!messageKey) continue;
+
+          const colonIndex = messageKey.indexOf(":");
+          if (colonIndex === -1) continue;
+
+          const messageId = messageKey.substring(0, colonIndex);
+          const queueId = messageKey.substring(colonIndex + 1);
+
+          const storedMessage = await this.fairQueue.getMessageData(messageId, queueId);
+          if (!storedMessage) continue;
+
+          const ctx = {
+            message: {
+              id: storedMessage.id,
+              queueId: storedMessage.queueId,
+              payload: storedMessage.payload,
+              timestamp: storedMessage.timestamp,
+              attempt: storedMessage.attempt,
+            },
+            queue: {
+              id: queueId,
+              tenantId: storedMessage.tenantId,
+            },
+            consumerId: loopId,
+            heartbeat: () => this.fairQueue.heartbeatMessage(messageId, queueId),
+            complete: () => this.fairQueue.completeMessage(messageId, queueId),
+            release: () => this.fairQueue.releaseMessage(messageId, queueId),
+            fail: (error?: Error) => this.fairQueue.failMessage(messageId, queueId, error),
+          };
+
+          await this.messageHandler(ctx);
+        } catch (error) {
+          if (this.abortController.signal.aborted) break;
+        }
+      }
+    } catch {
+      // Ignore abort errors
+    }
+  }
+}
 
 describe("Race Condition Tests", () => {
   let keys: FairQueueKeyProducer;
@@ -39,6 +218,9 @@ describe("Race Condition Tests", () => {
           payloadSchema: TestPayloadSchema,
           shardCount: 1,
           startConsumers: false,
+          workerQueue: {
+            resolveWorkerQueue: () => TEST_WORKER_QUEUE_ID,
+          },
         });
 
         const CONCURRENT_ENQUEUES = 100;
@@ -87,6 +269,9 @@ describe("Race Condition Tests", () => {
           payloadSchema: TestPayloadSchema,
           shardCount: 4, // Multiple shards
           startConsumers: false,
+          workerQueue: {
+            resolveWorkerQueue: () => TEST_WORKER_QUEUE_ID,
+          },
         });
 
         const QUEUES = 10;
@@ -144,9 +329,7 @@ describe("Race Condition Tests", () => {
           maxDeficit: 100,
         });
 
-        const queue = new FairQueue({
-          redis: redisOptions,
-          keys,
+        const queue = new TestFairQueueHelper(redisOptions, keys, {
           scheduler,
           payloadSchema: TestPayloadSchema,
           shardCount: 1,
@@ -225,9 +408,7 @@ describe("Race Condition Tests", () => {
           maxDeficit: 100,
         });
 
-        const queue = new FairQueue({
-          redis: redisOptions,
-          keys,
+        const queue = new TestFairQueueHelper(redisOptions, keys, {
           scheduler,
           payloadSchema: TestPayloadSchema,
           shardCount: 1,
@@ -624,9 +805,7 @@ describe("Race Condition Tests", () => {
           maxDeficit: 100,
         });
 
-        const queue = new FairQueue({
-          redis: redisOptions,
-          keys,
+        const queue = new TestFairQueueHelper(redisOptions, keys, {
           scheduler,
           payloadSchema: TestPayloadSchema,
           shardCount: 1,
@@ -711,9 +890,7 @@ describe("Race Condition Tests", () => {
           maxDeficit: 100,
         });
 
-        const queue = new FairQueue({
-          redis: redisOptions,
-          keys,
+        const queue = new TestFairQueueHelper(redisOptions, keys, {
           scheduler,
           payloadSchema: TestPayloadSchema,
           shardCount: 1,
@@ -793,9 +970,7 @@ describe("Race Condition Tests", () => {
           maxDeficit: 100,
         });
 
-        const queue = new FairQueue({
-          redis: redisOptions,
-          keys,
+        const queue = new TestFairQueueHelper(redisOptions, keys, {
           scheduler,
           payloadSchema: TestPayloadSchema,
           shardCount: 1,
@@ -863,9 +1038,7 @@ describe("Race Condition Tests", () => {
         // Track concurrency over time
         let maxConcurrency = 0;
 
-        const queue = new FairQueue({
-          redis: redisOptions,
-          keys,
+        const queue = new TestFairQueueHelper(redisOptions, keys, {
           scheduler,
           payloadSchema: TestPayloadSchema,
           shardCount: 1,
@@ -953,9 +1126,7 @@ describe("Race Condition Tests", () => {
           maxDeficit: 100,
         });
 
-        const queue = new FairQueue({
-          redis: redisOptions,
-          keys,
+        const queue = new TestFairQueueHelper(redisOptions, keys, {
           scheduler,
           payloadSchema: TestPayloadSchema,
           shardCount: 1,
@@ -1024,9 +1195,7 @@ describe("Race Condition Tests", () => {
           maxDeficit: 100,
         });
 
-        const queue = new FairQueue({
-          redis: redisOptions,
-          keys,
+        const queue = new TestFairQueueHelper(redisOptions, keys, {
           scheduler,
           payloadSchema: TestPayloadSchema,
           shardCount: 2, // Multiple shards to test

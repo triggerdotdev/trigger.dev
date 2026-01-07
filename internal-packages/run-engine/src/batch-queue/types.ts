@@ -222,6 +222,10 @@ export type BatchQueueOptions = {
   tracer?: Tracer;
   /** OpenTelemetry meter for metrics */
   meter?: Meter;
+  /** Maximum iterations before rotating consumer loop trace span (default: 1000) */
+  consumerTraceMaxIterations?: number;
+  /** Maximum seconds before rotating consumer loop trace span (default: 60) */
+  consumerTraceTimeoutSeconds?: number;
 };
 
 /**
