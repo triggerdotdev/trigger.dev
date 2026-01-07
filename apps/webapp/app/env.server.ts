@@ -955,7 +955,9 @@ const EnvironmentSchema = z
     BATCH_QUEUE_SHARD_COUNT: z.coerce.number().int().default(1),
     // Maximum queues to fetch from master queue per iteration
     BATCH_QUEUE_MASTER_QUEUE_LIMIT: z.coerce.number().int().default(1000),
-    // Worker queue blocking timeout in seconds (for two-stage processing)
+    // Enable worker queue for two-stage processing (claim messages, push to worker queue, process from worker queue)
+    BATCH_QUEUE_WORKER_QUEUE_ENABLED: BoolEnv.default(true),
+    // Worker queue blocking timeout in seconds (for two-stage processing, only used when BATCH_QUEUE_WORKER_QUEUE_ENABLED is true)
     BATCH_QUEUE_WORKER_QUEUE_TIMEOUT_SECONDS: z.coerce.number().int().default(10),
     // Global rate limit: max items processed per second across all consumers
     // If not set, no global rate limiting is applied
