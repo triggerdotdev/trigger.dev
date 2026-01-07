@@ -1,5 +1,15 @@
 # trigger.dev
 
+## 4.3.2
+
+### Patch Changes
+
+- fix(cli): update command should preserve existing package.json order ([#2810](https://github.com/triggerdotdev/trigger.dev/pull/2810))
+- Updated dependencies:
+  - `@trigger.dev/build@4.3.2`
+  - `@trigger.dev/core@4.3.2`
+  - `@trigger.dev/schema-to-json@4.3.2`
+
 ## 4.3.1
 
 ### Patch Changes
