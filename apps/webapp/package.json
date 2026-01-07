@@ -109,7 +109,6 @@
     "@sentry/remix": "9.46.0",
     "@slack/web-api": "7.9.1",
     "@socket.io/redis-adapter": "^8.3.0",
-    "@splinetool/react-spline": "^2.2.6",
     "@tabler/icons-react": "^2.39.0",
     "@tailwindcss/container-queries": "^0.1.1",
     "@tanstack/react-virtual": "^3.0.4",
