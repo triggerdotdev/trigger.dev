@@ -1,7 +1,7 @@
 export * from "./cache.js";
 export * from "./config.js";
 export { retry, type RetryOptions } from "./retry.js";
-export { queue } from "./shared.js";
+export { queue, BatchTriggerError } from "./shared.js";
 export * from "./tasks.js";
 export * from "./batch.js";
 export * from "./wait.js";
