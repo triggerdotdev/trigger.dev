@@ -7,6 +7,7 @@ import { type z } from "zod";
 import { ConcurrencyManager } from "./concurrency.js";
 import { MasterQueue } from "./masterQueue.js";
 import { type RetryStrategy, ExponentialBackoffRetry } from "./retry.js";
+import { isAbortError } from "../utils.js";
 import {
   FairQueueTelemetry,
   FairQueueAttributes,
@@ -769,7 +770,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
         });
       }
     } catch (error) {
-      if (error instanceof Error && error.message === "AbortError") {
+      if (isAbortError(error)) {
         this.logger.debug("Master queue consumer aborted", { loopId });
         this.batchedSpanManager.cleanup(loopId);
         return;
@@ -1330,7 +1331,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
         }
       }
     } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") {
+      if (isAbortError(error)) {
         this.logger.debug("Reclaim loop aborted");
         return;
       }

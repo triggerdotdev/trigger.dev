@@ -13,6 +13,7 @@ import {
   CallbackFairQueueKeyProducer,
   WorkerQueueManager,
   BatchedSpanManager,
+  isAbortError,
   type FairQueueOptions,
   type StoredMessage,
 } from "@trigger.dev/redis-worker";
@@ -663,7 +664,7 @@ export class BatchQueue {
         }
       }
     } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") {
+      if (isAbortError(error)) {
         this.logger.debug("Worker queue consumer aborted", { loopId });
         this.batchedSpanManager.cleanup(loopId);
         return;
