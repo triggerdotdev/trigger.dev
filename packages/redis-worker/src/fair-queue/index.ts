@@ -788,23 +788,22 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
           this.batchedSpanManager.markForRotation(loopId);
         }
 
-        // Only wait if there was no work (avoid spinning when idle)
-        // When there's work, immediately process the next batch
-        if (!hadWork) {
-          await new Promise<void>((resolve, reject) => {
-            const abortHandler = () => {
-              clearTimeout(timeout);
-              reject(new Error("AbortError"));
-            };
-            const timeout = setTimeout(() => {
-              // Must remove listener when timeout fires, otherwise listeners accumulate
-              // (the { once: true } option only removes on abort, not on timeout)
-              this.abortController.signal.removeEventListener("abort", abortHandler);
-              resolve();
-            }, this.consumerIntervalMs);
-            this.abortController.signal.addEventListener("abort", abortHandler, { once: true });
-          });
-        }
+        // Wait between iterations to prevent CPU spin
+        // Short delay when there's work (yield to event loop), longer delay when idle
+        const waitMs = hadWork ? 1 : this.consumerIntervalMs;
+        await new Promise<void>((resolve, reject) => {
+          const abortHandler = () => {
+            clearTimeout(timeout);
+            reject(new Error("AbortError"));
+          };
+          const timeout = setTimeout(() => {
+            // Must remove listener when timeout fires, otherwise listeners accumulate
+            // (the { once: true } option only removes on abort, not on timeout)
+            this.abortController.signal.removeEventListener("abort", abortHandler);
+            resolve();
+          }, waitMs);
+          this.abortController.signal.addEventListener("abort", abortHandler, { once: true });
+        });
       }
     } catch (error) {
       if (error instanceof Error && error.message === "AbortError") {
