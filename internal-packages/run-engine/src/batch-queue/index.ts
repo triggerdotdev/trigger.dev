@@ -503,6 +503,10 @@ export class BatchQueue {
    */
   async close(): Promise<void> {
     await this.stop();
+
+    // Clean up any remaining batched spans (safety net for spans not cleaned up by consumer loops)
+    this.batchedSpanManager.cleanupAll();
+
     await this.fairQueue.close();
     await this.workerQueueManager.close();
     await this.completionTracker.close();
