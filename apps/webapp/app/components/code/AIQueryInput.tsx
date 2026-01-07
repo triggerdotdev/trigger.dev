@@ -1,4 +1,4 @@
-import { PencilSquareIcon, SparklesIcon } from "@heroicons/react/20/solid";
+import { PencilSquareIcon, PlusIcon, SparklesIcon } from "@heroicons/react/20/solid";
 import { AnimatePresence, motion } from "framer-motion";
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
@@ -274,8 +274,7 @@ export function AIQueryInput({
                     type="button"
                     variant="tertiary/small"
                     disabled={!prompt.trim()}
-                    LeadingIcon={SparklesIcon}
-                    className="pl-1.5"
+                    LeadingIcon={PlusIcon}
                     iconSpacing="gap-1.5"
                     onClick={() => {
                       setMode("new");
@@ -289,8 +288,8 @@ export function AIQueryInput({
                     variant="tertiary/small"
                     disabled={!prompt.trim() || !canEdit}
                     LeadingIcon={PencilSquareIcon}
-                    className={cn("pl-1.5", !canEdit && "opacity-50")}
-                    iconSpacing="gap-1.5"
+                    className={cn(!canEdit && "opacity-50")}
+                    iconSpacing="gap-2"
                     tooltip={!canEdit ? "Write a query first to enable editing" : undefined}
                     onClick={() => {
                       setMode("edit");

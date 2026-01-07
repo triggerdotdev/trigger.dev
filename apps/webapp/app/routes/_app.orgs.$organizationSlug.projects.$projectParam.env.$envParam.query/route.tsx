@@ -15,6 +15,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import { typedjson, useTypedActionData, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { ClockRotateLeftIcon } from "~/assets/icons/ClockRotateLeftIcon";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { AlphaTitle } from "~/components/AlphaBadge";
@@ -248,7 +249,6 @@ export default function Page() {
   const [query, setQuery] = useState(defaultQuery);
   const [scope, setScope] = useState<QueryScope>("environment");
   const [prettyFormatting, setPrettyFormatting] = useState(true);
-  const [showHelpSidebar, setShowHelpSidebar] = useState(true);
   const [resultsView, setResultsView] = useState<"table" | "graph">("table");
   const [chartConfig, setChartConfig] = useState<ChartConfiguration>(defaultChartConfig);
 
@@ -296,27 +296,12 @@ export default function Page() {
                   showClearButton={true}
                   minHeight="200px"
                   className="min-h-[200px]"
-                  additionalActions={
-                    showHelpSidebar ? null : (
-                      <Button variant="minimal/small" onClick={() => setShowHelpSidebar(true)}>
-                        Help
-                      </Button>
-                    )
-                  }
                 />
                 <Form method="post" className="flex items-center justify-between gap-2 px-2">
                   <input type="hidden" name="query" value={query} />
                   <input type="hidden" name="scope" value={scope} />
                   <QueryHistoryPopover history={history} onQuerySelected={handleHistorySelected} />
                   <div className="flex items-center gap-2">
-                    {!showHelpSidebar && (
-                      <Button
-                        variant="minimal/small"
-                        TrailingIcon={LightBulbIcon}
-                        onClick={() => setShowHelpSidebar(true)}
-                        className="px-2.5"
-                      />
-                    )}
                     <Select
                       value={scope}
                       setValue={(value) => setScope(value as QueryScope)}
@@ -446,28 +431,23 @@ export default function Page() {
               </div>
             </div>
           </ResizablePanel>
-          {showHelpSidebar && (
-            <>
-              <ResizableHandle id="query-handle" />
-              <ResizablePanel
-                id="query-help"
-                min="200px"
-                default="400px"
-                max="500px"
-                className="w-full"
-              >
-                <QueryHelpSidebar
-                  onClose={() => setShowHelpSidebar(false)}
-                  onTryExample={(exampleQuery, exampleScope) => {
-                    setQuery(exampleQuery);
-                    setScope(exampleScope);
-                  }}
-                  onQueryGenerated={setQuery}
-                  currentQuery={query}
-                />
-              </ResizablePanel>
-            </>
-          )}
+          <ResizableHandle id="query-handle" />
+          <ResizablePanel
+            id="query-help"
+            min="200px"
+            default="400px"
+            max="500px"
+            className="w-full"
+          >
+            <QueryHelpSidebar
+              onTryExample={(exampleQuery, exampleScope) => {
+                setQuery(exampleQuery);
+                setScope(exampleScope);
+              }}
+              onQueryGenerated={setQuery}
+              currentQuery={query}
+            />
+          </ResizablePanel>
         </ResizablePanelGroup>
       </PageBody>
     </PageContainer>
@@ -583,36 +563,22 @@ LIMIT 100`,
 ];
 
 function QueryHelpSidebar({
-  onClose,
   onTryExample,
   onQueryGenerated,
   currentQuery,
 }: {
-  onClose: () => void;
   onTryExample: (query: string, scope: QueryScope) => void;
   onQueryGenerated: (query: string) => void;
   currentQuery: string;
 }) {
   return (
     <div className="grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
-      <div className="flex items-center justify-between gap-2 border-b border-grid-dimmed p-3 pt-2">
-        <Header2 className="flex items-center gap-2">
-          <LightBulbIcon className="size-4 min-w-4 text-sun-500" />
-          Query help
-        </Header2>
-        <Button
-          onClick={onClose}
-          variant="minimal/small"
-          TrailingIcon={ExitIcon}
-          shortcut={{ key: "esc" }}
-          shortcutPosition="before-trailing-icon"
-          className="pl-[0.375rem]"
-        />
-      </div>
-      <ClientTabs defaultValue="ai" className="flex min-h-0 flex-col overflow-hidden">
+      <ClientTabs defaultValue="ai" className="flex min-h-0 flex-col overflow-hidden pt-1">
         <ClientTabsList variant="underline" className="mx-3 shrink-0">
           <ClientTabsTrigger value="ai" variant="underline" layoutId="query-help-tabs">
-            AI
+            <div className="flex items-center gap-0.5">
+              <AISparkleIcon className="size-4" /> AI
+            </div>
           </ClientTabsTrigger>
           <ClientTabsTrigger value="guide" variant="underline" layoutId="query-help-tabs">
             Writing TRQL
@@ -671,20 +637,14 @@ function AITabContent({
   ];
 
   return (
-    <div className="space-y-4">
-      <div>
-        <Header3 className="mb-2 text-text-bright">Generate query with AI</Header3>
-        <Paragraph variant="small" className="mb-3 text-text-dimmed">
-          Describe the data you want to query in natural language, or edit the existing query.
-        </Paragraph>
-        <AIQueryInput
-          onQueryGenerated={onQueryGenerated}
-          autoSubmitPrompt={autoSubmitPrompt}
-          currentQuery={currentQuery}
-        />
-      </div>
+    <div className="space-y-2">
+      <AIQueryInput
+        onQueryGenerated={onQueryGenerated}
+        autoSubmitPrompt={autoSubmitPrompt}
+        currentQuery={currentQuery}
+      />
 
-      <div className="border-t border-grid-dimmed pt-4">
+      <div className="pt-4">
         <Header3 className="mb-2 text-text-bright">Example prompts</Header3>
         <div className="space-y-2">
           {examplePrompts.map((example) => (
@@ -744,6 +704,10 @@ function TRQLGuideContent({
 }) {
   return (
     <div className="space-y-6">
+      <Paragraph variant="small/bright">
+        TRQL is a query language for the Trigger platform. It is based on ClickHouse SQL and extends
+        it with additional features.
+      </Paragraph>
       {/* Table of contents */}
       <nav className="space-y-1 text-sm">
         <a href="#basic" className="block text-text-link hover:underline">
