@@ -684,6 +684,7 @@ export class BatchQueue {
 
     if (!storedMessage) {
       this.logger.error("Message not found in in-flight data", { messageId, queueId });
+      await this.fairQueue.completeMessage(messageId, queueId);
       return;
     }
 
