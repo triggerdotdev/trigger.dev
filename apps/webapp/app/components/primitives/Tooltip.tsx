@@ -85,6 +85,7 @@ function SimpleTooltip({
     <TooltipProvider disableHoverableContent={disableHoverableContent}>
       <Tooltip open={open} onOpenChange={onOpenChange}>
         <TooltipTrigger
+          type="button"
           tabIndex={-1}
           className={cn("h-fit", buttonClassName)}
           style={buttonStyle}

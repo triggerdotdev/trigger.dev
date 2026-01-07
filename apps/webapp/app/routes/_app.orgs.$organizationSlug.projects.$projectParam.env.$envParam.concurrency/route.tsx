@@ -1,6 +1,7 @@
 import { conform, useFieldList, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import {
+  ArrowDownIcon,
   EnvelopeIcon,
   ExclamationTriangleIcon,
   InformationCircleIcon,
@@ -18,6 +19,7 @@ import {
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
 import { useEffect, useState } from "react";
+import simplur from "simplur";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
@@ -331,7 +333,7 @@ function Upgradable({
               disabled={unallocated < 0 ? false : allocationModified}
             />
           </div>
-          <Table>
+          <Table variant="bright/no-hover">
             <TableBody>
               <TableRow>
                 <TableCell className="pl-0 text-text-bright">Extra concurrency purchased</TableCell>
@@ -379,8 +381,15 @@ function Upgradable({
                   )}
                 </TableCell>
               </TableRow>
-              <TableRow className={allocationModified ? undefined : "after:bg-transparent"}>
-                <TableCell colSpan={2} className="py-0">
+              <TableRow
+                className={
+                  allocationModified || unallocated > 0 ? undefined : "after:bg-transparent"
+                }
+              >
+                <TableCell
+                  colSpan={2}
+                  className={cn("py-0", (unallocated > 0 || allocationModified) && "pr-0")}
+                >
                   <div className="flex h-10 items-center">
                     {allocationModified ? (
                       unallocated < 0 ? (
@@ -419,6 +428,16 @@ function Upgradable({
                           </Button>
                         </div>
                       )
+                    ) : unallocated > 0 ? (
+                      <div className="flex h-full w-full items-center justify-between bg-success/10 px-2.5">
+                        <div className="flex items-center justify-start gap-1">
+                          <InformationCircleIcon className="size-4 text-success" />
+                          <span className="text-success">
+                            You have {unallocated} extra concurrency available to allocate below.
+                          </span>
+                        </div>
+                        <ArrowDownIcon className="size-4 animate-bounce text-success" />
+                      </div>
                     ) : (
                       <></>
                     )}
@@ -434,7 +453,7 @@ function Upgradable({
           <div className="flex items-center pb-1">
             <Header3 className="grow">Concurrency allocation</Header3>
           </div>
-          <Table>
+          <Table variant="bright/no-hover">
             <TableHeader>
               <TableRow>
                 <TableHeaderCell className="pl-0">Environment</TableHeaderCell>
@@ -452,7 +471,12 @@ function Upgradable({
               {environments.map((environment, index) => (
                 <TableRow key={environment.id}>
                   <TableCell>
-                    <EnvironmentCombo environment={environment} />
+                    <EnvironmentCombo
+                      environment={environment}
+                      className="max-w-[18ch]"
+                      tooltipSideOffset={6}
+                      tooltipSide="top"
+                    />
                   </TableCell>
                   <TableCell alignment="right">{environment.planConcurrencyLimit}</TableCell>
                   <TableCell alignment="right">
@@ -523,7 +547,7 @@ function NotUpgradable({ environments }: { environments: EnvironmentWithConcurre
         </>
       ) : null}
       <div className="mt-3 flex flex-col gap-3">
-        <Table>
+        <Table variant="bright/no-hover">
           <TableHeader>
             <TableRow>
               <TableHeaderCell className="pl-0">Environment</TableHeaderCell>
@@ -682,7 +706,7 @@ function PurchaseConcurrencyModal({
                 </div>
                 <div className="grid grid-cols-2 text-xs">
                   <span className="text-text-dimmed">
-                    ({extraConcurrency / concurrencyPricing.stepSize} bundles)
+                    ({simplur`${extraConcurrency / concurrencyPricing.stepSize} bundle[|s]`})
                   </span>
                   <span className="justify-self-end text-text-dimmed">/mth</span>
                 </div>
@@ -703,8 +727,11 @@ function PurchaseConcurrencyModal({
                 </div>
                 <div className="grid grid-cols-2 text-xs">
                   <span className="text-text-dimmed">
-                    ({(amountValue - extraConcurrency) / concurrencyPricing.stepSize} bundles @{" "}
-                    {formatCurrency(concurrencyPricing.centsPerStep / 100, true)}/mth)
+                    (
+                    {simplur`${
+                      (amountValue - extraConcurrency) / concurrencyPricing.stepSize
+                    } bundle[|s]`}{" "}
+                    @ {formatCurrency(concurrencyPricing.centsPerStep / 100, true)}/mth)
                   </span>
                   <span className="justify-self-end text-text-dimmed">/mth</span>
                 </div>
@@ -723,7 +750,7 @@ function PurchaseConcurrencyModal({
                 </div>
                 <div className="grid grid-cols-2 text-xs">
                   <span className="text-text-dimmed">
-                    ({amountValue / concurrencyPricing.stepSize} bundles)
+                    ({simplur`${amountValue / concurrencyPricing.stepSize} bundle[|s]`})
                   </span>
                   <span className="justify-self-end text-text-dimmed">/mth</span>
                 </div>
