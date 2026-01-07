@@ -1334,16 +1334,43 @@ describe("Virtual columns", () => {
   });
 
   describe("GROUP BY clause", () => {
-    it("should expand virtual column in GROUP BY", () => {
+    it("should use alias for virtual column in GROUP BY", () => {
       const ctx = createVirtualColumnContext();
       const { sql } = printQuery(
         "SELECT is_long_running, count(*) FROM runs GROUP BY is_long_running",
         ctx
       );
 
-      // Both SELECT and GROUP BY should have the expansion
+      // SELECT should have the expression with alias
       expect(sql).toContain(
-        "GROUP BY (if(completed_at IS NOT NULL AND started_at IS NOT NULL, dateDiff('second', started_at, completed_at) > 60, 0))"
+        "(if(completed_at IS NOT NULL AND started_at IS NOT NULL, dateDiff('second', started_at, completed_at) > 60, 0)) AS is_long_running"
+      );
+      // GROUP BY should use the alias, not the expression (ClickHouse allows this)
+      expect(sql).toContain("GROUP BY is_long_running");
+      // Should NOT have the expression in GROUP BY
+      expect(sql).not.toContain(
+        "GROUP BY (if(completed_at IS NOT NULL AND started_at IS NOT NULL"
+      );
+    });
+
+    it("should use alias for virtual column in GROUP BY with WHERE and aggregation", () => {
+      const ctx = createVirtualColumnContext();
+      const { sql } = printQuery(
+        "SELECT execution_duration, count() AS duration_count FROM runs WHERE execution_duration IS NOT NULL GROUP BY execution_duration ORDER BY duration_count DESC LIMIT 100",
+        ctx
+      );
+
+      // SELECT should have the expression with alias
+      expect(sql).toContain(
+        "(dateDiff('millisecond', started_at, completed_at)) AS execution_duration"
+      );
+      // GROUP BY should use the alias, not the expression
+      expect(sql).toContain("GROUP BY execution_duration");
+      // Should NOT have the expression in GROUP BY
+      expect(sql).not.toContain("GROUP BY (dateDiff('millisecond'");
+      // WHERE should still use the expression
+      expect(sql).toContain(
+        "isNotNull((dateDiff('millisecond', started_at, completed_at)))"
       );
     });
   });

@@ -1845,6 +1845,16 @@ export class ClickHousePrinter {
       return tableQualifiedChain.map((part) => this.printIdentifierOrIndex(part)).join(".");
     }
 
+    // In GROUP BY context, for virtual columns (columns with expressions),
+    // use the alias name instead of the expression. ClickHouse allows
+    // referencing SELECT aliases in GROUP BY.
+    if (this.inGroupByContext) {
+      const virtualColumnName = this.getVirtualColumnNameForField(node.chain);
+      if (virtualColumnName !== null) {
+        return this.printIdentifier(virtualColumnName);
+      }
+    }
+
     const virtualExpression = this.getVirtualColumnExpressionForField(node.chain);
     if (virtualExpression !== null) {
       // Return the expression wrapped in parentheses
