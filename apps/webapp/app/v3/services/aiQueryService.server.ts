@@ -5,7 +5,7 @@ import {
   type TableSchema,
   type ValidationIssue,
 } from "@internal/tsql";
-import { streamText, type LanguageModelV1, tool, type StreamTextResult } from "ai";
+import { streamText, type LanguageModelV1, tool } from "ai";
 import { z } from "zod";
 
 /**
@@ -21,9 +21,15 @@ export type AIQueryStreamEvent =
 /**
  * Result type for non-streaming call
  */
-export type AIQueryResult =
-  | { success: true; query: string }
-  | { success: false; error: string };
+export type AIQueryResult = { success: true; query: string } | { success: false; error: string };
+
+/**
+ * Options for query generation
+ */
+export interface AIQueryOptions {
+  mode?: "new" | "edit";
+  currentQuery?: string;
+}
 
 /**
  * Validation result from the validateTSQLQuery tool
@@ -46,14 +52,22 @@ export class AIQueryService {
   /**
    * Generate a TSQL query from natural language, streaming the result
    */
-  streamQuery(prompt: string): StreamTextResult<Record<string, unknown>, unknown> {
+  streamQuery(prompt: string, options: AIQueryOptions = {}) {
+    const { mode = "new", currentQuery } = options;
     const schemaDescription = this.buildSchemaDescription();
-    const systemPrompt = this.buildSystemPrompt(schemaDescription);
+    const systemPrompt =
+      mode === "edit" && currentQuery
+        ? this.buildEditSystemPrompt(schemaDescription)
+        : this.buildSystemPrompt(schemaDescription);
+
+    // Build the user prompt based on mode
+    const userPrompt =
+      mode === "edit" && currentQuery ? this.buildEditUserPrompt(prompt, currentQuery) : prompt;
 
     return streamText({
       model: this.model,
       system: systemPrompt,
-      prompt,
+      prompt: userPrompt,
       tools: {
         validateTSQLQuery: tool({
           description:
@@ -84,6 +98,7 @@ export class AIQueryService {
         isEnabled: true,
         metadata: {
           feature: "ai-query-generator",
+          mode,
         },
       },
     });
@@ -92,14 +107,22 @@ export class AIQueryService {
   /**
    * Generate a TSQL query from natural language (non-streaming)
    */
-  async call(prompt: string): Promise<AIQueryResult> {
+  async call(prompt: string, options: AIQueryOptions = {}): Promise<AIQueryResult> {
+    const { mode = "new", currentQuery } = options;
     const schemaDescription = this.buildSchemaDescription();
-    const systemPrompt = this.buildSystemPrompt(schemaDescription);
+    const systemPrompt =
+      mode === "edit" && currentQuery
+        ? this.buildEditSystemPrompt(schemaDescription)
+        : this.buildSystemPrompt(schemaDescription);
+
+    // Build the user prompt based on mode
+    const userPrompt =
+      mode === "edit" && currentQuery ? this.buildEditUserPrompt(prompt, currentQuery) : prompt;
 
     const result = await streamText({
       model: this.model,
       system: systemPrompt,
-      prompt,
+      prompt: userPrompt,
       tools: {
         validateTSQLQuery: tool({
           description:
@@ -130,6 +153,7 @@ export class AIQueryService {
         isEnabled: true,
         metadata: {
           feature: "ai-query-generator",
+          mode,
         },
       },
     });
@@ -347,6 +371,102 @@ If you cannot generate a valid query, explain why briefly.`;
   }
 
   /**
+   * Build the system prompt for edit mode
+   */
+  private buildEditSystemPrompt(schemaDescription: string): string {
+    return `You are an expert SQL assistant that modifies existing TSQL queries for a task run analytics system. TSQL is a SQL dialect similar to ClickHouse SQL.
+
+## Your Task
+Modify the provided TSQL query according to the user's instructions. Make only the changes requested - preserve the existing query structure where possible.
+
+## Available Schema
+${schemaDescription}
+
+## TSQL Syntax Guide
+
+TSQL supports standard SQL syntax with some ClickHouse-specific features:
+
+### Basic SELECT
+\`\`\`sql
+SELECT column1, column2, ...
+FROM table_name
+WHERE conditions
+ORDER BY column [ASC|DESC]
+LIMIT n
+\`\`\`
+
+### Filtering (WHERE clause)
+- Comparison: =, !=, <, >, <=, >=
+- Logical: AND, OR, NOT
+- Pattern matching: LIKE, ILIKE (case-insensitive), NOT LIKE
+- Range: BETWEEN value1 AND value2
+- Set membership: IN ('value1', 'value2'), NOT IN (...)
+- Null checks: IS NULL, IS NOT NULL
+- Array contains: has(array_column, 'value')
+
+### Aggregations
+- count() - count rows
+- countIf(condition) - count rows matching condition
+- sum(column), sumIf(column, condition)
+- avg(column), min(column), max(column)
+- uniq(column) - approximate unique count
+- quantile(p)(column) - percentile (p between 0 and 1)
+- groupArray(column) - collect values into array
+
+### Grouping
+\`\`\`sql
+SELECT column, count() as cnt
+FROM table
+GROUP BY column
+HAVING cnt > 10
+\`\`\`
+
+### Date/Time Functions
+- now() - current timestamp
+- today() - current date
+- toDate(datetime) - extract date
+- toStartOfDay/Hour/Minute(datetime)
+- dateDiff('unit', start, end) - difference in units (second, minute, hour, day, week, month, year)
+- INTERVAL n unit - time interval (e.g., INTERVAL 7 DAY)
+
+## Important Rules
+
+1. ALWAYS use the validateTSQLQuery tool to check your modified query before returning it
+2. If validation fails, fix the issues and try again (up to 3 attempts)
+3. Use column names exactly as defined in the schema (case-sensitive)
+4. For enum columns like status, use the allowed values shown in the schema
+5. Always include a LIMIT clause (default to 100 if not specified)
+6. Preserve the user's existing query structure and style where possible
+7. Only make the changes specifically requested by the user
+
+## Response Format
+
+After validating successfully, return ONLY the modified SQL query wrapped in a code block:
+
+\`\`\`sql
+SELECT ...
+FROM ...
+\`\`\`
+
+If you cannot make the requested modification, explain why briefly.`;
+  }
+
+  /**
+   * Build the user prompt for edit mode
+   */
+  private buildEditUserPrompt(userRequest: string, currentQuery: string): string {
+    return `Here is the current TSQL query:
+
+\`\`\`sql
+${currentQuery}
+\`\`\`
+
+Please modify this query according to the following instructions:
+
+${userRequest}`;
+  }
+
+  /**
    * Extract a SQL query from the AI response text
    */
   private extractQueryFromResponse(text: string): string | null {
@@ -365,4 +485,3 @@ If you cannot generate a valid query, explain why briefly.`;
     return null;
   }
 }
-

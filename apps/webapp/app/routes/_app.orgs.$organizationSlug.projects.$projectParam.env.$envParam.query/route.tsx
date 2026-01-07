@@ -463,6 +463,7 @@ export default function Page() {
                     setScope(exampleScope);
                   }}
                   onQueryGenerated={setQuery}
+                  currentQuery={query}
                 />
               </ResizablePanel>
             </>
@@ -585,10 +586,12 @@ function QueryHelpSidebar({
   onClose,
   onTryExample,
   onQueryGenerated,
+  currentQuery,
 }: {
   onClose: () => void;
   onTryExample: (query: string, scope: QueryScope) => void;
   onQueryGenerated: (query: string) => void;
+  currentQuery: string;
 }) {
   return (
     <div className="grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
@@ -625,7 +628,7 @@ function QueryHelpSidebar({
           value="ai"
           className="min-h-0 flex-1 overflow-y-auto p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
         >
-          <AITabContent onQueryGenerated={onQueryGenerated} />
+          <AITabContent onQueryGenerated={onQueryGenerated} currentQuery={currentQuery} />
         </ClientTabsContent>
         <ClientTabsContent
           value="guide"
@@ -650,7 +653,13 @@ function QueryHelpSidebar({
   );
 }
 
-function AITabContent({ onQueryGenerated }: { onQueryGenerated: (query: string) => void }) {
+function AITabContent({
+  onQueryGenerated,
+  currentQuery,
+}: {
+  onQueryGenerated: (query: string) => void;
+  currentQuery: string;
+}) {
   const [autoSubmitPrompt, setAutoSubmitPrompt] = useState<string | undefined>();
 
   const examplePrompts = [
@@ -666,10 +675,13 @@ function AITabContent({ onQueryGenerated }: { onQueryGenerated: (query: string) 
       <div>
         <Header3 className="mb-2 text-text-bright">Generate query with AI</Header3>
         <Paragraph variant="small" className="mb-3 text-text-dimmed">
-          Describe the data you want to query in natural language. The AI will generate a valid TSQL
-          query for you.
+          Describe the data you want to query in natural language, or edit the existing query.
         </Paragraph>
-        <AIQueryInput onQueryGenerated={onQueryGenerated} autoSubmitPrompt={autoSubmitPrompt} />
+        <AIQueryInput
+          onQueryGenerated={onQueryGenerated}
+          autoSubmitPrompt={autoSubmitPrompt}
+          currentQuery={currentQuery}
+        />
       </div>
 
       <div className="border-t border-grid-dimmed pt-4">

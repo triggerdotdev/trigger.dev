@@ -11,6 +11,8 @@ import { querySchemas } from "~/v3/querySchemas";
 
 const RequestSchema = z.object({
   prompt: z.string().min(1, "Prompt is required"),
+  mode: z.enum(["new", "edit"]).default("new"),
+  currentQuery: z.string().optional(),
 });
 
 export async function action({ request, params }: ActionFunctionArgs) {
@@ -79,7 +81,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     );
   }
 
-  const { prompt } = submission.data;
+  const { prompt, mode, currentQuery } = submission.data;
 
   const service = new AIQueryService(
     querySchemas,
@@ -105,7 +107,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       };
 
       try {
-        const result = service.streamQuery(prompt);
+        const result = service.streamQuery(prompt, { mode, currentQuery });
 
         // Process the stream
         for await (const part of result.fullStream) {
@@ -118,13 +120,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
                 type: "tool_call",
                 tool: part.toolName,
                 args: part.args,
-              });
-              break;
-            case "tool-result":
-              sendEvent({
-                type: "tool_result",
-                tool: part.toolName,
-                result: part.result,
               });
               break;
             case "error":
@@ -145,7 +140,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
                   success: true,
                   query,
                 });
-              } else if (finalText.toLowerCase().includes("cannot") || finalText.toLowerCase().includes("unable")) {
+              } else if (
+                finalText.toLowerCase().includes("cannot") ||
+                finalText.toLowerCase().includes("unable")
+              ) {
                 sendEvent({
                   type: "result",
                   success: false,
@@ -200,4 +198,3 @@ function extractQueryFromText(text: string): string | null {
 
   return null;
 }
-

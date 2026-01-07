@@ -1,3 +1,4 @@
+import { PencilSquareIcon, SparklesIcon } from "@heroicons/react/20/solid";
 import { AnimatePresence, motion } from "framer-motion";
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
@@ -17,22 +18,31 @@ import { Spinner } from "~/components/primitives/Spinner";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { cn } from "~/utils/cn";
 
 type StreamEventType =
   | { type: "thinking"; content: string }
   | { type: "tool_call"; tool: string; args: unknown }
-  | { type: "tool_result"; tool: string; result: unknown }
   | { type: "result"; success: true; query: string }
   | { type: "result"; success: false; error: string };
+
+export type AIQueryMode = "new" | "edit";
 
 interface AIQueryInputProps {
   onQueryGenerated: (query: string) => void;
   /** Set this to a prompt to auto-populate and immediately submit */
   autoSubmitPrompt?: string;
+  /** The current query in the editor (used for edit mode) */
+  currentQuery?: string;
 }
 
-export function AIQueryInput({ onQueryGenerated, autoSubmitPrompt }: AIQueryInputProps) {
+export function AIQueryInput({
+  onQueryGenerated,
+  autoSubmitPrompt,
+  currentQuery,
+}: AIQueryInputProps) {
   const [prompt, setPrompt] = useState("");
+  const [mode, setMode] = useState<AIQueryMode>("new");
   const [isLoading, setIsLoading] = useState(false);
   const [thinking, setThinking] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -48,9 +58,20 @@ export function AIQueryInput({ onQueryGenerated, autoSubmitPrompt }: AIQueryInpu
 
   const resourcePath = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/query/ai-generate`;
 
+  // Can only use edit mode if there's a current query
+  const canEdit = Boolean(currentQuery?.trim());
+
+  // If mode is edit but there's no current query, switch to new
+  useEffect(() => {
+    if (mode === "edit" && !canEdit) {
+      setMode("new");
+    }
+  }, [mode, canEdit]);
+
   const submitQuery = useCallback(
-    async (queryPrompt: string) => {
+    async (queryPrompt: string, submitMode: AIQueryMode = mode) => {
       if (!queryPrompt.trim() || isLoading) return;
+      if (submitMode === "edit" && !currentQuery?.trim()) return;
 
       setIsLoading(true);
       setThinking("");
@@ -67,6 +88,10 @@ export function AIQueryInput({ onQueryGenerated, autoSubmitPrompt }: AIQueryInpu
       try {
         const formData = new FormData();
         formData.append("prompt", queryPrompt);
+        formData.append("mode", submitMode);
+        if (submitMode === "edit" && currentQuery) {
+          formData.append("currentQuery", currentQuery);
+        }
 
         const response = await fetch(resourcePath, {
           method: "POST",
@@ -135,7 +160,7 @@ export function AIQueryInput({ onQueryGenerated, autoSubmitPrompt }: AIQueryInpu
         setIsLoading(false);
       }
     },
-    [isLoading, resourcePath]
+    [isLoading, resourcePath, mode, currentQuery]
   );
 
   const processStreamEvent = useCallback(
@@ -146,9 +171,6 @@ export function AIQueryInput({ onQueryGenerated, autoSubmitPrompt }: AIQueryInpu
           break;
         case "tool_call":
           setThinking((prev) => prev + `\nValidating query...\n`);
-          break;
-        case "tool_result":
-          // Optionally show validation result
           break;
         case "result":
           if (event.success) {
@@ -217,7 +239,11 @@ export function AIQueryInput({ onQueryGenerated, autoSubmitPrompt }: AIQueryInpu
             <textarea
               ref={textareaRef}
               name="prompt"
-              placeholder="e.g. show me failed runs from the last 7 days"
+              placeholder={
+                mode === "edit"
+                  ? "e.g. add a filter for failed runs, change the limit to 50"
+                  : "e.g. show me failed runs from the last 7 days"
+              }
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               disabled={isLoading}
@@ -231,16 +257,50 @@ export function AIQueryInput({ onQueryGenerated, autoSubmitPrompt }: AIQueryInpu
               }}
             />
             <div className="flex justify-end gap-2 px-2 pb-2">
-              <Button
-                type="submit"
-                variant="tertiary/small"
-                disabled={isLoading || !prompt.trim()}
-                LeadingIcon={isLoading ? Spinner : AISparkleIcon}
-                className="pl-1.5"
-                iconSpacing="gap-1.5"
-              >
-                {isLoading ? "Generating" : "Generate"}
-              </Button>
+              {isLoading ? (
+                <Button
+                  type="button"
+                  variant="tertiary/small"
+                  disabled={true}
+                  LeadingIcon={Spinner}
+                  className="pl-1.5"
+                  iconSpacing="gap-1.5"
+                >
+                  {mode === "edit" ? "Editing..." : "Generating..."}
+                </Button>
+              ) : (
+                <>
+                  <Button
+                    type="button"
+                    variant="tertiary/small"
+                    disabled={!prompt.trim()}
+                    LeadingIcon={SparklesIcon}
+                    className="pl-1.5"
+                    iconSpacing="gap-1.5"
+                    onClick={() => {
+                      setMode("new");
+                      submitQuery(prompt, "new");
+                    }}
+                  >
+                    New query
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="tertiary/small"
+                    disabled={!prompt.trim() || !canEdit}
+                    LeadingIcon={PencilSquareIcon}
+                    className={cn("pl-1.5", !canEdit && "opacity-50")}
+                    iconSpacing="gap-1.5"
+                    tooltip={!canEdit ? "Write a query first to enable editing" : undefined}
+                    onClick={() => {
+                      setMode("edit");
+                      submitQuery(prompt, "edit");
+                    }}
+                  >
+                    Edit query
+                  </Button>
+                </>
+              )}
             </div>
           </form>
         </div>
