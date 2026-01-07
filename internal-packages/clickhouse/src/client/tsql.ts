@@ -17,6 +17,9 @@ import {
 import type { ClickhouseReader, QueryStats } from "./types.js";
 import { QueryError } from "./errors.js";
 import type { OutputColumnMetadata } from "@internal/tsql";
+import { Logger } from "@trigger.dev/core/logger";
+
+const logger = new Logger("tsql", "info");
 
 export type { QueryStats };
 
@@ -105,6 +108,9 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
 ): Promise<TSQLQueryResult<z.output<TOut>>> {
   const shouldTransformValues = options.transformValues ?? true;
 
+  let generatedSql: string | undefined;
+  let generatedParams: Record<string, unknown> | undefined;
+
   try {
     // 1. Compile the TSQL query to ClickHouse SQL
     const { sql, params, columns } = compileTSQL(options.query, {
@@ -115,6 +121,9 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
       settings: options.querySettings,
       fieldMappings: options.fieldMappings,
     });
+
+    generatedSql = sql;
+    generatedParams = params;
 
     // 2. Execute the query with stats
     const queryFn = reader.queryWithStats({
@@ -145,6 +154,17 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
 
     return [null, { rows: rows ?? [], columns, stats }];
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+
+    // Log TSQL compilation or unexpected errors
+    logger.error("[TSQL] Query error", {
+      name: options.name,
+      error: errorMessage,
+      tsql: options.query,
+      generatedSql: generatedSql ?? "(compilation failed)",
+      generatedParams: generatedParams ?? {},
+    });
+
     if (error instanceof Error) {
       return [new QueryError(error.message, { query: options.query }), null];
     }
