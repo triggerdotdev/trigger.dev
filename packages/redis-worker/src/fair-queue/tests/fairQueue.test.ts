@@ -909,16 +909,14 @@ describe("FairQueue", () => {
             enabled: true,
             blockingTimeoutSeconds: 1,
           },
-          concurrency: {
-            groups: [
-              {
-                name: "tenant",
-                extractGroupId: (q) => q.tenantId,
-                getLimit: async () => 2, // Limit to 2 concurrent per tenant
-                defaultLimit: 2,
-              },
-            ],
-          },
+          concurrencyGroups: [
+            {
+              name: "tenant",
+              extractGroupId: (q) => q.tenantId,
+              getLimit: async () => 2, // Limit to 2 concurrent per tenant
+              defaultLimit: 2,
+            },
+          ],
           startConsumers: false,
         });
 
