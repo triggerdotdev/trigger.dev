@@ -13,6 +13,10 @@ declare global {
       >;
     }
   }
+
+  interface Window {
+    __splineLoader?: Promise<void>;
+  }
 }
 
 export function TriggerRotatingLogo() {
@@ -25,12 +29,29 @@ export function TriggerRotatingLogo() {
       return;
     }
 
+    // Another mount already started loading - share the same promise
+    if (window.__splineLoader) {
+      window.__splineLoader.then(() => setIsSplineReady(true)).catch(() => setIsSplineReady(false));
+      return;
+    }
+
+    // First mount: create script and shared loader promise
     const script = document.createElement("script");
     script.type = "module";
+    // Version pinned; SRI hash omitted as unpkg doesn't guarantee hash stability across deploys
     script.src = "https://unpkg.com/@splinetool/viewer@1.12.29/build/spline-viewer.js";
-    script.onload = () => setIsSplineReady(true);
-    // On error, we simply don't show the decorative viewer - no action needed
+
+    window.__splineLoader = new Promise<void>((resolve, reject) => {
+      script.onload = () => resolve();
+      script.onerror = () => reject();
+    });
+
+    window.__splineLoader.then(() => setIsSplineReady(true)).catch(() => setIsSplineReady(false));
+
     document.head.appendChild(script);
+
+    // Intentionally no cleanup: once the custom element is registered globally,
+    // removing the script would break re-mounts while providing no benefit
   }, []);
 
   if (!isSplineReady) {
