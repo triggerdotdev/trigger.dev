@@ -76,6 +76,10 @@ export type RunEngineOptions = {
   batchQueue?: {
     redis: RedisOptions;
     drr?: Partial<DRRConfig>;
+    /** Number of master queue shards (default: 1) */
+    shardCount?: number;
+    /** Worker queue blocking timeout in seconds (enables two-stage processing) */
+    workerQueueBlockingTimeoutSeconds?: number;
     consumerCount?: number;
     consumerIntervalMs?: number;
     /** Default processing concurrency per environment when no specific limit is set */

@@ -29,6 +29,15 @@ export abstract class BaseScheduler implements FairScheduler {
   }
 
   /**
+   * Called after processing multiple messages to update scheduler state.
+   * Batch variant for efficiency - reduces Redis calls when processing multiple messages.
+   * Default implementation does nothing.
+   */
+  async recordProcessedBatch(_tenantId: string, _queueId: string, _count: number): Promise<void> {
+    // Default: no state tracking
+  }
+
+  /**
    * Initialize the scheduler.
    * Default implementation does nothing.
    */

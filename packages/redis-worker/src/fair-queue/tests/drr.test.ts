@@ -115,6 +115,64 @@ describe("DRRScheduler", () => {
       await redis.quit();
     });
 
+    redisTest(
+      "should decrement deficit by count when using recordProcessedBatch",
+      { timeout: 10000 },
+      async ({ redisOptions }) => {
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+        const redis = createRedisClient(redisOptions);
+
+        const scheduler = new DRRScheduler({
+          redis: redisOptions,
+          keys,
+          quantum: 5,
+          maxDeficit: 50,
+        });
+
+        // Manually set deficit
+        const deficitKey = `test:drr:deficit`;
+        await redis.hset(deficitKey, "t1", "15");
+
+        // Record batch processing of 7 messages
+        await scheduler.recordProcessedBatch("t1", "queue:q1", 7);
+
+        const deficit = await scheduler.getDeficit("t1");
+        expect(deficit).toBe(8);
+
+        await scheduler.close();
+        await redis.quit();
+      }
+    );
+
+    redisTest(
+      "should not go below 0 when recordProcessedBatch decrements more than available",
+      { timeout: 10000 },
+      async ({ redisOptions }) => {
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+        const redis = createRedisClient(redisOptions);
+
+        const scheduler = new DRRScheduler({
+          redis: redisOptions,
+          keys,
+          quantum: 5,
+          maxDeficit: 50,
+        });
+
+        // Manually set deficit to 3
+        const deficitKey = `test:drr:deficit`;
+        await redis.hset(deficitKey, "t1", "3");
+
+        // Record batch processing of 10 messages (more than deficit)
+        await scheduler.recordProcessedBatch("t1", "queue:q1", 10);
+
+        const deficit = await scheduler.getDeficit("t1");
+        expect(deficit).toBe(0);
+
+        await scheduler.close();
+        await redis.quit();
+      }
+    );
+
     redisTest("should reset deficit for tenant", { timeout: 10000 }, async ({ redisOptions }) => {
       keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
       const redis = createRedisClient(redisOptions);
