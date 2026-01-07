@@ -89,6 +89,16 @@ export const runsSchema: TableSchema = {
         example: "Completed",
       }),
     },
+    is_finished: {
+      name: "is_finished",
+      ...column("UInt8", {
+        description:
+          "Whether the run is finished. This includes failed and successful runs. (0 or 1)",
+        example: "0",
+      }),
+      expression:
+        "if(status IN ('COMPLETED_SUCCESSFULLY', 'COMPLETED_WITH_ERRORS', 'CANCELED', 'TIMED_OUT', 'CRASHED', 'SYSTEM_FAILURE', 'EXPIRED', 'PAUSED'), true, false)",
+    },
 
     // Task & queue
     task_identifier: {
