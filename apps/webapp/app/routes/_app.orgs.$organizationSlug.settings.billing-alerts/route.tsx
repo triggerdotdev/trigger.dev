@@ -24,12 +24,13 @@ import { Label } from "~/components/primitives/Label";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { TextLink } from "~/components/primitives/TextLink";
+import { InfoIconTooltip } from "~/components/primitives/Tooltip";
 import { prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { getBillingAlerts, setBillingAlert } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
-import { formatCurrency } from "~/utils/numberFormatter";
+import { formatCurrency, formatNumber } from "~/utils/numberFormatter";
 import {
   docsPath,
   OrganizationParamsSchema,
@@ -183,6 +184,8 @@ export default function Page() {
 
   const checkboxLevels = [0.75, 0.9, 1.0, 2.0, 5.0];
 
+  const spikeAlertLevels = [10.0, 20.0, 50.0, 100.0];
+
   useEffect(() => {
     if (alerts.emails.length > 0) {
       requestIntent(form.ref.current ?? undefined, list.append(emails.name));
@@ -271,6 +274,39 @@ export default function Page() {
                     />
                   ))}
                   <FormError id={alertLevels.errorId}>{alertLevels.error}</FormError>
+                </InputGroup>
+                <InputGroup fullWidth>
+                  <div className="flex items-center gap-1">
+                    <Label>Spike alerts</Label>
+                    <InfoIconTooltip
+                      content={
+                        "Catch runaway usage from bugs or errors. We recommend keeping these enabled as a safety net."
+                      }
+                      disableHoverableContent
+                    />
+                  </div>
+                  {spikeAlertLevels.map((level) => (
+                    <CheckboxWithLabel
+                      name={alertLevels.name}
+                      id={`level_${level}`}
+                      key={level}
+                      value={level.toString()}
+                      variant="simple/small"
+                      label={
+                        <span>
+                          {formatNumber(level * 100)}%{" "}
+                          <span className="text-text-dimmed">
+                            ({formatCurrency(Number(dollarAmount) * level, false)})
+                          </span>
+                        </span>
+                      }
+                      defaultChecked={
+                        alerts.alertLevels.includes(level) ||
+                        !spikeAlertLevels.some((l) => alerts.alertLevels.includes(l))
+                      }
+                      className="pr-0"
+                    />
+                  ))}
                 </InputGroup>
                 <InputGroup fullWidth>
                   <Label htmlFor={emails.id}>Email addresses</Label>
