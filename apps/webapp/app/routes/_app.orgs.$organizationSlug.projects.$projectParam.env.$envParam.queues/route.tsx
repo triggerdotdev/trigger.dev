@@ -1003,6 +1003,11 @@ function QueueOverrideConcurrencyButton({
             </div>
 
             <FormButtons
+              defaultAction={{
+                name: "action",
+                value: "queue-override",
+                disabled: isLoading || !concurrencyLimit,
+              }}
               confirmButton={
                 <Button
                   type="submit"
