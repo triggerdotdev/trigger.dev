@@ -779,52 +779,62 @@ export class TaskExecutor {
 
     return await runTimelineMetrics.measureMetric("trigger.dev/execution", "success", async () => {
       for (const hook of globalSuccessHooks) {
-        await tryCatch(
-          this._tracer.startActiveSpan(
-            "onSuccess()",
-            async (span) => {
-              await hook.fn({
+        await this._tracer.startActiveSpan(
+          "onSuccess()",
+          async (span) => {
+            const [hookError] = await tryCatch(
+              hook.fn({
                 payload,
                 output,
                 ctx,
                 signal,
                 task: this.task.id,
                 init: initOutput,
-              });
-            },
-            {
-              attributes: {
-                [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onSuccess",
-                [SemanticInternalAttributes.COLLAPSED]: true,
-                ...this.#lifecycleHookAccessoryAttributes(hook.name),
-              },
+              })
+            );
+
+            if (hookError) {
+              recordSpanException(span, hookError);
+              // Errors in onSuccess hooks are logged but don't fail the run
             }
-          )
+          },
+          {
+            attributes: {
+              [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onSuccess",
+              [SemanticInternalAttributes.COLLAPSED]: true,
+              ...this.#lifecycleHookAccessoryAttributes(hook.name),
+            },
+          }
         );
       }
 
       if (taskSuccessHook) {
-        await tryCatch(
-          this._tracer.startActiveSpan(
-            "onSuccess()",
-            async (span) => {
-              await taskSuccessHook({
+        await this._tracer.startActiveSpan(
+          "onSuccess()",
+          async (span) => {
+            const [hookError] = await tryCatch(
+              taskSuccessHook({
                 payload,
                 output,
                 ctx,
                 signal,
                 task: this.task.id,
                 init: initOutput,
-              });
-            },
-            {
-              attributes: {
-                [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onSuccess",
-                [SemanticInternalAttributes.COLLAPSED]: true,
-                ...this.#lifecycleHookAccessoryAttributes("task"),
-              },
+              })
+            );
+
+            if (hookError) {
+              recordSpanException(span, hookError);
+              // Errors in onSuccess hooks are logged but don't fail the run
             }
-          )
+          },
+          {
+            attributes: {
+              [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onSuccess",
+              [SemanticInternalAttributes.COLLAPSED]: true,
+              ...this.#lifecycleHookAccessoryAttributes("task"),
+            },
+          }
         );
       }
     });
@@ -846,52 +856,62 @@ export class TaskExecutor {
 
     return await runTimelineMetrics.measureMetric("trigger.dev/execution", "failure", async () => {
       for (const hook of globalFailureHooks) {
-        await tryCatch(
-          this._tracer.startActiveSpan(
-            "onFailure()",
-            async (span) => {
-              await hook.fn({
+        await this._tracer.startActiveSpan(
+          "onFailure()",
+          async (span) => {
+            const [hookError] = await tryCatch(
+              hook.fn({
                 payload,
                 error,
                 ctx,
                 signal,
                 task: this.task.id,
                 init: initOutput,
-              });
-            },
-            {
-              attributes: {
-                [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onFailure",
-                [SemanticInternalAttributes.COLLAPSED]: true,
-                ...this.#lifecycleHookAccessoryAttributes(hook.name),
-              },
+              })
+            );
+
+            if (hookError) {
+              recordSpanException(span, hookError);
+              // Errors in onFailure hooks are logged but don't fail the run
             }
-          )
+          },
+          {
+            attributes: {
+              [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onFailure",
+              [SemanticInternalAttributes.COLLAPSED]: true,
+              ...this.#lifecycleHookAccessoryAttributes(hook.name),
+            },
+          }
         );
       }
 
       if (taskFailureHook) {
-        await tryCatch(
-          this._tracer.startActiveSpan(
-            "onFailure()",
-            async (span) => {
-              await taskFailureHook({
+        await this._tracer.startActiveSpan(
+          "onFailure()",
+          async (span) => {
+            const [hookError] = await tryCatch(
+              taskFailureHook({
                 payload,
                 error,
                 ctx,
                 signal,
                 task: this.task.id,
                 init: initOutput,
-              });
-            },
-            {
-              attributes: {
-                [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onFailure",
-                [SemanticInternalAttributes.COLLAPSED]: true,
-                ...this.#lifecycleHookAccessoryAttributes("task"),
-              },
+              })
+            );
+
+            if (hookError) {
+              recordSpanException(span, hookError);
+              // Errors in onFailure hooks are logged but don't fail the run
             }
-          )
+          },
+          {
+            attributes: {
+              [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onFailure",
+              [SemanticInternalAttributes.COLLAPSED]: true,
+              ...this.#lifecycleHookAccessoryAttributes("task"),
+            },
+          }
         );
       }
     });
@@ -1347,52 +1367,62 @@ export class TaskExecutor {
 
     return await runTimelineMetrics.measureMetric("trigger.dev/execution", "complete", async () => {
       for (const hook of globalCompleteHooks) {
-        await tryCatch(
-          this._tracer.startActiveSpan(
-            "onComplete()",
-            async (span) => {
-              await hook.fn({
+        await this._tracer.startActiveSpan(
+          "onComplete()",
+          async (span) => {
+            const [hookError] = await tryCatch(
+              hook.fn({
                 payload,
                 result,
                 ctx,
                 signal,
                 task: this.task.id,
                 init: initOutput,
-              });
-            },
-            {
-              attributes: {
-                [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onComplete",
-                [SemanticInternalAttributes.COLLAPSED]: true,
-                ...this.#lifecycleHookAccessoryAttributes(hook.name),
-              },
+              })
+            );
+
+            if (hookError) {
+              recordSpanException(span, hookError);
+              // Errors in onComplete hooks are logged but don't fail the run
             }
-          )
+          },
+          {
+            attributes: {
+              [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onComplete",
+              [SemanticInternalAttributes.COLLAPSED]: true,
+              ...this.#lifecycleHookAccessoryAttributes(hook.name),
+            },
+          }
         );
       }
 
       if (taskCompleteHook) {
-        await tryCatch(
-          this._tracer.startActiveSpan(
-            "onComplete()",
-            async (span) => {
-              await taskCompleteHook({
+        await this._tracer.startActiveSpan(
+          "onComplete()",
+          async (span) => {
+            const [hookError] = await tryCatch(
+              taskCompleteHook({
                 payload,
                 result,
                 ctx,
                 signal,
                 task: this.task.id,
                 init: initOutput,
-              });
-            },
-            {
-              attributes: {
-                [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onComplete",
-                [SemanticInternalAttributes.COLLAPSED]: true,
-                ...this.#lifecycleHookAccessoryAttributes("task"),
-              },
+              })
+            );
+
+            if (hookError) {
+              recordSpanException(span, hookError);
+              // Errors in onComplete hooks are logged but don't fail the run
             }
-          )
+          },
+          {
+            attributes: {
+              [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onComplete",
+              [SemanticInternalAttributes.COLLAPSED]: true,
+              ...this.#lifecycleHookAccessoryAttributes("task"),
+            },
+          }
         );
       }
     });
