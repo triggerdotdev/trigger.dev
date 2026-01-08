@@ -2,7 +2,7 @@ import * as Ariakit from "@ariakit/react";
 import type { RuntimeEnvironment } from "@trigger.dev/database";
 import parse from "parse-duration";
 import type { ReactNode } from "react";
-import { startTransition, useCallback, useState } from "react";
+import { startTransition, useCallback, useEffect, useState } from "react";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { DateField } from "~/components/primitives/DateField";
 import { DateTime } from "~/components/primitives/DateTime";
@@ -303,6 +303,13 @@ export function TimeDropdown({
   const initialCustom = getInitialCustomDuration(period);
   const [customValue, setCustomValue] = useState(initialCustom.value);
   const [customUnit, setCustomUnit] = useState(initialCustom.unit);
+
+  // Sync custom duration state when period prop changes
+  useEffect(() => {
+    const parsed = getInitialCustomDuration(period);
+    setCustomValue(parsed.value);
+    setCustomUnit(parsed.unit);
+  }, [period]);
 
   const applyDateRange = useCallback(() => {
     replace({
