@@ -1,7 +1,7 @@
 import { ArrowPathIcon } from "@heroicons/react/20/solid";
 import { Link } from "@remix-run/react";
 import { formatDurationNanoseconds } from "@trigger.dev/core/v3";
-import { type ReactNode, useEffect, useRef } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { cn } from "~/utils/cn";
 import { Button } from "~/components/primitives/Buttons";
 import { useEnvironment } from "~/hooks/useEnvironment";
@@ -107,7 +107,7 @@ function highlightText(text: string, searchTerm: string | undefined): ReactNode 
   return (
     <>
       {text.slice(0, index)}
-      <mark className="rounded bg-yellow-500/30 px-0.5">
+      <mark className="rounded px-0.5 bg-yellow-400 text-black font-medium">
         {text.slice(index, index + searchTerm.length)}
       </mark>
       {text.slice(index + searchTerm.length)}
@@ -132,6 +132,21 @@ export function LogsTable({
   const project = useProject();
   const environment = useEnvironment();
   const loadMoreRef = useRef<HTMLDivElement>(null);
+  const [showLoadMoreSpinner, setShowLoadMoreSpinner] = useState(false);
+
+  // Show load more spinner only after 0.5 seconds of loading time
+  useEffect(() => {
+    if (!isLoadingMore) {
+      setShowLoadMoreSpinner(false);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setShowLoadMoreSpinner(true);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [isLoadingMore]);
 
   // Intersection observer for infinite scroll
   useEffect(() => {
@@ -159,17 +174,17 @@ export function LogsTable({
   }, [hasMore, isLoadingMore, onLoadMore]);
 
   return (
-    <div className="relative h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-      <Table variant="compact/mono">
-        <TableHeader>
+    <div className="relative h-full overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <Table variant="compact/mono" containerClassName="overflow-visible">
+        <TableHeader className="sticky top-0 z-10">
           <TableRow>
-            <TableHeaderCell>Time</TableHeaderCell>
-            <TableHeaderCell>Run</TableHeaderCell>
-            <TableHeaderCell>Task</TableHeaderCell>
-            <TableHeaderCell>Level</TableHeaderCell>
-            <TableHeaderCell>Status</TableHeaderCell>
-            <TableHeaderCell>Duration</TableHeaderCell>
-            <TableHeaderCell className="w-full">Message</TableHeaderCell>
+            <TableHeaderCell className="w-48 whitespace-nowrap">Time</TableHeaderCell>
+            <TableHeaderCell className="w-24 whitespace-nowrap">Run</TableHeaderCell>
+            <TableHeaderCell className="w-32 whitespace-nowrap">Task</TableHeaderCell>
+            <TableHeaderCell className="whitespace-nowrap">Level</TableHeaderCell>
+            <TableHeaderCell className="whitespace-nowrap">Status</TableHeaderCell>
+            <TableHeaderCell className="whitespace-nowrap">Duration</TableHeaderCell>
+            <TableHeaderCell className="w-full min-w-0">Message</TableHeaderCell>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -258,16 +273,11 @@ export function LogsTable({
       {/* Infinite scroll trigger */}
       {hasMore && logs.length > 0 && (
         <div ref={loadMoreRef} className="flex items-center justify-center py-4">
-          {isLoadingMore && (
+          {showLoadMoreSpinner && (
             <div className="flex items-center gap-2">
               <Spinner /> <span className="text-text-dimmed">Loading more…</span>
             </div>
           )}
-        </div>
-      )}
-      {isLoading && (
-        <div className="absolute inset-0 flex items-center justify-center gap-2 bg-charcoal-900/90">
-          <Spinner /> <span className="text-text-dimmed">Loading…</span>
         </div>
       )}
     </div>
