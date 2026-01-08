@@ -7,7 +7,16 @@ import {
   type MessageUpdate,
   type PgoutputMessage,
 } from "@internal/replication";
-import { recordSpanError, startSpan, trace, type Tracer } from "@internal/tracing";
+import {
+  getMeter,
+  recordSpanError,
+  startSpan,
+  trace,
+  type Counter,
+  type Histogram,
+  type Meter,
+  type Tracer,
+} from "@internal/tracing";
 import { Logger, type LogLevel } from "@trigger.dev/core/logger";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { parsePacketAsJson } from "@trigger.dev/core/v3/utils/ioSerialization";
@@ -51,6 +60,7 @@ export type RunsReplicationServiceOptions = {
   logger?: Logger;
   logLevel?: LogLevel;
   tracer?: Tracer;
+  meter?: Meter;
   waitForAsyncInsert?: boolean;
   insertStrategy?: "insert" | "insert_async";
   // Retry configuration for insert operations
@@ -90,6 +100,7 @@ export class RunsReplicationService {
   private _isShuttingDown = false;
   private _isShutDownComplete = false;
   private _tracer: Tracer;
+  private _meter: Meter;
   private _currentParseDurationMs: number | null = null;
   private _lastAcknowledgedAt: number | null = null;
   private _acknowledgeTimeoutMs: number;
@@ -103,6 +114,16 @@ export class RunsReplicationService {
   private _insertStrategy: "insert" | "insert_async";
   private _disablePayloadInsert: boolean;
 
+  // Metrics
+  private _replicationLagHistogram: Histogram;
+  private _batchesFlushedCounter: Counter;
+  private _batchSizeHistogram: Histogram;
+  private _taskRunsInsertedCounter: Counter;
+  private _payloadsInsertedCounter: Counter;
+  private _insertRetriesCounter: Counter;
+  private _eventsProcessedCounter: Counter;
+  private _flushDurationHistogram: Histogram;
+
   public readonly events: EventEmitter<RunsReplicationServiceEvents>;
 
   constructor(private readonly options: RunsReplicationServiceOptions) {
@@ -110,6 +131,60 @@ export class RunsReplicationService {
       options.logger ?? new Logger("RunsReplicationService", options.logLevel ?? "info");
     this.events = new EventEmitter();
     this._tracer = options.tracer ?? trace.getTracer("runs-replication-service");
+    this._meter = options.meter ?? getMeter("runs-replication");
+
+    // Initialize metrics
+    this._replicationLagHistogram = this._meter.createHistogram(
+      "runs_replication.replication_lag_ms",
+      {
+        description: "Replication lag from Postgres commit to processing",
+        unit: "ms",
+      }
+    );
+
+    this._batchesFlushedCounter = this._meter.createCounter("runs_replication.batches_flushed", {
+      description: "Total batches flushed to ClickHouse",
+    });
+
+    this._batchSizeHistogram = this._meter.createHistogram("runs_replication.batch_size", {
+      description: "Number of items per batch flush",
+      unit: "items",
+    });
+
+    this._taskRunsInsertedCounter = this._meter.createCounter(
+      "runs_replication.task_runs_inserted",
+      {
+        description: "Task run inserts to ClickHouse",
+        unit: "inserts",
+      }
+    );
+
+    this._payloadsInsertedCounter = this._meter.createCounter(
+      "runs_replication.payloads_inserted",
+      {
+        description: "Payload inserts to ClickHouse",
+        unit: "inserts",
+      }
+    );
+
+    this._insertRetriesCounter = this._meter.createCounter("runs_replication.insert_retries", {
+      description: "Insert retry attempts",
+    });
+
+    this._eventsProcessedCounter = this._meter.createCounter(
+      "runs_replication.events_processed",
+      {
+        description: "Replication events processed (inserts, updates, deletes)",
+      }
+    );
+
+    this._flushDurationHistogram = this._meter.createHistogram(
+      "runs_replication.flush_duration_ms",
+      {
+        description: "Duration of batch flush operations",
+        unit: "ms",
+      }
+    );
 
     this._acknowledgeTimeoutMs = options.acknowledgeTimeoutMs ?? 1_000;
 
@@ -423,20 +498,13 @@ export class RunsReplicationService {
       }))
     );
 
-    this._tracer
-      .startSpan("handle_transaction", {
-        attributes: {
-          "transaction.xid": transaction.xid,
-          "transaction.replication_lag_ms": transaction.replicationLagMs,
-          "transaction.events": transaction.events.length,
-          "transaction.commit_end_lsn": transaction.commitEndLsn,
-          "transaction.parse_duration_ms": this._currentParseDurationMs ?? undefined,
-          "transaction.lsn_to_uint64_ms": lsnToUInt64DurationMs,
-          "transaction.version": _version.toString(),
-        },
-        startTime: transaction.beginStartTimestamp,
-      })
-      .end();
+    // Record metrics
+    this._replicationLagHistogram.record(transaction.replicationLagMs);
+
+    // Count events by type
+    for (const event of transaction.events) {
+      this._eventsProcessedCounter.add(1, { event_type: event.tag });
+    }
 
     this.logger.info("handle_transaction", {
       transaction: {
@@ -500,6 +568,8 @@ export class RunsReplicationService {
       flushId,
       batchSize: batch.length,
     });
+
+    const flushStartTime = performance.now();
 
     await startSpan(this._tracer, "flushBatch", async (span) => {
       const preparedInserts = await startSpan(this._tracer, "prepare_inserts", async (span) => {
@@ -584,6 +654,22 @@ export class RunsReplicationService {
       });
 
       this.events.emit("batchFlushed", { flushId, taskRunInserts, payloadInserts });
+
+      // Record metrics
+      const flushDurationMs = performance.now() - flushStartTime;
+      const hasErrors = taskRunError !== null || payloadError !== null;
+
+      this._batchSizeHistogram.record(batch.length);
+      this._flushDurationHistogram.record(flushDurationMs);
+      this._batchesFlushedCounter.add(1, { success: !hasErrors });
+
+      if (!taskRunError) {
+        this._taskRunsInsertedCounter.add(taskRunInserts.length);
+      }
+
+      if (!payloadError) {
+        this._payloadsInsertedCounter.add(payloadInserts.length);
+      }
     });
   }
 
@@ -614,6 +700,10 @@ export class RunsReplicationService {
             error: lastError.message,
             delay,
           });
+
+          // Record retry metric
+          const operation = operationName.includes("task run") ? "task_runs" : "payloads";
+          this._insertRetriesCounter.add(1, { operation });
 
           await new Promise((resolve) => setTimeout(resolve, delay));
           continue;
