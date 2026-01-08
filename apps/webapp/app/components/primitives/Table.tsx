@@ -157,6 +157,8 @@ export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellP
         break;
     }
 
+    const [isHovered, setIsHovered] = useState(false);
+
     return (
       <th
         ref={ref}
@@ -168,6 +170,8 @@ export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellP
         )}
         colSpan={colSpan}
         tabIndex={-1}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
       >
         {hiddenLabel ? (
           <span className="sr-only">{children}</span>
@@ -179,7 +183,11 @@ export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellP
             })}
           >
             {children}
-            <InfoIconTooltip content={tooltip} contentClassName="normal-case tracking-normal" />
+            <InfoIconTooltip
+              content={tooltip}
+              contentClassName="normal-case tracking-normal"
+              enabled={isHovered}
+            />
           </div>
         ) : (
           children
