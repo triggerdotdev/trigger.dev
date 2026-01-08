@@ -1258,36 +1258,6 @@ describe("RunsReplicationService (part 1/2)", () => {
         return metric.dataPoints.reduce((sum: number, dp: any) => sum + (dp.value || 0), 0);
       }
 
-      function getCounterValueByAttributes(
-        metric: any,
-        attributes: Record<string, unknown>
-      ): number {
-        if (!metric?.dataPoints) return 0;
-        for (const dp of metric.dataPoints) {
-          const dpAttrs = dp.attributes || {};
-          const matches = Object.entries(attributes).every(
-            ([key, value]) => String(dpAttrs[key]) === String(value)
-          );
-          if (matches) {
-            return dp.value || 0;
-          }
-        }
-        return 0;
-      }
-
-      function getHistogramCount(metric: any): number {
-        if (!metric?.dataPoints) return 0;
-        return metric.dataPoints.reduce((sum: number, dp: any) => {
-          if (typeof dp.count === "number") return sum + dp.count;
-          if (typeof dp.value?.count === "number") return sum + dp.value.count;
-          if (typeof dp.zeroCount === "number") return sum + dp.zeroCount;
-          if (dp.buckets?.counts) {
-            return sum + dp.buckets.counts.reduce((s: number, c: number) => s + c, 0);
-          }
-          return sum;
-        }, 0);
-      }
-
       function histogramHasData(metric: any): boolean {
         if (!metric?.dataPoints || metric.dataPoints.length === 0) return false;
         return metric.dataPoints.some((dp: any) => {
@@ -1327,12 +1297,12 @@ describe("RunsReplicationService (part 1/2)", () => {
       const totalPayloadsInserted = sumCounterValues(payloadsInserted);
       expect(totalPayloadsInserted).toBeGreaterThanOrEqual(1);
 
-      const transactionsProcessed = getMetricData("runs_replication.transactions_processed");
-      expect(transactionsProcessed).not.toBeNull();
-      const totalTransactionsProcessed = sumCounterValues(transactionsProcessed);
-      expect(totalTransactionsProcessed).toBeGreaterThanOrEqual(1);
+      const eventsProcessed = getMetricData("runs_replication.events_processed");
+      expect(eventsProcessed).not.toBeNull();
+      const totalEventsProcessed = sumCounterValues(eventsProcessed);
+      expect(totalEventsProcessed).toBeGreaterThanOrEqual(1);
 
-      const eventTypes = getCounterAttributeValues(transactionsProcessed, "event_type");
+      const eventTypes = getCounterAttributeValues(eventsProcessed, "event_type");
       expect(eventTypes.length).toBeGreaterThanOrEqual(1);
       expect(eventTypes).toContain("insert");
 

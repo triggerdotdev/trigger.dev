@@ -191,12 +191,12 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(triggerdotdev_runs_replication_transactions_processed_total[5m])) by (event_type)",
+          "expr": "sum(rate(triggerdotdev_runs_replication_events_processed_total[5m])) by (event_type)",
           "legendFormat": "{{event_type}}",
           "refId": "A"
         }
       ],
-      "title": "Transactions Processed by Event Type",
+      "title": "Events Processed by Type",
       "type": "timeseries"
     },
     {
@@ -412,54 +412,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 25 },
-      "id": 12,
-      "options": {
-        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
-        "tooltip": { "mode": "multi", "sort": "desc" }
-      },
-      "targets": [
-        {
-          "expr": "triggerdotdev_runs_replication_flush_queue_depth",
-          "legendFormat": "Queue Depth",
-          "refId": "A"
-        }
-      ],
-      "title": "Flush Queue Depth",
-      "type": "timeseries"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 10,
-            "gradientMode": "none",
-            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": { "type": "linear" },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": { "group": "A", "mode": "none" },
-            "thresholdsStyle": { "mode": "off" }
-          },
-          "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 25 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 25 },
       "id": 13,
       "options": {
         "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
@@ -503,7 +456,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 25 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 25 },
       "id": 14,
       "options": {
         "colorMode": "value",

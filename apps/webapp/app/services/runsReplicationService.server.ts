@@ -121,7 +121,7 @@ export class RunsReplicationService {
   private _taskRunsInsertedCounter: Counter;
   private _payloadsInsertedCounter: Counter;
   private _insertRetriesCounter: Counter;
-  private _transactionsProcessedCounter: Counter;
+  private _eventsProcessedCounter: Counter;
   private _flushDurationHistogram: Histogram;
 
   public readonly events: EventEmitter<RunsReplicationServiceEvents>;
@@ -171,10 +171,10 @@ export class RunsReplicationService {
       description: "Insert retry attempts",
     });
 
-    this._transactionsProcessedCounter = this._meter.createCounter(
-      "runs_replication.transactions_processed",
+    this._eventsProcessedCounter = this._meter.createCounter(
+      "runs_replication.events_processed",
       {
-        description: "Transactions received from replication",
+        description: "Replication events processed (inserts, updates, deletes)",
       }
     );
 
@@ -503,7 +503,7 @@ export class RunsReplicationService {
 
     // Count events by type
     for (const event of transaction.events) {
-      this._transactionsProcessedCounter.add(1, { event_type: event.tag });
+      this._eventsProcessedCounter.add(1, { event_type: event.tag });
     }
 
     this.logger.info("handle_transaction", {
