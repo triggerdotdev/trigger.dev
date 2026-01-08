@@ -1,5 +1,5 @@
 import type { OutputColumnMetadata } from "@internal/clickhouse";
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import {
   Area,
   AreaChart,
@@ -331,7 +331,11 @@ function sortData(
   });
 }
 
-export function QueryResultsChart({ rows, columns, config }: QueryResultsChartProps) {
+export const QueryResultsChart = memo(function QueryResultsChart({
+  rows,
+  columns,
+  config,
+}: QueryResultsChartProps) {
   const {
     xAxisColumn,
     yAxisColumns,
@@ -505,7 +509,7 @@ export function QueryResultsChart({ rows, columns, config }: QueryResultsChartPr
       )}
     </ChartContainer>
   );
-}
+});
 
 /**
  * Creates a Y-axis value formatter based on the data range

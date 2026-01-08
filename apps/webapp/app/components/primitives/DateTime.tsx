@@ -1,6 +1,6 @@
 import { GlobeAltIcon, GlobeAmericasIcon } from "@heroicons/react/20/solid";
 import { Laptop } from "lucide-react";
-import { Fragment, type ReactNode, useSyncExternalStore } from "react";
+import { Fragment, memo, type ReactNode, useMemo, useSyncExternalStore } from "react";
 import { CopyButton } from "./CopyButton";
 import { useLocales } from "./LocaleProvider";
 import { Paragraph } from "./Paragraph";
@@ -63,16 +63,7 @@ export const DateTime = ({
   const locales = useLocales();
   const localTimeZone = useLocalTimeZone();
 
-  const realDate = typeof date === "string" ? new Date(date) : date;
-
-  const tooltipContent = (
-    <TooltipContent
-      realDate={realDate}
-      timeZone={timeZone}
-      localTimeZone={localTimeZone}
-      locales={locales}
-    />
-  );
+  const realDate = useMemo(() => (typeof date === "string" ? new Date(date) : date), [date]);
 
   const formattedDateTime = (
     <Fragment>
@@ -90,7 +81,20 @@ export const DateTime = ({
 
   if (!showTooltip) return formattedDateTime;
 
-  return <SimpleTooltip button={formattedDateTime} content={tooltipContent} side="right" />;
+  return (
+    <SimpleTooltip
+      button={formattedDateTime}
+      content={
+        <TooltipContent
+          realDate={realDate}
+          timeZone={timeZone}
+          localTimeZone={localTimeZone}
+          locales={locales}
+        />
+      }
+      side="right"
+    />
+  );
 };
 
 export function formatDateTime(
@@ -224,7 +228,7 @@ function formatTimeOnly(
   }).format(date);
 }
 
-export const DateTimeAccurate = ({
+const DateTimeAccurateInner = ({
   date,
   timeZone = "UTC",
   previousDate = null,
@@ -242,13 +246,15 @@ export const DateTimeAccurate = ({
     : null;
 
   // Smart formatting based on whether date changed
-  const formattedDateTime = hideDate
-    ? formatTimeOnly(realDate, localTimeZone, locales, hour12)
-    : realPrevDate
-    ? isSameDay(realDate, realPrevDate)
+  const formattedDateTime = useMemo(() => {
+    return hideDate
       ? formatTimeOnly(realDate, localTimeZone, locales, hour12)
-      : formatDateTimeAccurate(realDate, localTimeZone, locales, hour12)
-    : formatDateTimeAccurate(realDate, localTimeZone, locales, hour12);
+      : realPrevDate
+      ? isSameDay(realDate, realPrevDate)
+        ? formatTimeOnly(realDate, localTimeZone, locales, hour12)
+        : formatDateTimeAccurate(realDate, localTimeZone, locales, hour12)
+      : formatDateTimeAccurate(realDate, localTimeZone, locales, hour12);
+  }, [realDate, localTimeZone, locales, hour12, hideDate, previousDate]);
 
   if (!showTooltip)
     return <Fragment>{formattedDateTime.replace(/\s/g, String.fromCharCode(32))}</Fragment>;
@@ -270,6 +276,28 @@ export const DateTimeAccurate = ({
     />
   );
 };
+
+function areDateTimePropsEqual(prev: DateTimeProps, next: DateTimeProps): boolean {
+  // Compare Date objects by timestamp value, not reference
+  const prevTime = prev.date instanceof Date ? prev.date.getTime() : prev.date;
+  const nextTime = next.date instanceof Date ? next.date.getTime() : next.date;
+  if (prevTime !== nextTime) return false;
+
+  const prevPrevTime =
+    prev.previousDate instanceof Date ? prev.previousDate.getTime() : prev.previousDate;
+  const nextPrevTime =
+    next.previousDate instanceof Date ? next.previousDate.getTime() : next.previousDate;
+  if (prevPrevTime !== nextPrevTime) return false;
+
+  return (
+    prev.timeZone === next.timeZone &&
+    prev.showTooltip === next.showTooltip &&
+    prev.hideDate === next.hideDate &&
+    prev.hour12 === next.hour12
+  );
+}
+
+export const DateTimeAccurate = memo(DateTimeAccurateInner, areDateTimePropsEqual);
 
 function formatDateTimeAccurate(
   date: Date,
@@ -333,14 +361,17 @@ function DateTimeTooltipContent({
   isoDateTime,
   icon,
 }: DateTimeTooltipContentProps) {
-  const getUtcOffset = () => {
-    if (title !== "Local") return "";
-    const offset = -new Date().getTimezoneOffset();
-    const sign = offset >= 0 ? "+" : "-";
-    const hours = Math.abs(Math.floor(offset / 60));
-    const minutes = Math.abs(offset % 60);
-    return `(UTC ${sign}${hours}${minutes ? `:${minutes.toString().padStart(2, "0")}` : ""})`;
-  };
+  const getUtcOffset = useMemo(
+    () => () => {
+      if (title !== "Local") return "";
+      const offset = -new Date().getTimezoneOffset();
+      const sign = offset >= 0 ? "+" : "-";
+      const hours = Math.abs(Math.floor(offset / 60));
+      const minutes = Math.abs(offset % 60);
+      return `(UTC ${sign}${hours}${minutes ? `:${minutes.toString().padStart(2, "0")}` : ""})`;
+    },
+    [title]
+  );
 
   return (
     <div className="flex flex-col gap-1">

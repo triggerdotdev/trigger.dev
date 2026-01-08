@@ -12,7 +12,7 @@ import {
   type LoaderFunctionArgs,
   redirect,
 } from "@remix-run/server-runtime";
-import { useCallback, useEffect, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { typedjson, useTypedActionData, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
@@ -241,13 +241,98 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 };
 
+/** Handle for imperatively setting the query from outside */
+interface QueryEditorFormHandle {
+  setQuery: (query: string) => void;
+  setScope: (scope: QueryScope) => void;
+  getQuery: () => string;
+}
+
+/** Self-contained query editor with form - isolates query state from parent */
+const QueryEditorForm = forwardRef<
+  QueryEditorFormHandle,
+  {
+    defaultQuery: string;
+    defaultScope: QueryScope;
+    history: QueryHistoryItem[];
+    isLoading: boolean;
+  }
+>(function QueryEditorForm({ defaultQuery, defaultScope, history, isLoading }, ref) {
+  const [query, setQuery] = useState(defaultQuery);
+  const [scope, setScope] = useState<QueryScope>(defaultScope);
+
+  // Expose methods to parent for external query setting (history, AI, examples)
+  useImperativeHandle(
+    ref,
+    () => ({
+      setQuery,
+      setScope,
+      getQuery: () => query,
+    }),
+    [query]
+  );
+
+  const handleHistorySelected = useCallback((item: QueryHistoryItem) => {
+    setQuery(item.query);
+    setScope(item.scope);
+  }, []);
+
+  return (
+    <div className="flex flex-col gap-2 bg-charcoal-900 pb-2">
+      <TSQLEditor
+        defaultValue={query}
+        onChange={setQuery}
+        schema={querySchemas}
+        linterEnabled={true}
+        showCopyButton={true}
+        showClearButton={true}
+        minHeight="200px"
+        className="min-h-[200px]"
+      />
+      <Form method="post" className="flex items-center justify-between gap-2 px-2">
+        <input type="hidden" name="query" value={query} />
+        <input type="hidden" name="scope" value={scope} />
+        <QueryHistoryPopover history={history} onQuerySelected={handleHistorySelected} />
+        <div className="flex items-center gap-2">
+          <Select
+            value={scope}
+            setValue={(value) => setScope(value as QueryScope)}
+            variant="tertiary/small"
+            dropdownIcon={true}
+            items={[...scopeOptions]}
+            text={(value) => {
+              return <ScopeItem scope={value as QueryScope} />;
+            }}
+          >
+            {(items) =>
+              items.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  <ScopeItem scope={item.value as QueryScope} />
+                </SelectItem>
+              ))
+            }
+          </Select>
+          <Button
+            type="submit"
+            variant="primary/small"
+            disabled={isLoading || !query.trim()}
+            shortcut={{ modifiers: ["mod"], key: "enter", enabledOnInputElements: true }}
+            LeadingIcon={isLoading ? <Spinner className="size-4" color="white" /> : undefined}
+          >
+            {isLoading ? "Querying..." : "Query"}
+          </Button>
+        </div>
+      </Form>
+    </div>
+  );
+});
+
 export default function Page() {
   const { defaultQuery, history } = useTypedLoaderData<typeof loader>();
   const results = useTypedActionData<typeof action>();
   const navigation = useNavigation();
 
-  const [query, setQuery] = useState(defaultQuery);
-  const [scope, setScope] = useState<QueryScope>("environment");
+  const editorRef = useRef<QueryEditorFormHandle>(null);
   const [prettyFormatting, setPrettyFormatting] = useState(true);
   const [resultsView, setResultsView] = useState<"table" | "graph">("table");
   const [chartConfig, setChartConfig] = useState<ChartConfiguration>(defaultChartConfig);
@@ -271,11 +356,6 @@ export default function Page() {
     setChartConfig(config);
   }, []);
 
-  const handleHistorySelected = (item: QueryHistoryItem) => {
-    setQuery(item.query);
-    setScope(item.scope);
-  };
-
   return (
     <PageContainer>
       <NavBar>
@@ -285,55 +365,14 @@ export default function Page() {
         <ResizablePanelGroup orientation="horizontal" className="max-h-full bg-charcoal-800">
           <ResizablePanel id="query-main" className="max-h-full">
             <div className="grid max-h-full grid-rows-[auto_1fr] overflow-hidden">
-              {/* Query editor */}
-              <div className="flex flex-col gap-2 bg-charcoal-900 pb-2">
-                <TSQLEditor
-                  defaultValue={query}
-                  onChange={setQuery}
-                  schema={querySchemas}
-                  linterEnabled={true}
-                  showCopyButton={true}
-                  showClearButton={true}
-                  minHeight="200px"
-                  className="min-h-[200px]"
-                />
-                <Form method="post" className="flex items-center justify-between gap-2 px-2">
-                  <input type="hidden" name="query" value={query} />
-                  <input type="hidden" name="scope" value={scope} />
-                  <QueryHistoryPopover history={history} onQuerySelected={handleHistorySelected} />
-                  <div className="flex items-center gap-2">
-                    <Select
-                      value={scope}
-                      setValue={(value) => setScope(value as QueryScope)}
-                      variant="tertiary/small"
-                      dropdownIcon={true}
-                      items={[...scopeOptions]}
-                      text={(value) => {
-                        return <ScopeItem scope={value as QueryScope} />;
-                      }}
-                    >
-                      {(items) =>
-                        items.map((item) => (
-                          <SelectItem key={item.value} value={item.value}>
-                            <ScopeItem scope={item.value as QueryScope} />
-                          </SelectItem>
-                        ))
-                      }
-                    </Select>
-                    <Button
-                      type="submit"
-                      variant="primary/small"
-                      disabled={isLoading || !query.trim()}
-                      shortcut={{ modifiers: ["mod"], key: "enter", enabledOnInputElements: true }}
-                      LeadingIcon={
-                        isLoading ? <Spinner className="size-4" color="white" /> : undefined
-                      }
-                    >
-                      {isLoading ? "Querying..." : "Query"}
-                    </Button>
-                  </div>
-                </Form>
-              </div>
+              {/* Query editor - isolated component to prevent re-renders */}
+              <QueryEditorForm
+                ref={editorRef}
+                defaultQuery={defaultQuery}
+                defaultScope="environment"
+                history={history}
+                isLoading={isLoading}
+              />
               {/* Results */}
               <div className="grid max-h-full grid-rows-[2rem_1fr] overflow-hidden border-t border-grid-dimmed bg-charcoal-800">
                 <div className="flex items-center justify-between border-b border-grid-dimmed pl-3 pr-1">
@@ -441,11 +480,11 @@ export default function Page() {
           >
             <QueryHelpSidebar
               onTryExample={(exampleQuery, exampleScope) => {
-                setQuery(exampleQuery);
-                setScope(exampleScope);
+                editorRef.current?.setQuery(exampleQuery);
+                editorRef.current?.setScope(exampleScope);
               }}
-              onQueryGenerated={setQuery}
-              currentQuery={query}
+              onQueryGenerated={(query) => editorRef.current?.setQuery(query)}
+              getCurrentQuery={() => editorRef.current?.getQuery() ?? ""}
             />
           </ResizablePanel>
         </ResizablePanelGroup>
@@ -565,11 +604,11 @@ LIMIT 100`,
 function QueryHelpSidebar({
   onTryExample,
   onQueryGenerated,
-  currentQuery,
+  getCurrentQuery,
 }: {
   onTryExample: (query: string, scope: QueryScope) => void;
   onQueryGenerated: (query: string) => void;
-  currentQuery: string;
+  getCurrentQuery: () => string;
 }) {
   return (
     <div className="grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
@@ -594,7 +633,7 @@ function QueryHelpSidebar({
           value="ai"
           className="min-h-0 flex-1 overflow-y-auto p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
         >
-          <AITabContent onQueryGenerated={onQueryGenerated} currentQuery={currentQuery} />
+          <AITabContent onQueryGenerated={onQueryGenerated} getCurrentQuery={getCurrentQuery} />
         </ClientTabsContent>
         <ClientTabsContent
           value="guide"
@@ -621,10 +660,10 @@ function QueryHelpSidebar({
 
 function AITabContent({
   onQueryGenerated,
-  currentQuery,
+  getCurrentQuery,
 }: {
   onQueryGenerated: (query: string) => void;
-  currentQuery: string;
+  getCurrentQuery: () => string;
 }) {
   const [autoSubmitPrompt, setAutoSubmitPrompt] = useState<string | undefined>();
 
@@ -641,7 +680,7 @@ function AITabContent({
       <AIQueryInput
         onQueryGenerated={onQueryGenerated}
         autoSubmitPrompt={autoSubmitPrompt}
-        currentQuery={currentQuery}
+        getCurrentQuery={getCurrentQuery}
       />
 
       <div className="pt-4">

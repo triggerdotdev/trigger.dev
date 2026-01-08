@@ -32,14 +32,14 @@ interface AIQueryInputProps {
   onQueryGenerated: (query: string) => void;
   /** Set this to a prompt to auto-populate and immediately submit */
   autoSubmitPrompt?: string;
-  /** The current query in the editor (used for edit mode) */
-  currentQuery?: string;
+  /** Get the current query in the editor (used for edit mode) */
+  getCurrentQuery?: () => string;
 }
 
 export function AIQueryInput({
   onQueryGenerated,
   autoSubmitPrompt,
-  currentQuery,
+  getCurrentQuery,
 }: AIQueryInputProps) {
   const [prompt, setPrompt] = useState("");
   const [mode, setMode] = useState<AIQueryMode>("new");
@@ -59,7 +59,7 @@ export function AIQueryInput({
   const resourcePath = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/query/ai-generate`;
 
   // Can only use edit mode if there's a current query
-  const canEdit = Boolean(currentQuery?.trim());
+  const canEdit = Boolean(getCurrentQuery?.()?.trim());
 
   // If mode is edit but there's no current query, switch to new
   useEffect(() => {
@@ -71,6 +71,7 @@ export function AIQueryInput({
   const submitQuery = useCallback(
     async (queryPrompt: string, submitMode: AIQueryMode = mode) => {
       if (!queryPrompt.trim() || isLoading) return;
+      const currentQuery = getCurrentQuery?.();
       if (submitMode === "edit" && !currentQuery?.trim()) return;
 
       setIsLoading(true);
@@ -160,7 +161,7 @@ export function AIQueryInput({
         setIsLoading(false);
       }
     },
-    [isLoading, resourcePath, mode, currentQuery]
+    [isLoading, resourcePath, mode, getCurrentQuery]
   );
 
   const processStreamEvent = useCallback(

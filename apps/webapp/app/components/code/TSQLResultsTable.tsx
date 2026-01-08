@@ -1,6 +1,6 @@
 import type { OutputColumnMetadata } from "@internal/clickhouse";
 import { formatDurationMilliseconds, MachinePresetName } from "@trigger.dev/core/v3";
-import { useState } from "react";
+import { memo, useState } from "react";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { MachineLabelCombo } from "~/components/MachineLabelCombo";
 import { DateTimeAccurate } from "~/components/primitives/DateTime";
@@ -399,7 +399,7 @@ function isRightAlignedColumn(column: OutputColumnMetadata): boolean {
   return isNumericType(column.type);
 }
 
-export function TSQLResultsTable({
+export const TSQLResultsTable = memo(function TSQLResultsTable({
   rows,
   columns,
   prettyFormatting = true,
@@ -456,4 +456,4 @@ export function TSQLResultsTable({
       </TableBody>
     </Table>
   );
-}
+});
