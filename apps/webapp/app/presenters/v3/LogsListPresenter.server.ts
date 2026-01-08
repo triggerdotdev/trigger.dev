@@ -42,6 +42,7 @@ export type LogsListOptions = {
   levels?: LogLevel[];
   // search
   search?: string;
+  includeDebugLogs?: boolean;
   // pagination
   direction?: Direction;
   cursor?: string;
@@ -155,6 +156,7 @@ export class LogsListPresenter {
       direction = "forward",
       cursor,
       pageSize = DEFAULT_PAGE_SIZE,
+      includeDebugLogs = true,
     }: LogsListOptions
   ) {
     // Get time values from raw values (including default period)
@@ -381,11 +383,16 @@ export class LogsListPresenter {
       queryBuilder.where("run_id IN {runIds: Array(String)}", { runIds });
     }
 
-    // Case-insensitive contains message search using ilike
+    // Case-insensitive search in message and status fields
     if (search && search.trim() !== "") {
-      queryBuilder.where("message ilike {searchPattern: String}", {
-        searchPattern: `%${search.trim()}%`,
-      });
+      const searchTerm = search.trim();
+      queryBuilder.where(
+        "(message ilike {searchPattern: String} OR status = {statusTerm: String})",
+        {
+          searchPattern: `%${searchTerm}%`,
+          statusTerm: searchTerm.toUpperCase(),
+        }
+      );
     }
 
     // Level filter (map display levels to ClickHouse kinds)
@@ -393,6 +400,22 @@ export class LogsListPresenter {
       const kinds = levels.flatMap(levelToKinds);
       queryBuilder.where("kind IN {kinds: Array(String)}", { kinds });
     }
+
+    // Exclude DEBUG logs if not included
+    if (includeDebugLogs === false) {
+      queryBuilder.where("kind NOT IN {debugKinds: Array(String)}", {
+        debugKinds: ["DEBUG_EVENT", "LOG_DEBUG"],
+      });
+    }
+
+    // Exclude TRACE logs with PARTIAL status
+    // const traceKinds = ["SPAN", "ANCESTOR_OVERRIDE", "SPAN_EVENT"];
+    // queryBuilder.where(
+    //   "NOT (kind IN {traceKinds: Array(String)} AND status = 'PARTIAL')",
+    //   { traceKinds }
+    // );
+    queryBuilder.where("NOT (kind = 'SPAN' AND status = 'PARTIAL')");
+
 
     // Cursor pagination
     const decodedCursor = cursor ? decodeCursor(cursor) : null;

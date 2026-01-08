@@ -6,7 +6,7 @@ import {
   type UseDataFunctionReturn,
   useTypedLoaderData,
 } from "remix-typedjson";
-import { requireUserId } from "~/services/session.server";
+import { requireUser } from "~/services/session.server";
 
 import { docsPath, EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { findProjectBySlug } from "~/models/project.server";
@@ -34,13 +34,13 @@ import type { LogEntry } from "~/presenters/v3/LogsListPresenter.server";
 import { LogDetailView } from "~/components/logs/LogDetailView";
 import { LogsSearchInput } from "~/components/logs/LogsSearchInput";
 import { LogsLevelFilter } from "~/components/logs/LogsLevelFilter";
-import { LogsRunIdFilter } from "~/components/logs/LogsRunIdFilter";
-import { LogsTimePresets } from "~/components/logs/LogsTimePresets";
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
+import { Switch } from "~/components/primitives/Switch";
+import { getUserById } from "~/models/user.server";
 
 // Valid log levels for filtering
 const validLevels: LogLevel[] = ["TRACE", "DEBUG", "INFO", "WARN", "ERROR", "LOG"];
@@ -60,7 +60,10 @@ export const meta: MetaFunction = () => {
 };
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const userId = await requireUserId(request);
+  const user = await requireUser(request);
+  const userId = user.id;
+  const isAdmin = user.admin || user.isImpersonating;
+
   const { projectParam, organizationSlug, envParam } = EnvironmentParamSchema.parse(params);
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
@@ -75,10 +78,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const filters = await getRunFiltersFromRequest(request);
 
-  // Get search term and levels from query params
+  // Get search term, levels, and showDebug from query params
   const url = new URL(request.url);
   const search = url.searchParams.get("search") ?? undefined;
   const levels = parseLevelsFromUrl(url);
+  const showDebug = url.searchParams.get("showDebug") === "true";
 
   const presenter = new LogsListPresenter($replica, clickhouseClient);
   const list = presenter.call(project.organizationId, environment.id, {
@@ -87,6 +91,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     ...filters,
     search,
     levels,
+    includeDebugLogs: isAdmin && showDebug,
   });
 
   const session = await setRootOnlyFilterPreference(filters.rootOnly, request);
@@ -97,6 +102,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       data: list,
       rootOnlyDefault: filters.rootOnly,
       filters,
+      isAdmin,
+      showDebug,
     },
     {
       headers: {
@@ -107,21 +114,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export default function Page() {
-  const { data, rootOnlyDefault, filters } = useTypedLoaderData<typeof loader>();
+  const { data, rootOnlyDefault, filters, isAdmin, showDebug } = useTypedLoaderData<typeof loader>();
 
   return (
     <PageContainer>
       <NavBar>
         <PageTitle title="Logs" />
-        <PageAccessories>
-          <LinkButton
-            variant={"docs/small"}
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("/runs-and-attempts")}
-          >
-            Logs docs
-          </LinkButton>
-        </PageAccessories>
       </NavBar>
 
       <PageBody scrollable={false}>
@@ -154,6 +152,8 @@ export default function Page() {
                   list={list}
                   rootOnlyDefault={rootOnlyDefault}
                   filters={filters}
+                  isAdmin={isAdmin}
+                  showDebug={showDebug}
                 />
               );
             }}
@@ -167,11 +167,14 @@ export default function Page() {
 function LogsList({
   list,
   rootOnlyDefault,
-  filters,
+  isAdmin,
+  showDebug,
 }: {
   list: Awaited<UseDataFunctionReturn<typeof loader>["data"]>;
   rootOnlyDefault: boolean;
   filters: TaskRunListSearchFilters;
+  isAdmin: boolean;
+  showDebug: boolean;
 }) {
   const navigation = useNavigation();
   const location = useLocation();
@@ -188,6 +191,19 @@ function LogsList({
     const params = new URLSearchParams(location.search);
     return params.get("log") ?? undefined;
   });
+
+  const handleDebugToggle = useCallback(
+    (checked: boolean) => {
+      const url = new URL(window.location.href);
+      if (checked) {
+        url.searchParams.set("showDebug", "true");
+      } else {
+        url.searchParams.delete("showDebug");
+      }
+      window.location.href = url.toString();
+    },
+    []
+  );
 
   // Reset accumulated logs when the initial list changes (e.g., filters change)
   useEffect(() => {
@@ -245,7 +261,6 @@ function LogsList({
     []
   );
 
-  // Handle log selection
   const handleLogSelect = useCallback(
     (logId: string) => {
       setSelectedLogId(logId);
@@ -254,7 +269,6 @@ function LogsList({
     [updateUrlWithLog]
   );
 
-  // Handle closing the side panel
   const handleClosePanel = useCallback(() => {
     setSelectedLogId(undefined);
     updateUrlWithLog(undefined);
@@ -274,11 +288,17 @@ function LogsList({
                 rootOnlyDefault={rootOnlyDefault}
                 hideSearch
               />
-              <LogsLevelFilter />
-              <LogsRunIdFilter />
+              <LogsLevelFilter showDebug={showDebug} />
               <LogsSearchInput />
             </div>
-            <LogsTimePresets />
+            {isAdmin && (
+              <Switch
+                variant="small"
+                label="Debug"
+                checked={showDebug}
+                onCheckedChange={handleDebugToggle}
+              />
+            )}
           </div>
 
           {/* Table */}

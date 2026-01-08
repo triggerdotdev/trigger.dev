@@ -12,7 +12,7 @@ import { v3RunSpanPath } from "~/utils/pathBuilder";
 import { DateTime } from "../primitives/DateTime";
 import { Paragraph } from "../primitives/Paragraph";
 import { Spinner } from "../primitives/Spinner";
-import { SimpleTooltip } from "../primitives/Tooltip";
+import { TruncatedCopyableValue } from "../primitives/TruncatedCopyableValue";
 import {
   Table,
   TableBlankRow,
@@ -209,21 +209,10 @@ export function LogsTable({
                   >
                     <DateTime date={log.startTime} />
                   </TableCell>
-                  <TableCell>
-                    <SimpleTooltip
-                      content="Jump to run"
-                      disableHoverableContent
-                      button={
-                        <Link
-                          to={runPath}
-                          className="flex items-center gap-1 text-blue-500 hover:text-blue-400"
-                        >
-                          {log.runId.slice(0, 12)}…
-                        </Link>
-                      }
-                    />
+                  <TableCell className="min-w-24">
+                    <TruncatedCopyableValue value={log.runId} />
                   </TableCell>
-                  <TableCell onClick={handleRowClick} hasAction>
+                  <TableCell className="min-w-32"  onClick={handleRowClick} hasAction>
                     <span className="font-mono text-xs">{log.taskIdentifier}</span>
                   </TableCell>
                   <TableCell onClick={handleRowClick} hasAction>
