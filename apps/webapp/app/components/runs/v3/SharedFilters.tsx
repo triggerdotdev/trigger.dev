@@ -95,6 +95,21 @@ const timePeriods = [
   },
 ];
 
+const timeUnits = [
+  { label: "minutes", value: "m", singular: "minute" },
+  { label: "hours", value: "h", singular: "hour" },
+  { label: "days", value: "d", singular: "day" },
+];
+
+// Parse a period string (e.g., "90m", "2h", "7d") into value and unit
+function parsePeriodString(period: string): { value: number; unit: string } | null {
+  const match = period.match(/^(\d+)([mhd])$/);
+  if (match) {
+    return { value: parseInt(match[1], 10), unit: match[2] };
+  }
+  return null;
+}
+
 const defaultPeriod = "7d";
 const defaultPeriodMs = parse(defaultPeriod);
 if (!defaultPeriodMs) {
@@ -175,9 +190,29 @@ export function timeFilterRenderValues({
 
   let valueLabel: ReactNode;
   switch (rangeType) {
-    case "period":
-      valueLabel = timePeriods.find((t) => t.value === period)?.label ?? period ?? defaultPeriod;
+    case "period": {
+      // First check if it's a preset period
+      const preset = timePeriods.find((t) => t.value === period);
+      if (preset) {
+        valueLabel = preset.label;
+      } else if (period) {
+        // Parse custom period and format nicely (e.g., "90m" -> "90 mins")
+        const parsed = parsePeriodString(period);
+        if (parsed) {
+          const unit = timeUnits.find((u) => u.value === parsed.unit);
+          if (unit) {
+            valueLabel = `${parsed.value} ${parsed.value === 1 ? unit.singular : unit.label}`;
+          } else {
+            valueLabel = period;
+          }
+        } else {
+          valueLabel = period;
+        }
+      } else {
+        valueLabel = defaultPeriod;
+      }
       break;
+    }
     case "range":
       valueLabel = (
         <span>
@@ -237,6 +272,17 @@ export function TimeFilter() {
   );
 }
 
+// Get initial custom duration state from a period string
+function getInitialCustomDuration(period?: string): { value: string; unit: string } {
+  if (period) {
+    const parsed = parsePeriodString(period);
+    if (parsed) {
+      return { value: parsed.value.toString(), unit: parsed.unit };
+    }
+  }
+  return { value: "", unit: "m" };
+}
+
 export function TimeDropdown({
   trigger,
   period,
@@ -253,7 +299,12 @@ export function TimeDropdown({
   const [fromValue, setFromValue] = useState(from);
   const [toValue, setToValue] = useState(to);
 
-  const apply = useCallback(() => {
+  // Custom duration state
+  const initialCustom = getInitialCustomDuration(period);
+  const [customValue, setCustomValue] = useState(initialCustom.value);
+  const [customUnit, setCustomUnit] = useState(initialCustom.unit);
+
+  const applyDateRange = useCallback(() => {
     replace({
       period: undefined,
       cursor: undefined,
@@ -282,6 +333,20 @@ export function TimeDropdown({
     },
     [replace]
   );
+
+  const applyCustomDuration = useCallback(() => {
+    const value = parseInt(customValue, 10);
+    if (isNaN(value) || value <= 0) {
+      return;
+    }
+    const periodString = `${value}${customUnit}`;
+    handlePeriodClick(periodString);
+  }, [customValue, customUnit, handlePeriodClick]);
+
+  const isCustomDurationValid = (() => {
+    const value = parseInt(customValue, 10);
+    return !isNaN(value) && value > 0;
+  })();
 
   return (
     <SelectProvider virtualFocus={true} open={open} setOpen={setOpen}>
@@ -318,7 +383,50 @@ export function TimeDropdown({
             </div>
           </div>
 
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1">
+            <Label>Custom duration</Label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min="1"
+                placeholder="e.g. 90"
+                value={customValue}
+                onChange={(e) => setCustomValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && isCustomDurationValid) {
+                    e.preventDefault();
+                    applyCustomDuration();
+                  }
+                }}
+                className="h-8 w-20 rounded border border-grid-bright bg-background-bright px-2 text-sm text-text-bright placeholder:text-text-dimmed focus:border-indigo-500 focus:outline-none"
+              />
+              <select
+                value={customUnit}
+                onChange={(e) => setCustomUnit(e.target.value)}
+                className="h-8 rounded border border-grid-bright bg-background-bright px-2 text-sm text-text-bright focus:border-indigo-500 focus:outline-none"
+              >
+                {timeUnits.map((unit) => (
+                  <option key={unit.value} value={unit.value}>
+                    {unit.label}
+                  </option>
+                ))}
+              </select>
+              <Button
+                variant="secondary/small"
+                disabled={!isCustomDurationValid}
+                onClick={(e) => {
+                  e.preventDefault();
+                  applyCustomDuration();
+                }}
+                type="button"
+              >
+                Apply
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-4 border-t border-grid-bright pt-4">
+            <Label className="text-text-dimmed">Or specify exact time range</Label>
             <div className="flex flex-col gap-1">
               <Label>
                 From <span className="text-text-dimmed">(local time)</span>
@@ -370,7 +478,7 @@ export function TimeDropdown({
                 disabled={!fromValue && !toValue}
                 onClick={(e) => {
                   e.preventDefault();
-                  apply();
+                  applyDateRange();
                 }}
                 type="button"
               >
