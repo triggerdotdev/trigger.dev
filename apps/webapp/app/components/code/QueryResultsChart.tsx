@@ -143,6 +143,138 @@ function formatDateByGranularity(date: Date, granularity: TimeGranularity): stri
 }
 
 /**
+ * Detect the most common interval between consecutive data points
+ * This helps us understand the natural granularity of the data
+ */
+function detectDataInterval(timestamps: number[]): number {
+  if (timestamps.length < 2) return 60 * 1000; // Default to 1 minute
+
+  const sorted = [...timestamps].sort((a, b) => a - b);
+  const gaps: number[] = [];
+
+  for (let i = 1; i < sorted.length; i++) {
+    const gap = sorted[i] - sorted[i - 1];
+    if (gap > 0) {
+      gaps.push(gap);
+    }
+  }
+
+  if (gaps.length === 0) return 60 * 1000;
+
+  // Find the most common small gap (this is likely the data's natural interval)
+  // We use the minimum gap as a heuristic for the data interval
+  const minGap = Math.min(...gaps);
+
+  // Round to a nice interval
+  const MINUTE = 60 * 1000;
+  const HOUR = 60 * MINUTE;
+  const DAY = 24 * HOUR;
+
+  // Snap to common intervals
+  if (minGap <= MINUTE) return MINUTE;
+  if (minGap <= 5 * MINUTE) return 5 * MINUTE;
+  if (minGap <= 10 * MINUTE) return 10 * MINUTE;
+  if (minGap <= 15 * MINUTE) return 15 * MINUTE;
+  if (minGap <= 30 * MINUTE) return 30 * MINUTE;
+  if (minGap <= HOUR) return HOUR;
+  if (minGap <= 2 * HOUR) return 2 * HOUR;
+  if (minGap <= 4 * HOUR) return 4 * HOUR;
+  if (minGap <= 6 * HOUR) return 6 * HOUR;
+  if (minGap <= 12 * HOUR) return 12 * HOUR;
+  if (minGap <= DAY) return DAY;
+
+  return minGap;
+}
+
+/**
+ * Fill in missing time slots with zero values
+ * This ensures the chart shows gaps as zeros rather than connecting distant points
+ */
+function fillTimeGaps(
+  data: Record<string, unknown>[],
+  xDataKey: string,
+  series: string[],
+  minTime: number,
+  maxTime: number,
+  interval: number,
+  granularity: TimeGranularity,
+  maxPoints = 1000
+): Record<string, unknown>[] {
+  const range = maxTime - minTime;
+  const estimatedPoints = Math.ceil(range / interval);
+
+  // If filling would create too many points, increase the interval to stay within limits
+  let effectiveInterval = interval;
+  if (estimatedPoints > maxPoints) {
+    effectiveInterval = Math.ceil(range / maxPoints);
+    // Round up to a nice interval
+    const MINUTE = 60 * 1000;
+    const HOUR = 60 * MINUTE;
+    if (effectiveInterval < 5 * MINUTE) effectiveInterval = 5 * MINUTE;
+    else if (effectiveInterval < 10 * MINUTE) effectiveInterval = 10 * MINUTE;
+    else if (effectiveInterval < 15 * MINUTE) effectiveInterval = 15 * MINUTE;
+    else if (effectiveInterval < 30 * MINUTE) effectiveInterval = 30 * MINUTE;
+    else if (effectiveInterval < HOUR) effectiveInterval = HOUR;
+    else if (effectiveInterval < 2 * HOUR) effectiveInterval = 2 * HOUR;
+    else if (effectiveInterval < 4 * HOUR) effectiveInterval = 4 * HOUR;
+    else if (effectiveInterval < 6 * HOUR) effectiveInterval = 6 * HOUR;
+    else if (effectiveInterval < 12 * HOUR) effectiveInterval = 12 * HOUR;
+    else effectiveInterval = 24 * HOUR;
+  }
+
+  // Create a map of existing data points by timestamp (bucketed to the effective interval)
+  const existingData = new Map<number, Record<string, unknown>>();
+  for (const point of data) {
+    const timestamp = point[xDataKey] as number;
+    // Bucket to the nearest interval
+    const bucketedTime = Math.floor(timestamp / effectiveInterval) * effectiveInterval;
+
+    // If there's already data for this bucket, aggregate it
+    const existing = existingData.get(bucketedTime);
+    if (existing) {
+      // Sum the values
+      for (const s of series) {
+        const existingVal = (existing[s] as number) || 0;
+        const newVal = (point[s] as number) || 0;
+        existing[s] = existingVal + newVal;
+      }
+    } else {
+      // Clone the point with the bucketed timestamp
+      existingData.set(bucketedTime, {
+        ...point,
+        [xDataKey]: bucketedTime,
+        __rawDate: new Date(bucketedTime),
+      });
+    }
+  }
+
+  // Generate all time slots and fill with zeros where missing
+  const filledData: Record<string, unknown>[] = [];
+  const startTime = Math.floor(minTime / effectiveInterval) * effectiveInterval;
+
+  for (let t = startTime; t <= maxTime; t += effectiveInterval) {
+    const existing = existingData.get(t);
+    if (existing) {
+      filledData.push(existing);
+    } else {
+      // Create a zero-filled data point
+      const zeroPoint: Record<string, unknown> = {
+        [xDataKey]: t,
+        __rawDate: new Date(t),
+        __granularity: granularity,
+        __originalX: new Date(t).toISOString(),
+      };
+      for (const s of series) {
+        zeroPoint[s] = 0;
+      }
+      filledData.push(zeroPoint);
+    }
+  }
+
+  return filledData;
+}
+
+/**
  * "Nice" intervals for time axes - these create human-friendly tick marks
  */
 const NICE_TIME_INTERVALS = [
@@ -361,7 +493,7 @@ function transformDataForChart(
 
   // No grouping: use Y columns directly as series
   if (!groupByColumn) {
-    const data = rows
+    let data = rows
       .map((row) => {
         const rawDate = tryParseDate(row[xAxisColumn]);
         const point: Record<string, unknown> = {
@@ -379,6 +511,21 @@ function transformDataForChart(
       })
       // Filter out rows with invalid dates for date-based axes
       .filter((point) => !isDateBased || point.__rawDate !== null);
+
+    // Fill in gaps with zeros for date-based data
+    if (isDateBased && timeDomain) {
+      const timestamps = dateValues.map((d) => d.getTime());
+      const dataInterval = detectDataInterval(timestamps);
+      data = fillTimeGaps(
+        data,
+        xDataKey,
+        yAxisColumns,
+        timeDomain[0],
+        timeDomain[1],
+        dataInterval,
+        granularity
+      );
+    }
 
     return { data, series: yAxisColumns, dateValues, isDateBased, xDataKey, timeDomain, timeTicks };
   }
@@ -416,7 +563,7 @@ function transformDataForChart(
 
   // Convert to array format
   const series = Array.from(groupValues).sort();
-  const data = Array.from(groupedByX.entries()).map(([xKey, { values, rawDate, originalX }]) => {
+  let data = Array.from(groupedByX.entries()).map(([xKey, { values, rawDate, originalX }]) => {
     const point: Record<string, unknown> = {
       [xDataKey]: xKey,
       __rawDate: rawDate,
@@ -428,6 +575,21 @@ function transformDataForChart(
     }
     return point;
   });
+
+  // Fill in gaps with zeros for date-based data
+  if (isDateBased && timeDomain) {
+    const timestamps = dateValues.map((d) => d.getTime());
+    const dataInterval = detectDataInterval(timestamps);
+    data = fillTimeGaps(
+      data,
+      xDataKey,
+      series,
+      timeDomain[0],
+      timeDomain[1],
+      dataInterval,
+      granularity
+    );
+  }
 
   return { data, series, dateValues, isDateBased, xDataKey, timeDomain, timeTicks };
 }
