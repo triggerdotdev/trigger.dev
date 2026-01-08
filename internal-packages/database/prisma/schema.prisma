@@ -60,7 +60,7 @@ model User {
   backupCodes          MfaBackupCode[]
   bulkActions          BulkActionGroup[]
 
-  impersonationsPerformed ImpersonationAuditLog[] @relation("ImpersonationActor")
+  impersonationsPerformed ImpersonationAuditLog[] @relation("ImpersonationAdmin")
   impersonationsReceived  ImpersonationAuditLog[] @relation("ImpersonationTarget")
 }
 
@@ -2398,8 +2398,8 @@ model ImpersonationAuditLog {
   action ImpersonationAuditLogAction
 
   /// The admin user who initiated/ended the impersonation
-  actor   User   @relation("ImpersonationActor", fields: [actorId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  actorId String
+  admin   User   @relation("ImpersonationAdmin", fields: [adminId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  adminId String
 
   /// The user being impersonated
   target   User   @relation("ImpersonationTarget", fields: [targetId], references: [id], onDelete: Cascade, onUpdate: Cascade)
@@ -2409,7 +2409,7 @@ model ImpersonationAuditLog {
 
   createdAt DateTime @default(now())
 
-  @@index([actorId])
+  @@index([adminId])
   @@index([targetId])
   @@index([createdAt])
 }

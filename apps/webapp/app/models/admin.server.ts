@@ -1,5 +1,6 @@
 import { redirect } from "@remix-run/server-runtime";
 import { prisma } from "~/db.server";
+import { logger } from "~/services/logger.server";
 import { SearchParams } from "~/routes/admin._index";
 import {
   clearImpersonationId,
@@ -7,6 +8,12 @@ import {
   setImpersonationId,
 } from "~/services/impersonation.server";
 import { requireUser } from "~/services/session.server";
+
+function extractClientIp(xff: string | null): string | null {
+  if (!xff) return null;
+  const parts = xff.split(",").map((p) => p.trim());
+  return parts[parts.length - 1]; // ALB appends the real client IP
+}
 
 const pageSize = 20;
 
@@ -210,6 +217,22 @@ export async function redirectWithImpersonation(request: Request, userId: string
   const user = await requireUser(request);
   if (!user.admin) {
     throw new Error("Unauthorized");
+  }
+
+  const xff = request.headers.get("x-forwarded-for");
+  const ipAddress = extractClientIp(xff);
+
+  try {
+    await prisma.impersonationAuditLog.create({
+      data: {
+        action: "START",
+        adminId: user.id,
+        targetId: userId,
+        ipAddress,
+      },
+    });
+  } catch (error) {
+    logger.error("Failed to create impersonation audit log", { error, adminId: user.id, targetId: userId });
   }
 
   const session = await setImpersonationId(userId, request);
