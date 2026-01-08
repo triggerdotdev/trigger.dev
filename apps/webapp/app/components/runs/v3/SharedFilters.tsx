@@ -6,17 +6,10 @@ import { startTransition, useCallback, useEffect, useState } from "react";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { DateField } from "~/components/primitives/DateField";
 import { DateTime } from "~/components/primitives/DateTime";
-import { Input } from "~/components/primitives/Input";
 import { Label } from "~/components/primitives/Label";
 import { ComboboxProvider, SelectPopover, SelectProvider } from "~/components/primitives/Select";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "~/components/primitives/SimpleSelect";
 import { useSearchParams } from "~/hooks/useSearchParam";
+import { cn } from "~/utils/cn";
 import { Button } from "../../primitives/Buttons";
 import { filterIcon } from "./RunFilters";
 
@@ -104,9 +97,9 @@ const timePeriods = [
 ];
 
 const timeUnits = [
-  { label: "minutes", value: "m", singular: "minute" },
-  { label: "hours", value: "h", singular: "hour" },
-  { label: "days", value: "d", singular: "day" },
+  { label: "minutes", value: "m", singular: "minute", shortLabel: "mins" },
+  { label: "hours", value: "h", singular: "hour", shortLabel: "hours" },
+  { label: "days", value: "d", singular: "day", shortLabel: "days" },
 ];
 
 // Parse a period string (e.g., "90m", "2h", "7d") into value and unit
@@ -307,19 +300,57 @@ export function TimeDropdown({
   const [fromValue, setFromValue] = useState(from);
   const [toValue, setToValue] = useState(to);
 
-  // Custom duration state
+  // Selection state: preset value, "custom", or null (for date range mode)
   const initialCustom = getInitialCustomDuration(period);
+  const isInitialCustom =
+    period && !timePeriods.some((p) => p.value === period) && initialCustom.value !== "";
+  const [selectedPeriod, setSelectedPeriod] = useState<string | null>(
+    isInitialCustom ? "custom" : period ?? defaultPeriod
+  );
+
+  // Custom duration state
   const [customValue, setCustomValue] = useState(initialCustom.value);
   const [customUnit, setCustomUnit] = useState(initialCustom.unit);
 
-  // Sync custom duration state when period prop changes
+  // Sync state when period prop changes
   useEffect(() => {
     const parsed = getInitialCustomDuration(period);
     setCustomValue(parsed.value);
     setCustomUnit(parsed.unit);
+
+    const isCustom = period && !timePeriods.some((p) => p.value === period) && parsed.value !== "";
+    setSelectedPeriod(isCustom ? "custom" : period ?? defaultPeriod);
   }, [period]);
 
-  const applyDateRange = useCallback(() => {
+  const applySelection = useCallback(() => {
+    // If a period is selected (preset or custom), apply it
+    if (selectedPeriod) {
+      let periodToApply = selectedPeriod;
+
+      // Build custom period string if custom is selected
+      if (selectedPeriod === "custom") {
+        const value = parseInt(customValue, 10);
+        if (isNaN(value) || value <= 0) {
+          return;
+        }
+        periodToApply = `${value}${customUnit}`;
+      }
+
+      replace({
+        period: periodToApply,
+        cursor: undefined,
+        direction: undefined,
+        from: undefined,
+        to: undefined,
+      });
+
+      setFromValue(undefined);
+      setToValue(undefined);
+      setOpen(false);
+      return;
+    }
+
+    // Otherwise apply date range
     replace({
       period: undefined,
       cursor: undefined,
@@ -329,39 +360,18 @@ export function TimeDropdown({
     });
 
     setOpen(false);
-  }, [fromValue, toValue, replace]);
-
-  const handlePeriodClick = useCallback(
-    (period: string) => {
-      replace({
-        period,
-        cursor: undefined,
-        direction: undefined,
-        from: undefined,
-        to: undefined,
-      });
-
-      setFromValue(undefined);
-      setToValue(undefined);
-
-      setOpen(false);
-    },
-    [replace]
-  );
-
-  const applyCustomDuration = useCallback(() => {
-    const value = parseInt(customValue, 10);
-    if (isNaN(value) || value <= 0) {
-      return;
-    }
-    const periodString = `${value}${customUnit}`;
-    handlePeriodClick(periodString);
-  }, [customValue, customUnit, handlePeriodClick]);
+  }, [selectedPeriod, customValue, customUnit, fromValue, toValue, replace]);
 
   const isCustomDurationValid = (() => {
     const value = parseInt(customValue, 10);
     return !isNaN(value) && value > 0;
   })();
+
+  // Determine if Apply button should be enabled
+  const canApply =
+    (selectedPeriod && selectedPeriod !== "custom") ||
+    (selectedPeriod === "custom" && isCustomDurationValid) ||
+    (!selectedPeriod && (fromValue || toValue));
 
   return (
     <SelectProvider virtualFocus={true} open={open} setOpen={setOpen}>
@@ -374,20 +384,22 @@ export function TimeDropdown({
       >
         <div className="flex flex-col gap-6 p-3">
           <div className="flex flex-col gap-1">
-            <Label>Runs created in the last</Label>
+            <Label className="mb-2">Runs created in the last</Label>
             <div className="grid grid-cols-4 gap-2">
               {timePeriods.map((p) => (
                 <Button
                   key={p.value}
                   variant="secondary/small"
                   className={
-                    p.value === period
+                    p.value === selectedPeriod
                       ? "border-indigo-500 group-hover/button:border-indigo-500"
                       : undefined
                   }
                   onClick={(e) => {
                     e.preventDefault();
-                    handlePeriodClick(p.value);
+                    setSelectedPeriod(p.value);
+                    // Clear custom value when selecting a preset
+                    setCustomValue("");
                   }}
                   fullWidth
                   type="button"
@@ -395,57 +407,54 @@ export function TimeDropdown({
                   {p.label}
                 </Button>
               ))}
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <Label>Custom duration</Label>
-            <div className="flex items-center gap-2">
-              <Input
-                type="number"
-                min="1"
-                step="1"
-                placeholder="e.g. 90"
-                value={customValue}
-                onChange={(e) => setCustomValue(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && isCustomDurationValid) {
-                    e.preventDefault();
-                    applyCustomDuration();
-                  }
-                }}
-                variant="small"
-                fullWidth={false}
-                containerClassName="w-20"
-              />
-              <Select value={customUnit} onValueChange={setCustomUnit}>
-                <SelectTrigger size="secondary/small">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {timeUnits.map((unit) => (
-                    <SelectItem key={unit.value} value={unit.value}>
-                      {unit.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button
-                variant="secondary/small"
-                disabled={!isCustomDurationValid}
-                onClick={(e) => {
-                  e.preventDefault();
-                  applyCustomDuration();
-                }}
-                type="button"
+              {/* Custom duration row */}
+              <div
+                className={cn(
+                  "col-span-4 flex h-[1.8rem] w-full items-center gap-2 rounded border py-0.5 pl-0 pr-2 transition-colors",
+                  selectedPeriod === "custom"
+                    ? "border-indigo-500 bg-charcoal-750"
+                    : "border-charcoal-650 bg-charcoal-750 hover:border-charcoal-600"
+                )}
               >
-                Apply
-              </Button>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  placeholder="Custom"
+                  value={customValue}
+                  onChange={(e) => {
+                    setCustomValue(e.target.value);
+                    setSelectedPeriod("custom");
+                  }}
+                  onFocus={() => setSelectedPeriod("custom")}
+                  className="h-full w-full translate-y-px border-none bg-transparent py-0 pl-2 pr-0 text-xs leading-none text-text-bright outline-none placeholder:text-text-dimmed focus:outline-none focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                />
+                <div className="flex items-center gap-2">
+                  {timeUnits.map((unit) => (
+                    <button
+                      key={unit.value}
+                      type="button"
+                      onClick={() => {
+                        setCustomUnit(unit.value);
+                        setSelectedPeriod("custom");
+                      }}
+                      className={cn(
+                        "text-xs transition-colors",
+                        customUnit === unit.value
+                          ? "text-indigo-500"
+                          : "text-text-dimmed hover:text-text-bright"
+                      )}
+                    >
+                      {unit.shortLabel}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
 
           <div className="flex flex-col gap-4 border-t border-grid-bright pt-4">
-            <Label className="text-text-dimmed">Or specify exact time range</Label>
+            <Label className="text-text-bright">Or specify exact time range</Label>
             <div className="flex flex-col gap-1">
               <Label>
                 From <span className="text-text-dimmed">(local time)</span>
@@ -453,7 +462,10 @@ export function TimeDropdown({
               <DateField
                 label="From time"
                 defaultValue={fromValue}
-                onValueChange={setFromValue}
+                onValueChange={(value) => {
+                  setFromValue(value);
+                  if (value) setSelectedPeriod(null);
+                }}
                 granularity="second"
                 showNowButton
                 showClearButton
@@ -467,7 +479,10 @@ export function TimeDropdown({
               <DateField
                 label="To time"
                 defaultValue={toValue}
-                onValueChange={setToValue}
+                onValueChange={(value) => {
+                  setToValue(value);
+                  if (value) setSelectedPeriod(null);
+                }}
                 granularity="second"
                 showNowButton
                 showClearButton
@@ -494,10 +509,10 @@ export function TimeDropdown({
                   key: "Enter",
                   enabledOnInputElements: true,
                 }}
-                disabled={!fromValue && !toValue}
+                disabled={!canApply}
                 onClick={(e) => {
                   e.preventDefault();
-                  applyDateRange();
+                  applySelection();
                 }}
                 type="button"
               >
