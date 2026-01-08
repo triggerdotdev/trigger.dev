@@ -1,7 +1,7 @@
 import { ChevronRightIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import { ClipboardCheckIcon, ClipboardIcon } from "lucide-react";
-import React, { type ReactNode, forwardRef, useState, useContext, createContext } from "react";
+import React, { type ReactNode, createContext, forwardRef, useContext, useState } from "react";
 import { useCopy } from "~/hooks/useCopy";
 import { cn } from "~/utils/cn";
 import { Popover, PopoverContent, PopoverVerticalEllipseTrigger } from "./Popover";
@@ -106,7 +106,7 @@ export const TableBody = forwardRef<HTMLTableSectionElement, TableBodyProps>(
   }
 );
 
-type TableRowProps = {
+type TableRowProps = JSX.IntrinsicElements["tr"] & {
   className?: string;
   children: ReactNode;
   disabled?: boolean;
@@ -114,11 +114,12 @@ type TableRowProps = {
 };
 
 export const TableRow = forwardRef<HTMLTableRowElement, TableRowProps>(
-  ({ className, disabled, isSelected, children }, ref) => {
+  ({ className, disabled, isSelected, children, ...props }, ref) => {
     const { variant } = useContext(TableContext);
     return (
       <tr
         ref={ref}
+        {...props}
         className={cn(
           "group/table-row relative w-full outline-none after:absolute after:bottom-0 after:left-3 after:right-0 after:h-px after:bg-grid-dimmed",
           isSelected && variants[variant].rowSelected,
