@@ -287,8 +287,7 @@ export class BatchQueue {
 
     // Record metric
     this.batchesEnqueuedCounter?.add(1, {
-      envId: options.environmentId,
-      itemCount: options.runCount,
+      environment_type: options.environmentType,
       streaming: true,
     });
 
@@ -358,7 +357,7 @@ export class BatchQueue {
     });
 
     // Record metric
-    this.itemsEnqueuedCounter?.add(1, { envId });
+    this.itemsEnqueuedCounter?.add(1, { environment_type: meta.environmentType });
 
     this.logger.debug("Batch item enqueued", {
       batchId,
@@ -701,9 +700,8 @@ export class BatchQueue {
         "batch.attempt": storedMessage.attempt,
       });
 
-      // Record queue time metric (time from enqueue to processing)
+      // Calculate queue time (time from enqueue to processing)
       const queueTimeMs = Date.now() - storedMessage.timestamp;
-      this.itemQueueTimeHistogram?.record(queueTimeMs, { envId: storedMessage.tenantId });
       span?.setAttribute("batch.queueTimeMs", queueTimeMs);
 
       this.logger.debug("Processing batch item", {
@@ -733,6 +731,9 @@ export class BatchQueue {
         await this.fairQueue.completeMessage(messageId, queueId);
         return;
       }
+
+      // Record queue time metric (requires meta for environment_type)
+      this.itemQueueTimeHistogram?.record(queueTimeMs, { environment_type: meta.environmentType });
 
       span?.setAttributes({
         "batch.runCount": meta.runCount,
@@ -769,7 +770,7 @@ export class BatchQueue {
             return this.completionTracker.recordSuccess(batchId, result.runId, itemIndex);
           });
 
-          this.itemsProcessedCounter?.add(1, { envId: meta.environmentId });
+          this.itemsProcessedCounter?.add(1, { environment_type: meta.environmentType });
           this.logger.debug("Batch item processed successfully", {
             batchId,
             itemIndex,
@@ -808,7 +809,7 @@ export class BatchQueue {
           });
 
           this.itemsFailedCounter?.add(1, {
-            envId: meta.environmentId,
+            environment_type: meta.environmentType,
             errorCode: result.errorCode,
           });
 
@@ -848,7 +849,7 @@ export class BatchQueue {
         });
 
         this.itemsFailedCounter?.add(1, {
-          envId: meta.environmentId,
+          environment_type: meta.environmentType,
           errorCode: "UNEXPECTED_ERROR",
         });
         this.logger.error("Unexpected error processing batch item", {
@@ -914,14 +915,13 @@ export class BatchQueue {
 
       // Record metrics
       this.batchCompletedCounter?.add(1, {
-        envId: meta.environmentId,
+        environment_type: meta.environmentType,
         hasFailures: result.failedRunCount > 0,
       });
 
       const processingDuration = Date.now() - meta.createdAt;
       this.batchProcessingDurationHistogram?.record(processingDuration, {
-        envId: meta.environmentId,
-        itemCount: meta.runCount,
+        environment_type: meta.environmentType,
       });
 
       span?.setAttribute("batch.processingDurationMs", processingDuration);
