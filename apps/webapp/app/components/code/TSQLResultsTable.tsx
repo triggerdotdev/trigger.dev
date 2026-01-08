@@ -1,8 +1,8 @@
-import { formatDurationMilliseconds, MachinePresetName } from "@trigger.dev/core/v3";
 import type { OutputColumnMetadata } from "@internal/clickhouse";
-import { DateTime, DateTimeAccurate } from "~/components/primitives/DateTime";
-import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
+import { formatDurationMilliseconds, MachinePresetName } from "@trigger.dev/core/v3";
+import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { MachineLabelCombo } from "~/components/MachineLabelCombo";
+import { DateTimeAccurate } from "~/components/primitives/DateTime";
 import {
   CopyableTableCell,
   Table,
@@ -12,7 +12,6 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
-import { formatCurrencyAccurate, formatNumber } from "~/utils/numberFormatter";
 import {
   descriptionForTaskRunStatus,
   isRunFriendlyStatus,
@@ -20,13 +19,13 @@ import {
   runStatusFromFriendlyTitle,
   TaskRunStatusCombo,
 } from "~/components/runs/v3/TaskRunStatus";
-import { Paragraph } from "../primitives/Paragraph";
-import { TextLink } from "../primitives/TextLink";
-import { v3ProjectPath, v3RunPathFromFriendlyId } from "~/utils/pathBuilder";
-import { SimpleTooltip } from "../primitives/Tooltip";
-import { InformationCircleIcon } from "@heroicons/react/20/solid";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { formatCurrencyAccurate, formatNumber } from "~/utils/numberFormatter";
+import { v3ProjectPath, v3RunPathFromFriendlyId } from "~/utils/pathBuilder";
+import { Paragraph } from "../primitives/Paragraph";
+import { TextLink } from "../primitives/TextLink";
+import { SimpleTooltip } from "../primitives/Tooltip";
 import { QueueName } from "../runs/v3/QueueName";
 
 const MAX_STRING_DISPLAY_LENGTH = 64;
@@ -198,7 +197,7 @@ function CellValue({
           ["PRODUCTION", "STAGING", "DEVELOPMENT", "PREVIEW"].includes(value)
         ) {
           return (
-            <EnvironmentCombo
+            <EnvironmentLabel
               environment={{ type: value as "PRODUCTION" | "STAGING" | "DEVELOPMENT" | "PREVIEW" }}
             />
           );
@@ -342,7 +341,7 @@ function EnvironmentCellValue({ value }: { value: string }) {
     return <span>{value}</span>;
   }
 
-  return <EnvironmentCombo environment={environment} />;
+  return <EnvironmentLabel environment={environment} />;
 }
 
 /**
