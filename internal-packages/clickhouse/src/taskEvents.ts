@@ -249,6 +249,8 @@ export const LogsListResult = z.object({
   kind: z.string(),
   status: z.string(),
   duration: z.number().or(z.string()),
+  metadata: z.string(),
+  attributes: z.any(),
 });
 
 export type LogsListResult = z.output<typeof LogsListResult>;
@@ -271,6 +273,8 @@ export function getLogsListQueryBuilder(ch: ClickhouseReader, settings?: ClickHo
       "kind",
       "status",
       "duration",
+      "metadata",
+      "attributes"
     ],
     settings: {
       max_memory_usage: "2000000000", // 2GB per query limit
@@ -297,7 +301,7 @@ export const LogDetailV2Result = z.object({
   status: z.string(),
   duration: z.number().or(z.string()),
   metadata: z.string(),
-  attributes_text: z.string(),
+  attributes: z.any()
 });
 
 export type LogDetailV2Result = z.output<typeof LogDetailV2Result>;
@@ -321,7 +325,7 @@ export function getLogDetailQueryBuilder(ch: ClickhouseReader, settings?: ClickH
       "status",
       "duration",
       "metadata",
-      "attributes_text",
+      "attributes",
     ],
     settings,
   });

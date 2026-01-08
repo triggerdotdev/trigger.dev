@@ -79,7 +79,6 @@ function decodeCursor(cursor: string): LogCursor | null {
 
 // Convert ClickHouse kind to display level
 function kindToLevel(kind: string, status: string): LogLevel {
-  // CANCELLED status takes precedence
   if (status === "CANCELLED") {
     return "CANCELLED";
   }
@@ -127,7 +126,7 @@ function levelToKindsAndStatuses(
   }
 }
 
-// Convert nanoseconds to milliseconds
+
 function convertDateToNanoseconds(date: Date): bigint {
   return BigInt(date.getTime()) * 1_000_000n;
 }
@@ -161,21 +160,17 @@ export class LogsListPresenter {
       search,
       from,
       to,
-      direction = "forward",
       cursor,
       pageSize = DEFAULT_PAGE_SIZE,
       includeDebugLogs = true,
     }: LogsListOptions
   ) {
-    // Get time values from raw values (including default period)
     const time = timeFilters({
       period,
       from,
       to,
     });
 
-    // If period is provided but from/to are not calculated, convert period to date range
-    // This is needed because timeFilters doesn't convert period to actual dates
     let effectiveFrom = time.from;
     let effectiveTo = time.to;
 
@@ -208,13 +203,11 @@ export class LogsListPresenter {
       (search !== undefined && search !== "") ||
       !time.isDefault;
 
-    // Get all possible tasks
     const possibleTasksAsync = getAllTaskIdentifiers(
       this.replica,
       environmentId
     );
 
-    // Get possible bulk actions
     const bulkActionsAsync = this.replica.bulkActionGroup.findMany({
       select: {
         friendlyId: true,
@@ -239,7 +232,6 @@ export class LogsListPresenter {
         findDisplayableEnvironment(environmentId, userId),
       ]);
 
-    // If the bulk action isn't in the most recent ones, add it separately
     if (
       bulkId &&
       !bulkActions.some((bulkAction) => bulkAction.friendlyId === bulkId)
@@ -306,7 +298,6 @@ export class LogsListPresenter {
         },
       });
 
-      // If no matching runs, return empty result
       if (runIds.length === 0) {
         return {
           logs: [],
@@ -341,15 +332,12 @@ export class LogsListPresenter {
       }
     }
 
-    // Build ClickHouse query
     const queryBuilder = this.clickhouse.taskEventsV2.logsListQueryBuilder();
 
-    // PREWHERE for primary key columns (first in ORDER BY, uses index efficiently)
     queryBuilder.prewhere("environment_id = {environmentId: String}", {
       environmentId,
     });
 
-    // WHERE for non-indexed columns
     queryBuilder.where("organization_id = {organizationId: String}", {
       organizationId,
     });
@@ -358,7 +346,6 @@ export class LogsListPresenter {
     // Time filters - inserted_at in PREWHERE for partition pruning, start_time in WHERE
     if (effectiveFrom) {
       const fromNs = convertDateToNanoseconds(effectiveFrom).toString();
-      // PREWHERE for partition key (inserted_at) - dramatically reduces data scanned
       queryBuilder.prewhere("inserted_at >= {insertedAtStart: DateTime64(3)}", {
         insertedAtStart: convertDateToClickhouseDateTime(effectiveFrom),
       });
@@ -370,7 +357,6 @@ export class LogsListPresenter {
     if (effectiveTo) {
       const clampedTo = effectiveTo > new Date() ? new Date() : effectiveTo;
       const toNs = convertDateToNanoseconds(clampedTo).toString();
-      // PREWHERE for partition key (inserted_at) - dramatically reduces data scanned
       queryBuilder.prewhere("inserted_at <= {insertedAtEnd: DateTime64(3)}", {
         insertedAtEnd: convertDateToClickhouseDateTime(clampedTo),
       });
@@ -391,11 +377,11 @@ export class LogsListPresenter {
       queryBuilder.where("run_id IN {runIds: Array(String)}", { runIds });
     }
 
-    // Case-insensitive search in message and status fields
+    // Case-insensitive search in message, attributes, and status fields
     if (search && search.trim() !== "") {
       const searchTerm = search.trim();
       queryBuilder.where(
-        "(message ilike {searchPattern: String} OR status = {statusTerm: String})",
+        "(message ilike {searchPattern: String} OR attributes_text ilike {searchPattern: String} OR status = {statusTerm: String})",
         {
           searchPattern: `%${searchTerm}%`,
           statusTerm: searchTerm.toUpperCase(),
@@ -403,11 +389,10 @@ export class LogsListPresenter {
       );
     }
 
-    // Level filter (map display levels to ClickHouse kinds/statuses)
+
     if (levels && levels.length > 0) {
       const conditions: string[] = [];
-      const params: Record<string, unknown> = {};
-      const hasTraceLevel = levels.includes("TRACE");
+      const params: Record<string, any> = {};
       const hasErrorOrCancelledLevel = levels.includes("ERROR") || levels.includes("CANCELLED");
 
       for (const level of levels) {
@@ -440,23 +425,17 @@ export class LogsListPresenter {
       }
 
       if (conditions.length > 0) {
-        queryBuilder.where(`(${conditions.join(" OR ")})`);
+        queryBuilder.where(`(${conditions.join(" OR ")})`, params as any);
       }
     }
 
-    // Exclude DEBUG logs if not included
+    // Debug logs are available only to admins
     if (includeDebugLogs === false) {
       queryBuilder.where("kind NOT IN {debugKinds: Array(String)}", {
         debugKinds: ["DEBUG_EVENT", "LOG_DEBUG"],
       });
     }
 
-    // Exclude TRACE logs with PARTIAL status
-    // const traceKinds = ["SPAN", "ANCESTOR_OVERRIDE", "SPAN_EVENT"];
-    // queryBuilder.where(
-    //   "NOT (kind IN {traceKinds: Array(String)} AND status = 'PARTIAL')",
-    //   { traceKinds }
-    // );
     queryBuilder.where("NOT (kind = 'SPAN' AND status = 'PARTIAL')");
 
 
@@ -474,13 +453,11 @@ export class LogsListPresenter {
       );
     }
 
-    // Order by newest first
     queryBuilder.orderBy("start_time DESC, trace_id DESC, span_id DESC, run_id DESC");
 
     // Limit + 1 to check if there are more results
     queryBuilder.limit(pageSize + 1);
 
-    // Execute query
     const [queryError, records] = await queryBuilder.execute();
 
     if (queryError) {
@@ -505,20 +482,37 @@ export class LogsListPresenter {
 
     // Transform results
     // Use :: as separator since dash conflicts with date format in start_time
-    const transformedLogs = logs.map((log) => ({
-      id: `${log.trace_id}::${log.span_id}::${log.run_id}::${log.start_time}`,
-      runId: log.run_id,
-      taskIdentifier: log.task_identifier,
-      startTime: convertClickhouseDateTime64ToJsDate(log.start_time).toISOString(),
-      traceId: log.trace_id,
-      spanId: log.span_id,
-      parentSpanId: log.parent_span_id || null,
-      message: log.message,
-      kind: log.kind,
-      status: log.status,
-      duration: typeof log.duration === "number" ? log.duration : Number(log.duration),
-      level: kindToLevel(log.kind, log.status),
-    }));
+    const transformedLogs = logs.map((log) => {
+      let displayMessage = log.message;
+
+      // For error logs with status ERROR, try to extract error message from attributes
+      if (log.status === "ERROR" && log.attributes) {
+        try {
+          let  attributes = log.attributes as Record<string, any>;
+
+          if (attributes?.error?.message && typeof attributes.error.message === 'string') {
+              displayMessage = attributes.error.message;
+            }
+          } catch {
+            // If attributes parsing fails, use the regular message
+          }
+      }
+
+      return {
+        id: `${log.trace_id}::${log.span_id}::${log.run_id}::${log.start_time}`,
+        runId: log.run_id,
+        taskIdentifier: log.task_identifier,
+        startTime: convertClickhouseDateTime64ToJsDate(log.start_time).toISOString(),
+        traceId: log.trace_id,
+        spanId: log.span_id,
+        parentSpanId: log.parent_span_id || null,
+        message: displayMessage,
+        kind: log.kind,
+        status: log.status,
+        duration: typeof log.duration === "number" ? log.duration : Number(log.duration),
+        level: kindToLevel(log.kind, log.status),
+      };
+    });
 
     return {
       logs: transformedLogs,
