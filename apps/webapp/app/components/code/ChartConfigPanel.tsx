@@ -1,6 +1,6 @@
 import type { OutputColumnMetadata } from "@internal/clickhouse";
 import { BarChart, LineChart } from "lucide-react";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { cn } from "~/utils/cn";
 import { Header3 } from "../primitives/Headers";
 import { Paragraph } from "../primitives/Paragraph";
@@ -101,50 +101,59 @@ export function ChartConfigPanel({ columns, config, onChange, className }: Chart
     };
   }, [columns]);
 
+  // Create a stable key from column names and types to detect actual changes
+  const columnsKey = useMemo(() => columns.map((c) => `${c.name}:${c.type}`).join(","), [columns]);
+
+  // Use refs to access current config/onChange without adding them as dependencies
+  const configRef = useRef(config);
+  const onChangeRef = useRef(onChange);
+  useEffect(() => {
+    configRef.current = config;
+    onChangeRef.current = onChange;
+  });
+
   // Auto-select defaults when columns change
   useEffect(() => {
     if (columns.length === 0) return;
 
+    const currentConfig = configRef.current;
     let needsUpdate = false;
     const updates: Partial<ChartConfiguration> = {};
 
     // Auto-select X-axis (prefer datetime, then first categorical)
-    if (!config.xAxisColumn) {
+    if (!currentConfig.xAxisColumn) {
       const defaultX = dateTimeColumns[0] ?? categoricalColumns[0] ?? columns[0];
       if (defaultX) {
         updates.xAxisColumn = defaultX.name;
         needsUpdate = true;
-
-        // Auto-set sort to x-axis ASC if it's a datetime column
-        if (isDateTimeType(defaultX.type) && !config.sortByColumn) {
-          updates.sortByColumn = defaultX.name;
-          updates.sortDirection = "asc";
-        }
       }
     }
 
     // Auto-select Y-axis (first numeric column)
-    if (config.yAxisColumns.length === 0 && numericColumns.length > 0) {
+    if (currentConfig.yAxisColumns.length === 0 && numericColumns.length > 0) {
       updates.yAxisColumns = [numericColumns[0].name];
       needsUpdate = true;
     }
 
-    // Auto-set sort by x-axis ASC if x-axis is datetime and no sort is configured
+    // Determine the effective x-axis column (either existing or newly selected)
+    const effectiveXAxis = updates.xAxisColumn ?? currentConfig.xAxisColumn;
+
+    // Auto-set sort to x-axis ASC if it's a datetime column and no sort is configured
     if (
-      config.xAxisColumn &&
-      !config.sortByColumn &&
-      !updates.sortByColumn &&
-      dateTimeColumns.some((col) => col.name === config.xAxisColumn)
+      effectiveXAxis &&
+      !currentConfig.sortByColumn &&
+      dateTimeColumns.some((col) => col.name === effectiveXAxis)
     ) {
-      updates.sortByColumn = config.xAxisColumn;
+      updates.sortByColumn = effectiveXAxis;
       updates.sortDirection = "asc";
       needsUpdate = true;
     }
 
     if (needsUpdate) {
-      onChange({ ...config, ...updates });
+      onChangeRef.current({ ...currentConfig, ...updates });
     }
-  }, [columns, config, onChange, dateTimeColumns, categoricalColumns, numericColumns]);
+    // Only re-run when the actual column structure changes, not on every config change
+  }, [columnsKey, columns, dateTimeColumns, categoricalColumns, numericColumns]);
 
   const updateConfig = useCallback(
     (updates: Partial<ChartConfiguration>) => {
