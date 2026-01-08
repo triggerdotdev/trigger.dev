@@ -332,6 +332,10 @@ export default function Page() {
   const results = useTypedActionData<typeof action>();
   const navigation = useNavigation();
 
+  // Use most recent history item if available, otherwise fall back to defaults
+  const initialQuery = history.length > 0 ? history[0].query : defaultQuery;
+  const initialScope: QueryScope = history.length > 0 ? history[0].scope : "environment";
+
   const editorRef = useRef<QueryEditorFormHandle>(null);
   const [prettyFormatting, setPrettyFormatting] = useState(true);
   const [resultsView, setResultsView] = useState<"table" | "graph">("table");
@@ -368,8 +372,8 @@ export default function Page() {
               {/* Query editor - isolated component to prevent re-renders */}
               <QueryEditorForm
                 ref={editorRef}
-                defaultQuery={defaultQuery}
-                defaultScope="environment"
+                defaultQuery={initialQuery}
+                defaultScope={initialScope}
                 history={history}
                 isLoading={isLoading}
               />
