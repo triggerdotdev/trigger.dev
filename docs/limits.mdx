@@ -101,6 +101,10 @@ Batch triggering uses a token bucket algorithm to rate limit the number of runs 
 
 **How it works**: You can burst up to your bucket size, then tokens refill at the specified rate. For example, a Free user can trigger 1,200 runs immediately, then must wait for tokens to refill (100 runs become available every 10 seconds).
 
+<Note>
+  When you hit batch rate limits, the SDK throws a `BatchTriggerError` with `isRateLimited: true`. See [Handling batch trigger errors](/triggering#handling-batch-trigger-errors) for how to detect and react to rate limits in your code.
+</Note>
+
 ## Batch processing concurrency
 
 The number of batches that can be processed concurrently per environment.
