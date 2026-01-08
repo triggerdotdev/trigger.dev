@@ -381,21 +381,9 @@ export function TSQLResultsTable({
             <TableHeaderCell
               key={col.name}
               alignment={isRightAlignedColumn(col) ? "right" : "left"}
+              tooltip={col.description}
             >
-              {col.description ? (
-                <SimpleTooltip
-                  content={col.description}
-                  disableHoverableContent
-                  button={
-                    <span className="inline-flex items-center gap-1">
-                      {col.name}
-                      <InformationCircleIcon className="size-4 text-text-dimmed" />
-                    </span>
-                  }
-                />
-              ) : (
-                col.name
-              )}
+              {col.name}
             </TableHeaderCell>
           ))}
         </TableRow>

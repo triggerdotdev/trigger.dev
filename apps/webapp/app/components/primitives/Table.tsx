@@ -286,41 +286,48 @@ type CopyableTableCellProps = TableCellProps & {
 
 export const CopyableTableCell = forwardRef<HTMLTableCellElement, CopyableTableCellProps>(
   ({ value, children, className, ...props }, ref) => {
+    const [isHovered, setIsHovered] = useState(false);
     const { copy, copied } = useCopy(value);
 
     return (
-      <TableCell ref={ref} className={cn("group/copyable-cell", className)} {...props}>
-        <div className="relative flex items-center">
+      <TableCell ref={ref} className={className} {...props}>
+        <div
+          className="relative flex items-center"
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
+        >
           {children}
-          <span
-            onClick={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-              copy();
-            }}
-            className="absolute -right-2 top-1/2 z-10 hidden -translate-y-1/2 cursor-pointer group-hover/copyable-cell:flex"
-          >
-            <SimpleTooltip
-              button={
-                <span
-                  className={cn(
-                    "flex size-6 items-center justify-center rounded border border-charcoal-650 bg-charcoal-750",
-                    copied
-                      ? "text-green-500"
-                      : "text-text-dimmed hover:border-charcoal-600 hover:bg-charcoal-700 hover:text-text-bright"
-                  )}
-                >
-                  {copied ? (
-                    <ClipboardCheckIcon className="size-3.5" />
-                  ) : (
-                    <ClipboardIcon className="size-3.5" />
-                  )}
-                </span>
-              }
-              content={copied ? "Copied!" : "Copy"}
-              disableHoverableContent
-            />
-          </span>
+          {isHovered && (
+            <span
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                copy();
+              }}
+              className="absolute -right-2 top-1/2 z-10 flex -translate-y-1/2 cursor-pointer"
+            >
+              <SimpleTooltip
+                button={
+                  <span
+                    className={cn(
+                      "flex size-6 items-center justify-center rounded border border-charcoal-650 bg-charcoal-750",
+                      copied
+                        ? "text-green-500"
+                        : "text-text-dimmed hover:border-charcoal-600 hover:bg-charcoal-700 hover:text-text-bright"
+                    )}
+                  >
+                    {copied ? (
+                      <ClipboardCheckIcon className="size-3.5" />
+                    ) : (
+                      <ClipboardIcon className="size-3.5" />
+                    )}
+                  </span>
+                }
+                content={copied ? "Copied!" : "Copy"}
+                disableHoverableContent
+              />
+            </span>
+          )}
         </div>
       </TableCell>
     );
