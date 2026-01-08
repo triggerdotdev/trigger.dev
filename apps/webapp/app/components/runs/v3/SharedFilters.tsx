@@ -6,8 +6,16 @@ import { startTransition, useCallback, useEffect, useState } from "react";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { DateField } from "~/components/primitives/DateField";
 import { DateTime } from "~/components/primitives/DateTime";
+import { Input } from "~/components/primitives/Input";
 import { Label } from "~/components/primitives/Label";
 import { ComboboxProvider, SelectPopover, SelectProvider } from "~/components/primitives/Select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "~/components/primitives/SimpleSelect";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { Button } from "../../primitives/Buttons";
 import { filterIcon } from "./RunFilters";
@@ -393,9 +401,10 @@ export function TimeDropdown({
           <div className="flex flex-col gap-1">
             <Label>Custom duration</Label>
             <div className="flex items-center gap-2">
-              <input
+              <Input
                 type="number"
                 min="1"
+                step="1"
                 placeholder="e.g. 90"
                 value={customValue}
                 onChange={(e) => setCustomValue(e.target.value)}
@@ -405,19 +414,22 @@ export function TimeDropdown({
                     applyCustomDuration();
                   }
                 }}
-                className="h-8 w-20 rounded border border-grid-bright bg-background-bright px-2 text-sm text-text-bright placeholder:text-text-dimmed focus:border-indigo-500 focus:outline-none"
+                variant="small"
+                fullWidth={false}
+                containerClassName="w-20"
               />
-              <select
-                value={customUnit}
-                onChange={(e) => setCustomUnit(e.target.value)}
-                className="h-8 rounded border border-grid-bright bg-background-bright px-2 text-sm text-text-bright focus:border-indigo-500 focus:outline-none"
-              >
-                {timeUnits.map((unit) => (
-                  <option key={unit.value} value={unit.value}>
-                    {unit.label}
-                  </option>
-                ))}
-              </select>
+              <Select value={customUnit} onValueChange={setCustomUnit}>
+                <SelectTrigger size="secondary/small">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {timeUnits.map((unit) => (
+                    <SelectItem key={unit.value} value={unit.value}>
+                      {unit.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Button
                 variant="secondary/small"
                 disabled={!isCustomDurationValid}
