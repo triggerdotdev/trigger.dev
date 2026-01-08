@@ -51,6 +51,14 @@ interface TransformedData {
   series: string[];
   /** Raw date values for determining formatting granularity */
   dateValues: Date[];
+  /** Whether the x-axis is date-based (continuous time scale) */
+  isDateBased: boolean;
+  /** The data key to use for x-axis (column name or '__timestamp' for dates) */
+  xDataKey: string;
+  /** Min/max timestamps for domain when date-based */
+  timeDomain: [number, number] | null;
+  /** Pre-calculated tick values for the time axis */
+  timeTicks: number[] | null;
 }
 
 /**
@@ -135,6 +143,97 @@ function formatDateByGranularity(date: Date, granularity: TimeGranularity): stri
 }
 
 /**
+ * "Nice" intervals for time axes - these create human-friendly tick marks
+ */
+const NICE_TIME_INTERVALS = [
+  { value: 1000, label: "1s" }, // 1 second
+  { value: 5 * 1000, label: "5s" }, // 5 seconds
+  { value: 10 * 1000, label: "10s" }, // 10 seconds
+  { value: 30 * 1000, label: "30s" }, // 30 seconds
+  { value: 60 * 1000, label: "1m" }, // 1 minute
+  { value: 5 * 60 * 1000, label: "5m" }, // 5 minutes
+  { value: 10 * 60 * 1000, label: "10m" }, // 10 minutes
+  { value: 15 * 60 * 1000, label: "15m" }, // 15 minutes
+  { value: 30 * 60 * 1000, label: "30m" }, // 30 minutes
+  { value: 60 * 60 * 1000, label: "1h" }, // 1 hour
+  { value: 2 * 60 * 60 * 1000, label: "2h" }, // 2 hours
+  { value: 3 * 60 * 60 * 1000, label: "3h" }, // 3 hours
+  { value: 4 * 60 * 60 * 1000, label: "4h" }, // 4 hours
+  { value: 6 * 60 * 60 * 1000, label: "6h" }, // 6 hours
+  { value: 12 * 60 * 60 * 1000, label: "12h" }, // 12 hours
+  { value: 24 * 60 * 60 * 1000, label: "1d" }, // 1 day
+  { value: 2 * 24 * 60 * 60 * 1000, label: "2d" }, // 2 days
+  { value: 7 * 24 * 60 * 60 * 1000, label: "1w" }, // 1 week
+  { value: 14 * 24 * 60 * 60 * 1000, label: "2w" }, // 2 weeks
+  { value: 30 * 24 * 60 * 60 * 1000, label: "1mo" }, // ~1 month
+  { value: 90 * 24 * 60 * 60 * 1000, label: "3mo" }, // ~3 months
+  { value: 180 * 24 * 60 * 60 * 1000, label: "6mo" }, // ~6 months
+  { value: 365 * 24 * 60 * 60 * 1000, label: "1y" }, // 1 year
+];
+
+/**
+ * Generate evenly-spaced tick values for a time axis using "nice" intervals
+ * that align to natural time boundaries (midnight, noon, hour marks, etc.)
+ */
+function generateTimeTicks(minTime: number, maxTime: number, maxTicks = 8): number[] {
+  const range = maxTime - minTime;
+
+  if (range <= 0) {
+    return [minTime];
+  }
+
+  // Find the best "nice" interval that gives us a reasonable number of ticks
+  // Target: between 4 and maxTicks ticks
+  let chosenInterval = NICE_TIME_INTERVALS[NICE_TIME_INTERVALS.length - 1].value;
+
+  for (const { value: interval } of NICE_TIME_INTERVALS) {
+    const tickCount = Math.ceil(range / interval);
+    if (tickCount <= maxTicks && tickCount >= 2) {
+      chosenInterval = interval;
+      break;
+    }
+  }
+
+  // Align the start tick to a nice boundary
+  // For intervals >= 1 day, align to midnight
+  // For intervals >= 1 hour, align to hour boundary
+  // For intervals >= 1 minute, align to minute boundary
+  const DAY = 24 * 60 * 60 * 1000;
+  const HOUR = 60 * 60 * 1000;
+  const MINUTE = 60 * 1000;
+
+  let alignTo: number;
+  if (chosenInterval >= DAY) {
+    // Align to midnight UTC (or we could use local midnight)
+    alignTo = DAY;
+  } else if (chosenInterval >= HOUR) {
+    alignTo = chosenInterval; // Align to the interval itself for hours
+  } else if (chosenInterval >= MINUTE) {
+    alignTo = chosenInterval;
+  } else {
+    alignTo = chosenInterval;
+  }
+
+  // Round down to the alignment boundary, then find first tick at or before minTime
+  const startTick = Math.floor(minTime / alignTo) * alignTo;
+
+  // Generate ticks
+  const ticks: number[] = [];
+  for (let t = startTick; t <= maxTime + chosenInterval; t += chosenInterval) {
+    if (t >= minTime - chosenInterval * 0.1 && t <= maxTime + chosenInterval * 0.1) {
+      ticks.push(t);
+    }
+  }
+
+  // Ensure we have at least 2 ticks
+  if (ticks.length < 2) {
+    return [minTime, maxTime];
+  }
+
+  return ticks;
+}
+
+/**
  * Formats a date for tooltips (always shows full precision)
  */
 function formatDateForTooltip(date: Date, granularity: TimeGranularity): string {
@@ -201,6 +300,10 @@ function tryParseDate(value: unknown): Date | null {
  *
  * When not grouped:
  * - Uses Y-axis columns directly as series
+ *
+ * For date-based x-axes:
+ * - Uses numeric timestamps so the chart renders with a continuous time scale
+ * - This ensures gaps in data are visually apparent
  */
 function transformDataForChart(
   rows: Record<string, unknown>[],
@@ -209,7 +312,15 @@ function transformDataForChart(
   const { xAxisColumn, yAxisColumns, groupByColumn } = config;
 
   if (!xAxisColumn || yAxisColumns.length === 0) {
-    return { data: [], series: [], dateValues: [] };
+    return {
+      data: [],
+      series: [],
+      dateValues: [],
+      isDateBased: false,
+      xDataKey: xAxisColumn || "",
+      timeDomain: null,
+      timeTicks: null,
+    };
   }
 
   // Collect date values for granularity detection
@@ -221,67 +332,96 @@ function transformDataForChart(
     }
   }
 
-  // Determine if X-axis is date-based and detect granularity
-  const isDateBased = dateValues.length > 0;
+  // Determine if X-axis is date-based (most values should be parseable as dates)
+  const isDateBased = dateValues.length >= rows.length * 0.8; // At least 80% are dates
   const granularity = isDateBased ? detectTimeGranularity(dateValues) : "days";
 
-  // Helper to format X value (keeps raw value for non-dates, formats dates)
+  // For date-based axes, use a special key for the timestamp
+  const xDataKey = isDateBased ? "__timestamp" : xAxisColumn;
+
+  // Calculate time domain and ticks for date-based axes
+  let timeDomain: [number, number] | null = null;
+  let timeTicks: number[] | null = null;
+  if (isDateBased && dateValues.length > 0) {
+    const timestamps = dateValues.map((d) => d.getTime());
+    const minTime = Math.min(...timestamps);
+    const maxTime = Math.max(...timestamps);
+    // Add a small padding (2% on each side) so points aren't at the very edge
+    const padding = (maxTime - minTime) * 0.02;
+    timeDomain = [minTime - padding, maxTime + padding];
+    // Generate evenly-spaced ticks across the entire range using nice intervals
+    timeTicks = generateTimeTicks(minTime, maxTime);
+  }
+
+  // Helper to format X value for categorical axes (non-date)
   const formatX = (value: unknown): string => {
     if (value === null || value === undefined) return "N/A";
-    const date = tryParseDate(value);
-    if (date) {
-      return formatDateByGranularity(date, granularity);
-    }
     return String(value);
   };
 
   // No grouping: use Y columns directly as series
   if (!groupByColumn) {
-    const data = rows.map((row) => {
-      const point: Record<string, unknown> = {
-        [xAxisColumn]: formatX(row[xAxisColumn]),
-        // Store raw date for tooltip
-        __rawDate: tryParseDate(row[xAxisColumn]),
-        __granularity: granularity,
-      };
-      for (const yCol of yAxisColumns) {
-        point[yCol] = toNumber(row[yCol]);
-      }
-      return point;
-    });
+    const data = rows
+      .map((row) => {
+        const rawDate = tryParseDate(row[xAxisColumn]);
+        const point: Record<string, unknown> = {
+          // For date-based, use timestamp; otherwise use formatted string
+          [xDataKey]: isDateBased && rawDate ? rawDate.getTime() : formatX(row[xAxisColumn]),
+          // Store raw date and original value for tooltip
+          __rawDate: rawDate,
+          __granularity: granularity,
+          __originalX: row[xAxisColumn],
+        };
+        for (const yCol of yAxisColumns) {
+          point[yCol] = toNumber(row[yCol]);
+        }
+        return point;
+      })
+      // Filter out rows with invalid dates for date-based axes
+      .filter((point) => !isDateBased || point.__rawDate !== null);
 
-    return { data, series: yAxisColumns, dateValues };
+    return { data, series: yAxisColumns, dateValues, isDateBased, xDataKey, timeDomain, timeTicks };
   }
 
   // With grouping: pivot data so each group value becomes a series
   const yCol = yAxisColumns[0]; // Use first Y column when grouping
   const groupValues = new Set<string>();
-  const groupedByX = new Map<string, { values: Record<string, number>; rawDate: Date | null }>();
+
+  // For date-based, key by timestamp; otherwise by formatted string
+  const groupedByX = new Map<
+    string | number,
+    { values: Record<string, number>; rawDate: Date | null; originalX: unknown }
+  >();
 
   for (const row of rows) {
-    const xValue = formatX(row[xAxisColumn]);
     const rawDate = tryParseDate(row[xAxisColumn]);
+
+    // Skip rows with invalid dates for date-based axes
+    if (isDateBased && !rawDate) continue;
+
+    const xKey = isDateBased && rawDate ? rawDate.getTime() : formatX(row[xAxisColumn]);
     const groupValue = String(row[groupByColumn] ?? "Unknown");
     const yValue = toNumber(row[yCol]);
 
     groupValues.add(groupValue);
 
-    if (!groupedByX.has(xValue)) {
-      groupedByX.set(xValue, { values: {}, rawDate });
+    if (!groupedByX.has(xKey)) {
+      groupedByX.set(xKey, { values: {}, rawDate, originalX: row[xAxisColumn] });
     }
 
-    const existing = groupedByX.get(xValue)!;
+    const existing = groupedByX.get(xKey)!;
     // Sum values if there are multiple rows with same x + group
     existing.values[groupValue] = (existing.values[groupValue] ?? 0) + yValue;
   }
 
   // Convert to array format
   const series = Array.from(groupValues).sort();
-  const data = Array.from(groupedByX.entries()).map(([xValue, { values, rawDate }]) => {
+  const data = Array.from(groupedByX.entries()).map(([xKey, { values, rawDate, originalX }]) => {
     const point: Record<string, unknown> = {
-      [xAxisColumn]: xValue,
+      [xDataKey]: xKey,
       __rawDate: rawDate,
       __granularity: granularity,
+      __originalX: originalX,
     };
     for (const group of series) {
       point[group] = values[group] ?? 0;
@@ -289,7 +429,7 @@ function transformDataForChart(
     return point;
   });
 
-  return { data, series, dateValues };
+  return { data, series, dateValues, isDateBased, xDataKey, timeDomain, timeTicks };
 }
 
 function toNumber(value: unknown): number {
@@ -363,19 +503,35 @@ export const QueryResultsChart = memo(function QueryResultsChart({
     data: unsortedData,
     series,
     dateValues,
+    isDateBased,
+    xDataKey,
+    timeDomain,
+    timeTicks,
   } = useMemo(() => transformDataForChart(rows, config), [rows, config]);
 
-  // Apply sorting
-  const data = useMemo(
-    () => sortData(unsortedData, sortByColumn, sortDirection),
-    [unsortedData, sortByColumn, sortDirection]
-  );
+  // Apply sorting (for date-based, sort by timestamp to ensure correct order)
+  const data = useMemo(() => {
+    if (isDateBased) {
+      // Always sort by timestamp for date-based axes
+      return sortData(unsortedData, xDataKey, "asc");
+    }
+    return sortData(unsortedData, sortByColumn, sortDirection);
+  }, [unsortedData, sortByColumn, sortDirection, isDateBased, xDataKey]);
 
   // Detect time granularity for the data
   const timeGranularity = useMemo(
     () => (dateValues.length > 0 ? detectTimeGranularity(dateValues) : null),
     [dateValues]
   );
+
+  // X-axis tick formatter for date-based axes
+  const xAxisTickFormatter = useMemo(() => {
+    if (!isDateBased || !timeGranularity) return undefined;
+    return (value: number) => {
+      const date = new Date(value);
+      return formatDateByGranularity(date, timeGranularity);
+    };
+  }, [isDateBased, timeGranularity]);
 
   // Create dynamic Y-axis formatter based on data range
   const yAxisFormatter = useMemo(() => createYAxisFormatter(data, series), [data, series]);
@@ -432,17 +588,36 @@ export const QueryResultsChart = memo(function QueryResultsChart({
   const xAxisAngle = timeGranularity === "hours" || timeGranularity === "seconds" ? -45 : 0;
   const xAxisHeight = xAxisAngle !== 0 ? 60 : undefined;
 
-  const xAxisProps = {
-    dataKey: xAxisColumn,
-    fontSize: 12,
-    tickLine: false,
-    tickMargin: 8,
-    axisLine: false,
-    tick: { fill: "var(--color-text-dimmed)" },
-    angle: xAxisAngle,
-    textAnchor: xAxisAngle !== 0 ? ("end" as const) : ("middle" as const),
-    height: xAxisHeight,
-  };
+  // Build xAxisProps - different config for date-based (continuous) vs categorical axes
+  const xAxisProps = isDateBased
+    ? {
+        dataKey: xDataKey,
+        type: "number" as const,
+        domain: timeDomain ?? ["auto", "auto"],
+        scale: "time" as const,
+        // Explicitly specify tick positions so labels appear across the entire range
+        ticks: timeTicks ?? undefined,
+        fontSize: 12,
+        tickLine: false,
+        tickMargin: 8,
+        axisLine: false,
+        tick: { fill: "var(--color-text-dimmed)" },
+        tickFormatter: xAxisTickFormatter,
+        angle: xAxisAngle,
+        textAnchor: xAxisAngle !== 0 ? ("end" as const) : ("middle" as const),
+        height: xAxisHeight,
+      }
+    : {
+        dataKey: xDataKey,
+        fontSize: 12,
+        tickLine: false,
+        tickMargin: 8,
+        axisLine: false,
+        tick: { fill: "var(--color-text-dimmed)" },
+        angle: xAxisAngle,
+        textAnchor: xAxisAngle !== 0 ? ("end" as const) : ("middle" as const),
+        height: xAxisHeight,
+      };
 
   const yAxisProps = {
     fontSize: 12,

@@ -668,11 +668,11 @@ function AITabContent({
   const [autoSubmitPrompt, setAutoSubmitPrompt] = useState<string | undefined>();
 
   const examplePrompts = [
-    "Show me failed runs from the last 7 days",
-    "Count of runs by status",
-    "Top 10 most expensive runs this week",
-    "Average execution duration by task",
-    "Runs that crashed or timed out in the last hour",
+    "Show me failed runs by hour for the past 7 days",
+    "Count of runs by status by hour for the past 48h",
+    "Top 50 most expensive runs this week",
+    "Average execution duration by task this week",
+    "Run counts by tag in the past 7 days",
   ];
 
   return (
