@@ -10,6 +10,7 @@ import { Button } from "../primitives/Buttons";
 
 export type ChartType = "bar" | "line";
 export type SortDirection = "asc" | "desc";
+export type AggregationType = "sum" | "avg" | "count" | "min" | "max";
 
 export interface ChartConfiguration {
   chartType: ChartType;
@@ -19,6 +20,7 @@ export interface ChartConfiguration {
   stacked: boolean;
   sortByColumn: string | null;
   sortDirection: SortDirection;
+  aggregation: AggregationType;
 }
 
 export const defaultChartConfig: ChartConfiguration = {
@@ -29,6 +31,7 @@ export const defaultChartConfig: ChartConfiguration = {
   stacked: false,
   sortByColumn: null,
   sortDirection: "asc",
+  aggregation: "sum",
 };
 
 interface ChartConfigPanelProps {
@@ -192,6 +195,15 @@ export function ChartConfigPanel({ columns, config, onChange, className }: Chart
     }));
   }, [numericColumns]);
 
+  // Aggregation options
+  const aggregationOptions = [
+    { value: "sum", label: "Sum" },
+    { value: "avg", label: "Average" },
+    { value: "count", label: "Count" },
+    { value: "min", label: "Min" },
+    { value: "max", label: "Max" },
+  ];
+
   // Group by options: categorical columns (excluding selected X axis)
   const groupByOptions = useMemo(() => {
     const options = categoricalColumns
@@ -336,6 +348,26 @@ export function ChartConfigPanel({ columns, config, onChange, className }: Chart
               }
             </Select>
           )}
+        </ConfigField>
+
+        {/* Aggregation */}
+        <ConfigField label="Aggregation">
+          <Select
+            value={config.aggregation}
+            setValue={(value) => updateConfig({ aggregation: value as AggregationType })}
+            variant="tertiary/small"
+            items={aggregationOptions}
+            dropdownIcon
+            className="min-w-[100px]"
+          >
+            {(items) =>
+              items.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))
+            }
+          </Select>
         </ConfigField>
 
         {/* Group By */}

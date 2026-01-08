@@ -20,7 +20,7 @@ import {
   ChartTooltipContent,
 } from "~/components/primitives/Chart";
 import { Paragraph } from "../primitives/Paragraph";
-import type { ChartConfiguration } from "./ChartConfigPanel";
+import type { AggregationType, ChartConfiguration } from "./ChartConfigPanel";
 
 // Color palette for chart series
 const CHART_COLORS = [
@@ -198,6 +198,7 @@ function fillTimeGaps(
   maxTime: number,
   interval: number,
   granularity: TimeGranularity,
+  aggregation: AggregationType,
   maxPoints = 1000
 ): Record<string, unknown>[] {
   const range = maxTime - minTime;
@@ -222,29 +223,31 @@ function fillTimeGaps(
     else effectiveInterval = 24 * HOUR;
   }
 
-  // Create a map of existing data points by timestamp (bucketed to the effective interval)
-  const existingData = new Map<number, Record<string, unknown>>();
+  // Create a map to collect values for each bucket (for aggregation)
+  const bucketData = new Map<
+    number,
+    { values: Record<string, number[]>; rawDate: Date; originalX: string }
+  >();
+
   for (const point of data) {
     const timestamp = point[xDataKey] as number;
     // Bucket to the nearest interval
     const bucketedTime = Math.floor(timestamp / effectiveInterval) * effectiveInterval;
 
-    // If there's already data for this bucket, aggregate it
-    const existing = existingData.get(bucketedTime);
-    if (existing) {
-      // Sum the values
-      for (const s of series) {
-        const existingVal = (existing[s] as number) || 0;
-        const newVal = (point[s] as number) || 0;
-        existing[s] = existingVal + newVal;
-      }
-    } else {
-      // Clone the point with the bucketed timestamp
-      existingData.set(bucketedTime, {
-        ...point,
-        [xDataKey]: bucketedTime,
-        __rawDate: new Date(bucketedTime),
+    if (!bucketData.has(bucketedTime)) {
+      bucketData.set(bucketedTime, {
+        values: Object.fromEntries(series.map((s) => [s, []])),
+        rawDate: new Date(bucketedTime),
+        originalX: new Date(bucketedTime).toISOString(),
       });
+    }
+
+    const bucket = bucketData.get(bucketedTime)!;
+    for (const s of series) {
+      const val = point[s] as number;
+      if (typeof val === "number") {
+        bucket.values[s].push(val);
+      }
     }
   }
 
@@ -253,9 +256,19 @@ function fillTimeGaps(
   const startTime = Math.floor(minTime / effectiveInterval) * effectiveInterval;
 
   for (let t = startTime; t <= maxTime; t += effectiveInterval) {
-    const existing = existingData.get(t);
-    if (existing) {
-      filledData.push(existing);
+    const bucket = bucketData.get(t);
+    if (bucket) {
+      // Apply aggregation to collected values
+      const point: Record<string, unknown> = {
+        [xDataKey]: t,
+        __rawDate: bucket.rawDate,
+        __granularity: granularity,
+        __originalX: bucket.originalX,
+      };
+      for (const s of series) {
+        point[s] = aggregateValues(bucket.values[s], aggregation);
+      }
+      filledData.push(point);
     } else {
       // Create a zero-filled data point
       const zeroPoint: Record<string, unknown> = {
@@ -441,7 +454,7 @@ function transformDataForChart(
   rows: Record<string, unknown>[],
   config: ChartConfiguration
 ): TransformedData {
-  const { xAxisColumn, yAxisColumns, groupByColumn } = config;
+  const { xAxisColumn, yAxisColumns, groupByColumn, aggregation } = config;
 
   if (!xAxisColumn || yAxisColumns.length === 0) {
     return {
@@ -492,25 +505,49 @@ function transformDataForChart(
   };
 
   // No grouping: use Y columns directly as series
+  // Group rows by X value first, then aggregate
   if (!groupByColumn) {
-    let data = rows
-      .map((row) => {
-        const rawDate = tryParseDate(row[xAxisColumn]);
-        const point: Record<string, unknown> = {
-          // For date-based, use timestamp; otherwise use formatted string
-          [xDataKey]: isDateBased && rawDate ? rawDate.getTime() : formatX(row[xAxisColumn]),
-          // Store raw date and original value for tooltip
-          __rawDate: rawDate,
-          __granularity: granularity,
-          __originalX: row[xAxisColumn],
-        };
-        for (const yCol of yAxisColumns) {
-          point[yCol] = toNumber(row[yCol]);
-        }
-        return point;
-      })
-      // Filter out rows with invalid dates for date-based axes
-      .filter((point) => !isDateBased || point.__rawDate !== null);
+    // Group rows by X-axis value to handle duplicates
+    const groupedByX = new Map<
+      string | number,
+      { yValues: Record<string, number[]>; rawDate: Date | null; originalX: unknown }
+    >();
+
+    for (const row of rows) {
+      const rawDate = tryParseDate(row[xAxisColumn]);
+
+      // Skip rows with invalid dates for date-based axes
+      if (isDateBased && !rawDate) continue;
+
+      const xKey = isDateBased && rawDate ? rawDate.getTime() : formatX(row[xAxisColumn]);
+
+      if (!groupedByX.has(xKey)) {
+        groupedByX.set(xKey, {
+          yValues: Object.fromEntries(yAxisColumns.map((col) => [col, []])),
+          rawDate,
+          originalX: row[xAxisColumn],
+        });
+      }
+
+      const existing = groupedByX.get(xKey)!;
+      for (const yCol of yAxisColumns) {
+        existing.yValues[yCol].push(toNumber(row[yCol]));
+      }
+    }
+
+    // Convert to array format with aggregation applied
+    let data = Array.from(groupedByX.entries()).map(([xKey, { yValues, rawDate, originalX }]) => {
+      const point: Record<string, unknown> = {
+        [xDataKey]: xKey,
+        __rawDate: rawDate,
+        __granularity: granularity,
+        __originalX: originalX,
+      };
+      for (const yCol of yAxisColumns) {
+        point[yCol] = aggregateValues(yValues[yCol], aggregation);
+      }
+      return point;
+    });
 
     // Fill in gaps with zeros for date-based data
     if (isDateBased && timeDomain) {
@@ -523,7 +560,8 @@ function transformDataForChart(
         timeDomain[0],
         timeDomain[1],
         dataInterval,
-        granularity
+        granularity,
+        aggregation
       );
     }
 
@@ -535,9 +573,10 @@ function transformDataForChart(
   const groupValues = new Set<string>();
 
   // For date-based, key by timestamp; otherwise by formatted string
+  // Collect all values for aggregation
   const groupedByX = new Map<
     string | number,
-    { values: Record<string, number>; rawDate: Date | null; originalX: unknown }
+    { values: Record<string, number[]>; rawDate: Date | null; originalX: unknown }
   >();
 
   for (const row of rows) {
@@ -557,11 +596,14 @@ function transformDataForChart(
     }
 
     const existing = groupedByX.get(xKey)!;
-    // Sum values if there are multiple rows with same x + group
-    existing.values[groupValue] = (existing.values[groupValue] ?? 0) + yValue;
+    // Collect values for aggregation
+    if (!existing.values[groupValue]) {
+      existing.values[groupValue] = [];
+    }
+    existing.values[groupValue].push(yValue);
   }
 
-  // Convert to array format
+  // Convert to array format with aggregation applied
   const series = Array.from(groupValues).sort();
   let data = Array.from(groupedByX.entries()).map(([xKey, { values, rawDate, originalX }]) => {
     const point: Record<string, unknown> = {
@@ -571,7 +613,7 @@ function transformDataForChart(
       __originalX: originalX,
     };
     for (const group of series) {
-      point[group] = values[group] ?? 0;
+      point[group] = values[group] ? aggregateValues(values[group], aggregation) : 0;
     }
     return point;
   });
@@ -587,7 +629,8 @@ function transformDataForChart(
       timeDomain[0],
       timeDomain[1],
       dataInterval,
-      granularity
+      granularity,
+      aggregation
     );
   }
 
@@ -601,6 +644,25 @@ function toNumber(value: unknown): number {
     return isNaN(parsed) ? 0 : parsed;
   }
   return 0;
+}
+
+/**
+ * Aggregate an array of numbers using the specified aggregation function
+ */
+function aggregateValues(values: number[], aggregation: AggregationType): number {
+  if (values.length === 0) return 0;
+  switch (aggregation) {
+    case "sum":
+      return values.reduce((a, b) => a + b, 0);
+    case "avg":
+      return values.reduce((a, b) => a + b, 0) / values.length;
+    case "count":
+      return values.length;
+    case "min":
+      return Math.min(...values);
+    case "max":
+      return Math.max(...values);
+  }
 }
 
 /**
