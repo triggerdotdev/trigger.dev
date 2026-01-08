@@ -114,12 +114,30 @@ export function ChartConfigPanel({ columns, config, onChange, className }: Chart
       if (defaultX) {
         updates.xAxisColumn = defaultX.name;
         needsUpdate = true;
+
+        // Auto-set sort to x-axis ASC if it's a datetime column
+        if (isDateTimeType(defaultX.type) && !config.sortByColumn) {
+          updates.sortByColumn = defaultX.name;
+          updates.sortDirection = "asc";
+        }
       }
     }
 
     // Auto-select Y-axis (first numeric column)
     if (config.yAxisColumns.length === 0 && numericColumns.length > 0) {
       updates.yAxisColumns = [numericColumns[0].name];
+      needsUpdate = true;
+    }
+
+    // Auto-set sort by x-axis ASC if x-axis is datetime and no sort is configured
+    if (
+      config.xAxisColumn &&
+      !config.sortByColumn &&
+      !updates.sortByColumn &&
+      dateTimeColumns.some((col) => col.name === config.xAxisColumn)
+    ) {
+      updates.sortByColumn = config.xAxisColumn;
+      updates.sortDirection = "asc";
       needsUpdate = true;
     }
 
@@ -252,7 +270,18 @@ export function ChartConfigPanel({ columns, config, onChange, className }: Chart
         <ConfigField label="X-Axis">
           <Select
             value={config.xAxisColumn ?? ""}
-            setValue={(value) => updateConfig({ xAxisColumn: value || null })}
+            setValue={(value) => {
+              const updates: Partial<ChartConfiguration> = { xAxisColumn: value || null };
+              // Auto-set sort to x-axis ASC if selecting a datetime column
+              if (value) {
+                const selectedCol = columns.find((c) => c.name === value);
+                if (selectedCol && isDateTimeType(selectedCol.type)) {
+                  updates.sortByColumn = value;
+                  updates.sortDirection = "asc";
+                }
+              }
+              updateConfig(updates);
+            }}
             variant="tertiary/small"
             placeholder="Select column"
             items={xAxisOptions}
