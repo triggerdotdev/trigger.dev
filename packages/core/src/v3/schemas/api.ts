@@ -694,6 +694,8 @@ export const GetDeploymentResponseBody = z.object({
   version: z.string(),
   imageReference: z.string().nullish(),
   imagePlatform: z.string(),
+  commitSHA: z.string().nullish(),
+  integrationDeploymentId: z.string().nullish(),
   externalBuildData: ExternalBuildData.optional().nullable(),
   errorData: DeploymentErrorData.nullish(),
   worker: z
