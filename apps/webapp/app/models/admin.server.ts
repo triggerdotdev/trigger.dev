@@ -5,6 +5,7 @@ import { SearchParams } from "~/routes/admin._index";
 import {
   clearImpersonationId,
   commitImpersonationSession,
+  getImpersonationId,
   setImpersonationId,
 } from "~/services/impersonation.server";
 import { requireUser } from "~/services/session.server";
@@ -243,6 +244,27 @@ export async function redirectWithImpersonation(request: Request, userId: string
 }
 
 export async function clearImpersonation(request: Request, path: string) {
+  const user = await requireUser(request);
+  const targetId = await getImpersonationId(request);
+
+  if (targetId) {
+    const xff = request.headers.get("x-forwarded-for");
+    const ipAddress = extractClientIp(xff);
+
+    try {
+      await prisma.impersonationAuditLog.create({
+        data: {
+          action: "STOP",
+          adminId: user.id,
+          targetId,
+          ipAddress,
+        },
+      });
+    } catch (error) {
+      logger.error("Failed to create impersonation audit log", { error, adminId: user.id, targetId });
+    }
+  }
+
   const session = await clearImpersonationId(request);
 
   return redirect(path, {
