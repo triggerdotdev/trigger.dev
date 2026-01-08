@@ -1,5 +1,6 @@
 import type { OutputColumnMetadata } from "@internal/clickhouse";
 import { formatDurationMilliseconds, MachinePresetName } from "@trigger.dev/core/v3";
+import { useState } from "react";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { MachineLabelCombo } from "~/components/MachineLabelCombo";
 import { DateTimeAccurate } from "~/components/primitives/DateTime";
@@ -87,16 +88,49 @@ function isBooleanType(type: string): boolean {
 }
 
 /**
+ * Wrapper component that tracks hover state and passes it to CellValue
+ * This optimizes rendering by only enabling tooltips when the cell is hovered
+ */
+function CellValueWrapper({
+  value,
+  column,
+  prettyFormatting,
+}: {
+  value: unknown;
+  column: OutputColumnMetadata;
+  prettyFormatting: boolean;
+}) {
+  const [hovered, setHovered] = useState(false);
+
+  return (
+    <span
+      className="flex-1"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <CellValue
+        value={value}
+        column={column}
+        prettyFormatting={prettyFormatting}
+        hovered={hovered}
+      />
+    </span>
+  );
+}
+
+/**
  * Render a cell value based on its type and optional customRenderType
  */
 function CellValue({
   value,
   column,
   prettyFormatting = true,
+  hovered = false,
 }: {
   value: unknown;
   column: OutputColumnMetadata;
   prettyFormatting?: boolean;
+  hovered?: boolean;
 }) {
   // Plain text mode - render everything as monospace text with truncation
   if (!prettyFormatting) {
@@ -232,7 +266,7 @@ function CellValue({
   // DateTime types
   if (isDateTimeType(type)) {
     if (typeof value === "string") {
-      return <DateTimeAccurate date={value} />;
+      return <DateTimeAccurate date={value} showTooltip={hovered} />;
     }
     return <span>{String(value)}</span>;
   }
@@ -405,13 +439,11 @@ export function TSQLResultsTable({
                   alignment={isRightAlignedColumn(col) ? "right" : "left"}
                   value={valueToString(row[col.name])}
                 >
-                  <span className="flex-1">
-                    <CellValue
-                      value={row[col.name]}
-                      column={col}
-                      prettyFormatting={prettyFormatting}
-                    />
-                  </span>
+                  <CellValueWrapper
+                    value={row[col.name]}
+                    column={col}
+                    prettyFormatting={prettyFormatting}
+                  />
                 </CopyableTableCell>
               ))}
             </TableRow>
