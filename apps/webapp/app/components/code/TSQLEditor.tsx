@@ -178,12 +178,7 @@ export function TSQLEditor(opts: TSQLEditorProps) {
     if (!currentContent.trim()) return;
 
     try {
-      const formatted = formatSQL(currentContent, {
-        language: "sql",
-        keywordCase: "upper",
-        indentStyle: "standard",
-        linesBetweenQueries: 2,
-      });
+      const formatted = autoFormatSQL(currentContent);
       view.dispatch({
         changes: { from: 0, to: view.state.doc.length, insert: formatted },
       });
@@ -263,4 +258,13 @@ export function TSQLEditor(opts: TSQLEditorProps) {
       )}
     </div>
   );
+}
+
+export function autoFormatSQL(sql: string) {
+  return formatSQL(sql, {
+    language: "sql",
+    keywordCase: "upper",
+    indentStyle: "standard",
+    linesBetweenQueries: 2,
+  });
 }

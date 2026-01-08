@@ -27,7 +27,7 @@ import {
 } from "~/components/code/ChartConfigPanel";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { QueryResultsChart } from "~/components/code/QueryResultsChart";
-import { TSQLEditor } from "~/components/code/TSQLEditor";
+import { autoFormatSQL, TSQLEditor } from "~/components/code/TSQLEditor";
 import { TSQLResultsTable } from "~/components/code/TSQLResultsTable";
 import {
   ClientTabs,
@@ -487,7 +487,10 @@ export default function Page() {
                 editorRef.current?.setQuery(exampleQuery);
                 editorRef.current?.setScope(exampleScope);
               }}
-              onQueryGenerated={(query) => editorRef.current?.setQuery(query)}
+              onQueryGenerated={(query) => {
+                const formatted = autoFormatSQL(query);
+                editorRef.current?.setQuery(formatted);
+              }}
               getCurrentQuery={() => editorRef.current?.getQuery() ?? ""}
             />
           </ResizablePanel>
