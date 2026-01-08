@@ -59,6 +59,9 @@ model User {
   deployments          WorkerDeployment[]
   backupCodes          MfaBackupCode[]
   bulkActions          BulkActionGroup[]
+
+  impersonationsPerformed ImpersonationAuditLog[] @relation("ImpersonationActor")
+  impersonationsReceived  ImpersonationAuditLog[] @relation("ImpersonationTarget")
 }
 
 model MfaBackupCode {
@@ -2382,4 +2385,31 @@ model ConnectedGithubRepository {
   // A project can only be connected to one repository
   @@unique([projectId])
   @@index([repositoryId])
+}
+
+enum ImpersonationAuditLogAction {
+  START
+  STOP
+}
+
+model ImpersonationAuditLog {
+  id String @id @default(cuid())
+
+  action ImpersonationAuditLogAction
+
+  /// The admin user who initiated/ended the impersonation
+  actor   User   @relation("ImpersonationActor", fields: [actorId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  actorId String
+
+  /// The user being impersonated
+  target   User   @relation("ImpersonationTarget", fields: [targetId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  targetId String
+
+  ipAddress String?
+
+  createdAt DateTime @default(now())
+
+  @@index([actorId])
+  @@index([targetId])
+  @@index([createdAt])
 }
