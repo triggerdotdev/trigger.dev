@@ -7,11 +7,13 @@ import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { DateField } from "~/components/primitives/DateField";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Label } from "~/components/primitives/Label";
+import { RadioButtonCircle } from "~/components/primitives/RadioButton";
 import { ComboboxProvider, SelectPopover, SelectProvider } from "~/components/primitives/Select";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { cn } from "~/utils/cn";
 import { Button } from "../../primitives/Buttons";
 import { filterIcon } from "./RunFilters";
+import { Paragraph } from "~/components/primitives/Paragraph";
 
 export type DisplayableEnvironment = Pick<RuntimeEnvironment, "type" | "id"> & {
   userName?: string;
@@ -300,11 +302,17 @@ export function TimeDropdown({
   const [fromValue, setFromValue] = useState(from);
   const [toValue, setToValue] = useState(to);
 
-  // Selection state: preset value, "custom", or null (for date range mode)
+  // Section selection state: "duration" or "dateRange"
+  type SectionType = "duration" | "dateRange";
+  const initialSection: SectionType = from || to ? "dateRange" : "duration";
+  const [activeSection, setActiveSection] = useState<SectionType>(initialSection);
+  const [validationError, setValidationError] = useState<string | null>(null);
+
+  // Selection state: preset value or "custom"
   const initialCustom = getInitialCustomDuration(period);
   const isInitialCustom =
     period && !timePeriods.some((p) => p.value === period) && initialCustom.value !== "";
-  const [selectedPeriod, setSelectedPeriod] = useState<string | null>(
+  const [selectedPeriod, setSelectedPeriod] = useState<string>(
     isInitialCustom ? "custom" : period ?? defaultPeriod
   );
 
@@ -312,7 +320,7 @@ export function TimeDropdown({
   const [customValue, setCustomValue] = useState(initialCustom.value);
   const [customUnit, setCustomUnit] = useState(initialCustom.unit);
 
-  // Sync state when period prop changes
+  // Sync state when props change
   useEffect(() => {
     const parsed = getInitialCustomDuration(period);
     setCustomValue(parsed.value);
@@ -320,20 +328,27 @@ export function TimeDropdown({
 
     const isCustom = period && !timePeriods.some((p) => p.value === period) && parsed.value !== "";
     setSelectedPeriod(isCustom ? "custom" : period ?? defaultPeriod);
-  }, [period]);
+    setActiveSection(from || to ? "dateRange" : "duration");
+  }, [period, from, to]);
+
+  const isCustomDurationValid = (() => {
+    const value = parseInt(customValue, 10);
+    return !isNaN(value) && value > 0;
+  })();
 
   const applySelection = useCallback(() => {
-    // If a period is selected (preset or custom), apply it
-    if (selectedPeriod) {
-      let periodToApply = selectedPeriod;
+    setValidationError(null);
 
-      // Build custom period string if custom is selected
+    if (activeSection === "duration") {
+      // Validate custom duration
+      if (selectedPeriod === "custom" && !isCustomDurationValid) {
+        setValidationError("Please enter a valid custom duration");
+        return;
+      }
+
+      let periodToApply = selectedPeriod;
       if (selectedPeriod === "custom") {
-        const value = parseInt(customValue, 10);
-        if (isNaN(value) || value <= 0) {
-          return;
-        }
-        periodToApply = `${value}${customUnit}`;
+        periodToApply = `${customValue}${customUnit}`;
       }
 
       replace({
@@ -347,31 +362,33 @@ export function TimeDropdown({
       setFromValue(undefined);
       setToValue(undefined);
       setOpen(false);
-      return;
+    } else {
+      // Validate date range
+      if (!fromValue && !toValue) {
+        setValidationError("Please specify at least one date");
+        return;
+      }
+
+      replace({
+        period: undefined,
+        cursor: undefined,
+        direction: undefined,
+        from: fromValue?.getTime().toString(),
+        to: toValue?.getTime().toString(),
+      });
+
+      setOpen(false);
     }
-
-    // Otherwise apply date range
-    replace({
-      period: undefined,
-      cursor: undefined,
-      direction: undefined,
-      from: fromValue?.getTime().toString(),
-      to: toValue?.getTime().toString(),
-    });
-
-    setOpen(false);
-  }, [selectedPeriod, customValue, customUnit, fromValue, toValue, replace]);
-
-  const isCustomDurationValid = (() => {
-    const value = parseInt(customValue, 10);
-    return !isNaN(value) && value > 0;
-  })();
-
-  // Determine if Apply button should be enabled
-  const canApply =
-    (selectedPeriod && selectedPeriod !== "custom") ||
-    (selectedPeriod === "custom" && isCustomDurationValid) ||
-    (!selectedPeriod && (fromValue || toValue));
+  }, [
+    activeSection,
+    selectedPeriod,
+    isCustomDurationValid,
+    customValue,
+    customUnit,
+    fromValue,
+    toValue,
+    replace,
+  ]);
 
   return (
     <SelectProvider virtualFocus={true} open={open} setOpen={setOpen}>
@@ -382,143 +399,205 @@ export function TimeDropdown({
           return true;
         }}
       >
-        <div className="flex flex-col gap-6 p-3">
-          <div className="flex flex-col gap-1">
-            <Label className="mb-2">Runs created in the last</Label>
-            <div className="grid grid-cols-4 gap-2">
-              {timePeriods.map((p) => (
-                <Button
-                  key={p.value}
-                  variant="secondary/small"
-                  className={
-                    p.value === selectedPeriod
-                      ? "border-indigo-500 group-hover/button:border-indigo-500"
-                      : undefined
-                  }
-                  onClick={(e) => {
-                    e.preventDefault();
-                    setSelectedPeriod(p.value);
-                    // Clear custom value when selecting a preset
-                    setCustomValue("");
-                  }}
-                  fullWidth
-                  type="button"
-                >
-                  {p.label}
-                </Button>
-              ))}
-              {/* Custom duration row */}
-              <div
+        <div className="flex flex-col gap-2 p-3">
+          {/* Duration section */}
+          <div
+            onClick={() => {
+              setActiveSection("duration");
+              setValidationError(null);
+            }}
+            className="flex cursor-pointer gap-3 rounded-md pb-3"
+          >
+            <RadioButtonCircle checked={activeSection === "duration"} />
+            <div className="flex flex-1 flex-col gap-1">
+              <Label
                 className={cn(
-                  "col-span-4 flex h-[1.8rem] w-full items-center gap-2 rounded border py-0.5 pl-0 pr-2 transition-colors",
-                  selectedPeriod === "custom"
-                    ? "border-indigo-500 bg-charcoal-750"
-                    : "border-charcoal-650 bg-charcoal-750 hover:border-charcoal-600"
+                  "mb-2 transition-colors",
+                  activeSection === "duration" && "text-indigo-500"
                 )}
               >
-                <input
-                  type="number"
-                  min="1"
-                  step="1"
-                  placeholder="Custom"
-                  value={customValue}
-                  onChange={(e) => {
-                    setCustomValue(e.target.value);
-                    setSelectedPeriod("custom");
-                  }}
-                  onFocus={() => setSelectedPeriod("custom")}
-                  className="h-full w-full translate-y-px border-none bg-transparent py-0 pl-2 pr-0 text-xs leading-none text-text-bright outline-none placeholder:text-text-dimmed focus:outline-none focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                />
-                <div className="flex items-center gap-2">
-                  {timeUnits.map((unit) => (
-                    <button
-                      key={unit.value}
-                      type="button"
-                      onClick={() => {
-                        setCustomUnit(unit.value);
-                        setSelectedPeriod("custom");
-                      }}
-                      className={cn(
-                        "text-xs transition-colors",
-                        customUnit === unit.value
-                          ? "text-indigo-500"
-                          : "text-text-dimmed hover:text-text-bright"
-                      )}
-                    >
-                      {unit.shortLabel}
-                    </button>
-                  ))}
+                Runs created in the last
+              </Label>
+              <div className="grid grid-cols-4 gap-2">
+                {timePeriods.map((p) => (
+                  <Button
+                    key={p.value}
+                    variant="secondary/small"
+                    className={
+                      activeSection === "duration" && p.value === selectedPeriod
+                        ? "border-indigo-500 group-hover/button:border-indigo-500"
+                        : undefined
+                    }
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setActiveSection("duration");
+                      setSelectedPeriod(p.value);
+                      setCustomValue("");
+                      setValidationError(null);
+                    }}
+                    fullWidth
+                    type="button"
+                  >
+                    {p.label}
+                  </Button>
+                ))}
+                {/* Custom duration row */}
+                <div
+                  className={cn(
+                    "col-span-4 flex h-[1.8rem] w-full items-center gap-2 rounded border py-0.5 pl-0 pr-2 transition-colors",
+                    activeSection === "duration" && selectedPeriod === "custom"
+                      ? "border-indigo-500 bg-charcoal-750"
+                      : "border-charcoal-650 bg-charcoal-750 hover:border-charcoal-600",
+                    validationError &&
+                      activeSection === "duration" &&
+                      selectedPeriod === "custom" &&
+                      "border-error"
+                  )}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    placeholder="Custom"
+                    value={customValue}
+                    onChange={(e) => {
+                      setCustomValue(e.target.value);
+                      setSelectedPeriod("custom");
+                      setActiveSection("duration");
+                      setValidationError(null);
+                    }}
+                    onFocus={() => {
+                      setSelectedPeriod("custom");
+                      setActiveSection("duration");
+                      setValidationError(null);
+                    }}
+                    className="h-full w-full translate-y-px border-none bg-transparent py-0 pl-2 pr-0 text-xs leading-none text-text-bright outline-none placeholder:text-text-dimmed focus:outline-none focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                  />
+                  <div className="flex items-center gap-2">
+                    {timeUnits.map((unit) => (
+                      <button
+                        key={unit.value}
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCustomUnit(unit.value);
+                          setSelectedPeriod("custom");
+                          setActiveSection("duration");
+                          setValidationError(null);
+                        }}
+                        className={cn(
+                          "text-xs transition-colors",
+                          customUnit === unit.value
+                            ? "text-indigo-500"
+                            : "text-text-dimmed hover:text-text-bright"
+                        )}
+                      >
+                        {unit.shortLabel}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
+              {validationError && activeSection === "duration" && selectedPeriod === "custom" && (
+                <p className="mt-1 text-xs text-error">{validationError}</p>
+              )}
             </div>
           </div>
 
-          <div className="flex flex-col gap-4 border-t border-grid-bright pt-4">
-            <Label className="text-text-bright">Or specify exact time range</Label>
-            <div className="flex flex-col gap-1">
-              <Label>
-                From <span className="text-text-dimmed">(local time)</span>
-              </Label>
-              <DateField
-                label="From time"
-                defaultValue={fromValue}
-                onValueChange={(value) => {
-                  setFromValue(value);
-                  if (value) setSelectedPeriod(null);
-                }}
-                granularity="second"
-                showNowButton
-                showClearButton
-                variant="small"
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label>
-                To <span className="text-text-dimmed">(local time)</span>
-              </Label>
-              <DateField
-                label="To time"
-                defaultValue={toValue}
-                onValueChange={(value) => {
-                  setToValue(value);
-                  if (value) setSelectedPeriod(null);
-                }}
-                granularity="second"
-                showNowButton
-                showClearButton
-                variant="small"
-              />
-            </div>
-            <div className="flex justify-between gap-1 border-t border-grid-bright pt-3">
-              <Button
-                variant="tertiary/small"
-                onClick={(e) => {
-                  e.preventDefault();
-                  setFromValue(from);
-                  setToValue(to);
-                  setOpen(false);
-                }}
-                type="button"
+          {/* Date range section */}
+          <div
+            onClick={() => {
+              setActiveSection("dateRange");
+              setValidationError(null);
+            }}
+            className="flex cursor-pointer gap-3 rounded-md pb-2"
+          >
+            <RadioButtonCircle checked={activeSection === "dateRange"} />
+            <div className="flex flex-1 flex-col">
+              <Label
+                className={cn(
+                  "mb-2 transition-colors",
+                  activeSection === "dateRange" && "text-indigo-500"
+                )}
               >
-                Cancel
-              </Button>
-              <Button
-                variant="secondary/small"
-                shortcut={{
-                  modifiers: ["mod"],
-                  key: "Enter",
-                  enabledOnInputElements: true,
-                }}
-                disabled={!canApply}
-                onClick={(e) => {
-                  e.preventDefault();
-                  applySelection();
-                }}
-                type="button"
-              >
-                Apply
-              </Button>
+                Or specify exact time range
+              </Label>
+              <div className="mb-2 flex flex-col gap-1" onClick={(e) => e.stopPropagation()}>
+                <Label variant="small">
+                  From <span className="text-text-dimmed">(local time)</span>
+                </Label>
+                <DateField
+                  label="From time"
+                  defaultValue={fromValue}
+                  onValueChange={(value) => {
+                    setFromValue(value);
+                    setActiveSection("dateRange");
+                    setValidationError(null);
+                  }}
+                  granularity="second"
+                  showNowButton
+                  showClearButton
+                  variant="small"
+                />
+              </div>
+              <div className="flex flex-col gap-1" onClick={(e) => e.stopPropagation()}>
+                <Label variant="small">
+                  To <span className="text-text-dimmed">(local time)</span>
+                </Label>
+                <DateField
+                  label="To time"
+                  defaultValue={toValue}
+                  onValueChange={(value) => {
+                    setToValue(value);
+                    setActiveSection("dateRange");
+                    setValidationError(null);
+                  }}
+                  granularity="second"
+                  showNowButton
+                  showClearButton
+                  variant="small"
+                />
+              </div>
+              {validationError && activeSection === "dateRange" && (
+                <Paragraph variant="extra-small" className="mt-1 text-error">
+                  {validationError}
+                </Paragraph>
+              )}
             </div>
+          </div>
+
+          {/* Action buttons */}
+          <div className="flex justify-between gap-1 border-t border-grid-bright px-0 pt-3">
+            <Button
+              variant="tertiary/small"
+              onClick={(e) => {
+                e.preventDefault();
+                setFromValue(from);
+                setToValue(to);
+                setValidationError(null);
+                setOpen(false);
+              }}
+              type="button"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary/small"
+              shortcut={{
+                modifiers: ["mod"],
+                key: "Enter",
+                enabledOnInputElements: true,
+              }}
+              onClick={(e) => {
+                e.preventDefault();
+                applySelection();
+              }}
+              type="button"
+            >
+              Apply
+            </Button>
           </div>
         </div>
       </SelectPopover>
