@@ -170,11 +170,23 @@ function tryParseDate(value: unknown): Date | null {
     return isNaN(date.getTime()) ? null : date;
   }
   if (typeof value === "number") {
-    // Could be a timestamp
-    const date = new Date(value);
-    // Sanity check: should be between 1970 and 2100
-    if (date.getFullYear() >= 1970 && date.getFullYear() <= 2100) {
-      return date;
+    // First, try treating the number as milliseconds
+    const dateAsMs = new Date(value);
+    if (
+      !isNaN(dateAsMs.getTime()) &&
+      dateAsMs.getFullYear() >= 1970 &&
+      dateAsMs.getFullYear() <= 2100
+    ) {
+      return dateAsMs;
+    }
+    // If that fails, try treating the number as seconds (Unix timestamp)
+    const dateAsSec = new Date(value * 1000);
+    if (
+      !isNaN(dateAsSec.getTime()) &&
+      dateAsSec.getFullYear() >= 1970 &&
+      dateAsSec.getFullYear() <= 2100
+    ) {
+      return dateAsSec;
     }
   }
   return null;
