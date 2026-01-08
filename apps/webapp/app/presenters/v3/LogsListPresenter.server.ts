@@ -18,7 +18,7 @@ import {
   convertClickhouseDateTime64ToJsDate,
 } from "~/v3/eventRepository/clickhouseEventRepository.server";
 
-export type LogLevel = "TRACE" | "DEBUG" | "INFO" | "WARN" | "ERROR" | "LOG";
+export type LogLevel = "TRACE" | "DEBUG" | "INFO" | "WARN" | "ERROR" | "CANCELLED";
 
 export type LogsListOptions = {
   userId?: string;
@@ -78,9 +78,17 @@ function decodeCursor(cursor: string): LogCursor | null {
 }
 
 // Convert ClickHouse kind to display level
-function kindToLevel(
-  kind: string
-): "TRACE" | "DEBUG" | "INFO" | "WARN" | "ERROR" | "LOG" {
+function kindToLevel(kind: string, status: string): LogLevel {
+  // CANCELLED status takes precedence
+  if (status === "CANCELLED") {
+    return "CANCELLED";
+  }
+
+  // ERROR can come from either kind or status
+  if (kind === "LOG_ERROR" || status === "ERROR") {
+    return "ERROR";
+  }
+
   switch (kind) {
     case "DEBUG_EVENT":
     case "LOG_DEBUG":
@@ -89,10 +97,8 @@ function kindToLevel(
       return "INFO";
     case "LOG_WARN":
       return "WARN";
-    case "LOG_ERROR":
-      return "ERROR";
     case "LOG_LOG":
-      return "LOG";
+      return "INFO"; // Changed from "LOG"
     case "SPAN":
     case "ANCESTOR_OVERRIDE":
     case "SPAN_EVENT":
@@ -101,21 +107,23 @@ function kindToLevel(
   }
 }
 
-// Convert display level to ClickHouse kinds
-function levelToKinds(level: LogLevel): string[] {
+// Convert display level to ClickHouse kinds and statuses
+function levelToKindsAndStatuses(
+  level: LogLevel
+): { kinds?: string[]; statuses?: string[] } {
   switch (level) {
     case "DEBUG":
-      return ["DEBUG_EVENT", "LOG_DEBUG"];
+      return { kinds: ["DEBUG_EVENT", "LOG_DEBUG"] };
     case "INFO":
-      return ["LOG_INFO"];
+      return { kinds: ["LOG_INFO", "LOG_LOG"] };
     case "WARN":
-      return ["LOG_WARN"];
+      return { kinds: ["LOG_WARN"] };
     case "ERROR":
-      return ["LOG_ERROR"];
-    case "LOG":
-      return ["LOG_LOG"];
+      return { kinds: ["LOG_ERROR"], statuses: ["ERROR"] };
+    case "CANCELLED":
+      return { statuses: ["CANCELLED"] };
     case "TRACE":
-      return ["SPAN", "ANCESTOR_OVERRIDE", "SPAN_EVENT"];
+      return { kinds: ["SPAN", "ANCESTOR_OVERRIDE", "SPAN_EVENT"] };
   }
 }
 
@@ -395,10 +403,45 @@ export class LogsListPresenter {
       );
     }
 
-    // Level filter (map display levels to ClickHouse kinds)
+    // Level filter (map display levels to ClickHouse kinds/statuses)
     if (levels && levels.length > 0) {
-      const kinds = levels.flatMap(levelToKinds);
-      queryBuilder.where("kind IN {kinds: Array(String)}", { kinds });
+      const conditions: string[] = [];
+      const params: Record<string, unknown> = {};
+      const hasTraceLevel = levels.includes("TRACE");
+      const hasErrorOrCancelledLevel = levels.includes("ERROR") || levels.includes("CANCELLED");
+
+      for (const level of levels) {
+        const filter = levelToKindsAndStatuses(level);
+        const levelConditions: string[] = [];
+
+        if (filter.kinds && filter.kinds.length > 0) {
+          const kindsKey = `kinds_${level}`;
+          let kindCondition = `kind IN {${kindsKey}: Array(String)}`;
+
+          // For TRACE: exclude error/cancelled traces if ERROR/CANCELLED not explicitly selected
+          if (level === "TRACE" && !hasErrorOrCancelledLevel) {
+            kindCondition += ` AND status NOT IN {excluded_statuses: Array(String)}`;
+            params["excluded_statuses"] = ["ERROR", "CANCELLED"];
+          }
+
+          levelConditions.push(kindCondition);
+          params[kindsKey] = filter.kinds;
+        }
+
+        if (filter.statuses && filter.statuses.length > 0) {
+          const statusesKey = `statuses_${level}`;
+          levelConditions.push(`status IN {${statusesKey}: Array(String)}`);
+          params[statusesKey] = filter.statuses;
+        }
+
+        if (levelConditions.length > 0) {
+          conditions.push(`(${levelConditions.join(" OR ")})`);
+        }
+      }
+
+      if (conditions.length > 0) {
+        queryBuilder.where(`(${conditions.join(" OR ")})`);
+      }
     }
 
     // Exclude DEBUG logs if not included
@@ -474,7 +517,7 @@ export class LogsListPresenter {
       kind: log.kind,
       status: log.status,
       duration: typeof log.duration === "number" ? log.duration : Number(log.duration),
-      level: kindToLevel(log.kind),
+      level: kindToLevel(log.kind, log.status),
     }));
 
     return {

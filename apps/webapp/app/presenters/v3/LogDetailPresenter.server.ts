@@ -15,9 +15,19 @@ export type LogDetailOptions = {
 export type LogDetail = Awaited<ReturnType<LogDetailPresenter["call"]>>;
 
 // Convert ClickHouse kind to display level
-function kindToLevel(
-  kind: string
-): "TRACE" | "DEBUG" | "INFO" | "WARN" | "ERROR" | "LOG" {
+type LogLevel = "TRACE" | "DEBUG" | "INFO" | "WARN" | "ERROR" | "CANCELLED";
+
+function kindToLevel(kind: string, status: string): LogLevel {
+  // CANCELLED status takes precedence
+  if (status === "CANCELLED") {
+    return "CANCELLED";
+  }
+
+  // ERROR can come from either kind or status
+  if (kind === "LOG_ERROR" || status === "ERROR") {
+    return "ERROR";
+  }
+
   switch (kind) {
     case "DEBUG_EVENT":
     case "LOG_DEBUG":
@@ -26,10 +36,8 @@ function kindToLevel(
       return "INFO";
     case "LOG_WARN":
       return "WARN";
-    case "LOG_ERROR":
-      return "ERROR";
     case "LOG_LOG":
-      return "LOG";
+      return "INFO"; // Changed from "LOG"
     case "SPAN":
     case "ANCESTOR_OVERRIDE":
     case "SPAN_EVENT":
@@ -111,7 +119,7 @@ export class LogDetailPresenter {
       kind: log.kind,
       status: log.status,
       duration: typeof log.duration === "number" ? log.duration : Number(log.duration),
-      level: kindToLevel(log.kind),
+      level: kindToLevel(log.kind, log.status),
       metadata: parsedMetadata,
       attributes: parsedAttributes,
       // Raw strings for display

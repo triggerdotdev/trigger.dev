@@ -51,23 +51,8 @@ function getLevelColor(level: LogEntry["level"]): string {
       return "text-blue-400 bg-blue-500/10 border-blue-500/20";
     case "TRACE":
       return "text-charcoal-500 bg-charcoal-800 border-charcoal-700";
-    case "LOG":
-    default:
-      return "text-text-dimmed bg-charcoal-750 border-charcoal-700";
-  }
-}
-
-// Status badge color styles
-function getStatusColor(status: string): string {
-  switch (status) {
-    case "OK":
-      return "text-success bg-success/10 border-success/20";
-    case "ERROR":
-      return "text-error bg-error/10 border-error/20";
     case "CANCELLED":
       return "text-charcoal-400 bg-charcoal-700 border-charcoal-600";
-    case "PARTIAL":
-      return "text-pending bg-pending/10 border-pending/20";
     default:
       return "text-text-dimmed bg-charcoal-750 border-charcoal-700";
   }
@@ -82,9 +67,10 @@ function getLevelBorderColor(level: LogEntry["level"]): string {
       return "border-l-warning";
     case "INFO":
       return "border-l-blue-500";
+    case "CANCELLED":
+      return "border-l-charcoal-600";
     case "DEBUG":
     case "TRACE":
-    case "LOG":
     default:
       return "border-l-transparent hover:border-l-charcoal-800";
   }
@@ -182,14 +168,13 @@ export function LogsTable({
             <TableHeaderCell className="w-24 whitespace-nowrap">Run</TableHeaderCell>
             <TableHeaderCell className="w-32 whitespace-nowrap">Task</TableHeaderCell>
             <TableHeaderCell className="whitespace-nowrap">Level</TableHeaderCell>
-            <TableHeaderCell className="whitespace-nowrap">Status</TableHeaderCell>
             <TableHeaderCell className="whitespace-nowrap">Duration</TableHeaderCell>
             <TableHeaderCell className="w-full min-w-0">Message</TableHeaderCell>
           </TableRow>
         </TableHeader>
         <TableBody>
           {logs.length === 0 && !hasFilters ? (
-            <TableBlankRow colSpan={7}>
+            <TableBlankRow colSpan={6}>
               {!isLoading && <NoLogs title="No logs found" />}
             </TableBlankRow>
           ) : logs.length === 0 ? (
@@ -238,16 +223,6 @@ export function LogsTable({
                       )}
                     >
                       {log.level}
-                    </span>
-                  </TableCell>
-                  <TableCell onClick={handleRowClick} hasAction>
-                    <span
-                      className={cn(
-                        "inline-flex items-center rounded border px-1 py-0.5 text-xxs font-medium uppercase tracking-wider",
-                        getStatusColor(log.status)
-                      )}
-                    >
-                      {log.status}
                     </span>
                   </TableCell>
                   <TableCell

@@ -8,9 +8,10 @@ import { getRunFiltersFromRequest } from "~/presenters/RunFilters.server";
 import { LogsListPresenter, type LogLevel } from "~/presenters/v3/LogsListPresenter.server";
 import { $replica } from "~/db.server";
 import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { getUserById } from "~/models/user.server";
 
 // Valid log levels for filtering
-const validLevels: LogLevel[] = ["TRACE", "DEBUG", "INFO", "WARN", "ERROR", "LOG"];
+const validLevels: LogLevel[] = ["TRACE", "DEBUG", "INFO", "WARN", "ERROR", "CANCELLED"];
 
 function parseLevelsFromUrl(url: URL): LogLevel[] | undefined {
   const levelParams = url.searchParams.getAll("levels").filter((v) => v.length > 0);
@@ -32,13 +33,18 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     throw new Response("Environment not found", { status: 404 });
   }
 
+  const user = await requireUserId(request);
+  const userRecord = await getUserById(user);
+  const isAdmin = userRecord?.admin || userRecord?.isImpersonating;
+
   const filters = await getRunFiltersFromRequest(request);
 
-  // Get search term, cursor, and levels from query params
+  // Get search term, cursor, levels, and showDebug from query params
   const url = new URL(request.url);
   const search = url.searchParams.get("search") ?? undefined;
   const cursor = url.searchParams.get("cursor") ?? undefined;
   const levels = parseLevelsFromUrl(url);
+  const showDebug = url.searchParams.get("showDebug") === "true";
 
   const presenter = new LogsListPresenter($replica, clickhouseClient);
   const result = await presenter.call(project.organizationId, environment.id, {
@@ -48,6 +54,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     search,
     cursor,
     levels,
+    includeDebugLogs: isAdmin && showDebug,
   });
 
   return json({

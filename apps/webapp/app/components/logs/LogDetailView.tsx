@@ -68,7 +68,8 @@ function getLevelColor(level: string): string {
       return "text-blue-400 bg-blue-500/10 border-blue-500/20";
     case "TRACE":
       return "text-charcoal-500 bg-charcoal-800 border-charcoal-700";
-    case "LOG":
+    case "CANCELLED":
+      return "text-charcoal-400 bg-charcoal-700 border-charcoal-600";
     default:
       return "text-text-dimmed bg-charcoal-750 border-charcoal-700";
   }
@@ -111,22 +112,6 @@ function getKindLabel(kind: string): string {
       return "Override";
     default:
       return kind;
-  }
-}
-
-// Status badge color styles
-function getStatusColor(status: string): string {
-  switch (status) {
-    case "OK":
-      return "text-success bg-success/10 border-success/20";
-    case "ERROR":
-      return "text-error bg-error/10 border-error/20";
-    case "CANCELLED":
-      return "text-charcoal-400 bg-charcoal-700 border-charcoal-600";
-    case "PARTIAL":
-      return "text-pending bg-pending/10 border-pending/20";
-    default:
-      return "text-text-dimmed bg-charcoal-750 border-charcoal-700";
   }
 }
 
@@ -359,7 +344,6 @@ function DetailsTab({ log, runPath }: { log: LogEntry; runPath: string }) {
         <div className="grid grid-cols-2 gap-4 rounded-md border border-grid-dimmed bg-charcoal-850 p-3">
           <DetailItem label="Task" value={log.taskIdentifier} mono />
           <DetailItem label="Kind" value={log.kind} />
-          <DetailItem label="Status" value={log.status} />
           <DetailItem
             label="Duration"
             value={

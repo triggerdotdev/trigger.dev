@@ -43,7 +43,7 @@ import { Switch } from "~/components/primitives/Switch";
 import { getUserById } from "~/models/user.server";
 
 // Valid log levels for filtering
-const validLevels: LogLevel[] = ["TRACE", "DEBUG", "INFO", "WARN", "ERROR", "LOG"];
+const validLevels: LogLevel[] = ["TRACE", "DEBUG", "INFO", "WARN", "ERROR", "CANCELLED"];
 
 function parseLevelsFromUrl(url: URL): LogLevel[] | undefined {
   const levelParams = url.searchParams.getAll("levels").filter((v) => v.length > 0);

@@ -20,7 +20,7 @@ const allLogLevels: { level: LogLevel; label: string; color: string }[] = [
   { level: "ERROR", label: "Error", color: "text-error" },
   { level: "WARN", label: "Warning", color: "text-warning" },
   { level: "INFO", label: "Info", color: "text-blue-400" },
-  { level: "LOG", label: "Log", color: "text-text-dimmed" },
+  { level: "CANCELLED", label: "Cancelled", color: "text-charcoal-400" },
   { level: "DEBUG", label: "Debug", color: "text-charcoal-400" },
   { level: "TRACE", label: "Trace", color: "text-charcoal-500" },
 ];
@@ -44,7 +44,8 @@ function getLevelBadgeColor(level: LogLevel): string {
       return "text-blue-400 bg-blue-500/10 border-blue-500/20";
     case "TRACE":
       return "text-charcoal-500 bg-charcoal-800 border-charcoal-700";
-    case "LOG":
+    case "CANCELLED":
+      return "text-charcoal-400 bg-charcoal-700 border-charcoal-600";
     default:
       return "text-text-dimmed bg-charcoal-750 border-charcoal-700";
   }
