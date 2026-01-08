@@ -188,6 +188,7 @@
   /* Override the bg-muted/40 class to let inline styles work */
   & [data-code-block] pre {
     background-color: inherit !important;
+    @apply scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600;
   }
   & [data-code-block] pre code {
     @apply bg-transparent;
