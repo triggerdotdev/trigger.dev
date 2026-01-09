@@ -45,6 +45,7 @@ export const TaskRunV2 = z.object({
   concurrency_key: z.string().default(""),
   bulk_action_group_ids: z.array(z.string()).default([]),
   worker_queue: z.string().default(""),
+  max_duration_in_seconds: z.number().int().nullish(),
   _version: z.string(),
   _is_deleted: z.number().int().default(0),
 });
