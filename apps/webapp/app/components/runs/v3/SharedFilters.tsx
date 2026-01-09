@@ -128,8 +128,8 @@ function parsePeriodString(period: string): { value: number; unit: string } | nu
   return null;
 }
 
-const defaultPeriod = "7d";
-const defaultPeriodMs = parse(defaultPeriod);
+const DEFAULT_PERIOD = "7d";
+const defaultPeriodMs = parse(DEFAULT_PERIOD);
 if (!defaultPeriodMs) {
   throw new Error("Invalid default period");
 }
@@ -140,10 +140,12 @@ export const timeFilters = ({
   period,
   from,
   to,
+  defaultPeriod = DEFAULT_PERIOD,
 }: {
   period?: string;
   from?: string | number;
   to?: string | number;
+  defaultPeriod?: string;
 }): {
   period?: string;
   from?: Date;
@@ -199,10 +201,12 @@ export function timeFilterRenderValues({
   from,
   to,
   period,
+  defaultPeriod = DEFAULT_PERIOD,
 }: {
   from?: Date;
   to?: Date;
   period?: string;
+  defaultPeriod?: string;
 }) {
   const rangeType: TimeRangeType = from && to ? "range" : from ? "from" : to ? "to" : "period";
 
@@ -306,11 +310,13 @@ export function TimeDropdown({
   period,
   from,
   to,
+  defaultPeriod = DEFAULT_PERIOD,
 }: {
   trigger: ReactNode;
   period?: string;
   from?: Date;
   to?: Date;
+  defaultPeriod?: string;
 }) {
   const [open, setOpen] = useState<boolean | undefined>();
   const { replace } = useSearchParams();
