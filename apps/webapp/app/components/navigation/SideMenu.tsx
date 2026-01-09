@@ -5,6 +5,7 @@ import {
   BellAlertIcon,
   ChartBarIcon,
   ChevronRightIcon,
+  CircleStackIcon,
   ClockIcon,
   Cog8ToothIcon,
   CogIcon,
@@ -13,11 +14,13 @@ import {
   GlobeAmericasIcon,
   IdentificationIcon,
   KeyIcon,
+  MagnifyingGlassCircleIcon,
   PencilSquareIcon,
   PlusIcon,
   RectangleStackIcon,
   ServerStackIcon,
   Squares2X2Icon,
+  TableCellsIcon,
   UsersIcon,
 } from "@heroicons/react/20/solid";
 import { Link, useNavigation } from "@remix-run/react";
@@ -31,6 +34,7 @@ import { TaskIconSmall } from "~/assets/icons/TaskIcon";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
 import { Avatar } from "~/components/primitives/Avatar";
 import { type MatchedEnvironment } from "~/hooks/useEnvironment";
+import { useFeatureFlags } from "~/hooks/useFeatureFlags";
 import { useFeatures } from "~/hooks/useFeatures";
 import { type MatchedOrganization } from "~/hooks/useOrganizations";
 import { type MatchedProject } from "~/hooks/useProject";
@@ -51,6 +55,7 @@ import {
   organizationPath,
   organizationSettingsPath,
   organizationTeamPath,
+  queryPath,
   regionsPath,
   v3ApiKeysPath,
   v3BatchesPath,
@@ -93,6 +98,7 @@ import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
+import { AlphaBadge } from "../AlphaBadge";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 export type SideMenuProject = Pick<
@@ -125,6 +131,7 @@ export function SideMenu({
   const isFreeUser = currentPlan?.v3Subscription?.isPaying === false;
   const isAdmin = useHasAdminAccess();
   const { isManagedCloud } = useFeatures();
+  const featureFlags = useFeatureFlags();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -267,6 +274,16 @@ export function SideMenu({
               to={v3TestPath(organization, project, environment)}
               data-action="test"
             />
+            {(user.admin || featureFlags.hasQueryAccess) && (
+              <SideMenuItem
+                name="Query"
+                icon={TableCellsIcon}
+                activeIconColor="text-purple-500"
+                to={queryPath(organization, project, environment)}
+                data-action="query"
+                badge={<AlphaBadge />}
+              />
+            )}
           </div>
 
           <SideMenuSection title="Waitpoints">

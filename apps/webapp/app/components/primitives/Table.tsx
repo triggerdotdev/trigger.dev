@@ -1,9 +1,11 @@
 import { ChevronRightIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
-import React, { type ReactNode, forwardRef, useState, useContext, createContext } from "react";
+import { ClipboardCheckIcon, ClipboardIcon } from "lucide-react";
+import React, { type ReactNode, createContext, forwardRef, useContext, useState } from "react";
+import { useCopy } from "~/hooks/useCopy";
 import { cn } from "~/utils/cn";
 import { Popover, PopoverContent, PopoverVerticalEllipseTrigger } from "./Popover";
-import { InfoIconTooltip } from "./Tooltip";
+import { InfoIconTooltip, SimpleTooltip } from "./Tooltip";
 
 const variants = {
   bright: {
@@ -104,7 +106,7 @@ export const TableBody = forwardRef<HTMLTableSectionElement, TableBodyProps>(
   }
 );
 
-type TableRowProps = {
+type TableRowProps = JSX.IntrinsicElements["tr"] & {
   className?: string;
   children: ReactNode;
   disabled?: boolean;
@@ -112,11 +114,12 @@ type TableRowProps = {
 };
 
 export const TableRow = forwardRef<HTMLTableRowElement, TableRowProps>(
-  ({ className, disabled, isSelected, children }, ref) => {
+  ({ className, disabled, isSelected, children, ...props }, ref) => {
     const { variant } = useContext(TableContext);
     return (
       <tr
         ref={ref}
+        {...props}
         className={cn(
           "group/table-row relative w-full outline-none after:absolute after:bottom-0 after:left-3 after:right-0 after:h-px after:bg-grid-dimmed",
           isSelected && variants[variant].rowSelected,
@@ -154,6 +157,8 @@ export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellP
         break;
     }
 
+    const [isHovered, setIsHovered] = useState(false);
+
     return (
       <th
         ref={ref}
@@ -165,6 +170,8 @@ export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellP
         )}
         colSpan={colSpan}
         tabIndex={-1}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
       >
         {hiddenLabel ? (
           <span className="sr-only">{children}</span>
@@ -176,7 +183,11 @@ export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellP
             })}
           >
             {children}
-            <InfoIconTooltip content={tooltip} contentClassName="normal-case tracking-normal" />
+            <InfoIconTooltip
+              content={tooltip}
+              contentClassName="normal-case tracking-normal"
+              enabled={isHovered}
+            />
           </div>
         ) : (
           children
@@ -273,6 +284,60 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
           <>{children}</>
         )}
       </td>
+    );
+  }
+);
+
+type CopyableTableCellProps = TableCellProps & {
+  value: string;
+};
+
+export const CopyableTableCell = forwardRef<HTMLTableCellElement, CopyableTableCellProps>(
+  ({ value, children, className, ...props }, ref) => {
+    const [isHovered, setIsHovered] = useState(false);
+    const { copy, copied } = useCopy(value);
+
+    return (
+      <TableCell ref={ref} className={className} {...props}>
+        <div
+          className="relative flex items-center"
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
+        >
+          {children}
+          {isHovered && (
+            <span
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                copy();
+              }}
+              className="absolute -right-2 top-1/2 z-10 flex -translate-y-1/2 cursor-pointer"
+            >
+              <SimpleTooltip
+                button={
+                  <span
+                    className={cn(
+                      "flex size-6 items-center justify-center rounded border border-charcoal-650 bg-charcoal-750",
+                      copied
+                        ? "text-green-500"
+                        : "text-text-dimmed hover:border-charcoal-600 hover:bg-charcoal-700 hover:text-text-bright"
+                    )}
+                  >
+                    {copied ? (
+                      <ClipboardCheckIcon className="size-3.5" />
+                    ) : (
+                      <ClipboardIcon className="size-3.5" />
+                    )}
+                  </span>
+                }
+                content={copied ? "Copied!" : "Copy"}
+                disableHoverableContent
+              />
+            </span>
+          )}
+        </div>
+      </TableCell>
     );
   }
 );
