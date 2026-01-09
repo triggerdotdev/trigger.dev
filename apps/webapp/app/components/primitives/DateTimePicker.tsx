@@ -77,7 +77,7 @@ export function DateTimePicker({
   return (
     <div className={cn("flex items-center gap-2", className)}>
       {showInlineLabel && (
-        <span className="w-6 shrink-0 text-right text-xxs text-text-dimmed">{label}</span>
+        <span className="w-6 shrink-0 text-right text-xxs text-charcoal-500">{label}</span>
       )}
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
