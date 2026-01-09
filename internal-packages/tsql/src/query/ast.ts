@@ -662,6 +662,7 @@ export function createSelectSetQueryFromQueries(
   }
 
   return {
+    expression_type: "select_set_query",
     initial_select_query: queries[0],
     subsequent_select_queries: queries.slice(1).map((query) => ({
       select_query: query,
