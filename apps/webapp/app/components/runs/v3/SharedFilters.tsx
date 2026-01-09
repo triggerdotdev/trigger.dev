@@ -322,6 +322,7 @@ export function TimeDropdown({
   const initialSection: SectionType = from || to ? "dateRange" : "duration";
   const [activeSection, setActiveSection] = useState<SectionType>(initialSection);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [selectedQuickDate, setSelectedQuickDate] = useState<string | null>(null);
 
   // Selection state: preset value or "custom"
   const initialCustom = getInitialCustomDuration(period);
@@ -420,6 +421,7 @@ export function TimeDropdown({
             onClick={() => {
               setActiveSection("duration");
               setValidationError(null);
+              setSelectedQuickDate(null);
             }}
             className="flex cursor-pointer gap-3 rounded-md pb-3"
           >
@@ -437,10 +439,10 @@ export function TimeDropdown({
                 {/* Custom duration row */}
                 <div
                   className={cn(
-                    "col-span-4 flex h-[1.8rem] w-full items-center gap-2 rounded border py-0.5 pl-0 pr-2 transition-colors",
+                    "col-span-4 flex h-[1.8rem] w-full items-center gap-2 rounded border bg-charcoal-750 py-0.5 pl-0 pr-2 transition-colors",
                     activeSection === "duration" && selectedPeriod === "custom"
-                      ? "border-indigo-500 bg-charcoal-750"
-                      : "border-charcoal-650 bg-charcoal-750 hover:border-charcoal-600",
+                      ? "border-indigo-500 "
+                      : "border-charcoal-650 hover:border-charcoal-600",
                     validationError &&
                       activeSection === "duration" &&
                       selectedPeriod === "custom" &&
@@ -554,6 +556,7 @@ export function TimeDropdown({
                     setFromValue(value);
                     setActiveSection("dateRange");
                     setValidationError(null);
+                    setSelectedQuickDate(null);
                   }}
                   showSeconds
                   showNowButton
@@ -569,6 +572,7 @@ export function TimeDropdown({
                     setToValue(value);
                     setActiveSection("dateRange");
                     setValidationError(null);
+                    setSelectedQuickDate(null);
                   }}
                   showSeconds
                   showNowButton
@@ -580,46 +584,55 @@ export function TimeDropdown({
               <div className="mt-2 grid grid-cols-3 gap-2" onClick={(e) => e.stopPropagation()}>
                 <QuickDateButton
                   label="Yesterday"
+                  isActive={selectedQuickDate === "yesterday"}
                   onClick={() => {
                     const yesterday = subDays(new Date(), 1);
                     setFromValue(startOfDay(yesterday));
                     setToValue(endOfDay(yesterday));
                     setActiveSection("dateRange");
                     setValidationError(null);
+                    setSelectedQuickDate("yesterday");
                   }}
                 />
                 <QuickDateButton
                   label="Today"
+                  isActive={selectedQuickDate === "today"}
                   onClick={() => {
                     const today = new Date();
                     setFromValue(startOfDay(today));
                     setToValue(today);
                     setActiveSection("dateRange");
                     setValidationError(null);
+                    setSelectedQuickDate("today");
                   }}
                 />
                 <QuickDateButton
                   label="This week"
+                  isActive={selectedQuickDate === "thisWeek"}
                   onClick={() => {
                     const now = new Date();
                     setFromValue(startOfWeek(now, { weekStartsOn: 1 }));
                     setToValue(now);
                     setActiveSection("dateRange");
                     setValidationError(null);
+                    setSelectedQuickDate("thisWeek");
                   }}
                 />
                 <QuickDateButton
                   label="Last week"
+                  isActive={selectedQuickDate === "lastWeek"}
                   onClick={() => {
                     const lastWeek = subWeeks(new Date(), 1);
                     setFromValue(startOfWeek(lastWeek, { weekStartsOn: 1 }));
                     setToValue(endOfWeek(lastWeek, { weekStartsOn: 1 }));
                     setActiveSection("dateRange");
                     setValidationError(null);
+                    setSelectedQuickDate("lastWeek");
                   }}
                 />
                 <QuickDateButton
                   label="Last weekend"
+                  isActive={selectedQuickDate === "lastWeekend"}
                   onClick={() => {
                     const now = new Date();
                     let saturday: Date;
@@ -635,36 +648,43 @@ export function TimeDropdown({
                     setToValue(sunday);
                     setActiveSection("dateRange");
                     setValidationError(null);
+                    setSelectedQuickDate("lastWeekend");
                   }}
                 />
                 <QuickDateButton
                   label="This month"
+                  isActive={selectedQuickDate === "thisMonth"}
                   onClick={() => {
                     const now = new Date();
                     setFromValue(startOfMonth(now));
                     setToValue(now);
                     setActiveSection("dateRange");
                     setValidationError(null);
+                    setSelectedQuickDate("thisMonth");
                   }}
                 />
                 <QuickDateButton
                   label="Last month"
+                  isActive={selectedQuickDate === "lastMonth"}
                   onClick={() => {
                     const lastMonth = subMonths(new Date(), 1);
                     setFromValue(startOfMonth(lastMonth));
                     setToValue(endOfMonth(lastMonth));
                     setActiveSection("dateRange");
                     setValidationError(null);
+                    setSelectedQuickDate("lastMonth");
                   }}
                 />
                 <QuickDateButton
                   label="Year to date"
+                  isActive={selectedQuickDate === "yearToDate"}
                   onClick={() => {
                     const now = new Date();
                     setFromValue(startOfYear(now));
                     setToValue(now);
                     setActiveSection("dateRange");
                     setValidationError(null);
+                    setSelectedQuickDate("yearToDate");
                   }}
                 />
               </div>
@@ -737,9 +757,23 @@ export function dateFromString(value: string | undefined | null): Date | undefin
   return new Date(value);
 }
 
-function QuickDateButton({ label, onClick }: { label: string; onClick: () => void }) {
+function QuickDateButton({
+  label,
+  onClick,
+  isActive,
+}: {
+  label: string;
+  onClick: () => void;
+  isActive?: boolean;
+}) {
   return (
-    <Button type="button" variant="secondary/small" onClick={onClick} fullWidth>
+    <Button
+      type="button"
+      variant="secondary/small"
+      onClick={onClick}
+      fullWidth
+      className={isActive ? "border-indigo-500 group-hover/button:border-indigo-500" : undefined}
+    >
       {label}
     </Button>
   );
