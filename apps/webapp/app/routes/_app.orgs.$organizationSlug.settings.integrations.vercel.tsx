@@ -32,6 +32,18 @@ import { TrashIcon } from "@heroicons/react/20/solid";
 import { vercelResourcePath } from "~/utils/pathBuilder";
 import { LinkButton } from "~/components/primitives/Buttons";
 
+function formatDate(date: Date): string {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  }).format(date);
+}
+
 const SearchParamsSchema = z.object({
   configurationId: z.string().optional(),
 });
@@ -261,7 +273,7 @@ export default function VercelIntegrationPage() {
                 )}
                 <div>
                   <span className="font-medium">Installed:</span>{" "}
-                  {new Date(vercelIntegration.createdAt).toLocaleDateString()}
+                  {formatDate(new Date(vercelIntegration.createdAt))}
                 </div>
               </div>
             </div>
@@ -347,7 +359,7 @@ export default function VercelIntegrationPage() {
                       {projectIntegration.externalEntityId}
                     </TableCell>
                     <TableCell>
-                      {new Date(projectIntegration.createdAt).toLocaleDateString()}
+                      {formatDate(new Date(projectIntegration.createdAt))}
                     </TableCell>
                     <TableCell>
                       <LinkButton

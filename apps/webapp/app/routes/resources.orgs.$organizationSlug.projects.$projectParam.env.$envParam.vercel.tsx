@@ -182,6 +182,7 @@ const CompleteOnboardingFormSchema = z.object({
     .optional()
     .transform((val) => val === "on"),
   syncEnvVarsMapping: z.string().optional(), // JSON-encoded mapping
+  next: z.string().optional(),
 });
 
 const SkipOnboardingFormSchema = z.object({
@@ -348,6 +349,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       vercelStagingName,
       pullEnvVarsFromVercel,
       syncEnvVarsMapping,
+      next,
     } = submission.value;
 
     let parsedMapping: SyncEnvVarsMapping = {};
@@ -373,13 +375,30 @@ export async function action({ request, params }: ActionFunctionArgs) {
     });
 
     if (result) {
-      // Redirect to settings page without the vercelOnboarding param to close the modal
+      // Check if we should redirect to the 'next' URL
+      if (next) {
+        try {
+          // Validate that next is a valid URL
+          const nextUrl = new URL(next);
+          // Only allow https URLs for security
+          if (nextUrl.protocol === "https:") {
+            // Return JSON with redirect URL for fetcher to handle
+            return json({ success: true, redirectTo: next });
+          }
+        } catch (e) {
+          // Invalid URL, fall through to default redirect
+          logger.warn("Invalid next URL provided", { next, error: e });
+        }
+      }
+
+      // Default redirect to settings page without the vercelOnboarding param to close the modal
       const settingsPath = v3ProjectSettingsPath(
         { slug: organizationSlug },
         { slug: projectParam },
         { slug: envParam }
       );
-      return redirectWithSuccessMessage(settingsPath, request, "Vercel integration setup complete");
+      // Return JSON with redirect URL for fetcher to handle
+      return json({ success: true, redirectTo: settingsPath });
     }
 
     const settingsPath = v3ProjectSettingsPath(
@@ -983,6 +1002,7 @@ function VercelOnboardingModal({
   environmentSlug,
   hasStagingEnvironment,
   hasOrgIntegration,
+  nextUrl,
   onDataReload,
 }: {
   isOpen: boolean;
@@ -993,6 +1013,7 @@ function VercelOnboardingModal({
   environmentSlug: string;
   hasStagingEnvironment: boolean;
   hasOrgIntegration: boolean;
+  nextUrl?: string;
   onDataReload?: () => void;
 }) {
   const navigation = useNavigation();
@@ -1260,6 +1281,13 @@ function VercelOnboardingModal({
   // Handle successful onboarding completion
   useEffect(() => {
     if (completeOnboardingFetcher.data && typeof completeOnboardingFetcher.data === "object" && "success" in completeOnboardingFetcher.data && completeOnboardingFetcher.data.success && completeOnboardingFetcher.state === "idle") {
+      // Check if we need to redirect to a specific URL
+      if ("redirectTo" in completeOnboardingFetcher.data && typeof completeOnboardingFetcher.data.redirectTo === "string") {
+        // Navigate to the redirect URL (handles both internal and external URLs)
+        window.location.href = completeOnboardingFetcher.data.redirectTo;
+        return;
+      }
+      // No redirect, just close the modal
       setState("completed");
     }
   }, [completeOnboardingFetcher.data, completeOnboardingFetcher.state]);
@@ -1488,6 +1516,13 @@ function VercelOnboardingModal({
                 name="syncEnvVarsMapping"
                 value={JSON.stringify(syncEnvVarsMapping)}
               />
+              {nextUrl && (
+                <input
+                  type="hidden"
+                  name="next"
+                  value={nextUrl}
+                />
+              )}
 
               <div className="flex flex-col gap-4">
                 <Header3>Sync Environment Variables</Header3>

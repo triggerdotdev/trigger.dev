@@ -117,6 +117,70 @@ export class VercelIntegrationRepository {
   }
 
   /**
+   * Get Vercel integration configuration by configurationId
+   * This is used when Vercel redirects to our callback without a state parameter
+   */
+  static async getVercelIntegrationConfiguration(
+    accessToken: string,
+    configurationId: string,
+    teamId?: string | null
+  ): Promise<{
+    id: string;
+    teamId: string | null;
+    projects: string[];
+  } | null> {
+    try {
+      const client = new Vercel({
+        bearerToken: accessToken,
+      });
+
+      // Use the Vercel SDK to get the integration configuration
+      // The SDK might have a method for this, or we need to make a direct API call
+      const response = await fetch(
+        `https://api.vercel.com/v1/integrations/configuration/${configurationId}${teamId ? `?teamId=${teamId}` : ""}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        logger.error("Failed to fetch Vercel integration configuration", {
+          status: response.status,
+          error: errorText,
+          configurationId,
+          teamId,
+        });
+        return null;
+      }
+
+      const data = (await response.json()) as {
+        id: string;
+        teamId?: string | null;
+        projects?: string[];
+        [key: string]: any;
+      };
+
+      return {
+        id: data.id,
+        teamId: data.teamId ?? null,
+        projects: data.projects || [],
+      };
+    } catch (error) {
+      logger.error("Error fetching Vercel integration configuration", {
+        configurationId,
+        teamId,
+        error,
+      });
+      return null;
+    }
+  }
+
+  /**
    * Fetch custom environments for a Vercel project.
    * Excludes standard environments (production, preview, development).
    */

@@ -42,7 +42,7 @@ export type GitMetaLinks = {
   /** The git provider, e.g., `github` */
   provider?: string;
 
-  source?: "trigger_github_app" | "github_actions" | "local";
+  source?: "trigger_github_app" | "github_actions" | "local" | "trigger_vercel_app";
   ghUsername?: string;
   ghUserAvatarUrl?: string;
 };

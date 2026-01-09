@@ -310,6 +310,7 @@ export default function Page() {
 
   // Vercel onboarding modal state
   const hasQueryParam = searchParams.get("vercelOnboarding") === "true";
+  const nextUrl = searchParams.get("next");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const vercelFetcher = useTypedFetcher<any>();
 
@@ -621,6 +622,7 @@ export default function Page() {
           environmentSlug={environment.slug}
           hasStagingEnvironment={vercelFetcher.data?.hasStagingEnvironment ?? false}
           hasOrgIntegration={vercelFetcher.data?.hasOrgIntegration ?? false}
+          nextUrl={nextUrl ?? undefined}
           onDataReload={() => {
             vercelFetcher.load(
               `${vercelResourcePath(organization.slug, project.slug, environment.slug)}?vercelOnboarding=true`

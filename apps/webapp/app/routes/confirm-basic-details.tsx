@@ -105,7 +105,28 @@ export const action: ActionFunction = async ({ request }) => {
       referralSource: submission.value.referralSource,
     });
 
-    return redirectWithSuccessMessage(rootPath(), request, "Your details have been updated.");
+    // Preserve Vercel integration params if present
+    const url = new URL(request.url);
+    const code = url.searchParams.get("code");
+    const configurationId = url.searchParams.get("configurationId");
+    const integration = url.searchParams.get("integration");
+    const next = url.searchParams.get("next");
+    let redirectUrl = rootPath();
+
+    if (code && configurationId && integration === "vercel") {
+      // Redirect to orgs/new with params preserved
+      const params = new URLSearchParams({
+        code,
+        configurationId,
+        integration,
+      });
+      if (next) {
+        params.set("next", next);
+      }
+      redirectUrl = `/orgs/new?${params.toString()}`;
+    }
+
+    return redirectWithSuccessMessage(redirectUrl, request, "Your details have been updated.");
   } catch (error: any) {
     return json({ errors: { body: error.message } }, { status: 400 });
   }

@@ -103,6 +103,12 @@ export const action: ActionFunction = async ({ request, params }) => {
     return json(submission);
   }
 
+  // Check for Vercel integration params in URL
+  const url = new URL(request.url);
+  const code = url.searchParams.get("code");
+  const configurationId = url.searchParams.get("configurationId");
+  const next = url.searchParams.get("next");
+
   try {
     const project = await createProject({
       organizationSlug: organizationSlug,
@@ -110,6 +116,19 @@ export const action: ActionFunction = async ({ request, params }) => {
       userId,
       version: submission.value.projectVersion,
     });
+
+    // If this is a Vercel integration flow, redirect back to callback
+    if (code && configurationId) {
+      const params = new URLSearchParams({
+        code,
+        configurationId,
+      });
+      if (next) {
+        params.set("next", next);
+      }
+      const callbackUrl = `/callback/vercel?${params.toString()}`;
+      return redirect(callbackUrl);
+    }
 
     return redirectWithSuccessMessage(
       v3ProjectPath(project.organization, project),

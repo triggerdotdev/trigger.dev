@@ -9,8 +9,8 @@ import { logger } from "~/services/logger.server";
 import { getUserId, requireUserId } from "~/services/session.server";
 import { setReferralSourceCookie } from "~/services/referralSource.server";
 import { requestUrl } from "~/utils/requestUrl.server";
-import { v3ProjectSettingsPath } from "~/utils/pathBuilder";
-import { validateVercelOAuthState } from "~/v3/vercel/vercelOAuthState.server";
+import { v3ProjectSettingsPath, confirmBasicDetailsPath, newOrganizationPath, newProjectPath } from "~/utils/pathBuilder";
+import { validateVercelOAuthState, generateVercelOAuthState } from "~/v3/vercel/vercelOAuthState.server";
 
 /**
  * Schema for Vercel OAuth callback query parameters.
@@ -61,8 +61,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const userId = await getUserId(request);
   
   // If not authenticated, set referral source cookie and redirect to login
+  // Preserve all search params (code, configurationId, etc.) in the redirectTo
   if (!userId) {
     const currentUrl = new URL(request.url);
+    // Preserve the full URL including all search params
     const redirectTo = `${currentUrl.pathname}${currentUrl.search}`;
     const referralCookie = await setReferralSourceCookie("vercel");
     
@@ -98,13 +100,222 @@ export async function loader({ request }: LoaderFunctionArgs) {
     throw new Response("Missing authorization code", { status: 400 });
   }
 
+  // Handle case when state is missing (Vercel-side installation)
   if (!state) {
-    logger.error("Missing state parameter from Vercel callback");
-    throw new Response("Missing state parameter", { status: 400 });
+    if (!configurationId) {
+      logger.error("Missing both state and configurationId from Vercel callback");
+      throw new Response("Missing state or configurationId parameter", { status: 400 });
+    }
+
+    // Check if user has organizations
+    const userOrganizations = await prisma.organization.findMany({
+      where: {
+        members: {
+          some: {
+            userId: authenticatedUserId,
+          },
+        },
+        deletedAt: null,
+      },
+      include: {
+        projects: {
+          where: {
+            deletedAt: null,
+          },
+        },
+      },
+    });
+
+    // If user has no organizations, redirect to onboarding
+    if (userOrganizations.length === 0) {
+      const params = new URLSearchParams({
+        code,
+        configurationId,
+        integration: "vercel",
+      });
+      if (parsedParams.data.next) {
+        params.set("next", parsedParams.data.next);
+      }
+      const onboardingUrl = `${confirmBasicDetailsPath()}?${params.toString()}`;
+      return redirect(onboardingUrl);
+    }
+
+    // If user has organizations but no projects, redirect to project creation
+    const hasProjects = userOrganizations.some((org) => org.projects.length > 0);
+    if (!hasProjects) {
+      // Redirect to the first organization's project creation page
+      const firstOrg = userOrganizations[0];
+      const params = new URLSearchParams({
+        code,
+        configurationId,
+        integration: "vercel",
+      });
+      if (parsedParams.data.next) {
+        params.set("next", parsedParams.data.next);
+      }
+      const projectUrl = `${newProjectPath({ slug: firstOrg.slug })}?${params.toString()}`;
+      return redirect(projectUrl);
+    }
+
+    // User has orgs and projects - handle the installation after onboarding
+    // Exchange code for access token first
+    const tokenResponse = await exchangeCodeForToken(code);
+    if (!tokenResponse) {
+      return redirectWithErrorMessage(
+        "/",
+        request,
+        "Failed to connect to Vercel. Please try again."
+      );
+    }
+
+    // Fetch configuration from Vercel
+    const config = await VercelIntegrationRepository.getVercelIntegrationConfiguration(
+      tokenResponse.accessToken,
+      configurationId,
+      tokenResponse.teamId ?? null
+    );
+
+    if (!config) {
+      return redirectWithErrorMessage(
+        "/",
+        request,
+        "Failed to fetch Vercel integration configuration. Please try again."
+      );
+    }
+
+    // Get user's first organization and project
+    const userOrg = userOrganizations[0];
+    const userProject = userOrg.projects[0];
+
+    if (!userProject) {
+      // This shouldn't happen since we checked above, but handle it anyway
+      const projectUrl = `${newProjectPath({ slug: userOrg.slug })}?code=${encodeURIComponent(code)}&configurationId=${encodeURIComponent(configurationId)}&integration=vercel`;
+      return redirect(projectUrl);
+    }
+
+    // Get the default environment (prod)
+    const environment = await prisma.runtimeEnvironment.findFirst({
+      where: {
+        projectId: userProject.id,
+        slug: "prod",
+        archivedAt: null,
+      },
+    });
+
+    if (!environment) {
+      return redirectWithErrorMessage(
+        "/",
+        request,
+        "Failed to find project environment. Please try again."
+      );
+    }
+
+    // Generate state JWT for the integration
+    const stateJWT = await generateVercelOAuthState({
+      organizationId: userOrg.id,
+      projectId: userProject.id,
+      environmentSlug: environment.slug,
+      organizationSlug: userOrg.slug,
+      projectSlug: userProject.slug,
+    });
+
+    // Now proceed with the normal flow using the generated state
+    // We'll use the stateData from the generated state
+    const stateData = {
+      organizationId: userOrg.id,
+      projectId: userProject.id,
+      environmentSlug: environment.slug,
+      organizationSlug: userOrg.slug,
+      projectSlug: userProject.slug,
+    };
+
+    const project = await prisma.project.findFirst({
+      where: {
+        id: stateData.projectId,
+        organizationId: stateData.organizationId,
+        deletedAt: null,
+        organization: {
+          members: {
+            some: {
+              userId: authenticatedUserId,
+            },
+          },
+        },
+      },
+      include: {
+        organization: true,
+      },
+    });
+
+    if (!project) {
+      logger.error("Project not found or user does not have access", {
+        projectId: stateData.projectId,
+        userId: authenticatedUserId,
+      });
+      throw new Response("Project not found", { status: 404 });
+    }
+
+    // Create the integration
+    try {
+      // Check if we already have a Vercel org integration for this team
+      let orgIntegration = await VercelIntegrationRepository.findVercelOrgIntegrationByTeamId(
+        project.organizationId,
+        tokenResponse.teamId ?? null
+      );
+
+      // Create org integration if it doesn't exist
+      if (!orgIntegration) {
+        const newIntegration = await VercelIntegrationRepository.createVercelOrgIntegration({
+          accessToken: tokenResponse.accessToken,
+          tokenType: tokenResponse.tokenType,
+          teamId: tokenResponse.teamId ?? null,
+          userId: tokenResponse.userId,
+          installationId: configurationId,
+          organization: project.organization,
+          raw: tokenResponse.raw,
+        });
+
+        // Re-fetch to get the full integration with tokenReference
+        orgIntegration = await VercelIntegrationRepository.findVercelOrgIntegrationByTeamId(
+          project.organizationId,
+          tokenResponse.teamId ?? null
+        );
+      }
+
+      if (!orgIntegration) {
+        throw new Error("Failed to create or find Vercel organization integration");
+      }
+
+      logger.info("Vercel organization integration created successfully after onboarding", {
+        organizationId: project.organizationId,
+        projectId: project.id,
+        teamId: tokenResponse.teamId,
+      });
+
+      // Redirect to settings page with onboarding query parameter
+      const settingsPath = v3ProjectSettingsPath(
+        { slug: stateData.organizationSlug },
+        { slug: stateData.projectSlug },
+        { slug: stateData.environmentSlug }
+      );
+
+      const params = new URLSearchParams({ vercelOnboarding: "true" });
+      if (parsedParams.data.next) {
+        params.set("next", parsedParams.data.next);
+      }
+      return redirect(`${settingsPath}?${params.toString()}`);
+    } catch (error) {
+      logger.error("Failed to create Vercel integration after onboarding", { error });
+      return redirectWithErrorMessage(
+        "/",
+        request,
+        "Failed to create Vercel integration. Please try again."
+      );
+    }
   }
 
-  // Validate and decode JWT state
-  const validationResult = await validateVercelOAuthState(state);
+  // Validate and decode JWT state (existing flow)
+  const validationResult = await validateVercelOAuthState(state!);
 
   if (!validationResult.ok) {
     logger.error("Invalid Vercel OAuth state JWT", {
@@ -199,14 +410,18 @@ export async function loader({ request }: LoaderFunctionArgs) {
       teamId: tokenResponse.teamId,
     });
 
-    // Redirect to settings page with onboarding query parameter
-    const settingsPath = v3ProjectSettingsPath(
-      { slug: stateData.organizationSlug },
-      { slug: stateData.projectSlug },
-      { slug: stateData.environmentSlug }
-    );
+      // Redirect to settings page with onboarding query parameter
+      const settingsPath = v3ProjectSettingsPath(
+        { slug: stateData.organizationSlug },
+        { slug: stateData.projectSlug },
+        { slug: stateData.environmentSlug }
+      );
 
-    return redirect(`${settingsPath}?vercelOnboarding=true`);
+      const params = new URLSearchParams({ vercelOnboarding: "true" });
+      if (parsedParams.data.next) {
+        params.set("next", parsedParams.data.next);
+      }
+      return redirect(`${settingsPath}?${params.toString()}`);
   } catch (error) {
     logger.error("Failed to create Vercel integration", { error });
     return redirectWithErrorMessage(
