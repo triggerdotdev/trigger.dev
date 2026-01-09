@@ -97,6 +97,9 @@ export class RunsReplicationHarness {
 
     // 9. Start consumer process
     console.log("\nStarting consumer process...");
+    // Set outputDir for shutdown signal file (needed when IPC isn't available under Clinic.js)
+    this.config.consumer.outputDir = this.config.profiling.outputDir;
+
     this.consumerProcess = new ConsumerProcessManager(
       this.config.consumer,
       this.config.profiling
@@ -282,15 +285,59 @@ export class RunsReplicationHarness {
     );
 
     // Drop existing replication slot if it exists (ensures clean slate)
-    const slotExists = await this.prisma!.$queryRaw<Array<{ slot_name: string }>>`
-      SELECT slot_name FROM pg_replication_slots WHERE slot_name = ${this.config.consumer.slotName};
+    const slotExists = await this.prisma!.$queryRaw<
+      Array<{ slot_name: string; active: boolean; active_pid: number | null }>
+    >`
+      SELECT slot_name, active, active_pid FROM pg_replication_slots WHERE slot_name = ${this.config.consumer.slotName};
     `;
 
     if (slotExists.length > 0) {
+      const slot = slotExists[0];
       console.log(`🧹 Dropping existing replication slot: ${this.config.consumer.slotName}`);
-      await this.prisma!.$executeRawUnsafe(
-        `SELECT pg_drop_replication_slot('${this.config.consumer.slotName}');`
-      );
+
+      // If the slot is active, terminate the backend process first
+      if (slot.active && slot.active_pid) {
+        console.log(
+          `⚠️  Replication slot is active for PID ${slot.active_pid}, terminating backend...`
+        );
+        try {
+          await this.prisma!.$executeRawUnsafe(
+            `SELECT pg_terminate_backend(${slot.active_pid});`
+          );
+          console.log(`✅ Terminated backend process ${slot.active_pid}`);
+
+          // Wait a bit for the termination to complete
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        } catch (error) {
+          console.warn(
+            `⚠️  Could not terminate backend ${slot.active_pid}, it may have already exited`
+          );
+        }
+      }
+
+      // Now try to drop the slot with retry logic
+      let attempts = 0;
+      const maxAttempts = 5;
+      while (attempts < maxAttempts) {
+        try {
+          await this.prisma!.$executeRawUnsafe(
+            `SELECT pg_drop_replication_slot('${this.config.consumer.slotName}');`
+          );
+          console.log(`✅ Dropped replication slot: ${this.config.consumer.slotName}`);
+          break;
+        } catch (error: any) {
+          attempts++;
+          if (attempts === maxAttempts) {
+            throw new Error(
+              `Failed to drop replication slot after ${maxAttempts} attempts: ${error.message}`
+            );
+          }
+          console.log(
+            `⚠️  Slot still active, waiting 2s before retry (attempt ${attempts}/${maxAttempts})...`
+          );
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
+      }
     }
 
     // Drop and recreate publication (ensures clean slate)

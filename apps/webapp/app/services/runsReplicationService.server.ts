@@ -772,7 +772,7 @@ export class RunsReplicationService {
 
   async #insertTaskRunInserts(taskRunInserts: TaskRunV2[], attempt: number) {
     return await startSpan(this._tracer, "insertTaskRunsInserts", async (span) => {
-      const [insertError, insertResult] = await this.options.clickhouse.taskRuns.insert(
+      const [insertError, insertResult] = await this.options.clickhouse.taskRuns.insertUnsafe(
         taskRunInserts,
         {
           params: {
@@ -797,7 +797,7 @@ export class RunsReplicationService {
 
   async #insertPayloadInserts(payloadInserts: RawTaskRunPayloadV1[], attempt: number) {
     return await startSpan(this._tracer, "insertPayloadInserts", async (span) => {
-      const [insertError, insertResult] = await this.options.clickhouse.taskRuns.insertPayloads(
+      const [insertError, insertResult] = await this.options.clickhouse.taskRuns.insertPayloadsUnsafe(
         payloadInserts,
         {
           params: {
