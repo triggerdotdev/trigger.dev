@@ -80,6 +80,7 @@ import { PauseEnvironmentService } from "~/v3/services/pauseEnvironment.server";
 import { PauseQueueService } from "~/v3/services/pauseQueue.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
+import { QueueName } from "~/components/runs/v3/QueueName";
 
 const SearchParamsSchema = z.object({
   query: z.string().optional(),
@@ -516,34 +517,7 @@ export default function Page() {
                         <TableRow key={queue.name}>
                           <TableCell>
                             <span className="flex items-center gap-2">
-                              {queue.type === "task" ? (
-                                <SimpleTooltip
-                                  button={
-                                    <TaskIconSmall
-                                      className={cn(
-                                        "size-[1.125rem] text-blue-500",
-                                        queue.paused && "opacity-50"
-                                      )}
-                                    />
-                                  }
-                                  content={`This queue was automatically created from your "${queue.name}" task`}
-                                />
-                              ) : (
-                                <SimpleTooltip
-                                  button={
-                                    <RectangleStackIcon
-                                      className={cn(
-                                        "size-[1.125rem] text-purple-500",
-                                        queue.paused && "opacity-50"
-                                      )}
-                                    />
-                                  }
-                                  content={`This is a custom queue you added in your code.`}
-                                />
-                              )}
-                              <span className={queue.paused ? "opacity-50" : undefined}>
-                                {queue.name}
-                              </span>
+                              <QueueName {...queue} />
                               {queue.concurrency?.overriddenAt ? (
                                 <SimpleTooltip
                                   button={

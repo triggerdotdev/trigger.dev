@@ -31,6 +31,19 @@ export type * from "./taskRuns.js";
 export type * from "./taskEvents.js";
 export type * from "./client/queryBuilder.js";
 
+// TSQL query execution
+export {
+  executeTSQL,
+  createTSQLExecutor,
+  type ExecuteTSQLOptions,
+  type TableSchema,
+  type TSQLQueryResult,
+  type TSQLQuerySuccess,
+  type QueryStats,
+  type FieldMappings,
+} from "./client/tsql.js";
+export type { OutputColumnMetadata } from "@internal/tsql";
+
 export type ClickhouseCommonConfig = {
   keepAlive?: {
     enabled?: boolean;

@@ -20,6 +20,8 @@ async function setup() {
   await import("prismjs/components/prism-json");
   //@ts-ignore
   await import("prismjs/components/prism-typescript");
+  //@ts-ignore
+  await import("prismjs/components/prism-sql.js");
 }
 setup();
 
@@ -470,6 +472,8 @@ function HighlightCode({
       import("prismjs/components/prism-json"),
       //@ts-ignore
       import("prismjs/components/prism-typescript"),
+      //@ts-ignore
+      import("prismjs/components/prism-sql.js"),
     ]).then(() => setIsLoaded(true));
   }, []);
 
