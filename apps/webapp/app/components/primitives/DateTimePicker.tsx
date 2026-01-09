@@ -84,7 +84,7 @@ export function DateTimePicker({
           <button
             type="button"
             className={cn(
-              "flex h-[1.8rem] w-full items-center justify-between gap-2 whitespace-nowrap rounded border border-charcoal-600 bg-charcoal-750 px-2 text-xs tabular-nums transition hover:border-charcoal-500",
+              "flex h-[1.8rem] w-full items-center justify-between gap-2 whitespace-nowrap rounded border border-charcoal-650 bg-charcoal-750 px-2 text-xs tabular-nums transition hover:border-charcoal-600",
               value ? "text-text-bright" : "text-text-dimmed"
             )}
           >
@@ -107,7 +107,7 @@ export function DateTimePicker({
         value={value ? timeValue : ""}
         onChange={handleTimeChange}
         className={cn(
-          "h-[1.8rem] rounded border border-charcoal-600 bg-charcoal-750 px-2 text-xs tabular-nums transition hover:border-charcoal-500",
+          "h-[1.8rem] rounded border border-charcoal-650 bg-charcoal-750 px-2 text-xs tabular-nums transition hover:border-charcoal-600",
           "text-text-bright placeholder:text-text-dimmed",
           "focus:border-charcoal-500 focus:outline-none",
           "[&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
