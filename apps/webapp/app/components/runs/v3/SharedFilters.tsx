@@ -16,8 +16,7 @@ import {
   isSunday,
 } from "date-fns";
 import parse from "parse-duration";
-import type { ReactNode } from "react";
-import { startTransition, useCallback, useEffect, useState } from "react";
+import { startTransition, useCallback, useEffect, useState, type ReactNode } from "react";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { DateTimePicker } from "~/components/primitives/DateTimePicker";
 import { DateTime } from "~/components/primitives/DateTime";
@@ -462,6 +461,7 @@ export function TimeDropdown({
                     step="1"
                     placeholder="Custom"
                     value={customValue}
+                    autoFocus
                     onChange={(e) => {
                       setCustomValue(e.target.value);
                       setSelectedPeriod("custom");
