@@ -290,16 +290,12 @@ export function TimeFilter() {
   );
 }
 
-// Get initial custom duration state from a period string (only if it's not a preset)
+// Get initial custom duration state from a period string
 function getInitialCustomDuration(period?: string): { value: string; unit: string } {
   if (period) {
-    // Don't populate custom field if it's a preset period
-    const isPreset = timePeriods.some((p) => p.value === period);
-    if (!isPreset) {
-      const parsed = parsePeriodString(period);
-      if (parsed) {
-        return { value: parsed.value.toString(), unit: parsed.unit };
-      }
+    const parsed = parsePeriodString(period);
+    if (parsed) {
+      return { value: parsed.value.toString(), unit: parsed.unit };
     }
   }
   return { value: "", unit: "m" };
