@@ -75,16 +75,25 @@ async function findStaticAssetFiles(
 
 // Extracts the base directory from a glob pattern (the non-wildcard prefix).
 // For example: "../shared/**" -> "../shared", "./assets/*.txt" -> "./assets"
+// For specific files without globs: "./config/settings.json" -> "./config" (parent dir)
 function getGlobBase(pattern: string): string {
   const parts = pattern.split(/[/\\]/);
   const baseParts: string[] = [];
+  let hasGlobCharacters = false;
 
   for (const part of parts) {
     // Stop at the first part that contains glob characters
     if (part.includes("*") || part.includes("?") || part.includes("[") || part.includes("{")) {
+      hasGlobCharacters = true;
       break;
     }
     baseParts.push(part);
+  }
+
+  // If no glob characters were found, the pattern is a specific file path.
+  // Return the parent directory so that relative() preserves the filename.
+  if (!hasGlobCharacters && baseParts.length > 1) {
+    baseParts.pop(); // Remove the filename, keep the directory
   }
 
   return baseParts.length > 0 ? baseParts.join(posix.sep) : ".";
