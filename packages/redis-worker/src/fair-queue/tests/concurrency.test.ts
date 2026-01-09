@@ -222,6 +222,167 @@ describe("ConcurrencyManager", () => {
     );
   });
 
+  describe("getAvailableCapacity", () => {
+    redisTest(
+      "should return available capacity for single group",
+      { timeout: 10000 },
+      async ({ redisOptions }) => {
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+
+        const manager = new ConcurrencyManager({
+          redis: redisOptions,
+          keys,
+          groups: [
+            {
+              name: "tenant",
+              extractGroupId: (q) => q.tenantId,
+              getLimit: async () => 10,
+              defaultLimit: 10,
+            },
+          ],
+        });
+
+        const queue: QueueDescriptor = {
+          id: "queue-1",
+          tenantId: "t1",
+          metadata: {},
+        };
+
+        // Initial capacity should be full
+        let capacity = await manager.getAvailableCapacity(queue);
+        expect(capacity).toBe(10);
+
+        // Reserve 3 slots
+        await manager.reserve(queue, "msg-1");
+        await manager.reserve(queue, "msg-2");
+        await manager.reserve(queue, "msg-3");
+
+        // Capacity should be reduced
+        capacity = await manager.getAvailableCapacity(queue);
+        expect(capacity).toBe(7);
+
+        await manager.close();
+      }
+    );
+
+    redisTest(
+      "should return minimum capacity across multiple groups",
+      { timeout: 10000 },
+      async ({ redisOptions }) => {
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+
+        const manager = new ConcurrencyManager({
+          redis: redisOptions,
+          keys,
+          groups: [
+            {
+              name: "tenant",
+              extractGroupId: (q) => q.tenantId,
+              getLimit: async () => 5,
+              defaultLimit: 5,
+            },
+            {
+              name: "organization",
+              extractGroupId: (q) => (q.metadata.orgId as string) ?? "default",
+              getLimit: async () => 20,
+              defaultLimit: 20,
+            },
+          ],
+        });
+
+        const queue: QueueDescriptor = {
+          id: "queue-1",
+          tenantId: "t1",
+          metadata: { orgId: "org1" },
+        };
+
+        // Initial capacity should be minimum (5 for tenant, 20 for org)
+        let capacity = await manager.getAvailableCapacity(queue);
+        expect(capacity).toBe(5);
+
+        // Reserve 3 slots
+        await manager.reserve(queue, "msg-1");
+        await manager.reserve(queue, "msg-2");
+        await manager.reserve(queue, "msg-3");
+
+        // Now tenant has 2 left, org has 17 left - minimum is 2
+        capacity = await manager.getAvailableCapacity(queue);
+        expect(capacity).toBe(2);
+
+        await manager.close();
+      }
+    );
+
+    redisTest(
+      "should return 0 when any group is at capacity",
+      { timeout: 10000 },
+      async ({ redisOptions }) => {
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+
+        const manager = new ConcurrencyManager({
+          redis: redisOptions,
+          keys,
+          groups: [
+            {
+              name: "tenant",
+              extractGroupId: (q) => q.tenantId,
+              getLimit: async () => 3,
+              defaultLimit: 3,
+            },
+            {
+              name: "organization",
+              extractGroupId: (q) => (q.metadata.orgId as string) ?? "default",
+              getLimit: async () => 10,
+              defaultLimit: 10,
+            },
+          ],
+        });
+
+        const queue: QueueDescriptor = {
+          id: "queue-1",
+          tenantId: "t1",
+          metadata: { orgId: "org1" },
+        };
+
+        // Fill up tenant capacity
+        await manager.reserve(queue, "msg-1");
+        await manager.reserve(queue, "msg-2");
+        await manager.reserve(queue, "msg-3");
+
+        // Tenant is at 3/3, org is at 3/10
+        const capacity = await manager.getAvailableCapacity(queue);
+        expect(capacity).toBe(0);
+
+        await manager.close();
+      }
+    );
+
+    redisTest(
+      "should return 0 when no groups are configured",
+      { timeout: 10000 },
+      async ({ redisOptions }) => {
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+
+        const manager = new ConcurrencyManager({
+          redis: redisOptions,
+          keys,
+          groups: [],
+        });
+
+        const queue: QueueDescriptor = {
+          id: "queue-1",
+          tenantId: "t1",
+          metadata: {},
+        };
+
+        const capacity = await manager.getAvailableCapacity(queue);
+        expect(capacity).toBe(0);
+
+        await manager.close();
+      }
+    );
+  });
+
   describe("atomic reservation", () => {
     redisTest(
       "should atomically reserve across groups",

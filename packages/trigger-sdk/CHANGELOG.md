@@ -1,5 +1,13 @@
 # @trigger.dev/sdk
 
+## 4.3.2
+
+### Patch Changes
+
+- Improve batch trigger error messages, especially when rate limited ([#2837](https://github.com/triggerdotdev/trigger.dev/pull/2837))
+- Updated dependencies:
+  - `@trigger.dev/core@4.3.2`
+
 ## 4.3.1
 
 ### Patch Changes

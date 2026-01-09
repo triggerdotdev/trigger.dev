@@ -158,7 +158,7 @@ const { action, loader } = createActionApiRoute(
             status: 429,
             headers: {
               "X-RateLimit-Limit": error.limit.toString(),
-              "X-RateLimit-Remaining": error.remaining.toString(),
+              "X-RateLimit-Remaining": Math.max(0, error.remaining).toString(),
               "X-RateLimit-Reset": Math.floor(error.resetAt.getTime() / 1000).toString(),
               "Retry-After": Math.max(
                 1,

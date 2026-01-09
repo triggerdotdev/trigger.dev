@@ -101,12 +101,17 @@ export class WorkerQueueManager {
     // This is required because BLPOP blocks the connection
     const blockingClient = this.redis.duplicate();
 
+    // Define cleanup outside try so it's accessible in finally
+    // This prevents listener accumulation on the AbortSignal
+    const cleanup = signal
+      ? () => {
+          blockingClient.disconnect();
+        }
+      : null;
+
     try {
       // Set up abort handler
-      if (signal) {
-        const cleanup = () => {
-          blockingClient.disconnect();
-        };
+      if (signal && cleanup) {
         signal.addEventListener("abort", cleanup, { once: true });
 
         if (signal.aborted) {
@@ -143,6 +148,11 @@ export class WorkerQueueManager {
 
       throw error;
     } finally {
+      // Always remove the listener to prevent accumulation on the AbortSignal
+      // (once: true only removes if abort fires, not on normal completion)
+      if (cleanup && signal) {
+        signal.removeEventListener("abort", cleanup);
+      }
       await blockingClient.quit().catch(() => {
         // Ignore quit errors (may already be disconnected)
       });

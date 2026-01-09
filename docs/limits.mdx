@@ -13,7 +13,7 @@ import RateLimitHitUseBatchTrigger from "/snippets/rate-limit-hit-use-batchtrigg
 | Hobby        | 25 concurrent runs   |
 | Pro          | 100+ concurrent runs |
 
-Additional bundles above the Pro tier are available for $50/month per 50 concurrent runs. Contact us via [email](https://trigger.dev/contact) or [Discord](https://trigger.dev/discord) to request more.
+Extra concurrency above the Pro tier limit is available via the dashboard. Click the "Concurrency" page from the left sidebar when on the Pro plan to purchase more.
 
 ## Rate limits
 
@@ -100,6 +100,10 @@ Batch triggering uses a token bucket algorithm to rate limit the number of runs 
 | Pro          | 5,000 runs  | 500 runs every 5 sec  |
 
 **How it works**: You can burst up to your bucket size, then tokens refill at the specified rate. For example, a Free user can trigger 1,200 runs immediately, then must wait for tokens to refill (100 runs become available every 10 seconds).
+
+<Note>
+  When you hit batch rate limits, the SDK throws a `BatchTriggerError` with `isRateLimited: true`. See [Handling batch trigger errors](/triggering#handling-batch-trigger-errors) for how to detect and react to rate limits in your code.
+</Note>
 
 ## Batch processing concurrency
 

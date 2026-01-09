@@ -1,19 +1,24 @@
-import { createRedisClient, type Redis, type RedisOptions } from "@internal/redis";
+import { createRedisClient, type Redis } from "@internal/redis";
 import {
   startSpan,
   type Counter,
   type Histogram,
   type Meter,
+  type ObservableGauge,
   type Span,
   type Tracer,
 } from "@internal/tracing";
+import { Logger } from "@trigger.dev/core/logger";
 import {
-  FairQueue,
-  DRRScheduler,
+  BatchedSpanManager,
   CallbackFairQueueKeyProducer,
+  DRRScheduler,
+  FairQueue,
+  isAbortError,
+  WorkerQueueManager,
   type FairQueueOptions,
 } from "@trigger.dev/redis-worker";
-import { Logger } from "@trigger.dev/core/logger";
+import { BatchCompletionTracker } from "./completionTracker.js";
 import type {
   BatchCompletionCallback,
   BatchItem,
@@ -25,10 +30,9 @@ import type {
   ProcessBatchItemCallback,
 } from "./types.js";
 import { BatchItemPayload as BatchItemPayloadSchema } from "./types.js";
-import { BatchCompletionTracker } from "./completionTracker.js";
 
-export type { BatchQueueOptions, InitializeBatchOptions, CompleteBatchResult } from "./types.js";
 export { BatchCompletionTracker } from "./completionTracker.js";
+export type { BatchQueueOptions, CompleteBatchResult, InitializeBatchOptions } from "./types.js";
 
 /**
  * BatchQueue manages batch trigger processing with fair scheduling using
@@ -48,8 +52,14 @@ export { BatchCompletionTracker } from "./completionTracker.js";
 // Redis key for environment concurrency limits
 const ENV_CONCURRENCY_KEY_PREFIX = "batch:env_concurrency";
 
+// Single worker queue ID for all batch items
+// BatchQueue uses a single shared worker queue - FairQueue handles fair scheduling,
+// then all messages are routed to this queue for BatchQueue's own consumer loop.
+const BATCH_WORKER_QUEUE_ID = "batch-worker-queue";
+
 export class BatchQueue {
   private fairQueue: FairQueue<typeof BatchItemPayloadSchema>;
+  private workerQueueManager: WorkerQueueManager;
   private completionTracker: BatchCompletionTracker;
   private logger: Logger;
   private tracer?: Tracer;
@@ -59,6 +69,13 @@ export class BatchQueue {
   private processItemCallback?: ProcessBatchItemCallback;
   private completionCallback?: BatchCompletionCallback;
 
+  // Consumer loop state
+  private isRunning = false;
+  private abortController: AbortController;
+  private workerQueueConsumerLoops: Promise<void>[] = [];
+  private workerQueueBlockingTimeoutSeconds: number;
+  private batchedSpanManager: BatchedSpanManager;
+
   // Metrics
   private batchesEnqueuedCounter?: Counter;
   private itemsEnqueuedCounter?: Counter;
@@ -67,11 +84,14 @@ export class BatchQueue {
   private batchCompletedCounter?: Counter;
   private batchProcessingDurationHistogram?: Histogram;
   private itemQueueTimeHistogram?: Histogram;
+  private workerQueueLengthGauge?: ObservableGauge;
 
   constructor(private options: BatchQueueOptions) {
     this.logger = options.logger ?? new Logger("BatchQueue", options.logLevel ?? "info");
     this.tracer = options.tracer;
     this.defaultConcurrency = options.defaultConcurrency ?? 10;
+    this.abortController = new AbortController();
+    this.workerQueueBlockingTimeoutSeconds = options.workerQueueBlockingTimeoutSeconds ?? 10;
 
     // Initialize metrics if meter is provided
     if (options.meter) {
@@ -108,6 +128,7 @@ export class BatchQueue {
       keys: keyProducer,
       quantum: options.drr.quantum,
       maxDeficit: options.drr.maxDeficit,
+      masterQueueLimit: options.drr.masterQueueLimit,
       logger: {
         debug: (msg, ctx) => this.logger.debug(msg, ctx),
         error: (msg, ctx) => this.logger.error(msg, ctx),
@@ -115,13 +136,15 @@ export class BatchQueue {
     });
 
     // Create FairQueue with telemetry and environment-based concurrency limiting
+    // FairQueue handles fair scheduling and routes messages to the batch worker queue
+    // BatchQueue runs its own consumer loop to process messages from the worker queue
     const fairQueueOptions: FairQueueOptions<typeof BatchItemPayloadSchema> = {
       redis: options.redis,
       keys: keyProducer,
       scheduler,
       payloadSchema: BatchItemPayloadSchema,
       validateOnEnqueue: false, // We control the payload
-      shardCount: 1, // Batches don't need sharding
+      shardCount: options.shardCount ?? 1,
       consumerCount: options.consumerCount,
       consumerIntervalMs: options.consumerIntervalMs,
       visibilityTimeoutMs: 60_000, // 1 minute for batch item processing
@@ -130,6 +153,11 @@ export class BatchQueue {
         enabled: true,
         threshold: 5,
         periodMs: 5_000,
+      },
+      // Worker queue configuration - FairQueue routes all messages to our single worker queue
+      workerQueue: {
+        // All batch items go to the same worker queue - BatchQueue handles consumption
+        resolveWorkerQueue: () => BATCH_WORKER_QUEUE_ID,
       },
       // Concurrency group based on tenant (environment)
       // This limits how many batch items can be processed concurrently per environment
@@ -157,6 +185,24 @@ export class BatchQueue {
 
     this.fairQueue = new FairQueue(fairQueueOptions);
 
+    // Create worker queue manager for consuming from the batch worker queue
+    this.workerQueueManager = new WorkerQueueManager({
+      redis: options.redis,
+      keys: keyProducer,
+      logger: {
+        debug: (msg, ctx) => this.logger.debug(msg, ctx),
+        error: (msg, ctx) => this.logger.error(msg, ctx),
+      },
+    });
+
+    // Initialize batched span manager for worker queue consumer tracing
+    this.batchedSpanManager = new BatchedSpanManager({
+      tracer: options.tracer,
+      name: "batch-queue-worker",
+      maxIterations: options.consumerTraceMaxIterations ?? 1000,
+      timeoutSeconds: options.consumerTraceTimeoutSeconds ?? 60,
+    });
+
     // Create completion tracker
     this.completionTracker = new BatchCompletionTracker({
       redis: options.redis,
@@ -165,11 +211,6 @@ export class BatchQueue {
         info: (msg, ctx) => this.logger.info(msg, ctx),
         error: (msg, ctx) => this.logger.error(msg, ctx),
       },
-    });
-
-    // Set up message handler
-    this.fairQueue.onMessage(async (ctx) => {
-      await this.#handleMessage(ctx);
     });
 
     // Register telemetry gauge callbacks for observable metrics
@@ -247,8 +288,7 @@ export class BatchQueue {
 
     // Record metric
     this.batchesEnqueuedCounter?.add(1, {
-      envId: options.environmentId,
-      itemCount: options.runCount,
+      environment_type: options.environmentType,
       streaming: true,
     });
 
@@ -318,7 +358,7 @@ export class BatchQueue {
     });
 
     // Record metric
-    this.itemsEnqueuedCounter?.add(1, { envId });
+    this.itemsEnqueuedCounter?.add(1, { environment_type: meta.environmentType });
 
     this.logger.debug("Batch item enqueued", {
       batchId,
@@ -410,13 +450,31 @@ export class BatchQueue {
 
   /**
    * Start the consumer loops.
+   * FairQueue runs the master queue consumer loop (claim and push to worker queue).
+   * BatchQueue runs its own worker queue consumer loops to process messages.
    */
   start(): void {
+    if (this.isRunning) {
+      return;
+    }
+
+    this.isRunning = true;
+    this.abortController = new AbortController();
+
+    // Start FairQueue's master queue consumers (routes messages to worker queue)
     this.fairQueue.start();
+
+    // Start worker queue consumer loops
+    for (let consumerId = 0; consumerId < this.options.consumerCount; consumerId++) {
+      const loop = this.#runWorkerQueueConsumerLoop(consumerId);
+      this.workerQueueConsumerLoops.push(loop);
+    }
+
     this.logger.info("BatchQueue consumers started", {
       consumerCount: this.options.consumerCount,
       intervalMs: this.options.consumerIntervalMs,
       drrQuantum: this.options.drr.quantum,
+      workerQueueId: BATCH_WORKER_QUEUE_ID,
     });
   }
 
@@ -424,7 +482,20 @@ export class BatchQueue {
    * Stop the consumer loops gracefully.
    */
   async stop(): Promise<void> {
+    if (!this.isRunning) {
+      return;
+    }
+
+    this.isRunning = false;
+    this.abortController.abort();
+
+    // Stop FairQueue's master queue consumers
     await this.fairQueue.stop();
+
+    // Wait for worker queue consumer loops to finish
+    await Promise.allSettled(this.workerQueueConsumerLoops);
+    this.workerQueueConsumerLoops = [];
+
     this.logger.info("BatchQueue consumers stopped");
   }
 
@@ -432,7 +503,13 @@ export class BatchQueue {
    * Close the BatchQueue and all Redis connections.
    */
   async close(): Promise<void> {
+    await this.stop();
+
+    // Clean up any remaining batched spans (safety net for spans not cleaned up by consumer loops)
+    this.batchedSpanManager.cleanupAll();
+
     await this.fairQueue.close();
+    await this.workerQueueManager.close();
     await this.completionTracker.close();
     await this.concurrencyRedis.quit();
   }
@@ -514,175 +591,213 @@ export class BatchQueue {
       description: "Time from item enqueue to processing start",
       unit: "ms",
     });
+
+    this.workerQueueLengthGauge = meter.createObservableGauge("batch_queue.worker_queue.length", {
+      description: "Number of items waiting in the batch worker queue",
+      unit: "items",
+    });
+
+    this.workerQueueLengthGauge.addCallback(async (observableResult) => {
+      const length = await this.workerQueueManager.getLength(BATCH_WORKER_QUEUE_ID);
+      observableResult.observe(length);
+    });
+  }
+
+  // ============================================================================
+  // Private - Worker Queue Consumer Loop
+  // ============================================================================
+
+  /**
+   * Run a worker queue consumer loop.
+   * This pops messages from the batch worker queue and processes them.
+   */
+  async #runWorkerQueueConsumerLoop(consumerId: number): Promise<void> {
+    const loopId = `batch-worker-${consumerId}`;
+
+    // Initialize batched span tracking for this loop
+    this.batchedSpanManager.initializeLoop(loopId);
+
+    try {
+      while (this.isRunning) {
+        if (!this.processItemCallback) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          continue;
+        }
+
+        try {
+          await this.batchedSpanManager.withBatchedSpan(
+            loopId,
+            async (span) => {
+              span.setAttribute("consumer_id", consumerId);
+
+              // Blocking pop from worker queue
+              const messageKey = await this.workerQueueManager.blockingPop(
+                BATCH_WORKER_QUEUE_ID,
+                this.workerQueueBlockingTimeoutSeconds,
+                this.abortController.signal
+              );
+
+              if (!messageKey) {
+                this.batchedSpanManager.incrementStat(loopId, "empty_iterations");
+                return false; // Timeout, no work
+              }
+
+              // Parse message key (format: "messageId:queueId")
+              const colonIndex = messageKey.indexOf(":");
+              if (colonIndex === -1) {
+                this.logger.error("Invalid message key format", { messageKey });
+                this.batchedSpanManager.incrementStat(loopId, "invalid_message_keys");
+                return false;
+              }
+
+              const messageId = messageKey.substring(0, colonIndex);
+              const queueId = messageKey.substring(colonIndex + 1);
+
+              await this.#handleMessage(loopId, messageId, queueId);
+              this.batchedSpanManager.incrementStat(loopId, "messages_processed");
+              return true; // Had work
+            },
+            {
+              iterationSpanName: "processWorkerQueueMessage",
+              attributes: { consumer_id: consumerId },
+            }
+          );
+        } catch (error) {
+          if (this.abortController.signal.aborted) {
+            break;
+          }
+          this.logger.error("Worker queue consumer error", {
+            loopId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          this.batchedSpanManager.markForRotation(loopId);
+        }
+      }
+    } catch (error) {
+      if (isAbortError(error)) {
+        this.logger.debug("Worker queue consumer aborted", { loopId });
+        this.batchedSpanManager.cleanup(loopId);
+        return;
+      }
+      throw error;
+    } finally {
+      this.batchedSpanManager.cleanup(loopId);
+    }
   }
 
   // ============================================================================
   // Private - Message Handling
   // ============================================================================
 
-  async #handleMessage(ctx: {
-    message: {
-      id: string;
-      queueId: string;
-      payload: BatchItemPayload;
-      timestamp: number;
-      attempt: number;
-    };
-    queue: { id: string; tenantId: string };
-    consumerId: string;
-    heartbeat: () => Promise<boolean>;
-    complete: () => Promise<void>;
-    release: () => Promise<void>;
-    fail: (error?: Error) => Promise<void>;
-  }): Promise<void> {
-    const { batchId, friendlyId, itemIndex, item } = ctx.message.payload;
+  async #handleMessage(consumerId: string, messageId: string, queueId: string): Promise<void> {
+    // Get message data from FairQueue's in-flight storage
+    const storedMessage = await this.fairQueue.getMessageData(messageId, queueId);
 
-    return this.#startSpan(
-      "BatchQueue.handleMessage",
-      async (span) => {
-        span?.setAttributes({
-          "batch.id": batchId,
-          "batch.friendlyId": friendlyId,
-          "batch.itemIndex": itemIndex,
-          "batch.task": item.task,
-          "batch.consumerId": ctx.consumerId,
-          "batch.attempt": ctx.message.attempt,
-        });
+    if (!storedMessage) {
+      this.logger.error("Message not found in in-flight data", { messageId, queueId });
+      await this.fairQueue.completeMessage(messageId, queueId);
+      return;
+    }
 
-        // Record queue time metric (time from enqueue to processing)
-        const queueTimeMs = Date.now() - ctx.message.timestamp;
-        this.itemQueueTimeHistogram?.record(queueTimeMs, { envId: ctx.queue.tenantId });
-        span?.setAttribute("batch.queueTimeMs", queueTimeMs);
+    const { batchId, friendlyId, itemIndex, item } = storedMessage.payload;
 
-        this.logger.debug("Processing batch item", {
-          batchId,
-          friendlyId,
-          itemIndex,
-          task: item.task,
-          consumerId: ctx.consumerId,
-          attempt: ctx.message.attempt,
-          queueTimeMs,
-        });
+    return this.#startSpan("BatchQueue.handleMessage", async (span) => {
+      span?.setAttributes({
+        "batch.id": batchId,
+        "batch.friendlyId": friendlyId,
+        "batch.itemIndex": itemIndex,
+        "batch.task": item.task,
+        "batch.consumerId": consumerId,
+        "batch.attempt": storedMessage.attempt,
+      });
 
-        if (!this.processItemCallback) {
-          this.logger.error("No process item callback set", { batchId, itemIndex });
-          // Still complete the message to avoid blocking
-          await ctx.complete();
-          return;
-        }
+      // Calculate queue time (time from enqueue to processing)
+      const queueTimeMs = Date.now() - storedMessage.timestamp;
+      span?.setAttribute("batch.queueTimeMs", queueTimeMs);
 
-        // Get batch metadata
-        const meta = await this.#startSpan("BatchQueue.getMeta", async () => {
-          return this.completionTracker.getMeta(batchId);
-        });
+      this.logger.debug("Processing batch item", {
+        batchId,
+        friendlyId,
+        itemIndex,
+        task: item.task,
+        consumerId,
+        attempt: storedMessage.attempt,
+        queueTimeMs,
+      });
 
-        if (!meta) {
-          this.logger.error("Batch metadata not found", { batchId, itemIndex });
-          await ctx.complete();
-          return;
-        }
+      if (!this.processItemCallback) {
+        this.logger.error("No process item callback set", { batchId, itemIndex });
+        // Still complete the message to avoid blocking
+        await this.fairQueue.completeMessage(messageId, queueId);
+        return;
+      }
 
-        span?.setAttributes({
-          "batch.runCount": meta.runCount,
-          "batch.environmentId": meta.environmentId,
-        });
+      // Get batch metadata
+      const meta = await this.#startSpan("BatchQueue.getMeta", async () => {
+        return this.completionTracker.getMeta(batchId);
+      });
 
-        let processedCount: number;
+      if (!meta) {
+        this.logger.error("Batch metadata not found", { batchId, itemIndex });
+        await this.fairQueue.completeMessage(messageId, queueId);
+        return;
+      }
 
-        try {
-          const result = await this.#startSpan(
-            "BatchQueue.processItemCallback",
-            async (innerSpan) => {
-              innerSpan?.setAttributes({
-                "batch.id": batchId,
-                "batch.itemIndex": itemIndex,
-                "batch.task": item.task,
-              });
-              return this.processItemCallback!({
-                batchId,
-                friendlyId,
-                itemIndex,
-                item,
-                meta,
-              });
-            }
-          );
+      // Record queue time metric (requires meta for environment_type)
+      this.itemQueueTimeHistogram?.record(queueTimeMs, { environment_type: meta.environmentType });
 
-          if (result.success) {
-            span?.setAttribute("batch.result", "success");
-            span?.setAttribute("batch.runId", result.runId);
+      span?.setAttributes({
+        "batch.runCount": meta.runCount,
+        "batch.environmentId": meta.environmentId,
+      });
 
-            // Pass itemIndex for idempotency - prevents double-counting on redelivery
-            processedCount = await this.#startSpan(
-              "BatchQueue.recordSuccess",
-              async () => {
-                return this.completionTracker.recordSuccess(batchId, result.runId, itemIndex);
-              }
-            );
+      let processedCount: number;
 
-            this.itemsProcessedCounter?.add(1, { envId: meta.environmentId });
-            this.logger.debug("Batch item processed successfully", {
-              batchId,
-              itemIndex,
-              runId: result.runId,
-              processedCount,
-              expectedCount: meta.runCount,
+      try {
+        const result = await this.#startSpan(
+          "BatchQueue.processItemCallback",
+          async (innerSpan) => {
+            innerSpan?.setAttributes({
+              "batch.id": batchId,
+              "batch.itemIndex": itemIndex,
+              "batch.task": item.task,
             });
-          } else {
-            span?.setAttribute("batch.result", "failure");
-            span?.setAttribute("batch.error", result.error);
-            if (result.errorCode) {
-              span?.setAttribute("batch.errorCode", result.errorCode);
-            }
-
-            // For offloaded payloads (payloadType: "application/store"), payload is already an R2 path
-            // For inline payloads, store the full payload - it's under the offload threshold anyway
-            const payloadStr = await this.#startSpan(
-              "BatchQueue.serializePayload",
-              async (innerSpan) => {
-                const str =
-                  typeof item.payload === "string" ? item.payload : JSON.stringify(item.payload);
-                innerSpan?.setAttribute("batch.payloadSize", str.length);
-                return str;
-              }
-            );
-
-            processedCount = await this.#startSpan(
-              "BatchQueue.recordFailure",
-              async () => {
-                return this.completionTracker.recordFailure(batchId, {
-                  index: itemIndex,
-                  taskIdentifier: item.task,
-                  payload: payloadStr,
-                  options: item.options,
-                  error: result.error,
-                  errorCode: result.errorCode,
-                });
-              }
-            );
-
-            this.itemsFailedCounter?.add(1, {
-              envId: meta.environmentId,
-              errorCode: result.errorCode,
-            });
-
-            this.logger.error("Batch item processing failed", {
+            return this.processItemCallback!({
               batchId,
+              friendlyId,
               itemIndex,
-              error: result.error,
-              processedCount,
-              expectedCount: meta.runCount,
+              item,
+              meta,
             });
           }
-        } catch (error) {
-          span?.setAttribute("batch.result", "unexpected_error");
-          span?.setAttribute(
-            "batch.error",
-            error instanceof Error ? error.message : String(error)
-          );
+        );
 
-          // Unexpected error during processing
-          // For offloaded payloads, payload is an R2 path; for inline payloads, store full payload
+        if (result.success) {
+          span?.setAttribute("batch.result", "success");
+          span?.setAttribute("batch.runId", result.runId);
+
+          // Pass itemIndex for idempotency - prevents double-counting on redelivery
+          processedCount = await this.#startSpan("BatchQueue.recordSuccess", async () => {
+            return this.completionTracker.recordSuccess(batchId, result.runId, itemIndex);
+          });
+
+          this.itemsProcessedCounter?.add(1, { environment_type: meta.environmentType });
+          this.logger.debug("Batch item processed successfully", {
+            batchId,
+            itemIndex,
+            runId: result.runId,
+            processedCount,
+            expectedCount: meta.runCount,
+          });
+        } else {
+          span?.setAttribute("batch.result", "failure");
+          span?.setAttribute("batch.error", result.error);
+          if (result.errorCode) {
+            span?.setAttribute("batch.errorCode", result.errorCode);
+          }
+
+          // For offloaded payloads (payloadType: "application/store"), payload is already an R2 path
+          // For inline payloads, store the full payload - it's under the offload threshold anyway
           const payloadStr = await this.#startSpan(
             "BatchQueue.serializePayload",
             async (innerSpan) => {
@@ -693,56 +808,92 @@ export class BatchQueue {
             }
           );
 
-          processedCount = await this.#startSpan(
-            "BatchQueue.recordFailure",
-            async () => {
-              return this.completionTracker.recordFailure(batchId, {
-                index: itemIndex,
-                taskIdentifier: item.task,
-                payload: payloadStr,
-                options: item.options,
-                error: error instanceof Error ? error.message : String(error),
-                errorCode: "UNEXPECTED_ERROR",
-              });
-            }
-          );
+          processedCount = await this.#startSpan("BatchQueue.recordFailure", async () => {
+            return this.completionTracker.recordFailure(batchId, {
+              index: itemIndex,
+              taskIdentifier: item.task,
+              payload: payloadStr,
+              options: item.options,
+              error: result.error,
+              errorCode: result.errorCode,
+            });
+          });
 
           this.itemsFailedCounter?.add(1, {
-            envId: meta.environmentId,
-            errorCode: "UNEXPECTED_ERROR",
+            environment_type: meta.environmentType,
+            errorCode: result.errorCode,
           });
-          this.logger.error("Unexpected error processing batch item", {
+
+          this.logger.error("Batch item processing failed", {
             batchId,
             itemIndex,
-            error: error instanceof Error ? error.message : String(error),
+            error: result.error,
             processedCount,
             expectedCount: meta.runCount,
           });
         }
+      } catch (error) {
+        span?.setAttribute("batch.result", "unexpected_error");
+        span?.setAttribute("batch.error", error instanceof Error ? error.message : String(error));
 
-        span?.setAttribute("batch.processedCount", processedCount);
+        // Unexpected error during processing
+        // For offloaded payloads, payload is an R2 path; for inline payloads, store full payload
+        const payloadStr = await this.#startSpan(
+          "BatchQueue.serializePayload",
+          async (innerSpan) => {
+            const str =
+              typeof item.payload === "string" ? item.payload : JSON.stringify(item.payload);
+            innerSpan?.setAttribute("batch.payloadSize", str.length);
+            return str;
+          }
+        );
 
-        // Complete the FairQueue message (no retry for batch items)
-        // This must happen after recording success/failure to ensure the counter
-        // is updated before the message is considered done
-        await this.#startSpan("BatchQueue.completeMessage", async () => {
-          return ctx.complete();
+        processedCount = await this.#startSpan("BatchQueue.recordFailure", async () => {
+          return this.completionTracker.recordFailure(batchId, {
+            index: itemIndex,
+            taskIdentifier: item.task,
+            payload: payloadStr,
+            options: item.options,
+            error: error instanceof Error ? error.message : String(error),
+            errorCode: "UNEXPECTED_ERROR",
+          });
         });
 
-        // Check if all items have been processed using atomic counter
-        // This is safe even with multiple concurrent consumers because
-        // the processedCount is atomically incremented and we only trigger
-        // finalization when we see the exact final count
-        if (processedCount === meta.runCount) {
-          this.logger.debug("All items processed, finalizing batch", {
-            batchId,
-            processedCount,
-            expectedCount: meta.runCount,
-          });
-          await this.#finalizeBatch(batchId, meta);
-        }
+        this.itemsFailedCounter?.add(1, {
+          environment_type: meta.environmentType,
+          errorCode: "UNEXPECTED_ERROR",
+        });
+        this.logger.error("Unexpected error processing batch item", {
+          batchId,
+          itemIndex,
+          error: error instanceof Error ? error.message : String(error),
+          processedCount,
+          expectedCount: meta.runCount,
+        });
       }
-    );
+
+      span?.setAttribute("batch.processedCount", processedCount);
+
+      // Complete the FairQueue message (no retry for batch items)
+      // This must happen after recording success/failure to ensure the counter
+      // is updated before the message is considered done
+      await this.#startSpan("BatchQueue.completeMessage", async () => {
+        return this.fairQueue.completeMessage(messageId, queueId);
+      });
+
+      // Check if all items have been processed using atomic counter
+      // This is safe even with multiple concurrent consumers because
+      // the processedCount is atomically incremented and we only trigger
+      // finalization when we see the exact final count
+      if (processedCount === meta.runCount) {
+        this.logger.debug("All items processed, finalizing batch", {
+          batchId,
+          processedCount,
+          expectedCount: meta.runCount,
+        });
+        await this.#finalizeBatch(batchId, meta);
+      }
+    });
   }
 
   /**
@@ -757,19 +908,16 @@ export class BatchQueue {
         "batch.environmentId": meta.environmentId,
       });
 
-      const result = await this.#startSpan(
-        "BatchQueue.getCompletionResult",
-        async (innerSpan) => {
-          const completionResult = await this.completionTracker.getCompletionResult(batchId);
-          innerSpan?.setAttributes({
-            "batch.successfulRunCount": completionResult.successfulRunCount,
-            "batch.failedRunCount": completionResult.failedRunCount,
-            "batch.runIdsCount": completionResult.runIds.length,
-            "batch.failuresCount": completionResult.failures.length,
-          });
-          return completionResult;
-        }
-      );
+      const result = await this.#startSpan("BatchQueue.getCompletionResult", async (innerSpan) => {
+        const completionResult = await this.completionTracker.getCompletionResult(batchId);
+        innerSpan?.setAttributes({
+          "batch.successfulRunCount": completionResult.successfulRunCount,
+          "batch.failedRunCount": completionResult.failedRunCount,
+          "batch.runIdsCount": completionResult.runIds.length,
+          "batch.failuresCount": completionResult.failures.length,
+        });
+        return completionResult;
+      });
 
       span?.setAttributes({
         "batch.successfulRunCount": result.successfulRunCount,
@@ -778,14 +926,13 @@ export class BatchQueue {
 
       // Record metrics
       this.batchCompletedCounter?.add(1, {
-        envId: meta.environmentId,
+        environment_type: meta.environmentType,
         hasFailures: result.failedRunCount > 0,
       });
 
       const processingDuration = Date.now() - meta.createdAt;
       this.batchProcessingDurationHistogram?.record(processingDuration, {
-        envId: meta.environmentId,
-        itemCount: meta.runCount,
+        environment_type: meta.environmentType,
       });
 
       span?.setAttribute("batch.processingDurationMs", processingDuration);

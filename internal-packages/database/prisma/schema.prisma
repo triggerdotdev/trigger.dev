@@ -59,6 +59,7 @@ model User {
   deployments          WorkerDeployment[]
   backupCodes          MfaBackupCode[]
   bulkActions          BulkActionGroup[]
+  customerQueries      CustomerQuery[]
 }
 
 model MfaBackupCode {
@@ -218,6 +219,7 @@ model Organization {
   workerGroups             WorkerInstanceGroup[]
   workerInstances          WorkerInstance[]
   githubAppInstallations   GithubAppInstallation[]
+  customerQueries          CustomerQuery[]
 }
 
 model OrgMember {
@@ -335,6 +337,7 @@ model RuntimeEnvironment {
   workerInstances      WorkerInstance[]
   waitpointTags        WaitpointTag[]
   BulkActionGroup      BulkActionGroup[]
+  customerQueries      CustomerQuery[]
 
   @@unique([projectId, slug, orgMemberId])
   @@unique([projectId, shortcode])
@@ -399,6 +402,7 @@ model Project {
   taskRunCheckpoints        TaskRunCheckpoint[]
   waitpointTags             WaitpointTag[]
   connectedGithubRepository ConnectedGithubRepository?
+  customerQueries           CustomerQuery[]
 
   buildSettings Json?
 }
@@ -2382,4 +2386,54 @@ model ConnectedGithubRepository {
   // A project can only be connected to one repository
   @@unique([projectId])
   @@index([repositoryId])
+}
+
+enum CustomerQuerySource {
+  DASHBOARD
+  API
+}
+
+enum CustomerQueryScope {
+  ORGANIZATION
+  PROJECT
+  ENVIRONMENT
+}
+
+model CustomerQuery {
+  id String @id @default(cuid())
+
+  /// The TSQL query text that was executed
+  query String
+
+  /// The scope of the query (determines which tenant IDs were used)
+  scope CustomerQueryScope
+
+  /// Query execution statistics from ClickHouse
+  stats Json
+
+  /// Cost of the query in cents (for Stripe metering)
+  costInCents Float @default(0)
+
+  /// Where the query originated from
+  source CustomerQuerySource @default(DASHBOARD)
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String
+
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String?
+
+  environment   RuntimeEnvironment? @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String?
+
+  /// Optional user who executed the query (null for API calls)
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  userId String?
+
+  createdAt DateTime @default(now())
+
+  /// Fast lookup for history menu (most recent 20 per org)
+  @@index([organizationId, createdAt(sort: Desc)])
+  /// For Stripe metering job - find unprocessed queries
+  @@index([createdAt])
 }

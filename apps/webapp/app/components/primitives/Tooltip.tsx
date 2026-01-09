@@ -5,8 +5,8 @@ import { cn } from "~/utils/cn";
 
 const variantClasses = {
   basic:
-    "bg-background-bright border border-grid-bright rounded px-2 py-1.5 text-xs text-text-bright shadow-md fade-in-50",
-  dark: "bg-background-dimmed border border-grid-bright rounded px-2 py-1.5 text-xs text-text-bright shadow-md fade-in-50",
+    "bg-background-bright border border-grid-bright rounded px-3 py-2 text-sm text-text-bright shadow-md fade-in-50",
+  dark: "bg-background-dimmed border border-grid-bright rounded px-3 py-2 text-sm text-text-bright shadow-md fade-in-50",
 };
 
 type Variant = keyof typeof variantClasses;
@@ -85,6 +85,7 @@ function SimpleTooltip({
     <TooltipProvider disableHoverableContent={disableHoverableContent}>
       <Tooltip open={open} onOpenChange={onOpenChange}>
         <TooltipTrigger
+          type="button"
           tabIndex={-1}
           className={cn("h-fit", buttonClassName)}
           style={buttonStyle}
@@ -111,20 +112,28 @@ export function InfoIconTooltip({
   buttonClassName,
   contentClassName,
   variant = "basic",
+  disableHoverableContent = false,
+  enabled = true,
 }: {
   content: React.ReactNode;
   buttonClassName?: string;
   contentClassName?: string;
   variant?: Variant;
+  disableHoverableContent?: boolean;
+  enabled?: boolean;
 }) {
+  const icon = (
+    <InformationCircleIcon className={cn("size-3.5 text-text-dimmed", buttonClassName)} />
+  );
+
+  if (!enabled) return icon;
   return (
     <SimpleTooltip
-      button={
-        <InformationCircleIcon className={cn("size-3.5 text-text-dimmed", buttonClassName)} />
-      }
+      button={icon}
       content={content}
       variant={variant}
       className={contentClassName}
+      disableHoverableContent={disableHoverableContent}
     />
   );
 }

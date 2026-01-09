@@ -7,6 +7,7 @@ import { type z } from "zod";
 import { ConcurrencyManager } from "./concurrency.js";
 import { MasterQueue } from "./masterQueue.js";
 import { type RetryStrategy, ExponentialBackoffRetry } from "./retry.js";
+import { isAbortError } from "../utils.js";
 import {
   FairQueueTelemetry,
   FairQueueAttributes,
@@ -22,11 +23,8 @@ import type {
   FairQueueOptions,
   FairScheduler,
   GlobalRateLimiter,
-  MessageHandler,
-  MessageHandlerContext,
   QueueCooloffState,
   QueueDescriptor,
-  QueueMessage,
   SchedulerContext,
   StoredMessage,
 } from "./types.js";
@@ -46,16 +44,20 @@ export * from "./retry.js";
 export * from "./telemetry.js";
 
 /**
- * FairQueue is the main orchestrator for fair queue processing.
+ * FairQueue is the main orchestrator for fair queue message routing.
  *
- * It coordinates:
+ * FairQueue handles:
  * - Master queue with sharding (using jump consistent hash)
  * - Fair scheduling via pluggable schedulers
  * - Multi-level concurrency limiting
  * - Visibility timeouts with heartbeats
- * - Worker queues with blocking pop
+ * - Routing messages to worker queues
  * - Retry strategies with dead letter queue
  * - OpenTelemetry tracing and metrics
+ *
+ * External consumers are responsible for:
+ * - Running their own worker queue consumer loops
+ * - Calling complete/release/fail APIs after processing
  *
  * @typeParam TPayloadSchema - Zod schema for message payload validation
  */
@@ -66,7 +68,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
   private masterQueue: MasterQueue;
   private concurrencyManager?: ConcurrencyManager;
   private visibilityManager: VisibilityManager;
-  private workerQueueManager?: WorkerQueueManager;
+  private workerQueueManager: WorkerQueueManager;
   private telemetry: FairQueueTelemetry;
   private logger: Logger;
 
@@ -81,14 +83,14 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
   private visibilityTimeoutMs: number;
   private heartbeatIntervalMs: number;
   private reclaimIntervalMs: number;
-  private workerQueueEnabled: boolean;
-  private workerQueueBlockingTimeoutSeconds: number;
-  private workerQueueResolver?: (message: StoredMessage<z.infer<TPayloadSchema>>) => string;
+  private workerQueueResolver: (message: StoredMessage<z.infer<TPayloadSchema>>) => string;
+  private batchClaimSize: number;
 
   // Cooloff state
   private cooloffEnabled: boolean;
   private cooloffThreshold: number;
   private cooloffPeriodMs: number;
+  private maxCooloffStatesSize: number;
   private queueCooloffStates = new Map<string, QueueCooloffState>();
 
   // Global rate limiter
@@ -100,11 +102,9 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
   private batchedSpanManager: BatchedSpanManager;
 
   // Runtime state
-  private messageHandler?: MessageHandler<z.infer<TPayloadSchema>>;
   private isRunning = false;
   private abortController: AbortController;
   private masterQueueConsumerLoops: Promise<void>[] = [];
-  private workerQueueConsumerLoops: Promise<void>[] = [];
   private reclaimLoop?: Promise<void>;
 
   // Queue descriptor cache for message processing
@@ -133,15 +133,17 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     this.heartbeatIntervalMs = options.heartbeatIntervalMs ?? this.visibilityTimeoutMs / 3;
     this.reclaimIntervalMs = options.reclaimIntervalMs ?? 5_000;
 
-    // Worker queue
-    this.workerQueueEnabled = options.workerQueue?.enabled ?? false;
-    this.workerQueueBlockingTimeoutSeconds = options.workerQueue?.blockingTimeoutSeconds ?? 10;
-    this.workerQueueResolver = options.workerQueue?.resolveWorkerQueue;
+    // Worker queue resolver (required)
+    this.workerQueueResolver = options.workerQueue.resolveWorkerQueue;
+
+    // Batch claiming
+    this.batchClaimSize = options.batchClaimSize ?? 10;
 
     // Cooloff
     this.cooloffEnabled = options.cooloff?.enabled ?? true;
     this.cooloffThreshold = options.cooloff?.threshold ?? 10;
     this.cooloffPeriodMs = options.cooloff?.periodMs ?? 10_000;
+    this.maxCooloffStatesSize = options.cooloff?.maxStatesSize ?? 1000;
 
     // Global rate limiter
     this.globalRateLimiter = options.globalRateLimiter;
@@ -163,6 +165,10 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       name: options.name ?? "fairqueue",
       maxIterations: this.consumerTraceMaxIterations,
       timeoutSeconds: this.consumerTraceTimeoutSeconds,
+      getDynamicAttributes: () => ({
+        "cache.descriptor_size": this.queueDescriptorCache.size,
+        "cache.cooloff_states_size": this.queueCooloffStates.size,
+      }),
     });
 
     // Initialize components
@@ -191,16 +197,15 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       },
     });
 
-    if (this.workerQueueEnabled) {
-      this.workerQueueManager = new WorkerQueueManager({
-        redis: options.redis,
-        keys: options.keys,
-        logger: {
-          debug: (msg, ctx) => this.logger.debug(msg, ctx),
-          error: (msg, ctx) => this.logger.error(msg, ctx),
-        },
-      });
-    }
+    // Worker queue manager for pushing messages to worker queues
+    this.workerQueueManager = new WorkerQueueManager({
+      redis: options.redis,
+      keys: options.keys,
+      logger: {
+        debug: (msg, ctx) => this.logger.debug(msg, ctx),
+        error: (msg, ctx) => this.logger.error(msg, ctx),
+      },
+    });
 
     this.#registerCommands();
 
@@ -234,17 +239,6 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       shardCount: this.shardCount,
       observedTenants: options?.observedTenants,
     });
-  }
-
-  // ============================================================================
-  // Public API - Message Handler
-  // ============================================================================
-
-  /**
-   * Set the message handler for processing dequeued messages.
-   */
-  onMessage(handler: MessageHandler<z.infer<TPayloadSchema>>): void {
-    this.messageHandler = handler;
   }
 
   // ============================================================================
@@ -299,7 +293,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
                 attempt: 1,
                 metadata: options.metadata,
               })
-            : options.queueId,
+            : undefined,
           metadata: options.metadata,
         };
 
@@ -321,13 +315,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
           [FairQueueAttributes.SHARD_ID]: shardId.toString(),
         });
 
-        this.telemetry.recordEnqueue(
-          this.telemetry.messageAttributes({
-            queueId: options.queueId,
-            tenantId: options.tenantId,
-            messageId,
-          })
-        );
+        this.telemetry.recordEnqueue();
 
         this.logger.debug("Message enqueued", {
           queueId: options.queueId,
@@ -401,7 +389,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
                   attempt: 1,
                   metadata: options.metadata,
                 })
-              : options.queueId,
+              : undefined,
             metadata: options.metadata,
           };
 
@@ -425,13 +413,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
           [FairQueueAttributes.SHARD_ID]: shardId.toString(),
         });
 
-        this.telemetry.recordEnqueueBatch(
-          messageIds.length,
-          this.telemetry.messageAttributes({
-            queueId: options.queueId,
-            tenantId: options.tenantId,
-          })
-        );
+        this.telemetry.recordEnqueueBatch(messageIds.length);
 
         this.logger.debug("Batch enqueued", {
           queueId: options.queueId,
@@ -597,12 +579,43 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     return await this.redis.zcard(dlqKey);
   }
 
+  /**
+   * Get the size of the in-memory queue descriptor cache.
+   * This cache stores metadata for queues that have been enqueued.
+   * The cache is cleaned up when queues are fully processed.
+   */
+  getQueueDescriptorCacheSize(): number {
+    return this.queueDescriptorCache.size;
+  }
+
+  /**
+   * Get the size of the in-memory cooloff states cache.
+   * This cache tracks queues that are in cooloff due to repeated failures.
+   * The cache is cleaned up when queues are fully processed or cooloff expires.
+   */
+  getQueueCooloffStatesSize(): number {
+    return this.queueCooloffStates.size;
+  }
+
+  /**
+   * Get all in-memory cache sizes for monitoring.
+   * Useful for adding as span attributes.
+   */
+  getCacheSizes(): { descriptorCacheSize: number; cooloffStatesSize: number } {
+    return {
+      descriptorCacheSize: this.queueDescriptorCache.size,
+      cooloffStatesSize: this.queueCooloffStates.size,
+    };
+  }
+
   // ============================================================================
   // Public API - Lifecycle
   // ============================================================================
 
   /**
-   * Start the consumer loops and reclaim loop.
+   * Start the master queue consumer loops and reclaim loop.
+   * FairQueue claims messages and pushes them to worker queues.
+   * External consumers are responsible for consuming from worker queues.
    */
   start(): void {
     if (this.isRunning) {
@@ -612,36 +625,19 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     this.isRunning = true;
     this.abortController = new AbortController();
 
-    if (this.workerQueueEnabled && this.workerQueueManager) {
-      // Two-stage processing: master queue consumers push to worker queues
-      // Start master queue consumers (one per shard)
-      for (let shardId = 0; shardId < this.shardCount; shardId++) {
-        const loop = this.#runMasterQueueConsumerLoop(shardId);
-        this.masterQueueConsumerLoops.push(loop);
-      }
-
-      // Start worker queue consumers (multiple per consumer count)
-      for (let consumerId = 0; consumerId < this.consumerCount; consumerId++) {
-        const loop = this.#runWorkerQueueConsumerLoop(consumerId);
-        this.workerQueueConsumerLoops.push(loop);
-      }
-    } else {
-      // Direct processing: consumers process from message queues directly
-      for (let consumerId = 0; consumerId < this.consumerCount; consumerId++) {
-        for (let shardId = 0; shardId < this.shardCount; shardId++) {
-          const loop = this.#runDirectConsumerLoop(consumerId, shardId);
-          this.masterQueueConsumerLoops.push(loop);
-        }
-      }
+    // Start master queue consumers (one per shard)
+    // These claim messages from queues and push to worker queues
+    for (let shardId = 0; shardId < this.shardCount; shardId++) {
+      const loop = this.#runMasterQueueConsumerLoop(shardId);
+      this.masterQueueConsumerLoops.push(loop);
     }
 
-    // Start reclaim loop
+    // Start reclaim loop for handling timed-out messages
     this.reclaimLoop = this.#runReclaimLoop();
 
     this.logger.info("FairQueue started", {
       consumerCount: this.consumerCount,
       shardCount: this.shardCount,
-      workerQueueEnabled: this.workerQueueEnabled,
       consumerIntervalMs: this.consumerIntervalMs,
     });
   }
@@ -657,14 +653,9 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     this.isRunning = false;
     this.abortController.abort();
 
-    await Promise.allSettled([
-      ...this.masterQueueConsumerLoops,
-      ...this.workerQueueConsumerLoops,
-      this.reclaimLoop,
-    ]);
+    await Promise.allSettled([...this.masterQueueConsumerLoops, this.reclaimLoop]);
 
     this.masterQueueConsumerLoops = [];
-    this.workerQueueConsumerLoops = [];
     this.reclaimLoop = undefined;
 
     this.logger.info("FairQueue stopped");
@@ -683,7 +674,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       this.masterQueue.close(),
       this.concurrencyManager?.close(),
       this.visibilityManager.close(),
-      this.workerQueueManager?.close(),
+      this.workerQueueManager.close(),
       this.scheduler.close?.(),
       this.redis.quit(),
     ]);
@@ -733,15 +724,19 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     this.batchedSpanManager.initializeLoop(loopId);
 
     try {
-      for await (const _ of setInterval(this.consumerIntervalMs, null, {
-        signal: this.abortController.signal,
-      })) {
+      while (this.isRunning) {
+        // Check abort signal
+        if (this.abortController.signal.aborted) {
+          break;
+        }
+
+        let hadWork = false;
         try {
-          await this.batchedSpanManager.withBatchedSpan(
+          hadWork = await this.batchedSpanManager.withBatchedSpan(
             loopId,
             async (span) => {
               span.setAttribute("shard_id", shardId);
-              await this.#processMasterQueueShard(loopId, shardId, span);
+              return await this.#processMasterQueueShard(loopId, shardId, span);
             },
             {
               iterationSpanName: "processMasterQueueShard",
@@ -756,9 +751,26 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
           });
           this.batchedSpanManager.markForRotation(loopId);
         }
+
+        // Wait between iterations to prevent CPU spin
+        // Short delay when there's work (yield to event loop), longer delay when idle
+        const waitMs = hadWork ? 1 : this.consumerIntervalMs;
+        await new Promise<void>((resolve, reject) => {
+          const abortHandler = () => {
+            clearTimeout(timeout);
+            reject(new Error("AbortError"));
+          };
+          const timeout = setTimeout(() => {
+            // Must remove listener when timeout fires, otherwise listeners accumulate
+            // (the { once: true } option only removes on abort, not on timeout)
+            this.abortController.signal.removeEventListener("abort", abortHandler);
+            resolve();
+          }, waitMs);
+          this.abortController.signal.addEventListener("abort", abortHandler, { once: true });
+        });
       }
     } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") {
+      if (isAbortError(error)) {
         this.logger.debug("Master queue consumer aborted", { loopId });
         this.batchedSpanManager.cleanup(loopId);
         return;
@@ -773,8 +785,13 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     loopId: string,
     shardId: number,
     parentSpan?: Span
-  ): Promise<void> {
+  ): Promise<boolean> {
     const masterQueueKey = this.keys.masterQueueKey(shardId);
+
+    // Get total queues in this master queue shard for observability
+    const masterQueueSize = await this.masterQueue.getShardQueueCount(shardId);
+    parentSpan?.setAttribute("master_queue_size", masterQueueSize);
+    this.batchedSpanManager.incrementStat(loopId, "master_queue_size_sum", masterQueueSize);
 
     // Create scheduler context
     const schedulerContext = this.#createSchedulerContext();
@@ -785,6 +802,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       async (span) => {
         span.setAttribute(FairQueueAttributes.SHARD_ID, shardId.toString());
         span.setAttribute(FairQueueAttributes.CONSUMER_ID, loopId);
+        span.setAttribute("master_queue_size", masterQueueSize);
         const result = await this.scheduler.selectQueues(masterQueueKey, loopId, schedulerContext);
         span.setAttribute("tenant_count", result.length);
         span.setAttribute(
@@ -798,7 +816,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
 
     if (tenantQueues.length === 0) {
       this.batchedSpanManager.incrementStat(loopId, "empty_iterations");
-      return;
+      return false;
     }
 
     // Track stats
@@ -808,6 +826,8 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       "queues_selected",
       tenantQueues.reduce((acc, t) => acc + t.queues.length, 0)
     );
+
+    let messagesProcessed = 0;
 
     // Process queues and push to worker queues
     for (const { tenantId, queues } of tenantQueues) {
@@ -818,352 +838,48 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
           continue;
         }
 
-        const processed = await this.telemetry.trace(
+        // Check tenant capacity before attempting to process
+        // If tenant is at capacity, skip ALL remaining queues for this tenant
+        if (this.concurrencyManager) {
+          const isAtCapacity = await this.concurrencyManager.isAtCapacity("tenant", tenantId);
+          if (isAtCapacity) {
+            this.batchedSpanManager.incrementStat(loopId, "tenant_capacity_skipped");
+            break; // Skip remaining queues for this tenant
+          }
+        }
+
+        const processedFromQueue = await this.telemetry.trace(
           "claimAndPushToWorkerQueue",
           async (span) => {
             span.setAttribute(FairQueueAttributes.QUEUE_ID, queueId);
             span.setAttribute(FairQueueAttributes.TENANT_ID, tenantId);
             span.setAttribute(FairQueueAttributes.SHARD_ID, shardId.toString());
-            return this.#claimAndPushToWorkerQueue(loopId, queueId, tenantId, shardId);
+            const count = await this.#claimAndPushToWorkerQueue(loopId, queueId, tenantId, shardId);
+            span.setAttribute("messages_claimed", count);
+            return count;
           },
           { kind: SpanKind.INTERNAL }
         );
 
-        if (processed) {
-          this.batchedSpanManager.incrementStat(loopId, "messages_claimed");
+        if (processedFromQueue > 0) {
+          messagesProcessed += processedFromQueue;
+          this.batchedSpanManager.incrementStat(loopId, "messages_claimed", processedFromQueue);
 
-          if (this.scheduler.recordProcessed) {
+          // Record processed messages for DRR deficit tracking
+          // Use batch variant if available for efficiency, otherwise fall back to single calls
+          if (this.scheduler.recordProcessedBatch) {
             await this.telemetry.trace(
-              "recordProcessed",
+              "recordProcessedBatch",
               async (span) => {
                 span.setAttribute(FairQueueAttributes.QUEUE_ID, queueId);
                 span.setAttribute(FairQueueAttributes.TENANT_ID, tenantId);
-                await this.scheduler.recordProcessed!(tenantId, queueId);
+                span.setAttribute("count", processedFromQueue);
+                await this.scheduler.recordProcessedBatch!(tenantId, queueId, processedFromQueue);
               },
               { kind: SpanKind.INTERNAL }
             );
-          }
-          this.#resetCooloff(queueId);
-        } else {
-          this.batchedSpanManager.incrementStat(loopId, "claim_failures");
-          this.#incrementCooloff(queueId);
-        }
-      }
-    }
-  }
-
-  async #claimAndPushToWorkerQueue(
-    loopId: string,
-    queueId: string,
-    tenantId: string,
-    shardId: number
-  ): Promise<boolean> {
-    const queueKey = this.keys.queueKey(queueId);
-    const queueItemsKey = this.keys.queueItemsKey(queueId);
-    const masterQueueKey = this.keys.masterQueueKey(shardId);
-    const descriptor = this.queueDescriptorCache.get(queueId) ?? {
-      id: queueId,
-      tenantId,
-      metadata: {},
-    };
-
-    // Check concurrency before claiming
-    if (this.concurrencyManager) {
-      const check = await this.concurrencyManager.canProcess(descriptor);
-      if (!check.allowed) {
-        return false;
-      }
-    }
-
-    // Check global rate limit - wait if rate limited
-    if (this.globalRateLimiter) {
-      const result = await this.globalRateLimiter.limit();
-      if (!result.allowed && result.resetAt) {
-        const waitMs = Math.max(0, result.resetAt - Date.now());
-        if (waitMs > 0) {
-          this.logger.debug("Global rate limit reached, waiting", { waitMs, loopId });
-          await new Promise((resolve) => setTimeout(resolve, waitMs));
-        }
-      }
-    }
-
-    // Claim message with visibility timeout
-    const claimResult = await this.visibilityManager.claim<StoredMessage<z.infer<TPayloadSchema>>>(
-      queueId,
-      queueKey,
-      queueItemsKey,
-      loopId,
-      this.visibilityTimeoutMs
-    );
-
-    if (!claimResult.claimed || !claimResult.message) {
-      // Queue is empty, update master queue
-      await this.redis.updateMasterQueueIfEmpty(masterQueueKey, queueKey, queueId);
-      return false;
-    }
-
-    const { message } = claimResult;
-
-    // Reserve concurrency slot
-    if (this.concurrencyManager) {
-      const reserved = await this.concurrencyManager.reserve(descriptor, message.messageId);
-      if (!reserved) {
-        // Release message back to queue (and ensure it's in master queue)
-        await this.visibilityManager.release(
-          message.messageId,
-          queueId,
-          queueKey,
-          queueItemsKey,
-          masterQueueKey
-        );
-        return false;
-      }
-    }
-
-    // Determine worker queue
-    const workerQueueId = message.payload.workerQueue ?? queueId;
-
-    // Push to worker queue
-    const messageKey = `${message.messageId}:${queueId}`;
-    await this.workerQueueManager!.push(workerQueueId, messageKey);
-
-    return true;
-  }
-
-  // ============================================================================
-  // Private - Worker Queue Consumer Loop (Two-Stage)
-  // ============================================================================
-
-  async #runWorkerQueueConsumerLoop(consumerId: number): Promise<void> {
-    const loopId = `worker-${consumerId}`;
-    const workerQueueId = loopId; // Each consumer has its own worker queue by default
-
-    // Initialize batched span tracking for this loop
-    this.batchedSpanManager.initializeLoop(loopId);
-
-    try {
-      while (this.isRunning) {
-        if (!this.messageHandler) {
-          await new Promise((resolve) => setTimeout(resolve, this.consumerIntervalMs));
-          continue;
-        }
-
-        try {
-          // Blocking pop from worker queue
-          const messageKey = await this.workerQueueManager!.blockingPop(
-            workerQueueId,
-            this.workerQueueBlockingTimeoutSeconds,
-            this.abortController.signal
-          );
-
-          if (!messageKey) {
-            this.batchedSpanManager.incrementStat(loopId, "blocking_pop_timeouts");
-            continue; // Timeout, loop again
-          }
-
-          // Parse message key
-          const colonIndex = messageKey.indexOf(":");
-          if (colonIndex === -1) {
-            this.logger.error("Invalid message key format", { messageKey });
-            this.batchedSpanManager.incrementStat(loopId, "invalid_message_keys");
-            continue;
-          }
-
-          const messageId = messageKey.substring(0, colonIndex);
-          const queueId = messageKey.substring(colonIndex + 1);
-
-          await this.batchedSpanManager.withBatchedSpan(
-            loopId,
-            async (span) => {
-              span.setAttribute("consumer_id", consumerId);
-              span.setAttribute(FairQueueAttributes.MESSAGE_ID, messageId);
-              span.setAttribute(FairQueueAttributes.QUEUE_ID, queueId);
-              await this.#processMessageFromWorkerQueue(loopId, messageId, queueId);
-              this.batchedSpanManager.incrementStat(loopId, "messages_processed");
-            },
-            {
-              iterationSpanName: "processMessageFromWorkerQueue",
-              attributes: {
-                consumer_id: consumerId,
-                [FairQueueAttributes.MESSAGE_ID]: messageId,
-                [FairQueueAttributes.QUEUE_ID]: queueId,
-              },
-            }
-          );
-        } catch (error) {
-          if (this.abortController.signal.aborted) {
-            break;
-          }
-          this.logger.error("Worker queue consumer error", {
-            loopId,
-            error: error instanceof Error ? error.message : String(error),
-          });
-          this.batchedSpanManager.markForRotation(loopId);
-        }
-      }
-    } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") {
-        this.logger.debug("Worker queue consumer aborted", { loopId });
-        this.batchedSpanManager.cleanup(loopId);
-        return;
-      }
-      throw error;
-    } finally {
-      this.batchedSpanManager.cleanup(loopId);
-    }
-  }
-
-  async #processMessageFromWorkerQueue(
-    loopId: string,
-    messageId: string,
-    queueId: string
-  ): Promise<void> {
-    // Get message data from in-flight
-    const shardId = this.masterQueue.getShardForQueue(queueId);
-    const inflightDataKey = this.keys.inflightDataKey(shardId);
-    const dataJson = await this.redis.hget(inflightDataKey, messageId);
-
-    if (!dataJson) {
-      this.logger.error("Message not found in in-flight data", { messageId, queueId });
-      return;
-    }
-
-    let storedMessage: StoredMessage<z.infer<TPayloadSchema>>;
-    try {
-      storedMessage = JSON.parse(dataJson);
-    } catch {
-      this.logger.error("Failed to parse message data", { messageId, queueId });
-      return;
-    }
-
-    await this.#processMessage(loopId, storedMessage, queueId);
-  }
-
-  // ============================================================================
-  // Private - Direct Consumer Loop (No Worker Queue)
-  // ============================================================================
-
-  async #runDirectConsumerLoop(consumerId: number, shardId: number): Promise<void> {
-    const loopId = `consumer-${consumerId}-shard-${shardId}`;
-
-    // Initialize batched span tracking for this loop
-    this.batchedSpanManager.initializeLoop(loopId);
-
-    try {
-      for await (const _ of setInterval(this.consumerIntervalMs, null, {
-        signal: this.abortController.signal,
-      })) {
-        if (!this.messageHandler) {
-          continue;
-        }
-
-        try {
-          await this.batchedSpanManager.withBatchedSpan(
-            loopId,
-            async (span) => {
-              span.setAttribute("consumer_id", consumerId);
-              span.setAttribute("shard_id", shardId);
-              await this.#processDirectIteration(loopId, shardId, span);
-            },
-            {
-              iterationSpanName: "processDirectIteration",
-              attributes: { consumer_id: consumerId, shard_id: shardId },
-            }
-          );
-        } catch (error) {
-          this.logger.error("Direct consumer iteration error", {
-            loopId,
-            error: error instanceof Error ? error.message : String(error),
-          });
-          this.batchedSpanManager.markForRotation(loopId);
-        }
-      }
-    } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") {
-        this.logger.debug("Direct consumer loop aborted", { loopId });
-        this.batchedSpanManager.cleanup(loopId);
-        return;
-      }
-      throw error;
-    } finally {
-      this.batchedSpanManager.cleanup(loopId);
-    }
-  }
-
-  async #processDirectIteration(loopId: string, shardId: number, parentSpan?: Span): Promise<void> {
-    const masterQueueKey = this.keys.masterQueueKey(shardId);
-
-    // Create scheduler context
-    const schedulerContext = this.#createSchedulerContext();
-
-    // Get queues to process from scheduler
-    const tenantQueues = await this.telemetry.trace(
-      "selectQueues",
-      async (span) => {
-        span.setAttribute(FairQueueAttributes.SHARD_ID, shardId.toString());
-        span.setAttribute(FairQueueAttributes.CONSUMER_ID, loopId);
-        const result = await this.scheduler.selectQueues(masterQueueKey, loopId, schedulerContext);
-        span.setAttribute("tenant_count", result.length);
-        span.setAttribute(
-          "queue_count",
-          result.reduce((acc, t) => acc + t.queues.length, 0)
-        );
-        return result;
-      },
-      { kind: SpanKind.INTERNAL }
-    );
-
-    if (tenantQueues.length === 0) {
-      this.batchedSpanManager.incrementStat(loopId, "empty_iterations");
-      return;
-    }
-
-    // Track stats
-    this.batchedSpanManager.incrementStat(loopId, "tenants_selected", tenantQueues.length);
-    this.batchedSpanManager.incrementStat(
-      loopId,
-      "queues_selected",
-      tenantQueues.reduce((acc, t) => acc + t.queues.length, 0)
-    );
-
-    // Process messages from each selected tenant
-    // For fairness, process up to available concurrency slots per tenant
-    for (const { tenantId, queues } of tenantQueues) {
-      // Get available concurrency for this tenant
-      let availableSlots = 1; // Default to 1 for backwards compatibility
-      if (this.concurrencyManager) {
-        const [current, limit] = await Promise.all([
-          this.concurrencyManager.getCurrentConcurrency("tenant", tenantId),
-          this.concurrencyManager.getConcurrencyLimit("tenant", tenantId),
-        ]);
-        availableSlots = Math.max(1, limit - current);
-      }
-
-      // Process up to availableSlots messages from this tenant's queues
-      let slotsUsed = 0;
-      queueLoop: for (const queueId of queues) {
-        while (slotsUsed < availableSlots) {
-          // Check cooloff
-          if (this.cooloffEnabled && this.#isInCooloff(queueId)) {
-            this.batchedSpanManager.incrementStat(loopId, "cooloff_skipped");
-            break; // Try next queue
-          }
-
-          const processed = await this.telemetry.trace(
-            "processOneMessage",
-            async (span) => {
-              span.setAttribute(FairQueueAttributes.QUEUE_ID, queueId);
-              span.setAttribute(FairQueueAttributes.TENANT_ID, tenantId);
-              span.setAttribute(FairQueueAttributes.SHARD_ID, shardId.toString());
-              return this.#processOneMessage(loopId, queueId, tenantId, shardId);
-            },
-            { kind: SpanKind.INTERNAL }
-          );
-
-          if (processed) {
-            this.batchedSpanManager.incrementStat(loopId, "messages_processed");
-
-            if (this.scheduler.recordProcessed) {
+          } else if (this.scheduler.recordProcessed) {
+            for (let i = 0; i < processedFromQueue; i++) {
               await this.telemetry.trace(
                 "recordProcessed",
                 async (span) => {
@@ -1174,27 +890,27 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
                 { kind: SpanKind.INTERNAL }
               );
             }
-            this.#resetCooloff(queueId);
-            slotsUsed++;
-          } else {
-            this.batchedSpanManager.incrementStat(loopId, "process_failures");
-            this.#incrementCooloff(queueId);
-            break; // Queue empty or blocked, try next queue
           }
-        }
-        if (slotsUsed >= availableSlots) {
-          break queueLoop;
+        } else {
+          // Don't increment cooloff here - the queue was either:
+          // 1. Empty (removed from master, cache cleaned up)
+          // 2. Concurrency blocked (message released back to queue)
+          // Neither case warrants cooloff as they're not failures
+          this.batchedSpanManager.incrementStat(loopId, "claim_skipped");
         }
       }
     }
+
+    // Return true if we processed any messages (had work)
+    return messagesProcessed > 0;
   }
 
-  async #processOneMessage(
+  async #claimAndPushToWorkerQueue(
     loopId: string,
     queueId: string,
     tenantId: string,
     shardId: number
-  ): Promise<boolean> {
+  ): Promise<number> {
     const queueKey = this.keys.queueKey(queueId);
     const queueItemsKey = this.keys.queueItemsKey(queueId);
     const masterQueueKey = this.keys.masterQueueKey(shardId);
@@ -1204,12 +920,16 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       metadata: {},
     };
 
-    // Check concurrency before claiming
+    // Determine how many messages we can claim based on concurrency
+    let maxClaimCount = this.batchClaimSize;
     if (this.concurrencyManager) {
-      const check = await this.concurrencyManager.canProcess(descriptor);
-      if (!check.allowed) {
-        return false;
+      const availableCapacity = await this.concurrencyManager.getAvailableCapacity(descriptor);
+      if (availableCapacity === 0) {
+        // Queue at max concurrency, back off to avoid repeated attempts
+        this.#incrementCooloff(queueId);
+        return 0;
       }
+      maxClaimCount = Math.min(maxClaimCount, availableCapacity);
     }
 
     // Check global rate limit - wait if rate limited
@@ -1224,244 +944,196 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       }
     }
 
-    // Claim message with visibility timeout
-    const claimResult = await this.visibilityManager.claim<StoredMessage<z.infer<TPayloadSchema>>>(
-      queueId,
-      queueKey,
-      queueItemsKey,
-      loopId,
-      this.visibilityTimeoutMs
-    );
+    // Claim batch of messages with visibility timeout
+    const claimedMessages = await this.visibilityManager.claimBatch<
+      StoredMessage<z.infer<TPayloadSchema>>
+    >(queueId, queueKey, queueItemsKey, loopId, maxClaimCount, this.visibilityTimeoutMs);
 
-    if (!claimResult.claimed || !claimResult.message) {
-      // Queue is empty, update master queue
-      await this.redis.updateMasterQueueIfEmpty(masterQueueKey, queueKey, queueId);
-      return false;
-    }
-
-    const { message } = claimResult;
-
-    // Reserve concurrency slot
-    if (this.concurrencyManager) {
-      const reserved = await this.concurrencyManager.reserve(descriptor, message.messageId);
-      if (!reserved) {
-        // Release message back to queue (and ensure it's in master queue)
-        await this.visibilityManager.release(
-          message.messageId,
-          queueId,
-          queueKey,
-          queueItemsKey,
-          masterQueueKey
-        );
-        return false;
+    if (claimedMessages.length === 0) {
+      // Queue is empty, update master queue and clean up caches
+      const removed = await this.redis.updateMasterQueueIfEmpty(masterQueueKey, queueKey, queueId);
+      if (removed === 1) {
+        this.queueDescriptorCache.delete(queueId);
+        this.queueCooloffStates.delete(queueId);
       }
+      return 0;
     }
 
-    await this.#processMessage(loopId, message.payload, queueId);
-    return true;
+    let processedCount = 0;
+
+    // Reserve concurrency and push each message to worker queue
+    for (let i = 0; i < claimedMessages.length; i++) {
+      const message = claimedMessages[i]!;
+
+      // Reserve concurrency slot
+      if (this.concurrencyManager) {
+        const reserved = await this.concurrencyManager.reserve(descriptor, message.messageId);
+        if (!reserved) {
+          // Release ALL remaining messages (from index i onward) back to queue
+          // This prevents messages from being stranded in the in-flight set
+          await this.visibilityManager.releaseBatch(
+            claimedMessages.slice(i),
+            queueId,
+            queueKey,
+            queueItemsKey,
+            masterQueueKey
+          );
+          // Stop processing more messages from this queue since we're at capacity
+          break;
+        }
+      }
+
+      // Resolve which worker queue this message should go to
+      const workerQueueId = this.workerQueueResolver(message.payload);
+
+      // Push to worker queue with format "messageId:queueId"
+      const messageKey = `${message.messageId}:${queueId}`;
+      await this.workerQueueManager.push(workerQueueId, messageKey);
+      processedCount++;
+    }
+
+    if (processedCount > 0) {
+      this.#resetCooloff(queueId);
+    }
+
+    return processedCount;
   }
 
   // ============================================================================
-  // Private - Message Processing
+  // Public API - Message Lifecycle (for external consumers)
   // ============================================================================
 
-  async #processMessage(
-    loopId: string,
-    storedMessage: StoredMessage<z.infer<TPayloadSchema>>,
+  /**
+   * Get message data from in-flight storage.
+   * External consumers use this to retrieve the stored message after popping from worker queue.
+   *
+   * @param messageId - The ID of the message
+   * @param queueId - The queue ID the message belongs to
+   * @returns The stored message or null if not found
+   */
+  async getMessageData(
+    messageId: string,
     queueId: string
-  ): Promise<void> {
-    const startTime = Date.now();
-    const queueKey = this.keys.queueKey(queueId);
-    const queueItemsKey = this.keys.queueItemsKey(queueId);
+  ): Promise<StoredMessage<z.infer<TPayloadSchema>> | null> {
     const shardId = this.masterQueue.getShardForQueue(queueId);
-    const masterQueueKey = this.keys.masterQueueKey(shardId);
+    const inflightDataKey = this.keys.inflightDataKey(shardId);
+    const dataJson = await this.redis.hget(inflightDataKey, messageId);
 
-    const descriptor = this.queueDescriptorCache.get(queueId) ?? {
-      id: queueId,
-      tenantId: storedMessage.tenantId,
-      metadata: storedMessage.metadata ?? {},
-    };
-
-    // Parse payload with schema if provided
-    let payload: z.infer<TPayloadSchema>;
-    if (this.payloadSchema) {
-      const result = this.payloadSchema.safeParse(storedMessage.payload);
-      if (!result.success) {
-        this.logger.error("Payload validation failed on dequeue", {
-          messageId: storedMessage.id,
-          queueId,
-          error: result.error.message,
-        });
-        // Move to DLQ
-        await this.#moveToDeadLetterQueue(storedMessage, "Payload validation failed");
-
-        // Release reserved concurrency slot
-        if (this.concurrencyManager) {
-          try {
-            await this.concurrencyManager.release(descriptor, storedMessage.id);
-          } catch (releaseError) {
-            this.logger.error(
-              "Failed to release concurrency slot after payload validation failure",
-              {
-                messageId: storedMessage.id,
-                queueId,
-                error: releaseError instanceof Error ? releaseError.message : String(releaseError),
-              }
-            );
-          }
-        }
-
-        return;
-      }
-      payload = result.data;
-    } else {
-      payload = storedMessage.payload;
+    if (!dataJson) {
+      return null;
     }
 
-    // Build queue message
-    const queueMessage: QueueMessage<z.infer<TPayloadSchema>> = {
-      id: storedMessage.id,
-      queueId,
-      payload,
-      timestamp: storedMessage.timestamp,
-      attempt: storedMessage.attempt,
-      metadata: storedMessage.metadata,
-    };
-
-    // Record queue time
-    const queueTime = startTime - storedMessage.timestamp;
-    this.telemetry.recordQueueTime(
-      queueTime,
-      this.telemetry.messageAttributes({
-        queueId,
-        tenantId: storedMessage.tenantId,
-        messageId: storedMessage.id,
-      })
-    );
-
-    // Build handler context
-    const handlerContext: MessageHandlerContext<z.infer<TPayloadSchema>> = {
-      message: queueMessage,
-      queue: descriptor,
-      consumerId: loopId,
-      heartbeat: async () => {
-        return this.visibilityManager.heartbeat(
-          storedMessage.id,
-          queueId,
-          this.heartbeatIntervalMs
-        );
-      },
-      complete: async () => {
-        await this.#completeMessage(storedMessage, queueId, queueKey, masterQueueKey, descriptor);
-        this.telemetry.recordComplete(
-          this.telemetry.messageAttributes({
-            queueId,
-            tenantId: storedMessage.tenantId,
-            messageId: storedMessage.id,
-          })
-        );
-        this.telemetry.recordProcessingTime(
-          Date.now() - startTime,
-          this.telemetry.messageAttributes({
-            queueId,
-            tenantId: storedMessage.tenantId,
-            messageId: storedMessage.id,
-          })
-        );
-      },
-      release: async () => {
-        await this.#releaseMessage(
-          storedMessage,
-          queueId,
-          queueKey,
-          queueItemsKey,
-          masterQueueKey,
-          descriptor
-        );
-      },
-      fail: async (error?: Error) => {
-        await this.#handleMessageFailure(
-          storedMessage,
-          queueId,
-          queueKey,
-          queueItemsKey,
-          masterQueueKey,
-          descriptor,
-          error
-        );
-      },
-    };
-
-    // Call message handler
     try {
-      await this.telemetry.trace(
-        "processMessage",
-        async (span) => {
-          span.setAttributes({
-            [FairQueueAttributes.QUEUE_ID]: queueId,
-            [FairQueueAttributes.TENANT_ID]: storedMessage.tenantId,
-            [FairQueueAttributes.MESSAGE_ID]: storedMessage.id,
-            [FairQueueAttributes.ATTEMPT]: storedMessage.attempt,
-            [FairQueueAttributes.CONSUMER_ID]: loopId,
-          });
-
-          await this.messageHandler!(handlerContext);
-        },
-        {
-          kind: SpanKind.CONSUMER,
-          attributes: {
-            [MessagingAttributes.OPERATION]: "process",
-          },
-        }
-      );
-    } catch (error) {
-      this.logger.error("Message handler error", {
-        messageId: storedMessage.id,
-        queueId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      // Trigger failure handling
-      await handlerContext.fail(error instanceof Error ? error : new Error(String(error)));
+      return JSON.parse(dataJson) as StoredMessage<z.infer<TPayloadSchema>>;
+    } catch {
+      this.logger.error("Failed to parse message data", { messageId, queueId });
+      return null;
     }
   }
 
-  async #completeMessage(
-    storedMessage: StoredMessage<z.infer<TPayloadSchema>>,
-    queueId: string,
-    queueKey: string,
-    masterQueueKey: string,
-    descriptor: QueueDescriptor
-  ): Promise<void> {
+  /**
+   * Extend the visibility timeout for a message.
+   * External consumers should call this periodically during long-running processing.
+   *
+   * @param messageId - The ID of the message
+   * @param queueId - The queue ID the message belongs to
+   * @returns true if heartbeat was successful
+   */
+  async heartbeatMessage(messageId: string, queueId: string): Promise<boolean> {
+    return this.visibilityManager.heartbeat(messageId, queueId, this.heartbeatIntervalMs);
+  }
+
+  /**
+   * Mark a message as successfully processed.
+   * This removes the message from in-flight and releases concurrency.
+   *
+   * @param messageId - The ID of the message
+   * @param queueId - The queue ID the message belongs to
+   */
+  async completeMessage(messageId: string, queueId: string): Promise<void> {
     const shardId = this.masterQueue.getShardForQueue(queueId);
+    const queueKey = this.keys.queueKey(queueId);
+    const masterQueueKey = this.keys.masterQueueKey(shardId);
+    const inflightDataKey = this.keys.inflightDataKey(shardId);
+
+    // Get stored message for concurrency release
+    const dataJson = await this.redis.hget(inflightDataKey, messageId);
+    let storedMessage: StoredMessage<z.infer<TPayloadSchema>> | null = null;
+    if (dataJson) {
+      try {
+        storedMessage = JSON.parse(dataJson);
+      } catch {
+        // Ignore parse error, proceed with completion
+      }
+    }
+
+    const descriptor: QueueDescriptor = storedMessage
+      ? this.queueDescriptorCache.get(queueId) ?? {
+          id: queueId,
+          tenantId: storedMessage.tenantId,
+          metadata: storedMessage.metadata ?? {},
+        }
+      : { id: queueId, tenantId: "", metadata: {} };
 
     // Complete in visibility manager
-    await this.visibilityManager.complete(storedMessage.id, queueId);
+    await this.visibilityManager.complete(messageId, queueId);
 
     // Release concurrency
-    if (this.concurrencyManager) {
-      await this.concurrencyManager.release(descriptor, storedMessage.id);
+    if (this.concurrencyManager && storedMessage) {
+      await this.concurrencyManager.release(descriptor, messageId);
     }
 
-    // Update master queue if queue is now empty
-    await this.redis.updateMasterQueueIfEmpty(masterQueueKey, queueKey, queueId);
+    // Update master queue if queue is now empty, and clean up caches
+    const removed = await this.redis.updateMasterQueueIfEmpty(masterQueueKey, queueKey, queueId);
+    if (removed === 1) {
+      this.queueDescriptorCache.delete(queueId);
+      this.queueCooloffStates.delete(queueId);
+    }
+
+    this.telemetry.recordComplete();
 
     this.logger.debug("Message completed", {
-      messageId: storedMessage.id,
+      messageId,
       queueId,
     });
   }
 
-  async #releaseMessage(
-    storedMessage: StoredMessage<z.infer<TPayloadSchema>>,
-    queueId: string,
-    queueKey: string,
-    queueItemsKey: string,
-    masterQueueKey: string,
-    descriptor: QueueDescriptor
-  ): Promise<void> {
-    // Release back to queue (and update master queue to ensure the queue is picked up)
+  /**
+   * Release a message back to the queue for processing by another consumer.
+   * The message is placed at the back of the queue.
+   *
+   * @param messageId - The ID of the message
+   * @param queueId - The queue ID the message belongs to
+   */
+  async releaseMessage(messageId: string, queueId: string): Promise<void> {
+    const shardId = this.masterQueue.getShardForQueue(queueId);
+    const queueKey = this.keys.queueKey(queueId);
+    const queueItemsKey = this.keys.queueItemsKey(queueId);
+    const masterQueueKey = this.keys.masterQueueKey(shardId);
+    const inflightDataKey = this.keys.inflightDataKey(shardId);
+
+    // Get stored message for concurrency release
+    const dataJson = await this.redis.hget(inflightDataKey, messageId);
+    let storedMessage: StoredMessage<z.infer<TPayloadSchema>> | null = null;
+    if (dataJson) {
+      try {
+        storedMessage = JSON.parse(dataJson);
+      } catch {
+        // Ignore parse error
+      }
+    }
+
+    const descriptor: QueueDescriptor = storedMessage
+      ? this.queueDescriptorCache.get(queueId) ?? {
+          id: queueId,
+          tenantId: storedMessage.tenantId,
+          metadata: storedMessage.metadata ?? {},
+        }
+      : { id: queueId, tenantId: "", metadata: {} };
+
+    // Release back to queue
     await this.visibilityManager.release(
-      storedMessage.id,
+      messageId,
       queueId,
       queueKey,
       queueItemsKey,
@@ -1470,15 +1142,69 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     );
 
     // Release concurrency
-    if (this.concurrencyManager) {
-      await this.concurrencyManager.release(descriptor, storedMessage.id);
+    if (this.concurrencyManager && storedMessage) {
+      await this.concurrencyManager.release(descriptor, messageId);
     }
 
     this.logger.debug("Message released", {
-      messageId: storedMessage.id,
+      messageId,
       queueId,
     });
   }
+
+  /**
+   * Mark a message as failed. This will trigger retry logic if configured,
+   * or move the message to the dead letter queue.
+   *
+   * @param messageId - The ID of the message
+   * @param queueId - The queue ID the message belongs to
+   * @param error - Optional error that caused the failure
+   */
+  async failMessage(messageId: string, queueId: string, error?: Error): Promise<void> {
+    const shardId = this.masterQueue.getShardForQueue(queueId);
+    const queueKey = this.keys.queueKey(queueId);
+    const queueItemsKey = this.keys.queueItemsKey(queueId);
+    const masterQueueKey = this.keys.masterQueueKey(shardId);
+    const inflightDataKey = this.keys.inflightDataKey(shardId);
+
+    // Get stored message
+    const dataJson = await this.redis.hget(inflightDataKey, messageId);
+    if (!dataJson) {
+      this.logger.error("Cannot fail message: not found in in-flight data", { messageId, queueId });
+      return;
+    }
+
+    let storedMessage: StoredMessage<z.infer<TPayloadSchema>>;
+    try {
+      storedMessage = JSON.parse(dataJson);
+    } catch {
+      this.logger.error("Cannot fail message: failed to parse stored message", {
+        messageId,
+        queueId,
+      });
+      return;
+    }
+
+    const descriptor = this.queueDescriptorCache.get(queueId) ?? {
+      id: queueId,
+      tenantId: storedMessage.tenantId,
+      metadata: storedMessage.metadata ?? {},
+    };
+
+    await this.#handleMessageFailure(
+      storedMessage,
+      queueId,
+      queueKey,
+      queueItemsKey,
+      masterQueueKey,
+      descriptor,
+      error
+    );
+  }
+
+  // ============================================================================
+  // Private - Message Processing Helpers
+  // ============================================================================
 
   async #handleMessageFailure(
     storedMessage: StoredMessage<z.infer<TPayloadSchema>>,
@@ -1489,14 +1215,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     descriptor: QueueDescriptor,
     error?: Error
   ): Promise<void> {
-    this.telemetry.recordFailure(
-      this.telemetry.messageAttributes({
-        queueId,
-        tenantId: storedMessage.tenantId,
-        messageId: storedMessage.id,
-        attempt: storedMessage.attempt,
-      })
-    );
+    this.telemetry.recordFailure();
 
     // Check retry strategy
     if (this.retryStrategy) {
@@ -1527,14 +1246,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
           await this.concurrencyManager.release(descriptor, storedMessage.id);
         }
 
-        this.telemetry.recordRetry(
-          this.telemetry.messageAttributes({
-            queueId,
-            tenantId: storedMessage.tenantId,
-            messageId: storedMessage.id,
-            attempt: storedMessage.attempt + 1,
-          })
-        );
+        this.telemetry.recordRetry();
 
         this.logger.debug("Message scheduled for retry", {
           messageId: storedMessage.id,
@@ -1590,14 +1302,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     pipeline.hset(dlqDataKey, storedMessage.id, JSON.stringify(dlqMessage));
     await pipeline.exec();
 
-    this.telemetry.recordDLQ(
-      this.telemetry.messageAttributes({
-        queueId: storedMessage.queueId,
-        tenantId: storedMessage.tenantId,
-        messageId: storedMessage.id,
-        attempt: storedMessage.attempt,
-      })
-    );
+    this.telemetry.recordDLQ();
 
     this.logger.info("Message moved to DLQ", {
       messageId: storedMessage.id,
@@ -1626,7 +1331,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
         }
       }
     } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") {
+      if (isAbortError(error)) {
         this.logger.debug("Reclaim loop aborted");
         return;
       }
@@ -1672,6 +1377,15 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
   }
 
   #incrementCooloff(queueId: string): void {
+    // Safety check: if the cache is too large, just clear it
+    if (this.queueCooloffStates.size >= this.maxCooloffStatesSize) {
+      this.logger.warn("Cooloff states cache hit size cap, clearing all entries", {
+        size: this.queueCooloffStates.size,
+        cap: this.maxCooloffStatesSize,
+      });
+      this.queueCooloffStates.clear();
+    }
+
     const state = this.queueCooloffStates.get(queueId) ?? {
       tag: "normal" as const,
       consecutiveFailures: 0,

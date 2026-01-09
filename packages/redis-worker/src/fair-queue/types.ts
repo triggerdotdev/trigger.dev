@@ -187,6 +187,13 @@ export interface FairScheduler {
   recordProcessed?(tenantId: string, queueId: string): Promise<void>;
 
   /**
+   * Called after processing multiple messages to update scheduler state.
+   * Batch variant for efficiency - reduces Redis calls when processing multiple messages.
+   * Optional - falls back to calling recordProcessed multiple times if not implemented.
+   */
+  recordProcessedBatch?(tenantId: string, queueId: string, count: number): Promise<void>;
+
+  /**
    * Initialize the scheduler (called once on startup).
    */
   initialize?(): Promise<void>;
@@ -279,14 +286,15 @@ export interface FairQueueKeyProducer {
 
 /**
  * Worker queue configuration options.
+ * Worker queues are always enabled - FairQueue routes messages to worker queues,
+ * and external consumers are responsible for consuming from those queues.
  */
 export interface WorkerQueueOptions<TPayload = unknown> {
-  /** Whether to enable worker queues (default: false for backwards compatibility) */
-  enabled: boolean;
-  /** Blocking pop timeout in seconds (default: 10) */
-  blockingTimeoutSeconds?: number;
-  /** Function to resolve which worker queue a message should go to */
-  resolveWorkerQueue?: (message: StoredMessage<TPayload>) => string;
+  /**
+   * Function to resolve which worker queue a message should go to.
+   * This is called during the claim-and-push phase to determine the target queue.
+   */
+  resolveWorkerQueue: (message: StoredMessage<TPayload>) => string;
 }
 
 /**
@@ -309,6 +317,8 @@ export interface CooloffOptions {
   threshold?: number;
   /** Duration of cooloff period in milliseconds (default: 10000) */
   periodMs?: number;
+  /** Maximum number of cooloff state entries before triggering cleanup (default: 1000) */
+  maxStatesSize?: number;
 }
 
 /**
@@ -340,9 +350,12 @@ export interface FairQueueOptions<TPayloadSchema extends z.ZodTypeAny = z.ZodUnk
   /** Concurrency group configurations */
   concurrencyGroups?: ConcurrencyGroupConfig[];
 
-  // Worker queue
-  /** Worker queue configuration */
-  workerQueue?: WorkerQueueOptions<z.infer<TPayloadSchema>>;
+  // Worker queue (required)
+  /**
+   * Worker queue configuration.
+   * FairQueue routes messages to worker queues; external consumers handle consumption.
+   */
+  workerQueue: WorkerQueueOptions<z.infer<TPayloadSchema>>;
 
   // Retry and DLQ
   /** Retry and dead letter queue configuration */
@@ -363,6 +376,10 @@ export interface FairQueueOptions<TPayloadSchema extends z.ZodTypeAny = z.ZodUnk
   consumerIntervalMs?: number;
   /** Whether to start consumers on initialization (default: true) */
   startConsumers?: boolean;
+
+  // Batch claiming
+  /** Maximum number of messages to claim in a single batch operation (default: 10) */
+  batchClaimSize?: number;
 
   // Consumer tracing
   /** Maximum iterations before starting a new trace span (default: 500) */
@@ -509,6 +526,8 @@ export interface DRRSchedulerConfig {
   quantum: number;
   /** Maximum accumulated deficit (prevents starvation) */
   maxDeficit: number;
+  /** Maximum queues to fetch from master queue (default: 1000) */
+  masterQueueLimit?: number;
   /** Redis options for state storage */
   redis: RedisOptions;
   /** Key producer */

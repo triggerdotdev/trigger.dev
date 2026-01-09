@@ -521,6 +521,7 @@ const EnvironmentSchema = z
     PROD_USAGE_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().optional(),
 
     CENTS_PER_RUN: z.coerce.number().default(0),
+    CENTS_PER_QUERY_BYTE_SECOND: z.coerce.number().default(0),
 
     EVENT_LOOP_MONITOR_ENABLED: z.string().default("1"),
     RESOURCE_MONITOR_ENABLED: z.string().default("0"),
@@ -951,6 +952,14 @@ const EnvironmentSchema = z
     BATCH_QUEUE_MAX_DEFICIT: z.coerce.number().int().default(100),
     BATCH_QUEUE_CONSUMER_COUNT: z.coerce.number().int().default(3),
     BATCH_QUEUE_CONSUMER_INTERVAL_MS: z.coerce.number().int().default(50),
+    // Number of master queue shards for horizontal scaling
+    BATCH_QUEUE_SHARD_COUNT: z.coerce.number().int().default(1),
+    // Maximum queues to fetch from master queue per iteration
+    BATCH_QUEUE_MASTER_QUEUE_LIMIT: z.coerce.number().int().default(1000),
+    // Enable worker queue for two-stage processing (claim messages, push to worker queue, process from worker queue)
+    BATCH_QUEUE_WORKER_QUEUE_ENABLED: BoolEnv.default(true),
+    // Worker queue blocking timeout in seconds (for two-stage processing, only used when BATCH_QUEUE_WORKER_QUEUE_ENABLED is true)
+    BATCH_QUEUE_WORKER_QUEUE_TIMEOUT_SECONDS: z.coerce.number().int().default(10),
     // Global rate limit: max items processed per second across all consumers
     // If not set, no global rate limiting is applied
     BATCH_QUEUE_GLOBAL_RATE_LIMIT: z.coerce.number().int().positive().optional(),
@@ -1260,6 +1269,7 @@ const EnvironmentSchema = z
     EVENT_LOOP_MONITOR_THRESHOLD_MS: z.coerce.number().int().default(100),
     EVENT_LOOP_MONITOR_UTILIZATION_INTERVAL_MS: z.coerce.number().int().default(1000),
     EVENT_LOOP_MONITOR_UTILIZATION_SAMPLE_RATE: z.coerce.number().default(0.05),
+    EVENT_LOOP_MONITOR_NOTIFY_ENABLED: z.string().default("0"),
 
     VERY_SLOW_QUERY_THRESHOLD_MS: z.coerce.number().int().optional(),
 
