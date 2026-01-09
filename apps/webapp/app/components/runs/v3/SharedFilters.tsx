@@ -1,10 +1,25 @@
 import * as Ariakit from "@ariakit/react";
 import type { RuntimeEnvironment } from "@trigger.dev/database";
+import {
+  startOfDay,
+  endOfDay,
+  startOfWeek,
+  endOfWeek,
+  startOfMonth,
+  endOfMonth,
+  startOfYear,
+  subDays,
+  subWeeks,
+  subMonths,
+  previousSaturday,
+  isSaturday,
+  isSunday,
+} from "date-fns";
 import parse from "parse-duration";
 import type { ReactNode } from "react";
 import { startTransition, useCallback, useEffect, useState } from "react";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
-import { DateField } from "~/components/primitives/DateField";
+import { DateTimePicker } from "~/components/primitives/DateTimePicker";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Label } from "~/components/primitives/Label";
 import { RadioButtonCircle } from "~/components/primitives/RadioButton";
@@ -528,36 +543,126 @@ export function TimeDropdown({
                 <Label variant="small">
                   From <span className="text-text-dimmed">(local time)</span>
                 </Label>
-                <DateField
+                <DateTimePicker
                   label="From time"
-                  defaultValue={fromValue}
-                  onValueChange={(value) => {
+                  value={fromValue}
+                  onChange={(value) => {
                     setFromValue(value);
                     setActiveSection("dateRange");
                     setValidationError(null);
                   }}
-                  granularity="second"
+                  showSeconds
                   showNowButton
                   showClearButton
-                  variant="small"
                 />
               </div>
               <div className="flex flex-col gap-1" onClick={(e) => e.stopPropagation()}>
                 <Label variant="small">
                   To <span className="text-text-dimmed">(local time)</span>
                 </Label>
-                <DateField
+                <DateTimePicker
                   label="To time"
-                  defaultValue={toValue}
-                  onValueChange={(value) => {
+                  value={toValue}
+                  onChange={(value) => {
                     setToValue(value);
                     setActiveSection("dateRange");
                     setValidationError(null);
                   }}
-                  granularity="second"
+                  showSeconds
                   showNowButton
                   showClearButton
-                  variant="small"
+                />
+              </div>
+              {/* Quick select date ranges */}
+              <div className="mt-3 grid grid-cols-3 gap-2" onClick={(e) => e.stopPropagation()}>
+                <QuickDateButton
+                  label="Yesterday"
+                  onClick={() => {
+                    const yesterday = subDays(new Date(), 1);
+                    setFromValue(startOfDay(yesterday));
+                    setToValue(endOfDay(yesterday));
+                    setActiveSection("dateRange");
+                    setValidationError(null);
+                  }}
+                />
+                <QuickDateButton
+                  label="Today"
+                  onClick={() => {
+                    const today = new Date();
+                    setFromValue(startOfDay(today));
+                    setToValue(today);
+                    setActiveSection("dateRange");
+                    setValidationError(null);
+                  }}
+                />
+                <QuickDateButton
+                  label="This week"
+                  onClick={() => {
+                    const now = new Date();
+                    setFromValue(startOfWeek(now, { weekStartsOn: 1 }));
+                    setToValue(now);
+                    setActiveSection("dateRange");
+                    setValidationError(null);
+                  }}
+                />
+                <QuickDateButton
+                  label="Last week"
+                  onClick={() => {
+                    const lastWeek = subWeeks(new Date(), 1);
+                    setFromValue(startOfWeek(lastWeek, { weekStartsOn: 1 }));
+                    setToValue(endOfWeek(lastWeek, { weekStartsOn: 1 }));
+                    setActiveSection("dateRange");
+                    setValidationError(null);
+                  }}
+                />
+                <QuickDateButton
+                  label="Last weekend"
+                  onClick={() => {
+                    const now = new Date();
+                    let saturday: Date;
+                    if (isSaturday(now)) {
+                      saturday = subDays(now, 7);
+                    } else if (isSunday(now)) {
+                      saturday = subDays(now, 8);
+                    } else {
+                      saturday = previousSaturday(now);
+                    }
+                    const sunday = endOfDay(subDays(saturday, -1));
+                    setFromValue(startOfDay(saturday));
+                    setToValue(sunday);
+                    setActiveSection("dateRange");
+                    setValidationError(null);
+                  }}
+                />
+                <QuickDateButton
+                  label="This month"
+                  onClick={() => {
+                    const now = new Date();
+                    setFromValue(startOfMonth(now));
+                    setToValue(now);
+                    setActiveSection("dateRange");
+                    setValidationError(null);
+                  }}
+                />
+                <QuickDateButton
+                  label="Last month"
+                  onClick={() => {
+                    const lastMonth = subMonths(new Date(), 1);
+                    setFromValue(startOfMonth(lastMonth));
+                    setToValue(endOfMonth(lastMonth));
+                    setActiveSection("dateRange");
+                    setValidationError(null);
+                  }}
+                />
+                <QuickDateButton
+                  label="Year to date"
+                  onClick={() => {
+                    const now = new Date();
+                    setFromValue(startOfYear(now));
+                    setToValue(now);
+                    setActiveSection("dateRange");
+                    setValidationError(null);
+                  }}
                 />
               </div>
               {validationError && activeSection === "dateRange" && (
@@ -627,4 +732,16 @@ export function dateFromString(value: string | undefined | null): Date | undefin
   }
 
   return new Date(value);
+}
+
+function QuickDateButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded border border-charcoal-650 bg-charcoal-750 px-2 py-0.5 text-xs text-text-dimmed transition hover:border-charcoal-600 hover:text-text-bright"
+    >
+      {label}
+    </button>
+  );
 }
