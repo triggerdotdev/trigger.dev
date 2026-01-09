@@ -434,29 +434,6 @@ export function TimeDropdown({
                 Runs created in the last
               </Label>
               <div className="grid grid-cols-4 gap-2">
-                {timePeriods.map((p) => (
-                  <Button
-                    key={p.value}
-                    variant="secondary/small"
-                    className={
-                      activeSection === "duration" && p.value === selectedPeriod
-                        ? "border-indigo-500 group-hover/button:border-indigo-500"
-                        : undefined
-                    }
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setActiveSection("duration");
-                      setSelectedPeriod(p.value);
-                      setCustomValue("");
-                      setValidationError(null);
-                    }}
-                    fullWidth
-                    type="button"
-                  >
-                    {p.label}
-                  </Button>
-                ))}
                 {/* Custom duration row */}
                 <div
                   className={cn(
@@ -514,6 +491,35 @@ export function TimeDropdown({
                     ))}
                   </div>
                 </div>
+                {timePeriods.map((p) => {
+                  const parsed = parsePeriodString(p.value);
+                  return (
+                    <Button
+                      key={p.value}
+                      variant="secondary/small"
+                      className={
+                        activeSection === "duration" && p.value === selectedPeriod
+                          ? "border-indigo-500 group-hover/button:border-indigo-500"
+                          : undefined
+                      }
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setActiveSection("duration");
+                        setSelectedPeriod(p.value);
+                        if (parsed) {
+                          setCustomValue(parsed.value.toString());
+                          setCustomUnit(parsed.unit);
+                        }
+                        setValidationError(null);
+                      }}
+                      fullWidth
+                      type="button"
+                    >
+                      {p.label}
+                    </Button>
+                  );
+                })}
               </div>
               {validationError && activeSection === "duration" && selectedPeriod === "custom" && (
                 <p className="mt-1 text-xs text-error">{validationError}</p>
