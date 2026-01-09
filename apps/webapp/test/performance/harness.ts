@@ -9,7 +9,7 @@ import path from "path";
 export class RunsReplicationHarness {
   private prisma: PrismaClient | null = null;
   private adminPrisma: PrismaClient | null = null;
-  private producerProcess: ProducerProcessManager | null = null;
+  private producerProcesses: ProducerProcessManager[] = [];
   private consumerProcess: ConsumerProcessManager | null = null;
   private metricsCollector: MetricsCollector;
 
@@ -52,11 +52,16 @@ export class RunsReplicationHarness {
     console.log("Running database migrations...");
     await this.runMigrations();
 
-    // 5. Configure replication
+    // 5. Truncate existing TaskRun data for clean slate
+    console.log("Truncating existing TaskRun data...");
+    await this.prisma!.$executeRawUnsafe(`TRUNCATE TABLE public."TaskRun" CASCADE;`);
+    console.log("✅ TaskRun table truncated");
+
+    // 6. Configure replication
     console.log("Configuring logical replication...");
     await this.setupReplication();
 
-    // 6. Set up test fixtures
+    // 7. Set up test fixtures
     console.log("Setting up test fixtures...");
     await this.setupTestFixtures();
 
@@ -111,19 +116,31 @@ export class RunsReplicationHarness {
 
     await this.consumerProcess.start();
 
-    // 10. Start producer process
-    console.log("Starting producer process...");
-    this.producerProcess = new ProducerProcessManager(this.config.producer);
+    // 10. Start producer processes (multiple workers for high throughput)
+    const workerCount = this.config.producer.workerCount;
+    console.log(`Starting ${workerCount} producer process(es)...`);
 
-    this.producerProcess.setOnMetrics((metrics) => {
-      this.metricsCollector.recordProducerMetrics(metrics);
-    });
+    for (let i = 0; i < workerCount; i++) {
+      const workerConfig = { ...this.config.producer };
+      // Each worker gets a unique ID and a portion of the total throughput
+      workerConfig.workerId = `worker-${i + 1}`;
+      workerConfig.targetThroughput = this.config.producer.targetThroughput / workerCount;
 
-    this.producerProcess.setOnError((error) => {
-      console.error("Producer error:", error);
-    });
+      const producerProcess = new ProducerProcessManager(workerConfig);
 
-    await this.producerProcess.start();
+      producerProcess.setOnMetrics((metrics) => {
+        this.metricsCollector.recordProducerMetrics(metrics);
+      });
+
+      producerProcess.setOnError((error) => {
+        console.error(`Producer worker ${i + 1} error:`, error);
+      });
+
+      await producerProcess.start();
+      this.producerProcesses.push(producerProcess);
+
+      console.log(`  ✓ Producer worker ${i + 1}/${workerCount} started (target: ${workerConfig.targetThroughput.toFixed(0)} rec/sec)`);
+    }
 
     console.log("\n✅ Profiling environment ready!\n");
   }
@@ -139,18 +156,23 @@ export class RunsReplicationHarness {
 
       this.metricsCollector.startPhase(phase.name);
 
-      // Start producer
-      this.producerProcess!.send({
-        type: "start",
-        throughput: phase.targetThroughput,
-      });
+      // Start all producer workers
+      const perWorkerThroughput = phase.targetThroughput / this.producerProcesses.length;
+      for (const producer of this.producerProcesses) {
+        producer.send({
+          type: "start",
+          throughput: perWorkerThroughput,
+        });
+      }
 
       // Wait for phase duration
       await this.waitWithProgress(phase.durationSec * 1000);
 
-      // Stop producer
-      this.producerProcess!.send({ type: "stop" });
-      console.log("\nProducer stopped, waiting for consumer to catch up...");
+      // Stop all producer workers
+      for (const producer of this.producerProcesses) {
+        producer.send({ type: "stop" });
+      }
+      console.log("\nAll producers stopped, waiting for consumer to catch up...");
 
       // Wait for consumer to catch up
       await this.waitForReplicationLag(100, 60000);
@@ -168,9 +190,9 @@ export class RunsReplicationHarness {
   async teardown(): Promise<void> {
     console.log("\n🧹 Tearing down...\n");
 
-    if (this.producerProcess) {
-      console.log("Stopping producer process...");
-      await this.producerProcess.stop();
+    if (this.producerProcesses.length > 0) {
+      console.log(`Stopping ${this.producerProcesses.length} producer process(es)...`);
+      await Promise.all(this.producerProcesses.map((p) => p.stop()));
     }
 
     if (this.consumerProcess) {
@@ -259,33 +281,41 @@ export class RunsReplicationHarness {
       `ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`
     );
 
-    // Check if slot exists
+    // Drop existing replication slot if it exists (ensures clean slate)
     const slotExists = await this.prisma!.$queryRaw<Array<{ slot_name: string }>>`
       SELECT slot_name FROM pg_replication_slots WHERE slot_name = ${this.config.consumer.slotName};
     `;
 
-    if (slotExists.length === 0) {
+    if (slotExists.length > 0) {
+      console.log(`🧹 Dropping existing replication slot: ${this.config.consumer.slotName}`);
       await this.prisma!.$executeRawUnsafe(
-        `SELECT pg_create_logical_replication_slot('${this.config.consumer.slotName}', 'pgoutput');`
+        `SELECT pg_drop_replication_slot('${this.config.consumer.slotName}');`
       );
-      console.log(`✅ Created replication slot: ${this.config.consumer.slotName}`);
-    } else {
-      console.log(`✅ Replication slot exists: ${this.config.consumer.slotName}`);
     }
 
-    // Check if publication exists
+    // Drop and recreate publication (ensures clean slate)
     const pubExists = await this.prisma!.$queryRaw<Array<{ pubname: string }>>`
       SELECT pubname FROM pg_publication WHERE pubname = ${this.config.consumer.publicationName};
     `;
 
-    if (pubExists.length === 0) {
+    if (pubExists.length > 0) {
+      console.log(`🧹 Dropping existing publication: ${this.config.consumer.publicationName}`);
       await this.prisma!.$executeRawUnsafe(
-        `CREATE PUBLICATION ${this.config.consumer.publicationName} FOR TABLE "TaskRun";`
+        `DROP PUBLICATION ${this.config.consumer.publicationName};`
       );
-      console.log(`✅ Created publication: ${this.config.consumer.publicationName}`);
-    } else {
-      console.log(`✅ Publication exists: ${this.config.consumer.publicationName}`);
     }
+
+    // Create fresh publication
+    await this.prisma!.$executeRawUnsafe(
+      `CREATE PUBLICATION ${this.config.consumer.publicationName} FOR TABLE "TaskRun";`
+    );
+    console.log(`✅ Created publication: ${this.config.consumer.publicationName}`);
+
+    // Create fresh replication slot
+    await this.prisma!.$executeRawUnsafe(
+      `SELECT pg_create_logical_replication_slot('${this.config.consumer.slotName}', 'pgoutput');`
+    );
+    console.log(`✅ Created replication slot: ${this.config.consumer.slotName}`);
   }
 
   private async setupTestFixtures(): Promise<void> {
