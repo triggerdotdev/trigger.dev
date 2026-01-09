@@ -671,7 +671,8 @@ function aggregateValues(values: number[], aggregation: AggregationType): number
 function sortData(
   data: Record<string, unknown>[],
   sortByColumn: string | null,
-  sortDirection: "asc" | "desc"
+  sortDirection: "asc" | "desc",
+  xAxisColumn?: string | null
 ): Record<string, unknown>[] {
   if (!sortByColumn) return data;
 
@@ -684,12 +685,14 @@ function sortData(
     if (aVal == null) return sortDirection === "asc" ? -1 : 1;
     if (bVal == null) return sortDirection === "asc" ? 1 : -1;
 
-    // Try to compare as dates first (using __rawDate if available)
-    const aDate = a.__rawDate as Date | null;
-    const bDate = b.__rawDate as Date | null;
-    if (aDate && bDate) {
-      const diff = aDate.getTime() - bDate.getTime();
-      return sortDirection === "asc" ? diff : -diff;
+    // Only use date comparison when sorting by the X-axis column
+    if (sortByColumn === xAxisColumn) {
+      const aDate = a.__rawDate as Date | null;
+      const bDate = b.__rawDate as Date | null;
+      if (aDate && bDate) {
+        const diff = aDate.getTime() - bDate.getTime();
+        return sortDirection === "asc" ? diff : -diff;
+      }
     }
 
     // Compare as numbers if possible
@@ -737,9 +740,9 @@ export const QueryResultsChart = memo(function QueryResultsChart({
   const data = useMemo(() => {
     if (isDateBased) {
       // Always sort by timestamp for date-based axes
-      return sortData(unsortedData, xDataKey, "asc");
+      return sortData(unsortedData, xDataKey, "asc", xDataKey);
     }
-    return sortData(unsortedData, sortByColumn, sortDirection);
+    return sortData(unsortedData, sortByColumn, sortDirection, xDataKey);
   }, [unsortedData, sortByColumn, sortDirection, isDateBased, xDataKey]);
 
   // Detect time granularity for the data
