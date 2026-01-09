@@ -112,24 +112,27 @@ export async function action({ request, params }: ActionFunctionArgs) {
         // Process the stream
         for await (const part of result.fullStream) {
           switch (part.type) {
-            case "text-delta":
+            case "text-delta": {
               sendEvent({ type: "thinking", content: part.textDelta });
               break;
-            case "tool-call":
+            }
+            case "tool-call": {
               sendEvent({
                 type: "tool_call",
                 tool: part.toolName,
                 args: part.args,
               });
               break;
-            case "error":
+            }
+            case "error": {
               sendEvent({
                 type: "result",
                 success: false,
                 error: part.error instanceof Error ? part.error.message : String(part.error),
               });
               break;
-            case "finish":
+            }
+            case "finish": {
               // Extract query from the final text
               const finalText = await result.text;
               const query = extractQueryFromText(finalText);
@@ -157,6 +160,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
                 });
               }
               break;
+            }
           }
         }
       } catch (error) {
