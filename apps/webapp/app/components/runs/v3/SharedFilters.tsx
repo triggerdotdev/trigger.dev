@@ -535,7 +535,7 @@ export function TimeDropdown({
               setActiveSection("dateRange");
               setValidationError(null);
             }}
-            className="flex cursor-pointer gap-3 pb-2"
+            className="flex cursor-pointer gap-3"
           >
             <RadioButtonCircle checked={activeSection === "dateRange"} />
             <div className="flex flex-1 flex-col">
@@ -546,7 +546,14 @@ export function TimeDropdown({
                 )}
               >
                 Or specify exact time range{" "}
-                <span className="text-text-dimmed">(in local time)</span>
+                <span
+                  className={cn(
+                    "transition-colors",
+                    activeSection === "dateRange" ? "text-indigo-500" : "text-text-dimmed"
+                  )}
+                >
+                  (in local time)
+                </span>
               </Label>
               <div className="-ml-8 mb-2" onClick={(e) => e.stopPropagation()}>
                 <DateTimePicker
