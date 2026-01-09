@@ -1,0 +1,378 @@
+import type {
+  ActionFunctionArgs,
+  LoaderFunctionArgs,
+} from "@remix-run/node";
+import { json, redirect } from "@remix-run/node";
+import { Form, useActionData, useLoaderData, useNavigation } from "@remix-run/react";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { z } from "zod";
+import { DialogClose } from "@radix-ui/react-dialog";
+import { Button } from "~/components/primitives/Buttons";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "~/components/primitives/Dialog";
+import { FormButtons } from "~/components/primitives/FormButtons";
+import { Header1 } from "~/components/primitives/Headers";
+import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { Paragraph } from "~/components/primitives/Paragraph";
+import { Table, TableBlankRow, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow } from "~/components/primitives/Table";
+import { useOrganization } from "~/hooks/useOrganizations";
+import { VercelIntegrationRepository } from "~/models/vercelIntegration.server";
+import { $transaction, prisma } from "~/db.server";
+import { requireUserId } from "~/services/session.server";
+import { OrganizationParamsSchema } from "~/utils/pathBuilder";
+import { logger } from "~/services/logger.server";
+import { TrashIcon } from "@heroicons/react/20/solid";
+import { vercelResourcePath } from "~/utils/pathBuilder";
+import { LinkButton } from "~/components/primitives/Buttons";
+
+const SearchParamsSchema = z.object({
+  configurationId: z.string().optional(),
+});
+
+export const loader = async ({ request, params }: LoaderFunctionArgs) => {
+  const userId = await requireUserId(request);
+  const { organizationSlug } = OrganizationParamsSchema.parse(params);
+  
+  const url = new URL(request.url);
+  const { configurationId } = SearchParamsSchema.parse(Object.fromEntries(url.searchParams));
+
+  // Check user has access to organization
+  const organization = await prisma.organization.findFirst({
+    where: {
+      slug: organizationSlug,
+      members: { some: { userId } },
+      deletedAt: null,
+    },
+  });
+
+  if (!organization) {
+    throw new Response("Not found", { status: 404 });
+  }
+
+  // Find Vercel integration for this organization
+  let vercelIntegration = await prisma.organizationIntegration.findFirst({
+    where: {
+      organizationId: organization.id,
+      service: "VERCEL",
+      deletedAt: null,
+      // If configurationId is provided, filter by it in integrationData
+      ...(configurationId && {
+        integrationData: {
+          path: ["installationId"],
+          equals: configurationId,
+        },
+      }),
+    },
+    include: {
+      tokenReference: true,
+    },
+  });
+
+  if (!vercelIntegration) {
+    return typedjson({
+      organization,
+      vercelIntegration: null,
+      connectedProjects: [],
+      teamId: null,
+      installationId: null,
+    });
+  }
+
+  // Get team ID from integrationData
+  const integrationData = vercelIntegration.integrationData as any;
+  const teamId = integrationData?.teamId ?? null;
+  const installationId = integrationData?.installationId ?? null;
+
+  // Get all connected projects for this integration
+  const connectedProjects = await prisma.organizationProjectIntegration.findMany({
+    where: {
+      organizationIntegrationId: vercelIntegration.id,
+      deletedAt: null,
+    },
+    include: {
+      project: {
+        select: {
+          id: true,
+          slug: true,
+          name: true,
+        },
+      },
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+
+  return typedjson({
+    organization,
+    vercelIntegration,
+    connectedProjects,
+    teamId,
+    installationId,
+  });
+};
+
+const ActionSchema = z.object({
+  intent: z.literal("uninstall"),
+});
+
+export const action = async ({ request, params }: ActionFunctionArgs) => {
+  const userId = await requireUserId(request);
+  const { organizationSlug } = OrganizationParamsSchema.parse(params);
+
+  const formData = await request.formData();
+  const { intent } = ActionSchema.parse(Object.fromEntries(formData));
+
+  if (intent !== "uninstall") {
+    throw new Response("Invalid intent", { status: 400 });
+  }
+
+  // Check user has access to organization
+  const organization = await prisma.organization.findFirst({
+    where: {
+      slug: organizationSlug,
+      members: { some: { userId } },
+      deletedAt: null,
+    },
+  });
+
+  if (!organization) {
+    throw new Response("Not found", { status: 404 });
+  }
+
+  // Find Vercel integration
+  const vercelIntegration = await prisma.organizationIntegration.findFirst({
+    where: {
+      organizationId: organization.id,
+      service: "VERCEL",
+      deletedAt: null,
+    },
+    include: {
+      tokenReference: true,
+    },
+  });
+
+  if (!vercelIntegration) {
+    return json({ error: "Vercel integration not found" }, { status: 404 });
+  }
+
+  try {
+    // First, uninstall the integration from Vercel side
+    await VercelIntegrationRepository.uninstallVercelIntegration(vercelIntegration);
+
+    // Then soft-delete the integration and all connected projects in a transaction
+    await $transaction(prisma, async (tx) => {
+      // Soft-delete all connected projects
+      await tx.organizationProjectIntegration.updateMany({
+        where: {
+          organizationIntegrationId: vercelIntegration.id,
+          deletedAt: null,
+        },
+        data: { deletedAt: new Date() },
+      });
+
+      // Soft-delete the integration record
+      await tx.organizationIntegration.update({
+        where: { id: vercelIntegration.id },
+        data: { deletedAt: new Date() },
+      });
+    });
+
+    logger.info("Vercel integration uninstalled successfully", {
+      organizationId: organization.id,
+      organizationSlug,
+      userId,
+      integrationId: vercelIntegration.id,
+    });
+
+    // Redirect back to organization settings
+    return redirect(`/orgs/${organizationSlug}/settings`);
+  } catch (error) {
+    logger.error("Failed to uninstall Vercel integration", {
+      organizationId: organization.id,
+      organizationSlug,
+      userId,
+      integrationId: vercelIntegration.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+
+    return json(
+      { error: "Failed to uninstall Vercel integration. Please try again." },
+      { status: 500 }
+    );
+  }
+};
+
+export default function VercelIntegrationPage() {
+  const { organization, vercelIntegration, connectedProjects, teamId, installationId } = 
+    useTypedLoaderData<typeof loader>();
+  const actionData = useActionData<typeof action>();
+  const navigation = useNavigation();
+  const isUninstalling = navigation.state === "submitting" && 
+    navigation.formData?.get("intent") === "uninstall";
+
+  if (!vercelIntegration) {
+    return (
+      <PageContainer>
+        <PageBody>
+          <div className="flex flex-col items-center justify-center py-8">
+            <Header1>No Vercel Integration Found</Header1>
+            <Paragraph className="mt-2 text-center text-text-dimmed">
+              This organization doesn't have a Vercel integration configured.
+            </Paragraph>
+          </div>
+        </PageBody>
+      </PageContainer>
+    );
+  }
+
+  return (
+    <PageContainer>
+      <PageBody>
+        <div className="mb-8">
+          <Header1>Vercel Integration</Header1>
+          <Paragraph className="mt-2 text-text-dimmed">
+            Manage your organization's Vercel integration and connected projects.
+          </Paragraph>
+        </div>
+
+        {/* Integration Info Section */}
+        <div className="mb-8 rounded-lg border border-grid-bright bg-background-bright p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-medium text-text-bright">Integration Details</h2>
+              <div className="mt-2 space-y-1 text-sm text-text-dimmed">
+                {teamId && (
+                  <div>
+                    <span className="font-medium">Vercel Team ID:</span> {teamId}
+                  </div>
+                )}
+                {installationId && (
+                  <div>
+                    <span className="font-medium">Installation ID:</span> {installationId}
+                  </div>
+                )}
+                <div>
+                  <span className="font-medium">Installed:</span>{" "}
+                  {new Date(vercelIntegration.createdAt).toLocaleDateString()}
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-col items-end gap-2">
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button
+                    variant="danger/medium"
+                    LeadingIcon={TrashIcon}
+                    disabled={isUninstalling}
+                  >
+                    Remove Integration
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Remove Vercel Integration</DialogTitle>
+                    <DialogDescription>
+                      This will permanently remove the Vercel integration and disconnect all projects. 
+                      This action cannot be undone.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <DialogFooter>
+                    <FormButtons
+                      confirmButton={
+                        <Form method="post">
+                          <input type="hidden" name="intent" value="uninstall" />
+                          <Button
+                            variant="danger/medium"
+                            LeadingIcon={TrashIcon}
+                            type="submit"
+                            disabled={isUninstalling}
+                          >
+                            {isUninstalling ? "Removing..." : "Remove Integration"}
+                          </Button>
+                        </Form>
+                      }
+                      cancelButton={
+                        <DialogClose asChild>
+                          <Button variant="tertiary/medium">Cancel</Button>
+                        </DialogClose>
+                      }
+                    />
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+              {actionData?.error && (
+                <Paragraph variant="small" className="text-error">
+                  {actionData.error}
+                </Paragraph>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Connected Projects Section */}
+        <div>
+          <h2 className="mb-4 text-lg font-medium text-text-bright">
+            Connected Projects ({connectedProjects.length})
+          </h2>
+          
+          {connectedProjects.length === 0 ? (
+            <div className="rounded-lg border border-grid-bright bg-background-bright p-6 text-center">
+              <Paragraph className="text-text-dimmed">
+                No projects are currently connected to this Vercel integration.
+              </Paragraph>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHeaderCell>Project Name</TableHeaderCell>
+                  <TableHeaderCell>Vercel Project ID</TableHeaderCell>
+                  <TableHeaderCell>Connected</TableHeaderCell>
+                  <TableHeaderCell hiddenLabel>Actions</TableHeaderCell>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {connectedProjects.map((projectIntegration) => (
+                  <TableRow key={projectIntegration.id}>
+                    <TableCell>{projectIntegration.project.name}</TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {projectIntegration.externalEntityId}
+                    </TableCell>
+                    <TableCell>
+                      {new Date(projectIntegration.createdAt).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell>
+                      <LinkButton
+                        variant="minimal/small"
+                        to={vercelResourcePath(
+                          organization,
+                          projectIntegration.project,
+                          { slug: "prod" } // Default to production environment
+                        )}
+                      >
+                        Configure
+                      </LinkButton>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {connectedProjects.length === 0 && (
+                  <TableBlankRow colSpan={4}>
+                    <Paragraph>No connected projects found.</Paragraph>
+                  </TableBlankRow>
+                )}
+              </TableBody>
+            </Table>
+          )}
+        </div>
+      </PageBody>
+    </PageContainer>
+  );
+}

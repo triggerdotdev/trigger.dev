@@ -1494,5 +1494,35 @@ export class VercelIntegrationRepository {
       });
     }
   }
+
+  /**
+   * Uninstall a Vercel integration by removing the configuration
+   */
+  static async uninstallVercelIntegration(
+    integration: OrganizationIntegration & { tokenReference: SecretReference }
+  ): Promise<void> {
+    const client = await this.getVercelClient(integration);
+
+    const secret = await getSecretStore(integration.tokenReference.provider).getSecret(
+      VercelSecretSchema,
+      integration.tokenReference.key
+    );
+
+    if (!secret?.installationId) {
+      throw new Error("Installation ID not found in Vercel integration");
+    }
+
+    try {
+      await client.integrations.deleteConfiguration({
+        id: secret.installationId,
+      });
+    } catch (error) {
+      logger.error("Failed to uninstall Vercel integration", {
+        installationId: secret.installationId,
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+      throw error;
+    }
+  }
 }
 

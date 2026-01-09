@@ -121,6 +121,14 @@ export function organizationSettingsPath(organization: OrgForPath) {
   return `${organizationPath(organization)}/settings`;
 }
 
+export function organizationIntegrationsPath(organization: OrgForPath) {
+  return `${organizationPath(organization)}/settings/integrations`;
+}
+
+export function organizationVercelIntegrationPath(organization: OrgForPath) {
+  return `${organizationIntegrationsPath(organization)}/vercel`;
+}
+
 function organizationParam(organization: OrgForPath) {
   return organization.slug;
 }
