@@ -14,6 +14,8 @@ export interface TestPhase {
 
 export interface ProducerConfig {
   enabled: boolean;
+  workerCount: number; // Number of parallel producer processes
+  workerId?: string; // Unique identifier for this specific worker
   targetThroughput: number;
   insertUpdateRatio: number; // 0.0-1.0, e.g. 0.8 = 80% inserts, 20% updates
   batchSize: number;
@@ -57,6 +59,8 @@ export interface InfrastructureConfig {
 }
 
 export interface HarnessConfig {
+  runName: string; // Short identifier for this run (e.g. "baseline", "optimized-v1")
+  runDescription?: string; // Optional longer description of what this run is testing
   phases: TestPhase[];
   producer: ProducerConfig;
   consumer: ConsumerConfig;
@@ -67,6 +71,8 @@ export interface HarnessConfig {
 
 export function getDefaultConfig(): Partial<HarnessConfig> {
   return {
+    runName: "default",
+    runDescription: undefined,
     phases: [
       {
         name: "warmup",
@@ -81,6 +87,7 @@ export function getDefaultConfig(): Partial<HarnessConfig> {
     ],
     producer: {
       enabled: true,
+      workerCount: 1,
       targetThroughput: 5000,
       insertUpdateRatio: 0.8,
       batchSize: 500,
@@ -121,6 +128,7 @@ export function getDefaultConfig(): Partial<HarnessConfig> {
 }
 
 export interface ProducerMetrics {
+  workerId?: string; // Unique identifier for this producer worker
   totalInserts: number;
   totalUpdates: number;
   actualThroughput: number;

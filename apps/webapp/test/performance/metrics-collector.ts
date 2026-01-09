@@ -104,11 +104,30 @@ export class MetricsCollector {
     const durationMs = phase.endTime ? phase.endTime - phase.startTime : Date.now() - phase.startTime;
     const durationSec = durationMs / 1000;
 
-    // Producer metrics
-    const lastProducerMetric = phase.producerMetrics[phase.producerMetrics.length - 1];
-    const recordsProduced = lastProducerMetric
-      ? lastProducerMetric.totalInserts + lastProducerMetric.totalUpdates
-      : 0;
+    // Producer metrics - aggregate from all workers
+    // Find the most recent metric from each worker and sum them
+    const latestMetricsByWorker = new Map<string, ProducerMetrics>();
+
+    for (const metric of phase.producerMetrics) {
+      const workerId = metric.workerId || "default";
+      const existing = latestMetricsByWorker.get(workerId);
+
+      // Keep the metric with the highest total (cumulative counters)
+      if (!existing || (metric.totalInserts + metric.totalUpdates) > (existing.totalInserts + existing.totalUpdates)) {
+        latestMetricsByWorker.set(workerId, metric);
+      }
+    }
+
+    // Sum up the latest totals from each worker
+    let totalInserts = 0;
+    let totalUpdates = 0;
+
+    for (const metric of latestMetricsByWorker.values()) {
+      totalInserts += metric.totalInserts;
+      totalUpdates += metric.totalUpdates;
+    }
+
+    const recordsProduced = totalInserts + totalUpdates;
     const producerThroughput = durationSec > 0 ? recordsProduced / durationSec : 0;
 
     // Consumer metrics

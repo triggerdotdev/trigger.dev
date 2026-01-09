@@ -10,8 +10,11 @@ program
   .name("profile-runs-replication")
   .description("Profile RunsReplicationService performance and identify bottlenecks")
   .option("-c, --config <file>", "Config file path (JSON)")
+  .option("-n, --name <name>", "Run name/label (e.g., 'baseline', 'optimized-v1')")
+  .option("--description <text>", "Run description (what is being tested)")
   .option("-t, --throughput <number>", "Target throughput (records/sec)", "5000")
   .option("-d, --duration <number>", "Test duration per phase (seconds)", "60")
+  .option("-w, --workers <number>", "Number of producer worker processes", "1")
   .option("--mock-clickhouse", "Use mock ClickHouse (CPU-only profiling)")
   .option(
     "--profile <tool>",
@@ -59,6 +62,18 @@ async function loadConfig(options: any): Promise<HarnessConfig> {
     }
   }
 
+  if (options.workers) {
+    config.producer.workerCount = parseInt(options.workers, 10);
+  }
+
+  if (options.name) {
+    config.runName = options.name;
+  }
+
+  if (options.description) {
+    config.runDescription = options.description;
+  }
+
   if (options.mockClickhouse) {
     config.consumer.useMockClickhouse = true;
   }
@@ -76,9 +91,12 @@ async function loadConfig(options: any): Promise<HarnessConfig> {
     config.output.verbose = true;
   }
 
-  // Ensure output directory exists
-  const timestamp = new Date().toISOString().replace(/[:.]/g, "-").split("T")[0];
-  const outputDir = path.join(config.profiling.outputDir, timestamp);
+  // Organize output directory: profiling-results/[runName]-[timestamp]/
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-").replace("T", "_").split("_")[0];
+  const timeWithSeconds = new Date().toISOString().replace(/[:.]/g, "-").replace("T", "_").substring(0, 19);
+  const runFolder = `${config.runName}-${timeWithSeconds}`;
+  const outputDir = path.join(config.profiling.outputDir, runFolder);
+
   config.profiling.outputDir = outputDir;
   config.output.metricsFile = path.join(outputDir, "metrics.json");
 
@@ -89,6 +107,10 @@ function printConfig(config: HarnessConfig): void {
   console.log("\n" + "=".repeat(60));
   console.log("RunsReplicationService Performance Test Harness");
   console.log("=".repeat(60));
+  console.log(`\n🏷️  Run: ${config.runName}`);
+  if (config.runDescription) {
+    console.log(`📝 Description: ${config.runDescription}`);
+  }
   console.log("\n📋 Configuration:");
   console.log(`  Profiling DB:       ${config.infrastructure.profilingDatabaseName}`);
   console.log(`  Output Dir:         ${config.profiling.outputDir}`);
@@ -102,6 +124,7 @@ function printConfig(config: HarnessConfig): void {
   }
 
   console.log("\n⚙️  Producer Config:");
+  console.log(`  Worker Processes:   ${config.producer.workerCount}`);
   console.log(`  Insert/Update:      ${(config.producer.insertUpdateRatio * 100).toFixed(0)}% inserts`);
   console.log(`  Batch Size:         ${config.producer.batchSize}`);
   console.log(`  Payload Size:       ${config.producer.payloadSizeKB} KB`);
@@ -133,6 +156,93 @@ function printSummary(phases: any[]): void {
   console.log("=".repeat(60) + "\n");
 }
 
+async function createSummaryReport(
+  config: HarnessConfig,
+  phases: any[],
+  outputPath: string
+): Promise<void> {
+  const lines: string[] = [];
+
+  // Header
+  lines.push(`# Performance Test Run: ${config.runName}`);
+  lines.push("");
+  lines.push(`**Date**: ${new Date().toISOString()}`);
+  if (config.runDescription) {
+    lines.push(`**Description**: ${config.runDescription}`);
+  }
+  lines.push("");
+
+  // Configuration
+  lines.push("## Configuration");
+  lines.push("");
+  lines.push(`- **Producer Workers**: ${config.producer.workerCount}`);
+  lines.push(`- **Batch Size**: ${config.producer.batchSize}`);
+  lines.push(`- **Insert/Update Ratio**: ${(config.producer.insertUpdateRatio * 100).toFixed(0)}% inserts`);
+  lines.push(`- **Payload Size**: ${config.producer.payloadSizeKB} KB`);
+  lines.push(`- **Consumer Flush Batch**: ${config.consumer.flushBatchSize}`);
+  lines.push(`- **Consumer Flush Interval**: ${config.consumer.flushIntervalMs} ms`);
+  lines.push(`- **Consumer Max Concurrency**: ${config.consumer.maxFlushConcurrency}`);
+  lines.push(`- **ClickHouse Mode**: ${config.consumer.useMockClickhouse ? "Mock (CPU-only)" : "Real"}`);
+  lines.push(`- **Profiling Tool**: ${config.profiling.tool}`);
+  lines.push("");
+
+  // Key Results - highlight most important metrics
+  lines.push("## Key Results");
+  lines.push("");
+
+  // For flamegraph runs, focus on throughput only
+  if (config.profiling.enabled && config.profiling.tool !== "none") {
+    lines.push("**Profiling Output**: See flamegraph/analysis files in this directory");
+    lines.push("");
+    lines.push("### Throughput");
+    lines.push("");
+    lines.push("| Phase | Duration | Producer (rec/sec) | Consumer (rec/sec) |");
+    lines.push("|-------|----------|--------------------|--------------------|");
+    for (const phase of phases) {
+      lines.push(
+        `| ${phase.phase} | ${(phase.durationMs / 1000).toFixed(1)}s | ${phase.producerThroughput.toFixed(0)} | ${phase.consumerThroughput.toFixed(0)} |`
+      );
+    }
+  } else {
+    // For non-profiling runs, show ELU prominently
+    lines.push("### Throughput & Event Loop Utilization");
+    lines.push("");
+    lines.push("| Phase | Duration | Producer (rec/sec) | Consumer (rec/sec) | ELU (%) |");
+    lines.push("|-------|----------|--------------------|--------------------|---------|");
+    for (const phase of phases) {
+      lines.push(
+        `| ${phase.phase} | ${(phase.durationMs / 1000).toFixed(1)}s | ${phase.producerThroughput.toFixed(0)} | ${phase.consumerThroughput.toFixed(0)} | ${(phase.eventLoopUtilization * 100).toFixed(1)}% |`
+      );
+    }
+  }
+  lines.push("");
+
+  // Detailed Metrics
+  lines.push("## Detailed Metrics");
+  lines.push("");
+
+  for (const phase of phases) {
+    lines.push(`### ${phase.phase}`);
+    lines.push("");
+    lines.push(`- **Duration**: ${(phase.durationMs / 1000).toFixed(1)}s`);
+    lines.push(`- **Records Produced**: ${phase.recordsProduced.toLocaleString()}`);
+    lines.push(`- **Records Consumed**: ${phase.recordsConsumed.toLocaleString()}`);
+    lines.push(`- **Batches Flushed**: ${phase.batchesFlushed.toLocaleString()}`);
+    lines.push(`- **Producer Throughput**: ${phase.producerThroughput.toFixed(1)} rec/sec`);
+    lines.push(`- **Consumer Throughput**: ${phase.consumerThroughput.toFixed(1)} rec/sec`);
+    lines.push(`- **Event Loop Utilization**: ${(phase.eventLoopUtilization * 100).toFixed(1)}%`);
+    lines.push(`- **Heap Used**: ${phase.heapUsedMB.toFixed(1)} MB`);
+    lines.push(`- **Heap Total**: ${phase.heapTotalMB.toFixed(1)} MB`);
+    lines.push(`- **Replication Lag P50**: ${phase.replicationLagP50.toFixed(1)} ms`);
+    lines.push(`- **Replication Lag P95**: ${phase.replicationLagP95.toFixed(1)} ms`);
+    lines.push(`- **Replication Lag P99**: ${phase.replicationLagP99.toFixed(1)} ms`);
+    lines.push("");
+  }
+
+  // Write to file
+  await fs.writeFile(outputPath, lines.join("\n"));
+}
+
 async function main() {
   const options = program.opts();
   const config = await loadConfig(options);
@@ -146,14 +256,20 @@ async function main() {
     const phases = await harness.run();
     await harness.teardown();
 
-    // Export metrics
+    // Export metrics JSON
     await harness.exportMetrics(config.output.metricsFile);
+
+    // Create summary report
+    const summaryPath = path.join(config.profiling.outputDir, "SUMMARY.md");
+    await createSummaryReport(config, phases, summaryPath);
 
     // Print summary
     printSummary(phases);
 
     console.log("\n✅ Profiling complete!");
-    console.log(`📊 Results saved to: ${config.profiling.outputDir}\n`);
+    console.log(`📊 Results saved to: ${config.profiling.outputDir}`);
+    console.log(`📄 Summary report: ${summaryPath}`);
+    console.log(`📊 Detailed metrics: ${config.output.metricsFile}\n`);
 
     if (config.profiling.enabled && config.profiling.tool !== "none") {
       console.log("🔥 Profiling data:");

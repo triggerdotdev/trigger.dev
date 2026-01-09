@@ -42,6 +42,7 @@ async function main() {
   const producer = new TaskRunProducer({
     prisma,
     dataGenerator,
+    workerId: config.workerId,
     targetThroughput: config.targetThroughput,
     insertUpdateRatio: config.insertUpdateRatio,
     batchSize: config.batchSize,

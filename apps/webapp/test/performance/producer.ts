@@ -5,6 +5,7 @@ import type { ProducerMetrics } from "./config";
 export interface TaskRunProducerOptions {
   prisma: PrismaClient;
   dataGenerator: TaskRunDataGenerator;
+  workerId?: string;
   targetThroughput: number;
   insertUpdateRatio: number;
   batchSize: number;
@@ -47,6 +48,7 @@ export class TaskRunProducer {
     const actualThroughput = elapsed > 0 ? (this.totalInserts + this.totalUpdates) / elapsed : 0;
 
     return {
+      workerId: this.options.workerId,
       totalInserts: this.totalInserts,
       totalUpdates: this.totalUpdates,
       actualThroughput,
