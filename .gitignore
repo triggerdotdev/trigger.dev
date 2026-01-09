@@ -50,6 +50,11 @@ apps/**/public/build
 /playwright-report/
 /playwright/.cache/
 
+# profiling outputs
+profiling-results/
+*.clinic-*
+*-v8.log
+
 .cosine
 .trigger
 .tshy*
