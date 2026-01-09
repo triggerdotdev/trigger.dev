@@ -739,12 +739,8 @@ export function dateFromString(value: string | undefined | null): Date | undefin
 
 function QuickDateButton({ label, onClick }: { label: string; onClick: () => void }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="rounded border border-charcoal-650 bg-charcoal-750 px-2 py-0.5 text-xs text-text-dimmed transition hover:border-charcoal-600 hover:text-text-bright"
-    >
+    <Button type="button" variant="secondary/small" onClick={onClick} fullWidth>
       {label}
-    </button>
+    </Button>
   );
 }
