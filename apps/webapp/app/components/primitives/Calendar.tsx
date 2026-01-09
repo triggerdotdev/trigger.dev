@@ -3,10 +3,75 @@
 import * as React from "react";
 import { ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/20/solid";
 import { format } from "date-fns";
-import { DayPicker } from "react-day-picker";
+import { DayPicker, useDayPicker } from "react-day-picker";
 import { cn } from "~/utils/cn";
 
 export type CalendarProps = React.ComponentProps<typeof DayPicker>;
+
+const navButtonClass =
+  "size-7 rounded-[3px] bg-secondary border border-charcoal-600 text-text-bright hover:bg-charcoal-600 hover:border-charcoal-550 transition inline-flex items-center justify-center";
+
+function CustomMonthCaption({ calendarMonth }: { calendarMonth: { date: Date } }) {
+  const { goToMonth, nextMonth, previousMonth } = useDayPicker();
+
+  return (
+    <div className="flex w-full items-center justify-between px-1">
+      <button
+        type="button"
+        className={navButtonClass}
+        disabled={!previousMonth}
+        onClick={() => previousMonth && goToMonth(previousMonth)}
+        aria-label="Go to previous month"
+      >
+        <ChevronLeftIcon className="size-4" />
+      </button>
+      <div className="flex items-center gap-2">
+        <select
+          className="rounded border border-charcoal-600 bg-charcoal-750 px-2 py-1 text-sm text-text-bright focus:border-charcoal-500 focus:outline-none"
+          value={calendarMonth.date.getMonth()}
+          onChange={(e) => {
+            const newDate = new Date(calendarMonth.date);
+            newDate.setMonth(parseInt(e.target.value));
+            goToMonth(newDate);
+          }}
+        >
+          {Array.from({ length: 12 }, (_, i) => (
+            <option key={i} value={i}>
+              {format(new Date(2000, i), "MMM")}
+            </option>
+          ))}
+        </select>
+        <select
+          className="rounded border border-charcoal-600 bg-charcoal-750 px-2 py-1 text-sm text-text-bright focus:border-charcoal-500 focus:outline-none"
+          value={calendarMonth.date.getFullYear()}
+          onChange={(e) => {
+            const newDate = new Date(calendarMonth.date);
+            newDate.setFullYear(parseInt(e.target.value));
+            goToMonth(newDate);
+          }}
+        >
+          {Array.from({ length: 100 }, (_, i) => {
+            const year = new Date().getFullYear() - 50 + i;
+            return (
+              <option key={year} value={year}>
+                {year}
+              </option>
+            );
+          })}
+        </select>
+      </div>
+      <button
+        type="button"
+        className={navButtonClass}
+        disabled={!nextMonth}
+        onClick={() => nextMonth && goToMonth(nextMonth)}
+        aria-label="Go to next month"
+      >
+        <ChevronRightIcon className="size-4" />
+      </button>
+    </div>
+  );
+}
 
 export function Calendar({
   className,
@@ -17,24 +82,21 @@ export function Calendar({
   return (
     <DayPicker
       showOutsideDays={showOutsideDays}
+      weekStartsOn={1}
       className={cn("p-3", className)}
       classNames={{
         months: "flex flex-col sm:flex-row gap-2",
         month: "flex flex-col gap-4",
         month_caption: "flex justify-center pt-1 relative items-center w-full",
         caption_label: "sr-only",
-        nav: "flex items-center justify-between w-full absolute inset-x-0 top-1 px-3",
-        button_previous:
-          "size-6 rounded-[3px] bg-secondary border border-charcoal-600 text-text-bright hover:bg-charcoal-600 hover:border-charcoal-550 transition inline-flex items-center justify-center",
-        button_next:
-          "size-6 rounded-[3px] bg-secondary border border-charcoal-600 text-text-bright hover:bg-charcoal-600 hover:border-charcoal-550 transition inline-flex items-center justify-center",
+        nav: "hidden",
         month_grid: "w-full border-collapse",
         weekdays: "flex",
         weekday: "text-text-dimmed rounded-md w-8 font-normal text-[0.8rem]",
         week: "flex w-full mt-2",
         day: "relative p-0 text-center text-sm focus-within:relative focus-within:z-20 [&:has([aria-selected])]:bg-charcoal-700 [&:has([aria-selected].day-outside)]:bg-charcoal-700/50 [&:has([aria-selected].day-range-end)]:rounded-r-md first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md",
         day_button: cn(
-          "size-8 p-0 font-normal text-text-bright",
+          "size-8 p-0 font-normal text-text-bright rounded-md",
           "hover:bg-charcoal-700 hover:text-text-bright",
           "focus:bg-charcoal-700 focus:text-text-bright focus:outline-none",
           "aria-selected:opacity-100"
@@ -55,15 +117,7 @@ export function Calendar({
         ...classNames,
       }}
       components={{
-        Chevron: ({ orientation }) => {
-          if (orientation === "left") {
-            return <ChevronLeftIcon className="size-4" />;
-          }
-          return <ChevronRightIcon className="size-4" />;
-        },
-      }}
-      formatters={{
-        formatMonthDropdown: (date) => format(date, "MMM"),
+        MonthCaption: CustomMonthCaption,
       }}
       {...props}
     />
