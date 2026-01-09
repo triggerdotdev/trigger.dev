@@ -108,8 +108,8 @@ const timePeriods = [
     value: "30d",
   },
   {
-    label: "1 year",
-    value: "365d",
+    label: "90 days",
+    value: "90d",
   },
 ];
 
