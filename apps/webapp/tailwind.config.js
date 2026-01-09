@@ -160,6 +160,7 @@ const batches = colors.pink[500];
 const schedules = colors.yellow[500];
 const queues = colors.purple[500];
 const deployments = colors.green[500];
+const logs = colors.blue[500];
 const tests = colors.lime[500];
 const apiKeys = colors.amber[500];
 const environmentVariables = colors.pink[500];
@@ -236,6 +237,7 @@ module.exports = {
         schedules,
         queues,
         deployments,
+        logs,
         tests,
         apiKeys,
         environmentVariables,

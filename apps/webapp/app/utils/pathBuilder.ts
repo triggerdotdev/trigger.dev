@@ -455,6 +455,14 @@ export function v3ProjectSettingsPath(
   return `${v3EnvironmentPath(organization, project, environment)}/settings`;
 }
 
+export function v3LogsPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath,
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/logs`;
+}
+
 export function v3DeploymentsPath(
   organization: OrgForPath,
   project: ProjectForPath,
