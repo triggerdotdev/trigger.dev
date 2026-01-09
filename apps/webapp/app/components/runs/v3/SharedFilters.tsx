@@ -350,7 +350,7 @@ export function TimeDropdown({
     const isCustom = period && !timePeriods.some((p) => p.value === period) && parsed.value !== "";
     setSelectedPeriod(isCustom ? "custom" : period ?? defaultPeriod);
     setActiveSection(from || to ? "dateRange" : "duration");
-  }, [period, from, to]);
+  }, [period, from, to, defaultPeriod]);
 
   const isCustomDurationValid = (() => {
     const value = parseInt(customValue, 10);
