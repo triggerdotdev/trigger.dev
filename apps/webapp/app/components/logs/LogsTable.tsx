@@ -1,5 +1,4 @@
 import { ArrowPathIcon } from "@heroicons/react/20/solid";
-import { Link } from "@remix-run/react";
 import { formatDurationNanoseconds } from "@trigger.dev/core/v3";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { cn } from "~/utils/cn";
@@ -104,13 +103,11 @@ function highlightText(text: string, searchTerm: string | undefined): ReactNode 
 export function LogsTable({
   logs,
   hasFilters,
-  filters,
   searchTerm,
   isLoading = false,
   isLoadingMore = false,
   hasMore = false,
   onLoadMore,
-  variant = "dimmed",
   selectedLogId,
   onLogSelect,
 }: LogsTableProps) {

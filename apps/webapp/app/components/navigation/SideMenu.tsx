@@ -269,13 +269,16 @@ export function SideMenu({
               to={v3DeploymentsPath(organization, project, environment)}
               data-action="deployments"
             />
-            <SideMenuItem
-              name="Logs"
-              icon={LogsIcon}
-              activeIconColor="text-logs"
-              to={v3LogsPath(organization, project, environment)}
-              data-action="logs"
-            />
+            {(isAdmin || user.isImpersonating) && (
+              <SideMenuItem
+                name="Logs"
+                icon={LogsIcon}
+                activeIconColor="text-logs"
+                to={v3LogsPath(organization, project, environment)}
+                data-action="logs"
+                badge={<AlphaBadge />}
+              />
+            )}
             <SideMenuItem
               name="Test"
               icon={BeakerIcon}

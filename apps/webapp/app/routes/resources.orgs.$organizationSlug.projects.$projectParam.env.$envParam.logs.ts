@@ -1,6 +1,6 @@
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/node";
-import { requireUserId } from "~/services/session.server";
+import { requireUser, requireUserId } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
@@ -8,7 +8,6 @@ import { getRunFiltersFromRequest } from "~/presenters/RunFilters.server";
 import { LogsListPresenter, type LogLevel } from "~/presenters/v3/LogsListPresenter.server";
 import { $replica } from "~/db.server";
 import { clickhouseClient } from "~/services/clickhouseInstance.server";
-import { getUserById } from "~/models/user.server";
 
 // Valid log levels for filtering
 const validLevels: LogLevel[] = ["TRACE", "DEBUG", "INFO", "WARN", "ERROR", "CANCELLED"];
@@ -33,9 +32,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     throw new Response("Environment not found", { status: 404 });
   }
 
-  const user = await requireUserId(request);
-  const userRecord = await getUserById(user);
-  const isAdmin = userRecord?.admin || userRecord?.isImpersonating;
+  const user = await requireUser(request);
+  const isAdmin = user?.admin || user?.isImpersonating;
 
   const filters = await getRunFiltersFromRequest(request);
 

@@ -1,4 +1,4 @@
-import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs , redirect} from "@remix-run/server-runtime";
 import { type MetaFunction, useFetcher, useNavigation, useLocation } from "@remix-run/react";
 import {
   TypedAwait,
@@ -61,6 +61,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
   const userId = user.id;
   const isAdmin = user.admin || user.isImpersonating;
+
+  if (!isAdmin) {
+    throw redirect("/");
+  }
 
   const { projectParam, organizationSlug, envParam } = EnvironmentParamSchema.parse(params);
 

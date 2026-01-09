@@ -276,12 +276,7 @@ export function getLogsListQueryBuilder(ch: ClickhouseReader, settings?: ClickHo
       "metadata",
       "attributes"
     ],
-    settings: {
-      max_memory_usage: "2000000000", // 2GB per query limit
-      max_bytes_before_external_sort: "1000000000", // 1GB before spill to disk
-      max_threads: 4, // Limit parallelism to reduce memory
-      ...settings,
-    },
+    settings,
   });
 }
 
