@@ -390,6 +390,11 @@ export function TimeDropdown({
         return;
       }
 
+      if (fromValue && toValue && fromValue > toValue) {
+        setValidationError("From date must be before To date");
+        return;
+      }
+
       replace({
         period: undefined,
         cursor: undefined,
