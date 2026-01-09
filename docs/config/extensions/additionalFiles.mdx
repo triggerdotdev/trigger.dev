@@ -24,7 +24,7 @@ export default defineConfig({
 
 This will copy the files specified in the `files` array to the build directory. The `files` array can contain globs. The output paths will match the path of the file, relative to the root of the project.
 
-This extension effects both the `dev` and the `deploy` commands, and the resulting paths will be the same for both.
+This extension affects both the `dev` and the `deploy` commands, and the resulting paths will be the same for both.
 
 If you use `legacyDevProcessCwdBehaviour: false`, you can then do this:
 
@@ -36,3 +36,73 @@ const interRegularFont = path.join(process.cwd(), "assets/Inter-Regular.ttf");
 ```
 
 <Note>The root of the project is the directory that contains the trigger.config.ts file</Note>
+
+## Copying files from parent directories (monorepos)
+
+When copying files from parent directories using `..` in your glob patterns, the default behavior strips the `..` segments from the destination path. This can lead to unexpected results in monorepo setups.
+
+For example, if your monorepo structure looks like this:
+
+```
+monorepo/
+├── apps/
+│   ├── trigger/           # Contains trigger.config.ts
+│   │   └── trigger.config.ts
+│   └── shared/            # Directory you want to copy
+│       └── utils.ts
+```
+
+Using `additionalFiles({ files: ["../shared/**"] })` would copy `utils.ts` to `shared/utils.ts` in the build directory (not `apps/shared/utils.ts`), because the `..` segment is stripped.
+
+### Using the `destination` option
+
+To control exactly where files are placed, use the `destination` option:
+
+```ts
+import { defineConfig } from "@trigger.dev/sdk";
+import { additionalFiles } from "@trigger.dev/build/extensions/core";
+
+export default defineConfig({
+  project: "<project ref>",
+  build: {
+    extensions: [
+      additionalFiles({
+        files: ["../shared/**"],
+        destination: "apps/shared", // Files will be placed under apps/shared/
+      }),
+    ],
+  },
+});
+```
+
+With this configuration, `../shared/utils.ts` will be copied to `apps/shared/utils.ts` in the build directory.
+
+<Note>
+When using `destination`, the file structure relative to the glob pattern's base directory is preserved.
+For example, `../shared/nested/file.ts` with `destination: "libs"` will be copied to `libs/nested/file.ts`.
+</Note>
+
+### Multiple directories with different destinations
+
+If you need to copy multiple directories to different locations, use multiple `additionalFiles` extensions:
+
+```ts
+import { defineConfig } from "@trigger.dev/sdk";
+import { additionalFiles } from "@trigger.dev/build/extensions/core";
+
+export default defineConfig({
+  project: "<project ref>",
+  build: {
+    extensions: [
+      additionalFiles({
+        files: ["../shared/**"],
+        destination: "libs/shared",
+      }),
+      additionalFiles({
+        files: ["../templates/**"],
+        destination: "assets/templates",
+      }),
+    ],
+  },
+});
+```

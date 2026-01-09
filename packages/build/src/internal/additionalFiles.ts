@@ -1,11 +1,30 @@
 import { BuildManifest } from "@trigger.dev/core/v3";
 import { BuildContext } from "@trigger.dev/core/v3/build";
 import { copyFile, mkdir } from "node:fs/promises";
-import { dirname, join, posix, relative } from "node:path";
+import { dirname, isAbsolute, join, posix, relative, resolve } from "node:path";
 import { glob } from "tinyglobby";
 
 export type AdditionalFilesOptions = {
   files: string[];
+  /**
+   * Optional destination directory for the matched files.
+   *
+   * When specified, files will be placed under this directory while preserving
+   * their structure relative to the glob pattern's base directory.
+   *
+   * This is useful when including files from parent directories (using `..` in the glob pattern),
+   * as the default behavior strips `..` segments which can result in unexpected destination paths.
+   *
+   * @example
+   * // In a monorepo with structure: apps/trigger, apps/shared
+   * // From apps/trigger/trigger.config.ts:
+   * additionalFiles({
+   *   files: ["../shared/**"],
+   *   destination: "apps/shared"
+   * })
+   * // Files from ../shared/utils.ts will be copied to apps/shared/utils.ts
+   */
+  destination?: string;
 };
 
 export async function addAdditionalFilesToBuild(
@@ -17,6 +36,7 @@ export async function addAdditionalFilesToBuild(
   // Copy any static assets to the destination
   const staticAssets = await findStaticAssetFiles(options.files ?? [], manifest.outputPath, {
     cwd: context.workingDir,
+    destination: options.destination,
   });
 
   for (const { assets, matcher } of staticAssets) {
@@ -40,7 +60,7 @@ type FoundStaticAssetFiles = Array<{
 async function findStaticAssetFiles(
   matchers: string[],
   destinationPath: string,
-  options?: { cwd?: string; ignore?: string[] }
+  options?: { cwd?: string; ignore?: string[]; destination?: string }
 ): Promise<FoundStaticAssetFiles> {
   const result: FoundStaticAssetFiles = [];
 
@@ -53,10 +73,27 @@ async function findStaticAssetFiles(
   return result;
 }
 
+// Extracts the base directory from a glob pattern (the non-wildcard prefix).
+// For example: "../shared/**" -> "../shared", "./assets/*.txt" -> "./assets"
+function getGlobBase(pattern: string): string {
+  const parts = pattern.split(/[/\\]/);
+  const baseParts: string[] = [];
+
+  for (const part of parts) {
+    // Stop at the first part that contains glob characters
+    if (part.includes("*") || part.includes("?") || part.includes("[") || part.includes("{")) {
+      break;
+    }
+    baseParts.push(part);
+  }
+
+  return baseParts.length > 0 ? baseParts.join(posix.sep) : ".";
+}
+
 async function findStaticAssetsForMatcher(
   matcher: string,
   destinationPath: string,
-  options?: { cwd?: string; ignore?: string[] }
+  options?: { cwd?: string; ignore?: string[]; destination?: string }
 ): Promise<MatchedStaticAssets> {
   const result: MatchedStaticAssets = [];
 
@@ -68,15 +105,26 @@ async function findStaticAssetsForMatcher(
     absolute: true,
   });
 
-  let matches = 0;
+  const cwd = options?.cwd ?? process.cwd();
 
   for (const file of files) {
-    matches++;
+    let pathInsideDestinationDir: string;
 
-    const pathInsideDestinationDir = relative(options?.cwd ?? process.cwd(), file)
-      .split(posix.sep)
-      .filter((p) => p !== "..")
-      .join(posix.sep);
+    if (options?.destination) {
+      // When destination is specified, compute path relative to the glob pattern's base directory
+      const globBase = getGlobBase(matcher);
+      const absoluteGlobBase = isAbsolute(globBase) ? globBase : resolve(cwd, globBase);
+      const relativeToGlobBase = relative(absoluteGlobBase, file);
+
+      // Place files under the specified destination directory
+      pathInsideDestinationDir = join(options.destination, relativeToGlobBase);
+    } else {
+      // Default behavior: compute relative path from cwd and strip ".." segments
+      pathInsideDestinationDir = relative(cwd, file)
+        .split(posix.sep)
+        .filter((p) => p !== "..")
+        .join(posix.sep);
+    }
 
     const relativeDestinationPath = join(destinationPath, pathInsideDestinationDir);
 
