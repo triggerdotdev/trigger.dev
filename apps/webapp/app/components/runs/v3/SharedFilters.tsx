@@ -414,7 +414,7 @@ export function TimeDropdown({
           return true;
         }}
       >
-        <div className="flex flex-col gap-2 p-3">
+        <div className="flex flex-col gap-4 p-3">
           {/* Duration section */}
           <div
             onClick={() => {
@@ -533,23 +533,22 @@ export function TimeDropdown({
               setActiveSection("dateRange");
               setValidationError(null);
             }}
-            className="flex cursor-pointer gap-3 rounded-md pb-2"
+            className="flex cursor-pointer gap-3 pb-2"
           >
             <RadioButtonCircle checked={activeSection === "dateRange"} />
             <div className="flex flex-1 flex-col">
               <Label
                 className={cn(
-                  "mb-2 transition-colors",
+                  "mb-3 transition-colors",
                   activeSection === "dateRange" && "text-indigo-500"
                 )}
               >
                 Or specify exact time range{" "}
                 <span className="text-text-dimmed">(in local time)</span>
               </Label>
-              <div className="mb-3 flex flex-col gap-1" onClick={(e) => e.stopPropagation()}>
-                <Label variant="small">From</Label>
+              <div className="-ml-8 mb-2" onClick={(e) => e.stopPropagation()}>
                 <DateTimePicker
-                  label="From time"
+                  label="From"
                   value={fromValue}
                   onChange={(value) => {
                     setFromValue(value);
@@ -559,12 +558,12 @@ export function TimeDropdown({
                   showSeconds
                   showNowButton
                   showClearButton
+                  showInlineLabel
                 />
               </div>
-              <div className="flex flex-col gap-1" onClick={(e) => e.stopPropagation()}>
-                <Label variant="small">To</Label>
+              <div onClick={(e) => e.stopPropagation()} className="-ml-8">
                 <DateTimePicker
-                  label="To time"
+                  label="To"
                   value={toValue}
                   onChange={(value) => {
                     setToValue(value);
@@ -574,10 +573,11 @@ export function TimeDropdown({
                   showSeconds
                   showNowButton
                   showClearButton
+                  showInlineLabel
                 />
               </div>
               {/* Quick select date ranges */}
-              <div className="mt-4 grid grid-cols-3 gap-2" onClick={(e) => e.stopPropagation()}>
+              <div className="mt-2 grid grid-cols-3 gap-2" onClick={(e) => e.stopPropagation()}>
                 <QuickDateButton
                   label="Yesterday"
                   onClick={() => {
