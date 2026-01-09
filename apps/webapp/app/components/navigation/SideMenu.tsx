@@ -274,7 +274,7 @@ export function SideMenu({
               to={v3TestPath(organization, project, environment)}
               data-action="test"
             />
-            {(user.admin || featureFlags.hasQueryAccess) && (
+            {(user.admin || user.isImpersonating || featureFlags.hasQueryAccess) && (
               <SideMenuItem
                 name="Query"
                 icon={TableCellsIcon}
