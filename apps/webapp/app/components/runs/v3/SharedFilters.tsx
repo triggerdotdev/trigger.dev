@@ -652,6 +652,20 @@ export function TimeDropdown({
                   }}
                 />
                 <QuickDateButton
+                  label="Last weekdays"
+                  isActive={selectedQuickDate === "lastWeekdays"}
+                  onClick={() => {
+                    const lastWeek = subWeeks(new Date(), 1);
+                    const monday = startOfWeek(lastWeek, { weekStartsOn: 1 });
+                    const friday = endOfDay(subDays(monday, -4)); // Monday + 4 days = Friday
+                    setFromValue(startOfDay(monday));
+                    setToValue(friday);
+                    setActiveSection("dateRange");
+                    setValidationError(null);
+                    setSelectedQuickDate("lastWeekdays");
+                  }}
+                />
+                <QuickDateButton
                   label="This month"
                   isActive={selectedQuickDate === "thisMonth"}
                   onClick={() => {
