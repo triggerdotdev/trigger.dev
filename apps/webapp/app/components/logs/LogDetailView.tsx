@@ -31,6 +31,7 @@ import { RunTag } from "~/components/runs/v3/RunTag";
 import { formatCurrencyAccurate } from "~/utils/numberFormatter";
 import type { TaskRunStatus } from "@trigger.dev/database";
 import { PacketDisplay } from "~/components/runs/v3/PacketDisplay";
+import type { ReactNode } from "react";
 
 // Types for the run context endpoint response
 type RunContextData = {
@@ -64,6 +65,7 @@ type LogDetailViewProps = {
   // If we have the log entry from the list, we can display it immediately
   initialLog?: LogEntry;
   onClose: () => void;
+  searchTerm?: string;
 };
 
 type TabType = "details" | "run";
@@ -128,25 +130,61 @@ function getKindLabel(kind: string): string {
   }
 }
 
-// Helper to unescape newlines in JSON strings for better readability
-function unescapeNewlines(obj: unknown): unknown {
-  if (typeof obj === "string") {
-    return obj.replace(/\\n/g, "\n");
-  }
-  if (Array.isArray(obj)) {
-    return obj.map(unescapeNewlines);
-  }
-  if (obj !== null && typeof obj === "object") {
-    const result: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(obj)) {
-      result[key] = unescapeNewlines(value);
-    }
-    return result;
-  }
-  return obj;
+function formatStringJSON(str: string): string {
+  return str
+    .replace(/\\n/g, "\n") // Converts literal "\n" to newline
+    .replace(/\\t/g, "\t"); // Converts literal "\t" to tab
 }
 
-export function LogDetailView({ logId, initialLog, onClose }: LogDetailViewProps) {
+// Highlight search term in JSON string - returns React nodes with highlights
+function highlightJsonWithSearch(json: string, searchTerm: string | undefined): ReactNode {
+  if (!searchTerm || searchTerm.trim() === "") {
+    return json;
+  }
+
+  // Escape special regex characters in the search term
+  const escapedSearch = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const regex = new RegExp(escapedSearch, "gi");
+
+  const parts: ReactNode[] = [];
+  let lastIndex = 0;
+  let match;
+  let matchCount = 0;
+
+  while ((match = regex.exec(json)) !== null) {
+    // Add text before match
+    if (match.index > lastIndex) {
+      parts.push(json.substring(lastIndex, match.index));
+    }
+    // Add highlighted match with inline styles
+    parts.push(
+      <span
+        key={`match-${matchCount}`}
+        style={{
+          backgroundColor: "#facc15",
+          color: "#000000",
+          fontWeight: "500",
+          borderRadius: "0.25rem",
+          padding: "0 0.125rem",
+        }}
+      >
+        {match[0]}
+      </span>
+    );
+    lastIndex = regex.lastIndex;
+    matchCount++;
+  }
+
+  // Add remaining text
+  if (lastIndex < json.length) {
+    parts.push(json.substring(lastIndex));
+  }
+
+  return parts.length > 0 ? parts : json;
+}
+
+
+export function LogDetailView({ logId, initialLog, onClose, searchTerm }: LogDetailViewProps) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -262,7 +300,7 @@ export function LogDetailView({ logId, initialLog, onClose }: LogDetailViewProps
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4">
         {activeTab === "details" && (
-          <DetailsTab log={log} runPath={runPath} />
+          <DetailsTab log={log} runPath={runPath} searchTerm={searchTerm} />
         )}
         {activeTab === "run" && (
           <RunTab log={log} runPath={runPath} />
@@ -272,89 +310,39 @@ export function LogDetailView({ logId, initialLog, onClose }: LogDetailViewProps
   );
 }
 
-function DetailsTab({ log, runPath }: { log: LogEntry; runPath: string }) {
-  // Extract metadata and attributes - handle both parsed and raw string forms
+function DetailsTab({ log, runPath, searchTerm }: { log: LogEntry; runPath: string; searchTerm?: string }) {
   const logWithExtras = log as LogEntry & {
     metadata?: Record<string, unknown>;
-    rawMetadata?: string;
     attributes?: Record<string, unknown>;
-    rawAttributes?: string;
   };
 
-  const rawMetadata = logWithExtras.rawMetadata;
-  const rawAttributes = logWithExtras.rawAttributes;
 
   let metadata: Record<string, unknown> | null = null;
   let beautifiedMetadata: string | null = null;
-  if (logWithExtras.metadata) {
-    metadata = logWithExtras.metadata;
-    const unescaped = unescapeNewlines(metadata);
-    beautifiedMetadata = JSON.stringify(unescaped, null, 2);
-  } else if (rawMetadata) {
-    try {
-      metadata = JSON.parse(rawMetadata) as Record<string, unknown>;
-      const unescaped = unescapeNewlines(metadata);
-      beautifiedMetadata = JSON.stringify(unescaped, null, 2);
-    } catch {
-      // Ignore parse errors
-    }
-  }
-
-  let attributes: Record<string, unknown> | null = null;
   let beautifiedAttributes: string | null = null;
-  if (logWithExtras.attributes) {
-    attributes = logWithExtras.attributes;
-    const unescaped = unescapeNewlines(attributes);
-    beautifiedAttributes = JSON.stringify(unescaped, null, 2);
-  } else if (rawAttributes) {
-    try {
-      attributes = JSON.parse(rawAttributes) as Record<string, unknown>;
-      const unescaped = unescapeNewlines(attributes);
-      beautifiedAttributes = JSON.stringify(unescaped, null, 2);
-    } catch {
-      // Ignore parse errors
-    }
+
+  if (logWithExtras.metadata) {
+    beautifiedMetadata = JSON.stringify(logWithExtras.metadata, null, 2);
+    beautifiedMetadata = formatStringJSON(beautifiedMetadata);
   }
 
-  const errorInfo = metadata?.error as { message?: string; attributes?: Record<string, unknown> } | undefined;
+  if (logWithExtras.attributes) {
+    beautifiedAttributes = JSON.stringify(logWithExtras.attributes, null, 2);
+    beautifiedAttributes = formatStringJSON(beautifiedAttributes);
+  }
 
-  // Check if we should show metadata/attributes sections
-  const showMetadata = rawMetadata && rawMetadata !== "{}";
-  const showAttributes = rawAttributes && rawAttributes !== "{}";
+  const showMetadata = beautifiedMetadata && beautifiedMetadata !== "{}";
+  const showAttributes = beautifiedAttributes && beautifiedAttributes !== "{}";
 
   return (
     <>
-      {/* Error Details - show prominently for error status */}
-      {errorInfo && (
-        <div className="mb-6">
-          <Header3 className="mb-2 text-error">Error Details</Header3>
-          <div className="rounded-md border border-error/30 bg-error/5 p-3">
-            {errorInfo.message && (
-              <pre className="mb-3 whitespace-pre-wrap break-words font-mono text-sm text-error">
-                {errorInfo.message}
-              </pre>
-            )}
-            {errorInfo.attributes && Object.keys(errorInfo.attributes).length > 0 && (
-              <div className="border-t border-error/20 pt-3">
-                <Paragraph variant="extra-small" className="mb-2 text-text-dimmed">
-                  Error Attributes
-                </Paragraph>
-                <pre className="whitespace-pre-wrap break-words font-mono text-xs text-text-bright">
-                  {JSON.stringify(errorInfo.attributes, null, 2)}
-                </pre>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* Message */}
       <div className="mb-6">
         <Header3 className="mb-2">Message</Header3>
         <div className="rounded-md border border-grid-dimmed bg-charcoal-850 p-3">
-          <pre className="whitespace-pre-wrap break-words font-mono text-sm text-text-bright">
-            {log.message}
-          </pre>
+          <div className="whitespace-pre-wrap break-words font-mono text-sm text-text-bright">
+            {highlightJsonWithSearch(log.message, searchTerm)}
+          </div>
         </div>
       </div>
 
@@ -363,11 +351,7 @@ function DetailsTab({ log, runPath }: { log: LogEntry; runPath: string }) {
         <Header3 className="mb-2">Run</Header3>
         <div className="flex items-center gap-3">
           <span className="font-mono text-sm text-text-bright">{log.runId}</span>
-          <Link
-            to={runPath}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
+          <Link to={runPath} target="_blank" rel="noopener noreferrer">
             <Button variant="tertiary/small" LeadingIcon={ArrowTopRightOnSquareIcon}>
               View in Run
             </Button>
@@ -431,14 +415,24 @@ function DetailsTab({ log, runPath }: { log: LogEntry; runPath: string }) {
       {/* Metadata - only available in full log detail */}
       {showMetadata && beautifiedMetadata && (
         <div className="mb-6">
-          <PacketDisplay data={beautifiedMetadata} dataType="application/json" title="Metadata" />
+          <PacketDisplay
+            data={beautifiedMetadata}
+            dataType="application/json"
+            title="Metadata"
+            searchTerm={searchTerm}
+          />
         </div>
       )}
 
       {/* Attributes - only available in full log detail */}
       {showAttributes && beautifiedAttributes && (
         <div className="mb-6">
-          <PacketDisplay data={beautifiedAttributes} dataType="application/json" title="Attributes" />
+          <PacketDisplay
+            data={beautifiedAttributes}
+            dataType="application/json"
+            title="Attributes"
+            searchTerm={searchTerm}
+          />
         </div>
       )}
     </>

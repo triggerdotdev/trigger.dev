@@ -62,6 +62,9 @@ type CodeBlockProps = {
 
   /** Whether to show the open in modal button */
   showOpenInModal?: boolean;
+
+  /** Search term to highlight in the code */
+  searchTerm?: string;
 };
 
 const dimAmount = 0.5;
@@ -200,6 +203,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
       showChrome = false,
       fileName,
       rowTitle,
+      searchTerm,
       ...props
     }: CodeBlockProps,
     ref
@@ -338,6 +342,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
               className="px-2 py-3"
               preClassName="text-xs"
               isWrapped={isWrapped}
+              searchTerm={searchTerm}
             />
           ) : (
             <div
@@ -449,6 +454,7 @@ type HighlightCodeProps = {
   className?: string;
   preClassName?: string;
   isWrapped: boolean;
+  searchTerm?: string;
 };
 
 function HighlightCode({
@@ -461,6 +467,7 @@ function HighlightCode({
   className,
   preClassName,
   isWrapped,
+  searchTerm,
 }: HighlightCodeProps) {
   const [isLoaded, setIsLoaded] = useState(false);
 
@@ -552,6 +559,47 @@ function HighlightCode({
                     <div className="flex-1">
                       {line.map((token, key) => {
                         const tokenProps = getTokenProps({ token, key });
+
+                        // Highlight search term matches in token
+                        let content: React.ReactNode = token.content;
+                        if (searchTerm && searchTerm.trim() !== "" && token.content) {
+                          const escapedSearch = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                          const regex = new RegExp(escapedSearch, "gi");
+
+                          const parts: React.ReactNode[] = [];
+                          let lastIndex = 0;
+                          let match;
+                          let matchCount = 0;
+
+                          while ((match = regex.exec(token.content)) !== null) {
+                            if (match.index > lastIndex) {
+                              parts.push(token.content.substring(lastIndex, match.index));
+                            }
+                            parts.push(
+                              <span
+                                key={`match-${matchCount}`}
+                                style={{
+                                  backgroundColor: "#facc15",
+                                  color: "#000000",
+                                  fontWeight: "500",
+                                }}
+                              >
+                                {match[0]}
+                              </span>
+                            );
+                            lastIndex = regex.lastIndex;
+                            matchCount++;
+                          }
+
+                          if (lastIndex < token.content.length) {
+                            parts.push(token.content.substring(lastIndex));
+                          }
+
+                          if (parts.length > 0) {
+                            content = parts;
+                          }
+                        }
+
                         return (
                           <span
                             key={key}
@@ -560,7 +608,9 @@ function HighlightCode({
                               color: tokenProps?.style?.color as string,
                               ...tokenProps.style,
                             }}
-                          />
+                          >
+                            {content}
+                          </span>
                         );
                       })}
                     </div>

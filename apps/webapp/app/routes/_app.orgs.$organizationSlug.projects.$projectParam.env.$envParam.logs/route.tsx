@@ -8,7 +8,7 @@ import {
 } from "remix-typedjson";
 import { requireUser } from "~/services/session.server";
 
-import { docsPath, EnvironmentParamSchema } from "~/utils/pathBuilder";
+import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { getRunFiltersFromRequest } from "~/presenters/RunFilters.server";
@@ -19,9 +19,7 @@ import {
   setRootOnlyFilterPreference,
   uiPreferencesStorage,
 } from "~/services/preferences/uiPreferences.server";
-import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
-import { LinkButton } from "~/components/primitives/Buttons";
-import { BookOpenIcon } from "@heroicons/react/24/solid";
+import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { Spinner } from "~/components/primitives/Spinner";
@@ -226,7 +224,6 @@ function LogsList({
   // Build resource URL for loading more
   const loadMoreUrl = useMemo(() => {
     if (!nextCursor) return null;
-    // Transform /orgs/.../logs to /resources/orgs/.../logs
     const resourcePath = `/resources${location.pathname}`;
     const params = new URLSearchParams(location.search);
     params.set("cursor", nextCursor);
@@ -234,7 +231,6 @@ function LogsList({
     return `${resourcePath}?${params.toString()}`;
   }, [location.pathname, location.search, nextCursor]);
 
-  // Handle loading more
   const handleLoadMore = useCallback(() => {
     if (loadMoreUrl && fetcher.state === "idle") {
       fetcher.load(loadMoreUrl);
@@ -326,6 +322,7 @@ function LogsList({
               logId={selectedLogId}
               initialLog={selectedLog}
               onClose={handleClosePanel}
+              searchTerm={list.searchTerm}
             />
           </ResizablePanel>
         </>
