@@ -359,11 +359,11 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
 
         if (typeof summaryHeader === "string") {
           const parsedSummary = JSON.parse(summaryHeader);
-          this.logger.log("parsedSummary", parsedSummary);
+          this.logger.debug("parsedSummary", parsedSummary);
           const readBytes = parsedSummary.read_bytes ? parseInt(parsedSummary.read_bytes, 10) : 0;
           const elapsedNs = parsedSummary.elapsed_ns ? parseInt(parsedSummary.elapsed_ns, 10) : 0;
           const elapsedSeconds = elapsedNs / 1_000_000_000;
-          const byteSeconds = readBytes / elapsedSeconds;
+          const byteSeconds = elapsedSeconds > 0 ? readBytes / elapsedSeconds : 0;
           stats = {
             read_rows: parsedSummary.read_rows ?? "0",
             read_bytes: parsedSummary.read_bytes ?? "0",
