@@ -3,16 +3,23 @@
 import { RunsReplicationService } from "~/services/runsReplicationService.server";
 import { MockClickHouse } from "./clickhouse-mock";
 import type { ConsumerConfig } from "./config";
+import fs from "fs";
+import path from "path";
 
 async function main() {
   const hasIPC = !!process.send;
 
   if (!hasIPC) {
-    console.log("Warning: IPC not available (likely running under profiler) - metrics will not be sent to parent");
+    console.log(
+      "Warning: IPC not available (likely running under profiler) - metrics will not be sent to parent"
+    );
   }
 
   // Parse configuration from environment variable
   const config: ConsumerConfig = JSON.parse(process.env.CONSUMER_CONFIG!);
+
+  // Create shutdown signal file path
+  const shutdownFilePath = path.join(config.outputDir || "/tmp", ".shutdown-signal");
 
   console.log("Consumer process starting with config:", {
     useMockClickhouse: config.useMockClickhouse,
@@ -34,6 +41,7 @@ async function main() {
       compression: {
         request: true,
       },
+      logLevel: "info",
     });
   }
 
@@ -64,6 +72,20 @@ async function main() {
     });
   }
 
+  // Watch for shutdown signal file (works even when IPC is unavailable)
+  const shutdownCheckInterval = setInterval(() => {
+    if (fs.existsSync(shutdownFilePath)) {
+      console.log("Consumer: Shutdown signal file detected, exiting...");
+      clearInterval(shutdownCheckInterval);
+      clearInterval(metricsInterval);
+      // Clean up the signal file
+      try {
+        fs.unlinkSync(shutdownFilePath);
+      } catch (e) {}
+      process.exit(0);
+    }
+  }, 500);
+
   // Send periodic metrics to parent (if IPC available)
   const metricsInterval = setInterval(() => {
     const memUsage = process.memoryUsage();
@@ -82,14 +104,13 @@ async function main() {
     }
   }, 1000);
 
-  // Listen for shutdown signal from parent (if IPC available)
+  // Listen for shutdown signal from parent (if IPC available, for non-profiling mode)
   if (hasIPC) {
     process.on("message", async (msg: any) => {
       if (msg.type === "shutdown") {
-        console.log("Consumer: Received shutdown signal");
+        console.log("Consumer: Received IPC shutdown message");
+        clearInterval(shutdownCheckInterval);
         clearInterval(metricsInterval);
-        await service.shutdown();
-        await service.stop();
         process.exit(0);
       }
     });

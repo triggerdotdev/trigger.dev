@@ -1,5 +1,6 @@
 import { ChildProcess, spawn } from "child_process";
 import path from "path";
+import fs from "fs";
 import type { ConsumerConfig, ProfilingConfig } from "./config";
 
 interface ConsumerMetrics {
@@ -37,6 +38,7 @@ export class ConsumerProcessManager {
     const isProfiling = this.profiling.enabled && this.profiling.tool !== "none";
 
     this.process = spawn(args[0], args.slice(1), {
+      cwd: path.join(__dirname, "../.."), // Run from webapp directory
       env: {
         ...process.env,
         CONSUMER_CONFIG: JSON.stringify(this.config),
@@ -99,18 +101,45 @@ export class ConsumerProcessManager {
     }
 
     console.log("Stopping consumer process");
-    this.process.send({ type: "shutdown" });
+
+    const isProfiling = this.profiling.enabled && this.profiling.tool !== "none";
+
+    if (isProfiling) {
+      // When profiling, IPC doesn't work - use a shutdown signal file instead
+      const outputDir = this.config.outputDir || "/tmp";
+      const shutdownFilePath = path.join(outputDir, ".shutdown-signal");
+      console.log("Creating shutdown signal file for consumer (profiling mode)");
+
+      // Ensure directory exists
+      if (!fs.existsSync(outputDir)) {
+        fs.mkdirSync(outputDir, { recursive: true });
+      }
+
+      fs.writeFileSync(shutdownFilePath, "shutdown");
+    } else {
+      // For non-profiling runs, use IPC message
+      try {
+        this.process.send({ type: "shutdown" });
+      } catch (error) {
+        console.warn("Could not send shutdown message, process may have already exited");
+      }
+    }
 
     // Wait for process to exit
     await new Promise<void>((resolve) => {
+      // With shutdown signal file, consumer-runner should exit within a few seconds
+      // With --collect-only, Clinic.js then quickly packages the data and exits
+      const timeoutMs = isProfiling ? 15000 : 30000;
+
       const timeout = setTimeout(() => {
-        console.warn("Consumer process did not exit gracefully, killing");
+        console.warn(`Consumer process did not exit after ${timeoutMs}ms, killing`);
         this.process?.kill("SIGKILL");
         resolve();
-      }, 30000); // 30 second timeout
+      }, timeoutMs);
 
-      this.process?.on("exit", () => {
+      this.process?.on("exit", (code, signal) => {
         clearTimeout(timeout);
+        console.log(`Consumer process exited with code ${code}, signal ${signal}`);
         resolve();
       });
     });
@@ -144,20 +173,29 @@ export class ConsumerProcessManager {
     const tool = this.profiling.tool === "both" ? "doctor" : this.profiling.tool;
     const runnerPath = path.join(__dirname, "consumer-runner.ts");
 
+    // Use clinic from node_modules/.bin directly (more reliable than pnpm exec)
+    const clinicPath = path.join(__dirname, "../../node_modules/.bin/clinic");
+
+    // Point --dest to the output directory itself
+    // Clinic.js will create PID.clinic-flame inside this directory
+    const destPath = path.resolve(this.profiling.outputDir);
+
     // Clinic.js requires node, so use node with tsx/register loader
     const args = [
-      "pnpm",
-      "exec",
-      "clinic",
+      clinicPath,
       tool,
+      "--collect-only", // Only collect data, don't generate visualization immediately
+      "--open=false", // Don't try to open in browser
       "--dest",
-      this.profiling.outputDir,
+      destPath,
       "--",
       "node",
       "--import",
       "tsx",
       runnerPath,
     ];
+
+    console.log(`Clinic.js will save profiling data to: ${destPath}`);
 
     return args;
   }

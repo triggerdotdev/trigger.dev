@@ -4,7 +4,9 @@ import { ClickhouseReader, ClickhouseWriter } from "./client/types.js";
 import { NoopClient } from "./client/noop.js";
 import {
   insertTaskRuns,
+  insertTaskRunsUnsafe,
   insertRawTaskRunPayloads,
+  insertRawTaskRunPayloadsUnsafe,
   getTaskRunsQueryBuilder,
   getTaskActivityQueryBuilder,
   getCurrentRunningStats,
@@ -169,7 +171,9 @@ export class ClickHouse {
   get taskRuns() {
     return {
       insert: insertTaskRuns(this.writer),
+      insertUnsafe: insertTaskRunsUnsafe(this.writer),
       insertPayloads: insertRawTaskRunPayloads(this.writer),
+      insertPayloadsUnsafe: insertRawTaskRunPayloadsUnsafe(this.writer),
       queryBuilder: getTaskRunsQueryBuilder(this.reader),
       countQueryBuilder: getTaskRunsCountQueryBuilder(this.reader),
       tagQueryBuilder: getTaskRunTagsQueryBuilder(this.reader),

@@ -38,6 +38,7 @@ export interface ConsumerConfig {
   redisOptions: RedisOptions;
   slotName: string;
   publicationName: string;
+  outputDir?: string; // For shutdown signal file
 }
 
 export interface ProfilingConfig {

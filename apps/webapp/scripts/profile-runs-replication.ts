@@ -3,6 +3,7 @@
 import { program } from "commander";
 import path from "path";
 import fs from "fs/promises";
+import { spawn } from "child_process";
 import { RunsReplicationHarness } from "../test/performance/harness";
 import { getDefaultConfig, type HarnessConfig } from "../test/performance/config";
 
@@ -243,6 +244,48 @@ async function createSummaryReport(
   await fs.writeFile(outputPath, lines.join("\n"));
 }
 
+async function generateVisualization(config: HarnessConfig): Promise<void> {
+  console.log("\n🔥 Generating flamegraph visualization...");
+
+  // Find the clinic flame data file
+  const files = await fs.readdir(config.profiling.outputDir);
+  const flameDataFile = files.find((f) => f.endsWith(".clinic-flame"));
+
+  if (!flameDataFile) {
+    console.warn("⚠️  No clinic flame data file found. Skipping visualization.");
+    return;
+  }
+
+  const dataPath = path.join(config.profiling.outputDir, flameDataFile);
+  console.log(`   Data file: ${flameDataFile}`);
+
+  // Run clinic flame --visualize-only
+  const clinicPath = path.join(__dirname, "../node_modules/.bin/clinic");
+
+  await new Promise<void>((resolve, reject) => {
+    const proc = spawn(clinicPath, ["flame", "--visualize-only", dataPath], {
+      stdio: "inherit",
+      cwd: path.join(__dirname, ".."),
+    });
+
+    proc.on("exit", (code) => {
+      if (code === 0) {
+        console.log("✅ Flamegraph generated successfully!");
+        console.log(`   Open: ${dataPath.replace(".clinic-flame", ".clinic-flame.html")}\n`);
+        resolve();
+      } else {
+        console.error(`⚠️  Flamegraph generation exited with code ${code}`);
+        resolve(); // Don't fail the whole run
+      }
+    });
+
+    proc.on("error", (error) => {
+      console.error("⚠️  Error generating flamegraph:", error.message);
+      resolve(); // Don't fail the whole run
+    });
+  });
+}
+
 async function main() {
   const options = program.opts();
   const config = await loadConfig(options);
@@ -272,8 +315,8 @@ async function main() {
     console.log(`📊 Detailed metrics: ${config.output.metricsFile}\n`);
 
     if (config.profiling.enabled && config.profiling.tool !== "none") {
-      console.log("🔥 Profiling data:");
-      console.log(`   View flamegraph/analysis in: ${config.profiling.outputDir}\n`);
+      // Generate visualization from collected data
+      await generateVisualization(config);
     }
 
     process.exit(0);
