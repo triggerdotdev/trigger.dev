@@ -120,11 +120,20 @@ describe("SQLValueEscaper", () => {
       ).toBe("[[1, 2], [3, 4]]");
     });
 
-    it("should escape dates with toDateTime64", () => {
+    it("should escape dates with toDateTime64 and default UTC timezone", () => {
       const date = new Date("2024-01-15T10:30:00.500Z");
       const result = escaper.visit(date);
-      expect(result).toContain("toDateTime64");
-      expect(result).toContain("2024-01-15");
+      expect(result).toBe("toDateTime64('2024-01-15 10:30:00.500000', 6, 'UTC')");
+    });
+
+    it("should escape dates with custom timezone", () => {
+      const escaperWithTz = new SQLValueEscaper({
+        dialect: "clickhouse",
+        timezone: "America/New_York",
+      });
+      const date = new Date("2024-01-15T10:30:00.500Z");
+      const result = escaperWithTz.visit(date);
+      expect(result).toBe("toDateTime64('2024-01-15 10:30:00.500000', 6, 'America/New_York')");
     });
   });
 
@@ -136,11 +145,20 @@ describe("SQLValueEscaper", () => {
       expect(escaper.visit(false)).toBe("false");
     });
 
-    it("should escape dates with toDateTime", () => {
+    it("should escape dates with toDateTime and default UTC timezone", () => {
       const date = new Date("2024-01-15T10:30:00.500Z");
       const result = escaper.visit(date);
-      expect(result).toContain("toDateTime");
-      expect(result).toContain("2024-01-15");
+      expect(result).toBe("toDateTime('2024-01-15 10:30:00.500000', 'UTC')");
+    });
+
+    it("should escape dates with custom timezone", () => {
+      const escaperWithTz = new SQLValueEscaper({
+        dialect: "tsql",
+        timezone: "Europe/London",
+      });
+      const date = new Date("2024-01-15T10:30:00.500Z");
+      const result = escaperWithTz.visit(date);
+      expect(result).toBe("toDateTime('2024-01-15 10:30:00.500000', 'Europe/London')");
     });
   });
 });

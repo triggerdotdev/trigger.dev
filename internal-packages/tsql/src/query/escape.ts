@@ -200,9 +200,11 @@ export class SQLValueEscaper {
     const datetimeString = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${ms}000`;
 
     if (this.dialect === "tsql") {
-      return `toDateTime(${this.visitString(datetimeString)})`;
+      return `toDateTime(${this.visitString(datetimeString)}, ${this.visitString(this.timezone)})`;
     }
-    return `toDateTime64(${this.visitString(datetimeString)}, 6, ${this.visitString(this.timezone)})`;
+    return `toDateTime64(${this.visitString(datetimeString)}, 6, ${this.visitString(
+      this.timezone
+    )})`;
   }
 
   private visitArray(value: EscapableValue[]): string {
@@ -261,4 +263,3 @@ export function getClickHouseType(value: unknown): string {
   // Default to String for unknown types
   return "String";
 }
-

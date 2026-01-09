@@ -867,10 +867,46 @@ describe("ClickHousePrinter", () => {
   });
 
   describe("Functions", () => {
-    it("should print toDateTime", () => {
+    it("should print toDateTime with column argument", () => {
       const { sql } = printQuery("SELECT toDateTime(created_at) FROM task_runs");
 
       expect(sql).toContain("toDateTime(created_at)");
+    });
+
+    it("should print toDateTime with string and timezone arguments", () => {
+      const { sql, params } = printQuery(
+        "SELECT toDateTime('2024-01-15 10:30:00', 'UTC') FROM task_runs"
+      );
+
+      // String values are parameterized for security
+      expect(sql).toContain("toDateTime(");
+      expect(sql).toMatch(/toDateTime\(\{tsql_val_\d+: String\}, \{tsql_val_\d+: String\}\)/);
+      expect(Object.values(params)).toContain("2024-01-15 10:30:00");
+      expect(Object.values(params)).toContain("UTC");
+    });
+
+    it("should print toDateTime with timezone containing special characters", () => {
+      const { sql, params } = printQuery(
+        "SELECT toDateTime('2024-01-15 10:30:00', 'America/New_York') FROM task_runs"
+      );
+
+      // String values are parameterized for security
+      expect(sql).toContain("toDateTime(");
+      expect(sql).toMatch(/toDateTime\(\{tsql_val_\d+: String\}, \{tsql_val_\d+: String\}\)/);
+      expect(Object.values(params)).toContain("2024-01-15 10:30:00");
+      expect(Object.values(params)).toContain("America/New_York");
+    });
+
+    it("should print toDateTime64 with precision and timezone", () => {
+      const { sql, params } = printQuery(
+        "SELECT toDateTime64('2024-01-15 10:30:00.500000', 6, 'Europe/London') FROM task_runs"
+      );
+
+      // String values are parameterized, but numeric precision is inline
+      expect(sql).toContain("toDateTime64(");
+      expect(sql).toMatch(/toDateTime64\(\{tsql_val_\d+: String\}, 6, \{tsql_val_\d+: String\}\)/);
+      expect(Object.values(params)).toContain("2024-01-15 10:30:00.500000");
+      expect(Object.values(params)).toContain("Europe/London");
     });
 
     it("should print now()", () => {
