@@ -6,7 +6,8 @@ import { env } from "~/env.server";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { VercelIntegrationRepository } from "~/models/vercelIntegration.server";
 import { logger } from "~/services/logger.server";
-import { requireUserId } from "~/services/session.server";
+import { getUserId, requireUserId } from "~/services/session.server";
+import { setReferralSourceCookie } from "~/services/referralSource.server";
 import { requestUrl } from "~/utils/requestUrl.server";
 import { v3ProjectSettingsPath } from "~/utils/pathBuilder";
 import { validateVercelOAuthState } from "~/v3/vercel/vercelOAuthState.server";
@@ -56,7 +57,23 @@ export async function loader({ request }: LoaderFunctionArgs) {
     return new Response("Method Not Allowed", { status: 405 });
   }
 
-  const userId = await requireUserId(request);
+  // Check if user is authenticated
+  const userId = await getUserId(request);
+  
+  // If not authenticated, set referral source cookie and redirect to login
+  if (!userId) {
+    const currentUrl = new URL(request.url);
+    const redirectTo = `${currentUrl.pathname}${currentUrl.search}`;
+    const referralCookie = await setReferralSourceCookie("vercel");
+    
+    const headers = new Headers();
+    headers.append("Set-Cookie", referralCookie);
+    
+    throw redirect(`/login?redirectTo=${encodeURIComponent(redirectTo)}`, { headers });
+  }
+
+  // User is authenticated, proceed with OAuth callback
+  const authenticatedUserId = await requireUserId(request);
 
   const url = requestUrl(request);
   const parsedParams = VercelCallbackSchema.safeParse(Object.fromEntries(url.searchParams));
@@ -107,7 +124,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       organization: {
         members: {
           some: {
-            userId,
+            userId: authenticatedUserId,
           },
         },
       },
@@ -120,7 +137,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   if (!project) {
     logger.error("Project not found or user does not have access", {
       projectId: stateData.projectId,
-      userId,
+      userId: authenticatedUserId,
     });
     throw new Response("Project not found", { status: 404 });
   }

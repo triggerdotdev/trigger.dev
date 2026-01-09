@@ -26,6 +26,9 @@ import { MultiFactorAuthenticationService } from "~/services/mfa/multiFactorAuth
 import { redirectWithErrorMessage, redirectBackWithErrorMessage } from "~/models/message.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { checkMfaRateLimit, MfaRateLimitError } from "~/services/mfa/mfaRateLimiter.server";
+import { getReferralSource, clearReferralSourceCookie } from "~/services/referralSource.server";
+import { telemetry } from "~/services/telemetry.server";
+import { prisma } from "~/db.server";
 
 export const meta: MetaFunction = ({ matches }) => {
   const parentMeta = matches
@@ -160,11 +163,33 @@ async function completeLogin(request: Request, session: Session, userId: string)
   session.unset("pending-mfa-user-id");
   session.unset("pending-mfa-redirect-to");
 
-  return redirect(redirectTo, {
-    headers: {
-      "Set-Cookie": await sessionStorage.commitSession(authSession),
-    },
-  });
+  const headers = new Headers();
+  headers.append("Set-Cookie", await sessionStorage.commitSession(authSession));
+
+  // Read referral source cookie and set in PostHog if present (only for new users), then clear it
+  const referralSource = await getReferralSource(request);
+  if (referralSource) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+    if (user) {
+      // Only set referralSource for new users (created within the last 30 seconds)
+      const userAge = Date.now() - user.createdAt.getTime();
+      const isNewUser = userAge < 30 * 1000; // 30 seconds
+      
+      if (isNewUser) {
+        telemetry.user.identify({
+          user,
+          isNewUser: true,
+          referralSource,
+        });
+      }
+    }
+    // Clear the cookie after using it (regardless of whether we set it)
+    headers.append("Set-Cookie", await clearReferralSourceCookie());
+  }
+
+  return redirect(redirectTo, { headers });
 }
 
 export default function LoginMfaPage() {
