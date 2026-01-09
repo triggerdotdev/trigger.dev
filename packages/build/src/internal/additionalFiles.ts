@@ -1,7 +1,7 @@
 import { BuildManifest } from "@trigger.dev/core/v3";
 import { BuildContext } from "@trigger.dev/core/v3/build";
 import { copyFile, mkdir } from "node:fs/promises";
-import { dirname, isAbsolute, join, posix, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, posix, relative, resolve, sep } from "node:path";
 import { glob } from "tinyglobby";
 
 export type AdditionalFilesOptions = {
@@ -76,7 +76,8 @@ async function findStaticAssetFiles(
 // Extracts the base directory from a glob pattern (the non-wildcard prefix).
 // For example: "../shared/**" -> "../shared", "./assets/*.txt" -> "./assets"
 // For specific files without globs: "./config/settings.json" -> "./config" (parent dir)
-function getGlobBase(pattern: string): string {
+// For single-part patterns: "file.txt" -> "." (current dir)
+export function getGlobBase(pattern: string): string {
   const parts = pattern.split(/[/\\]/);
   const baseParts: string[] = [];
   let hasGlobCharacters = false;
@@ -92,8 +93,9 @@ function getGlobBase(pattern: string): string {
 
   // If no glob characters were found, the pattern is a specific file path.
   // Return the parent directory so that relative() preserves the filename.
-  if (!hasGlobCharacters && baseParts.length > 1) {
-    baseParts.pop(); // Remove the filename, keep the directory
+  // For single-part patterns (just a filename), return "." to indicate current directory.
+  if (!hasGlobCharacters) {
+    baseParts.pop(); // Remove the filename, keep the directory (or empty for single-part)
   }
 
   return baseParts.length > 0 ? baseParts.join(posix.sep) : ".";
@@ -129,8 +131,9 @@ async function findStaticAssetsForMatcher(
       pathInsideDestinationDir = join(options.destination, relativeToGlobBase);
     } else {
       // Default behavior: compute relative path from cwd and strip ".." segments
+      // Use platform-specific separator for splitting since path.relative() returns platform separators
       pathInsideDestinationDir = relative(cwd, file)
-        .split(posix.sep)
+        .split(sep)
         .filter((p) => p !== "..")
         .join(posix.sep);
     }

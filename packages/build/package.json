@@ -74,7 +74,9 @@
     "dev": "tshy --watch",
     "typecheck": "tsc --noEmit -p tsconfig.src.json",
     "update-version": "tsx ../../scripts/updateVersion.ts",
-    "check-exports": "attw --pack ."
+    "check-exports": "attw --pack .",
+    "test": "vitest run",
+    "test:dev": "vitest"
   },
   "dependencies": {
     "@prisma/config": "^6.10.0",
@@ -91,7 +93,8 @@
     "esbuild": "^0.23.0",
     "rimraf": "6.0.1",
     "tshy": "^3.0.2",
-    "tsx": "4.17.0"
+    "tsx": "4.17.0",
+    "vitest": "^2.0.0"
   },
   "engines": {
     "node": ">=18.20.0"
