@@ -2,12 +2,18 @@
 
 import * as React from "react";
 import { ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/20/solid";
+import { format } from "date-fns";
 import { DayPicker } from "react-day-picker";
 import { cn } from "~/utils/cn";
 
 export type CalendarProps = React.ComponentProps<typeof DayPicker>;
 
-function Calendar({ className, classNames, showOutsideDays = true, ...props }: CalendarProps) {
+export function Calendar({
+  className,
+  classNames,
+  showOutsideDays = true,
+  ...props
+}: CalendarProps) {
   return (
     <DayPicker
       showOutsideDays={showOutsideDays}
@@ -16,12 +22,12 @@ function Calendar({ className, classNames, showOutsideDays = true, ...props }: C
         months: "flex flex-col sm:flex-row gap-2",
         month: "flex flex-col gap-4",
         month_caption: "flex justify-center pt-1 relative items-center w-full",
-        caption_label: "text-sm font-medium text-text-bright",
-        nav: "flex items-center gap-1",
+        caption_label: "sr-only",
+        nav: "flex items-center justify-between w-full absolute inset-x-0 top-1 px-3",
         button_previous:
-          "absolute left-1 top-0 size-7 bg-transparent p-0 text-text-dimmed hover:text-text-bright transition-colors flex items-center justify-center",
+          "size-6 rounded-[3px] bg-secondary border border-charcoal-600 text-text-bright hover:bg-charcoal-600 hover:border-charcoal-550 transition inline-flex items-center justify-center",
         button_next:
-          "absolute right-1 top-0 size-7 bg-transparent p-0 text-text-dimmed hover:text-text-bright transition-colors flex items-center justify-center",
+          "size-6 rounded-[3px] bg-secondary border border-charcoal-600 text-text-bright hover:bg-charcoal-600 hover:border-charcoal-550 transition inline-flex items-center justify-center",
         month_grid: "w-full border-collapse",
         weekdays: "flex",
         weekday: "text-text-dimmed rounded-md w-8 font-normal text-[0.8rem]",
@@ -56,10 +62,11 @@ function Calendar({ className, classNames, showOutsideDays = true, ...props }: C
           return <ChevronRightIcon className="size-4" />;
         },
       }}
+      formatters={{
+        formatMonthDropdown: (date) => format(date, "MMM"),
+      }}
       {...props}
     />
   );
 }
 Calendar.displayName = "Calendar";
-
-export { Calendar };
