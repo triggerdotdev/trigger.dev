@@ -1,12 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { ChevronDownIcon } from "@heroicons/react/20/solid";
+import { ChevronUpDownIcon } from "@heroicons/react/20/solid";
 import { format } from "date-fns";
 import { Calendar } from "./Calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "./Popover";
 import { Button } from "./Buttons";
 import { cn } from "~/utils/cn";
+import { SimpleTooltip } from "./Tooltip";
+import { XIcon } from "lucide-react";
 
 type DateTimePickerProps = {
   label: string;
@@ -77,12 +79,12 @@ export function DateTimePicker({
           <button
             type="button"
             className={cn(
-              "flex h-6 items-center justify-between gap-2 rounded border border-charcoal-600 bg-charcoal-750 px-2 text-xs tabular-nums transition hover:border-charcoal-500",
+              "flex h-[1.8rem] items-center justify-between gap-2 whitespace-nowrap rounded border border-charcoal-600 bg-charcoal-750 px-2 text-xs tabular-nums transition hover:border-charcoal-500",
               value ? "text-text-bright" : "text-text-dimmed"
             )}
           >
             {value ? format(value, "yyyy/MM/dd") : "Select date"}
-            <ChevronDownIcon className="size-4 text-text-dimmed" />
+            <ChevronUpDownIcon className="size-3.5 text-text-dimmed" />
           </button>
         </PopoverTrigger>
         <PopoverContent className="w-auto p-0" align="start">
@@ -100,23 +102,40 @@ export function DateTimePicker({
         value={value ? timeValue : ""}
         onChange={handleTimeChange}
         className={cn(
-          "h-6 rounded border border-charcoal-600 bg-charcoal-750 px-2 text-xs tabular-nums transition hover:border-charcoal-500",
+          "h-[1.8rem] rounded border border-charcoal-600 bg-charcoal-750 px-2 text-xs tabular-nums transition hover:border-charcoal-500",
           "text-text-bright placeholder:text-text-dimmed",
           "focus:border-charcoal-500 focus:outline-none",
           "[&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
         )}
         aria-label={`${label} time`}
       />
-      {showNowButton && (
-        <Button type="button" variant="tertiary/small" onClick={handleNowClick}>
-          Now
-        </Button>
-      )}
-      {showClearButton && (
-        <Button type="button" variant="tertiary/small" onClick={handleClearClick}>
-          Clear
-        </Button>
-      )}
+      <div className="flex w-full items-center justify-between gap-1">
+        {showNowButton && (
+          <Button
+            type="button"
+            variant="secondary/small"
+            className="h-[1.8rem]"
+            onClick={handleNowClick}
+          >
+            Now
+          </Button>
+        )}
+        {showClearButton && (
+          <SimpleTooltip
+            button={
+              <button
+                type="button"
+                className="flex h-[1.8rem] items-center justify-center px-1 text-text-dimmed transition hover:text-text-bright"
+                onClick={handleClearClick}
+              >
+                <XIcon className="size-3.5" />
+              </button>
+            }
+            content="Clear"
+            disableHoverableContent
+          />
+        )}
+      </div>
     </div>
   );
 }
