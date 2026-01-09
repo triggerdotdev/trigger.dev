@@ -541,12 +541,11 @@ export function TimeDropdown({
                   activeSection === "dateRange" && "text-indigo-500"
                 )}
               >
-                Or specify exact time range
+                Or specify exact time range{" "}
+                <span className="text-text-dimmed">(in local time)</span>
               </Label>
-              <div className="mb-2 flex flex-col gap-1" onClick={(e) => e.stopPropagation()}>
-                <Label variant="small">
-                  From <span className="text-text-dimmed">(local time)</span>
-                </Label>
+              <div className="mb-3 flex flex-col gap-1" onClick={(e) => e.stopPropagation()}>
+                <Label variant="small">From</Label>
                 <DateTimePicker
                   label="From time"
                   value={fromValue}
@@ -561,9 +560,7 @@ export function TimeDropdown({
                 />
               </div>
               <div className="flex flex-col gap-1" onClick={(e) => e.stopPropagation()}>
-                <Label variant="small">
-                  To <span className="text-text-dimmed">(local time)</span>
-                </Label>
+                <Label variant="small">To</Label>
                 <DateTimePicker
                   label="To time"
                   value={toValue}
@@ -578,7 +575,7 @@ export function TimeDropdown({
                 />
               </div>
               {/* Quick select date ranges */}
-              <div className="mt-3 grid grid-cols-3 gap-2" onClick={(e) => e.stopPropagation()}>
+              <div className="mt-4 grid grid-cols-3 gap-2" onClick={(e) => e.stopPropagation()}>
                 <QuickDateButton
                   label="Yesterday"
                   onClick={() => {
@@ -670,7 +667,7 @@ export function TimeDropdown({
                 />
               </div>
               {validationError && activeSection === "dateRange" && (
-                <Paragraph variant="extra-small" className="mt-1 text-error">
+                <Paragraph variant="extra-small" className="mt-2 text-error">
                   {validationError}
                 </Paragraph>
               )}
