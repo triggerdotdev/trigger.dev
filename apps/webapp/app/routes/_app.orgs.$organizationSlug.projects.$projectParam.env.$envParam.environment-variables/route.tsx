@@ -9,7 +9,7 @@ import {
   PlusIcon,
   TrashIcon,
 } from "@heroicons/react/20/solid";
-import { Form, type MetaFunction, Outlet, useActionData, useFetcher, useNavigation } from "@remix-run/react";
+import { Form, type MetaFunction, Outlet, useActionData, useFetcher, useNavigation, useRevalidator } from "@remix-run/react";
 import {
   type ActionFunctionArgs,
   type LoaderFunctionArgs,
@@ -70,6 +70,9 @@ import {
   EditEnvironmentVariableValue,
   EnvironmentVariable,
 } from "~/v3/environmentVariables/repository";
+import { VercelIntegrationService } from "~/services/vercelIntegration.server";
+import { Callout } from "~/components/primitives/Callout";
+import { shouldSyncEnvVar, type TriggerEnvironmentType } from "~/v3/vercel/vercelProjectIntegrationSchema";
 
 export const meta: MetaFunction = () => {
   return [
@@ -85,7 +88,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   try {
     const presenter = new EnvironmentVariablesPresenter();
-    const { environmentVariables, environments, hasStaging } = await presenter.call({
+    const { environmentVariables, environments, hasStaging, vercelIntegration } = await presenter.call({
       userId,
       projectSlug: projectParam,
     });
@@ -94,6 +97,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       environmentVariables,
       environments,
       hasStaging,
+      vercelIntegration,
     });
   } catch (error) {
     console.error(error);
@@ -110,6 +114,12 @@ const schema = z.discriminatedUnion("action", [
     action: z.literal("delete"),
     key: z.string(),
     ...DeleteEnvironmentVariableValue.shape,
+  }),
+  z.object({
+    action: z.literal("update-vercel-sync"),
+    key: z.string(),
+    environmentType: z.enum(["PRODUCTION", "STAGING", "PREVIEW", "DEVELOPMENT"]),
+    syncEnabled: z.string().transform((val) => val === "true"),
   }),
 ]);
 
@@ -179,12 +189,31 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         `Deleted ${submission.value.key} environment variable`
       );
     }
+    case "update-vercel-sync": {
+      const vercelService = new VercelIntegrationService();
+      const integration = await vercelService.getVercelProjectIntegration(project.id);
+
+      if (!integration) {
+        submission.error.key = ["Vercel integration not found"];
+        return json(submission);
+      }
+
+      // Update the sync mapping for the specific env var and environment
+      await vercelService.updateSyncEnvVarForEnvironment(
+        project.id,
+        submission.value.key,
+        submission.value.environmentType,
+        submission.value.syncEnabled
+      );
+
+      return json({ success: true });
+    }
   }
 };
 
 export default function Page() {
   const [revealAll, setRevealAll] = useState(false);
-  const { environmentVariables, environments } = useTypedLoaderData<typeof loader>();
+  const { environmentVariables, environments, vercelIntegration } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -276,12 +305,41 @@ export default function Page() {
               </div>
             </div>
           )}
+          {/* Vercel sync info callout */}
+          {vercelIntegration?.enabled && vercelIntegration?.pullEnvVarsEnabled && (
+            <div className="mt-2 px-2 pb-2">
+              <Callout variant="info" className="text-xs">
+                Environment variables with Vercel sync enabled will be pulled from Vercel during builds.
+                Uncheck the "Vercel Sync" box to exclude specific variables from syncing.
+              </Callout>
+            </div>
+          )}
+
           <Table containerClassName={cn(filteredItems.length === 0 && "border-t-0")}>
             <TableHeader>
               <TableRow>
-                <TableHeaderCell className="w-[25%]">Key</TableHeaderCell>
-                <TableHeaderCell className="w-[55%]">Value</TableHeaderCell>
-                <TableHeaderCell className="w-[20%]">Environment</TableHeaderCell>
+                <TableHeaderCell className={vercelIntegration?.enabled ? "w-[22%]" : "w-[25%]"}>
+                  Key
+                </TableHeaderCell>
+                <TableHeaderCell className={vercelIntegration?.enabled ? "w-[45%]" : "w-[55%]"}>
+                  Value
+                </TableHeaderCell>
+                <TableHeaderCell className={vercelIntegration?.enabled ? "w-[18%]" : "w-[20%]"}>
+                  Environment
+                </TableHeaderCell>
+                {vercelIntegration?.enabled && (
+                  <TableHeaderCell className="w-[10%]">
+                    <SimpleTooltip
+                      button={
+                        <span className="flex items-center gap-1">
+                          Vercel Sync
+                          <InformationCircleIcon className="size-4 text-text-dimmed" />
+                        </span>
+                      }
+                      content="When enabled, this variable will be synced from Vercel during builds. Requires 'Sync environment variables from Vercel' to be enabled in settings."
+                    />
+                  </TableHeaderCell>
+                )}
                 <TableHeaderCell hiddenLabel className="pl-24">
                   Actions
                 </TableHeaderCell>
@@ -341,6 +399,20 @@ export default function Page() {
                       <TableCell className={cn(cellClassName, borderedCellClassName)}>
                         <EnvironmentCombo environment={variable.environment} className="text-sm" />
                       </TableCell>
+                      {vercelIntegration?.enabled && (
+                        <TableCell className={cn(cellClassName, borderedCellClassName)}>
+                          <VercelSyncCheckbox
+                            envVarKey={variable.key}
+                            environmentType={variable.environment.type as TriggerEnvironmentType}
+                            syncEnabled={shouldSyncEnvVar(
+                              vercelIntegration.syncEnvVarsMapping,
+                              variable.key,
+                              variable.environment.type as TriggerEnvironmentType
+                            )}
+                            pullEnvVarsEnabled={vercelIntegration.pullEnvVarsEnabled}
+                          />
+                        </TableCell>
+                      )}
                       <TableCellMenu
                         className={cn(cellClassName, borderedCellClassName)}
                         isSticky
@@ -529,5 +601,79 @@ function DeleteEnvironmentVariableButton({
         {isLoading ? "Deleting" : "Delete"}
       </Button>
     </Form>
+  );
+}
+
+/**
+ * Toggle component for toggling Vercel sync for an environment variable.
+ * 
+ * When Vercel sync is enabled for a variable, it will be pulled from Vercel during builds.
+ * By default, all variables are synced unless explicitly disabled.
+ * 
+ * Note: If the env var name is missing from syncEnvVarsMapping, it's synced by default.
+ * Only when syncEnvVarsMapping[envVarName] = false, the env var is skipped during builds.
+ */
+function VercelSyncCheckbox({
+  envVarKey,
+  environmentType,
+  syncEnabled,
+  pullEnvVarsEnabled,
+}: {
+  envVarKey: string;
+  environmentType: "PRODUCTION" | "STAGING" | "PREVIEW" | "DEVELOPMENT";
+  syncEnabled: boolean;
+  pullEnvVarsEnabled: boolean;
+}) {
+  const fetcher = useFetcher();
+  const revalidator = useRevalidator();
+
+  const isLoading = fetcher.state !== "idle";
+
+  // Revalidate loader data after successful submission (without full page reload)
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data) {
+      const data = fetcher.data as { success?: boolean };
+      if (data.success) {
+        revalidator.revalidate();
+      }
+    }
+  }, [fetcher.state, fetcher.data, revalidator]);
+
+  const handleChange = (checked: boolean) => {
+    fetcher.submit(
+      {
+        action: "update-vercel-sync",
+        key: envVarKey,
+        environmentType,
+        syncEnabled: checked.toString(),
+      },
+      { method: "post" }
+    );
+  };
+
+  // If pull env vars is disabled globally, show disabled state
+  if (!pullEnvVarsEnabled) {
+    return (
+      <SimpleTooltip
+        button={
+          <Switch
+            variant="small"
+            checked={false}
+            disabled
+            onCheckedChange={() => {}}
+          />
+        }
+        content="Enable 'Sync environment variables from Vercel' in settings to enable individual variable sync."
+      />
+    );
+  }
+
+  return (
+    <Switch
+      variant="small"
+      checked={syncEnabled}
+      disabled={isLoading}
+      onCheckedChange={handleChange}
+    />
   );
 }

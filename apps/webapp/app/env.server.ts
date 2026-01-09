@@ -425,6 +425,10 @@ const EnvironmentSchema = z
     ORG_SLACK_INTEGRATION_CLIENT_ID: z.string().optional(),
     ORG_SLACK_INTEGRATION_CLIENT_SECRET: z.string().optional(),
 
+    /** Vercel integration OAuth credentials */
+    VERCEL_INTEGRATION_CLIENT_ID: z.string().optional(),
+    VERCEL_INTEGRATION_CLIENT_SECRET: z.string().optional(),
+
     /** These enable the alerts feature in v3 */
     ALERT_EMAIL_TRANSPORT: z.enum(["resend", "smtp", "aws-ses"]).optional(),
     ALERT_FROM_EMAIL: z.string().optional(),

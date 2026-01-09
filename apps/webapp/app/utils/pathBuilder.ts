@@ -151,6 +151,24 @@ export function githubAppInstallPath(organizationSlug: string, redirectTo: strin
   )}`;
 }
 
+export function vercelAppInstallPath(organizationSlug: string, projectSlug: string) {
+  return `/vercel/install?org_slug=${organizationSlug}&project_slug=${projectSlug}`;
+}
+
+export function vercelCallbackPath() {
+  return `/callback/vercel`;
+}
+
+export function vercelResourcePath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `/resources/orgs/${organizationParam(organization)}/projects/${projectParam(
+    project
+  )}/env/${environmentParam(environment)}/vercel`;
+}
+
 export function v3EnvironmentPath(
   organization: OrgForPath,
   project: ProjectForPath,

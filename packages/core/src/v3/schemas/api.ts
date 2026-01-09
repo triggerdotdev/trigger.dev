@@ -522,6 +522,7 @@ export const DeploymentTriggeredVia = z
     "cli:travis_ci",
     "cli:buildkite",
     "git_integration:github",
+    "integration:vercel",
     "dashboard",
   ])
   .or(anyString);

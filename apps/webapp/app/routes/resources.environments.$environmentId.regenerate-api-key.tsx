@@ -2,8 +2,10 @@ import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { environmentFullTitle } from "~/components/environments/EnvironmentLabel";
 import { regenerateApiKey } from "~/models/api-key.server";
+import { VercelIntegrationRepository } from "~/models/vercelIntegration.server";
 import { jsonWithErrorMessage, jsonWithSuccessMessage } from "~/models/message.server";
 import { requireUserId } from "~/services/session.server";
+import { logger } from "~/services/logger.server";
 
 const ParamsSchema = z.object({
   environmentId: z.string(),
@@ -22,6 +24,14 @@ export async function action({ request, params }: ActionFunctionArgs) {
   try {
     const updatedEnvironment = await regenerateApiKey({ userId, environmentId });
 
+    // Sync the regenerated API key to Vercel if integration exists
+    // This is done asynchronously and won't block the response
+    syncApiKeyToVercelInBackground(
+      updatedEnvironment.projectId,
+      updatedEnvironment.type as "PRODUCTION" | "STAGING" | "PREVIEW" | "DEVELOPMENT",
+      updatedEnvironment.apiKey
+    );
+
     return jsonWithSuccessMessage(
       { ok: true },
       request,
@@ -35,5 +45,39 @@ export async function action({ request, params }: ActionFunctionArgs) {
       request,
       `API keys could not be regenerated: ${message}`
     );
+  }
+}
+
+/**
+ * Sync the API key to Vercel in the background.
+ * This runs asynchronously and doesn't block the main response.
+ * Errors are logged but won't fail the API key regeneration.
+ */
+async function syncApiKeyToVercelInBackground(
+  projectId: string,
+  environmentType: "PRODUCTION" | "STAGING" | "PREVIEW" | "DEVELOPMENT",
+  apiKey: string
+): Promise<void> {
+  try {
+    const result = await VercelIntegrationRepository.syncSingleApiKeyToVercel({
+      projectId,
+      environmentType,
+      apiKey,
+    });
+
+    if (!result.success) {
+      logger.warn("Failed to sync regenerated API key to Vercel", {
+        projectId,
+        environmentType,
+        error: result.error,
+      });
+    }
+  } catch (error) {
+    // Log but don't throw - we don't want to fail the main operation
+    logger.error("Error syncing regenerated API key to Vercel", {
+      projectId,
+      environmentType,
+      error,
+    });
   }
 }
