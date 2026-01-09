@@ -202,7 +202,8 @@ export function TSQLEditor(opts: TSQLEditorProps) {
         ref={editor}
         onBlur={() => {
           if (!onBlur) return;
-          onBlur(editor.current?.textContent ?? "");
+          if (!view) return;
+          onBlur(view.state.doc.toString());
         }}
       />
       {showButtons && (
