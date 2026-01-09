@@ -1,3 +1,4 @@
+import { describe, it, expect } from "vitest";
 import { CharStreams, CommonTokenStream } from "antlr4ts";
 import { TSQLLexer } from "./TSQLLexer.js";
 import { TSQLParser } from "./TSQLParser.js";
