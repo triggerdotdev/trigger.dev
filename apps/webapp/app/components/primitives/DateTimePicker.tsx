@@ -109,33 +109,31 @@ export function DateTimePicker({
         )}
         aria-label={`${label} time`}
       />
-      <div className="flex w-full items-center justify-between gap-1">
-        {showNowButton && (
-          <Button
-            type="button"
-            variant="secondary/small"
-            className="h-[1.8rem]"
-            onClick={handleNowClick}
-          >
-            Now
-          </Button>
-        )}
-        {showClearButton && (
-          <SimpleTooltip
-            button={
-              <button
-                type="button"
-                className="flex h-[1.8rem] items-center justify-center px-1 text-text-dimmed transition hover:text-text-bright"
-                onClick={handleClearClick}
-              >
-                <XIcon className="size-3.5" />
-              </button>
-            }
-            content="Clear"
-            disableHoverableContent
-          />
-        )}
-      </div>
+      {showNowButton && (
+        <Button
+          type="button"
+          variant="secondary/small"
+          className="h-[1.8rem]"
+          onClick={handleNowClick}
+        >
+          Now
+        </Button>
+      )}
+      {showClearButton && (
+        <SimpleTooltip
+          button={
+            <button
+              type="button"
+              className="flex h-[1.8rem] items-center justify-center px-1 text-text-dimmed transition hover:text-text-bright"
+              onClick={handleClearClick}
+            >
+              <XIcon className="size-3.5" />
+            </button>
+          }
+          content="Clear"
+          disableHoverableContent
+        />
+      )}
     </div>
   );
 }
