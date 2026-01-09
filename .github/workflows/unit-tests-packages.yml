@@ -72,6 +72,17 @@ jobs:
         if: ${{ !env.DOCKERHUB_USERNAME }}
         run: echo "DockerHub login skipped because secrets are not available."
 
+      - name: 🐳 Pre-pull testcontainer images
+        if: ${{ env.DOCKERHUB_USERNAME }}
+        run: |
+          echo "Pre-pulling Docker images with authenticated session..."
+          docker pull postgres:14
+          docker pull clickhouse/clickhouse-server:25.4-alpine
+          docker pull redis:7-alpine
+          docker pull testcontainers/ryuk:0.11.0
+          docker pull electricsql/electric:1.2.4
+          echo "Image pre-pull complete"
+
       - name: 📥 Download deps
         run: pnpm install --frozen-lockfile
 
