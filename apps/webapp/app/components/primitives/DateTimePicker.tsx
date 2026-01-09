@@ -17,6 +17,7 @@ type DateTimePickerProps = {
   showSeconds?: boolean;
   showNowButton?: boolean;
   showClearButton?: boolean;
+  showInlineLabel?: boolean;
   className?: string;
 };
 
@@ -27,6 +28,7 @@ export function DateTimePicker({
   showSeconds = true,
   showNowButton = false,
   showClearButton = false,
+  showInlineLabel = false,
   className,
 }: DateTimePickerProps) {
   const [open, setOpen] = React.useState(false);
@@ -74,12 +76,15 @@ export function DateTimePicker({
 
   return (
     <div className={cn("flex items-center gap-2", className)}>
+      {showInlineLabel && (
+        <span className="w-6 shrink-0 text-right text-xxs text-text-dimmed">{label}</span>
+      )}
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <button
             type="button"
             className={cn(
-              "flex h-[1.8rem] items-center justify-between gap-2 whitespace-nowrap rounded border border-charcoal-600 bg-charcoal-750 px-2 text-xs tabular-nums transition hover:border-charcoal-500",
+              "flex h-[1.8rem] w-full items-center justify-between gap-2 whitespace-nowrap rounded border border-charcoal-600 bg-charcoal-750 px-2 text-xs tabular-nums transition hover:border-charcoal-500",
               value ? "text-text-bright" : "text-text-dimmed"
             )}
           >
