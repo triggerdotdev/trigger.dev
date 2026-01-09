@@ -137,6 +137,7 @@ export function DateTimePicker({
           }
           content="Clear"
           disableHoverableContent
+          asChild
         />
       )}
     </div>
