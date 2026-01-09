@@ -223,6 +223,8 @@
     "zod-validation-error": "^1.5.0"
   },
   "devDependencies": {
+    "@clinic/doctor": "^11.0.0",
+    "@clinic/flame": "^13.0.0",
     "@internal/clickhouse": "workspace:*",
     "@internal/replication": "workspace:*",
     "@internal/testcontainers": "workspace:*",
@@ -265,6 +267,8 @@
     "@typescript-eslint/parser": "^5.59.6",
     "autoevals": "^0.0.130",
     "autoprefixer": "^10.4.13",
+    "clinic": "^13.0.0",
+    "commander": "^11.0.0",
     "css-loader": "^6.10.0",
     "datepicker": "link:@types/@react-aria/datepicker",
     "engine.io": "^6.5.4",
