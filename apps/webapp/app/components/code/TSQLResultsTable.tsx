@@ -134,6 +134,10 @@ function CellValue({
 }) {
   // Plain text mode - render everything as monospace text with truncation
   if (!prettyFormatting) {
+    if (column.type === "JSON") {
+      return <JSONCellValue value={value} />;
+    }
+
     const plainValue = value === null ? "NULL" : String(value);
     const isTruncated = plainValue.length > MAX_STRING_DISPLAY_LENGTH;
 
@@ -277,24 +281,7 @@ function CellValue({
 
   // JSON type
   if (type === "JSON") {
-    const jsonString = JSON.stringify(value);
-    const isTruncated = jsonString.length > MAX_STRING_DISPLAY_LENGTH;
-
-    if (isTruncated) {
-      return (
-        <SimpleTooltip
-          content={
-            <pre className="max-w-sm whitespace-pre-wrap break-all font-mono text-xs">
-              {jsonString}
-            </pre>
-          }
-          button={
-            <span className="font-mono text-xs text-text-dimmed">{truncateString(jsonString)}</span>
-          }
-        />
-      );
-    }
-    return <span className="font-mono text-xs text-text-dimmed">{jsonString}</span>;
+    return <JSONCellValue value={value} />;
   }
 
   // Array types
@@ -380,6 +367,28 @@ function EnvironmentCellValue({ value }: { value: string }) {
   }
 
   return <EnvironmentLabel environment={environment} />;
+}
+
+function JSONCellValue({ value }: { value: any }) {
+  const jsonString = JSON.stringify(value);
+  const isTruncated = jsonString.length > MAX_STRING_DISPLAY_LENGTH;
+
+  if (isTruncated) {
+    return (
+      <SimpleTooltip
+        content={
+          <pre className="max-w-sm whitespace-pre-wrap break-all font-mono text-xs">
+            {jsonString}
+          </pre>
+        }
+        button={
+          <span className="font-mono text-xs text-text-dimmed">{truncateString(jsonString)}</span>
+        }
+      />
+    );
+  }
+
+  return <span className="font-mono text-xs text-text-dimmed">{jsonString}</span>;
 }
 
 /**
