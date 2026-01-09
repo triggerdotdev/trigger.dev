@@ -89,6 +89,7 @@ export class LogDetailPresenter {
     // Parse metadata and attributes
     let parsedMetadata: Record<string, unknown> = {};
     let parsedAttributes: Record<string, unknown> = {};
+    let rawAttributesString = "";
 
     try {
       if (log.metadata) {
@@ -99,8 +100,15 @@ export class LogDetailPresenter {
     }
 
     try {
-      if (log.attributes_text) {
-        parsedAttributes = JSON.parse(log.attributes_text) as Record<string, unknown>;
+      // Handle attributes which could be a JSON object or string
+      if (log.attributes) {
+        if (typeof log.attributes === "string") {
+          parsedAttributes = JSON.parse(log.attributes) as Record<string, unknown>;
+          rawAttributesString = log.attributes;
+        } else if (typeof log.attributes === "object") {
+          parsedAttributes = log.attributes as Record<string, unknown>;
+          rawAttributesString = JSON.stringify(log.attributes);
+        }
       }
     } catch {
       // Ignore parse errors
@@ -124,7 +132,7 @@ export class LogDetailPresenter {
       attributes: parsedAttributes,
       // Raw strings for display
       rawMetadata: log.metadata,
-      rawAttributes: log.attributes_text,
+      rawAttributes: rawAttributesString,
     };
   }
 }
