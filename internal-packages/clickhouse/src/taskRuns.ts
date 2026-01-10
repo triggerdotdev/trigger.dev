@@ -121,6 +121,7 @@ export const TASK_RUN_COLUMNS = [
   "concurrency_key",
   "bulk_action_group_ids",
   "worker_queue",
+  "max_duration_in_seconds",
   "_version",
   "_is_deleted",
 ] as const;
@@ -227,7 +228,10 @@ export function insertRawTaskRunPayloads(ch: ClickhouseWriter, settings?: ClickH
   });
 }
 
-export function insertRawTaskRunPayloadsUnsafe(ch: ClickhouseWriter, settings?: ClickHouseSettings) {
+export function insertRawTaskRunPayloadsUnsafe(
+  ch: ClickhouseWriter,
+  settings?: ClickHouseSettings
+) {
   return ch.insertUnsafe({
     name: "insertRawTaskRunPayloadsUnsafe",
     table: "trigger_dev.raw_task_runs_payload_v1",

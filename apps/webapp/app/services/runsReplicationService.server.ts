@@ -918,6 +918,7 @@ export class RunsReplicationService {
       run.concurrencyKey ?? "", // concurrency_key
       run.bulkActionGroupIds ?? [], // bulk_action_group_ids
       run.masterQueue ?? "", // worker_queue
+      run.maxDurationInSeconds ?? 0, // max_duration_in_seconds
       _version.toString(), // _version
       event === "delete" ? 1 : 0, // _is_deleted
     ];
