@@ -1,4 +1,4 @@
-import { ArrowPathIcon } from "@heroicons/react/20/solid";
+import { ArrowPathIcon, ArrowTopRightOnSquareIcon } from "@heroicons/react/20/solid";
 import { formatDurationNanoseconds } from "@trigger.dev/core/v3";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { cn } from "~/utils/cn";
@@ -17,11 +17,13 @@ import {
   TableBlankRow,
   TableBody,
   TableCell,
+  TableCellMenu,
   TableHeader,
   TableHeaderCell,
   TableRow,
   type TableVariant,
 } from "../primitives/Table";
+import { PopoverMenuItem } from "~/components/primitives/Popover";
 
 type LogsTableProps = {
   logs: LogEntry[];
@@ -161,10 +163,10 @@ export function LogsTable({
       <Table variant="compact/mono" containerClassName="overflow-visible">
         <TableHeader className="sticky top-0 z-10">
           <TableRow>
-            <TableHeaderCell className="w-48 whitespace-nowrap">Time</TableHeaderCell>
-            <TableHeaderCell className="w-24 whitespace-nowrap">Run</TableHeaderCell>
-            <TableHeaderCell className="w-32 whitespace-nowrap">Task</TableHeaderCell>
-            <TableHeaderCell className="whitespace-nowrap">Level</TableHeaderCell>
+            <TableHeaderCell className="min-w-48 whitespace-nowrap">Time</TableHeaderCell>
+            <TableHeaderCell className="min-w-24 whitespace-nowrap">Run</TableHeaderCell>
+            <TableHeaderCell className="min-w-32 whitespace-nowrap">Task</TableHeaderCell>
+            <TableHeaderCell className="min-w-24 whitespace-nowrap">Level</TableHeaderCell>
             <TableHeaderCell className="w-full min-w-0">Message</TableHeaderCell>
           </TableRow>
         </TableHeader>
@@ -208,7 +210,7 @@ export function LogsTable({
                   <TableCell className="min-w-24">
                     <TruncatedCopyableValue value={log.runId} />
                   </TableCell>
-                  <TableCell className="min-w-32"  onClick={handleRowClick} hasAction>
+                  <TableCell className="min-w-32" onClick={handleRowClick} hasAction>
                     <span className="font-mono text-xs">{log.taskIdentifier}</span>
                   </TableCell>
                   <TableCell onClick={handleRowClick} hasAction>
@@ -226,6 +228,17 @@ export function LogsTable({
                       {highlightText(log.message, searchTerm)}
                     </span>
                   </TableCell>
+                  <TableCellMenu
+                    className="pl-32"
+                    hiddenButtons={
+                      <PopoverMenuItem
+                        openInNewTab={true}
+                        to={runPath}
+                        icon={ArrowTopRightOnSquareIcon}
+                        title="View Run"
+                      />
+                    }
+                  />
                 </TableRow>
               );
             })

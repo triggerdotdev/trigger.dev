@@ -1,7 +1,6 @@
 import { XMarkIcon, ArrowTopRightOnSquareIcon, CheckIcon, ClockIcon } from "@heroicons/react/20/solid";
 import { Link } from "@remix-run/react";
 import {
-  formatDurationNanoseconds,
   type MachinePresetName,
   formatDurationMilliseconds,
 } from "@trigger.dev/core/v3";
@@ -267,8 +266,6 @@ export function LogDetailView({ logId, initialLog, onClose, searchTerm }: LogDet
           >
             {log.level}
           </span>
-          <span className="text-text-dimmed">·</span>
-          <DateTime date={log.startTime} />
         </div>
         <Button variant="minimal/small" onClick={onClose} shortcut={{ key: "esc" }}>
           <XMarkIcon className="size-5" />
@@ -276,7 +273,7 @@ export function LogDetailView({ logId, initialLog, onClose, searchTerm }: LogDet
       </div>
 
       {/* Tabs */}
-      <div className="border-b border-grid-dimmed px-4">
+      <div className="flex items-center justify-between border-b border-grid-dimmed px-4">
         <TabContainer>
           <TabButton
             isActive={activeTab === "details"}
@@ -295,6 +292,11 @@ export function LogDetailView({ logId, initialLog, onClose, searchTerm }: LogDet
             Run
           </TabButton>
         </TabContainer>
+        <Link to={runPath} target="_blank" rel="noopener noreferrer">
+          <Button variant="secondary/small" LeadingIcon={ArrowTopRightOnSquareIcon}>
+            View Full Run
+          </Button>
+        </Link>
       </div>
 
       {/* Content */}
@@ -323,85 +325,33 @@ function DetailsTab({ log, runPath, searchTerm }: { log: LogEntry; runPath: stri
     beautifiedAttributes = formatStringJSON(beautifiedAttributes);
   }
 
-  // const showMetadata = beautifiedMetadata && beautifiedMetadata !== "{}";
   const showAttributes = beautifiedAttributes && beautifiedAttributes !== "{}";
+
+  // Determine message to show
+  let message = log.message;
+
+  if (log.status === 'ERROR'){
+   message = (logWithExtras?.attributes?.error as any)?.message;
+  }
 
   return (
     <>
+      {/* Time */}
+      <div className="mb-6">
+        <Header3 className="mb-2">Time</Header3>
+        <div className="text-sm text-text-dimmed">
+          <DateTime date={log.startTime} />
+        </div>
+      </div>
+
       {/* Message */}
       <div className="mb-6">
         <Header3 className="mb-2">Message</Header3>
         <div className="rounded-md border border-grid-dimmed bg-charcoal-850 p-3">
           <div className="whitespace-pre-wrap break-words font-mono text-sm text-text-bright">
-            {highlightJsonWithSearch(log.message, searchTerm)}
+            {highlightJsonWithSearch(message, searchTerm)}
           </div>
         </div>
-      </div>
-
-      {/* Run Link */}
-      <div className="mb-6">
-        <Header3 className="mb-2">Run</Header3>
-        <div className="flex items-center gap-3">
-          <span className="font-mono text-sm text-text-bright">{log.runId}</span>
-          <Link to={runPath} target="_blank" rel="noopener noreferrer">
-            <Button variant="tertiary/small" LeadingIcon={ArrowTopRightOnSquareIcon}>
-              View in Run
-            </Button>
-          </Link>
-        </div>
-      </div>
-
-      {/* Details */}
-      <div className="mb-6">
-        <Header3 className="mb-2">Details</Header3>
-        <Property.Table>
-          <Property.Item>
-            <Property.Label>Task</Property.Label>
-            <Property.Value>
-              <span className="font-mono">{log.taskIdentifier}</span>
-            </Property.Value>
-          </Property.Item>
-
-          <Property.Item>
-            <Property.Label>Kind</Property.Label>
-            <Property.Value>{log.kind}</Property.Value>
-          </Property.Item>
-
-          <Property.Item>
-            <Property.Label>Duration</Property.Label>
-            <Property.Value className="flex items-center gap-1">
-              <ClockIcon className="size-4 text-text-dimmed" />
-              <span>
-                {log.duration > 0
-                  ? formatDurationNanoseconds(log.duration, { style: "short" })
-                  : "–"}
-              </span>
-            </Property.Value>
-          </Property.Item>
-
-          <Property.Item>
-            <Property.Label>Trace ID</Property.Label>
-            <Property.Value>
-              <span className="font-mono text-xs">{log.traceId}</span>
-            </Property.Value>
-          </Property.Item>
-
-          <Property.Item>
-            <Property.Label>Span ID</Property.Label>
-            <Property.Value>
-              <span className="font-mono text-xs">{log.spanId}</span>
-            </Property.Value>
-          </Property.Item>
-
-          {log.parentSpanId && (
-            <Property.Item>
-              <Property.Label>Parent Span ID</Property.Label>
-              <Property.Value>
-                <span className="font-mono text-xs">{log.parentSpanId}</span>
-              </Property.Value>
-            </Property.Item>
-          )}
-        </Property.Table>
       </div>
 
       {/* Attributes - only available in full log detail */}
@@ -464,6 +414,13 @@ function RunTab({ log, runPath }: { log: LogEntry; runPath: string }) {
     <div className="flex flex-col gap-4 py-3">
       <Property.Table>
         <Property.Item>
+          <Property.Label>Run ID</Property.Label>
+          <Property.Value>
+            <CopyableText value={runData.friendlyId} copyValue={runData.friendlyId} asChild />
+          </Property.Value>
+        </Property.Item>
+
+        <Property.Item>
           <Property.Label>Status</Property.Label>
           <Property.Value>
             <SimpleTooltip
@@ -477,22 +434,10 @@ function RunTab({ log, runPath }: { log: LogEntry; runPath: string }) {
         <Property.Item>
           <Property.Label>Task</Property.Label>
           <Property.Value>
-            <SimpleTooltip
-              button={
-                <TextLink
-                  to={v3RunsPath(organization, project, environment, {
-                    tasks: [runData.taskIdentifier],
-                  })}
-                >
-                  <CopyableText
-                    value={runData.taskIdentifier}
-                    copyValue={runData.taskIdentifier}
-                    asChild
-                  />
-                </TextLink>
-              }
-              content={`View runs filtered by ${runData.taskIdentifier}`}
-              disableHoverableContent
+            <CopyableText
+              value={runData.taskIdentifier}
+              copyValue={runData.taskIdentifier}
+              asChild
             />
           </Property.Value>
         </Property.Item>
@@ -673,22 +618,7 @@ function RunTab({ log, runPath }: { log: LogEntry; runPath: string }) {
               : "–"}
           </Property.Value>
         </Property.Item>
-
-        <Property.Item>
-          <Property.Label>Run ID</Property.Label>
-          <Property.Value>
-            <CopyableText value={runData.friendlyId} copyValue={runData.friendlyId} asChild />
-          </Property.Value>
-        </Property.Item>
       </Property.Table>
-
-      <div className="flex justify-end gap-2 pt-2">
-        <Link to={runPath} target="_blank" rel="noopener noreferrer">
-          <Button variant="secondary/small" LeadingIcon={ArrowTopRightOnSquareIcon}>
-            View Full Run
-          </Button>
-        </Link>
-      </div>
     </div>
   );
 }
