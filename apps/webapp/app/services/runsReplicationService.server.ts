@@ -1,4 +1,5 @@
 import type { ClickHouse, RawTaskRunPayloadV1, TaskRunV2 } from "@internal/clickhouse";
+import { TASK_RUN_COLUMNS, PAYLOAD_COLUMNS } from "@internal/clickhouse";
 import { type RedisOptions } from "@internal/redis";
 import {
   LogicalReplicationClient,
@@ -80,9 +81,7 @@ type TaskRunInsert = {
 
 export type RunsReplicationServiceEvents = {
   message: [{ lsn: string; message: PgoutputMessage; service: RunsReplicationService }];
-  batchFlushed: [
-    { flushId: string; taskRunInserts: TaskRunV2[]; payloadInserts: RawTaskRunPayloadV1[] }
-  ];
+  batchFlushed: [{ flushId: string; taskRunInserts: any[][]; payloadInserts: any[][] }];
 };
 
 export class RunsReplicationService {
@@ -171,12 +170,9 @@ export class RunsReplicationService {
       description: "Insert retry attempts",
     });
 
-    this._eventsProcessedCounter = this._meter.createCounter(
-      "runs_replication.events_processed",
-      {
-        description: "Replication events processed (inserts, updates, deletes)",
-      }
-    );
+    this._eventsProcessedCounter = this._meter.createCounter("runs_replication.events_processed", {
+      description: "Replication events processed (inserts, updates, deletes)",
+    });
 
     this._flushDurationHistogram = this._meter.createHistogram(
       "runs_replication.flush_duration_ms",
@@ -581,20 +577,25 @@ export class RunsReplicationService {
         .filter(Boolean)
         // batch inserts in clickhouse are more performant if the items
         // are pre-sorted by the primary key
+        // Array indices: [0]=environment_id, [1]=organization_id, [2]=project_id, [3]=run_id, [5]=created_at
         .sort((a, b) => {
-          if (a.organization_id !== b.organization_id) {
-            return a.organization_id < b.organization_id ? -1 : 1;
+          if (a[1] !== b[1]) {
+            // organization_id
+            return a[1] < b[1] ? -1 : 1;
           }
-          if (a.project_id !== b.project_id) {
-            return a.project_id < b.project_id ? -1 : 1;
+          if (a[2] !== b[2]) {
+            // project_id
+            return a[2] < b[2] ? -1 : 1;
           }
-          if (a.environment_id !== b.environment_id) {
-            return a.environment_id < b.environment_id ? -1 : 1;
+          if (a[0] !== b[0]) {
+            // environment_id
+            return a[0] < b[0] ? -1 : 1;
           }
-          if (a.created_at !== b.created_at) {
-            return a.created_at - b.created_at;
+          if (a[5] !== b[5]) {
+            // created_at
+            return a[5] - b[5];
           }
-          return a.run_id < b.run_id ? -1 : 1;
+          return a[3] < b[3] ? -1 : 1; // run_id
         });
 
       const payloadInserts = preparedInserts
@@ -602,8 +603,9 @@ export class RunsReplicationService {
         .filter(Boolean)
         // batch inserts in clickhouse are more performant if the items
         // are pre-sorted by the primary key
+        // Array indices: [0]=run_id
         .sort((a, b) => {
-          return a.run_id < b.run_id ? -1 : 1;
+          return a[0] < b[0] ? -1 : 1; // run_id
         });
 
       span.setAttribute("task_run_inserts", taskRunInserts.length);
@@ -633,7 +635,6 @@ export class RunsReplicationService {
         this.logger.error("Error inserting task run inserts", {
           error: taskRunError,
           flushId,
-          runIds: taskRunInserts.map((r) => r.run_id),
         });
         recordSpanError(span, taskRunError);
       }
@@ -642,7 +643,6 @@ export class RunsReplicationService {
         this.logger.error("Error inserting payload inserts", {
           error: payloadError,
           flushId,
-          runIds: payloadInserts.map((r) => r.run_id),
         });
         recordSpanError(span, payloadError);
       }
@@ -770,16 +770,14 @@ export class RunsReplicationService {
     }
   }
 
-  async #insertTaskRunInserts(taskRunInserts: TaskRunV2[], attempt: number) {
+  async #insertTaskRunInserts(taskRunInserts: any[][], attempt: number) {
     return await startSpan(this._tracer, "insertTaskRunsInserts", async (span) => {
-      const [insertError, insertResult] = await this.options.clickhouse.taskRuns.insertUnsafe(
-        taskRunInserts,
-        {
+      const [insertError, insertResult] =
+        await this.options.clickhouse.taskRuns.insertCompactArrays(taskRunInserts, {
           params: {
             clickhouse_settings: this.#getClickhouseInsertSettings(),
           },
-        }
-      );
+        });
 
       if (insertError) {
         this.logger.error("Error inserting task run inserts attempt", {
@@ -795,16 +793,14 @@ export class RunsReplicationService {
     });
   }
 
-  async #insertPayloadInserts(payloadInserts: RawTaskRunPayloadV1[], attempt: number) {
+  async #insertPayloadInserts(payloadInserts: any[][], attempt: number) {
     return await startSpan(this._tracer, "insertPayloadInserts", async (span) => {
-      const [insertError, insertResult] = await this.options.clickhouse.taskRuns.insertPayloadsUnsafe(
-        payloadInserts,
-        {
+      const [insertError, insertResult] =
+        await this.options.clickhouse.taskRuns.insertPayloadsCompactArrays(payloadInserts, {
           params: {
             clickhouse_settings: this.#getClickhouseInsertSettings(),
           },
-        }
-      );
+        });
 
       if (insertError) {
         this.logger.error("Error inserting payload inserts attempt", {
@@ -822,7 +818,7 @@ export class RunsReplicationService {
 
   async #prepareRunInserts(
     batchedRun: TaskRunInsert
-  ): Promise<{ taskRunInsert?: TaskRunV2; payloadInsert?: RawTaskRunPayloadV1 }> {
+  ): Promise<{ taskRunInsert?: any[]; payloadInsert?: any[] }> {
     this.logger.debug("Preparing run", {
       batchedRun,
     });
@@ -875,66 +871,67 @@ export class RunsReplicationService {
     environmentType: string,
     event: "insert" | "update" | "delete",
     _version: bigint
-  ): Promise<TaskRunV2> {
+  ): Promise<any[]> {
     const output = await this.#prepareJson(run.output, run.outputType);
 
-    return {
-      environment_id: run.runtimeEnvironmentId,
-      organization_id: organizationId,
-      project_id: run.projectId,
-      run_id: run.id,
-      updated_at: run.updatedAt.getTime(),
-      created_at: run.createdAt.getTime(),
-      status: run.status,
-      environment_type: environmentType,
-      friendly_id: run.friendlyId,
-      engine: run.engine,
-      task_identifier: run.taskIdentifier,
-      queue: run.queue,
-      span_id: run.spanId,
-      trace_id: run.traceId,
-      error: { data: run.error },
-      attempt: run.attemptNumber ?? 1,
-      schedule_id: run.scheduleId ?? "",
-      batch_id: run.batchId ?? "",
-      completed_at: run.completedAt?.getTime(),
-      started_at: run.startedAt?.getTime(),
-      executed_at: run.executedAt?.getTime(),
-      delay_until: run.delayUntil?.getTime(),
-      queued_at: run.queuedAt?.getTime(),
-      expired_at: run.expiredAt?.getTime(),
-      usage_duration_ms: run.usageDurationMs,
-      cost_in_cents: run.costInCents,
-      base_cost_in_cents: run.baseCostInCents,
-      tags: run.runTags ?? [],
-      task_version: run.taskVersion ?? "",
-      sdk_version: run.sdkVersion ?? "",
-      cli_version: run.cliVersion ?? "",
-      machine_preset: run.machinePreset ?? "",
-      root_run_id: run.rootTaskRunId ?? "",
-      parent_run_id: run.parentTaskRunId ?? "",
-      depth: run.depth,
-      is_test: run.isTest,
-      idempotency_key: run.idempotencyKey ?? "",
-      expiration_ttl: run.ttl ?? "",
-      output,
-      concurrency_key: run.concurrencyKey ?? "",
-      bulk_action_group_ids: run.bulkActionGroupIds ?? [],
-      worker_queue: run.masterQueue,
-      max_duration_in_seconds: run.maxDurationInSeconds ?? undefined,
-      _version: _version.toString(),
-      _is_deleted: event === "delete" ? 1 : 0,
-    };
+    // Return array matching TASK_RUN_COLUMNS order
+    return [
+      run.runtimeEnvironmentId, // environment_id
+      organizationId, // organization_id
+      run.projectId, // project_id
+      run.id, // run_id
+      run.updatedAt.getTime(), // updated_at
+      run.createdAt.getTime(), // created_at
+      run.status, // status
+      environmentType, // environment_type
+      run.friendlyId, // friendly_id
+      run.attemptNumber ?? 1, // attempt
+      run.engine, // engine
+      run.taskIdentifier, // task_identifier
+      run.queue, // queue
+      run.scheduleId ?? "", // schedule_id
+      run.batchId ?? "", // batch_id
+      run.completedAt?.getTime() ?? null, // completed_at
+      run.startedAt?.getTime() ?? null, // started_at
+      run.executedAt?.getTime() ?? null, // executed_at
+      run.delayUntil?.getTime() ?? null, // delay_until
+      run.queuedAt?.getTime() ?? null, // queued_at
+      run.expiredAt?.getTime() ?? null, // expired_at
+      run.usageDurationMs ?? 0, // usage_duration_ms
+      run.costInCents ?? 0, // cost_in_cents
+      run.baseCostInCents ?? 0, // base_cost_in_cents
+      output, // output
+      { data: run.error }, // error
+      run.runTags ?? [], // tags
+      run.taskVersion ?? "", // task_version
+      run.sdkVersion ?? "", // sdk_version
+      run.cliVersion ?? "", // cli_version
+      run.machinePreset ?? "", // machine_preset
+      run.rootTaskRunId ?? "", // root_run_id
+      run.parentTaskRunId ?? "", // parent_run_id
+      run.depth ?? 0, // depth
+      run.spanId, // span_id
+      run.traceId, // trace_id
+      run.idempotencyKey ?? "", // idempotency_key
+      run.ttl ?? "", // expiration_ttl
+      run.isTest ?? false, // is_test
+      run.concurrencyKey ?? "", // concurrency_key
+      run.bulkActionGroupIds ?? [], // bulk_action_group_ids
+      run.masterQueue ?? "", // worker_queue
+      _version.toString(), // _version
+      event === "delete" ? 1 : 0, // _is_deleted
+    ];
   }
 
-  async #preparePayloadInsert(run: TaskRun, _version: bigint): Promise<RawTaskRunPayloadV1> {
+  async #preparePayloadInsert(run: TaskRun, _version: bigint): Promise<any[]> {
     const payload = await this.#prepareJson(run.payload, run.payloadType);
 
-    return {
-      run_id: run.id,
-      created_at: run.createdAt.getTime(),
-      payload,
-    };
+    // Return array matching PAYLOAD_COLUMNS order
+    return [
+      run.id, // run_id
+      run.createdAt.getTime(), // created_at
+      payload, // payload
+    ];
   }
 
   async #prepareJson(

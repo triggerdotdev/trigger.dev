@@ -645,6 +645,76 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
     };
   }
 
+  public insertCompact<TRecord extends Record<string, any>>(req: {
+    name: string;
+    table: string;
+    columns: readonly string[];
+    toArray: (record: TRecord) => any[];
+    settings?: ClickHouseSettings;
+  }): ClickhouseInsertFunction<TRecord> {
+    return async (events, options) => {
+      const queryId = randomUUID();
+
+      return await startSpan(this.tracer, "insert", async (span) => {
+        const eventsArray = Array.isArray(events) ? events : [events];
+
+        this.logger.debug("Inserting into clickhouse (compact)", {
+          clientName: this.name,
+          name: req.name,
+          table: req.table,
+          events: eventsArray.length,
+          settings: req.settings,
+          attributes: options?.attributes,
+          options,
+          queryId,
+        });
+
+        span.setAttributes({
+          "clickhouse.clientName": this.name,
+          "clickhouse.tableName": req.table,
+          "clickhouse.operationName": req.name,
+          "clickhouse.queryId": queryId,
+          "clickhouse.format": "JSONCompactEachRowWithNames",
+          ...flattenAttributes(req.settings, "clickhouse.settings"),
+          ...flattenAttributes(options?.attributes),
+        });
+
+        // Build compact format: [columns, ...rows]
+        const compactData: any[] = [Array.from(req.columns)];
+        for (let i = 0; i < eventsArray.length; i++) {
+          compactData.push(req.toArray(eventsArray[i]));
+        }
+
+        const [clickhouseError, result] = await tryCatch(
+          this.client.insert({
+            table: req.table,
+            format: "JSONCompactEachRowWithNames",
+            values: compactData,
+            query_id: queryId,
+            ...options?.params,
+            clickhouse_settings: {
+              ...req.settings,
+              ...options?.params?.clickhouse_settings,
+            },
+          })
+        );
+
+        if (clickhouseError) {
+          this.logger.error("Error inserting into clickhouse", {
+            name: req.name,
+            error: clickhouseError,
+            table: req.table,
+          });
+
+          recordSpanError(span, clickhouseError);
+          return [new InsertError(clickhouseError.message), null];
+        }
+
+        return [null, result];
+      });
+    };
+  }
+
   public insertUnsafe<TRecord extends Record<string, any>>(req: {
     name: string;
     table: string;
@@ -654,11 +724,13 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
       const queryId = randomUUID();
 
       return await startSpan(this.tracer, "insert", async (span) => {
+        const eventsArray = Array.isArray(events) ? events : [events];
+
         this.logger.debug("Inserting into clickhouse", {
           clientName: this.name,
           name: req.name,
           table: req.table,
-          events: Array.isArray(events) ? events.length : 1,
+          events: eventsArray.length,
           settings: req.settings,
           attributes: options?.attributes,
           options,
@@ -678,7 +750,7 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
           this.client.insert({
             table: req.table,
             format: "JSONEachRow",
-            values: Array.isArray(events) ? events : [events],
+            values: eventsArray,
             query_id: queryId,
             ...options?.params,
             clickhouse_settings: {
