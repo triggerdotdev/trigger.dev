@@ -689,12 +689,15 @@ export function getAllTableNames(schema: SchemaRegistry): string[] {
 
 /**
  * Sanitize a ClickHouse error message by replacing internal ClickHouse names
- * with their user-facing TSQL equivalents.
+ * with their user-facing TSQL equivalents and removing internal implementation details.
  *
  * This function handles:
  * - Fully qualified table names (e.g., `trigger_dev.task_runs_v2` → `runs`)
  * - Column names with table prefix (e.g., `trigger_dev.task_runs_v2.friendly_id` → `runs.run_id`)
  * - Standalone column names (e.g., `friendly_id` → `run_id`)
+ * - Removes tenant isolation filters (organization_id, project_id, environment_id)
+ * - Removes required filters (e.g., engine = 'V2')
+ * - Removes redundant aliases (e.g., `run_id AS run_id` → `run_id`)
  *
  * @param message - The error message from ClickHouse
  * @param schemas - The table schemas defining name mappings
@@ -714,9 +717,29 @@ export function sanitizeErrorMessage(message: string, schemas: TableSchema[]): s
   const tableNameMap = new Map<string, string>(); // clickhouseName -> tsqlName
   const columnNameMap = new Map<string, { tsqlName: string; tableTsqlName: string }>(); // clickhouseName -> { tsqlName, tableTsqlName }
 
+  // Collect tenant column names and required filter columns to strip from errors
+  const columnsToStrip: string[] = [];
+  const tableAliasPatterns: RegExp[] = [];
+
   for (const table of schemas) {
     // Map table names
     tableNameMap.set(table.clickhouseName, table.name);
+
+    // Collect tenant column names to strip
+    const tenantCols = table.tenantColumns;
+    columnsToStrip.push(tenantCols.organizationId, tenantCols.projectId, tenantCols.environmentId);
+
+    // Collect required filter columns to strip
+    if (table.requiredFilters) {
+      for (const filter of table.requiredFilters) {
+        columnsToStrip.push(filter.column);
+      }
+    }
+
+    // Build pattern to remove table aliases like "FROM runs AS runs"
+    tableAliasPatterns.push(
+      new RegExp(`\\b${escapeRegex(table.name)}\\s+AS\\s+${escapeRegex(table.name)}\\b`, "gi")
+    );
 
     // Map column names
     for (const col of Object.values(table.columns)) {
@@ -733,7 +756,51 @@ export function sanitizeErrorMessage(message: string, schemas: TableSchema[]): s
 
   let result = message;
 
-  // Replace fully qualified column references first (table.column)
+  // Step 0: Remove internal prefixes that leak implementation details
+  result = result.replace(/^Unable to query clickhouse:\s*/i, "");
+
+  // Step 1: Remove tenant isolation and required filter conditions
+  // We need to handle multiple patterns:
+  // - (column = 'value') AND ...
+  // - ... AND (column = 'value')
+  // - (column = 'value') at end of expression
+  for (const colName of columnsToStrip) {
+    const escaped = escapeRegex(colName);
+    // Match: (column = 'value') AND  (with optional surrounding parens)
+    result = result.replace(new RegExp(`\\(${escaped}\\s*=\\s*'[^']*'\\)\\s*AND\\s*`, "gi"), "");
+    // Match: AND (column = 'value') (handles middle/end conditions)
+    result = result.replace(new RegExp(`\\s*AND\\s*\\(${escaped}\\s*=\\s*'[^']*'\\)`, "gi"), "");
+    // Match standalone: (column = 'value') with no AND (for when it's the only/last condition)
+    result = result.replace(new RegExp(`\\(${escaped}\\s*=\\s*'[^']*'\\)`, "gi"), "");
+  }
+
+  // Step 2: Clean up any leftover empty WHERE conditions or double parentheses
+  // Clean up empty nested parens: "(())" or "( () )" -> ""
+  result = result.replace(/\(\s*\(\s*\)\s*\)/g, "");
+  // Clean up empty parens: "()" -> ""
+  result = result.replace(/\(\s*\)/g, "");
+  // Clean up "WHERE  AND" -> "WHERE"
+  result = result.replace(/\bWHERE\s+AND\b/gi, "WHERE");
+  // Clean up double ANDs: "AND AND" -> "AND"
+  result = result.replace(/\bAND\s+AND\b/gi, "AND");
+  // Clean up "WHERE ((" with user condition "))" -> "WHERE (condition)"
+  // First normalize: "(( (condition) ))" patterns
+  result = result.replace(/\(\(\s*\(/g, "(");
+  result = result.replace(/\)\s*\)\)/g, ")");
+  // Clean double parens around single condition
+  result = result.replace(/\(\(([^()]+)\)\)/g, "($1)");
+  // Remove "WHERE ()" if the whole WHERE is now empty
+  result = result.replace(/\bWHERE\s*\(\s*\)\s*/gi, "");
+  // Clean up trailing " )" before ORDER/LIMIT/etc
+  result = result.replace(/\s+\)\s*(ORDER|LIMIT|GROUP|HAVING)/gi, " $1");
+  // Remove empty WHERE clause: "WHERE  ORDER" or "WHERE  LIMIT" -> just "ORDER" or "LIMIT"
+  result = result.replace(/\bWHERE\s+(ORDER|LIMIT|GROUP|HAVING)\b/gi, "$1");
+  // Remove empty WHERE at end of string: "WHERE " at end -> ""
+  result = result.replace(/\bWHERE\s*$/gi, "");
+  // Clean up multiple spaces
+  result = result.replace(/\s{2,}/g, " ");
+
+  // Step 3: Replace fully qualified column references first (table.column)
   // This handles patterns like: trigger_dev.task_runs_v2.friendly_id
   for (const table of schemas) {
     for (const col of Object.values(table.columns)) {
@@ -748,7 +815,7 @@ export function sanitizeErrorMessage(message: string, schemas: TableSchema[]): s
     }
   }
 
-  // Replace standalone table names (after column references to avoid partial matches)
+  // Step 4: Replace standalone table names (after column references to avoid partial matches)
   // Sort by length descending to replace longer names first
   const sortedTableNames = [...tableNameMap.entries()].sort((a, b) => b[0].length - a[0].length);
   for (const [clickhouseName, tsqlName] of sortedTableNames) {
@@ -757,14 +824,29 @@ export function sanitizeErrorMessage(message: string, schemas: TableSchema[]): s
     }
   }
 
-  // Replace standalone column names (for unqualified references)
+  // Step 5: Replace standalone column names (for unqualified references)
   // Sort by length descending to replace longer names first
   const sortedColumnNames = [...columnNameMap.entries()].sort((a, b) => b[0].length - a[0].length);
   for (const [clickhouseName, { tsqlName }] of sortedColumnNames) {
     result = replaceAllOccurrences(result, clickhouseName, tsqlName);
   }
 
+  // Step 6: Remove redundant column aliases like "run_id AS run_id"
+  result = result.replace(/\b(\w+)\s+AS\s+\1\b/gi, "$1");
+
+  // Step 7: Remove table aliases like "runs AS runs"
+  for (const pattern of tableAliasPatterns) {
+    result = result.replace(pattern, (match) => match.split(/\s+AS\s+/i)[0]);
+  }
+
   return result;
+}
+
+/**
+ * Escape special regex characters in a string
+ */
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /**
@@ -772,16 +854,10 @@ export function sanitizeErrorMessage(message: string, schemas: TableSchema[]): s
  * Uses word-boundary matching to avoid replacing substrings within larger identifiers.
  */
 function replaceAllOccurrences(text: string, search: string, replacement: string): string {
-  // Escape special regex characters in the search string
-  const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
   // Use word boundary matching - identifiers are typically surrounded by
   // non-identifier characters (spaces, quotes, parentheses, operators, etc.)
   // We use a pattern that matches the identifier when it's not part of a larger identifier
-  const pattern = new RegExp(
-    `(?<![a-zA-Z0-9_])${escaped}(?![a-zA-Z0-9_])`,
-    "g"
-  );
+  const pattern = new RegExp(`(?<![a-zA-Z0-9_])${escapeRegex(search)}(?![a-zA-Z0-9_])`, "g");
 
   return text.replace(pattern, replacement);
 }
