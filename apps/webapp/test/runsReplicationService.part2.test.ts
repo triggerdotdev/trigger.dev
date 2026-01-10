@@ -889,18 +889,12 @@ describe("RunsReplicationService (part 2/2)", () => {
       await setTimeout(1000);
 
       expect(batchFlushedEvents?.[0].taskRunInserts).toHaveLength(2);
-      expect(batchFlushedEvents?.[0].taskRunInserts[0]).toEqual(
-        expect.objectContaining({
-          run_id: run.id,
-          status: "PENDING_VERSION",
-        })
-      );
-      expect(batchFlushedEvents?.[0].taskRunInserts[1]).toEqual(
-        expect.objectContaining({
-          run_id: run.id,
-          status: "COMPLETED_SUCCESSFULLY",
-        })
-      );
+      // taskRunInserts are now arrays, not objects
+      // Index 3 is run_id, Index 6 is status
+      expect(batchFlushedEvents?.[0].taskRunInserts[0][3]).toEqual(run.id); // run_id
+      expect(batchFlushedEvents?.[0].taskRunInserts[0][6]).toEqual("PENDING_VERSION"); // status
+      expect(batchFlushedEvents?.[0].taskRunInserts[1][3]).toEqual(run.id); // run_id
+      expect(batchFlushedEvents?.[0].taskRunInserts[1][6]).toEqual("COMPLETED_SUCCESSFULLY"); // status
 
       await runsReplicationService.stop();
     }
@@ -1065,23 +1059,24 @@ describe("RunsReplicationService (part 2/2)", () => {
       expect(batchFlushedEvents[0]?.payloadInserts.length).toBeGreaterThan(1);
 
       // Verify sorting order: organization_id, project_id, environment_id, created_at, run_id
+      // taskRunInserts are now arrays: [0]=environment_id, [1]=organization_id, [2]=project_id, [3]=run_id, [5]=created_at
       for (let i = 1; i < batchFlushedEvents[0]?.taskRunInserts.length; i++) {
         const prev = batchFlushedEvents[0]?.taskRunInserts[i - 1];
         const curr = batchFlushedEvents[0]?.taskRunInserts[i];
 
         const prevKey = [
-          prev.organization_id,
-          prev.project_id,
-          prev.environment_id,
-          prev.created_at,
-          prev.run_id,
+          prev[1], // organization_id
+          prev[2], // project_id
+          prev[0], // environment_id
+          prev[5], // created_at
+          prev[3], // run_id
         ];
         const currKey = [
-          curr.organization_id,
-          curr.project_id,
-          curr.environment_id,
-          curr.created_at,
-          curr.run_id,
+          curr[1], // organization_id
+          curr[2], // project_id
+          curr[0], // environment_id
+          curr[5], // created_at
+          curr[3], // run_id
         ];
 
         const keysAreEqual = prevKey.every((val, idx) => val === currKey[idx]);
@@ -1111,7 +1106,9 @@ describe("RunsReplicationService (part 2/2)", () => {
       for (let i = 1; i < batchFlushedEvents[0]?.payloadInserts.length; i++) {
         const prev = batchFlushedEvents[0]?.payloadInserts[i - 1];
         const curr = batchFlushedEvents[0]?.payloadInserts[i];
-        expect(prev.run_id <= curr.run_id).toBeTruthy();
+        // payloadInserts are now arrays, not objects
+        // Index 0 is run_id
+        expect(prev[0] <= curr[0]).toBeTruthy();
       }
 
       await runsReplicationService.stop();

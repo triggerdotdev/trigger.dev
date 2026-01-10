@@ -52,11 +52,60 @@ export const TaskRunV2 = z.object({
 
 export type TaskRunV2 = z.input<typeof TaskRunV2>;
 
-export function insertTaskRuns(ch: ClickhouseWriter, settings?: ClickHouseSettings) {
-  return ch.insert({
-    name: "insertTaskRuns",
+// Column order for compact format - must match ClickHouse table schema
+export const TASK_RUN_COLUMNS = [
+  "environment_id",
+  "organization_id",
+  "project_id",
+  "run_id",
+  "updated_at",
+  "created_at",
+  "status",
+  "environment_type",
+  "friendly_id",
+  "attempt",
+  "engine",
+  "task_identifier",
+  "queue",
+  "schedule_id",
+  "batch_id",
+  "completed_at",
+  "started_at",
+  "executed_at",
+  "delay_until",
+  "queued_at",
+  "expired_at",
+  "usage_duration_ms",
+  "cost_in_cents",
+  "base_cost_in_cents",
+  "output",
+  "error",
+  "tags",
+  "task_version",
+  "sdk_version",
+  "cli_version",
+  "machine_preset",
+  "root_run_id",
+  "parent_run_id",
+  "depth",
+  "span_id",
+  "trace_id",
+  "idempotency_key",
+  "expiration_ttl",
+  "is_test",
+  "_version",
+  "_is_deleted",
+  "concurrency_key",
+  "bulk_action_group_ids",
+  "worker_queue",
+  "max_duration_in_seconds",
+] as const;
+
+export function insertTaskRunsCompactArrays(ch: ClickhouseWriter, settings?: ClickHouseSettings) {
+  return ch.insertCompactRaw({
+    name: "insertTaskRunsCompactArrays",
     table: "trigger_dev.task_runs_v2",
-    schema: TaskRunV2,
+    columns: TASK_RUN_COLUMNS,
     settings: {
       enable_json_type: 1,
       type_json_skip_duplicated_paths: 1,
@@ -73,11 +122,16 @@ export const RawTaskRunPayloadV1 = z.object({
 
 export type RawTaskRunPayloadV1 = z.infer<typeof RawTaskRunPayloadV1>;
 
-export function insertRawTaskRunPayloads(ch: ClickhouseWriter, settings?: ClickHouseSettings) {
-  return ch.insert({
-    name: "insertRawTaskRunPayloads",
+export const PAYLOAD_COLUMNS = ["run_id", "created_at", "payload"] as const;
+
+export function insertRawTaskRunPayloadsCompactArrays(
+  ch: ClickhouseWriter,
+  settings?: ClickHouseSettings
+) {
+  return ch.insertCompactRaw({
+    name: "insertRawTaskRunPayloadsCompactArrays",
     table: "trigger_dev.raw_task_runs_payload_v1",
-    schema: RawTaskRunPayloadV1,
+    columns: PAYLOAD_COLUMNS,
     settings: {
       async_insert: 1,
       wait_for_async_insert: 0,
