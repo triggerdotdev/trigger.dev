@@ -117,7 +117,7 @@ export function LogsTable({
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const [showLoadMoreSpinner, setShowLoadMoreSpinner] = useState(false);
 
-  // Show load more spinner only after 0.5 seconds of loading time
+  // Show load more spinner only after 0.2 seconds of loading time
   useEffect(() => {
     if (!isLoadingMore) {
       setShowLoadMoreSpinner(false);
@@ -126,7 +126,7 @@ export function LogsTable({
 
     const timer = setTimeout(() => {
       setShowLoadMoreSpinner(true);
-    }, 500);
+    }, 200);
 
     return () => clearTimeout(timer);
   }, [isLoadingMore]);
@@ -165,7 +165,6 @@ export function LogsTable({
             <TableHeaderCell className="w-24 whitespace-nowrap">Run</TableHeaderCell>
             <TableHeaderCell className="w-32 whitespace-nowrap">Task</TableHeaderCell>
             <TableHeaderCell className="whitespace-nowrap">Level</TableHeaderCell>
-            <TableHeaderCell className="whitespace-nowrap">Duration</TableHeaderCell>
             <TableHeaderCell className="w-full min-w-0">Message</TableHeaderCell>
           </TableRow>
         </TableHeader>
@@ -221,15 +220,6 @@ export function LogsTable({
                     >
                       {log.level}
                     </span>
-                  </TableCell>
-                  <TableCell
-                    className="whitespace-nowrap tabular-nums text-text-dimmed"
-                    onClick={handleRowClick}
-                    hasAction
-                  >
-                    {log.duration > 0
-                      ? formatDurationNanoseconds(log.duration, { style: "short" })
-                      : "–"}
                   </TableCell>
                   <TableCell className="max-w-0 truncate" onClick={handleRowClick} hasAction>
                     <span className="block truncate font-mono text-xs" title={log.message}>

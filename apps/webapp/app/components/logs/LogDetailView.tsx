@@ -312,26 +312,18 @@ export function LogDetailView({ logId, initialLog, onClose, searchTerm }: LogDet
 
 function DetailsTab({ log, runPath, searchTerm }: { log: LogEntry; runPath: string; searchTerm?: string }) {
   const logWithExtras = log as LogEntry & {
-    metadata?: Record<string, unknown>;
     attributes?: Record<string, unknown>;
   };
 
 
-  let metadata: Record<string, unknown> | null = null;
-  let beautifiedMetadata: string | null = null;
   let beautifiedAttributes: string | null = null;
-
-  if (logWithExtras.metadata) {
-    beautifiedMetadata = JSON.stringify(logWithExtras.metadata, null, 2);
-    beautifiedMetadata = formatStringJSON(beautifiedMetadata);
-  }
 
   if (logWithExtras.attributes) {
     beautifiedAttributes = JSON.stringify(logWithExtras.attributes, null, 2);
     beautifiedAttributes = formatStringJSON(beautifiedAttributes);
   }
 
-  const showMetadata = beautifiedMetadata && beautifiedMetadata !== "{}";
+  // const showMetadata = beautifiedMetadata && beautifiedMetadata !== "{}";
   const showAttributes = beautifiedAttributes && beautifiedAttributes !== "{}";
 
   return (
@@ -411,18 +403,6 @@ function DetailsTab({ log, runPath, searchTerm }: { log: LogEntry; runPath: stri
           )}
         </Property.Table>
       </div>
-
-      {/* Metadata - only available in full log detail */}
-      {showMetadata && beautifiedMetadata && (
-        <div className="mb-6">
-          <PacketDisplay
-            data={beautifiedMetadata}
-            dataType="application/json"
-            title="Metadata"
-            searchTerm={searchTerm}
-          />
-        </div>
-      )}
 
       {/* Attributes - only available in full log detail */}
       {showAttributes && beautifiedAttributes && (
@@ -519,7 +499,7 @@ function RunTab({ log, runPath }: { log: LogEntry; runPath: string }) {
 
         {runData.rootRun && (
           <Property.Item>
-            <Property.Label>Root run</Property.Label>
+            <Property.Label>Root and parent run</Property.Label>
             <Property.Value>
               <SimpleTooltip
                 button={
@@ -544,39 +524,6 @@ function RunTab({ log, runPath }: { log: LogEntry; runPath: string }) {
                   </TextLink>
                 }
                 content={`Jump to root run`}
-                disableHoverableContent
-              />
-            </Property.Value>
-          </Property.Item>
-        )}
-
-        {runData.parentRun && (
-          <Property.Item>
-            <Property.Label>Parent run</Property.Label>
-            <Property.Value>
-              <SimpleTooltip
-                button={
-                  <TextLink
-                    to={v3RunPath(organization, project, environment, {
-                      friendlyId: runData.parentRun.friendlyId,
-                    })}
-                    className="group flex flex-wrap items-center gap-x-1 gap-y-0"
-                  >
-                    <CopyableText
-                      value={runData.parentRun.taskIdentifier}
-                      copyValue={runData.parentRun.taskIdentifier}
-                      asChild
-                    />
-                    <span className="break-all text-text-dimmed transition-colors group-hover:text-text-bright/80">
-                      <CopyableText
-                        value={runData.parentRun.friendlyId}
-                        copyValue={runData.parentRun.friendlyId}
-                        asChild
-                      />
-                    </span>
-                  </TextLink>
-                }
-                content={`Jump to parent run`}
                 disableHoverableContent
               />
             </Property.Value>
