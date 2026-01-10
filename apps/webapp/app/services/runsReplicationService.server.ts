@@ -1,5 +1,4 @@
 import type { ClickHouse } from "@internal/clickhouse";
-import { TASK_RUN_COLUMNS, PAYLOAD_COLUMNS } from "@internal/clickhouse";
 import { type RedisOptions } from "@internal/redis";
 import {
   LogicalReplicationClient,
@@ -760,14 +759,14 @@ export class RunsReplicationService {
   #getClickhouseInsertSettings() {
     if (this._insertStrategy === "insert") {
       return {};
-    } else if (this._insertStrategy === "insert_async") {
-      return {
-        async_insert: 1 as const,
-        async_insert_max_data_size: "1000000",
-        async_insert_busy_timeout_ms: 1000,
-        wait_for_async_insert: this.options.waitForAsyncInsert ? (1 as const) : (0 as const),
-      };
     }
+
+    return {
+      async_insert: 1 as const,
+      async_insert_max_data_size: "1000000",
+      async_insert_busy_timeout_ms: 1000,
+      wait_for_async_insert: this.options.waitForAsyncInsert ? (1 as const) : (0 as const),
+    };
   }
 
   async #insertTaskRunInserts(taskRunInserts: any[][], attempt: number) {
@@ -825,18 +824,8 @@ export class RunsReplicationService {
 
     const { run, _version, event } = batchedRun;
 
-    if (!run.environmentType) {
-      return {
-        taskRunInsert: undefined,
-        payloadInsert: undefined,
-      };
-    }
-
-    if (!run.organizationId) {
-      return {
-        taskRunInsert: undefined,
-        payloadInsert: undefined,
-      };
+    if (!run.environmentType || !run.organizationId) {
+      return {};
     }
 
     if (event === "update" || event === "delete" || this._disablePayloadInsert) {
@@ -848,10 +837,7 @@ export class RunsReplicationService {
         _version
       );
 
-      return {
-        taskRunInsert,
-        payloadInsert: undefined,
-      };
+      return { taskRunInsert };
     }
 
     const [taskRunInsert, payloadInsert] = await Promise.all([
@@ -859,10 +845,7 @@ export class RunsReplicationService {
       this.#preparePayloadInsert(run, _version),
     ]);
 
-    return {
-      taskRunInsert,
-      payloadInsert,
-    };
+    return { taskRunInsert, payloadInsert };
   }
 
   async #prepareTaskRunInsert(
