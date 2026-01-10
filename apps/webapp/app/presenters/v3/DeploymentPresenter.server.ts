@@ -156,6 +156,7 @@ export class DeploymentPresenter {
           },
         },
         buildServerMetadata: true,
+        triggeredVia: true,
       },
     });
 
@@ -225,6 +226,7 @@ export class DeploymentPresenter {
         isBuilt: !!deployment.builtAt,
         type: deployment.type,
         git: gitMetadata,
+        triggeredVia: deployment.triggeredVia,
       },
     };
   }
