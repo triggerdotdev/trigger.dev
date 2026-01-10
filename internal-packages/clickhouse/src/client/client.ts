@@ -6,9 +6,11 @@ import {
   createClient,
   type ResultSet,
   type Row,
+  type BaseQueryParams,
+  type InsertResult,
 } from "@clickhouse/client";
 import { recordSpanError, Span, startSpan, trace, Tracer } from "@internal/tracing";
-import { flattenAttributes, tryCatch } from "@trigger.dev/core/v3";
+import { flattenAttributes, tryCatch, type Result } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { InsertError, QueryError } from "./errors.js";
 import type {
@@ -769,6 +771,105 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
 
           recordClickhouseError(span, clickhouseError);
 
+          return [new InsertError(clickhouseError.message), null];
+        }
+
+        this.logger.debug("Inserted into clickhouse", {
+          clientName: this.name,
+          name: req.name,
+          table: req.table,
+          result,
+          queryId,
+        });
+
+        span.setAttributes({
+          "clickhouse.query_id": result.query_id,
+          "clickhouse.executed": result.executed,
+          "clickhouse.summary.read_rows": result.summary?.read_rows,
+          "clickhouse.summary.read_bytes": result.summary?.read_bytes,
+          "clickhouse.summary.written_rows": result.summary?.written_rows,
+          "clickhouse.summary.written_bytes": result.summary?.written_bytes,
+          "clickhouse.summary.total_rows_to_read": result.summary?.total_rows_to_read,
+          "clickhouse.summary.result_rows": result.summary?.result_rows,
+          "clickhouse.summary.result_bytes": result.summary?.result_bytes,
+          "clickhouse.summary.elapsed_ns": result.summary?.elapsed_ns,
+        });
+
+        return [null, result];
+      });
+    };
+  }
+
+  public insertCompactRaw(req: {
+    name: string;
+    table: string;
+    columns: readonly string[];
+    settings?: ClickHouseSettings;
+  }): (
+    events: readonly any[][] | any[],
+    options?: {
+      attributes?: Record<string, string | number | boolean>;
+      params?: BaseQueryParams;
+    }
+  ) => Promise<Result<InsertResult, InsertError>> {
+    return async (events, options) => {
+      const queryId = randomUUID();
+
+      return await startSpan(this.tracer, "insert", async (span) => {
+        // Check if events is a single row (array) or multiple rows (array of arrays)
+        // If first element is not an array, treat as single row
+        const isSingleRow = events.length > 0 && !Array.isArray(events[0]);
+        const eventsArray: readonly any[][] = isSingleRow
+          ? [events as any[]]
+          : (events as readonly any[][]);
+
+        this.logger.debug("Inserting into clickhouse (compact raw)", {
+          clientName: this.name,
+          name: req.name,
+          table: req.table,
+          events: eventsArray.length,
+          settings: req.settings,
+          attributes: options?.attributes,
+          options,
+          queryId,
+        });
+
+        span.setAttributes({
+          "clickhouse.clientName": this.name,
+          "clickhouse.tableName": req.table,
+          "clickhouse.operationName": req.name,
+          "clickhouse.queryId": queryId,
+          "clickhouse.format": "JSONCompactEachRowWithNames",
+          ...flattenAttributes(req.settings, "clickhouse.settings"),
+          ...flattenAttributes(options?.attributes),
+        });
+
+        // Build compact format: [columns, ...rows]
+        // Data is already in array format, no conversion needed
+        const compactData: any[] = [Array.from(req.columns), ...eventsArray];
+
+        const [clickhouseError, result] = await tryCatch(
+          this.client.insert({
+            table: req.table,
+            format: "JSONCompactEachRowWithNames",
+            values: compactData,
+            query_id: queryId,
+            ...options?.params,
+            clickhouse_settings: {
+              ...req.settings,
+              ...options?.params?.clickhouse_settings,
+            },
+          })
+        );
+
+        if (clickhouseError) {
+          this.logger.error("Error inserting into clickhouse", {
+            name: req.name,
+            error: clickhouseError,
+            table: req.table,
+          });
+
+          recordClickhouseError(span, clickhouseError);
           return [new InsertError(clickhouseError.message), null];
         }
 

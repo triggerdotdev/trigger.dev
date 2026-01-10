@@ -52,31 +52,6 @@ export const TaskRunV2 = z.object({
 
 export type TaskRunV2 = z.input<typeof TaskRunV2>;
 
-export function insertTaskRuns(ch: ClickhouseWriter, settings?: ClickHouseSettings) {
-  return ch.insert({
-    name: "insertTaskRuns",
-    table: "trigger_dev.task_runs_v2",
-    schema: TaskRunV2,
-    settings: {
-      enable_json_type: 1,
-      type_json_skip_duplicated_paths: 1,
-      ...settings,
-    },
-  });
-}
-
-export function insertTaskRunsUnsafe(ch: ClickhouseWriter, settings?: ClickHouseSettings) {
-  return ch.insertUnsafe({
-    name: "insertTaskRunsUnsafe",
-    table: "trigger_dev.task_runs_v2",
-    settings: {
-      enable_json_type: 1,
-      type_json_skip_duplicated_paths: 1,
-      ...settings,
-    },
-  });
-}
-
 // Column order for compact format - must match ClickHouse table schema
 export const TASK_RUN_COLUMNS = [
   "environment_id",
@@ -118,83 +93,19 @@ export const TASK_RUN_COLUMNS = [
   "idempotency_key",
   "expiration_ttl",
   "is_test",
+  "_version",
+  "_is_deleted",
   "concurrency_key",
   "bulk_action_group_ids",
   "worker_queue",
   "max_duration_in_seconds",
-  "_version",
-  "_is_deleted",
 ] as const;
 
-function taskRunToArray(run: TaskRunV2): any[] {
-  return [
-    run.environment_id,
-    run.organization_id,
-    run.project_id,
-    run.run_id,
-    run.updated_at,
-    run.created_at,
-    run.status,
-    run.environment_type,
-    run.friendly_id,
-    run.attempt ?? 1,
-    run.engine,
-    run.task_identifier,
-    run.queue,
-    run.schedule_id,
-    run.batch_id,
-    run.completed_at ?? null,
-    run.started_at ?? null,
-    run.executed_at ?? null,
-    run.delay_until ?? null,
-    run.queued_at ?? null,
-    run.expired_at ?? null,
-    run.usage_duration_ms ?? 0,
-    run.cost_in_cents ?? 0,
-    run.base_cost_in_cents ?? 0,
-    run.output,
-    run.error,
-    run.tags ?? [],
-    run.task_version,
-    run.sdk_version,
-    run.cli_version,
-    run.machine_preset,
-    run.root_run_id,
-    run.parent_run_id,
-    run.depth ?? 0,
-    run.span_id,
-    run.trace_id,
-    run.idempotency_key,
-    run.expiration_ttl,
-    run.is_test ?? false,
-    run.concurrency_key ?? "",
-    run.bulk_action_group_ids ?? [],
-    run.worker_queue ?? "",
-    run._version,
-    run._is_deleted ?? 0,
-  ];
-}
-
-export function insertTaskRunsCompact(ch: ClickhouseWriter, settings?: ClickHouseSettings) {
-  return ch.insertCompact({
-    name: "insertTaskRunsCompact",
-    table: "trigger_dev.task_runs_v2",
-    columns: TASK_RUN_COLUMNS as any,
-    toArray: taskRunToArray,
-    settings: {
-      enable_json_type: 1,
-      type_json_skip_duplicated_paths: 1,
-      ...settings,
-    },
-  });
-}
-
 export function insertTaskRunsCompactArrays(ch: ClickhouseWriter, settings?: ClickHouseSettings) {
-  return ch.insertCompact({
+  return ch.insertCompactRaw({
     name: "insertTaskRunsCompactArrays",
     table: "trigger_dev.task_runs_v2",
-    columns: TASK_RUN_COLUMNS as any,
-    toArray: (arr: any[]) => arr, // Identity function - data is already an array
+    columns: TASK_RUN_COLUMNS,
     settings: {
       enable_json_type: 1,
       type_json_skip_duplicated_paths: 1,
@@ -211,78 +122,16 @@ export const RawTaskRunPayloadV1 = z.object({
 
 export type RawTaskRunPayloadV1 = z.infer<typeof RawTaskRunPayloadV1>;
 
-export function insertRawTaskRunPayloads(ch: ClickhouseWriter, settings?: ClickHouseSettings) {
-  return ch.insert({
-    name: "insertRawTaskRunPayloads",
-    table: "trigger_dev.raw_task_runs_payload_v1",
-    schema: RawTaskRunPayloadV1,
-    settings: {
-      async_insert: 1,
-      wait_for_async_insert: 0,
-      async_insert_max_data_size: "1000000",
-      async_insert_busy_timeout_ms: 1000,
-      enable_json_type: 1,
-      type_json_skip_duplicated_paths: 1,
-      ...settings,
-    },
-  });
-}
-
-export function insertRawTaskRunPayloadsUnsafe(
-  ch: ClickhouseWriter,
-  settings?: ClickHouseSettings
-) {
-  return ch.insertUnsafe({
-    name: "insertRawTaskRunPayloadsUnsafe",
-    table: "trigger_dev.raw_task_runs_payload_v1",
-    settings: {
-      async_insert: 1,
-      wait_for_async_insert: 0,
-      async_insert_max_data_size: "1000000",
-      async_insert_busy_timeout_ms: 1000,
-      enable_json_type: 1,
-      type_json_skip_duplicated_paths: 1,
-      ...settings,
-    },
-  });
-}
-
 export const PAYLOAD_COLUMNS = ["run_id", "created_at", "payload"] as const;
-
-function payloadToArray(payload: RawTaskRunPayloadV1): any[] {
-  return [payload.run_id, payload.created_at, payload.payload];
-}
-
-export function insertRawTaskRunPayloadsCompact(
-  ch: ClickhouseWriter,
-  settings?: ClickHouseSettings
-) {
-  return ch.insertCompact({
-    name: "insertRawTaskRunPayloadsCompact",
-    table: "trigger_dev.raw_task_runs_payload_v1",
-    columns: PAYLOAD_COLUMNS,
-    toArray: payloadToArray,
-    settings: {
-      async_insert: 1,
-      wait_for_async_insert: 0,
-      async_insert_max_data_size: "1000000",
-      async_insert_busy_timeout_ms: 1000,
-      enable_json_type: 1,
-      type_json_skip_duplicated_paths: 1,
-      ...settings,
-    },
-  });
-}
 
 export function insertRawTaskRunPayloadsCompactArrays(
   ch: ClickhouseWriter,
   settings?: ClickHouseSettings
 ) {
-  return ch.insertCompact({
+  return ch.insertCompactRaw({
     name: "insertRawTaskRunPayloadsCompactArrays",
     table: "trigger_dev.raw_task_runs_payload_v1",
     columns: PAYLOAD_COLUMNS,
-    toArray: (arr: any[]) => arr, // Identity function - data is already an array
     settings: {
       async_insert: 1,
       wait_for_async_insert: 0,

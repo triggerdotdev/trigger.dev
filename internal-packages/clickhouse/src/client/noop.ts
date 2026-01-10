@@ -188,4 +188,32 @@ export class NoopClient implements ClickhouseReader, ClickhouseWriter {
       ];
     };
   }
+
+  public insertCompactRaw(req: {
+    name: string;
+    table: string;
+    columns: readonly string[];
+    settings?: ClickHouseSettings;
+  }): (events: readonly any[][] | any[]) => Promise<Result<InsertResult, InsertError>> {
+    return async (events: readonly any[][] | any[]) => {
+      return [
+        null,
+        {
+          executed: true,
+          query_id: "noop",
+          summary: {
+            read_rows: "0",
+            read_bytes: "0",
+            written_rows: "0",
+            written_bytes: "0",
+            total_rows_to_read: "0",
+            result_rows: "0",
+            result_bytes: "0",
+            elapsed_ns: "0",
+          },
+          response_headers: {},
+        },
+      ];
+    };
+  }
 }
