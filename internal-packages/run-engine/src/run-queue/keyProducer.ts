@@ -17,6 +17,8 @@ const constants = {
   DEAD_LETTER_QUEUE_PART: "deadLetter",
   MASTER_QUEUE_PART: "masterQueue",
   WORKER_QUEUE_PART: "workerQueue",
+  RATE_LIMIT_PART: "rl",
+  RATE_LIMIT_CONFIG_PART: "rl:config",
 } as const;
 
 export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
@@ -299,6 +301,60 @@ export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
 
   currentConcurrencySetKeyScanPattern(): string {
     return `*:${constants.ENV_PART}:*:queue:*:${constants.CURRENT_CONCURRENCY_PART}`;
+  }
+
+  /**
+   * Key for storing rate limit configuration for a queue.
+   * Pattern: {org:X}:proj:Y:env:Z:queue:Q:rl:config
+   */
+  queueRateLimitConfigKey(env: RunQueueKeyProducerEnvironment, queue: string): string {
+    return [this.queueKeyBase(env, queue), constants.RATE_LIMIT_CONFIG_PART].join(":");
+  }
+
+  /**
+   * Key for the GCRA rate limit bucket for a queue.
+   * If rateLimitKey is provided, creates a separate bucket per key (per-tenant).
+   * Pattern: {org:X}:proj:Y:env:Z:queue:Q:rl[:key]
+   */
+  queueRateLimitBucketKey(
+    env: RunQueueKeyProducerEnvironment,
+    queue: string,
+    rateLimitKey?: string
+  ): string {
+    const base = [this.queueKeyBase(env, queue), constants.RATE_LIMIT_PART].join(":");
+    return rateLimitKey ? `${base}:${rateLimitKey}` : base;
+  }
+
+  /**
+   * Get rate limit config key from a queue key.
+   * Strips concurrency key suffix if present.
+   */
+  queueRateLimitConfigKeyFromQueue(queue: string): string {
+    // Remove concurrency key suffix to get base queue
+    const baseQueue = queue.replace(/:ck:.+$/, "");
+    return `${baseQueue}:${constants.RATE_LIMIT_CONFIG_PART}`;
+  }
+
+  /**
+   * Get rate limit bucket key from a queue key.
+   */
+  queueRateLimitBucketKeyFromQueue(queue: string, rateLimitKey?: string): string {
+    // Remove concurrency key suffix to get base queue
+    const baseQueue = queue.replace(/:ck:.+$/, "");
+    const base = `${baseQueue}:${constants.RATE_LIMIT_PART}`;
+    return rateLimitKey ? `${base}:${rateLimitKey}` : base;
+  }
+
+  /**
+   * Helper to get the base queue key (without concurrency key).
+   */
+  private queueKeyBase(env: RunQueueKeyProducerEnvironment, queue: string): string {
+    return [
+      this.orgKeySection(env.organization.id),
+      this.projKeySection(env.project.id),
+      this.envKeySection(env.id),
+      this.queueSection(queue),
+    ].join(":");
   }
 
   descriptorFromQueue(queue: string): QueueDescriptor {

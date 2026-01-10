@@ -126,4 +126,69 @@ describe("RunQueue.enqueueMessage", () => {
       await queue.quit();
     }
   });
+
+  redisTest("should enqueue message with rateLimitKey", async ({ redisContainer }) => {
+    const queue = new RunQueue({
+      ...testOptions,
+      queueSelectionStrategy: new FairQueueSelectionStrategy({
+        redis: {
+          keyPrefix: "runqueue:test:",
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+        },
+        keys: testOptions.keys,
+      }),
+      redis: {
+        keyPrefix: "runqueue:test:",
+        host: redisContainer.getHost(),
+        port: redisContainer.getPort(),
+      },
+    });
+
+    try {
+      const messageWithRateLimit: InputPayload = {
+        runId: "r-ratelimit-test",
+        taskIdentifier: "task/my-task",
+        orgId: "o1234",
+        projectId: "p1234",
+        environmentId: "e4321",
+        environmentType: "DEVELOPMENT",
+        queue: "task/my-task",
+        timestamp: Date.now(),
+        attempt: 0,
+        rateLimitKey: "tenant-123",
+      };
+
+      // Initial queue length
+      const initialLength = await queue.lengthOfQueue(
+        authenticatedEnvDev,
+        messageWithRateLimit.queue
+      );
+      expect(initialLength).toBe(0);
+
+      // Enqueue message with rateLimitKey
+      await queue.enqueueMessage({
+        env: authenticatedEnvDev,
+        message: messageWithRateLimit,
+        workerQueue: authenticatedEnvDev.id,
+      });
+
+      // Verify queue length increased
+      const newLength = await queue.lengthOfQueue(authenticatedEnvDev, messageWithRateLimit.queue);
+      expect(newLength).toBe(1);
+
+      await setTimeout(1000);
+
+      // Dequeue and verify rateLimitKey is preserved
+      const dequeued = await queue.dequeueMessageFromWorkerQueue(
+        "test_ratelimit",
+        authenticatedEnvDev.id
+      );
+      assertNonNullable(dequeued);
+      expect(dequeued.messageId).toEqual(messageWithRateLimit.runId);
+      expect(dequeued.message.rateLimitKey).toEqual("tenant-123");
+    } finally {
+      await queue.quit();
+    }
+  });
 });
