@@ -682,3 +682,106 @@ export function getTableColumnNames(schema: SchemaRegistry, tableName: string): 
 export function getAllTableNames(schema: SchemaRegistry): string[] {
   return Object.keys(schema.tables);
 }
+
+// ============================================================
+// Error Message Sanitization
+// ============================================================
+
+/**
+ * Sanitize a ClickHouse error message by replacing internal ClickHouse names
+ * with their user-facing TSQL equivalents.
+ *
+ * This function handles:
+ * - Fully qualified table names (e.g., `trigger_dev.task_runs_v2` → `runs`)
+ * - Column names with table prefix (e.g., `trigger_dev.task_runs_v2.friendly_id` → `runs.run_id`)
+ * - Standalone column names (e.g., `friendly_id` → `run_id`)
+ *
+ * @param message - The error message from ClickHouse
+ * @param schemas - The table schemas defining name mappings
+ * @returns The sanitized error message with TSQL names
+ *
+ * @example
+ * ```typescript
+ * const sanitized = sanitizeErrorMessage(
+ *   "Missing column trigger_dev.task_runs_v2.friendly_id",
+ *   [runsSchema]
+ * );
+ * // Returns: "Missing column runs.run_id"
+ * ```
+ */
+export function sanitizeErrorMessage(message: string, schemas: TableSchema[]): string {
+  // Build reverse lookup maps
+  const tableNameMap = new Map<string, string>(); // clickhouseName -> tsqlName
+  const columnNameMap = new Map<string, { tsqlName: string; tableTsqlName: string }>(); // clickhouseName -> { tsqlName, tableTsqlName }
+
+  for (const table of schemas) {
+    // Map table names
+    tableNameMap.set(table.clickhouseName, table.name);
+
+    // Map column names
+    for (const col of Object.values(table.columns)) {
+      const clickhouseColName = col.clickhouseName ?? col.name;
+      if (clickhouseColName !== col.name) {
+        // Only add to map if there's actually a different ClickHouse name
+        columnNameMap.set(clickhouseColName, {
+          tsqlName: col.name,
+          tableTsqlName: table.name,
+        });
+      }
+    }
+  }
+
+  let result = message;
+
+  // Replace fully qualified column references first (table.column)
+  // This handles patterns like: trigger_dev.task_runs_v2.friendly_id
+  for (const table of schemas) {
+    for (const col of Object.values(table.columns)) {
+      const clickhouseColName = col.clickhouseName ?? col.name;
+      const fullyQualified = `${table.clickhouseName}.${clickhouseColName}`;
+      const tsqlQualified = `${table.name}.${col.name}`;
+
+      if (fullyQualified !== tsqlQualified) {
+        // Use word boundary-aware replacement
+        result = replaceAllOccurrences(result, fullyQualified, tsqlQualified);
+      }
+    }
+  }
+
+  // Replace standalone table names (after column references to avoid partial matches)
+  // Sort by length descending to replace longer names first
+  const sortedTableNames = [...tableNameMap.entries()].sort((a, b) => b[0].length - a[0].length);
+  for (const [clickhouseName, tsqlName] of sortedTableNames) {
+    if (clickhouseName !== tsqlName) {
+      result = replaceAllOccurrences(result, clickhouseName, tsqlName);
+    }
+  }
+
+  // Replace standalone column names (for unqualified references)
+  // Sort by length descending to replace longer names first
+  const sortedColumnNames = [...columnNameMap.entries()].sort((a, b) => b[0].length - a[0].length);
+  for (const [clickhouseName, { tsqlName }] of sortedColumnNames) {
+    result = replaceAllOccurrences(result, clickhouseName, tsqlName);
+  }
+
+  return result;
+}
+
+/**
+ * Replace all occurrences of a string, respecting word boundaries where sensible.
+ * Uses word-boundary matching to avoid replacing substrings within larger identifiers.
+ */
+function replaceAllOccurrences(text: string, search: string, replacement: string): string {
+  // Escape special regex characters in the search string
+  const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+  // Use word boundary matching - identifiers are typically surrounded by
+  // non-identifier characters (spaces, quotes, parentheses, operators, etc.)
+  // We use a pattern that matches the identifier when it's not part of a larger identifier
+  const pattern = new RegExp(
+    `(?<![a-zA-Z0-9_])${escaped}(?![a-zA-Z0-9_])`,
+    "g"
+  );
+
+  return text.replace(pattern, replacement);
+}

@@ -9,6 +9,7 @@ import type { ClickHouseSettings } from "@clickhouse/client";
 import { z } from "zod";
 import {
   compileTSQL,
+  sanitizeErrorMessage,
   transformResults,
   type TableSchema,
   type QuerySettings,
@@ -137,7 +138,9 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
     const [error, result] = await queryFn(params);
 
     if (error) {
-      return [error, null];
+      // Sanitize error message to show TSQL names instead of ClickHouse internals
+      const sanitizedMessage = sanitizeErrorMessage(error.message, options.tableSchema);
+      return [new QueryError(sanitizedMessage, { query: options.query }), null];
     }
 
     const { rows, stats } = result;
@@ -156,7 +159,7 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
 
-    // Log TSQL compilation or unexpected errors
+    // Log TSQL compilation or unexpected errors (with original message for debugging)
     logger.error("[TSQL] Query error", {
       name: options.name,
       error: errorMessage,
@@ -165,8 +168,11 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
       generatedParams: generatedParams ?? {},
     });
 
+    // Sanitize error message to show TSQL names instead of ClickHouse internals
+    const sanitizedMessage = sanitizeErrorMessage(errorMessage, options.tableSchema);
+
     if (error instanceof Error) {
-      return [new QueryError(error.message, { query: options.query }), null];
+      return [new QueryError(sanitizedMessage, { query: options.query }), null];
     }
     return [new QueryError("Unknown error executing TSQL query", { query: options.query }), null];
   }

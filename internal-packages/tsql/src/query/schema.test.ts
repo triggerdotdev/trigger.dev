@@ -11,8 +11,10 @@ import {
   getExternalValue,
   getInternalValueFromMapping,
   getInternalValueFromMappingCaseInsensitive,
+  sanitizeErrorMessage,
   type ColumnSchema,
   type FieldMappings,
+  type TableSchema,
 } from "./schema.js";
 
 describe("Value mapping helper functions", () => {
@@ -363,7 +365,9 @@ describe("Field mapping helper functions (runtime dynamic mappings)", () => {
     });
 
     it("should return null if mapping name does not exist", () => {
-      expect(getInternalValueFromMapping(fieldMappings, "nonexistent", "my-project-ref")).toBeNull();
+      expect(
+        getInternalValueFromMapping(fieldMappings, "nonexistent", "my-project-ref")
+      ).toBeNull();
     });
 
     it("should return null for empty mappings", () => {
@@ -454,3 +458,161 @@ describe("Field mapping helper functions (runtime dynamic mappings)", () => {
   });
 });
 
+describe("Error message sanitization", () => {
+  // Test schema mimicking the real runs schema
+  const runsSchema: TableSchema = {
+    name: "runs",
+    clickhouseName: "trigger_dev.task_runs_v2",
+    description: "Task runs table",
+    tenantColumns: {
+      organizationId: "organization_id",
+      projectId: "project_id",
+      environmentId: "environment_id",
+    },
+    columns: {
+      run_id: {
+        name: "run_id",
+        clickhouseName: "friendly_id",
+        ...column("String"),
+      },
+      triggered_at: {
+        name: "triggered_at",
+        clickhouseName: "created_at",
+        ...column("DateTime64"),
+      },
+      machine: {
+        name: "machine",
+        clickhouseName: "machine_preset",
+        ...column("String"),
+      },
+      status: {
+        name: "status",
+        // No clickhouseName - same as name
+        ...column("String"),
+      },
+      task_identifier: {
+        name: "task_identifier",
+        // No clickhouseName - same as name
+        ...column("String"),
+      },
+    },
+  };
+
+  describe("sanitizeErrorMessage", () => {
+    it("should replace fully qualified table.column references", () => {
+      const error = "Missing column trigger_dev.task_runs_v2.friendly_id in query";
+      const sanitized = sanitizeErrorMessage(error, [runsSchema]);
+      expect(sanitized).toBe("Missing column runs.run_id in query");
+    });
+
+    it("should replace standalone table names", () => {
+      const error = "Table trigger_dev.task_runs_v2 does not exist";
+      const sanitized = sanitizeErrorMessage(error, [runsSchema]);
+      expect(sanitized).toBe("Table runs does not exist");
+    });
+
+    it("should replace standalone column names with different clickhouseName", () => {
+      const error = "Unknown identifier: friendly_id";
+      const sanitized = sanitizeErrorMessage(error, [runsSchema]);
+      expect(sanitized).toBe("Unknown identifier: run_id");
+    });
+
+    it("should replace multiple occurrences in the same message", () => {
+      const error =
+        "Cannot compare friendly_id with created_at: incompatible types in trigger_dev.task_runs_v2";
+      const sanitized = sanitizeErrorMessage(error, [runsSchema]);
+      expect(sanitized).toBe("Cannot compare run_id with triggered_at: incompatible types in runs");
+    });
+
+    it("should not replace column names that have no clickhouseName mapping", () => {
+      const error = "Invalid value for column status";
+      const sanitized = sanitizeErrorMessage(error, [runsSchema]);
+      expect(sanitized).toBe("Invalid value for column status");
+    });
+
+    it("should handle error messages with quoted identifiers", () => {
+      const error = "Column 'machine_preset' is not of type String";
+      const sanitized = sanitizeErrorMessage(error, [runsSchema]);
+      expect(sanitized).toBe("Column 'machine' is not of type String");
+    });
+
+    it("should handle error messages with backtick identifiers", () => {
+      const error = "Unknown column `friendly_id` in table";
+      const sanitized = sanitizeErrorMessage(error, [runsSchema]);
+      expect(sanitized).toBe("Unknown column `run_id` in table");
+    });
+
+    it("should not replace partial matches within larger identifiers", () => {
+      const error = "Column my_friendly_id_column not found";
+      const sanitized = sanitizeErrorMessage(error, [runsSchema]);
+      // Should not replace "friendly_id" within "my_friendly_id_column"
+      expect(sanitized).toBe("Column my_friendly_id_column not found");
+    });
+
+    it("should return original message if no schemas provided", () => {
+      const error = "Some error with trigger_dev.task_runs_v2";
+      const sanitized = sanitizeErrorMessage(error, []);
+      expect(sanitized).toBe("Some error with trigger_dev.task_runs_v2");
+    });
+
+    it("should return original message if no matches found", () => {
+      const error = "Generic database error occurred";
+      const sanitized = sanitizeErrorMessage(error, [runsSchema]);
+      expect(sanitized).toBe("Generic database error occurred");
+    });
+
+    it("should handle multiple tables", () => {
+      const eventsSchema: TableSchema = {
+        name: "events",
+        clickhouseName: "trigger_dev.task_events",
+        description: "Task events table",
+        tenantColumns: {
+          organizationId: "organization_id",
+          projectId: "project_id",
+          environmentId: "environment_id",
+        },
+        columns: {
+          event_id: {
+            name: "event_id",
+            clickhouseName: "internal_event_id",
+            ...column("String"),
+          },
+        },
+      };
+
+      const error =
+        "Cannot join trigger_dev.task_runs_v2 with trigger_dev.task_events on internal_event_id";
+      const sanitized = sanitizeErrorMessage(error, [runsSchema, eventsSchema]);
+      expect(sanitized).toBe("Cannot join runs with events on event_id");
+    });
+
+    it("should handle real ClickHouse error format", () => {
+      const error =
+        "Unable to query clickhouse: Code: 47. DB::Exception: Missing columns: 'friendly_id' while processing query";
+      const sanitized = sanitizeErrorMessage(error, [runsSchema]);
+      expect(sanitized).toBe(
+        "Unable to query clickhouse: Code: 47. DB::Exception: Missing columns: 'run_id' while processing query"
+      );
+    });
+
+    it("should handle error with column in parentheses", () => {
+      const error = "Function count(friendly_id) expects different arguments";
+      const sanitized = sanitizeErrorMessage(error, [runsSchema]);
+      expect(sanitized).toBe("Function count(run_id) expects different arguments");
+    });
+
+    it("should handle error with column after comma", () => {
+      const error = "SELECT friendly_id, created_at FROM table";
+      const sanitized = sanitizeErrorMessage(error, [runsSchema]);
+      expect(sanitized).toBe("SELECT run_id, triggered_at FROM table");
+    });
+
+    it("should prioritize longer matches (table.column before standalone column)", () => {
+      // This tests that we replace "trigger_dev.task_runs_v2.friendly_id" as a unit,
+      // not "trigger_dev.task_runs_v2" and then "friendly_id" separately
+      const error = "Error in trigger_dev.task_runs_v2.friendly_id";
+      const sanitized = sanitizeErrorMessage(error, [runsSchema]);
+      expect(sanitized).toBe("Error in runs.run_id");
+    });
+  });
+});

@@ -76,6 +76,8 @@ export {
   isValidUserValue,
   // Virtual column utilities
   isVirtualColumn,
+  // Error message sanitization
+  sanitizeErrorMessage,
   validateFilterColumn,
   validateGroupColumn,
   validateSelectColumn,
