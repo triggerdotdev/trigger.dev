@@ -341,6 +341,21 @@ export default function Page() {
   const [prettyFormatting, setPrettyFormatting] = useState(true);
   const [resultsView, setResultsView] = useState<"table" | "graph">("table");
   const [chartConfig, setChartConfig] = useState<ChartConfiguration>(defaultChartConfig);
+  const [helpTab, setHelpTab] = useState<string>("ai");
+  const [errorFixPrompt, setErrorFixPrompt] = useState<string | undefined>();
+
+  const handleTryFixError = useCallback(
+    (errorMessage: string) => {
+      // Switch to AI tab and trigger an error fix prompt
+      setHelpTab("ai");
+      // Clear any previous prompt first to ensure re-trigger
+      setErrorFixPrompt(undefined);
+      setTimeout(() => {
+        setErrorFixPrompt(`Fix this query error: ${errorMessage}`);
+      }, 0);
+    },
+    []
+  );
 
   const isLoading = navigation.state === "submitting" || navigation.state === "loading";
 
@@ -430,9 +445,19 @@ export default function Page() {
                         <span>Executing query...</span>
                       </div>
                     ) : results?.error ? (
-                      <pre className="whitespace-pre-wrap p-4 text-sm text-red-400">
-                        {results.error}
-                      </pre>
+                      <div className="p-4">
+                        <pre className="whitespace-pre-wrap text-sm text-red-400">
+                          {results.error}
+                        </pre>
+                        <Button
+                          variant="tertiary/small"
+                          className="mt-3"
+                          LeadingIcon={AISparkleIcon}
+                          onClick={() => handleTryFixError(results.error!)}
+                        >
+                          Try fix error
+                        </Button>
+                      </div>
                     ) : results?.rows && results?.columns ? (
                       <TSQLResultsTable
                         rows={results.rows}
@@ -493,6 +518,9 @@ export default function Page() {
                 editorRef.current?.setQuery(formatted);
               }}
               getCurrentQuery={() => editorRef.current?.getQuery() ?? ""}
+              activeTab={helpTab}
+              onTabChange={setHelpTab}
+              errorFixPrompt={errorFixPrompt}
             />
           </ResizablePanel>
         </ResizablePanelGroup>
@@ -613,14 +641,24 @@ function QueryHelpSidebar({
   onTryExample,
   onQueryGenerated,
   getCurrentQuery,
+  activeTab,
+  onTabChange,
+  errorFixPrompt,
 }: {
   onTryExample: (query: string, scope: QueryScope) => void;
   onQueryGenerated: (query: string) => void;
   getCurrentQuery: () => string;
+  activeTab: string;
+  onTabChange: (tab: string) => void;
+  errorFixPrompt?: string;
 }) {
   return (
     <div className="grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
-      <ClientTabs defaultValue="ai" className="flex min-h-0 flex-col overflow-hidden pt-1">
+      <ClientTabs
+        value={activeTab}
+        onValueChange={onTabChange}
+        className="flex min-h-0 flex-col overflow-hidden pt-1"
+      >
         <ClientTabsList variant="underline" className="mx-3 shrink-0">
           <ClientTabsTrigger value="ai" variant="underline" layoutId="query-help-tabs">
             <div className="flex items-center gap-0.5">
@@ -641,7 +679,11 @@ function QueryHelpSidebar({
           value="ai"
           className="min-h-0 flex-1 overflow-y-auto p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
         >
-          <AITabContent onQueryGenerated={onQueryGenerated} getCurrentQuery={getCurrentQuery} />
+          <AITabContent
+            onQueryGenerated={onQueryGenerated}
+            getCurrentQuery={getCurrentQuery}
+            errorFixPrompt={errorFixPrompt}
+          />
         </ClientTabsContent>
         <ClientTabsContent
           value="guide"
@@ -669,11 +711,16 @@ function QueryHelpSidebar({
 function AITabContent({
   onQueryGenerated,
   getCurrentQuery,
+  errorFixPrompt,
 }: {
   onQueryGenerated: (query: string) => void;
   getCurrentQuery: () => string;
+  errorFixPrompt?: string;
 }) {
   const [autoSubmitPrompt, setAutoSubmitPrompt] = useState<string | undefined>();
+
+  // Combine internal autoSubmitPrompt with external errorFixPrompt
+  const effectiveAutoSubmitPrompt = errorFixPrompt ?? autoSubmitPrompt;
 
   const examplePrompts = [
     "Show me failed runs by hour for the past 7 days",
@@ -687,7 +734,7 @@ function AITabContent({
     <div className="space-y-2">
       <AIQueryInput
         onQueryGenerated={onQueryGenerated}
-        autoSubmitPrompt={autoSubmitPrompt}
+        autoSubmitPrompt={effectiveAutoSubmitPrompt}
         getCurrentQuery={getCurrentQuery}
       />
 
