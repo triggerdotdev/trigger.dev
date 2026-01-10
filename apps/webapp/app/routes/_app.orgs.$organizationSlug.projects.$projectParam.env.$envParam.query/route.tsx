@@ -118,7 +118,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
   const { projectParam, organizationSlug, envParam } = EnvironmentParamSchema.parse(params);
 
-  const canAccess = await hasQueryAccess(user.id, user.admin, user.isImpersonating, organizationSlug);
+  const canAccess = await hasQueryAccess(
+    user.id,
+    user.admin,
+    user.isImpersonating,
+    organizationSlug
+  );
   if (!canAccess) {
     throw redirect("/");
   }
@@ -159,7 +164,12 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const user = await requireUser(request);
   const { projectParam, organizationSlug, envParam } = EnvironmentParamSchema.parse(params);
 
-  const canAccess = await hasQueryAccess(user.id, user.admin, user.isImpersonating, organizationSlug);
+  const canAccess = await hasQueryAccess(
+    user.id,
+    user.admin,
+    user.isImpersonating,
+    organizationSlug
+  );
   if (!canAccess) {
     return typedjson(
       { error: "Unauthorized", rows: null, columns: null, stats: null },
@@ -341,21 +351,16 @@ export default function Page() {
   const [prettyFormatting, setPrettyFormatting] = useState(true);
   const [resultsView, setResultsView] = useState<"table" | "graph">("table");
   const [chartConfig, setChartConfig] = useState<ChartConfiguration>(defaultChartConfig);
-  const [helpTab, setHelpTab] = useState<string>("ai");
-  const [errorFixPrompt, setErrorFixPrompt] = useState<string | undefined>();
+  const [sidebarTab, setSidebarTab] = useState<string>("ai");
+  const [aiFixRequest, setAiFixRequest] = useState<{ prompt: string; key: number } | null>(null);
 
-  const handleTryFixError = useCallback(
-    (errorMessage: string) => {
-      // Switch to AI tab and trigger an error fix prompt
-      setHelpTab("ai");
-      // Clear any previous prompt first to ensure re-trigger
-      setErrorFixPrompt(undefined);
-      setTimeout(() => {
-        setErrorFixPrompt(`Fix this query error: ${errorMessage}`);
-      }, 0);
-    },
-    []
-  );
+  const handleTryFixError = useCallback((errorMessage: string) => {
+    setSidebarTab("ai");
+    setAiFixRequest((prev) => ({
+      prompt: `Fix this query error: ${errorMessage}`,
+      key: (prev?.key ?? 0) + 1,
+    }));
+  }, []);
 
   const isLoading = navigation.state === "submitting" || navigation.state === "loading";
 
@@ -518,9 +523,9 @@ export default function Page() {
                 editorRef.current?.setQuery(formatted);
               }}
               getCurrentQuery={() => editorRef.current?.getQuery() ?? ""}
-              activeTab={helpTab}
-              onTabChange={setHelpTab}
-              errorFixPrompt={errorFixPrompt}
+              activeTab={sidebarTab}
+              onTabChange={setSidebarTab}
+              aiFixRequest={aiFixRequest}
             />
           </ResizablePanel>
         </ResizablePanelGroup>
@@ -643,14 +648,14 @@ function QueryHelpSidebar({
   getCurrentQuery,
   activeTab,
   onTabChange,
-  errorFixPrompt,
+  aiFixRequest,
 }: {
   onTryExample: (query: string, scope: QueryScope) => void;
   onQueryGenerated: (query: string) => void;
   getCurrentQuery: () => string;
   activeTab: string;
   onTabChange: (tab: string) => void;
-  errorFixPrompt?: string;
+  aiFixRequest: { prompt: string; key: number } | null;
 }) {
   return (
     <div className="grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
@@ -682,7 +687,7 @@ function QueryHelpSidebar({
           <AITabContent
             onQueryGenerated={onQueryGenerated}
             getCurrentQuery={getCurrentQuery}
-            errorFixPrompt={errorFixPrompt}
+            aiFixRequest={aiFixRequest}
           />
         </ClientTabsContent>
         <ClientTabsContent
@@ -711,16 +716,19 @@ function QueryHelpSidebar({
 function AITabContent({
   onQueryGenerated,
   getCurrentQuery,
-  errorFixPrompt,
+  aiFixRequest,
 }: {
   onQueryGenerated: (query: string) => void;
   getCurrentQuery: () => string;
-  errorFixPrompt?: string;
+  aiFixRequest: { prompt: string; key: number } | null;
 }) {
-  const [autoSubmitPrompt, setAutoSubmitPrompt] = useState<string | undefined>();
+  const [examplePromptRequest, setExamplePromptRequest] = useState<{
+    prompt: string;
+    key: number;
+  } | null>(null);
 
-  // Combine internal autoSubmitPrompt with external errorFixPrompt
-  const effectiveAutoSubmitPrompt = errorFixPrompt ?? autoSubmitPrompt;
+  // Use aiFixRequest if present, otherwise use example prompt request
+  const activeRequest = aiFixRequest ?? examplePromptRequest;
 
   const examplePrompts = [
     "Show me failed runs by hour for the past 7 days",
@@ -734,7 +742,8 @@ function AITabContent({
     <div className="space-y-2">
       <AIQueryInput
         onQueryGenerated={onQueryGenerated}
-        autoSubmitPrompt={effectiveAutoSubmitPrompt}
+        autoSubmitPrompt={activeRequest?.prompt}
+        autoSubmitKey={activeRequest?.key}
         getCurrentQuery={getCurrentQuery}
       />
 
@@ -746,9 +755,10 @@ function AITabContent({
               key={example}
               type="button"
               onClick={() => {
-                // Use a unique key to ensure re-trigger even if same prompt clicked twice
-                setAutoSubmitPrompt(undefined);
-                setTimeout(() => setAutoSubmitPrompt(example), 0);
+                setExamplePromptRequest((prev) => ({
+                  prompt: example,
+                  key: (prev?.key ?? 0) + 1,
+                }));
               }}
               className="block w-full rounded-md border border-grid-dimmed bg-charcoal-800 px-3 py-2 text-left text-sm text-text-dimmed transition-colors hover:border-grid-bright hover:bg-charcoal-750 hover:text-text-bright"
             >
