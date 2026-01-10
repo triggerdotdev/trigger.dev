@@ -220,5 +220,13 @@ export interface ClickhouseWriter {
     settings?: ClickHouseSettings;
   }): ClickhouseInsertFunction<TRecord>;
 
+  insertCompact<TRecord extends Record<string, any>>(req: {
+    name: string;
+    table: string;
+    columns: readonly string[];
+    toArray: (record: TRecord) => any[];
+    settings?: ClickHouseSettings;
+  }): ClickhouseInsertFunction<TRecord>;
+
   close(): Promise<void>;
 }

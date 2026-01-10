@@ -20,6 +20,18 @@ export type PgoutputMessage =
   | MessageType
   | MessageUpdate;
 
+export type PgoutputMessageArray =
+  | MessageBegin
+  | MessageCommit
+  | MessageDeleteArray
+  | MessageInsertArray
+  | MessageMessage
+  | MessageOrigin
+  | MessageRelation
+  | MessageTruncate
+  | MessageType
+  | MessageUpdateArray;
+
 export interface MessageBegin {
   tag: "begin";
   commitLsn: string | null;
@@ -93,6 +105,26 @@ export interface MessageUpdate {
   key: Record<string, any> | null;
   old: Record<string, any> | null;
   new: Record<string, any>;
+}
+
+// Array variants for zero-copy performance
+export interface MessageInsertArray {
+  tag: "insert";
+  relation: MessageRelation;
+  new: any[];
+}
+export interface MessageUpdateArray {
+  tag: "update";
+  relation: MessageRelation;
+  key: any[] | null;
+  old: any[] | null;
+  new: any[];
+}
+export interface MessageDeleteArray {
+  tag: "delete";
+  relation: MessageRelation;
+  key: any[] | null;
+  old: any[] | null;
 }
 
 class BinaryReader {
@@ -182,6 +214,35 @@ export class PgoutputParser {
         return this.msgUpdate(reader);
       case 0x44:
         return this.msgDelete(reader);
+      case 0x54:
+        return this.msgTruncate(reader);
+      case 0x4d:
+        return this.msgMessage(reader);
+      case 0x43:
+        return this.msgCommit(reader);
+      default:
+        throw Error("unknown pgoutput message");
+    }
+  }
+
+  public parseArray(buf: Buffer): PgoutputMessageArray {
+    const reader = new BinaryReader(buf);
+    const tag = reader.readUint8();
+    switch (tag) {
+      case 0x42:
+        return this.msgBegin(reader);
+      case 0x4f:
+        return this.msgOrigin(reader);
+      case 0x59:
+        return this.msgType(reader);
+      case 0x52:
+        return this.msgRelation(reader);
+      case 0x49:
+        return this.msgInsertArray(reader);
+      case 0x55:
+        return this.msgUpdateArray(reader);
+      case 0x44:
+        return this.msgDeleteArray(reader);
       case 0x54:
         return this.msgTruncate(reader);
       case 0x4d:
@@ -312,6 +373,55 @@ export class PgoutputParser {
     }
     return { tag: "delete", relation, key, old };
   }
+
+  // Array variants - skip object creation for performance
+  private msgInsertArray(reader: BinaryReader): MessageInsertArray {
+    const relation = this._relationCache.get(reader.readInt32());
+    if (!relation) throw Error("missing relation");
+    reader.readUint8(); // consume the 'N' key
+    return {
+      tag: "insert",
+      relation,
+      new: this.readTupleAsArray(reader, relation),
+    };
+  }
+  private msgUpdateArray(reader: BinaryReader): MessageUpdateArray {
+    const relation = this._relationCache.get(reader.readInt32());
+    if (!relation) throw Error("missing relation");
+    let key: any[] | null = null;
+    let old: any[] | null = null;
+    let new_: any[] | null = null;
+    const subMsgKey = reader.readUint8();
+    if (subMsgKey === 0x4b) {
+      key = this.readTupleAsArray(reader, relation);
+      reader.readUint8();
+      new_ = this.readTupleAsArray(reader, relation);
+    } else if (subMsgKey === 0x4f) {
+      old = this.readTupleAsArray(reader, relation);
+      reader.readUint8();
+      new_ = this.readTupleAsArray(reader, relation, old);
+    } else if (subMsgKey === 0x4e) {
+      new_ = this.readTupleAsArray(reader, relation);
+    } else {
+      throw Error(`unknown submessage key ${String.fromCharCode(subMsgKey)}`);
+    }
+    return { tag: "update", relation, key, old, new: new_ };
+  }
+  private msgDeleteArray(reader: BinaryReader): MessageDeleteArray {
+    const relation = this._relationCache.get(reader.readInt32());
+    if (!relation) throw Error("missing relation");
+    let key: any[] | null = null;
+    let old: any[] | null = null;
+    const subMsgKey = reader.readUint8();
+    if (subMsgKey === 0x4b) {
+      key = this.readTupleAsArray(reader, relation);
+    } else if (subMsgKey === 0x4f) {
+      old = this.readTupleAsArray(reader, relation);
+    } else {
+      throw Error(`unknown submessage key ${String.fromCharCode(subMsgKey)}`);
+    }
+    return { tag: "delete", relation, key, old };
+  }
   private readKeyTuple(reader: BinaryReader, relation: MessageRelation): Record<string, any> {
     const tuple = this.readTuple(reader, relation);
     const key = Object.create(null);
@@ -347,6 +457,40 @@ export class PgoutputParser {
           break;
         case 0x75: // 'u' unchanged toast datum
           tuple[name] = unchangedToastFallback?.[name];
+          break;
+        default:
+          throw Error(`unknown attribute kind ${String.fromCharCode(kind)}`);
+      }
+    }
+    return tuple;
+  }
+
+  private readTupleAsArray(
+    reader: BinaryReader,
+    { columns }: MessageRelation,
+    unchangedToastFallback?: any[] | null
+  ): any[] {
+    const nfields = reader.readInt16();
+    const tuple = new Array(nfields);
+    for (let i = 0; i < nfields; i++) {
+      const { parser } = columns[i];
+      const kind = reader.readUint8();
+      switch (kind) {
+        case 0x62: // 'b' binary
+          const bsize = reader.readInt32();
+          tuple[i] = reader.read(bsize);
+          break;
+        case 0x74: // 't' text
+          const valsize = reader.readInt32();
+          const valbuf = reader.read(valsize);
+          const valtext = reader.decodeText(valbuf);
+          tuple[i] = parser(valtext);
+          break;
+        case 0x6e: // 'n' null
+          tuple[i] = null;
+          break;
+        case 0x75: // 'u' unchanged toast datum
+          tuple[i] = unchangedToastFallback?.[i];
           break;
         default:
           throw Error(`unknown attribute kind ${String.fromCharCode(kind)}`);

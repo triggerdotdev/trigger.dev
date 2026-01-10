@@ -511,6 +511,7 @@ export class RunsReplicationHarness {
     const clickhouse = new ClickHouse({
       url: this.config.infrastructure.clickhouseUrl!,
       name: "profiling-migrator",
+      logLevel: "error", // Suppress migration spam - we handle errors ourselves
     });
 
     try {
@@ -523,10 +524,11 @@ export class RunsReplicationHarness {
         .filter((f) => f.endsWith(".sql"))
         .sort(); // Ensure numeric ordering
 
-      console.log(`Found ${sqlFiles.length} migration files`);
+      // Suppress verbose output - only show errors
+      let successCount = 0;
+      let skippedCount = 0;
 
       for (const file of sqlFiles) {
-        console.log(`  Running migration: ${file}`);
         const sql = await fs.readFile(path.join(migrationsPath, file), "utf-8");
 
         // Parse goose migration file - only execute "up" section
@@ -567,20 +569,27 @@ export class RunsReplicationHarness {
 
         for (const statement of statements) {
           try {
-            console.log(`    Executing: ${statement.substring(0, 80)}...`);
             // Use the underlying client's command method
             await (clickhouse.writer as any).client.command({ query: statement });
-            console.log(`    ✓ Success`);
+            successCount++;
           } catch (error: any) {
-            // Ignore "already exists" errors
-            if (error.message?.includes("already exists") || error.message?.includes("ALREADY_EXISTS")) {
-              console.log(`    ⊘ Skipped (already exists)`);
+            // Ignore "already exists" errors silently
+            if (
+              error.message?.includes("already exists") ||
+              error.message?.includes("ALREADY_EXISTS") ||
+              error.code === "57"
+            ) {
+              skippedCount++;
             } else {
-              console.log(`    ✗ Error: ${error.message}`);
+              console.error(`✗ Migration error in ${file}: ${error.message}`);
               throw error;
             }
           }
         }
+      }
+
+      if (successCount > 0 || skippedCount > 0) {
+        console.log(`Migrations: ${successCount} applied, ${skippedCount} skipped`);
       }
     } finally {
       await clickhouse.close();
