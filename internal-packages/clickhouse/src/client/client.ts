@@ -900,24 +900,18 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
   }
 }
 
-function recordClickhouseError(span: Span, error: Error) {
+function recordClickhouseError(span: Span, error: Error): void {
   if (error instanceof ClickHouseError) {
     span.setAttributes({
       "clickhouse.error.code": error.code,
       "clickhouse.error.message": error.message,
       "clickhouse.error.type": error.type,
     });
-    recordSpanError(span, error);
-  } else {
-    recordSpanError(span, error);
   }
+  recordSpanError(span, error);
 }
 
-function convertLogLevelToClickhouseLogLevel(logLevel?: LogLevel) {
-  if (!logLevel) {
-    return ClickHouseLogLevel.INFO;
-  }
-
+function convertLogLevelToClickhouseLogLevel(logLevel?: LogLevel): ClickHouseLogLevel {
   switch (logLevel) {
     case "debug":
       return ClickHouseLogLevel.DEBUG;
