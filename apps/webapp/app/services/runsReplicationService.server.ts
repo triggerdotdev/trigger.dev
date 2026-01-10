@@ -1,4 +1,5 @@
-import type { ClickHouse } from "@internal/clickhouse";
+import type { ClickHouse, TaskRunInsertArray, PayloadInsertArray } from "@internal/clickhouse";
+import { TASK_RUN_INDEX, PAYLOAD_INDEX } from "@internal/clickhouse";
 import { type RedisOptions } from "@internal/redis";
 import {
   LogicalReplicationClient,
@@ -80,7 +81,9 @@ type TaskRunInsert = {
 
 export type RunsReplicationServiceEvents = {
   message: [{ lsn: string; message: PgoutputMessage; service: RunsReplicationService }];
-  batchFlushed: [{ flushId: string; taskRunInserts: any[][]; payloadInserts: any[][] }];
+  batchFlushed: [
+    { flushId: string; taskRunInserts: TaskRunInsertArray[]; payloadInserts: PayloadInsertArray[] },
+  ];
 };
 
 export class RunsReplicationService {
@@ -576,25 +579,20 @@ export class RunsReplicationService {
         .filter(Boolean)
         // batch inserts in clickhouse are more performant if the items
         // are pre-sorted by the primary key
-        // Array indices: [0]=environment_id, [1]=organization_id, [2]=project_id, [3]=run_id, [5]=created_at
         .sort((a, b) => {
-          if (a[1] !== b[1]) {
-            // organization_id
-            return a[1] < b[1] ? -1 : 1;
+          if (a[TASK_RUN_INDEX.organization_id] !== b[TASK_RUN_INDEX.organization_id]) {
+            return a[TASK_RUN_INDEX.organization_id] < b[TASK_RUN_INDEX.organization_id] ? -1 : 1;
           }
-          if (a[2] !== b[2]) {
-            // project_id
-            return a[2] < b[2] ? -1 : 1;
+          if (a[TASK_RUN_INDEX.project_id] !== b[TASK_RUN_INDEX.project_id]) {
+            return a[TASK_RUN_INDEX.project_id] < b[TASK_RUN_INDEX.project_id] ? -1 : 1;
           }
-          if (a[0] !== b[0]) {
-            // environment_id
-            return a[0] < b[0] ? -1 : 1;
+          if (a[TASK_RUN_INDEX.environment_id] !== b[TASK_RUN_INDEX.environment_id]) {
+            return a[TASK_RUN_INDEX.environment_id] < b[TASK_RUN_INDEX.environment_id] ? -1 : 1;
           }
-          if (a[5] !== b[5]) {
-            // created_at
-            return a[5] - b[5];
+          if (a[TASK_RUN_INDEX.created_at] !== b[TASK_RUN_INDEX.created_at]) {
+            return a[TASK_RUN_INDEX.created_at] - b[TASK_RUN_INDEX.created_at];
           }
-          return a[3] < b[3] ? -1 : 1; // run_id
+          return a[TASK_RUN_INDEX.run_id] < b[TASK_RUN_INDEX.run_id] ? -1 : 1;
         });
 
       const payloadInserts = preparedInserts
@@ -602,9 +600,8 @@ export class RunsReplicationService {
         .filter(Boolean)
         // batch inserts in clickhouse are more performant if the items
         // are pre-sorted by the primary key
-        // Array indices: [0]=run_id
         .sort((a, b) => {
-          return a[0] < b[0] ? -1 : 1; // run_id
+          return a[PAYLOAD_INDEX.run_id] < b[PAYLOAD_INDEX.run_id] ? -1 : 1;
         });
 
       span.setAttribute("task_run_inserts", taskRunInserts.length);
@@ -769,7 +766,7 @@ export class RunsReplicationService {
     };
   }
 
-  async #insertTaskRunInserts(taskRunInserts: any[][], attempt: number) {
+  async #insertTaskRunInserts(taskRunInserts: TaskRunInsertArray[], attempt: number) {
     return await startSpan(this._tracer, "insertTaskRunsInserts", async (span) => {
       const [insertError, insertResult] =
         await this.options.clickhouse.taskRuns.insertCompactArrays(taskRunInserts, {
@@ -792,7 +789,7 @@ export class RunsReplicationService {
     });
   }
 
-  async #insertPayloadInserts(payloadInserts: any[][], attempt: number) {
+  async #insertPayloadInserts(payloadInserts: PayloadInsertArray[], attempt: number) {
     return await startSpan(this._tracer, "insertPayloadInserts", async (span) => {
       const [insertError, insertResult] =
         await this.options.clickhouse.taskRuns.insertPayloadsCompactArrays(payloadInserts, {
@@ -817,7 +814,7 @@ export class RunsReplicationService {
 
   async #prepareRunInserts(
     batchedRun: TaskRunInsert
-  ): Promise<{ taskRunInsert?: any[]; payloadInsert?: any[] }> {
+  ): Promise<{ taskRunInsert?: TaskRunInsertArray; payloadInsert?: PayloadInsertArray }> {
     this.logger.debug("Preparing run", {
       batchedRun,
     });
@@ -854,7 +851,7 @@ export class RunsReplicationService {
     environmentType: string,
     event: "insert" | "update" | "delete",
     _version: bigint
-  ): Promise<any[]> {
+  ): Promise<TaskRunInsertArray> {
     const output = await this.#prepareJson(run.output, run.outputType);
 
     // Return array matching TASK_RUN_COLUMNS order
@@ -907,7 +904,7 @@ export class RunsReplicationService {
     ];
   }
 
-  async #preparePayloadInsert(run: TaskRun, _version: bigint): Promise<any[]> {
+  async #preparePayloadInsert(run: TaskRun, _version: bigint): Promise<PayloadInsertArray> {
     const payload = await this.#prepareJson(run.payload, run.payloadType);
 
     // Return array matching PAYLOAD_COLUMNS order

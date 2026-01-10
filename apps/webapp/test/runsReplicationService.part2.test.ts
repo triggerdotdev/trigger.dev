@@ -1,4 +1,4 @@
-import { ClickHouse } from "@internal/clickhouse";
+import { ClickHouse, TASK_RUN_INDEX } from "@internal/clickhouse";
 import { containerTest } from "@internal/testcontainers";
 import { Logger } from "@trigger.dev/core/logger";
 import { readFile } from "node:fs/promises";
@@ -889,12 +889,15 @@ describe("RunsReplicationService (part 2/2)", () => {
       await setTimeout(1000);
 
       expect(batchFlushedEvents?.[0].taskRunInserts).toHaveLength(2);
-      // taskRunInserts are now arrays, not objects
-      // Index 3 is run_id, Index 6 is status
-      expect(batchFlushedEvents?.[0].taskRunInserts[0][3]).toEqual(run.id); // run_id
-      expect(batchFlushedEvents?.[0].taskRunInserts[0][6]).toEqual("PENDING_VERSION"); // status
-      expect(batchFlushedEvents?.[0].taskRunInserts[1][3]).toEqual(run.id); // run_id
-      expect(batchFlushedEvents?.[0].taskRunInserts[1][6]).toEqual("COMPLETED_SUCCESSFULLY"); // status
+      // Use TASK_RUN_INDEX for type-safe array access
+      expect(batchFlushedEvents?.[0].taskRunInserts[0][TASK_RUN_INDEX.run_id]).toEqual(run.id);
+      expect(batchFlushedEvents?.[0].taskRunInserts[0][TASK_RUN_INDEX.status]).toEqual(
+        "PENDING_VERSION"
+      );
+      expect(batchFlushedEvents?.[0].taskRunInserts[1][TASK_RUN_INDEX.run_id]).toEqual(run.id);
+      expect(batchFlushedEvents?.[0].taskRunInserts[1][TASK_RUN_INDEX.status]).toEqual(
+        "COMPLETED_SUCCESSFULLY"
+      );
 
       await runsReplicationService.stop();
     }
