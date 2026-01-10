@@ -1,4 +1,4 @@
-import type { ClickHouse, RawTaskRunPayloadV1, TaskRunV2 } from "@internal/clickhouse";
+import type { ClickHouse } from "@internal/clickhouse";
 import { TASK_RUN_COLUMNS, PAYLOAD_COLUMNS } from "@internal/clickhouse";
 import { type RedisOptions } from "@internal/redis";
 import {
@@ -915,12 +915,12 @@ export class RunsReplicationService {
       run.idempotencyKey ?? "", // idempotency_key
       run.ttl ?? "", // expiration_ttl
       run.isTest ?? false, // is_test
+      _version.toString(), // _version
+      event === "delete" ? 1 : 0, // _is_deleted
       run.concurrencyKey ?? "", // concurrency_key
       run.bulkActionGroupIds ?? [], // bulk_action_group_ids
       run.masterQueue ?? "", // worker_queue
       run.maxDurationInSeconds ?? 0, // max_duration_in_seconds
-      _version.toString(), // _version
-      event === "delete" ? 1 : 0, // _is_deleted
     ];
   }
 
