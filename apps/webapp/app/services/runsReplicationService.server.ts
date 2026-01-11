@@ -602,6 +602,7 @@ export class RunsReplicationService {
           }
           const aRunId = a[TASK_RUN_INDEX.run_id] as string;
           const bRunId = b[TASK_RUN_INDEX.run_id] as string;
+          if (aRunId === bRunId) return 0;
           return aRunId < bRunId ? -1 : 1;
         });
 
@@ -613,6 +614,7 @@ export class RunsReplicationService {
         .sort((a, b) => {
           const aRunId = a[PAYLOAD_INDEX.run_id] as string;
           const bRunId = b[PAYLOAD_INDEX.run_id] as string;
+          if (aRunId === bRunId) return 0;
           return aRunId < bRunId ? -1 : 1;
         });
 
