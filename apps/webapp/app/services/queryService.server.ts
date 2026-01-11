@@ -1,5 +1,6 @@
 import {
   executeTSQL,
+  type ClickHouseSettings,
   type ExecuteTSQLOptions,
   type FieldMappings,
   type TSQLQueryResult,
@@ -20,6 +21,33 @@ const scopeToEnum = {
   project: "PROJECT",
   environment: "ENVIRONMENT",
 } as const;
+
+/**
+ * Default ClickHouse settings for query protection
+ * Based on PostHog's HogQL settings to prevent expensive queries
+ */
+function getDefaultClickhouseSettings(): ClickHouseSettings {
+  return {
+    // Query execution limits
+    max_execution_time: env.QUERY_CLICKHOUSE_MAX_EXECUTION_TIME,
+    timeout_overflow_mode: "throw",
+    max_memory_usage: String(env.QUERY_CLICKHOUSE_MAX_MEMORY_USAGE),
+
+    // AST complexity limits to prevent extremely complex queries
+    max_ast_elements: String(env.QUERY_CLICKHOUSE_MAX_AST_ELEMENTS),
+    max_expanded_ast_elements: String(env.QUERY_CLICKHOUSE_MAX_EXPANDED_AST_ELEMENTS),
+
+    // Memory management for GROUP BY operations
+    max_bytes_before_external_group_by: String(
+      env.QUERY_CLICKHOUSE_MAX_BYTES_BEFORE_EXTERNAL_GROUP_BY
+    ),
+
+    // Safety settings
+    allow_experimental_object_type: 1,
+    format_csv_allow_double_quotes: 0,
+    readonly: "1", // Ensure queries are read-only
+  };
+}
 
 export type ExecuteQueryOptions<TOut extends z.ZodSchema> = Omit<
   ExecuteTSQLOptions<TOut>,
@@ -89,6 +117,10 @@ export async function executeQuery<TOut extends z.ZodSchema>(
     ...baseOptions,
     ...tenantOptions,
     fieldMappings,
+    clickhouseSettings: {
+      ...getDefaultClickhouseSettings(),
+      ...baseOptions.clickhouseSettings, // Allow caller overrides if needed
+    },
   });
 
   // If query succeeded and history options provided, save to history
