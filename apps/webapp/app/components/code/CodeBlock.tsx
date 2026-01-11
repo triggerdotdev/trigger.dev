@@ -72,6 +72,12 @@ type CodeBlockProps = {
 const dimAmount = 0.5;
 const extraLinesWhenClipping = 0.35;
 
+const SEARCH_HIGHLIGHT_STYLES = {
+  backgroundColor: "#facc15",
+  color: "#000000",
+  fontWeight: "500",
+} as const;
+
 const defaultTheme: PrismTheme = {
   plain: {
     color: "#9C9AF2",
@@ -365,7 +371,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
                 )}
                 dir="ltr"
               >
-                {code}
+                {highlightSearchInText(code, searchTerm)}
               </pre>
             </div>
           )}
@@ -407,7 +413,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
                 className="overflow-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
               >
                 <pre className="relative mr-2 p-2 font-mono text-base leading-relaxed" dir="ltr">
-                  {code}
+                  {highlightSearchInText(code, searchTerm)}
                 </pre>
               </div>
             )}
@@ -419,6 +425,42 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
 );
 
 CodeBlock.displayName = "CodeBlock";
+
+/**
+ * Highlights search term matches in plain text
+ */
+function highlightSearchInText(text: string, searchTerm: string | undefined): React.ReactNode {
+  if (!searchTerm || searchTerm.trim() === "") {
+    return text;
+  }
+
+  const escapedSearch = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const regex = new RegExp(escapedSearch, "gi");
+
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match;
+  let matchCount = 0;
+
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.substring(lastIndex, match.index));
+    }
+    parts.push(
+      <span key={`match-${matchCount}`} style={SEARCH_HIGHLIGHT_STYLES}>
+        {match[0]}
+      </span>
+    );
+    lastIndex = regex.lastIndex;
+    matchCount++;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push(text.substring(lastIndex));
+  }
+
+  return parts.length > 0 ? parts : text;
+}
 
 function Chrome({ title }: { title?: string }) {
   return (
@@ -582,11 +624,7 @@ function HighlightCode({
                             parts.push(
                               <span
                                 key={`match-${matchCount}`}
-                                style={{
-                                  backgroundColor: "#facc15",
-                                  color: "#000000",
-                                  fontWeight: "500",
-                                }}
+                                style={SEARCH_HIGHLIGHT_STYLES}
                               >
                                 {match[0]}
                               </span>

@@ -573,9 +573,11 @@ function RunBody({
                   <Property.Value>
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1">
-                        <div className="break-all">
-                          {run.idempotencyKey ? run.idempotencyKey : "–"}
-                        </div>
+                        {run.idempotencyKey ? (
+                          <CopyableText value={run.idempotencyKey} copyValue={run.idempotencyKey} asChild />
+                        ) : (
+                          <div className="break-all">–</div>
+                        )}
                         {run.idempotencyKey && (
                           <div>
                             Expires:{" "}

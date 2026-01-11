@@ -31,31 +31,10 @@ import { RunTag } from "~/components/runs/v3/RunTag";
 import { formatCurrencyAccurate } from "~/utils/numberFormatter";
 import type { TaskRunStatus } from "@trigger.dev/database";
 import { PacketDisplay } from "~/components/runs/v3/PacketDisplay";
+import type { RunContext } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.logs.$logId.run";
 
-// Types for the run context endpoint response
 type RunContextData = {
-  run: {
-    id: string;
-    friendlyId: string;
-    taskIdentifier: string;
-    status: string;
-    createdAt: string;
-    startedAt?: string;
-    completedAt?: string;
-    isTest: boolean;
-    tags: string[];
-    queue: string;
-    concurrencyKey: string | null;
-    usageDurationMs: number;
-    costInCents: number;
-    baseCostInCents: number;
-    machinePreset: string | null;
-    version?: string;
-    rootRun: { friendlyId: string; taskIdentifier: string } | null;
-    parentRun: { friendlyId: string; taskIdentifier: string } | null;
-    batch: { friendlyId: string } | null;
-    schedule: { friendlyId: string } | null;
-  } | null;
+  run: RunContext | null;
 };
 
 
@@ -308,10 +287,12 @@ function DetailsTab({ log, runPath, searchTerm }: { log: LogEntry; runPath: stri
   const showAttributes = beautifiedAttributes && beautifiedAttributes !== "{}";
 
   // Determine message to show
-  let message = log.message;
-
-  if (log.status === 'ERROR'){
-   message = (logWithExtras?.attributes?.error as any)?.message;
+  let message = log.message ?? "";
+  if (log.level === "ERROR") {
+    const maybeErrorMessage = (logWithExtras.attributes as any)?.error?.message;
+    if (typeof maybeErrorMessage === "string" && maybeErrorMessage.length > 0) {
+      message = maybeErrorMessage;
+    }
   }
 
   return (
@@ -354,17 +335,19 @@ function RunTab({ log, runPath }: { log: LogEntry; runPath: string }) {
   const project = useProject();
   const environment = useEnvironment();
   const fetcher = useTypedFetcher<RunContextData>();
+  const [requested, setRequested] = useState(false);
 
   // Fetch run details when tab is active
   useEffect(() => {
     if (!log.runId) return;
 
+    setRequested(true);
     fetcher.load(
       `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/logs/${encodeURIComponent(log.id)}/run?runId=${encodeURIComponent(log.runId)}`
     );
   }, [organization.slug, project.slug, environment.slug, log.id, log.runId]);
 
-  const isLoading = fetcher.state === "loading";
+  const isLoading = !requested || fetcher.state === "loading";
   const runData = fetcher.data?.run;
 
   if (isLoading) {
@@ -522,7 +505,11 @@ function RunTab({ log, runPath }: { log: LogEntry; runPath: string }) {
         <Property.Item>
           <Property.Label>Machine</Property.Label>
           <Property.Value className="-ml-0.5">
-            <MachineLabelCombo preset={runData.machinePreset as MachinePresetName} />
+            {runData.machinePreset ? (
+              <MachineLabelCombo preset={runData.machinePreset as MachinePresetName} />
+            ) : (
+              "–"
+            )}
           </Property.Value>
         </Property.Item>
 
