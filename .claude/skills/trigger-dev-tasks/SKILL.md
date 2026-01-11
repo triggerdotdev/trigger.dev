@@ -120,7 +120,52 @@ await myTask.trigger(payload, {
   machine: "large-1x",   // micro, small-1x, small-2x, medium-1x, medium-2x, large-1x, large-2x
   maxAttempts: 3,
   tags: ["user_123"],    // Max 10 tags
+  debounce: {            // Consolidate rapid triggers
+    key: "unique-key",
+    delay: "5s",
+    mode: "trailing",    // "leading" (default) or "trailing"
+  },
 });
+```
+
+## Debouncing
+
+Consolidate multiple triggers into a single execution:
+
+```ts
+// Rapid triggers with same key = single execution
+await myTask.trigger({ userId: "123" }, {
+  debounce: {
+    key: "user-123-update",
+    delay: "5s",
+  },
+});
+
+// Trailing mode: use payload from LAST trigger
+await myTask.trigger({ data: "latest" }, {
+  debounce: {
+    key: "my-key",
+    delay: "10s",
+    mode: "trailing",
+  },
+});
+```
+
+Use cases: user activity updates, webhook deduplication, search indexing, notification batching.
+
+## Batch Triggering
+
+Up to 1,000 items per batch, 3MB per payload:
+
+```ts
+const results = await myTask.batchTriggerAndWait([
+  { payload: { userId: "1" } },
+  { payload: { userId: "2" } },
+]);
+
+for (const result of results) {
+  if (result.ok) console.log(result.output);
+}
 ```
 
 ## Machine Presets
