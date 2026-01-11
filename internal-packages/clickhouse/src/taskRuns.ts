@@ -101,71 +101,13 @@ export const TASK_RUN_COLUMNS = [
   "max_duration_in_seconds",
 ] as const;
 
-// Type-safe column indices derived from TASK_RUN_COLUMNS
-// This ensures indices stay in sync with column order
-export const TASK_RUN_INDEX = {
-  environment_id: 0,
-  organization_id: 1,
-  project_id: 2,
-  run_id: 3,
-  updated_at: 4,
-  created_at: 5,
-  status: 6,
-  environment_type: 7,
-  friendly_id: 8,
-  attempt: 9,
-  engine: 10,
-  task_identifier: 11,
-  queue: 12,
-  schedule_id: 13,
-  batch_id: 14,
-  completed_at: 15,
-  started_at: 16,
-  executed_at: 17,
-  delay_until: 18,
-  queued_at: 19,
-  expired_at: 20,
-  usage_duration_ms: 21,
-  cost_in_cents: 22,
-  base_cost_in_cents: 23,
-  output: 24,
-  error: 25,
-  tags: 26,
-  task_version: 27,
-  sdk_version: 28,
-  cli_version: 29,
-  machine_preset: 30,
-  root_run_id: 31,
-  parent_run_id: 32,
-  depth: 33,
-  span_id: 34,
-  trace_id: 35,
-  idempotency_key: 36,
-  expiration_ttl: 37,
-  is_test: 38,
-  _version: 39,
-  _is_deleted: 40,
-  concurrency_key: 41,
-  bulk_action_group_ids: 42,
-  worker_queue: 43,
-  max_duration_in_seconds: 44,
-} as const satisfies Record<(typeof TASK_RUN_COLUMNS)[number], number>;
-
 export type TaskRunColumnName = (typeof TASK_RUN_COLUMNS)[number];
 
-// Runtime assertion to verify TASK_RUN_INDEX matches TASK_RUN_COLUMNS order
-// This will throw at module load time if there's a mismatch
-(function verifyTaskRunColumnIndices() {
-  for (let i = 0; i < TASK_RUN_COLUMNS.length; i++) {
-    const column = TASK_RUN_COLUMNS[i];
-    const index = TASK_RUN_INDEX[column];
-    if (index !== i) {
-      throw new Error(
-        `TASK_RUN_INDEX mismatch: column "${column}" has index ${index} but should be ${i}`
-      );
-    }
-  }
-})();
+// Type-safe column indices generated from TASK_RUN_COLUMNS
+// This ensures indices stay in sync with column order automatically
+export const TASK_RUN_INDEX = Object.fromEntries(
+  TASK_RUN_COLUMNS.map((col, idx) => [col, idx])
+) as { readonly [K in TaskRunColumnName]: number };
 
 export function insertTaskRunsCompactArrays(ch: ClickhouseWriter, settings?: ClickHouseSettings) {
   return ch.insertCompactRaw({
@@ -204,14 +146,12 @@ export type RawTaskRunPayloadV1 = z.infer<typeof RawTaskRunPayloadV1>;
 
 export const PAYLOAD_COLUMNS = ["run_id", "created_at", "payload"] as const;
 
-// Type-safe column indices for payload columns
-export const PAYLOAD_INDEX = {
-  run_id: 0,
-  created_at: 1,
-  payload: 2,
-} as const satisfies Record<(typeof PAYLOAD_COLUMNS)[number], number>;
-
 export type PayloadColumnName = (typeof PAYLOAD_COLUMNS)[number];
+
+// Type-safe column indices generated from PAYLOAD_COLUMNS
+export const PAYLOAD_INDEX = Object.fromEntries(
+  PAYLOAD_COLUMNS.map((col, idx) => [col, idx])
+) as { readonly [K in PayloadColumnName]: number };
 
 /**
  * Type-safe tuple representing a task run insert array.

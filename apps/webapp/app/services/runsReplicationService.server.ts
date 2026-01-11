@@ -900,7 +900,7 @@ export class RunsReplicationService {
       run.concurrencyKey ?? "", // concurrency_key
       run.bulkActionGroupIds ?? [], // bulk_action_group_ids
       run.masterQueue ?? "", // worker_queue
-      run.maxDurationInSeconds ?? 0, // max_duration_in_seconds
+      run.maxDurationInSeconds ?? null, // max_duration_in_seconds
     ];
   }
 

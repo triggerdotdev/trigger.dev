@@ -1,4 +1,4 @@
-import { ClickHouse, TASK_RUN_INDEX } from "@internal/clickhouse";
+import { ClickHouse, TASK_RUN_INDEX, PAYLOAD_INDEX } from "@internal/clickhouse";
 import { containerTest } from "@internal/testcontainers";
 import { Logger } from "@trigger.dev/core/logger";
 import { readFile } from "node:fs/promises";
@@ -1062,24 +1062,23 @@ describe("RunsReplicationService (part 2/2)", () => {
       expect(batchFlushedEvents[0]?.payloadInserts.length).toBeGreaterThan(1);
 
       // Verify sorting order: organization_id, project_id, environment_id, created_at, run_id
-      // taskRunInserts are now arrays: [0]=environment_id, [1]=organization_id, [2]=project_id, [3]=run_id, [5]=created_at
       for (let i = 1; i < batchFlushedEvents[0]?.taskRunInserts.length; i++) {
         const prev = batchFlushedEvents[0]?.taskRunInserts[i - 1];
         const curr = batchFlushedEvents[0]?.taskRunInserts[i];
 
         const prevKey = [
-          prev[1], // organization_id
-          prev[2], // project_id
-          prev[0], // environment_id
-          prev[5], // created_at
-          prev[3], // run_id
+          prev[TASK_RUN_INDEX.organization_id],
+          prev[TASK_RUN_INDEX.project_id],
+          prev[TASK_RUN_INDEX.environment_id],
+          prev[TASK_RUN_INDEX.created_at],
+          prev[TASK_RUN_INDEX.run_id],
         ];
         const currKey = [
-          curr[1], // organization_id
-          curr[2], // project_id
-          curr[0], // environment_id
-          curr[5], // created_at
-          curr[3], // run_id
+          curr[TASK_RUN_INDEX.organization_id],
+          curr[TASK_RUN_INDEX.project_id],
+          curr[TASK_RUN_INDEX.environment_id],
+          curr[TASK_RUN_INDEX.created_at],
+          curr[TASK_RUN_INDEX.run_id],
         ];
 
         const keysAreEqual = prevKey.every((val, idx) => val === currKey[idx]);
@@ -1109,9 +1108,7 @@ describe("RunsReplicationService (part 2/2)", () => {
       for (let i = 1; i < batchFlushedEvents[0]?.payloadInserts.length; i++) {
         const prev = batchFlushedEvents[0]?.payloadInserts[i - 1];
         const curr = batchFlushedEvents[0]?.payloadInserts[i];
-        // payloadInserts are now arrays, not objects
-        // Index 0 is run_id
-        expect(prev[0] <= curr[0]).toBeTruthy();
+        expect(prev[PAYLOAD_INDEX.run_id] <= curr[PAYLOAD_INDEX.run_id]).toBeTruthy();
       }
 
       await runsReplicationService.stop();
