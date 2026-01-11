@@ -17,8 +17,9 @@ import {
   convertDateToClickhouseDateTime,
   convertClickhouseDateTime64ToJsDate,
 } from "~/v3/eventRepository/clickhouseEventRepository.server";
+import { kindToLevel, type LogLevel } from "~/utils/logUtils";
 
-export type LogLevel = "TRACE" | "DEBUG" | "INFO" | "WARN" | "ERROR" | "CANCELLED";
+export type { LogLevel };
 
 export type LogsListOptions = {
   userId?: string;
@@ -74,35 +75,6 @@ function decodeCursor(cursor: string): LogCursor | null {
     return JSON.parse(decoded) as LogCursor;
   } catch {
     return null;
-  }
-}
-
-// Convert ClickHouse kind to display level
-function kindToLevel(kind: string, status: string): LogLevel {
-  if (status === "CANCELLED") {
-    return "CANCELLED";
-  }
-
-  // ERROR can come from either kind or status
-  if (kind === "LOG_ERROR" || status === "ERROR") {
-    return "ERROR";
-  }
-
-  switch (kind) {
-    case "DEBUG_EVENT":
-    case "LOG_DEBUG":
-      return "DEBUG";
-    case "LOG_INFO":
-      return "INFO";
-    case "LOG_WARN":
-      return "WARN";
-    case "LOG_LOG":
-      return "INFO"; // Changed from "LOG"
-    case "SPAN":
-    case "ANCESTOR_OVERRIDE":
-    case "SPAN_EVENT":
-    default:
-      return "TRACE";
   }
 }
 

@@ -1,6 +1,7 @@
 import { type ClickHouse } from "@internal/clickhouse";
 import { type PrismaClientOrTransaction } from "@trigger.dev/database";
 import { convertClickhouseDateTime64ToJsDate } from "~/v3/eventRepository/clickhouseEventRepository.server";
+import { kindToLevel } from "~/utils/logUtils";
 
 export type LogDetailOptions = {
   environmentId: string;
@@ -13,38 +14,6 @@ export type LogDetailOptions = {
 };
 
 export type LogDetail = Awaited<ReturnType<LogDetailPresenter["call"]>>;
-
-// Convert ClickHouse kind to display level
-type LogLevel = "TRACE" | "DEBUG" | "INFO" | "WARN" | "ERROR" | "CANCELLED";
-
-function kindToLevel(kind: string, status: string): LogLevel {
-  // CANCELLED status takes precedence
-  if (status === "CANCELLED") {
-    return "CANCELLED";
-  }
-
-  // ERROR can come from either kind or status
-  if (kind === "LOG_ERROR" || status === "ERROR") {
-    return "ERROR";
-  }
-
-  switch (kind) {
-    case "DEBUG_EVENT":
-    case "LOG_DEBUG":
-      return "DEBUG";
-    case "LOG_INFO":
-      return "INFO";
-    case "LOG_WARN":
-      return "WARN";
-    case "LOG_LOG":
-      return "INFO"; // Changed from "LOG"
-    case "SPAN":
-    case "ANCESTOR_OVERRIDE":
-    case "SPAN_EVENT":
-    default:
-      return "TRACE";
-  }
-}
 
 export class LogDetailPresenter {
   constructor(

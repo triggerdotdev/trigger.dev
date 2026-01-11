@@ -21,6 +21,7 @@ import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import type { LogEntry } from "~/presenters/v3/LogsListPresenter.server";
+import { getLevelColor } from "~/utils/logUtils";
 import { v3RunSpanPath, v3RunsPath, v3BatchPath, v3RunPath, v3DeploymentVersionPath } from "~/utils/pathBuilder";
 import type { loader as logDetailLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.logs.$logId";
 import { TaskRunStatusCombo, descriptionForTaskRunStatus } from "~/components/runs/v3/TaskRunStatus";
@@ -67,26 +68,6 @@ type LogDetailViewProps = {
 };
 
 type TabType = "details" | "run";
-
-// Level badge color styles
-function getLevelColor(level: string): string {
-  switch (level) {
-    case "ERROR":
-      return "text-error bg-error/10 border-error/20";
-    case "WARN":
-      return "text-warning bg-warning/10 border-warning/20";
-    case "DEBUG":
-      return "text-charcoal-400 bg-charcoal-700 border-charcoal-600";
-    case "INFO":
-      return "text-blue-400 bg-blue-500/10 border-blue-500/20";
-    case "TRACE":
-      return "text-charcoal-500 bg-charcoal-800 border-charcoal-700";
-    case "CANCELLED":
-      return "text-charcoal-400 bg-charcoal-700 border-charcoal-600";
-    default:
-      return "text-text-dimmed bg-charcoal-750 border-charcoal-700";
-  }
-}
 
 // Event kind badge color styles
 function getKindColor(kind: string): string {

@@ -12,7 +12,8 @@ import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { getRunFiltersFromRequest } from "~/presenters/RunFilters.server";
-import { LogsListPresenter, type LogLevel } from "~/presenters/v3/LogsListPresenter.server";
+import { LogsListPresenter } from "~/presenters/v3/LogsListPresenter.server";
+import type { LogLevel } from "~/utils/logUtils";
 import { $replica } from "~/db.server";
 import { clickhouseClient } from "~/services/clickhouseInstance.server";
 import {
@@ -153,7 +154,6 @@ export default function Page() {
                 <LogsList
                   list={list}
                   rootOnlyDefault={rootOnlyDefault}
-                  filters={filters}
                   isAdmin={isAdmin}
                   showDebug={showDebug}
                 />
@@ -174,7 +174,6 @@ function LogsList({
 }: {
   list: Awaited<UseDataFunctionReturn<typeof loader>["data"]>;
   rootOnlyDefault: boolean;
-  filters: TaskRunListSearchFilters;
   isAdmin: boolean;
   showDebug: boolean;
 }) {
@@ -213,17 +212,17 @@ function LogsList({
     setNextCursor(list.pagination.next);
   }, [list.logs, list.pagination.next]);
 
+  // Memoize existing IDs to avoid creating a new Set on every render
+  const existingIds = useMemo(() => new Set(accumulatedLogs.map((log) => log.id)), [accumulatedLogs]);
+
   // Append new logs when fetcher completes (with deduplication)
   useEffect(() => {
     if (fetcher.data && fetcher.state === "idle") {
-      setAccumulatedLogs((prev) => {
-        const existingIds = new Set(prev.map((log) => log.id));
-        const newLogs = fetcher.data!.logs.filter((log) => !existingIds.has(log.id));
-        return [...prev, ...newLogs];
-      });
+      const newLogs = fetcher.data.logs.filter((log) => !existingIds.has(log.id));
+      setAccumulatedLogs((prev) => [...prev, ...newLogs]);
       setNextCursor(fetcher.data.pagination.next);
     }
-  }, [fetcher.data, fetcher.state]);
+  }, [fetcher.data, fetcher.state, existingIds]);
 
   // Build resource URL for loading more
   const loadMoreUrl = useMemo(() => {

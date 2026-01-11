@@ -7,6 +7,7 @@ import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import type { LogEntry, LogsListAppliedFilters } from "~/presenters/v3/LogsListPresenter.server";
+import { getLevelColor } from "~/utils/logUtils";
 import { v3RunSpanPath } from "~/utils/pathBuilder";
 import { DateTime } from "../primitives/DateTime";
 import { Paragraph } from "../primitives/Paragraph";
@@ -38,26 +39,6 @@ type LogsTableProps = {
   selectedLogId?: string;
   onLogSelect?: (logId: string) => void;
 };
-
-// Level badge color styles
-function getLevelColor(level: LogEntry["level"]): string {
-  switch (level) {
-    case "ERROR":
-      return "text-error bg-error/10 border-error/20";
-    case "WARN":
-      return "text-warning bg-warning/10 border-warning/20";
-    case "DEBUG":
-      return "text-charcoal-400 bg-charcoal-700 border-charcoal-600";
-    case "INFO":
-      return "text-blue-400 bg-blue-500/10 border-blue-500/20";
-    case "TRACE":
-      return "text-charcoal-500 bg-charcoal-800 border-charcoal-700";
-    case "CANCELLED":
-      return "text-charcoal-400 bg-charcoal-700 border-charcoal-600";
-    default:
-      return "text-text-dimmed bg-charcoal-750 border-charcoal-700";
-  }
-}
 
 // Left border color for error highlighting
 function getLevelBorderColor(level: LogEntry["level"]): string {
