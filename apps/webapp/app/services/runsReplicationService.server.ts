@@ -576,32 +576,44 @@ export class RunsReplicationService {
 
       const taskRunInserts = preparedInserts
         .map(({ taskRunInsert }) => taskRunInsert)
-        .filter(Boolean)
+        .filter((x): x is TaskRunInsertArray => Boolean(x))
         // batch inserts in clickhouse are more performant if the items
         // are pre-sorted by the primary key
         .sort((a, b) => {
-          if (a[TASK_RUN_INDEX.organization_id] !== b[TASK_RUN_INDEX.organization_id]) {
-            return a[TASK_RUN_INDEX.organization_id] < b[TASK_RUN_INDEX.organization_id] ? -1 : 1;
+          const aOrgId = a[TASK_RUN_INDEX.organization_id] as string;
+          const bOrgId = b[TASK_RUN_INDEX.organization_id] as string;
+          if (aOrgId !== bOrgId) {
+            return aOrgId < bOrgId ? -1 : 1;
           }
-          if (a[TASK_RUN_INDEX.project_id] !== b[TASK_RUN_INDEX.project_id]) {
-            return a[TASK_RUN_INDEX.project_id] < b[TASK_RUN_INDEX.project_id] ? -1 : 1;
+          const aProjId = a[TASK_RUN_INDEX.project_id] as string;
+          const bProjId = b[TASK_RUN_INDEX.project_id] as string;
+          if (aProjId !== bProjId) {
+            return aProjId < bProjId ? -1 : 1;
           }
-          if (a[TASK_RUN_INDEX.environment_id] !== b[TASK_RUN_INDEX.environment_id]) {
-            return a[TASK_RUN_INDEX.environment_id] < b[TASK_RUN_INDEX.environment_id] ? -1 : 1;
+          const aEnvId = a[TASK_RUN_INDEX.environment_id] as string;
+          const bEnvId = b[TASK_RUN_INDEX.environment_id] as string;
+          if (aEnvId !== bEnvId) {
+            return aEnvId < bEnvId ? -1 : 1;
           }
-          if (a[TASK_RUN_INDEX.created_at] !== b[TASK_RUN_INDEX.created_at]) {
-            return a[TASK_RUN_INDEX.created_at] - b[TASK_RUN_INDEX.created_at];
+          const aCreatedAt = a[TASK_RUN_INDEX.created_at] as number;
+          const bCreatedAt = b[TASK_RUN_INDEX.created_at] as number;
+          if (aCreatedAt !== bCreatedAt) {
+            return aCreatedAt - bCreatedAt;
           }
-          return a[TASK_RUN_INDEX.run_id] < b[TASK_RUN_INDEX.run_id] ? -1 : 1;
+          const aRunId = a[TASK_RUN_INDEX.run_id] as string;
+          const bRunId = b[TASK_RUN_INDEX.run_id] as string;
+          return aRunId < bRunId ? -1 : 1;
         });
 
       const payloadInserts = preparedInserts
         .map(({ payloadInsert }) => payloadInsert)
-        .filter(Boolean)
+        .filter((x): x is PayloadInsertArray => Boolean(x))
         // batch inserts in clickhouse are more performant if the items
         // are pre-sorted by the primary key
         .sort((a, b) => {
-          return a[PAYLOAD_INDEX.run_id] < b[PAYLOAD_INDEX.run_id] ? -1 : 1;
+          const aRunId = a[PAYLOAD_INDEX.run_id] as string;
+          const bRunId = b[PAYLOAD_INDEX.run_id] as string;
+          return aRunId < bRunId ? -1 : 1;
         });
 
       span.setAttribute("task_run_inserts", taskRunInserts.length);
