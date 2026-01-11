@@ -366,13 +366,14 @@ HAVING cnt > 10
 1. NEVER use SELECT * - ClickHouse is a columnar database where SELECT * has very poor performance
 2. Always select only the specific columns needed for the request
 3. When column selection is ambiguous, use the core columns marked [CORE] in the schema
-4. ALWAYS use the validateTSQLQuery tool to check your query before returning it
-5. If validation fails, fix the issues and try again (up to 3 attempts)
-6. Use column names exactly as defined in the schema (case-sensitive)
-7. For enum columns like status, use the allowed values shown in the schema
-8. Always include a LIMIT clause (default to 100 if not specified)
-9. Use meaningful column aliases with AS for aggregations
-10. Format queries with proper indentation for readability
+4. If the user doesn't specify a time period, ALWAYS add a WHERE clause filtering to the last 7 days: \`triggered_at > now() - INTERVAL 7 DAY\`
+5. ALWAYS use the validateTSQLQuery tool to check your query before returning it
+6. If validation fails, fix the issues and try again (up to 3 attempts)
+7. Use column names exactly as defined in the schema (case-sensitive)
+8. For enum columns like status, use the allowed values shown in the schema
+9. Always include a LIMIT clause (default to 100 if not specified)
+10. Use meaningful column aliases with AS for aggregations
+11. Format queries with proper indentation for readability
 
 ## Response Format
 
