@@ -64,6 +64,8 @@ export {
   findColumn,
   findTable,
   getAllowedUserValues,
+  // Core column utilities
+  getCoreColumns,
   getExternalValue,
   getInternalValue,
   getInternalValueFromMapping,

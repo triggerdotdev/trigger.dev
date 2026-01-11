@@ -20,7 +20,7 @@ import type {
   ArithmeticOperation,
 } from "./ast.js";
 import type { TableSchema, ColumnSchema } from "./schema.js";
-import { getAllowedUserValues, isValidUserValue } from "./schema.js";
+import { getAllowedUserValues, getCoreColumns, isValidUserValue } from "./schema.js";
 import { CompareOperationOp, ArithmeticOperationOp } from "./ast.js";
 
 /**
@@ -37,7 +37,7 @@ export interface ValidationIssue {
   /** Severity of the issue */
   severity: ValidationSeverity;
   /** The type of issue */
-  type: "unknown_column" | "unknown_table" | "invalid_enum_value";
+  type: "unknown_column" | "unknown_table" | "invalid_enum_value" | "select_star";
   /** Optional: the column name that caused the issue */
   columnName?: string;
   /** Optional: the table name that caused the issue */
@@ -46,6 +46,8 @@ export interface ValidationIssue {
   invalidValue?: string;
   /** Optional: list of allowed values */
   allowedValues?: string[];
+  /** Optional: suggested columns to use instead (for select_star) */
+  suggestedColumns?: string[];
 }
 
 /**
@@ -171,6 +173,19 @@ function validateSelectSetQuery(node: SelectSetQuery, context: ValidationContext
 }
 
 /**
+ * Check if an expression is a SELECT * (asterisk)
+ */
+function isSelectStar(expr: Expression): boolean {
+  if ((expr as Field).expression_type !== "field") return false;
+  const field = expr as Field;
+  // SELECT * or SELECT table.*
+  return (
+    (field.chain.length === 1 && field.chain[0] === "*") ||
+    (field.chain.length === 2 && field.chain[1] === "*")
+  );
+}
+
+/**
  * Validate a SELECT query
  */
 function validateSelectQuery(node: SelectQuery, context: ValidationContext): void {
@@ -181,6 +196,34 @@ function validateSelectQuery(node: SelectQuery, context: ValidationContext): voi
   // First, extract tables from FROM clause to build context
   if (node.select_from) {
     extractTablesFromJoin(node.select_from, context);
+  }
+
+  // Check for SELECT * and emit warning
+  if (node.select) {
+    const hasSelectStar = node.select.some(isSelectStar);
+    if (hasSelectStar) {
+      // Collect core columns from all tables in context
+      const coreColumns: string[] = [];
+      for (const tableSchema of context.tables.values()) {
+        const tableCoreColumns = getCoreColumns(tableSchema);
+        coreColumns.push(...tableCoreColumns);
+      }
+
+      // Build suggestion message
+      let suggestionMsg = "SELECT * will be far slower than selecting specific columns. ";
+      if (coreColumns.length > 0) {
+        suggestionMsg += `Consider selecting specific columns, e.g.: ${coreColumns.join(", ")}`;
+      } else {
+        suggestionMsg += "Consider selecting only the columns you need.";
+      }
+
+      context.issues.push({
+        message: suggestionMsg,
+        severity: "warning",
+        type: "select_star",
+        suggestedColumns: coreColumns.length > 0 ? coreColumns : undefined,
+      });
+    }
   }
 
   // Extract column aliases from SELECT clause before validation

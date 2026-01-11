@@ -258,10 +258,23 @@ export class AIQueryService {
         parts.push(table.description);
       }
       parts.push("");
+
+      // Identify core columns
+      const coreColumns = Object.values(table.columns)
+        .filter((col) => col.coreColumn === true)
+        .map((col) => col.name);
+      if (coreColumns.length > 0) {
+        parts.push(`Core columns (use these as defaults): ${coreColumns.join(", ")}`);
+        parts.push("");
+      }
+
       parts.push("Columns:");
 
       for (const col of Object.values(table.columns)) {
         let colDesc = `- ${col.name} (${col.type})`;
+        if (col.coreColumn) {
+          colDesc += " [CORE]";
+        }
         if (col.description) {
           colDesc += `: ${col.description}`;
         }
@@ -350,13 +363,16 @@ HAVING cnt > 10
 
 ## Important Rules
 
-1. ALWAYS use the validateTSQLQuery tool to check your query before returning it
-2. If validation fails, fix the issues and try again (up to 3 attempts)
-3. Use column names exactly as defined in the schema (case-sensitive)
-4. For enum columns like status, use the allowed values shown in the schema
-5. Always include a LIMIT clause (default to 100 if not specified)
-6. Use meaningful column aliases with AS for aggregations
-7. Format queries with proper indentation for readability
+1. NEVER use SELECT * - ClickHouse is a columnar database where SELECT * has very poor performance
+2. Always select only the specific columns needed for the request
+3. When column selection is ambiguous, use the core columns marked [CORE] in the schema
+4. ALWAYS use the validateTSQLQuery tool to check your query before returning it
+5. If validation fails, fix the issues and try again (up to 3 attempts)
+6. Use column names exactly as defined in the schema (case-sensitive)
+7. For enum columns like status, use the allowed values shown in the schema
+8. Always include a LIMIT clause (default to 100 if not specified)
+9. Use meaningful column aliases with AS for aggregations
+10. Format queries with proper indentation for readability
 
 ## Response Format
 
@@ -431,13 +447,15 @@ HAVING cnt > 10
 
 ## Important Rules
 
-1. ALWAYS use the validateTSQLQuery tool to check your modified query before returning it
-2. If validation fails, fix the issues and try again (up to 3 attempts)
-3. Use column names exactly as defined in the schema (case-sensitive)
-4. For enum columns like status, use the allowed values shown in the schema
-5. Always include a LIMIT clause (default to 100 if not specified)
-6. Preserve the user's existing query structure and style where possible
-7. Only make the changes specifically requested by the user
+1. NEVER use SELECT * - ClickHouse is a columnar database where SELECT * has very poor performance
+2. If the existing query uses SELECT *, replace it with specific columns (use core columns marked [CORE] as defaults)
+3. ALWAYS use the validateTSQLQuery tool to check your modified query before returning it
+4. If validation fails, fix the issues and try again (up to 3 attempts)
+5. Use column names exactly as defined in the schema (case-sensitive)
+6. For enum columns like status, use the allowed values shown in the schema
+7. Always include a LIMIT clause (default to 100 if not specified)
+8. Preserve the user's existing query structure and style where possible
+9. Only make the changes specifically requested by the user
 
 ## Response Format
 

@@ -134,6 +134,23 @@ export interface ColumnSchema {
    */
   example?: string;
   /**
+   * Whether this is a core column that should be included in default queries.
+   *
+   * Core columns represent the essential information for a table and are suggested
+   * as alternatives when users attempt to use SELECT * (which has poor performance
+   * in columnar databases like ClickHouse).
+   *
+   * @example
+   * ```typescript
+   * {
+   *   name: "run_id",
+   *   type: "String",
+   *   coreColumn: true,
+   * }
+   * ```
+   */
+  coreColumn?: boolean;
+  /**
    * Name of the runtime field mapping to use for value translation.
    * When set, values are translated using the mapping provided at query time.
    *
@@ -681,6 +698,21 @@ export function getTableColumnNames(schema: SchemaRegistry, tableName: string): 
  */
 export function getAllTableNames(schema: SchemaRegistry): string[] {
   return Object.keys(schema.tables);
+}
+
+/**
+ * Get the names of core columns for a table.
+ *
+ * Core columns are the essential columns that should be used when users
+ * need a default set of columns (e.g., as an alternative to SELECT *).
+ *
+ * @param table - The table schema
+ * @returns Array of core column names, empty if none are marked as core
+ */
+export function getCoreColumns(table: TableSchema): string[] {
+  return Object.values(table.columns)
+    .filter((col) => col.coreColumn === true)
+    .map((col) => col.name);
 }
 
 // ============================================================
