@@ -1,5 +1,5 @@
 import { RedisOptions } from "ioredis";
-import { RuntimeEnvironmentType } from "~/database-types";
+import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { config as loadEnv } from "dotenv";
 import path from "path";
 

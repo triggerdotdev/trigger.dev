@@ -1,6 +1,5 @@
-import { Prisma } from "@trigger.dev/database";
+import { Prisma, RuntimeEnvironmentType, TaskRunStatus } from "@trigger.dev/database";
 import { nanoid } from "nanoid";
-import { RuntimeEnvironmentType, TaskRunStatus } from "~/database-types";
 import superjson from "superjson";
 
 export interface DataGeneratorOptions {
@@ -41,15 +40,15 @@ export class TaskRunDataGenerator {
 
   constructor(private readonly options: DataGeneratorOptions) {}
 
-  generateBatch(count: number): Prisma.TaskRunCreateInput[] {
-    const batch: Prisma.TaskRunCreateInput[] = [];
+  generateBatch(count: number): Prisma.TaskRunCreateManyInput[] {
+    const batch: Prisma.TaskRunCreateManyInput[] = [];
     for (let i = 0; i < count; i++) {
       batch.push(this.generateInsert());
     }
     return batch;
   }
 
-  generateInsert(): Prisma.TaskRunCreateInput {
+  generateInsert(): Prisma.TaskRunCreateManyInput {
     this.counter++;
     const id = nanoid();
     const friendlyId = `run_${this.counter}_${nanoid(8)}`;
@@ -59,17 +58,19 @@ export class TaskRunDataGenerator {
     const workerQueue = this.workerQueues[Math.floor(Math.random() * this.workerQueues.length)];
 
     const payload = this.generatePayload();
-    const payloadType = this.options.includeComplexPayloads && Math.random() > 0.7
-      ? "application/super+json"
-      : "application/json";
+    const payloadType =
+      this.options.includeComplexPayloads && Math.random() > 0.7
+        ? "application/super+json"
+        : "application/json";
 
     return {
       id,
       friendlyId,
       taskIdentifier,
-      payload: payloadType === "application/super+json"
-        ? superjson.stringify(payload)
-        : JSON.stringify(payload),
+      payload:
+        payloadType === "application/super+json"
+          ? superjson.stringify(payload)
+          : JSON.stringify(payload),
       payloadType,
       traceId: nanoid(),
       spanId: nanoid(),

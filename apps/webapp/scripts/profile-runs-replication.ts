@@ -33,7 +33,7 @@ async function loadConfig(options: any): Promise<HarnessConfig> {
   if (options.config) {
     console.log(`Loading config from: ${options.config}`);
     const configFile = await fs.readFile(options.config, "utf-8");
-    const fileConfig = JSON.parse(configFile);
+    const fileConfig = JSON.parse(configFile) as Partial<HarnessConfig>;
     config = { ...config, ...fileConfig };
   }
 

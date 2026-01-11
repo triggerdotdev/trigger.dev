@@ -52,7 +52,7 @@ export class ConsumerProcessManager {
     if (isProfiling && this.process.stdout) {
       this.process.stdout.on("data", (data: Buffer) => {
         const output = data.toString();
-        process.stdout.write(data);  // Still show output
+        process.stdout.write(output); // Still show output
         if (output.includes("Consumer process ready")) {
           this.ready = true;
           console.log("Consumer process is ready (detected from stdout)");
@@ -62,7 +62,7 @@ export class ConsumerProcessManager {
 
     if (isProfiling && this.process.stderr) {
       this.process.stderr.on("data", (data: Buffer) => {
-        process.stderr.write(data);  // Show stderr
+        process.stderr.write(data.toString()); // Show stderr
       });
     }
 

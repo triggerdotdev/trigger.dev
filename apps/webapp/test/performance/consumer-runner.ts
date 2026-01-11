@@ -1,7 +1,8 @@
 #!/usr/bin/env tsx
 
+import type { ClickHouse } from "@internal/clickhouse";
 import { RunsReplicationService } from "~/services/runsReplicationService.server";
-import { MockClickHouse } from "./clickhouse-mock";
+import { MockClickHouse, asMockClickHouse } from "./clickhouse-mock";
 import type { ConsumerConfig } from "./config";
 import fs from "fs";
 import path from "path";
@@ -16,7 +17,7 @@ async function main() {
   }
 
   // Parse configuration from environment variable
-  const config: ConsumerConfig = JSON.parse(process.env.CONSUMER_CONFIG!);
+  const config = JSON.parse(process.env.CONSUMER_CONFIG!) as ConsumerConfig;
 
   // Create shutdown signal file path
   const shutdownFilePath = path.join(config.outputDir || "/tmp", ".shutdown-signal");
@@ -29,9 +30,9 @@ async function main() {
   });
 
   // Create ClickHouse client (real or mocked)
-  let clickhouse;
+  let clickhouse: Pick<ClickHouse, "taskRuns">;
   if (config.useMockClickhouse) {
-    clickhouse = new MockClickHouse(config.mockClickhouseDelay);
+    clickhouse = asMockClickHouse(new MockClickHouse(config.mockClickhouseDelay));
   } else {
     // Use dynamic import to avoid module resolution issues with tsx
     const { ClickHouse } = await import("@internal/clickhouse");
@@ -47,7 +48,7 @@ async function main() {
 
   // Create replication service
   const service = new RunsReplicationService({
-    clickhouse,
+    clickhouse: clickhouse as ClickHouse,
     pgConnectionUrl: config.pgConnectionUrl,
     serviceName: "runs-replication-profiling",
     slotName: config.slotName,
@@ -89,7 +90,8 @@ async function main() {
   // Send periodic metrics to parent (if IPC available)
   const metricsInterval = setInterval(() => {
     const memUsage = process.memoryUsage();
-    const elu = performance.eventLoopUtilization();
+    const { eventLoopUtilization } = require("perf_hooks").performance;
+    const elu = eventLoopUtilization ? eventLoopUtilization() : { utilization: 0 };
 
     if (hasIPC) {
       process.send!({

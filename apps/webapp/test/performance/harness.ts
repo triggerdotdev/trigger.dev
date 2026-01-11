@@ -267,9 +267,10 @@ export class RunsReplicationHarness {
       const cleanProfilingUrl = this.profilingDatabaseUrl.split("?")[0];
 
       // Dump schema only (no data) from main database
-      execSync(`pg_dump "${cleanBaseUrl}" --schema-only --no-owner --no-acl | psql "${cleanProfilingUrl}" > /dev/null 2>&1`, {
-        shell: true,
-      });
+      execSync(
+        `pg_dump "${cleanBaseUrl}" --schema-only --no-owner --no-acl | psql "${cleanProfilingUrl}" > /dev/null 2>&1`,
+        { shell: "/bin/bash" }
+      );
 
       console.log("✅ Schema copied successfully");
     } catch (error) {

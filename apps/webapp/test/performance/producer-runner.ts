@@ -11,7 +11,7 @@ async function main() {
   }
 
   // Parse configuration from environment variable
-  const config: ProducerConfig = JSON.parse(process.env.PRODUCER_CONFIG!);
+  const config = JSON.parse(process.env.PRODUCER_CONFIG!) as ProducerConfig;
 
   console.log("Producer process starting with config:", {
     targetThroughput: config.targetThroughput,
