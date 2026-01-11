@@ -4,7 +4,7 @@ import {
   type MachinePresetName,
   formatDurationMilliseconds,
 } from "@trigger.dev/core/v3";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useTypedFetcher } from "remix-typedjson";
 import { cn } from "~/utils/cn";
 import { Button } from "~/components/primitives/Buttons";
@@ -30,7 +30,6 @@ import { RunTag } from "~/components/runs/v3/RunTag";
 import { formatCurrencyAccurate } from "~/utils/numberFormatter";
 import type { TaskRunStatus } from "@trigger.dev/database";
 import { PacketDisplay } from "~/components/runs/v3/PacketDisplay";
-import type { ReactNode } from "react";
 
 // Types for the run context endpoint response
 type RunContextData = {
@@ -338,7 +337,7 @@ function DetailsTab({ log, runPath, searchTerm }: { log: LogEntry; runPath: stri
     <>
       {/* Time */}
       <div className="mb-6">
-        <Header3 className="mb-2">Time</Header3>
+        <Header3 className="mb-2">Timestamp</Header3>
         <div className="text-sm text-text-dimmed">
           <DateTime date={log.startTime} />
         </div>
@@ -346,12 +345,12 @@ function DetailsTab({ log, runPath, searchTerm }: { log: LogEntry; runPath: stri
 
       {/* Message */}
       <div className="mb-6">
-        <Header3 className="mb-2">Message</Header3>
-        <div className="rounded-md border border-grid-dimmed bg-charcoal-850 p-3">
-          <div className="whitespace-pre-wrap break-words font-mono text-sm text-text-bright">
-            {highlightJsonWithSearch(message, searchTerm)}
-          </div>
-        </div>
+        <PacketDisplay
+          data={message}
+          dataType="application/json"
+          title="Message"
+          searchTerm={searchTerm}
+        />
       </div>
 
       {/* Attributes - only available in full log detail */}
@@ -399,13 +398,6 @@ function RunTab({ log, runPath }: { log: LogEntry; runPath: string }) {
     return (
       <div className="flex flex-col items-center justify-center py-8">
         <Paragraph className="text-text-dimmed">Run not found in database.</Paragraph>
-        <div className="mt-4">
-          <Link to={runPath} target="_blank" rel="noopener noreferrer">
-            <Button variant="primary/small" LeadingIcon={ArrowTopRightOnSquareIcon}>
-              View Run Page
-            </Button>
-          </Link>
-        </div>
       </div>
     );
   }
@@ -446,30 +438,10 @@ function RunTab({ log, runPath }: { log: LogEntry; runPath: string }) {
           <Property.Item>
             <Property.Label>Root and parent run</Property.Label>
             <Property.Value>
-              <SimpleTooltip
-                button={
-                  <TextLink
-                    to={v3RunPath(organization, project, environment, {
-                      friendlyId: runData.rootRun.friendlyId,
-                    })}
-                    className="group flex flex-wrap items-center gap-x-1 gap-y-0"
-                  >
-                    <CopyableText
-                      value={runData.rootRun.taskIdentifier}
-                      copyValue={runData.rootRun.taskIdentifier}
-                      asChild
-                    />
-                    <span className="break-all text-text-dimmed transition-colors group-hover:text-text-bright/80">
-                      <CopyableText
-                        value={runData.rootRun.friendlyId}
-                        copyValue={runData.rootRun.friendlyId}
-                        asChild
-                      />
-                    </span>
-                  </TextLink>
-                }
-                content={`Jump to root run`}
-                disableHoverableContent
+              <CopyableText
+                value={runData.rootRun.taskIdentifier}
+                copyValue={runData.rootRun.taskIdentifier}
+                asChild
               />
             </Property.Value>
           </Property.Item>
@@ -479,22 +451,10 @@ function RunTab({ log, runPath }: { log: LogEntry; runPath: string }) {
           <Property.Item>
             <Property.Label>Batch</Property.Label>
             <Property.Value>
-              <SimpleTooltip
-                button={
-                  <TextLink
-                    to={v3BatchPath(organization, project, environment, {
-                      friendlyId: runData.batch.friendlyId,
-                    })}
-                  >
-                    <CopyableText
-                      value={runData.batch.friendlyId}
-                      copyValue={runData.batch.friendlyId}
-                      asChild
-                    />
-                  </TextLink>
-                }
-                content={`View batch ${runData.batch.friendlyId}`}
-                disableHoverableContent
+              <CopyableText
+                value={runData.batch.friendlyId}
+                copyValue={runData.batch.friendlyId}
+                asChild
               />
             </Property.Value>
           </Property.Item>

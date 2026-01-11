@@ -242,7 +242,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
       [code]
     );
 
-    code = code.trim();
+    code = code?.trim() ?? "";
     const lineCount = code.split("\n").length;
     const maxLineWidth = lineCount.toString().length;
     let maxHeight: string | undefined = undefined;
