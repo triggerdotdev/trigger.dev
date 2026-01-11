@@ -198,6 +198,25 @@ export const myTask = task({
 });
 ```
 
+### SDK Documentation Rules
+
+The `rules/` directory contains versioned documentation for writing Trigger.dev tasks, distributed to users via the SDK installer. Current version is defined in `rules/manifest.json`.
+
+- `rules/4.3.0/` - Latest: batch trigger v2 (1,000 items, 3MB payloads), debouncing
+- `rules/4.1.0/` - Realtime streams v2, updated config
+- `rules/4.0.0/` - Base v4 SDK documentation
+
+When adding new SDK features, create a new version directory with only the files that changed from the previous version. Update `manifest.json` to point unchanged files to previous versions.
+
+### Claude Code Skill
+
+The `.claude/skills/trigger-dev-tasks/` skill provides Claude Code with Trigger.dev task expertise. It includes:
+
+- `SKILL.md` - Core instructions and patterns
+- Reference files for basic tasks, advanced tasks, scheduled tasks, realtime, and config
+
+Keep the skill in sync with the latest rules version when SDK features change.
+
 ## Testing with hello-world Reference Project
 
 First-time setup:
