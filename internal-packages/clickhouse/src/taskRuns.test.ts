@@ -5,8 +5,6 @@ import {
   getTaskRunsQueryBuilder,
   insertRawTaskRunPayloadsCompactArrays,
   insertTaskRunsCompactArrays,
-  TASK_RUN_COLUMNS,
-  PAYLOAD_COLUMNS,
   type TaskRunInsertArray,
   type PayloadInsertArray,
 } from "./taskRuns.js";

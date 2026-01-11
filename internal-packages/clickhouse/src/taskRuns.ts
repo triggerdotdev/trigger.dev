@@ -180,6 +180,20 @@ export function insertTaskRunsCompactArrays(ch: ClickhouseWriter, settings?: Cli
   });
 }
 
+// Object-based insert function for tests and non-performance-critical code
+export function insertTaskRuns(ch: ClickhouseWriter, settings?: ClickHouseSettings) {
+  return ch.insert({
+    name: "insertTaskRuns",
+    table: "trigger_dev.task_runs_v2",
+    schema: TaskRunV2,
+    settings: {
+      enable_json_type: 1,
+      type_json_skip_duplicated_paths: 1,
+      ...settings,
+    },
+  });
+}
+
 export const RawTaskRunPayloadV1 = z.object({
   run_id: z.string(),
   created_at: z.number().int(),
@@ -269,6 +283,24 @@ export function insertRawTaskRunPayloadsCompactArrays(
     name: "insertRawTaskRunPayloadsCompactArrays",
     table: "trigger_dev.raw_task_runs_payload_v1",
     columns: PAYLOAD_COLUMNS,
+    settings: {
+      async_insert: 1,
+      wait_for_async_insert: 0,
+      async_insert_max_data_size: "1000000",
+      async_insert_busy_timeout_ms: 1000,
+      enable_json_type: 1,
+      type_json_skip_duplicated_paths: 1,
+      ...settings,
+    },
+  });
+}
+
+// Object-based insert function for tests and non-performance-critical code
+export function insertRawTaskRunPayloads(ch: ClickhouseWriter, settings?: ClickHouseSettings) {
+  return ch.insert({
+    name: "insertRawTaskRunPayloads",
+    table: "trigger_dev.raw_task_runs_payload_v1",
+    schema: RawTaskRunPayloadV1,
     settings: {
       async_insert: 1,
       wait_for_async_insert: 0,
