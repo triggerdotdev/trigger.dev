@@ -2,7 +2,6 @@ import {
   ArrowUturnLeftIcon,
   BoltSlashIcon,
   BookOpenIcon,
-  ChevronUpIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   InformationCircleIcon,
@@ -12,6 +11,7 @@ import {
   MagnifyingGlassPlusIcon,
   StopCircleIcon,
 } from "@heroicons/react/20/solid";
+
 import { useLoaderData, useRevalidator } from "@remix-run/react";
 import { type LoaderFunctionArgs, type SerializeFrom, json } from "@remix-run/server-runtime";
 import { type Virtualizer } from "@tanstack/react-virtual";
@@ -26,6 +26,8 @@ import { motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { redirect } from "remix-typedjson";
+import { ChevronExtraSmallDown } from "~/assets/icons/ChevronExtraSmallDown";
+import { ChevronExtraSmallUp } from "~/assets/icons/ChevronExtraSmallUp";
 import { MoveToTopIcon } from "~/assets/icons/MoveToTopIcon";
 import { MoveUpIcon } from "~/assets/icons/MoveUpIcon";
 import tileBgPath from "~/assets/images/error-banner-tile@2x.png";
@@ -35,6 +37,7 @@ import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { PageBody } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTimeShort } from "~/components/primitives/DateTime";
 import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { Header3 } from "~/components/primitives/Headers";
@@ -62,6 +65,7 @@ import {
 import { type NodesState } from "~/components/primitives/TreeView/reducer";
 import { CancelRunDialog } from "~/components/runs/v3/CancelRunDialog";
 import { ReplayRunDialog } from "~/components/runs/v3/ReplayRunDialog";
+import { getRunFiltersFromSearchParams } from "~/components/runs/v3/RunFilters";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
 import {
   SpanTitle,
@@ -69,6 +73,7 @@ import {
   eventBorderClassName,
 } from "~/components/runs/v3/SpanTitle";
 import { TaskRunStatusIcon, runStatusClassNameColor } from "~/components/runs/v3/TaskRunStatus";
+import { $replica } from "~/db.server";
 import { useDebounce } from "~/hooks/useDebounce";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useEventSource } from "~/hooks/useEventSource";
@@ -76,10 +81,16 @@ import { useInitialDimensions } from "~/hooks/useInitialDimensions";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useReplaceSearchParams } from "~/hooks/useReplaceSearchParams";
+import { useSearchParams } from "~/hooks/useSearchParam";
 import { type Shortcut, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { useHasAdminAccess } from "~/hooks/useUser";
+import { findProjectBySlug } from "~/models/project.server";
+import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
+import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
 import { RunEnvironmentMismatchError, RunPresenter } from "~/presenters/v3/RunPresenter.server";
+import { clickhouseClient } from "~/services/clickhouseInstance.server";
 import { getImpersonationId } from "~/services/impersonation.server";
+import { logger } from "~/services/logger.server";
 import { getResizableSnapshot } from "~/services/resizablePanel.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
@@ -94,18 +105,9 @@ import {
   v3RunStreamingPath,
   v3RunsPath,
 } from "~/utils/pathBuilder";
+import type { SpanOverride } from "~/v3/eventRepository/eventRepository.types";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { SpanView } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.spans.$spanParam/route";
-import { useSearchParams } from "~/hooks/useSearchParam";
-import { CopyableText } from "~/components/primitives/CopyableText";
-import type { SpanOverride } from "~/v3/eventRepository/eventRepository.types";
-import { getRunFiltersFromSearchParams } from "~/components/runs/v3/RunFilters";
-import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
-import { $replica } from "~/db.server";
-import { clickhouseClient } from "~/services/clickhouseInstance.server";
-import { findProjectBySlug } from "~/models/project.server";
-import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
-import { logger } from "~/services/logger.server";
 
 const resizableSettings = {
   parent: {
@@ -210,7 +212,10 @@ async function getRunsListFromTableState({
       }
     }
 
-    if (currentRunIndex === currentPageResult.runs.length - 1 && currentPageResult.pagination.next) {
+    if (
+      currentRunIndex === currentPageResult.runs.length - 1 &&
+      currentPageResult.pagination.next
+    ) {
       const nextPageResult = await runsListPresenter.call(project.organizationId, environment.id, {
         userId,
         projectId: project.id,
@@ -313,7 +318,16 @@ export default function Page() {
   const tabParam = value("tab") ?? undefined;
   const spanParam = value("span") ?? undefined;
 
-  const [previousRunPath, nextRunPath] = useAdjacentRunPaths({organization, project, environment, tableState, run, runsList, tabParam, useSpan: !!spanParam});
+  const [previousRunPath, nextRunPath] = useAdjacentRunPaths({
+    organization,
+    project,
+    environment,
+    tableState,
+    run,
+    runsList,
+    tabParam,
+    useSpan: !!spanParam,
+  });
 
   return (
     <>
@@ -323,13 +337,21 @@ export default function Page() {
             to: v3RunsPath(organization, project, environment, filters),
             text: "Runs",
           }}
-          title={<>
-          <CopyableText value={run.friendlyId} variant="text-below" className="font-mono px-0 py-0 pb-[2px]"/>
-          {tableState && (<div className="flex">
-              <PreviousRunButton to={previousRunPath} />
-              <NextRunButton to={nextRunPath} />
-            </div>)}
-          </>}
+          title={
+            <div className="flex items-center gap-x-0">
+              <CopyableText
+                value={run.friendlyId}
+                variant="text-below"
+                className="-ml-[0.4375rem] h-6 px-1.5 font-mono text-xs hover:text-text-bright"
+              />
+              {tableState && (
+                <div className="flex">
+                  <PreviousRunButton to={previousRunPath} />
+                  <NextRunButton to={nextRunPath} />
+                </div>
+              )}
+            </div>
+          }
         />
         {environment.type === "DEVELOPMENT" && <DevDisconnectedBanner isConnected={isConnected} />}
         <PageAccessories>
@@ -407,16 +429,18 @@ export default function Page() {
             maximumLiveReloadingSetting={maximumLiveReloadingSetting}
           />
         ) : (
-          <NoLogsView
-            run={run}
-          />
+          <NoLogsView run={run} />
         )}
       </PageBody>
     </>
   );
 }
 
-function TraceView({ run, trace, maximumLiveReloadingSetting }: Pick<LoaderData, "run" | "trace" | "maximumLiveReloadingSetting">) {
+function TraceView({
+  run,
+  trace,
+  maximumLiveReloadingSetting,
+}: Pick<LoaderData, "run" | "trace" | "maximumLiveReloadingSetting">) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -875,7 +899,7 @@ function TasksTreeView({
       </ResizablePanelGroup>
       <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-4">
         <div className="grow @container">
-          <div className="hidden items-center gap-4 @[42rem]:flex">
+          <div className="hidden items-center gap-4 @[48rem]:flex">
             <KeyboardShortcuts
               expandAllBelowDepth={expandAllBelowDepth}
               collapseAllBelowDepth={collapseAllBelowDepth}
@@ -883,7 +907,7 @@ function TasksTreeView({
               setShowDurations={setShowDurations}
             />
           </div>
-          <div className="@[42rem]:hidden">
+          <div className="@[48rem]:hidden">
             <Popover>
               <PopoverArrowTrigger>Shortcuts</PopoverArrowTrigger>
               <PopoverContent
@@ -959,6 +983,7 @@ function TimelineView({
   const initialTimelineDimensions = useInitialDimensions(timelineContainerRef);
   const minTimelineWidth = initialTimelineDimensions?.width ?? 300;
   const maxTimelineWidth = minTimelineWidth * 10;
+  const disableSpansAnimations = rootSpanStatus !== "executing";
 
   //we want to live-update the duration if the root span is still executing
   const [duration, setDuration] = useState(queueAdjustedNs(totalDuration, queuedDuration));
@@ -1130,8 +1155,10 @@ function TimelineView({
                                     "-ml-[0.5px] h-[0.5625rem] w-px rounded-none",
                                     eventBackgroundClassName(node.data)
                                   )}
-                                  layoutId={node.data.isPartial ? `${node.id}-${event.name}` : undefined}
-                                  animate={!node.data.isPartial ? false : undefined}
+                                  layoutId={
+                                    disableSpansAnimations ? undefined : `${node.id}-${event.name}`
+                                  }
+                                  animate={disableSpansAnimations ? false : undefined}
                                 />
                               )}
                             </Timeline.Point>
@@ -1149,8 +1176,10 @@ function TimelineView({
                                     "-ml-[0.1562rem] size-[0.3125rem] rounded-full border bg-background-bright",
                                     eventBorderClassName(node.data)
                                   )}
-                                  layoutId={node.data.isPartial ? `${node.id}-${event.name}` : undefined}
-                                  animate={!node.data.isPartial ? false : undefined}
+                                  layoutId={
+                                    disableSpansAnimations ? undefined : `${node.id}-${event.name}`
+                                  }
+                                  animate={disableSpansAnimations ? false : undefined}
                                 />
                               )}
                             </Timeline.Point>
@@ -1169,8 +1198,8 @@ function TimelineView({
                           >
                             <motion.div
                               className={cn("h-px w-full", eventBackgroundClassName(node.data))}
-                              layoutId={node.data.isPartial ? `mark-${node.id}` : undefined}
-                              animate={!node.data.isPartial ? false : undefined}
+                              layoutId={disableSpansAnimations ? undefined : `mark-${node.id}`}
+                              animate={disableSpansAnimations ? false : undefined}
                             />
                           </Timeline.Span>
                         ) : null}
@@ -1193,6 +1222,7 @@ function TimelineView({
                           }
                           node={node}
                           fadeLeft={isTopSpan && queuedDuration !== undefined}
+                          disableAnimations={disableSpansAnimations}
                         />
                       </>
                     ) : (
@@ -1207,8 +1237,8 @@ function TimelineView({
                               "-ml-0.5 size-3 rounded-full border-2 border-background-bright",
                               eventBackgroundClassName(node.data)
                             )}
-                            layoutId={node.data.isPartial ? node.id : undefined}
-                            animate={!node.data.isPartial ? false : undefined}
+                            layoutId={disableSpansAnimations ? undefined : node.id}
+                            animate={disableSpansAnimations ? false : undefined}
                           />
                         )}
                       </Timeline.Point>
@@ -1440,8 +1470,14 @@ function SpanWithDuration({
   showDuration,
   node,
   fadeLeft,
+  disableAnimations,
   ...props
-}: Timeline.SpanProps & { node: TraceEvent; showDuration: boolean; fadeLeft: boolean }) {
+}: Timeline.SpanProps & {
+  node: TraceEvent;
+  showDuration: boolean;
+  fadeLeft: boolean;
+  disableAnimations?: boolean;
+}) {
   return (
     <Timeline.Span {...props}>
       <motion.div
@@ -1451,8 +1487,8 @@ function SpanWithDuration({
           fadeLeft ? "rounded-r-sm bg-gradient-to-r from-black/50 to-transparent" : "rounded-sm"
         )}
         style={{ backgroundSize: "20px 100%", backgroundRepeat: "no-repeat" }}
-        layoutId={node.data.isPartial ? node.id : undefined}
-        animate={!node.data.isPartial ? false : undefined}
+        layoutId={disableAnimations ? undefined : node.id}
+        animate={disableAnimations ? false : undefined}
       >
         {node.data.isPartial && (
           <div
@@ -1465,12 +1501,12 @@ function SpanWithDuration({
             "sticky left-0 z-10 transition-opacity group-hover:opacity-100",
             !showDuration && "opacity-0"
           )}
-          animate={!node.data.isPartial ? false : undefined}
+          animate={disableAnimations ? false : undefined}
         >
           <motion.div
             className="whitespace-nowrap rounded-sm px-1 py-0.5 text-xxs text-text-bright text-shadow-custom"
-            layout={node.data.isPartial ? "position" : undefined}
-            animate={!node.data.isPartial ? false : undefined}
+            layout={disableAnimations ? undefined : "position"}
+            animate={disableAnimations ? false : undefined}
           >
             {formatDurationMilliseconds(props.durationMs, {
               style: "short",
@@ -1580,13 +1616,15 @@ function KeyboardShortcuts({
 }
 
 function AdjacentRunsShortcuts() {
-  return (<div className="flex items-center gap-0.5">
+  return (
+    <div className="flex items-center gap-0.5">
       <ShortcutKey shortcut={{ key: "[" }} variant="medium" className="ml-0 mr-0 px-1" />
       <ShortcutKey shortcut={{ key: "]" }} variant="medium" className="ml-0 mr-0 px-1" />
       <Paragraph variant="extra-small" className="ml-1.5 whitespace-nowrap">
-        Adjacent runs
+        Next/previous run
       </Paragraph>
-    </div>);
+    </div>
+  );
 }
 
 function ArrowKeyShortcuts() {
@@ -1676,13 +1714,13 @@ function useAdjacentRunPaths({
   run,
   runsList,
   tabParam,
-  useSpan
+  useSpan,
 }: {
   organization: { slug: string };
   project: { slug: string };
   environment: { slug: string };
   tableState: string;
-  run: { friendlyId: string, spanId: string };
+  run: { friendlyId: string; spanId: string };
   runsList: RunsListNavigation | null;
   tabParam?: string;
   useSpan?: boolean;
@@ -1692,7 +1730,7 @@ function useAdjacentRunPaths({
   }
 
   const currentIndex = runsList.runs.findIndex((r) => r.friendlyId === run.friendlyId);
-  
+
   if (currentIndex === -1) {
     return [null, null];
   }
@@ -1748,18 +1786,15 @@ function useAdjacentRunPaths({
   return [previousRunPath, nextRunPath];
 }
 
-
 function PreviousRunButton({ to }: { to: string | null }) {
   return (
     <div className={cn("peer/prev order-1", !to && "pointer-events-none")}>
       <LinkButton
-        to={to ? to : '#'}
+        to={to ? to : "#"}
         variant={"minimal/small"}
-        LeadingIcon={ChevronUpIcon}
-        className={cn(
-          "flex items-center rounded-r-none border-r-0 pl-2 pr-[0.5625rem]",
-          !to && "cursor-not-allowed opacity-50"
-        )}
+        LeadingIcon={ChevronExtraSmallUp}
+        leadingIconClassName="size-3 group-hover/button:text-text-bright transition-colors"
+        className={cn("flex size-6 max-w-6 items-center", !to && "cursor-not-allowed opacity-50")}
         onClick={(e) => !to && e.preventDefault()}
         shortcut={{ key: "[" }}
         tooltip="Previous Run"
@@ -1774,13 +1809,11 @@ function NextRunButton({ to }: { to: string | null }) {
   return (
     <div className={cn("peer/next order-3", !to && "pointer-events-none")}>
       <LinkButton
-        to={to ? to : '#'}
+        to={to ? to : "#"}
         variant={"minimal/small"}
-        TrailingIcon={ChevronDownIcon}
-        className={cn(
-          "flex items-center rounded-l-none border-l-0 pl-[0.5625rem] pr-2",
-          !to && "cursor-not-allowed opacity-50"
-        )}
+        LeadingIcon={ChevronExtraSmallDown}
+        leadingIconClassName="size-3 group-hover/button:text-text-bright transition-colors"
+        className={cn("flex size-6 max-w-6 items-center", !to && "cursor-not-allowed opacity-50")}
         onClick={(e) => !to && e.preventDefault()}
         shortcut={{ key: "]" }}
         tooltip="Next Run"
@@ -1790,4 +1823,3 @@ function NextRunButton({ to }: { to: string | null }) {
     </div>
   );
 }
-

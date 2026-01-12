@@ -56,6 +56,7 @@ import {
   TaskRunStatusCombo,
 } from "./TaskRunStatus";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
+import { useSearchParams } from "~/hooks/useSearchParam";
 
 type RunsTableProps = {
   total: number;
@@ -63,9 +64,11 @@ type RunsTableProps = {
   filters: NextRunListAppliedFilters;
   showJob?: boolean;
   runs: NextRunListItem[];
+  rootOnlyDefault?: boolean;
   isLoading?: boolean;
   allowSelection?: boolean;
   variant?: TableVariant;
+  disableAdjacentRows?: boolean;
 };
 
 export function TaskRunsTable({
@@ -73,6 +76,8 @@ export function TaskRunsTable({
   hasFilters,
   filters,
   runs,
+  rootOnlyDefault,
+  disableAdjacentRows = false,
   isLoading = false,
   allowSelection = false,
   variant = "dimmed",
@@ -82,8 +87,12 @@ export function TaskRunsTable({
   const checkboxes = useRef<(HTMLInputElement | null)[]>([]);
   const { has, hasAll, select, deselect, toggle } = useSelectedItems(allowSelection);
   const { isManagedCloud } = useFeatures();
+  const { value } = useSearchParams();
   const location = useOptimisticLocation();
-  const tableStateParam = encodeURIComponent(location.search ? `${location.search}&rt=1` : "rt=1");
+  const rootOnly = value("rootOnly") ? `` : `rootOnly=${rootOnlyDefault}`;
+  const search = rootOnly ? `${rootOnly}&${location.search}` : location.search;
+  /** TableState has to be encoded as a separate URI component, so it's merged under one, 'tableState' param */
+  const tableStateParam = disableAdjacentRows ? '' : encodeURIComponent(search);
 
   const showCompute = isManagedCloud;
 

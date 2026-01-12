@@ -9,14 +9,13 @@ import {
   PlusIcon,
   TrashIcon,
 } from "@heroicons/react/20/solid";
-import { Form, type MetaFunction, Outlet, useActionData, useNavigation } from "@remix-run/react";
+import { Form, type MetaFunction, Outlet, useActionData, useFetcher, useNavigation } from "@remix-run/react";
 import {
   type ActionFunctionArgs,
   type LoaderFunctionArgs,
   json,
-  redirectDocument,
 } from "@remix-run/server-runtime";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
@@ -159,19 +158,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         return json(submission);
       }
 
-      //use redirectDocument because it reloads the page
-      return redirectDocument(
-        v3EnvironmentVariablesPath(
-          { slug: organizationSlug },
-          { slug: projectParam },
-          { slug: envParam }
-        ),
-        {
-          headers: {
-            refresh: "true",
-          },
-        }
-      );
+      return json({ ...submission, success: true });
     }
     case "delete": {
       const repository = new EnvironmentVariablesRepository(prisma);
@@ -417,16 +404,20 @@ function EditEnvironmentVariablePanel({
   revealAll: boolean;
 }) {
   const [isOpen, setIsOpen] = useState(false);
-  const lastSubmission = useActionData();
-  const navigation = useNavigation();
+  const fetcher = useFetcher<typeof action>();
+  const lastSubmission = fetcher.data as any;
 
-  const isLoading =
-    navigation.state !== "idle" &&
-    navigation.formMethod === "post" &&
-    navigation.formData?.get("action") === "edit";
+  const isLoading = fetcher.state !== "idle";
+
+  // Close dialog on successful submission
+  useEffect(() => {
+    if (lastSubmission?.success && fetcher.state === "idle") {
+      setIsOpen(false);
+    }
+  }, [lastSubmission?.success, fetcher.state]);
 
   const [form, { id, environmentId, value }] = useForm({
-    id: "edit-environment-variable",
+    id: `edit-environment-variable-${variable.id}-${variable.environment.id}`,
     // TODO: type this
     lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
@@ -444,7 +435,7 @@ function EditEnvironmentVariablePanel({
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>Edit environment variable</DialogHeader>
-        <Form method="post" {...form.props}>
+        <fetcher.Form method="post" {...form.props}>
           <input type="hidden" name="action" value="edit" />
           <input {...conform.input(id, { type: "hidden" })} value={variable.id} />
           <input
@@ -490,7 +481,7 @@ function EditEnvironmentVariablePanel({
               }
             />
           </Fieldset>
-        </Form>
+        </fetcher.Form>
       </DialogContent>
     </Dialog>
   );

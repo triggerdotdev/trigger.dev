@@ -1301,7 +1301,7 @@ paths:
     post:
       operationId: batch_trigger_task_v1
       summary: Batch trigger tasks
-      description: Batch trigger tasks with up to 500 payloads.
+      description: Batch trigger tasks with up to 1,000 payloads with SDK 4.3.1+ (500 in prior versions).
       requestBody:
         required: true
         content:

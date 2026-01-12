@@ -428,7 +428,8 @@ export class DevRunController {
         }
         case "RUN_CREATED":
         case "QUEUED_EXECUTING":
-        case "QUEUED": {
+        case "QUEUED":
+        case "DELAYED": {
           logger.debug("Status change not handled", { status: snapshot.executionStatus });
           return;
         }

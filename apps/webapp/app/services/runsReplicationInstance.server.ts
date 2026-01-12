@@ -2,7 +2,7 @@ import { ClickHouse } from "@internal/clickhouse";
 import invariant from "tiny-invariant";
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
-import { provider } from "~/v3/tracer.server";
+import { meter, provider } from "~/v3/tracer.server";
 import { RunsReplicationService } from "./runsReplicationService.server";
 import { signalsEmitter } from "./signals.server";
 
@@ -62,6 +62,7 @@ function initializeRunsReplicationInstance() {
     logLevel: env.RUN_REPLICATION_LOG_LEVEL,
     waitForAsyncInsert: env.RUN_REPLICATION_WAIT_FOR_ASYNC_INSERT === "1",
     tracer: provider.getTracer("runs-replication-service"),
+    meter,
     insertMaxRetries: env.RUN_REPLICATION_INSERT_MAX_RETRIES,
     insertBaseDelayMs: env.RUN_REPLICATION_INSERT_BASE_DELAY_MS,
     insertMaxDelayMs: env.RUN_REPLICATION_INSERT_MAX_DELAY_MS,

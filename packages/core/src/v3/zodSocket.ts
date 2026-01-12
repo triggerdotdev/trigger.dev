@@ -100,7 +100,7 @@ export class ZodSocketMessageHandler<TRPCCatalog extends ZodSocketMessageCatalog
     this.#handlers = options.handlers;
     this.#logger =
       options.logger ?? new SimpleStructuredLogger("socket-message-handler", LogLevel.info);
-    this.#logPayloads = options.logPayloads ?? !!process.env.LOG_SOCKET_HANDLER_PAYLOADS ?? false;
+    this.#logPayloads = options.logPayloads ?? !!process.env.LOG_SOCKET_HANDLER_PAYLOADS;
   }
 
   public async handleMessage(message: unknown) {

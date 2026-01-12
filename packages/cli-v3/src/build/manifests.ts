@@ -54,7 +54,7 @@ export async function copyManifestToDir(
  */
 async function computeFileHash(filePath: string): Promise<string> {
   const contents = await readFile(filePath);
-  return createHash("sha256").update(contents).digest("hex").slice(0, 16);
+  return createHash("sha256").update(contents as Uint8Array).digest("hex").slice(0, 16);
 }
 
 /**

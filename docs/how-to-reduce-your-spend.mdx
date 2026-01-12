@@ -23,6 +23,11 @@ Configure billing alerts in your dashboard to get notified when you approach spe
 - Catch unexpected cost increases early
 - Identify runaway tasks before they become expensive
 
+The billing alerts page includes two types of alerts:
+
+- **Standard alerts**: Get notified at 75%, 90%, 100%, 200%, and 500% of your monthly budget
+- **Spike alerts**: Catch runaway usage from bugs or errors with alerts at 10x (1000%), 20x (2000%), 50x (5000%), and 100x (10000%) of your monthly budget. We recommend keeping these enabled as a safety net.
+
 ![Billing alerts](./images/billing-alerts-ui.png)
 
 You can view your billing alerts page by clicking the "Organization" menu in the top left of the dashboard and then clicking "Settings".
@@ -168,3 +173,45 @@ export const boundedTask = task({
   },
 });
 ```
+
+## Use waitpoints instead of polling
+
+Waits longer than 5 seconds automatically checkpoint your task, meaning you don't pay for compute while waiting. Use `wait.for()`, `wait.until()`, or `triggerAndWait()` instead of polling loops.
+
+```ts
+import { task, wait } from "@trigger.dev/sdk";
+
+export const waitpointTask = task({
+  id: "waitpoint-task",
+  run: async (payload) => {
+    // This wait is free - your task is checkpointed
+    await wait.for({ minutes: 5 });
+
+    // Parent is also checkpointed while waiting for child tasks
+    const result = await childTask.triggerAndWait({ data: payload });
+    return result;
+  },
+});
+```
+
+[Read more about waitpoints](/wait-for).
+
+## Use debounce to consolidate multiple triggers
+
+When a task might be triggered multiple times in quick succession, use debounce to consolidate them into a single run. This is useful for document indexing, webhook aggregation, cache invalidation, and real-time sync scenarios.
+
+```ts
+// Multiple rapid triggers consolidate into 1 run
+await updateIndex.trigger(
+  { docId: "doc-123" },
+  { debounce: { key: "doc-123", delay: "5s" } }
+);
+
+// Use trailing mode to process the most recent payload
+await processUpdate.trigger(
+  { version: 2 },
+  { debounce: { key: "update-123", delay: "10s", mode: "trailing" } }
+);
+```
+
+[Read more about debounce](/triggering#debounce).

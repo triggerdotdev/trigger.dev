@@ -1,5 +1,23 @@
 # internal-platform
 
+## 4.3.2
+
+## 4.3.1
+
+### Patch Changes
+
+- Added support for idempotency reset ([#2777](https://github.com/triggerdotdev/trigger.dev/pull/2777))
+
+## 4.3.0
+
+### Minor Changes
+
+- feat(cli): deterministic image builds for deployments ([#2778](https://github.com/triggerdotdev/trigger.dev/pull/2778))
+
+### Patch Changes
+
+- The new `triggeredVia` field is now populated in deployments via the CLI. ([#2767](https://github.com/triggerdotdev/trigger.dev/pull/2767))
+
 ## 4.2.0
 
 ### Patch Changes

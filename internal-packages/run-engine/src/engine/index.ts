@@ -20,6 +20,7 @@ import {
   PrismaClient,
   PrismaClientOrTransaction,
   PrismaReplicaClient,
+  RuntimeEnvironmentType,
   TaskRun,
   TaskRunExecutionSnapshot,
   Waitpoint,
@@ -27,6 +28,14 @@ import {
 import { Worker } from "@trigger.dev/redis-worker";
 import { assertNever } from "assert-never";
 import { EventEmitter } from "node:events";
+import { BatchQueue } from "../batch-queue/index.js";
+import type {
+  BatchItem,
+  CompleteBatchResult,
+  InitializeBatchOptions,
+  ProcessBatchItemCallback,
+  BatchCompletionCallback,
+} from "../batch-queue/types.js";
 import { FairQueueSelectionStrategy } from "../run-queue/fairQueueSelectionStrategy.js";
 import { RunQueue } from "../run-queue/index.js";
 import { RunQueueFullKeyProducer } from "../run-queue/keyProducer.js";
@@ -38,6 +47,7 @@ import { RunLocker } from "./locking.js";
 import { getFinalRunStatuses } from "./statuses.js";
 import { BatchSystem } from "./systems/batchSystem.js";
 import { CheckpointSystem } from "./systems/checkpointSystem.js";
+import { DebounceSystem } from "./systems/debounceSystem.js";
 import { DelayedRunSystem } from "./systems/delayedRunSystem.js";
 import { DequeueSystem } from "./systems/dequeueSystem.js";
 import { EnqueueSystem } from "./systems/enqueueSystem.js";
@@ -72,6 +82,7 @@ export class RunEngine {
   private meter: Meter;
   private heartbeatTimeouts: HeartbeatTimeouts;
   private repairSnapshotTimeoutMs: number;
+  private batchQueue: BatchQueue;
 
   prisma: PrismaClient;
   readOnlyPrisma: PrismaReplicaClient;
@@ -85,6 +96,7 @@ export class RunEngine {
   enqueueSystem: EnqueueSystem;
   checkpointSystem: CheckpointSystem;
   delayedRunSystem: DelayedRunSystem;
+  debounceSystem: DebounceSystem;
   ttlSystem: TtlSystem;
   pendingVersionSystem: PendingVersionSystem;
   raceSimulationSystem: RaceSimulationSystem = new RaceSimulationSystem();
@@ -287,6 +299,14 @@ export class RunEngine {
       enqueueSystem: this.enqueueSystem,
     });
 
+    this.debounceSystem = new DebounceSystem({
+      resources,
+      redis: options.debounce?.redis ?? options.runLock.redis,
+      executionSnapshotSystem: this.executionSnapshotSystem,
+      delayedRunSystem: this.delayedRunSystem,
+      maxDebounceDurationMs: options.debounce?.maxDebounceDurationMs ?? 60 * 60 * 1000, // Default 1 hour
+    });
+
     this.pendingVersionSystem = new PendingVersionSystem({
       resources,
       enqueueSystem: this.enqueueSystem,
@@ -306,6 +326,38 @@ export class RunEngine {
     this.batchSystem = new BatchSystem({
       resources,
       waitpointSystem: this.waitpointSystem,
+    });
+
+    // Initialize BatchQueue for DRR-based batch processing (if configured)
+    // Only start consumers if worker is not disabled (same as main worker)
+    const startConsumers = !options.worker.disabled;
+
+    this.batchQueue = new BatchQueue({
+      redis: {
+        keyPrefix: `${options.batchQueue?.redis.keyPrefix ?? ""}batch-queue:`,
+        ...options.batchQueue?.redis,
+      },
+      drr: {
+        quantum: options.batchQueue?.drr?.quantum ?? 5,
+        maxDeficit: options.batchQueue?.drr?.maxDeficit ?? 50,
+        masterQueueLimit: options.batchQueue?.drr?.masterQueueLimit,
+      },
+      shardCount: options.batchQueue?.shardCount,
+      workerQueueBlockingTimeoutSeconds: options.batchQueue?.workerQueueBlockingTimeoutSeconds,
+      consumerCount: options.batchQueue?.consumerCount ?? 2,
+      consumerIntervalMs: options.batchQueue?.consumerIntervalMs ?? 100,
+      defaultConcurrency: options.batchQueue?.defaultConcurrency ?? 10,
+      globalRateLimiter: options.batchQueue?.globalRateLimiter,
+      startConsumers,
+      tracer: options.tracer,
+      meter: options.meter,
+    });
+
+    this.logger.info("BatchQueue initialized", {
+      consumerCount: options.batchQueue?.consumerCount ?? 2,
+      drrQuantum: options.batchQueue?.drr?.quantum ?? 5,
+      defaultConcurrency: options.batchQueue?.defaultConcurrency ?? 10,
+      consumersEnabled: startConsumers,
     });
 
     this.runAttemptSystem = new RunAttemptSystem({
@@ -340,7 +392,6 @@ export class RunEngine {
   async trigger(
     {
       friendlyId,
-      number,
       environment,
       idempotencyKey,
       idempotencyKeyExpiresAt,
@@ -390,6 +441,8 @@ export class RunEngine {
       bulkActionId,
       planType,
       realtimeStreamsVersion,
+      debounce,
+      onDebounced,
     }: TriggerParams,
     tx?: PrismaClientOrTransaction
   ): Promise<TaskRun> {
@@ -399,6 +452,77 @@ export class RunEngine {
       this.tracer,
       "trigger",
       async (span) => {
+        // Handle debounce before creating a new run
+        // Store claimId if we successfully claimed the debounce key
+        let debounceClaimId: string | undefined;
+
+        if (debounce) {
+          const debounceResult = await this.debounceSystem.handleDebounce({
+            environmentId: environment.id,
+            taskIdentifier,
+            debounce:
+              debounce.mode === "trailing"
+                ? {
+                    ...debounce,
+                    updateData: {
+                      payload,
+                      payloadType,
+                      metadata,
+                      metadataType,
+                      tags,
+                      maxAttempts,
+                      maxDurationInSeconds,
+                      machine,
+                    },
+                  }
+                : debounce,
+            tx: prisma,
+          });
+
+          if (debounceResult.status === "existing") {
+            span.setAttribute("debounced", true);
+            span.setAttribute("existingRunId", debounceResult.run.id);
+
+            // For triggerAndWait, block the parent run with the existing run's waitpoint
+            if (resumeParentOnCompletion && parentTaskRunId && debounceResult.waitpoint) {
+              // Call the onDebounced callback to create a span and get spanIdToComplete
+              let spanIdToComplete: string | undefined;
+              if (onDebounced) {
+                spanIdToComplete = await onDebounced({
+                  existingRun: debounceResult.run,
+                  waitpoint: debounceResult.waitpoint,
+                  debounceKey: debounce.key,
+                });
+              }
+
+              await this.waitpointSystem.blockRunWithWaitpoint({
+                runId: parentTaskRunId,
+                waitpoints: debounceResult.waitpoint.id,
+                spanIdToComplete,
+                projectId: environment.project.id,
+                organizationId: environment.organization.id,
+                batch,
+                workerId,
+                runnerId,
+                tx: prisma,
+              });
+            }
+
+            return debounceResult.run;
+          }
+
+          // If max_duration_exceeded, we continue to create a new run without debouncing
+          if (debounceResult.status === "max_duration_exceeded") {
+            span.setAttribute("debounceMaxDurationExceeded", true);
+          }
+
+          // Store the claimId for later registration
+          if (debounceResult.status === "new" && debounceResult.claimId) {
+            debounceClaimId = debounceResult.claimId;
+            span.setAttribute("debounceClaimId", debounceClaimId);
+          }
+        }
+
         const status = delayUntil ? "DELAYED" : "PENDING";
 
         //create run
@@ -413,7 +537,6 @@ export class RunEngine {
               id: taskRunId,
               engine: "V2",
               status,
-              number,
               friendlyId,
               runtimeEnvironmentId: environment.id,
               environmentType: environment.type,
@@ -471,11 +594,18 @@ export class RunEngine {
               bulkActionGroupIds: bulkActionId ? [bulkActionId] : undefined,
               planType,
               realtimeStreamsVersion,
+              debounce: debounce
+                ? {
+                    key: debounce.key,
+                    delay: debounce.delay,
+                    createdAt: new Date(),
+                  }
+                : undefined,
               executionSnapshots: {
                 create: {
                   engine: "V2",
-                  executionStatus: "RUN_CREATED",
-                  description: "Run was created",
+                  executionStatus: delayUntil ? "DELAYED" : "RUN_CREATED",
+                  description: delayUntil ? "Run is delayed" : "Run was created",
                   runStatus: status,
                   environmentId: environment.id,
                   environmentType: environment.type,
@@ -545,6 +675,27 @@ export class RunEngine {
             runId: taskRun.id,
             delayUntil: taskRun.delayUntil,
           });
+
+          // Register debounced run in Redis for future lookups
+          if (debounce) {
+            const registered = await this.debounceSystem.registerDebouncedRun({
+              runId: taskRun.id,
+              environmentId: environment.id,
+              taskIdentifier,
+              debounceKey: debounce.key,
+              delayUntil: taskRun.delayUntil,
+              claimId: debounceClaimId,
+            });
+
+            if (!registered) {
+              // We lost the claim - this shouldn't normally happen, but log it
+              this.logger.warn("trigger: lost debounce claim after creating run", {
+                runId: taskRun.id,
+                debounceKey: debounce.key,
+                claimId: debounceClaimId,
+              });
+            }
+          }
         } else {
           if (taskRun.ttl) {
             await this.ttlSystem.scheduleExpireRun({ runId: taskRun.id, ttl: taskRun.ttl });
@@ -919,6 +1070,92 @@ export class RunEngine {
     return this.batchSystem.scheduleCompleteBatch({ batchId });
   }
 
+  // ============================================================================
+  // BatchQueue methods (DRR-based batch processing)
+  // ============================================================================
+
+  /**
+   * Set the callback for processing batch items.
+   * This is called for each item dequeued from the batch queue.
+   */
+  setBatchProcessItemCallback(callback: ProcessBatchItemCallback): void {
+    this.batchQueue.onProcessItem(callback);
+  }
+
+  /**
+   * Set the callback for batch completion.
+   * This is called when all items in a batch have been processed.
+   */
+  setBatchCompletionCallback(callback: BatchCompletionCallback): void {
+    this.batchQueue.onBatchComplete(callback);
+  }
+
+  /**
+   * Get the remaining count of items in a batch.
+   */
+  async getBatchQueueRemainingCount(batchId: string): Promise<number> {
+    return this.batchQueue.getBatchRemainingCount(batchId);
+  }
+
+  /**
+   * Get the live progress for a batch from Redis.
+   * Returns success count, failure count, and processed count.
+   * This is useful for displaying real-time progress in the UI without
+   * hitting the database.
+   */
+  async getBatchQueueProgress(batchId: string): Promise<{
+    successCount: number;
+    failureCount: number;
+    processedCount: number;
+  } | null> {
+    return this.batchQueue.getBatchProgress(batchId);
+  }
+
+  // ============================================================================
+  // Batch Queue - 2-Phase API (v3)
+  // ============================================================================
+
+  /**
+   * Initialize a batch for 2-phase processing (Phase 1).
+   *
+   * This stores batch metadata in Redis WITHOUT enqueueing any items.
+   * Items are streamed separately via enqueueBatchItem().
+   *
+   * Use this for the v3 streaming batch API where items are sent via NDJSON stream.
+   */
+  async initializeBatch(options: InitializeBatchOptions): Promise<void> {
+    return this.batchQueue.initializeBatch(options);
+  }
+
+  /**
+   * Enqueue a single item to an existing batch (Phase 2).
+   *
+   * This is used for streaming batch item ingestion in the v3 API.
+   * Returns whether the item was enqueued (true) or deduplicated (false).
+   *
+   * @param batchId - The batch ID (internal format)
+   * @param envId - The environment ID (needed for queue routing)
+   * @param itemIndex - Zero-based index of this item
+   * @param item - The batch item to enqueue
+   * @returns Object with enqueued status
+   */
+  async enqueueBatchItem(
+    batchId: string,
+    envId: string,
+    itemIndex: number,
+    item: BatchItem
+  ): Promise<{ enqueued: boolean }> {
+    return this.batchQueue.enqueueBatchItem(batchId, envId, itemIndex, item);
+  }
+
+  /**
+   * Get the count of items that have been enqueued for a batch.
+   * Useful for progress tracking during streaming ingestion.
+   */
+  async getBatchEnqueuedCount(batchId: string): Promise<number> {
+    return this.batchQueue.getEnqueuedCount(batchId);
+  }
+
   async getWaitpoint({
     waitpointId,
     environmentId,
@@ -1181,6 +1418,12 @@ export class RunEngine {
 
       // This is just a failsafe
       await this.runLockRedis.quit();
+
+      // Close the batch queue and its Redis connections
+      await this.batchQueue.close();
+
+      // Close the debounce system Redis connection
+      await this.debounceSystem.quit();
     } catch (error) {
       // And should always throw
     }
@@ -1654,6 +1897,9 @@ export class RunEngine {
         case "FINISHED": {
           throw new NotImplementedError("There shouldn't be a heartbeat for FINISHED");
         }
+        case "DELAYED": {
+          throw new NotImplementedError("There shouldn't be a heartbeat for DELAYED");
+        }
         default: {
           assertNever(latestSnapshot.executionStatus);
         }
@@ -1694,7 +1940,8 @@ export class RunEngine {
         case "PENDING_CANCEL":
         case "PENDING_EXECUTING":
         case "QUEUED_EXECUTING":
-        case "RUN_CREATED": {
+        case "RUN_CREATED":
+        case "DELAYED": {
           // Do nothing;
           return;
         }

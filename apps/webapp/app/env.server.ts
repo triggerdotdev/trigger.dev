@@ -521,6 +521,7 @@ const EnvironmentSchema = z
     PROD_USAGE_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().optional(),
 
     CENTS_PER_RUN: z.coerce.number().default(0),
+    CENTS_PER_QUERY_BYTE_SECOND: z.coerce.number().default(0),
 
     EVENT_LOOP_MONITOR_ENABLED: z.string().default("1"),
     RESOURCE_MONITOR_ENABLED: z.string().default("0"),
@@ -528,6 +529,7 @@ const EnvironmentSchema = z
     MAXIMUM_TRACE_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(25_000),
     MAXIMUM_TRACE_DETAILED_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(10_000),
     TASK_PAYLOAD_OFFLOAD_THRESHOLD: z.coerce.number().int().default(524_288), // 512KB
+    BATCH_PAYLOAD_OFFLOAD_THRESHOLD: z.coerce.number().int().optional(), // Defaults to TASK_PAYLOAD_OFFLOAD_THRESHOLD if not set
     TASK_PAYLOAD_MAXIMUM_SIZE: z.coerce.number().int().default(3_145_728), // 3MB
     BATCH_TASK_PAYLOAD_MAXIMUM_SIZE: z.coerce.number().int().default(1_000_000), // 1MB
     TASK_RUN_METADATA_MAXIMUM_SIZE: z.coerce.number().int().default(262_144), // 256KB
@@ -536,6 +538,14 @@ const EnvironmentSchema = z
     MAXIMUM_DEPLOYED_QUEUE_SIZE: z.coerce.number().int().optional(),
     MAX_BATCH_V2_TRIGGER_ITEMS: z.coerce.number().int().default(500),
     MAX_BATCH_AND_WAIT_V2_TRIGGER_ITEMS: z.coerce.number().int().default(500),
+
+    // 2-phase batch API settings
+    STREAMING_BATCH_MAX_ITEMS: z.coerce.number().int().default(1_000), // Max items in streaming batch
+    STREAMING_BATCH_ITEM_MAXIMUM_SIZE: z.coerce.number().int().default(3_145_728),
+    BATCH_RATE_LIMIT_REFILL_RATE: z.coerce.number().int().default(100),
+    BATCH_RATE_LIMIT_MAX: z.coerce.number().int().default(1200),
+    BATCH_RATE_LIMIT_REFILL_INTERVAL: z.string().default("10s"),
+    BATCH_CONCURRENCY_LIMIT_DEFAULT: z.coerce.number().int().default(1),
 
     REALTIME_STREAM_VERSION: z.enum(["v1", "v2"]).default("v1"),
     REALTIME_STREAM_MAX_LENGTH: z.coerce.number().int().default(1000),
@@ -601,6 +611,12 @@ const EnvironmentSchema = z
       .int()
       .default(60_000),
     RUN_ENGINE_SUSPENDED_HEARTBEAT_RETRIES_FACTOR: z.coerce.number().default(2),
+
+    /** Maximum duration in milliseconds that a run can be debounced. Default: 1 hour (3,600,000ms) */
+    RUN_ENGINE_MAXIMUM_DEBOUNCE_DURATION_MS: z.coerce
+      .number()
+      .int()
+      .default(60_000 * 60), // 1 hour
 
     RUN_ENGINE_WORKER_REDIS_HOST: z
       .string()
@@ -931,6 +947,23 @@ const EnvironmentSchema = z
       .default(process.env.REDIS_TLS_DISABLED ?? "false"),
     BATCH_TRIGGER_WORKER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
 
+    // BatchQueue DRR settings (Run Engine v2)
+    BATCH_QUEUE_DRR_QUANTUM: z.coerce.number().int().default(25),
+    BATCH_QUEUE_MAX_DEFICIT: z.coerce.number().int().default(100),
+    BATCH_QUEUE_CONSUMER_COUNT: z.coerce.number().int().default(3),
+    BATCH_QUEUE_CONSUMER_INTERVAL_MS: z.coerce.number().int().default(50),
+    // Number of master queue shards for horizontal scaling
+    BATCH_QUEUE_SHARD_COUNT: z.coerce.number().int().default(1),
+    // Maximum queues to fetch from master queue per iteration
+    BATCH_QUEUE_MASTER_QUEUE_LIMIT: z.coerce.number().int().default(1000),
+    // Enable worker queue for two-stage processing (claim messages, push to worker queue, process from worker queue)
+    BATCH_QUEUE_WORKER_QUEUE_ENABLED: BoolEnv.default(true),
+    // Worker queue blocking timeout in seconds (for two-stage processing, only used when BATCH_QUEUE_WORKER_QUEUE_ENABLED is true)
+    BATCH_QUEUE_WORKER_QUEUE_TIMEOUT_SECONDS: z.coerce.number().int().default(10),
+    // Global rate limit: max items processed per second across all consumers
+    // If not set, no global rate limiting is applied
+    BATCH_QUEUE_GLOBAL_RATE_LIMIT: z.coerce.number().int().positive().optional(),
+
     ADMIN_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
     ADMIN_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),
     ADMIN_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(10),
@@ -1236,6 +1269,7 @@ const EnvironmentSchema = z
     EVENT_LOOP_MONITOR_THRESHOLD_MS: z.coerce.number().int().default(100),
     EVENT_LOOP_MONITOR_UTILIZATION_INTERVAL_MS: z.coerce.number().int().default(1000),
     EVENT_LOOP_MONITOR_UTILIZATION_SAMPLE_RATE: z.coerce.number().default(0.05),
+    EVENT_LOOP_MONITOR_NOTIFY_ENABLED: z.string().default("0"),
 
     VERY_SLOW_QUERY_THRESHOLD_MS: z.coerce.number().int().optional(),
 

@@ -51,6 +51,7 @@ export class DefaultTraceEventsConcern implements TraceEventConcern {
             traceparent,
             setAttribute: (key, value) => event.setAttribute(key as any, value),
             failWithError: event.failWithError.bind(event),
+            stop: event.stop.bind(event),
           },
           store
         );
@@ -116,6 +117,73 @@ export class DefaultTraceEventsConcern implements TraceEventConcern {
             traceparent,
             setAttribute: (key, value) => event.setAttribute(key as any, value),
             failWithError: event.failWithError.bind(event),
+            stop: event.stop.bind(event),
+          },
+          store
+        );
+      }
+    );
+  }
+
+  async traceDebouncedRun<T>(
+    request: TriggerTaskRequest,
+    parentStore: string | undefined,
+    options: {
+      existingRun: TaskRun;
+      debounceKey: string;
+      incomplete: boolean;
+      isError: boolean;
+    },
+    callback: (span: TracedEventSpan, store: string) => Promise<T>
+  ): Promise<T> {
+    const { existingRun, debounceKey, incomplete, isError } = options;
+    const { repository, store } = await this.#getEventRepository(request, parentStore);
+
+    return await repository.traceEvent(
+      `${request.taskId} (debounced)`,
+      {
+        context: request.options?.traceContext,
+        spanParentAsLink: request.options?.spanParentAsLink,
+        kind: "SERVER",
+        environment: request.environment,
+        taskSlug: request.taskId,
+        attributes: {
+          properties: {
+            [SemanticInternalAttributes.ORIGINAL_RUN_ID]: existingRun.friendlyId,
+          },
+          style: {
+            icon: "task-cached",
+          },
+          runId: existingRun.friendlyId,
+        },
+        incomplete,
+        isError,
+        immediate: true,
+      },
+      async (event, traceContext, traceparent) => {
+        // Log a message about the debounced trigger
+        await repository.recordEvent(
+          `Debounced: using existing run with key "${debounceKey}"`,
+          {
+            taskSlug: request.taskId,
+            environment: request.environment,
+            attributes: {
+              runId: existingRun.friendlyId,
+            },
+            context: request.options?.traceContext,
+            parentId: event.spanId,
+          }
+        );
+
+        return await callback(
+          {
+            traceId: event.traceId,
+            spanId: event.spanId,
+            traceContext,
+            traceparent,
+            setAttribute: (key, value) => event.setAttribute(key as any, value),
+            failWithError: event.failWithError.bind(event),
+            stop: event.stop.bind(event),
           },
           store
         );

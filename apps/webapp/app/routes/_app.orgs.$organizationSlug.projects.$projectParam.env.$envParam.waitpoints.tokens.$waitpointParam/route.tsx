@@ -126,6 +126,7 @@ export default function Page() {
             runs={waitpoint.connectedRuns}
             isLoading={false}
             variant="bright"
+            disableAdjacentRows
           />
         </div>
       </div>
