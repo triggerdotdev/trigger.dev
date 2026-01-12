@@ -29,7 +29,7 @@ import { requireUserId } from "~/services/session.server";
 import { OrganizationParamsSchema } from "~/utils/pathBuilder";
 import { logger } from "~/services/logger.server";
 import { TrashIcon } from "@heroicons/react/20/solid";
-import { vercelResourcePath } from "~/utils/pathBuilder";
+import { v3ProjectSettingsPath } from "~/utils/pathBuilder";
 import { LinkButton } from "~/components/primitives/Buttons";
 
 function formatDate(date: Date): string {
@@ -291,33 +291,31 @@ export default function VercelIntegrationPage() {
                 <DialogContent>
                   <DialogHeader>
                     <DialogTitle>Remove Vercel Integration</DialogTitle>
-                    <DialogDescription>
-                      This will permanently remove the Vercel integration and disconnect all projects. 
-                      This action cannot be undone.
-                    </DialogDescription>
                   </DialogHeader>
-                  <DialogFooter>
-                    <FormButtons
-                      confirmButton={
-                        <Form method="post">
-                          <input type="hidden" name="intent" value="uninstall" />
-                          <Button
-                            variant="danger/medium"
-                            LeadingIcon={TrashIcon}
-                            type="submit"
-                            disabled={isUninstalling}
-                          >
-                            {isUninstalling ? "Removing..." : "Remove Integration"}
-                          </Button>
-                        </Form>
-                      }
-                      cancelButton={
-                        <DialogClose asChild>
-                          <Button variant="tertiary/medium">Cancel</Button>
-                        </DialogClose>
-                      }
-                    />
-                  </DialogFooter>
+                  <DialogDescription>
+                    This will permanently remove the Vercel integration and disconnect all projects. 
+                    This action cannot be undone.
+                  </DialogDescription>
+                  <FormButtons
+                    confirmButton={
+                      <Form method="post">
+                        <input type="hidden" name="intent" value="uninstall" />
+                        <Button
+                          variant="danger/medium"
+                          LeadingIcon={TrashIcon}
+                          type="submit"
+                          disabled={isUninstalling}
+                        >
+                          {isUninstalling ? "Removing..." : "Remove Integration"}
+                        </Button>
+                      </Form>
+                    }
+                    cancelButton={
+                      <DialogClose asChild>
+                        <Button variant="tertiary/medium">Cancel</Button>
+                      </DialogClose>
+                    }
+                  />
                 </DialogContent>
               </Dialog>
               {actionData?.error && (
@@ -364,7 +362,7 @@ export default function VercelIntegrationPage() {
                     <TableCell>
                       <LinkButton
                         variant="minimal/small"
-                        to={vercelResourcePath(
+                        to={v3ProjectSettingsPath(
                           organization,
                           projectIntegration.project,
                           { slug: "prod" } // Default to production environment

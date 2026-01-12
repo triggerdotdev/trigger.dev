@@ -871,7 +871,7 @@ export class VercelIntegrationRepository {
           key: "TRIGGER_SECRET_KEY",
           value: env.apiKey,
           target: vercelTarget,
-          type: "sensitive",
+          type: "encrypted",
           environmentType: env.type,
         });
       }
@@ -998,7 +998,7 @@ export class VercelIntegrationRepository {
         key: "TRIGGER_SECRET_KEY",
         value: params.apiKey,
         target: vercelTarget,
-        type: "plain",
+        type: "encrypted",
       });
 
       logger.info("Synced regenerated API key to Vercel", {

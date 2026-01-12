@@ -9,8 +9,8 @@ import { logger } from "~/services/logger.server";
 import { getUserId, requireUserId } from "~/services/session.server";
 import { setReferralSourceCookie } from "~/services/referralSource.server";
 import { requestUrl } from "~/utils/requestUrl.server";
-import { v3ProjectSettingsPath, confirmBasicDetailsPath, newOrganizationPath, newProjectPath } from "~/utils/pathBuilder";
-import { validateVercelOAuthState, generateVercelOAuthState } from "~/v3/vercel/vercelOAuthState.server";
+import { v3ProjectSettingsPath, confirmBasicDetailsPath, newProjectPath } from "~/utils/pathBuilder";
+import { validateVercelOAuthState } from "~/v3/vercel/vercelOAuthState.server";
 
 /**
  * Schema for Vercel OAuth callback query parameters.
@@ -85,7 +85,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     throw new Response("Invalid callback parameters", { status: 400 });
   }
 
-  const { code, state, error, error_description, configurationId, teamId } = parsedParams.data;
+  const { code, state, error, error_description, configurationId, next: nextUrl } = parsedParams.data;
 
   // Handle errors from Vercel
   if (error) {
@@ -133,8 +133,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
         configurationId,
         integration: "vercel",
       });
-      if (parsedParams.data.next) {
-        params.set("next", parsedParams.data.next);
+      if (nextUrl && !state) {
+        params.set("next", nextUrl);
       }
       const onboardingUrl = `${confirmBasicDetailsPath()}?${params.toString()}`;
       return redirect(onboardingUrl);
@@ -150,8 +150,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
         configurationId,
         integration: "vercel",
       });
-      if (parsedParams.data.next) {
-        params.set("next", parsedParams.data.next);
+      if (nextUrl && !state) {
+        params.set("next", nextUrl);
       }
       const projectUrl = `${newProjectPath({ slug: firstOrg.slug })}?${params.toString()}`;
       return redirect(projectUrl);
@@ -209,15 +209,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
         "Failed to find project environment. Please try again."
       );
     }
-
-    // Generate state JWT for the integration
-    const stateJWT = await generateVercelOAuthState({
-      organizationId: userOrg.id,
-      projectId: userProject.id,
-      environmentSlug: environment.slug,
-      organizationSlug: userOrg.slug,
-      projectSlug: userProject.slug,
-    });
 
     // Now proceed with the normal flow using the generated state
     // We'll use the stateData from the generated state
@@ -300,8 +291,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
       );
 
       const params = new URLSearchParams({ vercelOnboarding: "true" });
-      if (parsedParams.data.next) {
-        params.set("next", parsedParams.data.next);
+      if (nextUrl && !state) {
+        params.set("next", nextUrl);
       }
       return redirect(`${settingsPath}?${params.toString()}`);
     } catch (error) {
@@ -397,9 +388,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
       throw new Error("Failed to create or find Vercel organization integration");
     }
 
-    // Fetch Vercel projects to get the project name
-    const vercelClient = await VercelIntegrationRepository.getVercelClient(orgIntegration);
-
     // The OrganizationIntegration is now created.
     // The user will select a Vercel project during onboarding, which will create the
     // OrganizationProjectIntegration record and sync API keys to Vercel.
@@ -418,8 +406,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
       );
 
       const params = new URLSearchParams({ vercelOnboarding: "true" });
-      if (parsedParams.data.next) {
-        params.set("next", parsedParams.data.next);
+      if (nextUrl && !state) {
+        params.set("next", nextUrl);
       }
       return redirect(`${settingsPath}?${params.toString()}`);
   } catch (error) {
