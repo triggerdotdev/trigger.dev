@@ -25,6 +25,7 @@ import { redirectWithSuccessMessage } from "~/models/message.server";
 import { updateUser } from "~/models/user.server";
 import { requireUserId } from "~/services/session.server";
 import { rootPath } from "~/utils/pathBuilder";
+import { getVercelInstallParams } from "~/v3/vercel";
 
 function createSchema(
   constraints: {
@@ -106,22 +107,18 @@ export const action: ActionFunction = async ({ request }) => {
     });
 
     // Preserve Vercel integration params if present
-    const url = new URL(request.url);
-    const code = url.searchParams.get("code");
-    const configurationId = url.searchParams.get("configurationId");
-    const integration = url.searchParams.get("integration");
-    const next = url.searchParams.get("next");
+    const vercelParams = getVercelInstallParams(request);
     let redirectUrl = rootPath();
 
-    if (code && configurationId && integration === "vercel") {
+    if (vercelParams) {
       // Redirect to orgs/new with params preserved
       const params = new URLSearchParams({
-        code,
-        configurationId,
-        integration,
+        code: vercelParams.code,
+        configurationId: vercelParams.configurationId,
+        integration: "vercel",
       });
-      if (next) {
-        params.set("next", next);
+      if (vercelParams.next) {
+        params.set("next", vercelParams.next);
       }
       redirectUrl = `/orgs/new?${params.toString()}`;
     }

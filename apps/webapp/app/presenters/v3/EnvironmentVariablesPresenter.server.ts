@@ -1,16 +1,12 @@
-import { flipCauseOption } from "effect/Cause";
 import { PrismaClient, prisma } from "~/db.server";
 import { Project } from "~/models/project.server";
 import { User } from "~/models/user.server";
 import { filterOrphanedEnvironments, sortEnvironments } from "~/utils/environmentSort";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import {
-  VercelProjectIntegrationDataSchema,
   SyncEnvVarsMapping,
-  isLegacySyncEnvVarsMapping,
-  migrateLegacySyncEnvVarsMapping,
 } from "~/v3/vercel/vercelProjectIntegrationSchema";
-import { logger } from "~/services/logger.server";
+import { VercelIntegrationService } from "~/services/vercelIntegration.server";
 
 type Result = Awaited<ReturnType<EnvironmentVariablesPresenter["call"]>>;
 export type EnvironmentVariableWithSetValues = Result["environmentVariables"][number];
@@ -102,71 +98,15 @@ export class EnvironmentVariablesPresenter {
     const variables = await repository.getProject(project.id);
 
     // Get Vercel integration data if it exists
-    const vercelIntegration = await this.#prismaClient.organizationProjectIntegration.findFirst({
-      where: {
-        projectId: project.id,
-        deletedAt: null,
-        organizationIntegration: {
-          service: "VERCEL",
-          deletedAt: null,
-        },
-      },
-    });
+    const vercelService = new VercelIntegrationService(this.#prismaClient);
+    const vercelIntegration = await vercelService.getVercelProjectIntegration(project.id, true);
 
     let vercelSyncEnvVarsMapping: SyncEnvVarsMapping = {};
     let vercelPullEnvVarsEnabled = false;
 
     if (vercelIntegration) {
-      let parsedData = VercelProjectIntegrationDataSchema.safeParse(
-        vercelIntegration.integrationData
-      );
-      
-      // Handle migration from legacy format if needed
-      if (!parsedData.success) {
-        const rawData = vercelIntegration.integrationData as Record<string, unknown>;
-        
-        if (rawData && isLegacySyncEnvVarsMapping(rawData.syncEnvVarsMapping)) {
-          logger.info("Migrating legacy Vercel sync mapping format in presenter", {
-            projectId: project.id,
-            integrationId: vercelIntegration.id,
-          });
-
-          // Migrate the legacy format
-          const migratedMapping = migrateLegacySyncEnvVarsMapping(
-            rawData.syncEnvVarsMapping as Record<string, boolean>
-          );
-
-          // Update the data with migrated mapping
-          const migratedData = {
-            ...rawData,
-            syncEnvVarsMapping: migratedMapping,
-          };
-
-          // Try parsing again with migrated data
-          parsedData = VercelProjectIntegrationDataSchema.safeParse(migratedData);
-
-          if (parsedData.success) {
-            // Save the migrated data back to the database (fire and forget)
-            this.#prismaClient.organizationProjectIntegration.update({
-              where: { id: vercelIntegration.id },
-              data: {
-                integrationData: migratedData as any,
-              },
-            }).catch((error) => {
-              logger.error("Failed to save migrated Vercel sync mapping", {
-                projectId: project.id,
-                integrationId: vercelIntegration.id,
-                error,
-              });
-            });
-          }
-        }
-      }
-      
-      if (parsedData.success) {
-        vercelSyncEnvVarsMapping = parsedData.data.syncEnvVarsMapping;
-        vercelPullEnvVarsEnabled = parsedData.data.config.pullEnvVarsFromVercel;
-      }
+      vercelSyncEnvVarsMapping = vercelIntegration.parsedIntegrationData.syncEnvVarsMapping;
+      vercelPullEnvVarsEnabled = vercelIntegration.parsedIntegrationData.config.pullEnvVarsFromVercel;
     }
 
     return {

@@ -84,13 +84,6 @@ export const SyncEnvVarsMappingSchema = z.record(z.string(), EnvVarSyncSettingsS
 export type SyncEnvVarsMapping = z.infer<typeof SyncEnvVarsMappingSchema>;
 
 /**
- * Legacy mapping format (simple boolean per env var)
- * Used for migration from old format to new format.
- */
-export const LegacySyncEnvVarsMappingSchema = z.record(z.string(), z.boolean());
-export type LegacySyncEnvVarsMapping = z.infer<typeof LegacySyncEnvVarsMappingSchema>;
-
-/**
  * The complete integrationData schema for OrganizationProjectIntegration
  * when the integration service is VERCEL.
  *
@@ -191,53 +184,4 @@ export function shouldSyncEnvVarForAnyEnvironment(
   // Check if at least one environment is enabled
   const environments: TriggerEnvironmentType[] = ["PRODUCTION", "STAGING", "PREVIEW", "DEVELOPMENT"];
   return environments.some((env) => envVarSettings[env] !== false);
-}
-
-/**
- * Check if this is a legacy format mapping (simple boolean per env var)
- */
-export function isLegacySyncEnvVarsMapping(mapping: unknown): mapping is LegacySyncEnvVarsMapping {
-  if (!mapping || typeof mapping !== "object") {
-    return false;
-  }
-  // Check if any value is a boolean (legacy format)
-  // vs an object (new format)
-  for (const value of Object.values(mapping)) {
-    if (typeof value === "boolean") {
-      return true;
-    }
-    // If it's an object, it's the new format
-    if (typeof value === "object" && value !== null) {
-      return false;
-    }
-  }
-  // Empty object could be either, treat as new format
-  return false;
-}
-
-/**
- * Migrate legacy sync mapping format to new per-environment format.
- * If the env var was disabled in legacy format, it will be disabled for ALL environments.
- * If it was enabled (or not present), it will be enabled for all environments.
- */
-export function migrateLegacySyncEnvVarsMapping(
-  legacyMapping: LegacySyncEnvVarsMapping
-): SyncEnvVarsMapping {
-  const newMapping: SyncEnvVarsMapping = {};
-  const environments: TriggerEnvironmentType[] = ["PRODUCTION", "STAGING", "PREVIEW", "DEVELOPMENT"];
-
-  for (const [key, enabled] of Object.entries(legacyMapping)) {
-    if (enabled === false) {
-      // If disabled in legacy format, disable for all environments
-      newMapping[key] = {
-        PRODUCTION: false,
-        STAGING: false,
-        PREVIEW: false,
-        DEVELOPMENT: false,
-      };
-    }
-    // If enabled (true), we don't need to add it since default is enabled
-  }
-
-  return newMapping;
 }

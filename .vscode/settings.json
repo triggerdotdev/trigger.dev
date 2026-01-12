@@ -8,5 +8,5 @@
   },
   "vitest.disableWorkspaceWarning": true,
   "typescript.experimental.useTsgo": false,
-  "chat.agent.maxRequests": 0
+  "chat.agent.maxRequests": 10000
 }

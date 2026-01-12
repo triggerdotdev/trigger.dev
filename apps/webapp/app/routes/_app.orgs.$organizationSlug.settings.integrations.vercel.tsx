@@ -12,7 +12,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -22,10 +21,9 @@ import { Header1 } from "~/components/primitives/Headers";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Table, TableBlankRow, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow } from "~/components/primitives/Table";
-import { useOrganization } from "~/hooks/useOrganizations";
 import { VercelIntegrationRepository } from "~/models/vercelIntegration.server";
 import { $transaction, prisma } from "~/db.server";
-import { requireUserId } from "~/services/session.server";
+import { requireOrganization } from "~/services/org.server";
 import { OrganizationParamsSchema } from "~/utils/pathBuilder";
 import { logger } from "~/services/logger.server";
 import { TrashIcon } from "@heroicons/react/20/solid";
@@ -44,29 +42,15 @@ function formatDate(date: Date): string {
   }).format(date);
 }
 
-const SearchParamsSchema = z.object({
+const SearchParamsSchema = OrganizationParamsSchema.extend({
   configurationId: z.string().optional(),
 });
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const userId = await requireUserId(request);
-  const { organizationSlug } = OrganizationParamsSchema.parse(params);
+  const { organizationSlug, configurationId } = SearchParamsSchema.parse(params);
+  const { organization } = await requireOrganization(request, organizationSlug);
   
   const url = new URL(request.url);
-  const { configurationId } = SearchParamsSchema.parse(Object.fromEntries(url.searchParams));
-
-  // Check user has access to organization
-  const organization = await prisma.organization.findFirst({
-    where: {
-      slug: organizationSlug,
-      members: { some: { userId } },
-      deletedAt: null,
-    },
-  });
-
-  if (!organization) {
-    throw new Response("Not found", { status: 404 });
-  }
 
   // Find Vercel integration for this organization
   let vercelIntegration = await prisma.organizationIntegration.findFirst({
@@ -136,28 +120,9 @@ const ActionSchema = z.object({
 });
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
-  const userId = await requireUserId(request);
   const { organizationSlug } = OrganizationParamsSchema.parse(params);
+  const { organization, userId } = await requireOrganization(request, organizationSlug);
 
-  const formData = await request.formData();
-  const { intent } = ActionSchema.parse(Object.fromEntries(formData));
-
-  if (intent !== "uninstall") {
-    throw new Response("Invalid intent", { status: 400 });
-  }
-
-  // Check user has access to organization
-  const organization = await prisma.organization.findFirst({
-    where: {
-      slug: organizationSlug,
-      members: { some: { userId } },
-      deletedAt: null,
-    },
-  });
-
-  if (!organization) {
-    throw new Response("Not found", { status: 404 });
-  }
 
   // Find Vercel integration
   const vercelIntegration = await prisma.organizationIntegration.findFirst({

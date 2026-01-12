@@ -39,7 +39,8 @@ export class VercelIntegrationService {
   }
 
   async getVercelProjectIntegration(
-    projectId: string
+    projectId: string,
+    migrateIfNeeded: boolean = false
   ): Promise<VercelProjectIntegrationWithData | null> {
     const integration = await this.#prismaClient.organizationProjectIntegration.findFirst({
       where: {
@@ -60,6 +61,7 @@ export class VercelIntegrationService {
     }
 
     const parsedData = VercelProjectIntegrationDataSchema.safeParse(integration.integrationData);
+
     if (!parsedData.success) {
       logger.error("Failed to parse Vercel integration data", {
         projectId,
