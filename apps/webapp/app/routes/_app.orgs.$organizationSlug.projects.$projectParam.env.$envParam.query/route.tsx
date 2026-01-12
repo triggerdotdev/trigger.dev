@@ -77,9 +77,10 @@ import { querySchemas } from "~/v3/querySchemas";
 async function hasQueryAccess(
   userId: string,
   isAdmin: boolean,
+  isImpersonating: boolean,
   organizationSlug: string
 ): Promise<boolean> {
-  if (isAdmin) {
+  if (isAdmin || isImpersonating) {
     return true;
   }
 
@@ -117,7 +118,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
   const { projectParam, organizationSlug, envParam } = EnvironmentParamSchema.parse(params);
 
-  const canAccess = await hasQueryAccess(user.id, user.admin, organizationSlug);
+  const canAccess = await hasQueryAccess(user.id, user.admin, user.isImpersonating, organizationSlug);
   if (!canAccess) {
     throw redirect("/");
   }
@@ -158,7 +159,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const user = await requireUser(request);
   const { projectParam, organizationSlug, envParam } = EnvironmentParamSchema.parse(params);
 
-  const canAccess = await hasQueryAccess(user.id, user.admin, organizationSlug);
+  const canAccess = await hasQueryAccess(user.id, user.admin, user.isImpersonating, organizationSlug);
   if (!canAccess) {
     return typedjson(
       { error: "Unauthorized", rows: null, columns: null, stats: null },
