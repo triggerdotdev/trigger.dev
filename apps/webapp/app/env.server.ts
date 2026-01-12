@@ -1176,7 +1176,7 @@ const EnvironmentSchema = z
     CLICKHOUSE_COMPRESSION_REQUEST: z.string().default("1"),
 
     // Query page ClickHouse limits (for TSQL queries)
-    QUERY_CLICKHOUSE_MAX_EXECUTION_TIME: z.coerce.number().int().default(60),
+    QUERY_CLICKHOUSE_MAX_EXECUTION_TIME: z.coerce.number().int().default(10),
     QUERY_CLICKHOUSE_MAX_MEMORY_USAGE: z.coerce.number().int().default(1_073_741_824), // 1GB in bytes
     QUERY_CLICKHOUSE_MAX_AST_ELEMENTS: z.coerce.number().int().default(4_000_000),
     QUERY_CLICKHOUSE_MAX_EXPANDED_AST_ELEMENTS: z.coerce.number().int().default(4_000_000),
