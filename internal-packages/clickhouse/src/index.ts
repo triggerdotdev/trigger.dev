@@ -45,6 +45,9 @@ export {
 } from "./client/tsql.js";
 export type { OutputColumnMetadata } from "@internal/tsql";
 
+// Errors
+export { QueryError } from "./client/errors.js";
+
 export type ClickhouseCommonConfig = {
   keepAlive?: {
     enabled?: boolean;

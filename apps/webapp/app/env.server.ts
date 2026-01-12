@@ -1182,6 +1182,10 @@ const EnvironmentSchema = z
     QUERY_CLICKHOUSE_MAX_EXPANDED_AST_ELEMENTS: z.coerce.number().int().default(4_000_000),
     QUERY_CLICKHOUSE_MAX_BYTES_BEFORE_EXTERNAL_GROUP_BY: z.coerce.number().int().default(0),
 
+    // Query page concurrency limits
+    QUERY_DEFAULT_ORG_CONCURRENCY_LIMIT: z.coerce.number().int().default(3),
+    QUERY_GLOBAL_CONCURRENCY_LIMIT: z.coerce.number().int().default(50),
+
     EVENTS_CLICKHOUSE_URL: z
       .string()
       .optional()

@@ -1,5 +1,6 @@
 import {
   executeTSQL,
+  QueryError,
   type ClickHouseSettings,
   type ExecuteTSQLOptions,
   type FieldMappings,
@@ -11,6 +12,11 @@ import { type z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { clickhouseClient } from "./clickhouseInstance.server";
+import {
+  queryConcurrencyLimiter,
+  DEFAULT_ORG_CONCURRENCY_LIMIT,
+  GLOBAL_CONCURRENCY_LIMIT,
+} from "./queryConcurrencyLimiter.server";
 
 export type { TableSchema, TSQLQueryResult };
 
@@ -69,6 +75,8 @@ export type ExecuteQueryOptions<TOut extends z.ZodSchema> = Omit<
     /** User ID (optional, null for API calls) */
     userId?: string | null;
   };
+  /** Custom per-org concurrency limit (overrides default) */
+  customOrgConcurrencyLimit?: number;
 };
 
 /**
@@ -78,71 +86,107 @@ export type ExecuteQueryOptions<TOut extends z.ZodSchema> = Omit<
 export async function executeQuery<TOut extends z.ZodSchema>(
   options: ExecuteQueryOptions<TOut>
 ): Promise<TSQLQueryResult<z.output<TOut>>> {
-  const { scope, organizationId, projectId, environmentId, history, ...baseOptions } = options;
-
-  // Build tenant IDs based on scope
-  const tenantOptions: {
-    organizationId: string;
-    projectId?: string;
-    environmentId?: string;
-  } = {
+  const {
+    scope,
     organizationId,
-  };
+    projectId,
+    environmentId,
+    history,
+    customOrgConcurrencyLimit,
+    ...baseOptions
+  } = options;
 
-  if (scope === "project" || scope === "environment") {
-    tenantOptions.projectId = projectId;
+  // Generate unique request ID for concurrency tracking
+  const requestId = crypto.randomUUID();
+  const orgLimit = customOrgConcurrencyLimit ?? DEFAULT_ORG_CONCURRENCY_LIMIT;
+
+  // Acquire concurrency slot
+  const acquireResult = await queryConcurrencyLimiter.acquire({
+    key: organizationId,
+    requestId,
+    keyLimit: orgLimit,
+    globalLimit: GLOBAL_CONCURRENCY_LIMIT,
+  });
+
+  if (!acquireResult.success) {
+    const errorMessage =
+      acquireResult.reason === "key_limit"
+        ? `You've exceeded your query concurrency of ${orgLimit} for this organization. Please try again later.`
+        : "We're experiencing a lot of queries at the moment. Please try again later.";
+    return [new QueryError(errorMessage, { query: options.query }), null];
   }
 
-  if (scope === "environment") {
-    tenantOptions.environmentId = environmentId;
-  }
+  try {
+    // Build tenant IDs based on scope
+    const tenantOptions: {
+      organizationId: string;
+      projectId?: string;
+      environmentId?: string;
+    } = {
+      organizationId,
+    };
 
-  // Build field mappings for project_ref → project_id and environment_id → slug translation
-  const projects = await prisma.project.findMany({
-    where: { organizationId },
-    select: { id: true, externalRef: true },
-  });
+    if (scope === "project" || scope === "environment") {
+      tenantOptions.projectId = projectId;
+    }
 
-  const environments = await prisma.runtimeEnvironment.findMany({
-    where: { project: { organizationId } },
-    select: { id: true, slug: true },
-  });
+    if (scope === "environment") {
+      tenantOptions.environmentId = environmentId;
+    }
 
-  const fieldMappings: FieldMappings = {
-    project: Object.fromEntries(projects.map((p) => [p.id, p.externalRef])),
-    environment: Object.fromEntries(environments.map((e) => [e.id, e.slug])),
-  };
+    // Build field mappings for project_ref → project_id and environment_id → slug translation
+    const projects = await prisma.project.findMany({
+      where: { organizationId },
+      select: { id: true, externalRef: true },
+    });
 
-  const result = await executeTSQL(clickhouseClient.reader, {
-    ...baseOptions,
-    ...tenantOptions,
-    fieldMappings,
-    clickhouseSettings: {
-      ...getDefaultClickhouseSettings(),
-      ...baseOptions.clickhouseSettings, // Allow caller overrides if needed
-    },
-  });
+    const environments = await prisma.runtimeEnvironment.findMany({
+      where: { project: { organizationId } },
+      select: { id: true, slug: true },
+    });
 
-  // If query succeeded and history options provided, save to history
-  if (result[0] === null && history) {
-    const stats = result[1].stats;
-    const byteSeconds = parseFloat(stats.byte_seconds) || 0;
-    const costInCents = byteSeconds * env.CENTS_PER_QUERY_BYTE_SECOND;
+    const fieldMappings: FieldMappings = {
+      project: Object.fromEntries(projects.map((p) => [p.id, p.externalRef])),
+      environment: Object.fromEntries(environments.map((e) => [e.id, e.slug])),
+    };
 
-    await prisma.customerQuery.create({
-      data: {
-        query: options.query,
-        scope: scopeToEnum[scope],
-        stats: { ...stats },
-        costInCents,
-        source: history.source,
-        organizationId,
-        projectId: scope === "project" || scope === "environment" ? projectId : null,
-        environmentId: scope === "environment" ? environmentId : null,
-        userId: history.userId ?? null,
+    const result = await executeTSQL(clickhouseClient.reader, {
+      ...baseOptions,
+      ...tenantOptions,
+      fieldMappings,
+      clickhouseSettings: {
+        ...getDefaultClickhouseSettings(),
+        ...baseOptions.clickhouseSettings, // Allow caller overrides if needed
       },
     });
-  }
 
-  return result;
+    // If query succeeded and history options provided, save to history
+    if (result[0] === null && history) {
+      const stats = result[1].stats;
+      const byteSeconds = parseFloat(stats.byte_seconds) || 0;
+      const costInCents = byteSeconds * env.CENTS_PER_QUERY_BYTE_SECOND;
+
+      await prisma.customerQuery.create({
+        data: {
+          query: options.query,
+          scope: scopeToEnum[scope],
+          stats: { ...stats },
+          costInCents,
+          source: history.source,
+          organizationId,
+          projectId: scope === "project" || scope === "environment" ? projectId : null,
+          environmentId: scope === "environment" ? environmentId : null,
+          userId: history.userId ?? null,
+        },
+      });
+    }
+
+    return result;
+  } finally {
+    // Always release the concurrency slot
+    await queryConcurrencyLimiter.release({
+      key: organizationId,
+      requestId,
+    });
+  }
 }
