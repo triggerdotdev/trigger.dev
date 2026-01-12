@@ -326,6 +326,8 @@ type RunFiltersProps = {
   hasFilters: boolean;
   /** Hide the AI search input (useful when replacing with a custom search component) */
   hideSearch?: boolean;
+  /** Custom default period for the time filter (e.g., "1h", "7d") */
+  defaultPeriod?: string;
 };
 
 export function RunsFilters(props: RunFiltersProps) {
@@ -348,7 +350,7 @@ export function RunsFilters(props: RunFiltersProps) {
       <FilterMenu {...props} />
       {!props.hideSearch && <AIFilterInput />}
       <RootOnlyToggle defaultValue={props.rootOnlyDefault} />
-      <TimeFilter />
+      <TimeFilter defaultPeriod={props.defaultPeriod} />
       <AppliedFilters {...props} />
       {hasFilters && (
         <Form className="h-6">

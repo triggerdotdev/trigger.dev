@@ -5,7 +5,7 @@ import { Button } from "~/components/primitives/Buttons";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import type { LogEntry, LogsListAppliedFilters } from "~/presenters/v3/LogsListPresenter.server";
+import type { LogEntry } from "~/presenters/v3/LogsListPresenter.server";
 import { getLevelColor, highlightSearchText } from "~/utils/logUtils";
 import { v3RunSpanPath } from "~/utils/pathBuilder";
 import { DateTime } from "../primitives/DateTime";
@@ -131,7 +131,7 @@ export function LogsTable({
               {!isLoading && <NoLogs title="No logs found" />}
             </TableBlankRow>
           ) : logs.length === 0 ? (
-            <BlankState isLoading={isLoading} />
+            <BlankState isLoading={isLoading} onRefresh={() => window.location.reload()} />
           ) : (
             logs.map((log) => {
               const isSelected = selectedLogId === log.id;
@@ -222,8 +222,10 @@ function NoLogs({ title }: { title: string }) {
   );
 }
 
-function BlankState({ isLoading }: { isLoading?: boolean }) {
+function BlankState({ isLoading, onRefresh }: { isLoading?: boolean; onRefresh?: () => void }) {
   if (isLoading) return <TableBlankRow colSpan={6}></TableBlankRow>;
+
+  const handleRefresh = onRefresh ?? (() => window.location.reload());
 
   return (
     <TableBlankRow colSpan={6}>
@@ -235,9 +237,7 @@ function BlankState({ isLoading }: { isLoading?: boolean }) {
           <Button
             LeadingIcon={ArrowPathIcon}
             variant="tertiary/medium"
-            onClick={() => {
-              window.location.reload();
-            }}
+            onClick={handleRefresh}
           >
             Refresh
           </Button>

@@ -67,16 +67,29 @@ export function LogDetailView({ logId, initialLog, onClose, searchTerm }: LogDet
   const environment = useEnvironment();
   const fetcher = useTypedFetcher<typeof logDetailLoader>();
   const [activeTab, setActiveTab] = useState<TabType>("details");
+  const [error, setError] = useState<string | null>(null);
 
   // Fetch full log details when logId changes
   useEffect(() => {
     if (!logId) return;
 
+    setError(null);
     fetcher.load(
       `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/logs/${encodeURIComponent(logId)}`
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [organization.slug, project.slug, environment.slug, logId]);
+
+  // Handle fetch errors
+  useEffect(() => {
+    if (fetcher.data && typeof fetcher.data === "object" && "error" in fetcher.data) {
+      setError(fetcher.data.error as string);
+    } else if (fetcher.state === "idle" && fetcher.data === null && !initialLog) {
+      setError("Failed to load log details");
+    } else {
+      setError(null);
+    }
+  }, [fetcher.data, initialLog, fetcher.state]);
 
   const isLoading = fetcher.state === "loading";
   const log = fetcher.data ?? initialLog;
@@ -110,7 +123,7 @@ export function LogDetailView({ logId, initialLog, onClose, searchTerm }: LogDet
           </Button>
         </div>
         <div className="flex flex-1 items-center justify-center">
-          <Paragraph className="text-text-dimmed">Log not found</Paragraph>
+          <Paragraph className="text-text-dimmed">{error ?? "Log not found"}</Paragraph>
         </div>
       </div>
     );
@@ -255,20 +268,18 @@ function RunTab({ log, runPath }: { log: LogEntry; runPath: string }) {
   const project = useProject();
   const environment = useEnvironment();
   const fetcher = useTypedFetcher<RunContextData>();
-  const [requested, setRequested] = useState(false);
 
   // Fetch run details when tab is active
   useEffect(() => {
     if (!log.runId) return;
 
-    setRequested(true);
     fetcher.load(
       `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/logs/${encodeURIComponent(log.id)}/run?runId=${encodeURIComponent(log.runId)}`
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [organization.slug, project.slug, environment.slug, log.id, log.runId]);
 
-  const isLoading = !requested || fetcher.state === "loading";
+  const isLoading = fetcher.state === "loading";
   const runData = fetcher.data?.run;
 
   if (isLoading) {
@@ -388,14 +399,12 @@ function RunTab({ log, runPath }: { log: LogEntry; runPath: string }) {
           </Property.Value>
         </Property.Item>
 
-        {environment && (
-          <Property.Item>
-            <Property.Label>Environment</Property.Label>
-            <Property.Value>
-              <EnvironmentCombo environment={environment} />
-            </Property.Value>
-          </Property.Item>
-        )}
+        <Property.Item>
+          <Property.Label>Environment</Property.Label>
+          <Property.Value>
+            <EnvironmentCombo environment={environment} />
+          </Property.Value>
+        </Property.Item>
 
         <Property.Item>
           <Property.Label>Queue</Property.Label>

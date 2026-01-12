@@ -93,6 +93,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     search,
     levels,
     includeDebugLogs: isAdmin && showDebug,
+    defaultPeriod: "1h",
   });
 
   const session = await setRootOnlyFilterPreference(filters.rootOnly, request);
@@ -105,6 +106,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       filters,
       isAdmin,
       showDebug,
+      defaultPeriod: "1h",
     },
     {
       headers: {
@@ -115,7 +117,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export default function Page() {
-  const { data, rootOnlyDefault, isAdmin, showDebug } = useTypedLoaderData<typeof loader>();
+  const { data, rootOnlyDefault, isAdmin, showDebug, defaultPeriod } = useTypedLoaderData<typeof loader>();
 
   return (
     <PageContainer>
@@ -154,6 +156,7 @@ export default function Page() {
                   rootOnlyDefault={rootOnlyDefault}
                   isAdmin={isAdmin}
                   showDebug={showDebug}
+                  defaultPeriod={defaultPeriod}
                 />
               );
             }}
@@ -169,11 +172,13 @@ function LogsList({
   rootOnlyDefault,
   isAdmin,
   showDebug,
+  defaultPeriod,
 }: {
   list: Awaited<UseDataFunctionReturn<typeof loader>["data"]>;
   rootOnlyDefault: boolean;
   isAdmin: boolean;
   showDebug: boolean;
+  defaultPeriod?: string;
 }) {
   const navigation = useNavigation();
   const location = useLocation();
@@ -284,6 +289,7 @@ function LogsList({
                 hasFilters={list.hasFilters}
                 rootOnlyDefault={rootOnlyDefault}
                 hideSearch
+                defaultPeriod={defaultPeriod}
               />
               <LogsLevelFilter showDebug={showDebug} />
               <LogsSearchInput />
@@ -302,7 +308,6 @@ function LogsList({
           <LogsTable
             logs={accumulatedLogs}
             hasFilters={list.hasFilters}
-            filters={list.filters}
             searchTerm={list.searchTerm}
             isLoading={isLoading}
             isLoadingMore={fetcher.state === "loading"}

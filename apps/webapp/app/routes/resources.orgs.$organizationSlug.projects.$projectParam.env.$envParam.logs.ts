@@ -53,6 +53,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     cursor,
     levels,
     includeDebugLogs: isAdmin && showDebug,
+    defaultPeriod: "1h",
   }) as any; // Validated by LogsListOptionsSchema at runtime
 
   const presenter = new LogsListPresenter($replica, clickhouseClient);

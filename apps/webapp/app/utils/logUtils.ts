@@ -1,6 +1,10 @@
 import { createElement, Fragment, type ReactNode } from "react";
+import { z } from "zod";
 
-export type LogLevel = "TRACE" | "DEBUG" | "INFO" | "WARN" | "ERROR" | "CANCELLED";
+export const LogLevelSchema = z.enum(["TRACE", "DEBUG", "INFO", "WARN", "ERROR", "CANCELLED"]);
+export type LogLevel = z.infer<typeof LogLevelSchema>;
+
+export const validLogLevels: LogLevel[] = ["TRACE", "DEBUG", "INFO", "WARN", "ERROR", "CANCELLED"];
 
 // Default styles for search highlighting
 const DEFAULT_HIGHLIGHT_STYLES: React.CSSProperties = {
@@ -26,6 +30,12 @@ export function highlightSearchText(
   style: React.CSSProperties = DEFAULT_HIGHLIGHT_STYLES
 ): ReactNode {
   if (!searchTerm || searchTerm.trim() === "") {
+    return text;
+  }
+
+  // Defense in depth: limit search term length to prevent ReDoS and performance issues
+  const MAX_SEARCH_LENGTH = 500;
+  if (searchTerm.length > MAX_SEARCH_LENGTH) {
     return text;
   }
 
@@ -130,13 +140,9 @@ export function getKindLabel(kind: string): string {
     case "SPAN_EVENT":
       return "Event";
     case "LOG_DEBUG":
-      return "Log";
     case "LOG_INFO":
-      return "Log";
     case "LOG_WARN":
-      return "Log";
     case "LOG_ERROR":
-      return "Log";
     case "LOG_LOG":
       return "Log";
     case "DEBUG_EVENT":

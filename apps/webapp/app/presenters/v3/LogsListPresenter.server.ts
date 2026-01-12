@@ -10,10 +10,7 @@ import {
 } from "@trigger.dev/database";
 
 // Create a schema that validates TaskRunStatus enum values
-const TaskRunStatusSchema = z.array(z.string()).refine(
-  (val) => val.every((v) => Object.values(TaskRunStatusEnum).includes(v)),
-  { message: "Invalid TaskRunStatus values" }
-) as unknown as z.ZodSchema<TaskRunStatus[]>;
+const TaskRunStatusSchema = z.array(z.nativeEnum(TaskRunStatusEnum));
 import parseDuration from "parse-duration";
 import { type Direction } from "~/components/ListPagination";
 import { timeFilters } from "~/components/runs/v3/SharedFilters";
@@ -25,7 +22,7 @@ import {
   convertDateToClickhouseDateTime,
   convertClickhouseDateTime64ToJsDate,
 } from "~/v3/eventRepository/clickhouseEventRepository.server";
-import { kindToLevel, type LogLevel } from "~/utils/logUtils";
+import { kindToLevel, type LogLevel, LogLevelSchema } from "~/utils/logUtils";
 
 export type { LogLevel };
 
@@ -56,6 +53,7 @@ export type LogsListOptions = {
   queues?: string[];
   machines?: MachinePresetName[];
   levels?: LogLevel[];
+  defaultPeriod?: string;
   // search
   search?: string;
   includeDebugLogs?: boolean;
@@ -82,8 +80,9 @@ export const LogsListOptionsSchema = z.object({
   batchId: z.string().optional(),
   runId: z.array(z.string()).optional(),
   queues: z.array(z.string()).optional(),
-  machines: z.array(z.string()).optional(),
-  levels: z.array(z.enum(["TRACE", "DEBUG", "INFO", "WARN", "ERROR", "CANCELLED"])).optional(),
+  machines: z.array(MachinePresetName).optional(),
+  levels: z.array(LogLevelSchema).optional(),
+  defaultPeriod: z.string().optional(),
   search: z.string().max(1000).optional(),
   includeDebugLogs: z.boolean().optional(),
   direction: z.enum(["forward", "backward"]).optional(),
@@ -106,6 +105,13 @@ type LogCursor = {
   runId: string;
 };
 
+const LogCursorSchema = z.object({
+  startTime: z.string(),
+  traceId: z.string(),
+  spanId: z.string(),
+  runId: z.string(),
+});
+
 function encodeCursor(cursor: LogCursor): string {
   return Buffer.from(JSON.stringify(cursor)).toString("base64");
 }
@@ -113,7 +119,12 @@ function encodeCursor(cursor: LogCursor): string {
 function decodeCursor(cursor: string): LogCursor | null {
   try {
     const decoded = Buffer.from(cursor, "base64").toString("utf-8");
-    return JSON.parse(decoded) as LogCursor;
+    const parsed = JSON.parse(decoded);
+    const validated = LogCursorSchema.safeParse(parsed);
+    if (!validated.success) {
+      return null;
+    }
+    return validated.data;
   } catch {
     return null;
   }
@@ -189,12 +200,14 @@ export class LogsListPresenter {
       cursor,
       pageSize = DEFAULT_PAGE_SIZE,
       includeDebugLogs = true,
+      defaultPeriod,
     }: LogsListOptions
   ) {
     const time = timeFilters({
       period,
       from,
       to,
+      defaultPeriod,
     });
 
     let effectiveFrom = time.from;
@@ -418,7 +431,7 @@ export class LogsListPresenter {
 
     if (levels && levels.length > 0) {
       const conditions: string[] = [];
-      const params: Record<string, any> = {};
+      const params: Record<string, string[]> = {};
       const hasErrorOrCancelledLevel = levels.includes("ERROR") || levels.includes("CANCELLED");
 
       for (const level of levels) {
@@ -451,7 +464,7 @@ export class LogsListPresenter {
       }
 
       if (conditions.length > 0) {
-        queryBuilder.where(`(${conditions.join(" OR ")})`, params as any);
+        queryBuilder.where(`(${conditions.join(" OR ")})`, params);
       }
     }
 
