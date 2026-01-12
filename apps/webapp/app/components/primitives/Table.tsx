@@ -101,7 +101,7 @@ export const TableHeader = forwardRef<HTMLTableSectionElement, TableHeaderProps>
       <thead
         ref={ref}
         className={cn(
-          "sticky top-0 z-10 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-grid-bright",
+          "safari-only sticky top-0 z-10 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-grid-bright supports-[(-webkit-hyphens:none)]:after:content-none",
           variants[variant].header,
           className
         )}
@@ -275,7 +275,7 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
       <td
         ref={ref}
         className={cn(
-          "text-charcoal-400 has-[[tabindex='0']:focus]:before:absolute has-[[tabindex='0']:focus]:before:-top-px has-[[tabindex='0']:focus]:before:left-0 has-[[tabindex='0']:focus]:before:h-px has-[[tabindex='0']:focus]:before:w-3 has-[[tabindex='0']:focus]:before:bg-grid-dimmed has-[[tabindex='0']:focus]:after:absolute has-[[tabindex='0']:focus]:after:bottom-0 has-[[tabindex='0']:focus]:after:left-0 has-[[tabindex='0']:focus]:after:right-0 has-[[tabindex='0']:focus]:after:h-px has-[[tabindex='0']:focus]:after:bg-grid-dimmed",
+          "safari-only text-xs text-charcoal-400 has-[[tabindex='0']:focus]:before:absolute has-[[tabindex='0']:focus]:before:-top-px has-[[tabindex='0']:focus]:before:left-0 has-[[tabindex='0']:focus]:before:h-px has-[[tabindex='0']:focus]:before:w-3 has-[[tabindex='0']:focus]:before:bg-grid-dimmed has-[[tabindex='0']:focus]:after:absolute has-[[tabindex='0']:focus]:after:bottom-0 has-[[tabindex='0']:focus]:after:left-0 has-[[tabindex='0']:focus]:after:right-0 has-[[tabindex='0']:focus]:after:h-px has-[[tabindex='0']:focus]:after:bg-grid-dimmed",
           variants[variant].cellText,
           variants[variant].cell,
           to || onClick || hasAction
