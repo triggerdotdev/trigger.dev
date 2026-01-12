@@ -12,12 +12,54 @@ import { requestUrl } from "~/utils/requestUrl.server";
 import { v3ProjectSettingsPath, confirmBasicDetailsPath, newProjectPath } from "~/utils/pathBuilder";
 import { validateVercelOAuthState } from "~/v3/vercel/vercelOAuthState.server";
 
-/**
- * Schema for Vercel OAuth callback query parameters.
- * 
- * When a user completes the Vercel integration flow, they are redirected to this callback
- * with various parameters including the authorization code and configuration details.
- */
+async function createOrFindVercelIntegration(params: {
+  tokenResponse: {
+    accessToken: string;
+    tokenType: string;
+    teamId?: string;
+    userId?: string;
+    raw: Record<string, any>;
+  };
+  project: {
+    organizationId: string;
+    organization: { id: string; };
+  };
+  configurationId?: string;
+}) {
+  const { tokenResponse, project, configurationId } = params;
+  
+  // Check if we already have a Vercel org integration for this team
+  let orgIntegration = await VercelIntegrationRepository.findVercelOrgIntegrationByTeamId(
+    project.organizationId,
+    tokenResponse.teamId ?? null
+  );
+
+  // Create org integration if it doesn't exist
+  if (!orgIntegration) {
+    await VercelIntegrationRepository.createVercelOrgIntegration({
+      accessToken: tokenResponse.accessToken,
+      tokenType: tokenResponse.tokenType,
+      teamId: tokenResponse.teamId ?? null,
+      userId: tokenResponse.userId,
+      installationId: configurationId,
+      organization: project.organization,
+      raw: tokenResponse.raw,
+    });
+
+    // Re-fetch to get the full integration with tokenReference
+    orgIntegration = await VercelIntegrationRepository.findVercelOrgIntegrationByTeamId(
+      project.organizationId,
+      tokenResponse.teamId ?? null
+    );
+  }
+
+  if (!orgIntegration) {
+    throw new Error("Failed to create or find Vercel organization integration");
+  }
+
+  return orgIntegration;
+}
+
 const VercelCallbackSchema = z
   .object({
     // OAuth authorization code
@@ -37,21 +79,8 @@ const VercelCallbackSchema = z
   .passthrough();
 
 
-/**
- * Vercel OAuth callback handler.
- * 
- * This route handles the callback from Vercel after a user installs/configures
- * the Trigger.dev integration from the Vercel marketplace.
- * 
- * Flow:
- * 1. User clicks "Connect" on our settings page
- * 2. User is redirected to https://vercel.com/integrations/trigger/new
- * 3. User authorizes the integration on Vercel
- * 4. Vercel redirects back here with an authorization code
- * 5. We exchange the code for an access token
- * 6. We create OrganizationIntegration and OrganizationProjectIntegration records
- * 7. Redirect to settings page with ?vercelOnboarding=true to show onboarding modal
- */
+// Vercel OAuth callback handler
+// Flow: Connect button → Vercel marketplace → user authorizes → callback with code → exchange for token → create integration
 export async function loader({ request }: LoaderFunctionArgs) {
   if (request.method.toUpperCase() !== "GET") {
     return new Response("Method Not Allowed", { status: 405 });
@@ -248,34 +277,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
     // Create the integration
     try {
-      // Check if we already have a Vercel org integration for this team
-      let orgIntegration = await VercelIntegrationRepository.findVercelOrgIntegrationByTeamId(
-        project.organizationId,
-        tokenResponse.teamId ?? null
-      );
-
-      // Create org integration if it doesn't exist
-      if (!orgIntegration) {
-        const newIntegration = await VercelIntegrationRepository.createVercelOrgIntegration({
-          accessToken: tokenResponse.accessToken,
-          tokenType: tokenResponse.tokenType,
-          teamId: tokenResponse.teamId ?? null,
-          userId: tokenResponse.userId,
-          installationId: configurationId,
-          organization: project.organization,
-          raw: tokenResponse.raw,
-        });
-
-        // Re-fetch to get the full integration with tokenReference
-        orgIntegration = await VercelIntegrationRepository.findVercelOrgIntegrationByTeamId(
-          project.organizationId,
-          tokenResponse.teamId ?? null
-        );
-      }
-
-      if (!orgIntegration) {
-        throw new Error("Failed to create or find Vercel organization integration");
-      }
+      await createOrFindVercelIntegration({
+        tokenResponse,
+        project,
+        configurationId,
+      });
 
       logger.info("Vercel organization integration created successfully after onboarding", {
         organizationId: project.organizationId,
@@ -359,34 +365,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
   }
 
   try {
-    // Check if we already have a Vercel org integration for this team
-    let orgIntegration = await VercelIntegrationRepository.findVercelOrgIntegrationByTeamId(
-      project.organizationId,
-      tokenResponse.teamId ?? null
-    );
-
-    // Create org integration if it doesn't exist
-    if (!orgIntegration) {
-      const newIntegration = await VercelIntegrationRepository.createVercelOrgIntegration({
-        accessToken: tokenResponse.accessToken,
-        tokenType: tokenResponse.tokenType,
-        teamId: tokenResponse.teamId ?? null,
-        userId: tokenResponse.userId,
-        installationId: configurationId,
-        organization: project.organization,
-        raw: tokenResponse.raw,
-      });
-
-      // Re-fetch to get the full integration with tokenReference
-      orgIntegration = await VercelIntegrationRepository.findVercelOrgIntegrationByTeamId(
-        project.organizationId,
-        tokenResponse.teamId ?? null
-      );
-    }
-
-    if (!orgIntegration) {
-      throw new Error("Failed to create or find Vercel organization integration");
-    }
+    await createOrFindVercelIntegration({
+      tokenResponse,
+      project,
+      configurationId,
+    });
 
     // The OrganizationIntegration is now created.
     // The user will select a Vercel project during onboarding, which will create the
@@ -424,9 +407,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
   }
 }
 
-/**
- * Exchange authorization code for access token using Vercel OAuth
- */
 async function exchangeCodeForToken(code: string): Promise<{
   accessToken: string;
   tokenType: string;

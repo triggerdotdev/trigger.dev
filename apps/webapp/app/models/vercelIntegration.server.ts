@@ -18,9 +18,22 @@ import {
 } from "~/v3/vercel/vercelProjectIntegrationSchema";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 
-/**
- * Schema for the Vercel OAuth token stored in SecretReference
- */
+// Utility to normalize target arrays from Vercel API responses
+function normalizeTarget(target: unknown): string[] {
+  if (Array.isArray(target)) return target.filter(Boolean) as string[];
+  if (typeof target === 'string') return [target];
+  return [];
+}
+
+// Utility to safely extract envs array from Vercel API response
+function extractEnvs(response: unknown): unknown[] {
+  if (response && typeof response === 'object' && 'envs' in response) {
+    const envs = (response as { envs: unknown }).envs;
+    return Array.isArray(envs) ? envs : [];
+  }
+  return [];
+}
+
 export const VercelSecretSchema = z.object({
   accessToken: z.string(),
   tokenType: z.string().optional(),
@@ -32,34 +45,15 @@ export const VercelSecretSchema = z.object({
 
 export type VercelSecret = z.infer<typeof VercelSecretSchema>;
 
-/**
- * Represents a Vercel environment variable with metadata
- */
 export type VercelEnvironmentVariable = {
   id: string;
   key: string;
-  /**
-   * Type of the environment variable.
-   * "secret" or "sensitive" types cannot have their values retrieved.
-   */
   type: "system" | "encrypted" | "plain" | "sensitive" | "secret";
-  /**
-   * Whether this env var is a secret (value cannot be synced)
-   */
   isSecret: boolean;
-  /**
-   * Target environments for this variable
-   */
   target: string[];
-  /**
-   * Whether this is a shared (team-level) environment variable
-   */
   isShared?: boolean;
 };
 
-/**
- * Represents a custom Vercel environment
- */
 export type VercelCustomEnvironment = {
   id: string;
   slug: string;
@@ -70,13 +64,7 @@ export type VercelCustomEnvironment = {
   };
 };
 
-/**
- * Repository for interacting with Vercel API using @vercel/sdk
- */
 export class VercelIntegrationRepository {
-  /**
-   * Get an authenticated Vercel SDK client for an integration
-   */
   static async getVercelClient(
     integration: OrganizationIntegration & { tokenReference: SecretReference }
   ): Promise<Vercel> {
@@ -96,9 +84,6 @@ export class VercelIntegrationRepository {
     });
   }
 
-  /**
-   * Get the team ID from an integration's stored secret
-   */
   static async getTeamIdFromIntegration(
     integration: OrganizationIntegration & { tokenReference: SecretReference }
   ): Promise<string | null> {
@@ -116,10 +101,7 @@ export class VercelIntegrationRepository {
     return secret.teamId ?? null;
   }
 
-  /**
-   * Get Vercel integration configuration by configurationId
-   * This is used when Vercel redirects to our callback without a state parameter
-   */
+  // Used when Vercel redirects to our callback without a state parameter
   static async getVercelIntegrationConfiguration(
     accessToken: string,
     configurationId: string,
@@ -180,10 +162,7 @@ export class VercelIntegrationRepository {
     }
   }
 
-  /**
-   * Fetch custom environments for a Vercel project.
-   * Excludes standard environments (production, preview, development).
-   */
+  // Excludes standard environments (production, preview, development)
   static async getVercelCustomEnvironments(
     client: Vercel,
     projectId: string,
@@ -214,10 +193,7 @@ export class VercelIntegrationRepository {
     }
   }
 
-  /**
-   * Fetch all environment variables for a Vercel project.
-   * Returns metadata about each variable including whether it's a secret.
-   */
+  // Returns metadata about each variable including whether it's a secret
   static async getVercelEnvironmentVariables(
     client: Vercel,
     projectId: string,
@@ -230,7 +206,7 @@ export class VercelIntegrationRepository {
       });
 
       // The response is a union type - check if it has envs array
-      const envs = "envs" in response && Array.isArray(response.envs) ? response.envs : [];
+      const envs = extractEnvs(response);
 
       return envs.map((env: any) => {
         const type = env.type as VercelEnvironmentVariable["type"];
@@ -242,7 +218,7 @@ export class VercelIntegrationRepository {
           key: env.key,
           type,
           isSecret,
-          target: Array.isArray(env.target) ? env.target : [env.target].filter(Boolean),
+          target: normalizeTarget(env.target),
         };
       });
     } catch (error) {
@@ -255,9 +231,6 @@ export class VercelIntegrationRepository {
     }
   }
 
-  /**
-   * Represents an environment variable with its decrypted value
-   */
   static async getVercelEnvironmentVariableValues(
     client: Vercel,
     projectId: string,
@@ -280,8 +253,7 @@ export class VercelIntegrationRepository {
       });
 
       // The response is a union type - check if it has envs array
-      const envs =
-        "envs" in response && Array.isArray(response.envs) ? response.envs : [];
+      const envs = extractEnvs(response);
 
       // Filter and map env vars
       const result = envs
@@ -292,9 +264,7 @@ export class VercelIntegrationRepository {
           }
           // Filter by target if provided
           if (target) {
-            const envTargets = Array.isArray(env.target)
-              ? env.target
-              : [env.target].filter(Boolean);
+            const envTargets = normalizeTarget(env.target);
             return envTargets.includes(target);
           }
           return true;
@@ -306,9 +276,7 @@ export class VercelIntegrationRepository {
           return {
             key: env.key as string,
             value: env.value as string,
-            target: Array.isArray(env.target)
-              ? env.target
-              : [env.target].filter(Boolean),
+            target: normalizeTarget(env.target),
             type,
             isSecret,
           };
@@ -326,11 +294,7 @@ export class VercelIntegrationRepository {
     }
   }
 
-  /**
-   * Fetch shared environment variables metadata from Vercel team.
-   * Returns metadata about each variable (not values).
-   * Shared env vars are team-level variables that can be linked to multiple projects.
-   */
+  // Team-level variables that can be linked to multiple projects
   static async getVercelSharedEnvironmentVariables(
     client: Vercel,
     teamId: string,
@@ -376,11 +340,6 @@ export class VercelIntegrationRepository {
     }
   }
 
-  /**
-   * Fetch shared environment variables from Vercel team with their values.
-   * Returns decrypted values where available.
-   * Shared env vars are team-level variables that can be linked to multiple projects.
-   */
   static async getVercelSharedEnvironmentVariableValues(
     client: Vercel,
     teamId: string,
@@ -397,30 +356,12 @@ export class VercelIntegrationRepository {
   > {
     try {
       // First, get the list of shared env vars
-      logger.debug("Fetching shared env vars list from Vercel", {
-        teamId,
-        projectId,
-      });
-
       const listResponse = await client.environment.listSharedEnvVariable({
         teamId,
         ...(projectId && { projectId }),
       });
 
       const envVars = listResponse.data || [];
-
-      logger.info("Listed shared env vars from Vercel", {
-        teamId,
-        projectId,
-        count: envVars.length,
-        envVarsInfo: envVars.map((e) => ({
-          key: e.key,
-          type: e.type,
-          hasValueInList: !!e.value,
-          decrypted: (e as any).decrypted,
-          target: e.target,
-        })),
-      });
 
       if (envVars.length === 0) {
         return [];
@@ -438,11 +379,6 @@ export class VercelIntegrationRepository {
 
           // Skip sensitive types early - they won't have values
           if (isSecret) {
-            logger.debug("Skipping sensitive shared env var", {
-              teamId,
-              envKey: env.key,
-              type,
-            });
             return null;
           }
 
@@ -451,13 +387,6 @@ export class VercelIntegrationRepository {
           const applyToAllCustomEnvs = (env as any).applyToAllCustomEnvironments as boolean | undefined;
 
           if (listValue) {
-            logger.debug("Using value from list response for shared env var", {
-              teamId,
-              envKey: env.key,
-              type,
-              valueLength: listValue.length,
-              applyToAllCustomEnvironments: applyToAllCustomEnvs,
-            });
 
             return {
               key: env.key as string,
@@ -499,32 +428,17 @@ export class VercelIntegrationRepository {
 
             // Skip if no value
             if (!getResponse.value) {
-              logger.debug("Skipping shared env var - no value returned from getSharedEnvVar", {
-                teamId,
-                envId: env.id,
-                envKey: env.key,
-                type,
-              });
               return null;
             }
 
             const result = {
               key: env.key as string,
               value: getResponse.value as string,
-              target: Array.isArray(env.target)
-                ? (env.target as string[])
-                : [env.target].filter(Boolean) as string[],
+              target: normalizeTarget(env.target),
               type,
               isSecret,
               applyToAllCustomEnvironments: (env as any).applyToAllCustomEnvironments as boolean | undefined,
             };
-
-            logger.debug("Successfully fetched shared env var value from getSharedEnvVar", {
-              teamId,
-              envKey: result.key,
-              target: result.target,
-              valueLength: result.value.length,
-            });
 
             return result;
           } catch (error) {
@@ -581,15 +495,6 @@ export class VercelIntegrationRepository {
       // Filter out null results (failed fetches or sensitive types)
       const validResults = results.filter((r): r is NonNullable<typeof r> => r !== null);
 
-      logger.info("Completed fetching shared env var values", {
-        teamId,
-        projectId,
-        totalListed: envVars.length,
-        successfullyFetched: validResults.length,
-        failedOrSkipped: envVars.length - validResults.length,
-        fetchedKeys: validResults.map((r) => r.key),
-      });
-
       return validResults;
     } catch (error) {
       logger.error("Failed to fetch Vercel shared environment variable values", {
@@ -602,9 +507,6 @@ export class VercelIntegrationRepository {
     }
   }
 
-  /**
-   * Fetch Vercel projects for a team or user
-   */
   static async getVercelProjects(
     client: Vercel,
     teamId?: string | null
@@ -629,17 +531,13 @@ export class VercelIntegrationRepository {
     }
   }
 
-  /**
-   * Create a Vercel organization integration from OAuth callback data.
-   * This stores the access token and creates the OrganizationIntegration record.
-   */
   static async createVercelOrgIntegration(params: {
     accessToken: string;
     tokenType?: string;
     teamId: string | null;
     userId?: string;
     installationId?: string;
-    organization: Organization;
+    organization: Pick<Organization, "id">;
     raw?: Record<string, any>;
   }): Promise<OrganizationIntegration> {
     const result = await $transaction(prisma, async (tx) => {
@@ -695,9 +593,6 @@ export class VercelIntegrationRepository {
     return result;
   }
 
-  /**
-   * Create a Vercel project integration linking a Vercel project to a Trigger.dev project
-   */
   static async createVercelProjectIntegration(params: {
     organizationIntegrationId: string;
     projectId: string;
@@ -723,9 +618,6 @@ export class VercelIntegrationRepository {
     });
   }
 
-  /**
-   * Find an existing Vercel organization integration by team ID
-   */
   static async findVercelOrgIntegrationByTeamId(
     organizationId: string,
     teamId: string | null
@@ -743,9 +635,6 @@ export class VercelIntegrationRepository {
     });
   }
 
-  /**
-   * Find Vercel organization integration for a project
-   */
   static async findVercelOrgIntegrationForProject(
     projectId: string
   ): Promise<(OrganizationIntegration & { tokenReference: SecretReference }) | null> {
@@ -770,9 +659,6 @@ export class VercelIntegrationRepository {
     return projectIntegration?.organizationIntegration ?? null;
   }
 
-  /**
-   * Find Vercel organization integration by organization ID
-   */
   static async findVercelOrgIntegrationByOrganization(
     organizationId: string
   ): Promise<(OrganizationIntegration & { tokenReference: SecretReference }) | null> {
@@ -788,21 +674,8 @@ export class VercelIntegrationRepository {
     });
   }
 
-  /**
-   * Sync Trigger.dev API keys to Vercel as sensitive environment variables.
-   * Uses batch operations to minimize API calls.
-   * 
-   * Mapping:
-   * - Production API key → Vercel "production" environment
-   * - Staging API key → Vercel custom environment (from vercelStagingEnvironment config)
-   * - Preview API key → Vercel "preview" environment
-   * - Development API key → Vercel "development" environment
-   * 
-   * @param projectId - The Trigger.dev project ID
-   * @param vercelProjectId - The Vercel project ID
-   * @param teamId - The Vercel team ID (optional)
-   * @param vercelStagingEnvironment - The custom Vercel environment slug for staging (optional)
-   */
+  // Sync Trigger.dev API keys to Vercel as sensitive environment variables
+  // Production → production, Staging → custom env, Preview → preview, Development → development
   static async syncApiKeysToVercel(params: {
     projectId: string;
     vercelProjectId: string;
@@ -924,10 +797,7 @@ export class VercelIntegrationRepository {
     }
   }
 
-  /**
-   * Sync a single API key to Vercel for a specific environment.
-   * Used when API keys are regenerated.
-   */
+  // Used when API keys are regenerated
   static async syncSingleApiKeyToVercel(params: {
     projectId: string;
     environmentType: "PRODUCTION" | "STAGING" | "PREVIEW" | "DEVELOPMENT";
@@ -1020,21 +890,8 @@ export class VercelIntegrationRepository {
     }
   }
 
-  /**
-   * Pull environment variables from Vercel and store them in the Trigger.dev database.
-   * 
-   * Environment mapping:
-   * - Vercel "production" → Trigger.dev PRODUCTION
-   * - Vercel "preview" → Trigger.dev PREVIEW
-   * - Vercel custom environment (vercelStagingEnvironment) → Trigger.dev STAGING
-   * 
-   * @param projectId - The Trigger.dev project ID
-   * @param vercelProjectId - The Vercel project ID
-   * @param teamId - The Vercel team ID (optional)
-   * @param vercelStagingEnvironment - The custom Vercel environment slug for staging (optional)
-   * @param syncEnvVarsMapping - Mapping of which env vars to sync (vars with false are skipped)
-   * @param orgIntegration - Organization integration with token reference
-   */
+  // Pull environment variables from Vercel and store them in Trigger.dev
+  // production → PRODUCTION, preview → PREVIEW, custom env → STAGING
   static async pullEnvVarsFromVercel(params: {
     projectId: string;
     vercelProjectId: string;
@@ -1127,30 +984,11 @@ export class VercelIntegrationRepository {
       }> = [];
 
       if (params.teamId) {
-        logger.info("Fetching shared env vars for pull operation", {
-          projectId: params.projectId,
-          vercelProjectId: params.vercelProjectId,
-          teamId: params.teamId,
-        });
-
         sharedEnvVars = await this.getVercelSharedEnvironmentVariableValues(
           client,
           params.teamId,
           params.vercelProjectId
         );
-
-        logger.info("Fetched shared env vars from Vercel for pull", {
-          projectId: params.projectId,
-          vercelProjectId: params.vercelProjectId,
-          count: sharedEnvVars.length,
-          keys: sharedEnvVars.map((v) => v.key),
-          targets: sharedEnvVars.map((v) => ({ key: v.key, target: v.target })),
-        });
-      } else {
-        logger.debug("Skipping shared env vars fetch - no teamId", {
-          projectId: params.projectId,
-          vercelProjectId: params.vercelProjectId,
-        });
       }
 
       // Process each environment mapping
@@ -1164,14 +1002,6 @@ export class VercelIntegrationRepository {
             mapping.vercelTarget
           );
 
-          logger.debug("Fetched project env vars for target", {
-            projectId: params.projectId,
-            vercelTarget: mapping.vercelTarget,
-            triggerEnvType: mapping.triggerEnvType,
-            projectEnvVarsCount: projectEnvVars.length,
-            projectEnvVarKeys: projectEnvVars.map((v) => v.key),
-          });
-
           // Filter shared env vars that target this environment
           const standardTargets = ["production", "preview", "development"];
           const isCustomEnvironment = !standardTargets.includes(mapping.vercelTarget);
@@ -1183,27 +1013,7 @@ export class VercelIntegrationRepository {
             // Also include if applyToAllCustomEnvironments is true and this is a custom environment
             const matchesCustomEnv = isCustomEnvironment && envVar.applyToAllCustomEnvironments === true;
 
-            const matches = matchesTarget || matchesCustomEnv;
-
-            if (!matches) {
-              logger.debug("Shared env var excluded - target mismatch", {
-                envKey: envVar.key,
-                envVarTarget: envVar.target,
-                expectedTarget: mapping.vercelTarget,
-                isCustomEnvironment,
-                applyToAllCustomEnvironments: envVar.applyToAllCustomEnvironments,
-              });
-            }
-            return matches;
-          });
-
-          logger.info("Filtered shared env vars for target", {
-            projectId: params.projectId,
-            vercelTarget: mapping.vercelTarget,
-            triggerEnvType: mapping.triggerEnvType,
-            totalSharedEnvVars: sharedEnvVars.length,
-            matchingSharedEnvVars: filteredSharedEnvVars.length,
-            matchingKeys: filteredSharedEnvVars.map((v) => v.key),
+            return matchesTarget || matchesCustomEnv;
           });
 
           // Merge project and shared env vars (project vars take precedence)
@@ -1214,22 +1024,7 @@ export class VercelIntegrationRepository {
             ...sharedEnvVarsToAdd,
           ];
 
-          logger.info("Merged project and shared env vars", {
-            projectId: params.projectId,
-            vercelTarget: mapping.vercelTarget,
-            projectEnvVarsCount: projectEnvVars.length,
-            sharedEnvVarsAddedCount: sharedEnvVarsToAdd.length,
-            sharedEnvVarsSkippedDueToOverlap: filteredSharedEnvVars.length - sharedEnvVarsToAdd.length,
-            totalMergedCount: mergedEnvVars.length,
-            mergedKeys: mergedEnvVars.map((v) => v.key),
-          });
-
           if (mergedEnvVars.length === 0) {
-            logger.debug("No env vars found for Vercel target", {
-              projectId: params.projectId,
-              vercelProjectId: params.vercelProjectId,
-              vercelTarget: mapping.vercelTarget,
-            });
             continue;
           }
 
@@ -1237,58 +1032,25 @@ export class VercelIntegrationRepository {
           const varsToSync = mergedEnvVars.filter((envVar) => {
             // Skip secrets (they don't have values anyway)
             if (envVar.isSecret) {
-              logger.debug("Env var excluded - is secret", { envKey: envVar.key });
               return false;
             }
             // Filter out TRIGGER_SECRET_KEY - these are managed by Trigger.dev
             if (envVar.key === "TRIGGER_SECRET_KEY") {
-              logger.debug("Env var excluded - is TRIGGER_SECRET_KEY", { envKey: envVar.key });
               return false;
             }
             // Check if this var should be synced based on mapping for this environment
-            const shouldSync = shouldSyncEnvVar(
+            return shouldSyncEnvVar(
               params.syncEnvVarsMapping,
               envVar.key,
               mapping.triggerEnvType as TriggerEnvironmentType
             );
-            if (!shouldSync) {
-              logger.debug("Env var excluded - disabled in sync mapping", {
-                envKey: envVar.key,
-                environmentType: mapping.triggerEnvType,
-              });
-            }
-            return shouldSync;
-          });
-
-          logger.info("Filtered env vars to sync", {
-            projectId: params.projectId,
-            vercelTarget: mapping.vercelTarget,
-            triggerEnvType: mapping.triggerEnvType,
-            totalMergedCount: mergedEnvVars.length,
-            varsToSyncCount: varsToSync.length,
-            varsToSyncKeys: varsToSync.map((v) => v.key),
           });
 
           if (varsToSync.length === 0) {
-            logger.debug("No env vars to sync after filtering", {
-              projectId: params.projectId,
-              vercelProjectId: params.vercelProjectId,
-              vercelTarget: mapping.vercelTarget,
-              totalVars: mergedEnvVars.length,
-            });
             continue;
           }
 
           // Create env vars in Trigger.dev
-          logger.info("Saving env vars to Trigger.dev", {
-            projectId: params.projectId,
-            runtimeEnvironmentId: mapping.runtimeEnvironmentId,
-            vercelTarget: mapping.vercelTarget,
-            triggerEnvType: mapping.triggerEnvType,
-            variableCount: varsToSync.length,
-            variableKeys: varsToSync.map((v) => v.key),
-          });
-
           const result = await envVarRepository.create(params.projectId, {
             override: true, // Override existing vars
             environmentIds: [mapping.runtimeEnvironmentId],
@@ -1301,14 +1063,6 @@ export class VercelIntegrationRepository {
 
           if (result.success) {
             syncedCount += varsToSync.length;
-            logger.info("Successfully synced env vars from Vercel to Trigger.dev", {
-              projectId: params.projectId,
-              vercelProjectId: params.vercelProjectId,
-              vercelTarget: mapping.vercelTarget,
-              triggerEnvType: mapping.triggerEnvType,
-              count: varsToSync.length,
-              keys: varsToSync.map((v) => v.key),
-            });
           } else {
             const errorMsg = `Failed to sync env vars for ${mapping.triggerEnvType}: ${result.error}`;
             errors.push(errorMsg);
@@ -1354,11 +1108,7 @@ export class VercelIntegrationRepository {
     }
   }
 
-  /**
-   * Batch create or update environment variables in Vercel.
-   * Fetches existing env vars once, then creates new ones in a single batch request
-   * and updates existing ones individually (Vercel doesn't support batch updates).
-   */
+  // Batch create or update environment variables in Vercel
   static async batchUpsertVercelEnvVars(params: {
     client: Vercel;
     vercelProjectId: string;
@@ -1412,7 +1162,7 @@ export class VercelIntegrationRepository {
         if (env.key !== envVar.key) {
           return false;
         }
-        const envTargets = Array.isArray(env.target) ? env.target : [env.target].filter(Boolean);
+        const envTargets = normalizeTarget(env.target);
         return (
           envVar.target.length === envTargets.length &&
           envVar.target.every((t) => envTargets.includes(t))
@@ -1494,11 +1244,7 @@ export class VercelIntegrationRepository {
     return { created, updated, errors };
   }
 
-  /**
-   * Create or update an environment variable in Vercel.
-   * First tries to find an existing variable with the same key and target,
-   * then either creates or updates it.
-   */
+  // Create or update an environment variable in Vercel
   private static async upsertVercelEnvVar(params: {
     client: Vercel;
     vercelProjectId: string;
@@ -1527,7 +1273,7 @@ export class VercelIntegrationRepository {
         return false;
       }
       // Check if the targets match (env var targets this specific environment)
-      const envTargets = Array.isArray(env.target) ? env.target : [env.target].filter(Boolean);
+      const envTargets = normalizeTarget(env.target);
       // Match if the targets are exactly the same
       return target.length === envTargets.length && target.every((t) => envTargets.includes(t));
     });
@@ -1559,9 +1305,6 @@ export class VercelIntegrationRepository {
     }
   }
 
-  /**
-   * Uninstall a Vercel integration by removing the configuration
-   */
   static async uninstallVercelIntegration(
     integration: OrganizationIntegration & { tokenReference: SecretReference }
   ): Promise<void> {
