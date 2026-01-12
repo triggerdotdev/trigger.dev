@@ -63,4 +63,5 @@ apps/**/public/build
 /packages/python/src/package.json
 **/.claude/settings.local.json
 .mcp.log
+.mcp.json
 .cursor/debug.log
