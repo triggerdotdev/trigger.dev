@@ -141,8 +141,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 
   try {
-    // First, uninstall the integration from Vercel side
-    await VercelIntegrationRepository.uninstallVercelIntegration(vercelIntegration);
+    // First, attempt to uninstall the integration from Vercel side
+    const uninstallResult = await VercelIntegrationRepository.uninstallVercelIntegration(vercelIntegration);
 
     // Then soft-delete the integration and all connected projects in a transaction
     await $transaction(prisma, async (tx) => {
@@ -162,12 +162,21 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       });
     });
 
-    logger.info("Vercel integration uninstalled successfully", {
-      organizationId: organization.id,
-      organizationSlug,
-      userId,
-      integrationId: vercelIntegration.id,
-    });
+    if (uninstallResult.authInvalid) {
+      logger.warn("Vercel integration uninstalled with auth error - token invalid", {
+        organizationId: organization.id,
+        organizationSlug,
+        userId,
+        integrationId: vercelIntegration.id,
+      });
+    } else {
+      logger.info("Vercel integration uninstalled successfully", {
+        organizationId: organization.id,
+        organizationSlug,
+        userId,
+        integrationId: vercelIntegration.id,
+      });
+    }
 
     // Redirect back to organization settings
     return redirect(`/orgs/${organizationSlug}/settings`);

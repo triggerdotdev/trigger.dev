@@ -80,6 +80,10 @@ function isVercelAuthError(error: unknown): boolean {
     const response = (error as { response?: { status?: number } }).response;
     return response?.status === 401 || response?.status === 403;
   }
+  if (error && typeof error === 'object' && 'statusCode' in error) {
+    const statusCode = (error as { statusCode?: number }).statusCode;
+    return statusCode === 401 || statusCode === 403;
+  }
   if (error && typeof error === 'string' && (error.includes('401') || error.includes('403'))) {
     return true;
   }
@@ -1440,7 +1444,7 @@ export class VercelIntegrationRepository {
 
   static async uninstallVercelIntegration(
     integration: OrganizationIntegration & { tokenReference: SecretReference }
-  ): Promise<void> {
+  ): Promise<{ authInvalid: boolean }> {
     const client = await this.getVercelClient(integration);
 
     const secret = await getSecretStore(integration.tokenReference.provider).getSecret(
@@ -1456,11 +1460,20 @@ export class VercelIntegrationRepository {
       await client.integrations.deleteConfiguration({
         id: secret.installationId,
       });
+      return { authInvalid: false };
     } catch (error) {
+      const isAuthError = isVercelAuthError(error);
       logger.error("Failed to uninstall Vercel integration", {
         installationId: secret.installationId,
         error: error instanceof Error ? error.message : "Unknown error",
+        isAuthError,
       });
+      
+      // If it's an auth error (401/403), we should still clean up our side
+      // but return the flag so caller knows the token is invalid
+      if (isAuthError) {
+        return { authInvalid: true };
+      }
       throw error;
     }
   }

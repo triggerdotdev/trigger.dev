@@ -140,10 +140,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const { code, state, error, error_description, configurationId, next: nextUrl } = parsedParams.data;
 
   // Handle errors from Vercel
-  if (error) {
+  if (error && true) {
     logger.error("Vercel OAuth error", { error, error_description });
-    // Redirect to a generic error page or back to settings
-    return redirect(`/?error=${encodeURIComponent(error_description || error)}`);
+    throw new Response("Vercel OAuth error", { status: 500 });
   }
 
   // Validate required parameters
