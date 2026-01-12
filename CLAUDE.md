@@ -231,3 +231,64 @@ Running:
 cd references/hello-world
 pnpm exec trigger dev  # or with --log-level debug
 ```
+
+## Local Task Testing Workflow
+
+This workflow enables Claude Code to run the webapp and trigger dev simultaneously, trigger tasks, and inspect results for testing code changes.
+
+### Step 1: Start Webapp in Background
+
+```bash
+# Run from repo root with run_in_background: true
+pnpm run dev --filter webapp
+```
+
+Verify webapp is running:
+
+```bash
+curl -s http://localhost:3030/healthcheck  # Should return 200
+```
+
+### Step 2: Start Trigger Dev in Background
+
+```bash
+# Run from hello-world directory with run_in_background: true
+cd references/hello-world && pnpm exec trigger dev
+```
+
+The worker will build and register tasks. Check output for "Local worker ready [node]" message.
+
+### Step 3: Trigger and Monitor Tasks via MCP
+
+Use the Trigger.dev MCP tools to interact with tasks:
+
+```
+# Get current worker and registered tasks
+mcp__trigger__get_current_worker(projectRef: "proj_rrkpdguyagvsoktglnod", environment: "dev")
+
+# Trigger a task
+mcp__trigger__trigger_task(
+  projectRef: "proj_rrkpdguyagvsoktglnod",
+  environment: "dev",
+  taskId: "hello-world",
+  payload: {"message": "Hello from Claude"}
+)
+
+# List runs to see status
+mcp__trigger__list_runs(
+  projectRef: "proj_rrkpdguyagvsoktglnod",
+  environment: "dev",
+  taskIdentifier: "hello-world",
+  limit: 5
+)
+```
+
+### Step 4: Monitor Execution
+
+- Check trigger dev output file for real-time execution logs
+- Successful runs show: `Task | Run ID | Success (Xms)`
+- Dashboard available at: http://localhost:3030/orgs/references-9dfd/projects/hello-world-97DT/env/dev/runs
+
+### Key Project Refs
+
+- hello-world: `proj_rrkpdguyagvsoktglnod`
