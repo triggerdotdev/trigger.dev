@@ -1,4 +1,5 @@
 import { column, type TableSchema } from "@internal/tsql";
+import { autoFormatSQL } from "~/components/code/TSQLEditor";
 import { runFriendlyStatus, runStatusTitleFromStatus } from "~/components/runs/v3/TaskRunStatus";
 import { logger } from "~/services/logger.server";
 
@@ -426,7 +427,7 @@ export const querySchemas: TableSchema[] = [runsSchema];
 /**
  * Default query for the query editor
  */
-export const defaultQuery = `SELECT run_id, task_identifier, triggered_at, status
+export const defaultQuery = autoFormatSQL(`SELECT run_id, task_identifier, triggered_at, status
 FROM runs
 ORDER BY triggered_at DESC
-LIMIT 100`;
+LIMIT 100`);
