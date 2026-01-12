@@ -18,14 +18,12 @@ import {
 } from "~/v3/vercel/vercelProjectIntegrationSchema";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 
-// Utility to normalize target arrays from Vercel API responses
 function normalizeTarget(target: unknown): string[] {
   if (Array.isArray(target)) return target.filter(Boolean) as string[];
   if (typeof target === 'string') return [target];
   return [];
 }
 
-// Utility to safely extract envs array from Vercel API response
 function extractEnvs(response: unknown): unknown[] {
   if (response && typeof response === 'object' && 'envs' in response) {
     const envs = (response as { envs: unknown }).envs;
@@ -116,8 +114,6 @@ export class VercelIntegrationRepository {
         bearerToken: accessToken,
       });
 
-      // Use the Vercel SDK to get the integration configuration
-      // The SDK might have a method for this, or we need to make a direct API call
       const response = await fetch(
         `https://api.vercel.com/v1/integrations/configuration/${configurationId}${teamId ? `?teamId=${teamId}` : ""}`,
         {
@@ -162,7 +158,6 @@ export class VercelIntegrationRepository {
     }
   }
 
-  // Excludes standard environments (production, preview, development)
   static async getVercelCustomEnvironments(
     client: Vercel,
     projectId: string,
@@ -235,7 +230,7 @@ export class VercelIntegrationRepository {
     client: Vercel,
     projectId: string,
     teamId?: string | null,
-    target?: string // Optional: filter by Vercel environment (production, preview, etc.)
+    target?: string
   ): Promise<
     Array<{
       key: string;
@@ -612,7 +607,7 @@ export class VercelIntegrationRepository {
         organizationIntegrationId: params.organizationIntegrationId,
         projectId: params.projectId,
         externalEntityId: params.vercelProjectId,
-        integrationData: integrationData as any,
+        integrationData: integrationData,
         installedBy: params.installedByUserId,
       },
     });

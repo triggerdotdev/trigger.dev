@@ -433,7 +433,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   // Handle skip-onboarding action
   if (actionType === "skip-onboarding") {
-    await vercelService.skipOnboarding(project.id);
     const settingsPath = v3ProjectSettingsPath(
       { slug: organizationSlug },
       { slug: projectParam },
