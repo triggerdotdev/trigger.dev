@@ -34,8 +34,31 @@ async function createOrFindVercelIntegration(params: {
     tokenResponse.teamId ?? null
   );
 
-  // Create org integration if it doesn't exist
-  if (!orgIntegration) {
+  // If integration exists, update the token instead of creating new one
+  if (orgIntegration) {
+    logger.info("Updating existing Vercel integration token", {
+      integrationId: orgIntegration.id,
+      teamId: tokenResponse.teamId,
+      organizationId: project.organizationId,
+    });
+
+    await VercelIntegrationRepository.updateVercelOrgIntegrationToken({
+      integrationId: orgIntegration.id,
+      accessToken: tokenResponse.accessToken,
+      tokenType: tokenResponse.tokenType,
+      teamId: tokenResponse.teamId ?? null,
+      userId: tokenResponse.userId,
+      installationId: configurationId,
+      raw: tokenResponse.raw,
+    });
+
+    // Re-fetch to get updated integration
+    orgIntegration = await VercelIntegrationRepository.findVercelOrgIntegrationByTeamId(
+      project.organizationId,
+      tokenResponse.teamId ?? null
+    );
+  } else {
+    // Create new org integration if it doesn't exist
     await VercelIntegrationRepository.createVercelOrgIntegration({
       accessToken: tokenResponse.accessToken,
       tokenType: tokenResponse.tokenType,

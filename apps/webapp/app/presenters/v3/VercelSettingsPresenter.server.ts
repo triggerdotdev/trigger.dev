@@ -21,6 +21,7 @@ type VercelSettingsOptions = {
 export type VercelSettingsResult = {
   enabled: boolean;
   hasOrgIntegration: boolean;
+  authInvalid?: boolean;
   connectedProject?: {
     id: string;
     vercelProjectId: string;
@@ -43,167 +44,223 @@ export type VercelOnboardingData = {
   environmentVariables: VercelEnvironmentVariable[];
   availableProjects: VercelAvailableProject[];
   hasProjectSelected: boolean;
+  authInvalid?: boolean;
 };
 
 export class VercelSettingsPresenter extends BasePresenter {
   /**
    * Get Vercel integration settings for the settings page
    */
-  public call({ projectId, organizationId }: VercelSettingsOptions) {
-    const vercelIntegrationEnabled = OrgIntegrationRepository.isVercelSupported;
+  public async call({ projectId, organizationId }: VercelSettingsOptions) {
+    try {
+      const vercelIntegrationEnabled = OrgIntegrationRepository.isVercelSupported;
 
-    if (!vercelIntegrationEnabled) {
+      if (!vercelIntegrationEnabled) {
+        return ok({
+          enabled: false,
+          hasOrgIntegration: false,
+          authInvalid: false,
+          connectedProject: undefined,
+          isGitHubConnected: false,
+          hasStagingEnvironment: false,
+        } as VercelSettingsResult);
+      }
+
+      const orgIntegration = await (this._replica as PrismaClient).organizationIntegration.findFirst({
+        where: {
+          organizationId,
+          service: "VERCEL",
+          deletedAt: null,
+        },
+        include: {
+          tokenReference: true,
+        },
+      });
+
+      const hasOrgIntegration = orgIntegration !== null;
+
+      if (hasOrgIntegration) {
+        const tokenValidation = await VercelIntegrationRepository.validateVercelToken(orgIntegration);
+        if (!tokenValidation.isValid) {
+          return ok({
+            enabled: true,
+            hasOrgIntegration: true,
+            authInvalid: true,
+            connectedProject: undefined,
+            isGitHubConnected: false,
+            hasStagingEnvironment: false,
+          } as VercelSettingsResult);
+        }
+      }
+
+      const checkOrgIntegration = () => fromPromise(
+        Promise.resolve(hasOrgIntegration),
+        (error) => ({
+          type: "other" as const,
+          cause: error,
+        })
+      );
+
+      const checkGitHubConnection = () =>
+        fromPromise(
+          (this._replica as PrismaClient).connectedGithubRepository.findFirst({
+            where: {
+              projectId,
+              repository: {
+                installation: {
+                  deletedAt: null,
+                  suspendedAt: null,
+                },
+              },
+            },
+            select: {
+              id: true,
+            },
+          }),
+          (error) => ({
+            type: "other" as const,
+            cause: error,
+          })
+        ).map((repo) => repo !== null);
+
+      // Check if staging environment exists
+      const checkStagingEnvironment = () =>
+        fromPromise(
+          (this._replica as PrismaClient).runtimeEnvironment.findFirst({
+            select: {
+              id: true,
+            },
+            where: {
+              projectId,
+              type: "STAGING",
+            },
+          }),
+          (error) => ({
+            type: "other" as const,
+            cause: error,
+          })
+        ).map((env) => env !== null);
+
+      // Get Vercel project integration
+      const getVercelProjectIntegration = () =>
+        fromPromise(
+          (this._replica as PrismaClient).organizationProjectIntegration.findFirst({
+            where: {
+              projectId,
+              deletedAt: null,
+              organizationIntegration: {
+                service: "VERCEL",
+                deletedAt: null,
+              },
+            },
+            include: {
+              organizationIntegration: true,
+            },
+          }),
+          (error) => ({
+            type: "other" as const,
+            cause: error,
+          })
+        ).map((integration) => {
+          if (!integration) {
+            return undefined;
+          }
+
+          const parsedData = VercelProjectIntegrationDataSchema.safeParse(
+            integration.integrationData
+          );
+
+          if (!parsedData.success) {
+            return undefined;
+          }
+
+          return {
+            id: integration.id,
+            vercelProjectId: integration.externalEntityId,
+            vercelProjectName: parsedData.data.vercelProjectName,
+            vercelTeamId: parsedData.data.vercelTeamId,
+            integrationData: parsedData.data,
+            createdAt: integration.createdAt,
+          };
+        });
+
+      try {
+        return ResultAsync.combine([
+          checkOrgIntegration(),
+          checkGitHubConnection(),
+          checkStagingEnvironment(),
+          getVercelProjectIntegration(),
+        ]).map(([hasOrgIntegration, isGitHubConnected, hasStagingEnvironment, connectedProject]) => ({
+          enabled: true,
+          hasOrgIntegration,
+          authInvalid: false,
+          connectedProject,
+          isGitHubConnected,
+          hasStagingEnvironment,
+        })).mapErr((error) => {
+          // Log the error and return a safe fallback
+          console.error("Error in VercelSettingsPresenter.call:", error);
+          return error;
+        });
+      } catch (syncError) {
+        // Handle any synchronous errors that might occur
+        console.error("Synchronous error in VercelSettingsPresenter.call:", syncError);
+        return ok({
+          enabled: true,
+          hasOrgIntegration: false,
+          authInvalid: true,
+          connectedProject: undefined,
+          isGitHubConnected: false,
+          hasStagingEnvironment: false,
+        } as VercelSettingsResult);
+      }
+    } catch (error) {
+      // If there's an unexpected error, log it and return a safe error result
+      console.error("Unexpected error in VercelSettingsPresenter.call:", error);
       return ok({
-        enabled: false,
+        enabled: true,
         hasOrgIntegration: false,
+        authInvalid: true,
         connectedProject: undefined,
         isGitHubConnected: false,
         hasStagingEnvironment: false,
       } as VercelSettingsResult);
     }
-
-    // Check if org-level Vercel integration exists
-    const checkOrgIntegration = () =>
-      fromPromise(
-        (this._replica as PrismaClient).organizationIntegration.findFirst({
-          where: {
-            organizationId,
-            service: "VERCEL",
-            deletedAt: null,
-          },
-          select: {
-            id: true,
-          },
-        }),
-        (error) => ({
-          type: "other" as const,
-          cause: error,
-        })
-      ).map((orgIntegration) => orgIntegration !== null);
-
-    // Check if GitHub is connected
-    const checkGitHubConnection = () =>
-      fromPromise(
-        (this._replica as PrismaClient).connectedGithubRepository.findFirst({
-          where: {
-            projectId,
-            repository: {
-              installation: {
-                deletedAt: null,
-                suspendedAt: null,
-              },
-            },
-          },
-          select: {
-            id: true,
-          },
-        }),
-        (error) => ({
-          type: "other" as const,
-          cause: error,
-        })
-      ).map((repo) => repo !== null);
-
-    // Check if staging environment exists
-    const checkStagingEnvironment = () =>
-      fromPromise(
-        (this._replica as PrismaClient).runtimeEnvironment.findFirst({
-          select: {
-            id: true,
-          },
-          where: {
-            projectId,
-            type: "STAGING",
-          },
-        }),
-        (error) => ({
-          type: "other" as const,
-          cause: error,
-        })
-      ).map((env) => env !== null);
-
-    // Get Vercel project integration
-    const getVercelProjectIntegration = () =>
-      fromPromise(
-        (this._replica as PrismaClient).organizationProjectIntegration.findFirst({
-          where: {
-            projectId,
-            deletedAt: null,
-            organizationIntegration: {
-              service: "VERCEL",
-              deletedAt: null,
-            },
-          },
-          include: {
-            organizationIntegration: true,
-          },
-        }),
-        (error) => ({
-          type: "other" as const,
-          cause: error,
-        })
-      ).map((integration) => {
-        if (!integration) {
-          return undefined;
-        }
-
-        const parsedData = VercelProjectIntegrationDataSchema.safeParse(
-          integration.integrationData
-        );
-
-        if (!parsedData.success) {
-          return undefined;
-        }
-
-        return {
-          id: integration.id,
-          vercelProjectId: integration.externalEntityId,
-          vercelProjectName: parsedData.data.vercelProjectName,
-          vercelTeamId: parsedData.data.vercelTeamId,
-          integrationData: parsedData.data,
-          createdAt: integration.createdAt,
-        };
-      });
-
-    return ResultAsync.combine([
-      checkOrgIntegration(),
-      checkGitHubConnection(),
-      checkStagingEnvironment(),
-      getVercelProjectIntegration(),
-    ]).map(([hasOrgIntegration, isGitHubConnected, hasStagingEnvironment, connectedProject]) => ({
-      enabled: true,
-      hasOrgIntegration,
-      connectedProject,
-      isGitHubConnected,
-      hasStagingEnvironment,
-    }));
   }
 
   /**
    * Get data needed for the onboarding modal (custom environments and env vars)
    */
   public async getOnboardingData(projectId: string, organizationId: string): Promise<VercelOnboardingData | null> {
-    // First, check if there's an org integration for this organization
-    const orgIntegration = await (this._replica as PrismaClient).organizationIntegration.findFirst({
-      where: {
-        organizationId,
-        service: "VERCEL",
-        deletedAt: null,
-      },
-      include: {
-        tokenReference: true,
-      },
-    });
+    try {
+      const orgIntegration = await (this._replica as PrismaClient).organizationIntegration.findFirst({
+        where: {
+          organizationId,
+          service: "VERCEL",
+          deletedAt: null,
+        },
+        include: {
+          tokenReference: true,
+        },
+      });
 
-    if (!orgIntegration) {
-      return null;
-    }
+      if (!orgIntegration) {
+        return null;
+      }
 
-    // Get the Vercel client
-    const client = await VercelIntegrationRepository.getVercelClient(orgIntegration);
+      const tokenValidation = await VercelIntegrationRepository.validateVercelToken(orgIntegration);
+      if (!tokenValidation.isValid) {
+        return {
+          customEnvironments: [],
+          environmentVariables: [],
+          availableProjects: [],
+          hasProjectSelected: false,
+          authInvalid: true,
+        };
+      }
 
-    // Get the team ID from the secret
-    const teamId = await VercelIntegrationRepository.getTeamIdFromIntegration(orgIntegration);
+      const client = await VercelIntegrationRepository.getVercelClient(orgIntegration);
+      const teamId = await VercelIntegrationRepository.getTeamIdFromIntegration(orgIntegration);
 
     // Get the project integration to find the Vercel project ID (if selected)
     const projectIntegration = await (this._replica as PrismaClient).organizationProjectIntegration.findFirst({
@@ -218,20 +275,30 @@ export class VercelSettingsPresenter extends BasePresenter {
     });
 
     // Always fetch available projects for selection
-    const availableProjects = await VercelIntegrationRepository.getVercelProjects(client, teamId);
+    const availableProjectsResult = await VercelIntegrationRepository.getVercelProjects(client, teamId);
+    
+    if (!availableProjectsResult.success) {
+      return {
+        customEnvironments: [],
+        environmentVariables: [],
+        availableProjects: [],
+        hasProjectSelected: false,
+        authInvalid: availableProjectsResult.authInvalid,
+      };
+    }
 
     // If no project integration exists, return early with just available projects
     if (!projectIntegration) {
       return {
         customEnvironments: [],
         environmentVariables: [],
-        availableProjects,
+        availableProjects: availableProjectsResult.data,
         hasProjectSelected: false,
       };
     }
 
     // Fetch custom environments, project env vars, and shared env vars in parallel
-    const [customEnvironments, projectEnvVars, sharedEnvVars] = await Promise.all([
+    const [customEnvironmentsResult, projectEnvVarsResult, sharedEnvVarsResult] = await Promise.all([
       VercelIntegrationRepository.getVercelCustomEnvironments(
         client,
         projectIntegration.externalEntityId,
@@ -249,8 +316,28 @@ export class VercelSettingsPresenter extends BasePresenter {
             teamId,
             projectIntegration.externalEntityId
           )
-        : Promise.resolve([]),
+        : Promise.resolve({ success: true as const, data: [] }),
     ]);
+
+    // Check if any of the API calls failed due to auth issues
+    const authInvalid = !customEnvironmentsResult.success && customEnvironmentsResult.authInvalid ||
+                       !projectEnvVarsResult.success && projectEnvVarsResult.authInvalid ||
+                       !sharedEnvVarsResult.success && sharedEnvVarsResult.authInvalid;
+
+    if (authInvalid) {
+      return {
+        customEnvironments: [],
+        environmentVariables: [],
+        availableProjects: availableProjectsResult.data,
+        hasProjectSelected: true,
+        authInvalid: true,
+      };
+    }
+
+    // Extract data from successful results
+    const customEnvironments = customEnvironmentsResult.success ? customEnvironmentsResult.data : [];
+    const projectEnvVars = projectEnvVarsResult.success ? projectEnvVarsResult.data : [];
+    const sharedEnvVars = sharedEnvVarsResult.success ? sharedEnvVarsResult.data : [];
 
     // Merge project and shared env vars (project vars take precedence)
     // Also filter out TRIGGER_SECRET_KEY as it's managed by Trigger.dev
@@ -277,10 +364,13 @@ export class VercelSettingsPresenter extends BasePresenter {
     return {
       customEnvironments,
       environmentVariables: sortedEnvVars,
-      availableProjects,
+      availableProjects: availableProjectsResult.data,
       hasProjectSelected: true,
     };
-  }
+    } catch (error) {
+      // Log the error and return null to indicate failure
+      console.error("Error in getOnboardingData:", error);
+      return null;
+    }  }
 
 }
-

@@ -62,6 +62,30 @@ export type VercelCustomEnvironment = {
   };
 };
 
+export type VercelAPIResult<T> = {
+  success: true;
+  data: T;
+} | {
+  success: false;
+  authInvalid: boolean;
+  error: string;
+};
+
+function isVercelAuthError(error: unknown): boolean {
+  if (error && typeof error === 'object' && 'status' in error) {
+    const status = (error as { status?: number }).status;
+    return status === 401 || status === 403;
+  }
+  if (error && typeof error === 'object' && 'response' in error) {
+    const response = (error as { response?: { status?: number } }).response;
+    return response?.status === 401 || response?.status === 403;
+  }
+  if (error && typeof error === 'string' && (error.includes('401') || error.includes('403'))) {
+    return true;
+  }
+  return false;
+}
+
 export class VercelIntegrationRepository {
   static async getVercelClient(
     integration: OrganizationIntegration & { tokenReference: SecretReference }
@@ -80,6 +104,30 @@ export class VercelIntegrationRepository {
     return new Vercel({
       bearerToken: secret.accessToken,
     });
+  }
+
+  static async validateVercelToken(
+    integration: OrganizationIntegration & { tokenReference: SecretReference }
+  ): Promise<{ isValid: boolean }> {
+    try {
+      const client = await this.getVercelClient(integration);
+      await client.user.getAuthUser();
+      return { isValid: true };
+    } catch (error) {
+      const authInvalid = isVercelAuthError(error);
+      if (authInvalid) {
+        logger.debug("Vercel token validation failed - auth error", {
+          integrationId: integration.id,
+          error,
+        });
+        return { isValid: false };
+      }
+      logger.error("Vercel token validation failed - unexpected error", {
+        integrationId: integration.id,
+        error,
+      });
+      throw error;
+    }
   }
 
   static async getTeamIdFromIntegration(
@@ -162,7 +210,7 @@ export class VercelIntegrationRepository {
     client: Vercel,
     projectId: string,
     teamId?: string | null
-  ): Promise<VercelCustomEnvironment[]> {
+  ): Promise<VercelAPIResult<VercelCustomEnvironment[]>> {
     try {
       const response = await client.environment.getV9ProjectsIdOrNameCustomEnvironments({
         idOrName: projectId,
@@ -172,19 +220,28 @@ export class VercelIntegrationRepository {
       // The response contains environments array
       const environments = response.environments || [];
 
-      return environments.map((env: any) => ({
-        id: env.id,
-        slug: env.slug,
-        description: env.description,
-        branchMatcher: env.branchMatcher,
-      }));
+      return {
+        success: true,
+        data: environments.map((env: any) => ({
+          id: env.id,
+          slug: env.slug,
+          description: env.description,
+          branchMatcher: env.branchMatcher,
+        })),
+      };
     } catch (error) {
+      const authInvalid = isVercelAuthError(error);
       logger.error("Failed to fetch Vercel custom environments", {
         projectId,
         teamId,
         error,
+        authInvalid,
       });
-      return [];
+      return {
+        success: false,
+        authInvalid,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
     }
   }
 
@@ -193,7 +250,7 @@ export class VercelIntegrationRepository {
     client: Vercel,
     projectId: string,
     teamId?: string | null
-  ): Promise<VercelEnvironmentVariable[]> {
+  ): Promise<VercelAPIResult<VercelEnvironmentVariable[]>> {
     try {
       const response = await client.projects.filterProjectEnvs({
         idOrName: projectId,
@@ -203,26 +260,35 @@ export class VercelIntegrationRepository {
       // The response is a union type - check if it has envs array
       const envs = extractEnvs(response);
 
-      return envs.map((env: any) => {
-        const type = env.type as VercelEnvironmentVariable["type"];
-        // Secret and sensitive types cannot have their values retrieved
-        const isSecret = type === "secret" || type === "sensitive";
+      return {
+        success: true,
+        data: envs.map((env: any) => {
+          const type = env.type as VercelEnvironmentVariable["type"];
+          // Secret and sensitive types cannot have their values retrieved
+          const isSecret = type === "secret" || type === "sensitive";
 
-        return {
-          id: env.id,
-          key: env.key,
-          type,
-          isSecret,
-          target: normalizeTarget(env.target),
-        };
-      });
+          return {
+            id: env.id,
+            key: env.key,
+            type,
+            isSecret,
+            target: normalizeTarget(env.target),
+          };
+        }),
+      };
     } catch (error) {
+      const authInvalid = isVercelAuthError(error);
       logger.error("Failed to fetch Vercel environment variables", {
         projectId,
         teamId,
         error,
+        authInvalid,
       });
-      return [];
+      return {
+        success: false,
+        authInvalid,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
     }
   }
 
@@ -294,15 +360,13 @@ export class VercelIntegrationRepository {
     client: Vercel,
     teamId: string,
     projectId?: string // Optional: filter by project
-  ): Promise<
-    Array<{
+  ): Promise<VercelAPIResult<Array<{
       id: string;
       key: string;
       type: string;
       isSecret: boolean;
       target: string[];
-    }>
-  > {
+    }>>> {
     try {
       const response = await client.environment.listSharedEnvVariable({
         teamId,
@@ -311,27 +375,36 @@ export class VercelIntegrationRepository {
 
       const envVars = response.data || [];
 
-      return envVars.map((env) => {
-        const type = (env.type as string) || "plain";
-        const isSecret = type === "secret" || type === "sensitive";
+      return {
+        success: true,
+        data: envVars.map((env) => {
+          const type = (env.type as string) || "plain";
+          const isSecret = type === "secret" || type === "sensitive";
 
-        return {
-          id: env.id as string,
-          key: env.key as string,
-          type,
-          isSecret,
-          target: Array.isArray(env.target)
-            ? (env.target as string[])
-            : [env.target].filter(Boolean) as string[],
-        };
-      });
+          return {
+            id: env.id as string,
+            key: env.key as string,
+            type,
+            isSecret,
+            target: Array.isArray(env.target)
+              ? (env.target as string[])
+              : [env.target].filter(Boolean) as string[],
+          };
+        }),
+      };
     } catch (error) {
+      const authInvalid = isVercelAuthError(error);
       logger.error("Failed to fetch Vercel shared environment variables", {
         teamId,
         projectId,
         error,
+        authInvalid,
       });
-      return [];
+      return {
+        success: false,
+        authInvalid,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
     }
   }
 
@@ -505,7 +578,7 @@ export class VercelIntegrationRepository {
   static async getVercelProjects(
     client: Vercel,
     teamId?: string | null
-  ): Promise<Array<{ id: string; name: string }>> {
+  ): Promise<VercelAPIResult<Array<{ id: string; name: string }>>> {
     try {
       const response = await client.projects.getProjects({
         ...(teamId && { teamId }),
@@ -513,17 +586,82 @@ export class VercelIntegrationRepository {
 
       const projects = response.projects || [];
 
-      return projects.map((project: any) => ({
-        id: project.id,
-        name: project.name,
-      }));
+      return {
+        success: true,
+        data: projects.map((project: any) => ({
+          id: project.id,
+          name: project.name,
+        })),
+      };
     } catch (error) {
+      const authInvalid = isVercelAuthError(error);
       logger.error("Failed to fetch Vercel projects", {
         teamId,
         error,
+        authInvalid,
       });
-      return [];
+      return {
+        success: false,
+        authInvalid,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
     }
+  }
+
+  static async updateVercelOrgIntegrationToken(params: {
+    integrationId: string;
+    accessToken: string;
+    tokenType?: string;
+    teamId: string | null;
+    userId?: string;
+    installationId?: string;
+    raw?: Record<string, any>;
+  }): Promise<void> {
+    await $transaction(prisma, async (tx) => {
+      // Get the existing integration to find the token reference
+      const integration = await tx.organizationIntegration.findUnique({
+        where: { id: params.integrationId },
+        include: { tokenReference: true },
+      });
+
+      if (!integration) {
+        throw new Error("Vercel integration not found");
+      }
+
+      const secretStore = getSecretStore(integration.tokenReference.provider, {
+        prismaClient: tx,
+      });
+
+      const secretValue: VercelSecret = {
+        accessToken: params.accessToken,
+        tokenType: params.tokenType,
+        teamId: params.teamId,
+        userId: params.userId,
+        installationId: params.installationId,
+        raw: params.raw,
+      };
+
+      logger.debug("Updating Vercel secret", {
+        integrationId: params.integrationId,
+        teamId: params.teamId,
+        installationId: params.installationId,
+      });
+
+      // Update the secret with new token
+      await secretStore.setSecret(integration.tokenReference.key, secretValue);
+
+      // Update integration metadata
+      await tx.organizationIntegration.update({
+        where: { id: params.integrationId },
+        data: {
+          integrationData: {
+            teamId: params.teamId,
+            userId: params.userId,
+            installationId: params.installationId,
+          } as any,
+        },
+      });
+    });
   }
 
   static async createVercelOrgIntegration(params: {

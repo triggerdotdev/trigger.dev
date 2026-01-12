@@ -57,17 +57,16 @@ import {
   type VercelOnboardingData,
 } from "~/presenters/v3/VercelSettingsPresenter.server";
 import { VercelIntegrationService } from "~/services/vercelIntegration.server";
-import { VercelIntegrationRepository } from "~/models/vercelIntegration.server";
+import {
+  VercelIntegrationRepository,
+  type VercelCustomEnvironment,
+} from "~/models/vercelIntegration.server";
 import {
   type VercelProjectIntegrationData,
   type SyncEnvVarsMapping,
   shouldSyncEnvVarForAnyEnvironment,
 } from "~/v3/vercel/vercelProjectIntegrationSchema";
 import { useEffect, useState, useCallback, useRef } from "react";
-
-// ============================================================================
-// Types
-// ============================================================================
 
 export type ConnectedVercelProject = {
   id: string;
@@ -78,14 +77,6 @@ export type ConnectedVercelProject = {
   createdAt: Date;
 };
 
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-/**
- * Format Vercel target environments for display
- * e.g., ["production", "preview"] → "Production, Preview"
- */
 function formatVercelTargets(targets: string[]): string {
   const targetLabels: Record<string, string> = {
     production: "Production",
@@ -98,9 +89,6 @@ function formatVercelTargets(targets: string[]): string {
     .join(", ");
 }
 
-/**
- * Look up the name (slug) of a Vercel custom environment by its ID
- */
 async function lookupVercelEnvironmentName(
   projectId: string,
   environmentId: string | null
@@ -110,32 +98,31 @@ async function lookupVercelEnvironmentName(
   }
 
   try {
-    // Get the project integration
     const vercelService = new VercelIntegrationService();
     const projectIntegration = await vercelService.getVercelProjectIntegration(projectId);
     if (!projectIntegration) {
       return null;
     }
 
-    // Get the org integration
     const orgIntegration = await VercelIntegrationRepository.findVercelOrgIntegrationForProject(projectId);
     if (!orgIntegration) {
       return null;
     }
 
-    // Get the Vercel client
     const teamId = await VercelIntegrationRepository.getTeamIdFromIntegration(orgIntegration);
     const client = await VercelIntegrationRepository.getVercelClient(orgIntegration);
 
-    // Fetch custom environments
-    const customEnvironments = await VercelIntegrationRepository.getVercelCustomEnvironments(
+    const customEnvironmentsResult = await VercelIntegrationRepository.getVercelCustomEnvironments(
       client,
       projectIntegration.parsedIntegrationData.vercelProjectId,
       teamId
     );
 
-    // Look up the name from the ID
-    const environment = customEnvironments.find((env) => env.id === environmentId);
+    if (!customEnvironmentsResult.success) {
+      return null;
+    }
+
+    const environment = customEnvironmentsResult.data.find((env: VercelCustomEnvironment) => env.id === environmentId);
     return environment?.slug || null;
   } catch (error) {
     logger.error("Failed to look up Vercel environment name", {
@@ -146,10 +133,6 @@ async function lookupVercelEnvironmentName(
     return null;
   }
 }
-
-// ============================================================================
-// Schemas
-// ============================================================================
 
 const UpdateVercelConfigFormSchema = z.object({
   action: z.literal("update-config"),
@@ -210,59 +193,66 @@ const VercelActionSchema = z.discriminatedUnion("action", [
   UpdateEnvMappingFormSchema,
 ]);
 
-// ============================================================================
-// Loader
-// ============================================================================
-
 export async function loader({ request, params }: LoaderFunctionArgs) {
-  const userId = await requireUserId(request);
-  const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
+  try {
+    const userId = await requireUserId(request);
+    const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
 
-  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
-  if (!project) {
-    throw new Response("Not Found", { status: 404 });
+    const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+    if (!project) {
+      throw new Response("Not Found", { status: 404 });
+    }
+
+    const environment = await findEnvironmentBySlug(project.id, envParam, userId);
+    if (!environment) {
+      throw new Response("Not Found", { status: 404 });
+    }
+
+    const presenter = new VercelSettingsPresenter();
+    const resultOrFail = await presenter.call({
+      projectId: project.id,
+      organizationId: project.organizationId,
+    });
+
+    if (!resultOrFail?.isOk()) {
+      throw new Response("Failed to load Vercel settings", { status: 500 });
+    }
+
+    const result = resultOrFail.value;
+    const url = new URL(request.url);
+    const needsOnboarding = url.searchParams.get("vercelOnboarding") === "true";
+
+    let onboardingData: VercelOnboardingData | null = null;
+    if (needsOnboarding) {
+      onboardingData = await presenter.getOnboardingData(project.id, project.organizationId);
+    }
+
+    const authInvalid = onboardingData?.authInvalid || result.authInvalid || false;
+
+    return typedjson({
+      ...result,
+      authInvalid: authInvalid || result.authInvalid,
+      onboardingData,
+      organizationSlug,
+      projectSlug: projectParam,
+      environmentSlug: envParam,
+      projectId: project.id,
+      organizationId: project.organizationId,
+    });
+  } catch (error) {
+    if (error instanceof Response) {
+      throw error;
+    }
+
+    logger.error("Unexpected error in Vercel settings loader", {
+      url: request.url,
+      params,
+      error,
+    });
+    
+    throw new Response("Internal Server Error", { status: 500 });
   }
-
-  const environment = await findEnvironmentBySlug(project.id, envParam, userId);
-  if (!environment) {
-    throw new Response("Not Found", { status: 404 });
-  }
-
-  const presenter = new VercelSettingsPresenter();
-  const resultOrFail = await presenter.call({
-    projectId: project.id,
-    organizationId: project.organizationId,
-  });
-
-  if (resultOrFail.isErr()) {
-    throw new Response("Failed to load Vercel settings", { status: 500 });
-  }
-
-  // Check if we need onboarding data
-  const url = new URL(request.url);
-  const needsOnboarding = url.searchParams.get("vercelOnboarding") === "true";
-
-  let onboardingData: VercelOnboardingData | null = null;
-  if (needsOnboarding) {
-    // Always fetch onboarding data when in onboarding mode, even if no project selected yet
-    // This allows us to show the project selection step
-    onboardingData = await presenter.getOnboardingData(project.id, project.organizationId);
-  }
-
-  return typedjson({
-    ...resultOrFail.value,
-    onboardingData,
-    organizationSlug,
-    projectSlug: projectParam,
-    environmentSlug: envParam,
-    projectId: project.id,
-    organizationId: project.organizationId,
-  });
 }
-
-// ============================================================================
-// Action
-// ============================================================================
 
 export async function action({ request, params }: ActionFunctionArgs) {
   const userId = await requireUserId(request);
@@ -481,10 +471,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
   return redirectBackWithErrorMessage(request, "Failed to process request");
 }
 
-// ============================================================================
-// Helper: Build resource URL for fetching Vercel data
-// ============================================================================
-
 export function vercelResourcePath(
   organizationSlug: string,
   projectSlug: string,
@@ -492,10 +478,6 @@ export function vercelResourcePath(
 ) {
   return `/resources/orgs/${organizationSlug}/projects/${projectSlug}/env/${environmentSlug}/vercel`;
 }
-
-// ============================================================================
-// Vercel Icon Component
-// ============================================================================
 
 function VercelIcon({ className }: { className?: string }) {
   return (
@@ -510,13 +492,6 @@ function VercelIcon({ className }: { className?: string }) {
   );
 }
 
-// ============================================================================
-// Components
-// ============================================================================
-
-/**
- * Prompt to connect Vercel integration
- */
 function VercelConnectionPrompt({
   organizationSlug,
   projectSlug,
@@ -534,18 +509,16 @@ function VercelConnectionPrompt({
   onOpenModal?: () => void;
   isLoading?: boolean;
 }) {
-  // Generate the install path
   const installPath = vercelAppInstallPath(organizationSlug, projectSlug);
 
-  // Handle connecting project when org integration exists
   const handleConnectProject = () => {
-    // Just trigger the callback - the parent will handle loading and opening
     if (onOpenModal) {
       onOpenModal();
     }
   };
 
   const isLoadingProjects = isLoading ?? false;
+  const isDisabled = isLoadingProjects || !onOpenModal;
 
   return (
     <Fieldset>
@@ -557,7 +530,7 @@ function VercelConnectionPrompt({
                 <Button
                   variant="secondary/medium"
                   onClick={handleConnectProject}
-                  disabled={isLoadingProjects}
+                  disabled={isDisabled}
                   LeadingIcon={
                     isLoadingProjects
                       ? () => <SpinnerWhite className="size-4" />
@@ -569,6 +542,11 @@ function VercelConnectionPrompt({
                 <span className="flex items-center gap-1 text-xs text-text-dimmed">
                   <CheckCircleIcon className="size-4 text-success" /> Vercel app is installed
                 </span>
+                {!onOpenModal && (
+                  <span className="text-xs text-amber-400">
+                    Please reconnect Vercel to continue
+                  </span>
+                )}
               </>
             ) : (
               <>
@@ -588,9 +566,38 @@ function VercelConnectionPrompt({
   );
 }
 
-/**
- * Warning banner when Vercel is connected but GitHub is not
- */
+function VercelAuthInvalidBanner({ 
+  organizationSlug,
+  projectSlug,
+}: { 
+  organizationSlug: string;
+  projectSlug: string;
+}) {
+  const installUrl = vercelAppInstallPath(organizationSlug, projectSlug);
+
+  return (
+    <Callout variant="error" className="mb-4">
+      <div className="flex items-start gap-3">
+        <div className="flex-1">
+          <p className="font-sans text-sm font-medium text-text-bright mb-2">
+            Vercel connection expired
+          </p>
+          <p className="font-sans text-xs text-text-dimmed mb-3">
+            Your Vercel access token has expired or been revoked. Please reconnect to restore functionality.
+          </p>
+          <LinkButton
+            to={installUrl}
+            variant="minimal/small"
+            className="bg-error/10 hover:bg-error/20 text-error border-error/20"
+          >
+            Reconnect Vercel
+          </LinkButton>
+        </div>
+      </div>
+    </Callout>
+  );
+}
+
 function VercelGitHubWarning() {
   return (
     <Callout variant="warning" className="mb-4">
@@ -602,9 +609,6 @@ function VercelGitHubWarning() {
   );
 }
 
-/**
- * Connected Vercel project settings form
- */
 function ConnectedVercelProjectForm({
   connectedProject,
   hasStagingEnvironment,
@@ -888,10 +892,6 @@ function ConnectedVercelProjectForm({
   );
 }
 
-// ============================================================================
-// Main Vercel Settings Panel Component
-// ============================================================================
-
 function VercelSettingsPanel({
   organizationSlug,
   projectSlug,
@@ -907,14 +907,39 @@ function VercelSettingsPanel({
 }) {
   const fetcher = useTypedFetcher<typeof loader>();
   const location = useLocation();
+  const data = fetcher.data;
+  const [hasError, setHasError] = useState(false);
+  const [hasFetched, setHasFetched] = useState(false);
 
   useEffect(() => {
-    fetcher.load(vercelResourcePath(organizationSlug, projectSlug, environmentSlug));
-  }, [organizationSlug, projectSlug, environmentSlug]);
+    if (!data?.authInvalid && !hasError && !data && !hasFetched) {
+      fetcher.load(vercelResourcePath(organizationSlug, projectSlug, environmentSlug));
+      setHasFetched(true);
+    }
+  }, [organizationSlug, projectSlug, environmentSlug, data?.authInvalid, hasError, data, hasFetched]);
 
-  const data = fetcher.data;
+  useEffect(() => {
+    if (hasFetched && fetcher.state === "idle" && fetcher.data === undefined && !hasError) {
+      setHasError(true);
+    }
+  }, [fetcher.state, fetcher.data, hasError, hasFetched]);
 
-  // Loading state
+  if (hasError) {
+    return (
+      <div className="rounded-sm border border-rose-500/40 bg-rose-500/10 p-4">
+        <div className="flex items-start gap-3">
+          <ExclamationTriangleIcon className="h-5 w-5 text-rose-500 flex-shrink-0" />
+          <div>
+            <p className="font-medium text-rose-400">Failed to load Vercel settings</p>
+            <p className="text-sm text-rose-300 mt-1">
+              There was an error loading the Vercel integration settings. Please refresh the page to try again.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (fetcher.state === "loading" && !data) {
     return (
       <div className="flex items-center gap-2 text-text-dimmed">
@@ -924,62 +949,60 @@ function VercelSettingsPanel({
     );
   }
 
-  // Vercel integration not enabled
   if (!data || !data.enabled) {
     return null;
   }
 
-  // Show warning if Vercel connected but GitHub not
   const showGitHubWarning = data.connectedProject && !data.isGitHubConnected;
+  const showAuthInvalid = data.authInvalid || data.onboardingData?.authInvalid;
 
-  // Connected project exists - show form
   if (data.connectedProject) {
     return (
       <>
+        {showAuthInvalid && <VercelAuthInvalidBanner organizationSlug={organizationSlug} projectSlug={projectSlug} />}
         {showGitHubWarning && <VercelGitHubWarning />}
-        <ConnectedVercelProjectForm
+        {!showAuthInvalid && (<ConnectedVercelProjectForm
           connectedProject={data.connectedProject}
           hasStagingEnvironment={data.hasStagingEnvironment}
           customEnvironments={data.onboardingData?.customEnvironments}
           organizationSlug={organizationSlug}
           projectSlug={projectSlug}
           environmentSlug={environmentSlug}
-        />
+        />)}
       </>
     );
   }
 
-  // No connected project - show connection prompt
-  // If org integration exists, show "app installed" message; otherwise show install button
   return (
     <div className="flex flex-col gap-2">
-      <VercelConnectionPrompt
-        organizationSlug={organizationSlug}
-        projectSlug={projectSlug}
-        environmentSlug={environmentSlug}
-        hasOrgIntegration={data.hasOrgIntegration}
-        isGitHubConnected={data.isGitHubConnected}
-        onOpenModal={onOpenVercelModal}
-        isLoading={isLoadingVercelData}
-      />
-      <Hint>
-        {data.hasOrgIntegration
-          ? "Connect your Vercel project to sync environment variables and trigger builds automatically."
-          : "Install the Vercel app to connect your projects and sync environment variables."}
-      </Hint>
-      {!data.isGitHubConnected && (
-        <Hint>
-          GitHub integration is not connected. Vercel integration cannot sync environment variables or
-          spawn Trigger.dev builds without a properly installed GitHub integration.
-        </Hint>
+      {showAuthInvalid && <VercelAuthInvalidBanner organizationSlug={organizationSlug} projectSlug={projectSlug} />}
+      {!showAuthInvalid && (
+        <>
+          <VercelConnectionPrompt
+            organizationSlug={organizationSlug}
+            projectSlug={projectSlug}
+            environmentSlug={environmentSlug}
+            hasOrgIntegration={data.hasOrgIntegration}
+            isGitHubConnected={data.isGitHubConnected}
+            onOpenModal={showAuthInvalid ? undefined : onOpenVercelModal}
+            isLoading={isLoadingVercelData}
+          />
+          <Hint>
+            {data.hasOrgIntegration
+              ? "Connect your Vercel project to sync environment variables and trigger builds automatically."
+              : "Install the Vercel app to connect your projects and sync environment variables."}
+          </Hint>
+          {!data.isGitHubConnected && (
+            <Hint>
+              GitHub integration is not connected. Vercel integration cannot sync environment variables or
+              spawn Trigger.dev builds without a properly installed GitHub integration.
+            </Hint>
+          )}
+        </>
       )}
     </div>
   );
 }
-
-// ============================================================================
-// Onboarding Modal Component
-// ============================================================================
 
 type OnboardingState =
   | "idle" // Initial state
@@ -1027,13 +1050,10 @@ function VercelOnboardingModal({
   const envVars = onboardingData?.environmentVariables || [];
   const hasCustomEnvs = customEnvironments.length > 0 && hasStagingEnvironment;
 
-  // Compute initial state based on current data
   const computeInitialState = useCallback((): OnboardingState => {
-    // If no org integration, stay in idle (shouldn't happen as modal only opens with integration)
-    if (!hasOrgIntegration) {
+    if (!hasOrgIntegration || onboardingData?.authInvalid) {
       return "idle";
     }
-    // If no project selected, check if we need to load projects
     const projectSelected = onboardingData?.hasProjectSelected ?? false;
     if (!projectSelected) {
       if (!onboardingData?.availableProjects || onboardingData.availableProjects.length === 0) {
@@ -1041,12 +1061,10 @@ function VercelOnboardingModal({
       }
       return "project-selection";
     }
-    // Project selected, check for custom environments
     const customEnvs = (onboardingData?.customEnvironments?.length ?? 0) > 0 && hasStagingEnvironment;
     if (customEnvs) {
       return "env-mapping";
     }
-    // No custom envs, check if env vars are loaded
     if (!onboardingData?.environmentVariables || onboardingData.environmentVariables.length === 0) {
       return "loading-env-vars";
     }
@@ -1082,11 +1100,14 @@ function VercelOnboardingModal({
   const [expandedEnvVars, setExpandedEnvVars] = useState(false);
   const [projectSelectionError, setProjectSelectionError] = useState<string | null>(null);
 
-  // State machine processor: handles state transitions based on current state and available data
-  // Note: "idle" state is only when modal is closed, so we don't process it here
   useEffect(() => {
     if (!isOpen || state === "idle") {
-      return; // Don't process when modal is closed or in idle state
+      return;
+    }
+
+    if (onboardingData?.authInvalid) {
+      onClose();
+      return;
     }
 
     switch (state) {
@@ -1127,18 +1148,18 @@ function VercelOnboardingModal({
 
   // Watch for data loading completion
   useEffect(() => {
-    if (state === "loading-projects" && onboardingData?.availableProjects && onboardingData.availableProjects.length > 0) {
+    if (!onboardingData?.authInvalid && state === "loading-projects" && onboardingData?.availableProjects && onboardingData.availableProjects.length > 0) {
       // Projects loaded, transition to project selection
       setState("project-selection");
     }
-  }, [state, onboardingData?.availableProjects]);
+  }, [state, onboardingData?.availableProjects, onboardingData?.authInvalid]);
 
   useEffect(() => {
-    if (state === "loading-env-vars" && onboardingData?.environmentVariables) {
+    if (!onboardingData?.authInvalid && state === "loading-env-vars" && onboardingData?.environmentVariables) {
       // Environment variables loaded, transition to env-var-sync
       setState("env-var-sync");
     }
-  }, [state, onboardingData?.environmentVariables]);
+  }, [state, onboardingData?.environmentVariables, onboardingData?.authInvalid]);
 
   // Handle successful project selection - transition to loading-env-mapping
   useEffect(() => {
@@ -1210,7 +1231,6 @@ function VercelOnboardingModal({
     []
   );
 
-  // Handle project selection submission - explicit state transition
   const handleProjectSelection = useCallback(async () => {
     if (!selectedVercelProject) {
       setProjectSelectionError("Please select a Vercel project");
@@ -1219,7 +1239,6 @@ function VercelOnboardingModal({
 
     setProjectSelectionError(null);
 
-    // Submit the form programmatically using fetcher
     const formData = new FormData();
     formData.append("action", "select-vercel-project");
     formData.append("vercelProjectId", selectedVercelProject.id);
@@ -1229,16 +1248,12 @@ function VercelOnboardingModal({
       method: "post",
       action: actionUrl,
     });
-    // State transition to loading-env-mapping will happen in useEffect when success
   }, [selectedVercelProject, fetcher, actionUrl]);
 
 
-  // Handle skip onboarding submission - close modal immediately and submit in background
   const handleSkipOnboarding = useCallback(() => {
-    // Close modal immediately
     onClose();
 
-    // Submit in background (non-blocking)
     const formData = new FormData();
     formData.append("action", "skip-onboarding");
     fetcher.submit(formData, {
@@ -1247,13 +1262,11 @@ function VercelOnboardingModal({
     });
   }, [actionUrl, fetcher, onClose]);
 
-  // Handle environment mapping update - explicit state transition
   const handleUpdateEnvMapping = useCallback(() => {
     const formData = new FormData();
     formData.append("action", "update-env-mapping");
     if (vercelStagingEnvironment) {
       formData.append("vercelStagingEnvironment", vercelStagingEnvironment);
-      // Look up the name from customEnvironments
       const environment = customEnvironments.find((env) => env.id === vercelStagingEnvironment);
       if (environment) {
         formData.append("vercelStagingName", environment.slug);
@@ -1263,10 +1276,8 @@ function VercelOnboardingModal({
       method: "post",
       action: actionUrl,
     });
-    // State transition to loading-env-vars will happen in useEffect when success
   }, [vercelStagingEnvironment, customEnvironments, envMappingFetcher, actionUrl]);
 
-  // Handle Finish button - submit form via fetcher
   const handleFinishOnboarding = useCallback((e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const form = e.currentTarget;
@@ -1313,13 +1324,10 @@ function VercelOnboardingModal({
     }
   }, [envMappingFetcher.data, envMappingFetcher.state]);
 
-  // Don't render if modal is closed
-  if (!isOpen) {
+  if (!isOpen || onboardingData?.authInvalid) {
     return null;
   }
 
-  // Show loading state for loading states or if data is not ready yet
-  // Note: "idle" is only when modal is closed, so we don't show loading for it
   const isLoadingState =
     state === "loading-projects" ||
     state === "loading-env-mapping" ||
@@ -1345,7 +1353,6 @@ function VercelOnboardingModal({
     );
   }
 
-  // Determine which step content to show based on state machine
   const showProjectSelection = state === "project-selection";
   const showEnvMapping = state === "env-mapping";
   const showEnvVarSync = state === "env-var-sync";
@@ -1361,7 +1368,6 @@ function VercelOnboardingModal({
         </DialogHeader>
 
         <div className="mt-4">
-          {/* Step: Project Selection (only if no project selected) */}
           {showProjectSelection && (
             <div className="flex flex-col gap-4">
               <Header3>Select Vercel Project</Header3>
@@ -1430,7 +1436,6 @@ function VercelOnboardingModal({
             </div>
           )}
 
-          {/* Step: Environment Mapping (only if custom environments exist) */}
           {showEnvMapping && (
             <div className="flex flex-col gap-4">
               <Header3>Map Vercel Environment to Staging</Header3>
@@ -1492,7 +1497,6 @@ function VercelOnboardingModal({
             </div>
           )}
 
-          {/* Step: Environment Variables Sync */}
           {showEnvVarSync && (
             <CompleteOnboardingForm method="post" action={actionUrl} onSubmit={handleFinishOnboarding}>
               <input type="hidden" name="action" value="complete-onboarding" />
