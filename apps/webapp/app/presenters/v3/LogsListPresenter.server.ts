@@ -110,6 +110,19 @@ function convertDateToNanoseconds(date: Date): bigint {
   return BigInt(date.getTime()) * 1_000_000n;
 }
 
+function formatNanosecondsForClickhouse(ns: bigint): string {
+  const nsString = ns.toString();
+  // Handle negative numbers (dates before 1970-01-01)
+  if (nsString.startsWith("-")) {
+    const absString = nsString.slice(1);
+    const padded = absString.padStart(19, "0");
+    return "-" + padded.slice(0, 10) + "." + padded.slice(10);
+  }
+  // Pad positive numbers to 19 digits to ensure correct slicing
+  const padded = nsString.padStart(19, "0");
+  return padded.slice(0, 10) + "." + padded.slice(10);
+}
+
 export class LogsListPresenter {
   constructor(
     private readonly replica: PrismaClientOrTransaction,
@@ -324,23 +337,23 @@ export class LogsListPresenter {
 
     // Time filters - inserted_at in PREWHERE for partition pruning, start_time in WHERE
     if (effectiveFrom) {
-      const fromNs = convertDateToNanoseconds(effectiveFrom).toString();
+      const fromNs = convertDateToNanoseconds(effectiveFrom);
       queryBuilder.prewhere("inserted_at >= {insertedAtStart: DateTime64(3)}", {
         insertedAtStart: convertDateToClickhouseDateTime(effectiveFrom),
       });
       queryBuilder.where("start_time >= {fromTime: String}", {
-        fromTime: fromNs.slice(0, 10) + "." + fromNs.slice(10),
+        fromTime: formatNanosecondsForClickhouse(fromNs),
       });
     }
 
     if (effectiveTo) {
       const clampedTo = effectiveTo > new Date() ? new Date() : effectiveTo;
-      const toNs = convertDateToNanoseconds(clampedTo).toString();
+      const toNs = convertDateToNanoseconds(clampedTo);
       queryBuilder.prewhere("inserted_at <= {insertedAtEnd: DateTime64(3)}", {
         insertedAtEnd: convertDateToClickhouseDateTime(clampedTo),
       });
       queryBuilder.where("start_time <= {toTime: String}", {
-        toTime: toNs.slice(0, 10) + "." + toNs.slice(10),
+        toTime: formatNanosecondsForClickhouse(toNs),
       });
     }
 

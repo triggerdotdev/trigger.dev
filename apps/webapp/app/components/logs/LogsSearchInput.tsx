@@ -25,6 +25,7 @@ export function LogsSearchInput() {
     if (urlSearch !== text && !isFocused) {
       setText(urlSearch);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.search]);
 
   const handleSubmit = useCallback(() => {

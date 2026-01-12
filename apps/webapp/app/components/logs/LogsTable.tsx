@@ -1,6 +1,5 @@
 import { ArrowPathIcon, ArrowTopRightOnSquareIcon } from "@heroicons/react/20/solid";
-import { formatDurationNanoseconds } from "@trigger.dev/core/v3";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "~/utils/cn";
 import { Button } from "~/components/primitives/Buttons";
 import { useEnvironment } from "~/hooks/useEnvironment";

@@ -1,10 +1,10 @@
-import { XMarkIcon, ArrowTopRightOnSquareIcon, CheckIcon, ClockIcon } from "@heroicons/react/20/solid";
+import { XMarkIcon, ArrowTopRightOnSquareIcon, CheckIcon } from "@heroicons/react/20/solid";
 import { Link } from "@remix-run/react";
 import {
   type MachinePresetName,
   formatDurationMilliseconds,
 } from "@trigger.dev/core/v3";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { useTypedFetcher } from "remix-typedjson";
 import { cn } from "~/utils/cn";
 import { Button } from "~/components/primitives/Buttons";
@@ -22,7 +22,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import type { LogEntry } from "~/presenters/v3/LogsListPresenter.server";
 import { getLevelColor } from "~/utils/logUtils";
-import { v3RunSpanPath, v3RunsPath, v3BatchPath, v3RunPath, v3DeploymentVersionPath } from "~/utils/pathBuilder";
+import { v3RunSpanPath, v3RunsPath, v3DeploymentVersionPath } from "~/utils/pathBuilder";
 import type { loader as logDetailLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.logs.$logId";
 import { TaskRunStatusCombo, descriptionForTaskRunStatus } from "~/components/runs/v3/TaskRunStatus";
 import { MachineLabelCombo } from "~/components/MachineLabelCombo";
@@ -47,6 +47,12 @@ type LogDetailViewProps = {
 };
 
 type TabType = "details" | "run";
+
+type LogAttributes = Record<string, unknown> & {
+  error?: {
+    message?: string;
+  };
+};
 
 // Event kind badge color styles
 function getKindColor(kind: string): string {
@@ -109,6 +115,7 @@ export function LogDetailView({ logId, initialLog, onClose, searchTerm }: LogDet
     fetcher.load(
       `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/logs/${encodeURIComponent(logId)}`
     );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [organization.slug, project.slug, environment.slug, logId]);
 
   const isLoading = fetcher.state === "loading";
@@ -226,7 +233,7 @@ export function LogDetailView({ logId, initialLog, onClose, searchTerm }: LogDet
 
 function DetailsTab({ log, runPath, searchTerm }: { log: LogEntry; runPath: string; searchTerm?: string }) {
   const logWithExtras = log as LogEntry & {
-    attributes?: Record<string, unknown>;
+    attributes?: LogAttributes;
   };
 
 
@@ -242,7 +249,7 @@ function DetailsTab({ log, runPath, searchTerm }: { log: LogEntry; runPath: stri
   // Determine message to show
   let message = log.message ?? "";
   if (log.level === "ERROR") {
-    const maybeErrorMessage = (logWithExtras.attributes as any)?.error?.message;
+    const maybeErrorMessage = logWithExtras.attributes?.error?.message;
     if (typeof maybeErrorMessage === "string" && maybeErrorMessage.length > 0) {
       message = maybeErrorMessage;
     }
@@ -298,6 +305,7 @@ function RunTab({ log, runPath }: { log: LogEntry; runPath: string }) {
     fetcher.load(
       `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/logs/${encodeURIComponent(log.id)}/run?runId=${encodeURIComponent(log.runId)}`
     );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [organization.slug, project.slug, environment.slug, log.id, log.runId]);
 
   const isLoading = !requested || fetcher.state === "loading";

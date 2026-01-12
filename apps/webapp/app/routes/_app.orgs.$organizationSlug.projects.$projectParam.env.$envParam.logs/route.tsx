@@ -26,7 +26,6 @@ import { Suspense, useCallback, useEffect, useMemo, useState, useTransition } fr
 import { Spinner } from "~/components/primitives/Spinner";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Callout } from "~/components/primitives/Callout";
-import type { TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 import { RunsFilters } from "~/components/runs/v3/RunFilters";
 import { LogsTable } from "~/components/logs/LogsTable";
 import type { LogEntry } from "~/presenters/v3/LogsListPresenter.server";
@@ -39,7 +38,6 @@ import {
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
 import { Switch } from "~/components/primitives/Switch";
-import { getUserById } from "~/models/user.server";
 
 // Valid log levels for filtering
 const validLevels: LogLevel[] = ["TRACE", "DEBUG", "INFO", "WARN", "ERROR", "CANCELLED"];
