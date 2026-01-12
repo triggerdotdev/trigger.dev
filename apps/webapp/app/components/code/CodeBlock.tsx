@@ -5,6 +5,7 @@ import { Highlight, Prism } from "prism-react-renderer";
 import { forwardRef, ReactNode, useCallback, useEffect, useState } from "react";
 import { TextWrapIcon } from "~/assets/icons/TextWrapIcon";
 import { cn } from "~/utils/cn";
+import { highlightSearchText } from "~/utils/logUtils";
 import { Button } from "../primitives/Buttons";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../primitives/Dialog";
 import { Paragraph } from "../primitives/Paragraph";
@@ -71,12 +72,6 @@ type CodeBlockProps = {
 
 const dimAmount = 0.5;
 const extraLinesWhenClipping = 0.35;
-
-const SEARCH_HIGHLIGHT_STYLES = {
-  backgroundColor: "#facc15",
-  color: "#000000",
-  fontWeight: "500",
-} as const;
 
 const defaultTheme: PrismTheme = {
   plain: {
@@ -371,7 +366,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
                 )}
                 dir="ltr"
               >
-                {highlightSearchInText(code, searchTerm)}
+                {highlightSearchText(code, searchTerm)}
               </pre>
             </div>
           )}
@@ -413,7 +408,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
                 className="overflow-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
               >
                 <pre className="relative mr-2 p-2 font-mono text-base leading-relaxed" dir="ltr">
-                  {highlightSearchInText(code, searchTerm)}
+                  {highlightSearchText(code, searchTerm)}
                 </pre>
               </div>
             )}
@@ -425,42 +420,6 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
 );
 
 CodeBlock.displayName = "CodeBlock";
-
-/**
- * Highlights search term matches in plain text
- */
-function highlightSearchInText(text: string, searchTerm: string | undefined): React.ReactNode {
-  if (!searchTerm || searchTerm.trim() === "") {
-    return text;
-  }
-
-  const escapedSearch = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const regex = new RegExp(escapedSearch, "gi");
-
-  const parts: React.ReactNode[] = [];
-  let lastIndex = 0;
-  let match;
-  let matchCount = 0;
-
-  while ((match = regex.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      parts.push(text.substring(lastIndex, match.index));
-    }
-    parts.push(
-      <span key={`match-${matchCount}`} style={SEARCH_HIGHLIGHT_STYLES}>
-        {match[0]}
-      </span>
-    );
-    lastIndex = regex.lastIndex;
-    matchCount++;
-  }
-
-  if (lastIndex < text.length) {
-    parts.push(text.substring(lastIndex));
-  }
-
-  return parts.length > 0 ? parts : text;
-}
 
 function Chrome({ title }: { title?: string }) {
   return (
@@ -607,40 +566,7 @@ function HighlightCode({
                         const tokenProps = getTokenProps({ token, key });
 
                         // Highlight search term matches in token
-                        let content: React.ReactNode = token.content;
-                        if (searchTerm && searchTerm.trim() !== "" && token.content) {
-                          const escapedSearch = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-                          const regex = new RegExp(escapedSearch, "gi");
-
-                          const parts: React.ReactNode[] = [];
-                          let lastIndex = 0;
-                          let match;
-                          let matchCount = 0;
-
-                          while ((match = regex.exec(token.content)) !== null) {
-                            if (match.index > lastIndex) {
-                              parts.push(token.content.substring(lastIndex, match.index));
-                            }
-                            parts.push(
-                              <span
-                                key={`match-${matchCount}`}
-                                style={SEARCH_HIGHLIGHT_STYLES}
-                              >
-                                {match[0]}
-                              </span>
-                            );
-                            lastIndex = regex.lastIndex;
-                            matchCount++;
-                          }
-
-                          if (lastIndex < token.content.length) {
-                            parts.push(token.content.substring(lastIndex));
-                          }
-
-                          if (parts.length > 0) {
-                            content = parts;
-                          }
-                        }
+                        const content = highlightSearchText(token.content, searchTerm);
 
                         return (
                           <span

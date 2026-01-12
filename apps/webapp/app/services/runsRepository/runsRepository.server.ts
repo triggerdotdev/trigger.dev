@@ -7,7 +7,7 @@ import { type Prisma, TaskRunStatus } from "@trigger.dev/database";
 import parseDuration from "parse-duration";
 import { z } from "zod";
 import { timeFilters } from "~/components/runs/v3/SharedFilters";
-import { type PrismaClient } from "~/db.server";
+import { type PrismaClient, type PrismaClientOrTransaction } from "~/db.server";
 import { FEATURE_FLAG, makeFlags } from "~/v3/featureFlags.server";
 import { startActiveSpan } from "~/v3/tracer.server";
 import { logger } from "../logger.server";
@@ -16,7 +16,7 @@ import { PostgresRunsRepository } from "./postgresRunsRepository.server";
 
 export type RunsRepositoryOptions = {
   clickhouse: ClickHouse;
-  prisma: PrismaClient;
+  prisma: PrismaClientOrTransaction;
   logger?: Logger;
   logLevel?: LogLevel;
   tracer?: Tracer;

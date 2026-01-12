@@ -7,7 +7,7 @@ import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import type { LogEntry, LogsListAppliedFilters } from "~/presenters/v3/LogsListPresenter.server";
-import { getLevelColor } from "~/utils/logUtils";
+import { getLevelColor, highlightSearchText } from "~/utils/logUtils";
 import { v3RunSpanPath } from "~/utils/pathBuilder";
 import { DateTime } from "../primitives/DateTime";
 import { Paragraph } from "../primitives/Paragraph";
@@ -58,30 +58,6 @@ function getLevelBorderColor(level: LogEntry["level"]): string {
   }
 }
 
-// Case-insensitive text highlighting
-function highlightText(text: string, searchTerm: string | undefined): ReactNode {
-  if (!searchTerm || searchTerm.trim() === "") {
-    return text;
-  }
-
-  const lowerText = text.toLowerCase();
-  const lowerSearch = searchTerm.toLowerCase();
-  const index = lowerText.indexOf(lowerSearch);
-
-  if (index === -1) {
-    return text;
-  }
-
-  return (
-    <>
-      {text.slice(0, index)}
-      <mark className="rounded px-0.5 bg-yellow-400 text-black font-medium">
-        {text.slice(index, index + searchTerm.length)}
-      </mark>
-      {text.slice(index + searchTerm.length)}
-    </>
-  );
-}
 
 export function LogsTable({
   logs,
@@ -206,7 +182,7 @@ export function LogsTable({
                   </TableCell>
                   <TableCell className="max-w-0 truncate" onClick={handleRowClick} hasAction>
                     <span className="block truncate font-mono text-xs" title={log.message}>
-                      {highlightText(log.message, searchTerm)}
+                      {highlightSearchText(log.message, searchTerm)}
                     </span>
                   </TableCell>
                   <TableCellMenu
@@ -249,10 +225,10 @@ function NoLogs({ title }: { title: string }) {
 }
 
 function BlankState({ isLoading }: { isLoading?: boolean }) {
-  if (isLoading) return <TableBlankRow colSpan={7}></TableBlankRow>;
+  if (isLoading) return <TableBlankRow colSpan={6}></TableBlankRow>;
 
   return (
-    <TableBlankRow colSpan={7}>
+    <TableBlankRow colSpan={6}>
       <div className="flex flex-col items-center justify-center gap-6">
         <Paragraph className="w-auto" variant="base/bright">
           No logs match your filters. Try refreshing or modifying your filters.

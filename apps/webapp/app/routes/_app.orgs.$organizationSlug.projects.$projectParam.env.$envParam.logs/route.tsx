@@ -22,7 +22,7 @@ import {
 } from "~/services/preferences/uiPreferences.server";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Callout } from "~/components/primitives/Callout";
@@ -71,12 +71,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
   if (!project) {
-    throw new Error("Project not found");
+    throw new Response("Project not found", { status: 404 });
   }
 
   const environment = await findEnvironmentBySlug(project.id, envParam, userId);
   if (!environment) {
-    throw new Error("Environment not found");
+    throw new Response("Environment not found", { status: 404 });
   }
 
   const filters = await getRunFiltersFromRequest(request);
@@ -117,7 +117,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export default function Page() {
-  const { data, rootOnlyDefault, filters, isAdmin, showDebug } = useTypedLoaderData<typeof loader>();
+  const { data, rootOnlyDefault, isAdmin, showDebug } = useTypedLoaderData<typeof loader>();
 
   return (
     <PageContainer>
@@ -180,6 +180,7 @@ function LogsList({
   const navigation = useNavigation();
   const location = useLocation();
   const fetcher = useFetcher<{ logs: LogEntry[]; pagination: { next?: string } }>();
+  const [, startTransition] = useTransition();
   const isLoading = navigation.state !== "idle";
 
   // Accumulated logs state
@@ -187,11 +188,7 @@ function LogsList({
   const [nextCursor, setNextCursor] = useState<string | undefined>(list.pagination.next);
 
   // Selected log state - managed locally to avoid triggering navigation
-  const [selectedLogId, setSelectedLogId] = useState<string | undefined>(() => {
-    // Initialize from URL on mount
-    const params = new URLSearchParams(location.search);
-    return params.get("log") ?? undefined;
-  });
+  const [selectedLogId, setSelectedLogId] = useState<string | undefined>();
 
   const handleDebugToggle = useCallback(
     (checked: boolean) => {
@@ -206,23 +203,24 @@ function LogsList({
     []
   );
 
+
   // Reset accumulated logs when the initial list changes (e.g., filters change)
   useEffect(() => {
     setAccumulatedLogs(list.logs);
     setNextCursor(list.pagination.next);
   }, [list.logs, list.pagination.next]);
 
-  // Memoize existing IDs to avoid creating a new Set on every render
-  const existingIds = useMemo(() => new Set(accumulatedLogs.map((log) => log.id)), [accumulatedLogs]);
-
   // Append new logs when fetcher completes (with deduplication)
   useEffect(() => {
     if (fetcher.data && fetcher.state === "idle") {
+      const existingIds = new Set(accumulatedLogs.map((log) => log.id));
       const newLogs = fetcher.data.logs.filter((log) => !existingIds.has(log.id));
-      setAccumulatedLogs((prev) => [...prev, ...newLogs]);
-      setNextCursor(fetcher.data.pagination.next);
+      if (newLogs.length > 0) {
+        setAccumulatedLogs((prev) => [...prev, ...newLogs]);
+        setNextCursor(fetcher.data.pagination.next);
+      }
     }
-  }, [fetcher.data, fetcher.state, existingIds]);
+  }, [fetcher.data, fetcher.state, accumulatedLogs]);
 
   // Build resource URL for loading more
   const loadMoreUrl = useMemo(() => {
@@ -230,7 +228,7 @@ function LogsList({
     const resourcePath = `/resources${location.pathname}`;
     const params = new URLSearchParams(location.search);
     params.set("cursor", nextCursor);
-    params.delete("log"); // Don't include selected log in fetch
+    params.delete("log");
     return `${resourcePath}?${params.toString()}`;
   }, [location.pathname, location.search, nextCursor]);
 
@@ -240,13 +238,11 @@ function LogsList({
     }
   }, [loadMoreUrl, fetcher]);
 
-  // Find the selected log in the accumulated list for initial data
   const selectedLog = useMemo(() => {
     if (!selectedLogId) return undefined;
     return accumulatedLogs.find((log) => log.id === selectedLogId);
   }, [selectedLogId, accumulatedLogs]);
 
-  // Update URL without triggering navigation using History API
   const updateUrlWithLog = useCallback(
     (logId: string | undefined) => {
       const url = new URL(window.location.href);
@@ -262,16 +258,20 @@ function LogsList({
 
   const handleLogSelect = useCallback(
     (logId: string) => {
-      setSelectedLogId(logId);
+      startTransition(() => {
+        setSelectedLogId(logId);
+      });
       updateUrlWithLog(logId);
     },
-    [updateUrlWithLog]
+    [updateUrlWithLog, startTransition]
   );
 
   const handleClosePanel = useCallback(() => {
-    setSelectedLogId(undefined);
+    startTransition(() => {
+      setSelectedLogId(undefined);
+    });
     updateUrlWithLog(undefined);
-  }, [updateUrlWithLog]);
+  }, [updateUrlWithLog, startTransition]);
 
   return (
     <ResizablePanelGroup orientation="horizontal" className="max-h-full">
@@ -321,12 +321,14 @@ function LogsList({
         <>
           <ResizableHandle id="logs-handle" />
           <ResizablePanel id="log-detail" min="300px" default="430px" max="600px" isStaticAtRest>
-            <LogDetailView
-              logId={selectedLogId}
-              initialLog={selectedLog}
-              onClose={handleClosePanel}
-              searchTerm={list.searchTerm}
-            />
+            <Suspense fallback={<div className="flex h-full items-center justify-center"><Spinner /></div>}>
+              <LogDetailView
+                logId={selectedLogId}
+                initialLog={selectedLog}
+                onClose={handleClosePanel}
+                searchTerm={list.searchTerm}
+              />
+            </Suspense>
           </ResizablePanel>
         </>
       )}

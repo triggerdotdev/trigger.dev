@@ -21,6 +21,13 @@ import { kindToLevel, type LogLevel } from "~/utils/logUtils";
 
 export type { LogLevel };
 
+type ErrorAttributes = {
+  error?: {
+    message?: unknown;
+  };
+  [key: string]: unknown;
+};
+
 export type LogsListOptions = {
   userId?: string;
   projectId: string;
@@ -237,7 +244,7 @@ export class LogsListPresenter {
     if (hasRunLevelFilters) {
       const runsRepository = new RunsRepository({
         clickhouse: this.clickhouse,
-        prisma: this.replica as PrismaClient,
+        prisma: this.replica,
       });
 
       function clampToNow(date: Date): Date {
@@ -460,14 +467,14 @@ export class LogsListPresenter {
       // For error logs with status ERROR, try to extract error message from attributes
       if (log.status === "ERROR" && log.attributes) {
         try {
-          let  attributes = log.attributes as Record<string, any>;
+          let attributes = log.attributes as ErrorAttributes;
 
           if (attributes?.error?.message && typeof attributes.error.message === 'string') {
-              displayMessage = attributes.error.message;
-            }
-          } catch {
-            // If attributes parsing fails, use the regular message
+            displayMessage = attributes.error.message;
           }
+        } catch {
+          // If attributes parsing fails, use the regular message
+        }
       }
 
       return {

@@ -28,9 +28,7 @@ export const RunContextSchema = z.object({
   id: z.string(),
   friendlyId: z.string(),
   taskIdentifier: z.string(),
-  status: z.enum(VALID_TASK_RUN_STATUSES).catch((ctx) => {
-    throw new Error(`Invalid TaskRunStatus: ${ctx.input}`);
-  }),
+  status: z.enum(VALID_TASK_RUN_STATUSES),
   createdAt: z.string().datetime(),
   startedAt: z.string().datetime().optional(),
   completedAt: z.string().datetime().optional(),

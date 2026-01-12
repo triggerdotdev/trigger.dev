@@ -1,4 +1,63 @@
+import { createElement, Fragment, type ReactNode } from "react";
+
 export type LogLevel = "TRACE" | "DEBUG" | "INFO" | "WARN" | "ERROR" | "CANCELLED";
+
+// Default styles for search highlighting
+const DEFAULT_HIGHLIGHT_STYLES: React.CSSProperties = {
+  backgroundColor: "#facc15", // yellow-400
+  color: "#000000",
+  fontWeight: "500",
+  borderRadius: "0.25rem",
+  padding: "0 0.125rem",
+} as const;
+
+/**
+ * Highlights all occurrences of a search term in text with consistent styling.
+ * Case-insensitive search with regex special character escaping.
+ *
+ * @param text - The text to search within
+ * @param searchTerm - The term to highlight (optional)
+ * @param style - Optional custom inline styles for highlights
+ * @returns React nodes with highlighted matches, or the original text if no matches
+ */
+export function highlightSearchText(
+  text: string,
+  searchTerm?: string,
+  style: React.CSSProperties = DEFAULT_HIGHLIGHT_STYLES
+): ReactNode {
+  if (!searchTerm || searchTerm.trim() === "") {
+    return text;
+  }
+
+  // Escape special regex characters in search term
+  const escapedSearch = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const regex = new RegExp(escapedSearch, "gi");
+
+  const parts: ReactNode[] = [];
+  let lastIndex = 0;
+  let match;
+  let matchCount = 0;
+
+  while ((match = regex.exec(text)) !== null) {
+    // Add text before match
+    if (match.index > lastIndex) {
+      parts.push(text.substring(lastIndex, match.index));
+    }
+    // Add highlighted match
+    parts.push(
+      createElement("span", { key: `match-${matchCount}`, style }, match[0])
+    );
+    lastIndex = regex.lastIndex;
+    matchCount++;
+  }
+
+  // Add remaining text
+  if (lastIndex < text.length) {
+    parts.push(text.substring(lastIndex));
+  }
+
+  return parts.length > 0 ? parts : text;
+}
 
 // Convert ClickHouse kind to display level
 export function kindToLevel(kind: string, status: string): LogLevel {

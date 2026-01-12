@@ -94,53 +94,6 @@ function formatStringJSON(str: string): string {
     .replace(/\\t/g, "\t"); // Converts literal "\t" to tab
 }
 
-// Highlight search term in JSON string - returns React nodes with highlights
-function highlightJsonWithSearch(json: string, searchTerm: string | undefined): ReactNode {
-  if (!searchTerm || searchTerm.trim() === "") {
-    return json;
-  }
-
-  // Escape special regex characters in the search term
-  const escapedSearch = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const regex = new RegExp(escapedSearch, "gi");
-
-  const parts: ReactNode[] = [];
-  let lastIndex = 0;
-  let match;
-  let matchCount = 0;
-
-  while ((match = regex.exec(json)) !== null) {
-    // Add text before match
-    if (match.index > lastIndex) {
-      parts.push(json.substring(lastIndex, match.index));
-    }
-    // Add highlighted match with inline styles
-    parts.push(
-      <span
-        key={`match-${matchCount}`}
-        style={{
-          backgroundColor: "#facc15",
-          color: "#000000",
-          fontWeight: "500",
-          borderRadius: "0.25rem",
-          padding: "0 0.125rem",
-        }}
-      >
-        {match[0]}
-      </span>
-    );
-    lastIndex = regex.lastIndex;
-    matchCount++;
-  }
-
-  // Add remaining text
-  if (lastIndex < json.length) {
-    parts.push(json.substring(lastIndex));
-  }
-
-  return parts.length > 0 ? parts : json;
-}
-
 
 export function LogDetailView({ logId, initialLog, onClose, searchTerm }: LogDetailViewProps) {
   const organization = useOrganization();
