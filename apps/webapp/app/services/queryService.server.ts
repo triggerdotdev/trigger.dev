@@ -74,6 +74,8 @@ export type ExecuteQueryOptions<TOut extends z.ZodSchema> = Omit<
     source: CustomerQuerySource;
     /** User ID (optional, null for API calls) */
     userId?: string | null;
+    /** Skip saving to history (e.g., when impersonating) */
+    skip?: boolean;
   };
   /** Custom per-org concurrency limit (overrides default) */
   customOrgConcurrencyLimit?: number;
@@ -161,8 +163,8 @@ export async function executeQuery<TOut extends z.ZodSchema>(
     });
 
     // If query succeeded and history options provided, save to history
-    // Skip history for EXPLAIN queries (admin debugging, not billable)
-    if (result[0] === null && history && !baseOptions.explain) {
+    // Skip history for EXPLAIN queries (admin debugging) and when explicitly skipped (e.g., impersonating)
+    if (result[0] === null && history && !history.skip && !baseOptions.explain) {
       const stats = result[1].stats;
       const byteSeconds = parseFloat(stats.byte_seconds) || 0;
       const costInCents = byteSeconds * env.CENTS_PER_QUERY_BYTE_SECOND;

@@ -265,6 +265,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       history: {
         source: "DASHBOARD",
         userId: user.id,
+        skip: user.isImpersonating,
       },
     });
 
