@@ -1,11 +1,19 @@
+import { z } from "zod";
 import { type ClickHouse, type LogsListResult } from "@internal/clickhouse";
 import { MachinePresetName } from "@trigger.dev/core/v3";
 import {
   type PrismaClient,
   type PrismaClientOrTransaction,
   type TaskRunStatus,
+  TaskRunStatus as TaskRunStatusEnum,
   TaskTriggerSource,
 } from "@trigger.dev/database";
+
+// Create a schema that validates TaskRunStatus enum values
+const TaskRunStatusSchema = z.array(z.string()).refine(
+  (val) => val.every((v) => Object.values(TaskRunStatusEnum).includes(v)),
+  { message: "Invalid TaskRunStatus values" }
+) as unknown as z.ZodSchema<TaskRunStatus[]>;
 import parseDuration from "parse-duration";
 import { type Direction } from "~/components/ListPagination";
 import { timeFilters } from "~/components/runs/v3/SharedFilters";
@@ -56,6 +64,32 @@ export type LogsListOptions = {
   cursor?: string;
   pageSize?: number;
 };
+
+export const LogsListOptionsSchema = z.object({
+  userId: z.string().optional(),
+  projectId: z.string(),
+  tasks: z.array(z.string()).optional(),
+  versions: z.array(z.string()).optional(),
+  statuses: TaskRunStatusSchema.optional(),
+  tags: z.array(z.string()).optional(),
+  scheduleId: z.string().optional(),
+  period: z.string().optional(),
+  bulkId: z.string().optional(),
+  from: z.number().int().nonnegative().optional(),
+  to: z.number().int().nonnegative().optional(),
+  isTest: z.boolean().optional(),
+  rootOnly: z.boolean().optional(),
+  batchId: z.string().optional(),
+  runId: z.array(z.string()).optional(),
+  queues: z.array(z.string()).optional(),
+  machines: z.array(z.string()).optional(),
+  levels: z.array(z.enum(["TRACE", "DEBUG", "INFO", "WARN", "ERROR", "CANCELLED"])).optional(),
+  search: z.string().max(1000).optional(),
+  includeDebugLogs: z.boolean().optional(),
+  direction: z.enum(["forward", "backward"]).optional(),
+  cursor: z.string().optional(),
+  pageSize: z.number().int().positive().max(1000).optional(),
+});
 
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_RUN_IDS = 5000;

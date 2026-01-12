@@ -21,7 +21,7 @@ import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import type { LogEntry } from "~/presenters/v3/LogsListPresenter.server";
-import { getLevelColor } from "~/utils/logUtils";
+import { getLevelColor, getKindColor, getKindLabel } from "~/utils/logUtils";
 import { v3RunSpanPath, v3RunsPath, v3DeploymentVersionPath } from "~/utils/pathBuilder";
 import type { loader as logDetailLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.logs.$logId";
 import { TaskRunStatusCombo, descriptionForTaskRunStatus } from "~/components/runs/v3/TaskRunStatus";
@@ -53,46 +53,6 @@ type LogAttributes = Record<string, unknown> & {
     message?: string;
   };
 };
-
-// Event kind badge color styles
-function getKindColor(kind: string): string {
-  if (kind === "SPAN") {
-    return "text-purple-400 bg-purple-500/10 border-purple-500/20";
-  }
-  if (kind === "SPAN_EVENT") {
-    return "text-amber-400 bg-amber-500/10 border-amber-500/20";
-  }
-  if (kind.startsWith("LOG_")) {
-    return "text-blue-400 bg-blue-500/10 border-blue-500/20";
-  }
-  return "text-charcoal-400 bg-charcoal-700 border-charcoal-600";
-}
-
-// Get human readable kind label
-function getKindLabel(kind: string): string {
-  switch (kind) {
-    case "SPAN":
-      return "Span";
-    case "SPAN_EVENT":
-      return "Event";
-    case "LOG_DEBUG":
-      return "Log";
-    case "LOG_INFO":
-      return "Log";
-    case "LOG_WARN":
-      return "Log";
-    case "LOG_ERROR":
-      return "Log";
-    case "LOG_LOG":
-      return "Log";
-    case "DEBUG_EVENT":
-      return "Debug";
-    case "ANCESTOR_OVERRIDE":
-      return "Override";
-    default:
-      return kind;
-  }
-}
 
 function formatStringJSON(str: string): string {
   return str

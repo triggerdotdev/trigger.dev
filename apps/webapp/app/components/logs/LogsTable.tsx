@@ -28,7 +28,6 @@ import { PopoverMenuItem } from "~/components/primitives/Popover";
 type LogsTableProps = {
   logs: LogEntry[];
   hasFilters: boolean;
-  filters: LogsListAppliedFilters;
   searchTerm?: string;
   isLoading?: boolean;
   isLoadingMore?: boolean;

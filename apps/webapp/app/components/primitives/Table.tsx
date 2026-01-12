@@ -22,7 +22,10 @@ const variants = {
   },
   "bright/no-hover": {
     header: "bg-transparent",
+    headerCell: "px-3 py-2.5 pb-3 text-sm",
     cell: "group-hover/table-row:bg-transparent",
+    cellSize: "px-3 py-3",
+    cellText: "text-xs",
     stickyCell: "bg-background-bright",
     menuButton: "bg-background-bright",
     menuButtonDivider: "",

@@ -5,7 +5,7 @@ import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { getRunFiltersFromRequest } from "~/presenters/RunFilters.server";
-import { LogsListPresenter, type LogLevel } from "~/presenters/v3/LogsListPresenter.server";
+import { LogsListPresenter, type LogLevel, LogsListOptionsSchema } from "~/presenters/v3/LogsListPresenter.server";
 import { $replica } from "~/db.server";
 import { clickhouseClient } from "~/services/clickhouseInstance.server";
 
@@ -44,8 +44,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const levels = parseLevelsFromUrl(url);
   const showDebug = url.searchParams.get("showDebug") === "true";
 
-  const presenter = new LogsListPresenter($replica, clickhouseClient);
-  const result = await presenter.call(project.organizationId, environment.id, {
+
+  const options = LogsListOptionsSchema.parse({
     userId,
     projectId: project.id,
     ...filters,
@@ -53,7 +53,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     cursor,
     levels,
     includeDebugLogs: isAdmin && showDebug,
-  });
+  }) as any; // Validated by LogsListOptionsSchema at runtime
+
+  const presenter = new LogsListPresenter($replica, clickhouseClient);
+  const result = await presenter.call(project.organizationId, environment.id, options);
 
   return json({
     logs: result.logs,
