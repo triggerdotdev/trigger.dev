@@ -171,12 +171,9 @@ export class RunsReplicationService {
       description: "Insert retry attempts",
     });
 
-    this._eventsProcessedCounter = this._meter.createCounter(
-      "runs_replication.events_processed",
-      {
-        description: "Replication events processed (inserts, updates, deletes)",
-      }
-    );
+    this._eventsProcessedCounter = this._meter.createCounter("runs_replication.events_processed", {
+      description: "Replication events processed (inserts, updates, deletes)",
+    });
 
     this._flushDurationHistogram = this._meter.createHistogram(
       "runs_replication.flush_duration_ms",
@@ -916,6 +913,8 @@ export class RunsReplicationService {
       depth: run.depth,
       is_test: run.isTest,
       idempotency_key: run.idempotencyKey ?? "",
+      user_idempotency_key: run.userIdempotencyKey ?? "",
+      idempotency_key_scope: run.idempotencyKeyScope?.toLowerCase() ?? "",
       expiration_ttl: run.ttl ?? "",
       output,
       concurrency_key: run.concurrencyKey ?? "",

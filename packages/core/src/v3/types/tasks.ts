@@ -24,7 +24,7 @@ import {
   TaskMetadata,
   TaskRunContext,
 } from "../schemas/index.js";
-import { IdempotencyKey } from "./idempotencyKeys.js";
+import { IdempotencyKey, IdempotencyKeyInfo } from "./idempotencyKeys.js";
 import { QueueOptions } from "./queues.js";
 import { AnySchemaParseFn, inferSchemaIn, inferSchemaOut, Schema } from "./schemas.js";
 import { inferToolParameters, ToolTaskParameters } from "./tools.js";
@@ -756,7 +756,7 @@ export type TriggerOptions = {
    * ```
    *
    */
-  idempotencyKey?: IdempotencyKey | string | string[];
+  idempotencyKey?: IdempotencyKey | IdempotencyKeyInfo | string | string[];
 
   /**
    * The time-to-live for the idempotency key. Once the TTL has passed, the key can be used again.
@@ -954,7 +954,7 @@ export type BatchTriggerOptions = {
    * If no idempotencyKey is set on an individual item in the batch, it will use this key on each item + the array index.
    * This is useful to prevent work being done again if the task has to retry.
    */
-  idempotencyKey?: IdempotencyKey | string | string[];
+  idempotencyKey?: IdempotencyKey | IdempotencyKeyInfo | string | string[];
   idempotencyKeyTTL?: string;
 
   /**

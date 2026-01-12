@@ -1,8 +1,17 @@
 import { apiClientManager } from "./apiClientManager-api.js";
 import { taskContext } from "./task-context-api.js";
-import { IdempotencyKey } from "./types/idempotencyKeys.js";
+import {
+  IdempotencyKey,
+  IdempotencyKeyInfo,
+  IdempotencyKeyScope,
+  isIdempotencyKeyInfo,
+  createIdempotencyKeyInfo,
+} from "./types/idempotencyKeys.js";
 import { digestSHA256 } from "./utils/crypto.js";
 import type { ZodFetchOptions } from "./apiClient/core.js";
+
+export { isIdempotencyKeyInfo } from "./types/idempotencyKeys.js";
+export type { IdempotencyKeyInfo, IdempotencyKeyScope } from "./types/idempotencyKeys.js";
 
 export function isIdempotencyKey(
   value: string | string[] | IdempotencyKey
@@ -14,12 +23,18 @@ export function isIdempotencyKey(
 export function flattenIdempotencyKey(
   idempotencyKey?:
     | IdempotencyKey
+    | IdempotencyKeyInfo
     | string
     | string[]
-    | (undefined | IdempotencyKey | string | string[])[]
-): IdempotencyKey | string | string[] | undefined {
+    | (undefined | IdempotencyKey | IdempotencyKeyInfo | string | string[])[]
+): IdempotencyKey | IdempotencyKeyInfo | string | string[] | undefined {
   if (!idempotencyKey) {
     return;
+  }
+
+  // If it's an IdempotencyKeyInfo, return it as-is (don't flatten)
+  if (isIdempotencyKeyInfo(idempotencyKey)) {
+    return idempotencyKey;
   }
 
   if (Array.isArray(idempotencyKey)) {
@@ -31,6 +46,10 @@ export function flattenIdempotencyKey(
     return idempotencyKey.flatMap((key) => {
       const k = flattenIdempotencyKey(key);
       if (!k) return [];
+      // If the flattened result is an IdempotencyKeyInfo, extract the userKey for array flattening
+      if (isIdempotencyKeyInfo(k)) {
+        return Array.isArray(k.userKey) ? k.userKey : [k.userKey];
+      }
       return [k];
     }) as string[];
   }
@@ -38,20 +57,83 @@ export function flattenIdempotencyKey(
   return idempotencyKey;
 }
 
+export type MakeIdempotencyKeyResult = {
+  /** The hashed idempotency key */
+  hash: IdempotencyKey;
+  /** The user-provided key value (arrays joined with `-`), undefined if pre-hashed */
+  userValue: string | undefined;
+  /** The scope used, undefined if pre-hashed */
+  scope: IdempotencyKeyScope | undefined;
+};
+
 export async function makeIdempotencyKey(
-  idempotencyKey?: IdempotencyKey | string | string[]
+  idempotencyKey?: IdempotencyKey | IdempotencyKeyInfo | string | string[]
 ): Promise<IdempotencyKey | undefined> {
   if (!idempotencyKey) {
     return;
+  }
+
+  // If it's an IdempotencyKeyInfo object, extract the hash
+  if (isIdempotencyKeyInfo(idempotencyKey)) {
+    return idempotencyKey.hash;
   }
 
   if (isIdempotencyKey(idempotencyKey)) {
     return idempotencyKey;
   }
 
-  return await createIdempotencyKey(idempotencyKey, {
+  const result = await createIdempotencyKey(idempotencyKey, {
     scope: "run",
   });
+
+  return result.hash;
+}
+
+/**
+ * Creates an idempotency key and returns both the hash and user-provided info.
+ * This is useful for storing/displaying the original key alongside the hash.
+ */
+export async function makeIdempotencyKeyWithUserInfo(
+  idempotencyKey?: IdempotencyKey | IdempotencyKeyInfo | string | string[]
+): Promise<MakeIdempotencyKeyResult | undefined> {
+  if (!idempotencyKey) {
+    return;
+  }
+
+  // If it's an IdempotencyKeyInfo object (from idempotencyKeys.create()), extract all info
+  if (isIdempotencyKeyInfo(idempotencyKey)) {
+    // Serialize the user value (join arrays with `-`)
+    const userValue = Array.isArray(idempotencyKey.userKey)
+      ? idempotencyKey.userKey.join("-")
+      : idempotencyKey.userKey;
+
+    return {
+      hash: idempotencyKey.hash,
+      userValue,
+      scope: idempotencyKey.scope,
+    };
+  }
+
+  // If it's already a hash (64-char string), we don't have the original value
+  if (isIdempotencyKey(idempotencyKey)) {
+    return {
+      hash: idempotencyKey,
+      userValue: undefined,
+      scope: undefined,
+    };
+  }
+
+  // Create the hash with "run" scope (default for makeIdempotencyKey)
+  const keyInfo = await createIdempotencyKey(idempotencyKey, { scope: "run" });
+
+  // Serialize the user value (join arrays with `-`)
+  const userValue = Array.isArray(idempotencyKey) ? idempotencyKey.join("-") : idempotencyKey;
+
+  return {
+    hash: keyInfo.hash,
+    userValue,
+    scope: keyInfo.scope,
+  };
 }
 
 /**
@@ -64,7 +146,7 @@ export async function makeIdempotencyKey(
  * @param {object} [options] Additional options.
  * @param {"run" | "attempt" | "global"} [options.scope="run"] The scope of the idempotency key.
  *
- * @returns {Promise<IdempotencyKey>} The idempotency key as a branded string.
+ * @returns {Promise<IdempotencyKeyInfo>} An object containing the hash, original key, and scope.
  *
  * @example
  *
@@ -91,13 +173,14 @@ export async function makeIdempotencyKey(
  */
 export async function createIdempotencyKey(
   key: string | string[],
-  options?: { scope?: "run" | "attempt" | "global" }
-): Promise<IdempotencyKey> {
-  const idempotencyKey = await generateIdempotencyKey(
-    [...(Array.isArray(key) ? key : [key])].concat(injectScope(options?.scope ?? "run"))
+  options?: { scope?: IdempotencyKeyScope }
+): Promise<IdempotencyKeyInfo> {
+  const scope: IdempotencyKeyScope = options?.scope ?? "run";
+  const hash = await generateIdempotencyKey(
+    [...(Array.isArray(key) ? key : [key])].concat(injectScope(scope))
   );
 
-  return idempotencyKey as IdempotencyKey;
+  return createIdempotencyKeyInfo(hash as IdempotencyKey, key, scope);
 }
 
 function injectScope(scope: "run" | "attempt" | "global"): string[] {
@@ -145,9 +228,5 @@ export async function resetIdempotencyKey(
 ): Promise<{ id: string }> {
   const client = apiClientManager.clientOrThrow();
 
-  return client.resetIdempotencyKey(
-    taskIdentifier,
-    idempotencyKey,
-    requestOptions
-  );
+  return client.resetIdempotencyKey(taskIdentifier, idempotencyKey, requestOptions);
 }

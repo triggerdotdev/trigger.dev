@@ -7,7 +7,13 @@ import {
   RetryOptions,
   TriggerTraceContext,
 } from "@trigger.dev/core/v3";
-import { PrismaClient, PrismaReplicaClient, TaskRun, Waitpoint } from "@trigger.dev/database";
+import {
+  IdempotencyKeyScope,
+  PrismaClient,
+  PrismaReplicaClient,
+  TaskRun,
+  Waitpoint,
+} from "@trigger.dev/database";
 import {
   Worker,
   type WorkerConcurrencyOptions,
@@ -124,6 +130,10 @@ export type TriggerParams = {
   environment: MinimalAuthenticatedEnvironment;
   idempotencyKey?: string;
   idempotencyKeyExpiresAt?: Date;
+  /** The user-provided idempotency key value (before hashing). JSON stringified for arrays. */
+  userIdempotencyKey?: string;
+  /** The scope used when creating the idempotency key: "run", "attempt", or "global" */
+  idempotencyKeyScope?: string;
   taskIdentifier: string;
   payload: string;
   payloadType: string;

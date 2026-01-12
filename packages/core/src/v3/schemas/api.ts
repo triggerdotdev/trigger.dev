@@ -191,6 +191,10 @@ export const TriggerTaskRequestBody = z.object({
       delay: z.string().or(z.coerce.date()).optional(),
       idempotencyKey: z.string().optional(),
       idempotencyKeyTTL: z.string().optional(),
+      /** The user-provided idempotency key before hashing (JSON stringified for arrays) */
+      userIdempotencyKey: z.string().optional(),
+      /** The scope used when creating the idempotency key */
+      idempotencyKeyScope: z.enum(["run", "attempt", "global"]).optional(),
       machine: MachinePresetName.optional(),
       maxAttempts: z.number().int().optional(),
       maxDuration: z.number().optional(),
@@ -240,6 +244,10 @@ export const BatchTriggerTaskItem = z.object({
       delay: z.string().or(z.coerce.date()).optional(),
       idempotencyKey: z.string().optional(),
       idempotencyKeyTTL: z.string().optional(),
+      /** The user-provided idempotency key before hashing (JSON stringified for arrays) */
+      userIdempotencyKey: z.string().optional(),
+      /** The scope used when creating the idempotency key */
+      idempotencyKeyScope: z.enum(["run", "attempt", "global"]).optional(),
       lockToVersion: z.string().optional(),
       machine: MachinePresetName.optional(),
       maxAttempts: z.number().int().optional(),

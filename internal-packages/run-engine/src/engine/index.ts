@@ -16,6 +16,7 @@ import {
 } from "@trigger.dev/core/v3";
 import { RunId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import {
+  IdempotencyKeyScope,
   Prisma,
   PrismaClient,
   PrismaClientOrTransaction,
@@ -395,6 +396,8 @@ export class RunEngine {
       environment,
       idempotencyKey,
       idempotencyKeyExpiresAt,
+      userIdempotencyKey,
+      idempotencyKeyScope,
       taskIdentifier,
       payload,
       payloadType,
@@ -544,6 +547,8 @@ export class RunEngine {
               projectId: environment.project.id,
               idempotencyKey,
               idempotencyKeyExpiresAt,
+              userIdempotencyKey,
+              idempotencyKeyScope: mapIdempotencyKeyScope(idempotencyKeyScope),
               taskIdentifier,
               payload,
               payloadType,
@@ -2165,4 +2170,23 @@ function analyzeQueue(inputs: QueueInputs) {
       messagesDueCount: typeof dueCount === "number" ? dueCount : null,
     },
   };
+}
+
+/**
+ * Maps a string scope value to the Prisma IdempotencyKeyScope enum.
+ * Returns undefined if the scope is not recognized.
+ */
+function mapIdempotencyKeyScope(scope: string | undefined): IdempotencyKeyScope | undefined {
+  if (!scope) return undefined;
+
+  switch (scope.toLowerCase()) {
+    case "run":
+      return IdempotencyKeyScope.RUN;
+    case "attempt":
+      return IdempotencyKeyScope.ATTEMPT;
+    case "global":
+      return IdempotencyKeyScope.GLOBAL;
+    default:
+      return undefined;
+  }
 }

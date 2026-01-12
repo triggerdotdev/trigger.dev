@@ -40,6 +40,8 @@ export const TaskRunV2 = z.object({
   span_id: z.string(),
   trace_id: z.string(),
   idempotency_key: z.string(),
+  user_idempotency_key: z.string().default(""),
+  idempotency_key_scope: z.string().default(""),
   expiration_ttl: z.string(),
   is_test: z.boolean().default(false),
   concurrency_key: z.string().default(""),

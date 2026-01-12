@@ -304,6 +304,8 @@ export class RunEngineTriggerTaskService {
                 environment: environment,
                 idempotencyKey,
                 idempotencyKeyExpiresAt: idempotencyKey ? idempotencyKeyExpiresAt : undefined,
+                userIdempotencyKey: body.options?.userIdempotencyKey,
+                idempotencyKeyScope: body.options?.idempotencyKeyScope,
                 taskIdentifier: taskId,
                 payload: payloadPacket.data ?? "",
                 payloadType: payloadPacket.dataType,

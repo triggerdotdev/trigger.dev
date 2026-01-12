@@ -585,11 +585,15 @@ model TaskRun {
 
   idempotencyKey          String?
   idempotencyKeyExpiresAt DateTime?
+  /// The user-provided idempotency key value (before hashing). JSON stringified for arrays.
+  userIdempotencyKey      String?
+  /// The scope used when creating the idempotency key
+  idempotencyKeyScope     IdempotencyKeyScope?
 
   /// Debounce options: { key: string, delay: string, createdAt: Date }
   debounce Json?
 
-  taskIdentifier          String
+  taskIdentifier String
 
   isTest Boolean @default(false)
 
@@ -884,6 +888,16 @@ enum RunEngineVersion {
   /// The original version that uses marqs v1 and Graphile
   V1
   V2
+}
+
+/// The scope used when creating an idempotency key
+enum IdempotencyKeyScope {
+  /// Key is scoped to the current task run (includes run ID in hash)
+  RUN
+  /// Key is scoped to the current attempt (includes run ID and attempt number in hash)
+  ATTEMPT
+  /// Key is global (no additional context added to hash)
+  GLOBAL
 }
 
 /// Used by the RunEngine during TaskRun execution

@@ -15,6 +15,7 @@ import {
   InitOutput,
   lifecycleHooks,
   makeIdempotencyKey,
+  makeIdempotencyKeyWithUserInfo,
   parsePacket,
   Queue,
   QueueOptions,
@@ -622,9 +623,17 @@ export async function batchTriggerById<TTask extends AnyTask>(
 
         const payloadPacket = await stringifyIO(parsedPayload);
 
-        const batchItemIdempotencyKey = await makeIdempotencyKey(
+        const batchItemIdempotencyKeyInfo = await makeIdempotencyKeyWithUserInfo(
           flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
         );
+
+        // Check if item has its own idempotency key
+        const itemIdempotencyKeyInfo = await makeIdempotencyKeyWithUserInfo(
+          item.options?.idempotencyKey
+        );
+
+        // Use item's key if provided, otherwise fall back to batch item key
+        const finalIdempotencyKeyInfo = itemIdempotencyKeyInfo ?? batchItemIdempotencyKeyInfo;
 
         return {
           index,
@@ -641,9 +650,10 @@ export async function batchTriggerById<TTask extends AnyTask>(
             maxAttempts: item.options?.maxAttempts,
             metadata: item.options?.metadata,
             maxDuration: item.options?.maxDuration,
-            idempotencyKey:
-              (await makeIdempotencyKey(item.options?.idempotencyKey)) ?? batchItemIdempotencyKey,
+            idempotencyKey: finalIdempotencyKeyInfo?.hash,
             idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
+            userIdempotencyKey: finalIdempotencyKeyInfo?.userValue,
+            idempotencyKeyScope: finalIdempotencyKeyInfo?.scope,
             machine: item.options?.machine,
             priority: item.options?.priority,
             region: item.options?.region,
@@ -654,6 +664,8 @@ export async function batchTriggerById<TTask extends AnyTask>(
       })
     );
 
+    const batchIdempotencyKeyInfo = await makeIdempotencyKeyWithUserInfo(options?.idempotencyKey);
+
     // Execute 2-phase batch
     const response = await tracer.startActiveSpan(
       "batch.trigger()",
@@ -663,7 +675,7 @@ export async function batchTriggerById<TTask extends AnyTask>(
           ndJsonItems,
           {
             parentRunId: taskContext.ctx?.run.id,
-            idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
+            idempotencyKey: batchIdempotencyKeyInfo?.hash,
             spanParentAsLink: true, // Fire-and-forget: child runs get separate trace IDs
           },
           requestOptions
@@ -694,6 +706,8 @@ export async function batchTriggerById<TTask extends AnyTask>(
     const asyncItems = normalizeToAsyncIterable(items);
     const transformedItems = transformBatchItemsStream<TTask>(asyncItems, options);
 
+    const batchIdempotencyKeyInfo = await makeIdempotencyKeyWithUserInfo(options?.idempotencyKey);
+
     // Execute streaming 2-phase batch
     const response = await tracer.startActiveSpan(
       "batch.trigger()",
@@ -703,7 +717,7 @@ export async function batchTriggerById<TTask extends AnyTask>(
           transformedItems,
           {
             parentRunId: taskContext.ctx?.run.id,
-            idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
+            idempotencyKey: batchIdempotencyKeyInfo?.hash,
             spanParentAsLink: true, // Fire-and-forget: child runs get separate trace IDs
           },
           requestOptions
@@ -878,9 +892,17 @@ export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
 
         const payloadPacket = await stringifyIO(parsedPayload);
 
-        const batchItemIdempotencyKey = await makeIdempotencyKey(
+        const batchItemIdempotencyKeyInfo = await makeIdempotencyKeyWithUserInfo(
           flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
         );
+
+        // Check if item has its own idempotency key
+        const itemIdempotencyKeyInfo = await makeIdempotencyKeyWithUserInfo(
+          item.options?.idempotencyKey
+        );
+
+        // Use item's key if provided, otherwise fall back to batch item key
+        const finalIdempotencyKeyInfo = itemIdempotencyKeyInfo ?? batchItemIdempotencyKeyInfo;
 
         return {
           index,
@@ -898,9 +920,10 @@ export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
             maxAttempts: item.options?.maxAttempts,
             metadata: item.options?.metadata,
             maxDuration: item.options?.maxDuration,
-            idempotencyKey:
-              (await makeIdempotencyKey(item.options?.idempotencyKey)) ?? batchItemIdempotencyKey,
+            idempotencyKey: finalIdempotencyKeyInfo?.hash,
             idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
+            userIdempotencyKey: finalIdempotencyKeyInfo?.userValue,
+            idempotencyKeyScope: finalIdempotencyKeyInfo?.scope,
             machine: item.options?.machine,
             priority: item.options?.priority,
             region: item.options?.region,
@@ -909,6 +932,8 @@ export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
         };
       })
     );
+
+    const batchIdempotencyKeyInfo = await makeIdempotencyKeyWithUserInfo(options?.idempotencyKey);
 
     return await tracer.startActiveSpan(
       "batch.triggerAndWait()",
@@ -920,7 +945,7 @@ export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
           {
             parentRunId: ctx.run.id,
             resumeParentOnCompletion: true,
-            idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
+            idempotencyKey: batchIdempotencyKeyInfo?.hash,
             spanParentAsLink: false, // Waiting: child runs share parent's trace ID
           },
           requestOptions
@@ -954,6 +979,8 @@ export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
     const asyncItems = normalizeToAsyncIterable(items);
     const transformedItems = transformBatchItemsStreamForWait<TTask>(asyncItems, options);
 
+    const batchIdempotencyKeyInfo = await makeIdempotencyKeyWithUserInfo(options?.idempotencyKey);
+
     return await tracer.startActiveSpan(
       "batch.triggerAndWait()",
       async (span) => {
@@ -964,7 +991,7 @@ export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
           {
             parentRunId: ctx.run.id,
             resumeParentOnCompletion: true,
-            idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
+            idempotencyKey: batchIdempotencyKeyInfo?.hash,
             spanParentAsLink: false, // Waiting: child runs share parent's trace ID
           },
           requestOptions
@@ -1138,9 +1165,17 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
 
         const payloadPacket = await stringifyIO(parsedPayload);
 
-        const batchItemIdempotencyKey = await makeIdempotencyKey(
+        const batchItemIdempotencyKeyInfo = await makeIdempotencyKeyWithUserInfo(
           flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
         );
+
+        // Check if item has its own idempotency key
+        const itemIdempotencyKeyInfo = await makeIdempotencyKeyWithUserInfo(
+          item.options?.idempotencyKey
+        );
+
+        // Use item's key if provided, otherwise fall back to batch item key
+        const finalIdempotencyKeyInfo = itemIdempotencyKeyInfo ?? batchItemIdempotencyKeyInfo;
 
         return {
           index,
@@ -1157,9 +1192,10 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
             maxAttempts: item.options?.maxAttempts,
             metadata: item.options?.metadata,
             maxDuration: item.options?.maxDuration,
-            idempotencyKey:
-              (await makeIdempotencyKey(item.options?.idempotencyKey)) ?? batchItemIdempotencyKey,
+            idempotencyKey: finalIdempotencyKeyInfo?.hash,
             idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
+            userIdempotencyKey: finalIdempotencyKeyInfo?.userValue,
+            idempotencyKeyScope: finalIdempotencyKeyInfo?.scope,
             machine: item.options?.machine,
             priority: item.options?.priority,
             region: item.options?.region,
@@ -1170,6 +1206,8 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
       })
     );
 
+    const batchIdempotencyKeyInfo = await makeIdempotencyKeyWithUserInfo(options?.idempotencyKey);
+
     // Execute 2-phase batch
     const response = await tracer.startActiveSpan(
       "batch.triggerByTask()",
@@ -1179,7 +1217,7 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
           ndJsonItems,
           {
             parentRunId: taskContext.ctx?.run.id,
-            idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
+            idempotencyKey: batchIdempotencyKeyInfo?.hash,
             spanParentAsLink: true, // Fire-and-forget: child runs get separate trace IDs
           },
           requestOptions
@@ -1213,6 +1251,8 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
     const asyncItems = normalizeToAsyncIterable(streamItems);
     const transformedItems = transformBatchByTaskItemsStream<TTasks>(asyncItems, options);
 
+    const batchIdempotencyKeyInfo = await makeIdempotencyKeyWithUserInfo(options?.idempotencyKey);
+
     // Execute streaming 2-phase batch
     const response = await tracer.startActiveSpan(
       "batch.triggerByTask()",
@@ -1222,7 +1262,7 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
           transformedItems,
           {
             parentRunId: taskContext.ctx?.run.id,
-            idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
+            idempotencyKey: batchIdempotencyKeyInfo?.hash,
             spanParentAsLink: true, // Fire-and-forget: child runs get separate trace IDs
           },
           requestOptions
@@ -1399,9 +1439,17 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
 
         const payloadPacket = await stringifyIO(parsedPayload);
 
-        const batchItemIdempotencyKey = await makeIdempotencyKey(
+        const batchItemIdempotencyKeyInfo = await makeIdempotencyKeyWithUserInfo(
           flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
         );
+
+        // Check if item has its own idempotency key
+        const itemIdempotencyKeyInfo = await makeIdempotencyKeyWithUserInfo(
+          item.options?.idempotencyKey
+        );
+
+        // Use item's key if provided, otherwise fall back to batch item key
+        const finalIdempotencyKeyInfo = itemIdempotencyKeyInfo ?? batchItemIdempotencyKeyInfo;
 
         return {
           index,
@@ -1419,9 +1467,10 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
             maxAttempts: item.options?.maxAttempts,
             metadata: item.options?.metadata,
             maxDuration: item.options?.maxDuration,
-            idempotencyKey:
-              (await makeIdempotencyKey(item.options?.idempotencyKey)) ?? batchItemIdempotencyKey,
+            idempotencyKey: finalIdempotencyKeyInfo?.hash,
             idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
+            userIdempotencyKey: finalIdempotencyKeyInfo?.userValue,
+            idempotencyKeyScope: finalIdempotencyKeyInfo?.scope,
             machine: item.options?.machine,
             priority: item.options?.priority,
             region: item.options?.region,
@@ -1430,6 +1479,8 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
         };
       })
     );
+
+    const batchIdempotencyKeyInfo = await makeIdempotencyKeyWithUserInfo(options?.idempotencyKey);
 
     return await tracer.startActiveSpan(
       "batch.triggerByTaskAndWait()",
@@ -1441,7 +1492,7 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
           {
             parentRunId: ctx.run.id,
             resumeParentOnCompletion: true,
-            idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
+            idempotencyKey: batchIdempotencyKeyInfo?.hash,
             spanParentAsLink: false, // Waiting: child runs share parent's trace ID
           },
           requestOptions
@@ -1478,6 +1529,8 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
     const asyncItems = normalizeToAsyncIterable(streamItems);
     const transformedItems = transformBatchByTaskItemsStreamForWait<TTasks>(asyncItems, options);
 
+    const batchIdempotencyKeyInfo = await makeIdempotencyKeyWithUserInfo(options?.idempotencyKey);
+
     return await tracer.startActiveSpan(
       "batch.triggerByTaskAndWait()",
       async (span) => {
@@ -1488,7 +1541,7 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
           {
             parentRunId: ctx.run.id,
             resumeParentOnCompletion: true,
-            idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
+            idempotencyKey: batchIdempotencyKeyInfo?.hash,
             spanParentAsLink: false, // Waiting: child runs share parent's trace ID
           },
           requestOptions
@@ -1798,9 +1851,17 @@ async function* transformBatchItemsStream<TTask extends AnyTask>(
 
     const payloadPacket = await stringifyIO(parsedPayload);
 
-    const batchItemIdempotencyKey = await makeIdempotencyKey(
+    const batchItemIdempotencyKeyInfo = await makeIdempotencyKeyWithUserInfo(
       flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
     );
+
+    // Check if item has its own idempotency key
+    const itemIdempotencyKeyInfo = await makeIdempotencyKeyWithUserInfo(
+      item.options?.idempotencyKey
+    );
+
+    // Use item's key if provided, otherwise fall back to batch item key
+    const finalIdempotencyKeyInfo = itemIdempotencyKeyInfo ?? batchItemIdempotencyKeyInfo;
 
     yield {
       index: index++,
@@ -1817,9 +1878,10 @@ async function* transformBatchItemsStream<TTask extends AnyTask>(
         maxAttempts: item.options?.maxAttempts,
         metadata: item.options?.metadata,
         maxDuration: item.options?.maxDuration,
-        idempotencyKey:
-          (await makeIdempotencyKey(item.options?.idempotencyKey)) ?? batchItemIdempotencyKey,
+        idempotencyKey: finalIdempotencyKeyInfo?.hash,
         idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
+        userIdempotencyKey: finalIdempotencyKeyInfo?.userValue,
+        idempotencyKeyScope: finalIdempotencyKeyInfo?.scope,
         machine: item.options?.machine,
         priority: item.options?.priority,
         region: item.options?.region,
@@ -1850,9 +1912,17 @@ async function* transformBatchItemsStreamForWait<TTask extends AnyTask>(
 
     const payloadPacket = await stringifyIO(parsedPayload);
 
-    const batchItemIdempotencyKey = await makeIdempotencyKey(
+    const batchItemIdempotencyKeyInfo = await makeIdempotencyKeyWithUserInfo(
       flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
     );
+
+    // Check if item has its own idempotency key
+    const itemIdempotencyKeyInfo = await makeIdempotencyKeyWithUserInfo(
+      item.options?.idempotencyKey
+    );
+
+    // Use item's key if provided, otherwise fall back to batch item key
+    const finalIdempotencyKeyInfo = itemIdempotencyKeyInfo ?? batchItemIdempotencyKeyInfo;
 
     yield {
       index: index++,
@@ -1870,9 +1940,10 @@ async function* transformBatchItemsStreamForWait<TTask extends AnyTask>(
         maxAttempts: item.options?.maxAttempts,
         metadata: item.options?.metadata,
         maxDuration: item.options?.maxDuration,
-        idempotencyKey:
-          (await makeIdempotencyKey(item.options?.idempotencyKey)) ?? batchItemIdempotencyKey,
+        idempotencyKey: finalIdempotencyKeyInfo?.hash,
         idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
+        userIdempotencyKey: finalIdempotencyKeyInfo?.userValue,
+        idempotencyKeyScope: finalIdempotencyKeyInfo?.scope,
         machine: item.options?.machine,
         priority: item.options?.priority,
         region: item.options?.region,
@@ -1901,9 +1972,17 @@ async function* transformBatchByTaskItemsStream<TTasks extends readonly AnyTask[
 
     const payloadPacket = await stringifyIO(parsedPayload);
 
-    const batchItemIdempotencyKey = await makeIdempotencyKey(
+    const batchItemIdempotencyKeyInfo = await makeIdempotencyKeyWithUserInfo(
       flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
     );
+
+    // Check if item has its own idempotency key
+    const itemIdempotencyKeyInfo = await makeIdempotencyKeyWithUserInfo(
+      item.options?.idempotencyKey
+    );
+
+    // Use item's key if provided, otherwise fall back to batch item key
+    const finalIdempotencyKeyInfo = itemIdempotencyKeyInfo ?? batchItemIdempotencyKeyInfo;
 
     yield {
       index: index++,
@@ -1920,9 +1999,10 @@ async function* transformBatchByTaskItemsStream<TTasks extends readonly AnyTask[
         maxAttempts: item.options?.maxAttempts,
         metadata: item.options?.metadata,
         maxDuration: item.options?.maxDuration,
-        idempotencyKey:
-          (await makeIdempotencyKey(item.options?.idempotencyKey)) ?? batchItemIdempotencyKey,
+        idempotencyKey: finalIdempotencyKeyInfo?.hash,
         idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
+        userIdempotencyKey: finalIdempotencyKeyInfo?.userValue,
+        idempotencyKeyScope: finalIdempotencyKeyInfo?.scope,
         machine: item.options?.machine,
         priority: item.options?.priority,
         region: item.options?.region,
@@ -1952,9 +2032,17 @@ async function* transformBatchByTaskItemsStreamForWait<TTasks extends readonly A
 
     const payloadPacket = await stringifyIO(parsedPayload);
 
-    const batchItemIdempotencyKey = await makeIdempotencyKey(
+    const batchItemIdempotencyKeyInfo = await makeIdempotencyKeyWithUserInfo(
       flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
     );
+
+    // Check if item has its own idempotency key
+    const itemIdempotencyKeyInfo = await makeIdempotencyKeyWithUserInfo(
+      item.options?.idempotencyKey
+    );
+
+    // Use item's key if provided, otherwise fall back to batch item key
+    const finalIdempotencyKeyInfo = itemIdempotencyKeyInfo ?? batchItemIdempotencyKeyInfo;
 
     yield {
       index: index++,
@@ -1972,9 +2060,10 @@ async function* transformBatchByTaskItemsStreamForWait<TTasks extends readonly A
         maxAttempts: item.options?.maxAttempts,
         metadata: item.options?.metadata,
         maxDuration: item.options?.maxDuration,
-        idempotencyKey:
-          (await makeIdempotencyKey(item.options?.idempotencyKey)) ?? batchItemIdempotencyKey,
+        idempotencyKey: finalIdempotencyKeyInfo?.hash,
         idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
+        userIdempotencyKey: finalIdempotencyKeyInfo?.userValue,
+        idempotencyKeyScope: finalIdempotencyKeyInfo?.scope,
         machine: item.options?.machine,
         priority: item.options?.priority,
         region: item.options?.region,
@@ -2001,9 +2090,17 @@ async function* transformSingleTaskBatchItemsStream<TPayload>(
     const parsedPayload = parsePayload ? await parsePayload(item.payload) : item.payload;
     const payloadPacket = await stringifyIO(parsedPayload);
 
-    const batchItemIdempotencyKey = await makeIdempotencyKey(
+    const batchItemIdempotencyKeyInfo = await makeIdempotencyKeyWithUserInfo(
       flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
     );
+
+    // Check if item has its own idempotency key
+    const itemIdempotencyKeyInfo = await makeIdempotencyKeyWithUserInfo(
+      item.options?.idempotencyKey
+    );
+
+    // Use item's key if provided, otherwise fall back to batch item key
+    const finalIdempotencyKeyInfo = itemIdempotencyKeyInfo ?? batchItemIdempotencyKeyInfo;
 
     yield {
       index: index++,
@@ -2024,9 +2121,10 @@ async function* transformSingleTaskBatchItemsStream<TPayload>(
         maxAttempts: item.options?.maxAttempts,
         metadata: item.options?.metadata,
         maxDuration: item.options?.maxDuration,
-        idempotencyKey:
-          (await makeIdempotencyKey(item.options?.idempotencyKey)) ?? batchItemIdempotencyKey,
+        idempotencyKey: finalIdempotencyKeyInfo?.hash,
         idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
+        userIdempotencyKey: finalIdempotencyKeyInfo?.userValue,
+        idempotencyKeyScope: finalIdempotencyKeyInfo?.scope,
         machine: item.options?.machine,
         priority: item.options?.priority,
         region: item.options?.region,
@@ -2054,9 +2152,17 @@ async function* transformSingleTaskBatchItemsStreamForWait<TPayload>(
     const parsedPayload = parsePayload ? await parsePayload(item.payload) : item.payload;
     const payloadPacket = await stringifyIO(parsedPayload);
 
-    const batchItemIdempotencyKey = await makeIdempotencyKey(
+    const batchItemIdempotencyKeyInfo = await makeIdempotencyKeyWithUserInfo(
       flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
     );
+
+    // Check if item has its own idempotency key
+    const itemIdempotencyKeyInfo = await makeIdempotencyKeyWithUserInfo(
+      item.options?.idempotencyKey
+    );
+
+    // Use item's key if provided, otherwise fall back to batch item key
+    const finalIdempotencyKeyInfo = itemIdempotencyKeyInfo ?? batchItemIdempotencyKeyInfo;
 
     yield {
       index: index++,
@@ -2078,9 +2184,10 @@ async function* transformSingleTaskBatchItemsStreamForWait<TPayload>(
         maxAttempts: item.options?.maxAttempts,
         metadata: item.options?.metadata,
         maxDuration: item.options?.maxDuration,
-        idempotencyKey:
-          (await makeIdempotencyKey(item.options?.idempotencyKey)) ?? batchItemIdempotencyKey,
+        idempotencyKey: finalIdempotencyKeyInfo?.hash,
         idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
+        userIdempotencyKey: finalIdempotencyKeyInfo?.userValue,
+        idempotencyKeyScope: finalIdempotencyKeyInfo?.scope,
         machine: item.options?.machine,
         priority: item.options?.priority,
         region: item.options?.region,
@@ -2104,6 +2211,8 @@ async function trigger_internal<TRunTypes extends AnyRunTypes>(
 
   const payloadPacket = await stringifyIO(parsedPayload);
 
+  const idempotencyKeyInfo = await makeIdempotencyKeyWithUserInfo(options?.idempotencyKey);
+
   const handle = await apiClient.triggerTask(
     id,
     {
@@ -2113,8 +2222,10 @@ async function trigger_internal<TRunTypes extends AnyRunTypes>(
         concurrencyKey: options?.concurrencyKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
-        idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
+        idempotencyKey: idempotencyKeyInfo?.hash,
         idempotencyKeyTTL: options?.idempotencyKeyTTL,
+        userIdempotencyKey: idempotencyKeyInfo?.userValue,
+        idempotencyKeyScope: idempotencyKeyInfo?.scope,
         delay: options?.delay,
         ttl: options?.ttl,
         tags: options?.tags,
@@ -2175,9 +2286,17 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
 
         const payloadPacket = await stringifyIO(parsedPayload);
 
-        const batchItemIdempotencyKey = await makeIdempotencyKey(
+        const batchItemIdempotencyKeyInfo = await makeIdempotencyKeyWithUserInfo(
           flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
         );
+
+        // Check if item has its own idempotency key
+        const itemIdempotencyKeyInfo = await makeIdempotencyKeyWithUserInfo(
+          item.options?.idempotencyKey
+        );
+
+        // Use item's key if provided, otherwise fall back to batch item key
+        const finalIdempotencyKeyInfo = itemIdempotencyKeyInfo ?? batchItemIdempotencyKeyInfo;
 
         return {
           index,
@@ -2198,9 +2317,10 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
             maxAttempts: item.options?.maxAttempts,
             metadata: item.options?.metadata,
             maxDuration: item.options?.maxDuration,
-            idempotencyKey:
-              (await makeIdempotencyKey(item.options?.idempotencyKey)) ?? batchItemIdempotencyKey,
+            idempotencyKey: finalIdempotencyKeyInfo?.hash,
             idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
+            userIdempotencyKey: finalIdempotencyKeyInfo?.userValue,
+            idempotencyKeyScope: finalIdempotencyKeyInfo?.scope,
             machine: item.options?.machine,
             priority: item.options?.priority,
             region: item.options?.region,
@@ -2209,6 +2329,8 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
         };
       })
     );
+
+    const batchIdempotencyKeyInfo = await makeIdempotencyKeyWithUserInfo(options?.idempotencyKey);
 
     // Execute 2-phase batch
     const response = await tracer.startActiveSpan(
@@ -2219,7 +2341,7 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
           ndJsonItems,
           {
             parentRunId: ctx?.run.id,
-            idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
+            idempotencyKey: batchIdempotencyKeyInfo?.hash,
             spanParentAsLink: true, // Fire-and-forget: child runs get separate trace IDs
           },
           requestOptions
@@ -2265,6 +2387,8 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
       queue
     );
 
+    const batchIdempotencyKeyInfo = await makeIdempotencyKeyWithUserInfo(options?.idempotencyKey);
+
     // Execute streaming 2-phase batch
     const response = await tracer.startActiveSpan(
       name,
@@ -2274,7 +2398,7 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
           transformedItems,
           {
             parentRunId: ctx?.run.id,
-            idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
+            idempotencyKey: batchIdempotencyKeyInfo?.hash,
             spanParentAsLink: true, // Fire-and-forget: child runs get separate trace IDs
           },
           requestOptions
@@ -2332,6 +2456,8 @@ async function triggerAndWait_internal<TIdentifier extends string, TPayload, TOu
 
   const payloadPacket = await stringifyIO(parsedPayload);
 
+  const idempotencyKeyInfo = await makeIdempotencyKeyWithUserInfo(options?.idempotencyKey);
+
   return await tracer.startActiveSpan(
     name,
     async (span) => {
@@ -2353,8 +2479,10 @@ async function triggerAndWait_internal<TIdentifier extends string, TPayload, TOu
             maxDuration: options?.maxDuration,
             resumeParentOnCompletion: true,
             parentRunId: ctx.run.id,
-            idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
+            idempotencyKey: idempotencyKeyInfo?.hash,
             idempotencyKeyTTL: options?.idempotencyKeyTTL,
+            userIdempotencyKey: idempotencyKeyInfo?.userValue,
+            idempotencyKeyScope: idempotencyKeyInfo?.scope,
             machine: options?.machine,
             priority: options?.priority,
             region: options?.region,
@@ -2421,9 +2549,17 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
 
         const payloadPacket = await stringifyIO(parsedPayload);
 
-        const batchItemIdempotencyKey = await makeIdempotencyKey(
+        const batchItemIdempotencyKeyInfo = await makeIdempotencyKeyWithUserInfo(
           flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
         );
+
+        // Check if item has its own idempotency key
+        const itemIdempotencyKeyInfo = await makeIdempotencyKeyWithUserInfo(
+          item.options?.idempotencyKey
+        );
+
+        // Use item's key if provided, otherwise fall back to batch item key
+        const finalIdempotencyKeyInfo = itemIdempotencyKeyInfo ?? batchItemIdempotencyKeyInfo;
 
         return {
           index,
@@ -2445,9 +2581,10 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
             maxAttempts: item.options?.maxAttempts,
             metadata: item.options?.metadata,
             maxDuration: item.options?.maxDuration,
-            idempotencyKey:
-              (await makeIdempotencyKey(item.options?.idempotencyKey)) ?? batchItemIdempotencyKey,
+            idempotencyKey: finalIdempotencyKeyInfo?.hash,
             idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
+            userIdempotencyKey: finalIdempotencyKeyInfo?.userValue,
+            idempotencyKeyScope: finalIdempotencyKeyInfo?.scope,
             machine: item.options?.machine,
             priority: item.options?.priority,
             region: item.options?.region,
@@ -2455,6 +2592,8 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
         };
       })
     );
+
+    const batchIdempotencyKeyInfo = await makeIdempotencyKeyWithUserInfo(options?.idempotencyKey);
 
     return await tracer.startActiveSpan(
       name,
@@ -2466,7 +2605,7 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
           {
             parentRunId: ctx.run.id,
             resumeParentOnCompletion: true,
-            idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
+            idempotencyKey: batchIdempotencyKeyInfo?.hash,
             spanParentAsLink: false, // Waiting: child runs share parent's trace ID
           },
           requestOptions
@@ -2518,6 +2657,8 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
       queue
     );
 
+    const batchIdempotencyKeyInfo = await makeIdempotencyKeyWithUserInfo(options?.idempotencyKey);
+
     return await tracer.startActiveSpan(
       name,
       async (span) => {
@@ -2528,7 +2669,7 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
           {
             parentRunId: ctx.run.id,
             resumeParentOnCompletion: true,
-            idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
+            idempotencyKey: batchIdempotencyKeyInfo?.hash,
             spanParentAsLink: false, // Waiting: child runs share parent's trace ID
           },
           requestOptions
