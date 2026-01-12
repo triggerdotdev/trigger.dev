@@ -377,7 +377,7 @@ export class KubernetesWorkloadManager implements WorkloadManager {
               preference: {
                 matchExpressions: [
                   {
-                    key: "machinepool",
+                    key: "node.cluster.x-k8s.io/machinepool",
                     operator: "In",
                     values: [env.KUBERNETES_LARGE_MACHINE_POOL_LABEL],
                   },
@@ -397,7 +397,7 @@ export class KubernetesWorkloadManager implements WorkloadManager {
             {
               matchExpressions: [
                 {
-                  key: "machinepool",
+                  key: "node.cluster.x-k8s.io/machinepool",
                   operator: "NotIn",
                   values: [env.KUBERNETES_LARGE_MACHINE_POOL_LABEL],
                 },
