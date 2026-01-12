@@ -40,6 +40,7 @@ import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
 import { Button } from "~/components/primitives/Buttons";
+import { Callout } from "~/components/primitives/Callout";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { Header2, Header3 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
@@ -172,7 +173,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   );
   if (!canAccess) {
     return typedjson(
-      { error: "Unauthorized", rows: null, columns: null, stats: null },
+      { error: "Unauthorized", rows: null, columns: null, stats: null, hiddenColumns: null },
       { status: 403 }
     );
   }
@@ -180,7 +181,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
   if (!project) {
     return typedjson(
-      { error: "Project not found", rows: null, columns: null, stats: null },
+      { error: "Project not found", rows: null, columns: null, stats: null, hiddenColumns: null },
       { status: 404 }
     );
   }
@@ -188,7 +189,13 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const environment = await findEnvironmentBySlug(project.id, envParam, user.id);
   if (!environment) {
     return typedjson(
-      { error: "Environment not found", rows: null, columns: null, stats: null },
+      {
+        error: "Environment not found",
+        rows: null,
+        columns: null,
+        stats: null,
+        hiddenColumns: null,
+      },
       { status: 404 }
     );
   }
@@ -206,6 +213,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         rows: null,
         columns: null,
         stats: null,
+        hiddenColumns: null,
       },
       { status: 400 }
     );
@@ -232,7 +240,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
     if (error) {
       return typedjson(
-        { error: error.message, rows: null, columns: null, stats: null },
+        { error: error.message, rows: null, columns: null, stats: null, hiddenColumns: null },
         { status: 400 }
       );
     }
@@ -242,11 +250,12 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       rows: result.rows,
       columns: result.columns,
       stats: result.stats,
+      hiddenColumns: result.hiddenColumns ?? null,
     });
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : "Unknown error executing query";
     return typedjson(
-      { error: errorMessage, rows: null, columns: null, stats: null },
+      { error: errorMessage, rows: null, columns: null, stats: null, hiddenColumns: null },
       { status: 500 }
     );
   }
@@ -464,11 +473,25 @@ export default function Page() {
                         </Button>
                       </div>
                     ) : results?.rows && results?.columns ? (
-                      <TSQLResultsTable
-                        rows={results.rows}
-                        columns={results.columns}
-                        prettyFormatting={prettyFormatting}
-                      />
+                      <div className="flex h-full flex-col overflow-hidden">
+                        {results.hiddenColumns && results.hiddenColumns.length > 0 && (
+                          <Callout variant="warning" className="m-2 shrink-0 text-sm">
+                            <code>SELECT *</code> doesn't return all columns because it's slow. The
+                            following columns are not shown:{" "}
+                            <span className="font-mono text-xs">
+                              {results.hiddenColumns.join(", ")}
+                            </span>
+                            . Specify them explicitly to include them.
+                          </Callout>
+                        )}
+                        <div className="min-h-0 flex-1 overflow-hidden">
+                          <TSQLResultsTable
+                            rows={results.rows}
+                            columns={results.columns}
+                            prettyFormatting={prettyFormatting}
+                          />
+                        </div>
+                      </div>
                     ) : (
                       <Paragraph variant="small" className="p-4 text-text-dimmed">
                         Run a query to see results here.

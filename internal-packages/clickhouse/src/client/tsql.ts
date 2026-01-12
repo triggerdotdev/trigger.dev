@@ -76,6 +76,11 @@ export interface TSQLQuerySuccess<T> {
   rows: T[];
   columns: OutputColumnMetadata[];
   stats: QueryStats;
+  /**
+   * Columns that were hidden when SELECT * was used.
+   * Only populated when SELECT * is transformed to core columns only.
+   */
+  hiddenColumns?: string[];
 }
 
 /**
@@ -114,7 +119,7 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
 
   try {
     // 1. Compile the TSQL query to ClickHouse SQL
-    const { sql, params, columns } = compileTSQL(options.query, {
+    const { sql, params, columns, hiddenColumns } = compileTSQL(options.query, {
       organizationId: options.organizationId,
       projectId: options.projectId,
       environmentId: options.environmentId,
@@ -145,6 +150,9 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
 
     const { rows, stats } = result;
 
+    // Build the result, including hiddenColumns if present
+    const baseResult = { columns, stats, hiddenColumns };
+
     // 3. Transform result values if enabled
     if (shouldTransformValues && rows) {
       const transformedRows = transformResults(
@@ -152,10 +160,10 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
         options.tableSchema,
         { fieldMappings: options.fieldMappings }
       );
-      return [null, { rows: transformedRows as z.output<TOut>[], columns, stats }];
+      return [null, { rows: transformedRows as z.output<TOut>[], ...baseResult }];
     }
 
-    return [null, { rows: rows ?? [], columns, stats }];
+    return [null, { rows: rows ?? [], ...baseResult }];
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
 

@@ -209,17 +209,16 @@ function validateSelectQuery(node: SelectQuery, context: ValidationContext): voi
         coreColumns.push(...tableCoreColumns);
       }
 
-      // Build suggestion message
-      let suggestionMsg = "SELECT * will be far slower than selecting specific columns. ";
+      // Build info message about SELECT * behavior
+      let suggestionMsg = "SELECT * doesn't return all columns.";
       if (coreColumns.length > 0) {
-        suggestionMsg += `Consider selecting specific columns, e.g.: ${coreColumns.join(", ")}`;
-      } else {
-        suggestionMsg += "Consider selecting only the columns you need.";
+        suggestionMsg += `It will return: ${coreColumns.join(", ")}. `;
       }
+      suggestionMsg += "Specify columns explicitly to include other columns.";
 
       context.issues.push({
         message: suggestionMsg,
-        severity: "warning",
+        severity: "info",
         type: "select_star",
         suggestedColumns: coreColumns.length > 0 ? coreColumns : undefined,
       });
