@@ -150,15 +150,20 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     organizationId: project.organizationId,
   });
 
+  // Admins and impersonating users can use EXPLAIN
+  const isAdmin = user.admin || user.isImpersonating;
+
   return typedjson({
     defaultQuery,
     history,
+    isAdmin,
   });
 };
 
 const ActionSchema = z.object({
   query: z.string().min(1, "Query is required"),
   scope: z.enum(["environment", "project", "organization"]),
+  explain: z.enum(["true", "false"]).nullable().optional(),
 });
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
@@ -173,7 +178,15 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   );
   if (!canAccess) {
     return typedjson(
-      { error: "Unauthorized", rows: null, columns: null, stats: null, hiddenColumns: null },
+      {
+        error: "Unauthorized",
+        rows: null,
+        columns: null,
+        stats: null,
+        hiddenColumns: null,
+        explainOutput: null,
+        generatedSql: null,
+      },
       { status: 403 }
     );
   }
@@ -181,7 +194,15 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
   if (!project) {
     return typedjson(
-      { error: "Project not found", rows: null, columns: null, stats: null, hiddenColumns: null },
+      {
+        error: "Project not found",
+        rows: null,
+        columns: null,
+        stats: null,
+        hiddenColumns: null,
+        explainOutput: null,
+        generatedSql: null,
+      },
       { status: 404 }
     );
   }
@@ -195,6 +216,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         columns: null,
         stats: null,
         hiddenColumns: null,
+        explainOutput: null,
+        generatedSql: null,
       },
       { status: 404 }
     );
@@ -204,6 +227,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const parsed = ActionSchema.safeParse({
     query: formData.get("query"),
     scope: formData.get("scope"),
+    explain: formData.get("explain"),
   });
 
   if (!parsed.success) {
@@ -214,12 +238,17 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         columns: null,
         stats: null,
         hiddenColumns: null,
+        explainOutput: null,
+        generatedSql: null,
       },
       { status: 400 }
     );
   }
 
-  const { query, scope } = parsed.data;
+  const { query, scope, explain: explainParam } = parsed.data;
+  // Only allow explain for admins/impersonating users
+  const isAdmin = user.admin || user.isImpersonating;
+  const explain = explainParam === "true" && isAdmin;
 
   try {
     const [error, result] = await executeQuery({
@@ -232,6 +261,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       organizationId: project.organizationId,
       projectId: project.id,
       environmentId: environment.id,
+      explain,
       history: {
         source: "DASHBOARD",
         userId: user.id,
@@ -240,7 +270,15 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
     if (error) {
       return typedjson(
-        { error: error.message, rows: null, columns: null, stats: null, hiddenColumns: null },
+        {
+          error: error.message,
+          rows: null,
+          columns: null,
+          stats: null,
+          hiddenColumns: null,
+          explainOutput: null,
+          generatedSql: null,
+        },
         { status: 400 }
       );
     }
@@ -251,11 +289,21 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       columns: result.columns,
       stats: result.stats,
       hiddenColumns: result.hiddenColumns ?? null,
+      explainOutput: result.explainOutput ?? null,
+      generatedSql: result.generatedSql ?? null,
     });
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : "Unknown error executing query";
     return typedjson(
-      { error: errorMessage, rows: null, columns: null, stats: null, hiddenColumns: null },
+      {
+        error: errorMessage,
+        rows: null,
+        columns: null,
+        stats: null,
+        hiddenColumns: null,
+        explainOutput: null,
+        generatedSql: null,
+      },
       { status: 500 }
     );
   }
@@ -276,8 +324,9 @@ const QueryEditorForm = forwardRef<
     defaultScope: QueryScope;
     history: QueryHistoryItem[];
     isLoading: boolean;
+    isAdmin: boolean;
   }
->(function QueryEditorForm({ defaultQuery, defaultScope, history, isLoading }, ref) {
+>(function QueryEditorForm({ defaultQuery, defaultScope, history, isLoading, isAdmin }, ref) {
   const [query, setQuery] = useState(defaultQuery);
   const [scope, setScope] = useState<QueryScope>(defaultScope);
 
@@ -332,6 +381,17 @@ const QueryEditorForm = forwardRef<
               ))
             }
           </Select>
+          {isAdmin && (
+            <Button
+              type="submit"
+              name="explain"
+              value="true"
+              variant="tertiary/small"
+              disabled={isLoading || !query.trim()}
+            >
+              Explain
+            </Button>
+          )}
           <Button
             type="submit"
             variant="primary/small"
@@ -348,7 +408,7 @@ const QueryEditorForm = forwardRef<
 });
 
 export default function Page() {
-  const { defaultQuery, history } = useTypedLoaderData<typeof loader>();
+  const { defaultQuery, history, isAdmin } = useTypedLoaderData<typeof loader>();
   const results = useTypedActionData<typeof action>();
   const navigation = useNavigation();
 
@@ -406,6 +466,7 @@ export default function Page() {
                 defaultScope={initialScope}
                 history={history}
                 isLoading={isLoading}
+                isAdmin={isAdmin}
               />
               {/* Results */}
               <div className="grid max-h-full grid-rows-[2rem_1fr] overflow-hidden border-t border-grid-dimmed bg-charcoal-800">
@@ -471,6 +532,27 @@ export default function Page() {
                         >
                           Try fix error
                         </Button>
+                      </div>
+                    ) : results?.explainOutput ? (
+                      <div className="flex h-full flex-col gap-4 overflow-auto p-3">
+                        {results.generatedSql && (
+                          <div>
+                            <Header3 className="mb-2">Generated ClickHouse SQL</Header3>
+                            <div className="overflow-auto rounded border border-grid-dimmed bg-charcoal-900 p-3">
+                              <pre className="whitespace-pre font-mono text-xs text-text-bright">
+                                {results.generatedSql}
+                              </pre>
+                            </div>
+                          </div>
+                        )}
+                        <div className="flex min-h-0 flex-1 flex-col">
+                          <Header3 className="mb-2">Query Execution Plan</Header3>
+                          <div className="min-h-0 flex-1 overflow-auto rounded border border-grid-dimmed bg-charcoal-900 p-3">
+                            <pre className="whitespace-pre font-mono text-xs text-text-bright">
+                              {results.explainOutput}
+                            </pre>
+                          </div>
+                        </div>
                       </div>
                     ) : results?.rows && results?.columns ? (
                       <div className="flex h-full flex-col overflow-hidden">

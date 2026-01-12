@@ -161,7 +161,8 @@ export async function executeQuery<TOut extends z.ZodSchema>(
     });
 
     // If query succeeded and history options provided, save to history
-    if (result[0] === null && history) {
+    // Skip history for EXPLAIN queries (admin debugging, not billable)
+    if (result[0] === null && history && !baseOptions.explain) {
       const stats = result[1].stats;
       const byteSeconds = parseFloat(stats.byte_seconds) || 0;
       const costInCents = byteSeconds * env.CENTS_PER_QUERY_BYTE_SECOND;
