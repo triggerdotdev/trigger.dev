@@ -95,6 +95,7 @@ export class KubernetesWorkloadManager implements WorkloadManager {
           },
           spec: {
             ...this.addPlacementTags(this.#defaultPodSpec, opts.placementTags),
+            affinity: this.#getNodeAffinity(opts.machine),
             terminationGracePeriodSeconds: 60 * 60,
             containers: [
               {
@@ -353,6 +354,57 @@ export class KubernetesWorkloadManager implements WorkloadManager {
       limits: {
         ...this.#defaultResourceLimits,
         ...this.#getResourceLimitsForMachine(preset),
+      },
+    };
+  }
+
+  #isLargeMachine(preset: MachinePreset): boolean {
+    return preset.name.startsWith("large-");
+  }
+
+  #getNodeAffinity(preset: MachinePreset): k8s.V1Affinity | undefined {
+    if (!env.KUBERNETES_LARGE_MACHINE_POOL_LABEL) {
+      return undefined;
+    }
+
+    if (this.#isLargeMachine(preset)) {
+      // soft preference for the large-machine pool, falls back to standard if unavailable
+      return {
+        nodeAffinity: {
+          preferredDuringSchedulingIgnoredDuringExecution: [
+            {
+              weight: 100,
+              preference: {
+                matchExpressions: [
+                  {
+                    key: "machinepool",
+                    operator: "In",
+                    values: [env.KUBERNETES_LARGE_MACHINE_POOL_LABEL],
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      };
+    }
+
+    // not schedulable in the large-machine pool
+    return {
+      nodeAffinity: {
+        requiredDuringSchedulingIgnoredDuringExecution: {
+          nodeSelectorTerms: [
+            {
+              matchExpressions: [
+                {
+                  key: "machinepool",
+                  operator: "NotIn",
+                  values: [env.KUBERNETES_LARGE_MACHINE_POOL_LABEL],
+                },
+              ],
+            },
+          ],
+        },
       },
     };
   }
