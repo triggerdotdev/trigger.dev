@@ -11,6 +11,12 @@
   inherits: false;
 }
 
+@supports (-webkit-hyphens: none) {
+  .safari-only {
+    @apply border-b border-grid-dimmed;
+  }
+}
+
 @layer base {
   * {
     @apply border-grid-bright;
