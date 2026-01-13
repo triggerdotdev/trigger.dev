@@ -216,6 +216,10 @@ export class RunsReplicationService {
       callback: this.#flushBatch.bind(this),
       // Key-based deduplication to reduce duplicates sent to ClickHouse
       getKey: (item) => {
+        if (!item?.run?.id) {
+          this.logger.warn("Skipping replication event with null run", { event: item });
+          return null;
+        }
         return `${item.event}_${item.run.id}`;
       },
       // Keep the run with the higher version (latest)
