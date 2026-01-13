@@ -1,4 +1,4 @@
-import { AdjustmentsHorizontalIcon, CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
+import { CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import type { RuntimeEnvironmentType } from "@trigger.dev/database";
@@ -7,8 +7,9 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { Feedback } from "~/components/Feedback";
 import { Badge } from "~/components/primitives/Badge";
-import { Callout } from "~/components/primitives/Callout";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Header2 } from "~/components/primitives/Headers";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -38,7 +39,11 @@ import {
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { formatNumber } from "~/utils/numberFormatter";
-import { concurrencyPath, EnvironmentParamSchema } from "~/utils/pathBuilder";
+import {
+  concurrencyPath,
+  EnvironmentParamSchema,
+  organizationBillingPath,
+} from "~/utils/pathBuilder";
 
 export const meta: MetaFunction = () => {
   return [
@@ -116,29 +121,20 @@ export default function Page() {
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={true}>
-        <div className="mx-auto max-w-4xl p-4">
+        <div className="mx-auto max-w-3xl p-4">
           <div className="flex flex-col gap-8">
-            {/* Plan info */}
-            {data.planName && (
-              <div className="flex items-center gap-2">
-                <Paragraph variant="small" className="text-text-dimmed">
-                  Current plan:
-                </Paragraph>
-                <Badge variant="small">{data.planName}</Badge>
-              </div>
-            )}
+            {/* Current Plan Section */}
+            {/* {data.planName && ( */}
+            <CurrentPlanSection
+              planName={`${data.planName}Pro`}
+              billingPath={organizationBillingPath(organization)}
+            />
+            {/* )} */}
 
-            {/* Concurrency Link Section */}
-            <Callout
-              variant="info"
-              icon={<AdjustmentsHorizontalIcon className="h-5 w-5 text-text-dimmed" />}
-              to={concurrencyPath(organization, project, environment)}
-            >
-              <Paragraph variant="small" className="text-text-bright">
-                <span className="font-medium">Concurrency limits</span> are managed on a dedicated
-                page where you can view and adjust limits for each environment.
-              </Paragraph>
-            </Callout>
+            {/* Concurrency Section */}
+            <ConcurrencySection
+              concurrencyPath={concurrencyPath(organization, project, environment)}
+            />
 
             {/* Rate Limits Section */}
             <RateLimitsSection rateLimits={data.rateLimits} environmentType={environment.type} />
@@ -152,6 +148,58 @@ export default function Page() {
         </div>
       </PageBody>
     </PageContainer>
+  );
+}
+
+function CurrentPlanSection({ planName, billingPath }: { planName: string; billingPath: string }) {
+  const isPro = planName === "Pro";
+
+  return (
+    <div className="flex flex-col gap-3">
+      <Header2>Current plan</Header2>
+      <Table variant="bright/no-hover">
+        <TableBody>
+          <TableRow>
+            <TableCell className="w-full text-sm text-text-bright">{planName}</TableCell>
+            <TableCell alignment="right">
+              {isPro ? (
+                <Feedback
+                  button={<Button variant="secondary/small">Request Enterprise</Button>}
+                  defaultValue="help"
+                />
+              ) : (
+                <LinkButton to={billingPath} variant="secondary/small">
+                  View plans to upgrade
+                </LinkButton>
+              )}
+            </TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+function ConcurrencySection({ concurrencyPath }: { concurrencyPath: string }) {
+  return (
+    <div className="flex flex-col gap-3">
+      <Header2 className="flex items-center gap-1">
+        Concurrency limits
+        <InfoIconTooltip content="Concurrency limits control how many runs execute at the same time." />
+      </Header2>
+      <Table variant="bright/no-hover">
+        <TableBody>
+          <TableRow>
+            <TableCell className="w-full text-sm text-text-bright">Concurrency</TableCell>
+            <TableCell alignment="right">
+              <LinkButton to={concurrencyPath} variant="secondary/small">
+                Manage concurrency
+              </LinkButton>
+            </TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+    </div>
   );
 }
 
