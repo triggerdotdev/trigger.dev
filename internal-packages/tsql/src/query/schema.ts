@@ -857,10 +857,17 @@ export function sanitizeErrorMessage(message: string, schemas: TableSchema[]): s
   }
 
   // Step 5: Replace standalone column names (for unqualified references)
-  // Sort by length descending to replace longer names first
-  const sortedColumnNames = [...columnNameMap.entries()].sort((a, b) => b[0].length - a[0].length);
-  for (const [clickhouseName, { tsqlName }] of sortedColumnNames) {
-    result = replaceAllOccurrences(result, clickhouseName, tsqlName);
+  // Skip column replacement for "Did you mean" errors - these already have the correct names
+  // and replacing would turn "Unknown column 'created_at'. Did you mean 'triggered_at'?"
+  // into "Unknown column 'triggered_at'. Did you mean 'triggered_at'?" which is confusing
+  if (!result.includes('Did you mean "')) {
+    // Sort by length descending to replace longer names first
+    const sortedColumnNames = [...columnNameMap.entries()].sort(
+      (a, b) => b[0].length - a[0].length
+    );
+    for (const [clickhouseName, { tsqlName }] of sortedColumnNames) {
+      result = replaceAllOccurrences(result, clickhouseName, tsqlName);
+    }
   }
 
   // Step 6: Remove redundant column aliases like "run_id AS run_id"

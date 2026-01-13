@@ -425,7 +425,7 @@ function validateField(field: Field, context: ValidationContext): void {
         const availableColumns = Object.keys(tableSchema.columns).join(", ");
         context.issues.push({
           message: `Unknown column "${columnName}" on table "${tableAlias}". Available columns: ${availableColumns}`,
-          severity: "warning",
+          severity: "error",
           type: "unknown_column",
           columnName,
           tableName: tableAlias,
@@ -464,7 +464,7 @@ function validateField(field: Field, context: ValidationContext): void {
       message: `Unknown column "${columnName}". Available columns: ${Array.from(allColumns).join(
         ", "
       )}`,
-      severity: "warning",
+      severity: "error",
       type: "unknown_column",
       columnName,
     });

@@ -49,7 +49,6 @@ function getDefaultClickhouseSettings(): ClickHouseSettings {
     ),
 
     // Safety settings
-    allow_experimental_object_type: 1,
     format_csv_allow_double_quotes: 0,
     readonly: "1", // Ensure queries are read-only
   };

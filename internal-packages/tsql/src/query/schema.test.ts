@@ -615,6 +615,17 @@ describe("Error message sanitization", () => {
       expect(sanitized).toBe("SELECT run_id, triggered_at FROM table");
     });
 
+    it("should NOT replace column names in 'Did you mean' error messages", () => {
+      // When a user types an internal ClickHouse column name, we show "Did you mean X?"
+      // The sanitizer should NOT replace the column name in this case, as it would
+      // turn "Unknown column 'created_at'. Did you mean 'triggered_at'?" into
+      // "Unknown column 'triggered_at'. Did you mean 'triggered_at'?" which is confusing
+      const error = 'Unknown column "created_at". Did you mean "triggered_at"?';
+      const sanitized = sanitizeErrorMessage(error, [runsSchema]);
+      // Should preserve both the original column name AND the suggestion
+      expect(sanitized).toBe('Unknown column "created_at". Did you mean "triggered_at"?');
+    });
+
     it("should prioritize longer matches (table.column before standalone column)", () => {
       // This tests that we replace "trigger_dev.task_runs_v2.friendly_id" as a unit,
       // not "trigger_dev.task_runs_v2" and then "friendly_id" separately
