@@ -1338,6 +1338,14 @@ export class ClickHousePrinter {
         // Register this table context for column name resolution
         this.tableContexts.set(effectiveAlias, tableSchema);
 
+        // Register required filter columns as allowed internal columns
+        // These are ClickHouse columns used for internal filtering (e.g., engine = 'V2')
+        if (tableSchema.requiredFilters) {
+          for (const filter of tableSchema.requiredFilters) {
+            this.allowedInternalColumns.add(filter.column);
+          }
+        }
+
         // Add tenant isolation guard
         extraWhere = this.createTenantGuard(tableSchema, effectiveAlias);
       } else if (

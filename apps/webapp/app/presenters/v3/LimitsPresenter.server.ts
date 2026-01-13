@@ -1,14 +1,27 @@
-import { type RuntimeEnvironmentType } from "@trigger.dev/database";
+import { createHash } from "node:crypto";
 import { env } from "~/env.server";
-import { getCurrentPlan, getDefaultEnvironmentLimitFromPlan } from "~/services/platform.v3.server";
+import { createRedisClient } from "~/redis.server";
+import { getCurrentPlan } from "~/services/platform.v3.server";
 import {
   RateLimiterConfig,
   type RateLimitTokenBucketConfig,
 } from "~/services/authorizationRateLimitMiddleware.server";
 import type { Duration } from "~/services/rateLimiter.server";
 import { BasePresenter } from "./basePresenter.server";
-import { sortEnvironments } from "~/utils/environmentSort";
-import { engine } from "~/v3/runEngine.server";
+import { singleton } from "~/utils/singleton";
+import { logger } from "~/services/logger.server";
+
+// Create a singleton Redis client for rate limit queries
+const rateLimitRedis = singleton("rateLimitQueryRedis", () =>
+  createRedisClient("trigger:rateLimitQuery", {
+    port: env.RATE_LIMIT_REDIS_PORT,
+    host: env.RATE_LIMIT_REDIS_HOST,
+    username: env.RATE_LIMIT_REDIS_USERNAME,
+    password: env.RATE_LIMIT_REDIS_PASSWORD,
+    tlsDisabled: env.RATE_LIMIT_REDIS_TLS_DISABLED === "true",
+    clusterMode: env.RATE_LIMIT_REDIS_CLUSTER_MODE_ENABLED === "1",
+  })
+);
 
 // Types for rate limit display
 export type RateLimitInfo = {
@@ -16,17 +29,7 @@ export type RateLimitInfo = {
   description: string;
   config: RateLimiterConfig;
   source: "default" | "plan" | "override";
-};
-
-// Types for concurrency limit display
-export type ConcurrencyLimitInfo = {
-  environmentId: string;
-  environmentType: RuntimeEnvironmentType;
-  branchName: string | null;
-  limit: number;
-  currentUsage: number;
-  planLimit: number;
-  source: "default" | "plan" | "override";
+  currentTokens: number | null;
 };
 
 // Types for quota display
@@ -38,15 +41,27 @@ export type QuotaInfo = {
   source: "default" | "plan" | "override";
 };
 
+// Types for feature flags
+export type FeatureInfo = {
+  name: string;
+  description: string;
+  enabled: boolean;
+  value?: string | number;
+};
+
 export type LimitsResult = {
   rateLimits: {
     api: RateLimitInfo;
     batch: RateLimitInfo;
   };
-  concurrencyLimits: ConcurrencyLimitInfo[];
   quotas: {
     projects: QuotaInfo;
     schedules: QuotaInfo | null;
+    teamMembers: QuotaInfo | null;
+    alerts: QuotaInfo | null;
+    branches: QuotaInfo | null;
+    logRetentionDays: QuotaInfo | null;
+    realtimeConnections: QuotaInfo | null;
     devQueueSize: QuotaInfo;
     deployedQueueSize: QuotaInfo;
   };
@@ -54,7 +69,13 @@ export type LimitsResult = {
     limit: number;
     source: "default" | "override";
   };
+  features: {
+    hasStagingEnvironment: FeatureInfo;
+    support: FeatureInfo;
+    includedUsage: FeatureInfo;
+  };
   planName: string | null;
+  organizationId: string;
 };
 
 export class LimitsPresenter extends BasePresenter {
@@ -62,10 +83,12 @@ export class LimitsPresenter extends BasePresenter {
     userId,
     projectId,
     organizationId,
+    environmentApiKey,
   }: {
     userId: string;
     projectId: string;
     organizationId: string;
+    environmentApiKey: string;
   }): Promise<LimitsResult> {
     // Get organization with all limit-related fields
     const organization = await this._replica.organization.findUniqueOrThrow({
@@ -84,6 +107,7 @@ export class LimitsPresenter extends BasePresenter {
             projects: {
               where: { deletedAt: null },
             },
+            members: true,
           },
         },
       },
@@ -91,78 +115,7 @@ export class LimitsPresenter extends BasePresenter {
 
     // Get current plan from billing service
     const currentPlan = await getCurrentPlan(organizationId);
-
-    // Get environments for this project
-    const environments = await this._replica.runtimeEnvironment.findMany({
-      select: {
-        id: true,
-        type: true,
-        branchName: true,
-        maximumConcurrencyLimit: true,
-        orgMember: {
-          select: {
-            userId: true,
-          },
-        },
-      },
-      where: {
-        projectId,
-        archivedAt: null,
-      },
-    });
-
-    // Get current concurrency for each environment
-    const concurrencyLimits: ConcurrencyLimitInfo[] = [];
-    for (const environment of environments) {
-      // Skip dev environments that belong to other users
-      if (environment.type === "DEVELOPMENT" && environment.orgMember?.userId !== userId) {
-        continue;
-      }
-
-      const planLimit = currentPlan
-        ? getDefaultEnvironmentLimitFromPlan(environment.type, currentPlan) ??
-          env.DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT
-        : env.DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT;
-
-      // Get current concurrency from Redis
-      let currentUsage = 0;
-      try {
-        currentUsage = await engine.runQueue.currentConcurrencyOfEnvironment({
-          id: environment.id,
-          type: environment.type,
-          organizationId,
-          projectId,
-        });
-      } catch (e) {
-        // Redis might not be available, default to 0
-      }
-
-      // Determine source
-      let source: "default" | "plan" | "override" = "default";
-      if (environment.maximumConcurrencyLimit !== planLimit) {
-        source = "override";
-      } else if (currentPlan?.v3Subscription?.plan) {
-        source = "plan";
-      }
-
-      concurrencyLimits.push({
-        environmentId: environment.id,
-        environmentType: environment.type,
-        branchName: environment.branchName,
-        limit: environment.maximumConcurrencyLimit,
-        currentUsage,
-        planLimit,
-        source,
-      });
-    }
-
-    // Sort environments
-    const sortedConcurrencyLimits = sortEnvironments(concurrencyLimits, [
-      "PRODUCTION",
-      "STAGING",
-      "PREVIEW",
-      "DEVELOPMENT",
-    ]);
+    const limits = currentPlan?.v3Subscription?.plan?.limits;
 
     // Resolve API rate limit config
     const apiRateLimitConfig = resolveApiRateLimitConfig(organization.apiRateLimiterConfig);
@@ -193,8 +146,50 @@ export class LimitsPresenter extends BasePresenter {
       },
     });
 
-    // Get plan-level schedule limit
-    const schedulesLimit = currentPlan?.v3Subscription?.plan?.limits?.schedules?.number ?? null;
+    // Get alert channel count for this org
+    const alertChannelCount = await this._replica.projectAlertChannel.count({
+      where: {
+        project: {
+          organizationId,
+        },
+      },
+    });
+
+    // Get active branches count for this org
+    const activeBranchCount = await this._replica.runtimeEnvironment.count({
+      where: {
+        project: {
+          organizationId,
+        },
+        branchName: {
+          not: null,
+        },
+        archivedAt: null,
+      },
+    });
+
+    // Get current rate limit tokens for this environment's API key
+    const apiRateLimitTokens = await getRateLimitRemainingTokens(
+      "api",
+      environmentApiKey,
+      apiRateLimitConfig
+    );
+    const batchRateLimitTokens = await getRateLimitRemainingTokens(
+      "batch",
+      environmentApiKey,
+      batchRateLimitConfig
+    );
+
+    // Get plan-level limits
+    const schedulesLimit = limits?.schedules?.number ?? null;
+    const teamMembersLimit = limits?.teamMembers?.number ?? null;
+    const alertsLimit = limits?.alerts?.number ?? null;
+    const branchesLimit = limits?.branches?.number ?? null;
+    const logRetentionDaysLimit = limits?.logRetentionDays?.number ?? null;
+    const realtimeConnectionsLimit = limits?.realtimeConcurrentConnections?.number ?? null;
+    const includedUsage = limits?.includedUsage ?? null;
+    const hasStagingEnvironment = limits?.hasStagingEnvironment ?? false;
+    const supportLevel = limits?.support ?? "community";
 
     return {
       rateLimits: {
@@ -203,15 +198,16 @@ export class LimitsPresenter extends BasePresenter {
           description: "Rate limit for API requests (trigger, batch, etc.)",
           config: apiRateLimitConfig,
           source: apiRateLimitSource,
+          currentTokens: apiRateLimitTokens,
         },
         batch: {
           name: "Batch Rate Limit",
           description: "Rate limit for batch trigger operations",
           config: batchRateLimitConfig,
           source: batchRateLimitSource,
+          currentTokens: batchRateLimitTokens,
         },
       },
-      concurrencyLimits: sortedConcurrencyLimits,
       quotas: {
         projects: {
           name: "Projects",
@@ -230,15 +226,65 @@ export class LimitsPresenter extends BasePresenter {
                 source: "plan",
               }
             : null,
+        teamMembers:
+          teamMembersLimit !== null
+            ? {
+                name: "Team members",
+                description: "Maximum number of team members in this organization",
+                limit: teamMembersLimit,
+                currentUsage: organization._count.members,
+                source: "plan",
+              }
+            : null,
+        alerts:
+          alertsLimit !== null
+            ? {
+                name: "Alert channels",
+                description: "Maximum number of alert channels across all projects",
+                limit: alertsLimit,
+                currentUsage: alertChannelCount,
+                source: "plan",
+              }
+            : null,
+        branches:
+          branchesLimit !== null
+            ? {
+                name: "Preview branches",
+                description: "Maximum number of active preview branches",
+                limit: branchesLimit,
+                currentUsage: activeBranchCount,
+                source: "plan",
+              }
+            : null,
+        logRetentionDays:
+          logRetentionDaysLimit !== null
+            ? {
+                name: "Log retention",
+                description: "Number of days logs are retained",
+                limit: logRetentionDaysLimit,
+                currentUsage: 0, // Not applicable - this is a duration, not a count
+                source: "plan",
+              }
+            : null,
+        realtimeConnections:
+          realtimeConnectionsLimit !== null
+            ? {
+                name: "Realtime connections",
+                description: "Maximum concurrent realtime connections",
+                limit: realtimeConnectionsLimit,
+                currentUsage: 0, // Would need to query realtime service for this
+                source: "plan",
+              }
+            : null,
         devQueueSize: {
-          name: "Dev Queue Size",
+          name: "Dev queue size",
           description: "Maximum pending runs in development environments",
           limit: organization.maximumDevQueueSize ?? null,
           currentUsage: 0, // Would need to query Redis for this
           source: organization.maximumDevQueueSize ? "override" : "default",
         },
         deployedQueueSize: {
-          name: "Deployed Queue Size",
+          name: "Deployed queue size",
           description: "Maximum pending runs in deployed environments",
           limit: organization.maximumDeployedQueueSize ?? null,
           currentUsage: 0, // Would need to query Redis for this
@@ -249,7 +295,27 @@ export class LimitsPresenter extends BasePresenter {
         limit: batchConcurrencyConfig.processingConcurrency,
         source: batchConcurrencySource,
       },
+      features: {
+        hasStagingEnvironment: {
+          name: "Staging environment",
+          description: "Access to staging environment for testing before production",
+          enabled: hasStagingEnvironment,
+        },
+        support: {
+          name: "Support level",
+          description: "Type of support available for your plan",
+          enabled: true,
+          value: supportLevel === "slack" ? "Slack" : "Community",
+        },
+        includedUsage: {
+          name: "Included compute",
+          description: "Monthly included compute credits",
+          enabled: includedUsage !== null && includedUsage > 0,
+          value: includedUsage ?? 0,
+        },
+      },
       planName: currentPlan?.v3Subscription?.plan?.title ?? null,
+      organizationId,
     };
   }
 }
@@ -313,4 +379,99 @@ function resolveBatchConcurrencyConfig(batchConcurrencyConfig?: unknown): {
   }
 
   return defaultConfig;
+}
+
+/**
+ * Query Redis for the current remaining tokens for a rate limiter.
+ * The @upstash/ratelimit library stores token bucket state in Redis.
+ * Key format: ratelimit:{prefix}:{hashedIdentifier}
+ *
+ * For token bucket, the value is stored as: "tokens:lastRefillTime"
+ */
+async function getRateLimitRemainingTokens(
+  keyPrefix: string,
+  apiKey: string,
+  config: RateLimiterConfig
+): Promise<number | null> {
+  try {
+    // Hash the authorization header the same way the rate limiter does
+    const authorizationValue = `Bearer ${apiKey}`;
+    const hash = createHash("sha256");
+    hash.update(authorizationValue);
+    const hashedKey = hash.digest("hex");
+
+    const redis = rateLimitRedis;
+    const redisKey = `ratelimit:${keyPrefix}:${hashedKey}`;
+
+    // Get the stored value from Redis
+    const value = await redis.get(redisKey);
+
+    if (!value) {
+      // No rate limit data yet - return max tokens (bucket is full)
+      if (config.type === "tokenBucket") {
+        return config.maxTokens;
+      } else if (config.type === "fixedWindow" || config.type === "slidingWindow") {
+        return config.tokens;
+      }
+      return null;
+    }
+
+    // For token bucket, the @upstash/ratelimit library stores: "tokens:timestamp"
+    // Parse the value to get remaining tokens
+    if (typeof value === "string") {
+      const parts = value.split(":");
+      if (parts.length >= 1) {
+        const tokens = parseInt(parts[0], 10);
+        if (!isNaN(tokens)) {
+          // For token bucket, we need to calculate current tokens based on refill
+          if (config.type === "tokenBucket" && parts.length >= 2) {
+            const lastRefillTime = parseInt(parts[1], 10);
+            if (!isNaN(lastRefillTime)) {
+              const now = Date.now();
+              const elapsed = now - lastRefillTime;
+              const intervalMs = durationToMs(config.interval);
+              const tokensToAdd = Math.floor(elapsed / intervalMs) * config.refillRate;
+              const currentTokens = Math.min(tokens + tokensToAdd, config.maxTokens);
+              return Math.max(0, currentTokens);
+            }
+          }
+          return Math.max(0, tokens);
+        }
+      }
+    }
+
+    return null;
+  } catch (error) {
+    logger.warn("Failed to get rate limit remaining tokens", {
+      keyPrefix,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
+/**
+ * Convert a duration string (e.g., "1s", "10s", "1m") to milliseconds
+ */
+function durationToMs(duration: Duration): number {
+  const match = duration.match(/^(\d+)(ms|s|m|h|d)$/);
+  if (!match) return 1000; // default to 1 second
+
+  const value = parseInt(match[1], 10);
+  const unit = match[2];
+
+  switch (unit) {
+    case "ms":
+      return value;
+    case "s":
+      return value * 1000;
+    case "m":
+      return value * 60 * 1000;
+    case "h":
+      return value * 60 * 60 * 1000;
+    case "d":
+      return value * 24 * 60 * 60 * 1000;
+    default:
+      return 1000;
+  }
 }
