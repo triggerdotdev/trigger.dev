@@ -181,6 +181,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       tags: run.tags.map((tag) => tag.name),
       isTest: run.isTest,
       idempotencyKey: run.idempotencyKey ?? undefined,
+      concurrencyKey: run.concurrencyKey,
       startedAt: run.startedAt ?? run.createdAt,
       durationMs: run.usageDurationMs,
       costInCents: run.costInCents,
